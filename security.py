@@ -225,6 +225,17 @@ def require_safe_bind() -> None:
     once at server startup; a variable changed afterwards takes effect
     on the next restart, the same as ENABLE_WRITE_ACTIONS."""
     host = get_bind_host()
+    if host not in _LOCAL_HOSTS and not ui_auth_enabled() and not _sso_ready():
+        # Checked first, container included: inside the container the server
+        # listens on 0.0.0.0, so with the token gate off any process that can
+        # reach the container (another container on the same Docker network,
+        # anything on the host) could drive the API with no credential.
+        raise RuntimeError(
+            f"Refusing to start bound to {host}: ZSCALER_UI_AUTH=0 turns off the UI token gate entirely, so "
+            "anyone who can reach this server could use the API with no credential at all. Remove ZSCALER_UI_AUTH=0, "
+            "or bind to 127.0.0.1 (ZSCALER_BIND_HOST, the default; the container always listens beyond loopback "
+            "inside, so there the token gate must stay on)."
+        )
     if os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1":
         published = os.environ.get("DLP_CHECK_HOST_BIND", "").strip() or "127.0.0.1"
         if host in _LOCAL_HOSTS or published in _LOCAL_HOSTS or _sso_ready():
@@ -426,21 +437,73 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-    """Reject requests whose Content-Length exceeds the configured cap."""
+class _BodyTooLarge(Exception):
+    """Raised from the wrapped receive() once a body passes the cap."""
+
+
+class BodySizeLimitMiddleware:
+    """Cap every request body at `max_bytes`, whether or not it declares a
+    Content-Length. A declared length over the cap is refused before a byte
+    is read; a chunked (Transfer-Encoding) or understated body is counted
+    as it streams in and cut off the moment it passes the cap, so nothing
+    downstream (the audit log, JSON parsing, an upload handler) ever holds
+    more than the cap in memory. Pure ASGI, and added outermost, so it runs
+    before every other middleware."""
 
     def __init__(self, app: ASGIApp, max_bytes: int):
-        super().__init__(app)
+        self.app = app
         self.max_bytes = max_bytes
 
-    async def dispatch(self, request: Request, call_next):
-        cl = request.headers.get("content-length")
-        if cl and cl.isdigit() and int(cl) > self.max_bytes:
-            return JSONResponse(
-                {"detail": f"Request body too large (max {self.max_bytes} bytes)."},
-                status_code=413,
-            )
-        return await call_next(request)
+    def _too_large(self, scope, size: int) -> JSONResponse:
+        # A security event in its own right (resource exhaustion attempt or a
+        # misbehaving client): recorded with method, path, client and size,
+        # never the body. This layer is outside the audit middleware, which
+        # therefore never sees the request.
+        try:
+            import audit as _audit
+            client = scope.get("client") or ("?", 0)
+            _audit.record("request_too_large", method=scope.get("method"), path=scope.get("path"),
+                          client=str(client[0]), bytes=size, limit=self.max_bytes)
+        except Exception:  # noqa: BLE001 — logging never blocks the refusal
+            pass
+        return JSONResponse({"detail": f"Request body too large (max {self.max_bytes} bytes)."}, status_code=413)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {k.lower(): v for k, v in (scope.get("headers") or [])}
+        declared = headers.get(b"content-length", b"").decode("latin-1").strip()
+        if declared:
+            if not declared.isdigit():
+                await JSONResponse({"detail": "Invalid Content-Length."}, status_code=400)(scope, receive, send)
+                return
+            if int(declared) > self.max_bytes:
+                await self._too_large(scope, int(declared))(scope, receive, send)
+                return
+        seen = 0
+        started = False
+
+        async def limited_receive():
+            nonlocal seen
+            message = await receive()
+            if message.get("type") == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > self.max_bytes:
+                    raise _BodyTooLarge()
+            return message
+
+        async def tracking_send(message):
+            nonlocal started
+            if message.get("type") == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracking_send)
+        except _BodyTooLarge:
+            if not started:
+                await self._too_large(scope, seen)(scope, receive, send)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -656,6 +719,36 @@ def _audit_denied(request: Request, event: str, reason: str) -> None:
                   client=request.client.host if request.client else "?", reason=reason)
 
 
+_LOOPBACK_HOST_NAMES = ("localhost", "127.0.0.1", "::1", "testserver")
+
+
+def _loopback_host_header(request: Request) -> bool:
+    """True when the Host header names this computer's loopback (or the
+    test client): what a browser sends for http://localhost:<port>/."""
+    host = (request.headers.get("host") or "").strip().lower()
+    if not host:
+        return True          # HTTP/1.0 without Host: not a browser, and not reachable by rebinding
+    if host.startswith("["):
+        name = host[1:host.find("]")] if "]" in host else host
+    else:
+        name = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    return name in _LOOPBACK_HOST_NAMES or name.startswith("127.")
+
+
+def _arrived_beyond_loopback(request: Request) -> bool:
+    """True when the connection came in on a non-loopback IP address of
+    this machine (scope["server"]); False for loopback, a host name such as
+    the test client's, or a Unix socket."""
+    import ipaddress
+    server = request.scope.get("server")
+    if not server or not isinstance(server, (tuple, list)) or not server[0]:
+        return False
+    try:
+        return not ipaddress.ip_address(str(server[0]).split("%", 1)[0]).is_loopback
+    except ValueError:
+        return False
+
+
 class UIAuthMiddleware(BaseHTTPMiddleware):
     """Require the UI token on every request except the ones a browser
     needs to obtain it. `/?token=...` (what the launcher opens) sets the
@@ -675,6 +768,23 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
 
     async def _dispatch(self, request: Request, call_next):
         if not _gate_on():
+            # The startup check reads ZSCALER_BIND_HOST; a server started some
+            # other way (uvicorn --host 0.0.0.0) is caught here: with the token
+            # gate off, only a request that arrived on a loopback address is
+            # served. scope["server"] is the local address the connection came
+            # in on; a non-IP name (the test client's "testserver") or a Unix
+            # socket is local by construction.
+            if not _loopback_host_header(request):
+                # DNS rebinding: a web page whose own name resolves to
+                # 127.0.0.1 would otherwise drive an unauthenticated API.
+                _audit_denied(request, "auth_denied", "ZSCALER_UI_AUTH=0 and the Host header is not a loopback name")
+                return JSONResponse({"detail": "UI authentication is turned off (ZSCALER_UI_AUTH=0), so only http://localhost, "
+                                               "127.0.0.1 or [::1] may be used to reach this server."}, status_code=403)
+            if _arrived_beyond_loopback(request):
+                _audit_denied(request, "auth_denied", "ZSCALER_UI_AUTH=0 and the request arrived on a network address")
+                return JSONResponse({"detail": "UI authentication is turned off (ZSCALER_UI_AUTH=0), so this server only answers "
+                                               "on this computer's loopback address. Turn the UI token back on to serve the network."},
+                                    status_code=503)
             return await call_next(request)
         import sso as _sso
         path = request.url.path

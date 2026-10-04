@@ -69,6 +69,7 @@ def test_authenticate_ends_with_an_inline_success_or_an_in_app_failure_dialog():
     # The copy about secrets says what the code does (tenant_profiles.upsert).
     assert "Never stored by this tool" not in html and "Kept only in this form for this browser session" in html
     assert "through the <code>keyring</code> package the installer pins with the app" in guide and "optional <code>keyring</code>" not in guide
+    assert "it is not remembered, unless the app was started with <code>DLP_CHECK_SECRET_STORE=file</code>" in guide
     c = _page()
     html = c.get("/").text
     assert 'id="evalAllFlow"' in html and '/static/eval_all.js' in html and "evalAllLoadRules" not in html, "the wizard no longer hands rules to a simulator"

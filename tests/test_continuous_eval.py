@@ -18,6 +18,13 @@ from test_pack_deploy import FakeClient, Obj
 from test_proposals import REPORT
 
 
+@pytest.fixture(autouse=True)
+def _remember_secrets_in_the_profile_file(monkeypatch):
+    # No credential store in the tests: remembering a secret in the profile
+    # file is the explicit opt-in (DLP_CHECK_SECRET_STORE=file).
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+
+
 def _env(tmp_path, monkeypatch):
     monkeypatch.setenv("DLP_CHECK_GUIDANCE_STATE", str(tmp_path / "guidance_state.json"))
     monkeypatch.setenv("DLP_CHECK_CHECKS_CONFIG", str(tmp_path / "checks_config.json"))
@@ -58,6 +65,10 @@ def _profile(remember=True, name="Acme", **fields):
 
 def test_run_once_builds_a_digest_and_raises_tenant_proposals(tmp_path, monkeypatch):
     _env(tmp_path, monkeypatch)
+    # No credential store in the test environment: remembering a secret in
+    # the profile file is an explicit opt-in (DLP_CHECK_SECRET_STORE=file).
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+
     pid = _profile()
     tenants = [{"tenant_id": 1, "tenant_name": "Acme OneDrive", "saas_application": "ONEDRIVE", "status": "ACTIVE", "saas_type": "OFLCASB_DLP_FILE"},
                {"tenant_id": 2, "tenant_name": "Acme Box", "saas_application": "BOX", "status": "AUTH_EXPIRED", "saas_type": "OFLCASB_DLP_FILE"}]

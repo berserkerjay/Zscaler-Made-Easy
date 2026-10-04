@@ -32,6 +32,10 @@ _SECRET_KEY = re.compile(r"secret|token|password|passwd|credential|authorization
 # a record (user rule 3). A OneAPI vanity domain is the tenant's name and stays.
 _IDENTITY_KEY = re.compile(r"^(user_?name|login|admin_?login)$", re.I)
 _VANITY_KEY = re.compile(r"^vanity_?domain$", re.I)
+# Fields that carry uploaded customer content (log bundles, PAC files, policy
+# exports, DLP test corpora and evidence): never written to the audit log,
+# not even a prefix; the log keeps that the field was sent and its size.
+_CONTENT_KEY = re.compile(r"^(content|corpus|export|text|samples?|evidence|raw|payload)$", re.I)
 _MAX_VALUE = 200
 _MAX_KEYS = 40
 logger = logging.getLogger("dlp_check.audit")
@@ -39,6 +43,15 @@ logger = logging.getLogger("dlp_check.audit")
 
 def path() -> str:
     return os.environ.get("DLP_CHECK_AUDIT") or os.path.join(_APP_DIR, "audit.log")
+
+
+def _omitted(v: Any) -> str:
+    """What the audit log says in place of uploaded content: its size only."""
+    if isinstance(v, str):
+        return f"[omitted: {len(v)} chars]"
+    if isinstance(v, (list, dict)):
+        return f"[omitted: {len(v)} items]"
+    return "[omitted]"
 
 
 def redact(value: Any, depth: int = 0) -> Any:
@@ -54,6 +67,8 @@ def redact(value: Any, depth: int = 0) -> Any:
                 break
             if _SECRET_KEY.search(str(k)) or _IDENTITY_KEY.search(str(k)) or (classic and _VANITY_KEY.search(str(k))):
                 out[str(k)] = "[redacted]"
+            elif _CONTENT_KEY.match(str(k)):
+                out[str(k)] = _omitted(v)
             else:
                 out[str(k)] = redact(v, depth + 1)
         return out
