@@ -796,10 +796,10 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             blocks = [a for a in r["actions"] if any(v in a for v in UPLOAD_VERBS) and (a.startswith("BLOCK") or a.startswith("ISOLATE"))]
             allows = [a for a in r["actions"] if any(v in a for v in UPLOAD_VERBS) and a.startswith("ALLOW")]
             if blocks:
-                hops.append(_hop("cac", "Cloud App Control", "blocked", {"name": r["name"], "id": r["id"]},
+                hops.append(_hop("cac", "Cloud App Control", "blocked", {"name": r["name"], "id": r["id"], "action": r.get("action") or r.get("actions")},
                                  f"'{r['name']}' (matched on {m}) blocks {', '.join(b.replace('BLOCK_', '').lower() for b in blocks)}; other actions allowed." + ssl_note, None, actions=r["actions"]))
             else:
-                hops.append(_hop("cac", "Cloud App Control", "warn" if allows else "pass", {"name": r["name"], "id": r["id"]},
+                hops.append(_hop("cac", "Cloud App Control", "warn" if allows else "pass", {"name": r["name"], "id": r["id"], "action": r.get("action") or r.get("actions")},
                                  f"'{r['name']}' (matched on {m}) allows {', '.join(a.replace('ALLOW_', '').lower() for a in allows) or 'the actions it lists'}: uploads are not stopped here, so content inspection is the last line. Cloud App Control can also gate on a user risk profile (risk score levels)." + ssl_note,
                                  _weak("medium", "Uploads allowed by app control", "Block upload/share on personal instances of this application, or use tenancy restrictions.") if allows else None, actions=r["actions"]))
         elif "cac" in unread:
@@ -823,10 +823,10 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 r, m = hit
                 if r["action"] in BLOCK_ACTIONS:
                     ends = "url"
-                    hops.append(_hop("url", "URL filtering", "blocked", {"name": r["name"], "id": r["id"], "order": r["order"]},
+                    hops.append(_hop("url", "URL filtering", "blocked", {"name": r["name"], "id": r["id"], "order": r["order"], "action": r["action"]},
                                      f"'{r['name']}' blocks it (matched on {m}); first matching rule in order.", None))
                 else:
-                    hops.append(_hop("url", "URL filtering", "pass" if r["action"] in ("ALLOW",) else "warn", {"name": r["name"], "id": r["id"], "order": r["order"]},
+                    hops.append(_hop("url", "URL filtering", "pass" if r["action"] in ("ALLOW",) else "warn", {"name": r["name"], "id": r["id"], "order": r["order"], "action": r["action"]},
                                      f"'{r['name']}' → {r['action'] or 'ALLOW'} (matched on {m}; first matching rule in order)" + (f", methods {', '.join(r['request_methods'])}" if r["request_methods"] else "") + ".",
                                      None))
             elif "url" in unread:
@@ -846,15 +846,15 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 hops.append(_hop("ssl", "SSL inspection", "blind", None, "No enabled SSL inspection rule matches: the traffic is passed through encrypted and inline DLP cannot see its content.",
                                  _weak("high", "Not decrypted", "Add a DECRYPT rule for this traffic (or a catch-all decrypt rule after Zscaler Recommended Exemptions).")))
             elif decided["decision"] == "inspected":
-                hops.append(_hop("ssl", "SSL inspection", "pass", {"name": decided["name"], "id": decided["id"], "order": decided["order"]},
+                hops.append(_hop("ssl", "SSL inspection", "pass", {"name": decided["name"], "id": decided["id"], "order": decided["order"], "action": decided["action"]},
                                  f"'{decided['name']}' (order {decided['order']}) decrypts this traffic." + (f" Scoped exemptions ahead of it: {', '.join(e['name'] for e in exceptions)}." if exceptions else ""),
                                  _weak("medium", "Some users are exempt from decryption", "Confirm each exempted group is intended; Endpoint DLP should cover them.") if exceptions else None))
             elif decided["decision"] == "blocked":
                 ends = "ssl"
-                hops.append(_hop("ssl", "SSL inspection", "blocked", {"name": decided["name"], "id": decided["id"], "order": decided["order"]},
+                hops.append(_hop("ssl", "SSL inspection", "blocked", {"name": decided["name"], "id": decided["id"], "order": decided["order"], "action": decided["action"]},
                                  f"'{decided['name']}' blocks this traffic at the TLS handshake; nothing leaves.", None))
             else:
-                hops.append(_hop("ssl", "SSL inspection", "blind", {"name": decided["name"], "id": decided["id"], "order": decided["order"]},
+                hops.append(_hop("ssl", "SSL inspection", "blind", {"name": decided["name"], "id": decided["id"], "order": decided["order"], "action": decided["action"]},
                                  f"'{decided['name']}' (order {decided['order']}, {decided['action']}) leaves this traffic encrypted: inline DLP sees only the destination, not the content.",
                                  _weak("high" if dest.get("class") not in ("privacy",) else "info", "Left encrypted",
                                        "Move a DECRYPT rule above this exemption, or narrow the exemption to the categories it is meant for.")))
@@ -868,7 +868,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                                  nis["ftc"] + " Whether a file type rule limits uploads here is not assessed.", None, why="not in scope"))
             elif ftc:
                 r, m = ftc[0]
-                hops.append(_hop("ftc", "File Type Control", "blocked" if r["action"] in BLOCK_ACTIONS else "warn", {"name": r["name"], "id": r["id"]},
+                hops.append(_hop("ftc", "File Type Control", "blocked" if r["action"] in BLOCK_ACTIONS else "warn", {"name": r["name"], "id": r["id"], "action": r.get("action") or r.get("actions")},
                                  f"'{r['name']}' → {r['action']} for {', '.join(t.replace('FTCATEGORY_', '').lower() for t in r['file_types'][:6])}{'…' if len(r['file_types']) > 6 else ''} on upload (matched on {m}).", None))
             elif "ftc" in unread:
                 hops.append(_hop("ftc", "File Type Control", "unknown", None, _unread_why(unread, "ftc", "File Type Control rules"), None))
@@ -912,7 +912,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 enforcing = [r for r in covering if r["enforcing"]]
                 content = [r for r in covering if not r["without_content_inspection"]]
                 status = "enforce" if enforcing else "monitor"
-                hops.append(_hop("dlp", "Inline Web DLP", status, {"name": covering[0]["name"], "id": covering[0]["id"]},
+                hops.append(_hop("dlp", "Inline Web DLP", status, {"name": covering[0]["name"], "id": covering[0]["id"], "action": covering[0]["action"]},
                                  f"{len(covering)} rule(s) see this content: " + ", ".join(f"{r['name']} ({r['action']})" for r in covering[:5]) + ("…" if len(covering) > 5 else "")
                                  + (" None inspects content (without-content-inspection set)." if not content else "")
                                  + " Rules are evaluated in order and the first match applies, unless 'Evaluate all DLP rules' is on, in which case the most restrictive action wins and order only breaks ties.",

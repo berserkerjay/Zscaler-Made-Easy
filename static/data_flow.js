@@ -73,7 +73,10 @@ function renderPolicyEnforcementFlow(container) {
 
 function _dfSvg(t) {
   const hops = [{ key: 'device', label: 'Device', status: 'pass', detail: `${t.platform}, ${t.network}` }].concat(t.hops.filter(h => h.key !== 'zia'));
-  const W = 168, H = 62, GAP = 34, PAD = 14, TOP = 30;
+  const ruleLines = h => String((h.decided_by && h.decided_by.name) || h.why || (h.key === 'ssl' && h.status === 'blind' ? 'No matching SSL rule' : 'Rule unavailable')).match(/.{1,26}/gu) || [];
+  const ruleAction = h => (h.decided_by && h.decided_by.action) || (h.key === 'ssl' && h.decided_by ? ({pass: 'DECRYPT', blind: 'DO NOT DECRYPT', blocked: 'BLOCK'}[h.status]) : '') || '';
+  const named = h => h.key === 'ssl' || !!(h.decided_by && h.decided_by.name);
+  const W = 168, H = Math.max(62, ...hops.filter(named).map(h => 66 + ruleLines(h).length * 12)), GAP = 34, PAD = 14, TOP = 30;
   const width = PAD * 2 + hops.length * W + (hops.length - 1) * GAP;
   const height = TOP + H + PAD + 10;
   let out = '';
@@ -81,7 +84,7 @@ function _dfSvg(t) {
     const x = PAD + i * (W + GAP), y = TOP;
     const [lab, cls] = DF_STATUS[h.status] || [h.status, 'dim'];
     // An unreadable hop shows its reason on the box, not just "could not read".
-    const name = h.why ? h.why : (h.decided_by && h.decided_by.name ? h.decided_by.name : (h.mode || h.profile || ''));
+    const name = h.decided_by && h.decided_by.name ? h.decided_by.name : (h.why || h.mode || h.profile || '');
     if (i > 0) {
       const px = x - GAP, cy = y + H / 2;
       const prev = hops[i - 1];
@@ -90,11 +93,12 @@ function _dfSvg(t) {
       // animated dashed line reads as a flowing squiggle between hops.
       out += `<path class="df-edge ${dead ? 'dead' : ''}" d="M${px},${cy} C${px + GAP * 0.6},${cy - 16} ${x - GAP * 0.6},${cy + 16} ${x},${cy}"/>`;
     }
-    out += `<g class="df-node st-${cls}" data-hop="${_dfE(h.key)}" transform="translate(${x},${y})" tabindex="0" role="button" aria-label="${_dfE(h.label)}: ${_dfE(lab)}">
+    out += `<g class="df-node st-${cls}" data-hop="${_dfE(h.key)}" transform="translate(${x},${y})" tabindex="0" role="button" aria-label="${_dfE(h.label)}: ${_dfE(lab)}${named(h) ? ` · ${_dfE(name || 'No matching SSL rule')} · ${_dfE(ruleAction(h))}` : ''}">
+      <title>${_dfE(h.label)}: ${_dfE(name || h.detail || '')}${named(h) ? ` · ${_dfE(ruleAction(h))}` : ''}</title>
       <rect class="box" width="${W}" height="${H}" rx="12"/><rect class="bar" x="6" y="6" width="4" height="${H - 12}" rx="2"/>
       <text class="kind" x="18" y="17">${_dfE(h.label.toUpperCase())}</text>
       <text class="st" x="18" y="35">${_dfE(lab)}</text>
-      <text class="sub" x="18" y="51">${_dfE((name || h.detail || '').slice(0, 26))}${(name || h.detail || '').length > 26 ? '…' : ''}</text>
+      ${named(h) ? ruleLines(h).map((line, n) => `<text class="sub" x="18" y="${51 + n * 12}">${_dfE(line)}</text>`).join('') + `<text class="sub" x="18" y="${51 + ruleLines(h).length * 12}">${_dfE(ruleAction(h))}</text>` : `<text class="sub" x="18" y="51">${_dfE((name || h.detail || '').slice(0, 26))}${(name || h.detail || '').length > 26 ? '…' : ''}</text>`}
       ${h.weak_point ? `<circle class="dot sev-${_dfE(h.weak_point.severity)}" cx="${W - 12}" cy="12" r="5"><title>${_dfE(h.weak_point.title)}</title></circle>` : ''}
     </g>`;
   });
