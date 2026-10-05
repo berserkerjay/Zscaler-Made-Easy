@@ -137,13 +137,15 @@ def snapshot_scope_key(snapshot: Optional[Dict[str, Any]]) -> Optional[str]:
     return k if isinstance(k, str) else None
 
 
-def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any]) -> bool:
+def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform: Optional[str] = None) -> bool:
     """Whether a kept tenant read may answer for `scope`: only a read made
     for exactly the same parts of the tenant. A read for a wider scope
     would show what is now out of scope; one for a narrower scope would
     say "not in scope" for what is now in it."""
     return (bool(snapshot) and snapshot_scope_key(snapshot) == scope.get("key") and
-            ("zcc" not in scope.get("read", []) or (snapshot.get("client_connector") or {}).get("profile_schema") == 2))
+            ("zcc" not in scope.get("read", []) or
+             ((snapshot.get("client_connector") or {}).get("profile_schema") == 4 and
+              (snapshot.get("client_connector") or {}).get("profile_platform") in (None, platform))))
 
 
 def analyze(client, destination: str, network: str = "off", platform: str = "windows", *,
@@ -176,7 +178,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     d = parse_destination(destination)
     network = network if network in {n["key"] for n in NETWORKS} else "off"
     platform = platform if platform in PLATFORMS else "windows"
-    if snapshot and not reusable(snapshot, scope):
+    if snapshot and not reusable(snapshot, scope, platform):
         _log("The tenant read kept from before was made for a different scope; reading again for what is in scope now.")
         snapshot = None
     try:
@@ -191,7 +193,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                 if "zcc" in scope["read"]:
                     _log("Reading Client Connector: app profiles and their bypasses, forwarding profiles, trusted networks"
                          + (", PAC files…" if "pac" in scope["read"] else "…"))
-                zcc = read_client_connector(client, scope=scope, cancel=cancel)
+                zcc = read_client_connector(client, scope=scope, cancel=cancel, platform=platform)
                 _check()
                 zia_parts = [PATH_SECTIONS[k][0] for k in scope["read"] if k not in ("zcc", "pac")]
                 if zia_parts:

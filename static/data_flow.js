@@ -115,6 +115,13 @@ function _dfHopDetail(h) {
   </div>`;
 }
 
+function connectorInventoryHtml(c) {
+  if (!c) return '';
+  const apps = (c.profiles || []).map(p => { const a = p.app_profile || {}, f = p.forwarding_profile; return `<li>${_dfE(a.name)} (ID ${_dfE(a.id)}, ${_dfE(a.platform)}, ${a.active === false ? 'inactive' : 'active'}) → ${f ? `${_dfE(f.name)} (ID ${_dfE(f.id)})` : 'Forwarding link unverified'}</li>`; }).join('');
+  const forwarding = (c.forwarding_profiles || []).map(f => `<li>${_dfE(f.name)} (ID ${_dfE(f.id)})</li>`).join('');
+  const pac = (c.pac_files || []).map(f => `<li>${_dfE(f.name || 'PAC file')} (ID ${_dfE(f.id)}) · ${_dfE(f.url || 'URL unavailable')} · ${f.has_content ? 'content read' : 'content unverified'}</li>`).join('');
+  return `<details><summary>Tenant profile and PAC inventory</summary><p>Configuration candidates; device assignment is not established.</p><h3>All app profiles</h3><ul>${apps}</ul><h3>All forwarding profiles</h3><ul>${forwarding}</ul><h3>PAC files</h3><ul>${pac}</ul>${(c.errors || []).map(e => `<p>${_dfE(e)}</p>`).join('')}</details>`;
+}
 function renderDataFlowTrace(t, container) {
   const [olab, ocls] = DF_OUTCOME[t.outcome] || [t.outcome, 'dim'];
   const chans = Object.entries(t.channels || {}).map(([k, c]) => {
@@ -132,6 +139,7 @@ function renderDataFlowTrace(t, container) {
   const fwdProf = (fwdHop && fwdHop.decided_by && fwdHop.decided_by.name) || '—';
   const fwdMode = (fwdHop && fwdHop.mode) ? ` (${_dfE(fwdHop.mode)})` : '';
   container.innerHTML = `
+    ${connectorInventoryHtml(t.connector_inventory)}
     <div class="df-outcome st-${ocls}"><span class="df-chip st-${ocls}">${_dfE(olab)}</span><strong>${_dfE(t.destination.label)}</strong> <span class="df-by">${_dfE(t.destination.kind)}${t.destination.categories && t.destination.categories.length ? ` · categories ${_dfE(t.destination.categories.slice(0, 4).join(', '))}` : ''}${t.destination.applications && t.destination.applications.length ? ` · ${t.destination.applications.length} application(s)` : ''}</span></div>
     <div class="df-profiles">
       <span class="df-prof"><span class="k">Client Connector app profile</span><span class="v">${_dfE(appProf)}</span></span>
@@ -161,7 +169,7 @@ function renderDataFlowOverview(report, container) {
     const [olab, ocls] = DF_OUTCOME[t.outcome] || [t.outcome, 'dim'];
     const net = (report.networks.find(n => n.key === t.network) || {}).label || t.network;
     const high = t.weak_points.filter(w => w.severity === 'high').length;
-    return `<tr class="df-row" data-i="${i}" tabindex="0"><td>${_dfE(t.destination.label)}</td><td>${_dfE(net)}</td><td><span class="df-chip st-${ocls}">${_dfE(olab)}</span></td><td>${t.hops.filter(h => h.status === 'bypass').length ? 'client / PAC' : (t.decrypted ? 'decrypted' : 'encrypted')}</td><td>${high ? `<span class="df-chip st-fail">${high} high</span>` : (t.weak_points.length ? `<span class="df-chip st-warn">${t.weak_points.length}</span>` : '<span class="df-chip st-ok">0</span>')}</td></tr>`;
+    return `<tr class="df-row" data-i="${i}" tabindex="0"><td>${_dfE(t.destination.label)}</td><td>${_dfE(net)}</td><td><span class="df-chip st-${ocls}">${_dfE(olab)}</span></td><td>${t.hops.filter(h => h.status === 'bypass').length ? 'client / PAC' : (t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope'].includes(h.status)) ? 'unverified' : t.decrypted ? 'decrypted' : 'encrypted')}</td><td>${high ? `<span class="df-chip st-fail">${high} high</span>` : (t.weak_points.length ? `<span class="df-chip st-warn">${t.weak_points.length}</span>` : '<span class="df-chip st-ok">0</span>')}</td></tr>`;
   }).join('');
   container.innerHTML = `<div class="df-tablewrap"><table class="df-table"><thead><tr><th>Destination</th><th>Network</th><th>Outcome</th><th>Visibility</th><th>Weak points</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -171,6 +179,7 @@ function renderDataFlowOverview(report, container) {
 // bypassed (no visibility), reaching ZIA encrypted (blind), or decrypted
 // and inspected — and if inspected, enforced or monitor-only.
 function _dfVisibility(t) {
+  if (t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope'].includes(h.status))) return ['Unable to verify', 'dim', 'Routing or inspection evidence is unavailable or outside scope'];
   if (!t.reaches_zscaler) return ['Bypassed', 'fail', 'Leaves the device direct — no cloud visibility'];
   if (!t.decrypted) return ['Encrypted', 'warn', 'Reaches ZIA but is not decrypted — inline DLP is blind'];
   if (t.outcome === 'enforce') return ['Decrypted · enforced', 'ok', 'Decrypted and a rule blocks/confirms'];
@@ -205,7 +214,8 @@ function renderCategoryVisibility(report, container) {
 // with the rule/profile that decided it — the bypass + SSL gaps in one place.
 function renderDataFlowGaps(report, container) {
   const netLabel = k => (report.networks.find(n => n.key === k) || {}).label || k;
-  const lost = report.traces.filter(t => !t.reaches_zscaler || !t.decrypted).map((t, _i) => ({ t, i: report.traces.indexOf(t) }));
+  const lost = report.traces.filter(t => !t.conditional && !(t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope'].includes(h.status)) && (!t.reaches_zscaler || !t.decrypted)).map((t, _i) => ({ t, i: report.traces.indexOf(t) }));
+  if (!lost.length && report.traces.some(t => t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope'].includes(h.status)))) { container.innerHTML = '<p>Routing or inspection remains unverified; no confirmed visibility gap can be inferred.</p>'; return; }
   if (!lost.length) { container.innerHTML = '<div class="df-hop-d">Every traced path reaches Zscaler and is decrypted — no bypass or SSL gap found.</div>'; return; }
   const bypassed = lost.filter(x => !x.t.reaches_zscaler);
   const blind = lost.filter(x => x.t.reaches_zscaler && !x.t.decrypted);

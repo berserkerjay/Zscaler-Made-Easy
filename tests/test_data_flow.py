@@ -22,9 +22,9 @@ FWD = [
         {"networkType": "VPN_TRUSTED_NETWORK", "tunnelType": "NONE"}]},
     {"id": 6, "name": "Contractor forwarding", "forwardingProfileActions": [
         {"networkType": "ON_TRUSTED_NETWORK", "tunnelType": "NONE"},
-        {"networkType": "OFF_TRUSTED_NETWORK", "tunnelType": "ENFORCE_PROXY"}]},
+        {"networkType": "OFF_TRUSTED_NETWORK", "tunnelType": "ENFORCE_PROXY", "customPac": "https://pac.example/corp.pac"}]},
 ]
-PAC = [{"id": 1, "name": "corp.pac", "pacContent": 'function FindProxyForURL(url, host) { if (shExpMatch(host, "*.box.com")) { return "DIRECT"; } return "PROXY gateway.zscaler.net:80"; }'}]
+PAC = [{"id": 1, "name": "corp.pac", "pacUrl": "https://pac.example/corp.pac", "pacContent": 'function FindProxyForURL(url, host) { if (shExpMatch(host, "*.box.com")) { return "DIRECT"; } return "PROXY gateway.zscaler.net:80"; }'}]
 SSL = [
     {"id": 1, "name": "Zscaler Recommended Exemptions", "order": 1, "state": "ENABLED", "predefined": True, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["FINANCE"]},
     {"id": 2, "name": "No decrypt webmail", "order": 2, "state": "ENABLED", "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["WEB_MAIL", "WEBMAIL"]},

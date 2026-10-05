@@ -285,6 +285,7 @@
       const fact = (k, b, yes, no) => (outOf(k) ? '<span class="v">not in scope</span>' : yesno(b, yes, no));
       meta.textContent = `${res.tenant_label || ''} · ${res.fresh_read ? 'tenant read just now' : 'tenant read reused'} · ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
       body.innerHTML = `
+        ${connectorInventoryHtml(t.connector_inventory)}
         <section class="pa-verdict st-${ocls}" aria-labelledby="paHeadline">
           <div class="pa-verdict-top">${chip(v.outcome === 'bypassed' ? 'bypass' : v.outcome === 'blocked' ? 'blocked' : v.outcome)}<span class="df-by">${E(d.input)} · ${E(NET_LABEL[res.network] || res.network)} · ${E(res.platform)}</span></div>
           <h2 id="paHeadline" class="pa-headline">${E(v.headline)}</h2>
