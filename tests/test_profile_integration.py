@@ -9,8 +9,48 @@ import data_flow as df
 import dlp_api_server as srv
 import dlp_assessment_full_auto as fa
 from zcc_profiles import read_profiles
+from zcc_profiles import read_app_profiles
 from test_data_flow import APP_PROFILES, FWD, _client
 from test_zcc_paths import _client as wire_client
+
+
+@pytest.mark.parametrize('wire,expected', [('DEVICE_TYPE_WINDOWS','windows'), ('DEVICE_TYPE_MAC','macos'), ('DEVICE_TYPE_LINUX','linux'), ('DEVICE_TYPE_IOS','ios'), ('DEVICE_TYPE_ANDROID','android')])
+def test_tenant_platform_enums_and_nested_forwarding_link(wire, expected):
+    class Client:
+        def get(self, ep, params=None):
+            if ep == '/zcc/webPolicies':
+                return [{'id': 164817, 'name': 'Tenant app', 'deviceType': wire, 'forwardingProfileId': None, 'onNetPolicy': {'id': '68585', 'name': 'Tenant forwarding'}}], 200
+            if ep == '/zcc/forwardingProfiles':
+                return [{'id': '68585', 'name': 'Tenant forwarding', 'enableUnifiedTunnel': False, 'forwardingProfileActions': [{'networkType': 0, 'actionType': 1, 'enablePacketTunnel': 1}], 'unifiedTunnel': [{'networkType': 0, 'actionTypeZIA': 0}]}], 200
+            return [], 200
+    zcc = df.read_client_connector(Client())
+    assert len(zcc['app_profiles']) == 1
+    assert zcc['app_profiles'][0]['platform'] == expected
+    zia = df.read_zia(_client())
+    t = df.trace(df.resolve_destination('example.net', zia), 'off', expected, zcc, zia)
+    fwd = next(h for h in t['hops'] if h['key'] == 'forwarding')
+    assert fwd['decided_by']['name'] == 'Tenant forwarding'
+    assert fwd['mode'] == 'Z-Tunnel 2.0'
+
+
+def test_every_platform_is_requested_and_partial_failure_preserves_evidence():
+    calls = []
+    def get(ep, params):
+        calls.append(params['deviceType'])
+        if params['deviceType'] == 3:
+            return {'error': 'denied'}, 403
+        return [{'id': 0, 'name': 'Default'}], 200
+    profiles, errors, statuses = read_app_profiles(get)
+    assert calls == [1, 2, 3, 4, 5]
+    assert len(profiles) == 4 and statuses['windows'] == 'unverified' and errors
+
+
+def test_inactive_and_unlinked_forwarding_profiles_remain_in_inventory():
+    zcc = {'app_profiles': [{'id': 1, 'name': 'Inactive', 'platform': 'windows', 'active': False}], 'forwarding_profiles': [{'id': 2, 'name': 'Unlinked', 'actions': {}}], 'pac_files': [{'id': 3, 'name': 'PAC', 'has_content': False}]}
+    refs = df.connector_references(zcc)
+    assert refs['profiles'][0]['app_profile']['active'] is False
+    assert refs['forwarding_profiles'][0]['name'] == 'Unlinked'
+    assert refs['pac_files'][0]['has_content'] is False
 
 
 @pytest.mark.parametrize("wrapper", ["policies", "list", "items", "data", "records"])
@@ -120,7 +160,7 @@ def test_live_context_obeys_scope_and_closes_client(monkeypatch):
     assert out["status"] == "out_of_scope" and not cl.calls
     out = srv._live_connector_context(creds, ["zcc"])
     assert out["status"] == "read" and len(out["profiles"]) == 2 and closed
-    assert not any("/zia/" in ep for ep in cl.calls)
+    assert {ep for ep in cl.calls if "/zia/" in ep} == {"/zia/pacFiles"}
     assert "does not establish" in out["note"]
 
 
@@ -188,7 +228,7 @@ def test_old_profile_snapshots_are_refreshed():
     scope = df.path_scope(["zcc"], {})
     snapshot = {"path_scope": scope["key"], "client_connector": {}}
     assert not path_analyzer.reusable(snapshot, scope)
-    snapshot["client_connector"]["profile_schema"] = 2
+    snapshot["client_connector"]["profile_schema"] = 4
     assert path_analyzer.reusable(snapshot, scope)
 
 

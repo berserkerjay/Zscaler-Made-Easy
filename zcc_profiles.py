@@ -4,6 +4,35 @@ from __future__ import annotations
 APP_ENDPOINT = "/zcc/papi/public/v1/application-profiles"
 FORWARDING_ENDPOINT = "/zcc/papi/public/v1/webForwardingProfile/listByCompany"
 PAGE_SIZE = 100
+PLATFORM_TYPES = {"ios": 1, "android": 2, "windows": 3, "macos": 4, "linux": 5}
+
+
+def read_app_profiles(get, *, cancel=None):
+    """Explicitly request every OS; preserve successes and per-platform failures."""
+    import json
+    items, seen, errors, statuses = [], set(), [], {}
+    for platform, device_type in PLATFORM_TYPES.items():
+        batch, code = read_profiles(get, "/zcc/webPolicies", cancel=cancel, params={"deviceType": device_type})
+        statuses[platform] = "read" if code == 200 else "unverified"
+        if code != 200:
+            reason = batch.get("error", "") if isinstance(batch, dict) else ""
+            errors.append(f"/zcc/webPolicies ({platform}, deviceType={device_type}): HTTP {code} {reason}".strip())
+            continue
+        for source in batch:
+            p = dict(source)
+            fields = {k.replace("_", "").lower(): v for k, v in p.items()}
+            os_type = next((fields[k] for k in ("devicetype", "os", "platform", "ostype") if fields.get(k) not in (None, "")), None)
+            if os_type is None:
+                p["deviceType"] = device_type
+                os_type = device_type
+            os_key = str(os_type).lower().removeprefix("device_type_")
+            os_key = {"win": "windows", "mac": "macos", "osx": "macos"}.get(os_key, os_key)
+            os_key = {str(v): k for k, v in PLATFORM_TYPES.items()}.get(os_key, os_key)
+            key = (os_key, str(p["id"])) if p.get("id") is not None else (os_key, json.dumps(p, sort_keys=True))
+            if key not in seen:
+                seen.add(key)
+                items.append(p)
+    return items, errors, statuses
 
 
 def profile_items(body):
@@ -16,13 +45,13 @@ def profile_items(body):
     raise ValueError("profile response did not contain a profile list")
 
 
-def read_profiles(get, endpoint, *, cancel=None):
+def read_profiles(get, endpoint, *, cancel=None, params=None):
     """Read every page, rejecting partial, malformed and repeated inventories."""
     items, seen = [], set()
     for page in range(1, 1001):
         if cancel:
             cancel()
-        body, code = get(endpoint, {"page": page, "pageSize": PAGE_SIZE})
+        body, code = get(endpoint, dict(params or {}, page=page, pageSize=PAGE_SIZE))
         if code not in (200, 204):
             return body, code
         if code == 204:

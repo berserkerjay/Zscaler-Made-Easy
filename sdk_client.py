@@ -224,6 +224,12 @@ class SdkClient:
 
         # SaaS application tenants: the filters (active only, email tenants
         # only) are query parameters, so this route takes them.
+        if endpoint == "/zia/pacFiles":
+            qp = {"page": (params or {}).get("page", 1), "page_size": (params or {}).get("pageSize", 100)}
+            result = _sdk_call(self._zs.zia.pac_files.list_pac_files, query_params=qp)
+            self._cache[cache_key] = result
+            return result
+
         if endpoint == "/zia/casbTenant/lite":
             qp = {"active_only": str((params or {}).get("activeOnly", "")).lower() == "true"}
             if (params or {}).get("appType"):

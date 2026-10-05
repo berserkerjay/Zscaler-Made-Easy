@@ -13,6 +13,8 @@ Identify the active repository, branch, working-tree changes, running version, s
 
 Inventory the official APIs relevant to the requested flow. Verify routes, SDK methods, response wrappers, field names, enums, pagination and permissions against current Zscaler documentation, official SDK source and read-only tenant responses where authorized. Record API/version differences and fallback rules. Never invent endpoint names or infer undocumented numeric enums.
 
+Proactively inspect returned response shapes to find gaps in downstream consumers. Request every platform explicitly, normalize DEVICE_TYPE_* values, and preserve the app's nested onNetPolicy ID before flattening. Resolve the forwarding inventory by that ID when the top-level reference is null. Respect enableUnifiedTunnel before consuming unified actions. Link PAC content by its referenced URL; unrelated tenant PAC files are inventory, not evidence for the selected route. Recheck names, references, visibility labels and all affected views after normalization changes.
+
 Build a service-by-view matrix for Data Flow Map, Path Analysis, Live DLP and other requested views. For each relevant API family, record the caller, normalized model, linked object IDs, consumed fields, display location, test coverage and a status: integrated, gap, unverified, unsupported, out of scope or not applicable. An API reader existing in the repository does not prove that a flow consumes it. Account for every relevant API in every requested view; justify applicability rather than forcing every product into every traffic path.
 
 ## Trace the branches

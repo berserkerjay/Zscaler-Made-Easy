@@ -1503,9 +1503,8 @@ def _live_connector_context(creds, scopes):
         return cached[1]
     raw = _raw_client(creds)
     try:
-        # No ZIA PAC or policy reads: the live view needs only ZCC profile context.
+        # PAC inventory is part of connector routing context; no policy reads.
         scope = data_flow.path_scope(["zcc"], {})
-        scope["not_in_scope"]["pac"] = "PAC contents are not read by the live feed."
         zcc = data_flow.read_client_connector(raw, scope=scope)
         result = data_flow.connector_references(zcc)
         result["status"] = "unverified" if result["errors"] else "read"

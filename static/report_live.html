@@ -165,7 +165,8 @@
         const networks = Object.entries(p.networks || {}).map(([key, a]) => `${E(key)}: ${E(a.mode || 'Unverified')}${a.pac_url ? ` · PAC ${E(a.pac_url)}` : ''}`).join(' · ');
         return `<li>${E(app.name)} (ID ${E(app.id)}, ${E(app.platform)}) → ${fwd ? `${E(fwd.name)} (ID ${E(fwd.id)})` : 'Unable to verify linked forwarding profile'}${networks ? `<div class="df-by">${networks}</div>` : ''}</li>`;
       }).join('');
-      return `<section><h2 class="df-h">Client Connector configuration</h2><p class="df-hint">${E(connector.note || '')}${connector.read_at ? ` Read ${E(new Date(connector.read_at).toLocaleTimeString())}.` : ''}</p>${context ? `<ul>${context}</ul>` : `<p>${connector.status === 'read' ? 'Profile inventory read; no active app profiles returned.' : 'Profiles unverified or outside the selected scope.'}</p>`}${(connector.errors || []).map(e => `<p class="df-hint lf-err">${E(e)}</p>`).join('')}</section>`;
+      const inventory = `<h2 class="df-h">All forwarding profiles</h2><ul>${(connector.forwarding_profiles || []).map(f => `<li>${E(f.name)} (ID ${E(f.id)})</li>`).join('')}</ul><h2 class="df-h">PAC files</h2><ul>${(connector.pac_files || []).map(f => `<li>${E(f.name || 'PAC file')} (ID ${E(f.id)}) · ${E(f.url || 'URL unavailable')} · ${f.has_content ? 'content read' : 'content unverified'}</li>`).join('')}</ul>`;
+      return `<section><h2 class="df-h">Client Connector configuration</h2><p class="df-hint">${E(connector.note || '')}${connector.read_at ? ` Read ${E(new Date(connector.read_at).toLocaleTimeString())}.` : ''}</p>${context ? `<ul>${context}</ul>` : `<p>${connector.status === 'read' ? 'Profile inventory read; no app profiles returned.' : 'Profiles unverified or outside the selected scope.'}</p>`}${inventory}${(connector.errors || []).map(e => `<p class="df-hint lf-err">${E(e)}</p>`).join('')}</section>`;
     }
     function render(freshIds) {
       body.innerHTML = `
