@@ -142,7 +142,8 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any]) -> bool:
     for exactly the same parts of the tenant. A read for a wider scope
     would show what is now out of scope; one for a narrower scope would
     say "not in scope" for what is now in it."""
-    return bool(snapshot) and snapshot_scope_key(snapshot) == scope.get("key")
+    return (bool(snapshot) and snapshot_scope_key(snapshot) == scope.get("key") and
+            ("zcc" not in scope.get("read", []) or (snapshot.get("client_connector") or {}).get("profile_schema") == 2))
 
 
 def analyze(client, destination: str, network: str = "off", platform: str = "windows", *,
@@ -259,7 +260,10 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
     outcome = t["outcome"]
     host = d["host"]
     rule = lambda h: (h.get("decided_by") or {}).get("name")  # noqa: E731
-    if outcome == "bypassed" and stop:
+    if t.get("conditional"):
+        headline = f"Unable to verify how the device reaches {host}."
+        summary = "The app profile or its linked forwarding settings could not be verified. Downstream policy results apply only if this traffic reaches ZIA; they do not establish that the device is protected."
+    elif outcome == "bypassed" and stop:
         headline = f"Never reaches Zscaler: {stop['label'].lower()} sends {host} direct."
         summary = f"{stop['detail']} Nothing in ZIA applies; only Endpoint DLP on the device can see this traffic."
     elif outcome == "blocked" and stop:

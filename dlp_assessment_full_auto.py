@@ -56,8 +56,8 @@ def _token_url(vd, cloud):
 # A value may be a list of candidate paths: the first that does not answer
 # 400/404/405 wins (the app-profile path differs between API generations).
 _ZCC_MAP = {
-    "appProfiles":        ["web/policy/listByCompany", "webPolicy/listByCompany", "webPolicies/listByCompany"],
-    "webPolicies":        ["web/policy/listByCompany", "webPolicy/listByCompany", "webPolicies/listByCompany"],
+    "appProfiles":        ["application-profiles", "web/policy/listByCompany", "webPolicy/listByCompany", "webPolicies/listByCompany"],
+    "webPolicies":        ["application-profiles", "web/policy/listByCompany", "webPolicy/listByCompany", "webPolicies/listByCompany"],
     "forwardingProfiles": "webForwardingProfile/listByCompany",
     "forwardingProfile":  "webForwardingProfile/listByCompany",
     "devices":            "getDevices",
@@ -700,7 +700,7 @@ def _ls(d):
     if isinstance(d,list): return d
     if isinstance(d,dict):
         # Handle paginated responses like {"list": [...]} or {"data": [...]}
-        for key in ("list","data","items","rules","records"):
+        for key in ("list","data","items","rules","records","policies"):
             if key in d and isinstance(d[key],list): return d[key]
         # If dict has an "error" key, it's not real data
         if "error" in d or "status" in d: return []

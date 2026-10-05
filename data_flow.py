@@ -35,6 +35,8 @@ import re
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 from bypass_report import _fetch_url_category_lookup, _rules_to_list
+from zcc_profiles import read_profiles
+from zcc_evaluation import flatten_profile, _v, _truthy
 from ssl_flow import (TRAFFIC_CLASSES, _fetch_app_catalogue, _fetch_rules, _matches, _names, _scope, _sort_key,
                       _upper, normalize_dlp_rule, normalize_ssl_rule)
 
@@ -264,11 +266,17 @@ def forwarding_actions(profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         if isinstance(v, list) and v and all(isinstance(x, dict) for x in v) and re.search(r"action|forward|network|tunnel", str(k), re.I) and not re.search(r"zpa", str(k), re.I):
             for entry in v:
                 net_raw = next((entry[kk] for kk in entry if re.search(r"network", str(kk), re.I)), None)
-                mode_raw = next((entry[kk] for kk in entry if re.search(r"tunnel|action|forward|proxy|mode", str(kk), re.I) and not re.search(r"network|dns|timeout|port|id$", str(kk), re.I)), None)
+                mode_raw = _v(entry, "actionTypeZIA", "actionType", "tunnelType", "mode")
+                if mode_raw is None:
+                    mode_raw = next((entry[kk] for kk in entry if re.search(r"tunnel|action|forward|proxy|mode", str(kk), re.I) and not re.search(r"network|dns|timeout|port|id$", str(kk), re.I)), None)
                 if mode_raw is None:
                     continue
                 label, kind = classify_mode(mode_raw)
-                out[classify_network(net_raw)] = {"mode_label": label, "mode_kind": kind, "raw": {"network": net_raw, "mode": mode_raw}}
+                proxy = _v(entry, "systemProxyData", default={}) or {}
+                out[classify_network(net_raw)] = {"mode_label": label, "mode_kind": kind,
+                    "pac_url": _v(proxy, "pacURL") or _v(entry, "customPac"),
+                    "raw": {k: v for k, v in entry.items() if re.sub(r"[^a-z0-9]", "", k.lower()) in
+                            {"networktype", "actiontype", "actiontypezia", "tunneltype", "enablepackettunnel", "systemproxy", "systemproxydata", "custompac", "primarytransport", "allowtlsfallback", "tunnel2fallbacktype"}}}
     if not out:
         for kk in profile:
             if re.search(r"tunnel|forward|mode", str(kk), re.I) and not isinstance(profile[kk], (list, dict)) and profile[kk] not in (None, ""):
@@ -288,19 +296,23 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
     is sent."""
     out: Dict[str, Any] = {"app_profiles": [], "forwarding_profiles": [], "trusted_networks": [], "pac_files": [], "errors": [], "not_in_scope": {}}
     nis = (scope or {}).get("not_in_scope") or {}
+    out["read_status"] = {}
+    out["profile_schema"] = 2
     for k in ("zcc", "pac"):
         if k in nis:
             out["not_in_scope"][k] = nis[k]
     if "zcc" not in nis:
         _stop_point(cancel)
         try:
-            data, code = client.get("/zcc/webPolicies")
+            data, code = read_profiles(client.get, "/zcc/webPolicies", cancel=lambda: _stop_point(cancel))
+            out["read_status"]["app_profiles"] = "read" if code == 200 else "unverified"
             if code != 200:
-                out["errors"].append(f"/zcc/webPolicies: HTTP {code}")
+                out["errors"].append(f"/zcc/webPolicies: HTTP {code}" + (f" ({data.get('error')})" if isinstance(data, dict) and data.get('error') else ""))
             for p in _rules_to_list(data) if code == 200 else []:
                 if not isinstance(p, dict):
                     continue
-                plat = str(p.get("os") or p.get("platform") or p.get("osType") or p.get("device_type") or p.get("deviceType") or "").lower()
+                p = flatten_profile(p)
+                plat = str(_v(p, "os", "platform", "osType", "deviceType", default="")).lower()
                 # The Client Connector API numbers the platforms: 1 iOS, 2 Android, 3 Windows, 4 macOS, 5 Linux.
                 plat = {"win": "windows", "windows": "windows", "mac": "macos", "macos": "macos", "osx": "macos", "ios": "ios", "android": "android", "linux": "linux",
                         "1": "ios", "2": "android", "3": "windows", "4": "macos", "5": "linux"}.get(plat, plat or "all")
@@ -322,29 +334,36 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                         domains += vals
                 out["app_profiles"].append({
                     "id": p.get("id"), "name": p.get("name") or p.get("policyName") or f"Profile {p.get('id', '?')}",
-                    "platform": plat, "active": bool(p.get("active", True)), "priority": p.get("ruleOrder") or p.get("priority"),
-                    "forwarding_profile": p.get("forwardingProfileName") or p.get("forwardingProfileId") or p.get("forwardingProfile"),
+                    "platform": plat, "active": _truthy(_v(p, "active", default=True)), "priority": _v(p, "ruleOrder", "priority"),
+                    "forwarding_profile": _v(p, "forwardingProfileId", "forwardingProfileName", "forwardingProfile"),
                     "pac_url": p.get("pacUrl") or p.get("customPacUrl") or p.get("pac_url"),
-                    "strict_enforcement": bool(p.get("strictEnforcement") or p.get("strictMode")),
-                    "endpoint_dlp": bool(p.get("installEndpointDlp") or p.get("endpointDlpEnabled") or p.get("zdpEnabled")),
-                    "ssl_cert": bool(p.get("sslCertInstall") or p.get("installSslCert") or p.get("sslCertificateEnabled")),
+                    "strict_enforcement": _truthy(_v(p, "strictEnforcement", "strictMode")),
+                    "endpoint_dlp": _truthy(_v(p, "installEndpointDlp", "endpointDlpEnabled", "zdpEnabled")),
+                    "ssl_cert": _truthy(_v(p, "sslCertInstall", "installSslCert", "sslCertificateEnabled")),
                     "bypass": {"domains": domains, "apps": apps, "processes": processes, "ips": ips, "vpn_gateways": vpn},
                     "groups": _names(p.get("groups") or p.get("groupNames") or []),
                 })
+        except ReadStopped:
+            raise
         except Exception as e:  # noqa: BLE001
+            out["read_status"]["app_profiles"] = "unverified"
             out["errors"].append(f"/zcc/webPolicies: {e}")
         _stop_point(cancel)
         try:
-            data, code = client.get("/zcc/forwardingProfiles")
+            data, code = read_profiles(client.get, "/zcc/forwardingProfiles", cancel=lambda: _stop_point(cancel))
+            out["read_status"]["forwarding_profiles"] = "read" if code == 200 else "unverified"
             if code != 200:
-                out["errors"].append(f"/zcc/forwardingProfiles: HTTP {code}")
+                out["errors"].append(f"/zcc/forwardingProfiles: HTTP {code}" + (f" ({data.get('error')})" if isinstance(data, dict) and data.get('error') else ""))
             for p in _rules_to_list(data) if code == 200 else []:
                 if isinstance(p, dict):
                     out["forwarding_profiles"].append({"id": p.get("id"), "name": p.get("name") or f"Forwarding profile {p.get('id', '?')}",
                                                        "actions": forwarding_actions(p),
                                                        "trusted_networks": _names(p.get("trustedNetworks") or p.get("trustedNetworkNames") or []),
                                                        "pac_url": p.get("pacUrl") or p.get("customPacUrl") or p.get("forwardingProfilePacUrl")})
+        except ReadStopped:
+            raise
         except Exception as e:  # noqa: BLE001
+            out["read_status"]["forwarding_profiles"] = "unverified"
             out["errors"].append(f"/zcc/forwardingProfiles: {e}")
         _stop_point(cancel)
         try:
@@ -558,6 +577,26 @@ def _weak(severity: str, title: str, fix: str) -> Dict[str, Any]:
     return {"severity": severity, "title": title, "fix": fix}
 
 
+def connector_references(zcc: Dict[str, Any]) -> Dict[str, Any]:
+    """Public configuration context, never a claim about an incident's actual route."""
+    refs = []
+    for app in zcc.get("app_profiles", []):
+        if not app.get("active", True):
+            continue
+        ref = app.get("forwarding_profile")
+        if isinstance(ref, dict):
+            ref = ref.get("id") if ref.get("id") is not None else ref.get("name")
+        fwd = next((f for f in zcc.get("forwarding_profiles", []) if ref is not None and
+                    (str(f.get("id")) == str(ref) or str(f.get("name")) == str(ref))), None)
+        refs.append({"app_profile": {"id": app.get("id"), "name": app.get("name"), "platform": app.get("platform")},
+                     "forwarding_profile": {"id": fwd.get("id"), "name": fwd.get("name")} if fwd else None,
+                     "forwarding_reference": ref, "status": "linked" if fwd else "unverified",
+                     "networks": {k: {"mode": a.get("mode_label"), "kind": a.get("mode_kind"), "pac_url": a.get("pac_url")}
+                                  for k, a in (fwd or {}).get("actions", {}).items()}})
+    return {"profiles": refs, "errors": zcc.get("errors", []), "read_status": zcc.get("read_status", {}),
+            "note": "Tenant configuration context. The incident feed does not establish which app profile or network a device used."}
+
+
 # ── The trace ─────────────────────────────────────────────────────────
 def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any], zia: Dict[str, Any],
           packs: Optional[List[Dict[str, Any]]] = None, scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -588,10 +627,15 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         hops.append(_hop("zcc", "Client Connector app profile", "out_of_scope", None,
                          nis["zcc"] + " Whether the client bypasses this destination is not assessed; the hops below assume it reaches Zscaler.",
                          None, why="not in scope"))
+    elif not prof and (zcc.get("read_status", {}).get("app_profiles") == "unverified" or
+                       any("/zcc/webPolicies" in e or "/zcc/appProfiles" in e for e in zcc.get("errors", []))):
+        hops.append(_hop("zcc", "Client Connector app profile", "unknown", None,
+                         f"Unable to verify the {platform} app profile: " + "; ".join(zcc.get("errors") or []) +
+                         ". This does not establish that Client Connector is undeployed.",
+                         None, why="app profiles not readable"))
     elif not prof:
         hops.append(_hop("zcc", "Client Connector app profile", "warn", None,
-                         f"No app profile found for {platform}; either Client Connector is not deployed to this platform or the profile list could not be read"
-                         + (f" ({'; '.join(zcc.get('errors') or [])})" if zcc.get("errors") else "") + ".",
+                         f"The profile inventory was read successfully, but no active app profile was found for {platform}.",
                          _weak("medium", "No Client Connector profile for this platform", "Deploy Client Connector with an app profile for this platform, or confirm the device reaches ZIA another way (GRE/IPsec site, PAC)."),
                          why=f"no app profile for {platform}" + (": profile list could not be read" if zcc.get("errors") else "")))
     else:
@@ -623,7 +667,9 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     if prof:
         ref = prof.get("forwarding_profile")
         fps = zcc.get("forwarding_profiles", [])
-        fwd = next((f for f in fps if ref is not None and (str(f.get("id")) == str(ref) or str(f.get("name")) == str(ref))), None) or (fps[0] if len(fps) == 1 else None)
+        if isinstance(ref, dict):
+            ref = ref.get("id") if ref.get("id") is not None else ref.get("name")
+        fwd = next((f for f in fps if ref is not None and (str(f.get("id")) == str(ref) or str(f.get("name")) == str(ref))), None)
     mode_kind = "tunnel"
     if reaches_zscaler and zcc_out:
         hops.append(_hop("forwarding", "Forwarding profile", "out_of_scope", None,
@@ -634,14 +680,14 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             if prof:
                 text = (f"The app profile '{prof['name']}' does not name a forwarding profile the tool could match"
                         + (f" (the tenant has {fps_n} forwarding profiles, so none can be assumed)" if fps_n > 1 else (" and the forwarding profile list could not be read" if fps_n == 0 else ""))
-                        + "; assuming a tunnel. Check the app profile's Forwarding Profile field in the Client Connector portal.")
+                        + ". Unable to verify forwarding; downstream policy results are conditional on traffic reaching ZIA. Check the app profile's Forwarding Profile field in the Client Connector portal.")
                 why = "no forwarding profile linked" if fps_n else "forwarding profiles not readable"
             else:
                 text = (f"No app profile for {platform}, so no forwarding profile can be linked"
                         + (f" (the tenant has {fps_n} forwarding profile(s))" if fps_n else " and the forwarding profile list could not be read")
-                        + "; assuming a tunnel.")
+                        + ". Unable to verify forwarding; downstream policy results are conditional on traffic reaching ZIA.")
                 why = f"no app profile for {platform}"
-            hops.append(_hop("forwarding", "Forwarding profile", "assumed", None, text, None, why=why))
+            hops.append(_hop("forwarding", "Forwarding profile", "unknown", None, text, None, why=why))
         else:
             act = fwd["actions"].get(network) or fwd["actions"].get("any") or {}
             mode_kind = act.get("mode_kind", "unknown")
@@ -660,8 +706,8 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                                  _weak("medium", "PAC-based forwarding", "Move to Z-Tunnel 2.0 so every port and protocol is forwarded, not just what the PAC catches."),
                                  mode=label, raw=act.get("raw")))
             elif mode_kind == "unknown":
-                hops.append(_hop("forwarding", "Forwarding profile", "assumed", {"name": fwd["name"], "id": fwd["id"]},
-                                 f"'{fwd['name']}': the forwarding mode for {net_label} is '{label}', which this tool does not recognise as tunnel, PAC or none; assuming a tunnel. Raw value kept for review.",
+                hops.append(_hop("forwarding", "Forwarding profile", "unknown", {"name": fwd["name"], "id": fwd["id"]},
+                                 f"'{fwd['name']}': the forwarding mode for {net_label} is '{label}', which this tool does not recognise as tunnel, PAC or none. Downstream policy results are conditional on traffic reaching ZIA. Raw value kept for review.",
                                  None, mode=label, raw=act.get("raw"), why=f"mode '{label}' not recognised for {net_label.lower()}"))
             else:
                 hops.append(_hop("forwarding", "Forwarding profile", "pass", {"name": fwd["name"], "id": fwd["id"]},
@@ -978,13 +1024,15 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     weak_points += [dict(c["weak_point"], hop=k, hop_label=c["label"]) for k, c in channels.items() if c.get("weak_point")]
     sev_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
     weak_points.sort(key=lambda w: sev_order.get(w["severity"], 9))
-    outcome = ("bypassed" if not reaches_zscaler else "blocked" if ends in ("ssl", "url") else
+    conditional = any(h["key"] in ("zcc", "forwarding") and h["status"] in ("unknown", "warn") and not h.get("decided_by") for h in hops)
+    conditional = conditional or any(h["key"] == "forwarding" and h["status"] == "unknown" for h in hops)
+    outcome = ("bypassed" if not reaches_zscaler else "unknown" if conditional else "blocked" if ends in ("ssl", "url") else
                "unknown" if any(h["key"] == "dlp" and h["status"] == "unknown" for h in hops) else
                "out_of_scope" if any(h["key"] == "dlp" and h["status"] == "out_of_scope" for h in hops) else
                "blind" if not decrypted else next((h["status"] for h in hops if h["key"] == "dlp"), "none"))
     return {"destination": dest, "network": network, "platform": platform, "hops": hops, "channels": channels, "packs": pack_rows,
             "weak_points": weak_points, "outcome": outcome, "reaches_zscaler": reaches_zscaler, "decrypted": decrypted,
-            "not_in_scope": nis}
+            "not_in_scope": nis, "conditional": conditional}
 
 
 # A policy pack rule's channel → the section of the read it would be found in.
