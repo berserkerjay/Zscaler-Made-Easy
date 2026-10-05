@@ -216,6 +216,12 @@ class SdkClient:
             if a is not True:
                 return {"error": str(a)}, 0
 
+        if endpoint in ("/zcc/appProfiles", "/zcc/webPolicies", "/zcc/forwardingProfiles", "/zcc/forwardingProfile"):
+            from zcc_profiles import read_profiles
+            result = self._zcc_profile_page(endpoint, params) if params else read_profiles(self._zcc_profile_page, endpoint)
+            self._cache[cache_key] = result
+            return result
+
         # SaaS application tenants: the filters (active only, email tenants
         # only) are query parameters, so this route takes them.
         if endpoint == "/zia/casbTenant/lite":
@@ -236,6 +242,30 @@ class SdkClient:
         result = self._raw_get(endpoint, params)
         self._cache[cache_key] = result
         return result
+
+    def _zcc_profile_page(self, endpoint, params=None):
+        """Use wire responses so wrapper totals and nested policy fields survive SDK versions."""
+        from dlp_assessment_full_auto import _resolve_candidates
+        if self._creds.get("auth_method") == "legacy":
+            return {"error": "Client Connector requires a OneAPI sign-in"}, 404
+        try:
+            executor = self._zs.get_request_executor()
+            for route in _resolve_candidates(endpoint):
+                request, error = executor.create_request("GET", route, {}, {}, params=params or {})
+                if error:
+                    return {"error": str(error), "path": route}, 0
+                response, error = executor.execute(request)
+                code = response.get_status() if response is not None else 0
+                if code in (400, 404, 405):
+                    continue
+                if error:
+                    return {"error": str(error), "path": route}, code or 0
+                if response is None:
+                    return {"error": "profile API returned no response", "path": route}, 0
+                return response.get_body(), code or 200
+            return {"error": "profile API route not available", "path": route}, code
+        except Exception as exc:
+            return {"error": str(exc)}, 0
 
     def _raw_get(self, endpoint: str, params: Optional[dict] = None) -> Tuple[Any, int]:
         """

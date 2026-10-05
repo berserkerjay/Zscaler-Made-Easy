@@ -60,7 +60,7 @@
     const live = document.getElementById('liveRegion');
     const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
     const POLL_MS = 15000;
-    let running = false, timer = null, since = '', stats = {}, rows = [], errShown = false;
+    let running = false, timer = null, since = '', stats = {}, rows = [], errShown = false, connector = null;
     // Each Start opens a new polling chain; Stop ends it. A chain whose
     // generation is no longer current never polls or re-arms again, so a
     // Stop (or Stop then Start) while a poll is answering leaves at most
@@ -157,9 +157,20 @@
         <td><span class="df-chip ${verdictCls}">${E(verdictLab)}</span></td>
       </tr>`;
     }
+    function connectorHtml() {
+      if (!connector) return '';
+      const profiles = connector.profiles || [];
+      const context = profiles.map(p => {
+        const app = p.app_profile || {}, fwd = p.forwarding_profile;
+        const networks = Object.entries(p.networks || {}).map(([key, a]) => `${E(key)}: ${E(a.mode || 'Unverified')}${a.pac_url ? ` · PAC ${E(a.pac_url)}` : ''}`).join(' · ');
+        return `<li>${E(app.name)} (ID ${E(app.id)}, ${E(app.platform)}) → ${fwd ? `${E(fwd.name)} (ID ${E(fwd.id)})` : 'Unable to verify linked forwarding profile'}${networks ? `<div class="df-by">${networks}</div>` : ''}</li>`;
+      }).join('');
+      return `<section><h2 class="df-h">Client Connector configuration</h2><p class="df-hint">${E(connector.note || '')}${connector.read_at ? ` Read ${E(new Date(connector.read_at).toLocaleTimeString())}.` : ''}</p>${context ? `<ul>${context}</ul>` : `<p>${connector.status === 'read' ? 'Profile inventory read; no active app profiles returned.' : 'Profiles unverified or outside the selected scope.'}</p>`}${(connector.errors || []).map(e => `<p class="df-hint lf-err">${E(e)}</p>`).join('')}</section>`;
+    }
     function render(freshIds) {
       body.innerHTML = `
         ${statTiles()}
+        ${connectorHtml()}
         <h2 class="df-h">Feed${rows.length ? ` (${rows.length})` : ''}</h2>
         ${rows.length
           ? `<div class="df-tablewrap lf-tablewrap"><table class="df-table"><thead><tr><th>When</th><th>Who</th><th>Trigger</th><th>Sent to</th><th>Channel</th><th>Action</th><th>Verdict</th></tr></thead>
@@ -189,6 +200,7 @@
       }
       errShown = (d.errors || [])[0] || false;
       since = d.next_since; stats = d.stats;
+      connector = d.client_connector || null;
       meta.textContent = `${d.tenant_label || ''} · read ${new Date(d.read_at).toLocaleTimeString()}`;
       const freshIds = new Set(d.incidents.map(i => i.id));
       rows = d.incidents.slice().reverse().concat(rows).slice(0, 500);   // newest first, bounded
@@ -216,7 +228,7 @@
       say('Live feed stopped.');
     }
     function reset() {
-      stop(); since = ''; stats = {}; rows = []; errShown = false;
+      stop(); since = ''; stats = {}; rows = []; errShown = false; connector = null;
       render();
       showMotion();
       say('Session cleared.');

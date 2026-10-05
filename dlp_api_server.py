@@ -1458,6 +1458,7 @@ async def detection_health_generate(req: DetectionHealthRequest):
 # see the coverage note the endpoint always returns.
 _LIVE_RULES_TTL_SECONDS = 90
 _live_rules_cache: Dict[str, Any] = {}   # tenant key -> (expires_at, {rule name: action})
+_live_connector_cache: Dict[str, Any] = {}
 LIVE_FEED_COVERAGE_NOTE = (
     "This feed shows Workflow Automation's DLP-matched incidents only — the user, the rule and dictionaries that "
     "matched, and the destination, live as they land. It does not cover URL Filtering, Cloud App Control or "
@@ -1485,6 +1486,38 @@ def _live_rule_actions(client, tenant_key: str, channels: Optional[List[str]] = 
     m = detection_health.rule_actions(client, channels=chans)
     _live_rules_cache[key] = (now + _LIVE_RULES_TTL_SECONDS, m)
     return m
+
+
+def _live_connector_context(creds, scopes):
+    """Briefly cached, tenant-separated profile references; only when ZCC is in scope."""
+    import data_flow
+    import time as _time
+    import tenant_fingerprint
+    if "zcc" not in scopes:
+        return {"status": "out_of_scope", "profiles": [], "errors": [],
+                "note": "Client Connector profiles were not read because ZCC is not in scope."}
+    key = tenant_fingerprint.proposal_key(creds, tenant_auth.record_label(creds))
+    now = _time.time()
+    cached = _live_connector_cache.get(key)
+    if cached and cached[0] > now:
+        return cached[1]
+    raw = _raw_client(creds)
+    try:
+        # No ZIA PAC or policy reads: the live view needs only ZCC profile context.
+        scope = data_flow.path_scope(["zcc"], {})
+        scope["not_in_scope"]["pac"] = "PAC contents are not read by the live feed."
+        zcc = data_flow.read_client_connector(raw, scope=scope)
+        result = data_flow.connector_references(zcc)
+        result["status"] = "unverified" if result["errors"] else "read"
+        result["read_at"] = datetime.now(timezone.utc).isoformat()
+        # A failed read is not cached, so the next poll can recover.
+        if not result["errors"]:
+            if len(_live_connector_cache) >= 128:
+                _live_connector_cache.clear()
+            _live_connector_cache[key] = (now + _LIVE_RULES_TTL_SECONDS, result)
+        return result
+    finally:
+        _close_quietly(raw)
 
 
 class LiveFeedRequest(TenantCredsRequest):
@@ -1536,8 +1569,10 @@ async def live_feed_poll(req: LiveFeedRequest):
     for i in poll["incidents"]:
         i["enforcement"] = detection_health.incident_action(i, rules_by_name)   # "enforced" | "monitor" | "unknown", from the rule's real action
     stats = detection_health.live_stats(req.stats or None, poll["incidents"], rules_by_name)
+    connector = await asyncio.to_thread(_live_connector_context, creds, sc["scopes"])
     return {"incidents": poll["incidents"], "next_since": poll["next_since"], "errors": poll["errors"], "stats": stats,
-            "tenant_label": label, "read_at": poll["read_at"], "coverage_note": LIVE_FEED_COVERAGE_NOTE}
+            "tenant_label": label, "read_at": poll["read_at"], "coverage_note": LIVE_FEED_COVERAGE_NOTE,
+            "client_connector": connector}
 
 
 # ── Proposals: the approval queue (continuous evaluation, phase 2) ────────

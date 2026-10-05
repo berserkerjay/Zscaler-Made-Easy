@@ -38,8 +38,8 @@ def _client(routes):
 
 
 def test_app_profiles_resolve_to_the_sdk_path_with_fallbacks():
-    assert fa._resolve_ep("/zcc/appProfiles") == "/zcc/papi/public/v1/web/policy/listByCompany"
-    assert fa._resolve_candidates("/zcc/webPolicies") == ["/zcc/papi/public/v1/web/policy/listByCompany",
+    assert fa._resolve_ep("/zcc/appProfiles") == "/zcc/papi/public/v1/application-profiles"
+    assert fa._resolve_candidates("/zcc/webPolicies") == ["/zcc/papi/public/v1/application-profiles", "/zcc/papi/public/v1/web/policy/listByCompany",
                                                           "/zcc/papi/public/v1/webPolicy/listByCompany",
                                                           "/zcc/papi/public/v1/webPolicies/listByCompany"]
     assert fa._resolve_candidates("/zcc/forwardingProfiles") == ["/zcc/papi/public/v1/webForwardingProfile/listByCompany"]
@@ -56,7 +56,7 @@ def test_client_takes_the_first_path_that_exists_and_caches_it():
     d, code = c2.get("/zcc/appProfiles")
     assert code == 200 and d == profiles and c2.sess.calls[-2:] == ["/zcc/papi/public/v1/web/policy/listByCompany", "/zcc/papi/public/v1/webPolicy/listByCompany"]
     c2.get("/zcc/appProfiles")
-    assert len(c2.sess.calls) == 2                     # cached under the short endpoint
+    assert len(c2.sess.calls) == 3                     # cached under the short endpoint
     items, err = fa._g(c2, "/zcc/appProfiles", "AppProfiles")
     assert err is None and items == profiles
 
@@ -64,13 +64,13 @@ def test_client_takes_the_first_path_that_exists_and_caches_it():
 def test_a_real_failure_names_the_path_and_status():
     c = _client({})                                     # nothing answers
     d, code = c.get("/zcc/appProfiles")
-    assert code == 404 and d["path"] == "/zcc/papi/public/v1/web/policy/listByCompany" and len(d["tried"]) == 3
+    assert code == 404 and d["path"] == "/zcc/papi/public/v1/application-profiles" and len(d["tried"]) == 4
     items, err = fa._g(c, "/zcc/appProfiles", "AppProfiles")
     assert items is None and err.status == fa.R.INFO
     assert "not readable" in err.detail and "web/policy/listByCompany -> HTTP 404" in err.detail
     # A 403 stops at the first path (the route exists; the client lacks the scope) and says so.
     c3 = _client({"/zcc/papi/public/v1/web/policy/listByCompany": (403, None)})
     d, code = c3.get("/zcc/appProfiles")
-    assert code == 403 and len(c3.sess.calls) == 1
+    assert code == 403 and len(c3.sess.calls) == 2
     _, err = fa._g(c3, "/zcc/appProfiles", "AppProfiles")
-    assert "HTTP 403 on /zcc/papi/public/v1/web/policy/listByCompany" in err.detail and "role" in err.detail
+    assert "/zcc/papi/public/v1/web/policy/listByCompany -> HTTP 403" in err.detail and "role" in err.detail

@@ -194,7 +194,7 @@ def test_no_profile_for_the_platform_still_traces_and_numeric_zcc_codes_are_read
     # No profile for Linux: the trace still completes (this used to crash the map).
     rep2 = df.generate_data_flow_report(FakeCl(routes, CATALOGUE), None, "linux")
     hops = {h["key"]: h for h in rep2["traces"][0]["hops"]}
-    assert hops["zcc"]["status"] == "warn" and hops["forwarding"]["status"] == "assumed" and "no app profile for linux" in hops["forwarding"]["why"]
+    assert hops["zcc"]["status"] == "warn" and hops["forwarding"]["status"] == "unknown" and "no app profile for linux" in hops["forwarding"]["why"]
     assert rep2["summary"]["traces"] == len(df.TRAFFIC_CLASSES) * 3
     # Nothing readable at all: every hop degrades, nothing raises.
     rep3 = df.generate_data_flow_report(FakeCl({}, {}), None, "windows")

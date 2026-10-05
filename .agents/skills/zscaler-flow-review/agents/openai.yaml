@@ -1,0 +1,4 @@
+interface:
+  display_name: "Zscaler Flow Review"
+  short_description: "Review ZIA, ZCC, ZPA and ZDX flow integration"
+  default_prompt: "Use $zscaler-flow-review to audit API coverage and evidence links across Data Flow Map, Path Analysis and Live DLP."
