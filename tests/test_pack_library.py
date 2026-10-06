@@ -298,3 +298,13 @@ def test_advanced_page_credits_its_creators(lib_client):
     assert "Jason&nbsp;Smith" in html and "Nick&nbsp;Tucker" in html and "Eunice&nbsp;Aguilar" in html
     css = open(os.path.join(ROOT, "static", "reports.css"), encoding="utf-8").read()
     assert ".adv-credits {" in css
+
+
+def test_advanced_page_acknowledges_key_contributor_alongside_creators(lib_client):
+    html = lib_client.get("/report/advanced").text
+    credits = html.split('<section id="credits"', 1)[1].split("</section>", 1)[0]
+    assert 'aria-labelledby="advCreditsH"' in credits
+    assert '<h2 id="advCreditsH">Credits</h2>' in credits
+    for name in ("Jason&nbsp;Smith", "Nick&nbsp;Tucker", "Eunice&nbsp;Aguilar"):
+        assert name in credits
+    assert "<p>Phillip Nicholas was a key contributor.</p>" in credits
