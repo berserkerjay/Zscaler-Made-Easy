@@ -579,13 +579,26 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         compute_fn = compute_fn or compute
         maturity_fn = maturity_fn or maturity
 
+    # A check outside the selected scope (its channel neither on Zscaler nor
+    # a prerequisite of one) has no row, no section and no score here: only
+    # its count, in one line (channel_scope.hidden_note). `hidden_checks`
+    # is what the assessment already left out; an older report that still
+    # carries "Not in scope" rows has them dropped and counted here.
+    import channel_scope
+    results, dropped = channel_scope.visible(results)
+    try:
+        hidden = max(0, int((cfg or {}).get("hidden_checks") or 0)) + dropped
+    except (TypeError, ValueError):
+        hidden = dropped
+    hidden_line = channel_scope.hidden_note(hidden)
+
     secs, overall = compute_fn(results)
     mat = maturity_fn(overall)
     # The same coverage vocabulary the GUI shows (permissions.assessment_summary):
     # execution (assessed / not permitted) apart from the score's denominator.
     try:
         from permissions import assessment_summary
-        cov = assessment_summary(results)
+        cov = assessment_summary(results, hidden=hidden)
     except Exception:  # noqa: BLE001
         cov = None
     overall_text = "Not assessed" if overall is None else f"{overall}%"
@@ -625,8 +638,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         ("Date", datetime.now().strftime("%B %d, %Y")),
         ("Total Checks", str(len(results))),
         ("Assessed", (f"{cov['assessed']} of {cov['total']}"
-                      + (f" ({cov['not_permitted']} not permitted)" if cov["not_permitted"] else "")
-                      + (f" ({cov.get('not_in_scope', 0)} not in scope)" if cov.get("not_in_scope") else "")) if cov else str(len(results))),
+                      + (f" ({cov['not_permitted']} not permitted)" if cov["not_permitted"] else "")) if cov else str(len(results))),
         ("Overall Score", overall_text + (f" — {cov['configured']} configured of {cov['scored']} scoreable" if cov and cov["scored"] else "")),
         ("Maturity Level", mat),
     ]
@@ -659,9 +671,8 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         if cov["not_permitted"]:
             summary.add_run(f"The assessment is partial: {cov['assessed']} of {cov['total']} checks ran; "
                             f"{cov['not_permitted']} could not because the API client's role does not include their feature. ")
-        if cov.get("not_in_scope"):
-            summary.add_run(f"{cov['not_in_scope']} checks are not in scope: their channel is covered by an alternative "
-                            f"solution or was left as a gap on the Scope page, so the tenant was not read for them. ")
+    if hidden_line:
+        summary.add_run(hidden_line + " ")
 
     summary2 = doc.add_paragraph()
     summary2.add_run("Configured correctly: ").bold = True
@@ -674,27 +685,32 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     summary2.add_run(f"{counts['INFO']} checks" + (f" (of which {cov['not_permitted']} not permitted, {cov['errors']} could not be checked)." if cov else "."))
 
     # ── Channel coverage (the Scope page's declaration) ───────────
+    # Only what was assessed: the channels on Zscaler, each prerequisite
+    # with why it was added. What was left out is the one count in the
+    # Executive Summary (hidden_line), never a list.
     chcov = cfg.get("channel_coverage") if isinstance(cfg, dict) else None
     if isinstance(chcov, dict) and chcov.get("declared"):
         doc.add_heading("Channel Coverage", level=2)
         doc.add_paragraph(str(chcov.get("note") or ""))
-        doc.add_paragraph("A channel covered by an alternative solution is not assessed here: its checks are reported "
-                          "as Not in scope and left out of the score. A gap is a channel nothing covers and that was not put "
-                          "in scope: its checks were not run either (the tenant was not read for them) and are reported "
-                          "the same way. Mark it Zscaler on the Scope page to assess it.")
-        ch_table = doc.add_table(rows=1, cols=4)
-        ch_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
-        for i, h in enumerate(["Channel", "Coverage", "Checks not in scope", "Note"]):
-            cell = ch_table.rows[0].cells[i]
-            cell.text = h
-            cell.paragraphs[0].runs[0].bold = True
-        for label, key in (("Zscaler", "zscaler"), ("Alternative solution", "alternative"), ("Gap", "gaps")):
-            for row in chcov.get(key) or []:
+        rows = [r for r in (chcov.get("zscaler") or []) if isinstance(r, dict)]
+        if rows:
+            ch_table = doc.add_table(rows=1, cols=3)
+            ch_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
+            for i, h in enumerate(["Channel", "Assessed because", "Note"]):
+                cell = ch_table.rows[0].cells[i]
+                cell.text = h
+                cell.paragraphs[0].runs[0].bold = True
+            pre = {str(p.get("id")): p for p in (chcov.get("prerequisites") or []) if isinstance(p, dict)}
+            for row in rows:
                 cells = ch_table.add_row().cells
                 cells[0].text = str(row.get("name") or row.get("id") or "")
-                cells[1].text = label
-                cells[2].text = str(row.get("checks_not_in_scope") or 0) if key in ("alternative", "gaps") else "—"
-                cells[3].text = str(row.get("note") or "")
+                p = pre.get(str(row.get("id")))
+                if p or row.get("prerequisite_of"):
+                    cells[1].text = "Prerequisite: " + (str(p.get("note")) if p else "needed by a channel in scope")
+                    cells[2].text = " ".join(p.get("reasons") or []) if p else ""
+                else:
+                    cells[1].text = "Ticked as Zscaler on the Scope page"
+                    cells[2].text = str(row.get("note") or "")
         doc.add_paragraph()
 
     # ── Maturity Model Explanation ────────────────────────────────
@@ -1121,7 +1137,10 @@ if __name__ == "__main__":
         data = json.load(f)
 
     results = data.get("checks", [])
-    cfg = data.get("metadata", {})
+    cfg = dict(data.get("metadata", {}) or {})
+    for k in ("channel_coverage", "hidden_checks"):
+        if k in data:
+            cfg[k] = data[k]
     output = sys.argv[2] if len(sys.argv) > 2 else json_path.replace(".json", ".docx")
 
     generate_report(results, cfg, output)

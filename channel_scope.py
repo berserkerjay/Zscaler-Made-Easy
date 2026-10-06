@@ -3,17 +3,17 @@
 The Scope page lists the Zscaler data-security channels (Inline Web DLP,
 Endpoint DLP, Email DLP, ...) and the operator marks each one:
 
-- **zscaler**: the customer runs it on Zscaler. Its checks run as usual.
+- **zscaler**: the customer runs it on Zscaler. Its checks run as usual,
+  and so do those of its prerequisites (PREREQUISITES).
 - **alternative**: another product covers it. Its checks are not run: the
-  tenant is not read for them and each is reported as *Not in scope*,
-  outside the score, with the vendor note when one was typed. Scoring a
+  tenant is not read for them and they are hidden (not shown, outside
+  the score and the coverage; one line counts them). Scoring a
   customer's Zscaler tenant for a channel they knowingly bought elsewhere
   would only produce noise.
 - **gap** (not ticked): nothing covers it, and the operator did not put it
   in scope. Its checks are not run either: every read counts against the
   tenant's ZIA API rate limit, so the assessment reads only what was put
-  in scope. Each is reported as *Not in scope*, outside the score, and the
-  report lists the channel as a gap.
+  in scope. They are hidden the same way.
 
 A check that belongs to several channels runs when any of them is on
 Zscaler. A check that *reads* a channel's own configuration (its rules,
@@ -23,6 +23,25 @@ is declared, a channel left out of the declaration (or sent with a value
 that cannot be read) counts as a gap. With no declaration at all (an MCP
 or CLI caller that sends no `channels`) nothing is narrowed: every check
 in the selected scopes runs.
+
+**Prerequisites** (PREREQUISITES): some channels cannot work without
+another one, so when a channel is on Zscaler its prerequisites are put in
+scope too when they were not ticked. An explicit alternative-vendor
+declaration is preserved and reported as an unmet prerequisite:
+For HTTPS, Inline Web DLP only sees what SSL inspection decrypts, so ticking it
+assesses SSL inspection as well. A prerequisite counts as in scope
+everywhere (its checks run, its endpoints may be read, the Path analyzer
+and the watch read it), and the page and the report say why it was
+added ("SSL/TLS Inspection: included because Inline Web DLP needs it").
+The saved declaration is never rewritten: the prerequisites are derived
+each time (resolve / effective).
+
+**Hidden, not listed**: a check that does not qualify (its channel is
+neither on Zscaler nor a prerequisite of one) is not run and not shown
+anywhere: not in the findings, the sections, the score, the coverage,
+the Word report, the compliance mapping or the exports. The report keeps
+only its count, said in one line (hidden_note): "N checks are outside the
+selected scope and are not shown."
 
 The declaration travels with the assessment request (`channels`), is
 saved on the tenant profile, and comes back in the report as
@@ -73,6 +92,113 @@ CHANNEL_CHECKS: Dict[str, Dict[str, Sequence[str]]] = {
     "device_control": {"sections": (), "ids": ("8.1",)},
     "workflow_automation": {"sections": (), "ids": ("12.4", "12.5", "12.7")},
 }
+
+
+# Hard technical prerequisites: when the key channel is on Zscaler, each
+# listed channel is assessed too (its checks run and its endpoints may be
+# read), with the reason the page and the report give. Only true
+# dependencies belong here, never "nice to have" links: the dependent
+# channel cannot do its job on Zscaler without the prerequisite.
+PREREQUISITES: Dict[str, Tuple[Tuple[str, str], ...]] = {
+    # For HTTPS, ZIA's inline DLP engines need Zscaler SSL decryption:
+    # without SSL inspection every HTTPS upload passes uninspected (the
+    # Ch.A check A.2 "SSL+DNI" is the SSL inspection scope check).
+    "web_dlp": (("ssl_inspection", "Inline Web DLP can only inspect HTTPS content that SSL inspection decrypts; "
+                                   "without it, HTTPS uploads pass uninspected."),),
+    # GenAI prompt, upload and download controls act on the decrypted
+    # request: without SSL inspection the prompts are invisible (E.2
+    # "No SSL — GenAI invisible", AI.5 / AI.6 in "GenAI — SSL Inspection").
+    "genai_security": (("ssl_inspection", "GenAI prompt and upload controls act on decrypted traffic; "
+                                          "without SSL inspection the prompts are invisible."),),
+    # Zscaler Device Control is enforced by the Endpoint DLP module: its
+    # rules are Endpoint DLP rules (/zia/endPointDlpRules, removable
+    # storage), which fire only where Endpoint DLP is installed (5.1, B.1).
+    "device_control": (("endpoint_dlp", "Device Control rules are Endpoint DLP rules and are enforced by the Endpoint DLP "
+                                        "module; without Endpoint DLP installed, no device control rule fires."),),
+}
+
+
+def with_prerequisites(ch: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """`ch` (a normalized declaration) with the prerequisites of every
+    channel on Zscaler put on Zscaler too, transitively. An added one
+    carries `required_by` (the channel ids that need it), `reasons` and
+    `declared` (what the Scope page said). An explicit alternative stays
+    excluded, with `blocked=True`; it is never silently read. A channel
+    the operator ticked as Zscaler is left as it is. Returns a new dict."""
+    out: Dict[str, Dict[str, Any]] = {k: dict(v) for k, v in (ch or {}).items()}
+    queue = [cid for cid, v in out.items() if v.get("choice") == "zscaler"]
+    while queue:
+        cid = queue.pop(0)
+        for pre, reason in PREREQUISITES.get(cid, ()):
+            cur = out.get(pre)
+            if cur is not None and cur.get("choice") == "zscaler" and "required_by" not in cur:
+                continue   # ticked by the operator: no prerequisite note
+            if cur is None or "required_by" not in cur:
+                cur = cur or {"choice": "gap", "note": "", "name": CHANNELS.get(pre, pre)}
+                blocked = cur.get("choice") == "alternative"
+                out[pre] = {"choice": "alternative" if blocked else "zscaler", "note": cur.get("note", ""),
+                            "name": cur.get("name") or CHANNELS.get(pre, pre),
+                            "declared": cur.get("choice", "gap"), "required_by": [], "reasons": [], "blocked": blocked}
+                if not blocked:
+                    queue.append(pre)
+            if cid not in out[pre]["required_by"]:
+                out[pre]["required_by"].append(cid)
+                out[pre]["reasons"].append(reason)
+    return out
+
+
+def resolve(channels: Any) -> Dict[str, Dict[str, Any]]:
+    """normalize() plus the prerequisites (with_prerequisites): what is in
+    scope for a tenant read. An empty declaration stays empty."""
+    return with_prerequisites(normalize(channels))
+
+
+def prerequisites(channels: Any) -> List[Dict[str, Any]]:
+    """The channels put in scope only as a prerequisite, each with who
+    needs it, why, and the one line the page and the report show."""
+    ch = effective(channels)
+    out: List[Dict[str, Any]] = []
+    for cid, v in ch.items():
+        if not v.get("required_by"):
+            continue
+        by = [ch.get(r, {}).get("name") or CHANNELS.get(r, r) for r in v["required_by"]]
+        need = " and ".join(by) + (" need it" if len(by) > 1 else " needs it")
+        out.append({"id": cid, "name": v["name"], "required_by": list(v["required_by"]), "required_by_names": by,
+                    "reasons": list(v["reasons"]), "declared": v.get("declared", "gap"), "blocked": bool(v.get("blocked")),
+                    "note": (f"{v['name']}: unmet prerequisite for {' and '.join(by)}; marked Alternative, so its Zscaler configuration is not read. "
+                             "Resolve the channel declaration on the Scope page to assess it." if v.get("blocked")
+                             else f"{v['name']}: included because {need}.")})
+    return out
+
+
+def is_hidden(result: Any) -> bool:
+    """A result that does not qualify for the selected scope (an
+    out-of-scope placeholder): never shown, never counted."""
+    return isinstance(result, dict) and bool(result.get("out_of_scope"))
+
+
+def visible(results: Any) -> Tuple[List[Dict[str, Any]], int]:
+    """(the results to show, how many were hidden as outside the scope)."""
+    shown: List[Dict[str, Any]] = []
+    hidden = 0
+    for r in results or []:
+        if is_hidden(r):
+            hidden += 1
+        elif isinstance(r, dict):
+            shown.append(r)
+    return shown, hidden
+
+
+def hidden_note(n: Any) -> str:
+    """The single line that stands for every hidden check ('' for none)."""
+    try:
+        n = int(n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if n <= 0:
+        return ""
+    verb = "is" if n == 1 else "are"
+    return f"{n} check{'' if n == 1 else 's'} {verb} outside the selected scope and {verb} not shown."
 
 
 # The tenant endpoints that hold a channel's own configuration, and the
@@ -127,6 +253,15 @@ def endpoint_channels(ep: Any) -> Tuple[str, ...]:
     return ()
 
 
+def group_in_scope(group: Sequence[str], declaration: Dict[str, Dict[str, Any]]) -> bool:
+    """A shared endpoint needs an independently permitted owner. A blocked
+    prerequisite excludes its dependent owner, not unrelated selected
+    owners of the same resource (Web DLP may still read global options)."""
+    blocked_dependents = {owner for cid in group for owner in declaration.get(cid, {}).get("required_by", [])
+                          if declaration.get(cid, {}).get("blocked")}
+    return any(declaration.get(cid, {}).get("choice") == "zscaler" and cid not in blocked_dependents for cid in group)
+
+
 def channels_read_by(check_id: str) -> List[Tuple[str, ...]]:
     """The channel groups a check reads (one per CHANNEL_READS endpoint)."""
     return [ENDPOINT_CHANNELS[ep] for ep, ids in CHANNEL_READS.items() if str(check_id) in ids]
@@ -162,12 +297,13 @@ def effective(channels: Any) -> Dict[str, Dict[str, str]]:
     Zscaler are read. An empty declaration stays empty (nothing narrowed);
     a non-empty one is a declaration even when none of its entries can be
     read (a blank key, an unknown id sent as null): every channel is then a
-    gap, never "nothing narrowed"."""
+    gap, never "nothing narrowed". The prerequisites of the channels on
+    Zscaler are on Zscaler too (with_prerequisites)."""
     ch = normalize(channels)
     if ch or (isinstance(channels, dict) and channels):
         for cid, name in CHANNELS.items():
             ch.setdefault(cid, {"choice": "gap", "note": "", "name": name})
-    return ch
+    return with_prerequisites(ch)
 
 
 def _matches(spec: Dict[str, Sequence[str]], check_id: str, section: str) -> bool:
@@ -177,13 +313,16 @@ def _matches(spec: Dict[str, Sequence[str]], check_id: str, section: str) -> boo
 
 
 def in_scope(channels: Any) -> List[str]:
-    """The channel ids marked Zscaler: the only ones the tenant is read for."""
-    return [cid for cid, v in normalize(channels).items() if v["choice"] == "zscaler"]
+    """The channel ids on Zscaler, ticked or added as a prerequisite: the
+    only ones the tenant is read for."""
+    return [cid for cid, v in resolve(channels).items() if v["choice"] == "zscaler"]
 
 
 def pack_targets(channels: Any) -> List[str]:
-    """The pack channels (web / endpoint / saas / email) on Zscaler."""
-    return [PACK_CHANNELS[cid] for cid in in_scope(channels) if cid in PACK_CHANNELS]
+    """Explicitly selected pack channels; assessment prerequisites must
+    never expand deployment or policy-pack targets."""
+    return [PACK_CHANNELS[cid] for cid, v in normalize(channels).items()
+            if cid in PACK_CHANNELS and v["choice"] == "zscaler"]
 
 
 def channel_of_check(check_id: str, section: str, channels: Dict[str, Dict[str, str]]) -> Optional[str]:
@@ -241,8 +380,9 @@ def partition(checks: Sequence[Tuple], channels: Any) -> Tuple[List[Tuple], List
         if not cid and out:
             # It reads a channel's own configuration: that channel must be on Zscaler.
             for group in channels_read_by(check_id):
-                if not any(c in on for c in group):
-                    cid = next(c for c in group if c in out)
+                blocked = next((c for c in group if ch.get(c, {}).get("blocked")), None)
+                if not group_in_scope(group, ch):
+                    cid = blocked or next(c for c in group if c in out)
                     break
         if cid:
             order.append(("skip", len(skipped)))
@@ -270,6 +410,7 @@ class ScopedClient:
         self._client = client
         self._declared = bool(ch)
         self._on = {k for k, v in ch.items() if v["choice"] == "zscaler"}
+        self._scope = ch
         self.refused: List[str] = []
         self._tl = threading.local()
 
@@ -284,10 +425,10 @@ class ScopedClient:
 
     def get(self, ep, *a, **k):
         chans = endpoint_channels(ep)
-        if self._declared and chans and not any(c in self._on for c in chans):
+        if self._declared and chans and not group_in_scope(chans, self._scope):
             self.refused.append(str(ep))
             return ({"error": "not in scope",
-                     "message": "This channel was not ticked on the Scope page; the tenant was not read."}, 0)
+                     "message": "This configuration is excluded by the Scope page declaration or an unmet prerequisite; the tenant was not read."}, 0)
         res = self._client.get(ep, *a, **k)
         try:
             code = res[1]
@@ -308,8 +449,11 @@ def merge(order: Iterable[Tuple[str, int]], run_results: Sequence[Dict[str, Any]
 
 def coverage(channels: Any, skipped: Iterable[Dict[str, Any]] = ()) -> Dict[str, Any]:
     """What was declared and what it did, for the report: the channels on
-    Zscaler, the ones covered elsewhere and the gaps (each with how many
-    checks that took out of scope), and one sentence that says it."""
+    Zscaler (ticked, or added as a prerequisite with the reason), and how
+    many checks were left out as outside the scope. The note names only
+    what was assessed; what was left out is one count (hidden_note), never
+    a list. The alternative and gap channels stay in the data (the JSON
+    export) for the profile, not on the page."""
     ch = effective(channels)
     skipped = list(skipped)
     per: Dict[str, int] = {}
@@ -317,20 +461,19 @@ def coverage(channels: Any, skipped: Iterable[Dict[str, Any]] = ()) -> Dict[str,
         per[str(r.get("channel"))] = per.get(str(r.get("channel")), 0) + 1
     by: Dict[str, List[Dict[str, Any]]] = {"zscaler": [], "alternative": [], "gap": []}
     for cid, v in ch.items():
-        by[v["choice"]].append({"id": cid, "name": v["name"], "note": v["note"], "checks_not_in_scope": per.get(cid, 0)})
+        row: Dict[str, Any] = {"id": cid, "name": v["name"], "note": v["note"], "checks_not_in_scope": per.get(cid, 0)}
+        if v.get("required_by"):
+            row["prerequisite_of"] = list(v["required_by"])
+            row["declared"] = v.get("declared", "gap")
+        by[v["choice"]].append(row)
     declared = bool(ch)
+    pre = prerequisites(channels) if declared else []
+    hidden = len(skipped)
     if not declared:
         note = "No channel ownership was declared on the Scope page: every check in the selected scopes ran."
     else:
-        names = lambda rows: ", ".join(r["name"] + (f" ({r['note']})" if r["note"] else "") for r in rows)  # noqa: E731
-        parts = [f"{len(by['zscaler'])} on Zscaler" + (f" ({names(by['zscaler'])})" if by["zscaler"] else "")]
-        n_alt = sum(r["checks_not_in_scope"] for r in by["alternative"])
-        n_gap = sum(r["checks_not_in_scope"] for r in by["gap"])
-        parts.append(f"{len(by['alternative'])} covered by an alternative solution"
-                     + (f" ({names(by['alternative'])}; {n_alt} checks not in scope)" if by["alternative"] else ""))
-        parts.append(f"{len(by['gap'])} gap{'' if len(by['gap']) == 1 else 's'}"
-                     + (f" ({names(by['gap'])}; {n_gap} checks not in scope, not read)" if by["gap"] and n_gap
-                        else (f" ({names(by['gap'])})" if by["gap"] else "")))
-        note = "Channels as declared on the Scope page: " + "; ".join(parts) + "."
+        ticked = [r["name"] for r in by["zscaler"] if not r.get("prerequisite_of")]
+        note = ("Channels assessed on Zscaler, as declared on the Scope page: " + (", ".join(ticked) if ticked else "none ticked") + "."
+                + "".join(" " + p["note"] for p in pre))
     return {"declared": declared, "zscaler": by["zscaler"], "alternative": by["alternative"], "gaps": by["gap"],
-            "not_in_scope": len(skipped), "note": note}
+            "prerequisites": pre, "not_in_scope": hidden, "hidden": hidden, "hidden_note": hidden_note(hidden), "note": note}

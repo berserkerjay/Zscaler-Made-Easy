@@ -210,14 +210,15 @@ def test_the_data_flow_map_reads_only_what_is_in_scope(monkeypatch):
     r = t.post("/api/report/data-flow", json=dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler"}, from_page=True))
     assert r.status_code == 200, r.text
     gets = set(tenant.gets())
-    for ep in ("/zcc/webPolicies", "/zcc/forwardingProfiles", "/zcc/trustedNetworks", "/zia/pacFiles", "/zia/sslInspectionRules",
+    for ep in ("/zcc/webPolicies", "/zcc/forwardingProfiles", "/zcc/trustedNetworks", "/zia/pacFiles",
                "/zia/cloudApplicationRules", "/zia/endPointDlpRules", "/zia/casbDlpRules/all", "/zia/emailDlpRules"):
         assert ep not in gets, f"{ep} is not in scope and was read"
-    assert "/zia/webDlpRules" in gets
+    # SSL inspection is Inline Web DLP's prerequisite: in scope, so read.
+    assert "/zia/webDlpRules" in gets and "/zia/sslInspectionRules" in gets
     rep = r.json()
     assert rep["path_scope"] == df.path_scope(["dlp"], {"web_dlp": "zscaler"})["key"] and rep["scope"]["source"] == "the Scope page"
     hops = {h["key"]: h["status"] for h in rep["traces"][0]["hops"]}
-    assert hops.get("zcc") == "out_of_scope" and hops.get("ssl") == "out_of_scope", hops
+    assert hops.get("zcc") == "out_of_scope" and hops.get("ssl") != "out_of_scope", hops
     # A destination typed on the tab is traced from the kept read with the same scope.
     tr = t.post(f"/api/report/data-flow/{rep['report_id']}/trace", json={"destination": "webmail", "network": "off", "platform": "windows"}).json()
     assert {h["key"]: h["status"] for h in tr["hops"]}.get("zcc") == "out_of_scope"

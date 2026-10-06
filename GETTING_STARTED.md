@@ -151,7 +151,11 @@ reported as not available, and policy packs deploy the same way.
    in the Start here panel. Authenticate only signs in: it reads nothing
    from the tenant (every read counts against the tenant's ZIA API rate
    limit). The tenant is read only when you click **Run assessment**, and
-   only for what you put in scope on the Scope page.
+   only for what you put in scope on the Scope page. A channel's hard
+   prerequisites come with it: ticking **Inline Web DLP** assesses
+   **SSL/TLS Inspection** too (inline DLP cannot inspect encrypted
+   traffic without it), and the page says so. Checks outside the scope
+   are not shown; one line counts them.
 3. If it fails, the panel says why and what to do. The two common causes:
    - *Zscaler rejected the client ID or client secret* → regenerate the secret.
    - *Connection intercepted by TLS inspection* → your laptop is behind

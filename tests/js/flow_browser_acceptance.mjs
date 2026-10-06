@@ -14,6 +14,7 @@ const cases = [], runtimeErrors = [], consoleErrors = [], responses = [], blocke
 let browser, ws, sequence = 0, clickSequence = 0, failMapOnce = false, failure, spawnError = null;
 const harnessEvents = [];
 const pending = new Map();
+const dialogAnswers = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const started = Date.now();
 let stderr = '';
@@ -28,6 +29,14 @@ function send(method, params = {}) {
   });
 }
 async function event(message) {
+  if (message.method === 'Page.javascriptDialogOpening') {
+    const answer=dialogAnswers.shift();
+    if(!answer || answer.type!==message.params.type){
+      await send('Page.handleJavaScriptDialog',{accept:false});
+      throw Error('Unexpected production dialog: '+message.params.type+' '+message.params.message);
+    }
+    await send('Page.handleJavaScriptDialog',{accept:true,promptText:answer.text});
+  }
   if (message.method === 'Runtime.exceptionThrown') runtimeErrors.push(message.params.exceptionDetails);
   if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') consoleErrors.push(message.params.entry);
   if (message.method === 'Network.responseReceived') {
@@ -127,7 +136,7 @@ try {
   await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
-  await send('Page.addScriptToEvaluateOnNewDocument',{source:`window.__acceptanceLifecycle=[];window.__acceptanceNativeClicks=[];const recordLifecycle=type=>{__acceptanceLifecycle.push({type,hidden:document.hidden,focused:document.hasFocus(),at:performance.now()});if(__acceptanceLifecycle.length>50)__acceptanceLifecycle.shift();};document.addEventListener('visibilitychange',()=>recordLifecycle('visibility'));window.addEventListener('focus',()=>recordLifecycle('focus'));window.addEventListener('blur',()=>recordLifecycle('blur'));window.addEventListener('pagehide',()=>recordLifecycle('pagehide'));matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',e=>recordLifecycle('motion:'+e.matches));document.addEventListener('click',e=>{const t=e.target.closest('button,a');if(t){__acceptanceNativeClicks.push({id:t.id,action:t.dataset.action,text:t.textContent.slice(0,80),trusted:e.isTrusted,at:performance.now()});if(__acceptanceNativeClicks.length>50)__acceptanceNativeClicks.shift();}},true);window.__acceptanceCsp=[];window.addEventListener('securitypolicyviolation',e=>__acceptanceCsp.push({directive:e.violatedDirective,blocked:e.blockedURI}));try{localStorage.setItem('zassess_scopes_live_v1',JSON.stringify({scopes:['dlp']}));localStorage.setItem('zassess_channels_v1',JSON.stringify({web_dlp:{choice:'zscaler'},endpoint_dlp:{choice:'zscaler'},email_dlp:{choice:'zscaler'},saas_casb:{choice:'zscaler'},ssl_inspection:{choice:'zscaler'},workflow_automation:{choice:'zscaler'}}));}catch(e){}`});
+  await send('Page.addScriptToEvaluateOnNewDocument',{source:`window.__acceptanceLifecycle=[];window.__acceptanceNativeClicks=[];const recordLifecycle=type=>{__acceptanceLifecycle.push({type,hidden:document.hidden,focused:document.hasFocus(),at:performance.now()});if(__acceptanceLifecycle.length>50)__acceptanceLifecycle.shift();};document.addEventListener('visibilitychange',()=>recordLifecycle('visibility'));window.addEventListener('focus',()=>recordLifecycle('focus'));window.addEventListener('blur',()=>recordLifecycle('blur'));window.addEventListener('pagehide',()=>recordLifecycle('pagehide'));matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',e=>recordLifecycle('motion:'+e.matches));document.addEventListener('click',e=>{const t=e.target.closest('button,a');if(t){__acceptanceNativeClicks.push({id:t.id,action:t.dataset.action,text:t.textContent.slice(0,80),trusted:e.isTrusted,at:performance.now()});if(__acceptanceNativeClicks.length>50)__acceptanceNativeClicks.shift();}},true);window.__acceptanceCsp=[];window.addEventListener('securitypolicyviolation',e=>__acceptanceCsp.push({directive:e.violatedDirective,blocked:e.blockedURI}));try{if(!sessionStorage.getItem('__acceptanceScopeStarted')){localStorage.setItem('zassess_scopes_live_v1',JSON.stringify({scopes:['dlp']}));localStorage.setItem('zassess_channels_v1',JSON.stringify({web_dlp:{choice:'zscaler'},endpoint_dlp:{choice:'zscaler'},email_dlp:{choice:'zscaler'},saas_casb:{choice:'zscaler'},ssl_inspection:{choice:'zscaler'},workflow_automation:{choice:'zscaler'}}));}}catch(e){}`});
 
   await test('BROWSER-FLOW-01-production-workspace-is-interactive',async()=>{
     await navigate('/report/motion#live');
@@ -271,6 +280,180 @@ try {
     assert.equal(await evaluate(`document.querySelector(${JSON.stringify(second)}).dataset.reducedMotion`),'true');
     assert.equal(await evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(second)}).querySelector('.dsa-packet')).animationName`),'none');
     await click(second+' [data-action="PAUSE"]');
+  });
+  // Scope acceptance uses the same trusted native click helper as the existing
+  // 19 cases. Tenant responses alone are synthetic; the page, form, profile
+  // routes, registry, SSE stream, report renderer and download are production.
+  const channelRow=id=>`.db-ch-row[data-id="${id}"]`;
+  const channelChoice=(id,choice)=>channelRow(id)+` .db-pill:has(input[value="${choice}"])`;
+  const channelState=()=>evaluate(`window.__dbChannelScope()`);
+  const prerequisiteText=()=>evaluate(`document.getElementById('dbChPrereqs').textContent`);
+  let scopeReadStart, savedProfileId, visibleReport;
+  await test('BROWSER-SCOPE-01-production-scope-navigation-is-read-free',async()=>{
+    scopeReadStart=(await state()).reads.length;
+    await evaluate(`sessionStorage.setItem('__acceptanceScopeStarted','1')`);
+    await navigate('/');
+    await waitFor(`window.__dbReady && !!document.querySelector('#dbChList .db-ch-row') && typeof _gdProfileSave === 'function'`);
+    await click('.db-item[data-db="scope"]');
+    await waitFor(`!document.getElementById('dbScopeView').hidden`);
+    assert.equal(await evaluate(`document.querySelectorAll('#dbChList .db-ch-row').length`),11);
+    assert.equal(await evaluate(`document.getElementById('dbScopeView').contains(document.getElementById('scopeField'))`),true);
+    assert.equal((await state()).reads.length,scopeReadStart,'Opening Scope must not read tenant configuration');
+    const prerequisiteResponse=await evaluate(`fetch('/api/scope/prerequisites').then(r=>r.json())`);
+    assert(prerequisiteResponse.prerequisites.web_dlp.some(p=>p.id==='ssl_inspection'));
+  });
+  await test('BROWSER-SCOPE-02-gap-prerequisite-is-explained-not-selected',async()=>{
+    // Start from the legacy browser fixture declaration; Select all then clear
+    // it using the real controls rather than changing page globals or storage.
+    await click('#dbChSelectAll');await click('#dbChSelectAll');
+    await click(channelChoice('web_dlp','zscaler'));
+    await waitFor(`document.getElementById('dbChPrereqs').textContent.includes('included because Inline Web DLP')`);
+    const declaration=await channelState();
+    assert.equal(declaration.web_dlp.choice,'zscaler');assert.equal(declaration.ssl_inspection.choice,'gap');
+    assert.equal(await evaluate(`document.querySelector('${channelRow('ssl_inspection')} input[type=checkbox]').checked`),false);
+    assert.equal(await evaluate(`document.querySelector('${channelRow('ssl_inspection')} input[value=zscaler]').checked`),false);
+    assert((await evaluate(`document.querySelector('${channelRow('ssl_inspection')} .db-ch-prereq').textContent`)).startsWith('Assessed as a prerequisite:'));
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('zassess_channels_v1')).ssl_inspection || null`),null);
+    assert.equal((await state()).reads.length,scopeReadStart);
+    await screenshot('scope-auto-prerequisite');
+  });
+  await test('BROWSER-SCOPE-03-alternative-prerequisite-stays-excluded',async()=>{
+    await click(channelChoice('ssl_inspection','alternative'));
+    dialogAnswers.push({type:'prompt',text:'Synthetic alternative vendor'});
+    await click(channelRow('ssl_inspection')+' .db-ch-edit');
+    await waitFor(`document.querySelector('${channelRow('ssl_inspection')}').textContent.includes('Synthetic alternative vendor')`);
+    const declaration=await channelState();
+    assert.equal(declaration.ssl_inspection.choice,'alternative');assert.equal(declaration.ssl_inspection.note,'Synthetic alternative vendor');
+    const text=await prerequisiteText();assert(text.includes('unmet prerequisite for Inline Web DLP'));assert(text.includes('configuration is not read'));
+    const rowNote=await evaluate(`document.querySelector('${channelRow('ssl_inspection')} .db-ch-prereq').textContent`);
+    assert(rowNote.startsWith('Unmet prerequisite:'));assert(!rowNote.includes('Assessed as a prerequisite:'));
+    assert.equal(await evaluate(`document.querySelector('${channelRow('ssl_inspection')} input[value=alternative]').checked`),true);
+    assert.equal((await state()).reads.length,scopeReadStart);
+    await screenshot('scope-explicit-alternative-blocked');
+  });
+  await test('BROWSER-SCOPE-04-dependent-toggle-clears-and-restores-notes',async()=>{
+    await click(channelRow('web_dlp')+' .db-ch-check input');
+    assert.equal(await evaluate(`document.getElementById('dbChPrereqs').hidden`),true);
+    assert.equal((await channelState()).ssl_inspection.choice,'alternative');
+    await click(channelChoice('web_dlp','zscaler'));
+    assert((await prerequisiteText()).includes('unmet prerequisite'));
+    await click(channelChoice('ssl_inspection','zscaler'));
+    assert.equal(await evaluate(`document.getElementById('dbChPrereqs').hidden`),true);
+    await click(channelRow('ssl_inspection')+' .db-ch-check input');
+    assert.equal((await channelState()).ssl_inspection.choice,'gap');
+    assert((await prerequisiteText()).includes('included because Inline Web DLP'));
+  });
+  await test('BROWSER-SCOPE-05-profile-save-keeps-explicit-gap-declaration',async()=>{
+    await click('.db-item[data-db="configure"]');
+    await waitFor(`!document.getElementById('dbScopeView') || document.getElementById('dbScopeView').hidden`);
+    if(await evaluate(`!!document.querySelector('#gdTenantDetails:not([open])')`))await click('#gdTenantDetails > summary');
+    await fill('org','Synthetic Scope Browser');await fill('assessor','Synthetic Assessor');
+    await fill('vd','browser-fixture');await fill('cid','synthetic-client');await fill('csec','synthetic-browser-fixture-secret');
+    assert.equal(await evaluate(`document.getElementById('gdProfRemember').checked`),false);
+    dialogAnswers.push({type:'prompt',text:'Synthetic Scope Browser'});
+    await click('button[onclick="_gdProfileSave(true)"]');
+    await waitFor(`!!GD.profile && !GD.profileBusy && GD.profileDetail?.channels?.ssl_inspection?.choice === 'gap'`);
+    savedProfileId=await evaluate(`GD.profile`);
+    const saved=await evaluate(`fetch('/api/tenant-profiles/'+encodeURIComponent(${JSON.stringify(savedProfileId)})).then(r=>r.json())`);
+    assert.equal(saved.channels.web_dlp.choice,'zscaler');assert.equal(saved.channels.ssl_inspection.choice,'gap');
+    assert.equal(saved.has_secret,false);assert(!('required_by' in saved.channels.ssl_inspection));
+    assert.equal((await state()).reads.length,scopeReadStart,'Saving a declaration must not assess the tenant');
+    await click('#authBtn');await waitFor(`GD.conn?.ok === true && !GD.testing`);
+    assert.equal((await state()).reads.length,scopeReadStart,'Authenticate must not assess the tenant');
+  });
+  await test('BROWSER-SCOPE-06-assessment-hides-rows-and-keeps-prerequisite',async()=>{
+    await click('.db-item[data-db="scope"]');
+    // Pick the real DLP registry only. Other product scopes are separate.
+    for(const value of await evaluate(`Array.from(document.querySelectorAll('.scope-cb:checked'),e=>e.value)`))if(value!=='dlp')await click(`.scope-cb[value="${value}"]`);
+    if(!await evaluate(`document.querySelector('.scope-cb[value=dlp]').checked`))await click('.scope-cb[value="dlp"]');
+    const before=(await state()).reads.length;
+    await click('#dbScopeRun');
+    await waitFor(`!!reportData?.checks?.length && !document.getElementById('runBtn').disabled`,20000,'production scoped SSE assessment');
+    visibleReport=await evaluate(`reportData`);
+    const ids=visibleReport.checks.map(c=>c.id), fixture=await state();
+    assert(ids.includes('4.1'),'Auto-included SSL prerequisite must be assessed');
+    assert(!ids.includes('B.1')&&!ids.includes('C.1')&&!ids.includes('D.2'),'Excluded channel checks must not be result rows');
+    assert(visibleReport.hidden_checks>0);assert.equal(visibleReport.summary.total,ids.length);
+    assert.equal(visibleReport.metadata.total_checks,ids.length);
+    assert.equal(ids.length+visibleReport.hidden_checks,fixture.assessment_registry_count);
+    assert.equal(await evaluate(`document.querySelectorAll('#checksList .check-item').length`),ids.length);
+    assert.equal(await evaluate(`document.querySelectorAll('#scopeNote .scope-hidden').length`),1);
+    assert((await evaluate(`document.getElementById('scopeNote').textContent`)).includes(`${visibleReport.hidden_checks} checks are outside the selected scope`));
+    assert((await evaluate(`document.getElementById('scopeNote').textContent`)).includes('included because Inline Web DLP'));
+    const reads=fixture.reads.slice(before);
+    assert(reads.includes('/zia/sslInspectionRules'));assert(reads.includes('/zia/webDlpRules'));
+    assert(!reads.some(ep=>/^\/zia\/(endPointDlpRules|emailDlpRules|casbDlpRules)(\/|$)/.test(ep)),'Excluded channels must not be read');
+    assert.equal((await channelState()).ssl_inspection.choice,'gap');
+    await screenshot('scope-visible-assessment');
+  });
+  await test('BROWSER-SCOPE-07-json-download-matches-visible-totals',async()=>{
+    const downloads=path.join(artifactDir,'scope-downloads');await fs.mkdir(downloads,{recursive:true});
+    await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:downloads});
+    await click('button[onclick="downloadJSON()"]');
+    let files=[];const until=Date.now()+10000;
+    while(Date.now()<until){files=(await fs.readdir(downloads)).filter(n=>n.endsWith('.json'));if(files.length)break;await sleep(75);}
+    assert.equal(files.length,1,'The production Download JSON control must produce a real file');
+    const downloaded=JSON.parse(await fs.readFile(path.join(downloads,files[0]),'utf8'));
+    assert.deepEqual(downloaded.checks,visibleReport.checks);
+    assert.equal(downloaded.summary.total,visibleReport.checks.length);
+    assert.equal(downloaded.hidden_checks,visibleReport.hidden_checks);
+    assert(!downloaded.checks.some(c=>c.out_of_scope));
+    assert.equal(downloaded.channel_coverage.prerequisites.find(p=>p.id==='ssl_inspection').declared,'gap');
+  });
+  await test('BROWSER-SCOPE-08-profile-update-and-reload-preserve-alternative',async()=>{
+    await click('.db-item[data-db="scope"]');await click(channelChoice('ssl_inspection','alternative'));
+    dialogAnswers.push({type:'prompt',text:'Synthetic alternative vendor'});await click(channelRow('ssl_inspection')+' .db-ch-edit');
+    await click('.db-item[data-db="configure"]');
+    if(await evaluate(`!!document.querySelector('#gdTenantDetails:not([open])')`))await click('#gdTenantDetails > summary');
+    const updatesBefore=responses.filter(r=>new URL(r.url).pathname==='/api/tenant-profiles').length;
+    await click('button[onclick="_gdProfileSave(false)"]');
+    await waitFor(`!GD.profileBusy && GD.profileDetail?.channels?.ssl_inspection?.choice === 'alternative'`);
+    assert(responses.filter(r=>new URL(r.url).pathname==='/api/tenant-profiles').length>updatesBefore);
+    const saved=await evaluate(`fetch('/api/tenant-profiles/'+encodeURIComponent(${JSON.stringify(savedProfileId)})).then(r=>r.json())`);
+    assert.equal(saved.channels.ssl_inspection.choice,'alternative');assert.equal(saved.channels.ssl_inspection.note,'Synthetic alternative vendor');
+    assert(!('required_by' in saved.channels.ssl_inspection));assert.equal(saved.has_secret,false);
+    await navigate('/');
+    await waitFor(`GD.profileDetail?.channels?.ssl_inspection?.choice === 'alternative' && window.__dbChannelScope?.().ssl_inspection.choice === 'alternative'`);
+    await click('.db-item[data-db="scope"]');
+    await waitFor(`document.getElementById('dbChPrereqs').textContent.includes('unmet prerequisite for Inline Web DLP')`);
+    assert.equal((await channelState()).ssl_inspection.note,'Synthetic alternative vendor');
+  });
+  await test('BROWSER-SCOPE-09-blocked-assessment-never-reads-excluded-ssl',async()=>{
+    await click('.db-item[data-db="configure"]');
+    if(await evaluate(`!!document.querySelector('#gdTenantDetails:not([open])')`))await click('#gdTenantDetails > summary');
+    await fill('csec','synthetic-browser-fixture-secret');
+    await click('#authBtn');await waitFor(`GD.conn?.ok === true && !GD.testing`);
+    await click('.db-item[data-db="scope"]');
+    const before=(await state()).reads.length;
+    await click('#dbScopeRun');
+    await waitFor(`!!reportData?.checks?.length && !document.getElementById('runBtn').disabled && reportData.channel_coverage?.alternative?.some(c=>c.id==='ssl_inspection')`,20000,'blocked-prerequisite scoped assessment');
+    const report=await evaluate(`reportData`),ids=report.checks.map(c=>c.id);
+    assert(!ids.includes('4.1')&&!ids.includes('A.2'),'Explicit Alternative SSL must remain hidden');
+    const blocked=report.channel_coverage.prerequisites.find(p=>p.id==='ssl_inspection');
+    assert(blocked && blocked.blocked && blocked.declared==='alternative');
+    assert((await evaluate(`document.getElementById('scopeNote').textContent`)).includes('unmet prerequisite'));
+    assert(!(await state()).reads.slice(before).some(ep=>ep.startsWith('/zia/sslInspectionRules')));
+    assert.equal(await evaluate(`document.querySelectorAll('#checksList .check-item').length`),ids.length);
+    assert.equal(report.summary.total,ids.length);assert.equal(dialogAnswers.length,0);
+    await screenshot('scope-blocked-assessment');
+  });
+  await test('BROWSER-SCOPE-10-excluded-ssl-keeps-unified-path-controls',async()=>{
+    const before=(await state()).reads.length;
+    await navigate('/report/motion#live');
+    await waitFor(`!!window.FlowScenario && !!document.querySelector('#liveHost svg')`);
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('zassess_channels_v1')).ssl_inspection.choice`),'alternative');
+    await fill('scenarioDestination','https://example.test/upload');await fill('scenarioFileType','txt');await fill('scenarioCorpus','SYNTHETIC-FLOW-MARKER one synthetic record');
+    await click('#scenarioRun');
+    await waitFor(`document.getElementById('scenarioStatus').textContent.startsWith('SIMULATED') && !document.getElementById('scenarioRun').disabled`,15000);
+    const stages=await evaluate(`Array.from(document.querySelectorAll('#scenarioDetails details > ol > li'),e=>e.textContent)`);
+    for(const expected of ['URL filtering','SSL inspection','File Type Control']){
+      assert(stages.some(text=>text.toLowerCase().includes(expected.toLowerCase())),expected+' evidence panel disappeared');
+      assert((await evaluate(`document.querySelector('#scenarioHost svg').textContent`)).toLowerCase().includes(expected.toLowerCase()),expected+' flow box disappeared');
+    }
+    const ssl=stages.find(text=>/^SSL inspection/i.test(text));
+    assert(ssl && /out_of_scope|unverified/i.test(ssl),'Excluded SSL must remain visibly excluded or unverified');
+    assert(!(await state()).reads.slice(before).some(ep=>ep.startsWith('/zia/sslInspectionRules')),'Unified path must not read explicitly excluded SSL');
+    await screenshot('scope-excluded-ssl-path-controls');
   });
   await test('BROWSER-SAFETY-01-no-runtime-csp-errors-tenant-writes-or-external-requests',async()=>{
     assert.deepEqual(runtimeErrors,[],'Unexpected runtime errors');

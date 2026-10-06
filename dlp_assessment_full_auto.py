@@ -2425,6 +2425,7 @@ def compute(results):
     _map={"PASS":"pass","FAIL":"fail","REVIEW":"warn","INFO":"info","ERROR":"info"}
     secs={}
     for r in results:
+        if isinstance(r,dict) and r.get("out_of_scope"): continue   # outside the selected scope: hidden, no section, no score (channel_scope)
         s=r.get("sec") or r.get("section") or "Other"
         if s not in secs: secs[s]={"total":0,"pass":0,"fail":0,"warn":0,"info":0}
         secs[s]["total"]+=1
@@ -2437,18 +2438,18 @@ def compute(results):
     passed=sum(s["pass"] for s in secs.values())
     return secs, (round(passed/scored_total*100) if scored_total else None)
 
-def coverage(results):
+def coverage(results, hidden=0):
     """How much of the run was actually assessed (permissions.assessment_summary):
     the same numbers the GUI and the Word report show."""
     import permissions
-    return permissions.assessment_summary(results)
+    return permissions.assessment_summary(results, hidden=hidden)
 
 def coverage_text(cov):
     """'Assessed 180 of 206 checks · 20 not permitted · 6 could not be checked'."""
     parts=[f"Assessed {cov['assessed']} of {cov['total']} checks"]
     if cov["not_permitted"]: parts.append(f"{cov['not_permitted']} not permitted to the API client")
     if cov["errors"]: parts.append(f"{cov['errors']} could not be checked")
-    if cov["not_in_scope"]: parts.append(f"{cov['not_in_scope']} not in scope")
+    if cov.get("hidden"): parts.append(cov["hidden_note"].rstrip("."))
     return " · ".join(parts)
 
 def partial_banner(cov):
@@ -2458,8 +2459,11 @@ def partial_banner(cov):
             f"and {cov['errors']} could not be completed; they are left out of the score, so it may look better than the tenant is.")
 
 def report(results, cfg, con=None):
+    import channel_scope
+    original = list(results)
+    cov=coverage(original, hidden=cfg.get("hidden_checks", 0)); banner=partial_banner(cov)
+    results, _ = channel_scope.visible(original)
     secs,overall=compute(results); mat=maturity(overall)
-    cov=coverage(results); banner=partial_banner(cov)
     if HAS_RICH and con:
         con.print("\n")
         o=overall if overall is not None else 0
@@ -2489,8 +2493,12 @@ def report(results, cfg, con=None):
         for r in results: print(f"  {r['status']:>7} {r['id']:>5} {r['label']}")
 
 def save(results, cfg, path):
+    import channel_scope
+    original = list(results)
+    cov = coverage(original, hidden=cfg.get("hidden_checks", 0))
+    results, _ = channel_scope.visible(original)
     secs,overall=compute(results)
-    rpt={"metadata":{"tool":"DLP Assessment Full Auto","version":"3.0","ts":datetime.now(timezone.utc).isoformat(),"org":cfg.get("org_name",""),"assessor":cfg.get("assessor",""),"cloud":cfg.get("cloud",""),"checks":len(results)},"score":overall,"maturity":maturity(overall),"coverage":coverage(results),"sections":secs,"checks":[{"id":r["id"],"sec":r["sec"],"label":r["label"],"status":r["status"],"detail":r["detail"]} for r in results],"critical":[r for r in results if r["status"]==R.FAIL],"review":[r for r in results if r["status"]==R.WARN]}
+    rpt={"metadata":{"tool":"DLP Assessment Full Auto","version":"3.0","ts":datetime.now(timezone.utc).isoformat(),"org":cfg.get("org_name",""),"assessor":cfg.get("assessor",""),"cloud":cfg.get("cloud",""),"checks":len(results)},"score":overall,"maturity":maturity(overall),"coverage":cov,"hidden_checks":cov["hidden"],"hidden_note":cov["hidden_note"],"sections":secs,"checks":[{"id":r["id"],"sec":r["sec"],"label":r["label"],"status":r["status"],"detail":r["detail"]} for r in results],"critical":[r for r in results if r["status"]==R.FAIL],"review":[r for r in results if r["status"]==R.WARN]}
     with open(path,"w") as f: json.dump(rpt,f,indent=2,default=str)
 
 class ConfigError(ValueError):
