@@ -77,12 +77,24 @@ async function click(selector, frameId) {
   await send('Page.bringToFront');
   const token=String(++clickSequence);
   await evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)throw Error('Missing click target');if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});window.__acceptanceClickReceipts=window.__acceptanceClickReceipts||{};el.addEventListener('click',event=>{window.__acceptanceClickReceipts[${JSON.stringify(token)}]={trusted:event.isTrusted,at:performance.now()};},{once:true,capture:true});return true})()`);
-  const measure=()=>evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)return {ready:false,reason:'missing'};const r=el.getBoundingClientRect(),f=frame?frame.getBoundingClientRect():{left:0,top:0},x=r.left+r.width/2,y=r.top+r.height/2,hit=doc.elementFromPoint(x,y),outer=frame?document.elementFromPoint(f.left+x,f.top+y):hit;return{ready:!document.hidden&&!el.disabled&&r.width>0&&r.height>0&&(hit===el||el.contains(hit))&&(!frame||outer===frame),x:f.left+x,y:f.top+y,hidden:document.hidden,disabled:!!el.disabled,hit:hit?.tagName,outer:outer?.tagName}})()`);
-  let point=await waitForStablePoint(measure,{sleep});
+  const reveal=()=>evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)return false;if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});return true})()`);
+  const measure=()=>evaluate(`(()=>{
+    const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};
+    const doc=frame?frame.contentDocument:document,el=doc.querySelector(${JSON.stringify(selector)});
+    if(!el)return {ready:false,reason:'missing',selector:${JSON.stringify(selector)}};
+    const r=el.getBoundingClientRect(),f=frame?frame.getBoundingClientRect():{left:0,top:0};
+    const x=r.left+r.width/2,y=r.top+r.height/2,outerX=f.left+x,outerY=f.top+y;
+    const sized=r.width>0&&r.height>0,hidden=document.hidden||doc.hidden;
+    const inViewport=x>=0&&x<doc.defaultView.innerWidth&&y>=0&&y<doc.defaultView.innerHeight&&outerX>=0&&outerX<innerWidth&&outerY>=0&&outerY<innerHeight;
+    const hit=doc.elementFromPoint(x,y),outer=frame?document.elementFromPoint(outerX,outerY):hit;
+    return {ready:!hidden&&!el.disabled&&sized&&inViewport&&(hit===el||el.contains(hit))&&(!frame||outer===frame),
+      x:outerX,y:outerY,offscreen:sized&&!inViewport,hidden,disabled:!!el.disabled,hit:hit?.tagName,outer:outer?.tagName,selector:${JSON.stringify(selector)}};
+  })()`);
+  let point=await waitForStablePoint(measure,{sleep,reveal});
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
   // A resize, sticky toolbar or newly decoded image can move the target after
   // scrolling. Recheck hit-testing after hover instead of clicking stale pixels.
-  point=await waitForStablePoint(measure,{sleep});
+  point=await waitForStablePoint(measure,{sleep,reveal});
   await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,x:point.x,y:point.y});
   await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,x:point.x,y:point.y});
   await waitFor(`window.__acceptanceClickReceipts?.[${JSON.stringify(token)}]?.trusted === true`,1500,'trusted native click on '+selector);

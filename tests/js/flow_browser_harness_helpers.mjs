@@ -26,12 +26,20 @@ export async function waitForDebugger({readActivePort, readTargets, hasExited, d
   throw new Error(`Chrome did not expose a ready CDP page within ${timeoutMs} ms; last=${last}; ${diagnostic()}`);
 }
 
-export async function waitForStablePoint(sample, {now = Date.now, sleep, timeoutMs = 4000} = {}) {
+export async function waitForStablePoint(sample, {now = Date.now, sleep, timeoutMs = 4000, reveal = null} = {}) {
   const deadline = now() + timeoutMs;
   let previous = null, last = null;
   while (now() < deadline) {
     last = await sample();
-    if (last && last.ready && Number.isFinite(last.x) && Number.isFinite(last.y)) {
+    // Navigation can finish a pending smooth scroll after the caller first
+    // revealed its target. Re-reveal only an off-viewport, enabled, visible
+    // target, then require fresh stable geometry and normal hit-testing.
+    // An overlay, hidden/disabled control or permanently displaced target
+    // still fails within the original deadline; this never dispatches clicks.
+    if (last && last.offscreen === true && !last.hidden && !last.disabled && typeof reveal === 'function') {
+      previous = null;
+      await reveal();
+    } else if (last && last.ready && !last.offscreen && Number.isFinite(last.x) && Number.isFinite(last.y)) {
       if (previous && Math.abs(last.x - previous.x) <= .5 && Math.abs(last.y - previous.y) <= .5) return last;
       previous = last;
     } else previous = null;

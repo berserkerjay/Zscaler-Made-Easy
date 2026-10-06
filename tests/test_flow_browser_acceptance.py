@@ -305,6 +305,12 @@ _HARNESS_HELPER_CASES = {
     "moving-target-waits-for-stable-layout": "let t=0,n=0;const points=[{ready:true,x:20,y:100},{ready:true,x:40,y:120},{ready:true,x:40,y:120}];const r=await waitForStablePoint(async()=>points[n++],{now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(n,3);assert.equal(r.x,40);",
     "obscured-target-is-not-accepted": "let t=0,n=0;const r=await waitForStablePoint(async()=>({ready:++n>2,x:40,y:120}),{now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(n,4);assert.equal(r.y,120);",
     "disabled-or-hidden-target-fails-bounded": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,x:40,y:120,disabled:true}),{now:()=>t,sleep:async ms=>{t+=ms},timeoutMs:300}),/never became stable/);assert.equal(t,300);",
+    "late-navigation-scroll-reveals-target-and-resamples": "let t=0,n=0,reveals=0;const points=[{ready:true,x:40,y:550},{ready:false,offscreen:true,x:40,y:2418,hidden:false,disabled:false},{ready:true,x:40,y:550},{ready:true,x:40,y:550}];const r=await waitForStablePoint(async()=>points[n++],{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{reveals++}});assert.equal(reveals,1);assert.equal(n,4);assert.equal(r.y,550);",
+    "offscreen-target-recovery-never-bypasses-overlay": "let t=0,reveals=0;await assert.rejects(waitForStablePoint(async()=>reveals?{ready:false,offscreen:false,x:40,y:550,hit:'DIALOG'}:{ready:false,offscreen:true,x:40,y:2418},{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{reveals++},timeoutMs:300}),/never became stable/);assert.equal(reveals,1);assert.equal(t,300);",
+    "hidden-offscreen-target-is-not-revealed": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,offscreen:true,hidden:true,x:40,y:2418}),{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{throw Error('hidden target must not be revealed')},timeoutMs:300}),/never became stable/);assert.equal(t,300);",
+    "disabled-offscreen-target-is-not-revealed": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,offscreen:true,disabled:true,x:40,y:2418}),{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{throw Error('disabled target must not be revealed')},timeoutMs:300}),/never became stable/);assert.equal(t,300);",
+    "permanently-offscreen-recovery-is-bounded": "let t=0,reveals=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,offscreen:true,x:40,y:2418}),{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{reveals++},timeoutMs:300}),/never became stable/);assert.equal(t,300);assert.equal(reveals,4);",
+    "in-viewport-overlay-is-not-revealed": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,offscreen:false,x:40,y:550,hit:'DIALOG'}),{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{throw Error('overlay must not trigger reveal')},timeoutMs:300}),/never became stable/);assert.equal(t,300);",
     "invalid-target-coordinates-never-click": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:true,x:NaN,y:120}),{now:()=>t,sleep:async ms=>{t+=ms},timeoutMs:300}),/never became stable/);",
 }
 
@@ -322,6 +328,9 @@ def test_browser_driver_preserves_assertions_and_requires_trusted_native_clicks(
     source = DRIVER.read_text()
     assert "waitForStablePoint(measure" in source
     assert "trusted === true" in source and "Input.dispatchMouseEvent" in source
+    assert source.count("type:'mousePressed'") == source.count("type:'mouseReleased'") == 1
+    assert "waitForStablePoint(measure,{sleep,reveal})" in source
+    assert "offscreen:sized&&!inViewport" in source
     assert "Emulation.setFocusEmulationEnabled" in source
     assert "failure-state.json" in source
     for bypass in ("--no-sandbox", "--disable-web-security", "Page.setBypassCSP", "ignore-certificate-errors"):
