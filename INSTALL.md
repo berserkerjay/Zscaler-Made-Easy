@@ -153,6 +153,16 @@ describes. The installer reads it.
    access to `pypi.org`, see the work laptop box). Fix the cause and
    double-click the installer again; it is safe to rerun.
 
+The installer creates a private `.venv` in the app folder on Windows, Mac
+and Linux. It installs the hash-pinned dependencies and the `dlp-check`,
+`dlp-check-assess` and `dlp-check-evaluate` commands there. It does not
+change your system Python packages. Rerunning the installer repairs an
+incomplete environment and keeps your existing local settings. If that
+incomplete environment is activated, run `deactivate` first; the installer
+refuses to delete the interpreter it is currently using. Windows
+launch and update scripts prefer this private interpreter; an older
+installation can migrate by rerunning the installer.
+
 **Step 4 — Open it.**
 Double-click the **Zscaler Assessment** desktop shortcut. Within about
 ten seconds your browser opens to the app. **Nothing else appears on
@@ -1038,3 +1048,26 @@ container and its saved data, then delete the folder.)
   report it.
 - With access to the repository, open an issue at
   `github.com/berserkerjay/DLP-Check/issues` and paste the message.
+
+## Native install verification
+
+The **Native local installs** CI workflow runs the actual installers from
+both a Git clone and an extracted ZIP, in paths containing spaces. It checks
+fresh install, reinstall, settings retention, native dependencies, command
+registration, startup, authentication, read-only defaults, the new pages,
+shutdown and restart. The installed environment also runs the real Chrome
+flow/reference acceptance suite. Results record the exact commit, Python
+version and observed OS/CPU architecture.
+
+The matrix targets Linux and Windows x64 plus macOS Apple silicon with
+Python 3.11 and 3.14, and Intel macOS with Python 3.11. A green run verifies
+those combinations for its recorded commit. Other Python versions, OS
+releases, CPUs and company-managed laptops need their own verification. If selecting an interpreter explicitly, set
+`DLP_CHECK_PYTHON` to its full executable path before running the installer.
+
+Local synthetic TLS tests check an approved CA bundle, rejection of an
+unknown root or wrong hostname, HTTPS proxy tunneling, NO_PROXY, and
+hash-verified pip downloads. They keep TLS verification enabled. They do
+not validate a real enterprise Zscaler CA, OS trust-store enrollment,
+company PAC/proxy authentication or a live tenant. Those require a separate
+authorized check on the actual managed network.

@@ -4,8 +4,10 @@ echo.
 echo  Installing Zscaler Platform Assessment...
 echo.
 
-set INSTALL_DIR=%~dp0
-set INSTALL_DIR=%INSTALL_DIR:~0,-1%
+setlocal
+set "INSTALL_DIR=%~dp0"
+set "INSTALL_DIR=%INSTALL_DIR:~0,-1%"
+cd /d "%INSTALL_DIR%"
 
 REM Machine-specific settings (proxy, corporate root CA for TLS inspection)
 REM live in local_settings.bat next to this file, so pip can reach pypi.org
@@ -15,9 +17,9 @@ if exist "%INSTALL_DIR%\local_settings.bat" call "%INSTALL_DIR%\local_settings.b
 if defined REQUESTS_CA_BUNDLE if not defined PIP_CERT set "PIP_CERT=%REQUESTS_CA_BUNDLE%"
 
 REM Find real Python (skip Microsoft Store stub)
-set PYTHON_EXE=
+set "PYTHON_EXE=%DLP_CHECK_PYTHON%"
 for /f "delims=" %%i in ('where python 2^>nul') do (
-    echo %%i | findstr /i "WindowsApps" >nul
+    echo "%%i" | findstr /i "WindowsApps" >nul
     if errorlevel 1 (
         if not defined PYTHON_EXE set "PYTHON_EXE=%%i"
     )
@@ -43,6 +45,21 @@ REM (a goto, not a parenthesised block: a Python path such as
 REM  "C:\Program Files (x86)\Python39\python.exe" would close the block early)
 if errorlevel 1 goto :oldpython
 
+REM Keep dependencies private to this app, just like the Mac/Linux installer.
+REM A partial environment is repaired, and a healthy environment is reused.
+if not exist "%INSTALL_DIR%\.venv\Scripts\python.exe" goto :makevenv
+"%INSTALL_DIR%\.venv\Scripts\python.exe" -m pip --version >nul 2>&1
+if not errorlevel 1 goto :venvready
+REM Do not delete the Python selected from an activated, broken environment.
+"%PYTHON_EXE%" -c "import pathlib, sys; sys.exit(1 if pathlib.Path(sys.executable).absolute().is_relative_to(pathlib.Path('.venv').absolute()) else 0)" >nul 2>&1
+if errorlevel 1 goto :activebrokenvenv
+rmdir /s /q "%INSTALL_DIR%\.venv"
+:makevenv
+"%PYTHON_EXE%" -m venv "%INSTALL_DIR%\.venv"
+if errorlevel 1 goto :venvfailed
+:venvready
+set "PYTHON_EXE=%INSTALL_DIR%\.venv\Scripts\python.exe"
+
 echo.
 echo  [1/2] Installing Python dependencies...
 echo        (this can sit with no output for a few minutes; that is normal)
@@ -64,19 +81,24 @@ if errorlevel 1 (
     echo   from this network, or a work laptop behind TLS inspection or a
     echo   proxy. Put the CA bundle or proxy in local_settings.bat next to
     echo   this file ^(INSTALL.md, "Work laptop", says how^), then run this
-    echo   installer again. Nothing was installed and no shortcut was made.
+    echo   installer again. The install is incomplete; no shortcut was made.
     echo.
     pause
     exit /b 1
 )
 
+REM Install the same editable commands as the Mac/Linux installer.
+"%PYTHON_EXE%" -m pip install --quiet --disable-pip-version-check --no-deps --no-build-isolation -e "%INSTALL_DIR%"
+if errorlevel 1 goto :appfailed
+if not exist "%INSTALL_DIR%\local_settings.bat" copy /y "%INSTALL_DIR%\local_settings.bat.example" "%INSTALL_DIR%\local_settings.bat" >nul
+
 echo  [2/2] Creating desktop shortcut...
 
 REM Desktop shortcut: silent launcher (no console window); server output goes to server.log
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();"
+powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Assessment.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();"
 
 REM Also create Start Menu shortcut
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
+powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Assessment.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
 
 REM A locked-down PowerShell (Constrained Language Mode) refuses COM objects and makes no shortcut; say so.
 set "SHORTCUT_NOTE=Desktop shortcut: "Zscaler Assessment""
@@ -106,5 +128,21 @@ echo  An older Python installed by another tool comes first on PATH. Install
 echo  the current version from https://www.python.org/downloads/ with
 echo  "Add python.exe to PATH" ticked, or uninstall the old one, then run
 echo  this installer again.
+pause
+exit /b 1
+
+:venvfailed
+echo  ERROR: Could not create the private Python environment in .venv.
+pause
+exit /b 1
+
+:appfailed
+echo  INSTALL FAILED - could not install the app commands into .venv.
+pause
+exit /b 1
+
+:activebrokenvenv
+echo  ERROR: The active .venv is incomplete. Run deactivate, then rerun this installer.
+echo  The environment has not been deleted.
 pause
 exit /b 1

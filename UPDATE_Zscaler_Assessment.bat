@@ -27,7 +27,7 @@ if not defined ZSCALER_PORT set ZSCALER_PORT=8000
 REM ----- Step 1: Stop running server -----
 echo [1/4] Stopping running server...
 set FOUND=
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%ZSCALER_PORT%" ^| findstr "LISTENING"') do (
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /C:":%ZSCALER_PORT% " ^| findstr "LISTENING"') do (
     set FOUND=1
     taskkill /f /pid %%a >nul 2>&1
     echo       Stopped PID %%a on port %ZSCALER_PORT%.
@@ -38,9 +38,10 @@ echo.
 
 REM ----- Step 2: Locate real Python -----
 echo [2/4] Locating Python...
-set PYTHON_EXE=
+set "PYTHON_EXE="
+if exist "%INSTALL_DIR%\.venv\Scripts\python.exe" set "PYTHON_EXE=%INSTALL_DIR%\.venv\Scripts\python.exe"
 for /f "delims=" %%i in ('where python 2^>nul') do (
-    echo %%i | findstr /i "WindowsApps" >nul
+    echo "%%i" | findstr /i "WindowsApps" >nul
     if errorlevel 1 (
         if not defined PYTHON_EXE set "PYTHON_EXE=%%i"
     )
@@ -79,8 +80,8 @@ if errorlevel 1 (
 echo.
 
 REM ----- Step 3b: Refresh the desktop / Start Menu shortcuts -----
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();"
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
+powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Assessment.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();"
+powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Assessment.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
 echo       Shortcuts refreshed (silent launcher).
 echo.
 
@@ -95,6 +96,7 @@ echo  Update app button on the Start here card instead.
 echo ============================================================
 echo.
 wscript.exe "%INSTALL_DIR%\START_Zscaler_Assessment.vbs"
-timeout /t 3 >nul
+timeout /t 3 >nul 2>&1
 
 endlocal
+exit /b 0

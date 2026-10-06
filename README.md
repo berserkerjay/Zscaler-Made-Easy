@@ -33,7 +33,8 @@ run the same entry point (`dlp_api_server.py`). A test
 
 Windows: install Python 3.11+ (tick *Add python.exe to PATH*), get the code
 (`git clone`, or the ZIP from the Code button), double-click
-`INSTALL_Zscaler_Assessment.bat`, then the desktop shortcut it creates. The
+`INSTALL_Zscaler_Assessment.bat`, then the desktop shortcut it creates.
+The installer uses a private `.venv` on Windows as well as Mac/Linux. The
 server runs in the background (output in `server.log`);
 `STOP_Zscaler_Assessment.bat` stops it.
 
