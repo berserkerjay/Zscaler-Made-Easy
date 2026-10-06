@@ -415,15 +415,38 @@ def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Op
     return result, ids, explained
 
 
+def rule_reference(rule: Dict[str, Any]) -> Dict[str, Any]:
+    """Allowlisted configuration reference, never an enforcement claim."""
+    refs = rule.get("dlpEngines") or rule.get("dlp_engines") or rule.get("engines") or []
+    refs = refs if isinstance(refs, list) else []
+    ids = [str(x.get("id")) if isinstance(x, dict) else str(x) for x in refs if not isinstance(x, dict) or x.get("id") is not None]
+    action = rule.get("action") or ""
+    if isinstance(action, dict):
+        action = action.get("type") or ""
+    state = str(rule.get("state") or "UNKNOWN").upper()
+    disabled = state == "DISABLED" or rule.get("enabled") is False
+    scope_fields = [k for k in ("users", "groups", "departments", "locations", "locationGroups", "urlCategories", "cloudApplications", "fileTypes", "protocols", "recipients", "casbTenants", "devices", "activities") if rule.get(k)]
+    return {"id": rule.get("id"), "name": str(rule.get("name") or rule.get("id") or "Unnamed rule"),
+            "engine_ids": ids, "action": str(action).upper(), "state": state,
+            "order": rule.get("order"), "applicability": "disabled" if disabled else "conditional",
+            "reason": "Disabled rule; cannot act" if disabled else "Configured rule reference; channel, identity, operation, precedence and content applicability must be established",
+            "scope_fields": scope_fields,
+            "without_content_inspection": str(rule.get("withoutContentInspection", rule.get("without_content_inspection", False))).lower() in ("true", "1"),
+            "incident_receiver": str(rule.get("zscalerIncidentReceiver", rule.get("zscaler_incident_receiver", rule.get("incidentReceiver", False)))).lower() in ("true", "1"),
+            "icap_server_id": ((rule.get("icapServer") or {}).get("id") if isinstance(rule.get("icapServer"), dict) else rule.get("icapServer"))}
+
+
 def engine_results(engines: Iterable[Dict[str, Any]], rules: Iterable[Dict[str, Any]], counts: Dict[int, Optional[int]],
                    dict_names: Dict[int, str]) -> List[Dict[str, Any]]:
     """Which engines fire on the corpus, and the rules they drive."""
     by_engine: Dict[int, List[str]] = {}
+    rule_objects: Dict[int, List[Dict[str, Any]]] = {}
     for r in rules or []:
         for e in (r.get("dlpEngines") or r.get("dlp_engines") or []):
             eid = e.get("id") if isinstance(e, dict) else e
             try:
                 by_engine.setdefault(int(eid), []).append(str(r.get("name") or r.get("id")))
+                rule_objects.setdefault(int(eid), []).append(rule_reference(r))
             except (TypeError, ValueError):
                 continue
     out: List[Dict[str, Any]] = []
@@ -438,6 +461,12 @@ def engine_results(engines: Iterable[Dict[str, Any]], rules: Iterable[Dict[str, 
                     "custom": bool(e.get("customDlpEngine") or e.get("custom")), "expression": expr,
                     "fires": result, "verdict": {True: "fires", False: "does not fire", None: "possible"}[result],
                     "dictionaries": [dict_names.get(d, f"D{d}") for d in ids], "terms": explained,
+                    "dictionary_refs": [{"id": d, "name": dict_names.get(d, f"D{d}"), "count": counts.get(d)} for d in dict.fromkeys(int(x) for x in re.findall(r"D\(?\s*(\d+)", expr, re.I))],
+                    "explanation": ("Expression is true on the available local counts; this is not proof a tenant rule acts" if result is True else
+                                    "Expression is false on the available counts, including its Boolean operators; unresolved terms cannot change this result" if result is False else
+                                    "Expression remains unknown because a required detector is unavailable or its expression is unsupported"),
+                    "evidence_status": "simulated", "expression_evaluated": expr,
+                    "rule_objects": rule_objects.get(eid, []) if eid is not None else [],
                     "rules": by_engine.get(eid, []) if eid is not None else []})
     order = {True: 0, None: 1, False: 2}
     out.sort(key=lambda x: (order[x["fires"]], -len(x["rules"]), x["name"]))

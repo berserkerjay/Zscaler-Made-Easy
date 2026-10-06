@@ -310,7 +310,16 @@ def rule_actions(client, channels: Optional[Iterable[str]] = None) -> Dict[str, 
     rules; None reads every channel (tests and tools only)."""
     from pack_removal import inventory
     inv = inventory(client) if channels is None else inventory(client, channels=[str(c) for c in channels])
-    return {str(r.get("name")): str(r.get("action") or "").upper() for r in (inv.get("rules") or [])}
+    actions = {}
+    for rule in inv.get("rules") or []:
+        name = str(rule.get("name") or "")
+        value = rule.get("action") or ""
+        action = str(value.get("type") or "" if isinstance(value, dict) else value).upper()
+        if name in actions and actions[name] != action:
+            actions[name] = ""  # duplicated names cannot establish a unique action
+        elif name not in actions:
+            actions[name] = action
+    return actions
 
 
 def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datetime] = None, log=None) -> Dict[str, Any]:
@@ -328,7 +337,8 @@ def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datet
     next_since = max((i["_created"] for i in incs if i.get("_created")), default=now)
     for i in incs:
         i.pop("_created", None)
-    return {"incidents": incs, "next_since": (max(next_since, now) if incs else now).isoformat(), "errors": errors, "read_at": now.isoformat()}
+    cursor = since if errors else (max(next_since, now) if incs else now)
+    return {"incidents": incs, "next_since": cursor.isoformat(), "errors": errors, "read_at": now.isoformat()}
 
 
 def incident_action(inc: Dict[str, Any], rules_by_name: Dict[str, str]) -> str:
@@ -338,8 +348,12 @@ def incident_action(inc: Dict[str, Any], rules_by_name: Dict[str, str]) -> str:
     or deleted since). The incident record itself carries no action
     field — only the rule's configured action decides this, so the rule
     inventory the report already reads is required here too."""
-    found = [rules_by_name[r] for r in (inc.get("rules") or []) if r in rules_by_name]
-    if not found:
+    names = inc.get("rules") or []
+    found = [rules_by_name[r] for r in names if r in rules_by_name]
+    if not found or len(found) != len(names):
+        return "unknown"
+    enforcing = {"BLOCK", "CONFIRM", "QUARANTINE", "CUSTOMHEADERINSERTION", "ICAP_RESPONSE"}
+    if any(a not in MONITOR_ACTIONS | enforcing for a in found):
         return "unknown"
     return "monitor" if all(a in MONITOR_ACTIONS for a in found) else "enforced"
 

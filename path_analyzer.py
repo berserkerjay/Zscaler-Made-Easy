@@ -150,7 +150,7 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform
 
 def analyze(client, destination: str, network: str = "off", platform: str = "windows", *,
             scope: Optional[Dict[str, Any]] = None, snapshot: Optional[Dict[str, Any]] = None, log: LogFn = None,
-            cancel: Any = None) -> Dict[str, Any]:
+            cancel: Any = None, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The live analysis. `scope` (data_flow.path_scope: the Scope page's
     ticked scopes and the channels marked Zscaler) is required, and only
     the parts of the tenant in it are read; every other hop says "not in
@@ -175,6 +175,8 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
 
     if not scope or not scope.get("read"):
         raise ValueError(NOTHING_IN_SCOPE)
+    if (context or {}).get("channel") not in (None, "", "web"):
+        raise ValueError("The Path analyzer models inline web traffic; use channel-specific evidence for Endpoint, SaaS or Email operations.")
     d = parse_destination(destination)
     network = network if network in {n["key"] for n in NETWORKS} else "off"
     platform = platform if platform in PLATFORMS else "windows"
@@ -227,7 +229,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                 rd["app_classes"].append(cls)
     rd["lookup"] = lk
     _log("Tracing the path hop by hop…")
-    t = trace(rd, network, platform, zcc, zia, load_packs(), scope=scope)
+    t = trace(rd, network, platform, zcc, zia, load_packs(), scope=scope, context=context)
     verdict = derive_verdict(t, d, lk)
     _log(f"Verdict: {verdict['headline']}")
     sc = {"summary": scope["summary"], "read": list(scope["read"]), "not_in_scope": dict(scope["not_in_scope"]), "key": scope["key"],
@@ -278,20 +280,26 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
     elif outcome == "enforce":
         dlp = next((h for h in hops if h["key"] == "dlp"), None)
         n = len((dlp or {}).get("rules") or [])
-        headline = f"Reaches {host} decrypted; {n} DLP rule(s) inspect the content and can block it."
+        headline = f"Reaches {host} decrypted; {n} DLP rule(s) are configured to inspect content and can block a qualifying match."
         summary = (dlp or {}).get("detail", "")
     elif outcome == "unknown":
         unread = [h["label"] for h in hops if h["status"] == "unknown" and h["key"] != "incident"]
-        headline = f"Reaches {host}; whether DLP inspects it is unknown: the {' and '.join(unread) or 'policy'} rules could not be read."
-        summary = "A failed or rate-limited read is not an empty rule list, so this is not reported as 'no DLP rule'. Run the analysis again (Refresh) once the API answers."
+        unsupported = next((h for h in hops if h.get("why") == "SSL action not recognized"), None)
+        headline = (f"Reaches {host}; inspection is unverified because the SSL rule action is not recognized." if unsupported else
+                    f"Reaches {host}; whether DLP inspects it is unknown: the {' and '.join(unread) or 'policy'} rules could not be read.")
+        summary = unsupported["detail"] if unsupported else "A failed or rate-limited read is not an empty rule list, so this is not reported as 'no DLP rule'. Run the analysis again (Refresh) once the API answers."
     elif outcome == "out_of_scope":
         dlp = next((h for h in hops if h["key"] == "dlp"), None)
         headline = f"Reaches {host}; whether DLP inspects it is not assessed: it is not in scope on the Scope page."
         summary = ((dlp or {}).get("detail") or "") + " Nothing was read for it, so this is neither 'no DLP rule' nor 'could not read'. Put it in scope on the Scope page and analyze again to assess it."
+    elif outcome in ("conditional", "metadata_only"):
+        headline = (f"Reaches {host}; DLP applicability is conditional on missing identity or content evidence." if outcome == "conditional"
+                    else f"Reaches {host}; no eligible content-inspecting DLP engine was established.")
+        summary = next((h["detail"] for h in hops if h["key"] == "dlp"), "No payload was scanned.")
     elif outcome == "monitor":
         dlp = next((h for h in hops if h["key"] == "dlp"), None)
         n = len((dlp or {}).get("rules") or [])
-        headline = f"Reaches {host} decrypted; {n} DLP rule(s) see the content but only monitor it."
+        headline = f"Reaches {host} decrypted; {n} DLP rule(s) are configured to monitor qualifying content."
         summary = (dlp or {}).get("detail", "") + " Nothing is stopped: a match is logged and, where configured, forwarded as an incident."
     else:
         headline = f"Reaches {host} decrypted; no DLP rule covers this traffic."
@@ -314,7 +322,10 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
     v = {"outcome": outcome, "headline": headline, "summary": summary,
          "stops_at": stop["label"] if stop else None, "blocked_by": rule(stop) if stop else None,
          "reaches_zscaler": t["reaches_zscaler"], "decrypted": t["decrypted"],
-         "content_inspected": bool(t["decrypted"] and outcome in ("enforce", "monitor")),
+         "content_inspected": False,
+         "content_inspection_possible": bool(t.get("content_inspection_possible")),
+         "evidence_mode": "configuration", "tested_channel": "web",
+         "policy_conditional": bool(t.get("policy_conditional")),
          "impacts": impacts, "categories": categories, "applications": applications,
          # What was not read (out of scope on the Scope page): said, never scored as a gap.
          "not_in_scope": [{"hop": h["key"], "label": h["label"], "detail": h["detail"]} for h in hops if h["status"] == "out_of_scope"]
@@ -343,7 +354,7 @@ def recommend_mitigations(t: Dict[str, Any], v: Dict[str, Any]) -> List[Dict[str
     # inspection out of scope whether it is encrypted is not known, so it
     # is not called encrypted.
     ssl_out = any(h["key"] == "ssl" and h["status"] == "out_of_scope" for h in t.get("hops") or [])
-    blind_here = not v["reaches_zscaler"] or (not v["decrypted"] and not ssl_out)
+    blind_here = v["outcome"] in ("bypassed", "blind") and not ssl_out
     if blind_here:
         reason = "never reaches Zscaler" if not v["reaches_zscaler"] else "reaches Zscaler encrypted, so the content can never be inspected here"
         if ep.get("status") == "out_of_scope":
@@ -360,8 +371,8 @@ def recommend_mitigations(t: Dict[str, Any], v: Dict[str, Any]) -> List[Dict[str
                         "why": f"This traffic {reason}: Endpoint DLP is the only control that ever sees it, and {why}.",
                         "severity": "high"})
         else:
-            out.append({"rank": 1, "channel": "endpoint", "action": "Endpoint DLP already covers this device",
-                        "why": f"This traffic {reason}, but Endpoint DLP runs locally regardless of the network path and is already {ep.get('status')}.",
+            out.append({"rank": 1, "channel": "endpoint", "action": "Verify Endpoint DLP applicability on this device",
+                        "why": "The separate-channel rule inventory does not establish device assignment, operation coverage or a content match.",
                         "severity": "info"})
     elif v["outcome"] == "none":
         out.append({"rank": 1, "channel": "web", "action": "Deploy a Web DLP rule that covers this traffic",

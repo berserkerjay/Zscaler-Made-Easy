@@ -40,6 +40,11 @@ Architecture notes
 from __future__ import annotations
 
 import re
+import json
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 
@@ -79,7 +84,7 @@ def _is_custom_dict(d: Dict[str, Any]) -> bool:
     # have a dictionaryType of "PREDEFINED".
     if d.get("custom") is True or d.get("customDictionary") is True:
         return True
-    dt = (d.get("dictionaryType") or "").upper()
+    dt = str(d.get("dictionaryType") or "").upper()
     if dt in ("PREDEFINED", "PATTERN_BASED_PREDEFINED"):
         return False
     # Fallback: if we see phrases/patterns we assume custom
@@ -98,6 +103,88 @@ def _is_custom_engine(e: Dict[str, Any]) -> bool:
 
 
 # ─── Data fetchers ───────────────────────────────────────────────
+
+class CorpusReadStopped(RuntimeError):
+    """The caller cancelled; no later configuration request may start."""
+
+
+_REGEX_WORKER = """import json, re, sys
+try:
+ import resource
+ resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+ resource.setrlimit(resource.RLIMIT_CPU, (1, 1))
+except (ImportError, AttributeError, ValueError, OSError):
+ pass
+pattern, content = json.load(sys.stdin)
+print(sum(1 for _ in re.finditer(pattern, content, re.IGNORECASE)))
+"""
+
+
+def _safe_regex_count(pattern: str, corpus: str, deadline: float) -> Optional[int]:
+    """Tenant regex runs in a bounded disposable process, never on the API GIL.
+
+    Content travels through a local pipe, not command arguments or a file.
+    Timeout, invalid patterns and resource exhaustion are unknown, not zero.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None
+    try:
+        result = subprocess.run([sys.executable, "-I", "-c", _REGEX_WORKER],
+                                input=json.dumps([pattern, corpus]), capture_output=True,
+                                text=True, timeout=min(0.75, remaining), check=False)
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        count = int(result.stdout.strip())
+    except ValueError:
+        return None
+    return count if 0 <= count <= len(corpus) + 1 else None
+
+
+def read_collection(client, endpoint: str) -> Dict[str, Any]:
+    """Read an allowlisted caller-selected collection without hiding failed reads.
+
+    Never follows a URL supplied in a tenant response. Pagination metadata
+    showing an incomplete collection prevents a claim of complete coverage.
+    """
+    at = datetime.now(timezone.utc).isoformat()
+    evidence = {"source": endpoint, "read_at": at, "status": "unverified", "items": []}
+    stop_check = getattr(client, "stop_check", None)
+    if callable(stop_check) and stop_check():
+        raise CorpusReadStopped("Configuration read cancelled")
+    try:
+        data, code = client.get(endpoint)
+    except Exception as exc:  # the exception text can contain credentials
+        evidence.update(reason="Read failed: " + type(exc).__name__)
+        return evidence
+    evidence["http_status"] = code
+    if code not in (200, 204):
+        reason = {401: "Authentication failed", 403: "Permission denied", 404: "Route unavailable", 429: "Rate limited"}.get(code, "Read failed")
+        evidence.update(reason=reason)
+        return evidence
+    if code == 204:
+        evidence.update(status="verified", reason="Successful empty response")
+        return evidence
+    valid = isinstance(data, list) or (isinstance(data, dict) and any(isinstance(data.get(k), list) for k in ("list", "items", "data", "results")))
+    items = _ls(data)
+    if not valid or any(not isinstance(x, dict) for x in items):
+        evidence.update(reason="Malformed collection response")
+        return evidence
+    if isinstance(data, dict):
+        total = data.get("totalCount", data.get("total_count", data.get("total")))
+        partial = any(data.get(k) for k in ("hasMore", "has_more", "nextPage", "next_page", "nextPageToken", "next_page_token"))
+        try:
+            partial = partial or (total is not None and int(total) > len(items))
+        except (TypeError, ValueError):
+            partial = True
+        if partial:
+            evidence.update(reason="Incomplete collection; complete pagination was not established")
+            return evidence
+    evidence.update(status="verified", items=items, reason="Read successfully" if items else "Successful empty response")
+    return evidence
 
 def _fetch_dictionaries(client) -> List[Dict[str, Any]]:
     data, code = client.get("/zia/dlpDictionaries")
@@ -728,7 +815,8 @@ _CORPUS_CAP_BYTES = 262_144
 _PATTERN_TIMEOUT_FALLBACK_MAX = 20_000  # chars per pattern match call
 
 
-def corpus_test(client, corpus: str, max_dicts: int = 200, read_rules: bool = True) -> Dict[str, Any]:
+def corpus_test(client, corpus: str, max_dicts: int = 200, read_rules: bool = True, *,
+                channel_rules=None, rules_evidence=None, channel: str = "web") -> Dict[str, Any]:
     """Test a user-supplied text corpus against every custom dictionary.
 
     Returns per-dictionary hit counts + a few sample match rows.
@@ -760,24 +848,39 @@ def corpus_test(client, corpus: str, max_dicts: int = 200, read_rules: bool = Tr
     if not corpus.strip():
         return {"error": "corpus is empty", "results": []}
 
-    dicts = _fetch_dictionaries(client)
+    dictionary_read = read_collection(client, "/zia/dlpDictionaries")
+    engine_read = read_collection(client, "/zia/dlpEngines")
+    dicts = dictionary_read["items"]
+    if rules_evidence is None:
+        rules_evidence = (read_collection(client, "/zia/webDlpRules") if read_rules and channel_rules is None else
+                          {"source": "selected channel", "status": "verified" if channel_rules is not None else "out_of_scope", "items": channel_rules or [], "read_at": dictionary_read["read_at"]})
+    rule_items = channel_rules if channel_rules is not None else rules_evidence.get("items", [])
+    simulation_deadline = time.monotonic() + 5.0
     results: List[Dict[str, Any]] = []
     tested = 0
 
-    for d in dicts[:max_dicts]:
-        if not _is_custom_dict(d):
-            continue
+    custom_dicts = [d for d in dicts if _is_custom_dict(d)]
+    for d in custom_dicts[:max(1, min(int(max_dicts), 1000))]:
         tested += 1
         name = d.get("name", "?")
         did = _safe_int(d.get("id"))
         phrases = d.get("phrases") or []
         patterns = d.get("patterns") or []
+        unsupported = not bool(phrases or patterns)
+        if not isinstance(phrases, list):
+            phrases, unsupported = [], True
+        if not isinstance(patterns, list):
+            patterns, unsupported = [], True
 
         phrase_hits = 0
         phrase_samples: List[Dict[str, Any]] = []
         for p in phrases:
+            if not isinstance(p, dict):
+                unsupported = True
+                continue
             phr = p.get("phrase") or p.get("action") or ""
             if not isinstance(phr, str) or len(phr.strip()) < 2:
+                unsupported = True
                 continue
             try:
                 n = len(re.findall(re.escape(phr), corpus, flags=re.IGNORECASE))
@@ -791,32 +894,38 @@ def corpus_test(client, corpus: str, max_dicts: int = 200, read_rules: bool = Tr
         pattern_hits = 0
         pattern_samples: List[Dict[str, Any]] = []
         for p in patterns:
+            stop_check = getattr(client, "stop_check", None)
+            if callable(stop_check) and stop_check():
+                raise CorpusReadStopped("Local simulation cancelled")
+            if not isinstance(p, dict):
+                unsupported = True
+                continue
             pat = p.get("pattern") or p.get("regex") or p.get("expression") or ""
-            if not pat or pat.strip() in _BROAD_PATTERNS:
+            if not isinstance(pat, str) or not pat or pat.strip() in _BROAD_PATTERNS:
+                unsupported = True
                 continue
-            try:
-                rx = re.compile(pat, flags=re.IGNORECASE)
-                matches = rx.findall(corpus)
-            except re.error:
+            count = _safe_regex_count(pat, corpus, simulation_deadline)
+            if count is None:
+                unsupported = True
                 continue
-            except Exception:
-                continue
-            if matches:
-                pattern_hits += len(matches)
+            if count:
+                pattern_hits += count
                 if len(pattern_samples) < 5:
-                    pattern_samples.append({"pattern": pat[:60], "count": len(matches)})
+                    pattern_samples.append({"pattern": pat[:60], "count": count})
 
         results.append({
             "id": did,
             "name": name,
             "phrase_hits": phrase_hits,
             "pattern_hits": pattern_hits,
-            "total_hits": phrase_hits + pattern_hits,
+            "total_hits": None if unsupported else phrase_hits + pattern_hits,
+            "simulated": not unsupported,
+            "note": "Incomplete, unsupported or time-limited dictionary simulation" if unsupported else "Local phrase/regex approximation; tenant extraction and proximity are not reproduced",
             "phrase_samples": phrase_samples,
             "pattern_samples": pattern_samples,
         })
 
-    results.sort(key=lambda x: x["total_hits"], reverse=True)
+    results.sort(key=lambda x: x["total_hits"] if x["total_hits"] is not None else -1, reverse=True)
 
     # Predefined dictionaries (approximated locally where the pattern is
     # public), then every engine's expression with the counts we have,
@@ -833,7 +942,10 @@ def corpus_test(client, corpus: str, max_dicts: int = 200, read_rules: bool = Tr
         if did is not None:
             counts[did] = r["hits"] if r["simulated"] else None; names[did] = r["name"]
     # The Web DLP rules an engine drives: read only when Inline Web DLP is in scope.
-    engines = ce.engine_results(_fetch_engines(client), _fetch_rules(client) if read_rules else [], counts, names)
+    engines = ce.engine_results(engine_read["items"], rule_items, counts, names)
+    evidence = {"dictionaries": {k: v for k, v in dictionary_read.items() if k != "items"},
+                "engines": {k: v for k, v in engine_read.items() if k != "items"},
+                "rules": {k: v for k, v in rules_evidence.items() if k != "items"}}
     return {
         "corpus_length": len(corpus),
         "dicts_tested": tested,
@@ -841,6 +953,12 @@ def corpus_test(client, corpus: str, max_dicts: int = 200, read_rules: bool = Tr
         "predefined": predefined,
         "predefined_simulated": sum(1 for r in predefined if r["simulated"]),
         "engines": engines,
+        "channel": channel,
+        "mode": "simulated",
+        "read_evidence": evidence,
+        "errors": [{"section": k, **v} for k, v in evidence.items() if v["status"] == "unverified"],
+        "rules": [ce.rule_reference(r) for r in rule_items],
+        "dictionary_limit_reached": len(custom_dicts) > len(results),
         "engines_firing": sum(1 for e in engines if e["fires"] is True),
         "engines_possible": sum(1 for e in engines if e["fires"] is None),
         "note": "Custom dictionaries: exact local regex. Predefined dictionaries: local approximations of the public "

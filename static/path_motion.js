@@ -143,15 +143,15 @@ function pmLiveModel(incidents) {
     }
     const rate = Math.min(1.4, 0.3 + c.n * 0.1);
     routes.push({ edges: base.concat([`r_${ch}>evid`], PM_LANE.ev), stop: null, tone: null, rate });
-    routes.push({ edges: base.concat([`r_${ch}>logs`], PM_LANE.tel), stop: null, tone: null, rate: rate / 3 });
+    // NSS/SIEM delivery is not present in these incident records; do not animate it as observed.
     extra[`r_${ch}`] = c.monitor ? 'monitor' : (c.enforced ? 'enforce' : undefined);
     const rules = top(c.rules), dicts = top(c.dicts);
-    summary.push(`${label}: ${c.n} incident${c.n === 1 ? '' : 's'}, ${c.enforced} enforced, ${c.monitor} monitor-only${c.unknown ? `, ${c.unknown} with the rule's action not read` : ''}.`
+    summary.push(`${label}: ${c.n} incident${c.n === 1 ? '' : 's'}, ${c.enforced} currently configured enforcing, ${c.monitor} currently configured monitoring${c.unknown ? `, ${c.unknown} with the rule's action not read` : ''}.`
       + (rules.length ? ` Rules: ${_pmList(rules.map(r => `${r} (${c.rules[r]})`))}.` : '')
       + (dicts.length ? ` Dictionaries: ${_pmList(dicts.map(d => `${d} (${c.dicts[d]} matches)`))}.` : '')
-      + (c.monitor ? ' Monitor-only matches are logged and forwarded but the data still left.' : ''));
+      + ' Event-time enforcement and whether data left are not established by current rule configuration.');
   });
-  summary.push('Telemetry lane: each match also writes a channel log that NSS / Cloud NSS can stream to the SIEM; this feed does not read NSS, and that lane never feeds Workflow Automation.');
+  summary.push('Telemetry lane: NSS / Cloud NSS and SIEM delivery are not read by this feed and remain unverified; this lane does not feed Workflow Automation.');
   return { mode: 'live', routes, stops: [], summary, extra };
 }
 
@@ -173,6 +173,17 @@ function pmModel(res) {
     };
   }
   const t = res.trace, v = res.verdict || {}, hops = t.hops || [];
+  if (t.evidence_mode === 'configuration') {
+    const summary = ['Configuration context only: no transaction, content inspection, channel action, telemetry delivery or Workflow Automation delivery was observed.'];
+    hops.forEach(h => summary.push(`${h.label || h.key}: ${h.status || 'unverified'}. ${h.detail || ''}`));
+    PM_CHANNELS.filter(c => c.trace).forEach(({ trace, label }) => {
+      const c = (t.channels || {})[trace];
+      if (c) summary.push(`${label}: ${c.status === 'inventory' ? 'inventory read; this channel was not tested' : c.status || 'unverified'}. ${c.detail || ''}`);
+    });
+    summary.push('Receiver configuration is a prerequisite only. Storage, integration and incident receipt require separate evidence.');
+    return { mode: 'configuration', routes: [], stops: [], summary, extra: {} };
+  }
+
   const hop = k => hops.find(h => h.key === k) || null;
   const routes = [], stops = [], summary = [], extra = {};
   const name = h => (h && h.decided_by && h.decided_by.name) || '';
@@ -243,10 +254,10 @@ function pmModel(res) {
       }
       const ir = rules.filter(r => r.incident_receiver), icap = rules.filter(r => r.icap_server && !r.incident_receiver);
       if (ir.length) {
-        routes.push({ edges: web.concat(['r_web>evid'], PM_LANE.ev), stop: null, tone: null, rate: 0.5 });
-        summary.push(`Evidence lane: ${_pmList(ir.map(r => r.name))} → the Zscaler Incident Receiver: the match and the file are forwarded, so the evidence can reach customer storage and Workflow Automation (the storage bucket and the WA integration are not read here; they must exist and be Enabled).`);
+        stopRoute(web.concat(['r_web>evid'], PM_LANE.ev), 3, 'unread', 'Configured receiver; downstream delivery is unverified.', 0.5);
+        summary.push(`Evidence lane: ${_pmList(ir.map(r => r.name))} → the Zscaler Incident Receiver: forwarding is configured, but actual evidence delivery to customer storage and Workflow Automation is unverified (the storage bucket and the WA integration are not read here; they must exist and be Enabled).`);
       } else if (icap.length) {
-        routes.push({ edges: web.concat(['r_web>evid'], PM_LANE.ev), stop: null, tone: 'assumed', rate: 0.4 });
+        stopRoute(web.concat(['r_web>evid'], PM_LANE.ev), 3, 'unread', 'ICAP destination is configured; Workflow Automation delivery is unverified.', 0.4);
         extra.assumed = ['r_web>evid'];
         summary.push(`Evidence lane: ${_pmList(icap.map(r => r.name))} → an ICAP server only. That reaches Workflow Automation only if the ICAP server is a Zscaler Incident Receiver VM; a third-party ICAP server is a parallel path that never feeds it.`);
       } else {
@@ -279,6 +290,10 @@ function pmModel(res) {
       routes.push({ edges: base, stop: null, tone: null, rate: 0.22 });
       extra[`r_${ch}`] = c.status;
       summary.push(`${label}: ${c.detail || ''} ${c.status === 'enforce' ? 'Enforcing' : 'Monitor only'}; what its rules forward is not traced here.`.replace(/\s+/g, ' ').trim());
+    } else if (c.status === 'inventory' || c.status === 'unverified' || c.status === 'conditional') {
+      const why = `${label}: configuration inventory only; this channel was not tested. ${c.detail || ''}`;
+      routes.push({ edges: base, stop: 2, tone: 'unread', rate: 0 });
+      summary.push(why);
     } else if (c.status === 'unknown') {
       const why = `${label}: could not be read. ${c.detail || ''}`.replace(/\s+/g, ' ').trim();
       stopRoute(base, 2, 'unread', why, 0.22);
@@ -507,7 +522,7 @@ function renderPathMotion(container) {
       // Stagger the first bits so the lanes do not pulse in step.
       return Object.assign({}, r, { lens: ls, end, acc: Math.random(), lane: _pmLane(r.edges[0]) });
     });
-    container.querySelector('#pmMode').textContent = m.mode === 'reference' ? 'Reference chain · every lane idling' : m.mode === 'live' ? 'This session · each lane carries the incidents it raised' : 'This path · bits stop where the chain breaks';
+    container.querySelector('#pmMode').textContent = m.mode === 'reference' ? 'Reference chain · every lane idling' : m.mode === 'live' ? 'Observed incident receipt · actions inferred from current configuration' : m.mode === 'configuration' ? 'Configuration only · no observed transaction or evidence delivery' : 'This path · bits stop where the chain breaks';
     container.querySelector('#pmSummary').innerHTML = m.summary.map(s => `<li>${_pmE(s)}</li>`).join('');
     sync();
     return m;

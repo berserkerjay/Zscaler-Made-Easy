@@ -62,3 +62,13 @@
 @media (prefers-reduced-motion: reduce) {
   .fa-box rect { transition: none; }
 }
+
+/* Shared scenario inputs stay visible beside passive live evidence. */
+#scenarioWorkspace { padding-bottom: 1.2rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
+#scenarioCorpus { display: block; box-sizing: border-box; width: 100%; min-height: 7rem; margin: .5rem 0; padding: .7rem; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: .5rem; font: inherit; }
+#scenarioWorkspace .df-ctl input { max-width: 22rem; }
+#scenarioWorkspace select, #scenarioWorkspace input { min-height: 2rem; }
+#scenarioTranscript { max-height: 18rem; overflow-y: auto; line-height: 1.6; }
+#scenarioDetails { overflow-wrap: anywhere; }
+#scenarioDetails details { margin: .6rem 0; }
+@media (max-width: 700px) { #scenarioWorkspace .df-ctl { width: 100%; } #scenarioWorkspace .df-ctl input, #scenarioWorkspace .df-ctl select { max-width: none; width: 100%; } }

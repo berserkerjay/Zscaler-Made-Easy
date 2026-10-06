@@ -20,10 +20,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def test_audit_logs_write_calls_with_redacted_bodies(monkeypatch, tmp_path):
     log = tmp_path / "audit.log"
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    # This test verifies audit redaction, not a sign-in to an external tenant.
+    calls = []
+    fake_client = types.SimpleNamespace(close=lambda: calls.append("closed"))
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: fake_client)
     c = TestClient(srv.app)
     assert c.get("/api/health").status_code == 200                    # GETs are not logged
     r = c.post("/api/tenant/check", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"})
-    assert r.status_code in (200, 400, 401, 502, 503)
+    assert r.status_code == 200
+    assert calls == ["closed"]
     lines = [json.loads(x) for x in log.read_text().splitlines()]
     assert len(lines) == 1
     e = lines[0]

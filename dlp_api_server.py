@@ -1567,6 +1567,8 @@ async def live_feed_poll(req: LiveFeedRequest):
     rules_by_name = await asyncio.to_thread(_live_rule_actions, client, tenant_fingerprint.proposal_key(creds, label), list(sc["pack_channels"]))
     for i in poll["incidents"]:
         i["enforcement"] = detection_health.incident_action(i, rules_by_name)   # "enforced" | "monitor" | "unknown", from the rule's real action
+        i["action_source"] = "current_rule_configuration"
+        i["event_enforcement"] = "unknown"  # current configuration is not event-time proof
     stats = detection_health.live_stats(req.stats or None, poll["incidents"], rules_by_name)
     connector = await asyncio.to_thread(_live_connector_context, creds, sc["scopes"])
     return {"incidents": poll["incidents"], "next_since": poll["next_since"], "errors": poll["errors"], "stats": stats,
@@ -5282,11 +5284,12 @@ async def report_view_page():
 
 
 # ── Reference pages ──────────────────────────────────────────────────
-# Self-contained HTML references an engineer keeps next to the tool (the
+# Bundled HTML references an engineer keeps next to the tool (the
 # data-security portfolio framework, the AI security frameworks, how the
 # framework machine fits together). Served from static/reference/ under
 # their own routes so the sidebar can open them like any other page. They
-# carry their own inline scripts and styles; nothing external is loaded
+# carry their own inline scripts and styles, with allowlisted same-origin
+# child routes for the two embedded frameworks; nothing external is loaded
 # (the app's Content-Security-Policy applies to them too).
 REFERENCE_PAGES: List[Dict[str, str]] = [
     {"slug": "data-security-portfolio-framework", "name": "Data Security Portfolio Framework",
@@ -5312,6 +5315,39 @@ async def reference_list():
         out.append({**p, "href": f"/reference/{p['slug']}", "available": os.path.exists(path),
                     "bytes": os.path.getsize(path) if os.path.exists(path) else 0})
     return {"pages": out}
+
+
+# Only these bundled documents may be embedded by our own pages. Every
+# other page retains the global DENY / frame-ancestors 'none' policy.
+_REFERENCE_EMBEDS = {
+    "portfolio-map": "portfolio-map.html",
+    "copilot-readiness": "copilot-readiness.html",
+}
+
+
+@app.get("/reference/embed/{slug}")
+async def reference_embed_page(slug: str):
+    filename = _REFERENCE_EMBEDS.get(slug)
+    if filename is None:
+        raise HTTPException(status_code=404, detail="No such embedded reference.")
+    path = os.path.join(_REFERENCE_DIR, filename)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Embedded reference missing.")
+    with open(path, "r", encoding="utf-8") as f:
+        html = f.read()
+    # Capture script failures before any bundled script executes. The child
+    # reports readiness only after its own content and controls initialize.
+    bridge = (f'<meta name="dlp-reference-embed" content="{slug}">'
+              '<script src="/static/reference/reference_embed_child.js"></script>')
+    charset = re.search(r"<meta\s+charset=[^>]+>", html, re.IGNORECASE)
+    pos = charset.end() if charset else 0
+    html = html[:pos] + bridge + html[pos:]
+    return HTMLResponse(html, headers={
+        "Cache-Control": "no-cache, must-revalidate, max-age=0",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Security-Policy": _security.CONTENT_SECURITY_POLICY.replace(
+            "frame-ancestors 'none'", "frame-ancestors 'self'"),
+    })
 
 
 @app.get("/reference/{slug}")
@@ -5588,6 +5624,117 @@ class PathAnalyzerRequest(MigrateRequest):
     scopes: List[str] = []
     channels: Dict[str, Any] = {}
     from_page: bool = False
+
+
+class FlowScenarioRequest(MigrateRequest):
+    """One explicit local test/configuration scenario; never generates traffic."""
+    scenario_id: str = ""
+    channel: str = "web"
+    destination: str = ""
+    operation: str = ""
+    file_type: str = ""
+    network: str = "off"
+    platform: str = "windows"
+    corpus: str = ""
+
+
+@app.post("/api/flow/scenario")
+async def flow_scenario(req: FlowScenarioRequest, request: Request):
+    """Compose scoped read-only configuration and optional local simulation.
+
+    No incident polling, traffic submission, tenant writes or old-browser
+    result joins happen as a side effect. Excluded stages stay visible.
+    """
+    import scenario_flow
+    import channel_scope
+    import data_flow
+    import dlp_efficacy
+    import corpus_engines
+    import path_analyzer
+    import tenant_fingerprint
+    try:
+        context = scenario_flow.normalize_input(req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    sc, ch, source = _scope_selection(req)
+    allowed = channel_scope.in_scope(ch)
+    selected_key, endpoint, _ = scenario_flow.CHANNELS[context["channel"]]
+    scope = data_flow.path_scope(sc, ch)
+    scope["source"] = source
+    scope.update(scopes=sc, channel_enabled="dlp" in sc and selected_key in allowed,
+                 workflow_enabled="workflow_automation" in allowed)
+    # Keep the complete scope identity distinct from the tracer's read key.
+    response_scope = dict(scope, key=scenario_flow.scope_key(sc, ch))
+    needs_path = context["channel"] == "web" and bool(context["destination"]) and bool(scope["read"])
+    needs_dlp = "dlp" in sc
+    if needs_path:
+        try:
+            path_analyzer.parse_destination(context["destination"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    if not needs_path and not needs_dlp:
+        return scenario_flow.build_result(context, tenant_key="not-read", scope=response_scope)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    tenant_key = tenant_fingerprint.proposal_key(creds, tenant_auth.record_label(creds))
+    cancel = threading.Event()
+
+    def run():
+        path = None
+        path_error = None
+        if needs_path:
+            try:
+                path = path_analyzer.analyze(client, context["destination"], context["network"], context["platform"],
+                                             scope=scope, context=context, cancel=cancel)
+                path.pop("snapshot_for_cache", None)
+            except ValueError:
+                raise
+            except Exception as exc:
+                path_error = {"section": "path", "status": "unverified", "reason": "Path read failed: " + type(exc).__name__}
+        rule_read = {"source": endpoint, "status": "out_of_scope", "items": [], "reason": "Selected channel is not in scope"}
+        if scope["channel_enabled"]:
+            rule_read = dlp_efficacy.read_collection(client, endpoint)
+        corpus = None
+        if needs_dlp:
+            if context["corpus"].strip():
+                corpus = dlp_efficacy.corpus_test(client, context["corpus"], read_rules=False,
+                                                channel_rules=rule_read["items"], rules_evidence=rule_read, channel=context["channel"])
+            else:
+                dr = dlp_efficacy.read_collection(client, "/zia/dlpDictionaries")
+                er = dlp_efficacy.read_collection(client, "/zia/dlpEngines")
+                names = {int(x["id"]): str(x.get("name") or x["id"]) for x in dr["items"] if str(x.get("id", "")).isdigit()}
+                evidence = {key: {k: v for k, v in value.items() if k != "items"} for key, value in (("dictionaries", dr), ("engines", er), ("rules", rule_read))}
+                corpus = {"mode": "configuration", "channel": context["channel"], "results": [], "predefined": [],
+                          "engines": corpus_engines.engine_results(er["items"], rule_read["items"], {}, names),
+                          "rules": [corpus_engines.rule_reference(r) for r in rule_read["items"]], "read_evidence": evidence,
+                          "errors": [{"section": key, **value} for key, value in evidence.items() if value["status"] == "unverified"]}
+        result = scenario_flow.build_result(context, tenant_key=tenant_key, scope=response_scope, corpus=corpus, path=path, rules_evidence=rule_read)
+        if path_error:
+            result["errors"].append(path_error)
+            result["execution_status"] = "partial"
+            result["summary"] = "Path configuration could not be read. Available local detector results do not establish traffic routing or enforcement."
+        return result
+    async def watch_disconnect():
+        while not cancel.is_set():
+            if await request.is_disconnected():
+                cancel.set()
+                return
+            await asyncio.sleep(0.1)
+
+    def cancellable_run():
+        with data_flow.stop_on(client, cancel):
+            return run()
+
+    watcher = asyncio.create_task(watch_disconnect())
+    try:
+        return await asyncio.to_thread(cancellable_run)
+    except dlp_efficacy.CorpusReadStopped:
+        raise HTTPException(status_code=499, detail="Scenario cancelled; no further configuration reads were started")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        cancel.set()
+        watcher.cancel()
 
 
 def _scope_selection(req: Any) -> Tuple[List[str], Dict[str, Any], str]:
