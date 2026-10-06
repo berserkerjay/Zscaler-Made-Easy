@@ -599,10 +599,17 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
     Raises ValueError when the SSL inspection rules are not in scope."""
     read = set(SECTIONS) if scope is None else {k for k in (scope.get("read") or []) if k in SECTIONS}
     why = {} if scope is None else {k: v for k, v in (scope.get("not_in_scope") or {}).items() if k in SECTIONS}
-    if "ssl" not in read:
+    import dlp_analysis
+    client = dlp_analysis.read_once(client)
+    required_controls = dlp_analysis.inspect(client, (scope or {}).get("scopes", []), (scope or {}).get("declaration", {}))
+    required = {row["key"]: row for row in required_controls}
+    blocked = (scope or {}).get("read_blocked") or {}
+    if "ssl" not in read and "ssl" not in required:
         raise ValueError(NOTHING_IN_SCOPE)
     diagnostics: List[Dict[str, Any]] = []
-    ssl_rules = _fetch_rules(client, "/zia/sslInspectionRules", diagnostics, "SSL inspection rules")
+    ssl_rules = _fetch_rules(client, "/zia/sslInspectionRules", diagnostics, "SSL inspection rules") if "ssl" in read else []
+    if "ssl" in blocked:
+        diagnostics.append({"section": "SSL inspection rules", "endpoint": "/zia/sslInspectionRules", "error": blocked["ssl"], "error_type": "unmet_dependency"})
     dlp_rules = _fetch_rules(client, "/zia/webDlpRules", diagnostics, "Web DLP rules") if "dlp" in read else []
     supporting = {}
     for key, endpoint, label in (("url", "/zia/urlFilteringRules", "URL filtering rules"), ("ftc", "/zia/fileTypeRules", "File Type Control rules")):
@@ -617,6 +624,7 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
     section_keys = {"SSL inspection rules": "ssl", "Web DLP rules": "dlp", "URL filtering rules": "url", "File Type Control rules": "ftc"}
     errors = {section_keys[d["section"]]: d.get("error") or d.get("error_type") or "read failed" for d in diagnostics if d.get("section") in section_keys}
     report = analyse(ssl_rules, dlp_rules, catalogue, lookup, dlp_in_scope="dlp" in read, read_errors=errors)
+    report["required_controls"] = required_controls
     for row in report["classes"]:
         controls = []
         for key, label in (("url", "URL Filtering"), ("ssl", "SSL Inspection"), ("ftc", "File Type Control")):
@@ -635,6 +643,14 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
                              "stopped_by": {"key": "ssl", "label": "SSL Inspection", "object_id": (row["decided_by"] or {}).get("id"), "object_name": (row["decided_by"] or {}).get("name")} if status == "not_reached" else None,
                              "scope_status": "in_scope" if key in read else "out_of_scope",
                              "evidence_mode": "configuration", "tested": False})
+        for item in controls:
+            if item["key"] in required:
+                item["scope_status"] = "required"
+                if item["key"] in blocked or item["status"] == "out_of_scope":
+                    item.update(status="unknown", detail=required[item["key"]]["detail"])
+        for key in ("cac", "workflow"):
+            if key in required:
+                controls.append(dict(required[key], scope_status="required", tested=False))
         row["controls"] = controls
     report["supporting_rules"] = {key: [{"id": r.get("id"), "name": r.get("name"), "order": r.get("order"),
                                         "state": r.get("state"), "action": _action_type(r) or _f(r, "filteringAction", "filtering_action", default=""),
@@ -660,7 +676,7 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
         s["high"] = s.get("high", 0) + 1
     report["summary"]["zcc_bypasses"] = zcc.get("total", 0)
     report["diagnostics"] = diagnostics
-    report["not_in_scope"] = {k: why.get(k) or "Not in scope on the Scope page, so it was not read." for k in SECTIONS if k not in read}
+    report["not_in_scope"] = {k: why.get(k) or "Not in scope on the Scope page, so it was not read." for k in SECTIONS if k not in read and k not in required}
     if scope is not None:
         report["scope"] = {"read": sorted(read), "source": scope.get("source") or "", "key": scope.get("key") or ""}
     report["sources"] = {"ssl_rules": "/zia/sslInspectionRules", "dlp_rules": "/zia/webDlpRules",
@@ -718,4 +734,6 @@ def to_markdown(report: Dict[str, Any]) -> str:
         targets = ("everything" if r["catch_all"] else "Zscaler-maintained list" if r["zscaler_maintained"] else
                    ", ".join(r["url_categories"][:6] + r["cloud_applications"][:6]) + (" …" if len(r["url_categories"]) + len(r["cloud_applications"]) > 12 else ""))
         lines.append(f"| {r.get('order', '')} | {r['name']} | {r['action']} | {r['state']} | {targets} | {', '.join(r['scope']) or 'everyone'} |")
+    import dlp_analysis
+    lines.extend(dlp_analysis.markdown(report))
     return "\n".join(lines) + "\n"

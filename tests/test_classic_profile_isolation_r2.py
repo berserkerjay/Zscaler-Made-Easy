@@ -63,6 +63,8 @@ def _oneapi_acme():
 def test_a_classic_sign_in_never_takes_the_queue_named_by_the_forms_vanity_domain(tmp_path, monkeypatch):
     _env(tmp_path, monkeypatch)
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: object())
+    from test_ssl_flow import FakeCl
+    monkeypatch.setattr(srv, "_build_client", lambda req: FakeCl({}))
     monkeypatch.setattr(detection_health, "generate", lambda client, **kw: {"findings": [], "rules": [], "summary": {}, "errors": [],
                                                                             "read": {"incidents": True, "rules": True}})
     tgt = "rule:web:PCI block"

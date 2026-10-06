@@ -18,6 +18,8 @@ whatever the customer already has is kept. Afterwards, the assessment tells
 you where the tenant is on the data-governance journey and what to enable
 next.
 
+For a DLP assessment, SSL/TLS Inspection, URL filtering, File Type Control, Cloud App Control and Workflow Automation evidence are always included. Unticked required controls are assessed; a required control declared Alternative remains visible as an unmet evidence dependency, without querying that vendor through Zscaler. These analysis requirements do not change deployment or scheduled-monitor selections.
+
 ## 1. Install (once per laptop)
 
 **[INSTALL.md](INSTALL.md)** is the click-by-click walkthrough for Windows,

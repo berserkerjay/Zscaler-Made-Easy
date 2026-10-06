@@ -236,6 +236,7 @@ def test_live_endpoint_returns_linked_configuration_even_without_incidents(monke
     import detection_health
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: object())
     monkeypatch.setattr(srv, "_raw_client", lambda creds: _client())
+    monkeypatch.setattr(srv, "_build_client", lambda req: _client())
     monkeypatch.setattr(srv, "_live_connector_cache", {})
     monkeypatch.setattr(srv, "_live_rule_actions", lambda *a: {})
     monkeypatch.setattr(detection_health, "poll_incidents", lambda *a: {"incidents": [], "next_since": "2026-10-04T00:00:00Z", "read_at": "2026-10-04T00:00:00Z", "errors": []})

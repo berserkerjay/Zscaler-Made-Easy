@@ -2903,6 +2903,7 @@ function renderScopeNote(data, sum) {
   const hidden = (sum && sum.hidden) || Number(data && data.hidden_checks) || 0;
   const line = (data && data.hidden_note) || (sum && sum.hidden_note) || hiddenNote(hidden);
   const parts = pre.map(t => `<span class="scope-pre">${escapeHtml(t)}</span>`);
+  if (data && data.required_controls_note) parts.push(`<span class="scope-required">${escapeHtml(data.required_controls_note)}</span>`);
   if (hidden && line) parts.push(`<span class="scope-hidden">${escapeHtml(line)}</span>`);
   el.innerHTML = parts.join(' ');
   el.hidden = !parts.length;

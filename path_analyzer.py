@@ -238,11 +238,11 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     if scope["not_in_scope"]:
         assumptions.append("Only what is in scope on the Scope page was read; these parts are not in scope and their hops are not assessed: "
                            + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
-    out = {"destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
+    out = {"required_controls": zia.get("required_controls", []), "destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
            "network": network, "platform": platform, "read_at": time.time(), "fresh_read": snapshot is None}
     if snapshot is None:
         out["snapshot_for_cache"] = {"client_connector": zcc, "path_scope": scope["key"],
-                                     "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue", "not_in_scope")},
+                                     "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue", "not_in_scope", "required_controls")},
                                                   "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"),
                                                                      "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                                                  for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},

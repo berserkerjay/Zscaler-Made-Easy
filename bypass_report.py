@@ -610,7 +610,7 @@ def bypass_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
         read.append("firewall")
     else:
         out["firewall"] = "Not in scope: ZIA platform is not ticked on the Scope page, so the firewall filtering rules were not read."
-    return {"read": read, "not_in_scope": out, "key": ",".join(sorted(read)), "scopes": sel["scopes"], "channels": sel["channels"],
+    return {"read": read, "not_in_scope": out, "key": ",".join(sorted(read)), "scopes": sel["scopes"], "channels": sel["channels"], "declaration": channels, "read_blocked": sel.get("read_blocked", {}), "required_controls": sel.get("required_controls", []),
             "summary": NOTHING_IN_SCOPE if not read else "Reads only what is in scope on the Scope page."}
 
 
@@ -631,6 +631,10 @@ def generate_bypass_report(client, scope: Optional[Dict[str, Any]] = None) -> Di
     """
     import traceback as _tb
     start = datetime.now(timezone.utc)
+    import dlp_analysis
+    client = dlp_analysis.read_once(client)
+    required_controls = dlp_analysis.inspect(client, (scope or {}).get("scopes", []), (scope or {}).get("declaration", {}))
+    blocked = (scope or {}).get("read_blocked") or {}
     sections: Dict[str, Any] = {}
     diagnostics: List[Dict[str, Any]] = []
     parts = set(SECTION_PARTS.values())
@@ -656,7 +660,10 @@ def generate_bypass_report(client, scope: Optional[Dict[str, Any]] = None) -> Di
     not_in_scope: Dict[str, str] = {}
     for key, fetch in fetchers.items():
         part = SECTION_PARTS[key]
-        if part in read:
+        if part in blocked:
+            sections[key] = {"status": "unverified", "error": blocked[part], "items": [], "count": None}
+            diagnostics.append({"section": key, "error": blocked[part], "error_type": "unmet_dependency"})
+        elif part in read:
             sections[key] = _safe(key, lambda fetch=fetch: fetch(client))
         else:
             not_in_scope[key] = why.get(part) or "Not in scope on the Scope page, so it was not read."
@@ -721,7 +728,7 @@ def generate_bypass_report(client, scope: Optional[Dict[str, Any]] = None) -> Di
         diagnostics.append({"section": "risk_flags", "error_type": type(e).__name__, "error": str(e)[:200]})
 
     return {
-        "generated_at": start.isoformat(),
+        "generated_at": start.isoformat(), "required_controls": required_controls,
         "elapsed_seconds": round((datetime.now(timezone.utc) - start).total_seconds(), 2),
         "report_version": 3,
         "summary": summary,
@@ -984,6 +991,8 @@ def to_markdown(report: Dict[str, Any]) -> str:
     for g in report.get("guidance", []):
         out.append(f"- {g}")
 
+    import dlp_analysis
+    out.extend(dlp_analysis.markdown(report))
     return "\n".join(out)
 
 

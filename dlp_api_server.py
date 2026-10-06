@@ -1392,7 +1392,9 @@ def _dlp_read_scope(req: Any) -> Dict[str, Any]:
     reads a tenant."""
     import continuous_eval
     sc, ch, source = _scope_selection(req)
-    out = continuous_eval.profile_scope({"scopes": sc, "channels": ch})
+    import dlp_analysis
+    out = continuous_eval.profile_scope({"scopes": sc, "channels": dlp_analysis.channels(ch, sc)})
+    out["required_controls"] = dlp_analysis.requirements(sc, ch)
     out["source"] = source
     return out
 
@@ -1417,8 +1419,6 @@ async def detection_health_generate(req: DetectionHealthRequest):
     sc = _dlp_read_scope(req)
     if not sc["dlp"] or not sc["pack_channels"]:
         raise HTTPException(status_code=400, detail=DH_NOTHING_IN_SCOPE)
-    if not sc["incidents"]:
-        raise HTTPException(status_code=400, detail=DH_WA_ALTERNATIVE)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     days = max(1, min(int(req.days or 30), 180))
@@ -1428,6 +1428,10 @@ async def detection_health_generate(req: DetectionHealthRequest):
                     + ("" if sc["read_incidents"] else "; Workflow Automation is not marked as run on Zscaler, so its incidents are not read") + ".")
     report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append,
                                                                        channels=list(sc["pack_channels"]), read_incidents=bool(sc["read_incidents"])))
+    import dlp_analysis
+    raw = await asyncio.to_thread(_build_client, req)
+    requested_scopes, requested_channels, _ = _scope_selection(req)
+    report["required_controls"] = await asyncio.to_thread(dlp_analysis.inspect, raw, requested_scopes, requested_channels)
     report["logs"] = logs
     report["scope"] = {"scopes": sc["scopes"], "pack_channels": list(sc["pack_channels"]), "read_incidents": bool(sc["read_incidents"]),
                        "source": sc["source"]}
@@ -1554,12 +1558,12 @@ async def live_feed_poll(req: LiveFeedRequest):
     # Zscaler, the rule actions only of the DLP channels marked Zscaler.
     # Nothing in scope is refused here, before signing in.
     sc = _dlp_read_scope(req)
-    if not sc["dlp"] or not sc["read_incidents"]:
+    if not sc["dlp"]:
         raise HTTPException(status_code=400, detail=LIVE_NOTHING_IN_SCOPE)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)   # never the classic API's admin login (user rule 3)
-    poll = await asyncio.to_thread(detection_health.poll_incidents, client, since)
+    poll = (await asyncio.to_thread(detection_health.poll_incidents, client, since)) if sc["read_incidents"] else {"incidents": [], "next_since": req.since, "errors": [DH_WA_ALTERNATIVE], "read_at": datetime.now(timezone.utc).isoformat()}
     import tenant_fingerprint
     # The rule cache's key names no classic-API tenant by a vanity domain or
     # its admin login (an opaque fingerprint key), and keeps two classic
@@ -1569,11 +1573,15 @@ async def live_feed_poll(req: LiveFeedRequest):
         i["enforcement"] = detection_health.incident_action(i, rules_by_name)   # "enforced" | "monitor" | "unknown", from the rule's real action
         i["action_source"] = "current_rule_configuration"
         i["event_enforcement"] = "unknown"  # current configuration is not event-time proof
+    import dlp_analysis
+    requested_scopes, requested_channels, _ = _scope_selection(req)
+    raw = await asyncio.to_thread(_build_client, req)
+    required_controls = await asyncio.to_thread(dlp_analysis.inspect, raw, requested_scopes, requested_channels)
     stats = detection_health.live_stats(req.stats or None, poll["incidents"], rules_by_name)
     connector = await asyncio.to_thread(_live_connector_context, creds, sc["scopes"])
     return {"incidents": poll["incidents"], "next_since": poll["next_since"], "errors": poll["errors"], "stats": stats,
             "tenant_label": label, "read_at": poll["read_at"], "coverage_note": LIVE_FEED_COVERAGE_NOTE,
-            "client_connector": connector}
+            "client_connector": connector, "required_controls": required_controls, "read": {"incidents": bool(sc["read_incidents"])}}
 
 
 # ── Proposals: the approval queue (continuous evaluation, phase 2) ────────
@@ -2252,7 +2260,7 @@ def _unanswered_result(r: Any, label: str, unanswered: List[Tuple[str, int]]) ->
     why = ", ".join(_UNANSWERED_WORDS.get(c, f"HTTP {c}") for c in codes)
     eps = ", ".join(sorted({ep.split("?", 1)[0] for ep, _c in unanswered}))[:160]
     return R(R.ERROR, f"{label}: Could not be checked: the tenant did not answer {len(unanswered)} read(s) ({why}; {eps}). "
-                      "Run the assessment again later.")
+                      "Run the assessment again later.", getattr(r, "data", None))
 
 
 def _close_when_done(client: Any):
@@ -4504,7 +4512,10 @@ async def dlp_efficacy(req: MigrateRequest):
         raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
     sel = _require_in_scope(req, "dlp", "DLP efficacy")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(analyze, client, "web_dlp" in sel["on_zscaler"])
+    report = await asyncio.to_thread(analyze, client, "web_dlp" in sel["on_zscaler"])
+    import dlp_analysis
+    report["required_controls"] = await asyncio.to_thread(dlp_analysis.inspect, client, sel["scopes"], sel["channels"])
+    return report
 
 
 class DlpEfficacyExportRequest(MigrateRequest):
@@ -4528,6 +4539,8 @@ async def dlp_efficacy_export(req: DlpEfficacyExportRequest):
     sel = _require_in_scope(req, "dlp", "DLP efficacy")
     client = await asyncio.to_thread(_build_client, req)
     analysis = await asyncio.to_thread(analyze, client, "web_dlp" in sel["on_zscaler"])
+    import dlp_analysis
+    analysis["required_controls"] = await asyncio.to_thread(dlp_analysis.inspect, client, sel["scopes"], sel["channels"])
     try:
         body, mime, filename = await asyncio.to_thread(export, analysis, req.format)
     except ValueError as e:
@@ -4558,9 +4571,12 @@ async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
         raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
     sel = _require_in_scope(req, "dlp", "The DLP corpus test")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(
+    report = await asyncio.to_thread(
         corpus_test, client, req.corpus or "", int(req.max_dicts or 200), "web_dlp" in sel["on_zscaler"]
     )
+    import dlp_analysis
+    report["required_controls"] = await asyncio.to_thread(dlp_analysis.inspect, client, sel["scopes"], sel["channels"])
+    return report
 
 
 # ── Step 1: Assess Current Status ─────────────────────────────────
@@ -4909,7 +4925,7 @@ async def scope_prerequisites():
     import channel_scope
     return {"prerequisites": {cid: [{"id": pre, "name": channel_scope.CHANNELS.get(pre, pre), "reason": why} for pre, why in pres]
                               for cid, pres in channel_scope.PREREQUISITES.items()},
-            "names": dict(channel_scope.CHANNELS)}
+            "names": dict(channel_scope.CHANNELS), "required_dlp_note": __import__("dlp_analysis").NOTE}
 
 
 @app.post("/api/assess")
@@ -4947,7 +4963,9 @@ async def assess_stream(req: AssessRequest):
     # an alternative's or a gap's checks are not run and not shown, only
     # counted (channel_scope: hidden, outside the score and the coverage).
     import channel_scope as _chs
-    checks, skipped_checks, _check_order = _chs.partition(checks, req.channels)
+    import dlp_analysis
+    analysis_scopes = list(req.scopes) if req.scopes else ({"full": ["dlp", "zia_extras", "zpa", "zcc", "automation", "zdx", "zidentity", "rbac"], "all": ["dlp", "zia_extras", "zpa", "zcc", "automation", "zdx", "zidentity", "rbac"], "zia": ["dlp", "zia_extras"]}.get(str(req.scope or "").strip(), [str(req.scope or "").strip()]))
+    checks, skipped_checks, analysis_channels = dlp_analysis.assessment_checks(checks, req.channels, analysis_scopes)
     if not checks:
         # Every check in the chosen scopes belongs to a channel that is not
         # ticked: signing in would read nothing, so say what to tick instead.
@@ -5007,7 +5025,7 @@ async def assess_stream(req: AssessRequest):
 
             # The checks read through the channel guard: a GET of an unticked
             # channel's configuration is refused without touching the tenant.
-            scoped_client = _chs.ScopedClient(client, req.channels)
+            scoped_client = dlp_analysis.ScopedClient(dlp_analysis.read_once(client), analysis_channels, analysis_scopes)
 
             def _run_one(idx, check_id, section, label, fn):
                 started[idx] = time.time()
@@ -5038,6 +5056,8 @@ async def assess_stream(req: AssessRequest):
                     r = R(R.ERROR, f"{label}: Invalid check result.")
                 result = {"id": check_id, "section": section, "label": label,
                           "status": str(r.status), "detail": str(r.detail)[:500]}
+                if isinstance(getattr(r, "data", None), dict) and r.data.get("required_control"):
+                    result["required_control"] = r.data["required_control"]
                 try:
                     import plain_english
                     plain_english.enrich(result)      # what we found / what it means / what to do / outcome
@@ -5121,6 +5141,8 @@ async def assess_stream(req: AssessRequest):
                 # The Scope page's declaration and what it did (channel_scope.coverage):
                 # the prerequisites added, and the hidden checks as one count.
                 "channel_coverage": _chs.coverage(req.channels, skipped_checks),
+                "required_controls": [r["required_control"] for r in results if r.get("required_control")],
+                "required_controls_note": dlp_analysis.NOTE if dlp_analysis.active(analysis_scopes) else "",
                 "hidden_checks": len(skipped_checks),
                 "hidden_note": _chs.hidden_note(len(skipped_checks)),
             }
@@ -5465,7 +5487,7 @@ def _ssl_flow_scope(req: Any) -> Dict[str, Any]:
     import ssl_flow
     sc, ch, source = _scope_selection(req)
     sel = data_flow.path_scope(sc, ch)
-    if "ssl" not in sel["read"]:
+    if "ssl" not in sel["read"] and not sel.get("required_controls"):
         raise HTTPException(status_code=400, detail=ssl_flow.NOTHING_IN_SCOPE)
     sel["source"] = source
     return sel
@@ -5673,11 +5695,13 @@ async def flow_scenario(req: FlowScenarioRequest, request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     sc, ch, source = _scope_selection(req)
-    allowed = channel_scope.in_scope(ch)
+    import dlp_analysis
+    analysis_channels = dlp_analysis.channels(ch, sc)
+    allowed = channel_scope.in_scope(analysis_channels)
     selected_key, endpoint, _ = scenario_flow.CHANNELS[context["channel"]]
     scope = data_flow.path_scope(sc, ch)
     scope["source"] = source
-    scope.update(scopes=sc, channel_enabled="dlp" in sc and selected_key in allowed,
+    scope.update(scopes=sc, required_controls=dlp_analysis.requirements(sc, ch, tested_channel=context["channel"]), channel_enabled="dlp" in sc and selected_key in allowed,
                  workflow_enabled="workflow_automation" in allowed)
     # Keep the complete scope identity distinct from the tracer's read key.
     response_scope = dict(scope, key=scenario_flow.scope_key(sc, ch))
@@ -5691,11 +5715,12 @@ async def flow_scenario(req: FlowScenarioRequest, request: Request):
     if not needs_path and not needs_dlp:
         return scenario_flow.build_result(context, tenant_key="not-read", scope=response_scope)
     creds = _tenant_creds(req)
-    client = await asyncio.to_thread(_build_client, req)
+    client = dlp_analysis.read_once(await asyncio.to_thread(_build_client, req))
     tenant_key = tenant_fingerprint.proposal_key(creds, tenant_auth.record_label(creds))
     cancel = threading.Event()
 
     def run():
+        response_scope["required_controls"] = dlp_analysis.inspect(client, sc, ch, tested_channel=context["channel"])
         path = None
         path_error = None
         if needs_path:
@@ -5852,8 +5877,13 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
         return {"stopped": path_analyzer.STOPPED_REASON, "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
     cache = out.pop("snapshot_for_cache", None)
     if cache is not None:
-        rid = _remember_report("dataflow", {"summary": {}, "platform": out["platform"], "networks": path_analyzer.NETWORKS, "platforms": path_analyzer.PLATFORMS,
-                                            "destinations": [], "traces": [], "packs": [], "diagnostics": cache.get("diagnostics") or [],
+        tr = out.get("trace") or {}
+        summary = {"destinations": 1, "traces": 1, "bypassed": int(not tr.get("reaches_zscaler", True)),
+                   "blind": int(tr.get("outcome") == "blind"), "enforced": int(tr.get("outcome") == "enforce"),
+                   "monitored": int(tr.get("outcome") == "monitor"), "high": sum(w.get("severity") == "high" for w in tr.get("weak_points", []))}
+        rid = _remember_report("dataflow", {"summary": summary, "platform": out["platform"],
+                                            "networks": [n for n in path_analyzer.NETWORKS if n["key"] == out["network"]], "platforms": path_analyzer.PLATFORMS,
+                                            "destinations": [out["destination"]], "traces": [tr], "packs": [], "required_controls": out.get("required_controls", []), "diagnostics": cache.get("diagnostics") or [],
                                             "client_connector": cache["client_connector"], "snapshot": cache["snapshot"], "sources": {},
                                             "path_scope": cache.get("path_scope")}, label)
         out["report_id"] = rid

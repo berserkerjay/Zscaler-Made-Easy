@@ -30,9 +30,10 @@ score = configured ÷ (configured + action required + needs review) × 100
 - The denominator is only what could be judged. Not-permitted,
   could-not-be-checked and informational results are outside it: they
   neither raise nor lower the score.
+- **Required DLP analysis controls** (`dlp_analysis.py`): selecting DLP always includes SSL/TLS Inspection, URL filtering, File Type Control, Cloud App Control and Workflow Automation evidence. Optional-channel exclusions do not hide these five controls. The four ZIA configuration collections are read within the current request; Workflow Automation delivery stays unverified unless separately observed. An Alternative declaration prevents that vendor-specific Zscaler read while keeping an explicit unmet/unknown result. This does not add deployment targets or change scheduled monitors.
 - **Channel ownership** (the Scope page, `channel_scope.py`): a channel
   marked *Zscaler* runs as usual; one marked *Alternative* or left unticked
-  (a gap) has its checks never run and never read, because the assessment
+  (a gap) has optional checks never run and never read. The required DLP controls above are the explicit exception; otherwise the assessment
   reads only what was put in scope. A check shared with a *Zscaler*
   channel still runs, except that a check which also reads another
   channel's own configuration (its rules: `CHANNEL_READS`, e.g. a GenAI

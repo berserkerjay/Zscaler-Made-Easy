@@ -108,13 +108,15 @@ def evidence(channel="web", status="verified"):
 @pytest.mark.parametrize("read_status", ["verified", "unverified", "out_of_scope"], ids=["read-ok", "read-failed", "excluded"])
 def test_channel_graph_always_accounts_for_required_controls(channel, read_status):
     c = sf.normalize_input({"channel": channel, "corpus": "synthetic"})
-    scope = {"scopes": ["dlp"] if read_status != "out_of_scope" else [], "read": ["url", "ssl", "ftc"], "channel_enabled": read_status != "out_of_scope"}
+    import dlp_analysis
+    scope = {"scopes": ["dlp"] if read_status != "out_of_scope" else [], "read": ["url", "ssl", "ftc", "cac"], "channel_enabled": read_status != "out_of_scope"}
+    scope["required_controls"] = dlp_analysis.requirements(scope["scopes"], {}, tested_channel=channel)
     r = sf.build_result(c, tenant_key="tenant", scope=scope, corpus=evidence(channel, read_status))
     nodes = {s["key"]: s for s in r["stages"]}
     assert all(k in nodes for k, _ in sf.CONTROLS)
     assert all(nodes[k]["status"] == ("unverified" if channel == "web" else "not_applicable") for k, _ in sf.CONTROLS)
     assert nodes["dictionaries"]["status"] == {"verified": "simulated", "unverified": "unverified", "out_of_scope": "out_of_scope"}[read_status]
-    assert nodes["workflow"]["status"] == "out_of_scope"
+    assert nodes["workflow"]["status"] == ("out_of_scope" if read_status == "out_of_scope" else "unverified")
     assert r["scenario"]["channel"] == channel
 
 
@@ -179,7 +181,7 @@ def test_api_composes_only_selected_channel_and_shared_definitions(scenario_api,
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["scenario"]["channel"] == channel and body["scenario"]["mode"] == mode
-    assert set(reader.calls) == {endpoint, "/zia/dlpDictionaries", "/zia/dlpEngines"}
+    assert set(reader.calls) == {endpoint, "/zia/dlpDictionaries", "/zia/dlpEngines", "/zia/urlFilteringRules", "/zia/sslInspectionRules", "/zia/fileTypeRules", "/zia/cloudApplicationRules"}
     assert body["scenario"]["tenant_key"] == "fixture-opaque-tenant"
     assert body["scenario"]["id"] == body["scenario"]["scenario_id"]
 
@@ -190,7 +192,8 @@ def test_api_excluded_selected_channel_does_not_read_its_rules(scenario_api, cha
     scope_channel = sf.CHANNELS[channel][0]
     r = api.post("/api/flow/scenario", json={"channel": channel, "scopes": ["dlp"], "channels": {scope_channel: "alternative"}, "from_page": True, "corpus": "synthetic"})
     assert r.status_code == 200
-    assert reader.calls == ["/zia/dlpDictionaries", "/zia/dlpEngines"]
+    assert set(reader.calls) == {"/zia/dlpDictionaries", "/zia/dlpEngines", "/zia/urlFilteringRules", "/zia/sslInspectionRules", "/zia/fileTypeRules", "/zia/cloudApplicationRules"}
+    assert sf.CHANNELS[channel][1] not in reader.calls
     assert next(x for x in r.json()["stages"] if x["key"] == "rules")["status"] == "out_of_scope"
 
 

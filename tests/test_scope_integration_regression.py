@@ -144,7 +144,7 @@ def test_channel_dependency_cannot_enable_a_deselected_path_service(parent, prer
 @pytest.mark.parametrize("channels,expected,excluded", [
     ({"web_dlp": "zscaler"}, {"/zia/sslInspectionRules", "/zia/webDlpRules"}, {"/zia/endPointDlpRules"}),
     ({"genai_security": "zscaler"}, {"/zia/sslInspectionRules"}, {"/zia/webDlpRules", "/zia/endPointDlpRules"}),
-    ({"device_control": "zscaler"}, {"/zia/endPointDlpRules"}, {"/zia/sslInspectionRules", "/zia/webDlpRules"}),
+    ({"device_control": "zscaler"}, {"/zia/endPointDlpRules", "/zia/sslInspectionRules"}, {"/zia/webDlpRules"}),
     ({"web_dlp": "zscaler", "ssl_inspection": "alternative"}, {"/zia/webDlpRules"}, {"/zia/sslInspectionRules", "/zia/endPointDlpRules"}),
 ], ids=["web-ssl", "genai-ssl", "device-endpoint", "web-with-other-tls"])
 def test_path_reads_only_the_resolved_channel_set(channels, expected, excluded):
@@ -153,9 +153,11 @@ def test_path_reads_only_the_resolved_channel_set(channels, expected, excluded):
     data = df.read_zia(tenant, scope=scope)
     assert expected <= set(tenant.reads)
     assert not excluded & set(tenant.reads)
-    assert {"/zia/urlFilteringRules", "/zia/fileTypeRules"} <= set(tenant.reads)
-    assert not {"/zia/emailDlpRules", "/zia/casbDlpRules/all", "/zia/cloudApplicationRules"} & set(tenant.reads)
-    assert data["unread"] == {}
+    assert {"/zia/urlFilteringRules", "/zia/fileTypeRules", "/zia/cloudApplicationRules"} <= set(tenant.reads)
+    assert not {"/zia/emailDlpRules", "/zia/casbDlpRules/all"} & set(tenant.reads)
+    assert set(data["unread"]) == ({"ssl"} if channels.get("ssl_inspection") == "alternative" else set())
+    if "ssl" in data["unread"]:
+        assert "alternative" in data["unread"]["ssl"].lower()
 
 
 @pytest.mark.parametrize("parent", ["web_dlp", "genai_security"])
@@ -178,24 +180,26 @@ def test_changing_ssl_ownership_invalidates_a_wider_cached_path():
     assert result["fresh_read"]
     assert "/zia/sslInspectionRules" not in next_tenant.reads
     ssl = next(h for h in result["trace"]["hops"] if h["key"] == "ssl")
-    assert ssl["status"] == "out_of_scope"
+    assert ssl["status"] == "unknown"
     assert not result["trace"]["content_inspected"]
 
 
-def test_explicit_and_implied_ssl_with_the_same_read_set_can_reuse_cache():
+def test_explicit_and_implied_ssl_declarations_refresh_report_metadata():
     implied = df.path_scope(["dlp"], {"web_dlp": "zscaler"})
     explicit = df.path_scope(["dlp"], {"web_dlp": "zscaler", "ssl_inspection": "zscaler"})
     cached = pa.analyze(RecordingTenant(), "example.com", scope=implied)["snapshot_for_cache"]
     tenant = RecordingTenant()
     result = pa.analyze(tenant, "example.com", scope=explicit, snapshot=cached)
-    assert not result["fresh_read"]
-    assert tenant.reads == ["/zia/urlLookup"]
+    assert result["fresh_read"] and implied["key"] != explicit["key"]
+    assert "/zia/sslInspectionRules" in tenant.reads
+    ssl = next(row for row in result["required_controls"] if row["key"] == "ssl")
+    assert ssl["declared"] == "zscaler", "Cached gap metadata must not override the current explicit declaration"
 
 
 @pytest.mark.parametrize("channels,scopes,required,forbidden", [
     ({"genai_security": "zscaler"}, ["genai"], {"AI.5", "AI.6"}, {"4.1", "B.1", "A.1"}),
-    ({"device_control": "zscaler"}, ["dlp"], {"8.1", "5.1", "B.1"}, {"4.1", "A.1"}),
-    ({"web_dlp": "zscaler", "ssl_inspection": "alternative"}, ["dlp"], {"A.1"}, {"4.1", "5.5", "A.2"}),
+    ({"device_control": "zscaler"}, ["dlp"], {"8.1", "5.1", "B.1", "4.1"}, {"A.1"}),
+    ({"web_dlp": "zscaler", "ssl_inspection": "alternative"}, ["dlp"], {"A.1", "4.1", "5.5", "A.2"}, {"B.1"}),
 ], ids=["genai-only-registry", "device-prerequisite", "excluded-ssl"])
 def test_real_assessment_registry_respects_dependencies_and_selected_scopes(monkeypatch, channels, scopes, required, forbidden):
     report, events, tenant = assessment(monkeypatch, channels, scopes)
@@ -230,10 +234,11 @@ def test_hiding_assessment_rows_does_not_hide_in_scope_permission_failures(monke
     assert report["summary"]["not_permitted"] == 1
     assert report["summary"]["state"] == "partial"
     assert report["summary"]["score"] == 100
-    assert report["summary"]["total"] == 2
+    assert report["summary"]["total"] == 7
     assert report["hidden_checks"] == 1
     assert "4 — SSL Policy" in report["sections"] and "Ch.B — Endpoint" not in report["sections"]
-    assert {c["id"] for event, c in events if event == "check"} == {"A.1", "4.1"}
+    assert {c["id"] for event, c in events if event == "check" and not c["id"].startswith("DLP.CTRL.")} == {"A.1", "4.1"}
+    assert len(report["required_controls"]) == 5
 
 
 @pytest.mark.parametrize("mode", ["other-vendor", "api-denied", "service-excluded", "url-blocked"])
@@ -243,6 +248,7 @@ def test_always_visible_path_controls_keep_honest_prerequisite_status(mode):
     if mode == "other-vendor":
         scope = df.path_scope(["dlp", "zcc"], {"web_dlp": "zscaler", "ssl_inspection": "alternative"})
         zia["ssl"] = []
+        zia["unread"] = {"ssl": scope["read_blocked"]["ssl"]}
     elif mode == "api-denied":
         zia["ssl"] = []
         zia["unread"] = {"ssl": "HTTP 403 Forbidden"}
@@ -256,7 +262,7 @@ def test_always_visible_path_controls_keep_honest_prerequisite_status(mode):
     assert {"url", "ssl", "ftc"} <= hops.keys()
     assert not result["content_inspected"]
     if mode == "other-vendor":
-        assert hops["ssl"]["status"] == "out_of_scope" and hops["ftc"]["status"] == "unknown"
+        assert hops["ssl"]["status"] == "unknown" and hops["ftc"]["status"] == "unknown"
     elif mode == "api-denied":
         assert hops["ssl"]["status"] == "unknown" and hops["ftc"]["status"] == "unknown"
     elif mode == "service-excluded":

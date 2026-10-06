@@ -628,7 +628,11 @@ def test_a_rate_limited_run_reports_could_not_be_checked(monkeypatch):
     with _page().stream("POST", "/api/assess", json=dict(CREDS, scopes=["dlp"])) as r:
         body = r.read().decode("utf-8")
     report = json.loads(body.split("event: complete\ndata: ", 1)[1].split("\n", 1)[0])
-    assert [c["status"] for c in report["checks"]] == ["ERROR", "ERROR"]
+    assert [c["status"] for c in report["checks"] if not c["id"].startswith("DLP.CTRL.")] == ["ERROR", "ERROR"]
+    controls = {c["id"]: c for c in report["checks"] if c["id"].startswith("DLP.CTRL.")}
+    assert len(controls) == 5
+    assert all(controls["DLP.CTRL." + key]["status"] == "ERROR" for key in ("URL", "SSL", "FTC", "CAC"))
+    assert controls["DLP.CTRL.WORKFLOW"]["status"] == "INFO"
     assert report["score"] is None
 
 
