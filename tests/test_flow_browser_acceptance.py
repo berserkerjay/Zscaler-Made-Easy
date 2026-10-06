@@ -311,6 +311,16 @@ _HARNESS_HELPER_CASES = {
     "disabled-offscreen-target-is-not-revealed": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,offscreen:true,disabled:true,x:40,y:2418}),{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{throw Error('disabled target must not be revealed')},timeoutMs:300}),/never became stable/);assert.equal(t,300);",
     "permanently-offscreen-recovery-is-bounded": "let t=0,reveals=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,offscreen:true,x:40,y:2418}),{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{reveals++},timeoutMs:300}),/never became stable/);assert.equal(t,300);assert.equal(reveals,4);",
     "in-viewport-overlay-is-not-revealed": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,offscreen:false,x:40,y:550,hit:'DIALOG'}),{now:()=>t,sleep:async ms=>{t+=ms},reveal:async()=>{throw Error('overlay must not trigger reveal')},timeoutMs:300}),/never became stable/);assert.equal(t,300);",
+    "equal-geometry-replacement-must-restabilize-identity": "let t=0,n=0;const ids=[1,2,2];const r=await waitForStablePoint(async()=>({ready:true,x:40,y:550,targetId:ids[n++]}),{now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(n,3);assert.equal(r.targetId,2);",
+    "continually-replaced-target-never-stabilizes": "let t=0,n=0;await assert.rejects(waitForStablePoint(async()=>({ready:true,x:40,y:550,targetId:++n}),{now:()=>t,sleep:async ms=>{t+=ms},timeoutMs:300}),/never became stable/);assert.equal(t,300);",
+    "trusted-down-up-never-count-as-click": "const p=probeFixture();p.fire('pointerdown');p.fire('pointerup');assert.equal(p.store.receipts.action,undefined);assert.deepEqual(p.store.actions.action.events.map(e=>e.type),['pointerdown','pointerup']);",
+    "probe-rejects-wrong-target-trusted-click": "const p=probeFixture();p.fire('click',{tagName:'DIV',isConnected:true});assert.equal(p.store.receipts.action,undefined);assert.equal(p.store.actions.action.events[0].matches,false);",
+    "probe-rejects-untrusted-then-records-trusted-click": "const p=probeFixture();p.fire('click',p.target,false);assert.equal(p.store.receipts.action,undefined);p.fire('click');assert.equal(p.store.receipts.action.trusted,true);assert.equal(p.store.actions.action.events[0].trusted,false);",
+    "probe-survives-replacement-and-rejects-stale-target": "const p=probeFixture();p.doc.current={...p.target,id:'replacement',contains:()=>false};p.target.isConnected=false;p.fire('click',p.target);assert.equal(p.store.receipts.action,undefined);p.fire('click');assert.equal(p.store.receipts.action.targetId,p.store.identify(p.doc.current));assert.equal(p.store.actions.action.events[0].target.connected,false);",
+    "probe-records-focus-and-descendant-click": "const p=probeFixture();p.doc.activeElement=p.child;p.fire('focusin',p.child);assert.equal(p.store.receipts.action,undefined);p.fire('click',p.child);assert.equal(p.store.receipts.action.trusted,true);assert.equal(p.store.actions.action.events[0].active.targetId,p.store.identify(p.child));",
+    "probe-rejects-disabled-target-and-removes-listeners": "const p=probeFixture();p.target.disabled=true;p.fire('click');assert.equal(p.store.receipts.action,undefined);p.dispose();assert.equal(p.hooks.size,0);assert.equal(p.store.actions.action.events.length,1);",
+    "native-pair-is-enqueued-once-before-either-response": "const calls=[],resolve=[];const promise=dispatchNativeClick((method,params)=>{calls.push({method,...params});return new Promise(done=>resolve.push(done));},{x:40,y:550});assert.deepEqual(calls.map(c=>c.type),['mousePressed','mouseReleased']);assert(calls.every(c=>c.method==='Input.dispatchMouseEvent'&&c.x===40&&c.y===550));resolve.forEach(done=>done());await promise;assert.equal(calls.length,2);",
+    "native-pair-failure-never-retries-action": "const calls=[];await assert.rejects(dispatchNativeClick((method,params)=>{calls.push(params.type);return params.type==='mousePressed'?Promise.reject(Error('native failure')):Promise.resolve();},{x:40,y:550}),/native failure/);assert.deepEqual(calls,['mousePressed','mouseReleased']);",
     "invalid-target-coordinates-never-click": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:true,x:NaN,y:120}),{now:()=>t,sleep:async ms=>{t+=ms},timeoutMs:300}),/never became stable/);",
 }
 
@@ -319,7 +329,18 @@ _HARNESS_HELPER_CASES = {
 def test_browser_orchestration_helpers_without_browser(case):
     node = shutil.which("node")
     assert node, "Node is required for the deterministic harness regression tests"
-    prelude = "import assert from 'node:assert/strict';import {waitForDebugger,waitForStablePoint} from './tests/js/flow_browser_harness_helpers.mjs';const target={type:'page',webSocketDebuggerUrl:'ws://127.0.0.1:9222/devtools/page/1'};"
+    prelude = "import assert from 'node:assert/strict';import {waitForDebugger,waitForStablePoint,installNativeClickProbe,dispatchNativeClick} from './tests/js/flow_browser_harness_helpers.mjs';const target={type:'page',webSocketDebuggerUrl:'ws://127.0.0.1:9222/devtools/page/1'};"
+    prelude += """
+function probeFixture() {
+  const hooks=new Map(),child={tagName:'SPAN',isConnected:true};
+  const target={tagName:'BUTTON',id:'save',isConnected:true,disabled:false,contains:node=>node===child};
+  const doc={current:target,activeElement:target,querySelector:()=>doc.current,
+    addEventListener:(type,fn)=>hooks.set(type,fn),removeEventListener:type=>hooks.delete(type)};
+  const store={},dispose=installNativeClickProbe(doc,store,'button.save','action');
+  const fire=(type,node=doc.current,trusted=true)=>hooks.get(type)({type,target:node,isTrusted:trusted,clientX:40,clientY:550,timeStamp:123});
+  return {hooks,child,target,doc,store,dispose,fire};
+}
+"""
     result = subprocess.run([node, "--input-type=module", "-e", prelude + _HARNESS_HELPER_CASES[case]], cwd=ROOT, text=True, capture_output=True, timeout=10)
     assert result.returncode == 0, result.stderr
 
@@ -328,7 +349,12 @@ def test_browser_driver_preserves_assertions_and_requires_trusted_native_clicks(
     source = DRIVER.read_text()
     assert "waitForStablePoint(measure" in source
     assert "trusted === true" in source and "Input.dispatchMouseEvent" in source
-    assert source.count("type:'mousePressed'") == source.count("type:'mouseReleased'") == 1
+    helpers = (ROOT / "tests/js/flow_browser_harness_helpers.mjs").read_text()
+    assert helpers.count("type:'mousePressed'") == helpers.count("type:'mouseReleased'") == 1
+    assert source.count("await dispatchNativeClick(send,point)") == 1
+    assert "event.type === 'click' && record.trusted && matches" in helpers
+    assert "last.targetId === previous.targetId" in helpers
+    assert "inputActions:" in source and "type:'click-dispatched'" in source
     assert "waitForStablePoint(measure,{sleep,reveal})" in source
     assert "offscreen:sized&&!inViewport" in source
     assert "Emulation.setFocusEmulationEnabled" in source
