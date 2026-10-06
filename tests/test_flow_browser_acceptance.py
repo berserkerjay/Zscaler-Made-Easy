@@ -202,7 +202,7 @@ def test_production_flow_reference_browser_acceptance(tmp_path):
                 time.sleep(.1)
         assert ready, "Fixture server did not become ready; see server.log"
         completed = subprocess.run([node, str(DRIVER), chrome, base, str(tmp_path / "chrome"), str(artifacts)],
-                                   cwd=ROOT, env=environment, text=True, capture_output=True, timeout=120)
+                                   cwd=ROOT, env=environment, text=True, capture_output=True, timeout=165)
         (artifacts / "driver.stdout").write_text(completed.stdout)
         (artifacts / "driver.stderr").write_text(completed.stderr)
         assert completed.returncode == 0, f"Browser acceptance failed: {completed.stderr[-4000:]} (artifacts: {artifacts})"
@@ -250,6 +250,41 @@ def test_fixture_guard_allows_only_stubbed_loopback_delegates(host, monkeypatch)
     socket.socket.connect_ex(None, (host, 12345))
     assert called == ["dns", "connect", "connect_ex"] and not state["external_connections"]
 
+
+
+_HARNESS_HELPER_CASES = {
+    "cold-start-beyond-old-ten-second-cutoff": "let t=0;const r=await waitForDebugger({readActivePort:async()=>{if(t<12000)throw Error('not created');return '9222\\n/browser'},readTargets:async()=>[target],hasExited:()=>false,now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(r.port,9222);assert(t>=12000&&t<30000);",
+    "port-file-alone-does-not-prove-ready-page": "let t=0;await waitForDebugger({readActivePort:async()=> '9222',readTargets:async()=>t<2000?[]:[target],hasExited:()=>false,now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(t,2000);",
+    "partial-port-metadata-is-retried-before-connect": "let t=0,calls=0;await waitForDebugger({readActivePort:async()=>t<300?'not-ready':'9222',readTargets:async()=>{calls++;return[target]},hasExited:()=>false,now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(calls,1);assert.equal(t,300);",
+    "transient-cdp-http-startup-is-retried": "let t=0;await waitForDebugger({readActivePort:async()=> '9222',readTargets:async()=>{if(t<500)throw Error('ECONNREFUSED');return[target]},hasExited:()=>false,now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(t,500);",
+    "process-exit-is-reported-without-waiting": "await assert.rejects(waitForDebugger({readActivePort:async()=>'',readTargets:async()=>[],hasExited:()=>true,diagnostic:()=> 'exit 9',sleep:async()=>{throw Error('should not sleep')}}),/Chrome exited.*exit 9/);",
+    "startup-remains-bounded": "let t=0;await assert.rejects(waitForDebugger({readActivePort:async()=>'',readTargets:async()=>[],hasExited:()=>false,now:()=>t,sleep:async ms=>{t+=ms},timeoutMs:1000}),/within 1000 ms/);assert.equal(t,1000);",
+    "debugger-target-must-remain-loopback": "await assert.rejects(waitForDebugger({readActivePort:async()=> '9222',readTargets:async()=>[{type:'page',webSocketDebuggerUrl:'ws://remote.invalid:9222/devtools/page/1'}],hasExited:()=>false,sleep:async()=>{throw Error('should not retry')}}),/expected loopback/);",
+    "moving-target-waits-for-stable-layout": "let t=0,n=0;const points=[{ready:true,x:20,y:100},{ready:true,x:40,y:120},{ready:true,x:40,y:120}];const r=await waitForStablePoint(async()=>points[n++],{now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(n,3);assert.equal(r.x,40);",
+    "obscured-target-is-not-accepted": "let t=0,n=0;const r=await waitForStablePoint(async()=>({ready:++n>2,x:40,y:120}),{now:()=>t,sleep:async ms=>{t+=ms}});assert.equal(n,4);assert.equal(r.y,120);",
+    "disabled-or-hidden-target-fails-bounded": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:false,x:40,y:120,disabled:true}),{now:()=>t,sleep:async ms=>{t+=ms},timeoutMs:300}),/never became stable/);assert.equal(t,300);",
+    "invalid-target-coordinates-never-click": "let t=0;await assert.rejects(waitForStablePoint(async()=>({ready:true,x:NaN,y:120}),{now:()=>t,sleep:async ms=>{t+=ms},timeoutMs:300}),/never became stable/);",
+}
+
+
+@pytest.mark.parametrize("case", _HARNESS_HELPER_CASES)
+def test_browser_orchestration_helpers_without_browser(case):
+    node = shutil.which("node")
+    assert node, "Node is required for the deterministic harness regression tests"
+    prelude = "import assert from 'node:assert/strict';import {waitForDebugger,waitForStablePoint} from './tests/js/flow_browser_harness_helpers.mjs';const target={type:'page',webSocketDebuggerUrl:'ws://127.0.0.1:9222/devtools/page/1'};"
+    result = subprocess.run([node, "--input-type=module", "-e", prelude + _HARNESS_HELPER_CASES[case]], cwd=ROOT, text=True, capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
+def test_browser_driver_preserves_assertions_and_requires_trusted_native_clicks():
+    source = DRIVER.read_text()
+    assert "waitForStablePoint(measure" in source
+    assert "trusted === true" in source and "Input.dispatchMouseEvent" in source
+    assert "Emulation.setFocusEmulationEnabled" in source
+    assert "failure-state.json" in source
+    for bypass in ("--no-sandbox", "--disable-web-security", "Page.setBypassCSP", "ignore-certificate-errors"):
+        assert bypass not in source
+    assert len(EXPECTED_CASE_IDS) == 19
 
 if __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--serve":
     _serve(int(sys.argv[2]))

@@ -225,7 +225,13 @@ def test_pip_accepts_hash_pinned_download_with_configured_ca(tls, tmp_path):
 
 def test_pip_rejects_unapproved_tls_root(tls, tmp_path):
     result = pip_download(tmp_path, tls, approved=False)
-    assert result.returncode != 0 and 'CERTIFICATE_VERIFY_FAILED' in result.stdout + result.stderr
+    diagnostic = (result.stdout + result.stderr).casefold()
+    # OpenSSL, macOS Security.framework and Windows trust providers report
+    # the same rejection differently. Require trust failure, not any error.
+    untrusted = ('certificate_verify_failed' in diagnostic or
+                 ('ssl-verification-failed' in diagnostic and
+                  ('certificate is not trusted' in diagnostic or 'not trusted by the trust provider' in diagnostic)))
+    assert result.returncode != 0 and untrusted, result.stdout + result.stderr
     assert not list((tmp_path / 'downloads').glob('*.whl'))
 
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {waitForDebugger, waitForStablePoint} from './flow_browser_harness_helpers.mjs';
 
 const [chrome, base, profile, artifactDir] = process.argv.slice(2);
 assert(chrome && base && profile && artifactDir, 'Expected chrome, base URL, profile and artifact directory');
@@ -10,12 +11,13 @@ const origin = new URL(base).origin;
 await fs.mkdir(profile, {recursive:true});
 await fs.mkdir(artifactDir, {recursive:true});
 const cases = [], runtimeErrors = [], consoleErrors = [], responses = [], blockedExternal = [];
-let browser, ws, sequence = 0, failMapOnce = false, failure;
+let browser, ws, sequence = 0, clickSequence = 0, failMapOnce = false, failure, spawnError = null;
+const harnessEvents = [];
 const pending = new Map();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const started = Date.now();
 let stderr = '';
-const watchdog = setTimeout(() => { browser?.kill('SIGKILL'); process.stderr.write('Browser acceptance exceeded 105 seconds\n'); process.exit(2); },105000);
+const watchdog = setTimeout(() => { browser?.kill('SIGKILL'); process.stderr.write('Browser acceptance exceeded 150 seconds\n'); process.exit(2); },150000);
 
 function send(method, params = {}) {
   return new Promise((resolve,reject) => {
@@ -63,11 +65,24 @@ async function navigate(route) {
   await waitFor(`document.readyState === 'complete' && location.pathname === ${JSON.stringify(route.split('#')[0])}`,15000,'production navigation '+route);
 }
 async function click(selector, frameId) {
-  const point=await evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)throw Error('Missing click target');el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});const r=el.getBoundingClientRect(), f=frame?frame.getBoundingClientRect():{left:0,top:0};if(r.width<1||r.height<1)throw Error('Click target not visible');return{x:f.left+r.left+r.width/2,y:f.top+r.top+r.height/2}})()`);
+  await send('Page.bringToFront');
+  const token=String(++clickSequence);
+  await evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)throw Error('Missing click target');if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});window.__acceptanceClickReceipts=window.__acceptanceClickReceipts||{};el.addEventListener('click',event=>{window.__acceptanceClickReceipts[${JSON.stringify(token)}]={trusted:event.isTrusted,at:performance.now()};},{once:true,capture:true});return true})()`);
+  const measure=()=>evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)return {ready:false,reason:'missing'};const r=el.getBoundingClientRect(),f=frame?frame.getBoundingClientRect():{left:0,top:0},x=r.left+r.width/2,y=r.top+r.height/2,hit=doc.elementFromPoint(x,y),outer=frame?document.elementFromPoint(f.left+x,f.top+y):hit;return{ready:!document.hidden&&!el.disabled&&r.width>0&&r.height>0&&(hit===el||el.contains(hit))&&(!frame||outer===frame),x:f.left+x,y:f.top+y,hidden:document.hidden,disabled:!!el.disabled,hit:hit?.tagName,outer:outer?.tagName}})()`);
+  let point=await waitForStablePoint(measure,{sleep});
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
-  await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,...point});
-  await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,...point});
+  // A resize, sticky toolbar or newly decoded image can move the target after
+  // scrolling. Recheck hit-testing after hover instead of clicking stale pixels.
+  point=await waitForStablePoint(measure,{sleep});
+  await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,x:point.x,y:point.y});
+  await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,x:point.x,y:point.y});
+  await waitFor(`window.__acceptanceClickReceipts?.[${JSON.stringify(token)}]?.trusted === true`,1500,'trusted native click on '+selector);
+  harnessEvents.push({type:'click',selector,frameId:frameId||null,x:point.x,y:point.y,at_ms:Date.now()-started});
 }
+async function diagnosticState() {
+  return evaluate(`({url:location.href,hidden:document.hidden,focused:document.hasFocus(),viewport:{width:innerWidth,height:innerHeight,scale:visualViewport?.scale},scenario:document.getElementById('scenarioStatus')?.textContent,runDisabled:document.getElementById('scenarioRun')?.disabled,lifecycle:window.__acceptanceLifecycle||[],clicks:window.__acceptanceNativeClicks||[],players:Array.from(document.querySelectorAll('.dsa-player')).filter(p=>p.dataset.status!=='idle').map(p=>({id:p.dataset.flowId,status:p.dataset.status,text:p.querySelector('.dsa-status')?.textContent}))})`);
+}
+
 async function fill(id,value) {
   await evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
 }
@@ -87,17 +102,16 @@ try {
     '--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--disable-sync','--disable-dev-shm-usage',
     '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost','--window-size=1440,1100','about:blank'],{stdio:['ignore','ignore','pipe']});
   browser.stderr.on('data',chunk=>{stderr+=chunk.toString();});
-  browser.on('error',error=>{stderr+=error.stack;});
-  let debuggingPort;
-  for(let attempt=0;attempt<100;attempt++) {
-    try {debuggingPort=(await fs.readFile(path.join(profile,'DevToolsActivePort'),'utf8')).split('\n')[0];if(debuggingPort)break;}catch{}
-    if(browser.exitCode!==null)throw new Error('Chrome exited before CDP: '+stderr);
-    await sleep(100);
-  }
-  assert(debuggingPort,'Chrome did not expose CDP; '+stderr);
-  const targets=await (await fetch(`http://127.0.0.1:${debuggingPort}/json`)).json();
-  const target=targets.find(item=>item.type==='page');
-  assert(target,'Chrome created no page target');
+  browser.on('error',error=>{spawnError=error;stderr+=error.stack;});
+  const ready = await waitForDebugger({
+    readActivePort:()=>fs.readFile(path.join(profile,'DevToolsActivePort'),'utf8'),
+    readTargets:async port=>{const response=await fetch(`http://127.0.0.1:${port}/json`,{signal:AbortSignal.timeout(1000)});if(!response.ok)throw Error('CDP HTTP '+response.status);return response.json();},
+    hasExited:()=>!!spawnError||browser.exitCode!==null||browser.signalCode!==null,
+    diagnostic:()=>`pid=${browser.pid}; exit=${browser.exitCode}; signal=${browser.signalCode}; ${stderr}`,
+    sleep, timeoutMs:30000,
+  });
+  const target=ready.target;
+  harnessEvents.push({type:'cdp-ready',port:ready.port,at_ms:Date.now()-started});
   ws=new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=reject;});
   ws.onmessage=message=>{
@@ -108,10 +122,12 @@ try {
     } else event(data).catch(error=>{runtimeErrors.push({driver_event_error:error.stack});});
   };
   await Promise.all([send('Page.enable'),send('Runtime.enable'),send('Log.enable'),send('Network.enable')]);
+  await send('Emulation.setFocusEmulationEnabled',{enabled:true});
+  await send('Page.bringToFront');
   await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
-  await send('Page.addScriptToEvaluateOnNewDocument',{source:`window.__acceptanceCsp=[];window.addEventListener('securitypolicyviolation',e=>__acceptanceCsp.push({directive:e.violatedDirective,blocked:e.blockedURI}));try{localStorage.setItem('zassess_scopes_live_v1',JSON.stringify({scopes:['dlp']}));localStorage.setItem('zassess_channels_v1',JSON.stringify({web_dlp:{choice:'zscaler'},endpoint_dlp:{choice:'zscaler'},email_dlp:{choice:'zscaler'},saas_casb:{choice:'zscaler'},ssl_inspection:{choice:'zscaler'},workflow_automation:{choice:'zscaler'}}));}catch(e){}`});
+  await send('Page.addScriptToEvaluateOnNewDocument',{source:`window.__acceptanceLifecycle=[];window.__acceptanceNativeClicks=[];const recordLifecycle=type=>{__acceptanceLifecycle.push({type,hidden:document.hidden,focused:document.hasFocus(),at:performance.now()});if(__acceptanceLifecycle.length>50)__acceptanceLifecycle.shift();};document.addEventListener('visibilitychange',()=>recordLifecycle('visibility'));window.addEventListener('focus',()=>recordLifecycle('focus'));window.addEventListener('blur',()=>recordLifecycle('blur'));window.addEventListener('pagehide',()=>recordLifecycle('pagehide'));matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',e=>recordLifecycle('motion:'+e.matches));document.addEventListener('click',e=>{const t=e.target.closest('button,a');if(t){__acceptanceNativeClicks.push({id:t.id,action:t.dataset.action,text:t.textContent.slice(0,80),trusted:e.isTrusted,at:performance.now()});if(__acceptanceNativeClicks.length>50)__acceptanceNativeClicks.shift();}},true);window.__acceptanceCsp=[];window.addEventListener('securitypolicyviolation',e=>__acceptanceCsp.push({directive:e.violatedDirective,blocked:e.blockedURI}));try{localStorage.setItem('zassess_scopes_live_v1',JSON.stringify({scopes:['dlp']}));localStorage.setItem('zassess_channels_v1',JSON.stringify({web_dlp:{choice:'zscaler'},endpoint_dlp:{choice:'zscaler'},email_dlp:{choice:'zscaler'},saas_casb:{choice:'zscaler'},ssl_inspection:{choice:'zscaler'},workflow_automation:{choice:'zscaler'}}));}catch(e){}`});
 
   await test('BROWSER-FLOW-01-production-workspace-is-interactive',async()=>{
     await navigate('/report/motion#live');
@@ -267,11 +283,11 @@ try {
 } catch(error) {
   failure=error;
   process.stderr.write(error.stack+'\n');
-  if(ws?.readyState===WebSocket.OPEN){try{await screenshot('failure');}catch{}}
+  if(ws?.readyState===WebSocket.OPEN){try{await screenshot('failure');await fs.writeFile(path.join(artifactDir,'failure-state.json'),JSON.stringify(await diagnosticState(),null,2));}catch{}}
 } finally {
   let fixtureState=null;
   if(ws?.readyState===WebSocket.OPEN){try{fixtureState=await state();}catch{}}
-  await fs.writeFile(path.join(artifactDir,'results.json'),JSON.stringify({elapsed_ms:Date.now()-started,cases,runtimeErrors,consoleErrors,blockedExternal,fixture_state:fixtureState,failure:failure?.stack||null},null,2));
+  await fs.writeFile(path.join(artifactDir,'results.json'),JSON.stringify({elapsed_ms:Date.now()-started,cases,harnessEvents,runtimeErrors,consoleErrors,blockedExternal,fixture_state:fixtureState,failure:failure?.stack||null},null,2));
   await fs.writeFile(path.join(artifactDir,'chrome.stderr'),stderr);
   clearTimeout(watchdog);for(const callback of pending.values())clearTimeout(callback.timer);
   if(ws)ws.close();if(browser)browser.kill('SIGTERM');
