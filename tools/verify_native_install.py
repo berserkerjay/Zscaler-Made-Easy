@@ -124,7 +124,9 @@ def checkout(source, destination, mode, working_tree=False):
 
 
 def verify_mode(source, work, artifacts, mode, record, working_tree=False):
-    app = work / f'{mode} install with spaces'
+    # Resolve the existing parent too: Windows TEMP can use an 8.3 alias
+    # while Python/COM report the long path (RUNNER~1 versus runneradmin).
+    app = (work / f'{mode} install with spaces').resolve()
     checkout(source, app, mode, working_tree)
     env = clean_env()
     if mode == 'zip':
@@ -159,7 +161,7 @@ def verify_mode(source, work, artifacts, mode, record, working_tree=False):
     probe = '''import importlib.metadata as m, importlib.util, json, os, pathlib, sys
 import dlp_api_server, dlp_mcp_server, scenario_flow, tenant_profiles
 assert sys.prefix != sys.base_prefix
-assert pathlib.Path(dlp_api_server.__file__).resolve().parent == pathlib.Path.cwd()
+assert pathlib.Path(dlp_api_server.__file__).resolve().parent.samefile(pathlib.Path.cwd())
 assert sys.version_info[:2] == tuple(map(int, os.environ['NATIVE_EXPECTED_PYTHON'].split('.')))
 commands = {e.name for e in m.distribution('dlp-check').entry_points}
 assert {'dlp-check','dlp-check-assess','dlp-check-evaluate'} <= commands
@@ -201,9 +203,11 @@ print(json.dumps({'python': sys.version, 'executable': sys.executable, 'prefix':
         token_path = app / 'ui_token.txt'
         token = token_path.read_text().strip()
         assert token
-        assert request(base, '/api/health')[0] == 401
-        assert request(base, '/api/health', 'invalid-token')[0] == 401
-        assert request(base, '/api/health', token)[0] == 200
+        # /api/health intentionally checks GitHub for updates, so use a
+        # protected local endpoint to verify auth without asking for online work.
+        assert request(base, '/api/dlp-packs')[0] == 401
+        assert request(base, '/api/dlp-packs', 'invalid-token')[0] == 401
+        assert request(base, '/api/dlp-packs', token)[0] == 200
         record(f'{mode}-token-required-and-accepted')
         status, payload, _ = request(base, '/api/dlp-packs', token)
         assert status == 200

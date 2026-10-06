@@ -196,3 +196,17 @@ def test_real_windows_findstr_distinguishes_port_808_from_8080():
     result = subprocess.run(['findstr', '/C::808 '], input=lines, capture_output=True, text=True)
     assert result.returncode == 0
     assert ':808 ' in result.stdout and ':8080 ' not in result.stdout
+
+
+def test_native_auth_smoke_uses_a_local_protected_route_not_online_update_status():
+    driver = text('tools/verify_native_install.py')
+    assert "request(base, '/api/health'" not in driver
+    assert "request(base, '/api/dlp-packs')[0] == 401" in driver
+    assert "request(base, '/api/dlp-packs', 'invalid-token')[0] == 401" in driver
+    assert "request(base, '/api/dlp-packs', token)[0] == 200" in driver
+
+
+def test_installed_source_probe_uses_filesystem_identity_for_windows_short_paths():
+    driver = text('tools/verify_native_install.py')
+    assert 'pathlib.Path(dlp_api_server.__file__).resolve().parent.samefile(pathlib.Path.cwd())' in driver
+    assert "app = (work / f'{mode} install with spaces').resolve()" in driver
