@@ -19,8 +19,12 @@ say()  { printf '  %s\n' "$*"; }
 fail() { printf '\n  ERROR: %s\n\n' "$*" >&2; exit 1; }
 
 # 1. A Python 3.11+ interpreter.
-PY=""
-for cand in python3.15 python3.14 python3.13 python3.12 python3.11 python3 python; do
+PY="${DLP_CHECK_PYTHON:-}"
+if [ -n "$PY" ]; then
+  "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null || fail "DLP_CHECK_PYTHON must name a working Python 3.11 or newer interpreter."
+fi
+for cand in python3 python python3.14 python3.13 python3.12 python3.11; do
+  [ -n "$PY" ] && break
   if command -v "$cand" >/dev/null 2>&1; then
     if "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then PY="$cand"; break; fi
   fi
@@ -30,6 +34,10 @@ say "Using $("$PY" --version 2>&1) at $(command -v "$PY")"
 
 # 2. A private environment, so nothing touches the system Python.
 if [ -x .venv/bin/python ] && ! .venv/bin/python -m pip --version >/dev/null 2>&1; then
+  # Never delete the interpreter selected from an activated, broken .venv.
+  if "$PY" -c 'import pathlib, sys; sys.exit(0 if pathlib.Path(sys.executable).absolute().is_relative_to(pathlib.Path(".venv").absolute()) else 1)'; then
+    fail "The active .venv is incomplete. Run deactivate, then run ./install.sh again; the environment has not been deleted."
+  fi
   say "The private environment in .venv is incomplete (no pip); making it again…"
   rm -rf .venv
 fi
@@ -38,9 +46,8 @@ if [ ! -x .venv/bin/python ]; then
   "$PY" -m venv .venv || { rm -rf .venv; fail "Could not create the virtual environment (is the python3-venv package installed? On Debian/Ubuntu: sudo apt install -y python3-venv)."; }
 fi
 VPY=".venv/bin/python"
-"$VPY" -m pip install --quiet --disable-pip-version-check --upgrade pip >/dev/null 2>&1 || true
 
-# 3. Dependencies, pinned by hash (falls back to the loose list only when the lock file is absent).
+# 3. Dependencies, pinned by hash. Missing lock files fail closed.
 # A work laptop behind TLS inspection or a proxy keeps the CA bundle and the
 # proxy in local_settings.env (copy the example before installing); pip
 # reads the same variables, so the install works from the first run.

@@ -15,6 +15,27 @@ Dim sh, fso, dir, port, logPath, running, restart, waited
 Set sh  = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 dir = fso.GetParentFolderName(WScript.ScriptFullName)
+On Error Resume Next
+' The desktop shortcut runs this file directly, so load the same settings
+' as the batch launcher before probing the port or opening the browser.
+' Re-enter once with the settings inherited from cmd, preserving /restart.
+If fso.FileExists(dir & "\local_settings.bat") And sh.Environment("PROCESS")("DLPCHECK_SETTINGS_LOADED") <> "1" Then
+  Dim extra, command, result
+  extra = ""
+  If WScript.Arguments.Count > 0 Then
+    If LCase(WScript.Arguments(0)) = "/restart" Then extra = " /restart"
+  End If
+  sh.Environment("PROCESS")("DLPCHECK_SETTINGS_LOADED") = "1"
+  command = "cmd /d /s /c ""call """ & dir & "\local_settings.bat"" && wscript.exe """ & WScript.ScriptFullName & """" & extra & """"
+  result = sh.Run(command, 0, True)
+  If Err.Number <> 0 Then
+    Note "could not load local_settings.bat: " & Err.Description
+    WScript.Quit 1
+  End If
+  WScript.Quit result
+End If
+' Do not carry the one-time re-entry guard into a later app restart.
+sh.Environment("PROCESS")("DLPCHECK_SETTINGS_LOADED") = ""
 port = sh.ExpandEnvironmentStrings("%ZSCALER_PORT%")
 If port = "%ZSCALER_PORT%" Or port = "" Then port = "8000"
 logPath = dir & "\server.log"
@@ -81,7 +102,7 @@ If Not running Then
   If Not Pinging() Then Note "the server did not answer on port " & port & " within 30 s; see server.log"
 End If
 
-If restart Then
+If restart Or sh.Environment("PROCESS")("ZSCALER_OPEN_BROWSER") = "0" Then
   If Not Pinging() Then Note "restart: the server did not answer on port " & port & " within 30 s of the start; see server.log"
   WScript.Quit 0
 End If

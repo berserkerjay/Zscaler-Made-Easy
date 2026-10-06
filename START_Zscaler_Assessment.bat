@@ -43,9 +43,10 @@ REM  content.
 REM --------------------------------------------------------------
 
 REM Find real Python (skip Microsoft Store stub)
-set PYTHON_EXE=
+set "PYTHON_EXE="
+if exist "%~dp0.venv\Scripts\python.exe" set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
 for /f "delims=" %%i in ('where python 2^>nul') do (
-    echo %%i | findstr /i "WindowsApps" >nul
+    echo "%%i" | findstr /i "WindowsApps" >nul
     if errorlevel 1 (
         if not defined PYTHON_EXE set "PYTHON_EXE=%%i"
     )
@@ -59,9 +60,10 @@ if not defined PYTHON_EXE (
 
 cd /d "%~dp0"
 
-REM Open browser after 4 seconds (in parallel with server startup). The
-REM silent launcher opens it itself, so skip when running hidden.
-if not defined DLPCHECK_HIDDEN start "" /b cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:%ZSCALER_PORT%"
+REM The server opens the authenticated URL; hidden mode is opened by VBS.
+if not defined DLPCHECK_HIDDEN if not defined ZSCALER_OPEN_BROWSER set ZSCALER_OPEN_BROWSER=1
 
 REM Run the server (this window stays open showing logs - close to stop)
 "%PYTHON_EXE%" dlp_api_server.py
+
+exit /b %ERRORLEVEL%

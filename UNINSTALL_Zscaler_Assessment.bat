@@ -15,7 +15,7 @@ REM an image-name kill of pythonw.exe nor a window-title match finds it.)
 if exist "%~dp0local_settings.bat" call "%~dp0local_settings.bat"
 if not defined ZSCALER_PORT set ZSCALER_PORT=8000
 echo  [1/3] Stopping the server (whatever listens on port %ZSCALER_PORT%)...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%ZSCALER_PORT% " ^| findstr "LISTENING"') do (
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /C:":%ZSCALER_PORT% " ^| findstr "LISTENING"') do (
     taskkill /f /pid %%a >nul 2>&1
     echo        Stopped PID %%a
 )
@@ -36,5 +36,5 @@ echo.
 echo  Uninstall complete. The project files remain in this folder.
 echo  To remove them entirely, delete the folder.
 echo.
-timeout /t 3 >nul
-exit
+timeout /t 3 >nul 2>&1
+exit /b 0
