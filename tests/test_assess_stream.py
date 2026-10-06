@@ -20,6 +20,10 @@ class FakeClient:
     def auth(self):
         return True
 
+    def get(self, endpoint, *args, **kwargs):
+        self.requests_made += 1
+        return [], 200
+
 
 def _events(resp):
     out = []
@@ -63,17 +67,18 @@ def test_checks_run_in_parallel_and_a_stuck_check_does_not_hold_the_run(monkeypa
     ev = _run(monkeypatch, checks)
     elapsed = time.time() - t0
     kinds = [k for k, _ in ev]
-    assert kinds.count("check") == 7 and kinds[-1] == "complete"
+    assert kinds.count("check") == 12 and kinds[-1] == "complete"
     # Six 0.4 s checks on 6 workers plus a 2 s timeout: well under the 2.4 s + 30 s a serial run would take.
     assert elapsed < 6, elapsed
     assert len(set(seen)) > 1, "checks did not run on more than one thread"
     stuck_ev = next(d for k, d in ev if k == "check" and d["id"] == "stuck")
     assert stuck_ev["status"] == "ERROR" and "timed out" in stuck_ev["detail"]
     complete = next(d for k, d in ev if k == "complete")
-    assert [c["id"] for c in complete["checks"]] == [c[0] for c in checks]   # original order kept
+    assert [c["id"] for c in complete["checks"] if not c["id"].startswith("DLP.CTRL.")] == [c[0] for c in checks]   # original order kept
+    assert len(complete["required_controls"]) == 5
     assert complete["journey"] is None and complete["metadata"]["elapsed_seconds"] >= 0
     prog = [d for k, d in ev if k == "progress" and d.get("completed")]
-    assert prog[-1]["completed"] == 7 and prog[-1]["pct"] == 100
+    assert prog[-1]["completed"] == 12 and prog[-1]["pct"] == 100
 
 
 def test_results_go_out_before_the_journey_which_lands_as_its_own_event(monkeypatch):

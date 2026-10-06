@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {waitForDebugger, waitForStablePoint, installNativeClickProbe, dispatchNativeClick} from './flow_browser_harness_helpers.mjs';
+import {runRequiredDlpControlsAcceptance} from './required_dlp_controls_acceptance.mjs';
 
 const [chrome, base, profile, artifactDir] = process.argv.slice(2);
 assert(chrome && base && profile && artifactDir, 'Expected chrome, base URL, profile and artifact directory');
@@ -353,12 +354,14 @@ try {
   });
   await test('BROWSER-SCOPE-04-dependent-toggle-clears-and-restores-notes',async()=>{
     await click(channelRow('web_dlp')+' .db-ch-check input');
-    assert.equal(await evaluate(`document.getElementById('dbChPrereqs').hidden`),true);
+    assert.equal(await evaluate(`document.querySelector('${channelRow('ssl_inspection')} .db-ch-prereq') === null`),true);
+    assert((await prerequisiteText()).includes('DLP analysis always includes'));
     assert.equal((await channelState()).ssl_inspection.choice,'alternative');
     await click(channelChoice('web_dlp','zscaler'));
     assert((await prerequisiteText()).includes('unmet prerequisite'));
     await click(channelChoice('ssl_inspection','zscaler'));
-    assert.equal(await evaluate(`document.getElementById('dbChPrereqs').hidden`),true);
+    assert.equal(await evaluate(`document.querySelector('${channelRow('ssl_inspection')} .db-ch-prereq') === null`),true);
+    assert((await prerequisiteText()).includes('DLP analysis always includes'));
     await click(channelRow('ssl_inspection')+' .db-ch-check input');
     assert.equal((await channelState()).ssl_inspection.choice,'gap');
     assert((await prerequisiteText()).includes('included because Inline Web DLP'));
@@ -448,7 +451,12 @@ try {
     await click('#dbScopeRun');
     await waitFor(`!!reportData?.checks?.length && !document.getElementById('runBtn').disabled && reportData.channel_coverage?.alternative?.some(c=>c.id==='ssl_inspection')`,20000,'blocked-prerequisite scoped assessment');
     const report=await evaluate(`reportData`),ids=report.checks.map(c=>c.id);
-    assert(!ids.includes('4.1')&&!ids.includes('A.2'),'Explicit Alternative SSL must remain hidden');
+    assert(ids.includes('4.1')&&ids.includes('A.2'),'Alternative SSL must remain a visible unmet dependency');
+    const required=new Map(report.required_controls.map(x=>[x.key,x]));
+    for(const key of ['ssl','cac','workflow'])assert(required.has(key));
+    assert.equal(required.get('ssl').status,'unverified');
+    assert.equal(required.get('ssl').read_permitted,false);
+    assert(report.checks.filter(x=>x.id==='4.1'||x.id==='A.2').every(x=>x.status==='INFO'&&!x.out_of_scope));
     const blocked=report.channel_coverage.prerequisites.find(p=>p.id==='ssl_inspection');
     assert(blocked && blocked.blocked && blocked.declared==='alternative');
     assert((await evaluate(`document.getElementById('scopeNote').textContent`)).includes('unmet prerequisite'));
@@ -466,15 +474,16 @@ try {
     await click('#scenarioRun');
     await waitFor(`document.getElementById('scenarioStatus').textContent.startsWith('SIMULATED') && !document.getElementById('scenarioRun').disabled`,15000);
     const stages=await evaluate(`Array.from(document.querySelectorAll('#scenarioDetails details > ol > li'),e=>e.textContent)`);
-    for(const expected of ['URL filtering','SSL inspection','File Type Control']){
+    for(const expected of ['URL filtering','SSL inspection','File Type Control','Cloud App Control','Workflow Automation']){
       assert(stages.some(text=>text.toLowerCase().includes(expected.toLowerCase())),expected+' evidence panel disappeared');
       assert((await evaluate(`document.querySelector('#scenarioHost svg').textContent`)).toLowerCase().includes(expected.toLowerCase()),expected+' flow box disappeared');
     }
     const ssl=stages.find(text=>/^SSL inspection/i.test(text));
-    assert(ssl && /out_of_scope|unverified/i.test(ssl),'Excluded SSL must remain visibly excluded or unverified');
+    assert(ssl && /unverified|unknown|unmet/i.test(ssl) && !/out_of_scope/i.test(ssl),'Alternative SSL must remain an unmet required control');
     assert(!(await state()).reads.slice(before).some(ep=>ep.startsWith('/zia/sslInspectionRules')),'Unified path must not read explicitly excluded SSL');
     await screenshot('scope-excluded-ssl-path-controls');
   });
+  await runRequiredDlpControlsAcceptance({test,navigate,click,fill,evaluate,waitFor,state,screenshot});
   await test('BROWSER-SAFETY-01-no-runtime-csp-errors-tenant-writes-or-external-requests',async()=>{
     assert.deepEqual(runtimeErrors,[],'Unexpected runtime errors');
     assert.deepEqual(blockedExternal,[],'Production page attempted external resources');

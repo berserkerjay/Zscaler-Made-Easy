@@ -14,7 +14,7 @@ CHANNELS = {"web": ("web_dlp", "/zia/webDlpRules", "Inline Web DLP"),
             "endpoint": ("endpoint_dlp", "/zia/endPointDlpRules", "Endpoint DLP"),
             "email": ("email_dlp", "/zia/emailDlpRules", "Email DLP"),
             "saas": ("saas_casb", "/zia/casbDlpRules/all", "SaaS API DLP")}
-CONTROLS = (("url", "URL filtering"), ("ssl", "SSL inspection"), ("ftc", "File Type Control"))
+CONTROLS = (("url", "URL filtering"), ("ssl", "SSL inspection"), ("ftc", "File Type Control"), ("cac", "Cloud App Control"))
 
 
 def normalize_input(raw):
@@ -61,6 +61,8 @@ def build_result(context, *, tenant_key, scope, corpus=None, path=None, rules_ev
     limitations = ["Configuration predicts candidate paths; it does not observe a transaction.",
                    "Test content is evaluated locally and is never sent as tenant traffic or counted as a Workflow Automation incident."]
     errors = list((corpus or {}).get("errors") or [])
+    required_controls = list(scope.get("required_controls") or [])
+    required = {row["key"]: row for row in required_controls}
 
     def stage(key, label, status, detail, source="scenario", obj=None, evidence_status=None):
         obj = obj or {}
@@ -79,13 +81,15 @@ def build_result(context, *, tenant_key, scope, corpus=None, path=None, rules_ev
                 continue
             item = stage(hop.get("key", "unknown"), hop.get("label", "Control"), hop.get("status", "unverified"),
                          hop.get("detail", ""), "tenant configuration", hop.get("decided_by"))
+            if item["key"] in required and item["status"] == "out_of_scope":
+                item.update(status="unverified", evidence_status="unverified", detail=required[item["key"]]["detail"])
             if hop.get("stopped_by"):
                 item["stopped_by"] = hop["stopped_by"]
         keys = {s["key"] for s in stages}
         for key, label in CONTROLS:
             if key not in keys:
-                status = "out_of_scope" if key not in read else "unverified"
-                stage(key, label, status, "Not read in the current scope" if status == "out_of_scope" else "Destination/path context has not been established")
+                status = "unverified" if key in required else "out_of_scope" if key not in read else "unverified"
+                stage(key, label, status, required.get(key, {}).get("detail") or ("Not read in the current scope" if status == "out_of_scope" else "Destination/path context has not been established"))
     else:
         # An applicability panel, not fake inline enforcement on non-web data.
         for key, label in CONTROLS:
@@ -127,8 +131,8 @@ def build_result(context, *, tenant_key, scope, corpus=None, path=None, rules_ev
     for key, label in (("storage", "Evidence storage"), ("storage_event", "Storage event"), ("integration", "Workflow Automation integration")):
         stage(key, label, "unverified", "Not verified by the available configuration reads; no successful delivery inferred")
     wa = "dlp" in scope.get("scopes", []) and scope.get("workflow_enabled", False)
-    stage("workflow", "Workflow Automation incident", "unverified" if wa else "out_of_scope",
-          "Use the separate observed feed; this test creates no incident" if wa else "Observed feed requires DLP and Workflow Automation in scope; simulation remains available")
+    stage("workflow", "Workflow Automation incident", "unverified" if wa or "workflow" in required else "out_of_scope",
+          required.get("workflow", {}).get("detail") or ("Use the separate observed feed; this test creates no incident" if wa else "Observed feed requires DLP and Workflow Automation in scope; simulation remains available"))
     if channel != "web":
         limitations.append("This channel's device/mailbox/application assignment and enforcement context is not available from the rule list alone.")
     if not context.get("destination") and channel == "web":
@@ -152,5 +156,5 @@ def build_result(context, *, tenant_key, scope, corpus=None, path=None, rules_ev
         execution_status = "complete"
         summary = "Configuration analysis only. No test content was evaluated and no traffic or Workflow Automation incident was generated."
     return {"schema_version": 1, "scenario": scenario, "read_at": at, "stages": stages,
-            "corpus": corpus, "path": path, "rules": rules, "limitations": limitations, "errors": errors,
+            "required_controls": required_controls, "corpus": corpus, "path": path, "rules": rules, "limitations": limitations, "errors": errors,
             "execution_status": execution_status, "summary": summary}

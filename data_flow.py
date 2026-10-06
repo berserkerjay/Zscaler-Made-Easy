@@ -100,7 +100,11 @@ def path_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
     import channel_scope
     given = {str(s).strip() for s in scopes} if isinstance(scopes, (list, tuple, set)) else set()
     sc = [k for k in SCOPE_KEYS if k in given]
-    ch = channel_scope.resolve(channels)   # a prerequisite (SSL inspection for Web DLP) is in scope too
+    import dlp_analysis
+    ch = dlp_analysis.channels(channels, sc)
+    required = dlp_analysis.requirements(sc, channels)
+    required_by_key = {r["key"]: r for r in required}
+    blocked: Dict[str, str] = {}
     read: List[str] = []
     out: Dict[str, str] = {}
     for key, (what, need, cid) in PATH_SECTIONS.items():
@@ -113,7 +117,10 @@ def path_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
             name = decl.get("name") or channel_scope.CHANNELS.get(cid, cid)
             if decl.get("choice") == "alternative":
                 note = f" ({decl['note']})" if decl.get("note") else ""
-                out[key] = f"Not in scope: {name} is covered by an alternative solution{note}, as declared on the Scope page, so the {what} were not read."
+                if key in required_by_key:
+                    blocked[key] = required_by_key[key]["detail"]
+                else:
+                    out[key] = f"Not in scope: {name} is covered by an alternative solution{note}, as declared on the Scope page, so the {what} were not read."
                 continue
             if decl.get("choice") != "zscaler":
                 out[key] = f"Not in scope: {name} is not marked Zscaler on the Scope page, so the {what} were not read."
@@ -126,7 +133,8 @@ def path_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
     else:
         summary = NOTHING_IN_SCOPE
     return {"scopes": sc, "channels": {k: v["choice"] for k, v in ch.items()}, "read": read, "not_in_scope": out,
-            "lookup": lookup, "key": ",".join(sorted(read)), "summary": summary}
+            "lookup": lookup, "key": ",".join(sorted(read)) + ("|required-dlp-v1:" + dlp_analysis.scope_key(sc, channels) if required else ""), "summary": summary,
+            "declaration": channels, "read_blocked": blocked, "required_controls": required}
 
 
 def full_path_scope() -> Dict[str, Any]:
@@ -455,9 +463,21 @@ def read_zia(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = No
     diagnostics: List[Dict[str, Any]] = []
     nis = dict((scope or {}).get("not_in_scope") or {})
     z: Dict[str, Any] = {"diagnostics": diagnostics, "not_in_scope": {k: v for k, v in nis.items() if k not in ("zcc", "pac")}}
+    blocked = dict((scope or {}).get("read_blocked") or {})
+    import dlp_analysis
+    client = dlp_analysis.read_once(client)
+    import dlp_efficacy
+    _stop_point(cancel)
+    try:
+        z["required_controls"] = dlp_analysis.inspect(client, (scope or {}).get("scopes", []), (scope or {}).get("declaration", {}))
+    except dlp_efficacy.CorpusReadStopped as exc:
+        raise ReadStopped(str(exc)) from exc
 
     def rules(key: str, endpoint: str, label: str) -> List[Dict[str, Any]]:
         if key in nis:
+            return []
+        if key in blocked:
+            diagnostics.append({"section": label, "endpoint": endpoint, "error": blocked[key], "error_type": "unmet_dependency"})
             return []
         _stop_point(cancel)
         return _fetch_rules(client, endpoint, diagnostics, label)
@@ -474,7 +494,7 @@ def read_zia(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = No
                    "engines": _names(r.get("dlpEngines") or r.get("dlp_engines") or r.get("engines") or [])} for r in rules(key, ep, label) if isinstance(r, dict)]
     # The application catalogue serves Cloud App Control only; the URL
     # categories place the destination for the ZIA policy sections.
-    if "cac" not in nis:
+    if "cac" not in nis and "cac" not in blocked:
         classes = {cls for k in TRAFFIC_CLASSES for cls in k["app_classes"]}
         _stop_point(cancel)
         z["catalogue"] = _fetch_app_catalogue(client, classes, diagnostics, cancel=lambda: stop_requested(cancel))
@@ -1155,7 +1175,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             "policy_conditional": any(h["status"] == "conditional" and h["key"] != "incident" for h in hops),
             "tested_channel": "web", "evidence_mode": "configuration", "content_inspected": False,
             "content_inspection_possible": bool(decrypted and not ends and any(h.get("content_inspection_possible") for h in hops)),
-            "connector_inventory": connector_references(zcc)}
+            "connector_inventory": connector_references(zcc), "required_controls": zia.get("required_controls", (scope or {}).get("required_controls", []))}
 
 
 # A policy pack rule's channel → the section of the read it would be found in.
@@ -1215,7 +1235,7 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
         "app_profiles": len(zcc["app_profiles"]), "forwarding_profiles": len(zcc["forwarding_profiles"]),
         "trusted_networks": len(zcc["trusted_networks"]), "pac_files": len(zcc["pac_files"]),
     }
-    return {"summary": summary, "platform": platform, "networks": NETWORKS, "platforms": PLATFORMS,
+    return {"summary": summary, "required_controls": zia.get("required_controls", []), "platform": platform, "networks": NETWORKS, "platforms": PLATFORMS,
             "destinations": [{"key": k["key"], "label": k["label"], "why": k.get("why", "")} for k in TRAFFIC_CLASSES],
             "traces": traces, "client_connector": zcc, "packs": [{"id": p["id"], "name": p["name"], "rules": len(p["policies"])} for p in packs],
             "diagnostics": zia.get("diagnostics", []) + [{"section": "Client Connector", "error": e} for e in zcc.get("errors", [])] + failed,
@@ -1223,9 +1243,9 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
             # reuses this read only for the same scope) and what it says.
             "path_scope": (scope or {}).get("key"),
             "scope": ({"summary": scope.get("summary"), "read": list(scope.get("read") or []), "not_in_scope": dict(scope.get("not_in_scope") or {}),
-                       "source": scope.get("source") or ""} if scope else None),
+                       "source": scope.get("source") or "", "required_controls": zia.get("required_controls", []), "read_blocked": dict(scope.get("read_blocked") or {})} if scope else None),
             "snapshot": {"zia": dict({k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue")},
-                                     not_in_scope=zia.get("not_in_scope") or {}),
+                                     not_in_scope=zia.get("not_in_scope") or {}, required_controls=zia.get("required_controls", [])),
                          "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"), "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                         for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},
             "sources": {"client_connector": "/zcc/webPolicies, /zcc/forwardingProfiles, /zcc/trustedNetworks", "pac": "/zia/pacFiles",
@@ -1264,4 +1284,6 @@ def to_markdown(report: Dict[str, Any], label: str = "") -> str:
         for p in t["packs"]:
             lines.append(f"- Pack {p['name']}: {p['coverage']}" + (f" — {p['weak_point']}" if p.get("weak_point") else ""))
         lines.append("")
+    import dlp_analysis
+    lines.extend(dlp_analysis.markdown(report))
     return "\n".join(lines)

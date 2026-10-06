@@ -342,13 +342,13 @@ def test_stop_ends_the_job_as_stopped_with_no_result_and_no_kept_read(monkeypatc
 def test_the_scope_page_selection_decides_what_the_path_reads():
     sc = _scope(["dlp"], {"web_dlp": "zscaler", "ssl_inspection": "zscaler", "endpoint_dlp": "gap",
                           "email_dlp": {"choice": "alternative", "note": "Proofpoint"}})
-    assert sc["read"] == ["url", "ssl", "ftc", "dlp"] and sc["lookup"]
+    assert sc["read"] == ["cac", "url", "ssl", "ftc", "dlp"] and sc["lookup"]
     nis = sc["not_in_scope"]
     assert "ZCC is not ticked" in nis["zcc"] and "ZCC is not ticked" in nis["pac"]
     assert "Endpoint DLP is not marked Zscaler" in nis["endpoint"]
     assert "alternative solution (Proofpoint)" in nis["email"]
     assert "SaaS Security (CASB) is not marked Zscaler" in nis["saas"], "an undeclared channel is out of scope"
-    assert "Cloud App Control is not marked Zscaler" in nis["cac"]
+    assert "cac" not in nis, "Cloud App Control is a mandatory DLP analysis dependency"
     assert all(v.startswith("Not in scope:") for v in nis.values())
     nothing = _scope(["zpa", "rbac"], {"web_dlp": "zscaler"})
     assert nothing["read"] == [] and not nothing["lookup"]
@@ -365,13 +365,13 @@ def test_out_of_scope_parts_are_not_read_and_say_not_in_scope_never_no_rule():
                           "email_dlp": "alternative"})
     r = pa.analyze(c, "chat.openai.com", "off", "windows", scope=sc)
     read = c.requests
-    for ep in ZCC_EPS + ("/zia/endPointDlpRules", "/zia/emailDlpRules", "/zia/casbDlpRules/all", "/zia/cloudApplicationRules"):
+    for ep in ZCC_EPS + ("/zia/endPointDlpRules", "/zia/emailDlpRules", "/zia/casbDlpRules/all"):
         assert ep not in read, ep
-    assert not any(x.startswith("catalogue:") for x in read), "the app catalogue serves Cloud App Control only"
-    assert {"/zia/sslInspectionRules", "/zia/webDlpRules", "/zia/urlFilteringRules", "/zia/fileTypeRules"} <= set(read)
+    assert any(x.startswith("catalogue:") for x in read), "the required Cloud App Control dependency reads its catalogue"
+    assert {"/zia/sslInspectionRules", "/zia/webDlpRules", "/zia/urlFilteringRules", "/zia/fileTypeRules", "/zia/cloudApplicationRules"} <= set(read)
     t, v = r["trace"], r["verdict"]
     hop = {h["key"]: h for h in t["hops"]}
-    for k in ("zcc", "forwarding", "cac"):
+    for k in ("zcc", "forwarding"):
         assert hop[k]["status"] == "out_of_scope" and "Not in scope" in hop[k]["detail"], hop[k]
     for k in ("endpoint", "email", "saas"):
         ch = t["channels"][k]
@@ -380,13 +380,13 @@ def test_out_of_scope_parts_are_not_read_and_say_not_in_scope_never_no_rule():
     assert hop["dlp"]["status"] == "enforce", "Web DLP and SSL are in scope: still assessed"
     texts = " ".join(h["detail"] for h in t["hops"] if h["status"] == "out_of_scope")
     assert "could not be read" not in texts and "No Cloud App Control rule" not in texts
-    assert {i["hop"] for i in v["not_in_scope"]} >= {"zcc", "forwarding", "cac", "endpoint", "email", "saas"}
+    assert {i["hop"] for i in v["not_in_scope"]} >= {"zcc", "forwarding", "endpoint", "email", "saas"}
     assert not any(i["status"] in ("unknown", "out_of_scope") for i in v["impacts"])
     assert r["scope"]["key"] == sc["key"] and r["scope"]["not_in_scope"] == sc["not_in_scope"]
     assert any("not in scope" in a for a in r["assumptions"])
     for p in t["packs"]:
         for rr in p["rules"]:
-            if rr["channel"] in ("endpoint", "email", "saas", "cloud_app"):
+            if rr["channel"] in ("endpoint", "email", "saas"):
                 assert rr["state"] == "not_in_scope", rr
 
 
@@ -405,17 +405,17 @@ def test_ssl_inspection_comes_with_web_dlp_as_its_prerequisite():
     assert dlp["status"] != "out_of_scope", dlp
 
 
-def test_ssl_inspection_out_of_scope_gives_not_assessed_never_no_rule_or_could_not_read():
-    # Neither SSL inspection nor a channel that needs it is on Zscaler: not read, "not in scope".
+def test_endpoint_dlp_retains_required_ssl_without_reading_excluded_web_rules():
+    # SSL stays mandatory for DLP assessment, while unselected Web DLP rules are still not read.
     c = Tenant()
     sc = _scope(["dlp", "zcc"], {"web_dlp": "gap", "endpoint_dlp": "zscaler"})
     r = pa.analyze(c, "chat.openai.com", "off", "windows", scope=sc)
-    assert "/zia/sslInspectionRules" not in c.requests and "/zia/webDlpRules" not in c.requests
+    assert "/zia/sslInspectionRules" in c.requests and "/zia/webDlpRules" not in c.requests
     v = r["verdict"]
     assert v["outcome"] == "out_of_scope", v["outcome"]
     assert "not in scope" in v["headline"] and "no DLP rule" not in v["headline"] and "could not" not in v["headline"]
     ssl = next(h for h in r["trace"]["hops"] if h["key"] == "ssl")
-    assert ssl["status"] == "out_of_scope" and "SSL/TLS Inspection is not marked Zscaler" in ssl["detail"]
+    assert ssl["status"] != "out_of_scope" and "not marked Zscaler" not in ssl["detail"]
     dlp = next(h for h in r["trace"]["hops"] if h["key"] == "dlp")
     assert dlp["status"] == "out_of_scope"
 

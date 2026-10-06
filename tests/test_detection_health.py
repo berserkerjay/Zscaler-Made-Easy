@@ -156,6 +156,8 @@ def test_generate_reads_incidents_pages_and_reports_read_problems():
 def test_detection_health_endpoints(monkeypatch):
     incidents = [_inc(f"i{i}", "Z-US PII-Monitor", "US PII", ["SSN - High"], days_ago=1, resolution="False Positive") for i in range(12)]
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: _client(incidents))
+    from test_ssl_flow import FakeCl
+    monkeypatch.setattr(srv, "_build_client", lambda req: FakeCl({}))
     c = TestClient(srv.app)
     body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "days": 14,
             "scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}}   # what the Scope page puts in scope
@@ -314,6 +316,8 @@ def test_the_live_feed_endpoint_polls_and_tells_the_truth_about_coverage(monkeyp
     real_now = datetime.now(timezone.utc)   # the endpoint has no test hook for "now"; it always reads the wall clock
     c = _client([_inc_at("e1", "Cards-Block", real_now - timedelta(seconds=20))])
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: c)
+    from test_ssl_flow import FakeCl
+    monkeypatch.setattr(srv, "_build_client", lambda req: FakeCl({}))
     t = TestClient(srv.app)
     creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret",
              "scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}}   # what the Scope page puts in scope

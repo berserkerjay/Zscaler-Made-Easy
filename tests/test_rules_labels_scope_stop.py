@@ -182,6 +182,8 @@ def test_reports_name_a_classic_tenant_by_neither_login_nor_stale_vanity(monkeyp
 def test_the_sign_in_check_and_the_live_feed_never_name_the_classic_login(monkeypatch):
     from test_detection_health import _client
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: _client([]))
+    from test_ssl_flow import FakeCl
+    monkeypatch.setattr(srv, "_build_client", lambda req: FakeCl({}))
     monkeypatch.setattr(srv, "_close_quietly", lambda client: None)
     t = TestClient(srv.app)
     r = t.post("/api/tenant/check", json=LEG)
@@ -211,10 +213,10 @@ def test_the_data_flow_map_reads_only_what_is_in_scope(monkeypatch):
     assert r.status_code == 200, r.text
     gets = set(tenant.gets())
     for ep in ("/zcc/webPolicies", "/zcc/forwardingProfiles", "/zcc/trustedNetworks", "/zia/pacFiles",
-               "/zia/cloudApplicationRules", "/zia/endPointDlpRules", "/zia/casbDlpRules/all", "/zia/emailDlpRules"):
+               "/zia/endPointDlpRules", "/zia/casbDlpRules/all", "/zia/emailDlpRules"):
         assert ep not in gets, f"{ep} is not in scope and was read"
     # SSL inspection is Inline Web DLP's prerequisite: in scope, so read.
-    assert "/zia/webDlpRules" in gets and "/zia/sslInspectionRules" in gets
+    assert {"/zia/webDlpRules", "/zia/sslInspectionRules", "/zia/cloudApplicationRules", "/zia/fileTypeRules", "/zia/urlFilteringRules"} <= gets
     rep = r.json()
     assert rep["path_scope"] == df.path_scope(["dlp"], {"web_dlp": "zscaler"})["key"] and rep["scope"]["source"] == "the Scope page"
     hops = {h["key"]: h["status"] for h in rep["traces"][0]["hops"]}
@@ -241,6 +243,8 @@ def _dh(monkeypatch):
         return {"findings": [], "rules": [], "summary": {}, "errors": [], "read": {"incidents": kw.get("read_incidents", True), "rules": True}}
     monkeypatch.setattr(detection_health, "generate", generate)
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append(1) or object())
+    from test_ssl_flow import FakeCl
+    monkeypatch.setattr(srv, "_build_client", lambda req: FakeCl({}))
     return TestClient(srv.app), calls, built
 
 
@@ -251,12 +255,14 @@ def test_the_fp_tp_ratio_reads_only_the_channels_and_incidents_in_scope(monkeypa
                       (dict(creds, scopes=["zcc"], channels={"web_dlp": "zscaler"}), "DLP not ticked")):
         r = t.post("/api/detection-health", json=body)
         assert r.status_code == 400 and r.json()["detail"] == srv.DH_NOTHING_IN_SCOPE, (why, r.text)
-    r = t.post("/api/detection-health", json=dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler", "workflow_automation": "alternative"}))
-    assert r.status_code == 400 and r.json()["detail"] == srv.DH_WA_ALTERNATIVE
     assert not built and not calls, "refused before signing in"
+    r = t.post("/api/detection-health", json=dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler", "workflow_automation": "alternative"}))
+    assert r.status_code == 200 and calls[-1]["read_incidents"] is False
+    workflow = next(row for row in r.json()["required_controls"] if row["key"] == "workflow")
+    assert workflow["status"] == "unverified" and workflow["read_permitted"] is False
     r = t.post("/api/detection-health", json=dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler", "endpoint_dlp": "alternative"}))
     assert r.status_code == 200, r.text
-    assert calls[-1]["channels"] == ["web"] and calls[-1]["read_incidents"] is False, calls[-1]
+    assert calls[-1]["channels"] == ["web"] and calls[-1]["read_incidents"] is True, calls[-1]
     r = t.post("/api/detection-health", json=dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler", "email_dlp": "zscaler",
                                                                                      "workflow_automation": "zscaler"}))
     assert r.status_code == 200 and sorted(calls[-1]["channels"]) == ["email", "web"] and calls[-1]["read_incidents"] is True
@@ -282,17 +288,26 @@ def test_the_live_feed_reads_only_what_is_in_scope(monkeypatch):
     from test_detection_health import _client
     inv, polls, built = [], [], []
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append(1) or _client([]))
+    from test_ssl_flow import FakeCl
+    monkeypatch.setattr(srv, "_build_client", lambda req: FakeCl({}))
+    monkeypatch.setattr(srv, "_live_rules_cache", {})
     monkeypatch.setattr(pack_removal, "inventory", lambda client, channels=None: inv.append(channels) or {"rules": []})
     real_poll = detection_health.poll_incidents
     monkeypatch.setattr(detection_health, "poll_incidents", lambda *a, **k: polls.append(1) or real_poll(*a, **k))
     t = TestClient(srv.app)
     creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
-    for body in (creds, dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler"}),
-                 dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler", "workflow_automation": "alternative"}),
-                 dict(creds, scopes=["zcc"], channels={"workflow_automation": "zscaler"})):
+    for body in (creds, dict(creds, scopes=["zcc"], channels={"workflow_automation": "zscaler"})):
         r = t.post("/api/live-feed", json=body)
         assert r.status_code == 400 and r.json()["detail"] == srv.LIVE_NOTHING_IN_SCOPE, r.text
     assert not built and not polls and not inv, "refused before signing in"
+    alternative = t.post("/api/live-feed", json=dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler", "workflow_automation": "alternative"}))
+    assert alternative.status_code == 200 and alternative.json()["incidents"] == [] and not polls
+    workflow = next(row for row in alternative.json()["required_controls"] if row["key"] == "workflow")
+    assert workflow["status"] == "unverified" and workflow["read_permitted"] is False
+    # Explicitly opening the live feed includes unticked WA as a required read.
+    gap = t.post("/api/live-feed", json=dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler"}))
+    assert gap.status_code == 200 and len(polls) == 1
+    assert inv == [["web"]]
     r = t.post("/api/live-feed", json=dict(creds, scopes=["dlp"], channels={"web_dlp": "zscaler", "workflow_automation": "zscaler",
                                                                              "endpoint_dlp": "alternative"}))
     assert r.status_code == 200, r.text

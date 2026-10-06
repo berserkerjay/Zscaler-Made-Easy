@@ -138,7 +138,7 @@ def test_the_complete_event_carries_the_summary_and_a_null_score_when_nothing_wa
               ("B.3", "Web", "denied", lambda c: R(R.INFO, DENIED))]
     complete = next(d for k, d in _run(monkeypatch, checks) if k == "complete")
     s = complete["summary"]
-    assert complete["score"] == 50 and s["score"] == 50 and s["assessed"] == 2 and s["total"] == 3 and s["not_permitted"] == 1
+    assert complete["score"] == 50 and s["score"] == 50 and s["assessed"] == 7 and s["total"] == 8 and s["not_permitted"] == 1
     assert complete["permissions"]["blocked"] == s["not_permitted"]
     assert complete["sections"]["Web"] == {"total": 3, "pass": 1, "fail": 1, "warn": 0, "info": 1, "scored": 2, "pct": 50}
 

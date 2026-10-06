@@ -7,6 +7,12 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-06
 
+### Mandatory controls for DLP analysis
+- Every explicitly selected DLP analysis includes SSL/TLS Inspection, URL filtering, File Type Control, Cloud App Control and Workflow Automation evidence. Required controls are never hidden as out of scope; alternative-vendor declarations and unavailable APIs stay visible as unverified dependencies.
+- Four required configuration collections are read once per request, including failed reads. Workflow Automation delivery is not inferred from configuration or local simulation, and local tests do not poll or create incidents. Non-web channel views explain which inline controls are not applicable.
+- Required evidence survives cached reports and exports. Cache identity includes the required declarations; Stop cancels subsequent reads. Saved profiles, deployment targets and scheduled monitors are unchanged.
+- Branch CI runs on pull requests; main pushes and manual dispatch still run every job, avoiding duplicate branch-push and PR runs.
+
 ### Scope prerequisites and focused assessment results
 - Inline Web DLP and GenAI automatically include SSL/TLS Inspection in the selected assessment scopes; Device Control includes Endpoint DLP. The Scope page and reports explain each addition without changing the saved declaration or deployment targets.
 - Explicit Alternative declarations remain excluded. Conflicting prerequisites are shown as unmet; shared prerequisite configuration is not read until the declaration is resolved.

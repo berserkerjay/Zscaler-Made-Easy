@@ -185,6 +185,8 @@ def test_saving_a_classic_profile_drops_the_vanity_domain_left_in_the_form(tmp_p
 def test_the_detection_health_report_keys_a_classic_tenant_without_its_vanity_domain(tmp_path, monkeypatch):
     _env(tmp_path, monkeypatch)
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: object())
+    from test_ssl_flow import FakeCl
+    monkeypatch.setattr(srv, "_build_client", lambda req: FakeCl({}))
     monkeypatch.setattr(detection_health, "generate", lambda client, **kw: {"findings": [], "rules": [], "summary": {}, "errors": [], "read": {"incidents": True, "rules": True}})
     c = TestClient(srv.app)
     c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())

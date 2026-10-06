@@ -265,7 +265,7 @@
             <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
           </div>
         </div>
-        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it (a check that also reads another channel's rules, such as a GenAI check reading the Web DLP rules, runs only when that channel is ticked too). <strong>Alternative</strong>: another product covers it, so its checks are not run and not shown (note the vendor with ✎). <strong>Unticked</strong>: a gap, not in scope; the tenant is not read for it and its checks are not shown. Results show only what is in scope, with one line counting the checks left out. <strong>Prerequisites</strong>: a channel another one cannot work without is assessed too (SSL/TLS Inspection when Inline Web DLP is on Zscaler), and says why. Explicit Alternative choices remain excluded and show an unmet prerequisite. Prerequisite checks run only within the assessment scopes selected below. They do not select deployment targets or change the saved declaration. The declaration is saved with the tenant profile and printed in the report.</p>
+        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it (a check that also reads another channel's rules, such as a GenAI check reading the Web DLP rules, runs only when that channel is ticked too). <strong>Alternative</strong>: another product covers it, so its checks are not run and not shown (note the vendor with ✎). <strong>Unticked</strong>: a gap, not in scope; optional-channel checks are not read or shown. DLP always includes SSL/TLS, URL filtering, File Type, Cloud App Control and Workflow Automation evidence; unticked required controls are assessed, and Alternative choices remain visible as unmet evidence gaps. Results show only what is in scope, with one line counting the checks left out. <strong>Prerequisites</strong>: a channel another one cannot work without is assessed too (SSL/TLS Inspection when Inline Web DLP is on Zscaler), and says why. Explicit Alternative choices remain excluded and show an unmet prerequisite. Prerequisite checks run only within the assessment scopes selected below. They do not select deployment targets or change the saved declaration. The declaration is saved with the tenant profile and printed in the report.</p>
         <p class="db-scope-p db-ch-prereqs" id="dbChPrereqs" role="status" hidden></p>
         <div id="dbChList" class="db-ch-list"></div>
       </div>
@@ -300,11 +300,11 @@
   // The channel prerequisites, from the server's one map
   // (channel_scope.PREREQUISITES via /api/scope/prerequisites): a channel
   // on Zscaler puts its prerequisites in scope too, and the page says so.
-  let prereqMap = {};
+  let prereqMap = {}; let requiredDlpNote = '';
   async function loadPrereqs() {
     try {
       const r = await fetch('/api/scope/prerequisites', { cache: 'no-store' });
-      if (r.ok) { const d = await r.json(); prereqMap = (d && d.prerequisites) || {}; if (scopeView) renderChannelsList(); }
+      if (r.ok) { const d = await r.json(); prereqMap = (d && d.prerequisites) || {}; requiredDlpNote = (d && d.required_dlp_note) || '';  if (scopeView) renderChannelsList(); }
     } catch (e) { /* no notes: the server still applies the prerequisites */ }
   }
   // { [prerequisite id]: [names of the ticked channels that need it] },
@@ -355,7 +355,7 @@
     const pre = prereqsInEffect();
     list.innerHTML = items.map(c => channelRowHtml(c, pre[c.id])).join('');
     const preEl = $('dbChPrereqs');
-    if (preEl) { const notes = Object.keys(pre).map(id => prereqNote(id, pre[id])); preEl.textContent = notes.join(' '); preEl.hidden = !notes.length; }
+    if (preEl) { const notes = Object.keys(pre).map(id => prereqNote(id, pre[id])); if (document.querySelector('.scope-cb[value=dlp]:checked') && requiredDlpNote) notes.push(requiredDlpNote); preEl.textContent = notes.join(' '); preEl.hidden = !notes.length; }
     const owned = items.filter(c => (channelState[c.id] || {}).choice === 'zscaler').length;
     const alt = items.filter(c => (channelState[c.id] || {}).choice === 'alternative').length;
     const gaps = items.length - owned - alt;
@@ -431,6 +431,7 @@
   // Built at load (hidden) so the report details leave the tenant
   // configuration card before anyone opens Connect to the tenant.
   scopeView = buildScopeView(); renderChannelsList(); loadPrereqs();
+  document.querySelectorAll('.scope-cb').forEach(el => el.addEventListener('change', renderChannelsList));
 
   // ── Dashboard default content: the score tiles (ring, completion,
   // radar, pillars, insights, actions) live outside #results so they are

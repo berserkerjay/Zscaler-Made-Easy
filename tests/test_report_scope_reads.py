@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 
 import bypass_report
 import dlp_api_server as srv
-import ssl_flow
 from test_path_scope_stop import Tenant
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,7 +42,10 @@ def test_ssl_flow_needs_ssl_inspection_in_scope(monkeypatch):
     t, c, built = _t(monkeypatch)
     r = t.post("/api/report/ssl-flow", json=dict(CREDS, scopes=["dlp", "zcc"], channels={"email_dlp": "zscaler", "ssl_inspection": "alternative"},
                                                  from_page=True))
-    assert r.status_code == 400 and r.json()["detail"] == ssl_flow.NOTHING_IN_SCOPE and not built and not c.requests
+    assert r.status_code == 200 and built
+    assert "/zia/sslInspectionRules" not in c.requests
+    control = next(row for row in r.json()["required_controls"] if row["key"] == "ssl")
+    assert control["status"] == "unverified" and control["read_permitted"] is False
 
 
 def test_ssl_flow_reads_ssl_inspection_as_the_prerequisite_of_web_dlp(monkeypatch):
@@ -115,7 +117,7 @@ def test_bypass_firewall_rules_come_with_the_zia_platform_scope_only(monkeypatch
 def test_bypass_scope_is_pure_and_says_why():
     sel = bypass_report.bypass_scope(["dlp"], {"email_dlp": "zscaler", "ssl_inspection": "alternative"})
     assert set(sel["read"]) == {"url"}
-    assert "alternative" in sel["not_in_scope"]["ssl"] and "ZIA platform" in sel["not_in_scope"]["firewall"]
+    assert "alternative" in sel["read_blocked"]["ssl"].lower() and "ZIA platform" in sel["not_in_scope"]["firewall"]
     # Inline Web DLP on Zscaler brings SSL inspection in as its prerequisite.
     assert set(bypass_report.bypass_scope(["dlp"], {"web_dlp": "zscaler", "ssl_inspection": "gap"})["read"]) == {"url", "dlp", "ssl"}
     assert set(bypass_report.bypass_scope(["dlp"], {"web_dlp": "zscaler", "ssl_inspection": "alternative"})["read"]) == {"url", "dlp"}

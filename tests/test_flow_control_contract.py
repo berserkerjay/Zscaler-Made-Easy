@@ -126,7 +126,7 @@ def test_ssl_report_failed_reads_remain_unknown(key, endpoint, failure, response
     report = sf.generate_ssl_flow_report(Fake({endpoint: response}), scope=SCOPE)
     assert key in report["read_errors"]
     for row in report["classes"]:
-        assert {c["key"] for c in row["controls"]} == {"url", "ssl", "ftc"}
+        assert {c["key"] for c in row["controls"]} == {"url", "ssl", "ftc", "cac", "workflow"}
         if key in ("ssl", "dlp"): assert row["dlp_status"] == "unknown"
         if key == "ssl": assert row["decision"] == "unknown" and not row["gaps"]
         if key in ("url", "ftc"): assert next(c for c in row["controls"] if c["key"] == key)["status"] == "unknown"
@@ -191,9 +191,14 @@ def test_scope_exclusion_retains_required_nodes_without_extra_reads(excluded):
     scope["not_in_scope"][excluded] = "Excluded"
     c = Fake(); report = sf.generate_ssl_flow_report(c, scope=scope)
     endpoint = dict(SOURCES)[excluded]
-    assert endpoint not in c.calls
-    if excluded != "dlp": assert all(next(h for h in row["controls"] if h["key"] == excluded)["status"] == "out_of_scope" for row in report["classes"])
-    else: assert all(row["dlp_status"] == "not_in_scope" for row in report["classes"])
+    if excluded in ("url", "ftc"):
+        # A stale hand-built path scope cannot remove mandatory DLP inventory.
+        assert endpoint in c.calls
+        assert all(next(h for h in row["controls"] if h["key"] == excluded)["status"] == "unknown" for row in report["classes"])
+        assert excluded not in report["not_in_scope"]
+    else:
+        assert endpoint not in c.calls
+        assert all(row["dlp_status"] == "not_in_scope" for row in report["classes"])
 
 
 VISIBILITY = [

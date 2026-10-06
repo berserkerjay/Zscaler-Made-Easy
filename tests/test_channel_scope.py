@@ -139,16 +139,17 @@ def test_the_assess_stream_hides_the_skipped_checks_and_reports_the_coverage(mon
         ev = _events(r)
     assert calls == ["A.1"], "the endpoint checks were never run against the tenant"
     found = [d for k, d in ev if k == "check"]
-    assert [d["id"] for d in found] == ["A.1"] and not any(d.get("out_of_scope") for d in found), "a hidden check is never streamed"
+    assert [d["id"] for d in found if not d["id"].startswith("DLP.CTRL.")] == ["A.1"] and not any(d.get("out_of_scope") for d in found), "a hidden check is never streamed"
     complete = next(d for k, d in ev if k == "complete")
-    assert [c["id"] for c in complete["checks"]] == ["A.1"]
+    assert [c["id"] for c in complete["checks"] if not c["id"].startswith("DLP.CTRL.")] == ["A.1"]
+    assert len(complete["required_controls"]) == 5
     assert complete["hidden_checks"] == 2 and complete["hidden_note"] == "2 checks are outside the selected scope and are not shown."
-    assert complete["summary"]["hidden"] == 2 and complete["summary"]["total"] == 1 and complete["summary"]["state"] == "complete"
-    assert complete["score"] == 100 and complete["metadata"]["total_checks"] == 1
+    assert complete["summary"]["hidden"] == 2 and complete["summary"]["total"] == 6 and complete["summary"]["state"] == "complete"
+    assert complete["score"] == 100 and complete["metadata"]["total_checks"] == 6
     assert complete["channel_coverage"]["hidden"] == 2 and complete["channel_coverage"]["alternative"][0]["note"] == "Purview"
-    assert "Ch.B — Endpoint" not in complete["sections"] and list(complete["sections"]) == ["Ch.A — Inline Web"]
+    assert "Ch.B — Endpoint" not in complete["sections"] and list(complete["sections"]) == ["Ch.A — Inline Web", "Required DLP controls"]
     progress = [d for k, d in ev if k == "progress"]
-    assert progress[0] == {"total": 1, "completed": 0, "pct": 0} and progress[-1]["completed"] == 1
+    assert progress[0] == {"total": 6, "completed": 0, "pct": 0} and progress[-1]["completed"] == 6
 
 
 def test_the_profile_keeps_the_channel_declaration(monkeypatch):
@@ -197,7 +198,8 @@ def test_the_page_and_the_dashboard_carry_the_declaration_and_hide_what_is_out_o
     js = c.get("/static/dashboard.js").text
     assert "window.__dbChannelScope = function" in js and "window.__dbChannelsSet = function" in js
     assert "data.channel_coverage" in js and "cc.prerequisites" in js and "Channels assessed:" in js
-    assert "reported as <em>Not in scope</em>" not in js and "a gap, not in scope; the tenant is not read for it and its checks are not shown" in js
+    assert "reported as <em>Not in scope</em>" not in js and "a gap, not in scope; optional-channel checks are not read or shown" in js
+    assert "unticked required controls are assessed" in js and "Alternative choices remain visible as unmet evidence gaps" in js
     assert "/api/scope/prerequisites" in js and "Assessed as a prerequisite:" in js and 'id="dbChPrereqs"' in js
     guide = c.get("/static/guide.js").text
     assert "channels: typeof window.__dbChannelScope === 'function' ? window.__dbChannelScope() : {}" in guide

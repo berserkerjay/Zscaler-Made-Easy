@@ -37,7 +37,15 @@ SCOPE_CASE_IDS = [
     "BROWSER-SCOPE-10-excluded-ssl-keeps-unified-path-controls",
 ]
 # The existing safety case remains the final gate and covers all new pages too.
-EXPECTED_CASE_IDS = LEGACY_CASE_IDS[:-1] + SCOPE_CASE_IDS + LEGACY_CASE_IDS[-1:]
+REQUIRED_DLP_CASE_IDS = [
+    "BROWSER-DLP-REQUIRED-01-inline-scope-preserves-explicit-declaration",
+    "BROWSER-DLP-REQUIRED-02-inline-assessment-keeps-all-five-controls",
+    "BROWSER-DLP-REQUIRED-03-alternative-dependencies-visible-without-reads",
+    "BROWSER-DLP-REQUIRED-04-unified-animation-keeps-required-dependencies",
+    "BROWSER-DLP-REQUIRED-05-endpoint-shows-inline-controls-not-applicable",
+    "BROWSER-DLP-REQUIRED-06-local-tests-never-create-observed-incidents",
+]
+EXPECTED_CASE_IDS = LEGACY_CASE_IDS[:-1] + SCOPE_CASE_IDS + REQUIRED_DLP_CASE_IDS + LEGACY_CASE_IDS[-1:]
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -109,7 +117,8 @@ def _install_fixtures(srv, state=None):
     state.setdefault("auth_calls", 0)
     state.setdefault("closed_clients", 0)
     state.setdefault("update_lookups", [])
-    state["assessment_registry_count"] = len(srv._get_checks(scopes=["dlp"]))
+    import dlp_analysis
+    state["assessment_registry_count"] = len(srv._get_checks(scopes=["dlp"])) + len(dlp_analysis.CONTROLS)
     dictionary = {"id": 101, "name": "Synthetic test marker", "custom": True,
                   "phrases": [{"phrase": "SYNTHETIC-FLOW-MARKER"}], "patterns": []}
     engine = {"id": 201, "name": "Synthetic marker engine", "engineExpression": "D101.S > 0", "customDlpEngine": True}
@@ -362,9 +371,15 @@ def test_browser_driver_preserves_assertions_and_requires_trusted_native_clicks(
     for bypass in ("--no-sandbox", "--disable-web-security", "Page.setBypassCSP", "ignore-certificate-errors"):
         assert bypass not in source
     assert len(LEGACY_CASE_IDS) == 19
-    assert len(EXPECTED_CASE_IDS) == 29
+    assert len(EXPECTED_CASE_IDS) == 35
     import re
-    assert re.findall(r"await test\('([^']+)'", source) == EXPECTED_CASE_IDS
+    assert re.findall(r"await test\('([^']+)'", source) == LEGACY_CASE_IDS[:-1] + SCOPE_CASE_IDS + LEGACY_CASE_IDS[-1:]
+    required = (ROOT / "tests/js/required_dlp_controls_acceptance.mjs").read_text()
+    assert re.findall(r"'(BROWSER-DLP-REQUIRED-[^']+)'", required) == REQUIRED_DLP_CASE_IDS
+    assert required.count("await test(REQUIRED_DLP_CASE_IDS[") == len(REQUIRED_DLP_CASE_IDS)
+    assert "await runRequiredDlpControlsAcceptance({test,navigate,click,fill,evaluate,waitFor,state,screenshot})" in source
+    for bypass in ("--no-sandbox", "--disable-web-security", "Page.setBypassCSP", "ignore-certificate-errors"):
+        assert bypass not in required
 
 @pytest.fixture
 def browser_fixture_api(monkeypatch, tmp_path):
@@ -440,10 +455,10 @@ def test_scope_browser_fixture_authentication_is_read_free(browser_fixture_api):
 
 @pytest.mark.parametrize("ssl_choice", ["gap", "alternative"])
 def test_scope_browser_fixture_real_registry_and_sse_match_scope(browser_fixture_api, ssl_choice):
-    import channel_scope
+    import dlp_analysis
     page, srv, state = browser_fixture_api
     channels = {"web_dlp": {"choice": "zscaler"}, "ssl_inspection": {"choice": ssl_choice}}
-    run, skipped, _order = channel_scope.partition(srv._get_checks(scopes=["dlp"]), channels)
+    run, skipped, _resolved = dlp_analysis.assessment_checks(srv._get_checks(scopes=["dlp"]), channels, ["dlp"])
     report = _fixture_assessment(page, channels)
     assert [c["id"] for c in report["checks"]] == [c[0] for c in run]
     assert report["metadata"]["total_checks"] == report["summary"]["total"] == len(run)
@@ -485,8 +500,10 @@ def test_scope_browser_fixture_unified_scenario_retains_excluded_controls(browse
     assert response.status_code == 200, response.text
     report = response.json()
     stages = {stage["key"]: stage for stage in report["stages"]}
-    assert {"url", "ssl", "ftc"} <= stages.keys()
-    assert stages["ssl"]["status"] in {"out_of_scope", "unverified"}
+    assert {"url", "ssl", "ftc", "cac", "workflow"} <= stages.keys()
+    assert stages["ssl"]["status"] in {"unknown", "unverified", "unmet"}
+    assert stages["cac"]["status"] != "out_of_scope"
+    assert stages["workflow"]["status"] != "out_of_scope"
     assert "/zia/sslInspectionRules" not in state["reads"]
     assert state["writes"] == 0 and state["live_polls"] == 0
 

@@ -874,6 +874,8 @@ def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
                      f"{' '.join(d.get('why') or [])} | {d.get('fix') or ''} |")
     if rep.get("errors"):
         lines += ["", "## Read problems"] + [f"- {e}" for e in rep["errors"]]
+    import dlp_analysis
+    lines.extend(dlp_analysis.markdown(rep))
     return "\n".join(lines)
 
 

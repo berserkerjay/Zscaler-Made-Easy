@@ -132,9 +132,9 @@ def test_web_dlp_only_runs_and_shows_the_ssl_checks_and_reads_their_endpoints(mo
     sections = {c["section"] for c in complete["checks"]}
     assert {"4 — SSL Policy", "7 — SSL Alignment"} <= sections, sorted(sections)
     assert {"4.1", "4.2", "5.5", "A.2", "MC.12"} <= ids
-    assert "/zia/sslInspectionRules" in reads and "/zia/webDlpRules" in reads
+    assert "/zia/sslInspectionRules" in reads and "/zia/webDlpRules" in reads and "/zia/cloudApplicationRules" in reads
     # Nothing that did not qualify was read: no other channel's rules.
-    for ep in ("/zia/endPointDlpRules", "/zia/emailDlpRules", "/zia/casbDlpRules", "/zia/casbTenant", "/zia/cloudApplicationRules"):
+    for ep in ("/zia/endPointDlpRules", "/zia/emailDlpRules", "/zia/casbDlpRules", "/zia/casbTenant"):
         assert not _reads_channel(reads, ep), ep
     assert not any(c.get("out_of_scope") for c in complete["checks"] + streamed)
     assert "Ch.B — Endpoint" not in sections and not any(s.startswith("Ch.D") for s in sections)
@@ -151,20 +151,21 @@ def test_the_checks_client_reads_ssl_inspection_for_web_dlp_and_nothing_else():
 
 # ── Endpoint DLP only: no SSL, no Web ────────────────────────────────────
 
-def test_endpoint_dlp_only_shows_no_ssl_or_web_checks_and_reads_neither(monkeypatch):
+def test_endpoint_dlp_only_retains_ssl_but_never_reads_excluded_web_rules(monkeypatch):
     complete, streamed, reads = _assess(monkeypatch, {"endpoint_dlp": {"choice": "zscaler"}})
     rows = complete["checks"] + streamed
     sections = {c["section"] for c in rows}
     ids = {c["id"] for c in rows}
-    assert not any(s.startswith(SSL_SECTIONS) for s in sections), sorted(sections)
+    assert any(s.startswith(SSL_SECTIONS) for s in sections), sorted(sections)
     assert not any(s.startswith("Ch.A") for s in sections), sorted(sections)
-    assert not ({"4.1", "5.5", "A.1", "A.2", "MC.1", "MC.12", "8.5"} & ids)
+    assert {"4.1", "5.5", "DLP.CTRL.SSL"} <= ids
+    assert not ({"A.1", "A.2", "MC.1", "MC.12", "8.5"} & ids)
     assert "B.1" in ids and "5.1" in ids, "Endpoint DLP's own checks run"
-    assert not _reads_channel(reads, "/zia/sslInspectionRules") and not _reads_channel(reads, "/zia/webDlpRules")
+    assert _reads_channel(reads, "/zia/sslInspectionRules") and not _reads_channel(reads, "/zia/webDlpRules")
     assert "/zia/endPointDlpRules" in reads
     assert not any(c.get("out_of_scope") for c in rows) and complete["channel_coverage"]["prerequisites"] == []
     assert complete["hidden_checks"] > 0
-    for k in ("4 — SSL Policy", "Ch.A — Inline Web"):
+    for k in ("Ch.A — Inline Web",):
         assert k not in complete["sections"], k
 
 
@@ -199,7 +200,7 @@ def test_hidden_checks_do_not_affect_the_streamed_score(monkeypatch):
         ev = _events(r)
     complete = next(d for k, d in ev if k == "complete")
     assert complete["score"] == 100 and complete["summary"]["score"] == 100 and complete["summary"]["scored"] == 1
-    assert complete["summary"]["total"] == 1 and complete["summary"]["excluded"] == 0 and complete["critical"] == []
+    assert complete["summary"]["total"] == 6 and complete["summary"]["excluded"] == 5 and complete["critical"] == []
 
 
 # ── No report row for a hidden check ────────────────────────────────────
@@ -264,7 +265,8 @@ def test_the_summary_line_counts_the_hidden_checks(n, line):
 
 def test_the_streamed_summary_line_count_matches_what_was_left_out(monkeypatch):
     complete, _streamed, _reads = _assess(monkeypatch, {"web_dlp": {"choice": "zscaler"}})
-    expected = len(cs.partition(srv._get_checks("", ["dlp"]), {"web_dlp": {"choice": "zscaler"}})[1])
+    import dlp_analysis
+    expected = len(dlp_analysis.assessment_checks(srv._get_checks("", ["dlp"]), {"web_dlp": {"choice": "zscaler"}}, ["dlp"])[1])
     assert expected > 0
     assert complete["hidden_checks"] == expected == complete["summary"]["hidden"] == complete["channel_coverage"]["hidden"]
     assert complete["hidden_note"] == f"{expected} checks are outside the selected scope and are not shown."

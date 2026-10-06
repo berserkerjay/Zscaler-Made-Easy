@@ -1021,6 +1021,8 @@ def export_csv(analysis: Dict[str, Any]) -> bytes:
         rows.append(_row_dict_for_export(d, "dictionary"))
     for e in analysis.get("engines", []):
         rows.append(_row_dict_for_export(e, "engine"))
+    for control in analysis.get("required_controls", []):
+        rows.append({"kind": "required_control", "id": control["key"], "name": control["label"], "type": control["status"], "reasons": control["detail"]})
     if not rows:
         return b"kind,id,name,type,tp_estimate_pct,fp_risk,health_score,reasons,remediation\n"
     # Union of keys so every column is represented even if one row lacks a field
@@ -1128,6 +1130,8 @@ def export_markdown(analysis: Dict[str, Any]) -> bytes:
 
     _table(a.get("dictionaries", []), "dictionary")
     _table(a.get("engines", []), "engine")
+    import dlp_analysis
+    out.extend(dlp_analysis.markdown(analysis))
     return "\n".join(out).encode("utf-8")
 
 
@@ -1255,6 +1259,10 @@ def export_docx(analysis: Dict[str, Any]) -> bytes:
     _section("Dictionaries", a.get("dictionaries", []))
     _section("Engines", a.get("engines", []))
 
+    if a.get("required_controls"):
+        doc.add_heading("Required DLP controls", level=2)
+        for control in a["required_controls"]:
+            doc.add_paragraph(f"{control['label']} — {control['status']}: {control['detail']}")
     out = _io.BytesIO()
     doc.save(out)
     return out.getvalue()
