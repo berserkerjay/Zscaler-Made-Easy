@@ -22,6 +22,23 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "tests/js/flow_browser_acceptance.mjs"
 EXPECTED_CASE_IDS = ['BROWSER-FLOW-01-production-workspace-is-interactive', 'BROWSER-FLOW-02-shared-synthetic-input-runs-real-endpoint', 'BROWSER-FLOW-03-guided-next-and-play-use-production-svg', 'BROWSER-FLOW-04-observed-fixture-and-demo-counters-are-isolated', 'BROWSER-FLOW-05-configuration-only-is-not-simulated', 'BROWSER-FLOW-06-mobile-inputs-and-no-horizontal-page-overflow', 'BROWSER-FLOW-07-normal-motion-packets-move-and-restart-clears', 'BROWSER-EMBED-01-parent-production-reference-loads', 'BROWSER-EMBED-02-failed-frame-shows-real-retry-control', 'BROWSER-EMBED-03-retry-loads-real-child-under-production-csp', 'BROWSER-EMBED-04-nested-portfolio-tab-navigation-works', 'BROWSER-EMBED-05-copilot-child-loads-and-inner-tabs-work', 'BROWSER-EMBED-06-switching-parent-tabs-retains-ready-frames', 'BROWSER-DSA-01-all-44-production-players-have-complete-controls', 'BROWSER-DSA-02-guided-demo-waits-for-next', 'BROWSER-DSA-03-play-pause-resume-and-restart-are-real', 'BROWSER-DSA-04-play-all-reaches-terminal-state', 'BROWSER-DSA-05-only-one-player-runs-and-reduced-motion-is-honored', 'BROWSER-SAFETY-01-no-runtime-csp-errors-tenant-writes-or-external-requests']
+# Keep the original 19 release-gate cases intact; scope coverage is additive.
+LEGACY_CASE_IDS = EXPECTED_CASE_IDS[:]
+SCOPE_CASE_IDS = [
+    "BROWSER-SCOPE-01-production-scope-navigation-is-read-free",
+    "BROWSER-SCOPE-02-gap-prerequisite-is-explained-not-selected",
+    "BROWSER-SCOPE-03-alternative-prerequisite-stays-excluded",
+    "BROWSER-SCOPE-04-dependent-toggle-clears-and-restores-notes",
+    "BROWSER-SCOPE-05-profile-save-keeps-explicit-gap-declaration",
+    "BROWSER-SCOPE-06-assessment-hides-rows-and-keeps-prerequisite",
+    "BROWSER-SCOPE-07-json-download-matches-visible-totals",
+    "BROWSER-SCOPE-08-profile-update-and-reload-preserve-alternative",
+    "BROWSER-SCOPE-09-blocked-assessment-never-reads-excluded-ssl",
+    "BROWSER-SCOPE-10-excluded-ssl-keeps-unified-path-controls",
+]
+# The existing safety case remains the final gate and covers all new pages too.
+EXPECTED_CASE_IDS = LEGACY_CASE_IDS[:-1] + SCOPE_CASE_IDS + LEGACY_CASE_IDS[-1:]
+
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -89,6 +106,10 @@ def _install_fixtures(srv, state=None):
     import tenant_auth
 
     state = state if state is not None else {"reads": [], "lookups": 0, "live_polls": 0, "writes": 0, "external_connections": []}
+    state.setdefault("auth_calls", 0)
+    state.setdefault("closed_clients", 0)
+    state.setdefault("update_lookups", [])
+    state["assessment_registry_count"] = len(srv._get_checks(scopes=["dlp"]))
     dictionary = {"id": 101, "name": "Synthetic test marker", "custom": True,
                   "phrases": [{"phrase": "SYNTHETIC-FLOW-MARKER"}], "patterns": []}
     engine = {"id": 201, "name": "Synthetic marker engine", "engineExpression": "D101.S > 0", "customDlpEngine": True}
@@ -107,12 +128,21 @@ def _install_fixtures(srv, state=None):
 
     class Client:
         stop_check = None
+        requests_made = 0
+
+        def auth(self):
+            state["auth_calls"] += 1
+            return True
+
+        def close(self):
+            state["closed_clients"] += 1
 
         def get(self, endpoint, params=None):
             if self.stop_check and self.stop_check():
                 import data_flow
                 raise data_flow.ReadStopped("Fixture read cancelled")
             state["reads"].append(endpoint)
+            self.requests_made += 1
             return (copy.deepcopy(routes[endpoint]), 200) if endpoint in routes else ({"error": "fixture endpoint unavailable"}, 404)
 
         def post(self, endpoint, payload=None):
@@ -137,9 +167,21 @@ def _install_fixtures(srv, state=None):
 
     # No real profile/environment secret can enter this fixture process.
     creds = {key: "" for key in tenant_auth.CRED_KEYS}
-    creds.update(auth_method="oneapi", cloud="zscaler", vanity_domain="browser-fixture", client_id="synthetic-client")
+    creds.update(auth_method="oneapi", cloud="zscaler", vanity_domain="browser-fixture", client_id="synthetic-client",
+                 client_secret="synthetic-browser-fixture-secret")
+    # Root-page health checks normally discover the remote Git tip, including
+    # through git subprocesses that socket guards cannot intercept. Replace
+    # that external boundary, not the production health endpoint.
+    def fixture_remote_tip(branch="main"):
+        state["update_lookups"].append(branch)
+        return None
+
+    srv._latest_remote_commit = fixture_remote_tip
     srv._tenant_creds = lambda request: dict(creds)
     srv._build_client = lambda request: Client()
+    # Assessments retain the real registry, scope partition, execution, SSE,
+    # score and report builders. Only tenant auth/HTTP are replaced.
+    srv._raw_client = lambda credentials: Client()
     srv._build_sdk_client = lambda credentials: SimpleNamespace(zwa=SimpleNamespace(dlp_incidents=Incidents()))
     srv._live_rule_actions = lambda *args, **kwargs: {"Synthetic monitor": "ALLOW"}
     srv._live_connector_context = lambda *args, **kwargs: {"status": "out_of_scope", "profiles": [], "note": "Synthetic browser fixture; no device telemetry"}
@@ -284,7 +326,135 @@ def test_browser_driver_preserves_assertions_and_requires_trusted_native_clicks(
     assert "failure-state.json" in source
     for bypass in ("--no-sandbox", "--disable-web-security", "Page.setBypassCSP", "ignore-certificate-errors"):
         assert bypass not in source
-    assert len(EXPECTED_CASE_IDS) == 19
+    assert len(LEGACY_CASE_IDS) == 19
+    assert len(EXPECTED_CASE_IDS) == 29
+    import re
+    assert re.findall(r"await test\('([^']+)'", source) == EXPECTED_CASE_IDS
+
+@pytest.fixture
+def browser_fixture_api(monkeypatch, tmp_path):
+    """Exercise the acceptance server without sockets or launching a browser."""
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "0")
+    monkeypatch.setenv("DLP_CHECK_PROFILES", str(tmp_path / "profiles.json"))
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+    monkeypatch.setenv("ENABLE_WRITE_ACTIONS", "")
+    for attr in ("_latest_remote_commit", "_tenant_creds", "_build_client", "_raw_client",
+                 "_build_sdk_client", "_live_rule_actions", "_live_connector_context"):
+        monkeypatch.setattr(srv, attr, getattr(srv, attr))
+    old_routes = list(srv.app.router.routes)
+    state = _install_fixtures(srv)
+    try:
+        # No context manager: production startup jobs are excluded exactly as
+        # in uvicorn's lifespan="off" browser-fixture process.
+        yield TestClient(srv.app), srv, state
+    finally:
+        srv.app.router.routes[:] = old_routes
+
+
+def _fixture_assessment(page, channels):
+    response = page.post("/api/assess", json={"scopes": ["dlp"], "channels": channels,
+                                           "org_name": "Synthetic Scope Browser", "assessor": "Synthetic Assessor"})
+    assert response.status_code == 200, response.text
+    events, kind = [], None
+    for line in response.text.splitlines():
+        if line.startswith("event: "):
+            kind = line[7:]
+        elif line.startswith("data: "):
+            events.append((kind, json.loads(line[6:])))
+    errors = [value for event, value in events if event == "error"]
+    assert not errors, errors
+    complete = [value for event, value in events if event == "complete"]
+    assert len(complete) == 1, events
+    return complete[0]
+
+
+def test_scope_browser_fixture_root_health_never_discovers_remote(browser_fixture_api, monkeypatch):
+    import app_update
+    page, _srv, state = browser_fixture_api
+    delegated = []
+
+    def forbid_remote(*args, **kwargs):
+        delegated.append(args)
+        raise AssertionError("The browser fixture must not discover a genuine remote")
+
+    def local_git_only(args, **kwargs):
+        assert args[0] == "git" and not set(args[1:]) & {"ls-remote", "fetch", "pull", "push", "clone"}, args
+        return subprocess.CompletedProcess(args, 0, stdout="main\n", stderr="")
+
+    monkeypatch.setattr(app_update, "github_branch_head", forbid_remote)
+    monkeypatch.setattr(subprocess, "run", local_git_only)
+    monkeypatch.setattr(subprocess, "check_output", lambda *args, **kwargs: b"fixture0")
+    assert page.get("/").status_code == 200
+    response = page.get("/api/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["latest_commit"] is None
+    assert state["update_lookups"] and not delegated
+    assert state["reads"] == [] and state["auth_calls"] == 0
+
+
+def test_scope_browser_fixture_authentication_is_read_free(browser_fixture_api):
+    page, _srv, state = browser_fixture_api
+    response = page.post("/api/tenant/check", json={})
+    assert response.status_code == 200 and response.json()["ok"]
+    assert state["reads"] == [] and state["live_polls"] == 0 and state["writes"] == 0
+
+
+@pytest.mark.parametrize("ssl_choice", ["gap", "alternative"])
+def test_scope_browser_fixture_real_registry_and_sse_match_scope(browser_fixture_api, ssl_choice):
+    import channel_scope
+    page, srv, state = browser_fixture_api
+    channels = {"web_dlp": {"choice": "zscaler"}, "ssl_inspection": {"choice": ssl_choice}}
+    run, skipped, _order = channel_scope.partition(srv._get_checks(scopes=["dlp"]), channels)
+    report = _fixture_assessment(page, channels)
+    assert [c["id"] for c in report["checks"]] == [c[0] for c in run]
+    assert report["metadata"]["total_checks"] == report["summary"]["total"] == len(run)
+    assert report["hidden_checks"] == len(skipped) > 0
+    assert len(run) + len(skipped) == state["assessment_registry_count"]
+    assert not any(c.get("out_of_scope") for c in report["checks"])
+    assert ("/zia/sslInspectionRules" in state["reads"]) == (ssl_choice == "gap")
+    assert not any(ep.startswith(("/zia/endPointDlpRules", "/zia/emailDlpRules", "/zia/casbDlpRules")) for ep in state["reads"])
+    prereq = next(p for p in report["channel_coverage"]["prerequisites"] if p["id"] == "ssl_inspection")
+    assert prereq["declared"] == ssl_choice and prereq["blocked"] == (ssl_choice == "alternative")
+    assert state["auth_calls"] == state["closed_clients"] == 1
+    assert state["writes"] == 0 and state["external_connections"] == []
+
+
+@pytest.mark.parametrize("ssl_choice", ["gap", "alternative"])
+def test_scope_browser_fixture_profile_roundtrip_keeps_declaration(browser_fixture_api, ssl_choice):
+    page, _srv, state = browser_fixture_api
+    body = {"name": "Synthetic Scope Browser", "org_name": "Synthetic Scope Browser",
+            "scopes": ["dlp"], "remember_secret": False,
+            "channels": {"web_dlp": {"choice": "zscaler"},
+                         "ssl_inspection": {"choice": ssl_choice, "note": "Synthetic alternative vendor"}}}
+    response = page.post("/api/tenant-profiles", json=body)
+    assert response.status_code == 200, response.text
+    profile_id = response.json()["id"]
+    profile = page.get(f"/api/tenant-profiles/{profile_id}").json()
+    assert profile["channels"]["ssl_inspection"]["choice"] == ssl_choice
+    assert profile["channels"]["ssl_inspection"]["note"] == "Synthetic alternative vendor"
+    assert not profile["has_secret"]
+    assert not {"required_by", "declared", "blocked"} & profile["channels"]["ssl_inspection"].keys()
+    assert state["reads"] == [] and state["auth_calls"] == state["writes"] == 0
+
+
+def test_scope_browser_fixture_unified_scenario_retains_excluded_controls(browser_fixture_api):
+    page, _srv, state = browser_fixture_api
+    response = page.post("/api/flow/scenario", json={"scopes": ["dlp"], "from_page": True,
+                         "channels": {"web_dlp": {"choice": "zscaler"}, "ssl_inspection": {"choice": "alternative"}},
+                         "destination": "https://example.test/upload", "channel": "web", "file_type": "txt",
+                         "corpus": "SYNTHETIC-FLOW-MARKER one synthetic record"})
+    assert response.status_code == 200, response.text
+    report = response.json()
+    stages = {stage["key"]: stage for stage in report["stages"]}
+    assert {"url", "ssl", "ftc"} <= stages.keys()
+    assert stages["ssl"]["status"] in {"out_of_scope", "unverified"}
+    assert "/zia/sslInspectionRules" not in state["reads"]
+    assert state["writes"] == 0 and state["live_polls"] == 0
+
 
 if __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--serve":
     _serve(int(sys.argv[2]))

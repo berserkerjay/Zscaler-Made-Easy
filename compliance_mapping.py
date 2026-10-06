@@ -324,6 +324,9 @@ def get_framework_summary(results: list) -> dict:
       }
     """
     fw_status = {}
+    # A check outside the selected scope maps to nothing: hidden (channel_scope).
+    import channel_scope
+    results, _ = channel_scope.visible(results)
 
     for r in results:
         cid = r.get("id", "")
@@ -422,6 +425,10 @@ def get_control_drilldown(results: list) -> dict:
     """
     # Build reverse map: framework -> control -> [checks that address it]
     framework_controls = {}  # {fw: {control: [check_results]}}
+    # A check outside the selected scope backs no control: a control only it
+    # would back is not listed at all (channel_scope: hidden).
+    import channel_scope
+    results, _ = channel_scope.visible(results)
 
     for r in results:
         cid = r.get("id", "")

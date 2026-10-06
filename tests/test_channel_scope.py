@@ -1,8 +1,10 @@
 """Channel ownership from the Scope page drives the assessment
-(channel_scope): only a channel marked Zscaler is read. A channel covered
-by an alternative solution, or left unticked (a gap), has its checks
-reported as Not in scope and never read; the report still lists the gaps. The declaration rides the assess request, is saved on the
-tenant profile, and returns as channel_coverage in the report."""
+(channel_scope): only a channel on Zscaler (ticked, or a prerequisite of
+one) is read. A channel covered by an alternative solution, or left
+unticked (a gap), has its checks never read and hidden: no row, no
+section, no score, only one line counting them. The declaration rides the
+assess request, is saved on the tenant profile, and returns as
+channel_coverage in the report."""
 from __future__ import annotations
 
 import os
@@ -86,32 +88,41 @@ def test_coverage_says_what_was_declared_and_what_it_did():
     channels = {"web_dlp": {"choice": "zscaler"}, "endpoint_dlp": {"choice": "alternative", "note": "Purview"}, "email_dlp": {"choice": "gap"}}
     skipped = [{"channel": "endpoint_dlp"}, {"channel": "endpoint_dlp"}]
     cov = cs.coverage(channels, skipped)
-    assert cov["declared"] and cov["not_in_scope"] == 2
+    assert cov["declared"] and cov["not_in_scope"] == 2 and cov["hidden"] == 2
+    assert cov["hidden_note"] == "2 checks are outside the selected scope and are not shown."
     gap_cov = cs.coverage(channels, skipped + [{"channel": "email_dlp"}])
-    assert gap_cov["not_in_scope"] == 3 and gap_cov["gaps"][0]["checks_not_in_scope"] == 1
-    # Every channel the declaration leaves out is a gap too, after the declared ones.
-    assert "(Endpoint DLP (Purview); 2 checks not in scope); 9 gaps (Email DLP, SaaS Security (CASB), " in gap_cov["note"]
-    assert gap_cov["note"].endswith("Workflow Automation; 1 checks not in scope, not read).")
-    assert [c["name"] for c in cov["zscaler"]] == ["Inline Web DLP"] and [c["id"] for c in cov["gaps"]] == ["email_dlp"] + [
-        c for c in cs.CHANNELS if c not in ("web_dlp", "endpoint_dlp", "email_dlp")]
+    assert gap_cov["hidden"] == 3 and gap_cov["gaps"][0]["checks_not_in_scope"] == 1
+    # The note names only what was assessed and why: never a list of what was left out.
+    assert cov["note"] == ("Channels assessed on Zscaler, as declared on the Scope page: Inline Web DLP. "
+                           "SSL/TLS Inspection: included because Inline Web DLP needs it.")
+    for name in ("Endpoint DLP", "Email DLP", "Purview", "gap"):
+        assert name not in cov["note"], name
+    # Every channel the declaration leaves out is a gap, after the declared ones;
+    # SSL inspection is on Zscaler as Inline Web DLP's prerequisite.
+    assert [c["name"] for c in cov["zscaler"]] == ["Inline Web DLP", "SSL/TLS Inspection"]
+    assert cov["zscaler"][1]["prerequisite_of"] == ["web_dlp"] and cov["zscaler"][1]["declared"] == "gap"
+    assert [c["id"] for c in cov["gaps"]] == ["email_dlp"] + [c for c in cs.CHANNELS if c not in ("web_dlp", "endpoint_dlp", "email_dlp", "ssl_inspection")]
     assert cov["alternative"][0] == {"id": "endpoint_dlp", "name": "Endpoint DLP", "note": "Purview", "checks_not_in_scope": 2}
-    assert "1 on Zscaler (Inline Web DLP); 1 covered by an alternative solution (Endpoint DLP (Purview); 2 checks not in scope); 9 gaps (Email DLP, " in cov["note"]
-    assert cs.coverage({})["declared"] is False and "every check" in cs.coverage({})["note"]
+    assert [p["note"] for p in cov["prerequisites"]] == ["SSL/TLS Inspection: included because Inline Web DLP needs it."]
+    assert cs.coverage({})["declared"] is False and "every check" in cs.coverage({})["note"] and cs.coverage({})["prerequisites"] == []
     # normalize: unknown choices are gaps, custom ids keep their name, strings are choices.
     n = cs.normalize({"web_dlp": "weird", "custom_1": {"choice": "alternative", "name": "Print DLP"}, "": "zscaler", 5: 7})
     assert n == {"web_dlp": {"choice": "gap", "note": "", "name": "Inline Web DLP"}, "custom_1": {"choice": "alternative", "note": "", "name": "Print DLP"}}
 
 
-def test_not_in_scope_is_its_own_class_outside_the_score_and_the_run_stays_complete():
+def test_a_check_outside_the_scope_is_hidden_from_the_summary_and_the_run_stays_complete():
     rows = [{"id": "1", "status": "PASS", "detail": ""}, {"id": "2", "status": "FAIL", "detail": ""},
             {"id": "3", "status": "INFO", "detail": "Not in scope: ...", "out_of_scope": True}]
-    assert perm.classify(rows[2]) == "not_in_scope" and perm.CLASS_LABELS["not_in_scope"] == "Not in scope"
+    assert perm.classify(rows[2]) == "not_in_scope"
     s = perm.assessment_summary(rows)
-    assert s["not_in_scope"] == 1 and s["not_in_scope_ids"] == ["3"] and s["assessed"] == 2 and s["total"] == 3
-    assert s["scored"] == 2 and s["score"] == 50 and s["excluded"] == 1 and s["state"] == "complete"
+    assert s["total"] == 2 and s["assessed"] == 2 and s["hidden"] == 1 and "not_in_scope" not in s
+    assert s["hidden_note"] == "1 check is outside the selected scope and is not shown."
+    assert s["scored"] == 2 and s["score"] == 50 and s["excluded"] == 0 and s["state"] == "complete"
+    # The ones the assessment already left out are added to the count.
+    assert perm.assessment_summary(rows, hidden=4)["hidden"] == 5
 
 
-def test_the_assess_stream_reports_the_skipped_checks_and_the_coverage(monkeypatch):
+def test_the_assess_stream_hides_the_skipped_checks_and_reports_the_coverage(monkeypatch):
     from test_assess_stream import FakeClient, _events
     calls = []
     checks = [("A.1", "Ch.A — Inline Web", "web", lambda c: (calls.append("A.1"), R(R.PASS, "fine"))[1]),
@@ -128,15 +139,16 @@ def test_the_assess_stream_reports_the_skipped_checks_and_the_coverage(monkeypat
         ev = _events(r)
     assert calls == ["A.1"], "the endpoint checks were never run against the tenant"
     found = [d for k, d in ev if k == "check"]
-    assert [d["id"] for d in found][:2] == ["B.1", "B.2"] and all(d["out_of_scope"] for d in found[:2])
+    assert [d["id"] for d in found] == ["A.1"] and not any(d.get("out_of_scope") for d in found), "a hidden check is never streamed"
     complete = next(d for k, d in ev if k == "complete")
-    assert [c["id"] for c in complete["checks"]] == ["A.1", "B.1", "B.2"]
-    assert complete["summary"]["not_in_scope"] == 2 and complete["summary"]["assessed"] == 1 and complete["summary"]["state"] == "complete"
-    assert complete["score"] == 100 and complete["metadata"]["total_checks"] == 3
-    assert complete["channel_coverage"]["not_in_scope"] == 2 and complete["channel_coverage"]["alternative"][0]["note"] == "Purview"
-    assert complete["sections"]["Ch.B — Endpoint"]["pct"] is None
+    assert [c["id"] for c in complete["checks"]] == ["A.1"]
+    assert complete["hidden_checks"] == 2 and complete["hidden_note"] == "2 checks are outside the selected scope and are not shown."
+    assert complete["summary"]["hidden"] == 2 and complete["summary"]["total"] == 1 and complete["summary"]["state"] == "complete"
+    assert complete["score"] == 100 and complete["metadata"]["total_checks"] == 1
+    assert complete["channel_coverage"]["hidden"] == 2 and complete["channel_coverage"]["alternative"][0]["note"] == "Purview"
+    assert "Ch.B — Endpoint" not in complete["sections"] and list(complete["sections"]) == ["Ch.A — Inline Web"]
     progress = [d for k, d in ev if k == "progress"]
-    assert progress[0] == {"total": 3, "completed": 2, "pct": 67} and progress[-1]["completed"] == 3
+    assert progress[0] == {"total": 1, "completed": 0, "pct": 0} and progress[-1]["completed"] == 1
 
 
 def test_the_profile_keeps_the_channel_declaration(monkeypatch):
@@ -164,21 +176,29 @@ def test_the_word_report_prints_the_channel_coverage():
         from docx import Document
         doc = Document(path)
         text = "\n".join(p.text for p in doc.paragraphs) + "\n" + "\n".join(c.text for t in doc.tables for row in t.rows for c in row.cells)
-    assert "1 of 2 (1 not in scope)" in text and "1 checks are not in scope: their channel is covered by an alternative solution" in text
-    assert "Channel Coverage" in text and "Alternative solution" in text and "Purview" in text and "Email DLP" in text and "Gap" in text
+    assert "1 of 1" in text and text.count("1 check is outside the selected scope and is not shown.") == 1
+    assert "Channel Coverage" in text and "SSL/TLS Inspection: included because Inline Web DLP needs it." in text
+    # Nothing that was left out has a row: not the alternative, not the gap, not the check.
+    for gone in ("Not in scope", "Alternative solution", "Purview", "Email DLP", "Endpoint DLP"):
+        assert gone not in text, gone
 
 
-def test_the_page_and_the_dashboard_carry_the_declaration_and_the_class():
+def test_the_page_and_the_dashboard_carry_the_declaration_and_hide_what_is_out_of_scope():
     c = _page()
     html = c.get("/").text
     assert "channels: (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {}" in html
-    assert "if (c && c.out_of_scope) return 'not_in_scope';" in html and "not_in_scope_ids" in html
-    assert 'id="notScopeStat"' in html and "NOTSCOPE:'Not in scope'" in html and 'data-filter="NOTSCOPE"' in html and ".status-NOTSCOPE {" in html
-    assert "not in scope (channels covered outside Zscaler or left unticked, per the Scope page)" in html
+    assert "if (c && c.out_of_scope) return 'not_in_scope';" in html
+    # No tile, filter or pill for "Not in scope": the rows are hidden, one line counts them.
+    assert 'id="notScopeStat"' not in html and "NOTSCOPE" not in html and 'id="scopeNote"' in html
+    assert "function scopeVisible(data)" in html and "scopeVisible(data);" in html and "function renderScopeNote(data, sum)" in html
+    assert "checks = (checks || []).filter(c => !(c && c.out_of_scope));" in html
+    assert "if (!evt.out_of_scope) partialResults.push(evt);" in html
+    assert "outside the selected scope and ${v} not shown." in html
     js = c.get("/static/dashboard.js").text
     assert "window.__dbChannelScope = function" in js and "window.__dbChannelsSet = function" in js
-    assert "data.channel_coverage" in js and "not in scope" in js and "reported as <em>Not in scope</em>" in js
-    assert "the assessment still reads the tenant" not in js and "a gap, not in scope; the tenant is not read for it" in js
+    assert "data.channel_coverage" in js and "cc.prerequisites" in js and "Channels assessed:" in js
+    assert "reported as <em>Not in scope</em>" not in js and "a gap, not in scope; the tenant is not read for it and its checks are not shown" in js
+    assert "/api/scope/prerequisites" in js and "Assessed as a prerequisite:" in js and 'id="dbChPrereqs"' in js
     guide = c.get("/static/guide.js").text
     assert "channels: typeof window.__dbChannelScope === 'function' ? window.__dbChannelScope() : {}" in guide
     assert "window.__dbChannelsSet(p.channels)" in guide

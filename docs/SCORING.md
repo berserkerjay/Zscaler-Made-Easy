@@ -18,7 +18,6 @@ the last of them, because the tenant owner can do something about it.
 | **Action required** | FAIL | The setting is missing or contradicts the recommendation. | Yes (denominator) |
 | **Needs review** | REVIEW | The setting exists but differs from the recommendation, or a person has to judge it. | Yes (denominator) |
 | **Not permitted** | INFO or ERROR whose detail is a 401/403 from the API | The API client's role does not include this feature, so the check could not run. Granting the permission restores coverage. | No |
-| **Not in scope** | INFO flagged `out_of_scope` by `channel_scope` | The Scope page marks the check's channel as covered by an alternative solution, so the tenant was not read for it. Marking the channel as Zscaler and running again assesses it. | No |
 | **Could not be checked** | ERROR | The check itself failed (timeout, unexpected answer). | No |
 | **Not configured** (informational) | INFO | The feature is not licensed, not in use, or the check only reports what it found. | No |
 
@@ -29,23 +28,47 @@ score = configured ÷ (configured + action required + needs review) × 100
 ```
 
 - The denominator is only what could be judged. Not-permitted,
-  not-in-scope, could-not-be-checked and informational results are
-  outside it: they neither raise nor lower the score.
+  could-not-be-checked and informational results are outside it: they
+  neither raise nor lower the score.
 - **Channel ownership** (the Scope page, `channel_scope.py`): a channel
   marked *Zscaler* runs as usual; one marked *Alternative* or left unticked
-  (a gap) has its checks reported as *Not in scope* and never read, because
-  the assessment reads only what was put in scope. A check shared with a
-  *Zscaler* channel still runs, except that a check which also reads
-  another channel's own configuration (its rules: `CHANNEL_READS`, e.g. a
-  GenAI check that reads the Web DLP or SSL inspection rules) runs only
-  when that channel is marked *Zscaler* too; otherwise it is *Not in
-  scope* and names the channel to tick. A non-empty declaration whose
-  entries cannot be read (a blank or unknown id, a null value) counts
-  every channel as unticked. The declaration is saved on the tenant
-  profile and comes back in the report as `channel_coverage` (dashboard
-  insight, Word report section, JSON export), which still lists the gaps.
-  With no declaration at all (an MCP or CLI caller) every check in the
-  selected scopes runs.
+  (a gap) has its checks never run and never read, because the assessment
+  reads only what was put in scope. A check shared with a *Zscaler*
+  channel still runs, except that a check which also reads another
+  channel's own configuration (its rules: `CHANNEL_READS`, e.g. a GenAI
+  check that reads the Web DLP rules) runs only when that channel is in
+  scope too. A non-empty declaration whose entries cannot be read (a blank
+  or unknown id, a null value) counts every channel as unticked. The
+  declaration is saved on the tenant profile and comes back in the report
+  as `channel_coverage` (dashboard insight, Word report section, JSON
+  export). With no declaration at all (an MCP or CLI caller) every check
+  in the selected scopes runs.
+- **Prerequisites** (`channel_scope.PREREQUISITES`): a channel on Zscaler
+  puts its assessment prerequisites in scope too when they were not
+  ticked, within the selected service scopes. Their checks run and
+  their endpoints may be read, and the Scope page, the Summary card, the
+  dashboard and the Word report say why ("SSL/TLS Inspection: included
+  because Inline Web DLP needs it"). The map:
+
+  | When on Zscaler | Also assessed | Why |
+  |---|---|---|
+  | Inline Web DLP | SSL/TLS Inspection | For HTTPS, inline DLP only inspects what SSL inspection decrypts; without it, HTTPS uploads pass uninspected. |
+  | GenAI Security | SSL/TLS Inspection | GenAI prompt and upload controls act on decrypted traffic; without SSL inspection the prompts are invisible. |
+  | Device Control | Endpoint DLP | Device Control rules are Endpoint DLP rules, enforced by the Endpoint DLP module; without it installed, none fires. |
+
+  Explicit Alternative choices remain excluded and are shown as unmet prerequisites. Shared prerequisite configuration is not read until a conflicting declaration is resolved. Selected service scopes still gate reads, and prerequisite expansion never adds deployment or ongoing pack/drift targets. URL, SSL and File Type path controls remain visible with their true status.
+
+  The saved declaration is never rewritten: the prerequisites are derived
+  on every run.
+- **Checks outside the scope are hidden.** A check whose channel is
+  neither in scope nor a prerequisite of something in scope has no row,
+  no section, no score item and no coverage count anywhere: the results,
+  the dashboard, the Word report, the compliance mapping, the benchmarks
+  and the JSON export. One line counts them: "N checks are outside the
+  selected scope and are not shown." A check that *is* in scope but
+  failed, was refused or could not be read stays visible. An older saved
+  report that still carries *Not in scope* rows has them dropped and
+  counted the same way.
 - **When nothing was scoreable the score is "Not assessed"**, not 100%
   and not 0%. This applies to the overall score and to every section: a
   section whose checks are all informational shows *Not measured* rather
@@ -85,10 +108,11 @@ Two different questions get two different numbers:
 ## Where the same numbers appear
 
 - JSON export: the `summary` object (`total`, `assessed`, `not_permitted`,
-  `not_in_scope`, `errors`, `informational`, `configured`,
-  `action_required`, `needs_review`, `scored`, `excluded`, `score`,
-  `maturity`, `state`, `score_formula`, `not_permitted_ids`,
-  `not_in_scope_ids`) and the `channel_coverage` object.
+  `errors`, `informational`, `configured`, `action_required`,
+  `needs_review`, `scored`, `excluded`, `score`, `maturity`, `state`,
+  `score_formula`, `not_permitted_ids`, `hidden`, `hidden_note`), the
+  report's `hidden_checks` and `hidden_note`, and the `channel_coverage`
+  object (with `prerequisites`).
 - Word report: the title table (*Assessed*, *Overall Score* with
   "configured of scoreable") and the executive summary sentence with the
   formula and the exclusions.

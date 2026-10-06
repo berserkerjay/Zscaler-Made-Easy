@@ -382,8 +382,8 @@ def snapshot(report: Dict[str, Any]) -> Dict[str, Any]:
         "at": _now(),
         "score": report.get("score"),
         "maturity": report.get("maturity"),
-        "checks": len(report.get("checks") or []),
-        "critical": len(report.get("critical") or []),
+        "checks": len([c for c in (report.get("checks") or []) if not (isinstance(c, dict) and c.get("out_of_scope"))]),
+        "critical": len([c for c in (report.get("critical") or []) if not (isinstance(c, dict) and c.get("out_of_scope"))]),
         "assessor": (report.get("metadata") or {}).get("assessor"),
     }
     if j and j.get("status") != "error":

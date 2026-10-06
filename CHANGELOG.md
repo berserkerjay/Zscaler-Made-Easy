@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-06
+
+### Scope prerequisites and focused assessment results
+- Inline Web DLP and GenAI automatically include SSL/TLS Inspection in the selected assessment scopes; Device Control includes Endpoint DLP. The Scope page and reports explain each addition without changing the saved declaration or deployment targets.
+- Explicit Alternative declarations remain excluded. Conflicting prerequisites are shown as unmet; shared prerequisite configuration is not read until the declaration is resolved.
+- Out-of-scope assessment rows are hidden and counted in one summary line. In-scope failures and unreadable checks remain visible. URL, SSL and File Type controls remain visible in path diagrams with their truthful scope, evidence or stopped status.
+
 ## 2026-10-04
 
 ### Security review: exposure, request limits, secrets and logging

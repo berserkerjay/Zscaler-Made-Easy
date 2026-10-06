@@ -129,7 +129,10 @@ def test_checks_left_to_run_read_no_unticked_channel(ticked):
     channels = {c: ("zscaler" if c in ticked else "gap") for c in cs.CHANNELS}
     checks = srv._get_checks("", ALL_SCOPES)
     to_run, skipped, _ = cs.partition(checks, channels)
-    on = set(ticked)
+    # In scope: the ticked channels and their prerequisites (SSL inspection
+    # for Inline Web DLP and GenAI Security), nothing else.
+    on = set(cs.in_scope(channels))
+    assert on == set(ticked) | {p for t in ticked for p, _ in cs.PREREQUISITES.get(t, ())}
     bad = collections.defaultdict(list)
     for chk in to_run:
         for ep in _reads(chk[3]):
@@ -164,7 +167,9 @@ def test_a_partial_or_malformed_declaration_leaves_the_rest_unticked():
         assert [c[0] for c in run] == [c[0] for c in full[0]], partial
         assert {"5.1", "MC.2", "8.1", "B.1", "B.2"} <= {r["id"] for r in skipped}
     cov = cs.coverage({"web_dlp": "zscaler"})
-    assert [g["id"] for g in cov["gaps"]] == [c for c in cs.CHANNELS if c != "web_dlp"]
+    # SSL inspection is not a gap: Inline Web DLP needs it, so it is on Zscaler as a prerequisite.
+    assert [g["id"] for g in cov["gaps"]] == [c for c in cs.CHANNELS if c not in ("web_dlp", "ssl_inspection")]
+    assert [(z["id"], z.get("prerequisite_of")) for z in cov["zscaler"]] == [("web_dlp", None), ("ssl_inspection", ["web_dlp"])]
     assert cs.normalize({"endpoint_dlp": None})["endpoint_dlp"]["choice"] == "gap"
     # Nothing declared still narrows nothing.
     assert cs.partition(checks, {})[1] == []
@@ -331,7 +336,7 @@ def test_authenticate_help_does_not_promise_a_role_check():
     assert "missing role" not in _read("static/explain.js")
 
 
-def test_the_word_report_counts_a_gap_channel_checks():
+def test_the_word_report_hides_a_gap_channel_checks_and_counts_them_in_one_line():
     from docx import Document
     from report_docx import generate_report
     from dlp_assessment_full_auto import compute, maturity
@@ -344,8 +349,11 @@ def test_the_word_report_counts_a_gap_channel_checks():
         generate_report(rows, {"org_name": "Acme", "channel_coverage": cov}, path, compute, maturity)
         doc = Document(path)
         text = "\n".join(p.text for p in doc.paragraphs)
-        table = next(t for t in doc.tables if t.rows[0].cells[0].text == "Channel" and t.rows[0].cells[2].text == "Checks not in scope")
+        table = next(t for t in doc.tables if t.rows[0].cells[0].text == "Channel" and t.rows[0].cells[1].text == "Assessed because")
         rows_by_name = {r.cells[0].text: [c.text for c in r.cells] for r in table.rows[1:]}
-    assert rows_by_name["Email DLP"][1] == "Gap" and rows_by_name["Email DLP"][2] == "2"
-    assert rows_by_name["Inline Web DLP"][2] == "—"
-    assert "was left as a gap on the Scope page" in text
+        cells = "\n".join(c.text for t in doc.tables for r in t.rows for c in r.cells)
+    # Only what was assessed has a row: Inline Web DLP, and SSL inspection as its prerequisite.
+    assert set(rows_by_name) == {"Inline Web DLP", "SSL/TLS Inspection"}
+    assert rows_by_name["SSL/TLS Inspection"][1] == "Prerequisite: SSL/TLS Inspection: included because Inline Web DLP needs it."
+    assert "Email DLP" not in cells and "Not in scope" not in cells and "Not in scope" not in text
+    assert text.count("2 checks are outside the selected scope and are not shown.") == 1

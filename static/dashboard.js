@@ -265,7 +265,8 @@
             <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
           </div>
         </div>
-        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it (a check that also reads another channel's rules, such as a GenAI check reading the Web DLP rules, runs only when that channel is ticked too). <strong>Alternative</strong>: another product covers it, so its checks are reported as <em>Not in scope</em> and left out of the score (note the vendor with ✎). <strong>Unticked</strong>: a gap, not in scope; the tenant is not read for it and its checks are reported as <em>Not in scope</em> (the report lists it as a gap). The declaration is saved with the tenant profile and printed in the report.</p>
+        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it (a check that also reads another channel's rules, such as a GenAI check reading the Web DLP rules, runs only when that channel is ticked too). <strong>Alternative</strong>: another product covers it, so its checks are not run and not shown (note the vendor with ✎). <strong>Unticked</strong>: a gap, not in scope; the tenant is not read for it and its checks are not shown. Results show only what is in scope, with one line counting the checks left out. <strong>Prerequisites</strong>: a channel another one cannot work without is assessed too (SSL/TLS Inspection when Inline Web DLP is on Zscaler), and says why. Explicit Alternative choices remain excluded and show an unmet prerequisite. Prerequisite checks run only within the assessment scopes selected below. They do not select deployment targets or change the saved declaration. The declaration is saved with the tenant profile and printed in the report.</p>
+        <p class="db-scope-p db-ch-prereqs" id="dbChPrereqs" role="status" hidden></p>
         <div id="dbChList" class="db-ch-list"></div>
       </div>
       <div class="card db-scope-section" id="dbScopeAssessCard"><div id="dbScopeAssessBody"></div></div>
@@ -296,7 +297,39 @@
     const fw = $('complianceFwField'); if (fw) sec.querySelector('#dbScopeFwBody').appendChild(fw);
     return sec;
   }
-  function channelRowHtml(c) {
+  // The channel prerequisites, from the server's one map
+  // (channel_scope.PREREQUISITES via /api/scope/prerequisites): a channel
+  // on Zscaler puts its prerequisites in scope too, and the page says so.
+  let prereqMap = {};
+  async function loadPrereqs() {
+    try {
+      const r = await fetch('/api/scope/prerequisites', { cache: 'no-store' });
+      if (r.ok) { const d = await r.json(); prereqMap = (d && d.prerequisites) || {}; if (scopeView) renderChannelsList(); }
+    } catch (e) { /* no notes: the server still applies the prerequisites */ }
+  }
+  // { [prerequisite id]: [names of the ticked channels that need it] },
+  // transitively, for every channel not itself ticked as Zscaler.
+  function prereqsInEffect() {
+    const name = id => (allChannels().find(c => c.id === id) || {}).name || id;
+    const on = new Set(allChannels().filter(c => (channelState[c.id] || {}).choice === 'zscaler').map(c => c.id));
+    const added = {}; const queue = [...on];
+    while (queue.length) {
+      const cid = queue.shift();
+      (prereqMap[cid] || []).forEach(p => {
+        if (on.has(p.id)) return;
+        if (!added[p.id]) { const blocked = (channelState[p.id] || {}).choice === 'alternative'; added[p.id] = { names: [], reasons: [], blocked }; if (!blocked) queue.push(p.id); }
+        if (!added[p.id].names.includes(name(cid))) { added[p.id].names.push(name(cid)); added[p.id].reasons.push(p.reason || ''); }
+      });
+    }
+    return added;
+  }
+  function prereqNote(id, info) {
+    const name = (allChannels().find(c => c.id === id) || {}).name || id;
+    if (info.blocked) return `${name}: unmet prerequisite for ${info.names.join(' and ')}; marked Alternative, so its Zscaler configuration is not read. Resolve the channel declaration on the Scope page to assess it.`;
+    return `${name}: included because ${info.names.join(' and ')} need${info.names.length > 1 ? '' : 's'} it.`;
+  }
+  window.__dbPrereqNotes = function () { const a = prereqsInEffect(); return Object.keys(a).map(id => prereqNote(id, a[id])); };
+  function channelRowHtml(c, pre) {
     const st = channelState[c.id] || {};
     const addressed = st.choice === 'zscaler' || st.choice === 'alternative';
     return `<div class="db-ch-row ${addressed ? '' : 'gap'}" data-id="${E(c.id)}">
@@ -306,6 +339,7 @@
         <div class="db-ch-h"><strong>${E(c.name)}</strong><span class="db-chip risk-${RISK_CLS[c.risk] || 'dim'}">${E(RISK_LABEL[c.risk] || c.risk)}</span><span class="db-ch-cat">${E(c.category)}</span></div>
         <p>${E(c.what)}</p>
         ${st.choice === 'alternative' ? `<div class="db-ch-note">${st.note ? `Alternative: ${E(st.note)}` : 'Alternative solution in use'}</div>` : ''}
+        ${pre ? `<div class="db-ch-note db-ch-prereq" title="${E(pre.reasons.join(' '))}">${pre.blocked ? 'Unmet prerequisite:' : 'Assessed as a prerequisite:'} ${E(prereqNote(c.id, pre))}</div>` : ''}
       </div>
       <div class="db-ch-choice" role="radiogroup" aria-label="${E(c.name)} coverage">
         <label class="db-pill ${st.choice === 'zscaler' ? 'on' : ''}"><input type="radio" name="ch-${E(c.id)}" value="zscaler" ${st.choice === 'zscaler' ? 'checked' : ''}> Zscaler</label>
@@ -318,7 +352,10 @@
   function renderChannelsList() {
     const list = $('dbChList'); if (!list) return;
     const items = allChannels();
-    list.innerHTML = items.map(channelRowHtml).join('');
+    const pre = prereqsInEffect();
+    list.innerHTML = items.map(c => channelRowHtml(c, pre[c.id])).join('');
+    const preEl = $('dbChPrereqs');
+    if (preEl) { const notes = Object.keys(pre).map(id => prereqNote(id, pre[id])); preEl.textContent = notes.join(' '); preEl.hidden = !notes.length; }
     const owned = items.filter(c => (channelState[c.id] || {}).choice === 'zscaler').length;
     const alt = items.filter(c => (channelState[c.id] || {}).choice === 'alternative').length;
     const gaps = items.length - owned - alt;
@@ -351,8 +388,8 @@
   }
   // What the assessment and the tenant profile read: every channel with its
   // choice (zscaler / alternative / gap), note and name (channel_scope.py
-  // applies it: only a Zscaler channel is read; an alternative's or a gap's
-  // checks are reported as not in scope). A profile's saved declaration
+  // applies it: only a Zscaler channel, or a prerequisite of one, is read;
+  // an alternative's or a gap's checks are hidden). A profile's saved declaration
   // replaces this browser's copy.
   window.__dbChannelScope = function () {
     const out = {};
@@ -393,7 +430,7 @@
   window.__dbShowScope = showScopeView;
   // Built at load (hidden) so the report details leave the tenant
   // configuration card before anyone opens Connect to the tenant.
-  scopeView = buildScopeView(); renderChannelsList();
+  scopeView = buildScopeView(); renderChannelsList(); loadPrereqs();
 
   // ── Dashboard default content: the score tiles (ring, completion,
   // radar, pillars, insights, actions) live outside #results so they are
@@ -663,15 +700,14 @@
     if (reviews.length) items.push(['warn', '🔎', `<strong>${reviews.length} item${reviews.length === 1 ? '' : 's'} to review</strong> with the customer: they are configured, but not the way Zscaler recommends.`]);
     if (strongest && strongest[1].pct >= 75) items.push(['ok', '✅', `<strong>Strongest area: ${E(strongest[0])}</strong> at ${strongest[1].pct}%; ${strongest[1].pass || 0} checks configured.`]);
     if (data.permissions && data.permissions.blocked) items.push(['warn', '🔏', `<strong>${data.permissions.blocked} check${data.permissions.blocked === 1 ? '' : 's'} could not run</strong>: the API client's role lacks their feature. The card below says what to grant.`]);
-    // The Scope page's channel declaration, as the server applied it.
+    // The Scope page's channel declaration, as the server applied it: what
+    // was assessed and each prerequisite added. The checks outside the scope
+    // are hidden; the Summary card counts them in one line (index.html).
     const cc = data.channel_coverage;
     if (cc && cc.declared) {
-      const alt = cc.alternative || [], gaps = cc.gaps || [];
-      const nOut = rows => rows.reduce((n, r) => n + (r.checks_not_in_scope || 0), 0);
-      const nAlt = nOut(alt), nGap = nOut(gaps);
-      const altTxt = alt.length ? `${alt.length} covered elsewhere (${alt.map(a => E(a.name) + (a.note ? ` — ${E(a.note)}` : '')).join(', ')}; ${nAlt} check${nAlt === 1 ? '' : 's'} not in scope)` : '';
-      const gapTxt = gaps.length ? `${gaps.length} gap${gaps.length === 1 ? '' : 's'} (${gaps.map(g => E(g.name)).join(', ')}${nGap ? `; ${nGap} check${nGap === 1 ? '' : 's'} not in scope, not read` : ''})` : 'no gaps';
-      items.push([gaps.length ? 'warn' : 'ok', '🎯', `<strong>Channels: ${(cc.zscaler || []).length} on Zscaler</strong>${altTxt ? `, ${altTxt}` : ''}, ${gapTxt}. Declared on the Scope page.`]);
+      const ticked = (cc.zscaler || []).filter(r => !r.prerequisite_of);
+      const pre = (cc.prerequisites || []).map(p => p.note).filter(Boolean);
+      items.push(['ok', '🎯', `<strong>Channels assessed: ${ticked.length ? ticked.map(r => E(r.name)).join(', ') : 'none ticked'}</strong>${pre.length ? `. ${pre.map(E).join(' ')}` : '.'}`]);
     }
     if (!items.length) items.push(['ok', '✅', `<strong>${passes.length} of ${checks.length} checks configured.</strong> Nothing needs action.`]);
     host.innerHTML = items.slice(0, 5).map(([cls, ico, html]) => `<li class="${cls}"><span class="db-ico" aria-hidden="true">${ico}</span><span>${html}</span></li>`).join('');
@@ -742,8 +778,8 @@
     ring('dbCompArc', 100);
     const cp = $('dbCompPct'), ct = $('dbCompTxt');
     if (cp) cp.textContent = sum.state === 'partial' ? 'Partial' : 'Done';
-    const extra = [sum.not_permitted ? `${sum.not_permitted} not permitted` : '', sum.not_in_scope ? `${sum.not_in_scope} not in scope` : '', sum.errors ? `${sum.errors} could not be checked` : ''].filter(Boolean);
-    if (ct) ct.textContent = (sum.not_permitted || sum.not_in_scope)
+    const extra = [sum.not_permitted ? `${sum.not_permitted} not permitted` : '', sum.errors ? `${sum.errors} could not be checked` : ''].filter(Boolean);
+    if (ct) ct.textContent = sum.not_permitted
       ? `${sum.assessed} of ${sum.total} assessed · ${extra.join(' · ')}`
       : `${sum.total} checks assessed${sum.errors ? ` · ${sum.errors} could not be checked` : ''}`;
     radar(data.sections); pillars(data.sections); insights(data); actions(data); footer(data); decorateChecks();

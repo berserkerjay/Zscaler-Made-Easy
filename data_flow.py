@@ -91,15 +91,16 @@ def path_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
     """What the Path analyzer may read for the Scope page's selection:
     `scopes` (the ticked scope keys) and `channels` (the channel
     declaration, {id: choice or {choice, note, name}}). A channel counts
-    only when marked Zscaler; one left as a gap or not declared is out of
-    scope like one covered by an alternative solution. Returns {scopes,
+    when marked Zscaler or added as an assessment prerequisite. Explicit
+    alternative-vendor declarations remain excluded, and service scopes
+    always gate reads even for prerequisites. Returns {scopes,
     channels, read: [section keys], not_in_scope: {key: why}, lookup,
     key, summary}. `key` names what is read, so a cached read is reused
     only for the same scope. Pure: never reads a tenant."""
     import channel_scope
     given = {str(s).strip() for s in scopes} if isinstance(scopes, (list, tuple, set)) else set()
     sc = [k for k in SCOPE_KEYS if k in given]
-    ch = channel_scope.normalize(channels)
+    ch = channel_scope.resolve(channels)   # a prerequisite (SSL inspection for Web DLP) is in scope too
     read: List[str] = []
     out: Dict[str, str] = {}
     for key, (what, need, cid) in PATH_SECTIONS.items():

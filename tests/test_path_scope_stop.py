@@ -390,20 +390,34 @@ def test_out_of_scope_parts_are_not_read_and_say_not_in_scope_never_no_rule():
                 assert rr["state"] == "not_in_scope", rr
 
 
-def test_ssl_inspection_out_of_scope_gives_not_assessed_never_no_rule_or_could_not_read():
+def test_ssl_inspection_comes_with_web_dlp_as_its_prerequisite():
+    # Inline Web DLP on Zscaler, SSL/TLS Inspection not ticked: SSL inspection
+    # is Web DLP's prerequisite (channel_scope.PREREQUISITES), so it is read
+    # and traced like any part in scope, never "not in scope".
     c = Tenant()
     sc = _scope(["dlp", "zcc"], {"web_dlp": "zscaler", "endpoint_dlp": "zscaler"})
+    assert "ssl" in sc["read"] and "ssl" not in sc["not_in_scope"]
     r = pa.analyze(c, "chat.openai.com", "off", "windows", scope=sc)
-    assert "/zia/sslInspectionRules" not in c.requests
+    assert "/zia/sslInspectionRules" in c.requests
+    ssl = next(h for h in r["trace"]["hops"] if h["key"] == "ssl")
+    assert ssl["status"] != "out_of_scope", ssl
+    dlp = next(h for h in r["trace"]["hops"] if h["key"] == "dlp")
+    assert dlp["status"] != "out_of_scope", dlp
+
+
+def test_ssl_inspection_out_of_scope_gives_not_assessed_never_no_rule_or_could_not_read():
+    # Neither SSL inspection nor a channel that needs it is on Zscaler: not read, "not in scope".
+    c = Tenant()
+    sc = _scope(["dlp", "zcc"], {"web_dlp": "gap", "endpoint_dlp": "zscaler"})
+    r = pa.analyze(c, "chat.openai.com", "off", "windows", scope=sc)
+    assert "/zia/sslInspectionRules" not in c.requests and "/zia/webDlpRules" not in c.requests
     v = r["verdict"]
     assert v["outcome"] == "out_of_scope", v["outcome"]
     assert "not in scope" in v["headline"] and "no DLP rule" not in v["headline"] and "could not" not in v["headline"]
-    assert "neither 'no DLP rule' nor 'could not read'" in v["summary"]
     ssl = next(h for h in r["trace"]["hops"] if h["key"] == "ssl")
     assert ssl["status"] == "out_of_scope" and "SSL/TLS Inspection is not marked Zscaler" in ssl["detail"]
     dlp = next(h for h in r["trace"]["hops"] if h["key"] == "dlp")
-    assert dlp["status"] == "out_of_scope" and "would apply" in dlp["detail"]
-    assert not any("encrypted" in m["why"] for m in v["mitigations"]), v["mitigations"]
+    assert dlp["status"] == "out_of_scope"
 
 
 def test_client_connector_only_reads_no_zia_policy_and_asks_no_lookup():
@@ -488,7 +502,7 @@ def test_the_motion_says_not_in_scope_never_a_break_or_an_unread_mark():
     import subprocess
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     r = pa.analyze(Tenant(), "chat.openai.com", "off", "windows",
-                   scope=_scope(["dlp", "zcc"], {"web_dlp": "zscaler", "endpoint_dlp": "gap", "email_dlp": "alternative"}))
+                   scope=_scope(["dlp", "zcc"], {"web_dlp": "gap", "endpoint_dlp": "gap", "email_dlp": "alternative"}))
     r.pop("snapshot_for_cache", None)
     res = json.loads(json.dumps(r, default=str))
     script = (

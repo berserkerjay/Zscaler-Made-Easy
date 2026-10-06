@@ -280,8 +280,9 @@ def normalize_scopes(scopes: Any) -> List[str]:
 def zscaler_channels(channels: Any) -> List[str]:
     """The channel ids marked Zscaler, in the Scope page's channel order
     whatever order they were sent in (so the same selection always reads
-    the same); alternative and gap are out."""
-    on = {cid for cid, v in channel_scope.normalize(channels).items() if v["choice"] == "zscaler"}
+    the same); gaps may be prerequisites, but alternative-vendor
+    declarations always remain excluded (channel_scope.PREREQUISITES)."""
+    on = {cid for cid, v in channel_scope.resolve(channels).items() if v["choice"] == "zscaler"}
     order = list(channel_scope.CHANNELS)
     return sorted(on, key=lambda c: (order.index(c) if c in order else len(order), c))
 
@@ -299,14 +300,14 @@ def declaration(channels: Any) -> Dict[str, Dict[str, str]]:
     ch = channel_scope.normalize(channels)
     for cid, name in channel_scope.CHANNELS.items():
         ch.setdefault(cid, {"choice": "gap", "note": "", "name": name})
-    return ch
+    return channel_scope.with_prerequisites(ch)
 
 
-def _endpoint_in_scope(ep: str, on: Set[str]) -> bool:
+def _endpoint_in_scope(ep: str, on: Set[str], resolved: Optional[Dict[str, Dict[str, Any]]] = None) -> bool:
     """A channel's own configuration is read only with one of its channels
     on Zscaler, as channel_scope.ScopedClient refuses it otherwise."""
     chans = channel_scope.endpoint_channels(ep)
-    return not chans or any(c in on for c in chans)
+    return not chans or (channel_scope.group_in_scope(chans, resolved) if resolved is not None else any(c in on for c in chans))
 
 
 def running_checks(scopes: Iterable[str], channels: Any) -> List[Dict[str, Any]]:
@@ -346,6 +347,7 @@ def select(scopes: Any, channels: Any, endpoints: Optional[Dict[str, List[str]]]
     sc = normalize_scopes(scopes)
     on = zscaler_channels(channels)
     sset, onset = set(sc), set(on)
+    resolved = channel_scope.resolve(channels)
     owners = endpoint_owners(eps)
     running = running_checks(sc, channels)
     readers: Dict[str, List[Dict[str, Any]]] = {}
@@ -357,7 +359,7 @@ def select(scopes: Any, channels: Any, endpoints: Optional[Dict[str, List[str]]]
     for ep, mods in eps.items():
         if not owners.get(ep):
             unmapped.append(ep)
-        elif readers.get(ep) and _endpoint_in_scope(ep, onset):
+        elif readers.get(ep) and _endpoint_in_scope(ep, onset, resolved):
             picked[ep] = list(mods)
         else:
             not_in.append(ep)
