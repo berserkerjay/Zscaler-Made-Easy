@@ -75,7 +75,7 @@
         by: by || '',
       });
       if (h.key === 'dlp') {
-        dlp = { rules: (h.rules || []).map(r => ({ name: r.name, action: r.action || (r.enforcing ? 'BLOCK' : 'ALLOW'), enforcing: !!r.enforcing, engines: (r.engines || []).map(String) })) };
+        dlp = { rules: (h.rules || []).map(r => ({ id: r.id, channel: r.channel, name: r.name, action: r.action || (r.enforcing ? 'BLOCK' : 'ALLOW'), enforcing: !!r.enforcing, engines: (r.engines || []).map(String), engine_ids: (r.engine_ids || []).map(String) })) };
       }
     });
     let stop = -1;
@@ -86,7 +86,7 @@
     if (stop >= 0) for (let i = stop + 1; i < hops.length; i++) hops[i].tone = 'after';
     const outcome = v.outcome || t.outcome || '';
     return {
-      hops, stop, dlp, dest,
+      hops, stop, dlp, dest, context: res.context || res.scenario || null,
       verdict: { tone: OUTCOME_TONE[outcome] || 'warn', outcome, text: [v.headline, v.summary].filter(Boolean).join(' ') || outcome },
     };
   }
@@ -104,15 +104,16 @@
   }
   const OP_WORD = { '>': 'more than', '>=': 'at least', '<': 'fewer than', '<=': 'at most', '=': 'exactly', '==': 'exactly', '!=': 'not' };
 
-  function engineWhy(fires, terms) {
+  function engineWhy(fires, terms, expression) {
+    const simple = /^\s*\(?\s*(?:D\d+\.S|Sum\([^()]*\))\s*(?:>=|<=|!=|==|>|<|=)\s*\d+\s*\)?\s*$/.test(expression || '');
     if (fires === true) {
       const t = terms.filter(x => x.ok === true && x.count !== null)[0];
-      return { kind: 'fires', text: t ? `fires: ${t.count} found, needs ${OP_WORD[t.op] || t.op} ${t.n}` : 'fires' };
+      return { kind: 'fires', text: t && simple ? `fires: ${t.count} found, needs ${OP_WORD[t.op] || t.op} ${t.n}` : 'engine expression is satisfied' };
     }
     if (fires === null) return { kind: 'unknown', text: 'unknown: a dictionary it uses cannot be simulated here' };
     const near = terms.filter(x => x.ok === false && x.count > 0)[0];
-    if (near) return { kind: 'near', text: `near miss: ${near.count} found, needs ${OP_WORD[near.op] || near.op} ${near.n}` };
-    return { kind: 'none', text: 'nothing to match' };
+    if (near && simple) return { kind: 'near', text: `near miss: ${near.count} found, needs ${OP_WORD[near.op] || near.op} ${near.n}` };
+    return { kind: 'none', text: 'engine expression is not satisfied' };
   }
 
   // The engines a picture can hold: firing ones and near misses first.
@@ -124,17 +125,18 @@
     if (!res || !Array.isArray(res.engines)) return null;
     const o = opts || {};
     const byId = {};
-    (res.results || []).forEach(d => { byId[String(d.id)] = { key: 'd' + d.id, name: d.name, count: Number(d.total_hits) || 0 }; });
+    (res.results || []).forEach(d => { byId[String(d.id)] = { key: 'd' + d.id, name: d.name, count: d.total_hits == null || d.simulated === false ? null : Number(d.total_hits) || 0 }; });
     (res.predefined || []).forEach(d => {
       const c = d.simulated ? Number(d.total_hits != null ? d.total_hits : d.hits) || 0 : null;
       byId[String(d.id)] = { key: 'd' + d.id, name: d.name, count: c };
     });
     const actions = {};
-    (o.rules || []).forEach(r => { actions[up(r.name)] = r.action; });
+    (o.rules || []).forEach(r => { if (r.id != null) actions[String(r.channel || o.channel || '') + ':' + String(r.id)] = r; });
     let engines = res.engines.map(e => {
       const terms = (e.terms || []).map(parseTerm);
-      const why = engineWhy(e.fires === undefined ? null : e.fires, terms);
-      return { name: e.name, expr: e.expression || '', fires: e.fires === undefined ? null : e.fires, terms, why, rules: (e.rules || []).slice() };
+      const why = engineWhy(e.fires === undefined ? null : e.fires, terms, e.expression);
+      if (e.explanation) why.text = String(e.explanation);
+      return { id: e.id, name: e.name, rule_objects: e.rule_objects || [], expr: e.expression || '', fires: e.fires === undefined ? null : e.fires, terms, why, rules: (e.rules || []).slice() };
     });
     const total = engines.length;
     engines.sort((a, b) => (WHY_RANK[a.why.kind] - WHY_RANK[b.why.kind]) || String(a.name).localeCompare(String(b.name)));
@@ -149,16 +151,26 @@
       }));
     });
     const rules = [];
-    engines.forEach((e, i) => e.rules.forEach(n => {
-      let r = rules.filter(x => x.name === n)[0];
-      if (!r) { r = { name: n, engines: [], action: actions[up(n)] || null }; rules.push(r); }
-      r.engines.push(i);
-    }));
+    engines.forEach((e, i) => {
+      const refs = e.rule_objects.length ? e.rule_objects : e.rules.map(name => ({ name }));
+      refs.forEach(ref => {
+        const id = ref.id != null ? String(ref.id) : null;
+        let r = id ? rules.find(x => x.id === id && x.channel === ref.channel) : null;
+        if (!r) {
+          const known = id && actions[String(ref.channel || o.channel || '') + ':' + id] || ref;
+          r = { id, channel: ref.channel || known.channel || '', name: ref.name || known.name || 'Unnamed rule', engines: [],
+            action: known.action || null, state: known.state || '', applicability: known.applicability || 'conditional' };
+          rules.push(r);
+        }
+        r.engines.push(i);
+      });
+    });
     return {
+      context: o.context || res.context || null,
       source: { label: o.label || 'Sample content', sub: o.sub || (res.corpus_length ? `${res.corpus_length} characters` : '') },
       dicts: dicts.slice(0, DICT_MAX), engines, rules: rules.slice(0, RULE_MAX),
       hidden: { engines: total - engines.length, dicts: Math.max(0, dicts.length - DICT_MAX), rules: Math.max(0, rules.length - RULE_MAX) },
-      measured: true,
+      measured: o.measured !== false && res.mode !== 'configuration', incomplete: (res.errors || []).length > 0 || Object.values(res.read_evidence || {}).some(e => e.status === 'unverified'), totals: { fires: res.engines.filter(e => e.fires === true).length, unknown: res.engines.filter(e => e.fires == null).length, engines: res.engines.length }, note: res.note || '',
     };
   }
 
@@ -166,18 +178,22 @@
   // counts (the analyzer reads configuration, not content). A corpus
   // model, when one exists, fills in the counts for engines it knows.
   function pathDrillModel(path, corpus) {
+    const a = path && path.context, b = corpus && corpus.context;
+    const joined = a && b && ['tenant_key', 'scope_key', 'configuration_id'].every(k => a[k] && a[k] === b[k]) && (a.scenario_id || a.id) && (a.scenario_id || a.id) === (b.scenario_id || b.id);
+    if (!joined) corpus = null;
     if (!path || !path.dlp || !path.dlp.rules.length) return corpus || null;
     const known = {};
-    if (corpus) corpus.engines.forEach(e => { known[up(e.name)] = e; });
+    if (corpus) corpus.engines.forEach(e => { if (e.id != null) known[String(e.id)] = e; });
     const engines = [], rules = [];
     path.dlp.rules.slice(0, RULE_MAX).forEach(r => {
-      const rule = { name: r.name, action: r.action, engines: [] };
-      r.engines.forEach(n => {
+      const rule = { id: r.id, channel: r.channel, name: r.name, action: r.action, engines: [] };
+      r.engines.forEach((n, position) => {
         let i = -1;
-        for (let k = 0; k < engines.length; k++) if (up(engines[k].name) === up(n)) i = k;
+        const requestedId = (r.engine_ids || [])[position];
+        for (let k = 0; k < engines.length; k++) if (requestedId != null ? String(engines[k].id) === String(requestedId) : engines[k].id == null && up(engines[k].name) === up(n)) i = k;
         if (i < 0 && engines.length < ENGINE_MAX) {
-          const c = known[up(n)];
-          engines.push(c ? Object.assign({}, c, { rules: [] }) : { name: n, expr: '', fires: null, terms: [], dicts: [], rules: [], why: { kind: 'unmeasured', text: 'not measured: run sample content in DLP decision' } });
+          const c = (r.engine_ids || [])[position] != null ? known[String(r.engine_ids[position])] : null;
+          engines.push(c ? Object.assign({}, c, { rules: [] }) : { id: requestedId, name: n, expr: '', fires: null, terms: [], dicts: [], rules: [], why: { kind: 'unmeasured', text: 'not measured: run sample content in DLP decision' } });
           i = engines.length - 1;
         }
         if (i >= 0) rule.engines.push(i);
@@ -191,7 +207,7 @@
     }));
     return {
       source: { label: 'Content on this path', sub: path.dest || '' }, dicts: dicts.slice(0, DICT_MAX), engines, rules,
-      hidden: { engines: 0, dicts: 0, rules: Math.max(0, path.dlp.rules.length - RULE_MAX) }, measured: !!corpus,
+      hidden: { engines: 0, dicts: 0, rules: Math.max(0, path.dlp.rules.length - RULE_MAX) }, measured: !!corpus && engines.some(e => e.why.kind !== 'unmeasured'),
     };
   }
 
@@ -263,13 +279,14 @@
 
   // One Workflow Automation incident (Live DLP feed) → the lanes it took.
   // Only what the picture needs: no user names, no file names.
-  const LIVE_CHANNELS = ['web', 'endpoint', 'email', 'saas'];
+  const LIVE_CHANNELS = ['web', 'endpoint', 'email', 'saas', 'unknown'];
   function liveModel(inc) {
     if (!inc) return null;
-    const ch = LIVE_CHANNELS.indexOf(inc.channel) >= 0 ? inc.channel : 'web';
-    const dicts = (inc.dictionaries || []).map(d => ({ name: d.name, count: Number(d.count) || 0 })).sort((a, b) => b.count - a.count);
+    const ch = LIVE_CHANNELS.indexOf(inc.channel) >= 0 ? inc.channel : 'unknown';
+    const dicts = (inc.dictionaries || []).map(d => ({ name: d.name, count: typeof d.count === 'number' && Number.isFinite(d.count) ? d.count : null })).sort((a, b) => b.count - a.count);
     return {
       id: String(inc.id || ''), channel: ch, at: inc.created_at || '',
+      controls: ['URL Filtering', 'SSL Inspection', 'File Type Control'].map(label => ({ label, status: ch === 'web' || ch === 'unknown' ? 'unverified' : 'not_applicable', reason: ch === 'web' || ch === 'unknown' ? 'Not present in the incident feed; no upstream decision observed.' : 'Inline web control is not an enforcement hop of this channel.' })),
       rule: (inc.rules || [])[0] || '', engine: (inc.engines || [])[0] || '', dicts,
       enforcement: inc.enforcement === 'enforced' ? 'enforced' : (inc.enforcement === 'monitor' ? 'monitor' : 'unknown'),
       dest: inc.host || inc.destination || inc.application || '', severity: inc.severity || '',
@@ -408,6 +425,7 @@
     root.document.addEventListener('visibilitychange', vis);
     return {
       add(j) { jobs.add(j); kick(); return () => jobs.delete(j); },
+      clear() { jobs.clear(); if (raf) root.cancelAnimationFrame(raf); raf = 0; },
       destroy() { dead = true; jobs.clear(); if (raf) root.cancelAnimationFrame(raf); root.document.removeEventListener('visibilitychange', vis); },
     };
   }
@@ -456,8 +474,9 @@
     let i = 0, busy = false, done = false, auto = false, gen = 0;
     function reset() {
       gen++; i = 0; busy = false; done = false; auto = false;
+      clock.clear(); svg.querySelectorAll('.fa-dot').forEach(dot => dot.remove());
       boxes.forEach(b => b.set('')); edges.forEach(e => e.setAttribute('class', 'fa-edge'));
-      boxes[0].set('pass');
+      boxes[0].set(model.hops[0].tone || 'idle');
       if (o.onReset) o.onReset();
     }
     function finish() {
@@ -470,6 +489,7 @@
     }
     async function step() {
       if (busy || done) return;
+      if (model.stop === 0) { finish(); return; }
       const my = gen;
       if (i >= n - 1) { finish(); return; }
       busy = true;
@@ -487,8 +507,8 @@
     }
     reset();
     return {
-      play() { reset(); auto = true; if (reduced()) { while (!done && i < n - 1) { const h = model.hops[i + 1]; edges[i].setAttribute('class', 'fa-edge lit'); boxes[i + 1].set(h.tone); i++; if (o.onHop) o.onHop(h, i); if (h.tone === 'stop') break; } if (o.beforeLand && model.hops.slice(0, i + 1).some(h => h.key === 'dlp')) o.beforeLand(model.hops.filter(h => h.key === 'dlp')[0]); finish(); return; } step(); },
-      step() { if (done) reset(); step(); },
+      play() { reset(); auto = true; if (model.stop === 0) { finish(); return; } if (reduced()) { while (!done && i < n - 1) { const h = model.hops[i + 1]; edges[i].setAttribute('class', 'fa-edge lit'); boxes[i + 1].set(h.tone); i++; if (o.onHop) o.onHop(h, i); if (h.tone === 'stop') break; } if (o.beforeLand && model.hops.slice(0, i + 1).some(h => h.key === 'dlp')) o.beforeLand(model.hops.filter(h => h.key === 'dlp')[0]); finish(); return; } step(); },
+      step() { auto = false; if (done) return; step(); },
       reset, destroy() { gen++; clock.destroy(); host.innerHTML = ''; },
     };
   }
@@ -502,7 +522,7 @@
     const svg = newSvg(host, 1000, H, 'Inside DLP: content, dictionaries with match counts, engines, rules');
     const col = (i, len) => 14 + i * RH + (rowsN - len) * RH / 2;
     const src = box(svg, 8, H / 2 - 23, 150, 46, model.source.label, model.source.sub);
-    const D = model.dicts.map((d, i) => box(svg, 220, col(i, model.dicts.length), 200, 46, d.name, 'scanning…'));
+    const D = model.dicts.map((d, i) => box(svg, 220, col(i, model.dicts.length), 200, 46, d.name, model.measured ? 'scanning…' : 'not tested'));
     const G = model.engines.map((e, i) => box(svg, 490, col(i, model.engines.length), 210, 46, e.name, e.terms.length ? e.terms.map(t => `${t.sum ? 'Sum' : 'D'} ${t.op} ${t.n}`).join(', ') : (e.expr || '')));
     const R = model.rules.map((r, i) => box(svg, 775, col(i, model.rules.length), 215, 46, r.name, r.action || ''));
     const dIdx = {}; model.dicts.forEach((d, i) => { dIdx[d.key] = i; });
@@ -521,6 +541,7 @@
       await Promise.all(D.map((b, i) => {
         sd[i].setAttribute('class', 'fa-edge lit');
         return fly(clock, svg, sd[i], 650).then(() => {
+          if (my !== gen) return;
           const c = model.dicts[i].count;
           b.sub(c === null ? 'not simulated' : `${c} match${c === 1 ? '' : 'es'}`);
           b.set(c ? 'pass' : (c === null ? 'warn' : 'after'));
@@ -555,12 +576,12 @@
         if (hit.length) {
           hit.forEach(x => x.p.setAttribute('class', 'fa-edge lit'));
           await Promise.all(hit.map(x => fly(clock, svg, x.p, 500)));
-          const block = /BLOCK|QUARANTINE/i.test(r.action || '');
-          R[i].set(block ? 'stop' : 'warn'); R[i].sub(block ? `${r.action}: fires` : `fires · ${r.action || 'action not read'}`);
+          const disabled = r.applicability === 'disabled' || ['DISABLED', 'DISABLE', 'OFF'].includes(String(r.state).toUpperCase());
+          R[i].set(disabled ? 'after' : 'warn'); R[i].sub(disabled ? 'disabled; does not act' : `candidate · ${r.action || 'action unverified'}`);
         } else if (unmeasured) {
           R[i].set('warn'); R[i].sub(`${r.action || ''} · fires if its engine does`.replace(/^ · /, ''));
         } else {
-          ins.forEach(x => x.p.setAttribute('class', 'fa-edge dead')); R[i].set('after'); R[i].sub('never evaluated');
+          ins.forEach(x => x.p.setAttribute('class', 'fa-edge dead')); R[i].set('after'); R[i].sub('no confirmed engine match');
         }
       }
     }
@@ -569,17 +590,17 @@
   // The words for a drill model: what fired, what nearly fired, and why.
   function drillSummary(m) {
     if (!m) return '';
-    const fires = m.engines.filter(e => e.why.kind === 'fires'), near = m.engines.filter(e => e.why.kind === 'near');
-    const ruleHits = m.rules.filter(r => r.engines.some(i => m.engines[i] && m.engines[i].why.kind === 'fires'));
-    const parts = [];
-    if (!m.measured) parts.push(`${m.rules.length} DLP rule${m.rules.length === 1 ? '' : 's'} on this path, using ${m.engines.length} engine${m.engines.length === 1 ? '' : 's'}. Match counts are not measured by the Path analyzer: run sample content in DLP decision to see which engines fire.`);
-    else {
-      parts.push(fires.length ? `${fires.length} engine${fires.length === 1 ? '' : 's'} fire${fires.length === 1 ? 's' : ''}: ${fires.map(e => e.name).join(', ')}.` : 'No engine fires on this content.');
-      near.forEach(e => parts.push(`${e.name} does not fire, ${e.why.text}${e.rules.length ? `, so ${e.rules.join(', ')} never run${e.rules.length === 1 ? 's' : ''}` : ''}.`));
-      if (ruleHits.length) parts.push(`Rules that act: ${ruleHits.map(r => r.name + (r.action ? ` (${r.action})` : '')).join(', ')}.`);
-    }
+    if (!m.measured) return 'Configuration candidates only. Content match counts and actual enforcement are unverified.';
+    const fires = m.engines.filter(e => e.why.kind === 'fires'), unknown = m.engines.filter(e => ['unknown', 'unmeasured'].includes(e.why.kind));
+    const total = m.totals || { fires: fires.length, unknown: unknown.length };
+    const parts = [m.incomplete ? 'Content evaluation is incomplete because configuration could not be read; no no-match conclusion is available.' : total.fires ? `${total.fires} engine(s) satisfy the simulated expression.` : total.unknown ? 'No confirmed engine match; some engine results are unknown.' : 'No engine matches the locally evaluated content.'];
+    if (total.unknown) parts.push(`${total.unknown} engine(s) remain unknown; absence of a match is not established.`);
+    m.engines.filter(e => e.why.kind === 'near').forEach(e => parts.push(`${e.name} does not fire, ${e.why.text}.`));
+    const candidates = m.rules.filter(r => r.applicability !== 'disabled' && !['DISABLED', 'DISABLE', 'OFF'].includes(String(r.state).toUpperCase()) && r.engines.some(i => m.engines[i] && m.engines[i].why.kind === 'fires'));
+    if (candidates.length) parts.push('Rule candidates: ' + candidates.map(r => r.name + (r.action ? ` (configured ${r.action})` : ' (action unverified)')).join(', ') + '. Applicability and live action are not proven by content matches.');
     const h = m.hidden || {};
-    if (h.engines || h.rules) parts.push(`Not drawn: ${[h.engines ? h.engines + ' more engine(s)' : '', h.rules ? h.rules + ' more rule(s)' : ''].filter(Boolean).join(', ')}.`);
+    if (h.engines || h.rules || h.dicts) parts.push(`Not drawn: ${h.engines || 0} engine(s), ${h.rules || 0} rule(s), ${h.dicts || 0} dictionaries; totals include undisplayed engines.`);
+    if (m.note) parts.push(m.note);
     return parts.join(' ');
   }
 
@@ -651,11 +672,11 @@
   }
 
   // ── Live traffic lanes ───────────────────────────────────────────
-  const LIVE_LABEL = { web: 'Inline web', endpoint: 'Endpoint', email: 'Email', saas: 'SaaS API' };
+  const LIVE_LABEL = { web: 'Inline web', endpoint: 'Endpoint', email: 'Email', saas: 'SaaS API', unknown: 'Unknown channel' };
   function live(host) {
     host.innerHTML = '';
     const clock = animator();
-    const svg = newSvg(host, 1000, 300, 'Live DLP incidents moving through channel, dictionaries, engine, rule, action and Workflow Automation');
+    const svg = newSvg(host, 1000, 465, 'Live DLP incidents moving through channel, dictionaries, engine, rule, action and Workflow Automation');
     const cap = {}, rule = {};
     LIVE_CHANNELS.forEach((c, i) => {
       cap[c] = box(svg, 8, 12 + i * 70, 130, 46, LIVE_LABEL[c], '0 incidents');
@@ -663,19 +684,28 @@
     });
     const dic = box(svg, 200, 127, 140, 46, 'Dictionaries', 'match counts');
     const eng = box(svg, 385, 127, 130, 46, 'Engine', 'verdict');
-    const enf = box(svg, 760, 50, 105, 46, 'Enforced', '0', 'stop');
-    const mon = box(svg, 760, 200, 105, 46, 'Monitor only', '0', 'warn');
+    const enf = box(svg, 760, 50, 105, 46, 'Configured enforce', '0', 'warn');
+    const mon = box(svg, 760, 200, 105, 46, 'Configured monitor', '0', 'warn');
+    const unk = box(svg, 760, 300, 105, 46, 'Action unknown', '0', 'warn');
     const wa = box(svg, 895, 127, 100, 46, 'Workflow', 'Automation');
     const P = {};
-    LIVE_CHANNELS.forEach(c => { P['c' + c] = curve(svg, cap[c], dic); P['r' + c] = curve(svg, eng, rule[c]); P['e' + c] = curve(svg, rule[c], enf); P['m' + c] = curve(svg, rule[c], mon); });
-    P.de = curve(svg, dic, eng); P.ew = curve(svg, enf, wa); P.mw = curve(svg, mon, wa);
-    const n = { web: 0, endpoint: 0, email: 0, saas: 0, enforced: 0, monitor: 0 };
+    LIVE_CHANNELS.forEach(c => { P['c' + c] = curve(svg, cap[c], dic); P['r' + c] = curve(svg, eng, rule[c]); P['e' + c] = curve(svg, rule[c], enf); P['m' + c] = curve(svg, rule[c], mon); P['u' + c] = curve(svg, rule[c], unk); });
+    P.de = curve(svg, dic, eng); P.ew = curve(svg, enf, wa); P.mw = curve(svg, mon, wa); P.uw = curve(svg, unk, wa);
+    const controlCaption = svgEl('text', { x: 10, y: 387, class: 'fa-s' }, svg);
+    controlCaption.textContent = 'Upstream controls: not observed in this incident feed';
+    const controls = ['URL Filtering', 'SSL Inspection', 'File Type Control'].map((label, i) => box(svg, 10 + i * 330, 398, 310, 46, label, 'unverified · no telemetry', 'warn'));
+    const n = { web: 0, endpoint: 0, email: 0, saas: 0, unknown: 0, enforced: 0, monitor: 0, unknown_action: 0 };
     let queue = Promise.resolve();
     function push(m) {
       if (!m) return;
       queue = queue.then(async () => {
-        const c = m.channel, ok = m.enforcement === 'enforced';
+        const c = LIVE_CHANNELS.includes(m.channel) ? m.channel : 'unknown', ok = m.enforcement === 'enforced', unknown = m.enforcement !== 'enforced' && m.enforcement !== 'monitor';
         const cls = ok ? 'bad' : 'warn';
+        controlCaption.textContent = `Current incident: ${LIVE_LABEL[c]} · upstream enforcement is not inferred`;
+        (m.controls || liveModel(m).controls).forEach((control, i) => {
+          controls[i].sub(control.status === 'not_applicable' ? 'not applicable to this channel' : 'unverified · no telemetry');
+          controls[i].set(control.status === 'not_applicable' ? 'after' : 'warn');
+        });
         cap[c].set('on');
         await fly(clock, svg, P['c' + c], 450, cls);
         cap[c].set(''); n[c]++; cap[c].sub(`${n[c]} incident${n[c] === 1 ? '' : 's'}`);
@@ -684,9 +714,9 @@
         eng.sub(clip(m.engine || 'verdict', 20));
         await fly(clock, svg, P['r' + c], 350, cls);
         rule[c].sub(clip(m.rule, 22)); rule[c].set(ok ? 'stop' : 'warn');
-        await fly(clock, svg, P[(ok ? 'e' : 'm') + c], 350, cls);
-        n[ok ? 'enforced' : 'monitor']++; (ok ? enf : mon).sub(String(n[ok ? 'enforced' : 'monitor']));
-        await fly(clock, svg, ok ? P.ew : P.mw, 300, cls);
+        await fly(clock, svg, P[(ok ? 'e' : unknown ? 'u' : 'm') + c], 350, cls);
+        n[ok ? 'enforced' : unknown ? 'unknown_action' : 'monitor']++; (ok ? enf : unknown ? unk : mon).sub(String(n[ok ? 'enforced' : unknown ? 'unknown_action' : 'monitor']));
+        await fly(clock, svg, ok ? P.ew : unknown ? P.uw : P.mw, 300, cls);
         rule[c].set('');
       }).catch(() => {});
       return queue;
@@ -760,12 +790,12 @@
         { key: 'url', label: 'URL filtering', status: 'pass', decided_by: { name: 'Allow file sharing' }, detail: 'Category File Sharing: allowed.' },
         { key: 'ssl', label: 'SSL inspection', status: 'pass', decided_by: { name: 'Decrypt all' }, detail: 'Decrypted.' },
         { key: 'ftc', label: 'File Type Control', status: 'none', decided_by: null, detail: 'No rule restricts .xlsx.' },
-        { key: 'dlp', label: 'Web DLP', status: 'enforce', decided_by: { name: 'PCI – Block' }, detail: '3 rules see this content.', rules: [
+        { key: 'dlp', label: 'Web DLP', status: 'conditional', decided_by: null, detail: 'Three configured candidates; content simulation is separate.', rules: [
           { name: 'PCI – Block', action: 'BLOCK', enforcing: true, engines: ['PCI ENGINE'] },
           { name: 'PII – Monitor', action: 'ALLOW', enforcing: false, engines: ['PII ENGINE'] },
           { name: 'PHI – Block', action: 'BLOCK', enforcing: true, engines: ['PHI ENGINE'] }] },
       ] },
-      verdict: { outcome: 'enforce', headline: 'Reaches drive.google.com, decrypted and inspected.', summary: 'Three Web DLP rules see the content; whether they act depends on what is in it.' },
+      verdict: { outcome: 'conditional', headline: 'Reference configuration for drive.google.com; no transaction observed.', summary: 'Three Web DLP rules see the content; whether they act depends on what is in it.' },
     },
     corpus: {
       corpus_length: 4210,

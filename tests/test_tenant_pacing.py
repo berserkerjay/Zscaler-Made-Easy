@@ -222,17 +222,22 @@ def test_a_clients_429_holds_the_sdk_reads_of_the_same_tenant():
     c = _client(lambda r: next(answers, (200, {})), log)
     t = threading.Thread(target=lambda: c.get("/zia/webDlpRules"))
     t.start()
-    deadline = time.time() + 5
-    while not log and time.time() < deadline:
-        time.sleep(0.01)
-    assert log and log[0][3] == 429
-    assert zia_rate.paused_for(c.rate_key) >= 19
-    waited = zia_rate.wait("GET", "/dlpDictionaries", key=c.rate_key)
-    assert waited >= 19, "an SDK read on the tenant waits out the Client's 429"
-    # Another tenant's reads are not held.
-    assert zia_rate.wait("GET", "/dlpDictionaries", key="another-tenant") == 0
-    c._stopped = lambda: True   # end the Client's own wait
-    t.join(5)
+    try:
+        # The adapter logs before Client.get processes Retry-After. Wait for
+        # the cooldown publication as well, preserving the actual wait check.
+        deadline = time.monotonic() + 5
+        while (not log or zia_rate.paused_for(c.rate_key, reads=True) <= 0) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert log and log[0][3] == 429
+        assert zia_rate.paused_for(c.rate_key) >= 19
+        waited = zia_rate.wait("GET", "/dlpDictionaries", key=c.rate_key)
+        assert waited >= 19, "an SDK read on the tenant waits out the Client's 429"
+        # Another tenant's reads are not held.
+        assert zia_rate.wait("GET", "/dlpDictionaries", key="another-tenant") == 0
+    finally:
+        c.stopped.set()   # callbacks already captured by the limiter see this
+        t.join(5)
+    assert not t.is_alive()
 
 
 def test_a_hold_set_after_an_sdk_read_refusal_holds_the_clients_reads():

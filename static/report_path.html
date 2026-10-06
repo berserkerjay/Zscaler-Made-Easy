@@ -32,7 +32,7 @@
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
       <details class="pa-framework" id="paFramework" open>
         <summary>The framework: how Zscaler processes a policy, device to incident</summary>
-        <div class="df-hint">Every analysis below walks this exact order — Zscaler's own documented policy-enforcement sequence — starting from the destination's <strong>assigned Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose, then Cloud App Control, URL Filtering, SSL Inspection, File Type Control and Web DLP, with Endpoint DLP, SaaS Security API and Email DLP evaluated in parallel on the same data. Nothing here is specific to one destination; it is the reference every result is measured against.</div>
+        <div class="df-hint">This view models the relevant web-request controls, starting from a <strong>candidate Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose, then Cloud App Control, URL Filtering, SSL Inspection, File Type Control and Web DLP, with separate Endpoint DLP, SaaS Security API and Email DLP inventories. Those channels were not tested on this data. Execution and prerequisites depend on the channel and operation; this reference does not prove that every displayed stage executed.</div>
         <div id="paFrameworkBody"></div>
       </details>
       <div id="paBody">
@@ -43,7 +43,7 @@
             <li><strong>Analyze.</strong> The first run reads the tenant (Client Connector profiles, PAC files and every ZIA policy: about a minute of API calls, shown live). Later runs reuse that read and only look the destination up, so they take a few seconds.</li>
             <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every point that blocks or impacts the traffic is listed with the rule or profile by name, then the path hop by hop against the framework above.</li>
           </ol>
-          <div class="df-hint">Nothing is written to the tenant. The answer is the configuration's answer for any user, group and location at this moment, not a transaction log; the assumptions are listed under every result.</div>
+          <div class="df-hint">Nothing is written to the tenant. This is a configuration prediction, not an observed transaction or payload scan. Identity-scoped rules remain conditional; the assumptions are listed under every result.</div>
         </div>
       </div>
     </main>
@@ -300,8 +300,8 @@
             ${(v.applications || []).length ? `<span class="df-prof"><span class="k">Cloud app</span><span class="v">${E(v.applications.join(', '))}</span></span>` : ''}
           </div>
           <div class="df-profiles">
-            <span class="df-prof"><span class="k">Assigned Client Connector app profile</span><span class="v">${outOf('zcc') ? 'not in scope' : E(appProf)}</span></span>
-            <span class="df-prof"><span class="k">Assigned forwarding profile</span><span class="v">${outOf('forwarding') ? 'not in scope' : `${E(fwdProf)}${E(fwdMode)}`}</span></span>
+            <span class="df-prof"><span class="k">Candidate Client Connector app profile</span><span class="v">${outOf('zcc') ? 'not in scope' : E(appProf)}</span></span>
+            <span class="df-prof"><span class="k">Linked forwarding profile</span><span class="v">${outOf('forwarding') ? 'not in scope' : `${E(fwdProf)}${E(fwdMode)}`}</span></span>
           </div>
           ${res.scope && res.scope.summary ? `<div class="df-hint pa-scope">${E(res.scope.summary)}</div>` : ''}
         </section>

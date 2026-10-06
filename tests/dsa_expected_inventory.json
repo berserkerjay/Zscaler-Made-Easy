@@ -1,0 +1,1202 @@
+[
+  {
+    "id": "chains-1",
+    "section": "chain",
+    "kind": "figure",
+    "title": "The DLP chain from dictionaries through engines, channel rules, evidence forwarding and Workflow Automation",
+    "stages": [
+      "dictionary",
+      "engine",
+      "channel_rule",
+      "action_and_log",
+      "evidence_forwarding",
+      "customer_storage_event",
+      "workflow_automation"
+    ],
+    "stageLabels": [
+      "Dictionary",
+      "Engine",
+      "Channel rule",
+      "Action and log",
+      "Evidence forwarding",
+      "Customer storage event",
+      "Workflow Automation"
+    ],
+    "stops": {
+      "stop_0": 4
+    },
+    "web": false
+  },
+  {
+    "id": "chains-2",
+    "section": "chain",
+    "kind": "figure",
+    "title": "Dictionary to engine to the five channel rule types",
+    "stages": [
+      "dictionary_type",
+      "confidence",
+      "engine_expression",
+      "channels_gate",
+      "rule_attachment"
+    ],
+    "stageLabels": [
+      "Dictionary type",
+      "Confidence",
+      "Engine expression",
+      "Channels gate",
+      "Rule attachment"
+    ],
+    "stops": {
+      "stop_0": 3
+    },
+    "web": false
+  },
+  {
+    "id": "chains-3",
+    "section": "chain",
+    "kind": "figure",
+    "title": "Evidence chain from a channel rule to Workflow Automation",
+    "stages": [
+      "source_channel_rule",
+      "forwarding_selection",
+      "customer_storage",
+      "storage_event",
+      "metadata_ingestion",
+      "incident"
+    ],
+    "stageLabels": [
+      "Source channel rule",
+      "Forwarding selection",
+      "Customer storage",
+      "Storage event",
+      "Metadata ingestion",
+      "Incident"
+    ],
+    "stops": {
+      "stop_0": 1,
+      "stop_1": 3
+    },
+    "web": false
+  },
+  {
+    "id": "dictionary-1",
+    "section": "dictionaries",
+    "kind": "figure",
+    "title": "Dictionary type decision tree",
+    "stages": [
+      "choose_data_target",
+      "predefined_catalogue",
+      "custom_shape",
+      "owned_records",
+      "owned_documents",
+      "microsoft_labels",
+      "match_count"
+    ],
+    "stageLabels": [
+      "Choose data target",
+      "Predefined catalogue",
+      "Custom shape",
+      "Owned records",
+      "Owned documents",
+      "Microsoft labels",
+      "Match count"
+    ],
+    "stops": {},
+    "web": false
+  },
+  {
+    "id": "dictionary-2",
+    "section": "dictionaries",
+    "kind": "figure",
+    "title": "Patterns and Phrases scan pipeline",
+    "stages": [
+      "content_input",
+      "ocr_gate",
+      "patterns_and_phrases",
+      "match_type",
+      "proximity",
+      "dictionary_count",
+      "engine_threshold"
+    ],
+    "stageLabels": [
+      "Content input",
+      "OCR gate",
+      "Patterns and phrases",
+      "Match type",
+      "Proximity",
+      "Dictionary count",
+      "Engine threshold"
+    ],
+    "stops": {
+      "stop_0": 1
+    },
+    "web": false
+  },
+  {
+    "id": "dictionary-5",
+    "section": "dictionaries",
+    "kind": "figure",
+    "title": "Confidence slider from Low to High",
+    "stages": [
+      "low_confidence",
+      "medium_confidence",
+      "high_confidence",
+      "high_confidence_phrases",
+      "dictionary_count"
+    ],
+    "stageLabels": [
+      "Low confidence",
+      "Medium confidence",
+      "High confidence",
+      "High confidence phrases",
+      "Dictionary count"
+    ],
+    "stops": {},
+    "web": false
+  },
+  {
+    "id": "dictionary-3",
+    "section": "dictionaries",
+    "kind": "figure",
+    "title": "EDM primary and secondary field matching",
+    "stages": [
+      "indexed_record",
+      "primary_match",
+      "secondary_match",
+      "required_cell",
+      "dictionary_count"
+    ],
+    "stageLabels": [
+      "Indexed record",
+      "Primary match",
+      "Secondary match",
+      "Required cell",
+      "Dictionary count"
+    ],
+    "stops": {
+      "stop_0": 1,
+      "stop_1": 3
+    },
+    "web": false
+  },
+  {
+    "id": "dictionary-4",
+    "section": "dictionaries",
+    "kind": "figure",
+    "title": "IDM accuracy levels",
+    "stages": [
+      "indexed_document",
+      "overlap_level",
+      "exclude_exact_copy",
+      "dictionary_count"
+    ],
+    "stageLabels": [
+      "Indexed document",
+      "Overlap level",
+      "Exclude exact copy",
+      "Dictionary count"
+    ],
+    "stops": {
+      "stop_0": 2
+    },
+    "web": false
+  },
+  {
+    "id": "engine-1",
+    "section": "engines",
+    "kind": "figure",
+    "title": "Engine builder expression tree",
+    "stages": [
+      "root_operator",
+      "subexpressions",
+      "dictionaries",
+      "sum_constraints",
+      "engine_expression"
+    ],
+    "stageLabels": [
+      "Root operator",
+      "Subexpressions",
+      "Dictionaries",
+      "Sum constraints",
+      "Engine expression"
+    ],
+    "stops": {
+      "stop_0": 0,
+      "stop_1": 3
+    },
+    "web": false
+  },
+  {
+    "id": "engine-2",
+    "section": "engines",
+    "kind": "figure",
+    "title": "How All, Any and Sum evaluate match counts",
+    "stages": [
+      "dictionary_counts",
+      "strict_threshold",
+      "all_operator",
+      "any_operator",
+      "sum_operator",
+      "verdict"
+    ],
+    "stageLabels": [
+      "Dictionary counts",
+      "Strict threshold",
+      "All operator",
+      "Any operator",
+      "Sum operator",
+      "Verdict"
+    ],
+    "stops": {},
+    "web": false
+  },
+  {
+    "id": "engine-3",
+    "section": "engines",
+    "kind": "figure",
+    "title": "Engine Channels gate",
+    "stages": [
+      "engine_definition",
+      "select_channels",
+      "eligible_rule_builders",
+      "active_dependency",
+      "channel_specific_rule"
+    ],
+    "stageLabels": [
+      "Engine definition",
+      "Select Channels",
+      "Eligible rule builders",
+      "Active dependency",
+      "Channel-specific rule"
+    ],
+    "stops": {
+      "stop_0": 1,
+      "stop_1": 3
+    },
+    "web": false
+  },
+  {
+    "id": "access",
+    "section": "inline",
+    "kind": "figure",
+    "title": "The inline web gauntlet from end user to Internet with the DLP inspection phases",
+    "stages": [
+      "capture",
+      "ssl_tls_inspection",
+      "cloud_app_control",
+      "url_filtering",
+      "threat_checks",
+      "file_type_control",
+      "content_extraction",
+      "dictionary_matching",
+      "engine_evaluation",
+      "dlp_rule_action",
+      "logs_and_user_notice",
+      "evidence_and_workflow_automation"
+    ],
+    "stageLabels": [
+      "Capture",
+      "SSL/TLS Inspection",
+      "Cloud App Control",
+      "URL Filtering",
+      "Threat checks",
+      "File Type Control",
+      "Content extraction",
+      "Dictionary matching",
+      "Engine evaluation",
+      "DLP rule action",
+      "Logs and user notice",
+      "Evidence and Workflow Automation"
+    ],
+    "stops": {
+      "stop_0": 1,
+      "stop_1": 3,
+      "stop_2": 5
+    },
+    "web": true
+  },
+  {
+    "id": "channels-1",
+    "section": "inline",
+    "kind": "figure",
+    "title": "Inline web DLP eight-step flow",
+    "stages": [
+      "capture",
+      "ssl_tls_inspection",
+      "cloud_app_control",
+      "url_filtering",
+      "threat_checks",
+      "file_type_control",
+      "rule_criteria",
+      "content_extraction",
+      "dictionary_matching",
+      "engine_inspection",
+      "action_and_log",
+      "evidence_and_incident"
+    ],
+    "stageLabels": [
+      "Capture",
+      "SSL/TLS Inspection",
+      "Cloud App Control",
+      "URL Filtering",
+      "Threat checks",
+      "File Type Control",
+      "Rule criteria",
+      "Content extraction",
+      "Dictionary matching",
+      "Engine inspection",
+      "Action and log",
+      "Evidence and incident"
+    ],
+    "stops": {
+      "stop_0": 1,
+      "stop_1": 3,
+      "stop_2": 5,
+      "stop_3": 7
+    },
+    "web": true
+  },
+  {
+    "id": "endpoint",
+    "section": "endpoint",
+    "kind": "figure",
+    "title": "Endpoint DLP architecture",
+    "stages": [
+      "detection_deployment",
+      "discovery",
+      "sensitive_activity",
+      "device_control",
+      "dictionary_inspection",
+      "engine_and_rules",
+      "evidence_forwarding",
+      "user_self_service"
+    ],
+    "stageLabels": [
+      "Detection deployment",
+      "Discovery",
+      "Sensitive activity",
+      "Device Control",
+      "Dictionary inspection",
+      "Engine and rules",
+      "Evidence forwarding",
+      "User self-service"
+    ],
+    "stops": {
+      "stop_0": 3
+    },
+    "web": false
+  },
+  {
+    "id": "channels-2",
+    "section": "endpoint",
+    "kind": "figure",
+    "title": "Endpoint DLP seven-step flow",
+    "stages": [
+      "activity_intercepted",
+      "exemption_gate",
+      "all_rules_evaluated",
+      "dictionary_inspection",
+      "engine_verdict",
+      "most_restrictive_action",
+      "notify_and_local_log",
+      "evidence_and_incident"
+    ],
+    "stageLabels": [
+      "Activity intercepted",
+      "Exemption gate",
+      "All rules evaluated",
+      "Dictionary inspection",
+      "Engine verdict",
+      "Most restrictive action",
+      "Notify and local log",
+      "Evidence and incident"
+    ],
+    "stops": {
+      "stop_0": 1
+    },
+    "web": false
+  },
+  {
+    "id": "email",
+    "section": "email",
+    "kind": "figure",
+    "title": "Email DLP architecture",
+    "stages": [
+      "outbound_mailbox",
+      "smart_host_redirect",
+      "tenant_header",
+      "per_recipient_dictionaries",
+      "engine_and_rule_verdict",
+      "verdict_headers",
+      "platform_enforcement",
+      "logs_evidence_and_wa"
+    ],
+    "stageLabels": [
+      "Outbound mailbox",
+      "Smart host redirect",
+      "Tenant header",
+      "Per-recipient dictionaries",
+      "Engine and rule verdict",
+      "Verdict headers",
+      "Platform enforcement",
+      "Logs evidence and WA"
+    ],
+    "stops": {
+      "stop_0": 2,
+      "stop_1": 6
+    },
+    "web": false
+  },
+  {
+    "id": "channels-3",
+    "section": "email",
+    "kind": "figure",
+    "title": "Email DLP seven-step flow",
+    "stages": [
+      "smart_host",
+      "tenant_identity",
+      "dictionary_scan",
+      "engine_evaluation",
+      "most_restrictive_rule",
+      "verdict_headers",
+      "platform_enforces",
+      "log_and_evidence"
+    ],
+    "stageLabels": [
+      "Smart host",
+      "Tenant identity",
+      "Dictionary scan",
+      "Engine evaluation",
+      "Most restrictive rule",
+      "Verdict headers",
+      "Platform enforces",
+      "Log and evidence"
+    ],
+    "stops": {
+      "stop_0": 6
+    },
+    "web": false
+  },
+  {
+    "id": "saas",
+    "section": "saas",
+    "kind": "figure",
+    "title": "SaaS Security API architecture",
+    "stages": [
+      "sanctioned_tenant",
+      "policy_and_quarantine",
+      "start_scan",
+      "data_window",
+      "dictionary_and_engine",
+      "file_verdict",
+      "analytics",
+      "evidence_and_wa"
+    ],
+    "stageLabels": [
+      "Sanctioned tenant",
+      "Policy and quarantine",
+      "Start scan",
+      "Data window",
+      "Dictionary and engine",
+      "File verdict",
+      "Analytics",
+      "Evidence and WA"
+    ],
+    "stops": {
+      "stop_0": 2
+    },
+    "web": false
+  },
+  {
+    "id": "sspm",
+    "section": "saas",
+    "kind": "figure",
+    "title": "SSPM architecture",
+    "stages": [
+      "onboard_sspm",
+      "grant_scopes",
+      "poll_and_ingest",
+      "assess_posture",
+      "app_governance",
+      "outputs"
+    ],
+    "stageLabels": [
+      "Onboard SSPM",
+      "Grant scopes",
+      "Poll and ingest",
+      "Assess posture",
+      "App governance",
+      "Outputs"
+    ],
+    "stops": {
+      "stop_0": 1
+    },
+    "web": false
+  },
+  {
+    "id": "edmidm-1",
+    "section": "edmidm",
+    "kind": "figure",
+    "title": "Patterns and Phrases versus EDM versus IDM",
+    "stages": [
+      "patterns_and_phrases",
+      "exact_data_match",
+      "indexed_document_match",
+      "dictionary_count",
+      "engine_verdict"
+    ],
+    "stageLabels": [
+      "Patterns and Phrases",
+      "Exact Data Match",
+      "Indexed Document Match",
+      "Dictionary count",
+      "Engine verdict"
+    ],
+    "stops": {},
+    "web": false
+  },
+  {
+    "id": "edmidm-2",
+    "section": "edmidm",
+    "kind": "figure",
+    "title": "EDM and IDM architecture from the Index Tool VM to the channels",
+    "stages": [
+      "index_tool_vm",
+      "completed_template",
+      "dictionary_creation",
+      "engine_channels",
+      "endpoint_edm",
+      "endpoint_idm"
+    ],
+    "stageLabels": [
+      "Index Tool VM",
+      "Completed template",
+      "Dictionary creation",
+      "Engine Channels",
+      "Endpoint EDM",
+      "Endpoint IDM"
+    ],
+    "stops": {
+      "stop_0": 1
+    },
+    "web": false
+  },
+  {
+    "id": "edmidm-3",
+    "section": "edmidm",
+    "kind": "figure",
+    "title": "EDM anchor model versus composite model",
+    "stages": [
+      "anchor_model",
+      "corroboration",
+      "composite_alternative",
+      "migration_warning",
+      "dictionary_result"
+    ],
+    "stageLabels": [
+      "Anchor model",
+      "Corroboration",
+      "Composite alternative",
+      "Migration warning",
+      "Dictionary result"
+    ],
+    "stops": {
+      "stop_0": 0
+    },
+    "web": false
+  },
+  {
+    "id": "aisec",
+    "section": "aisec",
+    "kind": "figure",
+    "title": "AI security architecture across endpoint, inline and AI Guard",
+    "stages": [
+      "endpoint_discovery",
+      "web_capture",
+      "ssl_tls_inspection",
+      "cloud_app_control",
+      "url_filtering",
+      "file_type_control",
+      "zia_dictionary_and_engine",
+      "forwarding_control",
+      "ai_guard_prompt_detectors",
+      "ai_guard_response_detectors",
+      "separate_telemetry"
+    ],
+    "stageLabels": [
+      "Endpoint discovery",
+      "Web capture",
+      "SSL/TLS Inspection",
+      "Cloud App Control",
+      "URL Filtering",
+      "File Type Control",
+      "ZIA dictionary and engine",
+      "Forwarding Control",
+      "AI Guard prompt detectors",
+      "AI Guard response detectors",
+      "Separate telemetry"
+    ],
+    "stops": {
+      "stop_0": 4,
+      "stop_1": 5
+    },
+    "web": true
+  },
+  {
+    "id": "workflow-1",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Evidence forwarding options and plumbing",
+    "stages": [
+      "forwarding_option",
+      "cloud_storage_gate",
+      "rule_forwarding",
+      "storage_event",
+      "validate_integration",
+      "wa_metadata"
+    ],
+    "stageLabels": [
+      "Forwarding option",
+      "Cloud storage gate",
+      "Rule forwarding",
+      "Storage event",
+      "Validate integration",
+      "WA metadata"
+    ],
+    "stops": {
+      "stop_0": 1,
+      "stop_1": 3
+    },
+    "web": false
+  },
+  {
+    "id": "workflow-2",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Workflow Automation incident lifecycle",
+    "stages": [
+      "received",
+      "investigating",
+      "validating_with_user",
+      "received_justification_response",
+      "escalated",
+      "resolved"
+    ],
+    "stageLabels": [
+      "Received",
+      "Investigating",
+      "Validating with User",
+      "Received Justification Response",
+      "Escalated",
+      "Resolved"
+    ],
+    "stops": {
+      "stop_0": 3
+    },
+    "web": false
+  },
+  {
+    "id": "workflow-3",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Workflow builder tiles and an example flow",
+    "stages": [
+      "published_workflow",
+      "notify_and_survey",
+      "justification_condition",
+      "selected_escalation_branch",
+      "close_incident"
+    ],
+    "stageLabels": [
+      "Published workflow",
+      "Notify and survey",
+      "Justification condition",
+      "Selected escalation branch",
+      "Close incident"
+    ],
+    "stops": {
+      "stop_0": 0
+    },
+    "web": false
+  },
+  {
+    "id": "workflow-4",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Auto-close false positives use case",
+    "stages": [
+      "incident_attributes",
+      "group_mapping",
+      "auto_close",
+      "tuning_feedback"
+    ],
+    "stageLabels": [
+      "Incident attributes",
+      "Group mapping",
+      "Auto-close",
+      "Tuning feedback"
+    ],
+    "stops": {},
+    "web": false
+  },
+  {
+    "id": "workflow-5",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Notify user and close use case",
+    "stages": [
+      "notify_user",
+      "await_justification",
+      "evaluate_answer",
+      "close_justified"
+    ],
+    "stageLabels": [
+      "Notify user",
+      "Await justification",
+      "Evaluate answer",
+      "Close justified"
+    ],
+    "stops": {
+      "stop_0": 1
+    },
+    "web": false
+  },
+  {
+    "id": "workflow-6",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Escalation to manager use case",
+    "stages": [
+      "justification_response",
+      "manager_attributes",
+      "escalate_manager",
+      "create_ticket",
+      "ticket_closes_incident"
+    ],
+    "stageLabels": [
+      "Justification response",
+      "Manager attributes",
+      "Escalate manager",
+      "Create ticket",
+      "Ticket closes incident"
+    ],
+    "stops": {
+      "stop_0": 0,
+      "stop_1": 1
+    },
+    "web": false
+  },
+  {
+    "id": "workflow-7",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Policy exception use case",
+    "stages": [
+      "supported_source",
+      "user_justification",
+      "independent_approver",
+      "time_limited_exception",
+      "expiry"
+    ],
+    "stageLabels": [
+      "Supported source",
+      "User justification",
+      "Independent approver",
+      "Time-limited exception",
+      "Expiry"
+    ],
+    "stops": {
+      "stop_0": 0
+    },
+    "web": false
+  },
+  {
+    "id": "workflow-8",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Email quarantine release use case",
+    "stages": [
+      "exchange_online",
+      "transport_hold",
+      "wa_incident",
+      "review_release",
+      "sample_release"
+    ],
+    "stageLabels": [
+      "Exchange Online",
+      "Transport hold",
+      "WA incident",
+      "Review release",
+      "Sample release"
+    ],
+    "stops": {
+      "stop_0": 0
+    },
+    "web": false
+  },
+  {
+    "id": "workflow-9",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Restricted admins by incident group use case",
+    "stages": [
+      "incident_attributes",
+      "group_mapping",
+      "admin_assignment",
+      "restricted_view"
+    ],
+    "stageLabels": [
+      "Incident attributes",
+      "Group mapping",
+      "Admin assignment",
+      "Restricted view"
+    ],
+    "stops": {
+      "stop_0": 2
+    },
+    "web": false
+  },
+  {
+    "id": "workflow-10",
+    "section": "workflow",
+    "kind": "figure",
+    "title": "Identity obfuscation use case",
+    "stages": [
+      "obfuscate_attributes",
+      "content_triage",
+      "mapping_constraint",
+      "escalation_justification",
+      "quarantine_constraint"
+    ],
+    "stageLabels": [
+      "Obfuscate attributes",
+      "Content triage",
+      "Mapping constraint",
+      "Escalation justification",
+      "Quarantine constraint"
+    ],
+    "stops": {},
+    "web": false
+  },
+  {
+    "id": "setup-detection",
+    "section": "setup",
+    "kind": "setup",
+    "title": "Universal first: detection building blocks",
+    "stages": [
+      "index_template",
+      "dictionaries",
+      "engines_and_channels",
+      "notification_pair",
+      "evidence_forwarder",
+      "advanced_settings",
+      "activate"
+    ],
+    "stageLabels": [
+      "Index template",
+      "Dictionaries",
+      "Engines and Channels",
+      "Notification pair",
+      "Evidence forwarder",
+      "Advanced settings",
+      "Activate"
+    ],
+    "stops": {
+      "stop_0": 0,
+      "stop_1": 3,
+      "stop_2": 6
+    },
+    "web": false
+  },
+  {
+    "id": "setup-inline",
+    "section": "setup",
+    "kind": "setup",
+    "title": "Inline Web DLP",
+    "stages": [
+      "traffic_forwarding",
+      "ssl_tls_inspection",
+      "build_inline_rule",
+      "evidence_selection",
+      "notify_and_activate",
+      "upstream_policy_order"
+    ],
+    "stageLabels": [
+      "Traffic forwarding",
+      "SSL/TLS Inspection",
+      "Build inline rule",
+      "Evidence selection",
+      "Notify and activate",
+      "Upstream policy order"
+    ],
+    "stops": {
+      "stop_0": 1,
+      "stop_1": 3
+    },
+    "web": true
+  },
+  {
+    "id": "setup-endpoint",
+    "section": "setup",
+    "kind": "setup",
+    "title": "Endpoint DLP",
+    "stages": [
+      "supported_platform",
+      "macos_full_disk_access",
+      "endpoint_resources",
+      "endpoint_rules",
+      "install_endpoint_dlp",
+      "policy_sync_and_nss"
+    ],
+    "stageLabels": [
+      "Supported platform",
+      "macOS Full Disk Access",
+      "Endpoint resources",
+      "Endpoint rules",
+      "Install Endpoint DLP",
+      "Policy sync and NSS"
+    ],
+    "stops": {
+      "stop_0": 4
+    },
+    "web": false
+  },
+  {
+    "id": "setup-email",
+    "section": "setup",
+    "kind": "setup",
+    "title": "Email DLP",
+    "stages": [
+      "company_domains",
+      "email_tenant",
+      "platform_transport",
+      "recipient_profiles",
+      "email_policies",
+      "enforce_last"
+    ],
+    "stageLabels": [
+      "Company domains",
+      "Email tenant",
+      "Platform transport",
+      "Recipient profiles",
+      "Email policies",
+      "Enforce last"
+    ],
+    "stops": {
+      "stop_0": 2
+    },
+    "web": false
+  },
+  {
+    "id": "setup-saas",
+    "section": "setup",
+    "kind": "setup",
+    "title": "SaaS Security API / SSPM",
+    "stages": [
+      "onboard_purposes",
+      "platform_authorization",
+      "data_at_rest_rules",
+      "start_scan",
+      "cutoff_and_queue"
+    ],
+    "stageLabels": [
+      "Onboard purposes",
+      "Platform authorization",
+      "Data-at-rest rules",
+      "Start scan",
+      "Cutoff and queue"
+    ],
+    "stops": {
+      "stop_0": 3
+    },
+    "web": false
+  },
+  {
+    "id": "setup-workflow",
+    "section": "setup",
+    "kind": "setup",
+    "title": "Workflow Automation",
+    "stages": [
+      "workflow_access",
+      "storage_integration",
+      "every_rule_forwarding",
+      "groups_and_assignments",
+      "user_attributes",
+      "publish_workflows"
+    ],
+    "stageLabels": [
+      "Workflow Access",
+      "Storage integration",
+      "Every rule forwarding",
+      "Groups and assignments",
+      "User attributes",
+      "Publish workflows"
+    ],
+    "stops": {
+      "stop_0": 2
+    },
+    "web": false
+  },
+  {
+    "id": "walkback-workflow",
+    "section": "walkbacks",
+    "kind": "walkback",
+    "title": "Workflow Automation shows no incidents",
+    "stages": [
+      "integration_health",
+      "rule_forwarding",
+      "same_storage",
+      "storage_event_plumbing",
+      "zir_health",
+      "missing_channel",
+      "restricted_view"
+    ],
+    "stageLabels": [
+      "Integration health",
+      "Rule forwarding",
+      "Same storage",
+      "Storage event plumbing",
+      "ZIR health",
+      "Missing channel",
+      "Restricted view"
+    ],
+    "stops": {
+      "stop_0": 0,
+      "stop_1": 1,
+      "stop_2": 2,
+      "stop_3": 3,
+      "stop_4": 4,
+      "stop_5": 5
+    },
+    "web": false
+  },
+  {
+    "id": "walkback-inline",
+    "section": "walkbacks",
+    "kind": "walkback",
+    "title": "Inline web rule never fires",
+    "stages": [
+      "ssl_tls_inspection",
+      "dlp_exemptions",
+      "upstream_policy_order",
+      "criteria_logic",
+      "engine_internals",
+      "content_scan",
+      "rule_shadowing_and_activation"
+    ],
+    "stageLabels": [
+      "SSL/TLS Inspection",
+      "DLP exemptions",
+      "Upstream policy order",
+      "Criteria logic",
+      "Engine internals",
+      "Content scan",
+      "Rule shadowing and activation"
+    ],
+    "stops": {
+      "stop_0": 0,
+      "stop_1": 1,
+      "stop_2": 2,
+      "stop_3": 3,
+      "stop_4": 4,
+      "stop_5": 5
+    },
+    "web": true
+  },
+  {
+    "id": "walkback-endpoint",
+    "section": "walkbacks",
+    "kind": "walkback",
+    "title": "Endpoint DLP not enforcing on a device",
+    "stages": [
+      "module_installed",
+      "platform_support",
+      "policy_sync",
+      "otp_exemption",
+      "resource_targeting",
+      "engine_channel",
+      "all_rule_evaluation",
+      "av_and_edr"
+    ],
+    "stageLabels": [
+      "Module installed",
+      "Platform support",
+      "Policy sync",
+      "OTP exemption",
+      "Resource targeting",
+      "Engine channel",
+      "All-rule evaluation",
+      "AV and EDR"
+    ],
+    "stops": {
+      "stop_0": 0,
+      "stop_1": 1,
+      "stop_2": 2,
+      "stop_3": 3,
+      "stop_4": 4,
+      "stop_5": 5,
+      "stop_6": 6
+    },
+    "web": false
+  },
+  {
+    "id": "walkback-email",
+    "section": "walkbacks",
+    "kind": "walkback",
+    "title": "Email DLP blocks nothing (tagged but delivered)",
+    "stages": [
+      "platform_enforcement",
+      "smart_host_routing",
+      "tenant_header",
+      "return_path",
+      "loop_prevention",
+      "quarantine_support"
+    ],
+    "stageLabels": [
+      "Platform enforcement",
+      "Smart host routing",
+      "Tenant header",
+      "Return path",
+      "Loop prevention",
+      "Quarantine support"
+    ],
+    "stops": {
+      "stop_0": 0,
+      "stop_1": 1,
+      "stop_2": 2,
+      "stop_3": 3,
+      "stop_4": 4
+    },
+    "web": false
+  },
+  {
+    "id": "walkback-saas",
+    "section": "walkbacks",
+    "kind": "walkback",
+    "title": "SaaS API scan finds nothing",
+    "stages": [
+      "scan_started",
+      "tenant_status",
+      "data_window",
+      "rule_targeting",
+      "cutoff_reset",
+      "malware_schedule"
+    ],
+    "stageLabels": [
+      "Scan started",
+      "Tenant status",
+      "Data window",
+      "Rule targeting",
+      "Cutoff reset",
+      "Malware schedule"
+    ],
+    "stops": {
+      "stop_0": 0,
+      "stop_1": 1,
+      "stop_2": 2,
+      "stop_3": 3,
+      "stop_4": 4
+    },
+    "web": false
+  }
+]

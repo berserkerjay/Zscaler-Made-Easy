@@ -14,6 +14,59 @@ os.environ.setdefault("ZSCALER_UI_AUTH", "0")
 import pytest
 
 
+# Every test process is hermetic: a forgotten SDK/request mock must never
+# authenticate to a real tenant or contact any non-local service. Dependency
+# installation happens before pytest, outside this guard. Local fixture servers
+# remain usable for genuine browser acceptance.
+def _loopback_host(host):
+    import ipaddress
+    if isinstance(host, bytes):
+        host = host.decode("ascii", errors="replace")
+    if host in (None, "", "localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(str(host).split("%", 1)[0]).is_loopback
+    except ValueError:
+        return False
+
+
+def pytest_sessionstart(session):
+    import socket
+    from _pytest.monkeypatch import MonkeyPatch
+    guard = MonkeyPatch()
+    original_dns = socket.getaddrinfo
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+
+    def dns(host, *args, **kwargs):
+        if not _loopback_host(host):
+            raise RuntimeError("Offline test guard: non-loopback DNS is forbidden; add a fixture/mock")
+        return original_dns(host, *args, **kwargs)
+
+    def connect(sock, address):
+        if sock.family in (socket.AF_INET, socket.AF_INET6) and not _loopback_host(address[0]):
+            raise RuntimeError("Offline test guard: non-loopback connection is forbidden; add a fixture/mock")
+        return original_connect(sock, address)
+
+    def connect_ex(sock, address):
+        if sock.family in (socket.AF_INET, socket.AF_INET6) and not _loopback_host(address[0]):
+            raise RuntimeError("Offline test guard: non-loopback connection is forbidden; add a fixture/mock")
+        return original_connect_ex(sock, address)
+
+    guard.setattr(socket, "getaddrinfo", dns)
+    guard.setattr(socket.socket, "connect", connect)
+    guard.setattr(socket.socket, "connect_ex", connect_ex)
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        guard.delenv(key, raising=False)
+    session._offline_guard = guard
+
+
+def pytest_sessionfinish(session, exitstatus):
+    # Keep the guard until process exit: a late background thread must not
+    # acquire network access merely because the last assertion finished.
+    pass
+
+
 @pytest.fixture(autouse=True)
 def _no_backoff_sleep(monkeypatch, tmp_path_factory):
     """The shared execution path backs off between retries of a transient

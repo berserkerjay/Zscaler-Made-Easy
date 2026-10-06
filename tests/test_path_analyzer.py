@@ -100,8 +100,8 @@ def test_the_verdict_names_what_blocks_or_impacts_the_traffic():
     assert any(i["hop"] == "ssl" and i["rule"] == "No decrypt webmail" and i["status"] == "blind" for i in w["impacts"])
     # ChatGPT: decrypted, app control blocks upload, DLP enforces.
     a = _analyze(c, "chat.openai.com", "off", "windows")["verdict"]
-    assert a["outcome"] == "enforce" and a["content_inspected"] and a["headline"].startswith("Reaches chat.openai.com decrypted; 2 DLP rule(s) inspect the content and can block it")
-    assert any(i["hop"] == "cac" and i["status"] == "blocked" and i["rule"] == "AI no upload" for i in a["impacts"]) and "CHATGPT_AI" in a["applications"]
+    assert a["outcome"] == "enforce" and not a["content_inspected"] and a["content_inspection_possible"] and "are configured to inspect" in a["headline"]
+    assert a["policy_conditional"] and "CHATGPT_AI" in a["applications"]
     # A host the app profile bypasses never reaches Zscaler.
     b = _analyze(c, "updates.vendor.com", "off", "windows")["verdict"]
     assert b["outcome"] == "bypassed" and not b["reaches_zscaler"] and b["headline"].startswith("Never reaches Zscaler") and b["stops_at"] == "Client Connector app profile"
@@ -193,8 +193,8 @@ def test_the_page_shows_the_policy_framework_and_the_assigned_profiles():
     html = TestClient(srv.app).get("/report/path").text
     assert 'id="paFramework"' in html and "how Zscaler processes a policy" in html
     assert "renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'))" in html
-    assert "assigned Client Connector app profile" in html and "forwarding profile" in html.lower()
-    assert 'Assigned Client Connector app profile' in html and 'Assigned forwarding profile' in html
+    assert "candidate Client Connector app profile" in html and "forwarding profile" in html.lower()
+    assert 'Candidate Client Connector app profile' in html and 'Linked forwarding profile' in html
     css = open(os.path.join(root, "static", "reports.css"), encoding="utf-8").read()
     assert ".pa-framework" in css and ".pa-framework > summary:focus-visible" in css
     assert "What to do about it, across every channel" in html and "mitigationsHtml(v.mitigations)" in html
@@ -220,21 +220,15 @@ def test_the_mitigation_recommendation_reasons_across_every_channel():
     a sanctioned cloud app, never as a blanket suggestion."""
     c = _lookup_client()
 
-    # Bypassed: endpoint already covers the device (it's on in this fixture) — informational, not an action.
+    # Separate-channel inventory cannot prove that this device or mailbox is covered.
     b = _analyze(c, "updates.vendor.com", "off", "windows")["verdict"]
-    assert b["mitigations"][0] == {"rank": 1, "channel": "endpoint", "action": "Endpoint DLP already covers this device",
-                                    "why": "This traffic never reaches Zscaler, but Endpoint DLP runs locally regardless of the network path and is already monitor.", "severity": "info"}
-
-    # Blind (SSL exempted): same endpoint reasoning, plus webmail brings in Email DLP since it is off.
+    assert b["mitigations"][0]["action"] == "Verify Endpoint DLP applicability on this device"
+    assert "does not establish" in b["mitigations"][0]["why"]
     w = _analyze(c, "mail.example.com", "off", "windows")["verdict"]
-    assert w["mitigations"][0]["channel"] == "endpoint" and w["mitigations"][0]["severity"] == "info"
-    email = next(m for m in w["mitigations"] if m["channel"] == "email")
-    assert email["action"] == "Onboard Email DLP for this traffic" and "Web Mail" in email["why"] and email["severity"] == "medium"
-
-    # Enforced and decrypted: the web path already covers it; only the low-priority SaaS onboarding is offered.
+    assert w["mitigations"][0]["channel"] == "endpoint"
+    assert not any(m["channel"] == "email" for m in w["mitigations"])
     e = _analyze(c, "chat.openai.com", "off", "windows")["verdict"]
-    assert e["mitigations"] == [{"rank": 1, "channel": "saas", "action": "Onboard CHATGPT_AI to SaaS Security API",
-                                  "why": "ZIA recognises this as a sanctioned cloud application, but no SaaS Security API rule scans it at rest, so data already stored there is never checked.", "severity": "low"}]
+    assert not any(m["channel"] == "saas" for m in e["mitigations"])
 
     # Blocked outright: nothing to mitigate.
     blocked = _analyze(c, "https://casino.example/play", "off", "windows")["verdict"]
@@ -323,21 +317,13 @@ def test_the_bits_follow_the_analyzed_path_and_stop_where_it_breaks():
             assert any(e.endswith(">evid") for e in r["edges"]) and not any(x in r["edges"] for x in ("logs>nss", "nss>siem"))
     assert not any(e.startswith(("siem>", "nss>wa", "auditor>", "icap>", "dspma>")) for e in edges)
 
-    def web(k):
-        return [r for r in m[k]["routes"] if r["edges"][0] == "cap_web>dict"]
-
-    assert web("bypassed")[0]["stop"] == 0 and web("bypassed")[0]["tone"] == "broken" and "Never reaches Zscaler" in m["bypassed"]["summary"][0]
-    assert web("blind")[0]["stop"] == 0 and "Left encrypted by SSL inspection rule" in m["blind"]["summary"][0]
-    assert web("blocked")[0]["tone"] == "blocked" and "Block gambling" in m["blocked"]["summary"][0]
-    enf = web("enforce")
-    assert any(r["edges"][-1] == "waint>wa" and r["stop"] is None for r in enf), "a rule with the Incident Receiver carries evidence to WA"
-    assert any(r["edges"][-1] == "nss>siem" for r in enf) and any(r["edges"][-1] == "r_web>auditor" for r in enf)
-    mon = web("monitor")
-    ev = next(r for r in mon if "r_web>evid" in r["edges"])
-    assert ev["edges"][ev["stop"]] == "r_web>evid" and ev["tone"] == "broken", "no forwarding: the bits stop before Evidence forwarding"
-    assert any("Workflow Automation stays empty" in s for s in m["monitor"]["summary"])
-    ep = next(r for r in m["monitor"]["routes"] if r["edges"][0] == "cap_ep>dict")
-    assert ep["stop"] == 0, "macOS: Endpoint DLP is not installed, so its content never reaches a dictionary"
+    # Real analyzer results are configuration, not observed transactions.
+    # Keep the architecture visible, but do not animate delivery as fact.
+    for key in ("bypassed", "blind", "enforce", "blocked", "monitor"):
+        assert m[key]["mode"] == "configuration"
+        assert m[key]["routes"] == [] and m[key]["stops"] == []
+        assert "no transaction" in m[key]["summary"][0]
+    assert any("inventory read; this channel was not tested" in x for x in m["monitor"]["summary"])
 
 
 def test_the_motion_toggle_is_not_announced_as_pressed_and_destroy_stops_everything():
@@ -408,6 +394,10 @@ def _pm_result(dest, plat):
     import json
     r = _analyze(_lookup_client(), dest, "off", plat)
     r.pop("snapshot_for_cache", None)
+    # Explicit demonstration fixture for geometry and animation mechanics.
+    # Production configuration mode is separately asserted above and must
+    # never inherit these illustrative transaction routes.
+    r["trace"]["evidence_mode"] = "reference_demo"
     return json.loads(json.dumps(r, default=str))
 
 
@@ -485,6 +475,8 @@ def test_rule_and_policy_names_reach_the_page_as_text_never_as_markup():
     _pm_hop(res, "incident")["notifiers"] = [x]
     for ch in res["trace"]["channels"].values():
         ch["detail"] = x
+    # Explicit unread demonstration exercises tooltip escaping too.
+    res["trace"]["channels"]["endpoint"]["status"] = "unknown"
     blocked = _pm_result("https://casino.example/play", "windows")
     blocked["verdict"]["stops_at"] = x
     blocked["verdict"]["blocked_by"] = x
@@ -496,7 +488,9 @@ def test_rule_and_policy_names_reach_the_page_as_text_never_as_markup():
     for k in ("m", "b"):
         o = out[k]
         assert o["imgs"] == 0 and not o["pwn"], (k, o["html"][:400])
-        assert x in o["sum"] and any(x in t for t in o["titles"]), k
+        assert x in o["sum"], k
+        if k == "b":
+            assert any(x in t for t in o["titles"]), k
         assert "<img" not in o["html"] and "&lt;img" in o["html"], k
 
 
@@ -575,7 +569,7 @@ def test_the_stop_cases_the_changelog_names_are_drawn_where_they_break():
     reason = out["no_engine"]["stops"][0]["reason"]
     assert out["no_engine"]["stops"][0]["edge"] == "engine>r_web" and "name no DLP engine" in reason and all(x in reason for x in names)
     ev = next(r for r in web("icap") if "r_web>evid" in r["edges"])
-    assert ev["tone"] == "assumed" and ev["stop"] is None and out["icap"]["extra"]["assumed"] == ["r_web>evid"]
+    assert ev["tone"] == "unread" and ev["stop"] == 3 and out["icap"]["extra"]["assumed"] == ["r_web>evid"]
     assert not any(r["edges"][-1] == "waint>wa" and r["tone"] is None for r in web("icap")), "no confirmed path to Workflow Automation"
     assert any(s.startswith("Evidence lane:") and "ICAP server only" in s and "Incident Receiver VM" in s for s in out["icap"]["summary"])
     assert any(r["edges"][-1] == "r_web>icap" for r in web("icap"))
@@ -680,7 +674,7 @@ def test_rules_that_could_not_be_read_are_never_reported_as_no_rule():
     assert _pm_hop(r, "incident")["status"] == "unknown"
     ep = t["channels"]["endpoint"]
     assert ep["status"] == "unknown" and "HTTP 403" in ep["detail"] and "No enabled" not in ep["detail"]
-    assert t["channels"]["email"]["status"] == "none", "a read that worked still says none"
+    assert t["channels"]["email"]["status"] == "inventory" and t["channels"]["email"]["enabled_count"] == 0
     assert any(i["status"] == "unknown" and i["hop"] == "dlp" for i in v["impacts"])
     assert not any(m["action"].startswith("Deploy a Web DLP rule") for m in v["mitigations"])
     again = _analyze(c, "chat.openai.com", "off", "windows", snapshot=r["snapshot_for_cache"])
@@ -699,6 +693,7 @@ def test_the_motion_marks_unread_rules_with_a_question_mark_never_a_break():
     import json
     res = _analyze(_FailingReads(ROUTES, CATALOGUE), "chat.openai.com", "off", "windows")
     res.pop("snapshot_for_cache", None)
+    res["trace"]["evidence_mode"] = "reference_demo"  # explicit geometry/marker fixture
     res = json.loads(json.dumps(res, default=str))
     out = _pm_run("const w=H.load(PM),c=w.container(),m=w.ctx.renderPathMotion(c);const mo=m.update(D);"
                   "const stops=c.querySelectorAll('.pm-stop').map(g=>({cls:g.getAttribute('class'),mark:g.querySelectorAll('text')[0].textContent}));"
@@ -716,19 +711,14 @@ def test_the_motion_marks_unread_rules_with_a_question_mark_never_a_break():
 
 
 @_needs_node
-def test_a_cloud_app_control_upload_block_gets_its_policy_mark_whatever_the_dlp_outcome():
-    """ChatGPT: Cloud App Control 'AI no upload' blocks uploads before DLP.
-    With DLP enforcing and with no DLP rule at all, the chain shows a ■ on
-    the way in and the text alternative names the rule."""
-    enforce = _pm_result("chat.openai.com", "windows")
-    none = _pm_result("chat.openai.com", "windows")
-    none["verdict"]["outcome"] = "none"
-    out = _pm_run("const w=H.load(PM);const r={};for(const k of Object.keys(D)){const m=w.ctx.pmModel(D[k]);r[k]={stops:m.stops,summary:m.summary};}"
-                  "process.stdout.write(JSON.stringify(r));", {"enforce": enforce, "none": none})
-    for k in ("enforce", "none"):
-        blocks = [s for s in out[k]["stops"] if s["tone"] == "blocked"]
-        assert len(blocks) == 1 and blocks[0]["edge"] == "cap_web>dict" and "AI no upload" in blocks[0]["reason"], (k, out[k]["stops"])
-        assert any(s.startswith("On the way: Cloud App Control 'AI no upload' blocks") for s in out[k]["summary"]), k
+def test_a_cloud_app_control_upload_block_needs_an_operation_before_it_is_confirmed():
+    candidate = _pm_result("chat.openai.com", "windows")
+    assert candidate["verdict"]["policy_conditional"]
+    assert candidate["verdict"]["stops_at"] is None
+    exact = _analyze(_lookup_client(), "chat.openai.com", context={"operation": "UPLOAD", "file_type": "FTCATEGORY_ZIP"})
+    assert exact["verdict"]["outcome"] == "blocked"
+    assert exact["verdict"]["stops_at"] == "Cloud App Control"
+    assert _pm_hop(exact, "dlp")["status"] == "not_reached"
 
 
 @_needs_node
@@ -775,8 +765,8 @@ def test_the_live_chain_follows_the_session_incidents_without_user_or_file_names
     assert out["extra"] == {"r_web": "enforce", "r_ep": "monitor"}
     text = " ".join(out["summary"])
     assert "3 incidents this session (and 1 on a channel the chain does not draw)" in text
-    assert "Inline Web DLP: 2 incidents, 2 enforced, 0 monitor-only. Rules: PCI - Block (2). Dictionaries: Credit cards (17 matches)." in text
-    assert "Endpoint DLP: 1 incident, 0 enforced, 1 monitor-only." in text and "Email DLP: no incident this session." in text
+    assert "Inline Web DLP: 2 incidents, 2 currently configured enforcing, 0 currently configured monitoring. Rules: PCI - Block (2). Dictionaries: Credit cards (17 matches)." in text
+    assert "Endpoint DLP: 1 incident, 0 currently configured enforcing, 1 currently configured monitoring." in text and "Email DLP: no incident this session." in text
     for leak in ("alice", "bob", "Carol", "cards.csv"):
         assert leak not in text
     empty = _pm_run("const w=H.load(PM);process.stdout.write(JSON.stringify(w.ctx.pmModel({live:[]}).mode));", [])

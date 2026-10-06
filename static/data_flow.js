@@ -15,11 +15,13 @@ const DF_STATUS = {
   warn: ['Weak', 'warn'], blind: ['Encrypted / blind', 'fail'], bypass: ['Bypassed', 'fail'], none: ['No control', 'warn'],
   unknown: ['Unable to verify', 'dim'], skipped: ['Not reached', 'dim'], off: ['Not active', 'fail'],
   assumed: ['Assumed tunnel', 'dim'], na: ['Not evaluated', 'dim'], step: ['Step', 'ok'],
-  out_of_scope: ['Not in scope', 'dim'],
+  out_of_scope: ['Not in scope', 'dim'], not_reached: ['Not reached', 'dim'], conditional: ['Conditional', 'dim'],
+  inventory: ['Inventory only', 'dim'], metadata_only: ['No content scan', 'dim'],
 };
 const DF_OUTCOME = {
   bypassed: ['Never reaches Zscaler', 'fail'], blocked: ['Blocked before content', 'block'], blind: ['Reaches ZIA encrypted: DLP blind', 'fail'],
-  enforce: ['Inspected and enforced', 'ok'], monitor: ['Inspected, monitor only', 'warn'], none: ['Inspected, no DLP rule', 'warn'],
+  enforce: ['Configured to enforce', 'ok'], monitor: ['Configured to monitor', 'warn'], none: ['No matching DLP rule', 'warn'],
+  conditional: ['Applicability conditional', 'dim'], metadata_only: ['No content-inspecting engine established', 'dim'],
   unknown: ['Unable to verify the path or rules', 'dim'],
   out_of_scope: ['Not in scope: not assessed', 'dim'],
 };
@@ -50,8 +52,8 @@ const DF_ENFORCEMENT = [
   { key: 'firewall', label: 'Firewall & DNS Control', sub: 'last on the request', text: 'Firewall and DNS Control are the last policies enforced on the request, and the first on the response, which then walks the same list back in reverse (DLP, Bandwidth, download File Type Control, ATP, Malware, SSL, URL & Cloud App Control, FTP, Browser Control).' },
   { key: 'action', label: 'Enforcement', sub: 'what the user sees', text: 'BLOCK or CONFIRM shows the end-user notification page (or the caution dialog) and the transaction stops or waits; ALLOW lets it through to the destination and records the match.' },
   { key: 'log', label: 'Logs', sub: 'Nanolog · NSS', text: 'Every transaction writes a web log; a DLP match adds the DLP log line (rule, engine, dictionaries and counts, user, URL, file name/hash, severity). Logs land in Nanolog and Web Insights and stream through NSS or Cloud NSS to your SIEM.' },
-  { key: 'incident', label: 'Incident Receiver', sub: 'cloud-to-cloud or ICAP', text: 'Two ways a match becomes an incident: cloud-to-cloud forwarding (the rule has Zscaler Incident Receiver set; ZIA sends the transaction details and the file to the Incident Receiver in the cloud, nothing to host) or an on-premises Incident Receiver the rule reaches over ICAP. Without either, the match exists only in the logs.' },
-  { key: 'workflow', label: 'Workflow Automation', sub: 'triage · notify · resolve', text: 'Workflow Automation ingests the incident: it de-duplicates, sets severity and owner, notifies the auditor (notification template), user or manager, and lets analysts triage, resolve or mark false positives. Resolutions feed back into rule tuning.' },
+  { key: 'incident', label: 'Incident Receiver', sub: 'cloud-to-cloud or ICAP', text: 'A rule can configure evidence forwarding to a Zscaler Incident Receiver or an ICAP server. A server reference alone does not establish Workflow Automation delivery: the receiver deployment, customer storage, events and integration must be verified.' },
+  { key: 'workflow', label: 'Workflow Automation', sub: 'triage · notify · resolve', text: 'Workflow Automation can ingest incidents through a supported configured integration. This configuration report does not observe successful delivery; verify integration readiness and correlate an actual incident.' },
 ];
 
 // The reference flow as a diagram in the same style as a traced path,
@@ -61,7 +63,7 @@ function renderPolicyEnforcementFlow(container) {
     hops: DF_ENFORCEMENT.filter(s => s.key !== 'device').map(s => ({ key: s.key, label: s.label, status: 'step', detail: s.sub })) };
   const steps = DF_ENFORCEMENT.map((s, i) => `<li class="df-step" data-hop="${_dfE(s.key)}"><strong>${i + 1}. ${_dfE(s.label)}</strong> <span class="df-by">${_dfE(s.sub)}</span><div class="df-hop-d">${_dfE(s.text)}</div></li>`).join('');
   container.innerHTML = `<div class="df-flow-wrap">${_dfSvg(t)}</div>
-    <div class="df-hint">The order ZIA applies to every transaction, from the user's device to an incident an analyst can act on. Click a stage for what it does. Endpoint DLP, SaaS Security API and Email DLP evaluate their own rules on the device, at rest and in mail, then join the same logs → incident → Workflow Automation path.</div>
+    <div class="df-hint">Reference model for a ZIA web request; it is not a universal execution order for every channel or transaction. Click a stage for what it does. Endpoint DLP, SaaS Security API and Email DLP have separate capture and rule flows. Each channel requires its own supported evidence delivery integration.</div>
     <ol class="df-steps">${steps}</ol>
     <div class="df-hint">Source: Zscaler, <em>Understanding Policy Enforcement</em> (help.zscaler.com/zia/understanding-policy-enforcement) for the request and response order; Zscaler DLP Incident Receiver and Workflow Automation documentation for what follows a match.</div>`;
   container.querySelectorAll('.df-node').forEach(n => {
@@ -88,7 +90,7 @@ function _dfSvg(t) {
     if (i > 0) {
       const px = x - GAP, cy = y + H / 2;
       const prev = hops[i - 1];
-      const dead = prev.status === 'bypass' || prev.status === 'blocked' || h.status === 'skipped';
+      const dead = prev.status === 'bypass' || prev.status === 'blocked' || ['skipped', 'not_reached'].includes(h.status);
       // S-curve connector (like the deployment pack diagram) so the
       // animated dashed line reads as a flowing squiggle between hops.
       out += `<path class="df-edge ${dead ? 'dead' : ''}" d="M${px},${cy} C${px + GAP * 0.6},${cy - 16} ${x - GAP * 0.6},${cy + 16} ${x},${cy}"/>`;
@@ -113,6 +115,7 @@ function _dfHopDetail(h) {
     <div class="df-hop-d">${_dfE(h.detail)}</div>
     ${h.rules && h.rules.length ? `<ul class="df-rules">${h.rules.map(r => `<li><code>${_dfE(r.name)}</code> ${_dfE(r.action)}${r.enforcing ? ' · enforcing' : ' · monitor'}${r.engines && r.engines.length ? ` · engines: ${_dfE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ''}${r.incident_receiver || r.icap_server ? ` · → ${_dfE(r.icap_server || 'Zscaler Incident Receiver')}` : ''}${r.notification_template ? ` · notifies via ${_dfE(r.notification_template)}` : ''}</li>`).join('')}</ul>` : ''}
     ${h.forwarders ? `<div class="df-hop-d">To the Incident Receiver: ${h.forwarders.length ? _dfE(h.forwarders.join(', ')) : 'none'} · auditor notifications: ${h.notifiers && h.notifiers.length ? _dfE(h.notifiers.join(', ')) : 'none'}</div>` : ''}
+    ${h.candidate_rules && h.candidate_rules.length ? `<div class="df-hop-d">Candidate rules: ${_dfE(h.candidate_rules.map(r => `${r.name} (${r.action || (r.actions || []).join(', ')})`).join('; '))}. Applicability is unverified.</div>` : ''}
     ${h.actions && h.actions.length ? `<div class="df-hop-d">Actions: ${_dfE(h.actions.join(', '))}</div>` : ''}
     ${h.raw ? `<div class="df-raw">raw: ${_dfE(JSON.stringify(h.raw))}</div>` : ''}
     ${h.weak_point ? `<div class="df-weak sev-${_dfE(h.weak_point.severity)}"><span class="sev">${_dfE(h.weak_point.severity)}</span> <strong>${_dfE(h.weak_point.title)}</strong> — ${_dfE(h.weak_point.fix)}</div>` : ''}
@@ -124,13 +127,13 @@ function connectorInventoryHtml(c) {
   const apps = (c.profiles || []).map(p => { const a = p.app_profile || {}, f = p.forwarding_profile; return `<li>${_dfE(a.name)} (ID ${_dfE(a.id)}, ${_dfE(a.platform)}, ${a.active === false ? 'inactive' : 'active'}) → ${f ? `${_dfE(f.name)} (ID ${_dfE(f.id)})` : 'Forwarding link unverified'}</li>`; }).join('');
   const forwarding = (c.forwarding_profiles || []).map(f => `<li>${_dfE(f.name)} (ID ${_dfE(f.id)})</li>`).join('');
   const pac = (c.pac_files || []).map(f => `<li>${_dfE(f.name || 'PAC file')} (ID ${_dfE(f.id)}) · ${_dfE(f.url || 'URL unavailable')} · ${f.has_content ? 'content read' : 'content unverified'}</li>`).join('');
-  return `<details><summary>Tenant profile and PAC inventory</summary><p>Configuration candidates; device assignment is not established.</p><h3>All app profiles</h3><ul>${apps}</ul><h3>All forwarding profiles</h3><ul>${forwarding}</ul><h3>PAC files</h3><ul>${pac}</ul>${(c.errors || []).map(e => `<p>${_dfE(e)}</p>`).join('')}</details>`;
+  return `<details><summary>Tenant profile and PAC inventory</summary><p>Configuration candidates; device assignment is not established.</p><h2 class="df-h">All app profiles</h2><ul>${apps}</ul><h2 class="df-h">All forwarding profiles</h2><ul>${forwarding}</ul><h2 class="df-h">PAC files</h2><ul>${pac}</ul>${(c.errors || []).map(e => `<p>${_dfE(e)}</p>`).join('')}</details>`;
 }
 function renderDataFlowTrace(t, container) {
   const [olab, ocls] = DF_OUTCOME[t.outcome] || [t.outcome, 'dim'];
   const chans = Object.entries(t.channels || {}).map(([k, c]) => {
     const [lab, cls] = DF_STATUS[c.status] || [c.status, 'dim'];
-    return `<div class="df-chan st-${cls}"><div class="df-hop-h"><span class="df-chip st-${cls}">${_dfE(lab)}</span><strong>${_dfE(c.label)}</strong></div><div class="df-hop-d">${_dfE(c.detail)}</div>${c.weak_point ? `<div class="df-weak sev-${_dfE(c.weak_point.severity)}"><span class="sev">${_dfE(c.weak_point.severity)}</span> <strong>${_dfE(c.weak_point.title)}</strong> — ${_dfE(c.weak_point.fix)}</div>` : ''}</div>`;
+    return `<div class="df-chan st-${cls}"><div class="df-hop-h"><span class="df-chip st-${cls}">${_dfE(lab)}</span><strong>${_dfE(c.label)}</strong></div><div class="df-hop-d">${_dfE(c.detail)}</div>${c.rules && c.rules.length ? `<div class="df-hop-d">Configured rules: ${_dfE(c.rules.join(', '))}</div>` : ''}${c.weak_point ? `<div class="df-weak sev-${_dfE(c.weak_point.severity)}"><span class="sev">${_dfE(c.weak_point.severity)}</span> <strong>${_dfE(c.weak_point.title)}</strong> — ${_dfE(c.weak_point.fix)}</div>` : ''}</div>`;
   }).join('');
   const packs = (t.packs || []).map(p => {
     const rows = p.rules.map(r => `<span class="df-rule st-${{ enforcing: 'ok', monitoring: 'warn', disabled: 'dim', missing: 'fail' }[r.state] || 'dim'}${r.on_path ? ' on' : ''}" title="${_dfE(r.channel)} · ${_dfE(r.state)}${r.on_path ? ' · on this path' : ''}">${_dfE(r.name)}</span>`).join('');
@@ -155,7 +158,7 @@ function renderDataFlowTrace(t, container) {
     <div class="df-hint">Each box is a data security control on the path, in the order ZIA applies them; a dot marks a weak point. Click a box for the rule that decided it. SSL Inspection, Cloud App Control, URL Filtering and File Type Control are data security controls alongside DLP — they stop or scope data movement before content inspection; Cloud App Control runs with URL Filtering ahead of SSL inspection, takes precedence when it matches, and can gate on a user risk profile. Controls that are not data-leak controls (browser/FTP, threat protection, bandwidth, firewall) are left out here; the reference diagram above shows the full order. The last hop is what happens after a match: logs, the Incident Receiver and Workflow Automation.</div>
     <h2 class="df-h">Hops</h2>
     <div class="df-hops">${t.hops.map(_dfHopDetail).join('')}</div>
-    <h2 class="df-h">Channels that do not ride the tunnel</h2>
+    <h2 class="df-h">Separate-channel inventory (not tested on this path)</h2>
     <div class="df-chans">${chans}</div>
     <h2 class="df-h">Policy packs on this path</h2>
     ${packs || '<div class="df-hop-d">No policy packs installed.</div>'}
@@ -173,7 +176,7 @@ function renderDataFlowOverview(report, container) {
     const [olab, ocls] = DF_OUTCOME[t.outcome] || [t.outcome, 'dim'];
     const net = (report.networks.find(n => n.key === t.network) || {}).label || t.network;
     const high = t.weak_points.filter(w => w.severity === 'high').length;
-    return `<tr class="df-row" data-i="${i}" tabindex="0"><td>${_dfE(t.destination.label)}</td><td>${_dfE(net)}</td><td><span class="df-chip st-${ocls}">${_dfE(olab)}</span></td><td>${t.hops.filter(h => h.status === 'bypass').length ? 'client / PAC' : (t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope'].includes(h.status)) ? 'unverified' : t.decrypted ? 'decrypted' : 'encrypted')}</td><td>${high ? `<span class="df-chip st-fail">${high} high</span>` : (t.weak_points.length ? `<span class="df-chip st-warn">${t.weak_points.length}</span>` : '<span class="df-chip st-ok">0</span>')}</td></tr>`;
+    return `<tr class="df-row" data-i="${i}" tabindex="0"><td>${_dfE(t.destination.label)}</td><td>${_dfE(net)}</td><td><span class="df-chip st-${ocls}">${_dfE(olab)}</span></td><td>${t.hops.filter(h => h.status === 'bypass').length ? 'client / PAC' : (t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope', 'conditional'].includes(h.status)) ? 'unverified' : t.decrypted ? 'decrypted' : 'encrypted')}</td><td>${high ? `<span class="df-chip st-fail">${high} high</span>` : (t.weak_points.length ? `<span class="df-chip st-warn">${t.weak_points.length}</span>` : '<span class="df-chip st-ok">0</span>')}</td></tr>`;
   }).join('');
   container.innerHTML = `<div class="df-tablewrap"><table class="df-table"><thead><tr><th>Destination</th><th>Network</th><th>Outcome</th><th>Visibility</th><th>Weak points</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -183,12 +186,13 @@ function renderDataFlowOverview(report, container) {
 // bypassed (no visibility), reaching ZIA encrypted (blind), or decrypted
 // and inspected — and if inspected, enforced or monitor-only.
 function _dfVisibility(t) {
-  if (t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope'].includes(h.status))) return ['Unable to verify', 'dim', 'Routing or inspection evidence is unavailable or outside scope'];
+  if (t.outcome === 'blocked') return ['Blocked', 'block', 'Stopped before downstream inspection; no content scan established'];
+  if (t.conditional || t.policy_conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope', 'conditional'].includes(h.status))) return ['Unable to verify', 'dim', 'Routing or inspection evidence is unavailable or outside scope'];
   if (!t.reaches_zscaler) return ['Bypassed', 'fail', 'Leaves the device direct — no cloud visibility'];
   if (!t.decrypted) return ['Encrypted', 'warn', 'Reaches ZIA but is not decrypted — inline DLP is blind'];
-  if (t.outcome === 'enforce') return ['Decrypted · enforced', 'ok', 'Decrypted and a rule blocks/confirms'];
-  if (t.outcome === 'monitor') return ['Decrypted · monitor', 'warn', 'Decrypted and inspected, monitor-only'];
-  return ['Decrypted', 'ok', 'Decrypted and inspected'];
+  if (t.outcome === 'enforce') return ['Decryption configured · enforce', 'ok', 'Configuration permits content inspection; no payload was scanned'];
+  if (t.outcome === 'monitor') return ['Decryption configured · monitor', 'warn', 'Monitoring configuration; no payload was scanned'];
+  return ['Decryption configured', 'dim', 'No content inspection was observed'];
 }
 
 function renderCategoryVisibility(report, container) {
@@ -218,9 +222,9 @@ function renderCategoryVisibility(report, container) {
 // with the rule/profile that decided it — the bypass + SSL gaps in one place.
 function renderDataFlowGaps(report, container) {
   const netLabel = k => (report.networks.find(n => n.key === k) || {}).label || k;
-  const lost = report.traces.filter(t => !t.conditional && !(t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope'].includes(h.status)) && (!t.reaches_zscaler || !t.decrypted)).map((t, _i) => ({ t, i: report.traces.indexOf(t) }));
-  if (!lost.length && report.traces.some(t => t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope'].includes(h.status)))) { container.innerHTML = '<p>Routing or inspection remains unverified; no confirmed visibility gap can be inferred.</p>'; return; }
-  if (!lost.length) { container.innerHTML = '<div class="df-hop-d">Every traced path reaches Zscaler and is decrypted — no bypass or SSL gap found.</div>'; return; }
+  const lost = report.traces.filter(t => t.outcome !== 'blocked' && !t.conditional && !t.policy_conditional && !(t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope', 'conditional'].includes(h.status)) && (!t.reaches_zscaler || !t.decrypted)).map((t, _i) => ({ t, i: report.traces.indexOf(t) }));
+  if (!lost.length && report.traces.some(t => t.conditional || t.policy_conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope', 'conditional'].includes(h.status)))) { container.innerHTML = '<p>Routing or inspection remains unverified; no confirmed visibility gap can be inferred.</p>'; return; }
+  if (!lost.length) { container.innerHTML = '<div class="df-hop-d">No confirmed bypass or SSL visibility gap was identified. Blocked paths are not inspection failures.</div>'; return; }
   const bypassed = lost.filter(x => !x.t.reaches_zscaler);
   const blind = lost.filter(x => x.t.reaches_zscaler && !x.t.decrypted);
   const item = ({ t, i }) => {

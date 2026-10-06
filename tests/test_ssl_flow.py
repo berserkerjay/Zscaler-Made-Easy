@@ -133,7 +133,7 @@ class FakeCl:
 
 
 def test_generate_reads_tenant_and_records_diagnostics():
-    cl = FakeCl({"/zia/sslInspectionRules": SSL, "/zia/webDlpRules": DLP, "/zcc/webPolicies": [],
+    cl = FakeCl({"/zia/sslInspectionRules": SSL, "/zia/webDlpRules": DLP, "/zcc/webPolicies": [], "/zia/urlFilteringRules": [], "/zia/fileTypeRules": [],
                  "/zia/urlCategories": [{"id": "FILE_HOST", "configuredName": "File Host"}]}, apps=CATALOGUE)
     rep = sf.generate_ssl_flow_report(cl)
     assert rep["summary"]["ssl_rules"] == 9 and rep["summary"]["catalogue_classes"] == ["AI_ML", "FILE_SHARE"]

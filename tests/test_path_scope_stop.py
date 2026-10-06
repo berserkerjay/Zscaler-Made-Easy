@@ -499,9 +499,7 @@ def test_the_motion_says_not_in_scope_never_a_break_or_an_unread_mark():
     p = subprocess.run(["node", "-e", script], input=json.dumps(res), capture_output=True, text=True, encoding="utf-8")
     assert p.returncode == 0, p.stderr
     m = json.loads(p.stdout)
-    by = {s["edge"]: s for s in m["stops"]}
-    assert by["cap_web>dict"]["tone"] == "scope" and by["cap_web>dict"]["reason"].startswith("Not in scope:"), by
-    for e in ("engine>r_ep", "engine>r_mail", "engine>r_saas"):
-        assert by[e]["tone"] == "scope" and "Not in scope" in by[e]["reason"], by[e]
-    lines = [s for s in m["summary"] if s.startswith(("Inline web", "Endpoint DLP", "Email DLP", "SaaS Security API DLP"))]
-    assert lines and not any("no enabled" in s.lower() or "could not be read" in s.lower() for s in lines), lines
+    assert m["stops"] == [], "configuration context has no observed animated stops"
+    lines = [line for line in m["summary"] if "not in scope" in line.lower()]
+    assert lines
+    assert not any("no enabled" in line.lower() or "could not be read" in line.lower() for line in lines)

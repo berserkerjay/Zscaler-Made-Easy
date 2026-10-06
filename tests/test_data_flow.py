@@ -84,13 +84,13 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     assert keys == ["zcc", "forwarding", "cac", "url", "ssl", "ftc", "dlp", "incident"] and t["reaches_zscaler"] and t["decrypted"]
     hop = lambda k: next(h for h in t["hops"] if h["key"] == k)  # noqa: E731
     assert not any(h["status"] in ("info", "unknown") for h in t["hops"])
-    assert hop("cac")["status"] == "blocked"
+    assert hop("cac")["status"] == "conditional" and hop("cac")["candidate_rules"][0]["name"] == "AI no upload"
     # Cloud App Control matched, so URL Filtering is not applied to this transaction.
-    assert hop("url")["status"] == "na" and hop("url")["decided_by"]["name"] == "AI no upload"
+    assert hop("url")["status"] == "conditional" and "unresolved" in hop("url")["detail"]
     assert hop("dlp")["status"] == "enforce" and t["outcome"] == "enforce"
     assert "first match applies" in hop("dlp")["detail"]
     inc = hop("incident")
-    assert inc["status"] == "pass" and inc["forwarders"] == ["Bank-Payment Card Data-Bulk-Monitor"] and inc["notifiers"] == ["Bank-Payment Card Data-Bulk-Monitor"]
+    assert inc["status"] == "conditional" and inc["delivery_status"] == "unverified" and inc["forwarders"] == ["Bank-Payment Card Data-Bulk-Monitor"] and inc["notifiers"] == ["Bank-Payment Card Data-Bulk-Monitor"]
     assert "Workflow Automation" in inc["detail"] and inc["weak_point"] is None
     rule = next(r for r in hop("dlp")["rules"] if r["name"] == "Bank-Payment Card Data-Bulk-Monitor")
     assert rule["incident_receiver"] is True and rule["notification_template"] == "DLP auditor template"
@@ -107,20 +107,20 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     f = by[("file_share", "off")]
     fh = lambda k: next(h for h in f["hops"] if h["key"] == k)  # noqa: E731
     assert fh("cac")["status"] == "warn" and fh("url")["status"] == "na" and "File share allow all" in fh("url")["detail"]
-    assert fh("ftc")["status"] == "blocked"
+    assert fh("ftc")["status"] == "conditional" and "file type" in fh("ftc")["missing_context"]
     assert fh("dlp")["status"] == "monitor"
-    assert fh("incident")["status"] == "warn" and fh("incident")["weak_point"]["title"] == "Incidents stay in the logs"
+    assert fh("incident")["status"] == "warn" and fh("incident")["weak_point"]["title"] == "No evidence forwarding configured"
     # A destination no Cloud App Control rule targets falls through to URL Filtering.
     g = df.trace_from_report(rep, "GAMBLING", "off", "windows")
     gh = {h["key"]: h for h in g["hops"]}
     assert gh["cac"]["status"] == "none" and gh["url"]["status"] == "blocked" and gh["url"]["decided_by"]["name"] == "Block gambling"
     # URL Filtering runs before SSL inspection: a URL block ends the request there.
-    assert "ssl" not in gh and "dlp" not in gh and "incident" not in gh and g["outcome"] == "blocked"
+    assert all(gh[k]["status"] == "not_reached" and gh[k]["stopped_by"]["key"] == "url" for k in ("ssl", "ftc", "dlp", "incident")) and g["outcome"] == "blocked"
     # On VPN the corp forwarding profile forwards nothing: never reaches Zscaler.
     v = by[("ai_ml", "vpn")]
     assert not v["reaches_zscaler"] and v["outcome"] == "bypassed" and v["hops"][1]["status"] == "bypass"
-    assert v["channels"]["endpoint"]["status"] == "monitor"          # Endpoint DLP is the remaining control on the device
-    assert v["channels"]["email"]["status"] == "none" and v["channels"]["email"]["weak_point"]["title"] == "Email not covered"
+    assert v["channels"]["endpoint"]["status"] == "inventory" and not v["channels"]["endpoint"]["tested"]          # Endpoint DLP is the remaining control on the device
+    assert v["channels"]["email"]["status"] == "inventory" and v["channels"]["email"]["enabled_count"] == 0
     # Pack overlay: the banking pack's rules are found by name in every channel.
     bank = next(p for p in t["packs"] if p["id"] == "global_banking_baseline")
     st = {r["name"]: r for r in bank["rules"]}
@@ -148,7 +148,7 @@ def test_custom_destinations_hostname_bypass_pac_direct_and_mac_contractor():
     assert m["hops"][1]["status"] == "bypass" and "Contractor forwarding" in m["hops"][1]["detail"]
     b = df.trace_from_report(rep, "app.box.com", "off", "macos")
     assert [h["key"] for h in b["hops"]][:3] == ["zcc", "forwarding", "pac"] and b["hops"][2]["status"] == "bypass"
-    assert b["channels"]["endpoint"]["status"] == "off"             # profile does not install Endpoint DLP
+    assert b["channels"]["endpoint"]["status"] == "inventory" and b["channels"]["endpoint"]["coverage"] == "unverified"             # profile does not install Endpoint DLP
     # An application name straight from the catalogue.
     a = df.trace_from_report(rep, "CHATGPT_AI", "off", "windows")
     assert a["destination"]["kind"] == "application" and a["outcome"] == "enforce"

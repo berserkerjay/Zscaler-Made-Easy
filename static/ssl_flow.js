@@ -8,12 +8,14 @@ function _sfE(s) {
 const SF = { data: null, selected: null, container: null };
 
 const SF_DECISION = {
+  unknown: { label: 'UNVERIFIED', cls: 'mute', hint: 'The SSL rules could not be read; no inspection conclusion is supported.' },
   inspected:     { label: 'DECRYPTED',     cls: 'ok',   hint: 'SSL inspection opens this traffic; inline DLP can read the content.' },
   not_inspected: { label: 'NOT DECRYPTED', cls: 'bad',  hint: 'A Do-Not-Decrypt rule matches first; inline DLP never sees the content.' },
   no_rule:       { label: 'NO RULE',       cls: 'bad',  hint: 'No SSL rule matches, so the traffic passes through encrypted.' },
   blocked:       { label: 'BLOCKED',       cls: 'mute', hint: 'Blocked at SSL inspection; nothing leaves, nothing to inspect.' },
 };
 const SF_DLP = {
+  unknown: { label: 'DLP unverified', cls: 'mute' },
   enforcing: { label: 'DLP enforcing',        cls: 'ok' },
   monitor:   { label: 'DLP monitor only',     cls: 'warn' },
   none:      { label: 'No inline DLP rule',   cls: 'warn' },
@@ -56,7 +58,7 @@ function _sfSvg(data) {
       ${zTotal ? `<g transform="translate(${W.a - 46},-8)"><rect class="sf-badge high" width="44" height="16" rx="8"/><text class="sf-badge-t" x="22" y="11.5" text-anchor="middle">GAP</text></g>` : ''}</g>`;
     nodes += `<g class="sf-node dec-${cls}${SF.selected === 'zcc' ? ' is-sel' : ''}" data-key="zcc" transform="translate(${xB},${y})" tabindex="0" role="button">
       <rect class="box" width="${W.b}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
-      <text class="st" x="14" y="20">${zTotal ? 'NEVER REACHES ZSCALER' : (zcc.available ? 'NO BYPASSES' : out ? 'NOT IN SCOPE' : 'UNKNOWN')}</text><text class="sub" x="14" y="37">${zTotal ? `${zTotal} bypass entr${zTotal === 1 ? 'y' : 'ies'} in ${zcc.profiles || 0} profile(s)` : (zcc.available ? 'every device sends traffic through ZIA' : out ? 'Client Connector was not read' : 'read the Bypass report')}</text></g>`;
+      <text class="st" x="14" y="20">${zTotal ? 'NEVER REACHES ZSCALER' : (zcc.available ? 'NO BYPASSES' : out ? 'NOT IN SCOPE' : 'UNKNOWN')}</text><text class="sub" x="14" y="37">${zTotal ? `${zTotal} bypass entr${zTotal === 1 ? 'y' : 'ies'} in ${zcc.profiles || 0} profile(s)` : (zcc.available ? 'no bypass entries found in readable inventory' : out ? 'Client Connector was not read' : 'read the Bypass report')}</text></g>`;
     nodes += `<g class="sf-node dec-${cls}${SF.selected === 'zcc' ? ' is-sel' : ''}" data-key="zcc" transform="translate(${xC},${y})" tabindex="0" role="button">
       <rect class="box" width="${W.c}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
       <text class="st" x="14" y="20">${zTotal ? 'DLP blind (bypassed)' : (zcc.available ? 'Nothing bypassed' : out ? 'Not in scope' : 'Unknown')}</text><text class="sub" x="14" y="37">${zTotal ? 'no SSL rule, no DLP rule ever sees it' : ''}</text></g>`;
@@ -64,8 +66,8 @@ function _sfSvg(data) {
   classes.forEach((c, i0) => {
     const i = i0 + 1;
     const y = TOP + i * ROW, cy = y + H / 2;
-    const dec = SF_DECISION[c.decision] || SF_DECISION.no_rule;
-    const dlp = SF_DLP[c.dlp_status] || SF_DLP.none;
+    const dec = SF_DECISION[c.decision] || SF_DECISION.unknown;
+    const dlp = SF_DLP[c.dlp_status] || SF_DLP.unknown;
     const worst = _sfWorst(c);
     const sel = SF.selected === c.key ? ' is-sel' : '';
     const curve = (x1, x2, cls) => { const dx = (x2 - x1) * 0.5; return `<path class="sf-edge ${cls}" d="M${x1},${cy} C${x1 + dx},${cy} ${x2 - dx},${cy} ${x2},${cy}"/>`; };
@@ -73,7 +75,7 @@ function _sfSvg(data) {
     edges += curve(xB + W.b, xC, c.decision === 'inspected' ? (c.dlp_status === 'enforcing' ? 'flow' : 'flow warn') : c.decision === 'blocked' ? 'mute' : 'bad');
     const d = c.decided_by || {};
     const ruleLine = d.name ? `${_sfTrim(d.name, 30)}${d.order != null ? ` · order ${d.order}` : ''}` : 'nothing matched';
-    const dlpLine = c.dlp_status === 'blind' ? (c.dlp_rules.length ? `${c.dlp_rules.length} rule(s) cannot see content` : 'content is encrypted')
+    const dlpLine = c.dlp_status === 'unknown' ? 'rule evidence unavailable' : c.dlp_status === 'blind' ? (c.dlp_rules.length ? `${c.dlp_rules.length} rule(s) cannot see content` : 'content is encrypted')
       : c.dlp_status === 'blocked' ? 'blocked before DLP'
       : c.dlp_status === 'not_in_scope' ? 'Web DLP not in scope'
       : c.dlp_rules.length ? _sfTrim(c.dlp_rules.map(r => r.name).join(', '), 34) : 'add a Web DLP rule';
@@ -126,7 +128,7 @@ function _sfDetail(c) {
   const E = _sfE;
   if (c === 'zcc') return _sfZccDetail(SF.data.zcc || {});
   if (!c) return '<div class="sf-detail-empty">Click a row in the diagram to see which rule decides, who is exempt, which DLP rules apply and how to close the gap.</div>';
-  const dec = SF_DECISION[c.decision] || SF_DECISION.no_rule;
+  const dec = SF_DECISION[c.decision] || SF_DECISION.unknown;
   const d = c.decided_by;
   const rule = r => `<span class="sf-rule"><b>${E(r.name)}</b>${r.order != null ? ` <span class="dim">order ${E(r.order)}</span>` : ''} <span class="bp-chip act">${E(r.action || r.decision || '')}</span>${r.scope && r.scope.length ? ` <span class="dim">(${E(r.scope.join(', '))})</span>` : ''}${r.default_rule ? ' <span class="bp-chip">default rule</span>' : ''}</span>`;
   const list = (title, items, render) => items && items.length ? `<div class="sf-kv"><div class="k">${E(title)}</div><div class="v">${items.map(render).join('<br>')}</div></div>` : '';
@@ -166,7 +168,7 @@ window.renderSslFlow = function renderSslFlow(data, container) {
   const outOf = Object.values(data.not_in_scope || {});
   const scopeNote = outOf.length ? `<div class="bp-card info"><div class="t">Read only what is in scope on the Scope page</div><ul style="margin:0.3rem 0 0 1.1rem;font-size:0.8rem;color:var(--dim);">${outOf.map(t => `<li>${E(t)}</li>`).join('')}</ul></div>` : '';
   const ex = (data.zscaler_exemptions || []);
-  const gapList = gaps.length ? gaps.map(g => `<li class="sev-${E(g.severity)}"><span class="bp-chip ${g.severity === 'high' ? 'act' : ''}">${E(g.severity)}</span><a href="#" data-class="${E(g.class)}" class="sf-gap-link">${E(g.title)}</a><span class="why">${E(g.detail)}<br><b>Fix:</b> ${E(g.fix)}</span></li>`).join('') : '<li class="sev-none"><span class="why">No gaps: every DLP-relevant traffic class is decrypted and covered by an inline DLP rule.</span></li>';
+  const gapList = gaps.length ? gaps.map(g => `<li class="sev-${E(g.severity)}"><span class="bp-chip ${g.severity === 'high' ? 'act' : ''}">${E(g.severity)}</span><a href="#" data-class="${E(g.class)}" class="sf-gap-link">${E(g.title)}</a><span class="why">${E(g.detail)}<br><b>Fix:</b> ${E(g.fix)}</span></li>`).join('') : '<li class="sev-none"><span class="why">No confirmed gaps identified from readable configuration. Missing evidence is not proof of coverage.</span></li>';
   const sslRows = (data.ssl_rules || []).map(r => {
     const targets = r.catch_all ? '<em>everything</em>' : r.zscaler_maintained ? '<em>Zscaler-maintained list</em>' : [...r.url_categories, ...r.cloud_applications].slice(0, 6).map(t => `<span class="bp-code">${E(t)}</span>`).join('') + ((r.url_categories.length + r.cloud_applications.length) > 6 ? ` +${r.url_categories.length + r.cloud_applications.length - 6}` : '') + (r.other_targets ? ` <span class="dim">+${r.other_targets} destination(s)</span>` : '');
     return `<tr class="${r.enabled ? '' : 'off'}"><td class="num">${E(r.order)}</td><td>${E(r.name)}${r.default_rule ? ' <span class="bp-chip">default</span>' : ''}${r.predefined && !r.default_rule ? ' <span class="bp-chip">predefined</span>' : ''}</td><td><span class="bp-chip ${r.decision === 'inspected' ? '' : 'act'}">${E(r.action)}</span></td><td>${E(r.state)}</td><td>${targets}</td><td class="dim">${E(r.scope.join(', ') || 'everyone')}</td></tr>`;
@@ -178,6 +180,9 @@ window.renderSslFlow = function renderSslFlow(data, container) {
       ${stat(s.dlp_covered == null ? '–' : s.dlp_covered, s.dlp_covered == null ? 'Web DLP not in scope' : 'decrypted and DLP-covered', s.dlp_covered ? 'ok' : '')}${stat(s.zcc_bypasses || 0, 'Client Connector bypasses', (s.zcc_bypasses || 0) ? 'bad' : ((data.zcc || {}).available ? 'ok' : 'mute'))}${stat(s.gaps, 'gaps', s.high ? 'bad' : s.gaps ? 'warn' : 'ok')}${stat(s.high, 'high severity', s.high ? 'bad' : '')}
     </div>
     ${diag}${scopeNote}
+    <div class="sf-hint">Configuration prediction for inline web traffic. No payload, TLS session or separate-channel operation was tested.</div>
+    <div class="bp-h">Required data-security controls</div>
+    ${(data.classes || []).map(c => `<section class="sf-control-row"><strong>${E(c.label)}</strong>${(c.controls || []).map(h => `<div data-control="${E(h.key)}"><b>${E(h.label)}</b> · ${E(h.status)}: ${E(h.detail)}${h.rules && h.rules.length ? ` Rules: ${E(h.rules.map(r => r.name || r.id).join(', '))}` : ''}</div>`).join('')}</section>`).join('')}
     <div class="sf-flow">
       <div class="sf-flow-bar">
         <div class="sf-legend"><span><i class="sw ok"></i>decrypted, DLP sees content</span><span><i class="sw warn"></i>decrypted, DLP gap</span><span><i class="sw bad"></i>encrypted, DLP blind</span><span><i class="sw mute"></i>blocked</span></div>

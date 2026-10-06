@@ -144,7 +144,7 @@ def _decision_of(action: str) -> str:
         return "blocked"
     if action in NO_DECRYPT_ACTIONS:
         return "not_inspected"
-    return "not_inspected"
+    return "unknown"
 
 
 # ── Rule normalisation ────────────────────────────────────────────────
@@ -250,6 +250,22 @@ def _fetch_rules(client, endpoint: str, diagnostics: List[Dict[str, Any]], label
         err = data.get("error") if isinstance(data, dict) else ""
         diagnostics.append({"section": label, "endpoint": endpoint, "error_type": f"HTTP {code}", "error": str(err or "")[:300]})
         return []
+    if code == 204:
+        return []
+    valid = isinstance(data, list) or (isinstance(data, dict) and any(isinstance(data.get(k), list) for k in ("list", "data", "items", "rules")))
+    if not valid or any(not isinstance(r, dict) for r in _rules_to_list(data)):
+        diagnostics.append({"section": label, "endpoint": endpoint, "error_type": "invalid response", "error": "Expected a complete rule list; a malformed successful response is not an empty inventory."})
+        return []
+    if isinstance(data, dict):
+        total = _f(data, "totalCount", "total_count", "total", default=None)
+        more = bool(_f(data, "hasMore", "has_more", "nextPage", "next_page", default=False))
+        try:
+            more = more or (total is not None and int(total) > len(_rules_to_list(data)))
+        except (TypeError, ValueError):
+            more = True
+        if more:
+            diagnostics.append({"section": label, "endpoint": endpoint, "error_type": "incomplete response", "error": "Rule inventory is paginated or incomplete; it cannot establish a decision."})
+            return []
     return [r for r in _rules_to_list(data) if isinstance(r, dict)]
 
 
@@ -330,12 +346,13 @@ def _short(rule: Dict[str, Any], hit: Optional[Dict[str, Any]] = None) -> Dict[s
 def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
             catalogue: Optional[Dict[str, List[str]]] = None,
             category_lookup: Optional[Dict[str, Any]] = None,
-            dlp_in_scope: bool = True) -> Dict[str, Any]:
+            dlp_in_scope: bool = True, read_errors: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """Pure function: normalised rule dicts in, report body out. With
     `dlp_in_scope` false the Web DLP rules were not read (not in scope on
     the Scope page): no class is said to lack a DLP rule, and its DLP
     status is "not in scope"."""
     catalogue = catalogue or {}
+    read_errors = read_errors or {}
     ssl = sorted((normalize_ssl_rule(r) for r in ssl_rules), key=_sort_key)
     dlp = sorted((normalize_dlp_rule(r) for r in dlp_rules), key=lambda r: (int(r["order"]) if str(r.get("order") or "").lstrip("-").isdigit() else 10 ** 6, int(r.get("id") or 0)))
     enabled_ssl = [r for r in ssl if r["enabled"]]
@@ -444,6 +461,12 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
                          "title": f"{label}: a matching DECRYPT rule exists but is disabled",
                          "detail": ", ".join(f"'{r['name']}'" for r in disabled_decrypt) + " would decrypt this traffic once enabled.",
                          "fix": "Enable it after confirming the certificate is deployed to endpoints (check 3.3 / 4.2)."})
+        if "ssl" in read_errors:
+            decision, decided_by, gaps = "unknown", None, []
+        elif "dlp" in read_errors:
+            gaps = [g for g in gaps if g["type"] not in ("ungoverned", "monitor_only", "metadata_only")]
+            for g in gaps:
+                g["detail"] = g["detail"].replace(" No inline DLP rule targets it either.", " Web DLP rules could not be read; coverage is unknown.")
         for g in gaps:
             g["class"] = klass["key"]
             g["class_label"] = label
@@ -464,7 +487,9 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
             "disabled_decrypt": disabled_decrypt,
             "dlp_rules": dlp_short,
             "dlp_enforcing": enforcing,
-            "dlp_status": ("blind" if decision in ("not_inspected", "no_rule") else
+            "dlp_status": ("not_in_scope" if not dlp_in_scope else
+                           "unknown" if decision == "unknown" or "dlp" in read_errors else
+                           "blind" if decision in ("not_inspected", "no_rule") else
                            "blocked" if decision == "blocked" else
                            "not_in_scope" if not dlp_in_scope else
                            "none" if not covering else "enforcing" if enforcing else "monitor"),
@@ -480,7 +505,8 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
         "inspected": counts["inspected"],
         "not_inspected": counts["not_inspected"] + counts["no_rule"],
         "blocked": counts["blocked"],
-        "dlp_covered": sum(1 for c in classes_out if c["decision"] == "inspected" and c["dlp_rules"]) if dlp_in_scope else None,
+        "unknown": sum(1 for c in classes_out if c["decision"] == "unknown"),
+        "dlp_covered": sum(1 for c in classes_out if c["decision"] == "inspected" and c["dlp_rules"]) if dlp_in_scope and not read_errors else None,
         "gaps": len(all_gaps),
         "high": sum(1 for g in all_gaps if g["severity"] == "high"),
         "medium": sum(1 for g in all_gaps if g["severity"] == "medium"),
@@ -559,7 +585,7 @@ def zcc_gap(zcc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 # them: the SSL inspection rules ("ssl"), the Web DLP rules ("dlp") and the
 # Client Connector bypasses ("zcc"). The URL categories and the cloud
 # application catalogue are read only to place traffic for the SSL rules.
-SECTIONS = ("ssl", "dlp", "zcc")
+SECTIONS = ("ssl", "dlp", "zcc", "url", "ftc")
 NOTHING_IN_SCOPE = ("Nothing the SSL inspection flow reads is in scope — it walks the SSL inspection rules: on the Scope page "
                     "tick DLP or ZIA platform and mark SSL inspection as Zscaler, then run it again.")
 
@@ -578,6 +604,9 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
     diagnostics: List[Dict[str, Any]] = []
     ssl_rules = _fetch_rules(client, "/zia/sslInspectionRules", diagnostics, "SSL inspection rules")
     dlp_rules = _fetch_rules(client, "/zia/webDlpRules", diagnostics, "Web DLP rules") if "dlp" in read else []
+    supporting = {}
+    for key, endpoint, label in (("url", "/zia/urlFilteringRules", "URL filtering rules"), ("ftc", "/zia/fileTypeRules", "File Type Control rules")):
+        supporting[key] = _fetch_rules(client, endpoint, diagnostics, label) if key in read else []
     classes = {cls for k in TRAFFIC_CLASSES for cls in k["app_classes"]}
     catalogue = _fetch_app_catalogue(client, classes, diagnostics)
     try:
@@ -585,7 +614,36 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
     except Exception as e:  # noqa: BLE001
         lookup = {}
         diagnostics.append({"section": "URL categories", "endpoint": "/zia/urlCategories", "error_type": type(e).__name__, "error": str(e)[:200]})
-    report = analyse(ssl_rules, dlp_rules, catalogue, lookup, dlp_in_scope="dlp" in read)
+    section_keys = {"SSL inspection rules": "ssl", "Web DLP rules": "dlp", "URL filtering rules": "url", "File Type Control rules": "ftc"}
+    errors = {section_keys[d["section"]]: d.get("error") or d.get("error_type") or "read failed" for d in diagnostics if d.get("section") in section_keys}
+    report = analyse(ssl_rules, dlp_rules, catalogue, lookup, dlp_in_scope="dlp" in read, read_errors=errors)
+    for row in report["classes"]:
+        controls = []
+        for key, label in (("url", "URL Filtering"), ("ssl", "SSL Inspection"), ("ftc", "File Type Control")):
+            status = "out_of_scope" if key not in read else "unknown" if key in errors else "conditional"
+            detail = (why.get(key) or "Not in scope; not read.") if status == "out_of_scope" else errors.get(key) or "Configuration inventory only; operation, file type and identity applicability have not been tested."
+            rules = supporting.get(key, [])
+            if key == "ssl":
+                status = {"inspected": "pass", "blocked": "blocked", "unknown": "unknown"}.get(row["decision"], "blind")
+                detail = "SSL rule configuration for this traffic class; no TLS session or payload was tested."
+                rules = [row["decided_by"]] if row["decided_by"] else []
+            if key == "ftc" and row["decision"] == "blocked":
+                status = "not_reached"
+                detail = "The modeled branch is blocked at SSL inspection; File Type Control is not evaluated."
+            controls.append({"key": key, "label": label, "status": status, "detail": detail,
+                             "rules": [{"id": r.get("id"), "name": r.get("name"), "action": _action_type(r) or _f(r, "filteringAction", "filtering_action", default="")} for r in rules],
+                             "stopped_by": {"key": "ssl", "label": "SSL Inspection", "object_id": (row["decided_by"] or {}).get("id"), "object_name": (row["decided_by"] or {}).get("name")} if status == "not_reached" else None,
+                             "scope_status": "in_scope" if key in read else "out_of_scope",
+                             "evidence_mode": "configuration", "tested": False})
+        row["controls"] = controls
+    report["supporting_rules"] = {key: [{"id": r.get("id"), "name": r.get("name"), "order": r.get("order"),
+                                        "state": r.get("state"), "action": _action_type(r) or _f(r, "filteringAction", "filtering_action", default=""),
+                                        "scope": _scope(r), "file_types": _names(_f(r, "fileTypes", "file_types", default=[])),
+                                        "url_categories": _names(_f(r, "urlCategories", "url_categories", default=[]))}
+                                       for r in rules] for key, rules in supporting.items()}
+    report["read_errors"] = errors
+    report["evidence_mode"] = "configuration"
+    report["tested_channel"] = "web"
     if "zcc" in read:
         zcc = zcc_bypass_summary(client)
     else:
@@ -606,6 +664,7 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
     if scope is not None:
         report["scope"] = {"read": sorted(read), "source": scope.get("source") or "", "key": scope.get("key") or ""}
     report["sources"] = {"ssl_rules": "/zia/sslInspectionRules", "dlp_rules": "/zia/webDlpRules",
+                         "url_rules": "/zia/urlFilteringRules", "file_type_rules": "/zia/fileTypeRules",
                          "applications": "/zia/cloudApplications/policy", "url_categories": "/zia/urlCategories",
                          "zcc_bypasses": "/zcc/webPolicies, /zcc/forwardingProfiles, /zcc/trustedNetworks, /zcc/webAppService"}
     return report
@@ -616,14 +675,15 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
 def to_csv(report: Dict[str, Any]) -> str:
     buf = io.StringIO()
     w = csv_safe.writer(buf)
-    w.writerow(["class", "decision", "decided_by", "ssl_action", "ssl_order", "dlp_rules", "dlp_status", "gap_severity", "gap", "fix"])
+    w.writerow(["class", "decision", "decided_by", "ssl_action", "ssl_order", "dlp_rules", "dlp_status", "gap_severity", "gap", "fix", "URL Filtering", "SSL Inspection", "File Type Control"])
     for c in report.get("classes", []):
         d = c.get("decided_by") or {}
         gaps = c.get("gaps") or [{}]
         for g in gaps:
             w.writerow([c["label"], c["decision"], d.get("name", ""), d.get("action", ""), d.get("order", ""),
                         "; ".join(r["name"] for r in c.get("dlp_rules", [])), c.get("dlp_status", ""),
-                        g.get("severity", ""), g.get("title", ""), g.get("fix", "")])
+                        g.get("severity", ""), g.get("title", ""), g.get("fix", "")]
+                       + [next((h["status"] for h in c.get("controls", []) if h["key"] == key), "unverified") for key in ("url", "ssl", "ftc")])
     return buf.getvalue()
 
 
@@ -639,6 +699,10 @@ def to_markdown(report: Dict[str, Any]) -> str:
     for c in report.get("classes", []):
         d = c.get("decided_by") or {}
         lines.append(f"| {c['label']} | {c['decision'].replace('_', ' ')} | {d.get('name', '—')} | {', '.join(r['name'] for r in c.get('dlp_rules', [])) or '—'} | {c.get('dlp_status', '')} |")
+    lines += ["", "## Required data-security controls", ""]
+    for c in report.get("classes", []):
+        for h in c.get("controls", []):
+            lines.append(f"- {c['label']} / {h['label']} [{h['status']}]: {h['detail']}")
     zcc = report.get("zcc") or {}
     if zcc.get("available"):
         c = zcc.get("counts") or {}

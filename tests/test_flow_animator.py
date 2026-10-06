@@ -62,7 +62,8 @@ def test_an_engine_that_does_not_fire_says_why():
     assert {d["name"]: d["count"] for d in m["dicts"]} == {"PII – US SSN": 2, "PCI – Card numbers": 3, "PHI – Medical terms": 0}
     assert {r["name"] for r in m["rules"]} == {"PCI – Block", "PII – Monitor", "PHI – Block"}
     summary = _run("return FA.drillSummary(FA.corpusModel(FA.SAMPLE.corpus));")
-    assert "PCI ENGINE does not fire, near miss: 3 found, needs more than 4, so PCI – Block never runs." in summary
+    assert "PCI ENGINE does not fire, near miss: 3 found, needs more than 4." in summary
+    assert "Rule candidates:" in summary and "Rules that act:" not in summary
 
 
 @needs_node
@@ -90,14 +91,14 @@ def test_path_model_stops_at_the_blocking_hop_and_greys_the_rest():
 
 
 @needs_node
-def test_path_drill_without_counts_is_honest_and_merges_counts_when_known():
+def test_path_drill_without_counts_refuses_unproven_name_only_joins():
     m = _run("return FA.pathDrillModel(FA.pathModel(FA.SAMPLE.path), null);")
     assert m["measured"] is False and all(e["why"]["kind"] == "unmeasured" for e in m["engines"])
     assert [r["action"] for r in m["rules"]] == ["BLOCK", "ALLOW", "BLOCK"]
     merged = _run("return FA.pathDrillModel(FA.pathModel(FA.SAMPLE.path), FA.corpusModel(FA.SAMPLE.corpus));")
     kinds = {e["name"]: e["why"]["kind"] for e in merged["engines"]}
-    assert kinds == {"PCI ENGINE": "near", "PII ENGINE": "fires", "PHI ENGINE": "none"}
-    assert merged["measured"] is True and len(merged["dicts"]) == 3
+    assert kinds == {"PCI ENGINE": "unmeasured", "PII ENGINE": "unmeasured", "PHI ENGINE": "unmeasured"}
+    assert merged["measured"] is False and len(merged["dicts"]) == 0  # no same-run context or ID join
 
 
 @needs_node
@@ -136,7 +137,7 @@ def test_live_model_keeps_no_user_or_file_names():
     flat = json.dumps(m)
     assert "alice" not in flat.lower() and "secrets.xlsx" not in flat
     assert m["channel"] == "endpoint" and m["dicts"][0] == {"name": "CC", "count": 9} and m["enforcement"] == "monitor"
-    assert _run("return FA.liveModel({ channel: 'other' }).channel;") == "web"
+    assert _run("return FA.liveModel({ channel: 'other' }).channel;") == "unknown"
 
 
 @needs_node
@@ -179,7 +180,7 @@ def test_page_follows_report_conventions():
 def test_page_reads_only_the_existing_read_only_endpoints():
     html = _read("report_motion.html")
     endpoints = set(re.findall(r"fetch\('([^']+)'", html))
-    assert endpoints == {"/api/tenant-profiles", "/api/dlp/efficacy/test", "/api/live-feed"}
+    assert endpoints == {"/api/tenant-profiles", "/api/flow/scenario", "/api/live-feed"}
     # Live incidents and test content stay in memory: nothing about them is stored.
     assert "setItem" not in html
 
