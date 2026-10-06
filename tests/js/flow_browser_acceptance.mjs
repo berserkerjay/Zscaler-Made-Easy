@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {waitForDebugger, waitForStablePoint} from './flow_browser_harness_helpers.mjs';
+import {waitForDebugger, waitForStablePoint, installNativeClickProbe, dispatchNativeClick} from './flow_browser_harness_helpers.mjs';
 
 const [chrome, base, profile, artifactDir] = process.argv.slice(2);
 assert(chrome && base && profile && artifactDir, 'Expected chrome, base URL, profile and artifact directory');
@@ -76,7 +76,7 @@ async function navigate(route) {
 async function click(selector, frameId) {
   await send('Page.bringToFront');
   const token=String(++clickSequence);
-  await evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)throw Error('Missing click target');if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});window.__acceptanceClickReceipts=window.__acceptanceClickReceipts||{};el.addEventListener('click',event=>{window.__acceptanceClickReceipts[${JSON.stringify(token)}]={trusted:event.isTrusted,at:performance.now()};},{once:true,capture:true});return true})()`);
+  await evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)throw Error('Missing click target');if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});window.__acceptanceClickReceipts=window.__acceptanceClickReceipts||{};window.__acceptanceInputProbe=window.__acceptanceInputProbe||{receipts:window.__acceptanceClickReceipts};window.__acceptanceProbeCleanup=window.__acceptanceProbeCleanup||{};window.__acceptanceProbeCleanup[${JSON.stringify(token)}]=(${installNativeClickProbe.toString()})(doc,window.__acceptanceInputProbe,${JSON.stringify(selector)},${JSON.stringify(token)});return true})()`);
   const reveal=()=>evaluate(`(()=>{const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};const doc=frame?frame.contentDocument:document;const el=doc.querySelector(${JSON.stringify(selector)});if(!el)return false;if(frame)frame.scrollIntoView({block:'center',behavior:'instant'});el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});return true})()`);
   const measure=()=>evaluate(`(()=>{
     const frame=${frameId?`document.getElementById(${JSON.stringify(frameId)})`:'null'};
@@ -87,21 +87,29 @@ async function click(selector, frameId) {
     const sized=r.width>0&&r.height>0,hidden=document.hidden||doc.hidden;
     const inViewport=x>=0&&x<doc.defaultView.innerWidth&&y>=0&&y<doc.defaultView.innerHeight&&outerX>=0&&outerX<innerWidth&&outerY>=0&&outerY<innerHeight;
     const hit=doc.elementFromPoint(x,y),outer=frame?document.elementFromPoint(outerX,outerY):hit;
-    return {ready:!hidden&&!el.disabled&&sized&&inViewport&&(hit===el||el.contains(hit))&&(!frame||outer===frame),
-      x:outerX,y:outerY,offscreen:sized&&!inViewport,hidden,disabled:!!el.disabled,hit:hit?.tagName,outer:outer?.tagName,selector:${JSON.stringify(selector)}};
+    const point={ready:!hidden&&!el.disabled&&sized&&inViewport&&(hit===el||el.contains(hit))&&(!frame||outer===frame),
+      x:outerX,y:outerY,targetId:window.__acceptanceInputProbe.identify(el),offscreen:sized&&!inViewport,hidden,disabled:!!el.disabled,hit:hit?.tagName,outer:outer?.tagName,selector:${JSON.stringify(selector)}};
+    window.__acceptanceInputProbe.actions[${JSON.stringify(token)}].prepared={...point,connected:el.isConnected,activeTargetId:window.__acceptanceInputProbe.identify(doc.activeElement),activeId:doc.activeElement?.id||null,at:performance.now()};
+    return point;
   })()`);
-  let point=await waitForStablePoint(measure,{sleep,reveal});
-  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
-  // A resize, sticky toolbar or newly decoded image can move the target after
-  // scrolling. Recheck hit-testing after hover instead of clicking stale pixels.
-  point=await waitForStablePoint(measure,{sleep,reveal});
-  await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,x:point.x,y:point.y});
-  await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,x:point.x,y:point.y});
-  await waitFor(`window.__acceptanceClickReceipts?.[${JSON.stringify(token)}]?.trusted === true`,1500,'trusted native click on '+selector);
-  harnessEvents.push({type:'click',selector,frameId:frameId||null,x:point.x,y:point.y,at_ms:Date.now()-started});
+  try {
+    let point=await waitForStablePoint(measure,{sleep,reveal});
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
+    // Recheck both node identity and geometry after hover. Controls can be
+    // replaced without changing their position during a profile refresh.
+    point=await waitForStablePoint(measure,{sleep,reveal});
+    harnessEvents.push({type:'click-dispatched',selector,frameId:frameId||null,...point,at_ms:Date.now()-started});
+    await dispatchNativeClick(send,point);
+    await waitFor(`window.__acceptanceClickReceipts?.[${JSON.stringify(token)}]?.trusted === true`,1500,'trusted native click on '+selector);
+    harnessEvents.push({type:'click',selector,frameId:frameId||null,x:point.x,y:point.y,at_ms:Date.now()-started});
+  } finally {
+    // Remove only this action's observers; retain its evidence on failure.
+    await evaluate(`(()=>{window.__acceptanceProbeCleanup?.[${JSON.stringify(token)}]?.();if(window.__acceptanceProbeCleanup)delete window.__acceptanceProbeCleanup[${JSON.stringify(token)}];return true})()`).catch(()=>{});
+  }
+
 }
 async function diagnosticState() {
-  return evaluate(`({url:location.href,hidden:document.hidden,focused:document.hasFocus(),viewport:{width:innerWidth,height:innerHeight,scale:visualViewport?.scale},scenario:document.getElementById('scenarioStatus')?.textContent,runDisabled:document.getElementById('scenarioRun')?.disabled,lifecycle:window.__acceptanceLifecycle||[],clicks:window.__acceptanceNativeClicks||[],players:Array.from(document.querySelectorAll('.dsa-player')).filter(p=>p.dataset.status!=='idle').map(p=>({id:p.dataset.flowId,status:p.dataset.status,text:p.querySelector('.dsa-status')?.textContent}))})`);
+  return evaluate(`({url:location.href,hidden:document.hidden,focused:document.hasFocus(),viewport:{width:innerWidth,height:innerHeight,scale:visualViewport?.scale},scenario:document.getElementById('scenarioStatus')?.textContent,runDisabled:document.getElementById('scenarioRun')?.disabled,lifecycle:window.__acceptanceLifecycle||[],clicks:window.__acceptanceNativeClicks||[],inputActions:Object.values(window.__acceptanceInputProbe?.actions||{}).slice(-10),players:Array.from(document.querySelectorAll('.dsa-player')).filter(p=>p.dataset.status!=='idle').map(p=>({id:p.dataset.flowId,status:p.dataset.status,text:p.querySelector('.dsa-status')?.textContent}))})`);
 }
 
 async function fill(id,value) {

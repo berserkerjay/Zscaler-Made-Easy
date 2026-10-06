@@ -40,10 +40,51 @@ export async function waitForStablePoint(sample, {now = Date.now, sleep, timeout
       previous = null;
       await reveal();
     } else if (last && last.ready && !last.offscreen && Number.isFinite(last.x) && Number.isFinite(last.y)) {
-      if (previous && Math.abs(last.x - previous.x) <= .5 && Math.abs(last.y - previous.y) <= .5) return last;
+      if (previous && last.targetId === previous.targetId && Math.abs(last.x - previous.x) <= .5 && Math.abs(last.y - previous.y) <= .5) return last;
       previous = last;
     } else previous = null;
     await sleep(75);
   }
   throw new Error('Native click target never became stable, enabled and hit-testable: ' + JSON.stringify(last));
+}
+
+// A document listener survives controls being replaced during preparation.
+// Only a trusted click on the current intended selector is a receipt; native
+// down/up events are diagnostic evidence, never a substitute for that click.
+export function installNativeClickProbe(doc, store, selector, token) {
+  if (!store.identify) {
+    const nodes = new WeakMap(); let sequence = 0;
+    store.identify = node => {
+      if (!node || (typeof node !== 'object' && typeof node !== 'function')) return null;
+      if (!nodes.has(node)) nodes.set(node, ++sequence);
+      return nodes.get(node);
+    };
+  }
+  store.actions = store.actions || {};
+  store.receipts = store.receipts || {};
+  const action = store.actions[token] = {token, selector, prepared: null, events: []};
+  const describe = node => ({targetId: store.identify(node), tag: node?.tagName || null,
+    id: node?.id || null, connected: !!node?.isConnected});
+  const capture = event => {
+    const intended = doc.querySelector(selector);
+    const matches = !!intended && (event.target === intended || intended.contains(event.target));
+    const record = {type: event.type, trusted: event.isTrusted === true, matches,
+      x: event.clientX, y: event.clientY, at: event.timeStamp,
+      target: describe(event.target), intended: describe(intended), active: describe(doc.activeElement)};
+    action.events.push(record);
+    if (event.type === 'click' && record.trusted && matches && intended.isConnected && !intended.disabled) {
+      store.receipts[token] = {trusted: true, targetId: store.identify(intended), at: event.timeStamp};
+    }
+  };
+  const types = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'focusin'];
+  types.forEach(type => doc.addEventListener(type, capture, true));
+  return () => types.forEach(type => doc.removeEventListener(type, capture, true));
+}
+
+export async function dispatchNativeClick(send, point) {
+  // Both commands enter the same ordered CDP connection before awaiting a
+  // response. No network round trip separates this one press/release pair.
+  const pressed = send('Input.dispatchMouseEvent', {type:'mousePressed',button:'left',buttons:1,clickCount:1,x:point.x,y:point.y});
+  const released = send('Input.dispatchMouseEvent', {type:'mouseReleased',button:'left',buttons:0,clickCount:1,x:point.x,y:point.y});
+  await Promise.all([pressed, released]);
 }
