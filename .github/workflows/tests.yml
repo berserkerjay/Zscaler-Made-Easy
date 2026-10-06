@@ -68,7 +68,7 @@ jobs:
           print("packs:", ids)
           assert "fed_policy_pack" in ids and "cjis_policy_pack" in ids
           # Writes must be disabled by default: apply endpoint refuses.
-          r = c.post("/api/dlp-packs/apply", json={"pack_ids": ids, "plan_hash": "x", "confirm": True})
+          r = c.post("/api/dlp-packs/apply", json={"pack_ids": ids, "plan_hash": "x", "confirm": True, "assessor": "Synthetic CI Assessor"})
           assert r.status_code == 403, (r.status_code, r.text[:200])
           print("smoke OK")
           EOF
