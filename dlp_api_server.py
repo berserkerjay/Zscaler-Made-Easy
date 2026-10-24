@@ -2793,10 +2793,22 @@ class PackExportRequest(ScopedTenantCredsRequest):
     """Body of Export from tenant as a pack: which rules (rule ids per
     channel, or "all"; empty means every DLP rule on every channel in
     scope), the name the pack gets and what is in scope on the Scope page
-    (only those channels are read)."""
+    (only those channels are read).
+
+    `parts` picks what is exported: dictionaries, engines and/or rules
+    (empty: rules, as before). `dictionaries` and `engines` pick custom
+    ones by id ("all" or omitted: every custom one).
+    `include_dependencies` (default on) brings what the picked engines and
+    rules use; off, that is named, not copied. `format` is json (the pack),
+    terraform (a workspace for the zscaler/zia provider) or both."""
     customer_id: str = ""
     rules: Dict[str, Any] = {}
     pack_name: str = ""
+    parts: List[str] = []
+    dictionaries: Any = None
+    engines: Any = None
+    include_dependencies: bool = True
+    format: str = "json"
 
 
 def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, selection, log, cancel) -> Dict[str, Any]:
@@ -2808,17 +2820,30 @@ def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, sele
     # The pack names the tenant, never the admin who signed in (the classic API's label is its username).
     # The classic API's label is 'classic API (cloud)' (tenant_auth.record_label), never a stale vanity domain.
     label = tenant_auth.record_label(c)
-    log(f"Exporting from {label}: the rules, the engines they use and the dictionaries those engines use. Nothing is written to the tenant.")
-    res = pack_export.export_pack(client, selection=selection, name=req.pack_name[:120], tenant_label=label, log=log, cancel=cancel)
+    parts = pack_export.normalize_parts(req.parts)
+    fmt = pack_export.normalize_format(req.format)
+    if parts == ("rules",) and req.include_dependencies:
+        log(f"Exporting from {label}: the rules, the engines they use and the dictionaries those engines use. Nothing is written to the tenant.")
+    else:
+        log(f"Exporting from {label}: {', '.join(parts)}" + (" with what they use" if req.include_dependencies else " only (what they use is named, not copied)")
+            + ". Nothing is written to the tenant.")
+    res = pack_export.export_pack(client, selection=selection, name=req.pack_name[:120], tenant_label=label, log=log, cancel=cancel,
+                                  parts=parts, dictionaries=req.dictionaries, engines=req.engines,
+                                  include_dependencies=req.include_dependencies)
     if res["status"] != "ready":
         return dict(res, tenant_label=label)
     pack = res["pack"]
-    name, data = pack_export.zip_pack(pack)
+    if fmt != "json":
+        log("Writing the Terraform workspace (zscaler/zia provider)…")
+    name, data, part_files = pack_export.zip_export(pack, fmt, _assessor(req))
     if cancel is not None and cancel.is_set():   # Stop said no pack is produced; keep that promise
         return {"status": "stopped", "stopped": "You clicked Stop.", "tenant_label": label}
     log(f"Ready: {name} ({max(1, len(data) // 1024)} KB).")
     v = res["validation"]
     return {"status": "ready", "filename": name, "bytes": len(data), "tenant_label": label, "pack_name": pack["meta"]["name"],
+            "format": fmt, "parts": list(parts), "dependencies_included": bool(req.include_dependencies),
+            "part_files": part_files, "referenced_only": pack["meta"].get("referenced_only") or {},
+            "assessor_named": bool(_assessor(req)),
             "counts": pack["meta"]["counts"], "not_exported": pack["meta"]["not_exported"], "warnings": pack["warnings"],
             "validation": {"ok": v["ok"], "problems": v["problems"], "warnings": v["warnings"]},
             "artifact": (name, "application/zip", data)}
@@ -2833,16 +2858,29 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
     write mode nor the writer check. Poll GET /api/dlp-packs/jobs/{job_id}
     for the log; the finished job's `download` path serves the zip."""
     import pack_export
+    import pack_deploy
     import pack_jobs
     try:
         selection = pack_export.normalize_selection(req.rules or None)
+        parts = pack_export.normalize_parts(req.parts)
+        fmt = pack_export.normalize_format(req.format)
+        dict_pick = pack_export.normalize_object_pick(req.dictionaries, "dictionaries")
+        engine_pick = pack_export.normalize_object_pick(req.engines, "engines")
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
-    if pack_export.nothing_picked(selection):   # nothing to read the tenant for
+    if parts == ("rules",) and pack_export.nothing_picked(selection):   # nothing to read the tenant for
         raise HTTPException(status_code=400, detail=pack_export.NOTHING_PICKED)
+    if (("rules" not in parts or pack_export.nothing_picked(selection)) and ("dictionaries" not in parts or dict_pick == set())
+            and ("engines" not in parts or engine_pick == set())):
+        raise HTTPException(status_code=400, detail=pack_export.NOTHING_IN_PARTS)
+    if fmt != "json" and pack_deploy.is_tool_name(req.assessor):
+        # Terraform tags every object with the assessor: never the tool's own name.
+        raise HTTPException(status_code=400, detail=ASSESSOR_NOT_TOOL)
     # Only the channels in scope on the Scope page are read (user rule 1).
     in_scope = _pack_channels_in_scope(req, "Export from tenant")
-    if selection is None:
+    if "rules" not in parts:
+        selection = {}
+    elif selection is None:
         selection = {ch: None for ch in in_scope}
     else:
         out = sorted(ch for ch, ids in selection.items() if ch not in in_scope and (ids is None or ids))
@@ -2861,9 +2899,11 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
 
 
 @app.get("/api/dlp-packs/jobs/{job_id}/download")
-async def dlp_pack_job_download(job_id: str):
+async def dlp_pack_job_download(job_id: str, file: str = ""):
     """The file a finished job produced (a Terraform workspace zip, or an
-    exported pack)."""
+    exported pack). With `file`, only that part of an export (one of the
+    result's part_files: the dictionaries, engines or rules, as JSON or
+    Terraform)."""
     import pack_jobs
     job = pack_jobs.get(job_id)
     if job is None:
@@ -2871,6 +2911,18 @@ async def dlp_pack_job_download(job_id: str):
     if job.artifact is None:
         raise HTTPException(status_code=409, detail="This job has no file to download" + (" yet; it is still running." if job.status == pack_jobs.RUNNING else "."))
     name, media, data = job.artifact
+    if file:
+        import pack_export
+        entry = next((f for f in ((job.result or {}).get("part_files") or []) if f.get("path") == file), None)
+        member = pack_export.zip_member(data, file) if entry else None
+        if member is None:
+            raise HTTPException(status_code=404, detail="That file is not one of this export's parts.")
+        # <pack>-<part>.json or <pack>-<part>.tf
+        slug = file.split("/", 1)[0].removesuffix("-terraform")
+        ext = "tf" if entry.get("format") == "terraform" else "json"
+        part_name = f"{slug}-{entry.get('part')}.{ext}"
+        part_media = "application/json" if ext == "json" else "text/plain; charset=utf-8"
+        return Response(content=member, media_type=part_media, headers={"Content-Disposition": f'attachment; filename="{part_name}"'})
     return Response(content=data, media_type=media,
                     headers={"Content-Disposition": f'attachment; filename="{name}"', "X-DLP-Check-Mode": str((job.result or {}).get("mode") or "")})
 
