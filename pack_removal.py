@@ -624,7 +624,18 @@ def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any
         pack = _tag_pack(pd._field(d, "description"), known)
         orphan_dicts.append({"kind": "dictionary", "id": pd._field(d, "id"), "name": name, "tagged": pack is not None, "pack": pack})
     orphan_engines.sort(key=lambda x: str(x["name"]).lower()); orphan_dicts.sort(key=lambda x: str(x["name"]).lower())
-    return {"status": "ready", "rules": rules, "dictionaries": dicts, "orphans": {"engines": orphan_engines, "dictionaries": orphan_dicts},
+    # Every custom engine, used or not, for whoever picks engines on their own (Export from tenant).
+    all_engines = []
+    dict_by_id = {str(pd._field(d, "id")): n for n, d in (snap.get("dictionaries") or {}).items()}
+    for name, e in engines.items():
+        if pd._field(e, "predefined_engine", default=False) or pd._field(e, "custom_dlp_engine", default=True) is False:
+            continue
+        eid = str(pd._field(e, "id"))
+        all_engines.append({"id": pd._field(e, "id"), "name": name, "used": eid in used_engines,
+                            "dictionaries": sorted(dict_by_id[i] for i in _engine_dict_ids(e) if i in dict_by_id)})
+    all_engines.sort(key=lambda x: str(x["name"]).lower())
+    return {"status": "ready", "rules": rules, "dictionaries": dicts, "engines": all_engines,
+            "orphans": {"engines": orphan_engines, "dictionaries": orphan_dicts},
             "errors": (snap.get("channels") or {}).get("errors") or {}, "unreadable": dict(snap.get("unreadable") or {})}
 
 

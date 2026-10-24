@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import zipfile
 from datetime import datetime, timezone
@@ -446,6 +447,46 @@ def normalize_selection(selection: Any) -> Optional[Dict[str, Optional[set]]]:
 
 NOTHING_PICKED = "No rule was picked: tick at least one rule (or pick \"all\" for a channel) to export."
 
+# What an export can carry, and in which formats.
+PARTS = ("dictionaries", "engines", "rules")
+FORMATS = ("json", "terraform", "both")
+NO_PART = "Pick what to export: dictionaries, engines, rules, or any mix of them."
+NOTHING_IN_PARTS = "Nothing was picked: tick at least one dictionary, engine or rule to export."
+
+
+def normalize_parts(parts: Any) -> Tuple[str, ...]:
+    """The parts to export, in pack order. Empty or None means rules only
+    (an export picked by rule, as before); unknown parts raise ValueError."""
+    if not parts:
+        return ("rules",)
+    if isinstance(parts, str):
+        parts = [parts]
+    got = {str(x).strip().lower() for x in parts if str(x).strip()}
+    bad = sorted(got - set(PARTS))
+    if bad:
+        raise ValueError(f"unknown part(s) {', '.join(bad)} (use dictionaries, engines and/or rules)")
+    if not got:
+        raise ValueError(NO_PART)
+    return tuple(x for x in PARTS if x in got)
+
+
+def normalize_format(fmt: Any) -> str:
+    f = str(fmt or "json").strip().lower()
+    if f not in FORMATS:
+        raise ValueError(f"unknown format '{fmt}' (use json, terraform or both)")
+    return f
+
+
+def normalize_object_pick(pick: Any, kind: str) -> Optional[set]:
+    """Dictionaries or engines picked by id: None for every custom one
+    ("all", or not given), else the set of ids. A list of no ids picks
+    nothing."""
+    if pick is None or (isinstance(pick, str) and pick.strip().lower() in ("all", "*", "")):
+        return None
+    if not isinstance(pick, (list, tuple, set)) or any(isinstance(i, bool) or not isinstance(i, (str, int)) for i in pick if i is not None):
+        raise ValueError(f"{kind} must be \"all\" or a list of {kind[:-1] if kind.endswith('s') else kind} ids")
+    return {str(i).strip() for i in pick if i is not None and str(i).strip()}
+
 
 def nothing_picked(sel: Optional[Dict[str, Optional[set]]]) -> bool:
     """True for a selection that names channels but no rule on any of them
@@ -584,8 +625,16 @@ class _Names:
 
 
 class _Builder:
-    def __init__(self, snap: Dict[str, Any]):
+    def __init__(self, snap: Dict[str, Any], include_dependencies: bool = True):
         self.snap = snap
+        # With dependencies (the default), an engine brings the dictionaries
+        # it uses and a rule the engines it uses. Without, only what was
+        # picked goes in; what it uses is referenced by name and must already
+        # exist under that name in the tenant the pack is deployed to.
+        self.with_deps = bool(include_dependencies)
+        self.dict_added: set = set()          # dictionary ids whose definition is in the pack
+        self.engine_claimed: Dict[str, str] = {}   # custom engine id -> its name in the pack
+        self.engine_referenced: set = set()   # custom engine ids named by a rule but not in the pack
         self.errors = snap.get("errors") or {}
         self.not_exported: List[Dict[str, Any]] = []
         self.warnings: List[str] = []
@@ -616,10 +665,13 @@ class _Builder:
         self.warnings.append(f"The {kind} '{raw}' has the same name as {other} in the tenant; in the pack it is '{new}'")
 
     # dictionaries -----------------------------------------------------
-    def dictionary(self, did: str) -> Optional[str]:
+    def dictionary(self, did: str, add: bool = True) -> Optional[str]:
         """The name an engine expression uses for dictionary `did`, adding
-        the dictionary to the pack when it belongs there."""
+        the dictionary to the pack when it belongs there (and `add`: an
+        engine exported without its dependencies only names it)."""
         if did in self.dict_done:
+            if add:
+                self._add_dictionary(did, self.dict_done[did])
             return self.dict_done[did]
         d = self.dicts_by_id.get(did)
         if d is None:
@@ -634,16 +686,46 @@ class _Builder:
         if clash:
             self._renamed("dictionary", did, raw, name, clash)
         self.dict_done[did] = name
+        if add:
+            self._add_dictionary(did, name)
+        return name
+
+    def _add_dictionary(self, did: str, name: str) -> None:
+        """The custom dictionary's definition into the pack, once."""
+        d = self.dicts_by_id.get(did)
+        if did in self.dict_added or d is None or _is_predefined_dict(d):
+            return
+        self.dict_added.add(did)
         definition, why = _dictionary(d, self.template_names, self.dicts_by_id)
         if definition is None:
             self.drop("dictionary", name, why)
         else:
             definition["name"] = name
             self.dictionaries[name] = definition
-        return name
+
+    def referenced_only(self) -> Dict[str, List[str]]:
+        """Custom dictionaries and engines the pack names but does not
+        carry (exported without dependencies): they must already exist
+        under these names where the pack goes."""
+        dicts = sorted({self.dict_done[i] for i in self.dict_done
+                        if i not in self.dict_added and i in self.dicts_by_id and not _is_predefined_dict(self.dicts_by_id[i])})
+        engines = sorted({self.engine_claimed[i] for i in self.engine_referenced if i not in self.engine_verdict and i in self.engine_claimed})
+        return {"dictionaries": dicts, "engines": engines}
 
     # engines ----------------------------------------------------------
-    def engine(self, eid: str, fallback_name: str = "") -> Optional[str]:
+    def _engine_name_for(self, eid: str, e: Dict[str, Any]) -> str:
+        """The custom engine's name in the pack, claimed once (renamed on a
+        clash with another engine's name)."""
+        if eid not in self.engine_claimed:
+            name, clash = self.engine_names.claim(eid, _engine_name(e))
+            if clash:
+                self._renamed("engine", eid, str(e.get("name") or _engine_name(e)), name, clash)
+            self.engine_claimed[eid] = name
+        return self.engine_claimed[eid]
+
+    def engine(self, eid: str, fallback_name: str = "", add: bool = True) -> Optional[str]:
+        """The name a rule uses for engine `eid`, adding the engine (and,
+        with dependencies, its dictionaries) to the pack when `add`."""
         if eid in self.engine_verdict:
             return self.engine_verdict[eid]
         e = self.engines_by_id.get(eid)
@@ -660,9 +742,10 @@ class _Builder:
             self.predefined_engines.append(raw)
             self.engine_verdict[eid] = raw
             return raw
-        name, clash = self.engine_names.claim(eid, raw)
-        if clash:
-            self._renamed("engine", eid, str(e.get("name") or raw), name, clash)
+        name = self._engine_name_for(eid, e)
+        if not add:
+            self.engine_referenced.add(eid)
+            return name
         expr = str(e.get("engine_expression") or e.get("expression") or "").strip()
         if not expr:
             self.engine_verdict[eid] = None
@@ -671,7 +754,7 @@ class _Builder:
         unknown: List[str] = []
 
         def sub(m: "re.Match") -> str:
-            n = self.dictionary(m.group(1))
+            n = self.dictionary(m.group(1), add=self.with_deps)
             if n is None:
                 unknown.append(m.group(1))
                 return m.group(0)
@@ -718,7 +801,7 @@ class _Builder:
         engines, used = [], []
         for ref in r.get("dlp_engines") or []:
             eid = str(ref if isinstance(ref, (int, str)) else _f(ref, "id"))
-            n = self.engine(eid, str(_f(ref, "name") or "") if not isinstance(ref, (int, str)) else "")
+            n = self.engine(eid, str(_f(ref, "name") or "") if not isinstance(ref, (int, str)) else "", add=self.with_deps)
             used.append(eid)
             if n:
                 engines.append(n)
@@ -872,17 +955,58 @@ def _unique_rule_names(built: List[Tuple[str, Dict[str, Any]]], warnings: List[s
 
 
 def build_pack(snap: Dict[str, Any], *, selection: Any = None, name: str = "", tenant_label: str = "",
-               app_groups: Optional[Dict[str, Dict[str, Any]]] = None, now: Optional[datetime] = None) -> Dict[str, Any]:
+               app_groups: Optional[Dict[str, Dict[str, Any]]] = None, now: Optional[datetime] = None,
+               parts: Any = None, dictionaries: Any = None, engines: Any = None,
+               include_dependencies: bool = True) -> Dict[str, Any]:
     """The pack from a tenant read (read_tenant). Returns {"meta",
     "dictionaries", "engines", "policies", "app_groups", "not_exported",
-    "warnings"}; meta is pack.json."""
+    "warnings"}; meta is pack.json.
+
+    `parts` says what is exported (dictionaries, engines, rules; rules only
+    by default); `dictionaries` / `engines` pick custom ones by id (None:
+    every custom one) and `selection` picks rules. With
+    `include_dependencies` (the default) engines bring their dictionaries
+    and rules their engines and dictionaries; without, what they use is
+    named, not copied, and listed in pack.json under `referenced_only`."""
     sel = normalize_selection(selection)
-    b = _Builder(snap)
+    want_parts = normalize_parts(parts)
+    b = _Builder(snap, include_dependencies)
     policies: List[Dict[str, Any]] = []
     rule_order: Dict[str, List[str]] = {}
     missing_ids: List[str] = []
     built: List[Tuple[str, Dict[str, Any]]] = []
+    # Dictionaries and engines picked on their own, in the tenant's order.
+    if "dictionaries" in want_parts:
+        pick = normalize_object_pick(dictionaries, "dictionaries")
+        for d in snap["dictionaries"]:
+            did = str(d.get("id"))
+            if _is_predefined_dict(d) or (pick is not None and did not in pick):
+                continue
+            b.dictionary(did, add=True)
+        if pick:
+            for miss in sorted(pick - set(b.dicts_by_id)):
+                b.drop("dictionary", f"id {miss}", "picked for the export but not in the tenant's dictionary list any more")
+            for did in sorted(pick & set(b.dicts_by_id)):
+                if _is_predefined_dict(b.dicts_by_id[did]):
+                    b.drop("dictionary", str(b.dicts_by_id[did].get("name") or did),
+                           "a predefined Zscaler dictionary: every tenant has it, so it is named by engines, never copied")
+    if "engines" in want_parts:
+        pick = normalize_object_pick(engines, "engines")
+        for e in snap["engines"]:
+            eid = str(e.get("id"))
+            if _is_predefined_engine(e) or (pick is not None and eid not in pick):
+                continue
+            b.engine(eid, _engine_name(e), add=True)
+        if pick:
+            for miss in sorted(pick - set(b.engines_by_id)):
+                b.drop("engine", f"id {miss}", "picked for the export but not in the tenant's engine list any more")
+            for eid in sorted(pick & set(b.engines_by_id)):
+                if _is_predefined_engine(b.engines_by_id[eid]):
+                    b.drop("engine", _engine_name(b.engines_by_id[eid]) or eid,
+                           "a predefined Zscaler engine: every tenant has it, so rules name it, never copy it")
     for ch in pc.DLP_CHANNELS:
+        if "rules" not in want_parts:
+            break
         if sel is not None and ch not in sel:
             continue
         want = None if sel is None else sel[ch]
@@ -903,7 +1027,7 @@ def build_pack(snap: Dict[str, Any], *, selection: Any = None, name: str = "", t
     for miss in missing_ids:
         b.drop("rule", miss, "picked for the export but not in the tenant's rule list any more")
     for ch, err in (snap.get("errors") or {}).items():
-        if ch in pc.DLP_CHANNELS and (sel is None or ch in sel):
+        if ch in pc.DLP_CHANNELS and "rules" in want_parts and (sel is None or ch in sel):
             b.drop("rule", f"every {pc.label(ch)} rule", f"the {pc.label(ch)} rules could not be read ({err})", channel=ch)
         elif ch in ("dictionaries", "engines"):
             b.warnings.append(f"The tenant's {ch} could not be read ({err}); rules that need them are listed under not_exported.")
@@ -921,12 +1045,20 @@ def build_pack(snap: Dict[str, Any], *, selection: Any = None, name: str = "", t
     dicts = list(b.dictionaries.values())
     by_channel = {ch: len(n) for ch, n in rule_order.items()}
     n_rules = sum(1 + len(p.get("sub_rules") or []) for p in policies)
+    referenced = b.referenced_only()
+    if want_parts == ("rules",) and include_dependencies:
+        what = (f"{n_rules} DLP rule(s) ({', '.join(f'{n} {pc.label(ch)}' for ch, n in by_channel.items()) or 'none'}) with the "
+                f"{len(b.engines)} custom engine(s) and {len(dicts)} dictionar{'y' if len(dicts) == 1 else 'ies'} they use.")
+    else:
+        what = (f"{len(dicts)} dictionar{'y' if len(dicts) == 1 else 'ies'}, {len(b.engines)} custom engine(s) and {n_rules} DLP rule(s)"
+                + (" (what the picked engines and rules use is included)." if include_dependencies else
+                   " (only what was picked: what it uses is named, not included, and must already exist where the pack goes)."))
     meta = {
         "name": (name or "").strip()[:120] or f"Exported from {label} {stamp.date().isoformat()}",
         "version": EXPORT_VERSION,
-        "description": (f"Exported from {label} on {stamp.date().isoformat()}: {n_rules} DLP rule(s) "
-                        f"({', '.join(f'{n} {pc.label(ch)}' for ch, n in by_channel.items()) or 'none'}) with the "
-                        f"{len(b.engines)} custom engine(s) and {len(dicts)} dictionar{'y' if len(dicts) == 1 else 'ies'} they use."),
+        "description": f"Exported from {label} on {stamp.date().isoformat()}: {what}",
+        "parts": list(want_parts),
+        "dependencies_included": bool(include_dependencies),
         "exported_from": label,
         "exported_at": stamp.isoformat().replace("+00:00", "Z"),
         "counts": {"rules": n_rules, "rules_by_channel": by_channel, "engines": len(b.engines), "dictionaries": len(dicts),
@@ -938,6 +1070,7 @@ def build_pack(snap: Dict[str, Any], *, selection: Any = None, name: str = "", t
         "predefined_dictionaries": sorted(set(b.predefined_dicts)),
         "predefined_engines": sorted(set(b.predefined_engines)),
         "not_exported": b.not_exported,
+        "referenced_only": referenced,
         "notes": [ORDER_NOTE,
                   "Predefined dictionaries and engines are named, not copied: every tenant has them, under ids that differ, and "
                   "Deploy Policy Packs finds them by name in the target tenant.",
@@ -977,7 +1110,8 @@ def _nothing_to_export(snap: Dict[str, Any], sel: Optional[Dict[str, Optional[se
 
 
 def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: str = "", log: LogFn = None,
-                cancel: Any = None) -> Dict[str, Any]:
+                cancel: Any = None, parts: Any = None, dictionaries: Any = None, engines: Any = None,
+                include_dependencies: bool = True) -> Dict[str, Any]:
     """Read the tenant and build the pack (see build_pack), with the pack
     library's own validation of the result. Read-only. Fails (status
     'error', no pack) when the dictionaries or engines could not be read,
@@ -986,11 +1120,22 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
     _log = log or (lambda m: None)
     stopped = {"status": "stopped", "stopped": "You clicked Stop."}
     sel = normalize_selection(selection)
-    if nothing_picked(sel):
+    want_parts = normalize_parts(parts)
+    dict_pick = normalize_object_pick(dictionaries, "dictionaries")
+    engine_pick = normalize_object_pick(engines, "engines")
+    if want_parts == ("rules",) and nothing_picked(sel):
         _log(NOTHING_PICKED)
         return {"status": "error", "error": NOTHING_PICKED}
-    # Only the in-scope part of the tenant is read: a channel named with an empty pick has nothing to read.
-    channels = pc.DLP_CHANNELS if sel is None else tuple(ch for ch in pc.DLP_CHANNELS if ch in sel and (sel[ch] is None or sel[ch]))
+    if (("rules" not in want_parts or nothing_picked(sel)) and ("dictionaries" not in want_parts or dict_pick == set())
+            and ("engines" not in want_parts or engine_pick == set())):
+        _log(NOTHING_IN_PARTS)
+        return {"status": "error", "error": NOTHING_IN_PARTS}
+    # Only the in-scope part of the tenant is read: a channel named with an empty pick has nothing to read,
+    # and an export of dictionaries and engines alone reads no rule.
+    if "rules" not in want_parts:
+        channels: Tuple[str, ...] = ()
+    else:
+        channels = pc.DLP_CHANNELS if sel is None else tuple(ch for ch in pc.DLP_CHANNELS if ch in sel and (sel[ch] is None or sel[ch]))
     snap = read_tenant(client, channels, log=_log, cancel=cancel)
     if snap.get("stopped") or _stopped(cancel):
         return stopped
@@ -999,9 +1144,13 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
     for key, what in (("dictionaries", "DLP dictionaries"), ("engines", "DLP engines")):
         if snap["errors"].get(key):
             return {"status": "error", "error": _read_failed(what, snap["errors"][key])}
-    pack = build_pack(snap, selection=sel, name=name, tenant_label=tenant_label)
-    if not pack["policies"]:
-        err = _nothing_to_export(snap, sel, channels)
+    opts = dict(parts=want_parts, dictionaries=dictionaries, engines=engines, include_dependencies=include_dependencies)
+    pack = build_pack(snap, selection=sel, name=name, tenant_label=tenant_label, **opts)
+    if not (pack["policies"] or pack["engines"] or pack["dictionaries"]):
+        err = (_nothing_to_export(snap, sel, channels) if want_parts == ("rules",) else
+               "Nothing to export: the tenant has no custom " + " or ".join(p for p in want_parts if p != "rules")
+               + (" and no DLP rules" if "rules" in want_parts else "") + " matching the pick"
+               + (" (see not_exported)." if pack["meta"]["not_exported"] else "."))
         _log(err)
         return {"status": "error", "error": err, "not_exported": pack["meta"]["not_exported"], "warnings": pack["warnings"]}
     if any(p.get("endpoint_application_groups") for p in pack["policies"]):
@@ -1016,12 +1165,16 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
             return {"status": "error", "error": _rate_error("endpoint application groups", err)}
         if err:
             _log(f"Reading the tenant: endpoint application groups could not be listed: {str(err)[:120]}")
-        pack = build_pack(snap, selection=sel, name=name, tenant_label=tenant_label, app_groups=groups or None)
+        pack = build_pack(snap, selection=sel, name=name, tenant_label=tenant_label, app_groups=groups or None, **opts)
     import pack_library
     validation = pack_library.validate_pack(pack)
     c = pack["meta"]["counts"]
     _log(f"Pack built: {c['rules']} rule(s), {c['engines']} engine(s), {c['dictionaries']} dictionar{'y' if c['dictionaries'] == 1 else 'ies'}"
          f"; {c['not_exported']} item(s) could not be exported (listed in pack.json).")
+    ref = pack["meta"].get("referenced_only") or {}
+    if ref.get("dictionaries") or ref.get("engines"):
+        _log(f"Named but not included (they must already exist where this goes): {len(ref.get('engines') or [])} engine(s), "
+             f"{len(ref.get('dictionaries') or [])} dictionar{'y' if len(ref.get('dictionaries') or []) == 1 else 'ies'}.")
     for w in pack["warnings"]:
         _log(f"Note: {w}")
     if _stopped(cancel):   # Stop while the pack was built: the job promised no pack
@@ -1051,3 +1204,92 @@ def zip_pack(pack: Dict[str, Any], folder: str = "") -> Tuple[str, bytes]:
         for path, text in pack_files(pack).items():
             z.writestr(f"{folder}/{path}", text)
     return f"{folder}.zip", buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Terraform, and each part on its own
+# ---------------------------------------------------------------------------
+
+# The files that hold each part, per format: what the result offers as a
+# separate download. A single .tf file is for review or to copy into an
+# existing workspace; applying needs the whole workspace (provider,
+# variables), which is in the zip.
+PART_FILES = {
+    "json": {"dictionaries": "configs/dlp_dictionaries.json", "engines": "configs/dlp_engines.json", "rules": "configs/dlp_policies.json"},
+    "terraform": {"dictionaries": "dictionaries.tf", "engines": "engines.tf", "rules": "rules.tf"},
+}
+
+
+def terraform_files(pack: Dict[str, Any], assessor: str = "") -> Tuple[str, Dict[str, str]]:
+    """(pack id, workspace files): the exported pack as a Terraform
+    workspace for the zscaler/zia provider, built by the same generator as
+    the Terraform hand-off (static mode). Dictionaries and engines the pack
+    names but does not carry are looked up by name (data sources). Without
+    `assessor`, the workspace's required var.assessor names who applies it."""
+    import tempfile
+    import pack_terraform
+    from pack_library import pack_slug
+    pack_id = pack_slug(pack["meta"].get("name") or "") or "exported_pack"
+    with tempfile.TemporaryDirectory(prefix="dlpcheck-export-") as tmp:
+        for path, text in pack_files(pack).items():
+            full = os.path.join(tmp, path)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+        files = pack_terraform.generate({"id": pack_id, "dir": tmp}, assessor=assessor)
+    # Exported without dependencies: say which lookups are the customer's own
+    # objects (not predefined ones) and so must already exist in the tenant.
+    ref = pack["meta"].get("referenced_only") or {}
+    for key, fname, kind in (("dictionaries", "dictionaries.tf", "custom dictionaries"), ("engines", "rules.tf", "custom engines")):
+        names = ref.get(key) or []
+        if names and fname in files:
+            note = (f"# Exported without dependencies: these {kind} are not created by this workspace. They are looked up\n"
+                    f"# by name, so they must already exist in the tenant under these names: {', '.join(names)}.\n\n")
+            head, sep, rest = files[fname].partition("\n\n")
+            files[fname] = head + sep + note + rest if sep else note + files[fname]
+    return pack_id, files
+
+
+def _has_part(pack: Dict[str, Any], part: str) -> bool:
+    return bool(pack["dictionaries"] if part == "dictionaries" else pack["engines"] if part == "engines" else pack["policies"])
+
+
+def zip_export(pack: Dict[str, Any], fmt: str = "json", assessor: str = "") -> Tuple[str, bytes, List[Dict[str, str]]]:
+    """(filename, zip bytes, part files) for an export in `fmt`:
+      json       the pack (pack.json + configs/), as zip_pack: what the pack library accepts;
+      terraform  the Terraform workspace in <pack>-terraform/;
+      both       the pack in <pack>/ and the workspace in <pack>-terraform/.
+    Part files list each exported part's own file in the zip
+    ({part, format, path}), so each can be downloaded on its own."""
+    from pack_library import pack_slug
+    fmt = normalize_format(fmt)
+    folder = pack_slug(pack["meta"].get("name") or "") or "exported_pack"
+    if fmt == "json":   # exactly the pack zip, as before
+        name, data = zip_pack(pack)
+        return name, data, [{"part": part, "format": "json", "path": f"{folder}/{PART_FILES['json'][part]}"} for part in PARTS if _has_part(pack, part)]
+    entries: Dict[str, str] = {}
+    index: List[Dict[str, str]] = []
+    if fmt in ("json", "both"):
+        for path, text in pack_files(pack).items():
+            entries[f"{folder}/{path}"] = text
+        index += [{"part": part, "format": "json", "path": f"{folder}/{PART_FILES['json'][part]}"} for part in PARTS if _has_part(pack, part)]
+    if fmt in ("terraform", "both"):
+        _, tf = terraform_files(pack, assessor)
+        for path, text in tf.items():
+            entries[f"{folder}-terraform/{path}"] = text
+        index += [{"part": part, "format": "terraform", "path": f"{folder}-terraform/{PART_FILES['terraform'][part]}"}
+                  for part in PARTS if _has_part(pack, part) and PART_FILES["terraform"][part] in tf]
+    name = {"json": folder, "terraform": f"{folder}-terraform", "both": f"{folder}-pack-and-terraform"}[fmt]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for path, text in entries.items():
+            z.writestr(path, text)
+    return f"{name}.zip", buf.getvalue(), index
+
+
+def zip_member(data: bytes, path: str) -> Optional[bytes]:
+    """One file out of an export zip, or None when it is not there."""
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        if path not in z.namelist():
+            return None
+        return z.read(path)
