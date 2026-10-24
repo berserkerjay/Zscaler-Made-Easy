@@ -5,6 +5,17 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-24
+
+### Export from tenant: dictionaries, engines and rules separately, as JSON or Terraform
+- **What you asked for.** Download dictionaries, engines and rules separately, and not only as JSON: Terraform as well, as a choice.
+- **What to export.** Tick *Dictionaries*, *Engines* and/or *Rules*, and pick the ones you want in each list: every custom dictionary (clones included) and every custom engine is listed, including engines and dictionaries no rule uses, which could not be exported before.
+- **Include what they use** (on by default, the old behaviour): engines bring the dictionaries they use, rules the engines and dictionaries they use. Off: only what you picked; what it uses is named, not copied, and listed as *named, not included* (the result, pack.json `referenced_only`, and a comment in the Terraform), because it must already exist under that name where it goes.
+- **Format.** *JSON pack* (the same zip as before, which the library accepts), *Terraform* (a workspace for the official zscaler/zia provider, from the same generator as the Terraform hand-off: every rule DISABLED, the assessor named in every description or asked for by `terraform apply`, what is not included looked up by name with data sources) or *both* in one zip.
+- **One part at a time.** After the export, *Download one part* offers each part's own file: `<pack>-dictionaries.json`, `<pack>-engines.json`, `<pack>-rules.json`, and `<pack>-dictionaries.tf`, `<pack>-engines.tf`, `<pack>-rules.tf` for Terraform, beside the whole zip. A single .tf file is for review or to copy into an existing workspace; applying needs the rest of the workspace, which is in the zip.
+- **Unchanged.** Read-only (no write mode), only what is in scope is read (an export of dictionaries and engines alone reads no rule), an empty pick is refused before any read, Stop gives no file. The default (rules with what they use, as a JSON pack) produces exactly the zip it did.
+- **Verified.** New `tests/test_pack_export_parts.py` (15 tests): each part alone and with or without dependencies, picks by id and what cannot be picked, a dictionaries-only pack deployed into an empty tenant, Terraform per part (fmt-clean, by-name lookups and the note, the assessor), the zip layouts and each part's file, the job's per-part downloads (no other member, no path tricks), refusals before any read, and the picker's engine list. The flow was driven end to end in Chromium against a fake tenant.
+
 ## 2026-10-06
 
 ### Mandatory controls for DLP analysis

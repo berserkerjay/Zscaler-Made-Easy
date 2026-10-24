@@ -136,9 +136,16 @@ what you get, what to do next.
   deployment is recorded and can be undone; rules can also be removed
   selectively, with a usage check before anything goes.
 - **Export from tenant as a pack** — the tenant's DLP rules on every
-  channel (all of them, or the ones you tick), with every engine they use
-  and every dictionary those engines use, as a pack zip the library
-  accepts and Deploy policy packs can deploy into another tenant. Scope
+  channel, its custom engines and its custom dictionaries, together or
+  each on its own (all of them, or the ones you tick). With *Include what
+  they use* (the default) engines bring their dictionaries and rules their
+  engines and dictionaries; without it, what they use is named, not
+  copied, and listed as *named, not included*. The format is a JSON pack
+  (the zip the library accepts and Deploy policy packs can deploy into
+  another tenant), a Terraform workspace for the zscaler/zia provider
+  (built like the Terraform hand-off: rules DISABLED, the assessor named,
+  what is not included looked up by name), or both; each part
+  (dictionaries, engines, rules) also downloads as its own file. Scope
   that only exists in the source tenant (users, groups, locations, ...)
   is left out and listed in the pack. Read-only; an empty pick is refused
   before any read, an hourly rate refusal fails the export, and Stop gives
