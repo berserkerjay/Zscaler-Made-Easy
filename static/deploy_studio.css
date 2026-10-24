@@ -350,6 +350,9 @@
 
 /* Removal wizard, pick mode: tick the rules to remove */
 .dz-pick-tools { display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem; align-items: center; margin: 0.8rem 0 0.2rem; }
+.dz-note { font-size: 0.8rem; color: var(--dim); margin: 0.35rem 0 0.2rem; line-height: 1.45; }
+.dz-chk { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 32px; font-size: 0.85rem; color: var(--text); cursor: pointer; }
+.dz-chk input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .dz-pick-tools .dz-input { flex: 1 1 16rem; min-width: 12rem; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
 .dz-row.dz-pick { cursor: pointer; align-items: flex-start; }
 .dz-row.dz-pick input[type="checkbox"] { margin-top: 0.35rem; width: 1rem; height: 1rem; flex: 0 0 auto; }
