@@ -141,6 +141,15 @@ what you get, what to do next.
 - **Bypass & non-inspected traffic** — every SSL exemption, allow rule,
   Client Connector bypass and PAC exception that lets traffic skip
   inspection, with exports. Where: opened from Traffic flow & gaps.
+- **Client Connector fleet** — the Client Connector profiles, hosted PAC
+  files and enrolled devices together, read only when ZCC is in scope:
+  ZIA, ZPA and ZDX activity, blind spots, bypass risk, ghost devices,
+  registration anomalies, multi-device users and version drift, each with
+  its exact definition; a profile heatmap with equal-weight and
+  device-weighted scores, a side-by-side profile diff, a PAC comparison and
+  a remediation plan ranked by impact times devices, exported as CSV (with
+  a counts-only option). Without device permission it says so and shows
+  the configuration only. Read-only; Stop ends the read at once.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
   decides, whether the traffic is decrypted, and whether inline DLP can
   see it. Where: opened from Traffic flow & gaps.

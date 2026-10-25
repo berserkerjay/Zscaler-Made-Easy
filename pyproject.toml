@@ -55,7 +55,7 @@ py-modules = [
     "pack_removal", "pack_terraform", "permissions", "plain_english", "proposal_apply", "proposals", "remediation",
     "pdf_writer", "report_docx", "report_exports", "rule_migrator", "saas_email_checks", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security",
     "scenario_flow", "shadow_rules", "sso", "ssl_flow", "tenant_profiles", "upstream_check", "vendor_migrate", "vertical", "zcc_evaluation", "zia_rate", "zscaler_automation_checks", "zscaler_best_practices",
-    "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check",
+    "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check", "zcc_fleet",
     "zscaler_zdx_checks", "zscaler_zidentity_checks", "zpa_analysis", "zpa_reader",
 ]
 
