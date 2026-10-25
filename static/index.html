@@ -711,6 +711,11 @@
       </div>
       <div class="tool-group" role="group" aria-label="Troubleshoot" data-sb-id="troubleshoot">
         <div class="tool-group-l">Troubleshoot</div>
+        <button class="btn btn-ghost" onclick="openAuditTimelineTab()"
+                aria-label="Open Audit timeline: ZIA's admin audit log merged with DLP-Check's deployments and its own audit log, newest first, with changes someone else made to DLP-Check objects marked (opens in a new tab)"
+                title="Who changed what in the tenant, and what DLP-Check did, on one timeline: ZIA's admin audit log for a window you choose, DLP-Check's deployment records and audit log, filters, field-by-field diffs, CSV and JSON. Writes nothing to the tenant. Opens in a new tab.">
+          <span aria-hidden="true">📜</span> Audit timeline
+        </button>
         <button class="btn btn-ghost" onclick="openLogAnalyzerTab()"
                 aria-label="Open the Log analyzer: upload Client Connector log bundles or PAC files and get what happened, what it means and what to do next (opens in a new tab)"
                 title="Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Says what happened, what it means for the user and what to do next. Opens in a new tab.">
@@ -5094,6 +5099,12 @@ function openShadowRulesTab() {
   // page's selection from this page through window.opener when it runs,
   // so nothing is read until Analyze.
   const w = window.open('/report/shadow', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openAuditTimelineTab() {
+  // The tab reads the credentials from this page through window.opener
+  // (migrateCredBody) when it runs, so nothing is sent until it is built.
+  const w = window.open('/report/audit', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {
