@@ -233,6 +233,14 @@
     get: 'A "Changed since last run" list (versions that moved, drift that is new or cleared, pages that changed, tenant endpoints whose answer changed), the SDK, API and Terraform detail, and the last 30 runs.',
     next: 'Act on new drift: read the SDK or provider changelog before upgrading, grant the permission a 403 names, or report an endpoint that moved.',
   };
+  X.audit = {
+    group: 'Troubleshoot', name: 'Audit timeline', href: '/report/audit',
+    what: 'One timeline, newest first, of who changed what in the tenant: ZIA\'s admin audit log for the window you choose, merged with DLP-Check\'s own deployment records and audit log, with filters, field-by-field diffs and CSV or JSON export.',
+    why: 'When a rule stops behaving as deployed, the first question is who touched it and when. The timeline marks every change someone else made to an object DLP-Check created, so drift is explained instead of guessed.',
+    when: 'After a deployment, before a review with the customer, or whenever a policy pack object no longer matches what was deployed and you need to know which admin changed it, through which interface.',
+    get: 'Every audit log entry with time, admin, action, category, object, interface and result; DLP-Check\'s deployments and writes beside them; changes by someone else to DLP-Check objects flagged; before and after values compared field by field.',
+    next: 'Open a flagged row to see exactly what changed, then decide with the customer whether to fold the change into the pack or restore the deployed version.',
+  };
   X.logs = {
     group: 'Troubleshoot', name: 'Log analyzer', href: '/report/logs',
     what: 'Drop in the ZIP that Client Connector\'s Export Logs produced (or single .log files, or a PAC file). It reads them on this computer and tells you what happened, what it means for the user, and what to do next.',
@@ -297,7 +305,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
 
@@ -347,7 +355,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
-    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
+    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

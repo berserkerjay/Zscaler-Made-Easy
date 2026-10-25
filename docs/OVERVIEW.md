@@ -82,7 +82,10 @@ what you get, what to do next.
   it, one verdict in plain words, and every rule or profile that blocks
   or impacts it, each with a fix. It reads only what is in scope on the
   Scope page (a part out of scope says "not in scope"), and Stop ends the
-  read at once.
+  read at once. **Import a HAR file** there to analyze every host a
+  browser session reached in one run: the file is read in the browser and
+  only host names and request counts are sent; the results table sorts,
+  filters, opens any host's full analysis and exports as CSV or JSON.
 - **Flow animator** — the flows the app analyses, animated from your own
   results: the last Path analyzer result hop by hop; inside DLP, the
   dictionary match counts, each engine term against its threshold and the
@@ -226,6 +229,13 @@ what you get, what to do next.
 
 ### Troubleshoot
 
+- **Audit timeline** — ZIA's admin audit log for a window you choose
+  (the last 7 days by default, up to 180) merged with DLP-Check's own
+  deployment records and audit log, newest first, with filters, a
+  field-by-field diff where the entry has before and after values, and
+  CSV or JSON export. A change someone else made to an object DLP-Check
+  created is marked. Reading ZIA's log needs Automation readiness in scope;
+  asking ZIA for the report is a POST that changes no configuration.
 - **Log analyzer** — drop in the ZIP from Client Connector's Export Logs
   (or single log files, or a PAC file); it is read on this computer and
   answers what happened, what it means for the user and what to do next.

@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion", "/report/audit"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -5708,6 +5708,266 @@ async def report_live_page():
         raise HTTPException(status_code=404, detail="report page missing")
     with open(page, "r", encoding="utf-8") as f:
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+# ── Path analyzer: HAR import (batch of hosts) ────────────────────────
+# The page parses the HAR file in the browser (static/har_parse.js): the
+# file never leaves it. Only the host names and their request counts are
+# sent here (`har_hosts`, which the audit log records by size only); the
+# tenant is read once and every host is traced against that read
+# (path_analyzer.analyze_batch). Read-only; Stop ends it between hosts.
+_PATH_BATCHES: Dict[str, Dict[str, Any]] = {}
+_PATH_BATCHES_MAX = 4
+_HAR_METHOD = re.compile(r"^[A-Z]{1,12}$")
+
+
+class PathBatchRequest(ScopedTenantCredsRequest):
+    """Body of the HAR batch: the hosts (each a name, or {host, requests,
+    uploads, bytes_sent, methods, schemes} with the counts the page took
+    from the HAR file; nothing else is read from an entry), the network,
+    the platform and optionally the id of a tenant read to reuse."""
+    har_hosts: List[Any] = []
+    network: str = "off"
+    platform: str = "windows"
+    report_id: str = ""
+
+
+def _batch_hosts(req: PathBatchRequest) -> Tuple[List[str], Dict[str, Dict[str, Any]], List[str]]:
+    """(valid hosts in order, {host: counts}, names that are not a hostname
+    or IP address). 400 for none, or more than path_analyzer.BATCH_MAX."""
+    import path_analyzer
+    hosts: List[str] = []
+    stats: Dict[str, Dict[str, Any]] = {}
+    skipped: List[str] = []
+    if len(req.har_hosts) > path_analyzer.BATCH_MAX:
+        raise HTTPException(status_code=400, detail=f"At most {path_analyzer.BATCH_MAX} hosts are analyzed per run; {len(req.har_hosts)} were sent.")
+    num = lambda v: max(0, min(int(v), 10 ** 12)) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0  # noqa: E731
+    for item in req.har_hosts:
+        raw = item.get("host") if isinstance(item, dict) else item
+        name = str(raw or "").strip()[:260]
+        try:
+            d = path_analyzer.parse_destination(name)
+        except ValueError:
+            skipped.append(name[:80])
+            continue
+        if d["kind"] == "url" or d["host"] in stats:
+            if d["kind"] == "url":
+                skipped.append(name[:80])
+            continue
+        h = d["host"]
+        hosts.append(h)
+        it = item if isinstance(item, dict) else {}
+        stats[h] = {"requests": num(it.get("requests")), "uploads": num(it.get("uploads")), "bytes_sent": num(it.get("bytes_sent")),
+                    "methods": [m for m in (it.get("methods") or []) if isinstance(m, str) and _HAR_METHOD.match(m)][:12],
+                    "schemes": [s for s in (it.get("schemes") or []) if s in ("http", "https", "ws", "wss")][:4]}
+    if not hosts:
+        raise HTTPException(status_code=400, detail="No hostname or IP address to analyze: the HAR file named none the analyzer can read.")
+    return hosts, stats, skipped
+
+
+def _run_path_batch(client, req: PathBatchRequest, hosts, stats, skipped, snapshot, label: str, log, cancel, scope) -> Dict[str, Any]:
+    """The batch job: analyze_batch, the fresh read kept as a Data Flow Map
+    report for the next run (same scope only), the full analyses kept here
+    for the page's row click and the exports."""
+    import pack_jobs
+    import path_analyzer
+    if scope.get("source"):
+        log(f"In scope, from {scope['source']}: {scope['summary']}")
+    if skipped:
+        log(f"{len(skipped)} name(s) are not a hostname or IP address and were skipped.")
+    out = path_analyzer.analyze_batch(client, hosts, req.network, req.platform, scope=scope, snapshot=snapshot, log=log, cancel=cancel, stats=stats)
+    cache = out.pop("snapshot_for_cache", None)
+    rid = req.report_id if snapshot is not None else ""
+    if cache is not None:
+        rows = out["rows"]
+        summary = {"destinations": len(rows), "traces": len(rows), "bypassed": sum(r["outcome_key"] == "bypassed" for r in rows),
+                   "blind": sum(r["outcome_key"] == "blind" for r in rows), "enforced": sum(r["outcome_key"] == "enforce" for r in rows),
+                   "monitored": sum(r["outcome_key"] == "monitor" for r in rows), "high": 0}
+        first = next(iter(out["analyses"].values()), {})
+        rid = _remember_report("dataflow", {"summary": summary, "platform": req.platform,
+                                            "networks": [n for n in path_analyzer.NETWORKS if n["key"] == first.get("network", req.network)],
+                                            "platforms": path_analyzer.PLATFORMS, "destinations": [a["destination"] for a in out["analyses"].values()],
+                                            "traces": [a["trace"] for a in out["analyses"].values()], "packs": [],
+                                            "required_controls": first.get("required_controls", []), "diagnostics": cache.get("diagnostics") or [],
+                                            "client_connector": cache["client_connector"], "snapshot": cache["snapshot"], "sources": {},
+                                            "path_scope": cache.get("path_scope")}, label)
+    analyses = out.pop("analyses")
+    for a in analyses.values():
+        a["report_id"] = rid
+        a["tenant_label"] = label
+        a["logs"] = []
+    job = pack_jobs.current()
+    batch_id = job.id if job is not None else ""
+    counts: Dict[str, int] = {}
+    for r in out["rows"]:
+        counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
+    result = {"rows": out["rows"], "errors": out["errors"], "skipped": skipped, "not_analyzed": out["not_analyzed"], "stopped": out["stopped"],
+              "status": "stopped" if out["stopped"] else "done", "report_id": rid, "tenant_label": label, "network": req.network,
+              "platform": req.platform, "batch_id": batch_id, "counts": counts, "fresh_read": out["fresh_read"] and cache is not None,
+              "scope": {"summary": scope.get("summary"), "key": scope.get("key")}, "read_at": time.time()}
+    if batch_id:
+        _PATH_BATCHES[batch_id] = {"analyses": analyses, "result": result}
+        while len(_PATH_BATCHES) > _PATH_BATCHES_MAX:
+            _PATH_BATCHES.pop(next(iter(_PATH_BATCHES)))
+    return result
+
+
+@app.post("/api/path-analyzer/batch/start")
+async def path_analyzer_batch_start(req: PathBatchRequest, request: Request):
+    """Start the Path analyzer for every host of a HAR file as a job the
+    page follows (poll GET /api/dlp-packs/jobs/{job_id}). Only what is in
+    scope on the Scope page is read, once for all hosts (or the read named
+    by `report_id`, when it was made for the same scope). Stop ends it
+    between hosts: the hosts done are kept, the rest listed as not
+    analyzed. Read-only."""
+    import pack_jobs
+    import path_analyzer
+    hosts, stats, skipped = _batch_hosts(req)
+    scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
+    snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
+    if snapshot is not None and not path_analyzer.reusable(snapshot, scope, req.platform):
+        snapshot = None
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("path-batch", lambda log, cancel: _run_path_batch(client, req, hosts, stats, skipped, snapshot, label, log, cancel, scope),
+                          label=f"{len(hosts)} host(s) from a HAR file", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "hosts": len(hosts), "skipped": len(skipped)}
+
+
+def _path_batch(job_id: str) -> Dict[str, Any]:
+    b = _PATH_BATCHES.get(job_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail="That HAR analysis is no longer kept (the last few are kept while the server runs). Analyze the file again.")
+    return b
+
+
+@app.get("/api/path-analyzer/batch/{job_id}/host")
+async def path_analyzer_batch_host(job_id: str, host: str = ""):
+    """One host's full analysis from a finished HAR batch (no tenant call)."""
+    a = _path_batch(job_id)["analyses"].get(str(host or "").strip().lower())
+    if a is None:
+        raise HTTPException(status_code=404, detail="That host was not analyzed in this run.")
+    return a
+
+
+_BATCH_COLUMNS = ("host", "requests", "uploads", "bytes_sent", "methods", "outcome", "stops_at", "deciding_rule", "dlp_rules", "categories", "headline")
+
+
+@app.get("/api/path-analyzer/batch/{job_id}/export")
+async def path_analyzer_batch_export(job_id: str, format: str = "csv"):
+    """The HAR batch results as CSV (spreadsheet-safe, csv_safe) or JSON."""
+    import csv_safe
+    import io
+    res = _path_batch(job_id)["result"]
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        body = {k: res.get(k) for k in ("tenant_label", "network", "platform", "counts", "rows", "not_analyzed", "skipped", "errors", "stopped", "scope")}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=path_har_{ts}.json"})
+    buf = io.StringIO()
+    w = csv_safe.dict_writer(buf, list(_BATCH_COLUMNS))
+    w.writeheader()
+    for r in res.get("rows") or []:
+        w.writerow({k: ("; ".join(map(str, r.get(k) or [])) if isinstance(r.get(k), list) else r.get(k, "")) for k in _BATCH_COLUMNS})
+    for h in res.get("not_analyzed") or []:
+        w.writerow({"host": h, "outcome": "not analyzed (stopped)"})
+    return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=path_har_{ts}.csv"})
+
+
+# ── Audit timeline ────────────────────────────────────────────────────
+@app.get("/report/audit")
+async def report_audit_page():
+    """Audit timeline (static/report_audit.html): ZIA's admin audit log
+    merged with DLP-Check's deployments and its own audit log."""
+    page = os.path.join(STATIC_DIR, "report_audit.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class AuditTimelineRequest(ScopedTenantCredsRequest):
+    """Body of the audit timeline: the window (`days` back from now, or
+    `start` / `end` dates) and whether to read ZIA's admin audit log
+    (`include_zia`; needs Automation readiness in scope on the Scope page)."""
+    days: int = 7
+    start: str = ""
+    end: str = ""
+    include_zia: bool = True
+
+
+def _run_audit_timeline(client, win: Dict[str, Any], include_zia: bool, label: str, labels, log, cancel) -> Dict[str, Any]:
+    """Read ZIA's audit log report (when asked), DLP-Check's deployment
+    records and its audit log, and merge them (audit_timeline.build)."""
+    import audit_timeline as at
+    import data_flow
+    import deployments
+    import pack_deploy
+    zia = None
+    if include_zia:
+        try:
+            with data_flow.stop_on(client, cancel):
+                zia = at.read_zia_audit(client, win["start_ms"], win["end_ms"], log=log, cancel=cancel)
+        except at.Stopped as e:
+            log("STOPPED — you clicked Stop; nothing more was asked of ZIA. Nothing is ever written by this page.")
+            return {"stopped": str(e), "status": "stopped", "tenant_label": label}
+        if zia.get("error"):
+            log(zia["error"])
+    log("Reading DLP-Check's deployment records and its own audit log…")
+    deps = deployments.list_all()
+    entries = _audit.tail(50000)
+    out = at.build(window_=win, zia=zia, deployments=deps, audit_entries=entries, labels=labels, known_packs=pack_deploy.library_ids(),
+                   tenant_label=label, zia_requested=include_zia,
+                   zia_reason="" if include_zia else "The ZIA admin audit log was not read (you chose DLP-Check's own records only).")
+    log(f"{out['summary']['events']} event(s) in the window; {out['summary']['foreign_changes']} change(s) by someone else to objects DLP-Check created.")
+    return out
+
+
+@app.post("/api/audit-timeline/start")
+async def audit_timeline_start(req: AuditTimelineRequest, request: Request):
+    """Start the audit timeline as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}). ZIA's admin audit log is read only with
+    `include_zia` and Automation readiness in scope (its permissions list
+    /zia/auditlogEntryReport, scope_permissions.py); otherwise the request
+    is refused (400) before anything is signed in to. Reading it creates an
+    audit log report (POST /auditlogEntryReport): that changes no
+    configuration, so it is a read here and needs no write mode. Stop ends
+    the job with nothing more asked of ZIA."""
+    import audit_timeline as at
+    import pack_jobs
+    try:
+        win = at.window(req.days, req.start, req.end)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    client, label, labels = None, "", None
+    if req.include_zia:
+        _require_in_scope(req, "automation", "The ZIA admin audit log")   # user rule 1: before any sign-in
+        creds = _tenant_creds(req)
+        client = await asyncio.to_thread(_build_client, req)
+        label, labels = tenant_auth.record_label(creds), list(tenant_auth.record_labels(creds))
+    job = pack_jobs.start("audit-timeline", lambda log, cancel: _run_audit_timeline(client, win, req.include_zia, label, labels, log, cancel),
+                          label=f"audit timeline, {win['days']:g} day(s)", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "window": {k: win[k] for k in ("start", "end", "days")}}
+
+
+@app.get("/api/audit-timeline/{job_id}/export")
+async def audit_timeline_export(job_id: str, format: str = "csv"):
+    """A finished timeline as CSV (spreadsheet-safe, csv_safe) or JSON
+    (every event with its raw ZIA row, pre / post values and diff)."""
+    import audit_timeline as at
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind != "audit-timeline" or not isinstance(job.result, dict) or "events" not in job.result:
+        raise HTTPException(status_code=404, detail="That timeline is no longer kept (jobs are kept for an hour). Build it again.")
+    res = job.result
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        return Response(content=json.dumps(res, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=audit_timeline_{ts}.json"})
+    return Response(content=at.to_csv(res["events"]), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=audit_timeline_{ts}.csv"})
 
 
 # ── Flow animator ─────────────────────────────────────────────────────
