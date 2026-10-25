@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simple mode — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/simple.css">
+</head>
+<body class="report-page sm-page">
+  <a class="skip-link" href="#smMain">Skip to the tasks</a>
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Simple</span> mode</h1>
+      <p id="smHello">Hi there! Pick a big button below. We go one small step at a time.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/" id="smExpertLink">← Switch to expert mode</a>
+      <span class="sep"></span>
+      <span class="sm-conn" id="smConn"></span>
+    </nav>
+    <main class="rp-card sm-card" id="smMain" tabindex="-1">
+      <div id="smLive" class="sr-only" role="status" aria-live="polite"></div>
+      <section id="smHome" aria-labelledby="smHomeH">
+        <h2 id="smHomeH" class="sm-h">What do you want to do?</h2>
+        <div class="sm-tiles" id="smTiles"></div>
+      </section>
+      <section id="smWizard" class="sm-wizard" hidden aria-labelledby="smStepH"></section>
+      <section id="smWords" class="sm-words" aria-labelledby="smWordsH">
+        <details>
+          <summary><span id="smWordsH">Words to know</span></summary>
+          <p class="sm-dim">Tap a word to see what it means.</p>
+          <dl id="smWordList" class="sm-wordlist"></dl>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/glossary.js"></script>
+  <script src="/static/simple.js"></script>
+</body>
+</html>

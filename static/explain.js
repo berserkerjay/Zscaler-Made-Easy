@@ -201,6 +201,14 @@
     get: 'Thirty-three diagrams (click any one for full size), the limits and behaviour tables for dictionaries and engines, what reaches DLP and what never does per channel, the setup sequence per channel with its gates, and the walkbacks ordered by hit-rate. The live source site is linked at the top for the current version.',
     next: 'Compare the tenant\'s flow with the reference flow, then use the framework pages, the policy packs or the Terraform hand-off to close the gap.',
   };
+  X.operations = {
+    group: 'Close the gaps', name: 'Bulk changes', href: '/report/operations',
+    what: 'Changes many things at once, safely: enables or disables up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control and the four DLP channels; puts one policy\'s rules in a new order with the fewest moves; adds, removes, moves or copies URLs between custom URL categories; and moves ZPA domains between application segments or clones a segment.',
+    why: 'Clean-ups found by the assessment and Shadowed rules usually mean dozens of clicks in the portal, one rule at a time, with no record of what each rule was before. Here the whole change is one reviewed plan, with the value before and after for every item and a way back.',
+    when: 'After Shadowed rules or the assessment name rules to disable, reorder or clean up, when a customer asks to move URLs or ZPA domains between categories or segments, and whenever a change touches more than a handful of objects.',
+    get: 'A preview of every item (before, after, already as asked, excluded and why, the rules that use each URL category), a plan PDF for change approval, the apply with a per-item result (a conflict when someone changed an item since the preview, never overwritten), the read-back, and a record with Undo.',
+    next: 'Download the plan for the change ticket, apply it in write mode with the customer\'s agreement, check the per-item result, and keep Undo for the rollback window; run Shadowed rules again to prove the clean-up.',
+  };
   X.terraform = {
     group: 'Close the gaps', name: 'Terraform hand-off', href: '/report/view?tool=terraform',
     what: 'The same policy pack as a Terraform workspace for the official zscaler/zia provider. Static mode needs no credentials; gap mode reads the tenant and imports what exists so the customer\'s first plan is exactly the gap.',
@@ -345,15 +353,23 @@
     get: 'One card per function: what it is, why it matters, when to use it, what you get, what to do next.',
     next: 'Follow the numbered first-engagement list; each page explains itself at the top.',
   };
+  X.simple = {
+    group: 'Start', name: 'Simple mode', href: '/simple',
+    what: 'The same app as seven big tasks in plain words, for someone with little Zscaler knowledge: connect, check how safe the data is, fix the top problems, protect sensitive data with a policy pack, why was something blocked, what changed, and a report for the boss. Each task is a short wizard with one question per screen, a tap-to-explain glossary and one recommended next step.',
+    why: 'A customer admin, a manager or a new engineer can get a score, the top three fixes and a Word report without learning the expert pages first; the expert view is one click away on every screen.',
+    when: 'For a first look, for a non-specialist who owns the tenant, or to walk someone through the basics; switch to expert mode for anything the wizards do not cover.',
+    get: 'Traffic-light answers with the words always shown, the assessment score and top findings, a policy-pack preview, the Path analyzer verdict in one sentence, the score history and a Word or spreadsheet report.',
+    next: 'Anything that changes the tenant opens the expert flow it belongs to (Deploy policy packs, Review & remediate) with its write mode, preview and confirmation; read-only tasks say so on screen.',
+  };
 
   // Which entry a page belongs to, by its path (and ?tool= on the results tab).
   function keyFor(loc) {
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/shadow': 'shadow', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/report/fleet': 'fleet' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet' };
     return map[p] || '';
   }
 
@@ -379,7 +395,7 @@
   // remembered "hide" for people who no longer need it.
   function mount() {
     const key = keyFor();
-    if (!key || key === 'assessment' || key === 'help' || document.getElementById('xpBox')) return;
+    if (!key || key === 'assessment' || key === 'help' || key === 'simple' || document.getElementById('xpBox')) return;
     const hero = document.querySelector('.rp-hero');
     if (!hero) return;
     const box = document.createElement('section');
@@ -402,8 +418,8 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance',
-    'digest', 'packs', 'flow', 'remediate', 'queue', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance',
+    'digest', 'packs', 'flow', 'remediate', 'queue', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

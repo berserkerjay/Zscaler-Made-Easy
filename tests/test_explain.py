@@ -24,8 +24,9 @@ def _read(name):
 TOOLBAR = {
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openShadowRulesTab()": "shadow",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openZpaTab()": "zpa",
+    "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openSimpleMode()": "simple",
     "openToolTab('efficacy')": "efficacy", "openDetectionHealthTab()": "health", "openDlpPacksModal()": "packs",
-    "openToolTab('terraform')": "terraform", "openVendorMigrateTab()": "vendormigrate", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall",
+    "openToolTab('terraform')": "terraform", "openVendorMigrateTab()": "vendormigrate", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall", "openOperationsTab()": "operations",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates",
     "openLogAnalyzerTab()": "logs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live", "openInsightsTab()": "insights", "openAuditTimelineTab()": "audit",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates", "openExportsTab()": "exports",
