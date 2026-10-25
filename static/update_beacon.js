@@ -55,7 +55,7 @@
     const how = st.in_container
       ? 'Update the container from the computer that runs Docker: update_container.ps1 (Windows) or ./update_container.sh (Mac, Linux).'
       : 'Click Update app to install it.';
-    bar.innerHTML = `<strong>Update available.</strong><span>A newer build of DLP-Check (${esc(st.remote_commit)}, ${esc(target)}) is on GitHub.${mine} ${how}</span>
+    bar.innerHTML = `<strong>Update available.</strong><span>A newer build of Zscaler Made Easy (${esc(st.remote_commit)}, ${esc(target)}) is on GitHub.${mine} ${how}</span>
       <span style="margin-left:auto;display:flex;gap:8px">
         <button type="button" id="dlpUpdateHow" style="padding:4px 12px;border-radius:6px;border:0;background:#fff;color:#0a3d62;font-weight:600;cursor:pointer">${st.in_container ? 'Show how' : 'Update app'}</button>
         <button type="button" id="dlpUpdateLater" style="padding:4px 12px;border-radius:6px;border:1px solid #fff;background:transparent;color:#fff;cursor:pointer">Later</button>
@@ -77,7 +77,7 @@
       // Anywhere else: say it right here.
       const txt = bar.querySelector('span');
       txt.innerHTML = st.in_container
-        ? `On the computer that runs Docker, in the DLP-Check folder: Windows <code>powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 -Branch ${esc(target)}</code>, Mac or Linux <code>./update_container.sh --branch ${esc(target)}</code>. Add <code>-Schedule</code> / <code>--schedule</code> once to update every day.`
+        ? `On the computer that runs Docker, in the Zscaler Made Easy folder: Windows <code>powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 -Branch ${esc(target)}</code>, Mac or Linux <code>./update_container.sh --branch ${esc(target)}</code>. Add <code>-Schedule</code> / <code>--schedule</code> once to update every day.`
         : 'Open the Home page and click <strong>Update app</strong>.';
     };
   }

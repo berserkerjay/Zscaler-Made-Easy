@@ -288,7 +288,7 @@ def fetch_incidents_window(client, start: datetime, end: datetime, log=None, *, 
 
 
 # ── live feed ────────────────────────────────────────────────────────
-# What DLP-Check can genuinely show live: Workflow Automation's own DLP
+# What Zscaler Made Easy can genuinely show live: Workflow Automation's own DLP
 # incident stream, polled on a moving window instead of read once. This
 # is not every ZIA transaction — URL Filtering, Cloud App Control and
 # Firewall & DNS Control decisions that never trip a DLP rule leave no

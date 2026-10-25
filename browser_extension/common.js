@@ -1,7 +1,7 @@
 // Shared by the popup, the options page and the background worker.
 //
 // The extension holds no credentials and no tenant data. It only opens
-// pages of the DLP-Check app that runs on this computer, and asks the app
+// pages of the Zscaler Made Easy app that runs on this computer, and asks the app
 // whether it is running (GET /api/ping, which needs no sign-in). Signing
 // in, the UI token, write mode and every tenant read stay in the app.
 
@@ -67,7 +67,7 @@ export const CONSOLE_ORIGINS = [
 export const CONSOLE_SCRIPT_ID = 'dlpcheck-console-badges';
 
 // A call to the app's API. The app's own sign-in (its UI token cookie, set
-// when DLP-Check was opened in this browser) authenticates it; the
+// when Zscaler Made Easy was opened in this browser) authenticates it; the
 // extension never holds a token. POSTs are accepted from the extension
 // only on the app's read-only endpoints for it.
 export async function api(base, path, body) {
@@ -80,7 +80,7 @@ export async function api(base, path, body) {
   try { data = await r.json(); } catch (e) { data = null; }
   if (!r.ok) {
     const d = data && data.detail;
-    const why = r.status === 401 ? 'Sign in: open DLP-Check in this browser first (it unlocks the app for the extension too).'
+    const why = r.status === 401 ? 'Sign in: open Zscaler Made Easy in this browser first (it unlocks the app for the extension too).'
       : (typeof d === 'string' ? d : (d && (d.cause || d.message)) || `HTTP ${r.status}`);
     const err = new Error(why); err.status = r.status; throw err;
   }
@@ -101,7 +101,7 @@ export async function apiBlob(base, path) {
 export const objectKey = o => o.key || `${o.kind}:${o.kind === 'rule' ? `${o.channel}:` : ''}${o.name}`;
 
 export const PAGES = {
-  home: { path: '/', label: 'Open DLP-Check' },
+  home: { path: '/', label: 'Open Zscaler Made Easy' },
   path: { path: '/report/path', label: 'Path analyzer' },
   live: { path: '/report/live', label: 'Live DLP feed' },
   motion: { path: '/report/motion', label: 'Flow animator' },
@@ -157,8 +157,8 @@ export async function ping(base, timeoutMs = 2500) {
     if (!r.ok) return { ok: false, why: `It answered HTTP ${r.status}.` };
     let body = null;
     try { body = await r.json(); } catch (e) { body = null; }
-    // DLP-Check answers {"ok": true} and nothing else (no version, by design).
-    if (!body || body.ok !== true) return { ok: false, why: 'Something else is listening there, not DLP-Check.' };
+    // Zscaler Made Easy answers {"ok": true} and nothing else (no version, by design).
+    if (!body || body.ok !== true) return { ok: false, why: 'Something else is listening there, not Zscaler Made Easy.' };
     return { ok: true };
   } catch (e) {
     return { ok: false, why: e.name === 'AbortError' ? 'No answer within a few seconds.' : 'Nothing is listening there.' };

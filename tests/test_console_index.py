@@ -218,7 +218,7 @@ def test_policy_rules_carry_order_state_action_references_and_shadow_findings():
     cac = by[("cac_rule", "Block webmail upload")]
     assert cac["key"] == "cac_rule:WEBMAIL:Block webmail upload" and cac["actions"] == ["BLOCK_WEBMAIL_ATTACHMENT_SEND"]
     ftc = by[("ftc_rule", "Block exe")]
-    assert ftc["policy"] == "file_type_control" and ftc["action"] == "BLOCK" and ftc["uses"] == {"url_category": ["Gambling"]}
+    assert ftc["policy"] == "file_type_control" and ftc["action"] == "BLOCK" and ftc["uses"] == {"url_category": ["Gambling"], "file_type": ["Windows executables"]}
 
 
 def test_referenced_objects_say_which_rules_use_them_per_policy():

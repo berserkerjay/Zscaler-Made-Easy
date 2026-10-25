@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSL coverage — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .sc-page .rp-bar .df-ctl, .sc-page .rp-bar select { max-width: 100%; min-width: 0; }
+  .sc-lead { font-size: 1rem; line-height: 1.5; margin: 0 0 1rem; padding: 0.75rem 0.9rem; border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--r-md); background: var(--well); }
+  .sc-lead.risk { border-left-color: var(--fail); } .sc-lead.ok { border-left-color: var(--pass); }
+  .sc-h { font-size: 1.05rem; margin: 1.4rem 0 0.4rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .sc-note { color: var(--dim); font-size: 0.82rem; margin: 0.2rem 0 0.6rem; line-height: 1.45; }
+  .sc-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 0.7rem; }
+  .sc-tile { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); padding: 0.8rem 0.9rem; min-width: 0; }
+  .sc-tile .k { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+  .sc-tile .n { font-size: 1.8rem; font-weight: 800; line-height: 1.1; margin: 0.25rem 0; }
+  .sc-tile .d { font-size: 0.85rem; color: var(--dim); overflow-wrap: anywhere; }
+  .sc-tile.risk .n { color: var(--fail); } .sc-tile.warn .n { color: var(--warn); } .sc-tile.ok .n { color: var(--pass); }
+  .sc-chip { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.5rem; border-radius: var(--r-md); border: 1px solid var(--border); color: var(--dim); white-space: nowrap; }
+  .sc-chip.high { color: var(--fail); border-color: var(--fail); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+  .sc-chip.medium { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .sc-chip.low, .sc-chip.expected { color: var(--dim); }
+  .sc-chip.yes, .sc-chip.keep { color: var(--pass); border-color: var(--pass); }
+  .sc-chip.test { color: var(--warn); border-color: var(--warn); }
+  .sc-chip.no { color: var(--fail); border-color: var(--fail); }
+  .sc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+  .sc-item { border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--r-md); background: var(--card-solid); padding: 0.7rem 0.85rem; font-size: 0.88rem; line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
+  .sc-item.high { border-left-color: var(--fail); } .sc-item.medium { border-left-color: var(--warn); } .sc-item.low, .sc-item.expected { border-left-color: var(--border-strong); }
+  .sc-item-h { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; font-weight: 600; margin-bottom: 0.25rem; }
+  .sc-dl { display: grid; grid-template-columns: minmax(110px, max-content) 1fr; gap: 0.2rem 0.8rem; margin: 0.3rem 0 0; }
+  .sc-dl dt { color: var(--dim); font-size: 0.78rem; font-weight: 600; padding-top: 0.1rem; }
+  .sc-dl dd { margin: 0; min-width: 0; }
+  .sc-n { font-variant-numeric: tabular-nums; }
+  .sc-bars { display: flex; align-items: flex-end; gap: 3px; height: 90px; padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+  .sc-bars span { flex: 1 1 0; min-width: 2px; background: var(--accent); border-radius: 2px 2px 0 0; }
+  .sc-err { font-size: 0.82rem; margin: 0.4rem 0; padding: 0.45rem 0.65rem; border-radius: var(--r-md); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+  .sc-table td, .sc-table th { overflow-wrap: anywhere; }
+  .sc-table td.num, .sc-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sc-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+  .sc-seg button { all: unset; cursor: pointer; padding: 0.3rem 0.7rem; font-size: 0.8rem; color: var(--dim); }
+  .sc-seg button[aria-pressed="true"] { background: var(--well); color: var(--text); font-weight: 600; }
+  .sc-seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .sc-unavail { margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; }
+  @media (max-width: 600px) { .sc-dl { grid-template-columns: 1fr; } .sc-tile .n { font-size: 1.5rem; } }
+</style>
+</head>
+<body class="report-page sc-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">SSL</span> coverage</h1>
+      <p>How much of your web traffic Zscaler does not inspect, why, and what to change to fix it. Run it, then work through the recovery plan from step 1. Read-only: nothing is changed in the tenant.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="scTenantWrap" hidden><span class="lbl">Tenant</span><select id="scTenant" aria-label="Tenant to read"></select></label>
+      <label class="df-ctl"><span class="lbl">Window</span>
+        <select id="scWindow" aria-label="Time window for traffic numbers">
+          <option value="7d" selected>Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+        </select></label>
+      <label class="df-ctl"><input type="checkbox" id="scVolume" checked> <span class="lbl">Traffic numbers</span></label>
+      <button type="button" class="rp-btn primary" id="scRun">Check coverage</button>
+      <a class="rp-btn" id="expXlsx" hidden>Excel</a>
+      <a class="rp-btn" id="expJson" hidden>JSON</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="scBody">
+        <div class="pa-intro">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Check coverage.</strong> It reads the SSL inspection rules and, when ZCC is in scope on the Scope page, the Client Connector profiles and PAC files. With ZIA Insights in scope it also asks how much HTTPS and HTTP traffic was inspected.</li>
+            <li><strong>Read the causes.</strong> Each thing that leaves traffic uninspected is listed with the rule or setting behind it and how risky it is. Leaving file sharing or AI tools encrypted is high risk; leaving banking or health sites encrypted for privacy is expected.</li>
+            <li><strong>Follow the recovery plan.</strong> The changes are ordered biggest risk first, each with where to change it and whether it is safe. Run it again afterwards to see the trend.</li>
+          </ol>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const body = document.getElementById('scBody');
+    const meta = document.getElementById('rpMeta');
+    const live = document.getElementById('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    let running = false, job = null, startToken = null, stopAsked = false, last = null, unit = 'BYTES';
+
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+    // Credentials: the assessment tab that opened this page, a saved
+    // tenant profile, or what the server has on this computer.
+    async function tenantChoices() {
+      const wrap = document.getElementById('scTenantWrap'), sel = document.getElementById('scTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = document.getElementById('scTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    // What is in scope: the Scope page's ticks and channel choices, read
+    // live from the opener or from what the Scope page publishes; never
+    // guessed. Only each channel's choice is sent, never its notes.
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+
+    // ── formatting ────────────────────────────────────────────────
+    function bytes(n) {
+      if (n == null || !Number.isFinite(Number(n))) return '—';
+      const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let v = Number(n), i = 0;
+      while (Math.abs(v) >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+      return `${v.toLocaleString(undefined, { maximumFractionDigits: i ? 1 : 0 })} ${u[i]}`;
+    }
+    const count = n => (n == null || !Number.isFinite(Number(n)) ? '—' : Math.round(Number(n)).toLocaleString());
+    const pct = p => (p == null ? 'not measurable' : `${Number(p).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`);
+    const tone = p => (p == null ? '' : p >= 90 ? 'ok' : p >= 70 ? 'warn' : 'risk');
+    const when = s => { const d = new Date(s); return Number.isNaN(d.getTime()) ? String(s || '') : d.toLocaleString(); };
+    const day = ms => new Date(Number(ms)).toLocaleDateString();
+    const chip = (cls, text) => `<span class="sc-chip ${E(cls)}">${E(text)}</span>`;
+
+    // ── Traffic and inspection ────────────────────────────────────
+    function trafficHtml(res) {
+      const v = res.volume || {};
+      if (!v.available) {
+        return `<h2 class="sc-h" id="hTraffic">Traffic and inspection</h2>
+          <p class="sc-note">${E(v.reason || 'Traffic numbers were not asked for.')} No numbers are shown rather than estimated.</p>`;
+      }
+      const p = v.protocols || {}, tx = p.TRANSACTIONS, by = p.BYTES, sel = p[unit];
+      const seg = `<span class="sc-seg" role="group" aria-label="Unit for the percentages">
+          <button type="button" data-unit="BYTES" aria-pressed="${unit === 'BYTES'}">Bytes</button>
+          <button type="button" data-unit="TRANSACTIONS" aria-pressed="${unit === 'TRANSACTIONS'}">Transactions</button></span>`;
+      let tiles = '';
+      if (!sel) tiles = `<div class="sc-err" role="note">Traffic by protocol in ${unit === 'BYTES' ? 'bytes' : 'transactions'} could not be read.</div>`;
+      else {
+        const amount = (k) => `${by ? bytes(by[k]) : '—'} (${tx ? count(tx[k]) : '—'} transactions)`;
+        tiles = `<div class="sc-tiles">
+          <div class="sc-tile ${tone(sel.ssl_pct)}"><div class="k">SSL/TLS (HTTPS)</div><div class="n">${E(pct(sel.ssl_pct))}</div><div class="d">inspected of ${E(amount('ssl_total'))}</div></div>
+          <div class="sc-tile ${tone(sel.http_pct)}"><div class="k">HTTP</div><div class="n">${E(pct(sel.http_pct))}</div><div class="d">inspected of ${E(amount('http_total'))}. Cleartext is inspected once it reaches Zscaler.</div></div>
+          <div class="sc-tile ${tone(sel.total_pct)}"><div class="k">Total</div><div class="n">${E(pct(sel.total_pct))}</div><div class="d">of web traffic inspected (SSL/TLS and HTTP)${sel.total_pct_if_other_not_inspected != null ? `; ${E(pct(sel.total_pct_if_other_not_inspected))} if the unclassified traffic is not inspected` : ''}.</div></div>
+        </div>`;
+        if (sel.other_total) tiles += `<p class="sc-note">Other / not classified: ${E(amount('other_total'))}. Shown apart and left out of the percentages.</p>`;
+        const un = (sel.unrecognised || []);
+        if (un.length) tiles += `<p class="sc-note">Protocol names this page does not recognise (counted as not classified): ${un.map(u => `<code>${E(u.name)}</code>`).join(', ')}.</p>`;
+      }
+      const errs = (v.errors || []).map(e => `<div class="sc-err" role="note">${E(e)}</div>`).join('');
+      const daily = (v.daily || []);
+      const max = Math.max(1, ...daily.map(d => Number(d.total) || 0));
+      const bars = daily.length ? `<h3 class="sc-h" id="hDaily">All web traffic per day</h3>
+          <p class="sc-note">${E(v.daily_note || '')}</p>
+          <div class="sc-bars" role="img" aria-label="${E(daily.map(d => `${day(d.day_ms)}: ${bytes(d.total)}`).join('; '))}">${daily.map(d => `<span style="height:${Math.max(2, Math.round(100 * (Number(d.total) || 0) / max))}%" title="${E(day(d.day_ms))}: ${E(bytes(d.total))}"></span>`).join('')}</div>` : '';
+      return `<h2 class="sc-h" id="hTraffic">Traffic and inspection ${seg}</h2>
+        <p class="sc-note">Window: ${E((v.window || {}).label || '')}. ${E(v.note || '')}</p>${errs}${tiles}
+        <p class="sc-note">${E(v.bypass_note || '')} <a href="#hCauses">Go to the causes</a>.</p>${bars}`;
+    }
+
+    // ── Causes and plan ───────────────────────────────────────────
+    function vol(c) {
+      const v = c.volume; if (!v) return '';
+      if (v.bytes == null) return `<dt>Traffic</dt><dd>${E(v.basis)}</dd>`;
+      return `<dt>Traffic</dt><dd>${E(bytes(v.bytes))} to ${E((v.apps || []).map(a => a.application).join(', '))} (${E(v.basis)})</dd>`;
+    }
+    function causeHtml(c) {
+      const src = c.source || {};
+      return `<li class="sc-item ${E(c.risk)}"><div class="sc-item-h">${chip(c.risk, c.risk_label)} <span>${E(c.what)}</span></div>
+        <dl class="sc-dl">
+          <dt>Caused by</dt><dd>${E(c.kind_label)}: ${E(src.name || '')}${src.order != null && src.order !== '' ? ` (order ${E(src.order)})` : ''}${c.scope && c.scope !== 'everyone' ? ` — ${E(c.scope)}` : ''}</dd>
+          <dt>Why this risk</dt><dd>${E(c.risk_reason)}</dd>
+          <dt>Effect</dt><dd>${E(c.effect)}</dd>
+          <dt>To fix</dt><dd>${E(c.recovery)}</dd>${vol(c)}
+        </dl></li>`;
+    }
+    function stepHtml(s) {
+      return `<li class="sc-item ${E(s.risk)}"><div class="sc-item-h"><span>Step ${E(s.n)}.</span> ${chip(s.risk, s.risk_label)} <span>${E(s.title)}</span></div>
+        <dl class="sc-dl">
+          <dt>Change</dt><dd>${E(s.change)}</dd>
+          <dt>Where</dt><dd>${E(s.where)}</dd>
+          <dt>Expected effect</dt><dd>${E(s.effect)}</dd>
+          <dt>Safe to change?</dt><dd>${chip(s.safe, s.safe_label)} ${E(s.safe_note)}</dd>
+        </dl></li>`;
+    }
+    function historyHtml(h) {
+      if (!h || !h.length) return '<p class="sc-note">No earlier runs are kept for this tenant yet.</p>';
+      const rows = h.slice().reverse().map(x => `<tr><td>${E(when(x.at))}</td><td class="num">${E(x.class_coverage_pct == null ? '—' : pct(x.class_coverage_pct))}</td>
+          <td class="num">${E(x.inspected_pct_bytes == null ? '—' : pct(x.inspected_pct_bytes))}</td><td class="num">${E((x.by_risk || {}).high || 0)}</td>
+          <td class="num">${E((x.by_risk || {}).medium || 0)}</td><td class="num">${E(x.plan_steps || 0)}</td></tr>`).join('');
+      return `<div class="df-tablewrap"><table class="bp-table sc-table"><caption class="sr-only">Coverage across runs, newest first</caption>
+        <thead><tr><th scope="col">Run</th><th scope="col" class="num">Traffic kinds covered</th><th scope="col" class="num">Inspected (bytes)</th><th scope="col" class="num">High</th><th scope="col" class="num">Medium</th><th scope="col" class="num">Plan steps</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+    }
+    const DECISION = { inspected: 'Decrypted', not_inspected: 'Left encrypted', no_rule: 'No rule (encrypted)', blocked: 'Blocked', unknown: 'Unknown' };
+    function render(res) {
+      last = res;
+      const s = res.summary || {}, plan = res.plan || {}, causes = res.causes || [];
+      meta.textContent = `${res.tenant_label || ''} · ${when(res.generated_at)}`;
+      const hi = (s.by_risk || {}).high || 0;
+      const nis = Object.values(res.not_in_scope || {}).map(t => `<li>${E(t)}</li>`).join('');
+      const diag = (res.diagnostics || []).map(d => `<li>${E(d.section)}: ${E(d.error_type || '')} ${E(d.error || '')}</li>`).join('');
+      body.innerHTML = `
+        <p class="sc-lead ${hi ? 'risk' : 'ok'}" role="note">${E(res.headline || '')}</p>
+        <section aria-labelledby="hTraffic" id="scTraffic">${trafficHtml(res)}</section>
+        <h2 class="sc-h" id="hPlan">Recovery plan</h2>
+        ${(plan.prerequisites || []).length ? `<p class="sc-note"><strong>Before you start:</strong> ${E(plan.prerequisites.join(' '))}</p>` : ''}
+        ${(plan.steps || []).length ? `<ol class="sc-list" aria-labelledby="hPlan">${plan.steps.map(stepHtml).join('')}</ol>` : '<p class="sc-note">Nothing to change: no cause of uninspected traffic was found in what was read.</p>'}
+        <h2 class="sc-h" id="hCauses">Causes (${E(causes.length)})</h2>
+        <p class="sc-note">Everything found that leaves traffic uninspected, most risky first.</p>
+        ${causes.length ? `<ul class="sc-list" aria-labelledby="hCauses">${causes.map(causeHtml).join('')}</ul>` : '<p class="sc-note">No cause was found: every enabled SSL rule decrypts or blocks, and no bypass was found in what was in scope.</p>'}
+        <h2 class="sc-h" id="hClasses">Kinds of web traffic</h2>
+        <p class="sc-note">What the SSL inspection rules decide for each kind of traffic, for everyone (rules for some users only are listed under Causes).</p>
+        <div class="df-tablewrap"><table class="bp-table sc-table"><caption class="sr-only">SSL decision per kind of web traffic</caption>
+          <thead><tr><th scope="col">Traffic</th><th scope="col">SSL decision</th><th scope="col">Decided by</th><th scope="col">Risk if encrypted</th></tr></thead>
+          <tbody>${(res.classes || []).map(c => `<tr><td>${E(c.label)}</td><td>${E(DECISION[c.decision] || c.decision)}</td><td>${E(c.decided_by || '—')}</td><td>${chip(c.risk, c.risk.charAt(0).toUpperCase() + c.risk.slice(1))}</td></tr>`).join('')}</tbody></table></div>
+        <h2 class="sc-h" id="hTrend">Coverage across runs</h2>
+        ${res.history_error ? `<div class="sc-err" role="note">${E(res.history_error)}</div>` : ''}
+        ${historyHtml(res.history)}
+        <h2 class="sc-h">Not available from ZIA Insights</h2>
+        <ul class="sc-unavail">${((res.volume || {}).unavailable || []).map(u => `<li>${E(u)}</li>`).join('')}</ul>
+        ${nis ? `<h2 class="sc-h">Not read (not in scope)</h2><ul class="sc-unavail">${nis}</ul>` : ''}
+        ${diag ? `<h2 class="sc-h">Could not be read</h2><ul class="sc-unavail">${diag}</ul>` : ''}
+        <details class="pa-details"><summary>What was read (${(res.logs || []).length} lines)</summary><div class="pa-log">${E((res.logs || []).join('\n'))}</div></details>`;
+      if (res.report_id) {
+        const x = document.getElementById('expXlsx'), j = document.getElementById('expJson');
+        x.href = `/api/ssl-coverage/export/${encodeURIComponent(res.report_id)}?format=xlsx`; x.hidden = false;
+        j.href = `/api/ssl-coverage/export/${encodeURIComponent(res.report_id)}?format=json`; j.hidden = false;
+      }
+    }
+    body.addEventListener('click', e => {
+      const b = e.target.closest('button[data-unit]'); if (!b || !last) return;
+      unit = b.dataset.unit;
+      document.getElementById('scTraffic').innerHTML = trafficHtml(last);
+      const again = body.querySelector(`button[data-unit="${unit}"]`); if (again) again.focus();
+      say(`Percentages now by ${unit === 'BYTES' ? 'bytes' : 'transactions'}.`);
+    });
+
+    // ── the live job ────────────────────────────────────────────────
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function liveHtml() {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>Checking SSL coverage</strong><span class="sep"></span><span class="pa-elapsed" id="scElapsed">0:00</span><button type="button" class="rp-btn" id="scStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="scLog" role="log" aria-live="polite" aria-label="What is being read">Connecting to the tenant…</div>
+      </div>`;
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1000));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the read continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        const log = document.getElementById('scLog'); if (log) { log.textContent = logs.join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!running || stopAsked) return;
+      stopAsked = true;
+      const b = document.getElementById('scStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        try { await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) }); } catch (e) { /* cancelled by id below */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+    function fail(title, msg) {
+      if (/You clicked Stop/.test(msg)) title = 'Stopped';
+      const hint = /credential|sign in|token|401|403|profile/i.test(msg) ? ' Sign in on the assessment page first and open SSL coverage from there, or choose a saved tenant profile in the bar above.' : '';
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+    async function run() {
+      if (running) return;
+      const btn = document.getElementById('scRun');
+      running = true; stopAsked = false; job = null; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Checking…';
+      body.innerHTML = liveHtml();
+      document.getElementById('scStop').addEventListener('click', stop);
+      say('Checking SSL coverage.');
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = document.getElementById('scElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const payload = Object.assign({}, credBody(), scopeSelection(), { window: document.getElementById('scWindow').value, include_volume: document.getElementById('scVolume').checked });
+        const r = await fetch('/api/ssl-coverage/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        job = d.job_id;
+        if (stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ } }
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result || snap.result.stopped) throw new Error(snap.error || (snap.result && snap.result.stopped) || (snap.status === 'cancelled' ? 'You clicked Stop before the read finished.' : 'The read did not finish.'));
+        render(Object.assign({}, snap.result, { logs: snap.logs || snap.result.logs || [] }));
+        say(`SSL coverage: ${(snap.result.causes || []).length} causes, ${((snap.result.plan || {}).steps || []).length} plan steps.`);
+      } catch (e) {
+        fail('SSL coverage could not be checked', e.message);
+        say(`SSL coverage could not be checked: ${e.message}`);
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; btn.disabled = false; btn.textContent = 'Check coverage';
+      }
+    }
+    async function reopen() {
+      const id = new URLSearchParams(location.search).get('id');
+      if (!id) return;
+      try { const r = await fetch(`/api/ssl-coverage/${encodeURIComponent(id)}`, { cache: 'no-store' }); if (r.ok) render(await r.json()); } catch (e) { /* run it again */ }
+    }
+    document.getElementById('scRun').addEventListener('click', run);
+    tenantChoices();
+    reopen();
+  })();
+  </script>
+</body>
+</html>

@@ -401,7 +401,7 @@ def test_the_home_page_is_unchanged_by_simple_mode():
     c = TestClient(srv.app)
     c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
     home = c.get("/").text
-    assert "Platform Assessment" in home and "/static/simple_entry.js" in home and "/static/simple.js" not in home
+    assert "Made Easy" in home and "/static/simple_entry.js" in home and "/static/simple.js" not in home
 
 
 # ── The spreadsheet ─────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZPA analysis — Zscaler Assessment</title>
+<title>ZPA analysis — Zscaler Made Easy</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
@@ -50,7 +50,58 @@
   .zp-page .df-table tbody th { text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 600; text-align: left; }
   .zp-tpl, .zp-form, .pa-verdict { min-width: 0; overflow-wrap: anywhere; }
   @media (max-width: 600px) { .zp-tpl > summary .cnt { margin-left: 0; } }
-  @media (prefers-reduced-motion: reduce) { .zp-tpl > summary, .zp-tabs [role="tab"] { transition: none; } }
+  /* overview: KPI sentences, the infrastructure map, the inventory tables */
+  .zo-lead { margin: 0 0 0.9rem; font-size: 0.95rem; }
+  .zo-kpis { list-style: none; margin: 0 0 1.2rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 0.5rem; }
+  .zo-kpi { min-width: 0; }
+  .zo-kpi a { display: flex; flex-direction: column; gap: 0.3rem; height: 100%; box-sizing: border-box; padding: 0.55rem 0.75rem; border: 1px solid var(--border); border-left: 4px solid var(--border-strong); border-radius: var(--r-md); background: var(--well); color: var(--text); text-decoration: none; font-size: 0.88rem; overflow-wrap: anywhere; }
+  .zo-kpi a:hover { border-color: var(--accent); }
+  .zo-kpi a:focus-visible, .zo-t > summary:focus-visible, .zo-filter button:focus-visible, .zo-lbtn:focus-visible, .zo-mapwrap:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .zo-kpi.tone-fail a { border-left-color: var(--fail); } .zo-kpi.tone-warn a { border-left-color: var(--warn); }
+  .zo-kpi .df-chip { align-self: flex-start; }
+  .zo-mapwrap { max-width: 100%; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); }
+  .zo-map { display: block; font-family: inherit; }
+  .zo-colh { font-size: 11px; font-weight: 700; fill: var(--dim); letter-spacing: 0.04em; }
+  .zo-edge { fill: none; stroke: var(--border-strong); stroke-width: 1.2; opacity: 0.75; transition: opacity 0.15s, stroke 0.15s; }
+  .zo-map.hovering .zo-edge { opacity: 0.18; }
+  .zo-map .zo-edge.hl { opacity: 1; stroke: var(--accent); stroke-width: 2; }
+  .zo-node { cursor: pointer; outline: none; transition: opacity 0.15s; }
+  .zo-node .box { fill: var(--card-solid); stroke: var(--border-strong); stroke-width: 1.2; }
+  .zo-node .bar { fill: var(--border-strong); }
+  .zo-node .l { font-size: 12px; font-weight: 600; fill: var(--text); }
+  .zo-node .s { font-size: 10.5px; fill: var(--dim); }
+  .zo-node .mk { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; }
+  .zo-node.st-fail .box { stroke: var(--fail); stroke-width: 2; fill: color-mix(in srgb, var(--fail) 10%, var(--card-solid)); }
+  .zo-node.st-fail .bar, .zo-node.st-fail .mk { fill: var(--fail); }
+  .zo-node.st-warn .box { stroke: var(--warn); fill: color-mix(in srgb, var(--warn) 9%, var(--card-solid)); }
+  .zo-node.st-warn .bar, .zo-node.st-warn .mk { fill: var(--warn); }
+  .zo-node.st-ok .bar { fill: var(--pass); }
+  .zo-node.st-off .box, .zo-node.st-unknown .box { stroke-dasharray: 4 3; }
+  .zo-node.st-off .l, .zo-node.st-off .mk, .zo-node.st-unknown .mk { fill: var(--dim); }
+  .zo-node.agg .box { stroke-dasharray: 2 2; }
+  .zo-node:focus-visible .box, .zo-node:hover .box { stroke: var(--accent); stroke-width: 3; }
+  .zo-node[aria-pressed="true"] .box { stroke: var(--accent); stroke-width: 3; }
+  .zo-map.filtered .zo-node.out { opacity: 0.35; }
+  .zo-map.filtered .zo-edge.out { opacity: 0.08; }
+  .zo-note { border-left: 3px solid var(--warn); background: var(--well); border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 0.4rem 0.7rem; margin: 0 0 0.6rem; font-size: 0.85rem; }
+  .zo-list ul { margin: 0.2rem 0 0.6rem; padding-left: 1.1rem; font-size: 0.85rem; }
+  .zo-list h3 { font-size: 0.85rem; margin: 0.6rem 0 0.2rem; }
+  .zo-lbtn { font: inherit; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 0.1rem 0; cursor: pointer; text-align: left; min-height: 24px; }
+  .zo-lbtn[aria-pressed="true"] { text-decoration: underline; }
+  .zo-filter { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; min-height: 1.4em; margin: 0 0 0.6rem; font-size: 0.88rem; overflow-wrap: anywhere; }
+  .zo-filter:not(:empty) { padding: 0.45rem 0.7rem; border: 1px solid var(--accent); border-radius: var(--r-md); background: var(--accent-tint); }
+  .zo-t { border: 1px solid var(--border); border-radius: var(--r-md); margin: 0 0 0.5rem; background: var(--card); min-width: 0; }
+  .zo-t > summary { cursor: pointer; padding: 0.55rem 0.8rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; font-weight: 600; }
+  .zo-t > summary .zp-meta { font-weight: 400; }
+  .zo-t .df-tablewrap { padding: 0 0.8rem 0.6rem; }
+  .zo-t .df-hint { padding: 0 0.8rem 0.6rem; margin: 0; font-size: 0.8rem; }
+  .zo-t .df-table { width: max-content; min-width: 100%; }
+  .zo-t .df-table td { min-width: 4rem; max-width: 22rem; overflow-wrap: anywhere; }
+  .zo-t .df-table td.zo-fl { min-width: 15rem; }
+  .zo-t .df-table td.zo-st { min-width: 0; white-space: nowrap; }
+  .zo-flags { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+  .zo-flags .df-chip { text-transform: none; letter-spacing: 0; font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { .zp-tpl > summary, .zp-tabs [role="tab"], .zo-edge, .zo-node { transition: none; } }
 </style>
 </head>
 <body class="report-page zp-page">
@@ -67,26 +118,33 @@
       <button type="button" class="rp-btn primary" id="zpRun">Read ZPA and analyze</button>
       <a class="rp-btn" id="expCsv" hidden>CSV</a>
       <a class="rp-btn" id="expJson" hidden>JSON</a>
+      <a class="rp-btn" id="expXlsx" hidden>Excel</a>
     </nav>
     <main class="rp-card" id="zpMain">
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
       <div class="zp-tabs" role="tablist" aria-label="ZPA analysis views">
-        <button type="button" role="tab" id="tab-findings" aria-controls="panel-findings" aria-selected="true" tabindex="0">Findings</button>
+        <button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" tabindex="0">Overview</button>
+        <button type="button" role="tab" id="tab-findings" aria-controls="panel-findings" aria-selected="false" tabindex="-1">Findings</button>
         <button type="button" role="tab" id="tab-diagnose" aria-controls="panel-diagnose" aria-selected="false" tabindex="-1">Diagnose</button>
       </div>
-      <section role="tabpanel" id="panel-findings" aria-labelledby="tab-findings" tabindex="0">
+      <section role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" tabindex="0">
+        <p class="zo-lead">This page counts the app segments, access rules and App Connectors of your ZPA, says in plain sentences which ones are broken and draws how they connect. Click <strong>Read ZPA and analyze</strong>, then click a sentence or a box in the map to see the objects behind it.</p>
         <div id="zpJob"></div>
-        <div id="zpFindings">
+        <div id="zpOverview">
           <div class="pa-intro" id="zpHow">
             <div class="pa-intro-t">How it works</div>
             <ol class="pa-steps">
               <li><strong>Tick ZPA on the Scope page</strong> and give the ZPA customer ID with the API client (Connect to the tenant). Nothing is read otherwise.</li>
               <li><strong>Read ZPA and analyze.</strong> The configuration is read once, list by list, paced and shown live; Stop ends the read at once and keeps nothing.</li>
-              <li><strong>Read the findings</strong> by template, filter by severity, export them as CSV or JSON. Each finding says in one sentence what is wrong and what to do.</li>
+              <li><strong>Read the overview</strong>: plain sentences (how many segments nobody can reach, which connectors are down), the infrastructure map from users to App Connectors, and every object in tables you can narrow by clicking the map.</li>
+              <li><strong>Read the findings</strong> by template, filter by severity, export them as CSV, JSON or Excel. Each finding says in one sentence what is wrong and what to do.</li>
             </ol>
             <div class="df-hint">Read-only: nothing is written to the tenant. A list that could not be read leaves its templates "not assessed", never "no finding".</div>
           </div>
         </div>
+      </section>
+      <section role="tabpanel" id="panel-findings" aria-labelledby="tab-findings" tabindex="0" hidden>
+        <div id="zpFindings"><p class="zp-meta">No findings yet: click <strong>Read ZPA and analyze</strong> first. The findings of every analysis template appear here.</p></div>
       </section>
       <section role="tabpanel" id="panel-diagnose" aria-labelledby="tab-diagnose" tabindex="0" hidden>
         <form class="zp-form" id="zpForm" novalidate>
@@ -120,6 +178,7 @@
   <script src="/static/report_theme.js"></script>
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -142,7 +201,7 @@
         $(x.getAttribute('aria-controls')).hidden = !on;
       });
       if (focus) t.focus();
-      try { history.replaceState(null, '', location.pathname + location.search + (t.id === 'tab-diagnose' ? '#diagnose' : '')); } catch (e) { /* ignore */ }
+      try { history.replaceState(null, '', location.pathname + location.search + (t.id === 'tab-overview' ? '' : '#' + t.id.slice(4))); } catch (e) { /* ignore */ }
     }
     tabs.forEach((t, i) => {
       t.addEventListener('click', () => selectTab(t, false));
@@ -156,6 +215,7 @@
       });
     });
     if (location.hash === '#diagnose') selectTab($('tab-diagnose'), false);
+    if (location.hash === '#findings') selectTab($('tab-findings'), false);
 
     // ── credentials and scope (as the Path analyzer) ────────────────
     async function tenantChoices() {
@@ -290,8 +350,8 @@
       if (running) return;
       const btn = $('zpRun');
       btn.disabled = true; btn.textContent = 'Reading ZPA…';
-      selectTab($('tab-findings'), false);
-      $('zpFindings').innerHTML = '';
+      selectTab($('tab-overview'), false);
+      $('zpOverview').innerHTML = '';
       say('Reading the ZPA configuration.');
       try {
         const { result, logs } = await runJob('/api/zpa/analysis/start', Object.assign({}, credBody(), scopeSelection()), $('zpJob'), 'Reading ZPA and running the templates');
@@ -310,17 +370,20 @@
       $('rpMeta').textContent = `${res.tenant_label || ''} · read ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
       $('dReuse').textContent = 'Diagnoses reuse this read: no new tenant call.';
       fillChoices(res.choices || {});
+      renderOverview(res);
       renderFindings(logs || res.logs || []);
       updateExports();
     }
     function updateExports() {
-      const csv = $('expCsv'), json = $('expJson');
-      if (!reportId) { csv.hidden = json.hidden = true; return; }
+      const csv = $('expCsv'), json = $('expJson'), xlsx = $('expXlsx');
+      if (!reportId) { csv.hidden = json.hidden = xlsx.hidden = true; return; }
       const sev = SEVS.filter(s => sevOn.has(s)).join(',');
       csv.href = `/api/zpa/report/${encodeURIComponent(reportId)}/export?format=csv&severity=${encodeURIComponent(sev)}`;
       json.href = `/api/zpa/report/${encodeURIComponent(reportId)}/export?format=json&severity=${encodeURIComponent(sev)}`;
-      csv.hidden = json.hidden = false;
+      xlsx.href = `/api/zpa/report/${encodeURIComponent(reportId)}/export?format=xlsx&severity=${encodeURIComponent(sev)}`;
+      csv.hidden = json.hidden = xlsx.hidden = false;
       csv.title = 'The findings shown (severity filter applied) as CSV'; json.title = 'The findings shown, the catalog and the counts as JSON';
+      xlsx.title = 'The overview sentences, every table, the findings shown and the map connections as one Excel workbook';
     }
     function worst(list) { return SEVS.find(s => list.some(f => f.severity === s)) || 'info'; }
     function sevChip(s) { return `<span class="sev-chip ${E(s)}">${E(SEV_LABEL[s] || s)}</span>`; }
@@ -367,6 +430,244 @@
         const again = $('zpFindings').querySelector(`.zp-sev button[data-sev="${s}"]`); if (again) again.focus();
         say(`${SEV_LABEL[s]} findings ${sevOn.has(s) ? 'shown' : 'hidden'}.`);
       }));
+    }
+
+    // ── the overview: KPI sentences, the infrastructure map, the tables ──
+    // The server builds it (zpa_overview.py); this draws it. A click on a
+    // box (or Enter on it) narrows the tables to what is connected to it,
+    // using the precise links (a rule -> the segments it applies to).
+    const reduceMotion = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+    const ROWS_SHOWN = 200;
+    const MK = { fail: 'FIX', warn: 'CHECK', off: 'OFF', unknown: 'NOT READ' };
+    const ST_WORDS = { fail: 'needs attention', warn: 'has a warning', ok: 'no issue found', off: 'disabled', unknown: 'not read' };
+    const TONE = { fail: ['Needs attention', 'st-fail'], warn: ['Check', 'st-warn'] };
+    let ov = null, ovNodes = [], links = null, selected = null, related = null, flagFilter = null;
+    const trunc = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+    const colOf = key => (ov.columns || []).find(c => c.key === key) || { label: key, one: key, many: key };
+
+    function buildLinks(g) {
+      const L = g.links || {}, fwd = new Map(), back = new Map();
+      (L.edges || []).forEach(([a, b]) => { (fwd.get(a) || fwd.set(a, []).get(a)).push(b); (back.get(b) || back.set(b, []).get(b)).push(a); });
+      const enabled = L.enabled_segments || [];
+      return { fwd, back, allApps: new Set(L.all_apps || []), enabled, enabledSet: new Set(enabled), complete: L.complete !== false };
+    }
+    function fwdOf(id) { const out = links.fwd.get(id) || []; return links.allApps.has(id) ? out.concat(links.enabled) : out; }
+    function backOf(id) { const out = links.back.get(id) || []; return links.enabledSet.has(id) ? out.concat([...links.allApps]) : out; }
+    function walk(start, step, S) {
+      const todo = [start];
+      while (todo.length) { const x = todo.pop(); for (const y of step(x)) if (!S.has(y)) { S.add(y); todo.push(y); } }
+    }
+    // Everything connected to one box: what it leads to, what leads to it,
+    // and the segment group of every segment in that set.
+    function relatedTo(node) {
+      if (node.aggregate) return new Set(node.members || []);
+      const S = new Set([node.id]);
+      if (!links.complete) return S;
+      walk(node.id, fwdOf, S); walk(node.id, backOf, S);
+      if (node.col === 'segment_groups') fwdOf(node.id).forEach(s => walk(s, backOf, S));
+      [...S].forEach(id => { if (id.startsWith('segments:')) (links.back.get(id) || []).forEach(p => { if (p.startsWith('segment_groups:')) S.add(p); }); });
+      return S;
+    }
+
+    function renderOverview(res) {
+      ov = res.overview || null;
+      selected = null; related = null; flagFilter = null;
+      if (!ov) { $('zpOverview').innerHTML = '<p class="zp-meta">This analysis has no overview (it was made by an older version of the app): read ZPA again.</p>'; return; }
+      links = buildLinks(ov.graph || {});
+      ovNodes = (ov.graph && ov.graph.nodes) || [];
+      const kpis = (ov.kpis || []).map((k, i) => {
+        const [tl, tc] = k.value == null ? ['Unknown', ''] : (TONE[k.tone] || ['', '']);
+        return `<li class="zo-kpi ${k.tone ? `tone-${E(k.tone)}` : ''}"><a href="#zt-${E(k.table)}" data-kpi="${i}">${tl ? `<span class="df-chip ${tc}">${E(tl)}</span>` : ''}<span>${E(k.text)}</span></a></li>`;
+      }).join('');
+      const g = ov.graph || {};
+      $('zpOverview').innerHTML = `
+        ${res.readable === false ? failHtml('Nothing could be read', 'No ZPA list could be read with this sign-in: check that the API client has a ZPA role and that the customer ID is right.') : ''}
+        <h2 class="df-h" id="zoKpiH">At a glance</h2>
+        <ul class="zo-kpis" aria-labelledby="zoKpiH">${kpis}</ul>
+        <section aria-labelledby="zoMapH">
+          <h2 class="df-h" id="zoMapH">Infrastructure map</h2>
+          <p class="zp-meta" id="zoMapHow">Who may reach what, from left to right: users and IdPs, access rules, segment groups, app segments, server groups, connector groups and App Connectors. Red boxes need attention, amber boxes have a warning, dashed boxes are disabled or not read. Click a box, or press Enter on it, to show only what is connected to it in the tables below; the arrow keys move between boxes and Escape shows everything again.</p>
+          ${g.note ? `<p class="zo-note" role="note">${E(g.note)}</p>` : ''}
+          ${links.complete ? '' : '<p class="zo-note" role="note">This tenant has too many connections to filter by them, so a click on a box shows that one object only.</p>'}
+          <div class="zo-mapwrap" role="region" aria-label="Infrastructure map; it scrolls sideways inside this frame" tabindex="0">${mapSvg(g)}</div>
+          <p class="zp-meta">On a narrow screen the map scrolls sideways inside its frame.</p>
+          <details class="pa-details zo-list"><summary>The map as a list</summary>${mapList(g)}</details>
+          <details class="pa-details"><summary>How the map is drawn</summary><ul class="pa-assume">${(g.notes || []).map(n => `<li>${E(n)}</li>`).join('')}</ul></details>
+        </section>
+        <h2 class="df-h" id="zoTablesH">Every object</h2>
+        <div class="zo-filter" id="zoFilter" role="status" aria-live="polite"></div>
+        <div id="zoTables"></div>`;
+      $('zpOverview').querySelectorAll('[data-kpi]').forEach(a => a.addEventListener('click', ev => {
+        ev.preventDefault();
+        const k = ov.kpis[Number(a.dataset.kpi)];
+        selectNode(null, false);
+        flagFilter = k.flags && k.flags.length ? { table: k.table, flags: k.flags, text: k.text } : null;
+        renderTables(k.table);
+        const sum = document.querySelector(`#zt-${k.table} > summary`);
+        if (sum) { sum.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' }); sum.focus({ preventScroll: true }); }
+        say(flagFilter ? `Showing ${k.text}` : `Showing every row of ${ov.tables[k.table].title}.`);
+      }));
+      wireMap();
+      renderTables(null);
+    }
+
+    // ── the SVG ──
+    const NW = 156, NH = 46, GX = 34, GY = 10, TOP = 30;
+    function layout(g) {
+      const pos = new Map(); let rows = 0;
+      (g.columns || []).forEach((c, ci) => {
+        const ns = ovNodes.filter(n => n.col === c.key);
+        rows = Math.max(rows, ns.length);
+        ns.forEach((n, j) => pos.set(n.id, { x: 2 + ci * (NW + GX), y: TOP + j * (NH + GY), ci, j }));
+      });
+      return { pos, w: 4 + (g.columns || []).length * (NW + GX) - GX, h: TOP + Math.max(1, rows) * (NH + GY) };
+    }
+    function mapSvg(g) {
+      const { pos, w, h } = layout(g);
+      const heads = (g.columns || []).map((c, ci) => `<text class="zo-colh" x="${2 + ci * (NW + GX)}" y="18">${E(trunc(`${c.label} (${c.count})`, 26))}</text>`).join('');
+      const edges = (g.edges || []).map(([a, b], i) => {
+        const p = pos.get(a), q = pos.get(b); if (!p || !q) return '';
+        const x1 = p.x + NW, y1 = p.y + NH / 2, x2 = q.x, y2 = q.y + NH / 2, mx = (x1 + x2) / 2;
+        return `<path class="zo-edge" data-e="${i}" d="M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`;
+      }).join('');
+      const nodes = ovNodes.map((n, i) => {
+        const p = pos.get(n.id); if (!p) return '';
+        const mk = MK[n.status] || '';
+        const col = colOf(n.col);
+        const label = `${col.label}: ${n.label}. ${n.sub || ''}. ${n.aggregate ? 'Grouped box. ' : ''}${ST_WORDS[n.status] || ''}${n.issues ? `, ${n.issues} finding${n.issues === 1 ? '' : 's'}` : ''}.`;
+        return `<g class="zo-node st-${E(n.status)}${n.aggregate ? ' agg' : ''}" data-i="${i}" role="button" tabindex="-1" aria-pressed="false" aria-label="${E(label)}" transform="translate(${p.x} ${p.y})">
+          <title>${E(`${n.label} — ${n.sub || ''}`)}</title>
+          <rect class="box" width="${NW}" height="${NH}" rx="8"/><rect class="bar" x="0" y="8" width="3" height="${NH - 16}" rx="1.5"/>
+          <text class="l" x="10" y="18">${E(trunc(n.label, 21))}</text>
+          <text class="s" x="10" y="35">${E(trunc(n.sub, mk ? (mk.length > 5 ? 14 : 17) : 25))}</text>
+          ${mk ? `<text class="mk" x="${NW - 7}" y="35" text-anchor="end">${mk}</text>` : ''}</g>`;
+      }).join('');
+      return `<svg class="zo-map" id="zoMap" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="group" aria-labelledby="zoMapH" aria-describedby="zoMapHow">${heads}<g aria-hidden="true">${edges}</g>${nodes}</svg>`;
+    }
+    function mapList(g) {
+      const byId = new Map(ovNodes.map((n, i) => [n.id, i]));
+      const out = new Map(), inn = new Map();
+      (g.edges || []).forEach(([a, b]) => { (out.get(a) || out.set(a, []).get(a)).push(b); (inn.get(b) || inn.set(b, []).get(b)).push(a); });
+      const names = ids => { const l = ids.map(id => (ovNodes[byId.get(id)] || {}).label).filter(Boolean); return l.slice(0, 8).join(', ') + (l.length > 8 ? ` and ${l.length - 8} more` : ''); };
+      return (g.columns || []).map(c => {
+        const ns = ovNodes.map((n, i) => [n, i]).filter(([n]) => n.col === c.key);
+        if (!ns.length) return `<h3>${E(c.label)}</h3><p class="zp-meta">None.</p>`;
+        return `<h3>${E(c.label)} (${E(c.count)}${c.hidden ? `, ${E(c.shown)} listed one by one` : ''})</h3><ul>${ns.map(([n, i]) => {
+          const to = out.get(n.id) || [], from = inn.get(n.id) || [];
+          return `<li><button type="button" class="zo-lbtn" data-i="${i}" aria-pressed="false">${E(n.label)}</button> — ${E(n.sub || '')}; ${E(ST_WORDS[n.status] || '')}${n.issues ? `, ${E(n.issues)} finding${n.issues === 1 ? '' : 's'}` : ''}${from.length ? `; from ${E(names(from))}` : ''}${to.length ? `; leads to ${E(names(to))}` : ''}.</li>`;
+        }).join('')}</ul>`;
+      }).join('');
+    }
+    function wireMap() {
+      const svg = $('zoMap'); if (!svg) return;
+      const gs = Array.from(svg.querySelectorAll('.zo-node'));
+      const edges = Array.from(svg.querySelectorAll('.zo-edge'));
+      const E2 = (ov.graph.edges || []);
+      if (gs[0]) gs[0].tabIndex = 0;
+      const cols = (ov.graph.columns || []).map(c => gs.filter(x => ovNodes[Number(x.dataset.i)].col === c.key));
+      function colIndex(x) { const n = ovNodes[Number(x.dataset.i)]; const c = (ov.graph.columns || []).findIndex(cc => cc.key === n.col); return cols[c] ? cols[c].indexOf(x) : -1; }
+      function where(x) { const n = ovNodes[Number(x.dataset.i)]; return [(ov.graph.columns || []).findIndex(cc => cc.key === n.col), colIndex(x)]; }
+      function move(to) {
+        if (!to) return;
+        gs.forEach(o => { o.tabIndex = -1; }); to.tabIndex = 0; to.focus();
+        try { to.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' }); } catch (e) { /* old browsers */ }
+      }
+      function hl(x, on) {
+        svg.classList.toggle('hovering', on);
+        const id = x ? ovNodes[Number(x.dataset.i)].id : null;
+        edges.forEach(p => { const [a, b] = E2[Number(p.dataset.e)] || []; p.classList.toggle('hl', !!(on && (a === id || b === id))); });
+      }
+      gs.forEach(x => {
+        x.addEventListener('click', () => { gs.forEach(o => { o.tabIndex = -1; }); x.tabIndex = 0; selectNode(Number(x.dataset.i), true); });
+        x.addEventListener('mouseenter', () => hl(x, true)); x.addEventListener('mouseleave', () => hl(null, false));
+        x.addEventListener('focus', () => hl(x, true)); x.addEventListener('blur', () => hl(null, false));
+        x.addEventListener('keydown', e => {
+          const [ci, j] = where(x);
+          const nearest = c => { const list = cols[c] || []; return list[Math.min(j, list.length - 1)]; };
+          let to = null;
+          if (e.key === 'ArrowDown') to = (cols[ci] || [])[j + 1];
+          else if (e.key === 'ArrowUp') to = (cols[ci] || [])[j - 1];
+          else if (e.key === 'ArrowRight') { for (let c = ci + 1; c < cols.length && !to; c++) to = nearest(c); }
+          else if (e.key === 'ArrowLeft') { for (let c = ci - 1; c >= 0 && !to; c--) to = nearest(c); }
+          else if (e.key === 'Home') to = (cols[ci] || [])[0];
+          else if (e.key === 'End') to = (cols[ci] || []).slice(-1)[0];
+          else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectNode(Number(x.dataset.i), true); return; }
+          else if (e.key === 'Escape') { e.preventDefault(); selectNode(null, true); return; }
+          else return;
+          e.preventDefault(); move(to);
+        });
+      });
+      $('zpOverview').querySelectorAll('.zo-lbtn').forEach(b => b.addEventListener('click', () => selectNode(Number(b.dataset.i), true)));
+    }
+    // Select a box (index into the drawn nodes) or clear with null; a second click on the same box clears.
+    function selectNode(i, announce) {
+      if (i !== null && selected === i) i = null;
+      selected = i; flagFilter = null;
+      related = i === null ? null : relatedTo(ovNodes[i]);
+      const svg = $('zoMap');
+      if (svg) {
+        svg.classList.toggle('filtered', !!related);
+        svg.querySelectorAll('.zo-node').forEach(x => {
+          const n = ovNodes[Number(x.dataset.i)];
+          const inside = !related || related.has(n.id) || (n.aggregate && (n.members || []).some(m => related.has(m)));
+          x.classList.toggle('out', !inside); x.setAttribute('aria-pressed', String(Number(x.dataset.i) === i));
+        });
+        const E2 = ov.graph.edges || [];
+        const drawn = new Map(ovNodes.map(n => [n.id, n]));
+        const inSet = id => { const n = drawn.get(id); return !related || related.has(id) || (n && n.aggregate && (n.members || []).some(m => related.has(m))); };
+        svg.querySelectorAll('.zo-edge').forEach(p => { const [a, b] = E2[Number(p.dataset.e)] || []; p.classList.toggle('out', !(inSet(a) && inSet(b))); });
+      }
+      $('zpOverview').querySelectorAll('.zo-lbtn').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.i) === i)));
+      renderTables(null);
+      if (announce) say(i === null ? 'Showing every object.' : ($('zoFilter').textContent || '').replace(/Show everything$/, '').trim());
+    }
+
+    // ── the tables ──
+    function cellText(v) { return v === true ? 'Yes' : v === false ? 'No' : v == null ? '—' : String(v); }
+    function renderTables(openKey) {
+      const host = $('zoTables'); if (!host || !ov) return;
+      const flags = ov.flag_labels || {};
+      const node = selected === null ? null : ovNodes[selected];
+      const parts = [];
+      Object.values(ov.tables || {}).forEach(t => {
+        let rows = t.rows || [];
+        let why = t.empty;
+        if (related) {
+          rows = rows.filter(r => related.has(r._node));
+          if (!rows.length && (t.rows || []).length) why = `Nothing in this table is connected to “${node.label}”.`;
+        } else if (flagFilter && flagFilter.table === t.key) {
+          rows = rows.filter(r => (r._flags || []).some(f => flagFilter.flags.includes(f)));
+          if (!rows.length) why = 'No row has this flag.';
+        }
+        const bad = rows.filter(r => r._status === 'fail' || r._status === 'warn').length;
+        const open = openKey === t.key || ((related || flagFilter) && rows.length && (!flagFilter || flagFilter.table === t.key));
+        const shown = rows.slice(0, ROWS_SHOWN);
+        const head = t.columns.map(c => `<th scope="col">${E(c.label)}</th>`).join('') + '<th scope="col">Status</th><th scope="col">Flags and findings</th>';
+        const body = shown.map(r => {
+          const st = r._status === 'fail' ? ['Needs attention', 'st-fail'] : r._status === 'warn' ? ['Warning', 'st-warn'] : r._status === 'off' ? ['Disabled', ''] : r._status === 'unknown' ? ['Not read', ''] : ['OK', 'st-ok'];
+          const fl = (r._flags || []).map(f => `<span class="df-chip">${E(flags[f] || f)}</span>`).join('');
+          return `<tr>${t.columns.map((c, ci) => ci === (t.key === 'access_rules' ? 1 : 0) ? `<th scope="row">${E(cellText(r[c.key]))}</th>` : `<td>${E(cellText(r[c.key]))}</td>`).join('')}<td class="zo-st"><span class="df-chip ${st[1]}">${E(st[0])}</span></td><td class="zo-fl"><div class="zo-flags">${fl}</div>${(r._issues || []).length ? `<div class="zp-meta">${E(r._issues.join('; '))}</div>` : ''}</td></tr>`;
+        }).join('');
+        const count = rows.length === (t.rows || []).length ? `${rows.length}` : `${rows.length} of ${(t.rows || []).length}`;
+        parts.push(`<details class="zo-t" id="zt-${E(t.key)}" ${open ? 'open' : ''}>
+          <summary>${E(t.title)} <span class="zp-meta">(${E(count)}${bad ? ` · ${E(bad)} with issues` : ''})</span></summary>
+          ${rows.length ? `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">${E(t.title)}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+            ${rows.length > ROWS_SHOWN ? `<p class="df-hint">The first ${ROWS_SHOWN} of ${E(rows.length)} rows are shown, problems first; the Excel export has every row.</p>` : ''}` : `<p class="df-hint">${E(why || 'Nothing to show.')}</p>`}
+        </details>`);
+      });
+      host.innerHTML = parts.join('');
+      const f = $('zoFilter');
+      if (node) {
+        const col = colOf(node.col);
+        const words = k => k === 'idps' ? ['identity provider', 'identity providers'] : [colOf(k).one, colOf(k).many];
+        const counts = Object.values(ov.tables || {}).map(t => [t.key, (t.rows || []).filter(r => related.has(r._node)).length]).filter(([, n]) => n).map(([k, n]) => `${n} ${words(k)[n === 1 ? 0 : 1]}`);
+        f.innerHTML = `<span>${node.aggregate ? `Showing the ${E(node.count)} ${E(col.many)} grouped in “${E(node.label)}”.` : `Showing what is connected to ${E(col.one)} “${E(node.label)}”: ${E(counts.join(', ') || 'nothing else')}.`}</span><button type="button" class="rp-btn" id="zoClear">Show everything</button>`;
+      } else if (flagFilter) {
+        f.innerHTML = `<span>Showing ${E(flagFilter.text.replace(/\.$/, ''))}.</span><button type="button" class="rp-btn" id="zoClear">Show everything</button>`;
+      } else {
+        f.innerHTML = '';
+      }
+      const c = $('zoClear'); if (c) c.addEventListener('click', () => { flagFilter = null; selectNode(null, true); });
     }
 
     // ── the diagnose form ───────────────────────────────────────────

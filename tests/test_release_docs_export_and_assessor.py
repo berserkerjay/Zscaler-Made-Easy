@@ -5,7 +5,7 @@
   after a few seconds, an empty pick is refused before any tenant read, and
   Stop during the build gives no pack).
 * The assessor's name is required for every pack push, so no doc may still
-  say a missing assessor gives a ``DLP-Check`` tag.
+  say a missing assessor gives a ``Zscaler Made Easy`` tag.
 """
 from pathlib import Path
 
@@ -67,7 +67,7 @@ def test_changelog_names_stop_during_the_build():
 
 
 def test_no_doc_still_says_a_missing_assessor_gives_a_dlp_check_tag():
-    assert "With no assessor name it still says DLP-Check" not in CHANGELOG
+    assert "With no assessor name it still says Zscaler Made Easy" not in CHANGELOG
     assert "superseded on 2026-10-02" in CHANGELOG
     flat = " ".join(POLICY_PACKS.split())
     assert "only when no assessor is named" not in flat

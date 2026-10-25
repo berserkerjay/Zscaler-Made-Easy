@@ -2,19 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>DLP-Check companion: settings</title>
+<title>Zscaler Made Easy companion: settings</title>
 <link rel="stylesheet" href="popup.css">
 <style>body { width: auto; max-width: 560px; padding: 20px; } input { width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--text); font: inherit; } label { display: block; margin: 12px 0 4px; font-weight: 600; } .row { display: flex; gap: 8px; margin-top: 10px; } .row button { width: auto; }</style>
 </head>
 <body>
-  <header><img src="icons/icon32.png" alt="" width="20" height="20"><h1>DLP-Check companion</h1></header>
-  <p class="hint">The address of the DLP-Check app on this computer. A local install listens on <code>http://127.0.0.1:8000</code>; the container on <code>http://127.0.0.1:8001</code>. Only addresses on this computer (127.0.0.1, localhost) are accepted.</p>
+  <header><img src="icons/icon32.png" alt="" width="20" height="20"><h1>Zscaler Made Easy companion</h1></header>
+  <p class="hint">The address of the Zscaler Made Easy app on this computer. A local install listens on <code>http://127.0.0.1:8000</code>; the container on <code>http://127.0.0.1:8001</code>. Only addresses on this computer (127.0.0.1, localhost) are accepted.</p>
   <label for="app">App address</label>
   <input id="app" type="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8000">
   <div class="row"><button type="button" id="save" class="primary">Save and test</button><button type="button" id="reset">Use the default</button></div>
   <p id="msg" class="status" role="status" aria-live="polite"></p>
   <h2 style="font-size:var(--fs-headline);margin:22px 0 4px;">Badges in the Zscaler admin console</h2>
-  <p class="hint">Shows a DLP-Check badge next to DLP dictionaries, engines and rules on the ZIA admin console (admin.zscaler.net and the other Zscaler clouds): what uses them, or their most serious finding. Your browser asks you to allow the extension on those sites. The badges compare names on the page with what DLP-Check read, inside the page: nothing from the console is sent anywhere.</p>
+  <p class="hint">Shows a Zscaler Made Easy badge next to DLP dictionaries, engines and rules on the ZIA admin console (admin.zscaler.net and the other Zscaler clouds): what uses them, or their most serious finding. Your browser asks you to allow the extension on those sites. The badges compare names on the page with what Zscaler Made Easy read, inside the page: nothing from the console is sent anywhere.</p>
   <div class="row"><button type="button" id="badgesOn" class="primary">Show badges</button><button type="button" id="badgesOff">Turn badges off</button></div>
   <p id="badgeMsg" class="status" role="status" aria-live="polite"></p>
   <p class="hint">The extension stores only this address. It holds no credentials or tenant data: signing in, the UI token, write mode and every tenant read stay in the app.</p>

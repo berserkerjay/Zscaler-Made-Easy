@@ -2,7 +2,7 @@
 The assessor's name is mandatory for every policy pack push: deploy,
 the single-pack import, the Terraform hand-off and the library's
 Terraform download. Without it the request is refused (400) before the
-tenant is signed in to or read, so no object is ever tagged DLP-Check.
+tenant is signed in to or read, so no object is ever tagged Zscaler Made Easy.
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def client(monkeypatch):
 def test_every_pack_push_refuses_without_an_assessor_before_reading_the_tenant(client, path, body, assessor):
     r = client.post(path, json=dict(body, assessor=assessor))
     assert r.status_code == 400, r.text
-    assert "assessor" in r.json()["detail"].lower() and "never DLP-Check" in r.json()["detail"]
+    assert "assessor" in r.json()["detail"].lower() and "never Zscaler Made Easy" in r.json()["detail"]
 
 
 def test_the_library_terraform_download_refuses_without_an_assessor(client):
@@ -69,20 +69,20 @@ def test_the_pages_ask_for_the_assessor_before_pushing():
     studio = open(os.path.join(root, "deploy_studio.js"), encoding="utf-8").read()
     adv = open(os.path.join(root, "advanced.js"), encoding="utf-8").read()
     assert studio.count("_dzNeedAssessor();") == 2, "deploy and the Terraform hand-off both check first"
-    assert "never DLP-Check" in studio
+    assert "never Zscaler Made Easy" in studio
     assert "Enter the assessor's name first" in adv and "e.preventDefault()" in adv
 
 
 def test_no_page_promises_a_dlp_check_tag_when_the_assessor_is_blank():
     # The assessor is required for every push and download: no page may say
-    # a blank name falls back to a DLP-Check tag.
+    # a blank name falls back to a Zscaler Made Easy tag.
     import glob
     import re
     root = os.path.join(os.path.dirname(__file__), "..", "static")
-    promise = re.compile(r"DLP-Check\s+(only\s+)?(when|if)\b[^.<]*\bblank|blank[^.<]*\b(falls back|defaults?) to\s+DLP-Check", re.I)
+    promise = re.compile(r"Zscaler Made Easy\s+(only\s+)?(when|if)\b[^.<]*\bblank|blank[^.<]*\b(falls back|defaults?) to\s+Zscaler Made Easy", re.I)
     for path in glob.glob(os.path.join(root, "*.html")) + glob.glob(os.path.join(root, "*.js")):
         text = open(path, encoding="utf-8").read()
         m = promise.search(text)
-        assert not m, f"{os.path.basename(path)} promises a DLP-Check fallback: {m.group(0)!r}"
+        assert not m, f"{os.path.basename(path)} promises a Zscaler Made Easy fallback: {m.group(0)!r}"
     adv = open(os.path.join(root, "report_advanced.html"), encoding="utf-8").read()
-    assert "never DLP-Check" in adv and "download is refused" in adv
+    assert "never Zscaler Made Easy" in adv and "download is refused" in adv

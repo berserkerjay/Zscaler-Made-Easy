@@ -114,7 +114,7 @@ def test_the_enricher_builds_the_graph_from_a_flat_cyclonedx_py_bom():
 
 def test_sbom_md_does_not_claim_to_cover_the_container_base_image():
     doc = _read("docs", "SBOM.md")
-    assert "everything DLP-Check runs with" not in doc
+    assert "everything Zscaler Made Easy runs with" not in doc
     for word in ("CPython", "glibc", "coreutils", "image-sbom"):
         assert word in doc, word
 

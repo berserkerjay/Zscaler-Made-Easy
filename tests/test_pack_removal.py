@@ -200,7 +200,7 @@ def test_remove_everything_covers_retired_packs_and_old_names(tmp_path, monkeypa
     monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
     # A single pack sees only its own objects.
     single = pr.plan_removal(client, [pack])
-    # One pack: its own objects, plus DLP-Check's historical names (name-only matches, flagged); never another pack's tagged objects.
+    # One pack: its own objects, plus Zscaler Made Easy's historical names (name-only matches, flagged); never another pack's tagged objects.
     single_names = {i["name"] for i in single["items"]}
     assert {"RM-Web-Monitor", "RM-Engine", "RM-Dict"} <= single_names and "CUI-Monitor-All" not in single_names and "Customer Rule" not in single_names
     assert all(i["match"] == "name" for i in single["items"] if i["name"] not in {"RM-Web-Monitor", "RM-Engine", "RM-Dict"})
@@ -268,7 +268,7 @@ def test_remove_is_refused_read_only_and_when_stale(tmp_path):
 
 def test_name_only_match_is_flagged(tmp_path):
     pack = _pack_dir(tmp_path)
-    # Same names, but no DLP-Check tag anywhere.
+    # Same names, but no Zscaler Made Easy tag anywhere.
     client = FakeClient(
         dicts=[Obj(id=9001, name="RM-Dict", custom=True, description="hand-made")],
         engines=[Obj(id=5001, name="RM-Engine", engine_expression="D9001.S > 0", description="")],

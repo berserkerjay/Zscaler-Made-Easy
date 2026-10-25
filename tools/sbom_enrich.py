@@ -224,7 +224,7 @@ def notices(sbom: dict, root: str = ROOT) -> str:
     lines = [
         "# Third-party notices",
         "",
-        "DLP-Check itself is under the terms in [LICENSE](LICENSE). It runs with the",
+        "Zscaler Made Easy itself is under the terms in [LICENSE](LICENSE). It runs with the",
         "third-party components below, each under its own licence. This file is",
         "generated from the SBOM ([docs/sbom.cdx.json](docs/sbom.cdx.json)) by",
         "`python tools/sbom_enrich.py docs/sbom.cdx.json`; see [docs/SBOM.md](docs/SBOM.md).",

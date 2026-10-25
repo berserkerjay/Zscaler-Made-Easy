@@ -1,4 +1,4 @@
-# Written by DLP-Check. Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:
+# Written by Zscaler Made Easy. Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:
 #   export ZSCALER_CLIENT_ID="..." ZSCALER_CLIENT_SECRET="..." ZSCALER_VANITY_DOMAIN="acme" ZSCALER_CLOUD=""
 
 # zscaler_client_id     = "..."

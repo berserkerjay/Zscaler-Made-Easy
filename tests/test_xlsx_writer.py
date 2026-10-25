@@ -111,7 +111,7 @@ def test_the_package_has_every_part_content_type_and_relationship():
     data = _sample()
     z = check_package(data)
     core = z.read("docProps/core.xml").decode()
-    assert "<dc:creator>DLP-Check</dc:creator>" in core and "Sample &lt;&amp;&gt; workbook" in core
+    assert "<dc:creator>Zscaler Made Easy</dc:creator>" in core and "Sample &lt;&amp;&gt; workbook" in core
     assert xw.MEDIA_TYPE == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 

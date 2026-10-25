@@ -348,7 +348,8 @@ def test_the_exports_page_is_served_wired_and_explained():
                    '<a class="rp-btn" href="/">← Back to the assessment</a>', '<main class="rp-card">',
                    "/api/exports/policies/start", "/api/exports/urls/start", "/api/exports/url-categories/analyze/start",
                    "/api/dlp-packs/inventory/start", "/api/dlp-packs/export/start", "`/api/report/${fmt}`", "assessment('xlsx')", "assessment('docx')",
-                   "/api/exports/plans", 'role="log"', "Stop"):
+                   "/api/exports/plans", 'role="log"', "Stop", "/api/exports/locations/start", "/api/exports/client-connector/start",
+                   "/api/exports/columns", 'name="exLayout"', 'id="exSep"', 'id="exColsList"', "exportOptions()"):
         assert needle in html, needle
     order = [html.index(f'src="/static/{s}"') for s in ("icons.js", "ui_auth.js", "report_theme.js", "safety_banner.js", "explain.js")]
     assert order == sorted(order)
@@ -356,3 +357,222 @@ def test_the_exports_page_is_served_wired_and_explained():
     assert index.index('onclick="openExportsTab()"') < index.index('onclick="openAdvancedTab()"')
     explain = open(os.path.join(ROOT, "static", "explain.js"), encoding="utf-8").read()
     assert "X.exports = {" in explain and "'/report/exports': 'exports'" in explain
+
+
+# ── Export options ─────────────────────────────────────────────────────
+def _sheets(out, prefix):
+    return _book(_files(out["artifact"]), prefix)
+
+
+def test_default_options_give_exactly_the_workbook_of_before():
+    _, plain = _run(["url_filtering", "firewall", "file_type_control"])
+    _, dflt = _run(["url_filtering", "firewall", "file_type_control"], opts=pe.options())
+    for prefix in ("url_filtering", "cloud_firewall", "file_type_control"):
+        a, b = _sheets(plain, prefix), _sheets(dflt, prefix)
+        assert list(a) == list(b) and all(a[k] == b[k] for k in a if k != "Summary"), prefix
+        assert "Export options" not in dict((r[0], r[1]) for r in b["Summary"][1:])
+    assert pe.options() == pe.DEFAULT_OPTIONS and pe.is_default(pe.options())
+
+
+def test_columns_one_row_per_value_and_the_separator_shape_the_rules_sheet():
+    opts = pe.options({"url_filtering": ["Action", "URL categories", "Usage and notes"]}, "rows", "semicolon")
+    _, out = _run(["url_filtering"], opts=opts)
+    book = read_workbook(out["artifact"][2])
+    assert book["Rules"][0] == ["Order", "Rule", "Action", "URL categories", "Usage and notes"]   # identity columns always stay
+    rules = _table(book["Rules"])
+    gamb = [r for r in rules if r["Rule"] == "Block gambling"]
+    assert [r["URL categories"] for r in gamb] == ["Gambling", "Finance apps"], "one row per value, the rest repeated"
+    assert all(r["Action"] == "Block" and r["Usage and notes"] == gamb[0]["Usage and notes"] for r in gamb)
+    assert "Layout: one row per value" in dict((r[0], r[1]) for r in book["Summary"][1:])["Export options"]
+    _, flat = _run(["url_filtering"], opts=pe.options({}, "flat", "comma"))
+    rules = _table(read_workbook(flat["artifact"][2])["Rules"])
+    assert rules[1]["URL categories"] == "Gambling, Finance apps" and "Users" in rules[1]
+    # Notes are lines, never split into rows, joined with the separator.
+    cols, rows = pe.shape(["Order", "Rule", "A", "Usage and notes"], [[1, "R", ["x", "y"], ["n1", "n2"]]], pe.options({}, "rows", "comma"))
+    assert rows == [[1, "R", "x", "n1, n2"], [1, "R", "y", "n1, n2"]]
+
+
+def test_one_row_per_value_is_capped_per_record():
+    many = [[1, "R", [f"a{i}" for i in range(40)], [f"b{i}" for i in range(40)]]]
+    cols, rows = pe.shape(["Order", "Rule", "A", "B"], many, pe.options({}, "rows", "newline"))
+    assert len(rows) == 40 and rows[0][3] == [f"b{i}" for i in range(40)], "the second column stays joined past the cap"
+
+
+def test_bad_options_are_named():
+    with pytest.raises(ValueError, match="layout"):
+        pe.options(layout="pivot")
+    with pytest.raises(ValueError, match="separator"):
+        pe.options(separator="tab")
+    with pytest.raises(ValueError, match="Unknown column for url_filtering"):
+        pe.options({"url_filtering": ["Nope"]})
+    with pytest.raises(ValueError, match="Unknown sheet"):
+        pe.options({"zpa": ["Name"]})
+    cat = pe.column_catalogue()
+    assert set(cat) >= set(pe.POLICIES) | {"locations", "location_groups", "app_profiles", "forwarding_profiles", "pac_files"}
+
+
+def test_file_type_control_lists_its_file_types_and_the_rules_that_use_them():
+    _, out = _run(["file_type_control"])
+    ft = _table(read_workbook(out["artifact"][2])["File types"])
+    assert ft == [{"Name": "Windows executables", "Kind": "File type category", "API name": "FTCATEGORY_WINDOWS_EXECUTABLES",
+                   "File Type Control rules": "Block executables", "Rules": "1"}]
+
+
+# ── Locations ──────────────────────────────────────────────────────────
+import config_exports as ce  # noqa: E402
+
+PSK = "psk-never-exported-42"
+LOC_ROUTES = dict(ROUTES, **{
+    "/zia/locations": [
+        {"id": 77, "name": "HQ", "country": "UNITED_STATES", "tz": "UNITED_STATES_AMERICA_LOS_ANGELES", "authRequired": True,
+         "sslScanEnabled": True, "ofwEnabled": True, "xffForwardEnabled": False, "upBandwidth": 10000, "dnBandwidth": 50000,
+         "surrogateIP": True, "idleTimeInMinutes": 480, "ipAddresses": ["198.51.100.7", "198.51.100.8"], "childCount": 1,
+         "vpnCredentials": [{"id": 3, "type": "UFQDN", "fqdn": "hq@acme.example", "preSharedKey": PSK}],
+         "staticLocationGroups": [{"id": 5, "name": "Branches"}], "profile": "CORPORATE"},
+        {"id": 78, "name": "Lab", "childCount": 0, "ofwEnabled": False},
+    ],
+    "/zia/locations/77/sublocations": [{"id": 771, "name": "HQ guest wifi", "parentId": 77, "authRequired": False,
+                                        "ipAddresses": ["10.1.0.0/16"], "profile": "GUESTWIFI"}],
+    "/zia/locations/groups": [{"id": 5, "name": "Branches", "groupType": "STATIC_GROUP", "locations": [{"id": 77, "name": "HQ"}]},
+                              {"id": 6, "name": "Corporate", "groupType": "DYNAMIC_GROUP",
+                               "dynamicLocationGroupCriteria": {"profiles": ["CORPORATE"]}}],
+    "/zia/firewallFilteringRules": [_r(20, "Allow DNS", 1, "ALLOW", locationGroups=[{"id": 5, "name": "Branches"}])],
+    "/zia/sslInspectionRules": [_r(40, "Inspect HQ", 1, {"type": "DECRYPT"}, locations=[{"id": 77, "name": "HQ"}])],
+    "/zia/webDlpRules": [_r(60, "Web PCI", 1, "BLOCK", locations=[{"id": 771, "name": "HQ guest wifi"}])],
+})
+
+
+def _loc_run(scope=ALL, routes=LOC_ROUTES, **kw):
+    c = ReadOnlyClient(routes)
+    sc = ce.locations_scope(**scope)
+    return c, sc, ce.locations_export(c, sc, tenant_label="acme (production)", **kw)
+
+
+def test_the_locations_export_has_settings_sub_locations_groups_and_policy_usage():
+    c, sc, out = _loc_run()
+    assert out["status"] == "ready" and out["counts"] == {"locations": 2, "sublocations": 1, "groups": 2,
+                                                          "usage": ["URL filtering", "Cloud Firewall", "SSL inspection", "File Type Control", "Web DLP"]}
+    book = read_workbook(out["artifact"][2])
+    assert list(book) == ["Summary", "Locations", "Location groups", "Policy usage"]
+    locs = {r["Name"]: r for r in _table(book["Locations"])}
+    hq = locs["HQ"]
+    assert hq["Type"] == "Location" and hq["Authentication required"] == "Yes" and hq["Firewall enabled"] == "Yes"
+    assert hq["XFF forwarding"] == "No" and hq["Surrogate IP"] == "Yes" and hq["Upload bandwidth"] == "10000"
+    assert hq["IP addresses"] == "2" and hq["VPN credentials"] == "1" and hq["Profile"] == "Corporate"
+    assert hq["URL filtering rules"] == "Old rule" and hq["SSL inspection rules"] == "Inspect HQ"
+    assert hq["Through location groups"] == "Cloud Firewall: Allow DNS (via Branches)" and hq["Rules using it"] == "3"
+    sub = locs["HQ guest wifi"]
+    assert sub["Type"] == "Sub-location" and sub["Parent location"] == "HQ" and sub["Web DLP rules"] == "Web PCI"
+    assert locs["Lab"]["Rules using it"] == "0"
+    groups = {r["Name"]: r for r in _table(book["Location groups"])}
+    assert groups["Branches"]["Locations"] == "HQ" and groups["Branches"]["Cloud Firewall rules"] == "Allow DNS"
+    assert groups["Corporate"]["Dynamic criteria"] == "Profiles: CORPORATE"
+    usage = _table(book["Policy usage"])
+    assert {"Object": "HQ", "Object type": "Location", "Policy": "Cloud Firewall", "Rule": "Allow DNS",
+            "How": "Through location group Branches"} in usage
+    blob = out["artifact"][2]
+    assert PSK.encode() not in blob and b"198.51.100.7" not in blob and b"hq@acme.example" not in blob
+    assert all(m == "GET" for m, _ in c.calls)
+    assert "/zia/locations/78/sublocations" not in [e for _, e in c.calls], "only locations that have sub-locations are asked"
+
+
+def test_the_locations_export_reads_only_what_is_in_scope_and_honours_options():
+    assert ce.locations_scope(**DLP_ONLY)["in_scope"] is False
+    c, sc, out = _loc_run(scope=ZIA_ONLY, opts=pe.options({"locations": ["Firewall enabled"]}, "flat", "comma"))
+    assert sc["usage"] == ["url_filtering", "firewall", "file_type_control"] and "web_dlp" in sc["not_in_scope"]
+    assert not any(e in ("/zia/webDlpRules", "/zia/sslInspectionRules") for _, e in c.calls)
+    book = read_workbook(out["artifact"][2])
+    assert book["Locations"][0] == ["Name", "Firewall enabled"]
+    assert any(r[0] == "Not in scope: Web DLP" for r in book["Summary"])
+
+
+def test_the_locations_export_stops_and_names_a_failed_read():
+    stop = threading.Event()
+
+    def log(line):
+        if line.startswith("Reading the location groups"):
+            stop.set()
+    c = ReadOnlyClient(LOC_ROUTES)
+    with pytest.raises(pe.Stopped):
+        ce.locations_export(c, ce.locations_scope(**ALL), log=log, cancel=stop)
+    assert [e for _, e in c.calls] == ["/zia/locations", "/zia/locations/77/sublocations"]
+    _, _, out = _loc_run(routes=dict(LOC_ROUTES, **{"/zia/locations": ({"error": "forbidden"}, 403)}))
+    assert out["status"] == "error" and "permission denied" in out["error"] and "artifact" not in out
+
+
+# ── Client Connector ───────────────────────────────────────────────────
+ZCC_PASSWORD = "Uninstall-Pa55-never"
+ZCC_ROUTES = {
+    "/zcc/webPolicies": [{"id": 11, "name": "Windows default", "deviceType": 3, "active": "1", "ruleOrder": 1, "forwardingProfileId": 7,
+                          "pacUrl": "https://pac.example/app.pac", "uninstallPassword": ZCC_PASSWORD, "logLevel": "INFO",
+                          "groups": [{"id": 1, "name": "Sales"}], "users": [{"id": 2, "name": "jane.doe@acme.com"}]},
+                         {"id": 12, "name": "Mac default", "deviceType": 4, "active": "1", "ruleOrder": 1, "forwardingProfileId": 8}],
+    "/zcc/forwardingProfiles": [{"id": 7, "name": "Remote", "forwardingProfileActions": [
+                                    {"networkType": "OFF_TRUSTED_NETWORK", "actionType": "1", "enablePacketTunnel": True},
+                                    {"networkType": "TRUSTED_NETWORK", "actionType": "0"}],
+                                 "trustedNetworks": [{"id": 1, "name": "Office"}]},
+                                {"id": 8, "name": "PAC only", "forwardingProfileActions": [
+                                    {"networkType": "OFF_TRUSTED_NETWORK", "actionType": "2", "systemProxyData": {"pacURL": "https://pac.example/fwd.pac"}}]}],
+    "/zcc/trustedNetworks": [{"id": 1, "networkName": "Office", "dnsServers": "10.0.0.1"}],
+    "/zia/pacFiles": [{"id": 1, "name": "Apps", "pacUrl": "https://pac.example/app.pac",
+                       "pacContent": 'function FindProxyForURL(url, host) { if (dnsDomainIs(host, ".bank.example")) { return "DIRECT"; } return "PROXY ${GATEWAY}:80"; }'},
+                      {"id": 2, "name": "Forwarding", "pacUrl": "https://pac.example/fwd.pac/"}],
+}
+
+
+def test_the_client_connector_export_links_profiles_forwarding_and_pac_files():
+    c = ReadOnlyClient(ZCC_ROUTES)
+    sc = ce.zcc_scope(**ALL)
+    out = ce.client_connector_export(c, sc, tenant_label="acme")
+    assert out["status"] == "ready" and out["counts"] == {"app_profiles": 2, "forwarding_profiles": 2, "pac_files": 2}, out
+    book = read_workbook(out["artifact"][2])
+    assert list(book) == ["Summary", "App profiles", "Forwarding profiles", "PAC files", "Profile usage"]
+    apps = {r["Name"]: r for r in _table(book["App profiles"])}
+    win = apps["Windows default"]
+    assert win["Platform"] == "Windows" and win["Forwarding profile"] == "Remote" and win["PAC URL"] == "https://pac.example/app.pac"
+    assert "Log level: INFO" in win["Settings"] and "Users: 1 person" in win["Settings"] and win["Groups"] == "Sales"
+    fwd = {r["Name"]: r for r in _table(book["Forwarding profiles"])}
+    assert fwd["Remote"]["Used by app profiles"] == "Windows default (Windows)" and fwd["Remote"]["Off trusted network"] == "Z-Tunnel 2.0"
+    assert fwd["Remote"]["Trusted networks"] == "Office" and fwd["PAC only"]["PAC URLs"] == "https://pac.example/fwd.pac"
+    pacs = {r["Name"]: r for r in _table(book["PAC files"])}
+    assert pacs["Apps"]["Used by app profiles"] == "Windows default (Windows)" and pacs["Apps"]["Hosts sent DIRECT"] == ".bank.example"
+    assert pacs["Forwarding"]["Used by forwarding profiles"] == "PAC only", "a trailing slash does not hide the match"
+    blob = out["artifact"][2]
+    assert ZCC_PASSWORD.encode() not in blob and b"jane.doe" not in blob
+    assert all(m == "GET" for m, _ in c.calls)
+    assert ce.zcc_scope(**DLP_ONLY)["in_scope"] is False
+
+
+# ── The configuration exports' API ─────────────────────────────────────
+def test_the_config_export_api_runs_read_only_jobs_and_refuses_before_signing_in(monkeypatch):
+    c = ReadOnlyClient(dict(LOC_ROUTES, **ZCC_ROUTES))
+    t, signed = _api(monkeypatch, c)
+    cols = t.get("/api/exports/columns").json()
+    assert "Firewall enabled" in cols["columns"]["locations"] and cols["defaults"] == pe.DEFAULT_OPTIONS
+    r = t.post("/api/exports/locations/start", json=dict(CREDS, **ALL, from_page=True, layout="rows", separator="comma"))
+    assert r.status_code == 200 and r.json()["kind"] == "locations_export", r.text
+    snap = _wait(t, r.json()["job_id"])
+    assert snap["status"] == "done" and snap["result"]["status"] == "ready", snap
+    d = t.get(snap["download"])
+    assert d.status_code == 200 and d.headers["content-type"] == pe.XLSX and SECRET not in str(snap)
+    r = t.post("/api/exports/client-connector/start", json=dict(CREDS, **ALL, from_page=True))
+    snap = _wait(t, r.json()["job_id"])
+    assert snap["status"] == "done" and snap["filename"].startswith("client_connector_profiles_"), snap
+    assert all(m == "GET" for m, _ in c.calls)
+    n = len(signed)
+    for url, body, needle in (("/api/exports/locations/start", dict(CREDS, **DLP_ONLY, from_page=True), "ZIA platform"),
+                              ("/api/exports/client-connector/start", dict(CREDS, **DLP_ONLY, from_page=True), "ZCC"),
+                              ("/api/exports/locations/start", dict(CREDS, **ALL, from_page=True, layout="pivot"), "layout"),
+                              ("/api/exports/policies/start", dict(CREDS, **ALL, from_page=True, columns={"url_filtering": ["Nope"]}), "Unknown column"),
+                              ("/api/exports/policies/start", dict(CREDS, **ALL, from_page=True, separator="tab"), "separator")):
+        r = t.post(url, json=body)
+        assert r.status_code == 400 and needle in r.json()["detail"], (url, r.text)
+    assert len(signed) == n, "refused before signing in"
+
+
+def test_the_policy_export_api_passes_the_options(monkeypatch):
+    t, _ = _api(monkeypatch, ReadOnlyClient(ROUTES))
+    r = t.post("/api/exports/policies/start", json=dict(CREDS, **ALL, from_page=True, policies=["url_filtering"],
+                                                         columns={"url_filtering": ["Action"]}, layout="flat", separator="semicolon"))
+    snap = _wait(t, r.json()["job_id"])
+    assert read_workbook(t.get(snap["download"]).content)["Rules"][0] == ["Order", "Rule", "Action"]

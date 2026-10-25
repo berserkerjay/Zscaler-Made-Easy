@@ -17,7 +17,7 @@ async function main() {
 
   const up = await ping(base);
   $('status').className = 'status ' + (up.ok ? 'ok' : 'bad');
-  $('status').textContent = up.ok ? 'DLP-Check is running.' : `DLP-Check is not reachable at ${base}. ${up.why}`;
+  $('status').textContent = up.ok ? 'Zscaler Made Easy is running.' : `Zscaler Made Easy is not reachable at ${base}. ${up.why}`;
   $('down').hidden = up.ok;
 
   if (dest) {

@@ -275,7 +275,7 @@ def _quote_sheet(name: str) -> str:
 class Workbook:
     """A workbook of one or more sheets, serialised by to_bytes()."""
 
-    def __init__(self, title: str = "", subject: str = "", creator: str = "DLP-Check"):
+    def __init__(self, title: str = "", subject: str = "", creator: str = "Zscaler Made Easy"):
         self.title = title
         self.subject = subject
         self.creator = creator

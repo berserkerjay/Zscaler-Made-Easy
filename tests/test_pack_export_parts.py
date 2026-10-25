@@ -262,7 +262,7 @@ def test_bad_requests_are_refused_before_any_read(api):
     for extra in ({"parts": ["ftp"]}, {"format": "xml"}, {"parts": ["engines"], "engines": []},
                   {"parts": ["engines", "dictionaries"], "engines": [], "dictionaries": []},
                   {"parts": ["engines"], "engines": {"id": 1}},
-                  {"parts": ["engines"], "format": "terraform", "assessor": "DLP-Check"}):
+                  {"parts": ["engines"], "format": "terraform", "assessor": "Zscaler Made Easy"}):
         r = c.post("/api/dlp-packs/export/start", json=dict(CREDS, **extra, **ALL_DLP_IN_SCOPE))
         assert r.status_code == 400, (extra, r.text)
     assert ro.writes == []

@@ -1,6 +1,6 @@
 # Accessibility conformance (Section 508 / WCAG 2.1 AA)
 
-DLP-Check's web interface is built to meet the Revised Section 508
+Zscaler Made Easy's web interface is built to meet the Revised Section 508
 Standards, which incorporate WCAG 2.0 Level AA, and it is tested against
 WCAG 2.1 Level AA. This page says what was tested, how, what was found and
 fixed, and what remains for a person to judge.

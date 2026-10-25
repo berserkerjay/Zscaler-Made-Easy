@@ -2,7 +2,7 @@
 // admin switched the badges on in the extension's settings).
 //
 // It looks for text on the page that is exactly the name of an object
-// DLP-Check read from the tenant (DLP dictionaries, engines and rules; URL
+// Zscaler Made Easy read from the tenant (DLP dictionaries, engines and rules; URL
 // filtering, Cloud App Control, SSL inspection, Cloud Firewall and File
 // Type Control rules; URL categories, locations, departments, groups, rule
 // labels, network services, IP groups...) and puts a small badge after it:
@@ -10,7 +10,7 @@
 // 4 rules"). Names that several objects share get one "N objects" badge.
 // Clicking a badge opens the side panel on that object (or that list). The comparison happens here,
 // in the page: no text of the console page is sent anywhere; the only thing
-// that leaves is the key of an object DLP-Check already knows.
+// that leaves is the key of an object Zscaler Made Easy already knows.
 (() => {
   if (window.__dlpCheckBadges) return;
   window.__dlpCheckBadges = true;
@@ -42,9 +42,9 @@
       + `button:focus-visible{outline:2px solid ${p.ring};outline-offset:2px}`;
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = entries.length > 1 ? `DLP-Check · ${entries.length} objects` : `DLP-Check · ${e.label}`;
-    b.title = entries.map(x => `${x.kind}: ${x.label}`).join('\n') + '\nOpen in the DLP-Check side panel';
-    b.setAttribute('aria-label', `DLP-Check: ${entries.map(x => `${x.kind}, ${x.label}`).join('; ')}. Open in the side panel`);
+    b.textContent = entries.length > 1 ? `Zscaler Made Easy · ${entries.length} objects` : `Zscaler Made Easy · ${e.label}`;
+    b.title = entries.map(x => `${x.kind}: ${x.label}`).join('\n') + '\nOpen in the Zscaler Made Easy side panel';
+    b.setAttribute('aria-label', `Zscaler Made Easy: ${entries.map(x => `${x.kind}, ${x.label}`).join('; ')}. Open in the side panel`);
     b.addEventListener('click', ev => {
       ev.preventDefault(); ev.stopPropagation();
       chrome.runtime.sendMessage({ type: 'focus', key: e.key, keys: entries.map(x => x.key) }).catch(() => {});

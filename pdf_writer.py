@@ -12,11 +12,11 @@ What it does, and nothing more:
   hairline rules) that break across pages and repeat their header, and
   sign-off lines;
 * a footer line and "Page n of N" on every page; document information
-  (Title, Producer "DLP-Check"); a correct cross-reference table.
+  (Title, Producer "Zscaler Made Easy"); a correct cross-reference table.
 
 Usage::
 
-    doc = PdfDocument(title="Deployment plan", footer="DLP-Check · acme")
+    doc = PdfDocument(title="Deployment plan", footer="Zscaler Made Easy · acme")
     doc.heading("Deployment plan")
     doc.paragraph("Nothing has been written to the tenant.")
     doc.table(["Kind", "Name"], [["Rule", "Block PCI"]])
@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional, Sequence, Tuple
 
 MEDIA_TYPE = "application/pdf"
-PRODUCER = "DLP-Check"
+PRODUCER = "Zscaler Made Easy"
 
 PAGE_SIZES = {"A4": (595.28, 841.89), "LETTER": (612.0, 792.0)}
 

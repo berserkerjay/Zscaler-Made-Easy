@@ -13,7 +13,7 @@
   read after Stop.
 - Rule 2: a Terraform workspace written without an assessor's name (an
   upload, a rebuild, the committed terraform/<pack>/) never tags what it
-  pushes with "DLP-Check": the required `assessor` variable names it.
+  pushes with "Zscaler Made Easy": the required `assessor` variable names it.
 
 Fakes only: no real tenant is contacted.
 """
@@ -439,7 +439,7 @@ def test_stop_during_the_plan_read_reads_nothing_more(monkeypatch, kind):
     assert s["status"] in ("cancelled", "done") and (res.get("status") == "stopped" or s["status"] == "cancelled"), (s["status"], res.get("status"))
 
 
-# ── Rule 2: Terraform workspaces never tag what they push "DLP-Check" ─────
+# ── Rule 2: Terraform workspaces never tag what they push "Zscaler Made Easy" ─────
 
 def test_a_workspace_without_an_assessor_requires_one_and_never_says_dlp_check():
     import pack_terraform as pt
@@ -488,7 +488,7 @@ def test_the_terraform_cli_names_the_assessor_or_leaves_it_to_apply(tmp_path):
     rules = (tmp_path / "b" / "cjis_policy_pack" / "rules.tf").read_text(encoding="utf-8")
     assert "[${var.assessor} pack cjis_policy_pack" in rules and "DLP-Check pack" not in rules
     with pytest.raises(SystemExit):
-        pt.main(["cjis_policy_pack", "--out", str(tmp_path / "c"), "--assessor", "DLP-Check"])
+        pt.main(["cjis_policy_pack", "--out", str(tmp_path / "c"), "--assessor", "Zscaler Made Easy"])
 
 
 def test_a_snapshot_is_kept_when_a_poll_holds_the_history_file_open(monkeypatch, tmp_path):

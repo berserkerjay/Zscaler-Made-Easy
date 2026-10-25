@@ -70,7 +70,7 @@ def build_docx(r: Dict[str, Any], path: str) -> None:
     from docx.shared import Pt
     doc = Document()
     doc.styles["Normal"].font.name = "Calibri"; doc.styles["Normal"].font.size = Pt(10.5)
-    doc.add_heading("DLP-Check detection logic validation", 0)
+    doc.add_heading("Zscaler Made Easy detection logic validation", 0)
     doc.add_paragraph(f"Generated {r['generated_at']} · {r['iterations']} iterations × {r['documents_per_iteration']} documents · {r['evaluations']:,} engine evaluations")
     doc.add_heading("Executive summary", 1)
     packs = r["packs"]
@@ -131,7 +131,7 @@ def build_html(r: Dict[str, Any], path: str) -> None:
            ".pass{background:var(--ok-soft);color:var(--ok)}.note{background:var(--note-soft);color:var(--note)}.fixed{background:var(--fix-soft);color:var(--fix)}"
            "table{width:100%;border-collapse:collapse;font-size:.85rem}th,td{padding:.4rem .5rem;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.tw{overflow-x:auto}.m{font-family:'IBM Plex Mono',monospace;font-size:.8em}"
            ".stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem;margin:1rem 0}.stat div{padding:.7rem .9rem;border:1px solid var(--rule)}.stat b{display:block;font-size:1.5rem}</style>")
-    out = [css, "<div class=w><div class=k>Detection logic validation · " + E(r["generated_at"]) + "</div><h1>DLP-Check detection logic validation</h1>",
+    out = [css, "<div class=w><div class=k>Detection logic validation · " + E(r["generated_at"]) + "</div><h1>Zscaler Made Easy detection logic validation</h1>",
            f"<div class=stat><div><b>{len(packs)}</b>policy packs</div><div><b>{total}</b>engines</div><div><b>{r['iterations']}</b>iterations</div><div><b>{r['evaluations']:,}</b>engine evaluations</div><div><b>{fp}</b>false positives</div><div><b>{cross}</b>cross-fires</div><div><b>{problems}</b>static problems</div></div>",
            f"<p>{tested} of {total} engines were exercised by a positive sample; every exercised engine reached its intended documents across {r['iterations']} randomised iterations, with {fp} false positives on ordinary business documents and {cross} cousin-language cross-fires. {notes_word} findings are recommendations for a customer's own tuning; none blocks deployment.</p>",
            "<h2>Findings</h2>"]

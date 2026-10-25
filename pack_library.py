@@ -862,10 +862,10 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
             if g not in {x.get("name") for x in groups if isinstance(x, dict)}:
                 warnings.append(f"rule '{n}': application group '{g}' is not in this pack")
     if enabled:
-        warnings.append(f"{enabled} rule(s) would be created ENABLED; DLP-Check's convention is to ship every rule DISABLED and enable it after review (Deploy Policy Packs still creates them disabled)")
+        warnings.append(f"{enabled} rule(s) would be created ENABLED; Zscaler Made Easy's convention is to ship every rule DISABLED and enable it after review (Deploy Policy Packs still creates them disabled)")
     if enforcing:
         warnings.append(f"{len(enforcing)} rule(s) carry an enforcing action: {', '.join(enforcing[:6])}{'…' if len(enforcing) > 6 else ''}. "
-                        "DLP-Check ships every DLP rule monitor-only (ALLOW, or report incident on SaaS) and DISABLED; the designed action is kept as "
+                        "Zscaler Made Easy ships every DLP rule monitor-only (ALLOW, or report incident on SaaS) and DISABLED; the designed action is kept as "
                         "target_action and the data-governance journey names it as the hardening step (Deploy Policy Packs and the Terraform hand-off apply this)")
 
     return {
