@@ -476,6 +476,8 @@ def test_the_page_is_served_wired_and_explained():
     assert re.search(r"^  X\.shadow = \{", explain, re.M) and explain.index("  X.shadow = {") < explain.index("  X.efficacy = {")
     assert "'/report/shadow': 'shadow'" in explain and "'sslflow', 'shadow', 'efficacy'" in explain
     assert "group: 'Find the gaps', name: 'Shadowed rules'" in explain
-    assert '"/report/motion", "/report/shadow")' in _read("dlp_api_server.py")
+    src = _read("dlp_api_server.py")
+    stale = src[src.index('request.url.path in ("/", "/app.css"'):]
+    assert '"/report/shadow"' in stale[:stale.index(")")], "the page is never served stale"
     server = _read("dlp_api_server.py")
     assert server.index('@app.post("/api/shadow-rules/start")') < server.index("# ── Path Analyzer ─────")
