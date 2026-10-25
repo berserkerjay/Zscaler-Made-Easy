@@ -67,7 +67,7 @@ def test_tags_todos_and_comments_round_trip_and_the_store_is_owner_only_and_atom
     p = wn.store_path()
     assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
     folder = os.path.dirname(p)
-    assert sorted(os.listdir(folder)) == ["workspace_notes.json", "workspace_notes.json.lock"], "no temporary file is left behind"
+    assert sorted(f for f in os.listdir(folder) if not f.endswith(".last-good")) == ["workspace_notes.json", "workspace_notes.json.lock"], "no temporary file is left behind"
     # Emptying a note removes it.
     wn.apply(A, "rule", "rule:web:Block SSN", "remove_tag", by="alice", tag="Urgent")
     wn.apply(A, "rule", "rule:web:Block SSN", "delete_todo", by="alice", item_id=todo["id"])
@@ -145,7 +145,7 @@ def test_no_request_value_ever_becomes_a_path(tmp_path):
     with pytest.raises(wn.NotesError):
         wn.apply("t" * (wn.MAX_TENANT_LEN + 1), "rule", "r", "add_tag", by="a", tag="x")
     # Everything is a key inside the one store; nothing else was created anywhere.
-    created = sorted(os.path.relpath(os.path.join(d, f), tmp_path) for d, _, fs in os.walk(tmp_path) for f in fs if f != "audit.log")
+    created = sorted(os.path.relpath(os.path.join(d, f), tmp_path) for d, _, fs in os.walk(tmp_path) for f in fs if f != "audit.log" and not f.endswith(".last-good"))
     assert created == [os.path.join("notes", "workspace_notes.json"), os.path.join("notes", "workspace_notes.json.lock")]
     data = json.load(open(wn.store_path(), encoding="utf-8"))
     notes = data["tenants"]["../../outside"]["notes"]

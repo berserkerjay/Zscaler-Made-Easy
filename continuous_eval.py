@@ -569,7 +569,6 @@ def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[
         out["drift"] = {"packs": rows, "changed": [r["name"] for r in rows if r["moved"] != "same" or r["relaxed"]],
                         # the overall journey score, against the last one recorded (the score-drop alert, posture_plus)
                         "score": j.get("score"), "previous_score": _last_journey_score(full), "measured_at": _now()}
-        out["drift"] = {"packs": rows, "changed": [r["name"] for r in rows if r["moved"] != "same" or r["relaxed"]]}
         if heal is not None:
             out["drift"]["heal"] = heal
         if not_measured:

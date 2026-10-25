@@ -538,6 +538,8 @@ def to_xlsx(items: List[Dict[str, Any]], *, tenant: str = "") -> bytes:
         for h in r.get("history") or []:
             his.append([rid, h.get("at"), h.get("action"), h.get("by"), h.get("comment") or h.get("note") or ""])
     return wb.to_bytes()
+
+
 def _keep_last_good(path: str) -> None:
     """The store as it was, kept as a last-good copy (self_heal) before it is replaced."""
     try:

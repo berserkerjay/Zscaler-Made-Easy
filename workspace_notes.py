@@ -149,6 +149,9 @@ def _write(data: Dict[str, Any]) -> None:
             os.chmod(tmp, 0o600)
         except OSError:
             pass
+        with contextlib.suppress(Exception):   # a last-good copy for self_heal; never stops a write
+            import self_heal
+            self_heal.keep_last_good(p)
         os.replace(tmp, p)
     except BaseException:
         with contextlib.suppress(OSError):

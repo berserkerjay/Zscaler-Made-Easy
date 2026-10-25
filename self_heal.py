@@ -317,10 +317,10 @@ def _store_entries() -> List[Dict[str, Any]]:
         pass
     if os.environ.get("DLP_CHECK_BEACON_STATE"):
         add("beacon", "Beacon history", lambda: os.environ["DLP_CHECK_BEACON_STATE"], _is_dict)
-    # Workspace data, when the installed version has a workspace store.
+    # Workspace notes (tags, comments, to-dos).
     try:
         import importlib
-        ws = importlib.import_module("workspace")
+        ws = importlib.import_module("workspace_notes")
         if callable(getattr(ws, "store_path", None)):
             add("workspace", "Workspace data", ws.store_path, _is_dict, getattr(ws, "_LOCK", None) and (lambda: ws._LOCK), True)
     except Exception:  # noqa: BLE001

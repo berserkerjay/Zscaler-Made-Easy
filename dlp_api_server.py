@@ -8047,6 +8047,12 @@ async def report_posture_page():
     the score most, the projected score, the trend with its causes and what
     the last assessment could not check. Reads nothing from the tenant."""
     page = os.path.join(STATIC_DIR, "report_posture.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
 # ── Self-healing (self_heal.py) ───────────────────────────────────────
 # Layer 1: the app repairs itself (stuck jobs, damaged stores, permissions,
 # stale locks, rate holds, cached sign-ins, disk space, version) at startup,
