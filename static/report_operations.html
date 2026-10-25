@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bulk changes — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page op-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Bulk</span> changes</h1>
+      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, and move ZPA domains between application segments. Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="opTenantWrap" hidden><span class="lbl">Tenant</span><select id="opTenant" aria-label="Tenant to read and change"></select></label>
+      <span class="df-chip" id="opWrite" role="status" aria-live="polite">Checking write mode…</span>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+
+      <section aria-labelledby="opH1">
+        <h2 class="df-h" id="opH1">1. Pick the operation</h2>
+        <fieldset class="op-kinds">
+          <legend class="sr-only">Operation</legend>
+          <label class="op-kind"><input type="radio" name="opKind" value="rule_state" checked><span><strong>Enable or disable rules</strong><span class="df-hint">Up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control and the four DLP channels; one field (the state) per operation.</span></span></label>
+          <label class="op-kind"><input type="radio" name="opKind" value="reorder"><span><strong>Reorder a policy</strong><span class="df-hint">Put one policy's rules in the order you want; the fewest rules move, the Default, predefined and read-only rules never move, and only the order changes.</span></span></label>
+          <label class="op-kind"><input type="radio" name="opKind" value="url_categories"><span><strong>URL category change</strong><span class="df-hint">Add, remove, move or copy URLs on custom URL categories (or into a new one), with the rules in scope that use each category.</span></span></label>
+          <label class="op-kind"><input type="radio" name="opKind" value="zpa_domains"><span><strong>ZPA segment domains</strong><span class="df-hint">Move or copy domains between application segments, or clone a segment with its settings, with the domain and port overlap check. Needs ZPA ticked on the Scope page.</span></span></label>
+        </fieldset>
+        <div class="df-hint" id="opSanction">Cloud application sanction (Sanctioned / Unsanctioned) is not offered: the Zscaler SDK this app uses can set it but cannot read an application's current state, so a preview, the conflict check and an exact Undo are not possible. Change it in the ZIA Admin Portal.</div>
+      </section>
+
+      <section aria-labelledby="opH2">
+        <h2 class="df-h" id="opH2">2. Pick the objects</h2>
+        <div class="op-row"><button type="button" class="rp-btn primary" id="opRead">Read from the tenant</button><span class="df-hint" id="opReadHint">Reads only what is in scope on the Scope page. Nothing is written.</span></div>
+        <div id="opObjects"></div>
+      </section>
+
+      <section aria-labelledby="opH3">
+        <h2 class="df-h" id="opH3">3. Preview</h2>
+        <div class="op-row"><button type="button" class="rp-btn primary" id="opPreview" disabled>Preview the change</button><a class="rp-btn" id="opPdf" hidden>Download plan (PDF)</a></div>
+        <div id="opPlan"><div class="df-hint">The preview reads the tenant again and lists every item with its value before and after, what is already as asked, what is excluded and why. Nothing is written.</div></div>
+      </section>
+
+      <section aria-labelledby="opH4">
+        <h2 class="df-h" id="opH4">4. Apply</h2>
+        <div id="opApply"><div class="df-hint">Preview first. Applying needs write mode, your permission to change the tenant, the assessor's name and your confirmation.</div></div>
+        <div id="opResult"></div>
+      </section>
+
+      <section aria-labelledby="opH5">
+        <h2 class="df-h" id="opH5">Recent bulk changes</h2>
+        <div id="opHistory"><div class="df-hint">Loading…</div></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    const live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const MAX_RULES = 100;
+    const STATUS = { change: ['Will change', 'st-block'], noop: ['Already as asked', ''], excluded: ['Excluded', 'st-warn'], applied: ['Applied', 'st-ok'],
+      conflict: ['Conflict, left as it is', 'st-warn'], failed: ['Failed', 'st-fail'], skipped: ['Not attempted', 'st-warn'] };
+    const FAMILY = { rule_state: 'rules', reorder: 'rules', url_categories: 'url_categories', zpa_domains: 'zpa_segments' };
+    const S = { kind: 'rule_state', objects: {}, selected: new Set(), filter: '', policyFilter: '', order: null, orderPolicy: '', orderType: '',
+      urlPick: new Set(), domPick: new Set(), assessor: '', preview: null, previewJob: null, spec: null, undoOf: null, write: null, busy: false, job: null, stopAsked: false, startToken: null };
+
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+
+    // ── Credentials, scope and the assessor, as the other report pages get them ──
+    async function tenantChoices() {
+      const wrap = $('opTenantWrap'), sel = $('opTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = $('opTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+    function openerAssessor() {
+      try { const el = window.opener && !window.opener.closed && window.opener.document.getElementById('assessor'); return el ? String(el.value || '').trim() : ''; } catch (e) { return ''; }
+    }
+    const body = extra => Object.assign({}, credBody(), scopeSelection(), extra || {});
+
+    // ── Write mode, shown in the bar and in step 4 ──
+    async function refreshWrite() {
+      try { const r = await fetch('/api/write-mode', { cache: 'no-store' }); S.write = r.ok ? await r.json() : null; } catch (e) { S.write = null; }
+      const chip = $('opWrite'), on = !!(S.write && S.write.enabled);
+      chip.textContent = on ? 'Write mode on' : 'Read-only';
+      chip.className = 'df-chip ' + (on ? 'st-warn' : 'st-ok');
+      if (S.preview) renderApply();
+    }
+    window.addEventListener('dlp:write-mode', refreshWrite);
+    window.addEventListener('focus', refreshWrite);
+
+    // ── Jobs (the shared job API: start, poll, Stop) ──
+    function liveHtml(title) {
+      return `<div class="pa-live"><div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>${E(title)}</strong><span class="sep"></span>
+        <span class="pa-elapsed" id="opElapsed">0:00</span><button type="button" class="rp-btn" id="opStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="opLog" role="log" aria-live="polite" aria-label="What the job is doing">Connecting to the tenant…</div></div>`;
+    }
+    async function stop() {
+      if (!S.busy || S.stopAsked) return;
+      S.stopAsked = true;
+      const b = $('opStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!S.job) {
+        try { await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: S.startToken }) }); } catch (e) { /* by id below */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(S.job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows it */ }
+    }
+    async function runJob(url, payload, where, title) {
+      S.busy = true; S.stopAsked = false; S.job = null; S.startToken = newStartToken();
+      where.innerHTML = liveHtml(title);
+      $('opStop').addEventListener('click', stop);
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = $('opElapsed'); if (el) { const s = Math.round((Date.now() - t0) / 1000); el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; } }, 1000);
+      try {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': S.startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        S.job = d.job_id;
+        if (S.stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(S.job)}/cancel`, { method: 'POST' }); } catch (e) { /* token */ } }
+        let next = 0, misses = 0; const logs = [];
+        for (;;) {
+          await new Promise(res => setTimeout(res, 700));
+          let snap;
+          try { const q = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(S.job)}?since=${next}`, { cache: 'no-store' }); if (!q.ok) throw new Error(`HTTP ${q.status}`); snap = await q.json(); misses = 0; }
+          catch (e) { if (++misses >= 20) throw new Error(`Lost contact with the app while the job continued (${e.message}).`); continue; }
+          logs.push(...(snap.logs || [])); next = snap.next;
+          const log = $('opLog'); if (log) { log.textContent = logs.join('\n') || 'Working…'; log.scrollTop = log.scrollHeight; }
+          if (snap.status !== 'running') {
+            if (snap.status === 'failed') throw new Error(snap.error || 'The job failed.');
+            return Object.assign({ job_id: d.job_id, logs, extra: d }, snap);
+          }
+        }
+      } finally { clearInterval(tick); S.busy = false; S.job = null; }
+    }
+    function fail(where, title, msg) {
+      const hint = /credential|sign in|token|401|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open this page from there, or choose a saved tenant profile in the bar above.' : '';
+      where.innerHTML = `<div class="bp-card risk" role="alert"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+
+    // ── Step 1 ──
+    document.querySelectorAll('input[name="opKind"]').forEach(r => r.addEventListener('change', () => {
+      S.kind = r.value; S.preview = null; S.undoOf = null; $('opPdf').hidden = true;
+      $('opPlan').innerHTML = '<div class="df-hint">Pick the objects, then preview.</div>'; $('opApply').innerHTML = ''; $('opResult').innerHTML = '';
+      renderObjects();
+    }));
+
+    // ── Step 2: read and pick ──
+    $('opRead').addEventListener('click', async () => {
+      if (S.busy) return;
+      const fam = FAMILY[S.kind], where = $('opObjects');
+      $('opRead').disabled = true; say('Reading from the tenant.');
+      try {
+        const snap = await runJob('/api/operations/objects/start', body({ family: fam }), where, 'Reading from the tenant');
+        const res = snap.result || {};
+        if (res.status !== 'done') throw new Error(res.stopped || res.message || 'The read did not finish.');
+        S.objects[fam] = res;
+        $('rpMeta').textContent = `${res.tenant_label || ''} · read ${new Date().toLocaleTimeString()}`;
+        renderObjects(); say('Read. Pick the objects.');
+      } catch (e) { fail(where, 'The tenant could not be read', e.message); say(`The tenant could not be read: ${e.message}`); }
+      finally { $('opRead').disabled = false; }
+    });
+
+    function errorsHtml(res) {
+      const errs = Object.entries(res.errors || {});
+      return errs.length ? `<div class="bp-card warn"><div class="t">Could not be read</div><ul>${errs.map(([k, v]) => `<li>${E(k)}: ${E(v)}</li>`).join('')}</ul></div>` : '';
+    }
+    function renderObjects() {
+      const fam = FAMILY[S.kind], res = S.objects[fam], where = $('opObjects');
+      $('opPreview').disabled = !res;
+      if (!res) { where.innerHTML = '<div class="df-hint">Click Read from the tenant to list what this operation can change.</div>'; return; }
+      if (S.kind === 'rule_state') renderRuleState(res, where);
+      else if (S.kind === 'reorder') renderReorder(res, where);
+      else if (S.kind === 'url_categories') renderUrls(res, where);
+      else renderZpa(res, where);
+    }
+
+    const ruleKey = r => `${r.policy}|${r.rule_type || ''}|${r.id}`;
+    function allRules(res) { const out = []; (res.policies || []).forEach(p => (p.rules || []).forEach(r => out.push(r))); return out; }
+    function renderRuleState(res, where) {
+      const rules = allRules(res);
+      const f = S.filter.toLowerCase();
+      const shown = rules.filter(r => (!S.policyFilter || r.policy === S.policyFilter) && (!f || String(r.name).toLowerCase().includes(f)));
+      const pols = (res.policies || []).map(p => `<option value="${E(p.policy)}"${S.policyFilter === p.policy ? ' selected' : ''}>${E(p.label)} (${p.rules.length})</option>`).join('');
+      const val = (document.querySelector('input[name="opState"]:checked') || {}).value || 'DISABLED';
+      where.innerHTML = `${errorsHtml(res)}
+        <div class="op-row"><fieldset class="op-inline"><legend>Set the rules to</legend>
+          <label><input type="radio" name="opState" value="DISABLED"${val === 'DISABLED' ? ' checked' : ''}> Disabled</label>
+          <label><input type="radio" name="opState" value="ENABLED"${val === 'ENABLED' ? ' checked' : ''}> Enabled</label></fieldset></div>
+        <div class="op-row"><label class="df-ctl"><span class="lbl">Find a rule</span><input id="opFilter" type="search" value="${E(S.filter)}" aria-label="Find a rule by name"></label>
+          <label class="df-ctl"><span class="lbl">Policy</span><select id="opPolicy" aria-label="Show the rules of one policy"><option value="">Every policy in scope</option>${pols}</select></label>
+          <button type="button" class="rp-btn" id="opAll">Pick every rule shown</button><button type="button" class="rp-btn" id="opNone">Clear</button>
+          <span class="df-chip" id="opCount">${S.selected.size} picked</span></div>
+        <div class="df-tablewrap op-pick"><table class="df-table"><caption class="sr-only">Rules in scope</caption>
+          <thead><tr><th scope="col">Pick</th><th scope="col">Rule</th><th scope="col">Policy</th><th scope="col">Order</th><th scope="col">State</th><th scope="col">Note</th></tr></thead>
+          <tbody>${shown.map(r => { const k = ruleKey(r); return `<tr><td><input type="checkbox" data-k="${E(k)}" aria-label="Pick ${E(r.name)}"${S.selected.has(k) ? ' checked' : ''}${r.locked ? ' disabled' : ''}></td>
+            <td>${E(r.name)}</td><td>${E(r.policy_label)}${r.rule_type ? ` <span class="df-by">${E(r.rule_type)}</span>` : ''}</td><td>${E(r.order)}</td>
+            <td><span class="df-chip ${r.state === 'ENABLED' ? 'st-ok' : ''}">${E(r.state === 'ENABLED' ? 'enabled' : 'disabled')}</span></td><td class="df-hint">${E(r.locked || '')}</td></tr>`; }).join('') || '<tr><td colspan="6">No rule matches.</td></tr>'}</tbody></table></div>`;
+      $('opFilter').addEventListener('input', e => { S.filter = e.target.value; const pos = e.target.selectionStart; renderRuleState(res, where); const f2 = $('opFilter'); f2.focus(); try { f2.setSelectionRange(pos, pos); } catch (x) { /* search input */ } });
+      $('opPolicy').addEventListener('change', e => { S.policyFilter = e.target.value; renderRuleState(res, where); $('opPolicy').focus(); });
+      $('opAll').addEventListener('click', () => { shown.filter(r => !r.locked).forEach(r => { if (S.selected.size < MAX_RULES) S.selected.add(ruleKey(r)); }); renderRuleState(res, where); $('opAll').focus(); say(`${S.selected.size} rules picked${S.selected.size >= MAX_RULES ? ' (the most one operation takes)' : ''}.`); });
+      $('opNone').addEventListener('click', () => { S.selected.clear(); renderRuleState(res, where); $('opNone').focus(); });
+      where.querySelectorAll('input[data-k]').forEach(cb => cb.addEventListener('change', () => {
+        if (cb.checked && S.selected.size >= MAX_RULES) { cb.checked = false; say(`At most ${MAX_RULES} rules per operation.`); return; }
+        cb.checked ? S.selected.add(cb.dataset.k) : S.selected.delete(cb.dataset.k);
+        $('opCount').textContent = `${S.selected.size} picked`;
+      }));
+    }
+
+    function renderReorder(res, where) {
+      const pols = (res.policies || []).filter(p => p.ordered);
+      if (!S.orderPolicy || !pols.some(p => p.policy === S.orderPolicy)) { S.orderPolicy = pols.length ? pols[0].policy : ''; S.order = null; }
+      const pol = pols.find(p => p.policy === S.orderPolicy);
+      const types = pol && pol.policy === 'cloud_app_control' ? [...new Set(pol.rules.map(r => r.rule_type))].sort() : [];
+      if (types.length && !types.includes(S.orderType)) { S.orderType = types[0]; S.order = null; }
+      if (!types.length) S.orderType = '';
+      const rules = pol ? pol.rules.filter(r => !S.orderType || r.rule_type === S.orderType) : [];
+      if (!S.order) S.order = rules.filter(r => !r.order_locked).map(r => String(r.id));
+      const byId = Object.fromEntries(rules.map(r => [String(r.id), r]));
+      const it = S.order[Symbol.iterator]();
+      const seq = rules.map(r => r.order_locked ? r : byId[it.next().value]);
+      where.innerHTML = `${errorsHtml(res)}
+        <div class="op-row"><label class="df-ctl"><span class="lbl">Policy</span><select id="opOrdPol" aria-label="Policy to reorder">${pols.map(p => `<option value="${E(p.policy)}"${p.policy === S.orderPolicy ? ' selected' : ''}>${E(p.label)}</option>`).join('')}</select></label>
+          ${types.length ? `<label class="df-ctl"><span class="lbl">Application type</span><select id="opOrdType" aria-label="Cloud App Control application type">${types.map(t => `<option${t === S.orderType ? ' selected' : ''}>${E(t)}</option>`).join('')}</select></label>` : ''}
+          <button type="button" class="rp-btn" id="opOrdReset">Back to the tenant's order</button></div>
+        <div class="df-hint">Move the rules with the buttons (Tab to a button, Enter to press it). Rules marked fixed never move; the preview moves the fewest rules that give this order.</div>
+        <ol class="op-order">${seq.map((r, i) => r.order_locked
+          ? `<li class="op-fixed"><span class="op-pos">${i + 1}</span><span>${E(r.name)}</span><span class="df-chip">fixed</span><span class="df-hint">${E(r.order_locked)}</span></li>`
+          : `<li><span class="op-pos">${i + 1}</span><span>${E(r.name)}</span><span class="df-by">order ${E(r.order)}</span><span class="sep"></span>
+              <button type="button" class="rp-btn" data-mv="-1" data-id="${E(r.id)}" aria-label="Move ${E(r.name)} up">Up</button>
+              <button type="button" class="rp-btn" data-mv="1" data-id="${E(r.id)}" aria-label="Move ${E(r.name)} down">Down</button></li>`).join('') || '<li>No rules.</li>'}</ol>`;
+      const sel = $('opOrdPol'); if (sel) sel.addEventListener('change', e => { S.orderPolicy = e.target.value; S.order = null; renderReorder(res, where); $('opOrdPol').focus(); });
+      const ty = $('opOrdType'); if (ty) ty.addEventListener('change', e => { S.orderType = e.target.value; S.order = null; renderReorder(res, where); $('opOrdType').focus(); });
+      $('opOrdReset').addEventListener('click', () => { S.order = null; renderReorder(res, where); $('opOrdReset').focus(); });
+      where.querySelectorAll('button[data-mv]').forEach(b => b.addEventListener('click', () => {
+        const id = b.dataset.id, d = Number(b.dataset.mv), i = S.order.indexOf(id), j = i + d;
+        if (j < 0 || j >= S.order.length) return;
+        [S.order[i], S.order[j]] = [S.order[j], S.order[i]];
+        renderReorder(res, where);
+        const again = where.querySelector(`button[data-mv="${d}"][data-id="${CSS.escape(id)}"]`); if (again) again.focus();
+        say(`${byId[id].name} moved ${d < 0 ? 'up' : 'down'}.`);
+      }));
+    }
+
+    function catOptions(cats, sel, extra) {
+      return (extra || '') + cats.map(c => `<option value="${E(c.id)}"${String(sel) === String(c.id) ? ' selected' : ''}>${E(c.name)} (${c.url_count})</option>`).join('');
+    }
+    function renderUrls(res, where) {
+      const cats = res.categories || [];
+      const act = ($('opUrlAct') || {}).value || 'move', src = ($('opUrlSrc') || {}).value || (cats[0] || {}).id || '', tgt = ($('opUrlTgt') || {}).value || '';
+      const newName = ($('opUrlNew') || {}).value || '', typed = ($('opUrls') || {}).value || '';
+      const needSrc = act !== 'add', needTgt = act !== 'remove';
+      const srcCat = cats.find(c => String(c.id) === String(src));
+      where.innerHTML = `${errorsHtml(res)}
+        <div class="op-row"><label class="df-ctl"><span class="lbl">Action</span><select id="opUrlAct" aria-label="URL action">
+          ${[['add', 'Add URLs'], ['remove', 'Remove URLs'], ['move', 'Move URLs'], ['copy', 'Copy URLs']].map(([v, l]) => `<option value="${v}"${v === act ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          ${needSrc ? `<label class="df-ctl"><span class="lbl">From</span><select id="opUrlSrc" aria-label="Source category">${catOptions(cats, src)}</select></label>` : ''}
+          ${needTgt ? `<label class="df-ctl"><span class="lbl">To</span><select id="opUrlTgt" aria-label="Target category">${catOptions(cats, tgt, `<option value="">Pick a category…</option><option value="__new"${tgt === '__new' ? ' selected' : ''}>A new category…</option>`)}</select></label>` : ''}
+          ${needTgt && tgt === '__new' ? `<label class="df-ctl"><span class="lbl">New category name</span><input id="opUrlNew" value="${E(newName)}" aria-label="New category name"></label>` : ''}</div>
+        ${act === 'add' ? `<label class="op-block"><span class="lbl">URLs to add (one per line; .example.com covers its subdomains)</span><textarea id="opUrls" rows="5" aria-label="URLs to add">${E(typed)}</textarea></label>`
+          : `<div class="op-row"><span class="df-hint">Pick the URLs from ${E(srcCat ? srcCat.name : 'the category')}:</span><button type="button" class="rp-btn" id="opUrlAll">Pick all</button><button type="button" class="rp-btn" id="opUrlNone">Clear</button><span class="df-chip" id="opUrlCount">${S.urlPick.size} picked</span></div>
+             <ul class="op-checks">${(srcCat ? srcCat.urls : []).map(u => `<li><label><input type="checkbox" data-u="${E(u)}"${S.urlPick.has(u) ? ' checked' : ''}> ${E(u)}</label></li>`).join('') || '<li class="df-hint">This category lists no URLs.</li>'}</ul>`}
+        <div class="df-hint">Custom categories only. The preview lists the rules in scope that use each category, so the change's reach is visible before anything is written.</div>`;
+      ['opUrlAct', 'opUrlSrc', 'opUrlTgt'].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => { if (id !== 'opUrlTgt') S.urlPick.clear(); renderUrls(res, where); $(id) && $(id).focus(); }); });
+      const all = $('opUrlAll'); if (all) all.addEventListener('click', () => { (srcCat ? srcCat.urls : []).forEach(u => S.urlPick.add(u)); renderUrls(res, where); $('opUrlAll').focus(); });
+      const none = $('opUrlNone'); if (none) none.addEventListener('click', () => { S.urlPick.clear(); renderUrls(res, where); $('opUrlNone').focus(); });
+      where.querySelectorAll('input[data-u]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? S.urlPick.add(cb.dataset.u) : S.urlPick.delete(cb.dataset.u); $('opUrlCount').textContent = `${S.urlPick.size} picked`; }));
+    }
+
+    function segOptions(segs, sel, extra) {
+      return (extra || '') + segs.map(s => `<option value="${E(s.id)}"${String(sel) === String(s.id) ? ' selected' : ''}>${E(s.name)} (${(s.tcp || []).length ? 'TCP ' + E(s.tcp.join(', ')) : 'no TCP'}${(s.udp || []).length ? '; UDP ' + E(s.udp.join(', ')) : ''})</option>`).join('');
+    }
+    function renderZpa(res, where) {
+      const segs = res.segments || [];
+      const act = ($('opZAct') || {}).value || 'move', src = ($('opZSrc') || {}).value || (segs[0] || {}).id || '', tgt = ($('opZTgt') || {}).value || '';
+      const name = ($('opZName') || {}).value || '', move = ($('opZMove') || {}).checked || false, typed = ($('opZNew') || {}).value || '';
+      const srcSeg = segs.find(s => String(s.id) === String(src));
+      where.innerHTML = `${errorsHtml(res)}
+        <div class="op-row"><label class="df-ctl"><span class="lbl">Action</span><select id="opZAct" aria-label="ZPA action">
+          ${[['move', 'Move domains'], ['copy', 'Copy domains'], ['clone', 'Clone a segment']].map(([v, l]) => `<option value="${v}"${v === act ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label class="df-ctl"><span class="lbl">From</span><select id="opZSrc" aria-label="Source segment">${segOptions(segs, src)}</select></label>
+          ${act !== 'clone' ? `<label class="df-ctl"><span class="lbl">To</span><select id="opZTgt" aria-label="Target segment">${segOptions(segs.filter(s => String(s.id) !== String(src)), tgt, '<option value="">Pick a segment…</option>')}</select></label>`
+            : `<label class="df-ctl"><span class="lbl">New segment name</span><input id="opZName" value="${E(name)}" aria-label="New segment name"></label>
+               <label class="df-ctl"><input type="checkbox" id="opZMove"${move ? ' checked' : ''}><span>Move the picked domains out of the source</span></label>`}</div>
+        <div class="op-row"><span class="df-hint">Pick domains from ${E(srcSeg ? srcSeg.name : 'the segment')}:</span><span class="df-chip" id="opZCount">${S.domPick.size} picked</span></div>
+        <ul class="op-checks">${(srcSeg ? srcSeg.domains : []).map(d => `<li><label><input type="checkbox" data-d="${E(d)}"${S.domPick.has(d) ? ' checked' : ''}> ${E(d)}</label></li>`).join('') || '<li class="df-hint">No domains.</li>'}</ul>
+        ${act === 'clone' ? `<label class="op-block"><span class="lbl">New domains for the clone (one per line), besides the ones picked above</span><textarea id="opZNew" rows="3" aria-label="New domains for the clone">${E(typed)}</textarea></label>` : ''}
+        <div class="df-hint">A domain may sit in two segments only on ports that do not overlap: the preview excludes any domain that would, and says where it already is.</div>`;
+      ['opZAct', 'opZSrc', 'opZTgt'].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => { if (id === 'opZSrc') S.domPick.clear(); renderZpa(res, where); $(id) && $(id).focus(); }); });
+      where.querySelectorAll('input[data-d]').forEach(cb => cb.addEventListener('change', () => { cb.checked ? S.domPick.add(cb.dataset.d) : S.domPick.delete(cb.dataset.d); $('opZCount').textContent = `${S.domPick.size} picked`; }));
+    }
+
+    function lines(text) { return String(text || '').split(/[\s,]+/).map(s => s.trim()).filter(Boolean); }
+    function buildSpec() {
+      if (S.kind === 'rule_state') {
+        const value = (document.querySelector('input[name="opState"]:checked') || {}).value || 'DISABLED';
+        const targets = [...S.selected].map(k => { const [policy, rule_type, id] = k.split('|'); return { policy, rule_type, id: /^\d+$/.test(id) ? Number(id) : id }; });
+        if (!targets.length) throw new Error('Pick at least one rule.');
+        return { type: 'rule_state', value, targets };
+      }
+      if (S.kind === 'reorder') {
+        if (!S.orderPolicy) throw new Error('No policy with an order is in scope.');
+        return { type: 'reorder', policy: S.orderPolicy, rule_type: S.orderType, order: S.order || [] };
+      }
+      if (S.kind === 'url_categories') {
+        const act = $('opUrlAct').value, spec = { type: 'url_categories', action: act };
+        if (act !== 'add') spec.source = $('opUrlSrc').value;
+        if (act !== 'remove') {
+          const tgt = $('opUrlTgt').value;
+          if (tgt === '__new') spec.create_target = { name: ($('opUrlNew') || {}).value || '' };
+          else if (tgt) spec.target = tgt; else throw new Error('Pick the target category.');
+        }
+        spec.urls = act === 'add' ? lines($('opUrls').value) : [...S.urlPick];
+        if (!spec.urls.length) throw new Error('List or pick at least one URL.');
+        return spec;
+      }
+      const act = $('opZAct').value, spec = { type: 'zpa_domains', action: act, source: $('opZSrc').value };
+      if (act === 'clone') { spec.name = $('opZName').value; spec.move = $('opZMove').checked; spec.domains = [...S.domPick].concat(lines(($('opZNew') || {}).value)); }
+      else { spec.target = $('opZTgt').value; spec.domains = [...S.domPick]; if (!spec.target) throw new Error('Pick the target segment.'); }
+      if (!spec.domains.length) throw new Error('Pick at least one domain.');
+      return spec;
+    }
+
+    // ── Step 3: preview ──
+    async function preview(url, payload, undoOf) {
+      if (S.busy) return;
+      const where = $('opPlan');
+      $('opPreview').disabled = true; $('opPdf').hidden = true; $('opApply').innerHTML = ''; $('opResult').innerHTML = '';
+      say('Previewing: reading the tenant, nothing is written.');
+      try {
+        const snap = await runJob(url, payload, where, 'Previewing the change');
+        const res = snap.result || {};
+        if (res.status === 'refused' || res.status === 'stopped') throw new Error(res.message || res.stopped);
+        if (!res.plan_hash) throw new Error('The preview did not finish.');
+        S.preview = res; S.previewJob = snap.job_id; S.spec = (snap.extra && snap.extra.operation) || payload.operation; S.undoOf = undoOf || null;
+        renderPlan(res);
+        const pdf = $('opPdf'); pdf.href = `/api/operations/jobs/${encodeURIComponent(S.previewJob)}/plan.pdf`; pdf.hidden = false;
+        renderApply();
+        say(`Preview ready: ${res.counts.change} to change, ${res.counts.noop} already as asked, ${res.counts.excluded} excluded.`);
+      } catch (e) { S.preview = null; fail(where, 'The preview could not be made', e.message); say(`The preview could not be made: ${e.message}`); }
+      finally { $('opPreview').disabled = !S.objects[FAMILY[S.kind]]; }
+    }
+    $('opPreview').addEventListener('click', () => {
+      let spec;
+      try { spec = buildSpec(); } catch (e) { fail($('opPlan'), 'Nothing to preview yet', e.message); say(e.message); return; }
+      preview('/api/operations/preview/start', body({ operation: spec }), null);
+    });
+
+    const fmt = (v, field) => v == null ? '' : field === 'urls' || field === 'domain_names' ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist') : String(v);
+    const chip = st => { const [l, c] = STATUS[st] || [st, '']; return `<span class="df-chip ${c}">${E(l)}</span>`; };
+    function objName(u) { const o = u.object || {}; return `${o.name || o.id || ''}${o.policy_label ? ` <span class="df-by">${E(o.policy_label)}${o.rule_type ? ' · ' + E(o.rule_type) : ''}</span>` : o.type === 'url_category' ? ' <span class="df-by">URL category</span>' : o.type === 'zpa_segment' ? ' <span class="df-by">ZPA segment</span>' : ''}`; }
+    function itemsTable(items, caption) {
+      return `<div class="df-tablewrap"><table class="df-table op-items"><caption class="sr-only">${E(caption)}</caption>
+        <thead><tr><th scope="col">Object</th><th scope="col">Field</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Status</th><th scope="col">Why</th></tr></thead>
+        <tbody>${items.map(u => `<tr><td>${objName(u)}</td><td>${E(u.value ? `${u.field}: ${u.value}` : u.field)}</td><td>${E(fmt(u.before, u.field))}</td><td>${E(fmt(u.after, u.field))}</td>
+          <td>${chip(u.status)}${u.verified === true ? ' <span class="df-chip st-ok">read back</span>' : u.verified === false ? ' <span class="df-chip st-fail">not as expected</span>' : ''}</td>
+          <td>${E([u.reason, u.error, u.explanation].filter(Boolean).join(' — '))}</td></tr>`).join('') || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table></div>`;
+    }
+    function listCard(title, rows, cls) { return rows && rows.length ? `<div class="bp-card ${cls}"><div class="t">${E(title)}</div><ul>${rows.map(r => `<li>${E(r)}</li>`).join('')}</ul></div>` : ''; }
+    function renderPlan(p) {
+      const c = p.counts || {};
+      const impact = (p.impact || []).length ? `<h3 class="op-h">Rules that use the affected categories</h3><div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Impact</caption>
+          <thead><tr><th scope="col">Category</th><th scope="col">Rules in scope that name it</th></tr></thead>
+          <tbody>${p.impact.map(i => `<tr><td>${E(i.category)}</td><td>${(i.rules || []).length ? i.rules.map(r => `${E(r.name)} <span class="df-by">${E(r.policy_label)}, order ${E(r.order)}, ${E(String(r.state || '').toLowerCase())}</span>`).join('<br>') : E(i.detail)}</td></tr>`).join('')}</tbody></table></div>` : '';
+      const order = (p.order_after || []).length ? `<h3 class="op-h">Order after the change</h3><ol class="op-order op-after">${p.order_after.map(r => `<li${r.moved ? ' class="op-moved"' : ''}><span class="op-pos">${E(r.order)}</span><span>${E(r.name)}</span>${r.moved ? '<span class="df-chip st-block">moves</span>' : r.locked ? '<span class="df-chip">fixed</span>' : ''}</li>`).join('')}</ol>` : '';
+      $('opPlan').innerHTML = `
+        <div class="op-summary"><strong>${E(p.title)}</strong>${S.undoOf ? ' <span class="df-chip st-warn">Undo</span>' : ''}
+          <span class="df-chip st-block">${E(c.change)} to change</span><span class="df-chip">${E(c.noop)} already as asked</span><span class="df-chip${c.excluded ? ' st-warn' : ''}">${E(c.excluded)} excluded</span></div>
+        <div class="df-hint">Plan ${E(String(p.plan_hash).slice(0, 16))}… · ${E(p.tenant_label)} · ${E(p.writes)} write${p.writes === 1 ? '' : 's'}${p.needs_activation ? ', then one ZIA activation' : ''}</div>
+        ${listCard('Blocked', p.blockers, 'risk')}${listCard('Check before applying', p.warnings, 'warn')}${listCard('How this is applied', p.notes, 'info')}
+        ${impact}${order}<h3 class="op-h">Items</h3>${itemsTable(p.items || [], 'Planned items')}`;
+    }
+
+    // ── Step 4: apply ──
+    function renderApply() {
+      const p = S.preview, where = $('opApply');
+      if (!p) { where.innerHTML = ''; return; }
+      const w = S.write || {}, on = !!w.enabled, ready = p.status === 'ready';
+      const assessor = ($('opAssessor') || {}).value || S.assessor || openerAssessor();
+      const gates = [];
+      gates.push(on ? ['ok', 'Write mode is on.'] : ['no', w.can_toggle ? 'Write mode is off: turn it on in Deploy policy packs (you type the confirmation phrase), then come back.' : `Write mode is off${w.reason ? ': ' + w.reason : (w.how_to_enable ? ': ' + w.how_to_enable : '')}.`]);
+      gates.push(ready ? ['ok', `${p.counts.change} change${p.counts.change === 1 ? '' : 's'} to apply.`] : ['no', p.status === 'blocked' ? 'The plan is blocked (see above).' : 'Nothing to change.']);
+      where.innerHTML = `<ul class="op-gates">${gates.map(([s, t]) => `<li class="${s === 'ok' ? 'ok' : 'no'}"><span class="df-chip ${s === 'ok' ? 'st-ok' : 'st-warn'}">${s === 'ok' ? 'ready' : 'needed'}</span> ${E(t)}</li>`).join('')}</ul>
+        <div class="op-row"><label class="df-ctl"><span class="lbl">Assessor's name</span><input id="opAssessor" value="${E(assessor)}" aria-label="Assessor's name" placeholder="Jane Doe, Zscaler DS Engineer"></label></div>
+        ${p.confirm_phrase ? `<div class="op-row"><label class="df-ctl"><span class="lbl">Type ${E(p.confirm_phrase)} to confirm</span><input id="opPhrase" autocomplete="off" aria-label="Type ${E(p.confirm_phrase)} to confirm"></label></div>` : ''}
+        <div class="op-row"><label class="df-ctl"><input type="checkbox" id="opAgree"><span>I reviewed this plan${S.undoOf ? ' (the Undo)' : ''} and the customer agreed to it.</span></label></div>
+        <div class="op-row"><button type="button" class="rp-btn primary" id="opGo"${on && ready ? '' : ' disabled'}>Apply ${E(p.counts.change)} change${p.counts.change === 1 ? '' : 's'}</button>
+          <span class="df-hint">Each item is read again right before its write; anything someone changed meanwhile is skipped, never overwritten.</span></div>`;
+      $('opAssessor').addEventListener('input', e => { S.assessor = e.target.value.trim(); });
+      const go = $('opGo'); if (go) go.addEventListener('click', apply);
+    }
+    async function apply() {
+      if (S.busy || !S.preview) return;
+      const where = $('opResult');
+      if (!$('opAgree').checked) { say('Tick the box to confirm you reviewed the plan.'); $('opAgree').focus(); return; }
+      const phrase = ($('opPhrase') || {}).value || '';
+      if (S.preview.confirm_phrase && phrase.trim().toUpperCase() !== S.preview.confirm_phrase) { say(`Type ${S.preview.confirm_phrase} to confirm.`); $('opPhrase').focus(); return; }
+      S.assessor = $('opAssessor').value.trim();
+      if (!S.assessor) { say("Enter the assessor's name: the change record names who made it."); $('opAssessor').focus(); return; }
+      const payload = body({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor });
+      $('opGo').disabled = true; say('Applying the change.');
+      try {
+        const snap = await runJob('/api/operations/apply/start', payload, where, 'Applying the change');
+        renderResult(snap.result || {}, snap.logs || []);
+      } catch (e) { fail(where, 'The change could not be applied', e.message); say(`The change could not be applied: ${e.message}`); }
+      finally { loadHistory(); }
+    }
+    function renderResult(r, logs) {
+      const where = $('opResult');
+      if (r.status === 'plan_changed') { where.innerHTML = `<div class="bp-card warn" role="alert"><div class="t">The tenant changed since the preview</div><div>${E(r.message)} Preview again.</div></div>`; say('The tenant changed since the preview; nothing was written.'); return; }
+      if (['refused', 'blocked'].includes(r.status)) { fail(where, 'Nothing was written', r.message || (r.blockers || []).join(' ')); return; }
+      const c = r.counts_run || {}, v = r.verification || {}, act = r.activation;
+      const head = { applied: ['Applied', 'info'], partial: ['Partly applied', 'warn'], failed: ['Not applied', 'risk'], stopped: ['Stopped', 'warn'], nothing_applied: ['Nothing applied', 'warn'], nothing_to_do: ['Nothing to change', 'info'] }[r.status] || [r.status, 'warn'];
+      where.innerHTML = `<div class="bp-card ${head[1]}" role="status"><div class="t">${E(head[0])}: ${E(r.title)}</div>
+          <div>${E(c.applied || 0)} applied, ${E(c.conflict || 0)} conflict${c.conflict === 1 ? '' : 's'}, ${E(c.failed || 0)} failed, ${E(c.skipped || 0)} not attempted, ${E(c.noop || 0)} already as asked, ${E(c.excluded || 0)} excluded.
+          ${r.stopped ? ` ${E(r.stopped)}` : ''} Read back: ${E(v.confirmed || 0)} of ${E(v.checked || 0)} confirmed${(v.mismatched || []).length ? `; ${E(v.mismatched.join('; '))}` : ''}.
+          ${act ? ` Activation: ${act.activated ? 'done' : E('not done: ' + (act.error || ''))}.` : r.product === 'zia' ? ' Nothing was activated (nothing was written).' : ''}
+          ${r.operation_id ? ` Recorded as ${E(r.operation_id)}.` : ''}${r.record_error ? ` ${E(r.record_error)}` : ''}</div>
+          ${r.operation_id && r.inverse ? `<div class="op-row"><button type="button" class="rp-btn" data-undo="${E(r.operation_id)}">Undo this change (preview first)</button></div>` : ''}</div>
+        ${itemsTable(r.items || [], 'Result per item')}
+        <details class="pa-details"><summary>What was done (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
+      where.querySelectorAll('button[data-undo]').forEach(b => b.addEventListener('click', () => undo(b.dataset.undo)));
+      S.preview = null; renderApply();
+      say(`${head[0]}: ${c.applied || 0} applied, ${c.conflict || 0} conflicts, ${c.failed || 0} failed.`);
+    }
+
+    // ── Undo and the history ──
+    async function undo(opId) {
+      $('opResult').innerHTML = '';
+      $('opH3').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      await preview(`/api/operations/${encodeURIComponent(opId)}/undo/preview/start`, body({}), opId);
+    }
+    async function loadHistory() {
+      const where = $('opHistory');
+      let rows = [];
+      try { const r = await fetch('/api/operations', { cache: 'no-store' }); if (r.ok) rows = (await r.json()).operations || []; } catch (e) { /* below */ }
+      if (!rows.length) { where.innerHTML = '<div class="df-hint">No bulk change has been applied from this app yet.</div>'; return; }
+      where.innerHTML = `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Recent bulk changes</caption>
+        <thead><tr><th scope="col">When</th><th scope="col">Change</th><th scope="col">Tenant</th><th scope="col">By</th><th scope="col">Status</th><th scope="col">Undo</th></tr></thead>
+        <tbody>${rows.slice(0, 25).map(o => `<tr><td>${E(String(o.at || '').replace('T', ' ').slice(0, 16))}</td><td>${E(o.title)}${o.undo_of ? ' <span class="df-by">undo</span>' : ''}</td><td>${E(o.tenant_label)}</td><td>${E(o.by)}</td>
+          <td>${E(o.status)}${o.undone_by ? ' <span class="df-chip">undone</span>' : ''}</td>
+          <td>${o.can_undo ? `<button type="button" class="rp-btn" data-undo="${E(o.id)}" aria-label="Undo ${E(o.title)} (preview first)">Undo</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+      where.querySelectorAll('button[data-undo]').forEach(b => b.addEventListener('click', () => undo(b.dataset.undo)));
+    }
+
+    tenantChoices(); refreshWrite(); renderObjects(); loadHistory();
+  })();
+  </script>
+</body>
+</html>
