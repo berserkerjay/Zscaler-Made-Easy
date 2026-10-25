@@ -251,10 +251,16 @@ def cancel(job_id: str) -> bool:
     if job is None or job.status != RUNNING:
         return False
     job.cancel.set()
-    if job.kind in ("path", "shadow"):   # a read-only analysis: there is no write, activation or read-back
+    if job.kind in ("path", "fleet", "shadow"):   # a read-only analysis: there is no write, activation or read-back
         job.log("Stop requested: nothing more is read from the tenant, also while waiting for ZIA's rate limit; the analysis ends as stopped with no partial result.")
+    elif job.kind == "insights":   # read-only traffic numbers: nothing is written
+        job.log("Stop requested: the Insights query in flight finishes, nothing more is asked; the run ends as stopped with no partial result.")
+    elif job.kind == "zpa":   # a read-only ZPA analysis: nothing is written
+        job.log("Stop requested: nothing more is read from the tenant; the ZPA analysis ends as stopped with no partial result.")
     elif job.kind == "export":   # read-only: nothing is written or activated
         job.log("Stop requested: the read in flight finishes, nothing more is read and no pack is produced.")
+    elif job.kind in ("policy_export", "urls_export", "category_analyzer"):   # read-only exports (the URL lookup changes nothing)
+        job.log("Stop requested: nothing more is read from the tenant, also while waiting between lookups or for ZIA's rate limit; no file is produced.")
     elif job.kind == "inventory":   # read-only: nothing is written or activated
         job.log("Stop requested: the read in flight finishes, nothing more is read and no workbook is produced.")
     else:

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Client Connector fleet — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .zf-sec { padding: 0.2rem 0 1.1rem; border-bottom: 1px solid var(--border); margin-bottom: 0.9rem; }
+  .zf-sec:last-child { border-bottom: 0; }
+  .zf-sec h2 { font-size: 1.05rem; margin: 0.9rem 0 0.4rem; }
+  .zf-sec h3 { font-size: 0.92rem; margin: 0.8rem 0 0.3rem; }
+  .zf-dim { color: var(--dim); font-size: 0.85rem; }
+  .zf-banner { border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--r-lg); padding: 0.75rem 0.9rem; background: var(--well); margin: 0.4rem 0 0.8rem; }
+  .zf-banner.full { border-left-color: var(--pass); } .zf-banner.devices { border-left-color: var(--warn); } .zf-banner.configuration { border-left-color: var(--fail); }
+  .zf-banner strong { display: block; margin-bottom: 0.2rem; }
+  .zf-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.6rem; }
+  .zf-tile { background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem 0.8rem; min-width: 0; }
+  .zf-tile .k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  .zf-tile .v { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .zf-tile .v.na { font-size: 0.95rem; font-weight: 600; color: var(--dim); }
+  .zf-tile .n { font-size: 0.76rem; color: var(--dim); overflow-wrap: anywhere; }
+  .zf-wrap { overflow-x: auto; max-width: 100%; }
+  table.zf-t { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+  table.zf-t caption { text-align: left; font-size: 0.8rem; color: var(--dim); padding: 0 0 0.3rem; }
+  table.zf-t th, table.zf-t td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.zf-t thead th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); }
+  table.zf-t td.num, table.zf-t th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.zf-heat td { text-align: center; padding: 0.25rem; }
+  table.zf-heat thead th { text-transform: none; letter-spacing: 0; font-size: 0.74rem; vertical-align: bottom; min-width: 76px; }
+  .zf-cell { display: block; border-radius: var(--r-sm); padding: 0.3rem 0.2rem; font-size: 0.76rem; font-weight: 600; border: 1px solid var(--border); }
+  .st-pass { background: color-mix(in srgb, var(--pass) 18%, transparent); border-color: color-mix(in srgb, var(--pass) 45%, transparent); }
+  .st-warn { background: color-mix(in srgb, var(--warn) 18%, transparent); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .st-fail { background: color-mix(in srgb, var(--fail) 18%, transparent); border-color: color-mix(in srgb, var(--fail) 45%, transparent); }
+  .st-unknown, .st-na { background: var(--well); color: var(--dim); }
+  .zf-chip { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: var(--r-pill); border: 1px solid var(--border); white-space: nowrap; }
+  .zf-alert { border: 1px solid var(--border); border-radius: var(--r-lg); margin: 0.5rem 0; background: var(--card); }
+  .zf-alert > summary { cursor: pointer; padding: 0.6rem 0.8rem; font-weight: 600; list-style: revert; }
+  .zf-alert > summary:focus-visible, .zf-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-lg); }
+  .zf-alert .body { padding: 0 0.8rem 0.8rem; font-size: 0.86rem; }
+  .zf-alert .def { border-left: 3px solid var(--accent); padding: 0.3rem 0.6rem; background: var(--well); border-radius: 0 var(--r-sm) var(--r-sm) 0; margin: 0 0 0.5rem; }
+  .zf-count { font-variant-numeric: tabular-nums; margin-left: 0.4rem; }
+  .zf-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0; }
+  .zf-row label { display: inline-flex; gap: 0.35rem; align-items: center; font-size: 0.86rem; }
+  .zf-row select, .zf-row input[type=search] { min-height: 34px; padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.84rem; max-width: 100%; }
+  .zf-pre { font-family: var(--mono); font-size: 0.74rem; background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem; overflow: auto; max-height: 420px; white-space: pre; }
+  .zf-pre .add { color: var(--pass); } .zf-pre .del { color: var(--fail); }
+  .zf-diff td { font-family: var(--mono); font-size: 0.74rem; overflow-wrap: anywhere; }
+  .zf-diff tr.diff td { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .zf-details > summary { cursor: pointer; font-weight: 600; padding: 0.3rem 0; list-style: revert; }
+  .zf-plan .fix { color: var(--text); }
+  .zf-plan .why { color: var(--dim); font-size: 0.8rem; }
+  .zf-export { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+  .zf-export label { font-size: 0.8rem; display: inline-flex; gap: 0.3rem; align-items: center; }
+  .zf-status { font-size: 0.88rem; color: var(--dim); min-height: 1.4em; margin-top: 0.4rem; }
+  .zf-status.bad { color: var(--fail); }
+  .zf-legend { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; font-size: 0.78rem; }
+  .zf-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .zf-page .rp-bar .df-ctl select { max-width: min(320px, calc(100vw - 7rem)); }
+  @media (prefers-reduced-motion: reduce) { .pa-live .spin { animation: none; } }
+</style>
+</head>
+<body class="report-page zf-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Client Connector</span> fleet</h1>
+      <p>The enrolled devices and the profiles that govern them, together: which services really run, which devices Zscaler cannot see, how far behind the client is, which app profile is weakest, and what to fix first, ranked by the devices it affects. Read-only, and only when ZCC is in scope on the Scope page.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="/help#fleet" target="_blank" rel="noopener">What does everything do?</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="zfTenantWrap" hidden><span class="lbl">Tenant</span><select id="zfTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="zfRun">Read the fleet</button>
+      <span class="zf-export" role="group" aria-label="Exports">
+        <button type="button" class="rp-btn" id="zfExpPlan" disabled aria-disabled="true">Plan (CSV)</button>
+        <button type="button" class="rp-btn" id="zfExpDevices" disabled aria-disabled="true">Devices (CSV)</button>
+        <button type="button" class="rp-btn" id="zfExpSummary" disabled aria-disabled="true">Summary (CSV)</button>
+        <label><input type="checkbox" id="zfCounts"> Counts only (no user or device names)</label>
+      </span>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div id="zfBody">
+        <section class="zf-sec" aria-labelledby="zfHowH">
+          <h2 id="zfHowH">How it works</h2>
+          <ol class="pa-steps">
+            <li><strong>Read the fleet.</strong> The app reads the Client Connector app and forwarding profiles and the hosted PAC files (the same paced reader the Path analyzer uses), then the enrolled devices and their per-device service status (ZIA, ZPA, ZDX). It takes a minute; Stop ends it at once.</li>
+            <li><strong>Read the alerts.</strong> Blind spots, bypass risk, ghost devices, registration anomalies, multi-device users and version drift, each with its exact definition beside it.</li>
+            <li><strong>Fix in order.</strong> The remediation plan ranks every gap by its impact times the devices it affects, with the fix in plain words. Export it as CSV (it opens in Excel); tick counts only to leave every user and device name out.</li>
+          </ol>
+          <p class="zf-dim">Device and user names are shown on this page because you need them to act; they are never written to a log. If the API client may not read devices, the page says so and shows the configuration only: never zeros as if the fleet were healthy.</p>
+          <div class="zf-status" id="zfStatus" aria-live="polite"></div>
+        </section>
+      </div>
+      <div id="zfOut"></div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/zcc_fleet.js"></script>
+</body>
+</html>
