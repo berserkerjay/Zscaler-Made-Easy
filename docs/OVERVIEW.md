@@ -235,6 +235,22 @@ what you get, what to do next.
   whose plan no longer matches is marked stale and nothing is written.
   Every step is in the audit log with who did it; the queue exports as JSON
   or Markdown.
+- **Bulk changes** — many changes as one reviewed plan: enable or
+  disable up to 100 rules (URL filtering, SSL inspection, Cloud Firewall,
+  Cloud App Control, File Type Control and the four DLP channels), put one
+  policy's rules in a new order with the fewest moves (the Default,
+  predefined and read-only rules never move), add, remove, move or copy
+  URLs on custom URL categories (with the rules in scope that use each
+  one), and move or copy ZPA domains between application segments or
+  clone a segment (with the domain and port overlap check). The preview
+  reads the tenant and lists every item before and after, what is already
+  as asked and what is excluded and why, with a plan PDF; applying needs
+  write mode, the assessor's name and your confirmation (typed above ten
+  changes), re-reads each object right before its write and skips any
+  item someone changed meanwhile, activates ZIA once, reads back, and
+  records the change with an Undo that is itself previewed. Cloud
+  application sanction is not offered: the SDK cannot read an
+  application's current state.
 - **Terraform hand-off** — the same policy pack as a Terraform workspace
   for the official `zscaler/zia` provider. Static mode needs no
   credentials; gap mode reads the tenant and imports what exists so the
@@ -356,12 +372,15 @@ These rules hold on every page, and the tests enforce them:
 - **Nothing the customer has is overwritten.** A pack keeps what already
   exists and creates only what is missing; objects it does not define are
   never touched; a removal deletes only what the pack put in, and keeps
-  anything another rule still uses, saying so. Two exceptions, both behind
-  write mode and both explicit: the Rule migration wizard's optional
+  anything another rule still uses, saying so. Three exceptions, all behind
+  write mode and all explicit: the Rule migration wizard's optional
   Step 3b deletes every existing Inline Web DLP rule (Step 5 re-posts the
-  tenant's own rules as they were), and the API-only converge option
+  tenant's own rules as they were), the API-only converge option
   (`restore_drift`, which no screen in the app uses) overwrites pack
-  objects the customer changed.
+  objects the customer changed, and Bulk changes changes existing objects on
+  purpose (a rule's state or order, a category's URLs, a segment's
+  domains), only the items you approved, and skips any item someone
+  changed since the preview.
 - **You approve the exact plan.** The plan carries a fingerprint; if the
   tenant changes between approval and deploy, nothing is written until you
   review again.

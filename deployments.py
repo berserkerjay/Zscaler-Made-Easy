@@ -160,3 +160,66 @@ def mark_undo(dep_id: str, results: List[Dict[str, Any]], *, complete: bool) -> 
         _write(data)
         return r
     return None
+
+
+# ---------------------------------------------------------------------------
+# Administrative operations (admin_ops: Bulk changes)
+# ---------------------------------------------------------------------------
+#
+# A bulk change (rule state or order, custom URL categories, ZPA application
+# segments) is not a deployment: it creates nothing a pack undo could
+# delete. Its record sits beside the deployments in the same file, under
+# "operations", written with the same helpers (owner-only, atomic). The
+# record keeps what each item was before and after and the operation that
+# reverses what was applied; an Undo previews that operation and runs it
+# through the same preview, confirmation and conflict guard as any other.
+
+OPERATION_LIMIT = 200
+
+
+def add_operation(record: Dict[str, Any]) -> Dict[str, Any]:
+    data = _read()
+    ops = data.setdefault("operations", [])
+    ops.append(record)
+    data["operations"] = ops[-OPERATION_LIMIT:]
+    _write(data)
+    return record
+
+
+def get_operation(op_id: str) -> Optional[Dict[str, Any]]:
+    for r in _read().get("operations") or []:
+        if r.get("id") == op_id:
+            return r
+    return None
+
+
+def operation_summary(r: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: r.get(k) for k in ("id", "at", "tenant_label", "by", "actor", "type", "title", "status", "plan_hash", "counts",
+                                  "undo_of", "undone_by", "undone_at", "product")} | {"can_undo": bool(r.get("inverse")) and not r.get("undone_by")}
+
+
+def list_operations(tenant_label: Optional[str] = None) -> List[Dict[str, Any]]:
+    rows = list(_read().get("operations") or [])
+    if tenant_label:
+        rows = [r for r in rows if r.get("tenant_label") == tenant_label]
+    rows.sort(key=lambda r: r.get("at") or "", reverse=True)
+    return [operation_summary(r) for r in rows]
+
+
+def mark_operation_undone(op_id: str, undo_id: str, *, complete: bool) -> Optional[Dict[str, Any]]:
+    """The operation `op_id` was reversed by the operation `undo_id` (in full
+    when `complete`; otherwise the undo is recorded and Undo stays offered)."""
+    data = _read()
+    for r in data.get("operations") or []:
+        if r.get("id") != op_id:
+            continue
+        r.setdefault("undo_runs", []).append({"at": _now(), "operation": undo_id, "complete": complete})
+        if complete:
+            r["undone_by"], r["undone_at"] = undo_id, _now()
+        _write(data)
+        return r
+    return None
+
+
+def new_operation_id() -> str:
+    return f"op-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"

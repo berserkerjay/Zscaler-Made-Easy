@@ -36,7 +36,10 @@ from test_zia_contract import strict_tenant
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 WRITE_CALL = re.compile(r"\.(add_dict|add_dlp_engine|add_rule|add_sub_rule|update_dict|update_dlp_engine|update_rule|update_sub_rule|"
-                        r"delete_dict|delete_dlp_engine|delete_rule|raw_request)\(|\bclient\.(post|put|patch|delete)\(")
+                        r"delete_dict|delete_dlp_engine|delete_rule|raw_request|"
+                        # Bulk changes (admin_ops): URL categories, ZPA application segments, cloud app sanction.
+                        r"add_url_category|update_url_category|add_urls_to_category|delete_urls_from_category|delete_category|"
+                        r"add_segment|update_segment|delete_segment|bulk_update)\(|\bclient\.(post|put|patch|delete)\(")
 # The only files allowed to name an SDK write method, and why.
 ALLOWED = {
     "pack_ops.py": "the shared execution path itself",
