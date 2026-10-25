@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/exports", "/report/motion", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -279,6 +279,7 @@ GUI_ADDONS = [
     ("eval_all.js", "script"),
     ("bypass_report.js", "script"),
     ("tool_tabs.js", "script"),
+    ("simple_entry.js", "script"),   # the "Try Simple mode" banner and the deep links from /simple
     ("sidebar_order.js", "script"),  # drag / Alt+arrow reordering of the sidebar; dashboard.js starts it
     ("dashboard.js", "script"),     # last: wraps showResults / renderChecks / resetForm
 ]
@@ -4205,6 +4206,314 @@ async def pack_library_delete(pack_id: str):
     return {"ok": True, "removed": removed}
 
 
+# ── Bulk changes (admin_ops) ─────────────────────────────────────────
+# Mass enable / disable of ZIA rules, rule reordering, custom URL
+# category changes and ZPA segment domain moves, through the same gates as
+# a policy pack deploy: preview (reads only) → plan_hash → write mode, a
+# writer, confirm and the typed phrase → apply through pack_ops (conflict
+# guard per item, activation, read-back) → a record with its Undo.
+@app.get("/report/operations")
+async def report_operations_page():
+    """Bulk changes (static/report_operations.html)."""
+    page = os.path.join(STATIC_DIR, "report_operations.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class OperationObjectsRequest(ScopedTenantCredsRequest):
+    """Body of the object picker: what to list (rules, url_categories or zpa_segments)."""
+    family: str = "rules"
+
+
+class OperationRequest(ScopedTenantCredsRequest):
+    """Body of a bulk change: the operation (admin_ops spec) and, to apply
+    it, the previewed plan_hash, confirm=true and, above ten changes, the
+    typed phrase. `undo_of` names the operation an Undo reverses."""
+    operation: Dict[str, Any] = {}
+    plan_hash: str = ""
+    confirm: bool = False
+    confirm_text: str = ""
+    undo_of: str = ""
+
+
+OPS_ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name, or the field on this page) before applying a "
+                         "bulk change: the change record and any object it creates name the assessor.")
+
+
+def _ops_scope(req: Any, what: Any) -> Dict[str, Any]:
+    """admin_ops.scope_for of the Scope page's selection; 400 before any
+    sign-in when `what` (a family or an operation) is not in scope."""
+    import admin_ops
+    sc, ch, source = _scope_selection(req)
+    scope = admin_ops.scope_for(sc, ch)
+    scope["source"] = source
+    try:
+        admin_ops.require_scope(what, scope)
+    except admin_ops.OperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return scope
+
+
+def _ops_assessor(req: Any) -> str:
+    try:
+        return _require_assessor(req)
+    except HTTPException as e:
+        if e.detail == ASSESSOR_REQUIRED:
+            raise HTTPException(status_code=400, detail=OPS_ASSESSOR_REQUIRED)
+        raise
+
+
+def _run_ops_objects(client, family: str, scope: Dict[str, Any], label: str, log, cancel) -> Dict[str, Any]:
+    import admin_ops
+    say = log or (lambda m: None)
+    say(f"Reading {label}. Nothing is written to the tenant.")
+    try:
+        out = admin_ops.read_objects(client, family, scope, log=say, cancel=cancel)
+    except admin_ops.Stopped as e:
+        return {"status": "stopped", "stopped": str(e), "tenant_label": label}
+    except admin_ops.OperationError as e:
+        return {"status": "refused", "message": str(e), "tenant_label": label}
+    out.update(status="done", tenant_label=label, writes_enabled=writes_enabled(), scope_source=scope.get("source") or "")
+    return out
+
+
+def _run_ops_preview(client, req: OperationRequest, scope: Dict[str, Any], label: str, log, cancel) -> Dict[str, Any]:
+    import admin_ops
+    say = log or (lambda m: None)
+    say(f"Previewing on {label}. Nothing is written to the tenant.")
+    try:
+        prepared = admin_ops.plan(client, req.operation, scope=scope, tenant_label=label, log=say, cancel=cancel)
+    except admin_ops.Stopped as e:
+        return {"status": "stopped", "stopped": str(e), "tenant_label": label}
+    except admin_ops.OperationError as e:
+        return {"status": "refused", "message": str(e), "tenant_label": label}
+    prepared.update(writes_enabled=writes_enabled(), undo_of=req.undo_of or None, sanction=admin_ops.SANCTION_NOTE)
+    say(f"Preview ready: {prepared['counts']['change']} change(s), {prepared['counts']['noop']} already as asked, "
+        f"{prepared['counts']['excluded']} excluded.")
+    return prepared
+
+
+def _run_ops_apply(client, creds: Dict[str, str], req: OperationRequest, scope: Dict[str, Any], by: str, actor: Optional[str],
+                   log, cancel) -> Dict[str, Any]:
+    import admin_ops
+    label = tenant_auth.record_label(creds)
+    try:
+        result = admin_ops.execute(client, req.operation, plan_hash=req.plan_hash, scope=scope, writes_enabled=True,
+                                   confirm_text=req.confirm_text, assessor=by, tenant_label=label, log=log, cancel=cancel)
+    except admin_ops.OperationError as e:
+        return {"status": "refused", "message": str(e), "tenant_label": label}
+    result["writes_enabled"] = True
+    try:
+        rec = admin_ops.record(result, by=by, actor=actor, undo_of=req.undo_of, tenant_ids=_record_ids(creds))
+        if rec:
+            result["operation_id"] = rec["id"]
+    except Exception as e:  # noqa: BLE001 — a bookkeeping failure must not hide what was applied
+        result["record_error"] = f"the change was not recorded for undo: {str(e)[:200]}"
+    return result
+
+
+def _ops_apply_gate(req: OperationRequest) -> Tuple[Dict[str, Any], str]:
+    """Every refusal before signing in: writer, confirm, plan_hash, the
+    assessor, write mode, scope, the record an Undo names."""
+    _security.require_writer()
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Applying a bulk change requires explicit confirmation (confirm=true).")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="plan_hash is required — preview the operation first.")
+    if not isinstance(req.operation, dict) or not req.operation.get("type"):
+        raise HTTPException(status_code=400, detail="operation is required (the one that was previewed).")
+    by = _ops_assessor(req)
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    scope = _ops_scope(req, req.operation)
+    if req.undo_of:
+        import deployments
+        if not deployments.get_operation(req.undo_of):
+            raise HTTPException(status_code=404, detail="The operation to undo is not recorded.")
+    return scope, by
+
+
+@app.post("/api/operations/objects/start")
+async def operations_objects_start(req: OperationObjectsRequest, request: Request):
+    """List what a bulk change can pick (rules per policy in scope, custom
+    URL categories, ZPA segments) as a job. Read-only."""
+    import pack_jobs
+    scope = _ops_scope(req, req.family)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("ops_objects", lambda log, cancel: _keyed(client, _run_ops_objects, client, req.family, scope, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/operations/objects")
+async def operations_objects(req: OperationObjectsRequest):
+    """The same list, waited for (for scripts)."""
+    scope = _ops_scope(req, req.family)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(_keyed, client, _run_ops_objects, client, req.family, scope, tenant_auth.record_label(creds), None, None)
+    if out.get("status") == "refused":
+        raise HTTPException(status_code=400, detail=out["message"])
+    return out
+
+
+@app.post("/api/operations/preview/start")
+async def operations_preview_start(req: OperationRequest, request: Request):
+    """Preview a bulk change as a job: per-item before and after, no-ops and
+    exclusions, impact, plan_hash. Reads only; nothing is written."""
+    import pack_jobs
+    scope = _ops_scope(req, req.operation)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("ops_preview", lambda log, cancel: _keyed(client, _run_ops_preview, client, req, scope, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/operations/preview")
+async def operations_preview(req: OperationRequest):
+    """The same preview, waited for (for scripts)."""
+    scope = _ops_scope(req, req.operation)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds), None, None)
+    if out.get("status") == "refused":
+        raise HTTPException(status_code=400, detail=out["message"])
+    return out
+
+
+@app.post("/api/operations/apply/start")
+async def operations_apply_start(req: OperationRequest, request: Request):
+    """Apply a previewed bulk change as a job the page follows. Needs a
+    writer, write mode, confirm=true, the previewed plan_hash (a tenant
+    that moved since gives status plan_changed and writes nothing) and,
+    above ten changes, the typed phrase. Stop ends the writes; what was
+    written is activated, read back and recorded."""
+    import pack_jobs
+    scope, by = _ops_apply_gate(req)
+    creds = _tenant_creds(req)
+    if req.undo_of:
+        import deployments
+        _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    actor = _actor(request)
+    job = pack_jobs.start("ops_apply", lambda log, cancel: _keyed(client, _run_ops_apply, client, creds, req, scope, by, actor, log, cancel),
+                          label=str((req.operation or {}).get("type") or "")[:80], actor=actor, start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/operations/apply")
+async def operations_apply(req: OperationRequest, request: Request):
+    """The same apply, waited for (for scripts). 409 when the tenant moved
+    since the preview or the plan is blocked."""
+    scope, by = _ops_apply_gate(req)
+    creds = _tenant_creds(req)
+    if req.undo_of:
+        import deployments
+        _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    actor = _actor(request)
+    result = await asyncio.to_thread(_as_actor, actor, _keyed, client, _run_ops_apply, client, creds, req, scope, by, actor, None, None)
+    if result.get("status") in ("plan_changed", "blocked"):
+        return JSONResponse(result, status_code=409)
+    if result.get("status") == "refused":
+        raise HTTPException(status_code=400, detail=result.get("message"))
+    return result
+
+
+@app.get("/api/operations")
+async def operations_list(tenant_label: Optional[str] = None):
+    """Bulk changes applied from this app (newest first), with Undo where offered."""
+    import deployments
+    return {"operations": deployments.list_operations(tenant_label), "writes_enabled": writes_enabled()}
+
+
+@app.get("/api/operations/{op_id}")
+async def operations_get(op_id: str):
+    """One recorded bulk change: every item with its before, after and status, and its inverse."""
+    import deployments
+    rec = deployments.get_operation(op_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Operation not found.")
+    return {k: v for k, v in rec.items() if k not in ("tenant_key", "tenant_fp")}
+
+
+async def _ops_undo_inputs(op_id: str, req: ScopedTenantCredsRequest):
+    import deployments
+    rec = deployments.get_operation(op_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Operation not found.")
+    if not rec.get("inverse"):
+        raise HTTPException(status_code=409, detail="This operation applied nothing that can be reversed.")
+    if rec.get("undone_by"):
+        raise HTTPException(status_code=409, detail=f"This operation was already undone (by {rec['undone_by']}).")
+    body = OperationRequest(**{**req.model_dump(), "operation": rec["inverse"], "undo_of": op_id})
+    scope = _ops_scope(body, body.operation)
+    creds = _tenant_creds(body)
+    _require_same_tenant(rec, creds)
+    return body, scope, creds
+
+
+@app.post("/api/operations/{op_id}/undo/preview/start")
+async def operations_undo_preview_start(op_id: str, req: ScopedTenantCredsRequest, request: Request):
+    """Undo builds the inverse of what the operation applied and previews it
+    like any other operation (its own plan_hash and confirmation); it is
+    applied through /api/operations/apply with undo_of. Read-only."""
+    import pack_jobs
+    body, scope, creds = await _ops_undo_inputs(op_id, req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("ops_preview", lambda log, cancel: _keyed(client, _run_ops_preview, client, body, scope, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "operation": body.operation, "undo_of": op_id}
+
+
+@app.post("/api/operations/{op_id}/undo/preview")
+async def operations_undo_preview(op_id: str, req: ScopedTenantCredsRequest):
+    """The same Undo preview, waited for (for scripts)."""
+    body, scope, creds = await _ops_undo_inputs(op_id, req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, body, scope, tenant_auth.record_label(creds), None, None)
+    if out.get("status") == "refused":
+        raise HTTPException(status_code=400, detail=out["message"])
+    out["operation"] = body.operation
+    return out
+
+
+def _ops_preview_job(job_id: str) -> Dict[str, Any]:
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind != "ops_preview":
+        raise HTTPException(status_code=404, detail="No such preview. Previews are kept for an hour; preview again.")
+    res = job.result or {}
+    if not res.get("plan_hash"):
+        raise HTTPException(status_code=409, detail="This preview has no plan" + (" yet; it is still running." if job.status == pack_jobs.RUNNING else "."))
+    return res
+
+
+@app.get("/api/operations/jobs/{job_id}/plan.pdf")
+async def operations_plan_pdf(job_id: str, page_size: str = "A4"):
+    """A finished preview as a printable plan for change approval (pdf_writer)."""
+    import report_exports
+    res = _ops_preview_job(job_id)
+    size = page_size if page_size in ("A4", "Letter") else "A4"
+    body = await asyncio.to_thread(report_exports.operation_pdf, res, size)
+    return _attachment(body, report_exports.PDF, report_exports.operation_filename(res, "pdf"))
+
+
+@app.get("/api/operations/jobs/{job_id}/request")
+async def operations_request(job_id: str):
+    """A finished preview as a request object (kind, title, items with
+    before and after, plan_hash) for a shared approval queue."""
+    import admin_ops
+    return admin_ops.to_request(_ops_preview_job(job_id))
+
+
 # ── Browser extension (companion) ────────────────────────────────────
 BROWSER_EXTENSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_extension")
 
@@ -6488,6 +6797,46 @@ async def generate_docx(request: Request):
                         background=BackgroundTask(_unlink_quietly, tmp_path))
 
 
+_CSV_STATUS = {"FAIL": "Fix this", "REVIEW": "Needs a look", "PASS": "Good"}
+
+
+@app.post("/api/report/findings-csv")
+async def findings_csv(request: Request):
+    """The assessment's findings as a spreadsheet (CSV that opens in Excel):
+    one row per check, the ones to fix first, in the plain words the
+    findings carry (what we found, what it means, what to do). Built from
+    the results the page already holds, like /api/report/docx; reads no
+    tenant. Every cell goes through csv_safe, so a rule or check name that
+    starts with = + - @ is shown as text, never run as a formula."""
+    import io
+    import csv_safe
+    import channel_scope
+    try:
+        data = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
+    results = (data or {}).get("checks") if isinstance(data, dict) else None
+    if not isinstance(results, list) or not results:
+        raise HTTPException(status_code=400, detail="No checks in request body — cannot make the spreadsheet.")
+    shown, _hidden = channel_scope.visible(results)
+    order = {"FAIL": 0, "REVIEW": 1}
+    rows = sorted((r for r in shown if isinstance(r, dict)), key=lambda r: order.get(str(r.get("status")), 2 if str(r.get("status")) != "PASS" else 3))
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    w.writerow(["Status", "Check", "Area", "Finding", "What we found", "What it means", "What to do", "Technical detail"])
+    for r in rows:
+        p = r.get("plain") if isinstance(r.get("plain"), dict) else {}
+        st = str(r.get("status") or "")
+        w.writerow([_CSV_STATUS.get(st, "Not checked" if st == "ERROR" else "For your information"), str(r.get("id") or ""), str(r.get("section") or ""),
+                    str(r.get("label") or ""), str(p.get("found") or ""), str(p.get("means") or ""), str(p.get("do") or ""), str(r.get("detail") or "")[:500]])
+    meta = (data or {}).get("metadata") or {}
+    org = re.sub(r"[^A-Za-z0-9_-]+", "_", str(meta.get("org", "report") if isinstance(meta, dict) else "report")).strip("_")[:60] or "report"
+    # A byte-order mark so Excel reads the file as UTF-8.
+    stamp = datetime.now().strftime("%Y%m%d")
+    return PlainTextResponse("\ufeff" + buf.getvalue(), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="zscaler_{org}_{stamp}_findings.csv"'})
+
+
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
@@ -7204,6 +7553,20 @@ async def report_shadow_page():
     page = os.path.join(STATIC_DIR, "report_shadow.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+# ── Simple mode ───────────────────────────────────────────────────────
+@app.get("/simple")
+async def simple_mode_page():
+    """Simple mode (static/simple.html): seven big tasks in plain words, each
+    a short wizard over the same endpoints the expert pages use. Anything
+    that would change the tenant is handed to the expert page's own flow
+    (write mode, preview, confirmation); this page never writes."""
+    page = os.path.join(STATIC_DIR, "simple.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="simple mode page missing")
     with open(page, "r", encoding="utf-8") as f:
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
