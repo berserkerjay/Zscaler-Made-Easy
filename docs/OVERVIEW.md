@@ -145,6 +145,23 @@ what you get, what to do next.
   exist; each with the rule that hides it, the reason and the fix, and CSV
   and JSON exports. A criterion it cannot compare safely counts as "not
   shadowed". Read-only; Stop ends the read at once.
+- **Browser security** — Zscaler Zero Trust Browser and ZIA Browser
+  Control, read only as far as the Scope page allows (ZIA platform for
+  ZIA, ZPA for ZPA with a OneAPI API client and the customer ID): every
+  isolation profile's controls (copy and paste, upload and download,
+  printing, watermark, debug mode, local rendering, session persistence)
+  beside the URL filtering, Cloud App Control and ZPA isolation rules that
+  use it; Browser Control (allow all browsers, older versions not blocked,
+  smart isolation); and the ZPA browser side (Browser Access segments and
+  the access rules that reach them, managed browser profiles, browser
+  protection, Privileged Remote Access portals and consoles, user
+  portals). Findings in plain English with a severity and a fix, focused
+  on data protection (a permissive profile used for GenAI or unsanctioned
+  apps is high), a glossary of every control, the assumptions, and an
+  Excel or JSON export. It never shows the debug file password, a
+  certificate body or the people in the configuration, and says that the
+  standalone Zscaler Enterprise Browser has no API. Read-only; Stop ends
+  the read at once.
 - **Flow animator** — the flows the app analyses, animated from your own
   results: the last Path analyzer result hop by hop; inside DLP, the
   dictionary match counts, each engine term against its threshold and the

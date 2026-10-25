@@ -113,6 +113,14 @@
     get: 'Findings per policy type with a severity, the rule and the rule that hides it, the reason in one sentence and the fix, a count per policy, the Inline Web DLP evaluation mode it assumed, and CSV and JSON exports.',
     next: 'Fix the high findings first (a stricter rule that never applies), move or delete the rule as the fix says, then run the analysis again to prove it.',
   };
+  X.browser = {
+    group: 'Find the gaps', name: 'Browser security', href: '/report/browser',
+    what: 'Reads, only as far as the Scope page allows, the Zero Trust Browser isolation profiles (copy and paste, upload and download, printing, watermark, debug mode, local rendering), the ZIA and ZPA rules that send traffic to isolation, ZIA Browser Control (allowed and blocked browser versions, smart isolation), and the ZPA browser side: Browser Access apps, managed browser profiles, browser protection, Privileged Remote Access and user portals.',
+    why: 'Isolation is how a customer lets people use GenAI, file sharing and other risky sites without letting data out, but one permissive profile (copy and paste or downloads allowed, no watermark) quietly undoes it. Old browsers and Browser Access apps nobody can reach, or anybody can reach from a personal browser, are the other gaps this page names.',
+    when: 'During a data protection or GenAI review, before rolling isolation out to more users, after a customer asks "can people copy data out of the isolated app?", and when cleaning up Browser Access and Privileged Remote Access.',
+    get: 'Findings in plain English with a severity and a fix each (sorted high first), the controls of every isolation profile side by side with the rules that use it, Browser Control settings with the older versions not blocked, Browser Access, managed browser and PRA tables, a glossary of every control, the assumptions, and an Excel or JSON export. It says once that the standalone Zscaler Enterprise Browser has no API.',
+    next: 'Turn copy and paste, file transfer and printing off in the profiles that isolate sensitive, GenAI or unsanctioned apps, give rules that isolate a profile, delete the unused profiles, then read again to confirm each finding is gone.',
+  };
   X.efficacy = {
     group: 'Find the gaps', name: 'DLP efficacy', href: '/report/view?tool=efficacy',
     what: 'Scores every custom dictionary and engine for false-positive risk and lets you paste sample text (or run the built-in corpus) to see which dictionaries, engines and predefined ones would fire.',
@@ -415,7 +423,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'posture', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'posture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo' };
     return map[p] || '';
@@ -466,7 +474,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

@@ -84,6 +84,11 @@
     'forwarding profile': { term: 'forwarding profile', def: 'A forwarding profile tells Client Connector how to send traffic to Zscaler. It can differ at the office and at home.' },
     'engine expression': { term: 'engine expression', def: 'An engine expression is the test inside an engine. It says how many matches of each word list are needed.' },
     'file type': { term: 'file type', def: 'A file type is a kind of file, like a Word file or a program. Rules can allow or block some kinds.' },
+    'browser isolation': { term: 'browser isolation', def: 'Browser isolation opens a website on a Zscaler computer, not on yours. You only see a picture of the page, so files and bad code stay away.' },
+    'watermark': { term: 'watermark', def: 'A watermark is faint text on the screen, like your name and the time. If someone takes a photo of the screen, it shows who saw it.' },
+    'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
+    'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
+    'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

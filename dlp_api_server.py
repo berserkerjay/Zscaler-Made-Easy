@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/browser", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -2461,6 +2461,20 @@ async def zpa_report_export(report_id: str, format: str = "csv", severity: str =
 async def report_device_posture_page():
     """Device posture (static/report_device_posture.html)."""
     page = os.path.join(STATIC_DIR, "report_device_posture.html")
+# ── Browser security (read-only): Zero Trust Browser isolation, ZPA browser
+# side and ZIA Browser Control (browser_security). ZIA is read when ZIA
+# platform is ticked, ZPA when ZPA is; kept as report "browser-…" for the
+# Excel and JSON exports. Never holds the raw read or any secret.
+class BrowserSecurityRequest(MigrateRequest):
+    """Body of the browser security read: tenant credentials (with the ZPA
+    customer id when ZPA is ticked) and the Scope page selection; refused
+    (400) before sign-in unless ZIA platform or ZPA is ticked."""
+
+
+@app.get("/report/browser")
+async def report_browser_page():
+    """Browser security (static/report_browser.html)."""
+    page = os.path.join(STATIC_DIR, "report_browser.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
     with open(page, "r", encoding="utf-8") as f:
@@ -2479,6 +2493,33 @@ def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, 
     import device_posture
     import zpa_reader
     logs: list = []
+def _browser_inputs(req: BrowserSecurityRequest) -> Tuple[Dict[str, Any], Dict[str, str], str]:
+    """(scope, creds, why ZPA is skipped) for a browser security read; 400
+    before anything is signed in to or read when nothing it reads is in
+    scope, or when only ZPA is and it cannot be read (user rule 1)."""
+    import browser_security as bs
+    sc, _ch, source = _scope_selection(req)
+    scope = bs.scope_for(sc)
+    if not scope["read"]:
+        raise HTTPException(status_code=400, detail=bs.NOTHING_IN_SCOPE)
+    scope["source"] = source
+    creds = _tenant_creds(req)
+    zpa_blocked = ""
+    if scope["zpa"]:
+        if creds.get("auth_method") == tenant_auth.LEGACY:
+            zpa_blocked = bs.ZPA_NEEDS_ONEAPI
+        elif not validate_customer_id(creds.get("customer_id") or ""):
+            zpa_blocked = bs.ZPA_NEEDS_CUSTOMER_ID
+        if zpa_blocked and not scope["zia"]:
+            raise HTTPException(status_code=400, detail=f"{zpa_blocked} Nothing was read.")
+    return scope, creds, zpa_blocked
+
+
+def _run_browser_security(client, label: str, creds: Dict[str, Any], scope: Dict[str, Any], zpa_blocked: str, log, cancel) -> Dict[str, Any]:
+    """Read only what `scope` puts in scope and analyse it. Stop ends the run
+    as stopped: nothing more is read and no partial result is kept."""
+    import browser_security as bs
+    logs: List[str] = []
 
     def _log(line: str) -> None:
         line = tenant_auth.mask_secrets(str(line), creds)
@@ -2555,6 +2596,68 @@ async def device_posture_export(report_id: str, format: str = "xlsx"):
     data = await asyncio.to_thread(device_posture.workbook, rep)
     return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
                     headers={"Content-Disposition": f"attachment; filename=device_posture_{ts}.xlsx"})
+    _log(f"Reading {label}. Nothing is written to the tenant. " + (f"In scope, from {scope['source']}: " if scope.get("source") else "") + scope["summary"])
+    if zpa_blocked:
+        _log(f"ZPA is not read: {zpa_blocked}")
+    try:
+        out = bs.run(client, scope, log=_log, cancel=cancel, zpa_blocked=zpa_blocked)
+    except bs.Stopped:
+        _log("STOPPED — you clicked Stop; nothing more was read and no partial result is kept.")
+        return {"stopped": bs.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    if cancel is not None and cancel.is_set():
+        return {"stopped": bs.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    for sec in (out.get("sections") or {}).values():
+        if sec.get("error"):
+            sec["error"] = tenant_auth.mask_secrets(str(sec["error"]), creds)
+    rid = _remember_report("browser", dict(out, kind="browser"), label)
+    _log(f"Done: {out['counts']['total']} finding(s).")
+    return dict(_REPORTS[rid], status="done", logs=logs)
+
+
+@app.post("/api/browser-security/start")
+async def browser_security_start(req: BrowserSecurityRequest, request: Request):
+    """Read the browser security configuration in scope (ZIA isolation
+    profiles, Browser Control and the rules that isolate; ZPA isolation
+    controls, Browser Access, managed browsers, PRA and user portals) as a
+    job the page follows, and analyse it. Read-only. Poll GET
+    /api/dlp-packs/jobs/{job_id}; Stop ends it with nothing more read."""
+    import pack_jobs
+    scope, creds, zpa_blocked = _browser_inputs(req)   # before signing in (user rule 1)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("browser", lambda log, cancel: _run_browser_security(client, label, creds, scope, zpa_blocked, log, cancel),
+                          label=f"Browser security {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _browser_report(rid: str) -> Dict[str, Any]:
+    rep = _REPORTS.get(rid or "")
+    if not rep or not str(rid).startswith("browser-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read it again.")
+    return rep
+
+
+@app.get("/api/browser-security/report/{report_id}")
+async def browser_security_report(report_id: str):
+    return _browser_report(report_id)
+
+
+@app.get("/api/browser-security/report/{report_id}/export")
+async def browser_security_export(report_id: str, format: str = "xlsx"):
+    """The browser security report as Excel (xlsx_writer) or JSON."""
+    import browser_security as bs
+    import xlsx_writer
+    rep = _browser_report(report_id)
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        return Response(content=json.dumps(bs.scrub(rep), indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=browser_security_{ts}.json"})
+    if fmt != "xlsx":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    data = await asyncio.to_thread(bs.workbook, rep)
+    return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
+                    headers={"Content-Disposition": f"attachment; filename=browser_security_{ts}.xlsx"})
 
 
 @app.get("/report/digest")
