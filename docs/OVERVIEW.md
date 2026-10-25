@@ -93,7 +93,13 @@ what you get, what to do next.
   ZPA analysis templates: unreachable access rules, segments nobody
   reaches or only deny rules reach, overlapping segments, over-broad
   domains and ports, bypasses, server and connector groups that cannot
-  serve, connector redundancy and versions. Diagnose answers, for one
+  serve, connector redundancy and versions. The Overview tab says the
+  counts in plain sentences (segments nobody can reach, connectors down or
+  outdated, rules that never decide), draws the infrastructure map from
+  users and IdPs through access rules, segment groups, app segments and
+  server groups to connector groups and App Connectors (large tenants are
+  grouped per column; a click on a box filters the tables of every object)
+  and exports it all as Excel. Diagnose answers, for one
   user and destination, which app segment matches, what serves it and
   which access rule decides, with every earlier rule and why it did not
   match. Read-only; Stop ends the read at once.
@@ -184,7 +190,8 @@ what you get, what to do next.
   registration anomalies, multi-device users and version drift, each with
   its exact definition; a profile heatmap with equal-weight and
   device-weighted scores, a side-by-side profile diff, a PAC comparison and
-  a remediation plan ranked by impact times devices, exported as CSV (with
+  a remediation plan ranked by impact times devices, exported as CSV or one
+  Excel workbook (devices, versions, operating systems, stale devices; with
   a counts-only option). Without device permission it says so and shows
   the configuration only. Read-only; Stop ends the read at once.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
@@ -276,8 +283,8 @@ what you get, what to do next.
   queue through the same apply path, with write mode and the typed
   confirmation; the plan is checked against the tenant first and a request
   whose plan no longer matches is marked stale and nothing is written.
-  Every step is in the audit log with who did it; the queue exports as JSON
-  or Markdown.
+  Every step is in the audit log with who did it; the queue exports as JSON,
+  Markdown or Excel (requests, items, approvals, comments, history).
 - **Bulk changes** — many changes as one reviewed plan: enable or
   disable up to 100 rules (URL filtering, SSL inspection, Cloud Firewall,
   Cloud App Control, File Type Control and the four DLP channels), put one

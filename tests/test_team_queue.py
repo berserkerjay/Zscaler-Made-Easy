@@ -510,3 +510,33 @@ def test_the_module_is_packaged_and_the_store_is_git_ignored():
     assert '"change_queue"' in pyproject
     gi = open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read()
     assert "change_requests.json" in gi
+
+
+# ── the Excel export ────────────────────────────────────────────────────
+def test_the_excel_export_has_requests_items_approvals_comments_and_history(monkeypatch, tenant):
+    from test_xlsx_writer import read_workbook
+    alice, bob, reader = _team(monkeypatch)
+    rid = _file_deploy(alice, _preflight(alice), note="=cmd|' /C calc'!A0").json()["request"]["id"]
+    assert bob.post(f"/api/change-queue/{rid}/approve", json={"comment": "looks right"}).status_code == 200
+    x = alice.get("/api/change-queue/export?format=xlsx")
+    assert x.status_code == 200 and x.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.spreadsheetml")
+    assert "attachment" in x.headers["content-disposition"] and ".xlsx" in x.headers["content-disposition"]
+    wb = read_workbook(x.content)
+    assert list(wb) == ["Requests", "Items", "Approvals", "Comments", "Request history"]
+    assert wb["Requests"][0] == [change_queue.ROW_LABELS[c] for c in change_queue.ROW_COLUMNS]
+    req = dict(zip(change_queue.ROW_COLUMNS, wb["Requests"][1]))
+    assert req["id"] == rid and req["status"] == "approved" and req["requested_by"] == "alice@example.com" and req["decided_by"] == "bob@example.com"
+    assert any(r[4] == "TQ Dict" for r in wb["Items"][1:])
+    apr = wb["Approvals"][1]
+    assert apr[0] == rid and apr[5] == "Approved" and apr[6] == "bob@example.com"
+    assert [r[3] for r in wb["Comments"][1:]] == ["'=cmd|' /C calc'!A0", "looks right"], "formula text is neutralised"
+    assert [r[2] for r in wb["Request history"][1:]] == ["filed", "approved"]
+    assert "S3cr3t-never-stored" not in x.content.decode("latin-1") and "payload" not in str(wb)
+    # Scoped to a tenant like the other formats.
+    other = read_workbook(alice.get("/api/change-queue/export?format=xlsx&tenant=other").content)
+    assert len(other["Requests"]) == 2 and "No change requests for this tenant" in other["Requests"][1][0]
+    # A reader may export (as JSON and Markdown); without a sign-in the gate holds.
+    assert reader.get("/api/change-queue/export?format=xlsx").status_code == 200
+    assert TestClient(srv.app).get("/api/change-queue/export?format=xlsx").status_code == 401
+    html = _read("report_queue.html")
+    assert 'id="cqXlsx" href="/api/change-queue/export?format=xlsx"' in html and "$('cqXlsx').href" in html

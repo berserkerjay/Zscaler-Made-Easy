@@ -79,6 +79,7 @@
         <button type="button" class="rp-btn" id="zfExpPlan" disabled aria-disabled="true">Plan (CSV)</button>
         <button type="button" class="rp-btn" id="zfExpDevices" disabled aria-disabled="true">Devices (CSV)</button>
         <button type="button" class="rp-btn" id="zfExpSummary" disabled aria-disabled="true">Summary (CSV)</button>
+        <button type="button" class="rp-btn" id="zfExpXlsx" disabled aria-disabled="true" title="Summary, versions, operating systems, stale devices, devices, alerts and the plan in one workbook">Everything (Excel)</button>
         <label><input type="checkbox" id="zfCounts"> Counts only (no user or device names)</label>
       </span>
     </nav>
@@ -90,7 +91,7 @@
           <ol class="pa-steps">
             <li><strong>Read the fleet.</strong> The app reads the Client Connector app and forwarding profiles and the hosted PAC files (the same paced reader the Path analyzer uses), then the enrolled devices and their per-device service status (ZIA, ZPA, ZDX). It takes a minute; Stop ends it at once.</li>
             <li><strong>Read the alerts.</strong> Blind spots, bypass risk, ghost devices, registration anomalies, multi-device users and version drift, each with its exact definition beside it.</li>
-            <li><strong>Fix in order.</strong> The remediation plan ranks every gap by its impact times the devices it affects, with the fix in plain words. Export it as CSV (it opens in Excel); tick counts only to leave every user and device name out.</li>
+            <li><strong>Fix in order.</strong> The remediation plan ranks every gap by its impact times the devices it affects, with the fix in plain words. Export it as CSV, or everything as one Excel workbook; tick counts only to leave every user and device name out.</li>
           </ol>
           <p class="zf-dim">Device and user names are shown on this page because you need them to act; they are never written to a log. If the API client may not read devices, the page says so and shows the configuration only: never zeros as if the fleet were healthy.</p>
           <div class="zf-status" id="zfStatus" aria-live="polite"></div>

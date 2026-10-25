@@ -65,6 +65,13 @@
     'edr': { term: 'EDR', def: 'EDR is a guard app on each computer. It watches for bad programs and stops them.' },
     'domain-joined': { term: 'domain-joined', def: 'A domain-joined computer is one your company set up and controls. Home computers are not.' },
     'negated condition': { term: 'negated condition', def: 'A negated condition is a check turned upside down. It matches when the thing is not true.' },
+    'zpa': { term: 'ZPA', def: 'ZPA is the part of Zscaler that lets people reach the private apps of your company, from home or from the office.' },
+    'app segment': { term: 'app segment', def: 'An app segment is a list of names and ports for one private app. ZPA uses it to know which app you want.' },
+    'segment group': { term: 'segment group', def: 'A segment group is a box of app segments. A rule can name the box instead of each app.' },
+    'access rule': { term: 'access rule', def: 'An access rule says who may reach which private apps. The first rule that fits decides.' },
+    'server group': { term: 'server group', def: 'A server group says which servers run an app and which connector groups can reach them.' },
+    'app connector': { term: 'App Connector', def: 'An App Connector is a small Zscaler program that sits next to your private apps. It carries the traffic to them.' },
+    'connector group': { term: 'connector group', def: 'A connector group is a team of App Connectors in one place. Two or more keep an app up if one stops.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

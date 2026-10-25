@@ -105,7 +105,7 @@
     if (running) return;
     running = true; stopAsked = false; startToken = newStartToken(); job = null;
     const btn = $('zfRun'); btn.disabled = true; btn.textContent = 'Reading…';
-    ['zfExpPlan', 'zfExpDevices', 'zfExpSummary'].forEach(id => setEnabled(id, false));
+    ['zfExpPlan', 'zfExpDevices', 'zfExpSummary', 'zfExpXlsx'].forEach(id => setEnabled(id, false));
     out.innerHTML = liveHtml();
     $('zfStop').addEventListener('click', stop);
     status('');
@@ -128,7 +128,7 @@
       }
       last = snap.result; lastJob = job;
       render(last, snap.logs || []);
-      ['zfExpPlan', 'zfExpSummary'].forEach(id => setEnabled(id, true));
+      ['zfExpPlan', 'zfExpSummary', 'zfExpXlsx'].forEach(id => setEnabled(id, true));
       setEnabled('zfExpDevices', !!(last.devices || []).length);
       say(`Fleet read. ${last.banner}`);
     } catch (e) {
@@ -295,14 +295,16 @@
     if ($('zfFilter')) { $('zfFilter').addEventListener('input', drawDevices); drawDevices(); }
   }
 
-  async function exportCsv(what) {
+  // format csv (one table) or xlsx (every table in one workbook; `what` ignored).
+  async function exportCsv(what, format) {
     if (!lastJob) return;
     const counts = $('zfCounts').checked;
+    const fmt = format || 'csv';
     try {
-      const r = await fetch(`/api/zcc/fleet/${encodeURIComponent(lastJob)}/export?what=${what}&counts_only=${counts}`, { cache: 'no-store' });
+      const r = await fetch(`/api/zcc/fleet/${encodeURIComponent(lastJob)}/export?what=${what}&counts_only=${counts}&format=${fmt}`, { cache: 'no-store' });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`); }
       const cd = r.headers.get('Content-Disposition') || '';
-      const name = (cd.match(/filename=([^;]+)/) || [])[1] || `zcc_fleet_${what}.csv`;
+      const name = ((cd.match(/filename="?([^";]+)"?/) || [])[1]) || `zcc_fleet_${what}.${fmt}`;
       const url = URL.createObjectURL(await r.blob());
       const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -313,6 +315,7 @@
   $('zfExpPlan').addEventListener('click', () => exportCsv('plan'));
   $('zfExpDevices').addEventListener('click', () => exportCsv('devices'));
   $('zfExpSummary').addEventListener('click', () => exportCsv('summary'));
+  $('zfExpXlsx').addEventListener('click', () => exportCsv('all', 'xlsx'));
   $('zfRun').addEventListener('click', run);
   tenantChoices();
 })();

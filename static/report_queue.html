@@ -65,6 +65,7 @@
       <button type="button" class="rp-btn" id="cqRefresh">↻ Refresh</button>
       <a class="rp-btn" id="cqJson" href="/api/change-queue/export?format=json" download>Export JSON</a>
       <a class="rp-btn" id="cqMd" href="/api/change-queue/export?format=markdown" download>Export Markdown</a>
+      <a class="rp-btn" id="cqXlsx" href="/api/change-queue/export?format=xlsx" download title="Requests, items, approvals, comments and history in one workbook">Export Excel</a>
     </nav>
     <main class="rp-card" id="main-content">
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -112,7 +113,7 @@
 
     // Rows for the exports: the same shape as change_queue.rows on the
     // server (GET /api/change-queue/export?format=json carries it as
-    // "rows"). The Excel and PDF exports, when they land, build on this.
+    // "rows"; the Excel export's Requests sheet has the same columns).
     window.queueRows = function () {
       return state.items.map(r => ({ id: r.id, status: r.status, kind: r.kind_label || r.kind, title: r.title, tenant: r.tenant_label || r.tenant,
         requested_by: r.requested_by, requested_at: r.requested_at, decided_by: r.decided_by || '', decided_at: r.decided_at || '',
@@ -180,6 +181,7 @@
       const q = cur ? `&tenant=${encodeURIComponent(cur)}` : '';
       $('cqJson').href = `/api/change-queue/export?format=json${q}`;
       $('cqMd').href = `/api/change-queue/export?format=markdown${q}`;
+      $('cqXlsx').href = `/api/change-queue/export?format=xlsx${q}`;
     }
 
     function itemsTable(r) {

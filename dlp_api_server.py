@@ -1848,11 +1848,16 @@ async def change_queue_list(request: Request, tenant: str = "", status: str = ""
 
 @app.get("/api/change-queue/export")
 async def change_queue_export(tenant: str = "", format: str = "markdown"):
-    """Download the queue as JSON or Markdown (change_queue.rows is the
-    shared row shape for the Excel and PDF exports)."""
+    """Download the queue as JSON, Markdown or Excel (format=xlsx: requests,
+    items, approvals, comments, history; change_queue.rows is the shared row
+    shape). `tenant` narrows every format to that tenant's requests."""
     import change_queue
     items = change_queue.list_requests(tenant)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if format == "xlsx":
+        import report_exports
+        data = await asyncio.to_thread(change_queue.to_xlsx, items, tenant=tenant)
+        return _attachment(data, report_exports.XLSX, f"change_queue_{stamp}.xlsx")
     if format == "json":
         return JSONResponse({"exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tenant": tenant or None,
                              "items": items, "rows": change_queue.rows(items)},
@@ -2287,6 +2292,7 @@ def _run_zpa_read(client, label: str, creds: Dict[str, Any], log, cancel, scope:
     """Read ZPA once and run every template. Stop ends the run as stopped:
     nothing more is read, nothing is kept and no partial result is returned."""
     import zpa_analysis
+    import zpa_overview
     import zpa_reader
     logs: list = []
 
@@ -2314,6 +2320,7 @@ def _run_zpa_read(client, label: str, creds: Dict[str, Any], log, cancel, scope:
     readable = zpa_reader.readable(snap)
     report = {"kind": "zpa", "snapshot": snap, "summary": zpa_reader.summary(snap), "collections": snap.get("collections") or {},
               "readable": readable, "choices": zpa_analysis.choices(snap), "read_at": snap.get("read_at"),
+              "overview": zpa_overview.overview(snap, analysis),
               "findings": analysis["findings"], "catalog": analysis["catalog"], "counts": analysis["counts"],
               "not_assessed": analysis["not_assessed"], "assumptions": zpa_analysis.ASSUMPTIONS}
     rid = _remember_report("zpa", report, label)
@@ -2397,8 +2404,11 @@ async def zpa_report_get(report_id: str):
 
 @app.get("/api/zpa/report/{report_id}/export")
 async def zpa_report_export(report_id: str, format: str = "csv", severity: str = ""):
-    """The findings as CSV (every cell through csv_safe) or the findings,
-    catalog and counts as JSON; `severity` (comma-separated) filters."""
+    """The findings as CSV (every cell through csv_safe), the findings,
+    catalog and counts as JSON, or the whole overview as Excel (format=xlsx:
+    KPIs, every inventory table, findings, map connections, what was not
+    read; no cell is a formula); `severity` (comma-separated) filters the
+    findings."""
     import io
     import csv_safe
     rep = _zpa_report(report_id)
@@ -2413,6 +2423,12 @@ async def zpa_report_export(report_id: str, format: str = "csv", severity: str =
                 "severity_filter": sorted(sev), "findings": findings, "catalog": rep.get("catalog"), "assumptions": rep.get("assumptions")}
         return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
                         headers={"Content-Disposition": f"attachment; filename=zpa_analysis_{ts}.json"})
+    if fmt == "xlsx":
+        import report_exports
+        import zpa_overview
+        data = await asyncio.to_thread(zpa_overview.workbook, rep["snapshot"], {"findings": rep.get("findings"), "catalog": rep.get("catalog")},
+                                       tenant_label=rep.get("tenant_label") or "", read_at=rep.get("read_at"), findings=findings)
+        return _attachment(data, report_exports.XLSX, f"zpa_overview_{report_exports.safe_filename_part(rep.get('tenant_label') or 'tenant')}_{ts}.xlsx")
     if fmt != "csv":
         raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
     buf = io.StringIO()
@@ -7050,13 +7066,20 @@ async def zcc_fleet_diff(job_id: str, a: str = "", b: str = ""):
 @app.get("/api/zcc/fleet/{job_id}/export")
 async def zcc_fleet_export(job_id: str, what: str = "plan", counts_only: bool = False, format: str = "csv"):
     """The remediation plan, the device table or the summary of a finished
-    run as CSV (csv_safe). counts_only leaves every user and host name out
-    (the device table is then refused). Excel: when the app gains its
-    xlsx_writer module, `format=xlsx` is where it plugs in; until then CSV."""
+    run as CSV (csv_safe), or everything as one Excel workbook (format=xlsx:
+    summary, versions, operating systems, stale devices, devices, alerts,
+    plan; `what` is then ignored). counts_only leaves every user and host
+    name out (the CSV device table is then refused; the workbook leaves the
+    device sheet empty and counts the stale devices per platform)."""
     import zcc_fleet
     res = _fleet_result(job_id)
-    if (format or "csv").lower() != "csv":
-        raise HTTPException(status_code=400, detail="Excel export is not in this build yet; download CSV (it opens in Excel).")
+    fmt = (format or "csv").lower()
+    if fmt == "xlsx":
+        import report_exports
+        stem, data = await asyncio.to_thread(zcc_fleet.export_xlsx, res, counts_only)
+        return _attachment(data, report_exports.XLSX, f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
+    if fmt != "csv":
+        raise HTTPException(status_code=400, detail="format must be csv or xlsx.")
     try:
         stem, text = zcc_fleet.export_csv(res, (what or "").lower(), counts_only)
     except ValueError as e:

@@ -464,7 +464,8 @@ def test_the_job_runs_exports_and_diffs(monkeypatch):
     assert t.get(f"/api/zcc/fleet/{jid}/export?what=devices&counts_only=true").status_code == 400
     summ = t.get(f"/api/zcc/fleet/{jid}/export?what=summary&counts_only=true")
     assert summ.status_code == 200 and "_counts_" in summ.headers["content-disposition"] and "alice" not in summ.text
-    assert t.get(f"/api/zcc/fleet/{jid}/export?what=plan&format=xlsx").status_code == 400
+    assert t.get(f"/api/zcc/fleet/{jid}/export?what=plan&format=xlsx").status_code == 200
+    assert t.get(f"/api/zcc/fleet/{jid}/export?what=plan&format=pdf").status_code == 400
     pids = [p["pid"] for p in snap["result"]["profiles"]]
     d = t.get(f"/api/zcc/fleet/{jid}/diff?a={pids[0]}&b={pids[1]}")
     assert d.status_code == 200 and d.json()["differences"] > 0
