@@ -25,7 +25,7 @@ TOOLBAR = {
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion",
     "openToolTab('efficacy')": "efficacy", "openDetectionHealthTab()": "health", "openDlpPacksModal()": "packs",
     "openToolTab('terraform')": "terraform", "openVendorMigrateTab()": "vendormigrate", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall",
-    "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates",
+    "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates", "openQueueTab()": "queue",
     "openLogAnalyzerTab()": "logs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live",
     "openReferenceTab('data-security-portfolio-framework')": "refportfolio", "openReferenceTab('ai-security-framework')": "refai",
     "openReferenceTab('genai-security-framework')": "refgenai", "openReferenceTab('framework-machine')": "refmachine",

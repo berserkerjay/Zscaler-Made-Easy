@@ -677,7 +677,7 @@ function _dzDetailHtml(id) {
 
 // ── Step 2: preflight ─────────────────────────────────────────────
 async function _dzRunPreflight() {
-  DZ.step = 2; DZ.report = null; DZ.error = ''; DZ.busy = true; DZ.consent = false;
+  DZ.step = 2; DZ.report = null; DZ.error = ''; DZ.busy = true; DZ.consent = false; DZ.requestNote = '';
   _dzRender();
   try {
     const r = await fetch('/api/dlp-packs/preflight', {
@@ -831,8 +831,51 @@ function _dzRenderReview() {
       <button type="button" class="dz-btn" onclick="DZ.step=1;_dzRender()">← Back</button>
       <button type="button" class="dz-btn" onclick="_dzRunPreflight()">Re-run</button>
       <button type="button" class="dz-btn" title="Close this gap with Terraform instead: opens the hand-off page for the selected packs (what you get, how to run it, download in gap mode so the first terraform plan creates only what is missing here and imports the rest)." onclick="openToolTab('terraform', [...DZ.selected].join(','))">Hand off as Terraform</button>
+      <button type="button" class="dz-btn" id="dzRequestApproval" ${R.status === 'blocked' || !R.plan_hash || !c.writes ? 'disabled' : ''} title="File this plan in the change queue for another writer to approve. Nothing is written now; an approved request is applied from the change queue after the plan is checked against the tenant again." onclick="_dzRequestApproval('deploy')">Request approval</button>
       <button type="button" class="dz-btn primary" ${R.status === 'blocked' ? 'disabled' : ''} onclick="DZ.step=3;DZ.consent=false;_dzRender()">Review &amp; approve <span aria-hidden="true">→</span></button>
-    </div>`;
+    </div>${_dzRequestedHtml(R.plan_hash)}`;
+}
+
+// ── Request approval: file the plan in the team change queue ─────
+// The server files the plan its own preflight (or removal preview) made
+// for this plan_hash, names the requester itself, and writes nothing to
+// the tenant. Another writer approves it on the Change queue page.
+function _dzRequestedHtml(hash) {
+  const q = DZ.requested;
+  if (DZ.requestNote) return `<div class="dz-summary" role="status">${_dzE(DZ.requestNote)}</div>`;
+  if (!q || !hash || q.hash !== hash) return '';
+  return `<div class="dz-summary" role="status">Approval requested: <code>${_dzE(q.id)}</code> is pending in the <a href="/report/queue" target="_blank" rel="noopener">change queue</a>.</div>`;
+}
+async function _dzRequestApproval(kind) {
+  const removal = kind === 'removal';
+  const R = removal ? (DZ.removal || {}).plan : DZ.report;
+  if (!R || !R.plan_hash) return;
+  const dlg = _dzDlg();
+  const what = removal ? `the removal of ${_dzN((R.items || []).filter(i => i.status === 'remove').length, 'object')}` : `${_dzN(_dzCounts(R).writes, 'change')}`;
+  const q = { title: 'Request approval for this plan?',
+    body: `The plan (${what} to ${R.tenant_label || 'the tenant'}, plan ${String(R.plan_hash).slice(0, 12)}) is saved in the change queue on this server, with you as the requester. Nothing is written now. Another writer reviews it there and approves or rejects it; an approved request is applied from the change queue after the plan is checked against the tenant again.`,
+    okLabel: 'Request approval' };
+  let ok = false;
+  if (dlg) ok = await dlg.ask(q);
+  else { try { ok = window.confirm(`${q.title}\n\n${q.body}`); } catch (e) { ok = false; } }
+  if (!ok) return;
+  DZ.requestNote = '';
+  try {
+    const body = removal
+      ? { ..._dzRemovalScope(), plan_hash: R.plan_hash, ..._dzCreds() }
+      : { pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), plan_hash: R.plan_hash, ..._dzCreds() };
+    const r = await fetch(removal ? '/api/change-queue/removal' : '/api/change-queue/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+    DZ.requested = { id: data.request.id, hash: R.plan_hash };
+    announce(`Approval requested: ${data.request.id} is pending in the change queue.`);
+    if (dlg) await dlg.notice({ title: 'Approval requested', tone: 'ok',
+      body: `Request ${data.request.id} is pending in the change queue. Open Change queue (toolbar) to follow it, add a comment or withdraw it; another writer approves it there.` });
+  } catch (e) {
+    DZ.requestNote = `Could not request approval: ${e.message}`;
+    announce(DZ.requestNote);
+  }
+  if (removal) _dzRemovalRender(); else _dzRender();
 }
 
 
@@ -1453,8 +1496,9 @@ function _dzRemovalApprove() {
       <button type="button" class="dz-btn quiet" onclick="DZ.removal.step=1;_dzRemovalRender()">Back</button>
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()">Print or save as PDF</button>
       ${!writeOn && (DZ.write || {}).can_toggle ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(true)">Enable write mode</button>` : ''}
+      ${R.mode === 'pick' && R.plan.plan_hash && remove.length ? `<button type="button" class="dz-btn" id="dzRequestRemovalApproval" title="File this removal plan in the change queue for another writer to approve. Nothing is removed now." onclick="_dzRequestApproval('removal')">Request approval</button>` : ''}
       <button type="button" class="dz-btn danger" ${writeOn && R.consent ? '' : 'disabled'} title="${writeOn ? '' : 'Enable write mode first'}" onclick="_dzRemovalApply()">Remove now</button>
-    </div>`;
+    </div>${_dzRequestedHtml(R.plan.plan_hash)}`;
 }
 
 function _dzRemovalBusy() {

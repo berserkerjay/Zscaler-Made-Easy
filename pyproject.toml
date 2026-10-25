@@ -48,7 +48,7 @@ dlp-check-evaluate = "continuous_eval:main"
 
 [tool.setuptools]
 py-modules = [
-    "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "channel_scope", "compliance_mapping", "csv_safe",
+    "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "change_queue", "channel_scope", "compliance_mapping", "csv_safe",
     "continuous_eval", "corpus_engines", "data_flow", "deployments", "detection_health", "discover_endpoints",
     "dlp_analysis", "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance",
     "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_export", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth", "tenant_fingerprint",

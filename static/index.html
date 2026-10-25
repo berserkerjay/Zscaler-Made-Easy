@@ -663,6 +663,11 @@
                 title="Curated Zscaler best-practice articles. Opens in a new tab.">
           <span aria-hidden="true">📚</span> Best practices
         </button>
+        <button class="btn btn-ghost" onclick="openQueueTab()"
+                aria-label="Open Change queue: deploy plans, removal plans and fixes waiting for a second writer's approval, with approve, reject, apply and withdraw (opens in a new tab)"
+                title="The team change queue: plans someone filed with Request approval in Deploy policy packs or Review and remediate. Another writer approves or rejects each one; an approved request is applied from here after the plan is checked against the tenant again. Export as JSON or Markdown. Opens in a new tab.">
+          <span aria-hidden="true">📋</span> Change queue
+        </button>
         <button class="btn btn-ghost" onclick="openAdvancedTab()"
                 aria-label="Open Advanced settings: add your own policy packs from JSON or Terraform and see how this server is configured (opens in a new tab)"
                 title="Add your own policy packs (JSON, Terraform or a ZIP) so they appear in Deploy policy packs, the Data flow map and the Terraform hand-off; see the library and this server's settings. Opens in a new tab.">
@@ -3622,9 +3627,10 @@ function _showWizardStep() {
   fields.innerHTML = recipe.fields.map(f => _renderField(f)).join('');
   document.getElementById('wizardResult').innerHTML = '';
   document.getElementById('wizardApplyBtn').style.display = 'none';
+  _wizardPlanReady(false);   // Request approval too
   // Apply is for the plan that was previewed: a change to any field after
   // the preview hides Apply until the new values are previewed.
-  if (!fields.dataset.guarded) { fields.dataset.guarded = '1'; fields.addEventListener('input', () => { const a = document.getElementById('wizardApplyBtn'); if (a && a.style.display !== 'none') { a.style.display = 'none'; const r = document.getElementById('wizardResult'); if (r) r.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">The values changed since the preview. Click Preview again to see the plan for the new values.</div>'; } }); }
+  if (!fields.dataset.guarded) { fields.dataset.guarded = '1'; fields.addEventListener('input', () => { const a = document.getElementById('wizardApplyBtn'); if (a && a.style.display !== 'none') { _wizardPlanReady(false); const r = document.getElementById('wizardResult'); if (r) r.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">The values changed since the preview. Click Preview again to see the plan for the new values.</div>'; } }); }
 
   // Progress bar
   const pct = Math.round((idx / total) * 100);
@@ -3664,7 +3670,7 @@ async function wizardPreview() {
         <strong>Validation failed:</strong>
         <ul style="margin:0.3rem 0 0 1.1rem;">${(data.errors || []).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
       </div>`;
-      document.getElementById('wizardApplyBtn').style.display = 'none';
+      _wizardPlanReady(false);
       return;
     }
     resultEl.innerHTML = `
@@ -3672,7 +3678,7 @@ async function wizardPreview() {
         <strong>Plan ready:</strong> <code>${escapeHtml(data.method)}</code> <code>${escapeHtml(data.endpoint)}</code>
         <pre style="background:var(--well);padding:0.4rem;border-radius:4px;font-size:0.72rem;overflow-x:auto;margin-top:0.3rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
-    document.getElementById('wizardApplyBtn').style.display = 'inline-flex';
+    _wizardPlanReady(true);
   } catch(e) {
     resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
   }
@@ -3709,10 +3715,49 @@ async function wizardApply() {
     _remediationResults.push(outcome);
     // Advance-button relabel so the user continues naturally
     document.getElementById('wizardNextBtn').textContent = (_remediationIndex + 1 >= _remediationQueue.length) ? 'Finish →' : 'Next →';
-    document.getElementById('wizardApplyBtn').style.display = 'none';
+    _wizardPlanReady(false);
   } catch(e) {
     resultEl.innerHTML = `<div style="color:var(--fail);">Apply failed: ${escapeHtml(e.message)}</div>`;
     _remediationResults.push({check_id, label: recipe.label, status: 'error', message: e.message});
+  }
+}
+
+// The previewed plan can be applied now or filed for approval: both
+// buttons show together, and hide together when the values change.
+function _wizardPlanReady(on) {
+  for (const id of ['wizardApplyBtn', 'wizardRequestBtn']) {
+    const b = document.getElementById(id);
+    if (b) b.style.display = on ? 'inline-flex' : 'none';
+  }
+}
+
+// Request approval: file the previewed fix in the team change queue. The
+// server re-plans it, names the requester itself, and sends nothing to the
+// tenant; another writer approves it on the Change queue page.
+async function wizardRequestApproval() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const recipe = _findRecipeForCheck(check_id);
+  if (!recipe) return;
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = _collectWizardCriteria();
+  const resultEl = document.getElementById('wizardResult');
+  const btn = document.getElementById('wizardRequestBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/change-queue/recipe', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+    const id = data.request.id;
+    resultEl.insertAdjacentHTML('beforeend', `<div role="status" style="margin-top:0.4rem;padding:0.5rem 0.7rem;border-left:3px solid var(--accent);background:var(--well);border-radius:4px;font-size:0.82rem;">Approval requested: <code>${escapeHtml(id)}</code> is pending in the <a href="/report/queue" target="_blank" rel="noopener">change queue</a>. Nothing was sent to the tenant; another writer approves it there.</div>`);
+    _remediationResults.push({check_id, label: recipe.label, status: 'requested', message: `approval requested (${id})`});
+    if (typeof announce === 'function') announce(`Approval requested: ${id} is pending in the change queue.`);
+    if (btn) btn.style.display = 'none';
+  } catch(e) {
+    resultEl.insertAdjacentHTML('beforeend', `<div role="alert" style="margin-top:0.4rem;color:var(--fail);">Could not request approval: ${escapeHtml(e.message)}</div>`);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -3745,8 +3790,8 @@ function _showWizardSummary() {
   const by = {applied: 0, skipped: 0, blocked: 0, failed: 0, error: 0};
   for (const r of _remediationResults) by[r.status] = (by[r.status] || 0) + 1;
   const rows = _remediationResults.map(r => {
-    const colors = {applied:'var(--pass)', skipped:'var(--dim)', blocked:'var(--warn)', failed:'var(--fail)', error:'var(--fail)'};
-    const icons  = {applied:'✓', skipped:'→', blocked:'⚠', failed:'✗', error:'✗'};
+    const colors = {applied:'var(--pass)', skipped:'var(--dim)', blocked:'var(--warn)', failed:'var(--fail)', error:'var(--fail)', requested:'var(--accent)'};
+    const icons  = {applied:'✓', skipped:'→', blocked:'⚠', failed:'✗', error:'✗', requested:'→'};
     return `<tr>
       <td style="padding:0.3rem 0.5rem;color:${colors[r.status] || 'var(--dim)'};font-weight:600;">${icons[r.status] || '?'} ${escapeHtml(r.status)}</td>
       <td style="padding:0.3rem 0.5rem;"><code style="color:var(--dim);">${escapeHtml(r.check_id)}</code></td>
@@ -3775,7 +3820,7 @@ function _showWizardSummary() {
     : '<div style="color:var(--dim);">No remediations processed.</div>';
   document.getElementById('wizardResult').innerHTML = '';
   document.getElementById('wizardPreviewBtn').style.display = 'none';
-  document.getElementById('wizardApplyBtn').style.display = 'none';
+  _wizardPlanReady(false);
   document.getElementById('wizardSkipBtn').style.display = 'none';
   document.getElementById('wizardNextBtn').textContent = 'Close';
   document.getElementById('wizardNextBtn').onclick = closeWizard;
@@ -4217,6 +4262,8 @@ function _ensureWizardModal() {
                   style="display:none;padding:0.5rem 1rem;font-size:0.85rem;background:var(--fail);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
             ⚡ Apply now
           </button>
+          <button type="button" id="wizardRequestBtn" class="btn btn-ghost" onclick="wizardRequestApproval()" style="display:none;padding:0.5rem 1rem;font-size:0.85rem;"
+                  title="File this fix in the change queue for another writer to approve. Nothing is sent to the tenant now.">Request approval</button>
         </div>
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           <button type="button" id="wizardSkipBtn" class="btn btn-ghost" onclick="wizardSkip()" style="padding:0.5rem 1rem;font-size:0.85rem;">Skip →</button>
@@ -5005,6 +5052,12 @@ function openVendorMigrateTab() {
 }
 function openLogAnalyzerTab() {
   const w = window.open('/report/logs', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openQueueTab() {
+  // The tab reads the credentials from this page through window.opener
+  // only when an approved request is applied there.
+  const w = window.open('/report/queue', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openAdvancedTab() {

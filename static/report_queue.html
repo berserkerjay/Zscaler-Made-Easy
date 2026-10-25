@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change queue — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .cq-sec { padding: 0.2rem 0.2rem 1rem; }
+  .cq-sec h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
+  .cq-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.6rem; }
+  .cq-tile { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
+  .cq-tile .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+  .cq-tile .v { font-size: 1.05rem; font-weight: 700; overflow-wrap: anywhere; }
+  .cq-tile .d { font-size: 0.8rem; color: var(--dim); overflow-wrap: anywhere; }
+  .cq-note { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0.6rem 0; font-size: 0.86rem; }
+  .cq-tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin: 1rem 0 0.6rem; }
+  .cq-tab { font: inherit; font-size: 0.88rem; font-weight: 600; background: none; color: var(--dim); border: 0; border-bottom: 2px solid transparent; padding: 0.5rem 0.8rem; cursor: pointer; }
+  .cq-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  .cq-tab:focus-visible, .cq-actions .rp-btn:focus-visible, .cq-req > summary:focus-visible, .cq-ta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cq-tab .n { font-weight: 500; color: var(--dim); margin-left: 0.3rem; }
+  .cq-req { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); margin: 0 0 0.6rem; }
+  .cq-req > summary { cursor: pointer; padding: 0.7rem 0.9rem; display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: baseline; list-style: revert; }
+  .cq-req > summary .t { font-weight: 600; flex: 1 1 18rem; overflow-wrap: anywhere; }
+  .cq-req > summary .m { font-size: 0.8rem; color: var(--dim); }
+  .cq-body { padding: 0 0.9rem 0.9rem; border-top: 1px solid var(--border); }
+  .cq-dl { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 0.25rem 0.9rem; margin: 0.7rem 0; font-size: 0.86rem; }
+  .cq-dl dt { color: var(--dim); } .cq-dl dd { margin: 0; overflow-wrap: anywhere; }
+  .cq-chip { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--dim); }
+  .cq-chip.pending { color: var(--warn); border-color: var(--warn); } .cq-chip.approved, .cq-chip.applied { color: var(--pass); border-color: var(--pass); }
+  .cq-chip.rejected, .cq-chip.failed, .cq-chip.stale { color: var(--fail); border-color: var(--fail); }
+  table.cq-t { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  table.cq-t th, table.cq-t td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+  table.cq-t th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  .cq-wrap { overflow-x: auto; }
+  .cq-comments { list-style: none; padding: 0; margin: 0.4rem 0; font-size: 0.85rem; }
+  .cq-comments li { padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+  .cq-comments .by { font-weight: 600; } .cq-comments .at { color: var(--dim); font-size: 0.78rem; }
+  .cq-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.6rem; }
+  .cq-actions .rp-btn.cq-danger { color: var(--fail); border-color: var(--fail); }
+  .cq-actions .rp-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .cq-ta { width: 100%; min-height: 3.2rem; font: inherit; font-size: 0.85rem; background: var(--well); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.4rem 0.6rem; resize: vertical; }
+  .cq-why { font-size: 0.8rem; color: var(--dim); margin-top: 0.3rem; }
+  .cq-log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; max-height: 16rem; overflow: auto; margin-top: 0.5rem; }
+  .cq-status { font-size: 0.86rem; color: var(--dim); min-height: 1.3em; }
+  .cq-status.bad { color: var(--fail); }
+  .cq-empty { color: var(--dim); font-size: 0.88rem; padding: 0.6rem 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  @media (prefers-reduced-motion: reduce) { .cq-req, .cq-tab { transition: none; } }
+  @media (max-width: 600px) { .cq-dl { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body class="report-page cq-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Change</span> queue</h1>
+      <p>Changes someone prepared but did not apply: a policy-pack deploy plan, a selective removal plan or a fix recipe, filed with <strong>Request approval</strong> in Deploy policy packs or Review &amp; remediate. A writer other than the requester approves or rejects each one (four-eyes). An approved request is applied from here: the plan is checked against the tenant again first, and a request whose plan no longer matches is marked stale and nothing is written. Every step is in the audit log with who did it.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl"><span class="lbl">Tenant</span><select id="cqTenant" aria-label="Show the requests of this tenant"><option value="">All tenants</option></select></label>
+      <button type="button" class="rp-btn" id="cqRefresh">↻ Refresh</button>
+      <a class="rp-btn" id="cqJson" href="/api/change-queue/export?format=json" download>Export JSON</a>
+      <a class="rp-btn" id="cqMd" href="/api/change-queue/export?format=markdown" download>Export Markdown</a>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div class="cq-status" id="cqStatus" aria-live="polite">Loading…</div>
+
+      <section class="cq-sec" aria-labelledby="cqWhoH">
+        <h2 id="cqWhoH">Who you are and what you may do</h2>
+        <div class="cq-grid" id="cqWho"></div>
+        <div id="cqNote"></div>
+        <div class="cq-grid" style="margin-top:0.6rem;">
+          <label class="cq-tile" id="cqApplyTenantWrap"><span class="k">Tenant credentials for Apply</span>
+            <select id="cqApplyTenant" aria-describedby="cqApplyHint" style="width:100%;margin-top:0.3rem;font:inherit;background:var(--well);color:var(--text);border:1px solid var(--border);border-radius:var(--r-md);padding:0.3rem;"></select>
+            <span class="d" id="cqApplyHint">Apply signs in to the tenant the request was filed for. Nothing is read until you click Apply.</span></label>
+        </div>
+      </section>
+
+      <section class="cq-sec" aria-labelledby="cqListH">
+        <h2 id="cqListH">Requests</h2>
+        <div class="cq-tabs" role="tablist" aria-label="Requests by state">
+          <button type="button" class="cq-tab" role="tab" id="tab-pending" aria-controls="panel" aria-selected="true" tabindex="0" data-tab="pending">Pending<span class="n" id="n-pending"></span></button>
+          <button type="button" class="cq-tab" role="tab" id="tab-approved" aria-controls="panel" aria-selected="false" tabindex="-1" data-tab="approved">Approved<span class="n" id="n-approved"></span></button>
+          <button type="button" class="cq-tab" role="tab" id="tab-history" aria-controls="panel" aria-selected="false" tabindex="-1" data-tab="history">History<span class="n" id="n-history"></span></button>
+        </div>
+        <div id="panel" role="tabpanel" aria-labelledby="tab-pending" tabindex="0"></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    const TABS = { pending: ['pending'], approved: ['approved'], history: ['rejected', 'applied', 'failed', 'stale', 'withdrawn'] };
+    const KIND = { pack_deploy: 'Deploy policy packs', pack_removal: 'Remove selected rules', fix_recipe: 'Fix recipe' };
+    let state = { items: [], viewer: {}, settings: {}, writes_enabled: false }, tab = 'pending';
+    const open = new Set();      // requests whose detail is open, kept across reloads
+    const fmt = t => { try { return new Date(t).toLocaleString(); } catch (e) { return t || ''; } };
+    function announce(t) { const r = $('liveRegion'); if (r) { r.textContent = ''; setTimeout(() => { r.textContent = t; }, 30); } }
+    function status(t, bad) { const s = $('cqStatus'); s.textContent = t; s.classList.toggle('bad', !!bad); }
+    const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+    // Rows for the exports: the same shape as change_queue.rows on the
+    // server (GET /api/change-queue/export?format=json carries it as
+    // "rows"). The Excel and PDF exports, when they land, build on this.
+    window.queueRows = function () {
+      return state.items.map(r => ({ id: r.id, status: r.status, kind: r.kind_label || r.kind, title: r.title, tenant: r.tenant_label || r.tenant,
+        requested_by: r.requested_by, requested_at: r.requested_at, decided_by: r.decided_by || '', decided_at: r.decided_at || '',
+        applied_by: r.applied_by || '', applied_at: r.applied_at || '', plan_hash: r.plan_hash || '',
+        changes: Object.entries(r.summary || {}).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(', '),
+        items: r.items_total || (r.items || []).length, comments: (r.comments || []).map(c => `${c.by}: ${c.text}`).join(' | ') }));
+    };
+
+    // Credentials for Apply: the assessment tab that opened this page, a
+    // saved tenant profile, or what the server has on this computer.
+    function opener() { return window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function' ? window.opener : null; }
+    async function tenantChoices() {
+      const sel = $('cqApplyTenant');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (opener()) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+    }
+    function credBody() {
+      const v = $('cqApplyTenant').value || 'server';
+      const op = opener();
+      if (v === 'opener' && op) {
+        const b = op.migrateCredBody(); delete b.customer_id;
+        try { const a = op.document.getElementById('assessor'); if (a && a.value.trim()) b.assessor = a.value.trim(); } catch (e) { /* no assessor field */ }
+        return b;
+      }
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+
+    async function load(quiet) {
+      if (!quiet) status('Loading…');
+      let data;
+      try {
+        const t = $('cqTenant').value;
+        const r = await fetch('/api/change-queue' + (t ? `?tenant=${encodeURIComponent(t)}` : ''), { cache: 'no-store' });
+        data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+      } catch (e) { status(`Could not load the queue: ${e.message}`, true); return; }
+      state = data;
+      if (!quiet) status('');   // a quiet reload keeps the message of the step that caused it
+      renderWho(); renderTenants(); render();
+    }
+
+    function renderWho() {
+      const v = state.viewer || {}, s = state.settings || {};
+      const tile = (k, val, d) => `<div class="cq-tile"><div class="k">${E(k)}</div><div class="v">${E(val)}</div>${d ? `<div class="d">${E(d)}</div>` : ''}</div>`;
+      $('cqWho').innerHTML =
+        tile('You are', v.actor || 'unknown', v.sso ? 'signed in with SSO' : 'SSO is off: everyone using this server shares this identity') +
+        tile('Your rights', v.may_write ? 'Writer' : 'Read and request', v.may_write ? 'you may approve, reject and apply' : 'you may file, comment and withdraw your own requests (ZSCALER_SSO_WRITERS)') +
+        tile('Four-eyes', s.four_eyes ? 'On' : 'Off', `${s.setting || 'DLP_CHECK_FOUR_EYES'} = ${s.value || ''}`) +
+        tile('Write mode', state.writes_enabled ? 'On' : 'Off', state.writes_enabled ? 'Apply can write to the tenant' : 'Apply needs write mode (Deploy policy packs → Enable write mode)');
+      $('cqNote').innerHTML = s.note ? `<div class="cq-note" role="note">${E(s.note)}</div>` : '';
+    }
+
+    function renderTenants() {
+      const sel = $('cqTenant'), cur = sel.value;
+      const seen = new Map();
+      (state.items || []).forEach(r => { if (!seen.has(r.tenant)) seen.set(r.tenant, r.tenant_label || r.tenant); });
+      if (cur && !seen.has(cur)) seen.set(cur, cur);
+      sel.innerHTML = `<option value="">All tenants</option>` + [...seen].map(([k, l]) => `<option value="${E(k)}" ${k === cur ? 'selected' : ''}>${E(l)}</option>`).join('');
+      const q = cur ? `&tenant=${encodeURIComponent(cur)}` : '';
+      $('cqJson').href = `/api/change-queue/export?format=json${q}`;
+      $('cqMd').href = `/api/change-queue/export?format=markdown${q}`;
+    }
+
+    function itemsTable(r) {
+      const its = r.items || [];
+      if (!its.length) return '<p class="cq-empty">No item list.</p>';
+      if (r.kind === 'fix_recipe') {
+        return its.map(i => `<p><code>${E(i.method)} ${E(i.endpoint)}</code></p><pre class="cq-log">${E(JSON.stringify(i.body, null, 2))}</pre>`).join('');
+      }
+      const more = (r.items_total || its.length) > its.length ? `<p class="cq-why">Showing ${its.length} of ${r.items_total} items.</p>` : '';
+      return `<div class="cq-wrap"><table class="cq-t"><caption class="sr-only">What this request changes</caption><thead><tr><th scope="col">Change</th><th scope="col">Kind</th><th scope="col">Name</th><th scope="col">Channel</th><th scope="col">Note</th></tr></thead><tbody>${its.map(i => `<tr><td>${E(i.status)}</td><td>${E(i.kind)}</td><td>${E(i.name)}</td><td>${E(i.channel || '')}</td><td>${E(i.note || '')}</td></tr>`).join('')}</tbody></table></div>${more}`;
+    }
+
+    // Which buttons this viewer gets, and why a missing one is missing.
+    function rights(r) {
+      const v = state.viewer || {}, s = state.settings || {};
+      const mine = same(v.actor, r.requested_by);
+      const out = { approve: false, reject: false, apply: false, withdraw: false, why: [] };
+      if (r.status === 'pending') {
+        if (!v.may_write) out.why.push('Only a writer can approve or reject.');
+        else {
+          out.reject = true;
+          if (s.four_eyes && mine) out.why.push(v.sso ? 'Four-eyes: you filed this request, so another writer approves it.' : 'Four-eyes: without SSO everyone is the same "local UI token", so nobody can approve a request they filed. Turn on SSO, or set DLP_CHECK_FOUR_EYES=0 on a single-person install.');
+          else out.approve = true;
+        }
+      }
+      if (r.status === 'approved') {
+        if (!v.may_write) out.why.push('Only a writer can apply.');
+        else if (r.applying) out.why.push(`${r.applying.by} is applying this request now.`);
+        else { out.apply = true; if (!state.writes_enabled) out.why.push('Write mode is off: turn it on in Deploy policy packs, then Apply.'); }
+      }
+      if ((r.status === 'pending' || r.status === 'approved') && !r.applying) {
+        if (mine) out.withdraw = true; else if (r.status === 'pending') out.why.push(`Only ${r.requested_by} can withdraw it.`);
+      }
+      return out;
+    }
+
+    function reqHtml(r) {
+      const R = rights(r);
+      const counts = Object.entries(r.summary || {}).filter(([, n]) => n).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ');
+      const comments = (r.comments || []).length ? `<ul class="cq-comments">${r.comments.map(c => `<li><span class="by">${E(c.by)}</span> <span class="at">${E(fmt(c.at))}</span><div>${E(c.text)}</div></li>`).join('')}</ul>` : '<p class="cq-empty">No comments yet.</p>';
+      const hist = (r.history || []).map(h => `<tr><td>${E(fmt(h.at))}</td><td>${E(h.action)}</td><td>${E(h.by)}</td><td>${E(h.comment || h.note || '')}</td></tr>`).join('');
+      const res = r.result ? `<dt>Result</dt><dd>${E(r.result.status || '')}${r.result.summary ? ` — ${E(JSON.stringify(r.result.summary))}` : ''}${r.result.message || r.result.error ? ` — ${E(r.result.message || r.result.error)}` : ''}</dd>` : '';
+      const cid = `cqC-${E(r.id)}`;
+      return `<details class="cq-req" data-id="${E(r.id)}" ${open.has(r.id) ? 'open' : ''}>
+        <summary><span class="t">${E(r.title)}</span><span class="cq-chip ${E(r.status)}">${E(r.status)}</span><span class="m">${E(KIND[r.kind] || r.kind)} · ${E(r.tenant_label || r.tenant)} · by ${E(r.requested_by)} · ${E(fmt(r.requested_at))}</span></summary>
+        <div class="cq-body">
+          <dl class="cq-dl">
+            <dt>Request</dt><dd><code>${E(r.id)}</code></dd>
+            <dt>Requested by</dt><dd>${E(r.requested_by)} at ${E(fmt(r.requested_at))}</dd>
+            ${r.decided_by ? `<dt>${r.status === 'rejected' ? 'Rejected' : 'Approved'} by</dt><dd>${E(r.decided_by)} at ${E(fmt(r.decided_at))}</dd>` : ''}
+            ${r.applied_by ? `<dt>Applied by</dt><dd>${E(r.applied_by)} at ${E(fmt(r.applied_at))}</dd>` : ''}
+            <dt>Tenant</dt><dd>${E(r.tenant_label || r.tenant)}</dd>
+            <dt>Plan hash</dt><dd><code>${E(r.plan_hash)}</code></dd>
+            <dt>What it changes</dt><dd>${E(counts || '—')}</dd>
+            ${res}
+          </dl>
+          <h3 style="font-size:0.9rem;margin:0.6rem 0 0.3rem;">Items</h3>
+          ${itemsTable(r)}
+          <h3 style="font-size:0.9rem;margin:0.8rem 0 0.3rem;">Comments</h3>
+          ${comments}
+          <label for="${cid}" style="display:block;font-size:0.8rem;color:var(--dim);margin-top:0.4rem;">Comment (needed to reject)</label>
+          <textarea class="cq-ta" id="${cid}" maxlength="1000"></textarea>
+          <div class="cq-actions">
+            ${R.approve ? `<button type="button" class="rp-btn primary" data-act="approve">Approve</button>` : ''}
+            ${R.reject ? `<button type="button" class="rp-btn cq-danger" data-act="reject">Reject</button>` : ''}
+            ${R.apply ? `<button type="button" class="rp-btn primary" data-act="apply" ${state.writes_enabled ? '' : 'disabled'}>Apply</button>` : ''}
+            ${R.withdraw ? `<button type="button" class="rp-btn" data-act="withdraw">Withdraw</button>` : ''}
+            <button type="button" class="rp-btn" data-act="comment">Add comment</button>
+          </div>
+          ${R.why.map(w => `<div class="cq-why">${E(w)}</div>`).join('')}
+          <div class="cq-job" id="cqJob-${E(r.id)}"></div>
+          ${hist ? `<details style="margin-top:0.6rem;"><summary>History</summary><div class="cq-wrap"><table class="cq-t"><caption class="sr-only">History of this request</caption><thead><tr><th scope="col">When</th><th scope="col">Step</th><th scope="col">Who</th><th scope="col">Comment</th></tr></thead><tbody>${hist}</tbody></table></div></details>` : ''}
+        </div></details>`;
+    }
+
+    function render() {
+      const items = state.items || [];
+      for (const [k, sts] of Object.entries(TABS)) $(`n-${k}`).textContent = String(items.filter(r => sts.includes(r.status)).length);
+      const list = items.filter(r => TABS[tab].includes(r.status));
+      const empty = { pending: 'Nothing is waiting for approval. Use Request approval after a preflight in Deploy policy packs, or after a preview in Review & remediate.',
+                      approved: 'No approved request is waiting to be applied.', history: 'No request has been decided, applied or withdrawn yet.' }[tab];
+      $('panel').innerHTML = list.length ? list.map(reqHtml).join('') : `<p class="cq-empty">${E(empty)}</p>`;
+    }
+
+    function selectTab(name, focus) {
+      tab = name;
+      document.querySelectorAll('.cq-tab').forEach(b => {
+        const on = b.dataset.tab === name;
+        b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+        if (on && focus) b.focus();
+      });
+      $('panel').setAttribute('aria-labelledby', `tab-${name}`);
+      render();
+    }
+    document.querySelector('.cq-tabs').addEventListener('click', e => { const b = e.target.closest('.cq-tab'); if (b) selectTab(b.dataset.tab); });
+    document.querySelector('.cq-tabs').addEventListener('keydown', e => {
+      const names = Object.keys(TABS), i = names.indexOf(tab);
+      if (e.key === 'ArrowRight') { e.preventDefault(); selectTab(names[(i + 1) % names.length], true); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); selectTab(names[(i + names.length - 1) % names.length], true); }
+      if (e.key === 'Home') { e.preventDefault(); selectTab(names[0], true); }
+      if (e.key === 'End') { e.preventDefault(); selectTab(names[names.length - 1], true); }
+    });
+    $('panel').addEventListener('toggle', e => { const d = e.target; if (d.classList && d.classList.contains('cq-req')) { if (d.open) open.add(d.dataset.id); else open.delete(d.dataset.id); } }, true);
+
+    async function post(url, body) {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+      return data;
+    }
+
+    async function followJob(id, rid) {
+      const box = $(`cqJob-${rid}`);
+      if (box) box.innerHTML = `<div class="cq-log" role="log" aria-live="polite" aria-label="Apply log" id="cqLog-${E(rid)}">Starting…</div><div class="cq-actions"><button type="button" class="rp-btn" id="cqStop-${E(rid)}">Stop</button></div>`;
+      const stop = $(`cqStop-${rid}`);
+      if (stop) stop.addEventListener('click', async () => { stop.disabled = true; stop.textContent = 'Stopping…'; try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows it */ } });
+      let next = 0; const lines = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1200));
+        let snap;
+        try { const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(id)}?since=${next}`, { cache: 'no-store' }); if (!r.ok) throw new Error(`HTTP ${r.status}`); snap = await r.json(); }
+        catch (e) { continue; }
+        lines.push(...(snap.logs || [])); next = snap.next;
+        const log = $(`cqLog-${rid}`); if (log) { log.textContent = lines.join('\n') || 'Working…'; log.scrollTop = log.scrollHeight; }
+        if (snap.status !== 'running') return snap;
+      }
+    }
+
+    $('panel').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      const d = b.closest('.cq-req'), rid = d.dataset.id, act = b.dataset.act;
+      const r = (state.items || []).find(x => x.id === rid) || {};
+      const comment = ($(`cqC-${rid}`) || {}).value || '';
+      const dlg = window.dlpDialog;
+      try {
+        if (act === 'reject' && !comment.trim()) { status('Say why in the comment box before rejecting.', true); $(`cqC-${rid}`).focus(); return; }
+        if (act === 'apply') {
+          const phrase = (state.settings || {}).confirm_phrase || 'I UNDERSTAND';
+          const body = `This applies "${r.title}" to ${r.tenant_label || r.tenant} through the same path as the app's own apply. The plan is checked against the tenant first: if it changed since the request was filed, nothing is written and the request is marked stale.`;
+          const typed = dlg ? await dlg.phrase({ title: 'Apply this approved request?', body, phrase, okLabel: 'Apply' }) : window.prompt(`${body}\n\nType ${phrase} to continue:`, '');
+          if (!typed) return;
+          b.disabled = true;
+          const started = await post(`/api/change-queue/${encodeURIComponent(rid)}/apply`, { ...credBody(), confirm: typed });
+          announce(`Applying ${rid}.`);
+          const snap = await followJob(started.job_id, rid);
+          const rec = (snap.result || {}).change_request;
+          const st = rec ? rec.status : (snap.status === 'failed' ? 'failed' : snap.status);
+          announce(`Request ${rid}: ${st}.`);
+          status(st === 'stale' ? 'Stale: the tenant changed since it was requested; request again.' : `Request ${rid}: ${st}${snap.error ? ` (${snap.error})` : ''}.`, st !== 'applied');
+          await load(true);
+          return;
+        }
+        if (act === 'withdraw' && dlg && !(await dlg.ask({ title: 'Withdraw this request?', body: 'It moves to History and can no longer be approved or applied.', okLabel: 'Withdraw' }))) return;
+        if (act === 'comment' && !comment.trim()) { status('Type a comment first.', true); $(`cqC-${rid}`).focus(); return; }
+        b.disabled = true;
+        await post(`/api/change-queue/${encodeURIComponent(rid)}/${act}`, { comment });
+        const done = { approve: 'approved', reject: 'rejected', withdraw: 'withdrawn', comment: 'commented on' }[act];
+        status(`Request ${rid} ${done}.`); announce(`Request ${rid} ${done}.`);
+        open.add(rid);
+        await load(true);
+      } catch (err) {
+        status(err.message, true); announce(err.message);
+        b.disabled = false;
+      }
+    });
+
+    $('cqRefresh').addEventListener('click', () => load());
+    $('cqTenant').addEventListener('change', () => load());
+    tenantChoices();
+    load();
+  })();
+  </script>
+</body>
+</html>

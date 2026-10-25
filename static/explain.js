@@ -209,6 +209,14 @@
     get: 'Articles grouped by area with the link and the source rating.',
     next: 'Cite the article next to the finding in your write-up.',
   };
+  X.queue = {
+    group: 'Close the gaps', name: 'Change queue', href: '/report/queue',
+    what: 'The team change queue: a policy-pack deploy plan, a selective removal plan or a fix recipe that someone prepared and filed with Request approval, waiting for a second writer to approve or reject it, with its items, requester, comments and plan hash.',
+    why: 'A change to the customer\'s tenant is reviewed by a second person before it is made (four-eyes), and every step is in the audit log with who did it, which is what a change board or an auditor asks for.',
+    when: 'After a preflight or a recipe preview, when you want a colleague to review the change before it is applied, or when you are the reviewer with requests waiting.',
+    get: 'Pending, approved and history tabs; Approve, Reject (with a comment), Apply and Withdraw buttons shown according to your rights; the four-eyes setting and whether it can work here; and the queue as JSON or Markdown.',
+    next: 'Approve or reject what is pending; apply an approved request with write mode on and the typed confirmation (a request whose plan no longer matches the tenant is marked stale: request it again from a fresh preflight).',
+  };
   X.advanced = {
     group: 'Reference', name: 'Advanced settings', href: '/report/advanced',
     what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (analyze any site with the Path analyzer from the browser), and see how this server is configured (bind host, token gate, write mode, limits).',
@@ -297,7 +305,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/digest': 'digest', '/report/queue': 'queue', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
 
@@ -347,7 +355,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
-    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
+    'digest', 'packs', 'flow', 'remediate', 'queue', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],
