@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion", "/report/insights", "/report/shadow", "/report/audit"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/exports", "/report/motion", "/report/insights", "/report/shadow", "/report/audit"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -3362,6 +3362,182 @@ async def dlp_packs_plan_export(report_id: str, format: str = "pdf", page: str =
         body = await asyncio.to_thread(report_exports.plan_workbook, rep)
         return _attachment(body, report_exports.XLSX, report_exports.plan_filename(rep, "xlsx"))
     raise HTTPException(status_code=400, detail="format must be pdf or xlsx.")
+
+
+# ── Policy exports, the URLs export and the custom URL category analyzer ──
+# (policy_exports, url_tools). Read-only: GET requests, plus the URL
+# lookup's POST, which changes nothing in the tenant (the analyzer only).
+# Each refuses (400) before signing in when nothing it reads is in scope.
+@app.get("/report/exports")
+async def report_exports_page():
+    """Policy exports (static/report_exports.html): every export the app
+    has in one place, with the policy, URLs and category analyzer jobs."""
+    page = os.path.join(STATIC_DIR, "report_exports.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class PolicyExportRequest(ScopedTenantCredsRequest):
+    """Body of the policy exports: tenant credentials, what is in scope,
+    the policies (policy_exports.POLICIES keys; empty: every one in scope)
+    and the format (xlsx, or pdf for the review copy; `page` a4 or letter)."""
+    policies: List[str] = []
+    format: str = "xlsx"
+    page: str = "a4"
+
+
+def _stopped_result(label: str, reason: str, log) -> Dict[str, Any]:
+    if log:
+        log("STOPPED — you clicked Stop; nothing more was read and no file was made.")
+    return {"status": "stopped", "stopped": reason, "tenant_label": label}
+
+
+def _run_policy_exports(client, scope: Dict[str, Any], policies: List[str], fmt: str, page: str, label: str, log, cancel) -> Dict[str, Any]:
+    import policy_exports as pe
+    log(f"Exporting from {label}: {', '.join(pe.POLICIES[k]['label'] for k in policies)} as {fmt.upper()}. Nothing is written to the tenant. {scope['summary']}")
+    try:
+        out = pe.run(client, scope, policies, fmt, tenant_label=label, log=log, cancel=cancel, page_size=page)
+    except pe.Stopped as e:
+        return _stopped_result(label, str(e), log)
+    if cancel is not None and cancel.is_set():
+        return _stopped_result(label, pe.STOPPED_REASON, log)
+    out["tenant_label"] = label
+    out["not_in_scope"] = scope.get("asked_not_in_scope") or {}
+    return out
+
+
+@app.post("/api/exports/policies/start")
+async def exports_policies_start(req: PolicyExportRequest, request: Request):
+    """One workbook (or PDF review copy) per policy: URL filtering, Cloud
+    App Control, SSL inspection, Cloud Firewall, File Type Control, every
+    rule in order with names, the shadowed-rule findings per rule.
+    Read-only. Poll GET /api/dlp-packs/jobs/{job_id}; the finished job's
+    `download` serves the file (a zip when several policies)."""
+    import pack_jobs
+    import policy_exports as pe
+    fmt = (req.format or "").strip().lower()
+    if fmt not in pe.FORMATS:
+        raise HTTPException(status_code=400, detail="format must be xlsx or pdf.")
+    page = {"a4": "A4", "letter": "LETTER"}.get((req.page or "a4").strip().lower())
+    if page is None:
+        raise HTTPException(status_code=400, detail="page must be a4 or letter.")
+    sc, ch, source = _scope_selection(req)
+    scope = pe.scope_for(sc, ch)
+    if not scope["read"]:
+        raise HTTPException(status_code=400, detail=pe.NOTHING_IN_SCOPE)
+    try:
+        policies, why = pe.pick(scope, req.policies)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not policies:
+        raise HTTPException(status_code=400, detail="None of the policies picked is in scope on the Scope page: "
+                                                    + " ".join(f"{pe.POLICIES[k]['label']}: {v}" for k, v in why.items()) + " Nothing was read.")
+    scope["asked_not_in_scope"] = why
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("policy_export", lambda log, cancel: _run_policy_exports(client, scope, policies, fmt, page, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "policies": policies, "not_in_scope": why}
+
+
+def _run_urls_export(client, sources: Dict[str, Any], label: str, log, cancel) -> Dict[str, Any]:
+    import url_tools as ut
+    log(f"Collecting every URL the policy of {label} names. Nothing is written to the tenant. {sources['summary']}")
+    try:
+        out = ut.urls_export(client, sources, tenant_label=label, log=log, cancel=cancel)
+    except ut.Stopped as e:
+        return _stopped_result(label, str(e), log)
+    if cancel is not None and cancel.is_set():
+        return _stopped_result(label, ut.STOPPED_REASON, log)
+    out["tenant_label"] = label
+    return out
+
+
+@app.post("/api/exports/urls/start")
+async def exports_urls_start(req: ScopedTenantCredsRequest, request: Request):
+    """The URLs export: every URL, domain, IP and keyword the policy in
+    scope names (custom URL categories, URL filtering and SSL inspection
+    rules through them, Cloud Firewall destinations, Advanced settings
+    bypass lists, Client Connector bypasses, PAC DIRECT hosts) in one
+    deduplicated workbook. Read-only (GET only). Poll the job; download
+    the workbook from its `download`."""
+    import pack_jobs
+    import url_tools as ut
+    sc, ch, source = _scope_selection(req)
+    sources = ut.sources_for(sc, ch)
+    if not sources["read"]:
+        raise HTTPException(status_code=400, detail=ut.NOTHING_IN_SCOPE_URLS)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("urls_export", lambda log, cancel: _run_urls_export(client, sources, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "sources": sources["read"], "not_in_scope": sources["not_in_scope"]}
+
+
+class CategoryAnalyzerRequest(ScopedTenantCredsRequest):
+    """Body of the custom URL category analyzer: the categories to analyse
+    (ids or names; empty: every custom one) and at most how many URLs to
+    look up (capped at url_tools.MAX_LOOKUP_URLS)."""
+    categories: List[str] = []
+    max_urls: int = 0
+
+
+def _run_category_analyzer(client, req: CategoryAnalyzerRequest, label: str, log, cancel) -> Dict[str, Any]:
+    import url_tools as ut
+    from policy_exports import safe_part
+    log(f"Analysing the custom URL categories of {label}. {ut.LOOKUP_NOTE}")
+    try:
+        res = ut.analyze_categories(client, picked=req.categories, max_urls=req.max_urls or ut.MAX_LOOKUP_URLS, log=log, cancel=cancel)
+    except ut.Stopped as e:
+        return _stopped_result(label, str(e), log)
+    if cancel is not None and cancel.is_set():
+        return _stopped_result(label, ut.STOPPED_REASON, log)
+    res["tenant_label"] = label
+    if res.get("status") != "ready":
+        return res
+    data = ut.analyzer_workbook(res, tenant_label=label)
+    name = f"url_category_analysis_{safe_part(label)}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+    res.update(filename=name, artifact=(name, ut.XLSX, data))
+    res["rows"] = res["rows"][:500]   # the page shows the first 500; the workbook has them all
+    return res
+
+
+@app.post("/api/exports/url-categories/analyze/start")
+async def exports_category_analyzer_start(req: CategoryAnalyzerRequest, request: Request):
+    """For every custom URL category (or the ones picked), the categories
+    Zscaler itself assigns to each of its URLs (POST /urlLookup, 100 URLs
+    per request, paced, retried on 429, capped), with a verdict per URL:
+    redundant, categorised differently, not categorised. The lookup is a
+    POST that changes nothing; everything else is GET. Poll the job;
+    download the workbook from its `download`."""
+    import pack_jobs
+    import url_tools as ut
+    sc, ch, source = _scope_selection(req)
+    if not ut.analyzer_in_scope(sc, ch)["in_scope"]:
+        raise HTTPException(status_code=400, detail=ut.NOTHING_IN_SCOPE_CATS)
+    if req.max_urls < 0:
+        raise HTTPException(status_code=400, detail="max_urls must be 0 (the default cap) or more.")
+    if len(req.categories) > 500:
+        raise HTTPException(status_code=400, detail="Pick at most 500 categories.")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("category_analyzer", lambda log, cancel: _run_category_analyzer(client, req, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/exports/plans")
+async def exports_plans():
+    """The deployment plans kept in memory (the last few preflights), for
+    the Policy exports page's plan PDF / Excel buttons. No tenant read."""
+    return {"plans": [{"report_id": rid, "tenant_label": p.get("tenant_label") or "", "generated_at": p.get("generated_at") or "",
+                       "packs": [str(x.get("name") or x.get("id")) for x in p.get("packs") or [] if isinstance(x, dict)],
+                       "status": p.get("status") or ""} for rid, p in reversed(list(_PLANS.items()))]}
 
 
 @app.get("/api/pack-library/{pack_id}/terraform.zip")

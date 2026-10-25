@@ -673,6 +673,11 @@
                 title="Curated Zscaler best-practice articles. Opens in a new tab.">
           <span aria-hidden="true">📚</span> Best practices
         </button>
+        <button class="btn btn-ghost" onclick="openExportsTab()"
+                aria-label="Open Policy exports: every export in one place, with Excel and PDF exports of the URL filtering, Cloud App Control, SSL inspection, Cloud Firewall and File Type Control policies, the URLs export and the custom URL category analyzer (opens in a new tab)"
+                title="Every export the app has, in one place: the assessment as Excel or Word, the DLP inventory, deployment plans, Export from tenant, and new read-only exports of each ZIA policy (every rule in order with the shadowed-rule findings), every URL the policy names, and which custom-category URLs Zscaler already categorises. Opens in a new tab.">
+          <span aria-hidden="true">💾</span> Policy exports
+        </button>
         <button class="btn btn-ghost" onclick="openAdvancedTab()"
                 aria-label="Open Advanced settings: add your own policy packs from JSON or Terraform and see how this server is configured (opens in a new tab)"
                 title="Add your own policy packs (JSON, Terraform or a ZIP) so they appear in Deploy policy packs, the Data flow map and the Terraform hand-off; see the library and this server's settings. Opens in a new tab.">
@@ -5122,6 +5127,16 @@ function openInsightsTab() {
   const w = window.open('/report/insights', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
+function openExportsTab() {
+  // The tab reads the credentials, the Scope page's selection and (for the
+  // assessment Excel and Word buttons) the results from this page through
+  // window.opener when an export is started, so nothing is sent before.
+  const w = window.open('/report/exports', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+// The results this page holds, for the Policy exports tab's assessment
+// Excel and Word buttons (the same body downloadXlsx and downloadDocx post).
+window.__assessmentReport = function () { return reportData; };
 function openPathAnalyzerTab() {
   // The tab reads the credentials from this page through window.opener
   // (migrateCredBody) when it runs, so nothing is sent until Analyze.

@@ -555,3 +555,30 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .pa-har-table td:first-child { min-width: 11rem; }
 .pa-har-sort:focus-visible, .pa-har-host:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm, 6px); }
 .pa-har-back { margin: 0 0 0.6rem; }
+/* ── Policy exports (/report/exports) ─────────────────────────────── */
+.ex-scope { margin: 0 0 0.4rem; font-size: 0.8rem; max-width: 90ch; }
+.ex-table th[scope="row"] { min-width: 14rem; vertical-align: top; }
+.ex-table td { vertical-align: top; }
+.ex-table .adv-acts .rp-btn { margin-bottom: 0.3rem; }
+.ex-pick { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; font-size: 0.84rem; }
+.ex-pick label { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+.ex-pick input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.ex-fields { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.ex-fields .df-ctl input[type="number"] { width: 6.5rem; }
+.ex-card { margin: 0.8rem 0 0.4rem; }
+.ex-card p { margin: 0.3rem 0; }
+.ex-list { margin: 0.3rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; line-height: 1.5; }
+.ex-plans { list-style: none; padding: 0; }
+.ex-plans li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem; padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+.ex-sum td { font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .ex-page .df-ctl { flex-wrap: wrap; max-width: 100%; }
+  .ex-page .df-ctl select, .ex-page .df-ctl input:not([type="checkbox"]) { max-width: 100%; min-width: 0; }
+  .ex-table th[scope="row"] { min-width: 0; }
+  /* One export per block: name, what it reads, then the format buttons. */
+  .ex-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .ex-table, .ex-table tbody, .ex-table tr, .ex-table th[scope="row"], .ex-table td { display: block; width: auto; }
+  .ex-table tr { border-bottom: 1px solid var(--border); padding: 0.4rem 0; }
+  .ex-table th[scope="row"], .ex-table td { border-bottom: 0; padding: 0.25rem 0; }
+  .ex-table .adv-acts { white-space: normal; }
+}

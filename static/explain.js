@@ -225,6 +225,14 @@
     get: 'Articles grouped by area with the link and the source rating.',
     next: 'Cite the article next to the finding in your write-up.',
   };
+  X.exports = {
+    group: 'Reference', name: 'Policy exports', href: '/report/exports',
+    what: 'Every export the app has, in one place: the assessment as Excel or Word, the DLP inventory, deployment plans as PDF or Excel, Export from tenant, and read-only exports of the URL filtering, Cloud App Control, SSL inspection, Cloud Firewall and File Type Control policies (every rule in order with names, not ids, and the shadowed-rule findings per rule), one workbook of every URL the policy names, and the custom URL category analyzer.',
+    why: 'Customers want the policy on paper for change boards, audits and handovers, and a custom URL category often repeats what Zscaler already knows or overrides it by mistake. A formatted export answers both without screenshots of the admin portal.',
+    when: 'Before a change board or an audit, when handing a tenant over, during a policy clean-up, and before trimming custom URL categories.',
+    get: 'One workbook (or PDF review copy) per policy, a deduplicated URLs workbook with where each entry was found, and per custom-category URL whether Zscaler categorises it the same way, differently or not at all; each with a live log and Stop.',
+    next: 'Send the policy workbooks with the change request, fix the rules the Usage and notes column flags, and remove custom-category URLs the analyzer marks redundant after checking with the customer.',
+  };
   X.advanced = {
     group: 'Reference', name: 'Advanced settings', href: '/report/advanced',
     what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (badges and a side panel on DLP objects, policy rules and the objects they use in the ZIA admin console, export to JSON or Terraform, and the Path analyzer for any site), and see how this server is configured (bind host, token gate, write mode, limits).',
@@ -319,7 +327,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/shadow': 'shadow', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/shadow': 'shadow', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
@@ -371,7 +379,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
-    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
+    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

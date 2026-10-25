@@ -218,6 +218,17 @@ what you get, what to do next.
 - **Best practices library** — curated Zscaler best-practice articles,
   rated by source and refreshed from help.zscaler.com, the blog and the
   developer portal.
+- **Policy exports** — every export in one place (assessment Excel and
+  Word, DLP inventory, deployment plans, Export from tenant), plus
+  read-only exports of the URL filtering, Cloud App Control, SSL
+  inspection, Cloud Firewall and File Type Control policies (one Excel
+  workbook or PDF review copy per policy: every rule in order, names not
+  ids, the shadowed-rule findings per rule), a URLs export (every URL,
+  domain and IP the policy names, deduplicated, with where each was
+  found) and the custom URL category analyzer (for each custom-category
+  URL, whether Zscaler already categorises it the same way, differently
+  or not at all, through ZIA's URL lookup, paced and capped). Only what
+  is in scope; a live log and Stop.
 - **Advanced settings** — add your own policy packs (JSON, Terraform,
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with
