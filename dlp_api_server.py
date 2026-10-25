@@ -7553,6 +7553,10 @@ async def report_shadow_page():
     page = os.path.join(STATIC_DIR, "report_shadow.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
 # ── Simple mode ───────────────────────────────────────────────────────
 @app.get("/simple")
 async def simple_mode_page():

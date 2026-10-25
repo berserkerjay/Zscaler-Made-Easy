@@ -5220,6 +5220,7 @@ function openFleetTab() {
   // page through window.opener when it runs, so nothing is read until then.
   const w = window.open('/report/fleet', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
 // Simple mode: the same app as big plain-language tasks (/simple). Opens in
 // this tab and is remembered per browser (simple_entry.js reads the choice).
 function openSimpleMode() {
