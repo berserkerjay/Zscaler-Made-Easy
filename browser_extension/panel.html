@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DLP-Check</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header class="bar">
+    <img src="icons/icon32.png" alt="" width="20" height="20">
+    <h1>DLP-Check</h1>
+    <span id="conn" class="chip" role="status" aria-live="polite">Checking…</span>
+  </header>
+
+  <section class="group" aria-labelledby="tenantH">
+    <h2 id="tenantH" class="sr-only">Tenant</h2>
+    <label class="field"><span>Tenant</span><select id="tenant" aria-describedby="readNote"></select></label>
+    <div class="row">
+      <button type="button" id="read" class="primary">Read the tenant</button>
+      <span id="readNote" class="note" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <div class="seg" role="tablist" aria-label="View">
+    <button type="button" role="tab" id="tab-page" aria-controls="view" aria-selected="true" data-v="page">On this page</button>
+    <button type="button" role="tab" id="tab-search" aria-controls="view" aria-selected="false" data-v="search">Search</button>
+    <button type="button" role="tab" id="tab-stage" aria-controls="view" aria-selected="false" data-v="stage">Staged <span id="stageCount" class="count">0</span></button>
+  </div>
+
+  <main id="view" role="tabpanel" aria-live="polite"></main>
+
+  <footer class="foot">
+    <a href="#" id="openApp">Open DLP-Check</a>
+    <a href="#" id="settings">Settings</a>
+  </footer>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

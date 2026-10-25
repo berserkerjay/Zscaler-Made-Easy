@@ -13,6 +13,10 @@
   <input id="app" type="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8000">
   <div class="row"><button type="button" id="save" class="primary">Save and test</button><button type="button" id="reset">Use the default</button></div>
   <p id="msg" class="status" role="status" aria-live="polite"></p>
+  <h2 style="font-size:var(--fs-headline);margin:22px 0 4px;">Badges in the Zscaler admin console</h2>
+  <p class="hint">Shows a DLP-Check badge next to DLP dictionaries, engines and rules on the ZIA admin console (admin.zscaler.net and the other Zscaler clouds): what uses them, or their most serious finding. Your browser asks you to allow the extension on those sites. The badges compare names on the page with what DLP-Check read, inside the page: nothing from the console is sent anywhere.</p>
+  <div class="row"><button type="button" id="badgesOn" class="primary">Show badges</button><button type="button" id="badgesOff">Turn badges off</button></div>
+  <p id="badgeMsg" class="status" role="status" aria-live="polite"></p>
   <p class="hint">The extension stores only this address. It holds no credentials or tenant data: signing in, the UI token, write mode and every tenant read stay in the app.</p>
   <script type="module" src="options.js"></script>
 </body>
