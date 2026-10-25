@@ -347,14 +347,17 @@ def inventory_workbook(snap: Dict[str, Any], *, tenant_label: str = "", channels
                         len(users), users, len(dict_rules.get(did, ())), tag(d.get("description")) or "", d.get("description") or ""])
 
     e_sheet = wb.add_sheet("Engines", columns=[
-        "Name", "ID", "Custom or predefined", "Expression", "Expression (dictionary names)", "Dictionaries", "Used by rules",
-        "Rule names", "Deployed by pack", "Description"])
+        "Name", "ID", "Custom or predefined", "Expression", "Expression (dictionary names)", "Readable expression", "In plain English",
+        "Dictionaries", "Used by rules", "Rule names", "Deployed by pack", "Description"])
+    import engine_explain
+    names = engine_explain.names_by_id(dicts)
     for e in sorted(engines, key=lambda x: ename(x).lower()):
         expr = str(e.get("engine_expression") or e.get("expression") or "")
         ids = _ids_in(expr)
         users = eng_users.get(str(e.get("id")), [])
         e_sheet.append([ename(e), e.get("id"), "Predefined" if pack_export._is_predefined_engine(e) else "Custom", expr,
-                        _TERM_RE.sub(lambda m: f"[{dname(m.group(1))}]", expr), [dname(i) for i in ids], len(users), users,
+                        _TERM_RE.sub(lambda m: f"[{dname(m.group(1))}]", expr), engine_explain.readable(expr, names),
+                        engine_explain.summary(expr, names), [dname(i) for i in ids], len(users), users,
                         tag(e.get("description")) or "", e.get("description") or ""])
 
     for ch in pc.DLP_CHANNELS:

@@ -74,6 +74,13 @@
     'server group': { term: 'server group', def: 'A server group says which servers run an app and which connector groups can reach them.' },
     'app connector': { term: 'App Connector', def: 'An App Connector is a small Zscaler program that sits next to your private apps. It carries the traffic to them.' },
     'connector group': { term: 'connector group', def: 'A connector group is a team of App Connectors in one place. Two or more keep an app up if one stops.' },
+    'location': { term: 'location', def: 'A location is an office or site that sends its traffic to Zscaler. Rules can name a location to act only there.' },
+    'sub-location': { term: 'sub-location', def: 'A sub-location is a part of a location, like the guest Wi-Fi of an office. It can have its own settings.' },
+    'location group': { term: 'location group', def: 'A location group puts many locations in one bag. A rule can name the group instead of each site.' },
+    'app profile': { term: 'app profile', def: 'An app profile holds the settings Client Connector uses on a computer. Each group of people can get a different one.' },
+    'forwarding profile': { term: 'forwarding profile', def: 'A forwarding profile tells Client Connector how to send traffic to Zscaler. It can differ at the office and at home.' },
+    'engine expression': { term: 'engine expression', def: 'An engine expression is the test inside an engine. It says how many matches of each word list are needed.' },
+    'file type': { term: 'file type', def: 'A file type is a kind of file, like a Word file or a program. Rules can allow or block some kinds.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

@@ -1371,7 +1371,7 @@ function _dzRemovalSelect() {
   const orow = (o, what) => { const k = `${o.kind}:${o.id}`; return `<label class="dz-row dz-pick ${R.selected.has(k) ? 'on' : ''}">
       <input type="checkbox" ${R.selected.has(k) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(k)}', this.checked)" aria-label="Remove ${_dzE(o.name)}">
       <div><div class="nm">${_dzE(o.name)} <span class="dz-chip">${what}</span></div>
-        <div class="rs">${o.tagged ? `DLP-Check · ${_dzE(o.pack || 'pack')}` : 'not created by DLP-Check'}${o.kind === 'engine' ? ' · no rule on any channel uses it' + ((o.dictionaries || []).length ? ` · dictionaries: ${_dzE(o.dictionaries.slice(0, 4).join(', '))}${o.dictionaries.length > 4 ? '…' : ''}` : '') : ' · no engine uses it'}</div></div>
+        <div class="rs">${o.tagged ? `DLP-Check · ${_dzE(o.pack || 'pack')}` : 'not created by DLP-Check'}${o.kind === 'engine' ? ' · no rule on any channel uses it' + ((o.dictionaries || []).length ? ` · dictionaries: ${_dzE(o.dictionaries.slice(0, 4).join(', '))}${o.dictionaries.length > 4 ? '…' : ''}` : '') : ' · no engine uses it'}</div>${o.kind === 'engine' ? _dzEngineExplain(o) : ''}</div>
     </label>`; };
   const orphanGroups = (oEng.length ? `<div class="dz-h" style="margin-top:0.8rem;">Engines with no rule<span class="count">${oEng.length}</span></div><div class="dz-rows">${oEng.map(o => orow(o, 'engine')).join('')}</div>` : '')
     + (oDict.length ? `<div class="dz-h" style="margin-top:0.8rem;">Dictionaries no engine uses<span class="count">${oDict.length}</span></div><div class="dz-rows">${oDict.map(o => orow(o, 'dictionary')).join('')}</div>` : '');
@@ -2027,6 +2027,19 @@ async function _dzExportPick() {
   _dzExportRender();
 }
 // What an export carries and how (defaults: rules, with what they use, as a JSON pack).
+// An engine's expression with dictionary names and one plain sentence
+// (engine_explain, through the inventory); Copy puts the expression as the
+// tenant has it (dictionary ids) on the clipboard.
+function _dzEngineExplain(o) {
+  if (!o || !(o.readable || o.expression)) return '';
+  return `${o.summary ? `<div class="rs dz-expl">${_dzE(o.summary)}</div>` : ''}<div class="rs"><code class="dz-expr" title="${_dzE(o.expression || '')}">${_dzE(o.readable || o.expression)}</code>
+    <button type="button" class="dz-link" data-expr="${_dzE(o.expression || '')}" aria-label="Copy the expression of ${_dzE(o.name || 'this engine')} with dictionary ids" onclick="event.preventDefault();_dzCopyExpr(this)">Copy expression</button></div>`;
+}
+function _dzCopyExpr(btn) {
+  const raw = btn.dataset.expr || '';
+  const done = t => { btn.textContent = t; setTimeout(() => { btn.textContent = 'Copy expression'; }, 2000); };
+  try { navigator.clipboard.writeText(raw).then(() => done('Copied'), () => done('Copy blocked')); } catch (e) { done('Copy blocked'); }
+}
 function _dzExportParts(X) { return X.parts instanceof Set ? X.parts : new Set(['rules']); }
 function _dzExportPart(part, on) { const X = DZ.exportPack; if (!X) return; const P = _dzExportParts(X); if (on) P.add(part); else P.delete(part); X.parts = P; _dzExportRender(); }
 function _dzExportOpt(key, value) { const X = DZ.exportPack; if (!X) return; X[key] = value; _dzExportRender(); }
@@ -2112,7 +2125,7 @@ function _dzExportRender() {
   const objRow = (kind, o) => { const S = kind === 'dict' ? X.selDicts : X.selEngines, on = S.has(o.id); return `<label class="dz-row dz-pick ${on ? 'on' : ''}">
       <input type="checkbox" ${on ? 'checked' : ''} onchange="_dzExportToggleObj('${kind}', '${_dzE(o.id)}', this.checked)" aria-label="Export ${_dzE(o.name)}">
       <div><div class="nm">${_dzE(o.name)}${kind === 'engine' && o.used === false ? ' <span class="dz-chip">no rule uses it</span>' : ''}</div>
-        <div class="rs">${kind === 'engine' ? ((o.dictionaries || []).length ? `dictionaries: ${_dzE(o.dictionaries.slice(0, 4).join(', '))}${o.dictionaries.length > 4 ? '…' : ''}` : 'predefined dictionaries only') : _dzE(String(o.type || 'custom dictionary').toLowerCase().replace(/_/g, ' '))}</div></div>
+        <div class="rs">${kind === 'engine' ? ((o.dictionaries || []).length ? `dictionaries: ${_dzE(o.dictionaries.slice(0, 4).join(', '))}${o.dictionaries.length > 4 ? '…' : ''}` : 'predefined dictionaries only') : _dzE(String(o.type || 'custom dictionary').toLowerCase().replace(/_/g, ' '))}</div>${kind === 'engine' ? _dzEngineExplain(o) : ''}</div>
     </label>`; };
   const objSection = (kind, title, list) => { const shownObj = _dzExportShownObj(kind); return `<div class="dz-h" style="margin-top:0.8rem;">${title}<span class="count">${list.length}</span>
       <button type="button" class="dz-link" onclick="_dzExportSetObj('${kind}', true)">Select all shown</button><button type="button" class="dz-link" onclick="_dzExportSetObj('${kind}', false)">Clear</button></div>

@@ -355,8 +355,20 @@ what you get, what to do next.
   domain and IP the policy names, deduplicated, with where each was
   found) and the custom URL category analyzer (for each custom-category
   URL, whether Zscaler already categorises it the same way, differently
-  or not at all, through ZIA's URL lookup, paced and capped). Only what
-  is in scope; a live log and Stop.
+  or not at all, through ZIA's URL lookup, paced and capped). Also a
+  locations workbook (locations and sub-locations with their settings,
+  location groups, and which URL filtering, Cloud Firewall, SSL
+  inspection, File Type Control and Web DLP rules use each, directly or
+  through a group; IP addresses and VPN credentials counted, never
+  listed) and a Client Connector workbook (app and forwarding profiles
+  with their settings, PAC files, which profile uses which forwarding
+  profile and PAC URL; no password, token or key). Export options for
+  every workbook: choose columns, one row per value, and the separator
+  (new line, comma, semicolon); the defaults give the workbooks as
+  before. Every DLP engine (inventory workbook, Deploy views, browser
+  extension side panel) shows its expression with dictionary names and
+  one sentence saying when it fires; Copy keeps the expression with ids.
+  Only what is in scope; a live log and Stop.
 - **Advanced settings** — add your own policy packs (JSON, Terraform,
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with

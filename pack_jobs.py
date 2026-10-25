@@ -259,7 +259,7 @@ def cancel(job_id: str) -> bool:
         job.log("Stop requested: nothing more is read from the tenant; the ZPA analysis ends as stopped with no partial result.")
     elif job.kind == "export":   # read-only: nothing is written or activated
         job.log("Stop requested: the read in flight finishes, nothing more is read and no pack is produced.")
-    elif job.kind in ("policy_export", "urls_export", "category_analyzer"):   # read-only exports (the URL lookup changes nothing)
+    elif job.kind in ("policy_export", "urls_export", "category_analyzer", "locations_export", "client_connector_export"):   # read-only exports (the URL lookup changes nothing)
         job.log("Stop requested: nothing more is read from the tenant, also while waiting between lookups or for ZIA's rate limit; no file is produced.")
     elif job.kind in ("ops_objects", "ops_preview"):   # Bulk changes reads: nothing is written or activated
         job.log("Stop requested: the read in flight finishes, nothing more is read and nothing is written.")

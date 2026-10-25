@@ -605,6 +605,14 @@ def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any
     # dictionaries no engine references. They cannot be reached through a
     # rule, so the pick screen lists them on their own.
     used_engines = {str(x) for r in rules for x in r["engine_ids"]}
+    import engine_explain
+    dict_names = {str(pd._field(d, "id")): n for n, d in (snap.get("dictionaries") or {}).items()}
+
+    def explained(e: Any) -> Dict[str, str]:
+        # The raw expression (kept for copying), the same with dictionary
+        # names, and one plain sentence (engine_explain).
+        expr = str(pd._field(e, "engine_expression", "expression", default="") or "")
+        return {"expression": expr, "readable": engine_explain.readable(expr, dict_names), "summary": engine_explain.summary(expr, dict_names)}
     orphan_engines = []
     for name, e in engines.items():
         eid = str(pd._field(e, "id"))
@@ -612,7 +620,8 @@ def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any
             continue
         pack = _tag_pack(pd._field(e, "description"), known)
         orphan_engines.append({"kind": "engine", "id": pd._field(e, "id"), "name": name, "tagged": pack is not None, "pack": pack,
-                               "dictionaries": sorted(n for n, d in (snap.get("dictionaries") or {}).items() if str(pd._field(d, "id")) in _engine_dict_ids(e))})
+                               "dictionaries": sorted(n for n, d in (snap.get("dictionaries") or {}).items() if str(pd._field(d, "id")) in _engine_dict_ids(e)),
+                               **explained(e)})
     used_dicts: set = set()
     for e in engines.values():
         used_dicts |= _engine_dict_ids(e)
@@ -632,7 +641,7 @@ def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any
             continue
         eid = str(pd._field(e, "id"))
         all_engines.append({"id": pd._field(e, "id"), "name": name, "used": eid in used_engines,
-                            "dictionaries": sorted(dict_by_id[i] for i in _engine_dict_ids(e) if i in dict_by_id)})
+                            "dictionaries": sorted(dict_by_id[i] for i in _engine_dict_ids(e) if i in dict_by_id), **explained(e)})
     all_engines.sort(key=lambda x: str(x["name"]).lower())
     return {"status": "ready", "rules": rules, "dictionaries": dicts, "engines": all_engines,
             "orphans": {"engines": orphan_engines, "dictionaries": orphan_dicts},

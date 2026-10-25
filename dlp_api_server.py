@@ -4141,10 +4141,16 @@ async def report_exports_page():
 class PolicyExportRequest(ScopedTenantCredsRequest):
     """Body of the policy exports: tenant credentials, what is in scope,
     the policies (policy_exports.POLICIES keys; empty: every one in scope)
-    and the format (xlsx, or pdf for the review copy; `page` a4 or letter)."""
+    and the format (xlsx, or pdf for the review copy; `page` a4 or letter).
+    Export options (the workbooks; policy_exports.options): `columns`
+    {sheet key: headers to keep}, `layout` flat | rows, `separator`
+    newline | comma | semicolon. The defaults give the workbook as before."""
     policies: List[str] = []
     format: str = "xlsx"
     page: str = "a4"
+    columns: Dict[str, List[str]] = {}
+    layout: str = "flat"
+    separator: str = "newline"
 
 
 def _stopped_result(label: str, reason: str, log) -> Dict[str, Any]:
@@ -4153,11 +4159,12 @@ def _stopped_result(label: str, reason: str, log) -> Dict[str, Any]:
     return {"status": "stopped", "stopped": reason, "tenant_label": label}
 
 
-def _run_policy_exports(client, scope: Dict[str, Any], policies: List[str], fmt: str, page: str, label: str, log, cancel) -> Dict[str, Any]:
+def _run_policy_exports(client, scope: Dict[str, Any], policies: List[str], fmt: str, page: str, label: str, log, cancel,
+                        opts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     import policy_exports as pe
     log(f"Exporting from {label}: {', '.join(pe.POLICIES[k]['label'] for k in policies)} as {fmt.upper()}. Nothing is written to the tenant. {scope['summary']}")
     try:
-        out = pe.run(client, scope, policies, fmt, tenant_label=label, log=log, cancel=cancel, page_size=page)
+        out = pe.run(client, scope, policies, fmt, tenant_label=label, log=log, cancel=cancel, page_size=page, opts=opts)
     except pe.Stopped as e:
         return _stopped_result(label, str(e), log)
     if cancel is not None and cancel.is_set():
@@ -4182,6 +4189,10 @@ async def exports_policies_start(req: PolicyExportRequest, request: Request):
     page = {"a4": "A4", "letter": "LETTER"}.get((req.page or "a4").strip().lower())
     if page is None:
         raise HTTPException(status_code=400, detail="page must be a4 or letter.")
+    try:
+        opts = pe.options(req.columns, req.layout, req.separator)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     sc, ch, source = _scope_selection(req)
     scope = pe.scope_for(sc, ch)
     if not scope["read"]:
@@ -4197,7 +4208,7 @@ async def exports_policies_start(req: PolicyExportRequest, request: Request):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_client, req)
     label = tenant_auth.record_label(creds)
-    job = pack_jobs.start("policy_export", lambda log, cancel: _run_policy_exports(client, scope, policies, fmt, page, label, log, cancel),
+    job = pack_jobs.start("policy_export", lambda log, cancel: _run_policy_exports(client, scope, policies, fmt, page, label, log, cancel, opts),
                           label=label[:80], actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind, "policies": policies, "not_in_scope": why}
 
@@ -4297,6 +4308,92 @@ async def exports_plans():
     return {"plans": [{"report_id": rid, "tenant_label": p.get("tenant_label") or "", "generated_at": p.get("generated_at") or "",
                        "packs": [str(x.get("name") or x.get("id")) for x in p.get("packs") or [] if isinstance(x, dict)],
                        "status": p.get("status") or ""} for rid, p in reversed(list(_PLANS.items()))]}
+
+
+# ── Configuration exports: locations and Client Connector profiles ──
+# (config_exports), with the policy exports' options. Read-only (GET).
+# Each refuses (400) before signing in when it is not in scope or an
+# option is wrong.
+@app.get("/api/exports/columns")
+async def exports_columns():
+    """The columns each export's main sheet can carry, the layouts and the
+    separators, for the Policy exports page's options. No tenant read."""
+    import policy_exports as pe
+    return {"columns": pe.column_catalogue(), "identity": list(pe.IDENTITY_COLUMNS), "layouts": list(pe.LAYOUTS),
+            "separators": list(pe.SEPARATORS), "defaults": pe.DEFAULT_OPTIONS}
+
+
+class ConfigExportRequest(ScopedTenantCredsRequest):
+    """Body of the locations and Client Connector exports: credentials,
+    what is in scope and the export options (as PolicyExportRequest)."""
+    columns: Dict[str, List[str]] = {}
+    layout: str = "flat"
+    separator: str = "newline"
+
+
+def _export_options(req: ConfigExportRequest) -> Dict[str, Any]:
+    import policy_exports as pe
+    try:
+        return pe.options(req.columns, req.layout, req.separator)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _run_config_export(fn, kind_label: str, client, scope: Dict[str, Any], label: str, opts: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    import config_exports as ce
+    log(f"Exporting the {kind_label} of {label}. Nothing is written to the tenant. {scope['summary']}")
+    try:
+        out = fn(client, scope, tenant_label=label, log=log, cancel=cancel, opts=opts)
+    except ce.Stopped as e:
+        return _stopped_result(label, str(e), log)
+    if cancel is not None and cancel.is_set():
+        return _stopped_result(label, ce.STOPPED_REASON, log)
+    out["tenant_label"] = label
+    return out
+
+
+@app.post("/api/exports/locations/start")
+async def exports_locations_start(req: ConfigExportRequest, request: Request):
+    """Locations and sub-locations with their settings, the location
+    groups, and which URL filtering, Cloud Firewall, SSL inspection, File
+    Type Control and Web DLP rules use each (those in scope). Needs ZIA
+    platform in scope. IP addresses and VPN credentials are counted, never
+    listed. Read-only. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import config_exports as ce
+    import pack_jobs
+    opts = _export_options(req)
+    sc, ch, source = _scope_selection(req)
+    scope = ce.locations_scope(sc, ch)
+    if not scope["in_scope"]:
+        raise HTTPException(status_code=400, detail=ce.NOTHING_IN_SCOPE_LOCATIONS)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("locations_export", lambda log, cancel: _run_config_export(ce.locations_export, "locations", client, scope, label, opts, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "usage": scope["usage"], "not_in_scope": scope["not_in_scope"]}
+
+
+@app.post("/api/exports/client-connector/start")
+async def exports_client_connector_start(req: ConfigExportRequest, request: Request):
+    """Client Connector app profiles and forwarding profiles with their
+    settings (no password, passcode, token or key), PAC files, and which
+    profile uses which forwarding profile and PAC URL. Needs ZCC in scope.
+    Read-only. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import config_exports as ce
+    import pack_jobs
+    opts = _export_options(req)
+    sc, ch, source = _scope_selection(req)
+    scope = ce.zcc_scope(sc, ch)
+    if not scope["in_scope"]:
+        raise HTTPException(status_code=400, detail=ce.NOTHING_IN_SCOPE_ZCC)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("client_connector_export",
+                          lambda log, cancel: _run_config_export(ce.client_connector_export, "Client Connector profiles", client, scope, label, opts, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
 @app.get("/api/pack-library/{pack_id}/terraform.zip")

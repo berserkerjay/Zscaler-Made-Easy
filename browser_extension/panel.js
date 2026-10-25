@@ -253,6 +253,21 @@ function usedBySections(o) {
   return ps.flatMap(p => [h('h3', { text: `Used by ${policyLabel(p)} rules (${counts[p] ?? by[p].length})` }),
     refButtons(kinds[p] || 'rule', by[p], p, counts[p])]);
 }
+// An engine's expression with dictionary names and in one sentence; Copy
+// puts the expression as the tenant has it (dictionary ids) on the clipboard.
+function engineExpression(o) {
+  if (!o.expression && !o.readable) return [h('h3', { text: 'What it matches' }), h('p', { class: 'note', text: 'No expression: a predefined engine, or the tenant gave none.' })];
+  const done = h('span', { class: 'note', role: 'status', 'aria-live': 'polite' });
+  const copy = () => {
+    const ok = () => { done.textContent = 'Copied the expression with dictionary ids.'; };
+    const fail = () => { done.textContent = `Copy was blocked; the expression is: ${o.expression}`; };
+    try { navigator.clipboard.writeText(o.expression || '').then(ok, fail); } catch (e) { fail(); }
+  };
+  return [h('h3', { text: 'What it matches' }),
+    o.summary ? h('p', { class: 'summary', text: o.summary }) : h('p', { class: 'note', text: 'This expression is not one the app can put in a sentence; the names below are exact.' }),
+    h('code', { class: 'expr', title: o.expression || '', text: o.readable || o.expression }),
+    h('div', { class: 'row' }, h('button', { type: 'button', onclick: copy, 'aria-label': 'Copy the expression with dictionary ids', text: 'Copy expression' }), done)];
+}
 function openIn(page) {
   return h('button', { type: 'button', onclick: () => chrome.tabs.create({ url: S.base + PAGES[page].path }), text: page === 'home' ? 'Open DLP-Check' : `Open ${PAGES[page].label} in DLP-Check` });
 }
@@ -290,12 +305,13 @@ function viewDetail(o) {
   }
   if (o.kind === 'dictionary' && o.type) add('Type', String(o.type).toLowerCase().replace(/_/g, ' '));
   if (o.kind === 'url_category' && o.id) add('ID', o.id);
+  if (o.kind === 'file_type') { add('Type', o.category); add('API name', o.id); }
   if (exportable(o)) add('Created by', o.pack ? `policy pack ${o.pack}` : 'not by a DLP-Check pack');
   const by = o.used_by || {};
   const sections = [];
   if (o.kind === 'dictionary') sections.push(h('h3', { text: `Used by engines (${o.counts.engines || 0})` }), refButtons('engine', by.engines),
     h('h3', { text: `Reaches rules (${o.counts.rules || 0})` }), refButtons('rule', by.rules));
-  else if (o.kind === 'engine') sections.push(...usesSections(o), h('h3', { text: `Used by rules (${o.counts.rules || 0})` }), refButtons('rule', by.rules));
+  else if (o.kind === 'engine') sections.push(...engineExpression(o), ...usesSections(o), h('h3', { text: `Used by rules (${o.counts.rules || 0})` }), refButtons('rule', by.rules));
   else if (o.kind === 'rule' || o.policy) sections.push(...usesSections(o));
   else sections.push(...usedBySections(o));
   const findings = (o.findings || []).map(f => h('div', { class: `finding sev-${f.severity}` }, h('span', { class: `chip sev-${f.severity}`, text: f.severity }), ' ', f.text));
