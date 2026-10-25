@@ -9,22 +9,55 @@ sign-in, UI token, write mode and audit log.
 
 ### In the Zscaler admin console 
 - **Badges.** On the ZIA admin console, a DLP-Check badge appears next to
-  every DLP dictionary, engine and rule DLP-Check read from the tenant:
-  what uses it ("2 rules", "unused") or its most serious finding
-  ("monitor only", "disabled", shadowed by an earlier rule once that
-  analysis is installed). Off until you switch it on in the extension's
-  settings, which asks your browser to allow the extension on the
-  console's address (admin.zscaler.net and the other Zscaler clouds).
+  every object DLP-Check read from the tenant, wherever the console shows
+  its exact name:
+  - DLP dictionaries, engines and rules;
+  - URL filtering, Cloud App Control, SSL inspection, Cloud Firewall and
+    File Type Control rules;
+  - URL categories (every custom one, and the predefined ones a rule
+    uses), locations and location groups, departments, groups, rule
+    labels, network services, network applications (and their groups),
+    and source and destination IP groups.
+
+  A badge says the object's most serious finding ("shadowed", "monitor
+  only", "disabled", "unused") or what uses it ("used in 4 rules",
+  "2 engines, 3 rules"), or, for a policy rule, where it sits ("order 3 ·
+  block"). When several objects share a name (a URL category and a rule
+  called the same), the badge says "2 objects" and the panel lists them.
+  Off until you switch it on in the extension's settings, which asks your
+  browser to allow the extension on the console's address
+  (admin.zscaler.net and the other Zscaler clouds).
 - **Side panel.** Click a badge, or *Open the side panel* in the popup:
-  - *On this page*: the DLP objects the console page shows;
-  - *Search*: every dictionary, engine and rule DLP-Check read;
-  - an object's detail: what it uses and what uses it (each one a link),
-    the policy pack that created it, and its findings;
-  - *Staged*: stage objects across console pages, then export them in one
-    go as a JSON pack, Terraform or both, with or without what they use.
+  - *On this page*: the objects the console page shows, filtered by kind;
+  - *Search*: everything DLP-Check read, by name, filtered by kind (DLP,
+    policies, objects);
+  - an object's detail: what it uses (per kind) and what uses it (per
+    policy: URL filtering, Cloud Firewall, Inline Web DLP...), each one a
+    link, the policy pack that created it, and its findings; a rule the
+    Shadowed rules page analyses links to that page in DLP-Check;
+  - *Staged*: stage DLP dictionaries, engines and rules across console
+    pages, then export them in one go as a JSON pack, Terraform or both,
+    with or without what they use (*Export from tenant* covers DLP only,
+    so other kinds are not staged; they open DLP-Check instead).
 - **Read the tenant.** The panel's *Read the tenant* asks DLP-Check to
-  read it (read-only, the DLP channels in scope, through the tenant you
-  pick); the answer is reused for 30 minutes until you read again.
+  read it, read-only and only what the Scope page puts in scope: the DLP
+  channels marked Zscaler; the URL filtering, SSL inspection, Cloud App
+  Control and File Type Control rules with DLP or ZIA platform ticked;
+  the Cloud Firewall rules with ZIA platform ticked. The answer is reused
+  for 30 minutes until you read again.
+- **What the index holds, and what it does not.** Names, counts, states,
+  orders, actions and findings. Never a user name (a rule's users,
+  excluded users, override users and devices are not read into it), a
+  description, who last changed a rule, a category's URLs or keywords, or
+  a secret. The objects referenced by name come from the rules
+  themselves, so a location or group no rule in scope uses is not listed.
+  Each kind is capped at 300 objects (the ones with findings and the most
+  used first); the panel says how many more there are. Predefined URL
+  categories have no display name in the API: DLP-Check names them after
+  their ID ("NEWS_AND_MEDIA" → "News and Media"), which is the console's
+  usual spelling but not guaranteed. A custom category no rule uses is
+  reported as unused for the policies DLP-Check read (Bandwidth Control,
+  Sandbox and the other policies that can use a category are not read).
 
 The flow is badge → panel → stage → act, and every answer
 comes from DLP-Check, and anything that changes the tenant (deploy,

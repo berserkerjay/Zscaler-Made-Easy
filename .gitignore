@@ -55,6 +55,10 @@ updater_backup/
 # Continuous evaluation: the per-tenant approval queue (local, never committed)
 proposals.json
 proposals.json.tmp
+# The team change queue (change_queue.py): requests, its lock file and atomic-write temporaries
+change_requests.json
+change_requests.json.lock
+.change_requests.*.tmp
 # Continuous evaluation: digests, guidance state and the refreshed SaaS matrix (local)
 digests/
 guidance_state.json

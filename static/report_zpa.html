@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZPA analysis — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .zp-tabs { display: flex; gap: 0.4rem; margin: 0 0 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 0.6rem; }
+  .zp-tabs [role="tab"] { min-height: 34px; padding: 0.3rem 0.9rem; border-radius: var(--r-md); border: 1px solid var(--border); background: transparent; color: var(--dim); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+  .zp-tabs [role="tab"][aria-selected="true"] { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+  .zp-tabs [role="tab"]:focus-visible, .zp-sev button:focus-visible, .zp-form :is(input, select, textarea):focus-visible, .zp-tpl > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .zp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; }
+  .zp-stat { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.55rem 0.75rem; }
+  .zp-stat .n { font-size: var(--fs-headline, 1.2rem); font-weight: 700; }
+  .zp-stat .k { font-size: 0.72rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .zp-stat.sev-high .n { color: var(--fail); } .zp-stat.sev-medium .n { color: var(--warn); } .zp-stat.sev-low .n { color: var(--info, var(--dim)); }
+  .zp-sev { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; margin: 0 0 0.8rem; }
+  .zp-sev button { min-height: 30px; padding: 0.2rem 0.7rem; border-radius: var(--r-pill); border: 1px solid var(--border); background: transparent; color: var(--dim); font: inherit; font-size: 0.8rem; cursor: pointer; }
+  .zp-sev button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+  .zp-tpl { border: 1px solid var(--border); border-radius: var(--r-md); margin: 0 0 0.6rem; background: var(--card); }
+  .zp-tpl > summary { cursor: pointer; padding: 0.6rem 0.8rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .zp-tpl > summary .id { font-family: var(--mono); font-size: 0.75rem; color: var(--dim); }
+  .zp-tpl > summary .cnt { margin-left: auto; font-size: 0.8rem; color: var(--dim); }
+  .zp-tpl .df-tablewrap { padding: 0 0.8rem 0.8rem; }
+  .zp-tpl .df-hint { padding: 0 0.8rem; }
+  .sev-chip { display: inline-flex; padding: 0.1rem 0.5rem; border-radius: var(--r-pill); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: var(--well); color: var(--dim); }
+  .sev-chip.high { background: color-mix(in srgb, var(--fail) 18%, transparent); color: var(--fail); }
+  .sev-chip.medium { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .sev-chip.low { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .zp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.7rem 1rem; margin: 0 0 1rem; }
+  .zp-form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--dim); }
+  .zp-form :is(input, select, textarea) { font: inherit; font-size: 0.88rem; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.4rem 0.55rem; min-height: 34px; max-width: 100%; box-sizing: border-box; }
+  .zp-form textarea { min-height: 64px; resize: vertical; }
+  .zp-form fieldset { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.7rem 1rem; }
+  .zp-form legend { font-size: 0.8rem; font-weight: 600; color: var(--text); padding: 0 0.3rem; }
+  .zp-actions { grid-column: 1 / -1; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .zp-hops { list-style: none; margin: 0 0 1rem; padding: 0; border-left: 2px solid var(--border); }
+  .zp-hops li { position: relative; padding: 0.35rem 0 0.6rem 1rem; }
+  .zp-hops .df-hop-h { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .zp-rules td.st { white-space: nowrap; }
+  .zp-meta { font-size: 0.8rem; color: var(--dim); }
+  .zp-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .zp-page .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .zp-page .df-tablewrap { max-width: 100%; }
+  .zp-page .df-table td:first-child, .zp-page .df-table thead th:first-child { white-space: nowrap; width: 1%; }
+  .zp-page .df-table tbody th { min-width: 9rem; overflow-wrap: normal; word-break: normal; }
+  .zp-page .df-table tbody th { text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 600; text-align: left; }
+  .zp-tpl, .zp-form, .pa-verdict { min-width: 0; overflow-wrap: anywhere; }
+  @media (max-width: 600px) { .zp-tpl > summary .cnt { margin-left: 0; } }
+  @media (prefers-reduced-motion: reduce) { .zp-tpl > summary, .zp-tabs [role="tab"] { transition: none; } }
+</style>
+</head>
+<body class="report-page zp-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">ZPA</span> analysis</h1>
+      <p>Reads the tenant's ZPA configuration once (app segments, segment and server groups, App Connectors, Private Service Edges, IdPs and every policy) and runs the ZPA analysis templates over it: unreachable access rules, segments nobody reaches, overlaps, over-broad domains and ports, bypasses, connector redundancy and more. The Diagnose tab then answers, for one user and one destination, which app segment matches, what serves it and which access rule decides.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="zpTenantWrap" hidden><span class="lbl">Tenant</span><select id="zpTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="zpRun">Read ZPA and analyze</button>
+      <a class="rp-btn" id="expCsv" hidden>CSV</a>
+      <a class="rp-btn" id="expJson" hidden>JSON</a>
+    </nav>
+    <main class="rp-card" id="zpMain">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div class="zp-tabs" role="tablist" aria-label="ZPA analysis views">
+        <button type="button" role="tab" id="tab-findings" aria-controls="panel-findings" aria-selected="true" tabindex="0">Findings</button>
+        <button type="button" role="tab" id="tab-diagnose" aria-controls="panel-diagnose" aria-selected="false" tabindex="-1">Diagnose</button>
+      </div>
+      <section role="tabpanel" id="panel-findings" aria-labelledby="tab-findings" tabindex="0">
+        <div id="zpJob"></div>
+        <div id="zpFindings">
+          <div class="pa-intro" id="zpHow">
+            <div class="pa-intro-t">How it works</div>
+            <ol class="pa-steps">
+              <li><strong>Tick ZPA on the Scope page</strong> and give the ZPA customer ID with the API client (Connect to the tenant). Nothing is read otherwise.</li>
+              <li><strong>Read ZPA and analyze.</strong> The configuration is read once, list by list, paced and shown live; Stop ends the read at once and keeps nothing.</li>
+              <li><strong>Read the findings</strong> by template, filter by severity, export them as CSV or JSON. Each finding says in one sentence what is wrong and what to do.</li>
+            </ol>
+            <div class="df-hint">Read-only: nothing is written to the tenant. A list that could not be read leaves its templates "not assessed", never "no finding".</div>
+          </div>
+        </div>
+      </section>
+      <section role="tabpanel" id="panel-diagnose" aria-labelledby="tab-diagnose" tabindex="0" hidden>
+        <form class="zp-form" id="zpForm" novalidate>
+          <label>Destination<input type="text" id="dDest" placeholder="git.corp.example, 10.20.30.7 or https://wiki.corp.example" autocomplete="off" spellcheck="false" required></label>
+          <label>Port<input type="number" id="dPort" min="1" max="65535" placeholder="443 when blank" inputmode="numeric"></label>
+          <label>Protocol<select id="dProto"><option value="tcp">TCP</option><option value="udp">UDP</option></select></label>
+          <fieldset>
+            <legend>The user and device (leave a field blank for "any")</legend>
+            <label>IdP<select id="dIdp"><option value="">Any</option></select></label>
+            <label>SCIM groups<input type="text" id="dScim" list="dlScim" placeholder="Engineering, Contractors — or none" autocomplete="off"></label>
+            <label>SAML or SCIM attributes<textarea id="dSaml" placeholder="Department=Sales&#10;one attribute=value per line"></textarea></label>
+            <label>Client type<select id="dClient"><option value="">Any</option></select></label>
+            <label>Platform<select id="dPlatform"><option value="">Any</option></select></label>
+            <label>Posture profiles the device passes<input type="text" id="dPosture" list="dlPosture" placeholder="Corp device — or none" autocomplete="off"></label>
+            <label>Trusted networks the device is on<input type="text" id="dTrusted" list="dlTrusted" placeholder="HQ — or none" autocomplete="off"></label>
+            <label>Country code<input type="text" id="dCountry" maxlength="2" placeholder="US" autocomplete="off"></label>
+            <label>Machine group<input type="text" id="dMachine" list="dlMachine" autocomplete="off"></label>
+          </fieldset>
+          <datalist id="dlScim"></datalist><datalist id="dlPosture"></datalist><datalist id="dlTrusted"></datalist><datalist id="dlMachine"></datalist>
+          <div class="zp-actions">
+            <button type="submit" class="rp-btn primary" id="dRun">Diagnose</button>
+            <span class="zp-meta" id="dReuse">The first diagnosis reads ZPA (or reuses the analysis you ran); later ones need no read.</span>
+          </div>
+        </form>
+        <div id="zpDiag"></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    const live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const SEVS = ['high', 'medium', 'low', 'info'];
+    const SEV_LABEL = { high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
+    let report = null;         // the last analysis (no raw read)
+    let reportId = '';         // its id: a diagnosis reuses that read
+    let running = false, job = null, startToken = null, stopAsked = false;
+    const sevOn = new Set(SEVS);
+
+    // ── tabs (arrow keys, Home, End; roving tabindex) ───────────────
+    const tabs = Array.from(document.querySelectorAll('.zp-tabs [role="tab"]'));
+    function selectTab(t, focus) {
+      tabs.forEach(x => {
+        const on = x === t;
+        x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1;
+        $(x.getAttribute('aria-controls')).hidden = !on;
+      });
+      if (focus) t.focus();
+      try { history.replaceState(null, '', location.pathname + location.search + (t.id === 'tab-diagnose' ? '#diagnose' : '')); } catch (e) { /* ignore */ }
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(t, false));
+      t.addEventListener('keydown', e => {
+        let j = null;
+        if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') j = 0;
+        else if (e.key === 'End') j = tabs.length - 1;
+        if (j !== null) { e.preventDefault(); selectTab(tabs[j], true); }
+      });
+    });
+    if (location.hash === '#diagnose') selectTab($('tab-diagnose'), false);
+
+    // ── credentials and scope (as the Path analyzer) ────────────────
+    async function tenantChoices() {
+      const wrap = $('zpTenantWrap'), sel = $('zpTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = $('zpTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    // Only the Scope page's ticks and each channel's choice are sent (never its notes).
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+
+    // ── the live job ────────────────────────────────────────────────
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function phase(logs) {
+      for (let i = logs.length - 1; i >= 0; i--) if (/^(Reading|Read |ZPA read|Analysis)/.test(logs[i])) return logs[i].replace(/…$/, '');
+      return logs.length ? 'Working…' : 'Connecting to the tenant…';
+    }
+    function liveHtml(what) {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>${E(what)}</strong><span class="df-by" id="zpPhase">Connecting to the tenant…</span><span class="sep"></span><span class="pa-elapsed" id="zpElapsed">0:00</span><button type="button" class="rp-btn" id="zpStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="zpLog" role="log" aria-live="polite" aria-label="What the ZPA read is doing">Connecting to the tenant…</div>
+      </div>`;
+    }
+    function liveUpdate(snap) {
+      const log = $('zpLog'); if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+      const ph = $('zpPhase'); if (ph) ph.textContent = phase(snap.logs || []);
+      const el = $('zpElapsed'); if (el && snap.elapsed_seconds != null) el.textContent = mmss(snap.elapsed_seconds);
+      const b = $('zpStop'); if (b && snap.cancel_requested) { b.disabled = true; b.textContent = 'Stopping…'; }
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 900));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the read continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        liveUpdate(Object.assign({}, snap, { logs }));
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!running || stopAsked) return;
+      stopAsked = true;
+      const b = $('zpStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        // Still signing in: the job this start creates begins stopped.
+        try {
+          await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) });
+        } catch (e) { /* cancelled by id as soon as it arrives */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+    // Start a job at `url` with `payload` and follow it in `host`; returns its result.
+    async function runJob(url, payload, host, what) {
+      running = true; stopAsked = false; startToken = newStartToken(); job = null;
+      host.innerHTML = liveHtml(what);
+      $('zpStop').addEventListener('click', stop);
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = $('zpElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        if (d.status === 'done' && d.result) return { result: d.result, logs: [] };
+        job = d.job_id;
+        if (stopAsked) {   // Stop pressed while signing in: cancel by id too
+          try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }
+        }
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result) throw new Error(snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the read finished: nothing more was read and nothing is kept.' : 'The read did not finish.'));
+        return { result: snap.result, logs: snap.logs || [] };
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false;
+      }
+    }
+    function failHtml(title, msg) {
+      if (/You clicked Stop/.test(msg)) title = 'Stopped';
+      const hint = /credential|sign in|token|401|403|profile/i.test(msg) ? ' Sign in on the assessment page first and open ZPA analysis from there, or choose a saved tenant profile in the bar above.' : '';
+      return `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+
+    // ── the analysis ────────────────────────────────────────────────
+    async function analyze() {
+      if (running) return;
+      const btn = $('zpRun');
+      btn.disabled = true; btn.textContent = 'Reading ZPA…';
+      selectTab($('tab-findings'), false);
+      $('zpFindings').innerHTML = '';
+      say('Reading the ZPA configuration.');
+      try {
+        const { result, logs } = await runJob('/api/zpa/analysis/start', Object.assign({}, credBody(), scopeSelection()), $('zpJob'), 'Reading ZPA and running the templates');
+        $('zpJob').innerHTML = '';
+        setReport(result, logs);
+        say(`${result.counts.total} finding${result.counts.total === 1 ? '' : 's'} from ${result.counts.assessed} of ${result.counts.templates} templates.`);
+      } catch (e) {
+        $('zpJob').innerHTML = failHtml('The analysis could not run', e.message);
+        say(`The analysis could not run: ${e.message}`);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Read ZPA and analyze';
+      }
+    }
+    function setReport(res, logs) {
+      report = res; reportId = res.report_id || '';
+      $('rpMeta').textContent = `${res.tenant_label || ''} · read ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
+      $('dReuse').textContent = 'Diagnoses reuse this read: no new tenant call.';
+      fillChoices(res.choices || {});
+      renderFindings(logs || res.logs || []);
+      updateExports();
+    }
+    function updateExports() {
+      const csv = $('expCsv'), json = $('expJson');
+      if (!reportId) { csv.hidden = json.hidden = true; return; }
+      const sev = SEVS.filter(s => sevOn.has(s)).join(',');
+      csv.href = `/api/zpa/report/${encodeURIComponent(reportId)}/export?format=csv&severity=${encodeURIComponent(sev)}`;
+      json.href = `/api/zpa/report/${encodeURIComponent(reportId)}/export?format=json&severity=${encodeURIComponent(sev)}`;
+      csv.hidden = json.hidden = false;
+      csv.title = 'The findings shown (severity filter applied) as CSV'; json.title = 'The findings shown, the catalog and the counts as JSON';
+    }
+    function worst(list) { return SEVS.find(s => list.some(f => f.severity === s)) || 'info'; }
+    function sevChip(s) { return `<span class="sev-chip ${E(s)}">${E(SEV_LABEL[s] || s)}</span>`; }
+    function renderFindings(logs) {
+      const res = report; if (!res) return;
+      const c = res.counts || {}, bySev = c.by_severity || {};
+      const shown = (res.findings || []).filter(f => sevOn.has(f.severity));
+      const byTpl = {};
+      shown.forEach(f => { (byTpl[f.template] = byTpl[f.template] || []).push(f); });
+      const notRead = Object.values(res.collections || {}).filter(x => x && x.read === false);
+      const tpl = (res.catalog || []).map(t => {
+        const list = byTpl[t.id] || [];
+        if (t.status === 'findings' && !list.length) return '';   // filtered out
+        const status = t.status === 'not_assessed' ? `<span class="df-chip">Not assessed</span>` : t.status === 'clean' ? '<span class="df-chip st-ok">Clean</span>' : sevChip(worst(list.length ? list : (res.findings || []).filter(f => f.template === t.id)));
+        const rows = list.map(f => `<tr><td>${sevChip(f.severity)}</td><th scope="row">${E(f.object)}</th><td>${E(f.reason)}</td><td>${E(f.fix)}</td></tr>`).join('');
+        return `<details class="zp-tpl" ${list.length ? 'open' : ''}>
+          <summary><span class="id">${E(t.id)}</span><strong>${E(t.title)}</strong>${status}<span class="cnt">${list.length ? `${list.length} finding${list.length === 1 ? '' : 's'}` : (t.status === 'not_assessed' ? `not read: ${E((t.not_read || []).join(', '))}` : 'nothing found')}</span></summary>
+          <div class="df-hint">${E(t.scope)}: ${E(t.checks)}</div>
+          ${rows ? `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">${E(t.title)}: findings</caption><thead><tr><th scope="col">Severity</th><th scope="col">Object</th><th scope="col">What is wrong</th><th scope="col">What to do</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+        </details>`;
+      }).join('');
+      $('zpFindings').innerHTML = `
+        ${res.readable === false ? failHtml('Nothing could be read', 'No ZPA list could be read with this sign-in: check that the API client has a ZPA role and that the customer ID is right.') : ''}
+        <div class="zp-stats" role="group" aria-label="Counts">
+          <div class="zp-stat"><div class="n">${E(c.total || 0)}</div><div class="k">Findings</div></div>
+          ${SEVS.map(s => `<div class="zp-stat sev-${s}"><div class="n">${E(bySev[s] || 0)}</div><div class="k">${E(SEV_LABEL[s])}</div></div>`).join('')}
+          <div class="zp-stat"><div class="n">${E(c.assessed || 0)}/${E(c.templates || 0)}</div><div class="k">Templates assessed</div></div>
+        </div>
+        <div class="zp-sev" role="group" aria-label="Show severities">
+          <span class="zp-meta">Show:</span>
+          ${SEVS.map(s => `<button type="button" data-sev="${s}" aria-pressed="${sevOn.has(s)}">${E(SEV_LABEL[s])} (${E(bySev[s] || 0)})</button>`).join('')}
+          <span class="zp-meta">${E(shown.length)} of ${E(c.total || 0)} shown</span>
+        </div>
+        ${notRead.length ? `<div class="df-hint">Not read, so their templates are not assessed: ${E(notRead.map(x => `${x.label} (${x.error || 'no answer'})`).join('; '))}.</div>` : ''}
+        <h2 class="df-h">Findings by template</h2>
+        ${tpl}
+        <h2 class="df-h">Assumptions</h2>
+        <ul class="pa-assume">${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>
+        <details class="pa-details"><summary>What was read (${E(logs.length)} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
+      $('zpFindings').querySelectorAll('.zp-sev button').forEach(b => b.addEventListener('click', () => {
+        const s = b.dataset.sev;
+        if (sevOn.has(s)) sevOn.delete(s); else sevOn.add(s);
+        renderFindings(logs); updateExports();
+        const again = $('zpFindings').querySelector(`.zp-sev button[data-sev="${s}"]`); if (again) again.focus();
+        say(`${SEV_LABEL[s]} findings ${sevOn.has(s) ? 'shown' : 'hidden'}.`);
+      }));
+    }
+
+    // ── the diagnose form ───────────────────────────────────────────
+    function fillChoices(ch) {
+      const opts = (id, list, keepFirst) => { const sel = $(id); const first = keepFirst ? sel.options[0].outerHTML : ''; sel.innerHTML = first + list.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join(''); };
+      opts('dIdp', (ch.idps || []).map(n => [n, n]), true);
+      opts('dClient', (ch.client_types || []).map(x => [x.value, x.label]), true);
+      opts('dPlatform', (ch.platforms || []).map(p => [p, p]), true);
+      const dl = (id, list) => { $(id).innerHTML = (list || []).slice(0, 500).map(n => `<option value="${E(n)}"></option>`).join(''); };
+      dl('dlScim', ch.scim_groups); dl('dlPosture', ch.posture_profiles); dl('dlTrusted', ch.trusted_networks); dl('dlMachine', ch.machine_groups);
+    }
+    // A list field: blank = any (null), "none" = an empty list.
+    function listField(id) {
+      const v = $(id).value.trim();
+      if (!v) return null;
+      if (/^none$/i.test(v)) return [];
+      return v.split(',').map(x => x.trim()).filter(Boolean);
+    }
+    function userContext() {
+      const u = {};
+      const put = (k, v) => { if (v !== null && v !== '' && v !== undefined) u[k] = v; };
+      put('idp', $('dIdp').value); put('client_type', $('dClient').value); put('platform', $('dPlatform').value);
+      put('scim_groups', listField('dScim')); put('posture_pass', listField('dPosture')); put('trusted_networks', listField('dTrusted'));
+      put('saml', $('dSaml').value.trim()); put('country', $('dCountry').value.trim().toUpperCase()); put('machine_group', $('dMachine').value.trim());
+      return u;
+    }
+    const HOP_STATUS = { ok: ['OK', 'st-ok'], warn: ['Check', 'st-warn'], blocked: ['Stops here', 'st-fail'], none: ['No match', 'st-fail'], unknown: ['Unknown', ''], info: ['Given', 'st-block'] };
+    const OUTCOME = { allowed: ['Allowed', 'st-ok'], denied: ['Denied', 'st-fail'], conditional: ['Depends on the user', 'st-warn'], unreachable: ['Allowed but unreachable', 'st-fail'],
+      bypassed: ['Bypassed', 'st-warn'], not_zpa: ['Not ZPA traffic', 'st-warn'], unknown: ['Unknown', ''] };
+    const RULE_STATUS = { matched: ['Decides', 'st-ok'], not_matched: ['No match', ''], conditional: ['Depends', 'st-warn'], disabled: ['Disabled', ''] };
+    function chip(map, k) { const [l, c] = map[k] || [k, '']; return `<span class="df-chip ${c}">${E(l)}</span>`; }
+    async function diagnose(ev) {
+      if (ev) ev.preventDefault();
+      if (running) return;
+      const dest = $('dDest').value.trim();
+      if (!dest) { $('zpDiag').innerHTML = failHtml('Nothing to diagnose', 'Type a destination first: an FQDN or an IP address.'); $('dDest').focus(); return; }
+      const btn = $('dRun'); btn.disabled = true; btn.textContent = 'Diagnosing…';
+      const payload = Object.assign({}, credBody(), scopeSelection(), { report_id: reportId, destination: dest, port: $('dPort').value.trim(), protocol: $('dProto').value, user: userContext() });
+      say(`Diagnosing ${dest}.`);
+      try {
+        const { result, logs } = await runJob('/api/zpa/diagnose', payload, $('zpDiag'), `Reading ZPA to diagnose ${dest}`);
+        let diag = result;
+        if (result.diagnosis || result.diagnosis_error) {   // the read ran first: keep it as the analysis too
+          setReport(result, logs);
+          if (result.diagnosis_error) throw new Error(result.diagnosis_error);
+          diag = result.diagnosis;
+        }
+        renderDiagnosis(diag);
+        say(diag.verdict.headline);
+      } catch (e) {
+        if (/not found or expired/i.test(e.message)) { reportId = ''; }
+        $('zpDiag').innerHTML = failHtml('The diagnosis could not run', e.message);
+        say(`The diagnosis could not run: ${e.message}`);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Diagnose';
+      }
+    }
+    function renderDiagnosis(d) {
+      const v = d.verdict, dst = d.destination || {};
+      const [ol, oc] = OUTCOME[v.outcome] || [v.outcome, ''];
+      const acc = d.access || {};
+      const rows = (acc.evaluated || []).map(w => `<tr><td>${E(w.order == null ? '' : w.order)}</td><th scope="row">${E(w.name)}</th><td>${E(w.action)}</td><td class="st">${chip(RULE_STATUS, w.status)}</td><td>${E(w.why)}</td></tr>`).join('');
+      const other = Object.values(d.other_policies || {}).map(p => `<li><strong>${E(p.label)}:</strong> ${!p.read ? 'not read' : p.rule ? `"${E(p.rule.name)}" (${E(p.rule.action)}) is the first match` : 'no rule matches'}${(p.conditional || []).length ? `; before it, depends on the user: ${E(p.conditional.map(x => `"${x.name}" (${x.action})`).join(', '))}` : ''}.</li>`).join('');
+      $('zpDiag').innerHTML = `
+        <section class="pa-verdict" aria-labelledby="zpHeadline">
+          <div class="pa-verdict-top"><span class="df-chip ${oc}">${E(ol)}</span><span class="df-by">${E(dst.host)}:${E(dst.port)}/${E(String(dst.protocol || '').toUpperCase())}${d.tenant_label ? ` · ${E(d.tenant_label)}` : ''}</span></div>
+          <h2 id="zpHeadline" class="pa-headline">${E(v.headline)}</h2>
+          <p class="pa-summary">${E(v.summary)}</p>
+        </section>
+        <h2 class="df-h">The path, hop by hop</h2>
+        <ol class="zp-hops">${(d.hops || []).map(h => `<li><div class="df-hop-h">${chip(HOP_STATUS, h.status)}<strong>${E(h.label)}</strong></div><div class="df-hop-d">${E(h.detail)}</div></li>`).join('')}</ol>
+        ${rows ? `<h2 class="df-h">Access rules, in order, up to the one that decides</h2>
+        <div class="df-tablewrap"><table class="df-table zp-rules"><caption class="sr-only">Access rules evaluated</caption><thead><tr><th scope="col">Order</th><th scope="col">Rule</th><th scope="col">Action</th><th scope="col">Result</th><th scope="col">Why</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+        ${other ? `<h2 class="df-h">Other ZPA policies for this request</h2><ul class="pa-assume">${other}</ul>` : ''}
+        <h2 class="df-h">Assumptions</h2>
+        <ul class="pa-assume">${(d.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>`;
+    }
+
+    $('zpRun').addEventListener('click', analyze);
+    $('zpForm').addEventListener('submit', diagnose);
+    tenantChoices();
+    const q = new URLSearchParams(location.search);
+    if (q.get('id') && q.get('id').startsWith('zpa-')) {
+      // A link may show an analysis already in memory; it never starts a read.
+      fetch(`/api/zpa/report/${encodeURIComponent(q.get('id'))}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(rep => { if (rep) setReport(rep, []); }).catch(() => {});
+    }
+  })();
+  </script>
+</body>
+</html>
