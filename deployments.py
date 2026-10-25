@@ -59,6 +59,7 @@ def _write(data: Dict[str, Any]) -> None:
             os.chmod(tmp, 0o600)
         except OSError:
             pass
+        _keep_last_good(p)
         os.replace(tmp, p)
     finally:
         if os.path.exists(tmp):
@@ -223,3 +224,12 @@ def mark_operation_undone(op_id: str, undo_id: str, *, complete: bool) -> Option
 
 def new_operation_id() -> str:
     return f"op-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
+
+
+def _keep_last_good(path: str) -> None:
+    """The store as it was, kept as a last-good copy (self_heal) before it is replaced."""
+    try:
+        import self_heal
+        self_heal.keep_last_good(path)
+    except Exception:  # noqa: BLE001 - never stops a write
+        pass

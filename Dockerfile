@@ -1,4 +1,4 @@
-# DLP-Check in a container: pinned base, hash-pinned dependencies, no root,
+# Zscaler Made Easy in a container: pinned base, hash-pinned dependencies, no root,
 # read-only filesystem, loopback publish. Build:  docker build -t dlp-check .
 # Run (see docker-compose.yml for the full set of flags):
 #   docker run --rm -p 127.0.0.1:8001:8000 -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -v dlpcheck-data:/data --read-only --tmpfs /tmp dlp-check

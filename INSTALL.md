@@ -1,4 +1,4 @@
-# Installing DLP-Check — a walkthrough for someone doing this for the first time
+# Installing Zscaler Made Easy — a walkthrough for someone doing this for the first time
 
 This page assumes you have never installed a developer tool before. It
 does not assume you know what Python, Git, Docker or a terminal are; each
@@ -110,7 +110,7 @@ it installed once, the same way it needs a PDF reader to open a PDF.
    **Sign in with your browser**, sign in to GitHub, and come back. The
    Command Prompt then prints a few lines and stops. You now have a folder
    `Documents\DLP-Check`.
-4. Open that folder in File Explorer (type `explorer DLP-Check` in the same
+4. Open that folder in File Explorer (type `explorer Zscaler Made Easy` in the same
    window and press Enter).
 
 *Option B: a ZIP.*
@@ -256,7 +256,7 @@ If Terminal says `Permission denied` on `./install.sh`, run
 **Success looks like this:** Terminal prints
 
 ```
-  Zscaler Platform Assessment
+  Zscaler Made Easy
   UI token: …
   (also in …/ui_token.txt; the launcher opens the browser with it, anyone else gets 401)
   Open http://localhost:8000/?token=… in your browser
@@ -317,7 +317,7 @@ token** once: on `github.com`, click your avatar → **Settings** →
 git config --global credential.helper store   # remember the sign-in, so updates work later
 cd ~
 git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+cd Zscaler Made Easy
 ```
 
 When `git clone` asks `Username for 'https://github.com':`, type your
@@ -367,7 +367,7 @@ folder you want the app in):
 ```powershell
 # Windows (PowerShell)
 git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+cd Zscaler Made Easy
 powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
 docker logs dlp-check
 ```
@@ -375,7 +375,7 @@ docker logs dlp-check
 ```bash
 # Mac (Terminal) or Linux
 git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+cd Zscaler Made Easy
 ./update_container.sh --force
 docker logs dlp-check
 ```
@@ -561,7 +561,7 @@ the first time.
   ```powershell
   cd $HOME\Documents
   git clone https://github.com/berserkerjay/DLP-Check.git
-  cd DLP-Check
+  cd Zscaler Made Easy
   ```
 
   A browser window opens to sign in to GitHub (Git Credential Manager);
@@ -573,7 +573,7 @@ the first time.
   ```bash
   cd ~/Documents
   git clone https://github.com/berserkerjay/DLP-Check.git
-  cd DLP-Check
+  cd Zscaler Made Easy
   ```
 
   If macOS offers to install the "command line developer tools", click
@@ -587,7 +587,7 @@ the first time.
   `credential.helper store` line keeps the sign-in for later updates).
 
 **Step 3 — Build and run.** In the same terminal, still in the
-`DLP-Check` folder, run the update script with *force*. On a fresh
+`Zscaler Made Easy` folder, run the update script with *force*. On a fresh
 install it builds the image, stamps it with the git commit it was built
 from (so the app can tell you when GitHub has a newer one) and starts
 the container in the background:
@@ -709,7 +709,7 @@ publish it beyond loopback the switch is refused; then put
 
 ## How you know it worked
 
-Your browser shows a dark page headed **Zscaler Platform Assessment**,
+Your browser shows a dark page headed **Zscaler Made Easy**,
 with a row of tool buttons (Start, Find the gaps, Close the gaps,
 Reference, Troubleshoot) and, below, **Connect to the tenant** with a
 form for the sign-in details. The **Start here** card names the folder
@@ -739,7 +739,7 @@ above, run with the same settings as `docker-compose.yml`.
 needs a read-only token to fetch it. On `github.com`: your avatar →
 **Settings** → **Developer settings** → **Personal access tokens** →
 **Fine-grained tokens** → **Generate new token**; *Repository access*:
-**Only select repositories** → `DLP-Check`; *Permissions* → *Contents*:
+**Only select repositories** → `Zscaler Made Easy`; *Permissions* → *Contents*:
 **Read-only**; generate and copy it. Hand it to Docker for this terminal
 window only (it is not saved anywhere):
 

@@ -120,7 +120,7 @@ def test_quiet_run_is_not_noteworthy_and_notifies_only_when_told(tmp_path, monke
     monkeypatch.setenv("DLP_CHECK_DIGEST_WEBHOOK", "https://example.webhook.office.com/webhookb2/abc")
     d = ce.run_once(build_client=None, notify=True)
     chans = {n["channel"]: n for n in d["notified"]}
-    assert chans["email"]["sent"] and sent["to"] == "soc@example.test" and sent["tls"] and sent["login"] == "bot" and "DLP-Check digest" in sent["subject"]
+    assert chans["email"]["sent"] and sent["to"] == "soc@example.test" and sent["tls"] and sent["login"] == "bot" and "Zscaler Made Easy digest" in sent["subject"]
     # STARTTLS checks the mail server's certificate and name before the password is sent.
     import ssl
     assert sent["tls"].verify_mode == ssl.CERT_REQUIRED and sent["tls"].check_hostname
@@ -132,7 +132,7 @@ def test_quiet_run_is_not_noteworthy_and_notifies_only_when_told(tmp_path, monke
     monkeypatch.delenv("DLP_CHECK_SMTP_USER")
     assert ce._send_email("s", "b", ce.notification_settings()["email"])["sent"] and "login" not in sent, "an open relay without sign-in still works"
     monkeypatch.delenv("DLP_CHECK_SMTP_TLS")
-    assert chans["webhook"]["sent"] and posted["url"].startswith("https://") and "DLP-Check digest" in posted["text"]
+    assert chans["webhook"]["sent"] and posted["url"].startswith("https://") and "Zscaler Made Easy digest" in posted["text"]
     cfg = ce.notification_settings()
     assert cfg["email"]["configured"] and cfg["webhook"]["kind"] == "teams" and cfg["mode"] == "always"
     monkeypatch.setenv("DLP_CHECK_DIGEST_WEBHOOK", "http://insecure.example/hook")
@@ -150,7 +150,7 @@ def test_endpoints_and_page(tmp_path, monkeypatch):
     lst = c.get("/api/digests").json()
     assert lst["digests"][0]["id"] == did and "notifications" in lst and "schedule" in lst and lst["sources"]["watched"] >= 10
     assert c.get(f"/api/digests/{did}").json()["id"] == did
-    assert c.get(f"/api/digests/{did}?format=markdown").text.startswith("# DLP-Check digest")
+    assert c.get(f"/api/digests/{did}?format=markdown").text.startswith("# Zscaler Made Easy digest")
     assert c.get("/api/digests/nope").status_code == 404
     assert c.get("/api/guidance/sources").json()["sources"][0]["id"]
     assert c.get("/api/saas-apps").json()["applications"]

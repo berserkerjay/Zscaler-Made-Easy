@@ -32,17 +32,17 @@
     const u = new URL(a.getAttribute('href'), location.href);
     const who = advAssessorName();
     if (!who) {
-      // Every object in the workspace names the assessor, never DLP-Check: no name, no download.
+      // Every object in the workspace names the assessor, never Zscaler Made Easy: no name, no download.
       e.preventDefault();
       const f = document.getElementById('advAssessor');
       alert("Enter the assessor's name first: every object the pack creates names the assessor in its description.");
       if (f) f.focus();
       return;
     }
-    if (/dlp[\W_]*check/i.test(who)) {
+    if (/dlp[\W_]*check|zscaler[\W_]*made[\W_]*easy/i.test(who)) {
       // The tool's own name, in any spelling, is refused here as on the server (pack_deploy.TOOL_NAME_PATTERN).
       e.preventDefault();
-      alert("Name the person who assesses and deploys the pack, not the tool (no \"DLP-Check\").");
+      alert("Name the person who assesses and deploys the pack, not the tool (no \"Zscaler Made Easy\").");
       const f = document.getElementById('advAssessor');
       if (f) f.focus();
       return;

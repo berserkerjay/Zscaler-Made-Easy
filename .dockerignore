@@ -32,6 +32,8 @@ launcher.log
 server.pid
 proposals.json
 proposals.json.tmp
+workspace_notes.json
+workspace_notes.json.lock
 digests/
 guidance_state.json
 guidance_state.json.tmp

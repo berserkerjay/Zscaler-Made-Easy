@@ -9,7 +9,7 @@ async function save(value) {
   await chrome.storage.sync.set({ app: base });
   $('app').value = base;
   const up = await ping(base);
-  say(up.ok ? `Saved. DLP-Check answers at ${base}.` : `Saved, but DLP-Check does not answer at ${base}: ${up.why}`, up.ok);
+  say(up.ok ? `Saved. Zscaler Made Easy answers at ${base}.` : `Saved, but Zscaler Made Easy does not answer at ${base}: ${up.why}`, up.ok);
 }
 appUrl().then(v => { $('app').value = v; });
 $('save').addEventListener('click', () => save($('app').value));

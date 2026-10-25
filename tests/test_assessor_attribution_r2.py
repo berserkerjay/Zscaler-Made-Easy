@@ -124,8 +124,8 @@ def test_an_assessor_name_cannot_forge_the_legacy_tag_of_another_pack(tmp_path):
 
 HISTORICAL = [
     ("[DLP-Check baseline zbp v4] Immutable: drift is reverted on the next deploy.", "zbp", "baseline"),
-    ("Eng [DLP-Check baseline zbp v4] Deployed by DLP-Check; measured on every journey check, never overwritten.", "zbp", "baseline"),
-    ("Cards [DLP-Check pack alpha v2] Deployed by DLP-Check.", "alpha", "pack"),
+    ("Eng [DLP-Check baseline zbp v4] Deployed by Zscaler Made Easy; measured on every journey check, never overwritten.", "zbp", "baseline"),
+    ("Cards [DLP-Check pack alpha v2] Deployed by Zscaler Made Easy.", "alpha", "pack"),
     ("Cards [DLP-Check pack alpha v2] owner: finance", "alpha", "pack"),
 ]
 
@@ -135,14 +135,14 @@ def test_tags_written_by_earlier_versions_are_still_recognised(desc, pid, kind):
     assert pd.MARK_RE.search(desc) is None          # only the legacy recogniser reads these
     assert pd.has_mark(desc, pack_id=pid) and pd.has_mark(desc, kind=kind) and pd.has_mark(desc)
     assert not pd.has_mark(desc, pack_id="other")
-    assert pd.tag_pack(desc) == pid and "DLP-Check" not in pd.strip_mark(desc)
+    assert pd.tag_pack(desc) == pid and "Zscaler Made Easy" not in pd.strip_mark(desc)
     if kind == "baseline":
         assert pd._has_mark(desc, pid) and pd._has_mark(Obj(id=1, name="n", description=desc), pid)
 
 
 def test_objects_with_historical_tags_remove_by_tag(tmp_path):
     pack = _pack(tmp_path)
-    d, e, r = HISTORICAL[2][0], "[DLP-Check pack alpha v1] Deployed by DLP-Check.", "Mon [DLP-Check pack alpha v1] Deployed by DLP-Check."
+    d, e, r = HISTORICAL[2][0], "[DLP-Check pack alpha v1] Deployed by Zscaler Made Easy.", "Mon [DLP-Check pack alpha v1] Deployed by Zscaler Made Easy."
     plan = pr.plan_removal(_renamed(d, e, r), [pack])
     assert plan["remove_count"] == 3
 
@@ -221,7 +221,7 @@ def test_the_pack_library_terraform_download_names_the_assessor(monkeypatch):
     assert f"[Jane Doe " in text and "[DLP-Check " not in text
     monkeypatch.setattr(tenant_profiles, "get", lambda p, **kw: {"assessor": "Sam Lee"} if p == "p1" else None)
     assert "[Sam Lee " in _zip_text(c.get(f"/api/pack-library/{pid}/terraform.zip", params={"profile_id": "p1"}).content)
-    # No assessor anywhere: refused, so a workspace never tags objects DLP-Check.
+    # No assessor anywhere: refused, so a workspace never tags objects Zscaler Made Easy.
     assert c.get(f"/api/pack-library/{pid}/terraform.zip").status_code == 400
 
 

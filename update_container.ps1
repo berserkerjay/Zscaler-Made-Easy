@@ -1,4 +1,4 @@
-# Update the DLP-Check container on Windows: pull the latest code for this
+# Update the Zscaler Made Easy container on Windows: pull the latest code for this
 # checkout's branch from GitHub and rebuild the container, only when GitHub
 # has something new. Run it from the folder that holds docker-compose.yml
 # (a git clone, not a ZIP):
@@ -23,7 +23,7 @@ $want = if (-not $Branch) { '' } elseif ($Branch -ieq 'DLP-CHECK-QA') { 'qa' } e
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 $Log = Join-Path $PSScriptRoot 'update_container.log'
-$TaskName = 'DLP-Check container update'
+$TaskName = 'Zscaler Made Easy container update'
 function Say($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $m"; Write-Host $line; Add-Content -LiteralPath $Log -Value $line }
 
 if ($Unschedule) {
@@ -34,7 +34,7 @@ if ($Schedule) {
   $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`"" -WorkingDirectory $PSScriptRoot
   $trigger = New-ScheduledTaskTrigger -Daily -At '03:17'
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries
-  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Description 'Pulls DLP-Check from GitHub and rebuilds its container when there is an update.' -Force | Out-Null
+  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Description 'Pulls Zscaler Made Easy from GitHub and rebuilds its container when there is an update.' -Force | Out-Null
   Say "Scheduled: every day at 03:17 (and at the next start if the computer was off) Windows runs $PSCommandPath, updating from the branch checked out then. Log: $Log"
 }
 
@@ -43,7 +43,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Say 'docker is no
 git rev-parse --is-inside-work-tree 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
   Say 'This folder is not a git clone (a ZIP download), so it cannot pull updates. Clone it once:'
-  Say '  git clone https://github.com/berserkerjay/DLP-Check.git; cd DLP-Check; powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force'
+  Say '  git clone https://github.com/berserkerjay/DLP-Check.git; cd Zscaler Made Easy; powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force'
   exit 1
 }
 $dirty = git status --porcelain --untracked-files=no

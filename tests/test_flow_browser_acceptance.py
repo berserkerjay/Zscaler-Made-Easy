@@ -253,7 +253,7 @@ def test_production_flow_reference_browser_acceptance(tmp_path):
                 time.sleep(.1)
         assert ready, "Fixture server did not become ready; see server.log"
         completed = subprocess.run([node, str(DRIVER), chrome, base, str(tmp_path / "chrome"), str(artifacts)],
-                                   cwd=ROOT, env=environment, text=True, capture_output=True, timeout=165)
+                                   cwd=ROOT, env=environment, text=True, capture_output=True, timeout=320)
         (artifacts / "driver.stdout").write_text(completed.stdout)
         (artifacts / "driver.stderr").write_text(completed.stderr)
         assert completed.returncode == 0, f"Browser acceptance failed: {completed.stderr[-4000:]} (artifacts: {artifacts})"

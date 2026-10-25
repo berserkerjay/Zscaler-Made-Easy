@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Improve my score — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .pp-sec { padding: 1.1rem 0; border-top: 1px solid var(--border); }
+  .pp-sec:first-of-type { border-top: 0; }
+  .pp-sec > h2 { font-size: 1.15rem; font-weight: 700; margin: 0 0 0.35rem; }
+  .pp-lead { color: var(--dim); font-size: 0.9rem; margin: 0 0 0.8rem; max-width: 80ch; }
+  .pp-empty { color: var(--dim); font-size: 0.9rem; padding: 0.7rem 0.9rem; border: 1px dashed var(--border-strong); border-radius: var(--r-md); }
+  .pp-stats { padding: 0 0 0.4rem; }
+  .pp-stat .n.up { color: var(--pass); }
+  .pp-stat .n.down { color: var(--fail); }
+  .pp-fixes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
+  .pp-fix, .pp-change, .pp-proj, .pp-alert { min-width: 0; overflow-wrap: anywhere; }
+  .pp-fix .rp-btn { white-space: normal; text-align: left; }
+  .pp-fix { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); padding: 0.75rem 0.9rem; }
+  .pp-fix-top { display: grid; grid-template-columns: auto 1fr auto; gap: 0.4rem 0.8rem; align-items: start; }
+  .pp-rank { font-weight: 800; color: var(--dim); min-width: 1.6rem; }
+  .pp-title { font-weight: 650; }
+  .pp-title .id { color: var(--dim); font-weight: 500; font-size: 0.85rem; margin-right: 0.3rem; }
+  .pp-pts { font-weight: 800; color: var(--pass); white-space: nowrap; }
+  .pp-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.45rem 0 0; }
+  .pp-chip { display: inline-flex; align-items: center; font-size: 0.72rem; font-weight: 600; padding: 0.15rem 0.55rem; border-radius: var(--r-pill, 999px); border: 1px solid var(--border); color: var(--dim); }
+  .pp-chip.fail { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 45%, transparent); background: color-mix(in srgb, var(--fail) 10%, transparent); }
+  .pp-chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+  .pp-chip.ok { color: var(--pass); border-color: color-mix(in srgb, var(--pass) 45%, transparent); background: color-mix(in srgb, var(--pass) 10%, transparent); }
+  .pp-fix details { margin-top: 0.45rem; }
+  .pp-fix summary { cursor: pointer; font-size: 0.85rem; color: var(--accent); }
+  .pp-fix summary:focus-visible, .pp-sec button:focus-visible, .pp-sec a:focus-visible, .pp-sec input:focus-visible, .pp-sec select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pp-fix ol { margin: 0.4rem 0 0.2rem 1.2rem; padding: 0; font-size: 0.88rem; }
+  .pp-fix ol li { margin: 0.15rem 0; }
+  .pp-acts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.55rem; align-items: center; }
+  .pp-pick { display: inline-flex; gap: 0.4rem; align-items: center; font-size: 0.85rem; }
+  .pp-pick input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .pp-note { font-size: 0.82rem; color: var(--dim); }
+  .pp-proj { font-size: 1rem; margin: 0.2rem 0 0.6rem; }
+  .pp-ctlrow { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; margin: 0 0 0.6rem; }
+  .pp-chart { width: 100%; max-width: 760px; height: auto; display: block; margin: 0.2rem 0 0.6rem; }
+  .pp-chart .grid { stroke: var(--border); stroke-width: 1; }
+  .pp-chart .line { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+  .pp-chart .dot { fill: var(--card-solid); stroke: var(--accent); stroke-width: 2; }
+  .pp-chart text { fill: var(--dim); font-size: 11px; }
+  .pp-changes { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  .pp-change { border-left: 3px solid var(--border-strong); padding: 0.35rem 0.8rem; }
+  .pp-change.down { border-left-color: var(--fail); }
+  .pp-change.up { border-left-color: var(--pass); }
+  .pp-change ul { margin: 0.3rem 0 0 1.1rem; padding: 0; font-size: 0.85rem; color: var(--dim); }
+  .pp-alert { border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0 0 0.7rem; }
+  .pp-form { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; align-items: center; }
+  .pp-form input[type="number"] { width: 5.5rem; }
+  .pp-h3 { font-size: 1rem; font-weight: 650; margin: 0.8rem 0 0.4rem; }
+  .pp-more { margin-top: 0.7rem; }
+  .pp-more summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
+  .pp-cov-pct { font-size: 1rem; font-weight: 650; margin: 0 0 0.6rem; }
+  .pp-words dl { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 0.3rem 0.9rem; margin: 0.5rem 0 0; font-size: 0.88rem; }
+  .pp-words dt { font-weight: 650; }
+  .pp-words dd { margin: 0; }
+  @media (max-width: 600px) {
+    .pp-fix-top { grid-template-columns: auto 1fr; }
+    .pp-pts { grid-column: 2; }
+    .pp-words dl { grid-template-columns: 1fr; }
+    .pp-cov thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .pp-cov table, .pp-cov tbody, .pp-cov tr, .pp-cov td { display: block; width: 100%; }
+    .pp-cov tr { border-bottom: 1px solid var(--border); padding: 0.5rem 0; }
+    .pp-cov td { padding: 0.2rem 0; border: 0; overflow-wrap: anywhere; }
+    .pp-cov td[data-label]::before { content: attr(data-label); display: block; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body class="report-page pp-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Improve</span> my score</h1>
+      <p>This page shows which fixes raise your score most, what your score would be after them, why it changed since the last visit, and what the last assessment could not check. Start with the first fix in the list.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <button type="button" class="rp-btn" id="ppRefresh">↻ Refresh from the assessment tab</button>
+      <button type="button" class="rp-btn" id="ppJson">Download JSON</button>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <p class="pp-note" id="ppSource">Reading the results from the assessment tab…</p>
+
+      <section class="pp-sec" aria-labelledby="ppTilesH">
+        <h2 id="ppTilesH" class="sr-only">Your score at a glance</h2>
+        <div class="df-stats pp-stats" id="ppTiles"></div>
+      </section>
+
+      <section class="pp-sec" id="fixes" aria-labelledby="ppFixesH">
+        <h2 id="ppFixesH">Top 10 fixes that raise your score most</h2>
+        <p class="pp-lead" id="ppFixesLead">Each fix shows how many points it adds (worked out with the real score formula), how much work it is, and whether a one-click fix exists in Review &amp; remediate. Tick a fix to see your projected score.</p>
+        <div id="ppFixes"></div>
+        <div id="ppBundles"></div>
+      </section>
+
+      <section class="pp-sec" id="projection" aria-labelledby="ppProjH">
+        <h2 id="ppProjH">Projected score</h2>
+        <p class="pp-lead">Your score after the fixes you ticked above and, if you want, the fix recipes already waiting in the change queue. Nothing is changed and nothing is read from the tenant.</p>
+        <div class="pp-ctlrow">
+          <label class="pp-pick"><input type="checkbox" id="ppQueue" checked> Count fixes staged in the change queue</label>
+          <label class="df-ctl" id="ppQueueTenantWrap" hidden><span class="lbl">Queue of tenant</span><select id="ppQueueTenant" aria-label="Count the change requests of this tenant"></select></label>
+        </div>
+        <div id="ppProj"></div>
+      </section>
+
+      <section class="pp-sec" id="trend" aria-labelledby="ppTrendH">
+        <h2 id="ppTrendH">Score over time</h2>
+        <p class="pp-lead">Every assessment saved to this tenant profile, and between two runs the checks that started or stopped failing.</p>
+        <div id="ppTrend"></div>
+      </section>
+
+      <section class="pp-sec" id="alerts" aria-labelledby="ppAlertH">
+        <h2 id="ppAlertH">Score-drop alerts</h2>
+        <p class="pp-lead">When the score falls by at least this many points since the previous run, the results page shows a banner and the digest lists it. It is sent by e-mail or webhook only if the digest notifications are already set up and you tick the box.</p>
+        <div id="ppAlertNow"></div>
+        <form class="pp-form" id="ppSettings">
+          <label class="df-ctl"><span class="lbl">Alert when the score drops by at least</span><input type="number" id="ppPoints" min="1" max="100" step="1" value="5" aria-describedby="ppPointsHint"> <span id="ppPointsHint">points</span></label>
+          <label class="pp-pick"><input type="checkbox" id="ppNotify"> Also send it through the digest notifications</label>
+          <button type="submit" class="rp-btn primary">Save</button>
+          <span class="pp-note" id="ppSettingsMsg" role="status" aria-live="polite"></span>
+        </form>
+      </section>
+
+      <section class="pp-sec" id="coverage" aria-labelledby="ppCovH">
+        <h2 id="ppCovH">What the last assessment could not check</h2>
+        <p class="pp-lead">Checks that were not permitted, rate limited, timed out or left out by the Scope page are not in the score. Fix the cause and run the assessment again to see them.</p>
+        <div id="ppCoverage"></div>
+      </section>
+
+      <section class="pp-sec pp-words" aria-labelledby="ppWordsH">
+        <details>
+          <summary><span id="ppWordsH">Words on this page</span></summary>
+          <dl id="ppWords"></dl>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/glossary.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    const live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const pct = v => (v === null || v === undefined) ? 'Not assessed' : `${v}%`;
+    const when = t => { try { return t ? new Date(t).toLocaleString() : ''; } catch (e) { return String(t || ''); } };
+    const EFFORT = { low: 'Low effort', medium: 'Medium effort', high: 'High effort' };
+    let report = null, profileId = '', last = null, selected = new Set(), projTimer = null;
+
+    function opener() { return window.opener && !window.opener.closed ? window.opener : null; }
+    function readReport() {
+      const op = opener();
+      try { if (op && typeof op.__assessmentReport === 'function') return op.__assessmentReport() || null; } catch (e) { /* another origin or closed */ }
+      return null;
+    }
+    function readProfile() {
+      const op = opener();
+      try { if (op && op.GD && op.GD.profile) return String(op.GD.profile); } catch (e) { /* ignore */ }
+      try { return localStorage.getItem('zassess_profile') || ''; } catch (e) { return ''; }
+    }
+    function body(extra) {
+      const checks = ((report && report.checks) || []).map(c => ({ id: c.id, sec: c.sec, section: c.section, label: c.label, status: c.status,
+        detail: String(c.detail || '').slice(0, 600), out_of_scope: c.out_of_scope, channel: c.channel,
+        plain: c.plain && c.plain.do ? { do: c.plain.do } : undefined }));
+      return Object.assign({ checks, hidden_checks: Number(report && report.hidden_checks) || 0,
+        channel_coverage: (report && report.channel_coverage) || null, profile_id: profileId,
+        selected: [...selected], include_queue: $('ppQueue').checked, queue_tenant: $('ppQueueTenant').value || '' }, extra || {});
+    }
+    async function post(path, payload) {
+      const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((d && d.detail) || `HTTP ${r.status}`);
+      return d;
+    }
+
+    // ── tiles ─────────────────────────────────────────────────────────
+    function tiles(d) {
+      const rk = d.ranking || {}, pj = d.projection || {}, cov = d.coverage || {}, tr = d.trend || {};
+      const ch = (tr.changes || [])[0];
+      const delta = ch && typeof ch.delta === 'number' ? ch.delta : null;
+      const t = (n, l, cls) => `<div class="df-stat pp-stat"><div class="n ${cls || ''}">${E(n)}</div><div class="l">${E(l)}</div></div>`;
+      $('ppTiles').innerHTML = t(pct(rk.score), report ? 'Score now' : 'Score now (no results open)')
+        + t(pct(pj.projected), pj.fixed && pj.fixed.length ? `Projected after ${pj.fixed.length} fix${pj.fixed.length === 1 ? '' : 'es'}` : 'Projected (tick a fix)', pj.points > 0 ? 'up' : '')
+        + t(cov.pct === null || cov.pct === undefined ? '—' : `${cov.pct}%`, 'Coverage: checks that ran')
+        + t(delta === null ? '—' : (delta > 0 ? `+${delta}` : String(delta)), delta === null ? 'Change since last run (needs two runs)' : 'Points since the previous run', delta > 0 ? 'up' : (delta < 0 ? 'down' : ''));
+    }
+
+    // ── 1. fixes ──────────────────────────────────────────────────────
+    function fixes(d) {
+      const rk = d.ranking || {};
+      const box = $('ppFixes');
+      if (!report) { box.innerHTML = '<p class="pp-empty">No assessment results are open, so there is nothing to rank yet. Run the assessment on the assessment page, then click Improve my score there (or Refresh here).</p>'; $('ppBundles').innerHTML = ''; return; }
+      if (!(rk.top || []).length) { box.innerHTML = `<p class="pp-empty">${rk.score === null ? 'Nothing in these results could be scored, so no fix can raise the score yet. See What the last assessment could not check below.' : 'No check is failing or waiting for review: every scoreable check is configured. Keep it that way and re-check on the next visit.'}</p>`; $('ppBundles').innerHTML = ''; return; }
+      $('ppFixesLead').textContent = `Each fix shows how many points it adds (worked out with the real score formula), how much work it is, and whether a one-click fix exists in Review & remediate. ${rk.note || ''} Showing ${rk.top.length} of ${rk.all} failing checks. Tick a fix to see your projected score.`;
+      const hasOpener = !!(opener() && typeof opener().openRemediationWizard === 'function');
+      box.innerHTML = `<ol class="pp-fixes">${rk.top.map((f, i) => `
+        <li class="pp-fix">
+          <div class="pp-fix-top">
+            <span class="pp-rank" aria-hidden="true">${i + 1}</span>
+            <div class="pp-title"><span class="id">${E(f.id)}</span>${E(f.label)} <span class="pp-note">· ${E(f.section)}</span></div>
+            <span class="pp-pts" title="Score ${E(pct(rk.score))} → ${E(pct(f.score_after))}">+${E(f.points)} point${f.points === 1 ? '' : 's'}</span>
+          </div>
+          <div class="pp-meta">
+            <span class="pp-chip ${f.status === 'FAIL' ? 'fail' : 'warn'}">${E(f.status_word)}</span>
+            <span class="pp-chip" title="${E(f.effort_why)}">${E(EFFORT[f.effort] || f.effort)}</span>
+            ${f.one_click ? `<span class="pp-chip ok">One-click fix: ${E(f.recipe.label)}</span>` : '<span class="pp-chip">Fix by hand</span>'}
+            ${f.section_before !== null && f.section_after !== null ? `<span class="pp-chip">Section ${E(f.section_before)}% → ${E(f.section_after)}%</span>` : ''}
+          </div>
+          <details>
+            <summary>How to fix it (${f.steps.length} step${f.steps.length === 1 ? '' : 's'})</summary>
+            <ol>${f.steps.map(s => `<li>${E(s)}</li>`).join('')}</ol>
+            <p class="pp-note">${E(f.effort_why)}${f.also_fixes.length ? ` The same one-click fix also answers ${E(f.also_fixes.join(', '))}.` : ''}</p>
+          </details>
+          <div class="pp-acts">
+            <label class="pp-pick"><input type="checkbox" data-pick="${E(f.id)}" ${selected.has(String(f.id)) ? 'checked' : ''}> Count in the projected score</label>
+            ${f.one_click ? `<button type="button" class="rp-btn" data-fix="${E(f.id)}" ${hasOpener ? '' : 'aria-disabled="true" title="Open this page from the assessment tab to use the one-click fix"'}>🔧 Open the fix in Review &amp; remediate</button>` : ''}
+            ${f.guidance_url ? `<a class="rp-btn" href="${E(f.guidance_url)}" target="_blank" rel="noopener">Zscaler guidance ↗</a>` : ''}
+          </div>
+        </li>`).join('')}</ol>`;
+      const b = rk.bundles || [];
+      $('ppBundles').innerHTML = b.length ? `<h3 class="pp-h3">One fix, several checks</h3>
+        <ul class="pp-changes">${b.map(x => `<li class="pp-change up">${E(x.label)} answers ${E(x.checks.join(', '))}: +${E(x.points)} points together (score ${E(pct(rk.score))} → ${E(pct(x.score_after))}).</li>`).join('')}</ul>` : '';
+    }
+    $('ppFixes').addEventListener('change', e => {
+      const id = e.target && e.target.getAttribute('data-pick'); if (!id) return;
+      if (e.target.checked) selected.add(id); else selected.delete(id);
+      clearTimeout(projTimer); projTimer = setTimeout(project, 150);
+    });
+    $('ppFixes').addEventListener('click', e => {
+      const btn = e.target.closest && e.target.closest('[data-fix]'); if (!btn) return;
+      const op = opener();
+      if (!op || typeof op.openRemediationWizard !== 'function') { say('Open this page from the assessment tab to use the one-click fix.'); return; }
+      try { op.openRemediationWizard(encodeURIComponent(btn.getAttribute('data-fix'))); op.focus(); say('The fix opened in the assessment tab.'); } catch (err) { say('The assessment tab could not open the fix.'); }
+    });
+
+    // ── 2. projection ─────────────────────────────────────────────────
+    function projection(pj, tenants, chosen) {
+      const sel = $('ppQueueTenant');
+      if (tenants) {
+        sel.innerHTML = `<option value="">Choose a tenant</option>` + tenants.map(t => `<option value="${E(t.key)}" ${t.key === chosen ? 'selected' : ''}>${E(t.label)}</option>`).join('');
+        $('ppQueueTenantWrap').hidden = tenants.length < 2;
+      }
+      if (!report) { $('ppProj').innerHTML = '<p class="pp-empty">No results are open, so there is no score to project. Open this page from the assessment tab after a run.</p>'; return; }
+      const q = pj.queue || { counted: [], not_counted: [] };
+      const line = (pj.fixed || []).length
+        ? `<p class="pp-proj">With ${pj.fixed.length} fix${pj.fixed.length === 1 ? '' : 'es'} (${E(pj.fixed.join(', '))}) your score would go from <strong>${E(pct(pj.score))}</strong> (${E(pj.maturity)}) to <strong>${E(pct(pj.projected))}</strong> (${E(pj.projected_maturity)}): +${E(pj.points)} points.</p>`
+        : `<p class="pp-proj">No fix counted yet: your score stays <strong>${E(pct(pj.score))}</strong>. Tick a fix above${$('ppQueue').checked ? '' : ' or count the change queue'}.</p>`;
+      const queueTxt = !$('ppQueue').checked ? '<p class="pp-note">The change queue is not counted.</p>'
+        : (!(tenants || []).length && !q.counted.length && !q.not_counted.length) ? '<p class="pp-note">The change queue has no pending or approved request, so nothing staged is counted.</p>'
+        : (!chosen ? '<p class="pp-note">The change queue holds requests for several tenants: choose the tenant to count.</p>'
+        : `<ul class="pp-changes">${q.counted.map(x => `<li class="pp-change up">Counted: ${E(x.title)} (${E(x.status)}, check ${E(x.check_id)})</li>`).join('')}${q.not_counted.map(x => `<li class="pp-change">Not counted: ${E(x.title)}: ${E(x.why)}.</li>`).join('')}</ul>${!q.counted.length && !q.not_counted.length ? '<p class="pp-note">No pending or approved request for this tenant.</p>' : ''}`);
+      $('ppProj').innerHTML = line + queueTxt;
+    }
+    async function project() {
+      if (!report) return;
+      try {
+        const d = await post('/api/posture/project', body());
+        projection(d, d.queue_tenants, d.queue_tenant);
+        if (last) { last.projection = d; tiles(last); }
+        say(`Projected score ${pct(d.projected)}.`);
+      } catch (e) { say('Could not work out the projected score: ' + e.message); }
+    }
+    $('ppQueue').addEventListener('change', project);
+    $('ppQueueTenant').addEventListener('change', project);
+
+    // ── 3. trend ──────────────────────────────────────────────────────
+    function chart(points) {
+      const pts = points.filter(p => typeof p.score === 'number');
+      if (pts.length < 2) return '';
+      const W = 760, H = 220, L = 36, R = 12, T = 12, B = 30;
+      const x = i => L + (pts.length === 1 ? 0 : i * (W - L - R) / (pts.length - 1));
+      const y = v => T + (100 - v) * (H - T - B) / 100;
+      const grid = [0, 25, 50, 75, 100].map(v => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
+      const line = pts.map((p, i) => `${x(i).toFixed(1)},${y(p.score).toFixed(1)}`).join(' ');
+      const dots = pts.map((p, i) => `<circle class="dot" cx="${x(i).toFixed(1)}" cy="${y(p.score).toFixed(1)}" r="4"><title>${E(when(p.at))}: ${E(p.score)}%</title></circle>`).join('');
+      const labels = [0, pts.length - 1].map(i => `<text x="${x(i)}" y="${H - 8}" text-anchor="${i ? 'end' : 'start'}">${E(new Date(pts[i].at).toLocaleDateString())}</text>`).join('');
+      return `<svg class="pp-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Score over ${pts.length} assessments, from ${E(pts[0].score)}% to ${E(pts[pts.length - 1].score)}%; the table below lists every run">${grid}<polyline class="line" points="${line}"/>${dots}${labels}</svg>`;
+    }
+    function trend(d) {
+      const tr = d.trend || { points: [], changes: [] };
+      const box = $('ppTrend');
+      if (!profileId) { box.innerHTML = '<p class="pp-empty">No tenant profile is selected, so there is no history to show. Save a tenant profile in Connect to the tenant; every assessment run against it is then kept here.</p>'; return; }
+      if (!tr.points.length) { box.innerHTML = '<p class="pp-empty">This tenant profile has no saved assessment yet. Run the assessment with the profile selected; the next run will show the movement.</p>'; return; }
+      const rows = tr.points.slice().reverse().map(p => `<tr><td>${E(when(p.at))}</td><td>${E(pct(p.score))}</td><td>${E(p.maturity || '')}</td><td>${E(p.checks ?? '')}</td><td>${p.recorded ? 'Yes' : 'No (older record)'}</td></tr>`).join('');
+      const changes = (tr.changes || []).map(c => {
+        const cls = typeof c.delta === 'number' ? (c.delta < 0 ? 'down' : (c.delta > 0 ? 'up' : '')) : '';
+        const list = (arr, word) => arr.length ? `<ul>${arr.slice(0, 15).map(x => `<li>${E(word)}: ${E(x.id)} ${E(x.label)} (${E(x.from)} → ${E(x.to)})</li>`).join('')}${arr.length > 15 ? `<li>and ${arr.length - 15} more</li>` : ''}</ul>` : '';
+        return `<li class="pp-change ${cls}"><strong>${E(when(c.from))} → ${E(when(c.to))}:</strong> ${E(c.sentence || '')}${list(c.newly_failing || [], 'Started failing')}${list(c.newly_passing || [], 'Started passing')}</li>`;
+      }).join('');
+      box.innerHTML = chart(tr.points)
+        + (tr.points.length < 2 ? '<p class="pp-note">One saved assessment so far: the next run will show the movement and its causes.</p>' : '')
+        + (changes ? `<h3 class="pp-h3">What changed between runs (newest first)</h3><ul class="pp-changes">${changes}</ul>` : '')
+        + `<details class="pp-more"><summary>Every saved run as a table</summary><div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Saved assessments of this tenant profile</caption><thead><tr><th scope="col">When</th><th scope="col">Score</th><th scope="col">Maturity</th><th scope="col">Checks</th><th scope="col">Per-check states kept</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+    }
+
+    // ── 4. alerts ─────────────────────────────────────────────────────
+    function alerts(d) {
+      const s = d.settings || {};
+      $('ppPoints').value = s.score_drop_points || 5;
+      $('ppNotify').checked = !!s.notify_score_drop;
+      const a = d.alert, extra = (d.digest_alerts || []).filter(x => x.kind !== 'assessment');
+      let html = '';
+      if (a) html += `<div class="pp-alert" role="status"><strong>Score drop: ${E(a.from)}% → ${E(a.to)}% (−${E(a.points)} points).</strong> ${E(a.sentence)}</div>`;
+      extra.forEach(x => { html += `<div class="pp-alert"><strong>${E(x.what)}: ${E(x.from)}% → ${E(x.to)}%.</strong> ${E(x.sentence)}</div>`; });
+      if (!html) html = `<p class="pp-note">${profileId ? `No drop of ${E(s.score_drop_points || 5)} points or more between the last two assessments of this tenant profile.` : 'Select a tenant profile to compare runs.'}</p>`;
+      $('ppAlertNow').innerHTML = html;
+    }
+    $('ppSettings').addEventListener('submit', async e => {
+      e.preventDefault();
+      const msg = $('ppSettingsMsg');
+      try {
+        const r = await fetch('/api/posture/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ score_drop_points: Number($('ppPoints').value) || 5, notify_score_drop: $('ppNotify').checked }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+        msg.textContent = `Saved: alert at a drop of ${d.score_drop_points} points or more${d.notify_score_drop ? ', also through the digest notifications if they are set up' : ', shown here and in the digest only'}.`;
+        load();
+      } catch (err) { msg.textContent = 'Not saved: ' + err.message; }
+    });
+
+    // ── 5. coverage ───────────────────────────────────────────────────
+    function coverage(d) {
+      const cov = d.coverage || {};
+      const box = $('ppCoverage');
+      if (!report) { box.innerHTML = '<p class="pp-empty">No assessment results are open, so there is nothing to report on. Run the assessment, then open this page from the assessment tab.</p>'; return; }
+      const items = cov.items || [];
+      const head = `<p class="pp-cov-pct">${E(cov.sentence || '')}</p>`;
+      if (!items.length) { box.innerHTML = head + '<p class="pp-empty">Every check in scope ran and got an answer, and the Scope page left nothing out. There is nothing to fix here.</p>'; return; }
+      box.innerHTML = head + `<div class="df-tablewrap pp-cov"><table class="df-table"><caption class="sr-only">What could not be checked, why and how to fix it</caption>
+        <thead><tr><th scope="col">Area</th><th scope="col">What was not checked</th><th scope="col">Why</th><th scope="col">How to fix it</th></tr></thead>
+        <tbody>${items.map(g => `<tr><td><strong>${E(g.area)}</strong><br><span class="pp-chip">${E(g.category_label)}</span></td><td data-label="What was not checked">${E(g.what)}${g.count > 1 && g.checks && g.checks.length ? ` <span class="pp-note">(${E(g.count)})</span>` : ''}</td><td data-label="Why">${E(g.why)}</td><td data-label="How to fix it">${E(g.fix)}</td></tr>`).join('')}</tbody></table></div>`;
+    }
+
+    // ── glossary ──────────────────────────────────────────────────────
+    function words() {
+      const G = window.SIMPLE_GLOSSARY || {};
+      const keys = ['score', 'projected score', 'coverage', 'score drop', 'finding', 'api client', 'scope', 'tenant'];
+      $('ppWords').innerHTML = keys.filter(k => G[k]).map(k => `<dt>${E(G[k].term)}</dt><dd>${E(G[k].def)}</dd>`).join('');
+    }
+
+    async function load() {
+      report = readReport();
+      profileId = readProfile();
+      const meta = report && report.metadata;
+      $('ppSource').textContent = report
+        ? `Results from the assessment tab: ${(meta && meta.org) || 'this tenant'}, run ${when(meta && meta.timestamp) || 'earlier'}. Nothing is read from the tenant on this page.`
+        : 'No assessment results are open in the tab that opened this page. The history below comes from the selected tenant profile; run the assessment and click Improve my score on the assessment page for the rest.';
+      $('rpMeta').textContent = report ? `${(meta && meta.org) || 'Tenant'} · ${(report.checks || []).length} checks` : '';
+      try {
+        last = await post('/api/posture/analyze', body());
+      } catch (e) {
+        $('ppSource').textContent = 'Could not analyse the results: ' + e.message;
+        say('Could not analyse the results.');
+        return;
+      }
+      tiles(last); fixes(last); projection(last.projection || {}, (last.queue || {}).tenants || [], (last.queue || {}).tenant || ''); trend(last); alerts(last); coverage(last);
+      say(report ? `Score ${pct((last.ranking || {}).score)}; ${(last.ranking || {}).failing || 0} failing checks ranked; ${(last.coverage || {}).sentence || ''}` : 'No results open; showing the saved history.');
+      if (location.hash) { const t = document.querySelector(location.hash); if (t) t.scrollIntoView(); }
+    }
+    $('ppRefresh').addEventListener('click', load);
+    $('ppJson').addEventListener('click', () => {
+      if (!last) { say('Nothing to download yet.'); return; }
+      const blob = new Blob([JSON.stringify(last, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'improve_my_score.json';
+      document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    });
+    words();
+    load();
+  })();
+  </script>
+</body>
+</html>

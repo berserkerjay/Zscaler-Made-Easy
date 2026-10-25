@@ -64,9 +64,18 @@ class Job:
     # What the run inside reported for the audit entry (note()): tenant,
     # plan_hash, counts, activation, stopped.
     audit: Dict[str, Any] = field(default_factory=dict)
+    # The worker thread and when the job last wrote a log line, so
+    # self_heal can tell a job whose thread died, or that has been silent
+    # far longer than any run takes, from one that is working.
+    thread: Optional[threading.Thread] = None
+    last_log_at: float = field(default_factory=time.time)
+    # Set when self_heal ended the job as stuck (abandon): its status stays
+    # failed even if the thread finishes later.
+    abandoned: Optional[str] = None
 
     def log(self, line: str) -> None:
         with self.lock:
+            self.last_log_at = time.time()
             self.logs.append(str(line))
             if len(self.logs) > MAX_LOG_LINES:
                 del self.logs[: len(self.logs) - MAX_LOG_LINES]
@@ -201,13 +210,42 @@ def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None,
             job.log(f"The run stopped with an error: {job.error}")
         finally:
             _here.job = None
-            job.finished = time.time()
-            _audit_finished(job, final)
-            with job.lock:
-                job.status = final
+            if job.abandoned:
+                # self_heal already ended it as stuck (abandon) and wrote its
+                # job_finished entry: the late ending is logged and audited
+                # apart, and the status the page saw stays failed.
+                job.log(f"The run ended after it had been marked stuck: {final}.")
+                write_audit("job_finished_late", job_id=job.id, kind=job.kind, actor=job.actor, status=final,
+                            error=job.error, abandoned=job.abandoned)
+            else:
+                job.finished = time.time()
+                _audit_finished(job, final)
+                with job.lock:
+                    job.status = final
 
-    threading.Thread(target=_run, name=f"job-{kind}-{job.id}", daemon=True).start()
+    job.thread = threading.Thread(target=_run, name=f"job-{kind}-{job.id}", daemon=True)
+    job.thread.start()
     return job
+
+
+def abandon(job: Job, reason: str) -> bool:
+    """End a running job that is stuck (its thread died, or it has been
+    silent far past any run's length) as failed, with `reason` in its log
+    and its error, so the page stops waiting and the user can start it
+    again. Its Stop is set too, so a thread that is still alive sends
+    nothing more. False when the job is not running."""
+    with job.lock:
+        if job.status != RUNNING:
+            return False
+        job.abandoned = reason
+        job.error = reason
+    job.cancel.set()
+    job.log(reason)
+    job.finished = time.time()
+    _audit_finished(job, FAILED)
+    with job.lock:
+        job.status = FAILED
+    return True
 
 
 _NO_WRITES = {"created": 0, "updated": 0, "deleted": 0, "skipped": 0, "failed": 0, "unchanged": 0}
@@ -251,15 +289,15 @@ def cancel(job_id: str) -> bool:
     if job is None or job.status != RUNNING:
         return False
     job.cancel.set()
-    if job.kind in ("path", "fleet", "shadow"):   # a read-only analysis: there is no write, activation or read-back
+    if job.kind in ("path", "fleet", "shadow", "browser"):   # a read-only analysis: there is no write, activation or read-back
         job.log("Stop requested: nothing more is read from the tenant, also while waiting for ZIA's rate limit; the analysis ends as stopped with no partial result.")
     elif job.kind == "insights":   # read-only traffic numbers: nothing is written
         job.log("Stop requested: the Insights query in flight finishes, nothing more is asked; the run ends as stopped with no partial result.")
-    elif job.kind == "zpa":   # a read-only ZPA analysis: nothing is written
+    elif job.kind in ("zpa", "posture"):   # a read-only ZPA analysis or device posture read: nothing is written
         job.log("Stop requested: nothing more is read from the tenant; the ZPA analysis ends as stopped with no partial result.")
     elif job.kind == "export":   # read-only: nothing is written or activated
         job.log("Stop requested: the read in flight finishes, nothing more is read and no pack is produced.")
-    elif job.kind in ("policy_export", "urls_export", "category_analyzer"):   # read-only exports (the URL lookup changes nothing)
+    elif job.kind in ("policy_export", "urls_export", "category_analyzer", "locations_export", "client_connector_export"):   # read-only exports (the URL lookup changes nothing)
         job.log("Stop requested: nothing more is read from the tenant, also while waiting between lookups or for ZIA's rate limit; no file is produced.")
     elif job.kind in ("ops_objects", "ops_preview"):   # Bulk changes reads: nothing is written or activated
         job.log("Stop requested: the read in flight finishes, nothing more is read and nothing is written.")

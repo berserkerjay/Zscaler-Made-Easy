@@ -26,6 +26,8 @@ export async function runRequiredDlpControlsAcceptance({test,navigate,click,fill
   };
   await test(REQUIRED_DLP_CASE_IDS[0],async()=>{
     await navigate('/');await waitFor(`typeof window.__dbChannelScope === 'function'`);
+    // A saved profile applied late would replace the choices made below.
+    await waitFor(`window.GD?.profilesReady === true`,15000,'saved profile applied');
     await click('.db-item[data-db="scope"]');
     // Use the real controls to clear previous declarations, then select Web.
     await click('#dbChSelectAll');await click('#dbChSelectAll');

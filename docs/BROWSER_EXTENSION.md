@@ -1,15 +1,15 @@
-# DLP-Check companion browser extension
+# Zscaler Made Easy companion browser extension
 
-A small Chrome and Edge extension that works **with** the DLP-Check app on
+A small Chrome and Edge extension that works **with** the Zscaler Made Easy app on
 your computer. It is a launcher, not a second copy of the app: everything
 that reads or changes a Zscaler tenant still happens in the app, with its
 sign-in, UI token, write mode and audit log.
 
 ## What it does
 
-### In the Zscaler admin console (like ZHERO, with DLP-Check's data)
-- **Badges.** On the ZIA admin console, a DLP-Check badge appears next to
-  every object DLP-Check read from the tenant, wherever the console shows
+### In the Zscaler admin console
+- **Badges.** On the ZIA admin console, a Zscaler Made Easy badge appears next to
+  every object Zscaler Made Easy read from the tenant, wherever the console shows
   its exact name:
   - DLP dictionaries, engines and rules;
   - URL filtering, Cloud App Control, SSL inspection, Cloud Firewall and
@@ -29,17 +29,17 @@ sign-in, UI token, write mode and audit log.
   (admin.zscaler.net and the other Zscaler clouds).
 - **Side panel.** Click a badge, or *Open the side panel* in the popup:
   - *On this page*: the objects the console page shows, filtered by kind;
-  - *Search*: everything DLP-Check read, by name, filtered by kind (DLP,
+  - *Search*: everything Zscaler Made Easy read, by name, filtered by kind (DLP,
     policies, objects);
   - an object's detail: what it uses (per kind) and what uses it (per
     policy: URL filtering, Cloud Firewall, Inline Web DLP...), each one a
     link, the policy pack that created it, and its findings; a rule the
-    Shadowed rules page analyses links to that page in DLP-Check;
+    Shadowed rules page analyses links to that page in Zscaler Made Easy;
   - *Staged*: stage DLP dictionaries, engines and rules across console
     pages, then export them in one go as a JSON pack, Terraform or both,
     with or without what they use (*Export from tenant* covers DLP only,
-    so other kinds are not staged; they open DLP-Check instead).
-- **Read the tenant.** The panel's *Read the tenant* asks DLP-Check to
+    so other kinds are not staged; they open Zscaler Made Easy instead).
+- **Read the tenant.** The panel's *Read the tenant* asks Zscaler Made Easy to
   read it, read-only and only what the Scope page puts in scope: the DLP
   channels marked Zscaler; the URL filtering, SSL inspection, Cloud App
   Control and File Type Control rules with DLP or ZIA platform ticked;
@@ -53,15 +53,15 @@ sign-in, UI token, write mode and audit log.
   themselves, so a location or group no rule in scope uses is not listed.
   Each kind is capped at 300 objects (the ones with findings and the most
   used first); the panel says how many more there are. Predefined URL
-  categories have no display name in the API: DLP-Check names them after
+  categories have no display name in the API: Zscaler Made Easy names them after
   their ID ("NEWS_AND_MEDIA" → "News and Media"), which is the console's
   usual spelling but not guaranteed. A custom category no rule uses is
-  reported as unused for the policies DLP-Check read (Bandwidth Control,
+  reported as unused for the policies Zscaler Made Easy read (Bandwidth Control,
   Sandbox and the other policies that can use a category are not read).
 
-The flow follows ZHERO's (badge → panel → stage → act), but every answer
-comes from DLP-Check, and anything that changes the tenant (deploy,
-remove, fix) stays in DLP-Check behind write mode, its preview and the
+The flow is badge → panel → stage → act, and every answer
+comes from Zscaler Made Easy, and anything that changes the tenant (deploy,
+remove, fix) stays in Zscaler Made Easy behind write mode, its preview and the
 audit log.
 
 ### Anywhere
@@ -69,8 +69,8 @@ audit log.
   *Analyze this site* opens the Path analyzer with it filled in: what
   Zscaler does to a user's traffic to that destination, hop by hop.
 - **Right-click.** On a link, a selected hostname, URL or IP address, or
-  the page itself: *Analyze … with DLP-Check* does the same.
-- **Shortcuts.** The popup opens DLP-Check, the Path analyzer, the Live DLP
+  the page itself: *Analyze … with Zscaler Made Easy* does the same.
+- **Shortcuts.** The popup opens Zscaler Made Easy, the Path analyzer, the Live DLP
   feed, the Flow animator and the help page.
 - **Status.** The popup says whether the app is running at the address set
   in the extension's settings.
@@ -80,7 +80,7 @@ filled in and waits for you to click *Analyze*.
 
 ## Install
 
-1. Download it from DLP-Check: **Advanced settings → Browser extension →
+1. Download it from Zscaler Made Easy: **Advanced settings → Browser extension →
    Download the extension** (or use the `browser_extension` folder of the
    repository).
 2. Unzip `dlp-check-extension.zip` somewhere it can stay.
@@ -107,17 +107,17 @@ Microsoft Edge Add-ons.
   removed when you switch them off. No other site, no `tabs`, `cookies` or
   `webRequest` permission.
 - **The console page stays in the browser.** The badge script compares the
-  text on the console page with the names DLP-Check read, inside the page,
+  text on the console page with the names Zscaler Made Easy read, inside the page,
   and draws its badges in a closed shadow root. Nothing from the console
   page is sent anywhere; a badge click sends only the key of an object
-  DLP-Check already knows. The read is kept in the browser's session
+  Zscaler Made Easy already knows. The read is kept in the browser's session
   storage and is gone when the browser closes.
 - **Narrow trust in the app.** The extension has a fixed ID (the public key
-  in its manifest), and DLP-Check accepts requests from it only on its
+  in its manifest), and Zscaler Made Easy accepts requests from it only on its
   read-only endpoints: the console index and *Export from tenant* (and
   Stop on that export). A deploy, removal, fix or setting change from the
-  extension's origin is refused. It signs in with DLP-Check's own sign-in
-  in this browser (open DLP-Check once); it never stores a token.
+  extension's origin is refused. It signs in with Zscaler Made Easy's own sign-in
+  in this browser (open Zscaler Made Easy once); it never stores a token.
   `DLP_CHECK_EXTENSION_ID` moves that trust to a repacked build, or `off`
   removes it.
 - **This computer only.** It talks only to `127.0.0.1` or `localhost`
@@ -128,7 +128,7 @@ Microsoft Edge Add-ons.
   be), and a selection is used only when it is a single hostname, URL or
   IP address, never a sentence or an e-mail address.
 - **What it calls.** `GET /api/ping` (no sign-in; an answer other than
-  DLP-Check's `{"ok": true}` is reported as "something else is listening
+  Zscaler Made Easy's `{"ok": true}` is reported as "something else is listening
   there"), and from the side panel `GET /api/tenant-profiles`,
   `POST /api/console-index` and *Export from tenant*'s job.
 

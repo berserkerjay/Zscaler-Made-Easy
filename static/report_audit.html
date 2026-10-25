@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Audit timeline — Zscaler Assessment</title>
+<title>Audit timeline — Zscaler Made Easy</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
@@ -45,7 +45,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Audit</span> timeline</h1>
-      <p>Who changed what in the tenant, and what DLP-Check did, on one timeline. ZIA's admin audit log for the window you choose is merged with DLP-Check's own deployment records and audit log, newest first. A change someone else made to an object DLP-Check created is marked, and a change with before and after values shows what changed field by field.</p>
+      <p>Who changed what in the tenant, and what Zscaler Made Easy did, on one timeline. ZIA's admin audit log for the window you choose is merged with Zscaler Made Easy's own deployment records and audit log, newest first. A change someone else made to an object Zscaler Made Easy created is marked, and a change with before and after values shows what changed field by field.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -70,10 +70,10 @@
           <div class="pa-intro-t">How it works</div>
           <ol>
             <li><strong>Choose a window</strong> (the last 7 days by default; ZIA keeps its audit log for up to 180 days) and whether to include ZIA's admin audit log.</li>
-            <li><strong>Build the timeline.</strong> DLP-Check asks ZIA to prepare an audit log report for the window, waits for it and downloads it as CSV, then adds its own deployment records and audit log.</li>
-            <li><strong>Filter and read.</strong> Filter by source, admin, action, object or any text. A row marked <em>changed by someone else</em> is a change to an object DLP-Check created that no DLP-Check write explains; open a row for the field-by-field change and the raw audit log entry.</li>
+            <li><strong>Build the timeline.</strong> Zscaler Made Easy asks ZIA to prepare an audit log report for the window, waits for it and downloads it as CSV, then adds its own deployment records and audit log.</li>
+            <li><strong>Filter and read.</strong> Filter by source, admin, action, object or any text. A row marked <em>changed by someone else</em> is a change to an object Zscaler Made Easy created that no Zscaler Made Easy write explains; open a row for the field-by-field change and the raw audit log entry.</li>
           </ol>
-          <p class="df-hint" id="atZiaHow">Reading ZIA's audit log needs <strong>Automation readiness</strong> in scope on the Scope page (its API permissions include the audit log) and an API role that may view the audit log. Asking ZIA for the report is a POST, but it changes no configuration: it only prepares a file to download, so this page needs no write mode and writes nothing to the tenant. Without the ZIA part, only DLP-Check's own records are shown, for every tenant.</p>
+          <p class="df-hint" id="atZiaHow">Reading ZIA's audit log needs <strong>Automation readiness</strong> in scope on the Scope page (its API permissions include the audit log) and an API role that may view the audit log. Asking ZIA for the report is a POST, but it changes no configuration: it only prepares a file to download, so this page needs no write mode and writes nothing to the tenant. Without the ZIA part, only Zscaler Made Easy's own records are shown, for every tenant.</p>
         </div>
       </div>
     </main>
@@ -83,6 +83,7 @@
   <script src="/static/report_theme.js"></script>
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -195,7 +196,7 @@
         res = snap.result; res.job_id = job; res.logs = snap.logs || [];
         view = { source: '', admin: '', action: '', object: '', q: '', foreign: false, shown: PAGE }; open = new Set();
         render();
-        say(`${res.summary.events} event(s); ${res.summary.foreign_changes} change(s) by someone else to objects DLP-Check created.`);
+        say(`${res.summary.events} event(s); ${res.summary.foreign_changes} change(s) by someone else to objects Zscaler Made Easy created.`);
       } catch (e) {
         fail('The timeline could not be built', e.message); say(`The timeline could not be built: ${e.message}`);
       } finally {
@@ -204,7 +205,7 @@
     }
 
     // ── the timeline ────────────────────────────────────────────────
-    const SRC = { zia: 'ZIA', deployment: 'DLP-Check deployment', app: 'DLP-Check' };
+    const SRC = { zia: 'ZIA', deployment: 'Zscaler Made Easy deployment', app: 'Zscaler Made Easy' };
     function when(e) {
       if (!e.time) return E(e.time_raw || 'time not readable');
       const d = new Date(e.time); return isNaN(d) ? E(e.time) : `<time datetime="${E(e.time)}" title="${E(e.time_raw || e.time)}">${E(d.toLocaleString())}</time>`;
@@ -232,7 +233,7 @@
           <td class="at-time">${when(e)}</td>
           <td><span class="at-src ${E(e.source)}">${E(SRC[e.source] || e.source)}</span></td>
           <td>${E(e.admin || '—')}</td><td>${E(e.action || '—')}</td><td>${E(e.category || '—')}</td>
-          <td>${E(e.object || '—')}${e.foreign_change ? '<span class="at-flag">Changed by someone else</span>' : e.dlp_check_object ? '<span class="at-mine">Created by DLP-Check</span>' : ''}</td>
+          <td>${E(e.object || '—')}${e.foreign_change ? '<span class="at-flag">Changed by someone else</span>' : e.dlp_check_object ? '<span class="at-mine">Created by Zscaler Made Easy</span>' : ''}</td>
           <td>${E(e.interface || '—')}</td><td>${E(e.result || '—')}</td>
           <td>${hasMore ? `<button type="button" class="at-more" data-id="${E(e.id)}" aria-expanded="${isOpen}" aria-controls="d-${E(e.id)}">${isOpen ? 'Hide' : (e.diff || []).length ? `Diff (${e.diff.length})` : 'Details'}</button>` : ''}</td></tr>
           ${isOpen ? `<tr class="at-detail" id="d-${E(e.id)}"><td colspan="9">${detailHtml(e)}</td></tr>` : ''}`;
@@ -257,20 +258,20 @@
     function render() {
       const s = res.summary, z = res.zia || {};
       const admins = Array.from(new Set(res.events.map(e => e.admin).filter(Boolean))).sort();
-      meta.textContent = `${res.tenant_label || 'DLP-Check records only'} · ${new Date(res.window.start).toLocaleDateString()} – ${new Date(res.window.end).toLocaleDateString()}`;
+      meta.textContent = `${res.tenant_label || 'Zscaler Made Easy records only'} · ${new Date(res.window.start).toLocaleDateString()} – ${new Date(res.window.end).toLocaleDateString()}`;
       body.innerHTML = `<section aria-labelledby="atH">
         <h2 class="df-h" id="atH">${s.events} event(s), newest first</h2>
         <div class="at-facts">
           <span class="df-prof"><span class="k">ZIA admin audit log</span><span class="v">${z.requested ? (z.status === 'read' ? `${s.zia} entr${s.zia === 1 ? 'y' : 'ies'}` : 'could not be read') : 'not read'}</span></span>
-          <span class="df-prof"><span class="k">DLP-Check deployments</span><span class="v">${s.deployment}</span></span>
-          <span class="df-prof"><span class="k">DLP-Check audit log</span><span class="v">${s.app}</span></span>
+          <span class="df-prof"><span class="k">Zscaler Made Easy deployments</span><span class="v">${s.deployment}</span></span>
+          <span class="df-prof"><span class="k">Zscaler Made Easy audit log</span><span class="v">${s.app}</span></span>
           <span class="df-prof"><span class="k">Changed by someone else</span><span class="v">${s.foreign_changes}</span></span>
           <span class="df-prof"><span class="k">With before and after values</span><span class="v">${s.with_diff}</span></span>
         </div>
         ${(res.notes || []).length ? `<ul class="at-notes">${res.notes.map(n => `<li>${E(n)}</li>`).join('')}</ul>` : ''}
-        ${z.requested ? `<p class="df-hint">${E(res.read_note || '')} A change counts as made by someone else when it touches an object DLP-Check created and no DLP-Check write to that object is recorded within ${res.correlate_minutes} minutes.</p>` : ''}
+        ${z.requested ? `<p class="df-hint">${E(res.read_note || '')} A change counts as made by someone else when it touches an object Zscaler Made Easy created and no Zscaler Made Easy write to that object is recorded within ${res.correlate_minutes} minutes.</p>` : ''}
         <div class="at-tools" role="group" aria-label="Filter the timeline">
-          <label class="df-ctl"><span class="lbl">Source</span><select id="atFSrc" aria-label="Source"><option value="">Every source</option><option value="zia">ZIA admin audit log</option><option value="deployment">DLP-Check deployments</option><option value="app">DLP-Check audit log</option></select></label>
+          <label class="df-ctl"><span class="lbl">Source</span><select id="atFSrc" aria-label="Source"><option value="">Every source</option><option value="zia">ZIA admin audit log</option><option value="deployment">Zscaler Made Easy deployments</option><option value="app">Zscaler Made Easy audit log</option></select></label>
           <label class="df-ctl"><span class="lbl">Admin</span><select id="atFAdmin" aria-label="Admin"><option value="">Every admin</option>${admins.map(a => `<option value="${E(a)}">${E(a)}</option>`).join('')}</select></label>
           <label class="df-ctl"><span class="lbl">Action</span><input type="search" id="atFAction" placeholder="Update, delete…" aria-label="Action contains"></label>
           <label class="df-ctl"><span class="lbl">Object or category</span><input type="search" id="atFObject" placeholder="Rule, dictionary…" aria-label="Object or category contains"></label>

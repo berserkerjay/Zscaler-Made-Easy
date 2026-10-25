@@ -1,12 +1,12 @@
 # Getting Started — a walkthrough for your first engagement
 
-This guide assumes you have never used DLP-Check and know only the basics
+This guide assumes you have never used Zscaler Made Easy and know only the basics
 of Zscaler. It takes a tenant from "we don't know our DLP posture" to
 "gaps identified and a policy pack ready to deploy" in about an hour.
 
 ## What the tool does, in one paragraph
 
-DLP-Check connects to a customer's Zscaler tenant with read-only API
+Zscaler Made Easy connects to a customer's Zscaler tenant with read-only API
 credentials, runs 300+ automated checks, and gives the tenant a maturity
 score with a list of findings. It then lets you close the gaps by deploying
 a **policy pack** — a ready-made set of DLP dictionaries, engines and rules
@@ -32,7 +32,7 @@ short version, for a Windows laptop with Git already installed:
 3. In a Command Prompt or PowerShell:
    ```
    git clone https://github.com/berserkerjay/DLP-Check.git
-   cd DLP-Check
+   cd Zscaler Made Easy
    .\INSTALL_Zscaler_Assessment.bat
    ```
 4. A **Zscaler Assessment** shortcut appears on the desktop. Double-click it.
@@ -440,7 +440,7 @@ from a tool. Give them the same policy pack as a Terraform workspace instead:
    on a pack card, or *Hand off as Terraform* on the preflight review). It
    opens in its own tab.
 2. Tick the packs. With tenant details filled in, the page is in **gap
-   mode**: DLP-Check reads the tenant and writes `imports.tf` so the
+   mode**: Zscaler Made Easy reads the tenant and writes `imports.tf` so the
    platform team's first `terraform plan` is exactly the gap. Without
    credentials it is **static** (the whole pack, no tenant knowledge).
 3. Read *What you get* (the files and what each is for) and click
