@@ -89,6 +89,14 @@
     get: 'A live flow diagram with gaps highlighted and the fix for each.',
     next: 'Fix the SSL rule order or exemptions it points at, then refresh the diagram.',
   };
+  X.sslcoverage = {
+    group: 'Find the gaps', name: 'SSL coverage', href: '/report/sslcoverage',
+    what: 'How much web traffic Zscaler does not inspect, why, and what to change: every SSL inspection rule that leaves traffic encrypted, Client Connector and PAC file bypasses, each with its risk and a plain recovery step, plus the share of HTTPS and HTTP traffic inspected when ZIA Insights is in scope.',
+    why: 'DLP, malware and sandbox scanning only see traffic that reaches Zscaler and is decrypted. Exempting file sharing or AI tools makes DLP blind exactly where data leaves; exempting banking or health sites for privacy is expected but should be written down.',
+    when: 'Before promising the customer that a DLP rule will catch anything, after changing SSL rules or Client Connector bypasses, and on a schedule to watch coverage improve run after run.',
+    get: 'A traffic and inspection summary (SSL/TLS, HTTP and total share inspected) when ZIA Insights is in scope, the causes ranked by risk, a recovery plan with a safe-to-change note for each step, the coverage trend across runs, and an Excel export.',
+    next: 'Work through the recovery plan from step 1, testing each change with a pilot group, then run it again to see coverage rise; trace a single destination in the Path analyzer when in doubt.',
+  };
   X.shadow = {
     group: 'Find the gaps', name: 'Shadowed rules', href: '/report/shadow',
     what: 'Reads the rules of every policy in scope (Inline Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL inspection and Cloud Firewall) and lists the rules that can never match or never act: hidden below a broader rule, below a catch-all, duplicated, superseded by a stricter rule, disabled, or naming engines and categories that no longer exist.',
@@ -367,7 +375,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet' };
     return map[p] || '';
@@ -418,7 +426,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'queue', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

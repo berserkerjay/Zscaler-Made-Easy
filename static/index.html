@@ -642,6 +642,11 @@
                 title="Reads ZIA Insights for a time window: web traffic allowed and blocked, by location, cloud applications in use, SaaS security and firewall actions, and the users with the most security incidents. Needs ZIA Insights ticked on the Scope page. Read-only. Opens in a new tab.">
           <span aria-hidden="true">📈</span> Traffic insights
         </button>
+        <button class="btn btn-ghost" onclick="openSslCoverageTab()"
+                aria-label="Open SSL coverage: how much traffic is not inspected, why, and a recovery plan (opens in a new tab)"
+                title="Lists every SSL inspection exemption, Client Connector and PAC file bypass that leaves traffic uninspected, ranks them by risk and gives a recovery plan with a safe-to-change note. With ZIA Insights in scope it also shows how much HTTPS and HTTP traffic is inspected. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🔒</span> SSL coverage
+        </button>
         <button class="btn btn-ghost" onclick="openDigestTab()"
                 aria-label="Open the Digest: what the evaluation loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
                 title="When you click Run the loop now (the timer is off unless the operator sets DLP_CHECK_CONTINUOUS_EVAL_HOURS), the app re-reads guidance and, for every tenant profile that remembers its secret, only what its Scope page puts in scope: FP/TP detection ratio, the SaaS tenants and the ticked packs' drift. It writes a digest. It does not re-run the assessment. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
@@ -5190,6 +5195,12 @@ function openAuditTimelineTab() {
   // The tab reads the credentials from this page through window.opener
   // (migrateCredBody) when it runs, so nothing is sent until it is built.
   const w = window.open('/report/audit', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openSslCoverageTab() {
+  // The tab reads the credentials and the Scope page's selection from this
+  // page through window.opener when Run is clicked, so nothing is sent until then.
+  const w = window.open('/report/sslcoverage', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openInsightsTab() {

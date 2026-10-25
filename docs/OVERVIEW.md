@@ -149,6 +149,18 @@ what you get, what to do next.
   Insights ticked on the Scope page and a OneAPI API client. It says
   plainly what Insights cannot answer: traffic by URL category, per user,
   per policy rule or to one host.
+- **SSL coverage** — how much web traffic is not inspected, why, and what
+  to change. Causes from configuration (SSL inspection rules that do not
+  decrypt, the default rule, certificate-pinned exemptions and, with ZCC
+  in scope, Client Connector bypasses, direct forwarding and PAC DIRECT
+  entries), each with a risk (file sharing or GenAI high; banking or
+  health for privacy "expected") and a recovery step, ordered into a
+  recovery plan with a safe-to-change note. With ZIA Insights in scope it
+  opens with the share of SSL/TLS and HTTP traffic inspected (from ZIA's
+  protocol names, mapped in one table in `ssl_coverage.py`), bytes per
+  exempted application and a daily trend of all web traffic; Insights has
+  no SSL or URL-category dimension and the page says so. Each run's
+  summary is kept locally for a trend across runs; Excel and JSON export.
 - **Bypass & non-inspected traffic** — every SSL exemption, allow rule,
   Client Connector bypass and PAC exception that lets traffic skip
   inspection, with exports. Where: opened from Traffic flow & gaps.

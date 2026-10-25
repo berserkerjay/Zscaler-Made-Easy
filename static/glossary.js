@@ -54,6 +54,9 @@
     'incident': { term: 'incident', def: 'An incident is a note that a rule found something. It says who, what and where.' },
     'spreadsheet': { term: 'spreadsheet', def: 'A spreadsheet is a file with rows and boxes, like a table. Excel can open it.' },
     'expert view': { term: 'expert view', def: 'The expert view is the full tool with every page and choice. It is made for people who know Zscaler well.' },
+    'certificate pinning': { term: 'certificate pinning', def: 'Some apps only trust their own lock. When Zscaler opens their traffic, they stop working. We say they pin their certificate.' },
+    'decrypt': { term: 'decrypt', def: 'To decrypt is to unlock traffic so Zscaler can read it. Then it is locked again on its way.' },
+    'inspected': { term: 'inspected', def: 'Inspected traffic has been opened and checked by Zscaler. DLP can only check what is inspected.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/sslcoverage"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -8056,6 +8056,136 @@ async def report_ssl_flow_export(report_id: str, format: str = "csv"):
         return Response(content=json.dumps(rep, indent=2, default=str), media_type="application/json",
                         headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_flow_{ts}.json"})
     raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
+
+# ── SSL coverage (ssl_coverage.py): what is not inspected, why, and the fix ──
+# Read-only. Refused (400) before sign-in unless the SSL inspection rules
+# are in scope; Client Connector, PAC files and ZIA Insights traffic numbers
+# are read only when they are in scope too.
+class SslCoverageRequest(ScopedTenantCredsRequest):
+    """Body of POST /api/ssl-coverage/start: the window for the traffic
+    numbers ("7d" or "30d") and whether to ask ZIA Insights for them."""
+    window: str = "7d"
+    include_volume: bool = True
+
+
+def _ssl_coverage_inputs(req: SslCoverageRequest) -> Dict[str, Any]:
+    """Scope, window and the traffic-number plan, checked before anything
+    is signed in to (user rule 1). Never reads a tenant."""
+    import data_flow
+    import ssl_coverage
+    sc, ch, source = _scope_selection(req)
+    sel = data_flow.path_scope(sc, ch)
+    if "ssl" not in sel["read"]:
+        raise HTTPException(status_code=400, detail=ssl_coverage.OUT_OF_SCOPE)
+    sel["source"] = source
+    window = str(req.window or "7d").strip()
+    if window not in ssl_coverage.WINDOWS:
+        raise HTTPException(status_code=400, detail="The window must be the last 7 days or the last 30 days. Nothing was read.")
+    creds = _tenant_creds(req)
+    plan = {"ask": False, "window": window, "reason": ""}
+    if not req.include_volume:
+        plan["reason"] = "Traffic numbers were switched off for this run."
+    elif "insights" not in sc:
+        plan["reason"] = ("ZIA Insights is not in scope on the Scope page, so traffic numbers were not asked for: "
+                          "the causes and the plan below come from configuration only.")
+    elif tenant_auth.normalize(creds)["auth_method"] == tenant_auth.LEGACY:
+        plan["reason"] = "Traffic numbers need a OneAPI API client: the classic ZIA API sign-in cannot read ZIA Insights."
+    else:
+        plan["ask"] = True
+    return {"scope": sel, "creds": creds, "label": tenant_auth.record_label(creds), "volume": plan}
+
+
+def _ssl_coverage_clients(req: SslCoverageRequest, inp: Dict[str, Any]):
+    """The assessment client (rules, profiles, PAC) and, when traffic
+    numbers are asked for, the SDK client for ZIA Insights. A failing SDK
+    sign-in leaves configuration only, with the reason (never a secret)."""
+    client = _build_client(req)
+    if not inp["volume"]["ask"]:
+        return client, None
+    try:
+        return client, _build_sdk_client(inp["creds"])
+    except HTTPException as e:
+        inp["volume"].update(ask=False, reason="ZIA Insights could not be signed in to: " + tenant_auth.mask_secrets(str(e.detail), inp["creds"])[:240])
+        return client, None
+
+
+def _run_ssl_coverage(client, sdk, inp: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    import ssl_coverage
+    try:
+        rep = ssl_coverage.run(client, inp["scope"], zins=getattr(sdk, "zins", None), volume_plan=inp["volume"], log=log, cancel=cancel,
+                               scrub=lambda s: tenant_auth.mask_secrets(s, inp["creds"]))
+    finally:
+        _close_quietly(client)
+    if rep.get("stopped"):
+        return dict(rep, tenant_label=inp["label"])
+    try:
+        rep["history"] = ssl_coverage.record(inp["label"], rep)
+    except Exception as e:  # noqa: BLE001 — history is best effort
+        rep["history"] = ssl_coverage.load_history(inp["label"])
+        rep["history_error"] = f"This run could not be added to the history ({type(e).__name__})."
+    rid = _remember_report("sslcoverage", rep, inp["label"])
+    return _REPORTS[rid]
+
+
+@app.get("/report/sslcoverage")
+async def report_sslcoverage_page():
+    """Standalone tab for SSL coverage (static/report_ssl_coverage.html)."""
+    page = os.path.join(STATIC_DIR, "report_ssl_coverage.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.post("/api/ssl-coverage/start")
+async def ssl_coverage_start(req: SslCoverageRequest, request: Request):
+    """Start the SSL coverage read as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}). Refused (400) before sign-in when the
+    SSL inspection rules are not in scope. Stop ends it with nothing more
+    read and no partial result."""
+    import pack_jobs
+    inp = _ssl_coverage_inputs(req)
+    client, sdk = await asyncio.to_thread(_ssl_coverage_clients, req, inp)
+    job = pack_jobs.start("sslcoverage", lambda log, cancel: _run_ssl_coverage(client, sdk, inp, log, cancel), label="SSL coverage",
+                          actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/ssl-coverage/history")
+async def ssl_coverage_history(tenant: str = ""):
+    """The kept run summaries for a tenant label (no tenant call)."""
+    import ssl_coverage
+    return {"tenant": tenant[:120], "history": await asyncio.to_thread(ssl_coverage.load_history, tenant[:120])}
+
+
+@app.get("/api/ssl-coverage/{report_id}")
+async def ssl_coverage_get(report_id: str):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("sslcoverage-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    return rep
+
+
+@app.get("/api/ssl-coverage/export/{report_id}")
+async def ssl_coverage_export(report_id: str, format: str = "xlsx"):
+    """A kept SSL coverage run as Excel (causes, plan, traffic, history) or JSON."""
+    import ssl_coverage
+    import xlsx_writer
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("sslcoverage-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        body = {k: v for k, v in rep.items() if k != "logs"}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_coverage_{ts}.json"})
+    if fmt != "xlsx":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    data = await asyncio.to_thread(ssl_coverage.to_xlsx, rep)
+    return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_coverage_{ts}.xlsx"})
+
 
 
 @app.post("/api/report/bypass/export")
