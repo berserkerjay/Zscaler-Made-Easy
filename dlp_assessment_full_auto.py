@@ -667,6 +667,70 @@ class Client:
             left = max(left, zia_rate.paused_for(s.rate_key))
         return s._hourly_answer(left) if left > RETRY_AFTER_CAP else None
 
+    def get_text(s, ep, p=None, accept="*/*", max_bytes=64 * 1024 * 1024, _retry=0):
+        """One GET answered as text, never cached: a status that changes
+        between polls, or a file that is not JSON (the admin audit log
+        report's CSV). Paced, Stop-aware and re-signed-in like get().
+        Returns (text, status); an error answer is cut to 200 characters
+        and a body over `max_bytes` is refused (status 413), not kept."""
+        real_ep = _resolve_ep(ep, s.customer_id, s.legacy)
+        if real_ep is None:
+            return ("this endpoint has no classic ZIA API path", 404)
+        if s._stopped():
+            return ("run stopped", 0)
+        held = s._hourly_hold()
+        if held:
+            return (held[0].get("error", "rate limited"), 429)
+        bad = s._ensure_token()
+        if bad:
+            return ("unauthorized", 401)
+        try:
+            if not s._limiter.wait(s._stopped):
+                return ("run stopped", 0)
+            s.requests_made += 1
+            import zia_rate
+            with zia_rate.stopping_on(s._stopped):
+                r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT, headers={"Accept": accept}, stream=True)
+            try:
+                if r.status_code == 200:
+                    chunks, size = [], 0
+                    for chunk in r.iter_content(chunk_size=65536):
+                        size += len(chunk)
+                        if size > max_bytes:
+                            return (f"the answer is larger than {max_bytes // (1024 * 1024)} MB and was not kept", 413)
+                        if s._stopped():
+                            return ("run stopped", 0)
+                        chunks.append(chunk)
+                    raw = b"".join(chunks)
+                    return (raw.decode(r.encoding or "utf-8", errors="replace"), 200)
+                text = (r.text or "")[:200]
+            finally:
+                r.close()
+            if r.status_code == 429:
+                hourly = _hourly_429(r)
+                if hourly:
+                    s._limiter.pause(hourly)
+                    return (s._hourly_answer(hourly)[0]["error"], 429)
+                s._limiter.pause(_retry_after(r.headers))
+                return s.get_text(ep, p, accept, max_bytes, _retry + 1) if _retry < 3 else ("rate limited", 429)
+            if r.status_code == 401 and _retry < 2:
+                s.token = None
+                return s.get_text(ep, p, accept, max_bytes, _retry + 1)
+            if r.status_code in (502, 503, 504) and _retry < 2:
+                if not _nap(2 ** _retry, s._stopped):
+                    return ("run stopped", 0)
+                return s.get_text(ep, p, accept, max_bytes, _retry + 1)
+            return (s._safe(text) or "error", r.status_code)
+        except requests.exceptions.Timeout:
+            return ("request timeout", 0)
+        except requests.exceptions.ConnectionError as e:
+            return (f"connection error: {s._safe(str(e))[:100]}", 0)
+        except Exception as e:
+            import zia_rate
+            if isinstance(e, zia_rate.Cancelled):
+                return ("run stopped", 0)
+            return (s._safe(str(e))[:200], 0)
+
     def post(s, ep, body=None):   return s._write("POST", ep, body)
     def put(s, ep, body=None):    return s._write("PUT", ep, body)
     def delete(s, ep, body=None): return s._write("DELETE", ep, body)

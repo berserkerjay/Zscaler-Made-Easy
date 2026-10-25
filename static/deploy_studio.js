@@ -454,6 +454,13 @@ function _dzRenderSelect() {
           <div><div class="t">Export from tenant as a pack</div><div class="d">Read-only: lists the tenant's DLP rules on every channel, its custom engines and its custom dictionaries. Export any of them together or each on its own, with or without what they use, as a JSON pack, a Terraform workspace for the zscaler/zia provider, or both, and download each part (dictionaries, engines, rules) as its own file. Add a JSON pack to the library under Advanced settings → Add a pack, then deploy it here into this tenant or another one. Users, groups, locations and other scope that exists only in this tenant are left out and listed in the pack. Needs no write mode.</div></div>
           <button type="button" class="dz-btn" onclick="_dzExportPick()" ${DZ.exportBusy ? 'disabled' : ''}>${DZ.exportBusy ? 'Listing…' : 'Export as a pack…'}</button>
         </div>
+        <div class="dz-option">
+          <div><div class="t">DLP inventory (Excel)</div><div class="d">Read-only: a workbook of the tenant's DLP dictionaries (type, custom or predefined, clone of, patterns, phrases, confidence), engines (expression, dictionaries) and the rules of every DLP channel in scope (order, state, action, severity, engines, channel fields), each with who uses it. One sheet per kind, filterable. People named in rule scope are counted, not named. Needs no write mode.</div>
+            <div class="dz-note" id="dzInvStatus" role="status" aria-live="polite">${_dzE((DZ.inventory || {}).note || '')}</div></div>
+          <div style="display:flex;gap:var(--sp-2);flex-shrink:0;">${(DZ.inventory || {}).running
+            ? `<button type="button" class="dz-btn" disabled>Reading…</button><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''}>${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button>`
+            : `<button type="button" class="dz-btn" onclick="_dzInventoryXlsx()">DLP inventory (Excel)</button>`}</div>
+        </div>
       </div>
       ${_dzDeploymentsHtml()}`;
   }
@@ -801,6 +808,10 @@ function _dzRenderReview() {
       <div><div class="k">${c.conflict ? 'Skipped / conflicts' : 'Skipped'}</div><div class="v">${c.blocked}</div></div>
       <div><div class="k">Tenant rules</div><div class="v">${t.rules ?? '–'}<span style="font-size:0.75rem;color:var(--dim);font-weight:500;"> / ${t.rule_cap || 127}</span></div></div>
     </div>
+    ${R.report_id ? `<div class="dz-pick-tools" style="margin-top:0.7rem;" role="group" aria-label="Download the plan for change approval">
+      <span class="dz-note" style="margin:0;">For change approval, with a sign-off block:</span>
+      <button type="button" class="dz-btn" onclick="_dzPlanDownload('pdf')">Plan (PDF)</button>
+      <button type="button" class="dz-btn" onclick="_dzPlanDownload('xlsx')">Plan (Excel)</button></div>` : ''}
     ${(R.blockers || []).map(b => `<div class="dz-card sev-error" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Blocked</div><div class="d">${_dzE(b)}</div></div></div>`).join('')}
     ${_dzRateCheck(R.rate_forecast, R.status === 'blocked')}
     <details class="dz-fold dz-howto"><summary><div class="dz-h">How to read this plan</div></summary>
@@ -2125,6 +2136,60 @@ async function _dzExportRun() {
   } finally {
     X.running = false;
     if (DZ.exportPack === X) _dzExportRender();
+  }
+}
+
+// A file the server serves as an attachment, saved under the name it gives.
+async function _dzDownload(url, fallback) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) {
+    let d = ''; try { d = (await r.json()).detail || ''; } catch (e) { /* not JSON */ }
+    throw new Error(d || `HTTP ${r.status}`);
+  }
+  const cd = r.headers.get('Content-Disposition') || '', m = /filename="([^"]+)"/.exec(cd);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = m ? m[1] : fallback;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return a.download;
+}
+
+// The preflight on screen as a plan for change approval (PDF or Excel),
+// rendered by the server from its own copy of this preflight.
+function _dzPaper() {
+  const l = String((navigator.languages && navigator.languages[0]) || navigator.language || '');
+  return /^(en|es|fr)-(US|CA|MX)$/i.test(l) ? 'letter' : 'a4';
+}
+async function _dzPlanDownload(fmt) {
+  const R = DZ.report; if (!R || !R.report_id) return;
+  const url = `/api/dlp-packs/plan/${encodeURIComponent(R.report_id)}/export?format=${fmt}${fmt === 'pdf' ? `&page=${_dzPaper()}` : ''}`;
+  try {
+    const name = await _dzDownload(url, `deployment_plan.${fmt}`);
+    announce(`Downloaded ${name}.`);
+  } catch (e) { alert(`Could not download the plan: ${e.message}`); }
+}
+
+// DLP inventory (Excel): a read-only job over the channels in scope; the
+// workbook comes from the finished job.
+async function _dzInventoryXlsx() {
+  if ((DZ.inventory || {}).running) return;
+  const I = DZ.inventory = { running: true, note: 'Reading the tenant…' };
+  DZ.job = { logs: [] };
+  _dzRenderSelect();
+  try {
+    const snap = await _dzRunJob('/api/dlp-packs/inventory/start', { ..._dzCreds(), ..._dzScope() });
+    if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The inventory ended without a result.');
+    if (snap.result.status !== 'ready' || !snap.download) throw new Error(snap.result.error || snap.result.stopped || 'No workbook was made.');
+    const name = await _dzDownload(snap.download, snap.filename || 'dlp_inventory.xlsx');
+    const errs = Object.keys(snap.result.errors || {});
+    I.note = `Downloaded ${name}.${errs.length ? ` Could not be read: ${errs.join(', ')} (named in the Summary sheet).` : ''}`;
+    announce(I.note);
+  } catch (e) {
+    I.note = `The DLP inventory did not finish: ${e.message}`;
+  } finally {
+    I.running = false;
+    if (DZ.inventory === I && !DZ.exportPack && DZ.step === 1) _dzRenderSelect();
   }
 }
 

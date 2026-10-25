@@ -56,6 +56,49 @@ export function pathAnalyzerUrl(base, dest) {
   return `${base}/report/path${dest ? `?d=${encodeURIComponent(dest)}` : ''}`;
 }
 
+// The ZIA admin consoles (one per Zscaler cloud, as zscaler_clouds.py lists
+// them). The in-console badges run only on these, and only after the admin
+// switches them on in the extension's settings (an optional permission).
+export const CONSOLE_ORIGINS = [
+  'https://admin.zscaler.net/*', 'https://admin.zscalerone.net/*', 'https://admin.zscalertwo.net/*',
+  'https://admin.zscalerthree.net/*', 'https://admin.zscloud.net/*', 'https://admin.zscalerten.net/*',
+  'https://admin.zscalerbeta.net/*', 'https://admin.zscalergov.net/*', 'https://admin.zscalergov.us/*',
+];
+export const CONSOLE_SCRIPT_ID = 'dlpcheck-console-badges';
+
+// A call to the app's API. The app's own sign-in (its UI token cookie, set
+// when DLP-Check was opened in this browser) authenticates it; the
+// extension never holds a token. POSTs are accepted from the extension
+// only on the app's read-only endpoints for it.
+export async function api(base, path, body) {
+  const r = await fetch(base + path, {
+    method: body === undefined ? 'GET' : 'POST', credentials: 'include', cache: 'no-store',
+    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = null; }
+  if (!r.ok) {
+    const d = data && data.detail;
+    const why = r.status === 401 ? 'Sign in: open DLP-Check in this browser first (it unlocks the app for the extension too).'
+      : (typeof d === 'string' ? d : (d && (d.cause || d.message)) || `HTTP ${r.status}`);
+    const err = new Error(why); err.status = r.status; throw err;
+  }
+  return data;
+}
+
+// The binary answer of a finished job (a zip), for a download link.
+export async function apiBlob(base, path) {
+  const r = await fetch(base + path, { credentials: 'include', cache: 'no-store' });
+  if (!r.ok) throw new Error(r.status === 404 ? 'The file is no longer kept; run the export again.' : `HTTP ${r.status}`);
+  const cd = r.headers.get('Content-Disposition') || '';
+  const m = /filename="([^"]+)"/.exec(cd);
+  return { blob: await r.blob(), name: m ? m[1] : 'export.zip' };
+}
+
+// One key per object, the same in the panel, the badges and the stage.
+export const objectKey = o => `${o.kind}:${o.kind === 'rule' ? `${o.channel}:` : ''}${o.name}`;
+
 export const PAGES = {
   home: { path: '/', label: 'Open DLP-Check' },
   path: { path: '/report/path', label: 'Path analyzer' },
@@ -69,7 +112,7 @@ export async function ping(base, timeoutMs = 2500) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(`${base}/api/ping`, { cache: 'no-store', credentials: 'omit', signal: ctrl.signal });
+    const r = await fetch(`${base}/api/ping`, { cache: 'no-store', credentials: 'omit', signal: ctrl.signal });   // the one unauthenticated call
     if (!r.ok) return { ok: false, why: `It answered HTTP ${r.status}.` };
     let body = null;
     try { body = await r.json(); } catch (e) { body = null; }
