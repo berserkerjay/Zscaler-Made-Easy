@@ -233,6 +233,14 @@
     get: 'A "Changed since last run" list (versions that moved, drift that is new or cleared, pages that changed, tenant endpoints whose answer changed), the SDK, API and Terraform detail, and the last 30 runs.',
     next: 'Act on new drift: read the SDK or provider changelog before upgrading, grant the permission a 403 names, or report an endpoint that moved.',
   };
+  X.fleet = {
+    group: 'Find the gaps', name: 'Client Connector fleet', href: '/report/fleet',
+    what: 'Reads the Client Connector app and forwarding profiles, the hosted PAC files, the enrolled devices and their per-device service status, and puts them together: ZIA, ZPA and ZDX activity, blind spots, bypass risk, ghost devices, registration anomalies, multi-device users and version drift, a profile heatmap, profile and PAC comparisons and a ranked remediation plan.',
+    why: 'A profile that looks fine on paper protects nothing on a device where ZIA is switched off, and a weak profile matters most when thousands of devices use it. This shows where the fleet really is, weighted by the devices each gap affects.',
+    when: 'After the assessment, when ZCC is in scope, to show the customer which devices Zscaler cannot see and which profile to fix first; and on every return visit to watch the drift.',
+    get: 'Fleet tiles, each alert with its exact definition and the devices in it, profiles against the checks (equal-weight and device-weighted scores), a side-by-side profile diff, the PAC comparison and a ranked plan you can export as CSV, with a counts-only option.',
+    next: 'Work down the remediation plan: the first lines are the gaps with the most devices behind them. Fix the profile in the Client Connector Portal, then read the fleet again.',
+  };
   X.logs = {
     group: 'Troubleshoot', name: 'Log analyzer', href: '/report/logs',
     what: 'Drop in the ZIP that Client Connector\'s Export Logs produced (or single .log files, or a PAC file). It reads them on this computer and tells you what happened, what it means for the user, and what to do next.',
@@ -297,7 +305,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
+      '/report/fleet': 'fleet', '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
 
@@ -346,7 +354,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'fleet', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

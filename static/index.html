@@ -706,6 +706,11 @@
       </div>
       <div class="tool-group" role="group" aria-label="Troubleshoot" data-sb-id="troubleshoot">
         <div class="tool-group-l">Troubleshoot</div>
+        <button class="btn btn-ghost" onclick="openFleetTab()"
+                aria-label="Open Client Connector fleet: enrolled devices, ZIA, ZPA and ZDX activity, blind spots, version drift, profile heatmap and a ranked remediation plan (opens in a new tab)"
+                title="Client Connector profiles, PAC files and enrolled devices together: blind spots, bypass risk, ghost devices, version drift, profile and PAC comparisons and a ranked plan. Read-only, only when ZCC is in scope. Opens in a new tab.">
+          <span aria-hidden="true">💻</span> Client Connector fleet
+        </button>
         <button class="btn btn-ghost" onclick="openLogAnalyzerTab()"
                 aria-label="Open the Log analyzer: upload Client Connector log bundles or PAC files and get what happened, what it means and what to do next (opens in a new tab)"
                 title="Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Says what happened, what it means for the user and what to do next. Opens in a new tab.">
@@ -5053,6 +5058,12 @@ function openFlowAnimatorTab() {
   // The tab reads results this browser already holds (the last path and
   // plan) and, when asked, the tenant through window.opener.
   const w = window.open('/report/motion', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openFleetTab() {
+  // The tab reads the credentials and the Scope page selection from this
+  // page through window.opener when it runs, so nothing is read until then.
+  const w = window.open('/report/fleet', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {

@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion", "/report/fleet"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -5396,6 +5396,104 @@ def _remember_report(kind: str, report: Dict[str, Any], label: str = "") -> str:
     while len(_REPORTS) > _REPORTS_MAX:
         _REPORTS.pop(next(iter(_REPORTS)))
     return rid
+
+
+# ── Client Connector fleet health (zcc_fleet) ─────────────────────────────────
+FLEET_WHAT = "Client Connector fleet health"
+
+
+@app.get("/report/fleet")
+async def report_fleet_page():
+    """Standalone tab for Client Connector fleet health (static/report_fleet.html)."""
+    page = os.path.join(STATIC_DIR, "report_fleet.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class ZccFleetRequest(ScopedTenantCredsRequest):
+    """Tenant credentials and the Scope page selection; the fleet is read
+    only when ZCC is ticked there (else 400 before sign-in)."""
+
+
+def _zcc_fleet_clients(req: ZccFleetRequest, creds: Dict[str, str]):
+    """Sign in: the assessment client (profiles, PAC, through the paced
+    readers) and, for a OneAPI sign-in, the SDK client the enrolled devices
+    are read with. A classic ZIA sign-in has no Client Connector API, and an
+    SDK sign-in that fails leaves the run configuration only, with the
+    reason (never a secret)."""
+    client = _build_client(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        return client, None, "The classic ZIA API sign-in cannot read Client Connector devices; sign in with a OneAPI API client to see the fleet."
+    try:
+        return client, _build_sdk_client(creds), ""
+    except HTTPException as e:
+        return client, None, tenant_auth.mask_secrets(str(e.detail), creds)[:240]
+
+
+@app.post("/api/zcc/fleet/start")
+async def zcc_fleet_start(req: ZccFleetRequest, request: Request):
+    """Start Client Connector fleet health as a job the page follows: the
+    app and forwarding profiles, PAC files, enrolled devices and their
+    service status, read-only and paced, then the analysis. Refused (400)
+    before sign-in when ZCC is not in scope. Stop ends it with nothing more
+    read and no partial result. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import pack_jobs
+    import zcc_fleet
+    _require_in_scope(req, "zcc", FLEET_WHAT)   # user rule 1: nothing read out of scope
+    creds = _tenant_creds(req)
+    label = tenant_auth.record_label(creds)
+    client, sdk, why = await asyncio.to_thread(_zcc_fleet_clients, req, creds)
+
+    def fn(log, cancel):
+        try:
+            return zcc_fleet.run(client, sdk, log=log, cancel=cancel, label=label, sdk_reason=why)
+        finally:
+            _close_quietly(client)
+    job = pack_jobs.start("fleet", fn, label="Client Connector fleet", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _fleet_result(job_id: str) -> Dict[str, Any]:
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind != "fleet":
+        raise HTTPException(status_code=404, detail="No such fleet run. Runs are kept for an hour after they finish; run it again.")
+    res = job.result or {}
+    if job.status != pack_jobs.DONE or res.get("status") != "done":
+        raise HTTPException(status_code=409, detail="This fleet run has not finished (or was stopped); nothing to show.")
+    return res
+
+
+@app.get("/api/zcc/fleet/{job_id}/diff")
+async def zcc_fleet_diff(job_id: str, a: str = "", b: str = ""):
+    """Side-by-side settings and the JSON diff of two app profiles of a
+    finished run (secrets masked). No tenant call."""
+    import zcc_fleet
+    try:
+        return zcc_fleet.diff_from_result(_fleet_result(job_id), a, b)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e.args[0] if e.args else e))
+
+
+@app.get("/api/zcc/fleet/{job_id}/export")
+async def zcc_fleet_export(job_id: str, what: str = "plan", counts_only: bool = False, format: str = "csv"):
+    """The remediation plan, the device table or the summary of a finished
+    run as CSV (csv_safe). counts_only leaves every user and host name out
+    (the device table is then refused). Excel: when the app gains its
+    xlsx_writer module, `format=xlsx` is where it plugs in; until then CSV."""
+    import zcc_fleet
+    res = _fleet_result(job_id)
+    if (format or "csv").lower() != "csv":
+        raise HTTPException(status_code=400, detail="Excel export is not in this build yet; download CSV (it opens in Excel).")
+    try:
+        stem, text = zcc_fleet.export_csv(res, (what or "").lower(), counts_only)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    name = f"{stem}{'_counts' if counts_only else ''}_{ts}.csv"
+    return Response(content=text, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={name}"})
 
 
 @app.get("/report/view")
