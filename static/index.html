@@ -1245,6 +1245,7 @@
   <div id="results" role="region" aria-label="Assessment results">
     <div class="download-bar">
       <button class="btn btn-primary" onclick="downloadDocx()">Download Word report</button>
+      <button class="btn btn-secondary" onclick="downloadXlsx()" title="Summary, findings (one row each, filterable), compliance mapping and best practices">Excel workbook</button>
       <button class="btn btn-secondary" onclick="downloadJSON()">Download JSON</button>
       <button class="btn btn-ghost" onclick="openRemediationReview()"
               aria-label="Review and remediate findings"
@@ -4276,6 +4277,34 @@ async function downloadDocx() {
     setStatus('Word document downloaded', 'success');
   } catch(e) {
     setStatus('Word generation failed: ' + e.message, 'error');
+  }
+}
+
+// The same results as an Excel workbook (Summary, Findings, Compliance
+// mapping, Best practices), built by the server from the same body as the Word report.
+async function downloadXlsx() {
+  if (!reportData) return;
+  setStatus('Building the Excel workbook...', '');
+  try {
+    const resp = await fetch('/api/report/xlsx', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(reportData),
+    });
+    if (!resp.ok) {
+      let detail = `Server returned ${resp.status}`;
+      try { const err = await resp.json(); if (err.detail) detail = err.detail; } catch(e) {}
+      throw new Error(detail);
+    }
+    const cd = resp.headers.get('Content-Disposition') || '', m = /filename="([^"]+)"/.exec(cd);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await resp.blob());
+    a.download = m ? m[1] : `zscaler_${(reportData.metadata?.org || 'report').replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    setStatus('Excel workbook downloaded', 'success');
+  } catch(e) {
+    setStatus('Excel workbook failed: ' + e.message, 'error');
   }
 }
 

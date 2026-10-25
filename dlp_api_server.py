@@ -1361,6 +1361,8 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     out = pack_deploy.public_report(report)
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
+    # The server keeps its own copy: Plan (PDF) / Plan (Excel) render from it, never from the page.
+    out["report_id"] = _remember_plan(out, _assessor(req))
     return out
 
 
@@ -3245,6 +3247,121 @@ def _transcribe_pack_to_terraform(pack_id: str, pack_dir: str) -> Dict[str, Any]
                 "download": f"/api/pack-library/{pack_id}/terraform.zip", "mode": "static"}
     except Exception as e:  # noqa: BLE001 - the pack is saved; the transcription failure is reported, not fatal
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+# ── Excel and PDF exports (report_exports, on the in-house xlsx_writer / pdf_writer) ──
+# Read-only: the assessment workbook is built from the results the page
+# holds (as the Word report is), the DLP inventory from a read of the
+# channels in scope, and the deployment plan from the server's own copy
+# of a preflight (never from JSON the page posts).
+_PLANS: Dict[str, Dict[str, Any]] = {}
+_PLANS_MAX = 10
+_PLAN_ID_RE = re.compile(r"plan-[A-Za-z0-9_-]{8,40}")
+
+
+def _remember_plan(report: Dict[str, Any], assessor: str = "") -> str:
+    """Keep a preflight report (the public one: no credentials, no
+    internal state) for the plan exports; the last _PLANS_MAX are kept."""
+    import copy
+    import secrets
+    rid = f"plan-{secrets.token_urlsafe(12)}"
+    rep = copy.deepcopy(report)
+    rep.update(report_id=rid, assessor=assessor or "", generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    _PLANS[rid] = rep
+    while len(_PLANS) > _PLANS_MAX:
+        _PLANS.pop(next(iter(_PLANS)))
+    return rid
+
+
+def _attachment(data: bytes, media: str, filename: str) -> Response:
+    return Response(content=data, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})
+
+
+@app.post("/api/report/xlsx")
+async def generate_xlsx(request: Request):
+    """The assessment results as an Excel workbook (Summary, Findings,
+    Frameworks, Compliance mapping, Best practices), from the same body
+    as /api/report/docx. Scores are recomputed here from the checks."""
+    import report_exports
+    try:
+        data = await request.json()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
+    if not isinstance(data, dict) or not data.get("checks"):
+        raise HTTPException(status_code=400, detail="No checks in request body — cannot build the workbook.")
+    try:
+        body = await asyncio.to_thread(report_exports.assessment_workbook, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _attachment(body, report_exports.XLSX, report_exports.assessment_filename(data))
+
+
+def _run_inventory_xlsx(client, creds: Dict[str, str], channels: List[str], log, cancel) -> Dict[str, Any]:
+    """Read the dictionaries, engines and the rules of the channels in
+    scope (pack_export.read_tenant) and build the DLP inventory workbook."""
+    import pack_channels as pc
+    import pack_export
+    import report_exports
+    label = tenant_auth.record_label(tenant_auth.normalize(creds))
+    log(f"DLP inventory of {label}: dictionaries, engines and the {', '.join(pc.label(ch) for ch in channels)} rules. "
+        "Nothing is written to the tenant.")
+    snap = pack_export.read_tenant(client, channels=channels, log=log, cancel=cancel)
+    if snap.get("stopped"):
+        return {"status": "stopped", "stopped": "You clicked Stop.", "tenant_label": label}
+    if snap.get("refused"):
+        return {"status": "error", "error": f"ZIA refused the {snap['refused']['what']} for its rate limit; no workbook was made. "
+                                            "Wait a few minutes and try again.", "tenant_label": label}
+    data = report_exports.inventory_workbook(snap, tenant_label=label, channels=channels)
+    if cancel is not None and cancel.is_set():
+        return {"status": "stopped", "stopped": "You clicked Stop.", "tenant_label": label}
+    name = report_exports.inventory_filename(label)
+    log(f"Ready: {name} ({max(1, len(data) // 1024)} KB).")
+    return {"status": "ready", "filename": name, "bytes": len(data), "tenant_label": label, "channels": channels,
+            "counts": {"dictionaries": len(snap.get("dictionaries") or []), "engines": len(snap.get("engines") or []),
+                       "rules": {ch: len(rs) for ch, rs in (snap.get("rules") or {}).items()}},
+            "errors": dict(snap.get("errors") or {}), "artifact": (name, report_exports.XLSX, data)}
+
+
+@app.post("/api/dlp-packs/inventory/start")
+async def dlp_packs_inventory_start(req: ScopedTenantCredsRequest, request: Request):
+    """DLP inventory (Excel) as a background job: the tenant's DLP
+    dictionaries, engines and the rules of the DLP channels in scope, with
+    who uses what. Read-only (no write mode, no writer check). Poll GET
+    /api/dlp-packs/jobs/{job_id}; the finished job's `download` path
+    serves the workbook."""
+    import pack_jobs
+    channels = _pack_channels_in_scope(req, "The DLP inventory")
+    creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to list its DLP objects.")
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    job = pack_jobs.start("inventory", lambda log, cancel: _keyed(client, _run_inventory_xlsx, client, creds, channels, log, cancel),
+                          label=tenant_auth.record_label(creds), actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/dlp-packs/plan/{report_id}/export")
+async def dlp_packs_plan_export(report_id: str, format: str = "pdf", page: str = "a4"):
+    """A Deploy policy packs preflight as a plan for change approval: PDF
+    (A4 or Letter) or Excel, rendered from the server's copy of that
+    preflight (kept in memory for the last few preflights)."""
+    import report_exports
+    rep = _PLANS.get(report_id) if _PLAN_ID_RE.fullmatch(report_id or "") else None
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Plan not found or expired (the last few preflights are kept in memory "
+                                                    "while the server runs). Run the preflight again.")
+    fmt = (format or "").lower()
+    if fmt == "pdf":
+        size = {"a4": "A4", "letter": "LETTER"}.get((page or "").lower())
+        if size is None:
+            raise HTTPException(status_code=400, detail="page must be a4 or letter.")
+        body = await asyncio.to_thread(report_exports.plan_pdf, rep, size)
+        return _attachment(body, report_exports.PDF, report_exports.plan_filename(rep, "pdf"))
+    if fmt == "xlsx":
+        body = await asyncio.to_thread(report_exports.plan_workbook, rep)
+        return _attachment(body, report_exports.XLSX, report_exports.plan_filename(rep, "xlsx"))
+    raise HTTPException(status_code=400, detail="format must be pdf or xlsx.")
 
 
 @app.get("/api/pack-library/{pack_id}/terraform.zip")
