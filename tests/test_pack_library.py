@@ -250,7 +250,7 @@ def test_preview_upload_list_and_remove_over_http(lib_client):
     z = c.get(tf["download"], params={"assessor": "Jane Doe"})
     assert z.status_code == 200 and z.headers["content-type"] == "application/zip" and z.headers["content-disposition"].endswith('my_acme-terraform.zip"')
     assert c.get("/api/pack-library/builtin/terraform.zip", params={"assessor": "Jane Doe"}).status_code == 200, "built-in packs export too"
-    assert c.get("/api/pack-library/builtin/terraform.zip").status_code == 400, "no assessor, no workspace: objects never say DLP-Check"
+    assert c.get("/api/pack-library/builtin/terraform.zip").status_code == 400, "no assessor, no workspace: objects never say Zscaler Made Easy"
     assert c.post("/api/pack-library/upload", json={"files": [{"name": "acme.json", "content": json.dumps(_bundle())}], "pack_id": "my_acme"}).status_code == 409
     assert c.post("/api/pack-library/upload", json={"files": [{"name": "x.json", "content": "{"}]}).status_code == 400
 

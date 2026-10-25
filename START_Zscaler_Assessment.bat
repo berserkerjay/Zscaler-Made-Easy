@@ -1,5 +1,5 @@
 @echo off
-title Zscaler Platform Assessment
+title Zscaler Made Easy
 
 REM Double-clicked (or an old shortcut)? Relaunch silently through the VBS
 REM launcher so no console window stays open. Pass --console to keep this

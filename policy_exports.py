@@ -20,6 +20,13 @@ not named, as in the DLP inventory; groups, departments and locations are
 named. The admin who last modified a rule is not exported (customer data
 the review does not need); the time is.
 
+Export options (options / shape, shared with config_exports): choose
+columns, one row per value of multi-value fields, and the separator of
+several values in one cell (new line, comma, semicolon). The defaults
+make exactly the workbook of before; the PDF review copy keeps its fixed
+columns. File Type Control workbooks also list each file type its rules
+name (engine_explain.file_type_usage).
+
 `hits` is the hook for hit counts (Insights, later): {policy key: {rule
 id or rule name: count}}. With it, every rule sheet gets a Hits column;
 without it, the Summary says hit counts are not part of this export.
@@ -419,6 +426,110 @@ def _ports(svc: Dict[str, Any]) -> List[str]:
     return out
 
 
+# ── Export options (every policy export's workbook) ──────────────────
+# Columns: the headers to keep per sheet key (a policy key, or a key of
+# config_exports' sheets); the identity columns always stay. Layout: flat
+# (one row per rule, several values in one cell) or rows (one row per
+# value of each multi-value column, the other cells repeated, so a filter
+# on one value finds every rule that names it). Separator: how several
+# values share a cell. The defaults (every column, flat, new line) give
+# exactly the workbook the exports made before options existed.
+LAYOUTS = ("flat", "rows")
+SEPARATORS: Dict[str, str] = {"newline": "\n", "comma": ", ", "semicolon": "; "}
+DEFAULT_OPTIONS: Dict[str, Any] = {"columns": {}, "layout": "flat", "separator": "newline"}
+IDENTITY_COLUMNS = ("Order", "Rule", "Name", "Location", "Object")
+# Lines of notes, not values: joined, never split into rows.
+NOTE_COLUMNS = {"Usage and notes", "Other settings", "Action details", "Description", "Settings", "Dynamic criteria", "Comments"}
+MAX_ROWS_PER_RECORD = 500   # rows layout: beyond this a record's remaining multi-value cells are joined instead
+
+
+def column_catalogue() -> Dict[str, List[str]]:
+    """{sheet key: the headers a workbook of it can carry} for the column
+    picker: each policy's Rules sheet (no Hits: hit counts are not read)
+    and the configuration exports' main sheets (config_exports)."""
+    out = {k: headers(k, False) for k in POLICIES}
+    try:
+        import config_exports
+        out.update(config_exports.column_catalogue())
+    except ImportError:   # pragma: no cover - the module ships with this one
+        pass
+    return out
+
+
+def options(columns: Optional[Dict[str, Sequence[str]]] = None, layout: Any = "flat", separator: Any = "newline") -> Dict[str, Any]:
+    """Validated export options (ValueError naming what is wrong). An empty
+    column list for a key, or no key, keeps every column."""
+    lay = str(layout or "flat").strip().lower()
+    if lay not in LAYOUTS:
+        raise ValueError("layout must be flat or rows.")
+    sep = str(separator or "newline").strip().lower()
+    if sep not in SEPARATORS:
+        raise ValueError("separator must be newline, comma or semicolon.")
+    cat = column_catalogue()
+    cols: Dict[str, List[str]] = {}
+    for key, want in (columns or {}).items():
+        if key not in cat:
+            raise ValueError(f"Unknown sheet for columns: {key}. Choose from {', '.join(sorted(cat))}.")
+        picked = [str(c) for c in (want or []) if str(c).strip()]
+        bad = [c for c in picked if c not in cat[key] and c != "Hits"]
+        if bad:
+            raise ValueError(f"Unknown column for {key}: {', '.join(bad[:5])}.")
+        if picked:
+            cols[key] = picked
+    return {"columns": cols, "layout": lay, "separator": sep}
+
+
+def is_default(opts: Optional[Dict[str, Any]]) -> bool:
+    return not opts or (not opts.get("columns") and opts.get("layout", "flat") == "flat" and opts.get("separator", "newline") == "newline")
+
+
+def _join(v: Any, sep: str) -> Any:
+    if isinstance(v, (list, tuple)):
+        items = [str(x) for x in v if x is not None and str(x) != ""]
+        return items if sep == "\n" else sep.join(items)
+    return v
+
+
+def shape(cols: Sequence[str], data: Iterable[Sequence[Any]], opts: Optional[Dict[str, Any]], key: Optional[str] = None) -> Tuple[List[str], List[List[Any]]]:
+    """(headers, rows) of one sheet under the export options: the chosen
+    columns (identity columns kept), one row per value when the layout is
+    rows, several values joined with the separator. Default options
+    return the sheet unchanged."""
+    cols = list(cols)
+    rows_in = [list(r) for r in data]
+    if is_default(opts):
+        return cols, rows_in
+    sep = SEPARATORS[opts.get("separator", "newline")]
+    keep = (opts.get("columns") or {}).get(key or "") if key else None
+    idx = [i for i, c in enumerate(cols) if not keep or c in keep or c in IDENTITY_COLUMNS]
+    cols = [cols[i] for i in idx]
+    rows_in = [[r[i] if i < len(r) else "" for i in idx] for r in rows_in]
+    out: List[List[Any]] = []
+    split = [i for i, c in enumerate(cols) if c not in NOTE_COLUMNS]
+    for r in rows_in:
+        recs = [r]
+        if opts.get("layout") == "rows":
+            for i in split:
+                vals = r[i] if isinstance(r[i], (list, tuple)) else None
+                if vals is None:
+                    continue
+                vals = [x for x in vals if x is not None and str(x) != ""]
+                if len(vals) <= 1:
+                    for rec in recs:
+                        rec[i] = vals[0] if vals else ""
+                    continue
+                if len(recs) * len(vals) > MAX_ROWS_PER_RECORD:
+                    continue   # joined below
+                recs = [rec[:i] + [v] + rec[i + 1:] for rec in recs for v in vals]
+        out += [[_join(v, sep) for v in rec] for rec in recs]
+    return cols, out
+
+
+def _sheet(wb: Any, name: str, cols: Sequence[str], data: Iterable[Sequence[Any]], opts: Optional[Dict[str, Any]], key: Optional[str] = None) -> Any:
+    c, r = shape(cols, data, opts, key)
+    return wb.add_sheet(name, columns=c, rows=r)
+
+
 # ── Scope ────────────────────────────────────────────────────────────
 def scope_for(scopes: Any, channels: Any) -> Dict[str, Any]:
     """The policies the Scope page's selection lets the exports read
@@ -569,9 +680,12 @@ def _summary_pairs(policy: str, raw_rules: List[Dict[str, Any]], *, tenant_label
 
 def workbook(policy: str, raw_rules: List[Dict[str, Any]], *, names: Names, analysis: Dict[str, Any], tenant_label: str = "",
              scope_summary: str = "", groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
-             group_errors: Optional[Dict[str, str]] = None, hits: Optional[Dict[str, Dict[str, Any]]] = None) -> bytes:
-    """One policy's workbook: Summary, Rules (every column), and for Cloud
-    Firewall its network service, application and IP destination groups."""
+             group_errors: Optional[Dict[str, str]] = None, hits: Optional[Dict[str, Dict[str, Any]]] = None,
+             opts: Optional[Dict[str, Any]] = None) -> bytes:
+    """One policy's workbook: Summary, Rules (every column, or the ones
+    `opts` picks, shaped by its layout and separator), for Cloud Firewall
+    its network service, application and IP destination groups, and for
+    File Type Control the file types its rules name."""
     label = POLICIES[policy]["label"]
     wb = xlsx_writer.Workbook(title=f"{label} policy {tenant_label}".strip(), subject=f"{label} rules in evaluation order")
     extra: List[Tuple[str, Any]] = []
@@ -581,29 +695,53 @@ def workbook(policy: str, raw_rules: List[Dict[str, Any]], *, names: Names, anal
     s.extend([[k, v] for k, v in _summary_pairs(policy, raw_rules, tenant_label=tenant_label, scope_summary=scope_summary,
                                                  findings=analysis.get("findings") or [], note=(analysis.get("notes") or {}).get(POLICIES[policy]["shadow"] or "", ""),
                                                  hits=hits, extra=extra)])
-    wb.add_sheet("Rules", columns=headers(policy, hits is not None),
-                 rows=rows(policy, raw_rules, names=names, index=analysis.get("index") or {}, hits=hits))
+    if not is_default(opts):
+        s.append(["Export options", options_text(opts)])
+    _sheet(wb, "Rules", headers(policy, hits is not None), rows(policy, raw_rules, names=names, index=analysis.get("index") or {}, hits=hits),
+           opts, policy)
+    if policy == "file_type_control":
+        _file_types_sheet(wb, raw_rules, opts)
     if policy == "firewall":
         g = groups or {}
         svc_name = {str(x.get("id")): _ref_name(x) for x in g.get("network_services") or [] if isinstance(x, dict)}
         if "network_service_groups" in g:
-            wb.add_sheet("Network service groups", columns=["Name", "Services", "Description"],
-                         rows=[[x.get("name"), [svc_name.get(str(i.get("id")) if isinstance(i, dict) else str(i), _ref_name(i)) for i in _as_list(x.get("services"))],
+            _sheet(wb, "Network service groups", ["Name", "Services", "Description"], opts=opts, data=[[x.get("name"), [svc_name.get(str(i.get("id")) if isinstance(i, dict) else str(i), _ref_name(i)) for i in _as_list(x.get("services"))],
                                 x.get("description") or ""] for x in sorted(g["network_service_groups"], key=lambda x: str(x.get("name") or "").lower()) if isinstance(x, dict)])
         if "network_services" in g:
-            wb.add_sheet("Network services", columns=["Name", "Type", "Ports", "Description"],
-                         rows=[[x.get("name"), humanize(x.get("type")), _ports(x), x.get("description") or ""]
+            _sheet(wb, "Network services", ["Name", "Type", "Ports", "Description"], opts=opts, data=[[x.get("name"), humanize(x.get("type")), _ports(x), x.get("description") or ""]
                                for x in sorted(g["network_services"], key=lambda x: str(x.get("name") or "").lower()) if isinstance(x, dict)])
         if "network_app_groups" in g:
-            wb.add_sheet("Network application groups", columns=["Name", "Applications", "Description"],
-                         rows=[[x.get("name"), [_ref_name(a) for a in _as_list(x.get("networkApplications") or x.get("network_applications"))],
+            _sheet(wb, "Network application groups", ["Name", "Applications", "Description"], opts=opts, data=[[x.get("name"), [_ref_name(a) for a in _as_list(x.get("networkApplications") or x.get("network_applications"))],
                                 x.get("description") or ""] for x in sorted(g["network_app_groups"], key=lambda x: str(x.get("name") or "").lower()) if isinstance(x, dict)])
         if "ip_destination_groups" in g:
-            wb.add_sheet("IP destination groups", columns=["Name", "Type", "Addresses", "IP categories", "Countries", "Description"],
-                         rows=[[x.get("name"), humanize(x.get("type")), [str(a) for a in _as_list(x.get("addresses"))],
+            _sheet(wb, "IP destination groups", ["Name", "Type", "Addresses", "IP categories", "Countries", "Description"], opts=opts, data=[[x.get("name"), humanize(x.get("type")), [str(a) for a in _as_list(x.get("addresses"))],
                                 [names.category(c) for c in _as_list(x.get("ipCategories"))], [str(c) for c in _as_list(x.get("countries"))],
                                 x.get("description") or ""] for x in sorted(g["ip_destination_groups"], key=lambda x: str(x.get("name") or "").lower()) if isinstance(x, dict)])
     return wb.to_bytes()
+
+
+def options_text(opts: Optional[Dict[str, Any]]) -> str:
+    """The export options in words, for the Summary sheet."""
+    if is_default(opts):
+        return "Every column, one row per rule, several values on separate lines in one cell."
+    o = opts or {}
+    sep = {"newline": "on separate lines", "comma": "separated by commas", "semicolon": "separated by semicolons"}[o.get("separator", "newline")]
+    lay = "one row per value of each multi-value column" if o.get("layout") == "rows" else "one row per rule or object"
+    cols = o.get("columns") or {}
+    picked = "; ".join(f"{k}: {len(v)} columns" for k, v in sorted(cols.items())) or "every column"
+    return f"Columns: {picked}. Layout: {lay}. Several values in one cell are {sep}."
+
+
+def _file_types_sheet(wb: Any, raw_rules: List[Dict[str, Any]], opts: Optional[Dict[str, Any]]) -> None:
+    """File Type Control: each file type its rules name, as people read it,
+    whether it is a category, and the rules that use it (engine_explain)."""
+    import engine_explain
+    usage = engine_explain.file_type_usage({"file_type_control": raw_rules})
+    data = [[u["label"], u["kind"], u["token"], u["used_by"].get("file_type_control", []), len(u["used_by"].get("file_type_control", []))]
+            for u in usage]
+    if not data:
+        data = [["No rule names a file type.", "", "", [], 0]]
+    _sheet(wb, "File types", ["Name", "Kind", "API name", "File Type Control rules", "Rules"], data, opts)
 
 
 # The review copy keeps the columns a reviewer reads; the workbook has them all.
@@ -613,7 +751,7 @@ def pdf(policy: str, raw_rules: List[Dict[str, Any]], *, names: Names, analysis:
     order with its criteria (non-empty ones, one per line) and notes."""
     label = POLICIES[policy]["label"]
     doc = pdf_writer.PdfDocument(title=f"{label} policy: {tenant_label or 'tenant'}", page_size=page_size,
-                                 footer=f"DLP-Check policy export · {label} · {tenant_label or 'tenant'}", subject=f"{label} rules for review")
+                                 footer=f"Zscaler Made Easy policy export · {label} · {tenant_label or 'tenant'}", subject=f"{label} rules for review")
     doc.heading(f"{label} policy")
     doc.key_values(_summary_pairs(policy, raw_rules, tenant_label=tenant_label, scope_summary=scope_summary,
                                   findings=analysis.get("findings") or [], note=(analysis.get("notes") or {}).get(POLICIES[policy]["shadow"] or "", ""),
@@ -669,7 +807,7 @@ def bundle(files: List[Tuple[str, bytes]], tenant_label: str, fmt: str) -> Tuple
 
 def run(client, scope: Dict[str, Any], policies: Sequence[str], fmt: str = "xlsx", *, tenant_label: str = "",
         log: Optional[Callable[[str], None]] = None, cancel: Any = None, hits: Optional[Dict[str, Dict[str, Any]]] = None,
-        page_size: str = "A4") -> Dict[str, Any]:
+        page_size: str = "A4", opts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Read the policies (only those in `scope`, already picked), analyse
     them for shadowed rules and build one file per policy that was read.
     Returns {status: ready | error, files, counts, read_errors, artifact}.
@@ -691,7 +829,7 @@ def run(client, scope: Dict[str, Any], policies: Sequence[str], fmt: str = "xlsx
         rs = got["rules"][key]
         if fmt == "xlsx":
             data = workbook(key, rs, names=names, analysis=analysis, tenant_label=tenant_label, scope_summary=scope.get("summary", ""),
-                            groups=got["groups"], group_errors=got["group_errors"], hits=hits)
+                            groups=got["groups"], group_errors=got["group_errors"], hits=hits, opts=opts)
         else:
             data = pdf(key, rs, names=names, analysis=analysis, tenant_label=tenant_label, scope_summary=scope.get("summary", ""),
                        hits=hits, page_size=page_size)

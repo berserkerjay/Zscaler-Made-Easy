@@ -164,6 +164,9 @@ def test_the_inventory_is_a_read_only_job_and_lists_who_uses_what(client, monkey
     E = {r[0]: dict(zip(eh, r)) for r in erows}
     assert E["Project Leak"]["Expression"] == "((D1001.S > 0) AND (D1.S > 2))"
     assert E["Project Leak"]["Expression (dictionary names)"] == "(([Project Codes] > 0) AND ([SSN] > 2))"
+    # engine_explain: the expression with dictionary names, and when it fires in one sentence.
+    assert E["Project Leak"]["Readable expression"] == "(Project Codes count > 0) AND (SSN count > 2)"
+    assert E["Project Leak"]["In plain English"] == "Fires when the content has at least one Project Codes match and more than two SSN matches."
     assert E["Project Leak"]["Used by rules"] == "2" and "Web DLP: Web-Projects" in E["Project Leak"]["Rule names"]
     assert E["Unused Engine"]["Used by rules"] == "0" and E["PCI"]["Custom or predefined"] == "Predefined"
 

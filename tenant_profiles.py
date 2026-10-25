@@ -7,8 +7,9 @@ history on the data-governance journey.
 A profile holds what the tenant form asks for (organisation, assessor,
 cloud, vanity domain, client ID, optional ZPA customer ID, scopes,
 frameworks), engagement context (industry, which baseline packs apply,
-notes) and a HISTORY of assessments: date, score, maturity, and the
-journey stage/score per baseline. The client secret is stored only when
+notes) and a HISTORY of assessments: date, score, maturity, each check's
+state (`states`, for the score trend), and the journey stage/score per
+baseline. The client secret is stored only when
 the operator ticks "remember the secret on this laptop"; it is never
 returned by the API (only ``has_secret``).
 
@@ -164,6 +165,7 @@ def _write(data: Dict[str, Any]) -> None:
             os.chmod(tmp, 0o600)
         except OSError:
             pass
+        _keep_last_good(p)
         os.replace(tmp, p)
     finally:
         if os.path.exists(tmp):
@@ -179,7 +181,7 @@ def masked(p: Dict[str, Any], *, with_history: bool = True) -> Dict[str, Any]:
     out["has_secret"] = (bool(p.get("password") and p.get("api_key")) if out["auth_method"] == "legacy" else bool(p.get(SECRET_FIELD)))
     out["proposal_queue_migrated"] = bool(p.get("proposal_queue_migrated"))
     hist = list(p.get("history") or [])
-    out["last_assessed"] = hist[-1] if hist else None
+    out["last_assessed"] = {k: v for k, v in hist[-1].items() if k != "states"} if hist and isinstance(hist[-1], dict) else (hist[-1] if hist else None)
     if with_history:
         out["history"] = hist
     return out
@@ -386,6 +388,14 @@ def snapshot(report: Dict[str, Any]) -> Dict[str, Any]:
         "critical": len([c for c in (report.get("critical") or []) if not (isinstance(c, dict) and c.get("out_of_scope"))]),
         "assessor": (report.get("metadata") or {}).get("assessor"),
     }
+    # Per-check states ({id: P|F|R|I|E}, bounded), so the score trend can say
+    # which checks started or stopped failing between runs (posture_plus).
+    # Entries recorded before this have none and still load.
+    try:
+        import posture_plus
+        entry["states"] = posture_plus.states_of(report.get("checks") or [])
+    except Exception:  # noqa: BLE001 — history without states rather than none
+        pass
     if j and j.get("status") != "error":
         entry["journey"] = {
             "status": j.get("status"), "stage": j.get("stage"), "score": j.get("score"),
@@ -415,3 +425,12 @@ def creds_from(profile: Dict[str, Any]) -> Dict[str, str]:
         if out[field] == KEYRING_MARK:   # a masked read: the marker is not a secret
             out[field] = ""
     return out
+
+
+def _keep_last_good(path: str) -> None:
+    """The store as it was, kept as a last-good copy (self_heal) before it is replaced."""
+    try:
+        import self_heal
+        self_heal.keep_last_good(path)
+    except Exception:  # noqa: BLE001 - never stops a write
+        pass

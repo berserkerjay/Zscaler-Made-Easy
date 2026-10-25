@@ -1141,12 +1141,105 @@ def diff_from_result(result: Dict[str, Any], a: str, b: str) -> Dict[str, Any]:
 
 
 # ── exports ───────────────────────────────────────────────────────────
+def _csv_rows(text: str) -> List[List[str]]:
+    return list(csv.reader(io.StringIO(text)))
+
+
+def export_xlsx(result: Dict[str, Any], counts_only: bool) -> Tuple[str, bytes]:
+    """(filename stem, workbook bytes): Summary, Versions, Operating systems,
+    Stale devices, Devices, Alerts and Plan, the figures the page shows.
+    With counts_only no sheet names a user or a host: the stale devices are
+    counted per platform and the device sheet says why it is empty. Built
+    with xlsx_writer: no cell is ever a formula."""
+    import xlsx_writer
+    wb = xlsx_writer.Workbook(title="Client Connector fleet", subject=str(result.get("tenant_label") or ""), creator="Zscaler Made Easy")
+    summary = _csv_rows(export_csv(result, "summary", True)[1])
+    wb.add_sheet("Summary", columns=summary[0], rows=[[_num(c) for c in r] for r in summary[1:]])
+    k = result.get("kpis")
+    devs = result.get("devices") or []
+    reg = [d for d in devs if d.get("registration") == "registered"]
+    no_devices = "Not available: no enrolled devices could be read, so there is no device figure (unknown, not zero)."
+    vs = wb.add_sheet("Versions", columns=["Platform", "Client Connector version", "Registered devices", "Newest seen on the platform"])
+    if not k:
+        vs.append([no_devices])
+    else:
+        for plat, versions in (k.get("versions") or {}).items():
+            for v, n in versions.items():
+                vs.append([plat, v, n, v == (k.get("newest") or {}).get(plat)])
+        if not k.get("versions"):
+            vs.append(["No registered device reports a Client Connector version."])
+    os_ = wb.add_sheet("Operating systems", columns=["Platform", "OS version", "Registered devices"])
+    if not k:
+        os_.append([no_devices])
+    else:
+        mix: Dict[Tuple[str, str], int] = {}
+        for d in reg:
+            key = (d.get("platform") or "", d.get("os_version") or "not reported")
+            mix[key] = mix.get(key, 0) + 1
+        for (plat, ver), n in sorted(mix.items(), key=lambda kv: (kv[0][0], -kv[1], kv[0][1])):
+            os_.append([plat, ver, n])
+        if not mix:
+            os_.append(["No registered device."])
+        if result.get("devices_truncated"):
+            os_.append([f"Counted over the first {len(devs)} of {result.get('devices_total')} devices kept for the page; the platform totals on Summary count all of them."])
+    ghost = (result.get("alerts") or {}).get("ghost") or {}
+    stale_note = f"{ALERTS['ghost']['label']}: {ALERTS['ghost']['definition']}"
+    if counts_only:
+        ss = wb.add_sheet("Stale devices", columns=["Platform", "Stale devices"])
+        per: Dict[str, int] = {}
+        for d in ghost.get("rows") or []:
+            per[d.get("platform") or ""] = per.get(d.get("platform") or "", 0) + 1
+        for plat, n in sorted(per.items(), key=lambda kv: -kv[1]):
+            ss.append([plat, n])
+    else:
+        ss = wb.add_sheet("Stale devices", columns=["User", "Host name", "Platform", "OS version", "Client Connector version", "Last seen (UTC)", "Days since seen"])
+        for d in ghost.get("rows") or []:
+            hrs = d.get("hours_since_seen")
+            ss.append([d.get("user"), d.get("hostname"), d.get("platform"), d.get("os_version"), d.get("version"), d.get("last_seen") or "",
+                       None if hrs is None else round(hrs / 24.0, 1)])
+    if not ghost.get("evaluated"):
+        ss.append([ghost.get("why_not") or "Not evaluated."])
+    elif not ghost.get("count"):
+        ss.append(["No stale device."])
+    elif ghost.get("truncated"):
+        ss.append([f"The first {len(ghost.get('rows') or [])} of {ghost.get('count')} are listed."])
+    ss.append([stale_note])
+    if counts_only:
+        wb.add_sheet("Devices", columns=["Note"], rows=[["Counts only: the device table names users and devices, so it is left out."]])
+    else:
+        rows = _csv_rows(export_csv(result, "devices", False)[1]) if devs else []
+        ds = wb.add_sheet("Devices", columns=rows[0] if rows else ["Note"])
+        if rows:
+            ds.extend([[_num(c) for c in r] for r in rows[1:]])
+        else:
+            ds.append([no_devices if not k else "No device."])
+        if result.get("devices_truncated"):
+            ds.append([f"The first {len(devs)} of {result.get('devices_total')} devices are kept for the page and this export."])
+    al = wb.add_sheet("Alerts", columns=["Alert", "Count", "Definition", "Fix"])
+    for key in result.get("alert_order") or []:
+        a = (result.get("alerts") or {}).get(key) or {}
+        al.append([a.get("label", key), a.get("count") if a.get("evaluated") else (a.get("why_not") or "not evaluated"), a.get("definition"), a.get("fix")])
+    plan = _csv_rows(export_csv(result, "plan", counts_only)[1])
+    ps = wb.add_sheet("Plan", columns=plan[0], rows=[[_num(c) for c in r] for r in plan[1:]])
+    if len(plan) == 1:
+        ps.append(["Nothing to fix was found."])
+    return "zcc_fleet" + ("_counts" if counts_only else ""), wb.to_bytes()
+
+
+def _num(cell: str) -> Any:
+    """A CSV cell back as a number when it is one (the CSV writer quoted
+    nothing numeric), so Excel can sum it; anything else stays text."""
+    if isinstance(cell, str) and re.fullmatch(r"-?\d+(\.\d+)?", cell.strip()):
+        return float(cell) if "." in cell else int(cell)
+    return cell
+
+
 def export_csv(result: Dict[str, Any], what: str, counts_only: bool) -> Tuple[str, str]:
     """(filename stem, CSV text) through csv_safe. `what` is "plan" (the
     ranked remediation plan), "devices" (the device table: names; refused
     with counts_only) or "summary" (KPIs and alert counts). Counts only
-    leaves every user and host name out. The Excel workbook is a hook:
-    when an xlsx writer is available the same rows go to it."""
+    leaves every user and host name out. The Excel workbook (export_xlsx)
+    carries the same rows."""
     import csv_safe
     buf = io.StringIO()
     w = csv_safe.writer(buf)

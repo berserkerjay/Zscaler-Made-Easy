@@ -1,4 +1,4 @@
-"""Tenant credentials: the two ways DLP-Check can sign in to a ZIA tenant.
+"""Tenant credentials: the two ways Zscaler Made Easy can sign in to a ZIA tenant.
 
     oneapi   ZIdentity API client (client id, client secret, vanity domain)
              through OneAPI: <vanity>.zslogin.net and api.zsapi.net.

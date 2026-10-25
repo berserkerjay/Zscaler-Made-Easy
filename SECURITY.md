@@ -1,6 +1,6 @@
 # Security policy
 
-DLP-Check runs on a consultant's laptop, holds a Zscaler API client's
+Zscaler Made Easy runs on a consultant's laptop, holds a Zscaler API client's
 credentials for the length of an engagement, and can write to a customer
 tenant. This page says how the tool protects that, who is authorized to
 test it, and how to report a problem with it.
@@ -8,13 +8,13 @@ test it, and how to report a problem with it.
 ## Scope and authorization for security testing
 
 This policy authorizes good-faith security testing of **this product** —
-the DLP-Check application, its container image, its dependencies and its
+the Zscaler Made Easy application, its container image, its dependencies and its
 policy-pack content — running under your own control, against your own
 test instance and your own credentials.
 
 It does **not** authorize testing against a customer's Zscaler tenant, a
 customer's data, or any environment you were not separately engaged to
-test. DLP-Check is a client for the Zscaler API; a vulnerability in
+test. Zscaler Made Easy is a client for the Zscaler API; a vulnerability in
 Zscaler's own platform is Zscaler's to receive, not ours, and should go
 to Zscaler directly.
 
@@ -26,7 +26,7 @@ this policy.
 ## Safe harbor
 
 If you make a good-faith effort to comply with this policy while
-researching or reporting a vulnerability in DLP-Check:
+researching or reporting a vulnerability in Zscaler Made Easy:
 
 - We will not pursue legal action against you for that research, and we
   will not report it to law enforcement, provided you stay within the

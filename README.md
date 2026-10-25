@@ -1,6 +1,6 @@
-# DLP-Check — Zscaler DLP assessment and policy-pack deployment
+# Zscaler Made Easy — assess, administer, audit and deploy Zscaler, in plain words
 
-DLP-Check connects to a customer's Zscaler tenant with API credentials,
+Zscaler Made Easy connects to a customer's Zscaler tenant with API credentials,
 runs 300+ automated checks against the DLP assessment checklist and
 Zscaler's best practices, and gives a scored maturity report with plain
 findings. It then closes the gaps by deploying **policy packs** (ready-made
@@ -56,14 +56,14 @@ There is no published image: Docker builds it from this code. Install Docker fir
 
 ```powershell
 # Windows (PowerShell)
-git clone https://github.com/berserkerjay/DLP-Check.git; cd DLP-Check
+git clone https://github.com/berserkerjay/DLP-Check.git; cd Zscaler Made Easy
 powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
 docker logs dlp-check              # shows the UI token and http://localhost:8001/?token=…
 ```
 
 ```bash
 # Mac or Linux
-git clone https://github.com/berserkerjay/DLP-Check.git && cd DLP-Check
+git clone https://github.com/berserkerjay/DLP-Check.git && cd Zscaler Made Easy
 ./update_container.sh --force
 docker logs dlp-check              # shows the UI token and http://localhost:8001/?token=…
 ```

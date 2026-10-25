@@ -120,7 +120,7 @@ the reference this path is measured against. The app never runs it.
 8. **A duplicate the plan did not see is reused, not fatal.** ZIA compares
    names without regard to case, and a predefined dictionary's display
    name (CRED_LEAKAGE is shown as "Private Key") is taken too. A pack
-   dictionary that carries one of the display names DLP-Check knows
+   dictionary that carries one of the display names Zscaler Made Easy knows
    (`dlp_importer.PREDEFINED_DISPLAY_NAMES`) is renamed `Z-<name>` when
    the pack is loaded, its engine references rewritten, and the plan and
    the deploy log say so (`heal_predefined_names`, applied by every

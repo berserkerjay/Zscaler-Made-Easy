@@ -134,7 +134,7 @@ except Exception:
 # ── FastAPI App ──────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Zscaler Platform Assessment",
+    title="Zscaler Made Easy",
     version="3.0",
     description="Full-auto assessment engine via OneAPI.",
 )
@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage", "/report/browser"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -274,12 +274,14 @@ GUI_ADDONS = [
     ("rate_gate.js", "script"),     # the rate-limit check every deploy and delete confirms with
     ("deploy_studio.js", "script"),
     ("explain.js", "script"),
+    ("find_anything.js", "script"),  # Find anything (Ctrl/Cmd+J): pages, glossary terms, tenant objects, findings
     ("guide.js", "script"),
     ("update_beacon.js", "script"),  # checks for updates in the background and shows a notice when one is out
     ("eval_all.js", "script"),
     ("bypass_report.js", "script"),
     ("tool_tabs.js", "script"),
     ("simple_entry.js", "script"),   # the "Try Simple mode" banner and the deep links from /simple
+    ("posture_banner.js", "script"),  # the coverage line and the score-drop banner on the results (posture_plus)
     ("sidebar_order.js", "script"),  # drag / Alt+arrow reordering of the sidebar; dashboard.js starts it
     ("dashboard.js", "script"),     # last: wraps showResults / renderChecks / resetForm
 ]
@@ -978,7 +980,7 @@ class PackRemovalRequest(TenantCredsRequest):
     pack_ids: List[str] = []
     plan_hash: str = ""
     confirm: bool = False
-    all: bool = False      # everything DLP-Check ever put in the tenant, not just the listed packs
+    all: bool = False      # everything Zscaler Made Easy ever put in the tenant, not just the listed packs
     rules: List[Dict[str, Any]] = []   # pick mode: the rules ({channel, id}) to remove with their engines and dictionaries
     deployment_id: str = ""            # undo mode: what one recorded deployment created
 
@@ -1039,15 +1041,15 @@ def _assessor(req: Any) -> str:
 
 
 ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. "
-                     "Every object a pack creates names the assessor in its description, never DLP-Check.")
+                     "Every object a pack creates names the assessor in its description, never Zscaler Made Easy.")
 ASSESSOR_NOT_TOOL = ("The assessor's name must name the person who assesses and deploys the pack, not the tool "
-                     "(no \"DLP-Check\" in any spelling): it is part of every pushed object's description.")
+                     "(no \"Zscaler Made Easy\" in any spelling): it is part of every pushed object's description.")
 
 
 def _require_assessor(req: Any) -> str:
     """The assessor's name, or a 400 before anything is read or written:
     a pack push (deploy, single-pack import, Terraform hand-off) always
-    names the assessor in the objects it creates, never DLP-Check."""
+    names the assessor in the objects it creates, never Zscaler Made Easy."""
     import pack_deploy
     given = getattr(req, "assessor", "") or ""
     if not str(given).strip():
@@ -1189,6 +1191,7 @@ def _build_sdk_client(creds: Dict[str, str]):
         except ImportError:
             raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
         except Exception as e:  # noqa: BLE001 — the helper signs in as it is built
+            _note_auth_failure()
             reason = tenant_auth.mask_secrets(str(e), c)[:200]
             raise HTTPException(status_code=401, detail=f"Authentication failed for {tenant_auth.identity(c)} on the classic ZIA API "
                                                         f"({zscaler_clouds_legacy_host(cloud)}): {reason}")
@@ -1215,10 +1218,20 @@ def _build_sdk_client(creds: Dict[str, str]):
         if callable(auth):
             auth()
     except Exception as e:
+        _note_auth_failure()
         reason = str(e).replace(sec, mask_secret(sec))[:200]
         raise HTTPException(status_code=401, detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason}")
     # Every ZIA answer on this client's session feeds the next preflight's rate-limit check.
     return zia_rate.attach_client(client, rate_key, rate_label)
+
+
+def _note_auth_failure() -> None:
+    """Self-healing counts sign-in failures (no detail, never a secret) to drop a cached sign-in that keeps failing."""
+    try:
+        import self_heal
+        self_heal.note_auth_failure()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _keyed(client, fn, *args):
@@ -1847,11 +1860,16 @@ async def change_queue_list(request: Request, tenant: str = "", status: str = ""
 
 @app.get("/api/change-queue/export")
 async def change_queue_export(tenant: str = "", format: str = "markdown"):
-    """Download the queue as JSON or Markdown (change_queue.rows is the
-    shared row shape for the Excel and PDF exports)."""
+    """Download the queue as JSON, Markdown or Excel (format=xlsx: requests,
+    items, approvals, comments, history; change_queue.rows is the shared row
+    shape). `tenant` narrows every format to that tenant's requests."""
     import change_queue
     items = change_queue.list_requests(tenant)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if format == "xlsx":
+        import report_exports
+        data = await asyncio.to_thread(change_queue.to_xlsx, items, tenant=tenant)
+        return _attachment(data, report_exports.XLSX, f"change_queue_{stamp}.xlsx")
     if format == "json":
         return JSONResponse({"exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tenant": tenant or None,
                              "items": items, "rows": change_queue.rows(items)},
@@ -2286,6 +2304,7 @@ def _run_zpa_read(client, label: str, creds: Dict[str, Any], log, cancel, scope:
     """Read ZPA once and run every template. Stop ends the run as stopped:
     nothing more is read, nothing is kept and no partial result is returned."""
     import zpa_analysis
+    import zpa_overview
     import zpa_reader
     logs: list = []
 
@@ -2313,6 +2332,7 @@ def _run_zpa_read(client, label: str, creds: Dict[str, Any], log, cancel, scope:
     readable = zpa_reader.readable(snap)
     report = {"kind": "zpa", "snapshot": snap, "summary": zpa_reader.summary(snap), "collections": snap.get("collections") or {},
               "readable": readable, "choices": zpa_analysis.choices(snap), "read_at": snap.get("read_at"),
+              "overview": zpa_overview.overview(snap, analysis),
               "findings": analysis["findings"], "catalog": analysis["catalog"], "counts": analysis["counts"],
               "not_assessed": analysis["not_assessed"], "assumptions": zpa_analysis.ASSUMPTIONS}
     rid = _remember_report("zpa", report, label)
@@ -2396,8 +2416,11 @@ async def zpa_report_get(report_id: str):
 
 @app.get("/api/zpa/report/{report_id}/export")
 async def zpa_report_export(report_id: str, format: str = "csv", severity: str = ""):
-    """The findings as CSV (every cell through csv_safe) or the findings,
-    catalog and counts as JSON; `severity` (comma-separated) filters."""
+    """The findings as CSV (every cell through csv_safe), the findings,
+    catalog and counts as JSON, or the whole overview as Excel (format=xlsx:
+    KPIs, every inventory table, findings, map connections, what was not
+    read; no cell is a formula); `severity` (comma-separated) filters the
+    findings."""
     import io
     import csv_safe
     rep = _zpa_report(report_id)
@@ -2412,6 +2435,12 @@ async def zpa_report_export(report_id: str, format: str = "csv", severity: str =
                 "severity_filter": sorted(sev), "findings": findings, "catalog": rep.get("catalog"), "assumptions": rep.get("assumptions")}
         return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
                         headers={"Content-Disposition": f"attachment; filename=zpa_analysis_{ts}.json"})
+    if fmt == "xlsx":
+        import report_exports
+        import zpa_overview
+        data = await asyncio.to_thread(zpa_overview.workbook, rep["snapshot"], {"findings": rep.get("findings"), "catalog": rep.get("catalog")},
+                                       tenant_label=rep.get("tenant_label") or "", read_at=rep.get("read_at"), findings=findings)
+        return _attachment(data, report_exports.XLSX, f"zpa_overview_{report_exports.safe_filename_part(rep.get('tenant_label') or 'tenant')}_{ts}.xlsx")
     if fmt != "csv":
         raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
     buf = io.StringIO()
@@ -2421,6 +2450,229 @@ async def zpa_report_export(report_id: str, format: str = "csv", severity: str =
         w.writerow([f.get("severity"), f.get("template"), f.get("title"), f.get("object_type"), f.get("object"), f.get("reason"), f.get("fix")])
     return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename=zpa_analysis_{ts}.csv"})
+
+
+# ── Browser security (read-only): Zero Trust Browser isolation, ZPA browser
+# side and ZIA Browser Control (browser_security). ZIA is read when ZIA
+# platform is ticked, ZPA when ZPA is; kept as report "browser-…" for the
+# Excel and JSON exports. Never holds the raw read or any secret.
+class BrowserSecurityRequest(MigrateRequest):
+    """Body of the browser security read: tenant credentials (with the ZPA
+    customer id when ZPA is ticked) and the Scope page selection; refused
+    (400) before sign-in unless ZIA platform or ZPA is ticked."""
+
+
+@app.get("/report/browser")
+async def report_browser_page():
+    """Browser security (static/report_browser.html)."""
+    page = os.path.join(STATIC_DIR, "report_browser.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _browser_inputs(req: BrowserSecurityRequest) -> Tuple[Dict[str, Any], Dict[str, str], str]:
+    """(scope, creds, why ZPA is skipped) for a browser security read; 400
+    before anything is signed in to or read when nothing it reads is in
+    scope, or when only ZPA is and it cannot be read (user rule 1)."""
+    import browser_security as bs
+    sc, _ch, source = _scope_selection(req)
+    scope = bs.scope_for(sc)
+    if not scope["read"]:
+        raise HTTPException(status_code=400, detail=bs.NOTHING_IN_SCOPE)
+    scope["source"] = source
+    creds = _tenant_creds(req)
+    zpa_blocked = ""
+    if scope["zpa"]:
+        if creds.get("auth_method") == tenant_auth.LEGACY:
+            zpa_blocked = bs.ZPA_NEEDS_ONEAPI
+        elif not validate_customer_id(creds.get("customer_id") or ""):
+            zpa_blocked = bs.ZPA_NEEDS_CUSTOMER_ID
+        if zpa_blocked and not scope["zia"]:
+            raise HTTPException(status_code=400, detail=f"{zpa_blocked} Nothing was read.")
+    return scope, creds, zpa_blocked
+
+
+def _run_browser_security(client, label: str, creds: Dict[str, Any], scope: Dict[str, Any], zpa_blocked: str, log, cancel) -> Dict[str, Any]:
+    """Read only what `scope` puts in scope and analyse it. Stop ends the run
+    as stopped: nothing more is read and no partial result is kept."""
+    import browser_security as bs
+    logs: List[str] = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    _log(f"Reading {label}. Nothing is written to the tenant. " + (f"In scope, from {scope['source']}: " if scope.get("source") else "") + scope["summary"])
+    if zpa_blocked:
+        _log(f"ZPA is not read: {zpa_blocked}")
+    try:
+        out = bs.run(client, scope, log=_log, cancel=cancel, zpa_blocked=zpa_blocked)
+    except bs.Stopped:
+        _log("STOPPED — you clicked Stop; nothing more was read and no partial result is kept.")
+        return {"stopped": bs.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    if cancel is not None and cancel.is_set():
+        return {"stopped": bs.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    for sec in (out.get("sections") or {}).values():
+        if sec.get("error"):
+            sec["error"] = tenant_auth.mask_secrets(str(sec["error"]), creds)
+    rid = _remember_report("browser", dict(out, kind="browser"), label)
+    _log(f"Done: {out['counts']['total']} finding(s).")
+    return dict(_REPORTS[rid], status="done", logs=logs)
+
+
+@app.post("/api/browser-security/start")
+async def browser_security_start(req: BrowserSecurityRequest, request: Request):
+    """Read the browser security configuration in scope (ZIA isolation
+    profiles, Browser Control and the rules that isolate; ZPA isolation
+    controls, Browser Access, managed browsers, PRA and user portals) as a
+    job the page follows, and analyse it. Read-only. Poll GET
+    /api/dlp-packs/jobs/{job_id}; Stop ends it with nothing more read."""
+    import pack_jobs
+    scope, creds, zpa_blocked = _browser_inputs(req)   # before signing in (user rule 1)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("browser", lambda log, cancel: _run_browser_security(client, label, creds, scope, zpa_blocked, log, cancel),
+                          label=f"Browser security {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _browser_report(rid: str) -> Dict[str, Any]:
+    rep = _REPORTS.get(rid or "")
+    if not rep or not str(rid).startswith("browser-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read it again.")
+    return rep
+
+
+@app.get("/api/browser-security/report/{report_id}")
+async def browser_security_report(report_id: str):
+    return _browser_report(report_id)
+
+
+@app.get("/api/browser-security/report/{report_id}/export")
+async def browser_security_export(report_id: str, format: str = "xlsx"):
+    """The browser security report as Excel (xlsx_writer) or JSON."""
+    import browser_security as bs
+    import xlsx_writer
+    rep = _browser_report(report_id)
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        return Response(content=json.dumps(bs.scrub(rep), indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=browser_security_{ts}.json"})
+    if fmt != "xlsx":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    data = await asyncio.to_thread(bs.workbook, rep)
+    return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
+                    headers={"Content-Disposition": f"attachment; filename=browser_security_{ts}.xlsx"})
+
+
+# ── Device posture (read-only) ───────────────────────────────────────
+# device_posture reads ZPA through zpa_reader (plus the Client Connector
+# trusted networks when Client Connector is in scope too), classifies the
+# posture profiles, links them to the access rules and says each rule's
+# conditions in plain words. Kept as a "posture-" report for the exports.
+@app.get("/report/device-posture")
+async def report_device_posture_page():
+    """Device posture (static/report_device_posture.html)."""
+    page = os.path.join(STATIC_DIR, "report_device_posture.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _posture_report(rid: str) -> Optional[Dict[str, Any]]:
+    rep = _REPORTS.get(rid or "")
+    return rep if rep and str(rid).startswith("posture-") else None
+
+
+def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, scope: Dict[str, Any], zcc: bool) -> Dict[str, Any]:
+    """Read ZPA once (and the Client Connector trusted networks with `zcc`),
+    then build the device posture report. Stop ends it as stopped with
+    nothing more read and nothing kept."""
+    import device_posture
+    import zpa_reader
+    logs: list = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    if scope.get("source"):
+        _log(f"In scope, from {scope['source']}: ZPA{' and Client Connector' if zcc else ''}.")
+    try:
+        snap, raw, zout = device_posture.read(client, log=_log, cancel=cancel, zcc=zcc)
+    except zpa_reader.Stopped as e:
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
+    except zpa_reader.ReadError as e:
+        raise RuntimeError(tenant_auth.mask_secrets(str(e), creds))
+    if cancel is not None and cancel.is_set():
+        _log("STOPPED — you clicked Stop; the ZPA read was abandoned and is not kept.")
+        return {"stopped": zpa_reader.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    cols = snap.get("collections") or {}
+    for v in cols.values():
+        if v.get("error"):
+            v["error"] = tenant_auth.mask_secrets(v["error"], creds)
+    zout["reason"] = tenant_auth.mask_secrets(zout.get("reason") or "", creds)
+    rep = device_posture.analyze(snap, raw.get("posture_profiles"), raw.get("trusted_networks"), zout)
+    report = dict(rep, kind="posture", read_at=snap.get("read_at"), collections=cols, readable=zpa_reader.readable(snap))
+    rid = _remember_report("posture", report, label)
+    _log(f"Done: {rep['counts']['profiles']} posture profile(s), {rep['counts']['access_rules']} access rule(s), "
+         f"{rep['counts']['findings']} finding(s).")
+    out = dict(_REPORTS[rid])
+    out["logs"] = logs
+    return out
+
+
+@app.post("/api/device-posture/start")
+async def device_posture_start(req: ZpaAnalysisRequest, request: Request):
+    """Read the ZPA posture profiles, trusted networks and access rules
+    (only when ZPA is ticked on the Scope page; the Client Connector
+    trusted networks too when Client Connector is ticked) as a job the page
+    follows. Read-only. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import pack_jobs
+    scope = _zpa_scope(req, "Device posture")          # before signing in (user rule 1)
+    zcc = "zcc" in (scope.get("scopes") or [])
+    client, label, creds = await _zpa_client(req)
+    job = pack_jobs.start("posture", lambda log, cancel: _run_device_posture(client, label, creds, log, cancel, scope, zcc),
+                          label="Device posture", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/device-posture/report/{report_id}")
+async def device_posture_report(report_id: str):
+    rep = _posture_report(report_id)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read device posture again.")
+    return rep
+
+
+@app.get("/api/device-posture/report/{report_id}/export")
+async def device_posture_export(report_id: str, format: str = "xlsx"):
+    """The report as an Excel workbook (profiles, families, usage, findings,
+    access rules with readable conditions) or as JSON."""
+    import device_posture
+    import xlsx_writer
+    rep = _posture_report(report_id)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        body = {k: v for k, v in rep.items() if k != "collections"}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=device_posture_{ts}.json"})
+    if fmt != "xlsx":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    data = await asyncio.to_thread(device_posture.workbook, rep)
+    return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
+                    headers={"Content-Disposition": f"attachment; filename=device_posture_{ts}.xlsx"})
 
 
 @app.get("/report/digest")
@@ -2621,7 +2873,7 @@ async def rate_check(req: RateCheckRequest):
 @app.post("/api/dlp-packs/removal/preflight")
 async def dlp_pack_removal_preflight(req: PackRemovalRequest):
     """Find what a deployed pack or baseline put into the tenant — by its
-    DLP-Check provenance tag and by the names it defines — and preview a
+    Zscaler Made Easy provenance tag and by the names it defines — and preview a
     methodical removal: rules, then endpoint application groups, then
     engines, then dictionaries. Objects a surviving rule or engine still
     uses, and every predefined dictionary, are kept and reported. Returns
@@ -4018,10 +4270,16 @@ async def report_exports_page():
 class PolicyExportRequest(ScopedTenantCredsRequest):
     """Body of the policy exports: tenant credentials, what is in scope,
     the policies (policy_exports.POLICIES keys; empty: every one in scope)
-    and the format (xlsx, or pdf for the review copy; `page` a4 or letter)."""
+    and the format (xlsx, or pdf for the review copy; `page` a4 or letter).
+    Export options (the workbooks; policy_exports.options): `columns`
+    {sheet key: headers to keep}, `layout` flat | rows, `separator`
+    newline | comma | semicolon. The defaults give the workbook as before."""
     policies: List[str] = []
     format: str = "xlsx"
     page: str = "a4"
+    columns: Dict[str, List[str]] = {}
+    layout: str = "flat"
+    separator: str = "newline"
 
 
 def _stopped_result(label: str, reason: str, log) -> Dict[str, Any]:
@@ -4030,11 +4288,12 @@ def _stopped_result(label: str, reason: str, log) -> Dict[str, Any]:
     return {"status": "stopped", "stopped": reason, "tenant_label": label}
 
 
-def _run_policy_exports(client, scope: Dict[str, Any], policies: List[str], fmt: str, page: str, label: str, log, cancel) -> Dict[str, Any]:
+def _run_policy_exports(client, scope: Dict[str, Any], policies: List[str], fmt: str, page: str, label: str, log, cancel,
+                        opts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     import policy_exports as pe
     log(f"Exporting from {label}: {', '.join(pe.POLICIES[k]['label'] for k in policies)} as {fmt.upper()}. Nothing is written to the tenant. {scope['summary']}")
     try:
-        out = pe.run(client, scope, policies, fmt, tenant_label=label, log=log, cancel=cancel, page_size=page)
+        out = pe.run(client, scope, policies, fmt, tenant_label=label, log=log, cancel=cancel, page_size=page, opts=opts)
     except pe.Stopped as e:
         return _stopped_result(label, str(e), log)
     if cancel is not None and cancel.is_set():
@@ -4059,6 +4318,10 @@ async def exports_policies_start(req: PolicyExportRequest, request: Request):
     page = {"a4": "A4", "letter": "LETTER"}.get((req.page or "a4").strip().lower())
     if page is None:
         raise HTTPException(status_code=400, detail="page must be a4 or letter.")
+    try:
+        opts = pe.options(req.columns, req.layout, req.separator)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     sc, ch, source = _scope_selection(req)
     scope = pe.scope_for(sc, ch)
     if not scope["read"]:
@@ -4074,7 +4337,7 @@ async def exports_policies_start(req: PolicyExportRequest, request: Request):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_client, req)
     label = tenant_auth.record_label(creds)
-    job = pack_jobs.start("policy_export", lambda log, cancel: _run_policy_exports(client, scope, policies, fmt, page, label, log, cancel),
+    job = pack_jobs.start("policy_export", lambda log, cancel: _run_policy_exports(client, scope, policies, fmt, page, label, log, cancel, opts),
                           label=label[:80], actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind, "policies": policies, "not_in_scope": why}
 
@@ -4174,6 +4437,92 @@ async def exports_plans():
     return {"plans": [{"report_id": rid, "tenant_label": p.get("tenant_label") or "", "generated_at": p.get("generated_at") or "",
                        "packs": [str(x.get("name") or x.get("id")) for x in p.get("packs") or [] if isinstance(x, dict)],
                        "status": p.get("status") or ""} for rid, p in reversed(list(_PLANS.items()))]}
+
+
+# ── Configuration exports: locations and Client Connector profiles ──
+# (config_exports), with the policy exports' options. Read-only (GET).
+# Each refuses (400) before signing in when it is not in scope or an
+# option is wrong.
+@app.get("/api/exports/columns")
+async def exports_columns():
+    """The columns each export's main sheet can carry, the layouts and the
+    separators, for the Policy exports page's options. No tenant read."""
+    import policy_exports as pe
+    return {"columns": pe.column_catalogue(), "identity": list(pe.IDENTITY_COLUMNS), "layouts": list(pe.LAYOUTS),
+            "separators": list(pe.SEPARATORS), "defaults": pe.DEFAULT_OPTIONS}
+
+
+class ConfigExportRequest(ScopedTenantCredsRequest):
+    """Body of the locations and Client Connector exports: credentials,
+    what is in scope and the export options (as PolicyExportRequest)."""
+    columns: Dict[str, List[str]] = {}
+    layout: str = "flat"
+    separator: str = "newline"
+
+
+def _export_options(req: ConfigExportRequest) -> Dict[str, Any]:
+    import policy_exports as pe
+    try:
+        return pe.options(req.columns, req.layout, req.separator)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _run_config_export(fn, kind_label: str, client, scope: Dict[str, Any], label: str, opts: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    import config_exports as ce
+    log(f"Exporting the {kind_label} of {label}. Nothing is written to the tenant. {scope['summary']}")
+    try:
+        out = fn(client, scope, tenant_label=label, log=log, cancel=cancel, opts=opts)
+    except ce.Stopped as e:
+        return _stopped_result(label, str(e), log)
+    if cancel is not None and cancel.is_set():
+        return _stopped_result(label, ce.STOPPED_REASON, log)
+    out["tenant_label"] = label
+    return out
+
+
+@app.post("/api/exports/locations/start")
+async def exports_locations_start(req: ConfigExportRequest, request: Request):
+    """Locations and sub-locations with their settings, the location
+    groups, and which URL filtering, Cloud Firewall, SSL inspection, File
+    Type Control and Web DLP rules use each (those in scope). Needs ZIA
+    platform in scope. IP addresses and VPN credentials are counted, never
+    listed. Read-only. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import config_exports as ce
+    import pack_jobs
+    opts = _export_options(req)
+    sc, ch, source = _scope_selection(req)
+    scope = ce.locations_scope(sc, ch)
+    if not scope["in_scope"]:
+        raise HTTPException(status_code=400, detail=ce.NOTHING_IN_SCOPE_LOCATIONS)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("locations_export", lambda log, cancel: _run_config_export(ce.locations_export, "locations", client, scope, label, opts, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "usage": scope["usage"], "not_in_scope": scope["not_in_scope"]}
+
+
+@app.post("/api/exports/client-connector/start")
+async def exports_client_connector_start(req: ConfigExportRequest, request: Request):
+    """Client Connector app profiles and forwarding profiles with their
+    settings (no password, passcode, token or key), PAC files, and which
+    profile uses which forwarding profile and PAC URL. Needs ZCC in scope.
+    Read-only. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import config_exports as ce
+    import pack_jobs
+    opts = _export_options(req)
+    sc, ch, source = _scope_selection(req)
+    scope = ce.zcc_scope(sc, ch)
+    if not scope["in_scope"]:
+        raise HTTPException(status_code=400, detail=ce.NOTHING_IN_SCOPE_ZCC)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("client_connector_export",
+                          lambda log, cancel: _run_config_export(ce.client_connector_export, "Client Connector profiles", client, scope, label, opts, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
 @app.get("/api/pack-library/{pack_id}/terraform.zip")
@@ -4558,7 +4907,7 @@ class ConsoleIndexRequest(ScopedTenantCredsRequest):
 
 @app.post("/api/console-index")
 async def console_index(req: ConsoleIndexRequest):
-    """What DLP-Check knows about each object of the ZIA admin console, for
+    """What Zscaler Made Easy knows about each object of the ZIA admin console, for
     the companion extension's badges and side panel: DLP dictionaries,
     engines and rules (what they use, what uses them, the pack that created
     them, findings), and, where in scope, the URL filtering, Cloud App
@@ -4571,7 +4920,7 @@ async def console_index(req: ConsoleIndexRequest):
     import console_index as ci
     zscope = _console_zia_scope(req)
     try:
-        channels = _pack_channels_in_scope(req, "The browser extension's console index")
+        channels = _pack_channels_in_scope(req, "The tenant object index (Find anything and the browser extension)")
     except HTTPException as e:
         # No DLP channel in scope: the ZIA policies alone still make an index.
         if e.status_code != 400 or not (zscope["scope"]["read"] or zscope["ftc"]):
@@ -4623,6 +4972,134 @@ def _console_zia(req: Any, zscope: Dict[str, Any]):
         return res, f"{len(res.get('findings') or [])} finding(s)"
     except Exception as e:  # noqa: BLE001 - the index is still useful without them
         return None, f"not available: {str(e)[:160]}"
+
+
+@app.get("/api/console-index/cached")
+async def console_index_cached(profile_id: str = ""):
+    """The last console index this server read for a tenant profile (or for
+    the server's own tenant), whatever scope it was read with, while it is
+    kept (30 minutes). Never reads the tenant: Find anything searches it as
+    you type, and only its Load tenant objects button reads (POST
+    /api/console-index, with the Scope page's selection)."""
+    import console_index as ci
+    hit = ci.cache_latest(profile_id)
+    return {"index": hit, "profile_id": profile_id or ""}
+
+
+# ── Workspace notes: tags, comments and to-dos on any object ──────────────
+# Local notes in this app's own store (workspace_notes.py), per tenant label;
+# never a tenant write. Every call needs the UI token like every other
+# (security.UIAuthMiddleware); who wrote a note is the server's view of the
+# caller (_actor), never a name the page sends; every change is in the audit
+# log. The browser extension may read notes (GET) but never write them: these
+# paths are not in security.EXTENSION_POST_PATHS.
+class WorkspaceNoteRequest(BaseModel):
+    """One change to the note on (tenant, kind, ref). The tenant is its
+    label, or the saved profile / sign-in it belongs to (no secret is sent)."""
+    tenant: str = ""
+    profile_id: str = ""
+    vanity_domain: str = ""
+    cloud: str = ""
+    auth_method: str = ""
+    kind: str = ""
+    ref: str = ""
+    label: str = ""
+    href: str = ""
+    action: str = ""
+    tags: List[str] = []
+    tag: str = ""
+    text: str = ""
+    item_id: str = ""
+    done: bool = True
+
+
+def _notes_tenant(tenant: str = "", profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = "") -> str:
+    """The tenant label a note is kept under: the one given, else the saved
+    profile's, else the sign-in's (vanity domain and cloud), else this
+    server's configured tenant. Never reads the tenant."""
+    import tenant_profiles
+    import workspace_notes as wn
+    if (tenant or "").strip():
+        return wn.clean_tenant(tenant)
+    creds: Dict[str, Any] = {}
+    if (profile_id or "").strip():
+        p = tenant_profiles.get(profile_id.strip())
+        if not p:
+            raise wn.NotesError("that tenant profile no longer exists; pick another", 404)
+        creds = tenant_profiles.creds_from(p)
+    elif (vanity_domain or "").strip() or (auth_method or "").strip().lower() in ("legacy", "classic"):
+        creds = {"vanity_domain": vanity_domain, "cloud": cloud, "auth_method": auth_method}
+    else:
+        env = tenant_auth.from_env()
+        if not tenant_auth.complete(env):
+            raise wn.NotesError("pick a tenant first: notes are kept per tenant")
+        creds = env
+    try:
+        return wn.clean_tenant(tenant_auth.record_label(creds))
+    except ValueError as e:
+        raise wn.NotesError(str(e)[:200])
+
+
+def _notes_call(fn, *args, **kwargs):
+    import workspace_notes as wn
+    try:
+        return fn(*args, **kwargs)
+    except wn.NotesError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+@app.get("/api/workspace/notes")
+async def workspace_notes_get(tenant: str = "", profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = "",
+                              kind: str = "", ref: str = "", tag: str = "", all_tenants: bool = False):
+    """The note on one object (kind and ref given), or every note of a
+    tenant (optionally with one tag), or with all_tenants every note of
+    every tenant, for the To-do list. Read-only, local."""
+    import workspace_notes as wn
+    if all_tenants:
+        return {"tenant": None, "notes": _notes_call(wn.list_notes, None, tag=tag), "tenants": wn.tenants(), "limits": _notes_limits()}
+    label = _notes_call(_notes_tenant, tenant, profile_id, vanity_domain, cloud, auth_method)
+    if kind or ref:
+        return {"tenant": label, "note": _notes_call(wn.get, label, kind, ref), "limits": _notes_limits()}
+    return {"tenant": label, "notes": _notes_call(wn.list_notes, label, tag=tag), "limits": _notes_limits()}
+
+
+def _notes_limits() -> Dict[str, int]:
+    import workspace_notes as wn
+    return {"tags": wn.MAX_TAGS, "tag_length": wn.MAX_TAG_LEN, "comment_length": wn.MAX_COMMENT_LEN, "todo_length": wn.MAX_TODO_LEN,
+            "comments": wn.MAX_COMMENTS, "todos": wn.MAX_TODOS, "notes_per_tenant": wn.MAX_NOTES_PER_TENANT}
+
+
+@app.post("/api/workspace/notes")
+async def workspace_notes_post(req: WorkspaceNoteRequest, request: Request):
+    """Add or remove a tag, a comment or a to-do on one object, or tick a
+    to-do done. A local write to this app's store, recorded with who made it."""
+    import workspace_notes as wn
+    label = _notes_call(_notes_tenant, req.tenant, req.profile_id, req.vanity_domain, req.cloud, req.auth_method)
+    note = _notes_call(wn.apply, label, req.kind, req.ref, req.action, by=_cq_by(request), label=req.label, href=req.href,
+                       tags=req.tags, tag=req.tag, text=req.text, item_id=req.item_id, done=req.done)
+    return {"tenant": label, "note": note}
+
+
+@app.delete("/api/workspace/notes")
+async def workspace_notes_delete(request: Request, kind: str, ref: str, tenant: str = "", profile_id: str = "",
+                                 vanity_domain: str = "", cloud: str = "", auth_method: str = ""):
+    """Remove every tag, comment and to-do on one object."""
+    import workspace_notes as wn
+    label = _notes_call(_notes_tenant, tenant, profile_id, vanity_domain, cloud, auth_method)
+    gone = _notes_call(wn.delete, label, kind, ref, by=_cq_by(request))
+    if not gone:
+        raise HTTPException(status_code=404, detail="There is no note on this object.")
+    return {"tenant": label, "deleted": True}
+
+
+@app.get("/report/todo")
+async def report_todo_page():
+    """Standalone tab for the To-do list (static/report_todo.html)."""
+    page = os.path.join(STATIC_DIR, "report_todo.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/api/pack-library/{pack_id}/bundle")
@@ -5235,7 +5712,7 @@ async def serve_permissions_page():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Required API Access · Zscaler Platform Assessment</title>
+<title>Required API Access · Zscaler Made Easy</title>
 <style>
   :root {{
     --bg: #0a0e1a;
@@ -6630,7 +7107,7 @@ async def assess_stream(req: AssessRequest):
 
             report = {
                 "metadata": {
-                    "tool": "Zscaler Platform Assessment",
+                    "tool": "Zscaler Made Easy",
                     "version": "3.0",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "org": req.org_name,
@@ -6944,13 +7421,20 @@ async def zcc_fleet_diff(job_id: str, a: str = "", b: str = ""):
 @app.get("/api/zcc/fleet/{job_id}/export")
 async def zcc_fleet_export(job_id: str, what: str = "plan", counts_only: bool = False, format: str = "csv"):
     """The remediation plan, the device table or the summary of a finished
-    run as CSV (csv_safe). counts_only leaves every user and host name out
-    (the device table is then refused). Excel: when the app gains its
-    xlsx_writer module, `format=xlsx` is where it plugs in; until then CSV."""
+    run as CSV (csv_safe), or everything as one Excel workbook (format=xlsx:
+    summary, versions, operating systems, stale devices, devices, alerts,
+    plan; `what` is then ignored). counts_only leaves every user and host
+    name out (the CSV device table is then refused; the workbook leaves the
+    device sheet empty and counts the stale devices per platform)."""
     import zcc_fleet
     res = _fleet_result(job_id)
-    if (format or "csv").lower() != "csv":
-        raise HTTPException(status_code=400, detail="Excel export is not in this build yet; download CSV (it opens in Excel).")
+    fmt = (format or "csv").lower()
+    if fmt == "xlsx":
+        import report_exports
+        stem, data = await asyncio.to_thread(zcc_fleet.export_xlsx, res, counts_only)
+        return _attachment(data, report_exports.XLSX, f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
+    if fmt != "csv":
+        raise HTTPException(status_code=400, detail="format must be csv or xlsx.")
     try:
         stem, text = zcc_fleet.export_csv(res, (what or "").lower(), counts_only)
     except ValueError as e:
@@ -7442,7 +7926,7 @@ async def path_analyzer_batch_export(job_id: str, format: str = "csv"):
 @app.get("/report/audit")
 async def report_audit_page():
     """Audit timeline (static/report_audit.html): ZIA's admin audit log
-    merged with DLP-Check's deployments and its own audit log."""
+    merged with Zscaler Made Easy's deployments and its own audit log."""
     page = os.path.join(STATIC_DIR, "report_audit.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
@@ -7461,7 +7945,7 @@ class AuditTimelineRequest(ScopedTenantCredsRequest):
 
 
 def _run_audit_timeline(client, win: Dict[str, Any], include_zia: bool, label: str, labels, log, cancel) -> Dict[str, Any]:
-    """Read ZIA's audit log report (when asked), DLP-Check's deployment
+    """Read ZIA's audit log report (when asked), Zscaler Made Easy's deployment
     records and its audit log, and merge them (audit_timeline.build)."""
     import audit_timeline as at
     import data_flow
@@ -7477,13 +7961,13 @@ def _run_audit_timeline(client, win: Dict[str, Any], include_zia: bool, label: s
             return {"stopped": str(e), "status": "stopped", "tenant_label": label}
         if zia.get("error"):
             log(zia["error"])
-    log("Reading DLP-Check's deployment records and its own audit log…")
+    log("Reading Zscaler Made Easy's deployment records and its own audit log…")
     deps = deployments.list_all()
     entries = _audit.tail(50000)
     out = at.build(window_=win, zia=zia, deployments=deps, audit_entries=entries, labels=labels, known_packs=pack_deploy.library_ids(),
                    tenant_label=label, zia_requested=include_zia,
-                   zia_reason="" if include_zia else "The ZIA admin audit log was not read (you chose DLP-Check's own records only).")
-    log(f"{out['summary']['events']} event(s) in the window; {out['summary']['foreign_changes']} change(s) by someone else to objects DLP-Check created.")
+                   zia_reason="" if include_zia else "The ZIA admin audit log was not read (you chose Zscaler Made Easy's own records only).")
+    log(f"{out['summary']['events']} event(s) in the window; {out['summary']['foreign_changes']} change(s) by someone else to objects Zscaler Made Easy created.")
     return out
 
 
@@ -7669,6 +8153,438 @@ async def shadow_rules_export(job_id: str, format: str = "csv"):
                         headers={"Content-Disposition": f"attachment; filename=shadowed_rules_{ts}.json"})
     return Response(content=shadow_rules.to_csv(res), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename=shadowed_rules_{ts}.csv"})
+
+
+# ── Posture: improve my score, projected score, trend, alerts, coverage ──
+# Pure computation (posture_plus.py) on the results the page already holds,
+# the tenant profile's history and the team change queue on this server.
+# Nothing here reads or writes a tenant.
+@app.get("/report/posture")
+async def report_posture_page():
+    """Improve my score (static/report_posture.html): the fixes that raise
+    the score most, the projected score, the trend with its causes and what
+    the last assessment could not check. Reads nothing from the tenant."""
+    page = os.path.join(STATIC_DIR, "report_posture.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+# ── Self-healing (self_heal.py) ───────────────────────────────────────
+# Layer 1: the app repairs itself (stuck jobs, damaged stores, permissions,
+# stale locks, rate holds, cached sign-ins, disk space, version) at startup,
+# on a light timer (DLP_CHECK_SELF_HEAL_MINUTES, default 10, 0 off) and on
+# demand; nothing is written to the tenant. Layer 2: the tenant heals back
+# to what was approved: a scan (read-only, DLP in scope) raises heal
+# proposals; each is applied only when a person clicks Heal, through the
+# proposal apply path (write mode, re-read, typed confirmation, read-back,
+# rollback). Automatic application is refused in this version.
+@app.get("/report/self-heal")
+async def report_self_heal_page():
+    """Self-healing (static/report_self_heal.html): what the app fixed by itself, and the tenant settings that drifted."""
+    page = os.path.join(STATIC_DIR, "report_self_heal.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+_POSTURE_MAX_CHECKS = 3000
+
+
+class PostureRequest(BaseModel):
+    """The results the page holds (checks, hidden_checks, channel_coverage),
+    the tenant profile whose history to use, the fixes ticked on the page,
+    and whether (and for which tenant) to count fixes staged in the change queue."""
+    checks: List[Dict[str, Any]] = []
+    hidden_checks: int = 0
+    channel_coverage: Optional[Dict[str, Any]] = None
+    profile_id: str = ""
+    selected: List[str] = []
+    include_queue: bool = True
+    queue_tenant: str = ""
+    logs: List[str] = []
+    limit: int = 10
+
+
+def _posture_checks(req: PostureRequest) -> List[Dict[str, Any]]:
+    if len(req.checks or []) > _POSTURE_MAX_CHECKS:
+        raise HTTPException(status_code=413, detail=f"Too many results ({len(req.checks)}); at most {_POSTURE_MAX_CHECKS}.")
+    out = []
+    for c in req.checks or []:
+        if not isinstance(c, dict):
+            continue
+        row = {k: c.get(k) for k in ("id", "sec", "section", "label", "status", "out_of_scope", "channel") if c.get(k) is not None}
+        row["id"] = str(row.get("id") or "")[:32]
+        row["label"] = str(row.get("label") or "")[:200]
+        row["status"] = str(row.get("status") or "").upper()[:10]
+        row["detail"] = str(c.get("detail") or "")[:600]
+        plain = c.get("plain")
+        if isinstance(plain, dict) and plain.get("do"):
+            row["plain"] = {"do": str(plain.get("do"))[:1200]}
+        if row["id"]:
+            out.append(row)
+    return out
+
+
+def _posture_history(profile_id: str) -> List[Dict[str, Any]]:
+    if not profile_id:
+        return []
+    try:
+        import tenant_profiles
+        return list((tenant_profiles.get(str(profile_id)[:80]) or {}).get("history") or [])
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _posture_queue(req: PostureRequest) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]], str]:
+    """(open requests of the chosen tenant, the tenants with open requests, the tenant used)."""
+    if not req.include_queue:
+        return [], [], ""
+    try:
+        import change_queue
+        items = change_queue.list_requests("", ["pending", "approved"])
+    except Exception:  # noqa: BLE001
+        return [], [], ""
+    tenants: Dict[str, str] = {}
+    for r in items:
+        tenants.setdefault(str(r.get("tenant")), str(r.get("tenant_label") or r.get("tenant")))
+    chosen = str(req.queue_tenant or "").strip().lower()
+    if not chosen and len(tenants) == 1:
+        chosen = next(iter(tenants))
+    return ([r for r in items if str(r.get("tenant")) == chosen] if chosen else [],
+            [{"key": k, "label": v} for k, v in sorted(tenants.items(), key=lambda kv: kv[1])], chosen)
+
+
+def _posture_digest_alerts(profile_id: str) -> List[Dict[str, Any]]:
+    """The score-drop alerts the latest digest raised for this profile."""
+    if not profile_id:
+        return []
+    try:
+        import continuous_eval
+        last = continuous_eval.list_digests(1)
+        d = continuous_eval.get_digest(str(last[0]["id"])) if last else None
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for t in (d or {}).get("tenants") or []:
+        if t.get("profile_id") == profile_id:
+            out.extend(dict(a, digest=d.get("id")) for a in t.get("score_alerts") or [])
+    return out
+
+
+@app.post("/api/posture/analyze")
+async def posture_analyze(req: PostureRequest):
+    """Everything the Improve my score page shows, from the results sent:
+    the ranked fixes, the projected score (ticked fixes and staged fix
+    recipes), the trend from the profile's history, the score-drop alert
+    and the coverage list. No tenant read."""
+    import posture_plus as pp
+    checks = _posture_checks(req)
+    history = _posture_history(req.profile_id)
+    queue, queue_tenants, chosen = _posture_queue(req)
+    report = {"checks": checks, "hidden_checks": req.hidden_checks, "channel_coverage": req.channel_coverage or {}}
+    cfg = pp.settings()
+    return {"ranking": pp.ranking(checks, limit=max(1, min(50, int(req.limit or 10)))),
+            "projection": pp.project(checks, req.selected, queue),
+            "queue": {"tenants": queue_tenants, "tenant": chosen},
+            "trend": pp.trend(history, checks),
+            "alert": pp.latest_drop(history, cfg["score_drop_points"], checks),
+            "digest_alerts": _posture_digest_alerts(req.profile_id),
+            "coverage": pp.coverage(report, (req.logs or [])[:2000]),
+            "settings": cfg}
+
+
+@app.post("/api/posture/project")
+async def posture_project(req: PostureRequest):
+    """The score after the ticked fixes and the staged fix recipes (no tenant read)."""
+    import posture_plus as pp
+    queue, queue_tenants, chosen = _posture_queue(req)
+    return dict(pp.project(_posture_checks(req), req.selected, queue), queue_tenants=queue_tenants, queue_tenant=chosen)
+
+
+@app.post("/api/posture/summary")
+async def posture_summary(req: PostureRequest):
+    """The main page's coverage line and score-drop banner (no tenant read)."""
+    import posture_plus as pp
+    checks = _posture_checks(req)
+    history = _posture_history(req.profile_id)
+    cov = pp.coverage({"checks": checks, "hidden_checks": req.hidden_checks, "channel_coverage": req.channel_coverage or {}})
+    cfg = pp.settings()
+    return {"coverage": {k: cov[k] for k in ("total", "ran", "not_ran", "pct", "hidden", "sentence", "by_category")},
+            "alert": pp.latest_drop(history, cfg["score_drop_points"], checks),
+            "digest_alerts": _posture_digest_alerts(req.profile_id), "settings": cfg}
+
+
+class PostureSettings(BaseModel):
+    """The score-drop alert: threshold in points, and whether a drop alone may make the digest send a notification."""
+    score_drop_points: int = 5
+    notify_score_drop: bool = False
+
+
+@app.get("/api/posture/settings")
+async def posture_settings_get():
+    import posture_plus as pp
+    return pp.settings()
+
+
+@app.put("/api/posture/settings")
+async def posture_settings_put(req: PostureSettings, request: Request):
+    """Save the score-drop alert settings (a local file next to the app;
+    nothing is sent anywhere). A server-wide setting, so under SSO only a
+    listed writer may change it."""
+    import posture_plus as pp
+    _security.require_writer()
+    saved = await asyncio.to_thread(pp.save_settings, req.model_dump())
+    _audit.record("posture_settings", actor=_actor(request) or _security.current_actor(), **saved)
+    return saved
+@app.get("/api/self-heal")
+async def self_heal_status():
+    """The last self-healing run (each check: ok / healed / needs you, what
+    was done, the next step), the settings and how many tenant heal
+    proposals are open. Local data only: nothing is read from a tenant."""
+    import self_heal
+    return await asyncio.to_thread(self_heal.overview)
+
+
+@app.post("/api/self-heal/run")
+async def self_heal_run(request: Request):
+    """Run the app's self-healing checks now. Repairs local files and jobs
+    only; never touches a tenant. Audited (self_heal_run, with who asked)."""
+    import self_heal
+    return await asyncio.to_thread(self_heal.run, "manual", _actor(request) or _security.current_actor())
+
+
+async def _self_heal_loop(minutes: float) -> None:
+    import self_heal
+    try:
+        await asyncio.sleep(5)
+        await asyncio.to_thread(self_heal.run, "startup")
+        while True:
+            await asyncio.sleep(minutes * 60)
+            await asyncio.to_thread(self_heal.run, "timer")
+    except asyncio.CancelledError:
+        return
+    except Exception:  # noqa: BLE001 - the timer never takes the server down
+        return
+
+
+@app.on_event("startup")
+async def _start_self_heal() -> None:
+    try:
+        import self_heal
+        self_heal.mark_started()
+        minutes = self_heal.interval_minutes()
+        if minutes > 0:
+            asyncio.create_task(_self_heal_loop(minutes))
+    except Exception:  # noqa: BLE001 - self-healing never stops the app starting
+        pass
+
+
+class SelfHealScanRequest(ScopedTenantCredsRequest):
+    """Scan the tenant for settings that drifted from what was approved: the
+    packs to measure (else the profile's ticked packs, else the packs this
+    app deployed to the tenant), and whether to read who changed them from
+    ZIA's admin audit log (needs Automation readiness in scope)."""
+    pack_ids: List[str] = []
+    include_who: bool = False
+    days: int = 7
+
+
+class SelfHealHealRequest(ScopedTenantCredsRequest):
+    """Heal selected drifts: the heal proposal ids and the typed confirmation phrase."""
+    ids: List[str] = []
+    confirm: str = ""
+
+
+class SelfHealAcceptRequest(ScopedTenantCredsRequest):
+    """Accept a drift (stop proposing it): the heal proposal id and an optional note."""
+    id: str = ""
+    note: str = ""
+
+
+def _self_heal_tenant(req: Any) -> Tuple[List[str], Dict[str, str], str, str]:
+    """(DLP channels in scope, credentials, queue key, label). The DLP scope
+    is checked first: nothing in scope is refused (400) before anything is
+    signed in to or read (user rule 1)."""
+    channels = _pack_channels_in_scope(req, "Self-healing for the tenant")
+    creds = _tenant_creds(req)
+    tk, label = _cq_tenant(creds)
+    return channels, creds, tk, label
+
+
+def _self_heal_packs(req: SelfHealScanRequest, channels: List[str], label: str) -> Tuple[List[Dict[str, Any]], Dict[str, List[str]]]:
+    """The packs to measure: the request's, else the profile's ticked packs,
+    else the packs this app deployed to this tenant; each on its own DLP
+    channels that are in scope (_journey_scope)."""
+    import deployments
+    ids = [str(x) for x in req.pack_ids or [] if x]
+    if not ids and req.profile_id:
+        try:
+            import tenant_profiles
+            ids = [str(x) for x in (tenant_profiles.get(req.profile_id) or {}).get("baseline_packs") or [] if x]
+        except Exception:  # noqa: BLE001
+            ids = []
+    if not ids:
+        seen: List[str] = []
+        for r in deployments.list_all(label):
+            for pid in r.get("packs") or []:
+                if pid not in seen:
+                    seen.append(pid)
+        ids = seen
+    _sc, ch, _src = _scope_selection(req)
+    return _journey_scope(ids, ch)
+
+
+def _self_heal_scan_job(client, packs, targets, channels, casb, tk, labels, include_who, days, log, cancel) -> Dict[str, Any]:
+    import self_heal
+    import zia_rate
+    who = None
+    with zia_rate.using_client(client):
+        if include_who:
+            import audit_timeline as at
+            import data_flow
+            import deployments
+            import pack_deploy
+            win = at.window(max(1, min(int(days or 7), 30)))
+            try:
+                with data_flow.stop_on(client, cancel):
+                    z = at.read_zia_audit(client, win["start_ms"], win["end_ms"], log=log, cancel=cancel)
+                created = [c for r in deployments.list_all() for c in at._created(r)]
+                who = at.zia_events(((z or {}).get("csv") or {}).get("rows") or [], created, [], pack_deploy.library_ids())
+                if z.get("error"):
+                    log(f"Who changed it: {z['error']}")
+            except at.Stopped:
+                log("STOPPED — you clicked Stop; nothing more was read. Nothing is ever written by a scan.")
+                return {"stopped": "stopped before the scan", "status": "stopped"}
+        if cancel.is_set():
+            return {"stopped": "stopped before the scan", "status": "stopped"}
+        log("Reading the ticked packs' objects from the tenant (read-only)…")
+        res = self_heal.scan(client, packs, tenant_key=tk, labels=labels, channels=channels, channel_targets=targets,
+                             casb=casb, who_events=who, log=log)
+    res["view"] = self_heal.tenant_view(tk)
+    res.pop("items", None)
+    return res
+
+
+@app.post("/api/self-heal/tenant/scan")
+async def self_heal_tenant_scan(req: SelfHealScanRequest, request: Request):
+    """Compare the tenant with what was approved and raise a heal proposal
+    for every setting that drifted back. A job (poll GET
+    /api/dlp-packs/jobs/{id}). Read-only: nothing is written to the tenant.
+    DLP must be in scope (400 before any sign-in otherwise); who changed it
+    is read from ZIA's admin audit log only with include_who and Automation
+    readiness in scope."""
+    import channel_scope
+    import pack_jobs
+    channels, creds, tk, label = _self_heal_tenant(req)
+    if req.include_who:
+        _require_in_scope(req, "automation", "Who changed it (ZIA's admin audit log)")
+    packs, targets = _self_heal_packs(req, channels, label)
+    if not packs:
+        raise HTTPException(status_code=400, detail=("No policy pack to measure: tick the packs you approved on the tenant profile, or deploy one, "
+                                                     "and mark its DLP channels as Zscaler on the Scope page. Nothing was read."))
+    _sc, ch, _src = _scope_selection(req)
+    casb = "saas_casb" in channel_scope.in_scope(ch)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    labels = list(tenant_auth.record_labels(creds))
+
+    def fn(log, cancel):
+        try:
+            return _self_heal_scan_job(client, packs, targets, channels, casb, tk, labels, req.include_who, req.days, log, cancel)
+        finally:
+            _close_quietly(client)
+    job = pack_jobs.start("self-heal-scan", fn, label=f"self-healing scan, {len(packs)} pack(s)", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "tenant": tk, "tenant_label": label, "packs": [p["id"] for p in packs]}
+
+
+@app.post("/api/self-heal/tenant/view")
+async def self_heal_tenant_view(req: ScopedTenantCredsRequest):
+    """The tenant's heal proposals, last scan and accepted drifts (local
+    data; nothing is signed in to or read). DLP must be in scope, like the drift step."""
+    import self_heal
+    _channels, _creds, tk, label = _self_heal_tenant(req)
+    out = await asyncio.to_thread(self_heal.tenant_view, tk)
+    out["tenant_label"] = label
+    out["writes_enabled"] = writes_enabled()
+    return out
+
+
+@app.post("/api/self-heal/tenant/heal")
+async def self_heal_tenant_heal(req: SelfHealHealRequest, request: Request):
+    """Heal the selected drifts, one by one, through the proposal apply path:
+    each is approved with the typed confirmation, then applied (write mode,
+    a preview that re-reads the rule and refuses when it moved again, the
+    update, read-back, recorded rollback). Only one-click heals (a rule's
+    state or action) on DLP channels in scope; nothing else is written."""
+    import proposal_apply
+    import proposals
+    channels, creds, tk, label = _self_heal_tenant(req)
+    _security.require_writer()
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    if (req.confirm or "").strip().upper() != proposals.CONFIRM_PHRASE:
+        raise HTTPException(status_code=400, detail=f'Healing changes the tenant: type "{proposals.CONFIRM_PHRASE}" to confirm.')
+    ids = [str(x) for x in req.ids or [] if x][:50]
+    if not ids:
+        raise HTTPException(status_code=400, detail="Select at least one drift to heal.")
+    todo, results = [], []
+    for pid in ids:
+        p = proposals.get(tk, pid)
+        why = ("not found (scan again)" if not p else "not a heal proposal" if p.get("kind") != "heal_drift"
+               else "made by hand, not from here (follow its steps)" if (p.get("change") or {}).get("apply") != "rule"
+               else f"its channel ({p.get('channel')}) is not in scope on the Scope page" if p.get("channel") not in channels
+               else f"it is {p.get('status')}" if p.get("status") not in ("open", "approved") else "")
+        if why:
+            results.append({"id": pid, "ok": False, "status": "refused", "why": why})
+        else:
+            todo.append(p)
+    by = (_actor(request) or _security.current_actor() or "")[:80]
+    if todo:
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        try:
+            for p in todo:
+                try:
+                    if p.get("status") == "open":
+                        proposals.decide(tk, p["id"], "approve", by=by, note="heal", confirm=req.confirm)
+                    logs: List[str] = []
+                    out = await asyncio.to_thread(lambda: proposal_apply.apply(client, tk, p["id"], writes_enabled=True, by=by, log=logs.append))
+                    results.append({"id": p["id"], "ok": bool(out.get("ok")), "status": out.get("status"), "title": p.get("title"),
+                                    "results": out.get("results"), "activation": out.get("activation"), "logs": logs})
+                except (ValueError, PermissionError) as e:
+                    results.append({"id": p["id"], "ok": False, "status": "refused", "title": p.get("title"), "why": str(e)[:300]})
+        finally:
+            await asyncio.to_thread(_close_quietly, client)
+    _audit.record("self_heal_heal", tenant=label, by=by, healed=[r["id"] for r in results if r.get("ok")],
+                  refused=[r["id"] for r in results if not r.get("ok")])
+    import self_heal
+    return {"results": results, "healed": sum(1 for r in results if r.get("ok")), "view": self_heal.tenant_view(tk),
+            "undo": "Each healed item can be rolled back from the proposal queue (Roll back), with the same re-read and read-back."}
+
+
+@app.post("/api/self-heal/tenant/accept")
+async def self_heal_tenant_accept(req: SelfHealAcceptRequest, request: Request):
+    """Accepted - stop proposing: the current value becomes the approved one
+    for this tenant and the heal proposal is dismissed. Audited. Nothing is
+    read from or written to the tenant."""
+    import self_heal
+    _channels, _creds, tk, label = _self_heal_tenant(req)
+    by = (_actor(request) or _security.current_actor() or "")[:80]
+    try:
+        await asyncio.to_thread(self_heal.accept, tk, req.id, by=by, note=req.note)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    out = await asyncio.to_thread(self_heal.tenant_view, tk)
+    out["tenant_label"] = label
+    return out
+
+
+@app.post("/api/self-heal/tenant/auto-apply")
+async def self_heal_auto_apply():
+    """Applying heals without a person is not enabled in this version, whatever DLP_CHECK_SELF_HEAL_AUTO_APPLY says."""
+    import self_heal
+    raise HTTPException(status_code=403, detail=self_heal.auto_apply()["why"])
 
 
 # ── Path Analyzer ─────────────────────────────────────────────────────
@@ -8057,6 +8973,136 @@ async def report_ssl_flow_export(report_id: str, format: str = "csv"):
                         headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_flow_{ts}.json"})
     raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
 
+# ── SSL coverage (ssl_coverage.py): what is not inspected, why, and the fix ──
+# Read-only. Refused (400) before sign-in unless the SSL inspection rules
+# are in scope; Client Connector, PAC files and ZIA Insights traffic numbers
+# are read only when they are in scope too.
+class SslCoverageRequest(ScopedTenantCredsRequest):
+    """Body of POST /api/ssl-coverage/start: the window for the traffic
+    numbers ("7d" or "30d") and whether to ask ZIA Insights for them."""
+    window: str = "7d"
+    include_volume: bool = True
+
+
+def _ssl_coverage_inputs(req: SslCoverageRequest) -> Dict[str, Any]:
+    """Scope, window and the traffic-number plan, checked before anything
+    is signed in to (user rule 1). Never reads a tenant."""
+    import data_flow
+    import ssl_coverage
+    sc, ch, source = _scope_selection(req)
+    sel = data_flow.path_scope(sc, ch)
+    if "ssl" not in sel["read"]:
+        raise HTTPException(status_code=400, detail=ssl_coverage.OUT_OF_SCOPE)
+    sel["source"] = source
+    window = str(req.window or "7d").strip()
+    if window not in ssl_coverage.WINDOWS:
+        raise HTTPException(status_code=400, detail="The window must be the last 7 days or the last 30 days. Nothing was read.")
+    creds = _tenant_creds(req)
+    plan = {"ask": False, "window": window, "reason": ""}
+    if not req.include_volume:
+        plan["reason"] = "Traffic numbers were switched off for this run."
+    elif "insights" not in sc:
+        plan["reason"] = ("ZIA Insights is not in scope on the Scope page, so traffic numbers were not asked for: "
+                          "the causes and the plan below come from configuration only.")
+    elif tenant_auth.normalize(creds)["auth_method"] == tenant_auth.LEGACY:
+        plan["reason"] = "Traffic numbers need a OneAPI API client: the classic ZIA API sign-in cannot read ZIA Insights."
+    else:
+        plan["ask"] = True
+    return {"scope": sel, "creds": creds, "label": tenant_auth.record_label(creds), "volume": plan}
+
+
+def _ssl_coverage_clients(req: SslCoverageRequest, inp: Dict[str, Any]):
+    """The assessment client (rules, profiles, PAC) and, when traffic
+    numbers are asked for, the SDK client for ZIA Insights. A failing SDK
+    sign-in leaves configuration only, with the reason (never a secret)."""
+    client = _build_client(req)
+    if not inp["volume"]["ask"]:
+        return client, None
+    try:
+        return client, _build_sdk_client(inp["creds"])
+    except HTTPException as e:
+        inp["volume"].update(ask=False, reason="ZIA Insights could not be signed in to: " + tenant_auth.mask_secrets(str(e.detail), inp["creds"])[:240])
+        return client, None
+
+
+def _run_ssl_coverage(client, sdk, inp: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    import ssl_coverage
+    try:
+        rep = ssl_coverage.run(client, inp["scope"], zins=getattr(sdk, "zins", None), volume_plan=inp["volume"], log=log, cancel=cancel,
+                               scrub=lambda s: tenant_auth.mask_secrets(s, inp["creds"]))
+    finally:
+        _close_quietly(client)
+    if rep.get("stopped"):
+        return dict(rep, tenant_label=inp["label"])
+    try:
+        rep["history"] = ssl_coverage.record(inp["label"], rep)
+    except Exception as e:  # noqa: BLE001 — history is best effort
+        rep["history"] = ssl_coverage.load_history(inp["label"])
+        rep["history_error"] = f"This run could not be added to the history ({type(e).__name__})."
+    rid = _remember_report("sslcoverage", rep, inp["label"])
+    return _REPORTS[rid]
+
+
+@app.get("/report/sslcoverage")
+async def report_sslcoverage_page():
+    """Standalone tab for SSL coverage (static/report_ssl_coverage.html)."""
+    page = os.path.join(STATIC_DIR, "report_ssl_coverage.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.post("/api/ssl-coverage/start")
+async def ssl_coverage_start(req: SslCoverageRequest, request: Request):
+    """Start the SSL coverage read as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}). Refused (400) before sign-in when the
+    SSL inspection rules are not in scope. Stop ends it with nothing more
+    read and no partial result."""
+    import pack_jobs
+    inp = _ssl_coverage_inputs(req)
+    client, sdk = await asyncio.to_thread(_ssl_coverage_clients, req, inp)
+    job = pack_jobs.start("sslcoverage", lambda log, cancel: _run_ssl_coverage(client, sdk, inp, log, cancel), label="SSL coverage",
+                          actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/ssl-coverage/history")
+async def ssl_coverage_history(tenant: str = ""):
+    """The kept run summaries for a tenant label (no tenant call)."""
+    import ssl_coverage
+    return {"tenant": tenant[:120], "history": await asyncio.to_thread(ssl_coverage.load_history, tenant[:120])}
+
+
+@app.get("/api/ssl-coverage/{report_id}")
+async def ssl_coverage_get(report_id: str):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("sslcoverage-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    return rep
+
+
+@app.get("/api/ssl-coverage/export/{report_id}")
+async def ssl_coverage_export(report_id: str, format: str = "xlsx"):
+    """A kept SSL coverage run as Excel (causes, plan, traffic, history) or JSON."""
+    import ssl_coverage
+    import xlsx_writer
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("sslcoverage-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        body = {k: v for k, v in rep.items() if k != "logs"}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_coverage_{ts}.json"})
+    if fmt != "xlsx":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    data = await asyncio.to_thread(ssl_coverage.to_xlsx, rep)
+    return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_coverage_{ts}.xlsx"})
+
+
 
 @app.post("/api/report/bypass/export")
 async def report_bypass_export(req: BypassExportRequest):
@@ -8153,7 +9199,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     host = get_bind_host()
     port = get_port()
-    print("\n  Zscaler Platform Assessment")
+    print("\n  Zscaler Made Easy")
     problem = _port_problem(host, port)
     if problem:
         print(f"\n  Could not start: {problem}\n", file=sys.stderr)

@@ -447,7 +447,7 @@ def test_the_page_is_served_wired_and_explained():
     style = html[html.index("<style>"):html.index("</style>")]
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", style) and "gradient" not in style and "box-shadow" not in style
     assert "/api/insights/start" in html and "X-Start-Token" in html and "/api/dlp-packs/jobs/stop-before-start" in html
-    assert "<title>Traffic insights — Zscaler Assessment</title>" in html
+    assert "<title>Traffic insights — Zscaler Made Easy</title>" in html
     js = _read_static("explain.js")
     assert "X.insights = {" in js and "'/report/insights': 'insights'" in js and "'insights'," in js[js.index("DLP_EXPLAIN_ORDER"):]
     assert js.index("X.insights = {") < js.index("X.digest = {")

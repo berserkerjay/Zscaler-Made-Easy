@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-healing — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .sh-sec { padding: 0.2rem 0.2rem 1.2rem; }
+  .sh-sec + .sh-sec { border-top: 1px solid var(--border); padding-top: 1rem; }
+  .sh-sec h2 { font-size: 1.1rem; margin: 0.4rem 0 0.4rem; }
+  .sh-lead { color: var(--dim); font-size: 0.9rem; margin: 0 0 0.7rem; max-width: 80ch; line-height: 1.5; }
+  .sh-status { font-size: 0.88rem; color: var(--dim); min-height: 1.3em; margin: 0.3rem 0 0.6rem; overflow-wrap: anywhere; }
+  .sh-status.bad { color: var(--fail); }
+  .sh-list { list-style: none; margin: 0; padding: 0; }
+  .sh-item { display: grid; grid-template-columns: 7.5rem 1fr; gap: 0.3rem 0.9rem; padding: 0.7rem 0.2rem; border-bottom: 1px solid var(--border); }
+  .sh-item:last-child { border-bottom: 0; }
+  .sh-item .nm { font-weight: 600; }
+  .sh-item .sm { font-size: 0.88rem; overflow-wrap: anywhere; }
+  .sh-item .nx { font-size: 0.84rem; color: var(--dim); margin-top: 0.25rem; overflow-wrap: anywhere; }
+  .sh-item ul.done { margin: 0.3rem 0 0; padding-left: 1.1rem; font-size: 0.84rem; overflow-wrap: anywhere; }
+  .sh-item .acts { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.45rem; }
+  .sh-chip { display: inline-block; justify-self: start; align-self: start; font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid var(--border); color: var(--dim); white-space: nowrap; }
+  .sh-chip.ok { color: var(--pass); border-color: var(--pass); background: color-mix(in srgb, var(--pass) 12%, transparent); }
+  .sh-chip.healed { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .sh-chip.needs_you { color: var(--fail); border-color: var(--fail); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+  .sh-chip.closed { color: var(--dim); }
+  .sh-controls { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: flex-end; margin: 0.4rem 0 0.6rem; }
+  .sh-controls label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--dim); }
+  .sh-controls select { font: inherit; font-size: 0.88rem; background: var(--well); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.35rem 0.5rem; max-width: 100%; }
+  .sh-controls .chk { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text); min-height: 38px; }
+  .sh-note { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0.6rem 0; font-size: 0.86rem; }
+  .sh-note:empty { display: none; }
+  .sh-log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; max-height: 14rem; overflow: auto; margin: 0.4rem 0; }
+  .sh-dl { display: grid; grid-template-columns: minmax(110px, max-content) 1fr; gap: 0.2rem 0.8rem; margin: 0.4rem 0 0; font-size: 0.84rem; }
+  .sh-dl dt { color: var(--dim); } .sh-dl dd { margin: 0; overflow-wrap: anywhere; }
+  .sh-pick { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--dim); }
+  .sh-bulk { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.4rem 0; }
+  .sh-links { font-size: 0.86rem; margin-top: 0.8rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+  .sh-links a { color: var(--accent); }
+  .sh-empty { color: var(--dim); font-size: 0.9rem; padding: 0.6rem 0; }
+  .sh-page .rp-btn:focus-visible, .sh-page a:focus-visible, .sh-page select:focus-visible, .sh-page input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sh-page [hidden] { display: none !important; }
+  .sh-page .rp-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  @media (max-width: 600px) { .sh-item { grid-template-columns: 1fr; } .sh-dl { grid-template-columns: 1fr; } .sh-controls > * { width: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .sh-page * { transition: none; animation: none; } }
+</style>
+</head>
+<body class="report-page sh-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Self</span>-healing</h1>
+      <p>This page shows what Zscaler Made Easy fixed by itself, and the settings in your Zscaler that changed since you approved them. Nothing in your Zscaler changes until you click Heal.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <button type="button" class="rp-btn primary" id="shRunNow">Check the app now</button>
+      <button type="button" class="rp-btn" id="shRefresh">↻ Refresh</button>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+      <section class="sh-sec" aria-labelledby="appH">
+        <h2 id="appH">This app</h2>
+        <p class="sh-lead">The app looks after itself: a job that got stuck, a saved file that was damaged, a file others could read, a lock left behind, a pause that lasted too long. When it can fix the problem it does, and says what it did. When it cannot, it tells you the next step. It never changes your Zscaler.</p>
+        <div class="sh-status" id="appStatus" aria-live="polite">Loading…</div>
+        <ul class="sh-list" id="appChecks" aria-label="App checks"></ul>
+      </section>
+
+      <section class="sh-sec" aria-labelledby="tenH">
+        <h2 id="tenH">Your tenant</h2>
+        <p class="sh-lead">When a setting you approved changes back (a rule turned off, an action made weaker, an engine or dictionary edited or deleted, a fix someone undid), it shows up here with the exact change that puts it back. Heal makes that change the safe way: write mode must be on, the setting is read again first and nothing happens if it moved again, you type a confirmation, the app checks that the change took, and you can undo it. Changes made through this app are never shown as drift.</p>
+        <div class="sh-controls">
+          <label for="shTenant">Tenant<select id="shTenant"></select></label>
+          <label class="chk" for="shWho"><input type="checkbox" id="shWho"> Who changed it (reads ZIA's admin audit log; needs Automation readiness on the Scope page)</label>
+          <button type="button" class="rp-btn primary" id="shScan">Look for drift</button>
+          <button type="button" class="rp-btn" id="shStop" hidden>Stop</button>
+        </div>
+        <div class="sh-note" id="tenScope" role="note"></div>
+        <div class="sh-log" id="tenLog" role="log" aria-live="polite" aria-label="What the scan is doing" hidden></div>
+        <div class="sh-status" id="tenStatus" aria-live="polite"></div>
+        <div id="tenBody"></div>
+        <p class="sh-links"><a href="/report/queue" target="_blank" rel="noopener">Open the change queue</a><a href="/report/health" target="_blank" rel="noopener">Open the proposal queue (FP/TP detection ratio)</a></p>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    const fmt = t => { if (!t) return ''; try { return new Date(t).toLocaleString(); } catch (e) { return t; } };
+    const CHIP = { ok: 'OK', healed: 'Healed', needs_you: 'Needs you' };
+    let view = null, job = null;
+    function announce(t) { const r = $('liveRegion'); r.textContent = ''; setTimeout(() => { r.textContent = t; }, 30); }
+    function status(id, t, bad) { const s = $(id); s.textContent = t || ''; s.classList.toggle('bad', !!bad); }
+    async function call(url, body, method) {
+      const r = await fetch(url, body === undefined && !method ? { cache: 'no-store' } : { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+      return data;
+    }
+
+    // ── This app ───────────────────────────────────────────────────
+    function renderApp(o) {
+      const lr = o.last_run;
+      if (!lr) {
+        status('appStatus', o.settings && o.settings.interval_minutes ? 'The app has not checked itself yet; it does so a few seconds after it starts. Click Check the app now to run it.' : 'Automatic checks are off (DLP_CHECK_SELF_HEAL_MINUTES=0). Click Check the app now to run them.');
+        $('appChecks').innerHTML = '';
+        return;
+      }
+      const c = lr.counts || {};
+      const lead = c.needs_you ? `${c.needs_you} thing(s) need you.` : (c.healed ? `Everything is fine now: ${c.healed} thing(s) were fixed.` : 'Everything is fine.');
+      status('appStatus', `${lead} Last checked ${fmt(lr.at)} (${lr.trigger === 'manual' ? 'you asked' : lr.trigger === 'startup' ? 'when the server started' : 'on the timer'}). Automatic checks: ${(o.settings || {}).timer || ''}.`, !!c.needs_you);
+      $('appChecks').innerHTML = (lr.checks || []).map(k => `<li class="sh-item">
+        <span class="sh-chip ${E(k.status)}">${E(CHIP[k.status] || k.status)}</span>
+        <div><div class="nm">${E(k.name)}</div><div class="sm">${E(k.summary)}</div>
+          ${(k.actions || []).length ? `<ul class="done" aria-label="What was done">${k.actions.map(a => `<li>${E(a)}</li>`).join('')}</ul>` : ''}
+          ${k.next ? `<div class="nx"><strong>Next:</strong> ${E(k.next)}</div>` : ''}
+          ${k.fix ? `<div class="acts"><button type="button" class="rp-btn" data-fix="${E(k.fix.url)}" data-method="${E(k.fix.method || 'POST')}">${E(k.fix.label)}</button></div>` : ''}
+        </div></li>`).join('');
+    }
+    async function loadApp() {
+      try { renderApp(await call('/api/self-heal')); } catch (e) { status('appStatus', `Could not load the checks: ${e.message}`, true); }
+    }
+    $('shRunNow').addEventListener('click', async () => {
+      const b = $('shRunNow'); b.disabled = true; status('appStatus', 'Checking the app…');
+      try { await call('/api/self-heal/run', {}); await loadApp(); announce('The app checks finished.'); }
+      catch (e) { status('appStatus', `The checks could not run: ${e.message}`, true); }
+      b.disabled = false;
+    });
+    $('appChecks').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-fix]'); if (!b) return;
+      const dlg = window.dlpDialog;
+      const ok = dlg ? await dlg.ask({ title: `${b.textContent}?`, body: 'The app restarts and this page reloads when it is back (about ten seconds). Nothing in your Zscaler changes.', okLabel: b.textContent }) : window.confirm(`${b.textContent}?`);
+      if (!ok) return;
+      b.disabled = true;
+      try {
+        await call(b.dataset.fix, {}, b.dataset.method);
+        status('appStatus', 'Restarting… this page reloads when the app answers again.');
+        for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 2000)); try { const r = await fetch('/api/health', { cache: 'no-store' }); if (r.ok) { location.reload(); return; } } catch (err) { /* still restarting */ } }
+      } catch (err) { status('appStatus', err.message, true); b.disabled = false; }
+    });
+
+    // ── Your tenant ────────────────────────────────────────────────
+    function opener() { return window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function' ? window.opener : null; }
+    async function tenantChoices() {
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* none */ }
+      const opts = [];
+      if (opener()) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      $('shTenant').innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+    }
+    function credBody() {
+      const v = $('shTenant').value || 'server', op = opener();
+      if (v === 'opener' && op) { const b = op.migrateCredBody(); delete b.customer_id; return b; }
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    function readJson(key, fallback) { try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; } }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => { const choice = v && typeof v === 'object' ? v.choice : v; if (choice === 'zscaler' || choice === 'alternative') out[id] = choice; });
+      return out;
+    }
+    // The Scope page's selection, live from the opener or as the Scope page publishes it; never guessed.
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) { const lv = readJson('zassess_scopes_live_v1', null); scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null; }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+    const body = extra => Object.assign({}, credBody(), scopeSelection(), extra || {});
+
+    const STATE = { open: ['Needs you', 'needs_you'], approved: ['Approved', 'needs_you'], applied: ['Healed', 'healed'], resolved: ['Back to normal', 'ok'],
+                    rolled_back: ['Undone', 'closed'], failed: ['Heal failed', 'needs_you'], snoozed: ['Snoozed', 'closed'] };
+    function chip(p) {
+      if (p.status === 'dismissed') return `<span class="sh-chip closed">${/^accepted/.test(p.note || '') ? 'Accepted' : 'Dismissed'}</span>`;
+      const [t, cls] = STATE[p.status] || [p.status, 'closed'];
+      return `<span class="sh-chip ${cls}">${E(t)}</span>`;
+    }
+    function itemHtml(p) {
+      const ev = p.evidence || {}, live = p.status === 'open' || p.status === 'approved';
+      const who = ev.who ? `${E(ev.who)}${ev.when ? ` on ${E(fmt(ev.when))}` : ''}` : (ev.when ? E(fmt(ev.when)) : E(ev.how || 'Not known.'));
+      const pick = live && p.one_click ? `<label class="sh-pick"><input type="checkbox" class="shSel" value="${E(p.id)}" aria-label="Select ${E(p.title)}"> Select</label>` : '';
+      return `<li class="sh-item" data-id="${E(p.id)}">${chip(p)}
+        <div><div class="nm">${E(p.title)}</div><div class="sm">${E(ev.what_changed || '')}</div>
+          <dl class="sh-dl">
+            <dt>Approved</dt><dd>${E(ev.approved_value)}${ev.approved_at ? ` (since ${E(fmt(ev.approved_at))}, ${E(ev.approved_source || '')})` : ''}</dd>
+            <dt>Now</dt><dd>${E(ev.current_value)}</dd>
+            <dt>Who and when</dt><dd>${who}</dd>
+            <dt>${p.one_click ? 'Heal does' : 'How to fix'}</dt><dd>${E(p.expected_effect || '')}</dd>
+            ${p.note ? `<dt>Note</dt><dd>${E(p.note)}</dd>` : ''}
+          </dl>
+          <div class="acts">${pick}
+            ${live && p.one_click ? `<button type="button" class="rp-btn primary" data-act="heal">Heal</button>` : ''}
+            ${live ? `<button type="button" class="rp-btn" data-act="accept">Accept, stop proposing</button>` : ''}
+            ${p.status === 'applied' ? `<button type="button" class="rp-btn" data-act="undo">Undo the heal</button>` : ''}
+          </div></div></li>`;
+    }
+    function renderTenant(v) {
+      view = v;
+      const items = v.items || [], live = items.filter(p => p.status === 'open' || p.status === 'approved');
+      const done = items.filter(p => !(p.status === 'open' || p.status === 'approved'));
+      const ls = v.last_scan;
+      let lead;
+      if (!ls) lead = 'Not looked at yet: click Look for drift. The first look remembers your settings as approved; later looks compare with it.';
+      else lead = `${live.length ? `${live.length} setting(s) drifted from what you approved.` : 'Nothing drifted: every setting measured is as you approved it.'} Last looked ${fmt(ls.at)}: ${ls.measured} object(s) of your policy packs measured on ${(ls.channels || []).join(', ') || 'no channel'}.`;
+      status('tenStatus', `${v.tenant_label ? v.tenant_label + ': ' : ''}${lead}${v.writes_enabled === false && live.some(p => p.one_click) ? ' Write mode is off, so Heal is refused until you turn it on in Deploy policy packs.' : ''}`);
+      const oneClick = live.filter(p => p.one_click).length;
+      $('tenBody').innerHTML =
+        (oneClick > 1 ? `<div class="sh-bulk"><button type="button" class="rp-btn" id="shAll">Select all</button><button type="button" class="rp-btn primary" id="shHealSel">Heal selected</button></div>` : '')
+        + (live.length ? `<ul class="sh-list" aria-label="Settings that drifted">${live.map(itemHtml).join('')}</ul>`
+                       : `<p class="sh-empty">${ls ? 'No drift to show: nothing you approved has changed back.' : 'No drift to show yet, because the tenant has not been looked at.'}</p>`)
+        + (done.length ? `<details><summary>Earlier (${done.length}): healed, accepted or back to normal</summary><ul class="sh-list">${done.map(itemHtml).join('')}</ul></details>` : '');
+      if ((v.auto_apply || {}).requested) $('tenScope').textContent = (v.auto_apply.why || '');
+    }
+    function inScope() {
+      const s = scopeSelection(), ch = s.channels || {};
+      const dlpCh = ['web_dlp', 'endpoint_dlp', 'saas_casb', 'email_dlp'].some(k => ch[k] === 'zscaler');
+      return { ok: s.scopes.includes('dlp') && dlpCh, s };
+    }
+    async function loadTenant() {
+      const sc = inScope();
+      if (!sc.ok) {
+        $('tenScope').textContent = 'DLP is not in scope on the Scope page (tick DLP and mark at least one DLP channel as Zscaler), so your tenant is not read or shown here. Open this page from the assessment tab after choosing the scope.';
+        $('shScan').disabled = true; $('tenBody').innerHTML = '<p class="sh-empty">Nothing to show: DLP is not in scope.</p>'; status('tenStatus', '');
+        return;
+      }
+      $('tenScope').textContent = ''; $('shScan').disabled = false;
+      try { renderTenant(await call('/api/self-heal/tenant/view', body())); }
+      catch (e) { status('tenStatus', e.message, true); }
+    }
+    async function follow(id) {
+      let next = 0; const lines = [];
+      const log = $('tenLog'); log.hidden = false; log.textContent = 'Starting…';
+      for (;;) {
+        await new Promise(r => setTimeout(r, 1000));
+        let snap;
+        try { const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(id)}?since=${next}`, { cache: 'no-store' }); if (!r.ok) throw new Error(`HTTP ${r.status}`); snap = await r.json(); }
+        catch (e) { continue; }
+        lines.push(...(snap.logs || [])); next = snap.next;
+        log.textContent = lines.join('\n') || 'Working…'; log.scrollTop = log.scrollHeight;
+        if (snap.status !== 'running') return snap;
+      }
+    }
+    $('shScan').addEventListener('click', async () => {
+      const b = $('shScan'); b.disabled = true; $('shStop').hidden = false; status('tenStatus', 'Looking for drift (read-only)…');
+      try {
+        const st = await call('/api/self-heal/tenant/scan', body({ include_who: $('shWho').checked }));
+        job = st.job_id;
+        const snap = await follow(job);
+        if (snap.status === 'failed') throw new Error(snap.error || 'the scan failed');
+        const res = snap.result || {};
+        if (res.stopped) status('tenStatus', 'Stopped: nothing more was read.');
+        else { if (res.view) renderTenant(Object.assign({ tenant_label: st.tenant_label, writes_enabled: (view || {}).writes_enabled }, res.view));
+               if ((res.errors || []).length || res.note) $('tenScope').textContent = [res.note, ...(res.errors || [])].filter(Boolean).join(' '); }
+        announce('The scan finished.');
+      } catch (e) { status('tenStatus', e.message, true); announce(e.message); }
+      job = null; b.disabled = false; $('shStop').hidden = true;
+    });
+    $('shStop').addEventListener('click', async () => { if (job) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows it */ } } });
+
+    async function heal(ids) {
+      if (!ids.length) { status('tenStatus', 'Select at least one drift to heal.', true); return; }
+      const phrase = (view || {}).confirm_phrase || 'I UNDERSTAND', dlg = window.dlpDialog;
+      const text = `This changes ${ids.length} setting(s) in your Zscaler back to what you approved. Each one is read again first; if it moved again, it is left alone. The change waits in ZIA until an admin clicks Activate, and you can undo it here.`;
+      const typed = dlg ? await dlg.phrase({ title: 'Heal in your Zscaler?', body: text, phrase, okLabel: 'Heal' }) : window.prompt(`${text}\n\nType ${phrase} to continue:`, '');
+      if (!typed) return;
+      status('tenStatus', 'Healing…');
+      try {
+        const out = await call('/api/self-heal/tenant/heal', body({ ids, confirm: typed }));
+        renderTenant(Object.assign({ tenant_label: (view || {}).tenant_label, writes_enabled: (view || {}).writes_enabled }, out.view));
+        const bad = (out.results || []).filter(r => !r.ok);
+        const msg = `${out.healed} healed${bad.length ? `; ${bad.length} not healed: ${bad.map(r => `${r.title || r.id}: ${r.why || r.status}`).join('; ')}` : ''}. ${out.healed ? 'Activate in the ZIA Admin Portal to put it live.' : ''}`;
+        status('tenStatus', msg, !!bad.length); announce(msg);
+      } catch (e) { status('tenStatus', e.message, true); announce(e.message); }
+    }
+    $('tenBody').addEventListener('click', async e => {
+      if (e.target.id === 'shAll') { document.querySelectorAll('.shSel').forEach(c => { c.checked = true; }); return; }
+      if (e.target.id === 'shHealSel') { heal([...document.querySelectorAll('.shSel:checked')].map(c => c.value)); return; }
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      const id = b.closest('.sh-item').dataset.id, dlg = window.dlpDialog;
+      if (b.dataset.act === 'heal') return heal([id]);
+      if (b.dataset.act === 'accept') {
+        const ok = dlg ? await dlg.ask({ title: 'Accept this change?', body: 'The current value becomes the approved one and the app stops proposing to change it back. Nothing in your Zscaler changes. This is recorded in the audit log.', okLabel: 'Accept' }) : window.confirm('Accept this change and stop proposing it?');
+        if (!ok) return;
+        try { renderTenant(Object.assign({ writes_enabled: (view || {}).writes_enabled }, await call('/api/self-heal/tenant/accept', body({ id })))); announce('Accepted.'); }
+        catch (err) { status('tenStatus', err.message, true); }
+        return;
+      }
+      if (b.dataset.act === 'undo') {
+        const ok = dlg ? await dlg.ask({ title: 'Undo this heal?', body: 'The setting is read again and put back to the value it had before the heal, then checked.', okLabel: 'Undo' }) : window.confirm('Undo this heal?');
+        if (!ok) return;
+        try { await call(`/api/proposals/${encodeURIComponent(view.tenant)}/${encodeURIComponent(id)}/rollback`, Object.assign(credBody(), { confirm: true })); await loadTenant(); announce('Undone.'); }
+        catch (err) { status('tenStatus', err.message, true); }
+      }
+    });
+
+    $('shRefresh').addEventListener('click', () => { loadApp(); loadTenant(); });
+    $('shTenant').addEventListener('change', loadTenant);
+    loadApp();
+    tenantChoices().then(loadTenant);
+  })();
+  </script>
+</body>
+</html>

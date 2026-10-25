@@ -799,7 +799,7 @@ def test_the_page_follows_the_report_page_conventions():
     assert '<a class="rp-btn" href="/">← Back to the assessment</a>' in html and '<main class="rp-card"' in html
     order = [html.index(f'<script src="/static/{s}"></script>') for s in ("icons.js", "ui_auth.js", "report_theme.js", "safety_banner.js", "explain.js")]
     assert order == sorted(order)
-    assert 'role="tablist"' in html and html.count('<button type="button" role="tab"') == 2 and html.count('<section role="tabpanel"') == 2
+    assert 'role="tablist"' in html and html.count('<button type="button" role="tab"') == 3 and html.count('<section role="tabpanel"') == 3
     assert 'role="status"' in html and 'aria-live="polite"' in html
     style = html[html.index("<style>"):html.index("</style>")] if "<style>" in html else ""
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", style), "colours come from the tokens"

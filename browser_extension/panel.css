@@ -47,3 +47,6 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .foot { display: flex; justify-content: space-between; margin-top: 14px; font-size: var(--fs-footnote); }
 a { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.expr { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-footnote); background: var(--well); border-radius: var(--r-md); padding: 6px 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.summary { margin: 4px 0; }

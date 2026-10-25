@@ -83,7 +83,7 @@ def info_text(info: str, key: str) -> str:
 
 
 def _doc(page_size="A4", rows=150):
-    doc = pw.PdfDocument(title="Deployment plan: acme → prod", page_size=page_size, footer="DLP-Check · acme")
+    doc = pw.PdfDocument(title="Deployment plan: acme → prod", page_size=page_size, footer="Zscaler Made Easy · acme")
     doc.heading("Deployment plan")
     doc.paragraph("Nothing has been written to the tenant. " * 12)
     doc.key_values([("Tenant", "acme (production)"), ("Plan hash", "ab" * 32)])
@@ -97,7 +97,7 @@ def test_structure_xref_offsets_page_tree_and_document_info():
     doc = _doc()
     pdf = parse_pdf(doc.to_bytes())
     assert len(pdf["pages"]) == len(doc.pages) > 2
-    assert info_text(pdf["info"], "Producer") == "DLP-Check"
+    assert info_text(pdf["info"], "Producer") == "Zscaler Made Easy"
     assert info_text(pdf["info"], "Title") == "Deployment plan: acme → prod"     # info strings are UTF-16: no loss
     assert "/CreationDate (D:" in pdf["info"]
     fonts = b"".join(o for o in pdf["objects"].values() if b"/Type /Font" in o)
@@ -123,7 +123,7 @@ def test_text_appears_and_every_page_has_a_footer_and_its_number():
     for i, p in enumerate(pdf["pages"], start=1):
         t = strings(p["stream"])
         assert f"Page {i} of {n}" in t
-        assert "DLP-Check · acme" in t
+        assert "Zscaler Made Easy · acme" in t
         allt += t
     assert "Deployment plan" in allt and "acme (production)" in allt
     assert any("second (with parentheses) and a back\\slash" == s for s in allt)

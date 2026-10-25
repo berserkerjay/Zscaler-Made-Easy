@@ -74,7 +74,7 @@ A JSON array. Each entry is either a **custom** dictionary (with patterns/phrase
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | yes | Must be unique in tenant. A name the Admin Portal shows one of Zscaler's predefined dictionaries under (`Private Key`, `IBAN`, `Credit Cards`, `Medical Information`, …) is refused by ZIA as a duplicate; DLP-Check renames such a dictionary `Z-<name>` when the pack is loaded, rewrites the `D:` references in the engines, and says so in the plan and the deploy log — the file is left as written |
+| `name` | yes | Must be unique in tenant. A name the Admin Portal shows one of Zscaler's predefined dictionaries under (`Private Key`, `IBAN`, `Credit Cards`, `Medical Information`, …) is refused by ZIA as a duplicate; Zscaler Made Easy renames such a dictionary `Z-<name>` when the pack is loaded, rewrites the `D:` references in the engines, and says so in the plan and the deploy log — the file is left as written |
 | `custom_phrase_match_type` | yes | `MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY` (any phrase or pattern), `MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY` (all of them), or `MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE` (a pattern counts when a phrase is near it; the only type ZIA accepts a `proximity` window on) |
 | `patterns` or `phrases` | at least one | Empty dicts are skipped |
 | `description` | no | Shown in ZIA admin UI |
@@ -179,7 +179,7 @@ An array of DLP web rules. Each policy points to one or more engines by **name**
 | Field | Required | Default | Notes |
 |---|---|---|---|
 | `name` | yes | — | Only letters, digits, spaces, underscores, hyphens, dots and parentheses (the character set ZIA accepts for engine names, held for every object; see docs/SHARED_EXECUTION_PATH.md). Starts with `Z-` by convention (groups visually in ZIA UI). **SaaS rules: at most 31 characters** ("Name exceeds the max length 31 characters" from a real tenant); `tools/fan_out_channels.py` shortens a mirror's name at a word boundary to fit, and preflight refuses a longer one. Web, Endpoint and Email rules took longer names on the same tenant |
-| `action` | no | `ALLOW` | What the rule is designed to do. **Every pack ships monitor-only**: at load time DLP-Check turns `BLOCK` / `CONFIRM` into `target_action` and creates the rule with the channel's monitor action (`ALLOW`; `OFLCASB_DLP_REPORT_INCIDENT` on SaaS). |
+| `action` | no | `ALLOW` | What the rule is designed to do. **Every pack ships monitor-only**: at load time Zscaler Made Easy turns `BLOCK` / `CONFIRM` into `target_action` and creates the rule with the channel's monitor action (`ALLOW`; `OFLCASB_DLP_REPORT_INCIDENT` on SaaS). |
 | `target_action` | no | — | Only for packs you upload with `BLOCK` / `CONFIRM` rules: the app keeps the designed action here and creates the rule monitor-only. The shipped packs carry none: every rule simply monitors, and enforcing is the customer's decision in the portal. |
 | `state` | no | `DISABLED` | **Every pack ships `DISABLED`**; an `ENABLED` value is kept as `target_state` and the rule is still created disabled. |
 | `rank` | no | 7 | Admin rank 0-7. **Every shipped pack carries 0 on every rule**, as the Fed pack's production rules do (a real tenant refused a rank-7 SaaS rule's order); an uploaded pack that names none deploys at 7, and the Rank 0 switch forces 0 |
@@ -599,8 +599,8 @@ admins can see which policy pack version it came from and who deployed it.
 The tag names only the assessor (Scope assessment, else the saved
 profile's assessor; no brackets or line breaks, at most 40 bytes). The
 assessor's name is required: every pack push without one, or with the
-tool's own name in any spelling (`DLP-Check`, `dlp check`, `DLPCheck`, ...),
-is refused before the tenant is signed in to, so no new tag says `DLP-Check`; that name is
+tool's own name in any spelling (`Zscaler Made Easy`, `dlp check`, `DLPCheck`, ...),
+is refused before the tenant is signed in to, so no new tag says `Zscaler Made Easy`; that name is
 found only in tags written by earlier deploys. Removal, export, the journey
 and the inventory recognise both this form and the older
 `[DLP-Check ...]` tag; an assessor's tag counts only for a pack in the
@@ -673,7 +673,7 @@ dictionary. Policies and `pack.json` are authored by hand.
 
 Every pack (policy packs included) can be deployed with the official
 [`zscaler/zia`](https://registry.terraform.io/providers/zscaler/zia/latest/docs)
-provider instead of the in-app executor. DLP-Check generates the workspace;
+provider instead of the in-app executor. Zscaler Made Easy generates the workspace;
 Terraform owns the lifecycle: `plan` shows the diff, `apply` converges,
 `destroy` removes exactly what the pack created.
 
@@ -688,12 +688,12 @@ python pack_terraform.py zbp_enterprise_baseline --out terraform
 
 The committed workspaces name no assessor: each description's tag is
 `[${var.assessor} pack …]` and `variable "assessor"` is required (no default,
-never the tool's name: the same `(?i)dlp[\W_]*check` rule as the app and the CLI), so `terraform plan` and `apply` refuse until you name
+never the tool's name: the same `(?i)dlp[\W_]*check|zscaler[\W_]*made[\W_]*easy` rule as the app and the CLI), so `terraform plan` and `apply` refuse until you name
 the assessor (`-var 'assessor=Jane Doe'`, `terraform.tfvars` or
 `TF_VAR_assessor`). To bake the name in instead, generate the workspace with
 `python pack_terraform.py <pack_id> --out <dir> --assessor "Jane Doe"`, or
 download it from the app with the assessor named. Nothing a workspace pushes
-is tagged DLP-Check.
+is tagged Zscaler Made Easy.
 
 **Gap mode (assess, then close the gap with Terraform).** From Deploy
 Studio, run preflight and click *Export Terraform*, or call the API with
@@ -733,7 +733,7 @@ card) returns the static workspace.
 | `README.md`, `.gitignore`, `terraform.tfvars.example` | requirements, inputs, outputs, state and lock-file guidance, verify and review steps; state and secrets kept out of git |
 
 Every object carries a `[<assessor> baseline|pack <id> v<ver>] Terraform-managed.`
-description tag. The assessor's name is required: a workspace generated without one tags `[${var.assessor} ...]`, and `terraform apply` needs `var.assessor` set; `DLP-Check` appears only in tags written by earlier deploys, which are still recognised. Every file is written the way `terraform fmt` lays it out
+description tag. The assessor's name is required: a workspace generated without one tags `[${var.assessor} ...]`, and `terraform apply` needs `var.assessor` set; `Zscaler Made Easy` appears only in tags written by earlier deploys, which are still recognised. Every file is written the way `terraform fmt` lays it out
 (`pack_terraform.hcl_fmt`); CI regenerates the committed workspaces, fails
 on any drift or new file, runs `terraform fmt -check`, and `terraform init`
 + `validate` against the real provider schema.

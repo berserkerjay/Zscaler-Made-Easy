@@ -356,7 +356,7 @@ def branch_choices(app_dir: str) -> List[Dict[str, Any]]:
 
 CONTAINER_UPDATE_HELP = (
     "This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker, in the "
-    "DLP-Check folder: Windows  powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 ; Mac or Linux  ./update_container.sh . "
+    "Zscaler Made Easy folder: Windows  powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 ; Mac or Linux  ./update_container.sh . "
     "Add -Branch main|qa|dev (Windows) or --branch main|qa|dev (Mac, Linux) to switch the branch it updates from; "
     "later runs keep it. Add -Schedule (Windows) or --schedule (Mac, Linux) once to update automatically every day. "
     "Saved data survives; "
@@ -364,7 +364,7 @@ CONTAINER_UPDATE_HELP = (
 
 
 def in_container() -> bool:
-    """True inside the DLP-Check image (the Dockerfile sets DLP_CHECK_IN_CONTAINER=1)."""
+    """True inside the Zscaler Made Easy image (the Dockerfile sets DLP_CHECK_IN_CONTAINER=1)."""
     return os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1"
 
 
@@ -477,7 +477,7 @@ def migrate_settings(app_dir: str, dirty: List[str]) -> Tuple[List[str], List[st
         # Their settings now live in local_settings.bat; put the script back
         # so the pull is not refused. Any other edit in it goes to the stash
         # copy below, so nothing is lost.
-        cp = _git(app_dir, "stash", "push", "-m", f"DLP-Check updater: {rel} before restore", "--", rel)
+        cp = _git(app_dir, "stash", "push", "-m", f"Zscaler Made Easy updater: {rel} before restore", "--", rel)
         if cp.returncode == 0:
             restored.append(rel)
     return migrated, restored
@@ -546,7 +546,7 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
                  ", ".join(migrated) + " (the script itself was restored; its old copy is in git stash)")
         remaining = dirty_files(app_dir)
         if remaining:
-            msg_stash = f"DLP-Check updater: local edits before update {time.strftime('%Y-%m-%d %H:%M')}"
+            msg_stash = f"Zscaler Made Easy updater: local edits before update {time.strftime('%Y-%m-%d %H:%M')}"
             cp = _git(app_dir, "stash", "push", "-m", msg_stash)
             if cp.returncode != 0 and _index_hint(_err(cp)):
                 # The index could not be written: clear a lock that appeared
@@ -764,7 +764,7 @@ def schedule_restart(app_dir: str, delay: float = 0.8, dry_run: bool = False) ->
 
 def main(argv: Optional[List[str]] = None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="Update DLP-Check in place (git pull, edits preserved).")
+    ap = argparse.ArgumentParser(description="Update Zscaler Made Easy in place (git pull, edits preserved).")
     ap.add_argument("--dir", default=os.path.dirname(os.path.abspath(__file__)), help="app folder (default: this file's folder)")
     ap.add_argument("--no-deps", action="store_true", help="skip the hash-verified pip install of requirements.lock")
     ap.add_argument("--status", action="store_true", help="only report where this install stands")

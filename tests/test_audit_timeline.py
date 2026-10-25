@@ -1,5 +1,5 @@
 """Audit timeline: ZIA's admin audit log (through its audit log report
-API) merged with DLP-Check's deployment records and its own audit log.
+API) merged with Zscaler Made Easy's deployment records and its own audit log.
 CSV fixtures with varied columns, ordering, provenance, diffs, the scope
 refusal and secrets. Fakes only: no tenant is called.
 
@@ -139,20 +139,20 @@ def test_one_timeline_newest_first_with_changes_by_someone_else_marked():
     assert times == sorted(times, reverse=True) and ev[0]["ts"] is not None
     assert {e["source"] for e in ev} == {"zia", "deployment", "app"}
     by = {(e["source"], e["action"], e["object"]): e for e in ev}
-    # Alice enabled and hardened the rule a pack deployed, and no DLP-Check write explains it.
+    # Alice enabled and hardened the rule a pack deployed, and no Zscaler Made Easy write explains it.
     alice = by[("zia", "Update", "PCI block")]
     assert alice["dlp_check_object"] and alice["foreign_change"] and "Jane Doe" in alice["foreign_reason"] and "alice@corp.example" in alice["foreign_reason"]
     assert alice["provenance"]["pack"] == "pci" and alice["category"] == "Data Loss Prevention / DLP Policy Rules"
     assert {d["field"]: (d["before"], d["after"]) for d in alice["diff"]} == {"action": ("ALLOW", "BLOCK"), "state": ("DISABLED", "ENABLED")}
-    # The dictionary DLP-Check created itself (an object_write 5 minutes later) is its own, not someone else's.
+    # The dictionary Zscaler Made Easy created itself (an object_write 5 minutes later) is its own, not someone else's.
     mine = by[("zia", "Create", "Bank accounts")]
     assert mine["dlp_check_object"] and not mine["foreign_change"]
-    # Carol changed an engine the deployment record lists (no tag in its description): still DLP-Check's object.
+    # Carol changed an engine the deployment record lists (no tag in its description): still Zscaler Made Easy's object.
     carol = by[("zia", "Update", "Customer engine")]
     assert carol["dlp_check_object"] and carol["foreign_change"] and "deployment record" in carol["foreign_reason"] and carol["provenance"] is None
-    # A sign-in and a change to an object DLP-Check never made are not marked.
+    # A sign-in and a change to an object Zscaler Made Easy never made are not marked.
     assert not by[("zia", "Sign In", "")]["foreign_change"] and not by[("zia", "Update", "ops admin")]["dlp_check_object"]
-    # DLP-Check's own records: this tenant's only; the write-mode switch kept, other api lines left out.
+    # Zscaler Made Easy's own records: this tenant's only; the write-mode switch kept, other api lines left out.
     assert ("deployment", "Deploy policy packs", "PCI block, Customer engine") in by and not any(e["tenant"] == "other (production)" for e in ev)
     assert ("app", "Write mode on", "") in by and not any("preflight" in json.dumps(e) for e in ev)
     assert ("app", "create dictionary", "Bank accounts") in by and ("app", "proposal decision", "PCI block") in by
@@ -337,7 +337,7 @@ def test_the_zia_part_is_refused_before_any_call_when_automation_is_not_in_scope
     assert "secret-secret-secret" not in r.text
     r = t.post("/api/audit-timeline/start", json={**CREDS, **IN_SCOPE, "days": 400})
     assert r.status_code == 400 and "180 days" in r.json()["detail"]
-    # DLP-Check's own records alone need no sign-in and no scope.
+    # Zscaler Made Easy's own records alone need no sign-in and no scope.
     r = t.post("/api/audit-timeline/start", json={"include_zia": False, "start": "2026-10-18", "end": "2026-10-24"})
     assert r.status_code == 200, r.text
     snap = _follow(t, r.json()["job_id"])
