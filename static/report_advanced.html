@@ -71,8 +71,8 @@
           <div class="adv-cols">
             <div class="bp-card">
               <div class="t">What it does</div>
-              <p>A small Chrome and Edge extension that works with this app on your computer. On any site, its button or a right-click opens the <strong>Path analyzer</strong> with that site, a link or a selected hostname filled in; the popup also opens the Live DLP feed, the Flow animator and this app.</p>
-              <p>It holds no credentials and no tenant data: it only opens this app's pages and checks that the app is running. Signing in, the UI token, write mode and every tenant read stay here. It asks for no access to the pages you visit (only the tab you click it on), drops the query string from any address it passes on, and talks only to <code>127.0.0.1</code> or <code>localhost</code>.</p>
+              <p>A small Chrome and Edge extension that works with this app on your computer. In the <strong>ZIA admin console</strong> it puts a badge next to each DLP dictionary, engine and rule (what uses it, or its most serious finding) and opens a <strong>side panel</strong> with the details, a search, and a stage you can export as a JSON pack or Terraform; the badges are off until you switch them on in its settings. On any site, its button or a right-click opens the <strong>Path analyzer</strong> with that site filled in.</p>
+              <p>Every answer comes from this app: it holds no credentials, talks only to <code>127.0.0.1</code> or <code>localhost</code>, and this app accepts only read-only requests from it (the console index and Export from tenant); deploying, removing and fixing stay here behind write mode. The badges compare names inside the console page; nothing from the console is sent anywhere.</p>
               <p><a class="rp-btn primary" href="/api/browser-extension.zip" download>Download the extension</a></p>
             </div>
             <div class="bp-card">

@@ -22,11 +22,11 @@ def _read(name):
 # Toolbar opener -> catalogue key. A new toolbar button must be added here
 # AND to explain.js, so nothing ships unexplained.
 TOOLBAR = {
-    "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion",
+    "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openShadowRulesTab()": "shadow",
     "openToolTab('efficacy')": "efficacy", "openDetectionHealthTab()": "health", "openDlpPacksModal()": "packs",
     "openToolTab('terraform')": "terraform", "openVendorMigrateTab()": "vendormigrate", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates",
-    "openLogAnalyzerTab()": "logs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live",
+    "openLogAnalyzerTab()": "logs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live", "openAuditTimelineTab()": "audit",
     "openReferenceTab('data-security-portfolio-framework')": "refportfolio", "openReferenceTab('ai-security-framework')": "refai",
     "openReferenceTab('genai-security-framework')": "refgenai", "openReferenceTab('framework-machine')": "refmachine",
     "openReferenceTab('data-security-architect')": "dsarchitect",

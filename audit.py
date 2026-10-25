@@ -33,9 +33,10 @@ _SECRET_KEY = re.compile(r"secret|token|password|passwd|credential|authorization
 _IDENTITY_KEY = re.compile(r"^(user_?name|login|admin_?login)$", re.I)
 _VANITY_KEY = re.compile(r"^vanity_?domain$", re.I)
 # Fields that carry uploaded customer content (log bundles, PAC files, policy
-# exports, DLP test corpora and evidence): never written to the audit log,
-# not even a prefix; the log keeps that the field was sent and its size.
-_CONTENT_KEY = re.compile(r"^(content|corpus|export|text|samples?|evidence|raw|payload)$", re.I)
+# exports, DLP test corpora and evidence, the hosts a HAR file named): never
+# written to the audit log, not even a prefix; the log keeps that the field
+# was sent and its size.
+_CONTENT_KEY = re.compile(r"^(content|corpus|export|text|samples?|evidence|raw|payload|har_hosts)$", re.I)
 _MAX_VALUE = 200
 _MAX_KEYS = 40
 logger = logging.getLogger("dlp_check.audit")

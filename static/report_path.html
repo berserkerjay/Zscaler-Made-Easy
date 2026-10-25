@@ -27,6 +27,8 @@
       <button type="button" class="rp-btn primary" id="paRun">Analyze</button>
       <button type="button" class="rp-btn" id="paFresh" title="Read the tenant again before analyzing (otherwise the last read is reused)" aria-pressed="false">↻ Fresh read</button>
       <a class="rp-btn" id="expJson" hidden download="path-analysis.json">JSON</a>
+      <button type="button" class="rp-btn" id="paHarBtn" aria-describedby="paHarHow" title="Analyze every host a browser HAR file names. The file is read in this browser; only host names and request counts are sent.">📂 Import a HAR file</button>
+      <input type="file" id="paHar" accept=".har,.json,application/json" hidden aria-label="HAR file to import">
     </nav>
     <main class="rp-card">
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
@@ -44,6 +46,7 @@
             <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every point that blocks or impacts the traffic is listed with the rule or profile by name, then the path hop by hop against the framework above.</li>
           </ol>
           <div class="df-hint">Nothing is written to the tenant. This is a configuration prediction, not an observed transaction or payload scan. Identity-scoped rules remain conditional; the assumptions are listed under every result.</div>
+          <p class="df-hint pa-har-how" id="paHarHow"><strong>Or import a HAR file</strong> (browser developer tools, Network tab, Save all as HAR) to analyze every host a user's session reached. The file is read in this browser and never uploaded: cookies, headers, URL paths and bodies stay here; only the host names, request counts, methods and upload sizes are sent. Up to 100 MB and 200 hosts per run (hosts that sent data first).</p>
         </div>
       </div>
     </main>
@@ -54,6 +57,7 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/data_flow.js"></script>
+  <script src="/static/har_parse.js"></script>
   <script>
   (function () {
     const E = _dfE;
@@ -335,6 +339,170 @@
       exp.hidden = false;
       history.replaceState(null, '', `/report/path?d=${encodeURIComponent(d.input)}&n=${encodeURIComponent(res.network)}&p=${encodeURIComponent(res.platform)}`);
     }
+
+    // ── HAR import: every host a browser session reached ─────────────
+    // The HAR file is read here (HarParse, static/har_parse.js): only host
+    // names and their counts leave the browser. The batch reads the tenant
+    // once and traces each host; a row opens that host's full analysis.
+    const HAR_OUT = { bypassed: 'fail', blocked: 'block', blind: 'fail', enforce: 'ok', monitor: 'warn', none: 'warn' };
+    let har = null;          // { name, parsed, result, view: { key, dir, q, outcome, uploads } }
+    function fmtBytes(n) { n = Number(n) || 0; return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
+    async function harPicked(file) {
+      if (!file) return;
+      if (running) { say('An analysis is running; wait for it or stop it first.'); return; }
+      if (file.size > HarParse.MAX_BYTES) { fail('The HAR file is too large', `${file.name} is ${fmtBytes(file.size)}; this page reads at most ${fmtBytes(HarParse.MAX_BYTES)}. Export a shorter capture.`); return; }
+      let text;
+      try { text = await file.text(); } catch (e) { fail('The HAR file could not be read', e.message || String(e)); return; }
+      const parsed = HarParse.parse(text, { maxBytes: HarParse.MAX_BYTES, maxHosts: HarParse.MAX_HOSTS });
+      text = null;
+      if (!parsed.ok) { fail('The HAR file could not be used', parsed.error); say(parsed.error); return; }
+      har = { name: file.name, parsed, result: null, view: { key: 'uploads', dir: -1, q: '', outcome: '', uploads: false } };
+      renderHarIntro();
+      say(`${parsed.total_hosts} host(s) found in ${file.name}.`);
+    }
+    function moreNote(p) {
+      if (!p.capped) return '';
+      return `<div class="pa-har-cap" role="note"><strong>${p.more.length} more host(s) not analyzed</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.
+        <details><summary>Show the ${p.more.length} host(s) left out</summary><ul class="pa-har-more">${p.more.map(m => `<li>${E(m.host)} <span class="df-by">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details></div>`;
+    }
+    function renderHarIntro() {
+      const p = har.parsed, ups = p.hosts.filter(h => h.uploads).length;
+      body.innerHTML = `<section class="pa-har" aria-labelledby="paHarH">
+        <h2 class="df-h" id="paHarH">HAR file: ${E(har.name)}</h2>
+        <div class="pa-facts"><span class="df-prof"><span class="k">Requests</span><span class="v">${p.entries}</span></span>
+          <span class="df-prof"><span class="k">Hosts</span><span class="v">${p.total_hosts}</span></span>
+          <span class="df-prof"><span class="k">Hosts that sent data</span><span class="v">${ups}</span></span>
+          ${p.skipped ? `<span class="df-prof"><span class="k">Entries without a web URL</span><span class="v">${p.skipped}</span></span>` : ''}</div>
+        ${moreNote(p)}
+        <p class="df-hint">Analyzing sends ${p.hosts.length} host name(s) with their request counts to this app, which reads the tenant once (only what is in scope on the Scope page) and traces each host. Nothing else from the file leaves this browser, and nothing is written to the tenant.</p>
+        <p><button type="button" class="rp-btn primary" id="paHarGo">Analyze ${p.hosts.length} host(s)</button></p>
+      </section>`;
+      document.getElementById('paHarGo').addEventListener('click', runHar);
+      document.getElementById('paHarGo').focus();
+    }
+    async function runHar() {
+      if (running || !har) return;
+      const p = har.parsed;
+      const net = document.getElementById('paNet').value, plat = document.getElementById('paPlat').value;
+      const btn = document.getElementById('paRun');
+      running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true;
+      body.innerHTML = liveHtml(`${p.hosts.length} host(s) from ${har.name}`);
+      document.getElementById('paStop').addEventListener('click', stop);
+      say(`Analyzing ${p.hosts.length} host(s) from the HAR file.`);
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = document.getElementById('paElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const hosts = p.hosts.map(h => ({ host: h.host, requests: h.requests, uploads: h.uploads, bytes_sent: h.bytes_sent, methods: h.methods, schemes: h.schemes }));
+        const payload = Object.assign({}, credBody(), scopeSelection(), { har_hosts: hosts, network: net, platform: plat, report_id: fresh ? '' : lastReport });
+        const r = await fetch('/api/path-analyzer/batch/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        job = d.job_id;
+        if (stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ } }
+        const snap = await follow(job);
+        if (!snap.result || !Array.isArray(snap.result.rows)) throw new Error(snap.error || (snap.result && snap.result.stopped) || (snap.status === 'cancelled' ? 'You clicked Stop before any host was analyzed.' : 'The analysis did not finish.'));
+        har.result = snap.result; har.logs = snap.logs || [];
+        if (snap.result.report_id) lastReport = snap.result.report_id;
+        setFresh(false);
+        renderHarResults();
+        say(`${snap.result.rows.length} host(s) analyzed${snap.result.stopped ? '; stopped before the rest' : ''}.`);
+      } catch (e) {
+        fail('The HAR analysis could not run', e.message);
+        say(`The HAR analysis could not run: ${e.message}`);
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; btn.disabled = false; btn.textContent = 'Analyze';
+      }
+    }
+    const HAR_COLS = [['host', 'Host'], ['requests', 'Requests'], ['uploads', 'Uploads'], ['outcome', 'Outcome'], ['stops_at', 'Where it stops'], ['deciding_rule', 'Deciding rule'], ['dlp_rules', 'DLP rules on the path']];
+    function harRows() {
+      const v = har.view, q = v.q.trim().toLowerCase();
+      const rows = har.result.rows.filter(r => (!v.outcome || r.outcome === v.outcome) && (!v.uploads || r.uploads > 0) &&
+        (!q || [r.host, r.stops_at, r.deciding_rule, (r.dlp_rules || []).join(' '), r.outcome].join(' ').toLowerCase().includes(q)));
+      const val = r => { const x = r[v.key]; return Array.isArray(x) ? x.join(', ').toLowerCase() : typeof x === 'number' ? x : String(x || '').toLowerCase(); };
+      return rows.sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * v.dir || a.host.localeCompare(b.host); });
+    }
+    function harTable() {
+      const rows = harRows(), v = har.view;
+      const head = HAR_COLS.map(([k, l]) => `<th scope="col" aria-sort="${v.key === k ? (v.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button type="button" class="pa-har-sort" data-k="${k}">${E(l)}${v.key === k ? (v.dir > 0 ? ' ▴' : ' ▾') : ''}</button></th>`).join('');
+      const body_ = rows.map(r => { const cls = HAR_OUT[r.outcome_key] || 'dim'; return `<tr data-host="${E(r.host)}">
+          <td><button type="button" class="pa-har-host" data-host="${E(r.host)}" aria-label="Show the full analysis for ${E(r.host)}">${E(r.host)}</button></td>
+          <td class="num">${r.requests}</td><td class="num">${r.uploads ? `${r.uploads} <span class="df-by">${E(fmtBytes(r.bytes_sent))}</span>` : '0'}</td>
+          <td><span class="df-chip st-${cls}">${E(r.outcome)}</span></td><td>${E(r.stops_at || '')}</td><td>${r.deciding_rule ? `<code>${E(r.deciding_rule)}</code>` : '—'}</td>
+          <td>${(r.dlp_rules || []).length ? (r.dlp_rules || []).map(n => `<code>${E(n)}</code>`).join(', ') : '—'}</td></tr>`; }).join('');
+      return `<div class="df-tablewrap"><table class="df-table pa-har-table"><caption class="sr-only">Path analyzer result per host of the HAR file; select a host for its full analysis</caption>
+        <thead><tr>${head}</tr></thead><tbody>${body_ || `<tr><td colspan="${HAR_COLS.length}">No host matches the filter.</td></tr>`}</tbody></table></div>
+        <div class="df-hint" id="paHarCount">${rows.length} of ${har.result.rows.length} host(s) shown.</div>`;
+    }
+    function renderHarResults() {
+      const res = har.result, p = har.parsed, v = har.view;
+      const outcomes = Array.from(new Set(res.rows.map(r => r.outcome))).sort();
+      const counts = Object.entries(res.counts || {}).map(([k, n]) => `<span class="df-prof"><span class="k">${E(k)}</span><span class="v">${n}</span></span>`).join('');
+      meta.textContent = `${res.tenant_label || ''} · ${res.fresh_read ? 'tenant read just now' : 'tenant read reused'} · ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
+      body.innerHTML = `<section class="pa-har" aria-labelledby="paHarH">
+        <h2 class="df-h" id="paHarH">HAR file: ${E(har.name)} · ${res.rows.length} host(s) analyzed</h2>
+        ${res.stopped ? `<div class="bp-card risk"><div class="t">Stopped</div><div>${E(res.stopped)}</div></div>` : ''}
+        <div class="pa-facts">${counts}</div>
+        ${moreNote(p)}
+        ${(res.not_analyzed || []).length ? `<div class="pa-har-cap"><strong>${res.not_analyzed.length} host(s) not analyzed</strong> because you clicked Stop: ${E(res.not_analyzed.slice(0, 20).join(', '))}${res.not_analyzed.length > 20 ? ' …' : ''}</div>` : ''}
+        ${(res.skipped || []).length ? `<div class="df-hint">${res.skipped.length} name(s) were not a hostname or IP address and were skipped.</div>` : ''}
+        ${Object.keys(res.errors || {}).length ? `<div class="df-hint">Not analyzed: ${E(Object.entries(res.errors).map(([h, e]) => `${h} (${e})`).join('; '))}</div>` : ''}
+        <div class="pa-har-tools" role="group" aria-label="Filter and export the results">
+          <label class="df-ctl"><span class="lbl">Filter</span><input type="search" id="paHarQ" value="${E(v.q)}" placeholder="Host, rule or stop" aria-label="Filter the hosts by text"></label>
+          <label class="df-ctl"><span class="lbl">Outcome</span><select id="paHarO" aria-label="Show one outcome"><option value="">Every outcome</option>${outcomes.map(o => `<option value="${E(o)}"${o === v.outcome ? ' selected' : ''}>${E(o)}</option>`).join('')}</select></label>
+          <label class="df-ctl"><input type="checkbox" id="paHarU"${v.uploads ? ' checked' : ''}><span class="lbl">Only hosts that received uploads</span></label>
+          <span class="sep"></span>
+          <button type="button" class="rp-btn" id="paHarCsv">CSV</button><button type="button" class="rp-btn" id="paHarJson">JSON</button>
+        </div>
+        <div id="paHarTable">${harTable()}</div>
+        <p class="df-hint">Outcomes are configuration predictions for any user on the network and platform chosen above: "inspected" means the traffic reaches Zscaler decrypted with a DLP rule configured to enforce; nothing was sent to or scanned at the destination.</p>
+        <details class="pa-details"><summary>What was read (${har.logs.length} line${har.logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(har.logs.join('\n'))}</div></details>
+      </section>`;
+      const redraw = () => { document.getElementById('paHarTable').innerHTML = harTable(); wireHarTable(); };
+      document.getElementById('paHarQ').addEventListener('input', e => { v.q = e.target.value; redraw(); });
+      document.getElementById('paHarO').addEventListener('change', e => { v.outcome = e.target.value; redraw(); });
+      document.getElementById('paHarU').addEventListener('change', e => { v.uploads = e.target.checked; redraw(); });
+      document.getElementById('paHarCsv').addEventListener('click', () => harExport('csv'));
+      document.getElementById('paHarJson').addEventListener('click', () => harExport('json'));
+      document.getElementById('expJson').hidden = true;
+      wireHarTable();
+    }
+    function wireHarTable() {
+      document.querySelectorAll('.pa-har-sort').forEach(b => b.addEventListener('click', () => {
+        const v = har.view, k = b.dataset.k;
+        v.dir = v.key === k ? -v.dir : (k === 'host' || k === 'outcome' || k === 'stops_at' || k === 'deciding_rule' ? 1 : -1); v.key = k;
+        document.getElementById('paHarTable').innerHTML = harTable(); wireHarTable();
+        const again = document.querySelector(`.pa-har-sort[data-k="${k}"]`); if (again) again.focus();
+        say(`Sorted by ${b.textContent.replace(/[▴▾]/g, '').trim()}, ${v.dir > 0 ? 'ascending' : 'descending'}.`);
+      }));
+      document.querySelectorAll('.pa-har-table tbody tr[data-host]').forEach(tr => tr.addEventListener('click', e => { if (!e.target.closest('button')) showHarHost(tr.dataset.host); }));
+      document.querySelectorAll('.pa-har-host').forEach(b => b.addEventListener('click', () => showHarHost(b.dataset.host)));
+    }
+    async function showHarHost(host) {
+      if (!har || !har.result) return;
+      try {
+        const r = await fetch(`/api/path-analyzer/batch/${encodeURIComponent(har.result.batch_id)}/host?host=${encodeURIComponent(host)}`, { cache: 'no-store' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        render(d, []);
+        body.insertAdjacentHTML('afterbegin', `<p class="pa-har-back"><button type="button" class="rp-btn" id="paHarBack">← Back to the HAR results</button></p>`);
+        document.getElementById('paHarBack').addEventListener('click', () => { renderHarResults(); const b = document.querySelector(`.pa-har-host[data-host="${CSS.escape(host)}"]`); if (b) b.focus(); });
+        document.getElementById('paHarBack').focus();
+        say(`${host}: ${d.verdict.headline}`);
+      } catch (e) { say(`The analysis for ${host} could not be shown: ${e.message}`); }
+    }
+    async function harExport(fmt) {
+      try {
+        const r = await fetch(`/api/path-analyzer/batch/${encodeURIComponent(har.result.batch_id)}/export?format=${fmt}`, { cache: 'no-store' });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`); }
+        const blob = await r.blob();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `path-har-${(har.name || 'hosts').replace(/\.[a-z]+$/i, '').replace(/[^a-z0-9.-]/gi, '_')}.${fmt}`;
+        document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+        say(`Exported as ${fmt.toUpperCase()}.`);
+      } catch (e) { say(`The export failed: ${e.message}`); }
+    }
+    document.getElementById('paHarBtn').addEventListener('click', () => document.getElementById('paHar').click());
+    document.getElementById('paHar').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; harPicked(f); });
 
     document.getElementById('paRun').addEventListener('click', run);
     document.getElementById('paDest').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
