@@ -121,6 +121,14 @@ what you get, what to do next.
   carries bits through its rule and the evidence lane to Workflow
   Automation, its rule tagged enforce or monitor. It covers DLP incidents
   only, not the whole traffic log, and says so.
+- **Traffic insights** — what the tenant's traffic actually did over a
+  time window (up to 92 days), from ZIA Insights: web traffic allowed and
+  blocked and by location, the cloud applications in use (Shadow IT), SaaS
+  security by application, firewall traffic by action, and the users with
+  the most security incidents (on screen only, never exported). Needs ZIA
+  Insights ticked on the Scope page and a OneAPI API client. It says
+  plainly what Insights cannot answer: traffic by URL category, per user,
+  per policy rule or to one host.
 - **Bypass & non-inspected traffic** — every SSL exemption, allow rule,
   Client Connector bypass and PAC exception that lets traffic skip
   inspection, with exports. Where: opened from Traffic flow & gaps.
@@ -370,6 +378,11 @@ Being honest about the edges:
   filtering, Cloud App Control and firewall decisions that never trip a
   DLP rule are not in it; that is Web Insights or a Cloud NSS feed, which
   the app does not read.
+- **Traffic insights** reads ZIA Insights' aggregated numbers, not the
+  transaction log: the installed SDK's Z-Insights queries cannot group
+  traffic by URL category, user or policy rule, or filter it to one host,
+  so rule hit counts and the Path analyzer's recent traffic to a
+  destination are not available from it.
 - The **classic ZIA API** sign-in covers ZIA only.
 - **Review & remediate** covers the failed checks that have a known,
   scripted fix, not every finding.

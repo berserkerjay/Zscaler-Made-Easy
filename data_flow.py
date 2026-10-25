@@ -78,9 +78,10 @@ PATH_SECTIONS: Dict[str, Tuple[str, Tuple[str, ...], Optional[str]]] = {
 # The ZIA policy sections that place the destination: the URL categories
 # list and ZIA's URL lookup are read only when one of them is in scope.
 _PLACING = ("cac", "url", "ssl", "ftc", "dlp")
-SCOPE_KEYS = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac")
+SCOPE_KEYS = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights")
 SCOPE_LABELS = {"dlp": "DLP", "zia_extras": "ZIA platform", "zpa": "ZPA", "zcc": "ZCC", "genai": "GenAI & prompts",
-                "automation": "Automation readiness", "zdx": "ZDX", "zidentity": "ZIdentity", "rbac": "RBAC"}
+                "automation": "Automation readiness", "zdx": "ZDX", "zidentity": "ZIdentity", "rbac": "RBAC",
+                "insights": "ZIA Insights (traffic data)"}
 NOTHING_IN_SCOPE = ("Nothing the Path analyzer reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "
                     "and mark the channels you run on Zscaler, then analyze again.")
 MAP_NOTHING_IN_SCOPE = ("Nothing the Data Flow Map reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "

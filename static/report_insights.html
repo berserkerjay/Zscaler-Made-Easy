@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traffic insights — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .ti-coverage { padding: 0.75rem 0.9rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font-size: 0.86rem; margin-bottom: 1rem; }
+  .ti-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 1rem; }
+  .ti-sec { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); padding: 0.8rem 0.9rem; min-width: 0; }
+  .ti-sec.wide { grid-column: 1 / -1; }
+  .ti-sec h2 { font-size: 1rem; margin: 0 0 0.3rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .ti-src { color: var(--dim); font-size: 0.72rem; font-family: var(--mono); }
+  .ti-note { color: var(--dim); font-size: 0.8rem; margin: 0.25rem 0 0.5rem; }
+  .ti-err { font-size: 0.8rem; margin: 0.3rem 0; padding: 0.4rem 0.6rem; border-radius: var(--r-md); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+  .ti-chip { font-size: 0.68rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: var(--r-md); border: 1px solid var(--border); color: var(--dim); }
+  .ti-chip.ok { color: var(--pass); border-color: var(--pass); }
+  .ti-chip.partial, .ti-chip.empty { color: var(--warn); border-color: var(--warn); }
+  .ti-chip.error { color: var(--fail); border-color: var(--fail); }
+  .ti-table th button { all: unset; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
+  .ti-table th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  .ti-table td.num, .ti-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ti-table td { word-break: break-word; }
+  .ti-totals { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; font-size: 0.85rem; margin: 0.3rem 0 0.6rem; }
+  .ti-totals .k { color: var(--dim); margin-right: 0.3rem; }
+  .ti-sub { font-size: 0.82rem; font-weight: 600; margin: 0.6rem 0 0.2rem; }
+  .ti-unavail { margin: 1rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; }
+  .ti-unavail li { margin-bottom: 0.35rem; }
+  .ti-custom[hidden] { display: none; }
+  .ti-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .ti-page .rp-bar select { max-width: 100%; min-width: 0; }
+  .ti-custom input { min-height: 34px; }
+</style>
+</head>
+<body class="report-page ti-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Traffic</span> insights</h1>
+      <p>What the tenant's traffic actually did over a time window, from ZIA Insights: web traffic allowed and blocked, by location, the cloud applications in use, SaaS security and firewall actions, and the users with the most security incidents. Read-only, and only when ZIA Insights is ticked on the Scope page.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="tiTenantWrap" hidden><span class="lbl">Tenant</span><select id="tiTenant" aria-label="Tenant to read"></select></label>
+      <label class="df-ctl"><span class="lbl">Time window</span>
+        <select id="tiWindow" aria-label="Time window">
+          <option value="24h">Last 24 hours</option>
+          <option value="7d" selected>Last 7 days</option>
+          <option value="14d">Last 14 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="custom">Custom…</option>
+        </select></label>
+      <span class="ti-custom" id="tiCustom" hidden>
+        <label class="df-ctl"><span class="lbl">From</span><input type="datetime-local" id="tiFrom" aria-label="Window start (your local time)"></label>
+        <label class="df-ctl"><span class="lbl">To</span><input type="datetime-local" id="tiTo" aria-label="Window end (your local time)"></label>
+      </span>
+      <label class="df-ctl"><span class="lbl">Unit</span>
+        <select id="tiUnit" aria-label="Web traffic unit"><option value="TRANSACTIONS">Transactions</option><option value="BYTES">Bytes</option></select></label>
+      <label class="df-ctl"><input type="checkbox" id="tiUsers" checked> <span class="lbl">Top users</span></label>
+      <button type="button" class="rp-btn primary" id="tiRun">Read Insights</button>
+      <a class="rp-btn" id="expCsv" hidden>CSV</a>
+      <a class="rp-btn" id="expJson" hidden>JSON</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div class="ti-coverage" id="tiCoverage">
+        <strong>What this does and does not cover.</strong> Aggregated numbers from ZIA Insights (the Z-Insights API): web traffic by action and by location, cloud applications (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, and the users with the most security incidents. Insights cannot break traffic down by URL category, by user, by policy rule or by one host, so this page does not show those, and never guesses them. User names are shown on this screen only: they are not logged, kept or exported. Nothing is written to the tenant.
+      </div>
+      <div id="tiBody">
+        <div class="pa-intro" id="tiHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Pick a time window</strong> (up to 92 days, within the last 180) and the unit for web traffic: transactions or bytes.</li>
+            <li><strong>Read Insights.</strong> About nine questions go to ZIA Insights, one at a time, shown live; Stop ends the read at once with nothing more asked.</li>
+            <li><strong>Sort and export.</strong> Click a column heading to sort. CSV and JSON exports carry every table except the per-user one.</li>
+          </ol>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const body = document.getElementById('tiBody');
+    const meta = document.getElementById('rpMeta');
+    const live = document.getElementById('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    let running = false, job = null, startToken = null, stopAsked = false, last = null;
+    const sorts = {};   // section key -> {col, dir}
+
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+
+    // Credentials: the assessment tab that opened this page, a saved
+    // tenant profile, or what the server has on this computer.
+    async function tenantChoices() {
+      const wrap = document.getElementById('tiTenantWrap'), sel = document.getElementById('tiTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = document.getElementById('tiTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    // What is in scope: the Scope page's ticks, read live from the opener
+    // or from what the Scope page publishes; never guessed. Without
+    // either, nothing is sent and the server uses the profile's saved
+    // selection, or refuses.
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function scopeSelection() {
+      let scopes = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      return { scopes: scopes.map(String), channels: {}, from_page: true };
+    }
+    function windowBody() {
+      const w = document.getElementById('tiWindow').value;
+      if (w !== 'custom') return { window: w };
+      const f = Date.parse(document.getElementById('tiFrom').value), t = Date.parse(document.getElementById('tiTo').value);
+      if (!Number.isFinite(f) || !Number.isFinite(t)) throw new Error('Pick both the start and the end of the custom window.');
+      return { start_ms: f, end_ms: t };
+    }
+
+    // ── formatting ────────────────────────────────────────────────
+    function bytes(n) {
+      if (n == null || !Number.isFinite(Number(n))) return '—';
+      const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let v = Number(n), i = 0;
+      while (Math.abs(v) >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+      return `${v.toLocaleString(undefined, { maximumFractionDigits: i ? 1 : 0 })} ${u[i]}`;
+    }
+    const count = n => (n == null || !Number.isFinite(Number(n)) ? '—' : Number(n).toLocaleString());
+    const when = ms => (ms ? new Date(Number(ms)).toLocaleString() : '—');
+    const STATUS = { ok: 'Read', empty: 'No data', partial: 'Partial', error: 'Could not read', skipped: 'Not asked', omitted: 'Not exported' };
+
+    // Column sets: [key, heading, kind] — kind num | bytes | text | time.
+    function columns(key, unit) {
+      const tot = unit === 'BYTES' && key.startsWith('web_') ? 'bytes' : 'num';
+      if (key === 'cloud_apps') return [['application', 'Application', 'text'], ['application_category', 'Category', 'text'], ['sanctioned_state', 'Sanctioned', 'text'],
+        ['risk_index', 'Risk', 'num'], ['data_consumed', 'Data', 'bytes'], ['data_uploaded', 'Uploaded', 'bytes'], ['authenticated_users', 'Users', 'num'], ['last_access_time', 'Last seen', 'time']];
+      if (key === 'top_users') return [['name', 'User', 'text'], ['total', 'Incidents', 'num']];
+      if (key === 'web_action') return [['name', 'Action', 'text'], ['total', unit === 'BYTES' ? 'Bytes' : 'Transactions', tot]];
+      if (key === 'web_location') return [['name', 'Location', 'text'], ['total', unit === 'BYTES' ? 'Bytes' : 'Transactions', tot]];
+      if (key === 'fw_action') return [['name', 'Action', 'text'], ['total', 'Sessions', 'num']];
+      if (/bytes/.test(key)) return [['name', 'Name', 'text'], ['total', 'Bytes', 'bytes']];
+      return [['name', 'Name', 'text'], ['total', 'Total', 'num']];
+    }
+    function cell(v, kind) { return kind === 'bytes' ? bytes(v) : kind === 'num' ? count(v) : kind === 'time' ? when(v) : E(v || '—'); }
+    function sortedRows(key, rows, cols) {
+      const s = sorts[key]; if (!s) return rows;
+      const c = cols.find(x => x[0] === s.col); if (!c) return rows;
+      const text = c[2] === 'text';
+      return rows.slice().sort((a, b) => {
+        const x = a[s.col], y = b[s.col];
+        const r = text ? String(x || '').localeCompare(String(y || '')) : (Number(x) || 0) - (Number(y) || 0);
+        return s.dir === 'asc' ? r : -r;
+      });
+    }
+    function tableHtml(key, rows, unit, caption) {
+      const cols = columns(key, unit);
+      const s = sorts[key] || {};
+      const head = cols.map(([k, l, kind]) => {
+        const aria = s.col === k ? (s.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+        return `<th scope="col" class="${kind === 'text' ? '' : 'num'}" aria-sort="${aria}"><button type="button" data-sec="${E(key)}" data-col="${E(k)}">${E(l)}${s.col === k ? (s.dir === 'asc' ? ' ▴' : ' ▾') : ''}</button></th>`;
+      }).join('');
+      const bodyRows = sortedRows(key, rows, cols).map(r => `<tr>${cols.map(([k, , kind]) => `<td class="${kind === 'text' ? '' : 'num'}">${cell(r[k], kind)}</td>`).join('')}</tr>`).join('');
+      return `<div class="df-tablewrap"><table class="bp-table ti-table"><caption class="sr-only">${E(caption)}</caption><thead><tr>${head}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
+    }
+    function summaryHtml(sec) {
+      const sm = sec.summary || {}, t = sm.totals || {};
+      const totals = `<div class="ti-totals">
+          <span><span class="k">Applications</span>${count(t.total_apps)}</span>
+          <span><span class="k">Total</span>${bytes(t.total_bytes)}</span>
+          <span><span class="k">Uploaded</span>${bytes(t.total_upload_bytes)}</span>
+          <span><span class="k">Downloaded</span>${bytes(t.total_download_bytes)}</span></div>`;
+      const groups = (sm.groups || []).filter(g => (g.rows || []).length).map(g => {
+        const k = `${sec.key}:${g.key}`;
+        return `<div class="ti-sub">${E(g.title)}</div>${tableHtml(k, g.rows, '', g.title)}`;
+      }).join('');
+      return totals + (groups || '<div class="ti-note">No breakdowns in this window.</div>');
+    }
+    function sectionHtml(sec, unit) {
+      const st = sec.status || 'error';
+      const head = `<h2 id="h-${E(sec.key)}">${E(sec.title)} <span class="ti-chip ${E(st)}">${E(STATUS[st] || st)}</span>${sec.obfuscated ? '<span class="ti-chip">names obfuscated by the tenant</span>' : ''}</h2>
+        <div class="ti-src">${E(sec.source || '')}</div>`;
+      const err = sec.error ? `<div class="ti-err" role="note">${E(sec.error)}${sec.hint ? ` — ${E(sec.hint)}` : ''}</div>` : '';
+      const note = sec.note ? `<div class="ti-note">${E(sec.note)}</div>` : '';
+      let inner = '';
+      if (sec.summary) inner = summaryHtml(sec);
+      else if ((sec.rows || []).length) inner = tableHtml(sec.key, sec.rows, unit, sec.title);
+      else if (st === 'empty') inner = '<div class="ti-note">No data in this window.</div>';
+      return `<section class="ti-sec${sec.key === 'cloud_apps' ? ' wide' : ''}" aria-labelledby="h-${E(sec.key)}">${head}${err}${note}${inner}</section>`;
+    }
+    function render(res) {
+      last = res;
+      const w = res.window || {};
+      meta.textContent = `${res.tenant_label || ''} · ${w.label || ''} · ${when(w.start_ms)} to ${when(w.end_ms)}`;
+      const secs = (res.order || Object.keys(res.sections || {})).map(k => (res.sections || {})[k]).filter(Boolean);
+      const un = (res.unavailable || []).map(u => `<li>${E(u.detail)}</li>`).join('');
+      body.innerHTML = `
+        ${res.status === 'partial' ? '<div class="ti-err" role="note">Some sections could not be read in full; each one says why.</div>' : ''}
+        ${res.status === 'error' ? '<div class="ti-err" role="note">No section could be read. The first section\'s error usually names the cause (often the API role).</div>' : ''}
+        <div class="ti-grid" id="tiGrid">${secs.map(s => sectionHtml(s, res.traffic_unit)).join('')}</div>
+        <h2 class="df-h">Not available from Insights</h2>
+        <ul class="ti-unavail">${un}</ul>
+        <details class="pa-details"><summary>What was asked (${(res.logs || []).length} lines)</summary><div class="pa-log">${E((res.logs || []).join('\n'))}</div></details>`;
+      if (res.report_id) {
+        const csv = document.getElementById('expCsv'), js = document.getElementById('expJson');
+        csv.href = `/api/insights/export/${encodeURIComponent(res.report_id)}?format=csv`; csv.hidden = false;
+        js.href = `/api/insights/export/${encodeURIComponent(res.report_id)}?format=json`; js.hidden = false;
+      }
+    }
+    body.addEventListener('click', e => {
+      const b = e.target.closest('th button[data-sec]'); if (!b || !last) return;
+      const key = b.dataset.sec, col = b.dataset.col;
+      const cur = sorts[key];
+      sorts[key] = { col, dir: cur && cur.col === col && cur.dir === 'desc' ? 'asc' : 'desc' };
+      render(last);
+      const again = body.querySelector(`th button[data-sec="${CSS.escape(key)}"][data-col="${CSS.escape(col)}"]`);
+      if (again) again.focus();
+      say(`Sorted by ${b.textContent.replace(/[▴▾]/g, '').trim()}, ${sorts[key].dir === 'asc' ? 'ascending' : 'descending'}.`);
+    });
+
+    // ── the live job ────────────────────────────────────────────────
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function liveHtml() {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>Reading ZIA Insights</strong><span class="sep"></span><span class="pa-elapsed" id="tiElapsed">0:00</span><button type="button" class="rp-btn" id="tiStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="tiLog" role="log" aria-live="polite" aria-label="What is being asked">Connecting to the tenant…</div>
+      </div>`;
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1000));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the read continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        const log = document.getElementById('tiLog'); if (log) { log.textContent = logs.join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!running || stopAsked) return;
+      stopAsked = true;
+      const b = document.getElementById('tiStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        try { await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) }); } catch (e) { /* cancelled by id below */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+    function fail(title, msg) {
+      if (/You clicked Stop/.test(msg)) title = 'Stopped';
+      const hint = /credential|sign in|token|401|403|profile/i.test(msg) ? ' Sign in on the assessment page first and open Traffic insights from there, or choose a saved tenant profile in the bar above.' : '';
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+    async function run() {
+      if (running) return;
+      let win;
+      try { win = windowBody(); } catch (e) { fail('Pick a time window', e.message); return; }
+      const btn = document.getElementById('tiRun');
+      running = true; stopAsked = false; job = null; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Reading…';
+      body.innerHTML = liveHtml();
+      document.getElementById('tiStop').addEventListener('click', stop);
+      say('Reading ZIA Insights.');
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = document.getElementById('tiElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const payload = Object.assign({}, credBody(), scopeSelection(), win, { traffic_unit: document.getElementById('tiUnit').value, include_users: document.getElementById('tiUsers').checked });
+        const r = await fetch('/api/insights/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        job = d.job_id;
+        if (stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ } }
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result || snap.result.stopped) throw new Error(snap.error || (snap.result && snap.result.stopped) || (snap.status === 'cancelled' ? 'You clicked Stop before the read finished.' : 'The read did not finish.'));
+        render(Object.assign({}, snap.result, { logs: snap.logs || snap.result.logs || [] }));
+        say(`Insights read: ${Object.keys(snap.result.sections || {}).length} sections.`);
+      } catch (e) {
+        fail('Insights could not be read', e.message);
+        say(`Insights could not be read: ${e.message}`);
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; btn.disabled = false; btn.textContent = 'Read Insights';
+      }
+    }
+
+    document.getElementById('tiWindow').addEventListener('change', e => { document.getElementById('tiCustom').hidden = e.target.value !== 'custom'; });
+    document.getElementById('tiRun').addEventListener('click', run);
+    tenantChoices();
+  })();
+  </script>
+</body>
+</html>

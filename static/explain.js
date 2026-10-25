@@ -105,6 +105,14 @@
     get: 'Per-rule health with the reason, and typed proposals (raise a threshold, promote to block) you can approve or dismiss.',
     next: 'Approve the proposals the customer agrees with, then Preview and apply: the app re-reads the rules, shows the exact change, applies it with a read-back, and keeps a Roll back button.',
   };
+  X.insights = {
+    group: 'Find the gaps', name: 'Traffic insights', href: '/report/insights',
+    what: 'What the tenant\'s traffic actually did over a time window, read from ZIA Insights: web traffic allowed and blocked, web traffic by location, the cloud applications in use (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, and the users with the most security incidents.',
+    why: 'Configuration says what should happen; traffic says what did. Seeing how much is blocked, which cloud applications carry the data and which locations send it tells the customer where a policy change matters most, without waiting for a log export.',
+    when: 'After the assessment, before proposing a policy pack, and whenever someone asks how much traffic a control really touches. It needs ZIA Insights ticked on the Scope page and a OneAPI API client whose role includes Z-Insights.',
+    get: 'Sortable tables for each section with its status (read, no data, partial, could not read) and the reason when a section fails, a plain list of what Insights cannot answer (URL category, per-user traffic, per-rule hits, one host), and CSV and JSON exports without the per-user table.',
+    next: 'Take the busiest cloud applications and locations into the Path analyzer to see the policy path for them, then close what you find with a policy pack, preflight first.',
+  };
   X.digest = {
     group: 'Find the gaps', name: 'Digest — the evaluation loop', href: '/report/digest',
     what: 'When you click Run the loop now, it re-reads the guidance sources and, for every tenant profile that remembers its secret, only what that profile\'s Scope page puts in scope (FP/TP detection ratio and the ticked packs\' drift when DLP is in scope, the SaaS tenants when SaaS Security runs on Zscaler), writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
@@ -313,7 +321,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/shadow': 'shadow', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
 
@@ -362,7 +370,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
