@@ -69,6 +69,17 @@ what you get, what to do next.
   Detailed findings with a fix for each, in four plain sentences apiece.
 - **What does everything do?** — every function explained in plain
   English, in first-engagement order, with a glossary.
+- **Simple mode** (`/simple`, first item in the sidebar) — the same app
+  as seven big tasks for someone with little Zscaler knowledge: connect,
+  check how safe the data is, fix the top three problems, protect
+  sensitive data with a policy pack, why was something blocked (the Path
+  analyzer's answer in one sentence), what changed, and a Word or
+  spreadsheet report for the boss. One question per screen, a
+  tap-to-explain glossary, traffic lights with the words always shown,
+  and one recommended next step. It never writes: deploying and fixing
+  open the expert flows (Deploy policy packs, Review & remediate) with
+  their own write mode, preview and confirmation. "Switch to expert mode"
+  goes back; the browser remembers the choice.
 
 ### Find the gaps
 

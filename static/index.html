@@ -584,6 +584,11 @@
     <div class="hero-toolbar" aria-label="Tools">
       <div class="tool-group" role="group" aria-label="Start" data-sb-id="start">
         <div class="tool-group-l">Start</div>
+        <button class="btn btn-ghost" onclick="openSimpleMode()"
+                aria-label="Open Simple mode: seven big tasks in plain words, one question at a time"
+                title="Seven big tasks in plain words (connect, check, fix, protect, why was something blocked, what changed, a report for your boss), one question per screen. Nothing changes your Zscaler without your yes.">
+          <span aria-hidden="true">💡</span> Simple mode
+        </button>
         <button class="btn btn-ghost" onclick="openHelpTab()"
                 aria-label="Open What does everything do: every function of this app explained in plain English (opens in a new tab)"
                 title="Every function of this app explained in plain English: what it is, why the customer cares, when to use it, what you get. Opens in a new tab.">
@@ -5210,6 +5215,11 @@ function openFleetTab() {
   // page through window.opener when it runs, so nothing is read until then.
   const w = window.open('/report/fleet', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+// Simple mode: the same app as big plain-language tasks (/simple). Opens in
+// this tab and is remembered per browser (simple_entry.js reads the choice).
+function openSimpleMode() {
+  try { localStorage.setItem('zsimple_mode', 'simple'); } catch (e) { /* storage blocked: still opens */ }
+  window.location.href = '/simple';
 }
 function openPathAnalyzerTab() {
   // The tab reads the credentials from this page through window.opener
