@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion", "/report/shadow"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -5721,6 +5721,118 @@ async def report_motion_page():
         raise HTTPException(status_code=404, detail="report page missing")
     with open(page, "r", encoding="utf-8") as f:
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+# ── Shadowed rules ────────────────────────────────────────────────────
+@app.get("/report/shadow")
+async def report_shadow_page():
+    """Shadowed rules (static/report_shadow.html): rules that can never
+    match or never act, per policy type, read live from the tenant."""
+    page = os.path.join(STATIC_DIR, "report_shadow.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class ShadowRulesRequest(ScopedTenantCredsRequest):
+    """Body of the shadowed-rule analysis: tenant credentials, what is in
+    scope (the Scope page's `scopes` and `channels`, else the profile's
+    saved selection) and, optionally, the Inline Web DLP evaluation mode
+    when the operator knows it: "" reads it from DLP Advanced Settings,
+    "rule_order" or "evaluate_all" declares it (the API does not expose
+    the setting on every tenant)."""
+    web_dlp_mode: str = ""
+
+
+_SHADOW_MODES = ("", "rule_order", "evaluate_all", "evaluate_all_rules")
+
+
+def _shadow_inputs(req: ShadowRulesRequest) -> Dict[str, Any]:
+    """What the analysis may read (shadow_rules.scope_for of the Scope
+    page's selection). 400 before signing in when the mode is not one we
+    know or when nothing it reads is in scope (user rule 1)."""
+    import shadow_rules
+    if str(req.web_dlp_mode or "").strip().lower() not in _SHADOW_MODES:
+        raise HTTPException(status_code=400, detail="web_dlp_mode must be empty (read it from the tenant), 'rule_order' or 'evaluate_all'.")
+    sc, ch, source = _scope_selection(req)
+    scope = shadow_rules.scope_for(sc, ch)
+    if not scope["read"]:
+        raise HTTPException(status_code=400, detail=shadow_rules.NOTHING_IN_SCOPE)
+    scope["source"] = source
+    return scope
+
+
+def _run_shadow_rules(client, req: ShadowRulesRequest, scope: Dict[str, Any], label: str, log, cancel) -> Dict[str, Any]:
+    """Read only what `scope` puts in scope and analyse it (shadow_rules).
+    Read-only: GET requests only. Stop (`cancel`) ends the run as stopped:
+    nothing more is read and no partial result is returned."""
+    import shadow_rules
+    logs: List[str] = []
+
+    def _log(line: str) -> None:
+        logs.append(line)
+        if log:
+            log(line)
+
+    _log(f"Reading {label}. Nothing is written to the tenant. " + (f"In scope, from {scope['source']}: " if scope.get("source") else "") + scope["summary"])
+    try:
+        out = shadow_rules.run(client, scope, declared_mode=req.web_dlp_mode, log=_log, cancel=cancel)
+    except shadow_rules.Stopped as e:
+        _log("STOPPED — you clicked Stop; nothing more was read and no partial result is kept.")
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
+    if cancel is not None and cancel.is_set():
+        _log("STOPPED — you clicked Stop; the analysis was abandoned.")
+        return {"stopped": shadow_rules.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    out.update(status="done", tenant_label=label, generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), logs=logs)
+    return out
+
+
+@app.post("/api/shadow-rules/start")
+async def shadow_rules_start(req: ShadowRulesRequest, request: Request):
+    """Find the rules that can never match or never act (shadowed, after a
+    catch-all, duplicate, superseded, disabled, naming objects that no
+    longer exist), per policy type in scope, as a job the page follows.
+    Poll GET /api/dlp-packs/jobs/{job_id}; the result is {findings,
+    counts_by_policy, read_errors, not_in_scope, mode, ...}. Read-only."""
+    import pack_jobs
+    scope = _shadow_inputs(req)   # before signing in: nothing in scope reads nothing
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("shadow", lambda log, cancel: _run_shadow_rules(client, req, scope, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/shadow-rules")
+async def shadow_rules_run(req: ShadowRulesRequest):
+    """The same analysis, waited for (for scripts)."""
+    scope = _shadow_inputs(req)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(_run_shadow_rules, client, req, scope, tenant_auth.record_label(creds), None, None)
+
+
+@app.get("/api/shadow-rules/jobs/{job_id}/export")
+async def shadow_rules_export(job_id: str, format: str = "csv"):
+    """A finished analysis's findings as CSV (every cell through csv_safe)
+    or as the JSON result."""
+    import pack_jobs
+    import shadow_rules
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind != "shadow":
+        raise HTTPException(status_code=404, detail="No such analysis. Results are kept for an hour after they finish; run it again.")
+    res = job.result or {}
+    if res.get("status") != "done":
+        raise HTTPException(status_code=409, detail="This analysis has no result to export" + (" yet; it is still running." if job.status == pack_jobs.RUNNING else "."))
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        body = {k: v for k, v in res.items() if k != "logs"}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=shadowed_rules_{ts}.json"})
+    return Response(content=shadow_rules.to_csv(res), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=shadowed_rules_{ts}.csv"})
 
 
 # ── Path Analyzer ─────────────────────────────────────────────────────
