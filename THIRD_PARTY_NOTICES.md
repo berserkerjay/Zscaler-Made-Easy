@@ -11,7 +11,7 @@ of the copyleft licences are kept in [third_party_licenses/](third_party_license
 
 - **LGPL-2.1-or-later** (pywin32 312): [LGPL-2.1.txt](third_party_licenses/LGPL-2.1.txt)
 - **LGPL-3.0-or-later** (jwcrypto 1.6.0): [LGPL-3.0.txt](third_party_licenses/LGPL-3.0.txt) and [GPL-3.0.txt](third_party_licenses/GPL-3.0.txt)
-- **MPL-2.0** (certifi 2026.7.22, zscaler/terraform-provider-zia 4.8.8): [MPL-2.0.txt](third_party_licenses/MPL-2.0.txt)
+- **MPL-2.0** (certifi 2026.10.23, zscaler/terraform-provider-zia 4.8.8): [MPL-2.0.txt](third_party_licenses/MPL-2.0.txt)
 
 These components are used unmodified; their source is available from the
 distribution links in the SBOM.
@@ -25,7 +25,7 @@ distribution links in the SBOM.
 | arrow | 1.4.0 | Apache-2.0 |
 | attrs | 26.1.0 | MIT |
 | backports-tarfile | 1.2.0 | MIT |
-| certifi | 2026.7.22 | MPL-2.0 |
+| certifi | 2026.10.23 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
 | charset-normalizer | 3.5.1 | MIT |
 | click | 8.5.0 | BSD-3-Clause |
@@ -53,7 +53,7 @@ distribution links in the SBOM.
 | mdurl | 0.1.2 | MIT |
 | more-itertools | 11.1.0 | MIT |
 | msgpack | 1.2.2 | Apache-2.0 |
-| opentelemetry-api | 1.44.0 | Apache-2.0 |
+| opentelemetry-api | 1.45.1 | Apache-2.0 |
 | pycparser | 3.0 | BSD-3-Clause |
 | pydantic | 2.13.5 | MIT |
 | pydantic-core | 2.46.5 | MIT |
@@ -73,7 +73,7 @@ distribution links in the SBOM.
 | requests | 2.34.2 | Apache-2.0 |
 | rich | 15.0.0 | MIT |
 | rpds-py | 2026.6.3 | MIT |
-| setuptools | 84.0.0 | MIT |
+| setuptools | 84.2.1 | MIT |
 | shellingham | 1.5.4 | ISC |
 | six | 1.17.0 | MIT |
 | sse-starlette | 3.4.11 | BSD-3-Clause |
@@ -86,7 +86,7 @@ distribution links in the SBOM.
 | urllib3 | 2.8.0 | MIT |
 | uvicorn | 0.53.0 | BSD-3-Clause |
 | zipp | 4.1.0 | MIT |
-| zscaler-sdk-python | 1.9.44 | MIT |
+| zscaler-sdk-python | 1.11.3 | MIT |
 | zscaler/terraform-provider-zia | 4.8.8 | MPL-2.0 |
 
 ## Container image

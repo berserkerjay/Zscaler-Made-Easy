@@ -59,7 +59,16 @@ jobs:
               + `\n\n_Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}_`;
             const label = 'upstream-drift';
             const title = 'Upstream drift: SDK / Terraform provider / API reference no longer match what the app sends';
-            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, state: 'open', labels: label, per_page: 5 });
+            // Issues can be switched off for the repository: the report is then
+            // only in the run summary (written above), and drift still fails the run.
+            let open = [];
+            try {
+              ({ data: open } = await github.rest.issues.listForRepo({ ...context.repo, state: 'open', labels: label, per_page: 5 }));
+            } catch (e) {
+              if (drift) core.setFailed('Upstream drift found — see the run summary (issues are disabled for this repository).');
+              else core.notice('Clean run (issues are disabled for this repository, so no issue was opened or closed).');
+              return;
+            }
             if (drift) {
               if (open.length) {
                 await github.rest.issues.update({ ...context.repo, issue_number: open[0].number, body });

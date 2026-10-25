@@ -899,7 +899,10 @@ function _gdProfilesRender() {
   anchor.insertAdjacentElement('afterend', panel);
   _gdApplyMode();
   _gdRender();
-  _gdProfilesLoad().then(() => { const p = GD.profileDetail; if (p && !_gdVal('vd')) _gdProfileFill(p); _gdRender(); });
+  // GD.profilesReady: the saved profile (if any) has been applied, so its
+  // Scope choices can no longer replace what the user changes from here on.
+  _gdProfilesLoad().then(() => { const p = GD.profileDetail; if (p && !_gdVal('vd')) _gdProfileFill(p); _gdRender(); })
+    .finally(() => { GD.profilesReady = true; });
   // Keep the step chips honest as the operator types, runs, and deploys.
   ['vd', 'cid', 'csec', 'cloud'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('input', _gdRender); });
   GD.timer = setInterval(_gdRender, 2500);

@@ -221,6 +221,11 @@ jobs:
         # The Linux audit resolves the lock for Linux and skips the
         # Windows-only pins (pywin32, colorama); this one covers them.
         shell: bash
+        env:
+          # The advisories' descriptions are not all cp1252; without this the
+          # report itself crashes on the Windows console encoding.
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
         run: |
           python -m pip install pip-audit==2.10.1
           pip-audit -r requirements.lock --strict --desc on
