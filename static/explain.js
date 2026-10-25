@@ -232,6 +232,7 @@
     when: 'Before a change board or an audit, when handing a tenant over, during a policy clean-up, and before trimming custom URL categories.',
     get: 'One workbook (or PDF review copy) per policy, a deduplicated URLs workbook with where each entry was found, and per custom-category URL whether Zscaler categorises it the same way, differently or not at all; each with a live log and Stop.',
     next: 'Send the policy workbooks with the change request, fix the rules the Usage and notes column flags, and remove custom-category URLs the analyzer marks redundant after checking with the customer.',
+  };
   X.queue = {
     group: 'Close the gaps', name: 'Change queue', href: '/report/queue',
     what: 'The team change queue: a policy-pack deploy plan, a selective removal plan or a fix recipe that someone prepared and filed with Request approval, waiting for a second writer to approve or reject it, with its items, requester, comments and plan hash.',
