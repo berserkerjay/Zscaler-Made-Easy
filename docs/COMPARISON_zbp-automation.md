@@ -1,4 +1,4 @@
-# DLP-Check vs zbp-automation
+# Zscaler Made Easy vs zbp-automation
 
 A comparison of two approaches to putting Zscaler DLP best-practice
 configuration into a tenant. Written 2026-09-09 against
@@ -15,7 +15,7 @@ apply`. There is no UI, no server, and no assessment. Two of the three
 workspaces are produced by Python generators from private source files
 on the author's machine.
 
-**DLP-Check** is an application. A FastAPI server and a browser GUI run
+**Zscaler Made Easy** is an application. A FastAPI server and a browser GUI run
 on the administrator's machine, read the tenant through OneAPI, score it
 against 300+ checks, map findings to compliance frameworks, and (behind
 an explicit write gate) deploy policy packs through a guided preflight,
@@ -27,7 +27,7 @@ engines and rules into a tenant. Everything else is different.
 
 ## 2. Facts side by side
 
-| | zbp-automation | DLP-Check |
+| | zbp-automation | Zscaler Made Easy |
 |---|---|---|
 | Shape | 3 Terraform workspaces + 2 generator scripts | FastAPI server, single-page GUI, CLI scripts, MCP server |
 | Size | 29 files, ~4.2k lines (1.8k of it generated/exported JSON) | 67 tracked source files, ~19k lines Python, 5.7k-line GUI, 50 API endpoints |
@@ -52,7 +52,7 @@ engines and rules into a tenant. Everything else is different.
 
 ### Pros
 
-- **Real infrastructure-as-code.** Terraform state gives what DLP-Check
+- **Real infrastructure-as-code.** Terraform state gives what Zscaler Made Easy
   does not have: an exact record of what the tool owns, a diff on every
   run, `destroy` in dependency-safe order, and `import` for objects that
   already exist. Re-running is idempotent by construction.
@@ -61,7 +61,7 @@ engines and rules into a tenant. Everything else is different.
   `zia_endpoint_dlp_application_group`) and handles the awkward parts:
   expanding `ANY` selectors the provider rejects, resolving the default
   user-confirmation template for `CONFIRM`, and `ignore_changes` for the
-  application-group field the API does not read back. DLP-Check's
+  application-group field the API does not read back. Zscaler Made Easy's
   endpoint channel has none of this depth.
 - **Managed-name convention.** Every object gets a `ZBP-` / `zbp-`
   prefix and a description recording its provenance. Anyone looking at
@@ -108,7 +108,7 @@ engines and rules into a tenant. Everything else is different.
 - **Narrow scope by design.** Web and endpoint only; no CASB or email
   DLP; no way to see what the tenant looks like before or after.
 
-## 4. DLP-Check
+## 4. Zscaler Made Easy
 
 ### Pros
 
@@ -145,7 +145,7 @@ engines and rules into a tenant. Everything else is different.
 
 ### Cons
 
-- **No state, so no lifecycle.** DLP-Check can create and verify, but it
+- **No state, so no lifecycle.** Zscaler Made Easy can create and verify, but it
   cannot destroy what it created, detect drift after the fact, or show a
   diff against a previous apply. "Reuse by name" is the whole ownership
   model. If a pack changes, the tool cannot update objects it made
@@ -158,7 +158,7 @@ engines and rules into a tenant. Everything else is different.
   4.7/4.8 with OneAPI auth.
 - **Endpoint channel is shallow.** No sub-rules, no application groups,
   no user-confirmation template resolution. zbp-automation's endpoint
-  pack cannot be expressed as a DLP-Check pack today.
+  pack cannot be expressed as a Zscaler Made Easy pack today.
 - **Big surface, monolithic GUI.** ~19k lines of Python and a 5.7k-line
   single-file page carry real maintenance cost, and this week's history
   shows it: a pop-out feature and an injection helper both broke the
@@ -175,29 +175,29 @@ engines and rules into a tenant. Everything else is different.
 
 ## 5. Head to head
 
-**Safety before writing:** DLP-Check, clearly. Terraform's `plan` shows
-resource-level intent; DLP-Check's preflight shows tenant-level impact
+**Safety before writing:** Zscaler Made Easy, clearly. Terraform's `plan` shows
+resource-level intent; Zscaler Made Easy's preflight shows tenant-level impact
 and refuses to proceed on conflicts or drift.
 
 **Safety after writing:** zbp-automation. State, destroy, import and
-diff are the whole point of Terraform, and DLP-Check has no equivalent.
+diff are the whole point of Terraform, and Zscaler Made Easy has no equivalent.
 
-**Coverage:** DLP-Check on channels (four versus two) and on everything
+**Coverage:** Zscaler Made Easy on channels (four versus two) and on everything
 that is not deployment. zbp-automation on endpoint depth.
 
-**Portability and reuse:** DLP-Check. Everything is in the repo and
+**Portability and reuse:** Zscaler Made Easy. Everything is in the repo and
 packs are plain JSON. zbp-automation's outputs are reusable; its inputs
 and generators are not.
 
-**Engineering hygiene:** DLP-Check on tests, CI and history.
+**Engineering hygiene:** Zscaler Made Easy on tests, CI and history.
 zbp-automation on pinned providers, lock files and small blast radius.
 
-**Operator experience:** DLP-Check for an administrator; zbp-automation
+**Operator experience:** Zscaler Made Easy for an administrator; zbp-automation
 for a platform engineer with an existing Terraform pipeline.
 
 ## 6. What to take from each
 
-Into DLP-Check, in priority order:
+Into Zscaler Made Easy, in priority order:
 
 1. **Generate Terraform from the pack JSON** the way
    `generate_zbp_enterprise_tf.py` does, targeting provider 4.8.x with
@@ -231,13 +231,13 @@ Into zbp-automation, if it were being maintained here:
 
 zbp-automation is a clean, honest set of Terraform templates that does
 one thing with proper state management, and it handles Endpoint DLP
-more completely than DLP-Check does. It is not a product: it cannot be
+more completely than Zscaler Made Easy does. It is not a product: it cannot be
 regenerated by anyone but its author, has no tests, and leaves every
 tenant-awareness problem to the operator.
 
-DLP-Check is a product. It assesses, explains, deploys with more
+Zscaler Made Easy is a product. It assesses, explains, deploys with more
 pre-write safety than Terraform offers, covers four channels, and is
 tested. Its real gap is lifecycle: it cannot own, update or remove what
 it created. The right move is not to choose between them but to add
-zbp-automation's model as DLP-Check's Terraform export, generated from
+zbp-automation's model as Zscaler Made Easy's Terraform export, generated from
 the same pack JSON that Deploy Studio already reads.

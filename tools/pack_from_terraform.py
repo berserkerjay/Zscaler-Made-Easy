@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Convert a Terraform JSON template of ZIA DLP resources into a DLP-Check
+Convert a Terraform JSON template of ZIA DLP resources into a Zscaler Made Easy
 policy pack.
 
 Reads a `.tf.json` document that declares `zia_dlp_dictionaries`,

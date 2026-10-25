@@ -1,4 +1,4 @@
-# What DLP-Check does — an overview
+# What Zscaler Made Easy does — an overview
 
 This page is for someone who has just been handed the app: what it is
 for, what each part does, what it never does, and where it stops. It
@@ -8,7 +8,7 @@ for a first engagement step by step, see
 
 ## In one paragraph
 
-DLP-Check connects to a customer's Zscaler tenant with API credentials
+Zscaler Made Easy connects to a customer's Zscaler tenant with API credentials
 and answers three questions. **Where is the tenant today?** It runs 300+
 automated checks against the DLP assessment checklist and Zscaler's best
 practices and gives a scored maturity report with plain findings and the
@@ -448,10 +448,10 @@ what you get, what to do next.
 ### Troubleshoot
 
 - **Audit timeline** — ZIA's admin audit log for a window you choose
-  (the last 7 days by default, up to 180) merged with DLP-Check's own
+  (the last 7 days by default, up to 180) merged with Zscaler Made Easy's own
   deployment records and audit log, newest first, with filters, a
   field-by-field diff where the entry has before and after values, and
-  CSV or JSON export. A change someone else made to an object DLP-Check
+  CSV or JSON export. A change someone else made to an object Zscaler Made Easy
   created is marked. Reading ZIA's log needs Automation readiness in scope;
   asking ZIA for the report is a POST that changes no configuration.
 - **Log analyzer** — drop in the ZIP from Client Connector's Export Logs

@@ -751,7 +751,7 @@ def pdf(policy: str, raw_rules: List[Dict[str, Any]], *, names: Names, analysis:
     order with its criteria (non-empty ones, one per line) and notes."""
     label = POLICIES[policy]["label"]
     doc = pdf_writer.PdfDocument(title=f"{label} policy: {tenant_label or 'tenant'}", page_size=page_size,
-                                 footer=f"DLP-Check policy export · {label} · {tenant_label or 'tenant'}", subject=f"{label} rules for review")
+                                 footer=f"Zscaler Made Easy policy export · {label} · {tenant_label or 'tenant'}", subject=f"{label} rules for review")
     doc.heading(f"{label} policy")
     doc.key_values(_summary_pairs(policy, raw_rules, tenant_label=tenant_label, scope_summary=scope_summary,
                                   findings=analysis.get("findings") or [], note=(analysis.get("notes") or {}).get(POLICIES[policy]["shadow"] or "", ""),

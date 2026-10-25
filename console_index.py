@@ -1,4 +1,4 @@
-"""Console index: what DLP-Check knows about each object an admin sees in
+"""Console index: what Zscaler Made Easy knows about each object an admin sees in
 the Zscaler admin console, for the companion browser extension's badges
 and side panel.
 

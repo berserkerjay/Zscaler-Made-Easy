@@ -455,7 +455,7 @@ def plan_pdf(report: Dict[str, Any], page_size: str = "A4") -> bytes:
     """The preflight as a printable plan for change approval."""
     label = str(report.get("tenant_label") or "tenant")
     doc = pdf_writer.PdfDocument(title=f"Deployment plan: {label}", page_size=page_size,
-                                 footer=f"DLP-Check deployment plan · {label} · plan {str(report.get('plan_hash') or 'none')[:16]}",
+                                 footer=f"Zscaler Made Easy deployment plan · {label} · plan {str(report.get('plan_hash') or 'none')[:16]}",
                                  author=str(report.get("assessor") or ""), subject="Deploy policy packs: plan for change approval")
     doc.heading("Deployment plan for change approval")
     doc.paragraph(PLAN_NOTE, size=9, grey=0.3)
@@ -564,7 +564,7 @@ def operation_pdf(prepared: Dict[str, Any], page_size: str = "A4") -> bytes:
     label = str(prepared.get("tenant_label") or "tenant")
     c = prepared.get("counts") or {}
     doc = pdf_writer.PdfDocument(title=f"Bulk change plan: {label}", page_size=page_size,
-                                 footer=f"DLP-Check bulk change plan · {label} · plan {str(prepared.get('plan_hash') or 'none')[:16]}",
+                                 footer=f"Zscaler Made Easy bulk change plan · {label} · plan {str(prepared.get('plan_hash') or 'none')[:16]}",
                                  subject="Bulk changes: plan for change approval")
     doc.heading("Bulk change plan for change approval")
     doc.paragraph(OPERATION_NOTE, size=9, grey=0.3)

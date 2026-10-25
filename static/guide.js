@@ -246,8 +246,8 @@ function _gdUpdateHelp() {
   const win = /^[A-Za-z]:[\\/]|^\\\\/.test(dir);
   const settings = win ? 'local_settings.bat' : 'local_settings.env';
   const cmd = win
-    ? 'cd /d "%USERPROFILE%" && (if exist "DLP-Check\\\\.git" (cd /d "%USERPROFILE%\\\\DLP-Check" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git && cd /d "%USERPROFILE%\\\\DLP-Check")) && call INSTALL_Zscaler_Assessment.bat && call UPDATE_Zscaler_Assessment.bat'
-    : 'cd ~ && git clone https://github.com/berserkerjay/DLP-Check.git && cd DLP-Check && ./install.sh && ./start.sh';
+    ? 'cd /d "%USERPROFILE%" && (if exist "Zscaler Made Easy\\\\.git" (cd /d "%USERPROFILE%\\\\Zscaler Made Easy" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git && cd /d "%USERPROFILE%\\\\Zscaler Made Easy")) && call INSTALL_Zscaler_Assessment.bat && call UPDATE_Zscaler_Assessment.bat'
+    : 'cd ~ && git clone https://github.com/berserkerjay/DLP-Check.git && cd Zscaler Made Easy && ./install.sh && ./start.sh';
   const where = win ? 'a Command Prompt' : 'Terminal';
   const does = win ? 'it clones the repository under your user folder, installs it and repoints the shortcuts' : 'it clones the repository into your home folder, installs it and starts it';
   _gdUpdateBox(`<div class="gd-upd-line">This copy was not installed with git (a ZIP download), so it cannot pull updates. The simple way: stop the app, download a fresh ZIP from GitHub, replace this folder keeping <code>${settings}</code>, and run the installer again. Or, once, run this in ${where}; ${does}, and Update app works from then on. Copy <code>${settings}</code> from the old folder afterwards.</div>
@@ -264,7 +264,7 @@ function _gdContainerUpdateHelp() {
   const win = `powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 -Branch ${branch}`;
   const nix = `./update_container.sh --branch ${branch}`;
   const copy = id => `<button type="button" class="gd-btn quiet gd-btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('${id}').textContent).then(() => announce('Command copied'))">Copy command</button>`;
-  _gdUpdateBox(`<div class="gd-upd-line">This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker: open a terminal in the DLP-Check folder (the one with <code>docker-compose.yml</code>) and run the command for that computer. It pulls the latest code from GitHub and rebuilds the container only when there is something new; saved data stays, and the app restarts with a new UI token (<code>docker logs dlp-check</code>).</div>
+  _gdUpdateBox(`<div class="gd-upd-line">This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker: open a terminal in the Zscaler Made Easy folder (the one with <code>docker-compose.yml</code>) and run the command for that computer. It pulls the latest code from GitHub and rebuilds the container only when there is something new; saved data stays, and the app restarts with a new UI token (<code>docker logs dlp-check</code>).</div>
     <div class="gd-upd-line soft">Windows (PowerShell):</div><pre class="gd-upd-cmd" id="gdUpdCmdWin">${_gdE(win)}</pre>${copy('gdUpdCmdWin')}
     <div class="gd-upd-line soft">Mac or Linux (Terminal):</div><pre class="gd-upd-cmd" id="gdUpdCmdNix">${_gdE(nix)}</pre>${copy('gdUpdCmdNix')}
     <div class="gd-upd-line soft">These update from <strong>${_gdE(branch)}</strong>; choose another Branch above to switch (main is what customers run; qa and dev carry changes before they are promoted). Later runs keep the branch chosen.</div>
@@ -586,7 +586,7 @@ function _gdHelp(open) {
   d.innerHTML = `
     <div class="gd-help-sheet">
       <header><h2>How this tool works</h2><button type="button" class="gd-btn quiet" onclick="_gdHelp(false)" aria-label="Close help">✕</button></header>
-      <p>DLP-Check does two things. First it <strong>assesses</strong> a Zscaler tenant against a checklist of best practices and gives it a score. Then it <strong>closes the gaps</strong> by deploying policy packs: ready-made DLP and containment configuration that is checked against the tenant and approved by you before anything is written, into an empty tenant or on top of what is already there. Afterwards it <strong>measures the journey</strong>: how far the tenant has taken that policy pack, from deployed to monitoring to enforcing, and what to enable next.</p>
+      <p>Zscaler Made Easy does two things. First it <strong>assesses</strong> a Zscaler tenant against a checklist of best practices and gives it a score. Then it <strong>closes the gaps</strong> by deploying policy packs: ready-made DLP and containment configuration that is checked against the tenant and approved by you before anything is written, into an empty tenant or on top of what is already there. Afterwards it <strong>measures the journey</strong>: how far the tenant has taken that policy pack, from deployed to monitoring to enforcing, and what to enable next.</p>
       <p>A good first engagement: connect, run the assessment, walk the customer through the critical findings, then run a preflight for the pack that matches their regulation and show them the plan. Deploy only when the customer has agreed and the server is running with writes enabled.</p>
       <h3>Tools at a glance</h3>
       <dl>

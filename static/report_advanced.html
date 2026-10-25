@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Advanced settings — Zscaler Assessment</title>
+<title>Advanced settings — Zscaler Made Easy</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
@@ -36,7 +36,7 @@
           <p class="adv-lead">Built-in packs ship with the app. Uploaded packs are yours: they live in the library folder on this machine and survive updates. Every pack here is offered by Deploy policy packs.</p>
           <p class="adv-lead"><label for="advAssessor">Assessor named in Terraform downloads</label>
             <input id="advAssessor" type="text" maxlength="40" autocomplete="off" placeholder="from Scope assessment" style="margin-left:0.4rem;">
-            <span class="dim">Required: each object's description is tagged with this name, never DLP-Check. Without a name the download is refused.</span></p>
+            <span class="dim">Required: each object's description is tagged with this name, never Zscaler Made Easy. Without a name the download is refused.</span></p>
           <div class="tw"><table class="bp-table adv-table" id="advPacks" aria-describedby="advLibH">
             <thead><tr><th scope="col">Pack</th><th scope="col">Source</th><th scope="col">Dictionaries</th><th scope="col">Engines</th><th scope="col">Rules</th><th scope="col">Channels</th><th scope="col">Actions</th></tr></thead>
             <tbody><tr><td colspan="7" class="dim">Loading…</td></tr></tbody>
@@ -126,7 +126,7 @@
 
         <section id="sbd" aria-labelledby="advSbdH">
           <h2 class="df-h" id="advSbdH">CISA Secure by Design score — for this app, not the tenant</h2>
-          <p class="adv-lead">How DLP-Check itself (the tool you are running) measures against CISA's <a href="https://www.cisa.gov/securebydesign" target="_blank" rel="noopener">Secure by Design</a> principles and the seven pledge goals, read live from this server and the app folder each time you open this page. It says nothing about the customer's Zscaler tenant; the assessment and the Regulatory &amp; compliance alignment report do that, and no framework there is a CISA one. Every control says what was found and, when it falls short, what to do. A pass counts 1, a warning 0.5, a failure 0; a control that does not apply to a local single-operator tool is shown but not scored.</p>
+          <p class="adv-lead">How Zscaler Made Easy itself (the tool you are running) measures against CISA's <a href="https://www.cisa.gov/securebydesign" target="_blank" rel="noopener">Secure by Design</a> principles and the seven pledge goals, read live from this server and the app folder each time you open this page. It says nothing about the customer's Zscaler tenant; the assessment and the Regulatory &amp; compliance alignment report do that, and no framework there is a CISA one. Every control says what was found and, when it falls short, what to do. A pass counts 1, a warning 0.5, a failure 0; a control that does not apply to a local single-operator tool is shown but not scored.</p>
           <div id="advSbdBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Measuring…</span></div>
           <div class="adv-actions"><button type="button" class="rp-btn" id="advSbdCheck">Re-check</button></div>
           <div class="tw"><table class="bp-table adv-table" id="advSbd" aria-describedby="advSbdH">

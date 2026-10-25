@@ -84,7 +84,7 @@ def test_a_deploy_writes_the_assessors_name_and_never_dlp_check(tmp_path):
              + [e.get("description") for e in client.zia.dlp_engine.added]
              + [r["description"] for r in client.zia.dlp_web_rules.added])
     assert descs and all("[Jane Doe pack alpha v2]" in d for d in descs), descs
-    assert not any("DLP-Check" in d for d in descs)
+    assert not any("Zscaler Made Easy" in d for d in descs)
 
 
 def test_objects_tagged_by_an_assessor_are_found_by_the_removal_by_tag(tmp_path):
@@ -116,7 +116,7 @@ def test_terraform_tags_name_the_assessor(tmp_path):
     files = pack_terraform.generate(_pack(tmp_path), assessor="Jane Doe")
     hcl = "".join(v for k, v in files.items() if k.endswith(".tf"))
     assert "[Jane Doe pack alpha v2] Terraform-managed." in hcl and "[DLP-Check pack" not in hcl
-    # No assessor: the tag takes the required var.assessor, never "DLP-Check" (user rule 2).
+    # No assessor: the tag takes the required var.assessor, never "Zscaler Made Easy" (user rule 2).
     unnamed = "".join(pack_terraform.generate(_pack(tmp_path / "b")).values())
     assert "[${var.assessor} pack alpha v2] Terraform-managed." in unnamed and "[DLP-Check pack" not in unnamed
 

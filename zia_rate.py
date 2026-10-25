@@ -1057,7 +1057,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
         last = blocked_hour[-1]
         run_after = last["at"] + HOUR
         verdict, severity = (f"Likely to fail: ZIA blocked this API client {_ago(now - last['at'])} ('{last['message']}'"
-                             + (f", after {last['writes_5m']} writes from DLP-Check in 5 minutes" if last.get("writes_5m") else "")
+                             + (f", after {last['writes_5m']} writes from Zscaler Made Easy in 5 minutes" if last.get("writes_5m") else "")
                              + f"). Run it after {_clock(run_after)}, an hour after that block. A run started now pauses for the "
                              f"limit's full window at each refusal and stops after 3."), "fail"
     elif ceiling and peak5 >= ceiling["writes_5m"]:
@@ -1068,7 +1068,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     elif too_fast:
         what = "; ".join(f"{BUCKET_LABELS[b]} is set to \"{(os.environ.get(_ENV[b]) or '').strip() or 'off'}\" ({_ENV[b]}), "
                          f"and this run would send more than ZIA's {n} {_PER.get(w, f'per {w:.0f}s')}" for b, (n, w) in too_fast)
-        verdict, severity = (f"Likely to fail: DLP-Check's own pacing is looser than ZIA's rate limits ({what}), so ZIA will refuse "
+        verdict, severity = (f"Likely to fail: the app's own pacing is looser than ZIA's rate limits ({what}), so ZIA will refuse "
                              f"part of this run. Remove the setting to pace at ZIA's documented limits."), "fail"
     elif held > 0:
         run_after = now + held
@@ -1110,11 +1110,11 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     if rows and severity != "fail" and (ublocked or unkeyed["hold"] > 0):
         if ublocked:
             u = ublocked[-1]
-            note = (f"A DLP-Check record that names no tenant (written before tenants were kept apart, or by a run that did not say "
+            note = (f"A Zscaler Made Easy record that names no tenant (written before tenants were kept apart, or by a run that did not say "
                     f"which tenant it wrote to) shows ZIA blocked an API client {_ago(now - u['at'])} ('{u['message']}'). If that was "
                     f"this tenant's, run this after {_clock(u['at'] + HOUR)}.")
         else:
-            note = (f"A DLP-Check record that names no tenant (written before tenants were kept apart) holds writes until "
+            note = (f"A Zscaler Made Easy record that names no tenant (written before tenants were kept apart) holds writes until "
                     f"{_clock(now + unkeyed['hold'])} after ZIA refused a request for its rate. If that was this tenant's, run this after then.")
         if severity == "ok":
             verdict, severity = f"Will probably succeed: goes straight through within ZIA's rate limits, about {_human(total)}. {note}", "warn"
@@ -1187,9 +1187,9 @@ def history_text(f: Dict[str, Any]) -> str:
     plural = {"write": "writes (POST/PUT)", "delete": "deletes", "endpoint_rules": "Endpoint DLP rule writes",
               "cloud_app": "Cloud App Control rule writes", "activate": "activations", "read": "reads (GET)"}
     if sent:
-        parts.append("In the last hour DLP-Check sent this tenant's API client " + ", ".join(f"{n} {plural.get(k, k)}" for k, n in sent.items()) + ".")
+        parts.append("In the last hour Zscaler Made Easy sent this tenant's API client " + ", ".join(f"{n} {plural.get(k, k)}" for k, n in sent.items()) + ".")
     else:
-        parts.append("DLP-Check sent this tenant's API client nothing in the last hour.")
+        parts.append("Zscaler Made Easy sent this tenant's API client nothing in the last hour.")
     tol = f.get("tolerated")
     if tol:
         parts.append(f"Fewest writes ZIA blocked it at: {tol['writes_5m']} in 5 minutes"

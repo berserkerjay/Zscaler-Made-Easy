@@ -311,7 +311,7 @@ def test_baseline_description_is_idempotent():
 
 
 def test_deployed_rules_say_disabled_in_their_description_dictionaries_and_engines_do_not():
-    """Every rule DLP-Check deploys ships DISABLED; the description names
+    """Every rule Zscaler Made Easy deploys ships DISABLED; the description names
     that so an admin reading the tenant sees why without opening the app.
     Dictionaries and engines have no disabled state, so they don't get it."""
     rule = {"kind": "policy", "baseline": {"pack": "p", "version": "1.0"}}

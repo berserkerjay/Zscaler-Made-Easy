@@ -118,7 +118,7 @@ def test_the_extension_talks_only_to_the_app_and_holds_no_token():
     assert "api(S.base, '/api/workspace/notes?' + new URLSearchParams({ tenant, kind: o.kind, ref: objectKey(o) }).toString())" in _read("panel.js")
     import security
     assert not any("workspace" in p for p in security.EXTENSION_POST_PATHS)
-    # The console script sends nothing from the page: only keys of objects DLP-Check already knows.
+    # The console script sends nothing from the page: only keys of objects Zscaler Made Easy already knows.
     con = _read("console.js")
     assert "sendMessage({ type: 'focus', key: e.key, keys: entries.map(x => x.key) })" in con and "sendMessage({ type: 'names' })" in con
     assert con.count("sendMessage(") == 2 and "fetch" not in con and "XMLHttpRequest" not in con
@@ -204,6 +204,6 @@ def test_the_panel_filters_by_kind_and_stages_only_what_export_supports():
     # Only DLP objects (the kinds Export from tenant supports) can be staged; others get deep links.
     assert "if (o && exportable(o) && !S.stage.includes(key))" in panel and "S.byKey.get(k)).filter(o => o && exportable(o))" in panel
     assert "openIn('shadow')" in panel and "SHADOW_KINDS.includes(o.kind)" in panel
-    assert "not shown: DLP-Check keeps" in panel, "a capped kind says how many more there are"
+    assert "not shown: Zscaler Made Easy keeps" in panel, "a capped kind says how many more there are"
     bg = _read("background.js")
     assert "slice(0, 20)" in bg and "typeof k === 'string'" in bg, "a badge click carries at most 20 known keys"

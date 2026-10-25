@@ -163,13 +163,13 @@ function _dzScope() {
 }
 const _dzE = s => escapeHtml(String(s == null ? '' : s));
 // A pack push (deploy or Terraform hand-off) names the assessor in every
-// object it creates, never DLP-Check, so it needs the name first.
-const DZ_ASSESSOR_REQUIRED = "Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. Every object a pack creates names the assessor in its description, never DLP-Check.";
-const DZ_ASSESSOR_NOT_TOOL = "The assessor's name must name the person who assesses and deploys the pack, not the tool (no \"DLP-Check\" in any spelling): it is part of every pushed object's description.";
+// object it creates, never Zscaler Made Easy, so it needs the name first.
+const DZ_ASSESSOR_REQUIRED = "Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. Every object a pack creates names the assessor in its description, never Zscaler Made Easy.";
+const DZ_ASSESSOR_NOT_TOOL = "The assessor's name must name the person who assesses and deploys the pack, not the tool (no \"Zscaler Made Easy\" in any spelling): it is part of every pushed object's description.";
 function _dzNeedAssessor() {
   const who = String((_dzCreds() || {}).assessor || '').trim();
   // Same rule as the server and the Terraform CLI (pack_deploy.TOOL_NAME_PATTERN).
-  if (/dlp[\W_]*check/i.test(who)) throw new Error(DZ_ASSESSOR_NOT_TOOL);
+  if (/dlp[\W_]*check|zscaler[\W_]*made[\W_]*easy/i.test(who)) throw new Error(DZ_ASSESSOR_NOT_TOOL);
   if (who) return;
   throw new Error(DZ_ASSESSOR_REQUIRED);
 }
@@ -447,7 +447,7 @@ function _dzRenderSelect() {
           <label class="dz-switch"><input type="checkbox" ${DZ.options.use_rank_0 ? 'checked' : ''} onchange="DZ.options.use_rank_0=this.checked" aria-label="Use rank 0"><span class="track"><span class="knob"></span></span></label>
         </div>
         <div class="dz-option">
-          <div><div class="t">Remove rules from this tenant</div><div class="d">The one way to remove: lists every DLP rule in the tenant on every channel — with its state, its engines and whether DLP-Check created it — and you tick the ones to remove (filters select a pack's rules in one click). The check that follows removes only those rules, plus each engine and dictionary that nothing else uses; anything another rule or engine still uses is kept and named. You approve the exact list, confirm once more, the usage is checked again right before each engine or dictionary goes, and a fresh read verifies the result. Needs write mode.</div></div>
+          <div><div class="t">Remove rules from this tenant</div><div class="d">The one way to remove: lists every DLP rule in the tenant on every channel — with its state, its engines and whether Zscaler Made Easy created it — and you tick the ones to remove (filters select a pack's rules in one click). The check that follows removes only those rules, plus each engine and dictionary that nothing else uses; anything another rule or engine still uses is kept and named. You approve the exact list, confirm once more, the usage is checked again right before each engine or dictionary goes, and a fresh read verifies the result. Needs write mode.</div></div>
           <button type="button" class="dz-btn" onclick="_dzRemovePick()" ${(DZ.remove || {})[RM_PICK] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_PICK] === 'busy' ? 'Listing…' : 'Remove rules…'}</button>
         </div>
         <div class="dz-option">
@@ -1239,7 +1239,7 @@ function _dzRenderDeploy() {
 // list, a consent box, a final confirmation) -> Remove (usage checked
 // again right before each engine and dictionary) -> Verify (a fresh read).
 // The same wizard undoes a recorded deployment. Whole-pack removal is no
-// longer offered: the picker's "Select DLP-Check rules" covers it with the
+// longer offered: the picker's "Select Zscaler Made Easy rules" covers it with the
 // same checks.
 const RM_KIND = { policy: 'rule', app_group: 'application group', engine: 'engine', dictionary: 'dictionary' };
 const RM_STEPS = ['Preview', 'Approve', 'Remove', 'Verify'];
@@ -1282,12 +1282,12 @@ async function _dzRemove(id) {
 function _dzRemovalClose() { DZ.removal = null; DZ.step = 1; _dzRender(); }
 
 // One sentence on what the removal preview could see, for the "nothing to
-// remove" card: counts per kind, how many carry a DLP-Check tag, and what
+// remove" card: counts per kind, how many carry a Zscaler Made Easy tag, and what
 // could not be listed.
 function _dzReadSummary(rd) {
   if (!rd) return '';
   const rules = Object.entries(rd.rules || {}).map(([ch, n]) => `${_dzChan(ch)} ${n}`).join(', ');
-  const parts = [`${rd.dictionaries} dictionaries (${rd.custom_dictionaries} custom, ${rd.tagged_dictionaries} tagged by DLP-Check)`,
+  const parts = [`${rd.dictionaries} dictionaries (${rd.custom_dictionaries} custom, ${rd.tagged_dictionaries} tagged by Zscaler Made Easy)`,
                  `${rd.engines} engines (${rd.tagged_engines} tagged)`, `rules: ${rules || 'none'} (${rd.tagged_rules} tagged)`];
   const bad = Object.entries(rd.unreadable || {}).map(([k, v]) => `${k} could not be listed (${v})`)
     .concat(Object.entries(rd.channel_errors || {}).map(([k, v]) => `${_dzChan(k)} rules could not be listed (${v})`));
@@ -1360,7 +1360,7 @@ function _dzRemovalSelect() {
   const row = r => `<label class="dz-row dz-pick ${R.selected.has(key(r)) ? 'on' : ''}">
       <input type="checkbox" ${R.selected.has(key(r)) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(key(r))}', this.checked)" aria-label="Remove ${_dzE(r.name)}">
       <div><div class="nm">${_dzE(r.name)} <span class="dz-chip ${String(r.state).toUpperCase() === 'ENABLED' ? 'kind-policy' : ''}">${_dzE(String(r.state || '').toLowerCase() || 'state ?')}</span>${r.parent_id != null ? '<span class="dz-chip">sub-rule</span>' : ''}</div>
-        <div class="rs">${r.tagged ? `DLP-Check · ${_dzE(r.pack || 'pack')}` : 'not created by DLP-Check'}${(r.engines || []).length ? ` · engines: ${_dzE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ' · no engines'}${r.action ? ` · ${_dzE(String(r.action).toLowerCase())}` : ''}</div></div>
+        <div class="rs">${r.tagged ? `Zscaler Made Easy · ${_dzE(r.pack || 'pack')}` : 'not created by Zscaler Made Easy'}${(r.engines || []).length ? ` · engines: ${_dzE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ' · no engines'}${r.action ? ` · ${_dzE(String(r.action).toLowerCase())}` : ''}</div></div>
     </label>`;
   const groups = Object.keys(byChan).map(ch => `<div class="dz-h" style="margin-top:0.8rem;">${_dzE(_dzChan(ch))}<span class="count">${byChan[ch].length}</span></div><div class="dz-rows">${byChan[ch].map(row).join('')}</div>`).join('');
   // Orphans: engines no rule uses and dictionaries no engine uses. Nothing
@@ -1371,7 +1371,7 @@ function _dzRemovalSelect() {
   const orow = (o, what) => { const k = `${o.kind}:${o.id}`; return `<label class="dz-row dz-pick ${R.selected.has(k) ? 'on' : ''}">
       <input type="checkbox" ${R.selected.has(k) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(k)}', this.checked)" aria-label="Remove ${_dzE(o.name)}">
       <div><div class="nm">${_dzE(o.name)} <span class="dz-chip">${what}</span></div>
-        <div class="rs">${o.tagged ? `DLP-Check · ${_dzE(o.pack || 'pack')}` : 'not created by DLP-Check'}${o.kind === 'engine' ? ' · no rule on any channel uses it' + ((o.dictionaries || []).length ? ` · dictionaries: ${_dzE(o.dictionaries.slice(0, 4).join(', '))}${o.dictionaries.length > 4 ? '…' : ''}` : '') : ' · no engine uses it'}</div>${o.kind === 'engine' ? _dzEngineExplain(o) : ''}</div>
+        <div class="rs">${o.tagged ? `Zscaler Made Easy · ${_dzE(o.pack || 'pack')}` : 'not created by Zscaler Made Easy'}${o.kind === 'engine' ? ' · no rule on any channel uses it' + ((o.dictionaries || []).length ? ` · dictionaries: ${_dzE(o.dictionaries.slice(0, 4).join(', '))}${o.dictionaries.length > 4 ? '…' : ''}` : '') : ' · no engine uses it'}</div>${o.kind === 'engine' ? _dzEngineExplain(o) : ''}</div>
     </label>`; };
   const orphanGroups = (oEng.length ? `<div class="dz-h" style="margin-top:0.8rem;">Engines with no rule<span class="count">${oEng.length}</span></div><div class="dz-rows">${oEng.map(o => orow(o, 'engine')).join('')}</div>` : '')
     + (oDict.length ? `<div class="dz-h" style="margin-top:0.8rem;">Dictionaries no engine uses<span class="count">${oDict.length}</span></div><div class="dz-rows">${oDict.map(o => orow(o, 'dictionary')).join('')}</div>` : '');
@@ -1382,7 +1382,7 @@ function _dzRemovalSelect() {
       <div class="d">Tick the leftovers to remove. The plan then adds the engines and dictionaries only those rules use; anything an unticked rule or a surviving engine still uses is kept and listed. Orphan engines and dictionaries are listed at the bottom so a leftover with no rule can go too. Predefined objects are never touched.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
     <div class="dz-pick-tools">
       <input type="search" class="dz-input" placeholder="Filter by rule, engine or pack" value="${_dzE(R.filter || '')}" oninput="_dzRefilter(DZ.removal, this, _dzRemovalRender)" aria-label="Filter rules">
-      <button type="button" class="dz-link" onclick="_dzPickSet(r => r.tagged)">Select DLP-Check rules</button>
+      <button type="button" class="dz-link" onclick="_dzPickSet(r => r.tagged)">Select Zscaler Made Easy rules</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(r => String(r.state).toUpperCase() !== 'ENABLED')">Select disabled rules</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(() => true)">Select all shown</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(() => false)">Clear</button>
@@ -1457,11 +1457,11 @@ function _dzRemovalPreview() {
   const row = i => `<div class="dz-row ${i.status === 'keep' ? 'st-reuse' : 'st-fail'}">
     <span class="ic" aria-hidden="true">${i.status === 'keep' ? '↺' : '🗑'}</span>
     <div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}${i.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(i.channel))}</span>` : ''}</div>
-      <div class="rs">${i.status === 'keep' ? `Kept — ${_dzE(i.keep)}` : (i.match === 'name' ? 'Removed — matched by name (no DLP-Check tag; confirm it is yours)' : 'Removed — carries this pack’s DLP-Check tag')}</div></div>
+      <div class="rs">${i.status === 'keep' ? `Kept — ${_dzE(i.keep)}` : (i.match === 'name' ? 'Removed — matched by name (no Zscaler Made Easy tag; confirm it is yours)' : 'Removed — carries this pack’s Zscaler Made Easy tag')}</div></div>
   </div>`;
   const removeSorted = remove.slice().sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9) || a.name.localeCompare(b.name));
   body.innerHTML = `
-    ${!remove.length ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Nothing to remove</div><div class="d">No objects in the tenant carry this pack’s DLP-Check tag or its names.${keep.length ? ` ${keep.length} matching object(s) are kept because something else still uses them.` : ''}</div>
+    ${!remove.length ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Nothing to remove</div><div class="d">No objects in the tenant carry this pack’s Zscaler Made Easy tag or its names.${keep.length ? ` ${keep.length} matching object(s) are kept because something else still uses them.` : ''}</div>
       ${R.plan.read ? `<div class="d" style="margin-top:0.4rem;">What the preview read from ${_dzE(R.plan.tenant_label || 'the tenant')}: ${_dzE(_dzReadSummary(R.plan.read))}</div>` : ''}
       ${(R.plan.warnings || []).length ? `<div class="d" style="margin-top:0.4rem;">${(R.plan.warnings || []).map(w => `⚠ ${_dzE(w)}`).join('<br>')}</div>` : ''}</div></div>` : `
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What was checked</div><div class="d">Every DLP rule on every channel of ${_dzE(R.plan.tenant_label || 'the tenant')} and every engine were read. An engine goes only when no rule outside this selection uses it; a dictionary goes only when no engine that stays uses it; predefined Zscaler objects are never touched. ${_dzN(remove.filter(i => i.kind === 'policy').length, 'rule')}, ${_dzN(remove.filter(i => i.kind === 'engine').length, 'engine')} and ${_dzN(remove.filter(i => i.kind === 'dictionary').length, 'dictionary', 'dictionaries')} will be removed; ${_dzN(keep.length, 'object')} kept. The same usage check runs again right before each engine and dictionary is deleted.</div></div></div>
@@ -1499,7 +1499,7 @@ function _dzRemovalApprove() {
     ${list(byKind('app_group'), 'Endpoint application groups to remove')}
     ${list(byKind('engine'), 'Engines to remove')}
     ${list(byKind('dictionary'), 'Dictionaries to remove')}
-    ${nameOnly.length ? `<div class="dz-card sev-medium"><div class="bar"></div><div><div class="t">${nameOnly.length} object(s) matched by name only</div><div class="d">These carry no DLP-Check tag: ${_dzE(nameOnly.map(i => i.name).join(', '))}. Confirm they are yours before removing.</div></div></div>` : ''}
+    ${nameOnly.length ? `<div class="dz-card sev-medium"><div class="bar"></div><div><div class="t">${nameOnly.length} object(s) matched by name only</div><div class="d">These carry no Zscaler Made Easy tag: ${_dzE(nameOnly.map(i => i.name).join(', '))}. Confirm they are yours before removing.</div></div></div>` : ''}
     <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I have read the list above and I authorize the permanent removal of these ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>`;
   document.getElementById('dzFoot').innerHTML = `
     <div class="dz-summary">${!writeOn ? ((DZ.write || {}).can_toggle ? 'The server is read-only: click Enable write mode (you will type the confirmation phrase), then Remove now unlocks.' : _dzE((DZ.write || {}).reason || ('The server is read-only and write mode cannot be enabled from here; ' + ((DZ.write || {}).how_to_enable || 'start it with ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND') + '.'))) : (R.consent ? 'Ready: Remove now deletes the objects above and verifies by a fresh read.' : 'Tick the box to enable Remove now.')}</div>
@@ -1624,7 +1624,7 @@ function _dzRemovalReport() {
     <tr class="${i.status}">
       <td>${esc(RM_KIND[i.kind] || i.kind)}</td><td>${esc(i.name)}</td><td>${esc(i.channel || '')}</td>
       <td><b>${i.status === 'remove' ? 'Remove' : 'Keep'}</b></td>
-      <td>${i.status === 'keep' ? esc(i.keep) : (i.match === 'name' ? 'Matched by name only (no DLP-Check tag) — confirm ownership' : 'Carries this pack’s DLP-Check provenance tag')}</td>
+      <td>${i.status === 'keep' ? esc(i.keep) : (i.match === 'name' ? 'Matched by name only (no Zscaler Made Easy tag) — confirm ownership' : 'Carries this pack’s Zscaler Made Easy provenance tag')}</td>
     </tr>`).join('');
   const remove = items.filter(i => i.status === 'remove').length, keep = items.length - remove;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Removal plan — ${esc(R.pack.name || R.id)}</title>
@@ -1644,9 +1644,9 @@ function _dzRemovalReport() {
     <h1>Removal plan — ${esc(R.pack.name || R.id)}</h1>
     <p class="sub">Tenant ${esc(R.plan.tenant_label || '')} · generated ${new Date().toLocaleString()}</p>
     <div class="stat"><div><b>${remove}</b> to remove</div><div><b>${keep}</b> kept (still in use)</div></div>
-    <p>This is the plan previewed in DLP-Check. Removal deletes objects in dependency order — rules, then endpoint application groups, then engines, then dictionaries — so nothing is deleted while something still points at it. An engine a surviving rule still uses, and a dictionary a surviving engine still uses, are kept and listed below. Predefined Zscaler dictionaries are never removed. DLP-Check activates the changes in ZIA automatically as the removal runs, so the deletions are live when it finishes.</p>
+    <p>This is the plan previewed in Zscaler Made Easy. Removal deletes objects in dependency order — rules, then endpoint application groups, then engines, then dictionaries — so nothing is deleted while something still points at it. An engine a surviving rule still uses, and a dictionary a surviving engine still uses, are kept and listed below. Predefined Zscaler dictionaries are never removed. Zscaler Made Easy activates the changes in ZIA automatically as the removal runs, so the deletions are live when it finishes.</p>
     <table><thead><tr><th>Type</th><th>Name</th><th>Channel</th><th>Decision</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="method">Objects are matched to the pack by the DLP-Check provenance tag written into each object’s description at deploy time, and by the names the pack defines. Name-only matches carry no tag and are flagged for confirmation.</p>
+    <p class="method">Objects are matched to the pack by the Zscaler Made Easy provenance tag written into each object’s description at deploy time, and by the names the pack defines. Name-only matches carry no tag and are flagged for confirmation.</p>
     </body></html>`;
   const w = window.open('', '_blank');
   if (!w) { alert('Allow pop-ups to open the printable report.'); return; }
@@ -2387,7 +2387,7 @@ function _tfRender() {
       </tbody></table></div>
     <div class="tf-modes" role="radiogroup" aria-label="Terraform mode">
       <label class="tf-mode ${mode === 'gap' ? 'on' : ''}"><input type="radio" name="tfMode" value="gap" ${mode === 'gap' ? 'checked' : ''} ${_tfCanGap() ? '' : 'disabled'} onchange="_tfSetMode('gap')"> <span><span class="t">Gap mode ${mode === 'gap' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</span>
-        <span class="d">Uses the tenant details from the assessment page. DLP-Check reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest.<br><b>Use when</b> the tenant already has DLP objects and the team will apply this workspace. <b>Not when</b> the tenant is empty, credentials are off limits, or you only need a reference.${_tfCanGap() ? '' : ' Needs the tenant details (or a profile with a remembered secret) on the assessment page.'}</span></span></label>
+        <span class="d">Uses the tenant details from the assessment page. Zscaler Made Easy reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest.<br><b>Use when</b> the tenant already has DLP objects and the team will apply this workspace. <b>Not when</b> the tenant is empty, credentials are off limits, or you only need a reference.${_tfCanGap() ? '' : ' Needs the tenant details (or a profile with a remembered secret) on the assessment page.'}</span></span></label>
       <label class="tf-mode ${mode === 'static' ? 'on' : ''}"><input type="radio" name="tfMode" value="static" ${mode === 'static' ? 'checked' : ''} onchange="_tfSetMode('static')"> <span><span class="t">Static ${mode === 'static' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</span>
         <span class="d">No tenant access, no credentials sent, no import blocks. The workspace describes the whole pack; on a tenant that already has some of it, the platform team imports those objects first or Terraform will try to create duplicates. <br><b>Use when</b> the tenant is new or empty, credentials cannot be shared, you are handing over a reference or design for review, or transcribing an uploaded pack as it is. <b>Not when</b> the tenant already has these objects and nobody will import them first.</span></span></label>
     </div>

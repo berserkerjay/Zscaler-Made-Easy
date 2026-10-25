@@ -710,7 +710,7 @@ def summarise(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def to_markdown(d: Dict[str, Any]) -> str:
     s = d.get("summary") or summarise(d)
-    L = [f"# DLP-Check digest — {d.get('at')}", "",
+    L = [f"# Zscaler Made Easy digest — {d.get('at')}", "",
          f"**{'Something needs a look.' if d.get('noteworthy') else 'Nothing new: the loop ran and found nothing to raise.'}** "
          f"{s['proposals_new']} new proposal(s), {s['proposals_open']} open, {s['guidance_new']} new guidance item(s), "
          f"{s['stale_sources']} stale source(s), {s['tenants_not_active']} SaaS tenant(s) not active, {s['drift_changed']} pack(s) moved, {s.get('score_drops', 0)} score drop(s), {s['errors']} error(s).", ""]
@@ -854,7 +854,7 @@ def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:
     out = []
     md = to_markdown(d)
     s = d.get("summary") or {}
-    subject = f"DLP-Check digest: {s.get('proposals_new', 0)} new proposal(s), {s.get('guidance_new', 0)} new guidance, {s.get('drift_changed', 0)} pack(s) moved"
+    subject = f"Zscaler Made Easy digest: {s.get('proposals_new', 0)} new proposal(s), {s.get('guidance_new', 0)} new guidance, {s.get('drift_changed', 0)} pack(s) moved"
     if cfg["email"]["configured"]:
         out.append(_send_email(subject, md, cfg["email"]))
     if cfg["webhook"]["configured"]:

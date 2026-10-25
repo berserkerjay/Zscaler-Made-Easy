@@ -558,7 +558,7 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
             if _stopped_now():
                 break
             until = ("the limit has completely reset (ZIA's reset timer)" if getattr(outcome, "reset_seconds", None) else
-                     "the oldest write DLP-Check counted has left the limit's longest window")
+                     "the oldest write Zscaler Made Easy counted has left the limit's longest window")
             quip = zia_rate._quip("blocked" if "blocked" in str(outcome.error or "").lower() else "resetting", zia_rate._now())
             _log(f"[{kind or op}] {name}: {quip + ' ' if quip else ''}ZIA refused it for its rate ('{outcome.error}'); pausing the whole run until "
                  f"{until}: {_human_secs(secs)}, then trying again ({window} of {RATE_WINDOWS}). Nothing is sent meanwhile.")

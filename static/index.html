@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zscaler Platform Assessment</title>
+<title>Zscaler Made Easy</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <style>
   /* ── Design tokens (Apple Human Interface Guidelines conventions, on the web) ──
@@ -577,7 +577,7 @@
   <header role="banner">
   <!-- Hero -->
   <div class="hero">
-    <h1><span class="accent">Zscaler</span> Platform Assessment</h1>
+    <h1><span class="accent">Zscaler</span> Made Easy</h1>
     <p>Automated best-practice validation across ZIA, ZPA, and ZCC</p>
     <span class="badge" id="totalChecksBadge">Loading...</span>
 
@@ -776,8 +776,8 @@
       <div class="tool-group" role="group" aria-label="Troubleshoot" data-sb-id="troubleshoot">
         <div class="tool-group-l">Troubleshoot</div>
         <button class="btn btn-ghost" onclick="openAuditTimelineTab()"
-                aria-label="Open Audit timeline: ZIA's admin audit log merged with DLP-Check's deployments and its own audit log, newest first, with changes someone else made to DLP-Check objects marked (opens in a new tab)"
-                title="Who changed what in the tenant, and what DLP-Check did, on one timeline: ZIA's admin audit log for a window you choose, DLP-Check's deployment records and audit log, filters, field-by-field diffs, CSV and JSON. Writes nothing to the tenant. Opens in a new tab.">
+                aria-label="Open Audit timeline: ZIA's admin audit log merged with Zscaler Made Easy's deployments and its own audit log, newest first, with changes someone else made to Zscaler Made Easy objects marked (opens in a new tab)"
+                title="Who changed what in the tenant, and what Zscaler Made Easy did, on one timeline: ZIA's admin audit log for a window you choose, Zscaler Made Easy's deployment records and audit log, filters, field-by-field diffs, CSV and JSON. Writes nothing to the tenant. Opens in a new tab.">
           <span aria-hidden="true">📜</span> Audit timeline
         <button class="btn btn-ghost" onclick="openFleetTab()"
                 aria-label="Open Client Connector fleet: enrolled devices, ZIA, ZPA and ZDX activity, blind spots, version drift, profile heatmap and a ranked remediation plan (opens in a new tab)"
@@ -902,7 +902,7 @@
   </div>
   </header>
 
-  <main id="main-content" role="main" tabindex="-1" aria-label="Zscaler Platform Assessment — Configuration and Results">
+  <main id="main-content" role="main" tabindex="-1" aria-label="Zscaler Made Easy — Configuration and Results">
 
   <!-- Step indicator — surfaces current progress across the 4 phases -->
   <nav id="stepBar" aria-label="Assessment workflow steps: each one is a button"
@@ -2866,7 +2866,7 @@ function buildPartialReport() {
   }
   const sum = assessmentSummary({ checks: partialResults });
   reportData = {
-    metadata: {tool:'Zscaler Platform Assessment (PARTIAL)', org: runMeta.org, assessor: runMeta.assessor, cloud: runMeta.cloud,
+    metadata: {tool:'Zscaler Made Easy (PARTIAL)', org: runMeta.org, assessor: runMeta.assessor, cloud: runMeta.cloud,
                scope: (runMeta.scopes || []).join(','), total_checks: partialResults.length, partial: true, timestamp: new Date().toISOString()},
     score: sum.score, maturity: sum.maturity, sections: sections, checks: partialResults, summary: sum,
     critical: partialResults.filter(c => c.status === 'FAIL'),
@@ -5589,7 +5589,7 @@ function _popOutSection(card, title) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${title} — Zscaler Assessment</title>
+<title>${title} — Zscaler Made Easy</title>
 <style>${styleEl ? styleEl.textContent : ''}</style>
 </head>
 <body class="${themeClass}" style="padding:2rem;">

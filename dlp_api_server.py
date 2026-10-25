@@ -134,7 +134,7 @@ except Exception:
 # ── FastAPI App ──────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Zscaler Platform Assessment",
+    title="Zscaler Made Easy",
     version="3.0",
     description="Full-auto assessment engine via OneAPI.",
 )
@@ -980,7 +980,7 @@ class PackRemovalRequest(TenantCredsRequest):
     pack_ids: List[str] = []
     plan_hash: str = ""
     confirm: bool = False
-    all: bool = False      # everything DLP-Check ever put in the tenant, not just the listed packs
+    all: bool = False      # everything Zscaler Made Easy ever put in the tenant, not just the listed packs
     rules: List[Dict[str, Any]] = []   # pick mode: the rules ({channel, id}) to remove with their engines and dictionaries
     deployment_id: str = ""            # undo mode: what one recorded deployment created
 
@@ -1041,15 +1041,15 @@ def _assessor(req: Any) -> str:
 
 
 ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. "
-                     "Every object a pack creates names the assessor in its description, never DLP-Check.")
+                     "Every object a pack creates names the assessor in its description, never Zscaler Made Easy.")
 ASSESSOR_NOT_TOOL = ("The assessor's name must name the person who assesses and deploys the pack, not the tool "
-                     "(no \"DLP-Check\" in any spelling): it is part of every pushed object's description.")
+                     "(no \"Zscaler Made Easy\" in any spelling): it is part of every pushed object's description.")
 
 
 def _require_assessor(req: Any) -> str:
     """The assessor's name, or a 400 before anything is read or written:
     a pack push (deploy, single-pack import, Terraform hand-off) always
-    names the assessor in the objects it creates, never DLP-Check."""
+    names the assessor in the objects it creates, never Zscaler Made Easy."""
     import pack_deploy
     given = getattr(req, "assessor", "") or ""
     if not str(given).strip():
@@ -2873,7 +2873,7 @@ async def rate_check(req: RateCheckRequest):
 @app.post("/api/dlp-packs/removal/preflight")
 async def dlp_pack_removal_preflight(req: PackRemovalRequest):
     """Find what a deployed pack or baseline put into the tenant — by its
-    DLP-Check provenance tag and by the names it defines — and preview a
+    Zscaler Made Easy provenance tag and by the names it defines — and preview a
     methodical removal: rules, then endpoint application groups, then
     engines, then dictionaries. Objects a surviving rule or engine still
     uses, and every predefined dictionary, are kept and reported. Returns
@@ -4907,7 +4907,7 @@ class ConsoleIndexRequest(ScopedTenantCredsRequest):
 
 @app.post("/api/console-index")
 async def console_index(req: ConsoleIndexRequest):
-    """What DLP-Check knows about each object of the ZIA admin console, for
+    """What Zscaler Made Easy knows about each object of the ZIA admin console, for
     the companion extension's badges and side panel: DLP dictionaries,
     engines and rules (what they use, what uses them, the pack that created
     them, findings), and, where in scope, the URL filtering, Cloud App
@@ -5712,7 +5712,7 @@ async def serve_permissions_page():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Required API Access · Zscaler Platform Assessment</title>
+<title>Required API Access · Zscaler Made Easy</title>
 <style>
   :root {{
     --bg: #0a0e1a;
@@ -7107,7 +7107,7 @@ async def assess_stream(req: AssessRequest):
 
             report = {
                 "metadata": {
-                    "tool": "Zscaler Platform Assessment",
+                    "tool": "Zscaler Made Easy",
                     "version": "3.0",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "org": req.org_name,
@@ -7926,7 +7926,7 @@ async def path_analyzer_batch_export(job_id: str, format: str = "csv"):
 @app.get("/report/audit")
 async def report_audit_page():
     """Audit timeline (static/report_audit.html): ZIA's admin audit log
-    merged with DLP-Check's deployments and its own audit log."""
+    merged with Zscaler Made Easy's deployments and its own audit log."""
     page = os.path.join(STATIC_DIR, "report_audit.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
@@ -7945,7 +7945,7 @@ class AuditTimelineRequest(ScopedTenantCredsRequest):
 
 
 def _run_audit_timeline(client, win: Dict[str, Any], include_zia: bool, label: str, labels, log, cancel) -> Dict[str, Any]:
-    """Read ZIA's audit log report (when asked), DLP-Check's deployment
+    """Read ZIA's audit log report (when asked), Zscaler Made Easy's deployment
     records and its audit log, and merge them (audit_timeline.build)."""
     import audit_timeline as at
     import data_flow
@@ -7961,13 +7961,13 @@ def _run_audit_timeline(client, win: Dict[str, Any], include_zia: bool, label: s
             return {"stopped": str(e), "status": "stopped", "tenant_label": label}
         if zia.get("error"):
             log(zia["error"])
-    log("Reading DLP-Check's deployment records and its own audit log…")
+    log("Reading Zscaler Made Easy's deployment records and its own audit log…")
     deps = deployments.list_all()
     entries = _audit.tail(50000)
     out = at.build(window_=win, zia=zia, deployments=deps, audit_entries=entries, labels=labels, known_packs=pack_deploy.library_ids(),
                    tenant_label=label, zia_requested=include_zia,
-                   zia_reason="" if include_zia else "The ZIA admin audit log was not read (you chose DLP-Check's own records only).")
-    log(f"{out['summary']['events']} event(s) in the window; {out['summary']['foreign_changes']} change(s) by someone else to objects DLP-Check created.")
+                   zia_reason="" if include_zia else "The ZIA admin audit log was not read (you chose Zscaler Made Easy's own records only).")
+    log(f"{out['summary']['events']} event(s) in the window; {out['summary']['foreign_changes']} change(s) by someone else to objects Zscaler Made Easy created.")
     return out
 
 
@@ -9199,7 +9199,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     host = get_bind_host()
     port = get_port()
-    print("\n  Zscaler Platform Assessment")
+    print("\n  Zscaler Made Easy")
     problem = _port_problem(host, port)
     if problem:
         print(f"\n  Could not start: {problem}\n", file=sys.stderr)

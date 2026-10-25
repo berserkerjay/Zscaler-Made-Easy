@@ -309,7 +309,7 @@ def test_the_page_is_served_wired_and_explained():
                    "/api/posture/project", "/api/posture/settings", "Top 10 fixes that raise your score most", 'id="coverage"', 'id="trend"',
                    "__assessmentReport", "openRemediationWizard", "glossary.js", "Zscaler Made Easy"):
         assert needle in html, needle
-    assert "DLP-Check" not in html   # new user-visible text uses the new product name
+    assert "DLP-Check" not in html and "Zscaler Made Easy" in html   # new user-visible text uses the new product name
     order = [html.index(f'<script src="/static/{s}"></script>') for s in ("icons.js", "ui_auth.js", "report_theme.js", "safety_banner.js", "explain.js")]
     assert order == sorted(order)
     style = html.split("<style>")[1].split("</style>")[0]
