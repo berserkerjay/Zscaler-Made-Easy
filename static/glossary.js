@@ -53,6 +53,8 @@
     'saved connection': { term: 'saved connection', def: 'A saved connection keeps the details for one company. Next time, you do not need to type them again.' },
     'incident': { term: 'incident', def: 'An incident is a note that a rule found something. It says who, what and where.' },
     'spreadsheet': { term: 'spreadsheet', def: 'A spreadsheet is a file with rows and boxes, like a table. Excel can open it.' },
+    'tag': { term: 'tag', def: 'A tag is a short word you stick on a rule or another item, like a label. It helps you find and group things later.' },
+    'to-do': { term: 'to-do', def: 'A to-do is a small job you write down so you do not forget it. You tick it off when it is done.' },
     'expert view': { term: 'expert view', def: 'The expert view is the full tool with every page and choice. It is made for people who know Zscaler well.' },
     'certificate pinning': { term: 'certificate pinning', def: 'Some apps only trust their own lock. When Zscaler opens their traffic, they stop working. We say they pin their certificate.' },
     'decrypt': { term: 'decrypt', def: 'To decrypt is to unlock traffic so Zscaler can read it. Then it is locked again on its way.' },

@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/posture", "/report/sslcoverage"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/todo", "/report/posture", "/report/sslcoverage"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -274,6 +274,7 @@ GUI_ADDONS = [
     ("rate_gate.js", "script"),     # the rate-limit check every deploy and delete confirms with
     ("deploy_studio.js", "script"),
     ("explain.js", "script"),
+    ("find_anything.js", "script"),  # Find anything (Ctrl/Cmd+J): pages, glossary terms, tenant objects, findings
     ("guide.js", "script"),
     ("update_beacon.js", "script"),  # checks for updates in the background and shows a notice when one is out
     ("eval_all.js", "script"),
@@ -4693,7 +4694,7 @@ async def console_index(req: ConsoleIndexRequest):
     import console_index as ci
     zscope = _console_zia_scope(req)
     try:
-        channels = _pack_channels_in_scope(req, "The browser extension's console index")
+        channels = _pack_channels_in_scope(req, "The tenant object index (Find anything and the browser extension)")
     except HTTPException as e:
         # No DLP channel in scope: the ZIA policies alone still make an index.
         if e.status_code != 400 or not (zscope["scope"]["read"] or zscope["ftc"]):
@@ -4745,6 +4746,134 @@ def _console_zia(req: Any, zscope: Dict[str, Any]):
         return res, f"{len(res.get('findings') or [])} finding(s)"
     except Exception as e:  # noqa: BLE001 - the index is still useful without them
         return None, f"not available: {str(e)[:160]}"
+
+
+@app.get("/api/console-index/cached")
+async def console_index_cached(profile_id: str = ""):
+    """The last console index this server read for a tenant profile (or for
+    the server's own tenant), whatever scope it was read with, while it is
+    kept (30 minutes). Never reads the tenant: Find anything searches it as
+    you type, and only its Load tenant objects button reads (POST
+    /api/console-index, with the Scope page's selection)."""
+    import console_index as ci
+    hit = ci.cache_latest(profile_id)
+    return {"index": hit, "profile_id": profile_id or ""}
+
+
+# ── Workspace notes: tags, comments and to-dos on any object ──────────────
+# Local notes in this app's own store (workspace_notes.py), per tenant label;
+# never a tenant write. Every call needs the UI token like every other
+# (security.UIAuthMiddleware); who wrote a note is the server's view of the
+# caller (_actor), never a name the page sends; every change is in the audit
+# log. The browser extension may read notes (GET) but never write them: these
+# paths are not in security.EXTENSION_POST_PATHS.
+class WorkspaceNoteRequest(BaseModel):
+    """One change to the note on (tenant, kind, ref). The tenant is its
+    label, or the saved profile / sign-in it belongs to (no secret is sent)."""
+    tenant: str = ""
+    profile_id: str = ""
+    vanity_domain: str = ""
+    cloud: str = ""
+    auth_method: str = ""
+    kind: str = ""
+    ref: str = ""
+    label: str = ""
+    href: str = ""
+    action: str = ""
+    tags: List[str] = []
+    tag: str = ""
+    text: str = ""
+    item_id: str = ""
+    done: bool = True
+
+
+def _notes_tenant(tenant: str = "", profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = "") -> str:
+    """The tenant label a note is kept under: the one given, else the saved
+    profile's, else the sign-in's (vanity domain and cloud), else this
+    server's configured tenant. Never reads the tenant."""
+    import tenant_profiles
+    import workspace_notes as wn
+    if (tenant or "").strip():
+        return wn.clean_tenant(tenant)
+    creds: Dict[str, Any] = {}
+    if (profile_id or "").strip():
+        p = tenant_profiles.get(profile_id.strip())
+        if not p:
+            raise wn.NotesError("that tenant profile no longer exists; pick another", 404)
+        creds = tenant_profiles.creds_from(p)
+    elif (vanity_domain or "").strip() or (auth_method or "").strip().lower() in ("legacy", "classic"):
+        creds = {"vanity_domain": vanity_domain, "cloud": cloud, "auth_method": auth_method}
+    else:
+        env = tenant_auth.from_env()
+        if not tenant_auth.complete(env):
+            raise wn.NotesError("pick a tenant first: notes are kept per tenant")
+        creds = env
+    try:
+        return wn.clean_tenant(tenant_auth.record_label(creds))
+    except ValueError as e:
+        raise wn.NotesError(str(e)[:200])
+
+
+def _notes_call(fn, *args, **kwargs):
+    import workspace_notes as wn
+    try:
+        return fn(*args, **kwargs)
+    except wn.NotesError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+@app.get("/api/workspace/notes")
+async def workspace_notes_get(tenant: str = "", profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = "",
+                              kind: str = "", ref: str = "", tag: str = "", all_tenants: bool = False):
+    """The note on one object (kind and ref given), or every note of a
+    tenant (optionally with one tag), or with all_tenants every note of
+    every tenant, for the To-do list. Read-only, local."""
+    import workspace_notes as wn
+    if all_tenants:
+        return {"tenant": None, "notes": _notes_call(wn.list_notes, None, tag=tag), "tenants": wn.tenants(), "limits": _notes_limits()}
+    label = _notes_call(_notes_tenant, tenant, profile_id, vanity_domain, cloud, auth_method)
+    if kind or ref:
+        return {"tenant": label, "note": _notes_call(wn.get, label, kind, ref), "limits": _notes_limits()}
+    return {"tenant": label, "notes": _notes_call(wn.list_notes, label, tag=tag), "limits": _notes_limits()}
+
+
+def _notes_limits() -> Dict[str, int]:
+    import workspace_notes as wn
+    return {"tags": wn.MAX_TAGS, "tag_length": wn.MAX_TAG_LEN, "comment_length": wn.MAX_COMMENT_LEN, "todo_length": wn.MAX_TODO_LEN,
+            "comments": wn.MAX_COMMENTS, "todos": wn.MAX_TODOS, "notes_per_tenant": wn.MAX_NOTES_PER_TENANT}
+
+
+@app.post("/api/workspace/notes")
+async def workspace_notes_post(req: WorkspaceNoteRequest, request: Request):
+    """Add or remove a tag, a comment or a to-do on one object, or tick a
+    to-do done. A local write to this app's store, recorded with who made it."""
+    import workspace_notes as wn
+    label = _notes_call(_notes_tenant, req.tenant, req.profile_id, req.vanity_domain, req.cloud, req.auth_method)
+    note = _notes_call(wn.apply, label, req.kind, req.ref, req.action, by=_cq_by(request), label=req.label, href=req.href,
+                       tags=req.tags, tag=req.tag, text=req.text, item_id=req.item_id, done=req.done)
+    return {"tenant": label, "note": note}
+
+
+@app.delete("/api/workspace/notes")
+async def workspace_notes_delete(request: Request, kind: str, ref: str, tenant: str = "", profile_id: str = "",
+                                 vanity_domain: str = "", cloud: str = "", auth_method: str = ""):
+    """Remove every tag, comment and to-do on one object."""
+    import workspace_notes as wn
+    label = _notes_call(_notes_tenant, tenant, profile_id, vanity_domain, cloud, auth_method)
+    gone = _notes_call(wn.delete, label, kind, ref, by=_cq_by(request))
+    if not gone:
+        raise HTTPException(status_code=404, detail="There is no note on this object.")
+    return {"tenant": label, "deleted": True}
+
+
+@app.get("/report/todo")
+async def report_todo_page():
+    """Standalone tab for the To-do list (static/report_todo.html)."""
+    page = os.path.join(STATIC_DIR, "report_todo.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/api/pack-library/{pack_id}/bundle")

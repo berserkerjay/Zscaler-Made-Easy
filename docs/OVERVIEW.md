@@ -69,6 +69,16 @@ what you get, what to do next.
   Detailed findings with a fix for each, in four plain sentences apiece.
 - **What does everything do?** — every function explained in plain
   English, in first-engagement order, with a glossary.
+- **Find anything** (Ctrl+J or Cmd+J, `/` outside a text field, or the
+  Find button on every page) — one search box over the app's pages and
+  what they do, the glossary words (with the plain meaning inline), the
+  tenant's objects from the last console index the app read, the findings
+  of the assessment on screen and the open to-dos. It forgives typos
+  ("terrafrom") and knows common synonyms ("block" and "deny", "tf" and
+  "Terraform"). Typing never reads the tenant: *Load tenant objects* reads
+  it once, read-only and only what is in scope. An object opens as a card:
+  what it uses, what uses it, its findings, the pages that act on it and
+  its tags, to-dos and comments.
 - **Simple mode** (`/simple`, first item in the sidebar) — the same app
   as seven big tasks for someone with little Zscaler knowledge: connect,
   check how safe the data is, fix the top three problems, protect
@@ -301,6 +311,16 @@ what you get, what to do next.
   records the change with an Undo that is itself previewed. Cloud
   application sanction is not offered: the SDK cannot read an
   application's current state.
+- **To-do list** (`/report/todo`) — tags, comments and to-dos you write
+  on any object (a DLP rule, engine or dictionary, a URL filtering or
+  firewall rule, a URL category, a location, a finding) from its card in
+  Find anything, kept per tenant on the machine the app runs on
+  (`workspace_notes.json` beside the tenant profiles, owner-only), with who
+  wrote each one and an audit-log line for every change. The page lists the
+  open to-dos across tenants, filters by tenant and tag, ticks them done and
+  links back to the object. Nothing is read from or written to the tenant;
+  the browser extension's side panel shows an object's tags and notes
+  (read-only).
 - **Terraform hand-off** — the same policy pack as a Terraform workspace
   for the official `zscaler/zia` provider. Static mode needs no
   credentials; gap mode reads the tenant and imports what exists so the

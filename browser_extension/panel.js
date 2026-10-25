@@ -256,6 +256,24 @@ function usedBySections(o) {
 function openIn(page) {
   return h('button', { type: 'button', onclick: () => chrome.tabs.create({ url: S.base + PAGES[page].path }), text: page === 'home' ? 'Open DLP-Check' : `Open ${PAGES[page].label} in DLP-Check` });
 }
+// The object's workspace notes (tags, to-dos, comments) as the app keeps
+// them for this tenant: read-only here (GET); they are written in the app.
+function notesSection(o) {
+  const box = h('div', { class: 'notes', 'aria-live': 'polite' }, h('p', { class: 'note', text: 'Loading the notes…' }));
+  const tenant = (S.index && S.index.tenant_label) || '';
+  if (!tenant) { box.replaceChildren(h('p', { class: 'note', text: 'Read the tenant to see its notes.' })); return box; }
+  api(S.base, '/api/workspace/notes?' + new URLSearchParams({ tenant, kind: o.kind, ref: objectKey(o) }).toString()).then(d => {
+    const n = d && d.note;
+    if (!n) { box.replaceChildren(h('p', { class: 'note', text: 'No tags or notes. Add them on the object\'s card in the app (Find anything, Ctrl+J).' })); return; }
+    const open = (n.todos || []).filter(t => !t.done);
+    box.replaceChildren(
+      (n.tags || []).length ? h('div', { class: 'refs' }, n.tags.map(t => h('span', { class: 'chip', text: t }))) : null,
+      open.length ? h('ul', { class: 'list' }, open.map(t => h('li', { class: 'meta', text: `To-do: ${t.text}` }))) : null,
+      (n.comments || []).slice(-3).map(c => h('p', { class: 'note', text: `${c.by || ''}: ${c.text}` })),
+      h('p', { class: 'note', text: `${plural(open.length, 'open to-do')}, ${plural((n.comments || []).length, 'comment')}. Edit them in the app.` }));
+  }).catch(e => { box.replaceChildren(h('p', { class: 'note', text: `Notes not available: ${e.message}` })); });
+  return box;
+}
 function viewDetail(o) {
   const key = objectKey(o);
   const staged = S.stage.includes(key);
@@ -296,6 +314,7 @@ function viewDetail(o) {
     o.name_derived ? h('p', { class: 'note', text: `Named after its ID: the API gives predefined categories no display name, so the console may spell it differently.` }) : null,
     ...sections,
     h('h3', { text: 'Findings' }), findings.length ? findings : h('p', { class: 'note', text: 'None.' }),
+    h('h3', { text: 'Tags and notes' }), notesSection(o),
     exportable(o) ? null : h('p', { class: 'note', text: 'Export from tenant covers DLP objects only; open DLP-Check for this one.' }),
     h('div', { class: 'row' }, actions));
 }

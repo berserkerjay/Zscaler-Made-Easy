@@ -480,7 +480,7 @@ def test_the_change_queue_page_follows_the_report_page_conventions():
     assert '<header class="hero rp-hero">' in html and '<nav class="rp-bar" aria-label="Page actions">' in html
     assert '<a class="rp-btn" href="/">← Back to the assessment</a>' in html and '<main class="rp-card"' in html
     scripts = re.findall(r'<script src="/static/([^"]+)"></script>', html)
-    assert scripts == ["icons.js", "ui_auth.js", "report_theme.js", "safety_banner.js", "explain.js"]
+    assert scripts == ["icons.js", "ui_auth.js", "report_theme.js", "safety_banner.js", "explain.js", "find_anything.js"]
     assert 'role="tablist"' in html and html.count('role="tab"') == 3 and 'role="tabpanel"' in html
     assert 'role="status"' in html and 'aria-live' in html and '<th scope="col">' in html and "prefers-reduced-motion" in html
     for needle in ("Pending", "Approved", "History", 'data-act="approve"', 'data-act="reject"', 'data-act="apply"', 'data-act="withdraw"',

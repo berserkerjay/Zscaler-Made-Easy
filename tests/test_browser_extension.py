@@ -113,7 +113,11 @@ def test_the_extension_talks_only_to_the_app_and_holds_no_token():
     for name in ("background.js", "popup.js", "options.js", "panel.js", "console.js"):
         assert "fetch(" not in _read(name), name
     calls = set(re.findall(r"api\(S\.base, '([^'`]+)", _read("panel.js")))
-    assert calls == {"/api/tenant-profiles", "/api/console-index", "/api/dlp-packs/export/start"}, calls
+    assert calls == {"/api/tenant-profiles", "/api/console-index", "/api/dlp-packs/export/start", "/api/workspace/notes?"}, calls
+    # Workspace notes are only read from the panel (a GET: no body argument); writing them stays in the app.
+    assert "api(S.base, '/api/workspace/notes?' + new URLSearchParams({ tenant, kind: o.kind, ref: objectKey(o) }).toString())" in _read("panel.js")
+    import security
+    assert not any("workspace" in p for p in security.EXTENSION_POST_PATHS)
     # The console script sends nothing from the page: only keys of objects DLP-Check already knows.
     con = _read("console.js")
     assert "sendMessage({ type: 'focus', key: e.key, keys: entries.map(x => x.key) })" in con and "sendMessage({ type: 'names' })" in con

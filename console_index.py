@@ -455,5 +455,13 @@ def cache_get(key: str) -> Optional[Dict[str, Any]]:
     return dict(hit["index"], cached_at=int(hit["at"]))
 
 
+def cache_latest(profile_id: str) -> Optional[Dict[str, Any]]:
+    """The newest index still kept for a profile (any scope it was read
+    with), or None. Reads nothing."""
+    prefix = f"{profile_id or 'server'}|"
+    keys = [k for k in _CACHE if k.startswith(prefix) and time.time() - _CACHE[k]["at"] <= CACHE_SECONDS]
+    return cache_get(max(keys, key=lambda k: _CACHE[k]["at"])) if keys else None
+
+
 def cache_clear() -> None:
     _CACHE.clear()

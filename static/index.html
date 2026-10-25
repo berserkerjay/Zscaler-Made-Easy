@@ -589,6 +589,11 @@
                 title="Seven big tasks in plain words (connect, check, fix, protect, why was something blocked, what changed, a report for your boss), one question per screen. Nothing changes your Zscaler without your yes.">
           <span aria-hidden="true">💡</span> Simple mode
         </button>
+        <button class="btn btn-ghost" onclick="openFindAnything()"
+                aria-label="Find anything: search pages, glossary terms, tenant objects, findings and to-dos (Ctrl+J or /)"
+                title="One search box over the whole app: pages and what they do, glossary words, the tenant's rules and dictionaries from the last read, the findings on screen and your to-dos. Typos are fine. Ctrl+J (Cmd+J on a Mac) or / opens it from any page.">
+          <span aria-hidden="true">🔎</span> Find anything
+        </button>
         <button class="btn btn-ghost" onclick="openHelpTab()"
                 aria-label="Open What does everything do: every function of this app explained in plain English (opens in a new tab)"
                 title="Every function of this app explained in plain English: what it is, why the customer cares, when to use it, what you get. Opens in a new tab.">
@@ -674,6 +679,11 @@
                 aria-label="Open Bulk changes: enable or disable many rules, reorder a policy, move URLs between custom URL categories and ZPA domains between segments, each previewed item by item and reversible (opens in a new tab)"
                 title="Enable or disable up to 100 rules, reorder a policy with the fewest moves, add, remove, move or copy URLs on custom URL categories, and move ZPA domains between application segments. Every change is previewed item by item, applied only in write mode after you confirm the plan, checked again before each write, read back and recorded with Undo. Opens in a new tab.">
           <span aria-hidden="true">🔧</span> Bulk changes
+        </button>
+        <button class="btn btn-ghost" onclick="openTodoTab()"
+                aria-label="Open To-do list: the open to-dos written on rules, dictionaries, findings and other objects, per tenant, with tags (opens in a new tab)"
+                title="Every open to-do you or your team wrote on an object in Find anything, across your tenants: filter by tag, tick one when it is done, open the object it is on. Kept on this computer; nothing is written to the tenant. Opens in a new tab.">
+          <span aria-hidden="true">✅</span> To-do list
         </button>
         <button class="btn btn-ghost" onclick="openToolTab('terraform')"
                 aria-label="Hand the same policy pack to a platform team as a Terraform workspace (opens in a new tab)"
@@ -5267,6 +5277,15 @@ function openPostureTab() {
   // and the tenant profile's history from the server; it reads nothing
   // from the tenant.
   const w = window.open('/report/posture', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openFindAnything() {
+  // Find anything (static/find_anything.js): the same dialog Ctrl+J and / open.
+  if (window.DLP_FIND) window.DLP_FIND.open();
+}
+function openTodoTab() {
+  // Workspace notes are local: the tab reads them from this server, never the tenant.
+  const w = window.open('/report/todo', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {

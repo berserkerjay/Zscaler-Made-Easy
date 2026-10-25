@@ -385,6 +385,22 @@
     get: 'Traffic-light answers with the words always shown, the assessment score and top findings, a policy-pack preview, the Path analyzer verdict in one sentence, the score history and a Word or spreadsheet report.',
     next: 'Anything that changes the tenant opens the expert flow it belongs to (Deploy policy packs, Review & remediate) with its write mode, preview and confirmation; read-only tasks say so on screen.',
   };
+  X.find = {
+    group: 'Start', name: 'Find anything', href: '',
+    what: 'One search box over the whole app, opened with Ctrl+J (Cmd+J on a Mac), the / key or the Find button: the pages and what they do, the glossary words with their plain meaning, the tenant\'s rules, dictionaries, engines, URL categories and other objects from the last read, the findings of the assessment on screen, and your open to-dos.',
+    why: 'Nobody remembers which of forty pages does what. Typing "export to terraform" or "why is this blocked" lands on the right page, typos included, and a rule or dictionary opens with what it uses, what uses it, its findings and your notes.',
+    when: 'Whenever you know what you want but not where it lives, while walking a customer through their objects, and to jump to an object or finding without scrolling.',
+    get: 'Results as you type, each with its type (Page, Term, DLP rule, Finding, To-do) and one line; Enter opens it. A tenant object opens as a card with links to the pages that act on it and its tags, to-dos and comments.',
+    next: 'Typing never reads the tenant: click Load tenant objects once (read-only, only what is in scope) to search the tenant\'s objects too, then tag what needs work and add a to-do.',
+  };
+  X.todo = {
+    group: 'Close the gaps', name: 'To-do list', href: '/report/todo',
+    what: 'Every open to-do written on a rule, dictionary, URL category, finding or other object, across your tenants, with the object it is on, its tags, who wrote it and when. Tick one when it is done; filter by tenant and tag.',
+    why: 'Clean-up work found during an assessment is easy to lose between visits. Notes on the object itself, kept per tenant on this computer, turn findings into a list the team can work through and prove done.',
+    when: 'At the end of an assessment to agree the follow-ups, at the start of a return visit, and whenever someone asks what is still open for a customer.',
+    get: 'A table of open to-dos (or all of them) with the tenant, the object and its tags, a filter by tag, a done checkbox per row, and a link back to the object in Find anything.',
+    next: 'Work down the list: open the object, fix it on the page its card links to, then tick the to-do. Add new ones from any object card in Find anything (Ctrl+J).',
+  };
 
   // Which entry a page belongs to, by its path (and ?tool= on the results tab).
   function keyFor(loc) {
@@ -393,7 +409,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'posture', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo' };
     return map[p] || '';
   }
 
@@ -442,8 +458,8 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance', 'posture',
-    'digest', 'packs', 'flow', 'remediate', 'queue', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance', 'posture',
+    'digest', 'packs', 'flow', 'remediate', 'queue', 'todo', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

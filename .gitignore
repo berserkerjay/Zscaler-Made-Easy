@@ -59,6 +59,10 @@ proposals.json.tmp
 change_requests.json
 change_requests.json.lock
 .change_requests.*.tmp
+# Workspace notes (workspace_notes.py): tags, comments and to-dos, its lock file and atomic-write temporaries
+workspace_notes.json
+workspace_notes.json.lock
+.workspace_notes.*.tmp
 # Continuous evaluation: digests, guidance state and the refreshed SaaS matrix (local)
 digests/
 guidance_state.json
