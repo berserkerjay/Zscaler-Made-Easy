@@ -77,6 +77,15 @@ what you get, what to do next.
   filtering, Cloud App Control, file type control, DLP), with every point
   where inspection is lost, visibility by cloud-app category, and the
   path diagram per policy pack.
+- **ZPA analysis** — the ZPA configuration read once (only when ZPA is
+  ticked on the Scope page, with the ZPA customer ID) and checked by the
+  ZPA analysis templates: unreachable access rules, segments nobody
+  reaches or only deny rules reach, overlapping segments, over-broad
+  domains and ports, bypasses, server and connector groups that cannot
+  serve, connector redundancy and versions. Diagnose answers, for one
+  user and destination, which app segment matches, what serves it and
+  which access rule decides, with every earlier rule and why it did not
+  match. Read-only; Stop ends the read at once.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, the path a user's traffic takes to
   it, one verdict in plain words, and every rule or profile that blocks

@@ -597,6 +597,11 @@
                 title="One report: the path each transaction takes (Client Connector app profile and forwarding profile by name, PAC, SSL, URL, Cloud App Control, File Type, DLP) with the diagram on top, visibility across every cloud app category, and where inspection is lost (bypasses and SSL blind spots). Opens in a new tab.">
           <span aria-hidden="true">🗺️</span> Traffic flow &amp; gaps
         </button>
+        <button class="btn btn-ghost" onclick="openZpaTab()"
+                aria-label="Open ZPA analysis: the ZPA configuration read once and checked by the ZPA analysis templates, and a diagnosis of which app segment and access rule decide for one user and destination (opens in a new tab)"
+                title="Reads the ZPA configuration once (only when ZPA is ticked on the Scope page) and runs the ZPA analysis templates: unreachable access rules, unused or overlapping segments, over-broad domains and ports, bypasses, connector redundancy. Diagnose tells you, for one user and destination, which segment matches and which access rule decides. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🔐</span> ZPA analysis
+        </button>
         <button class="btn btn-ghost" onclick="openPathAnalyzerTab()"
                 aria-label="Open Path analyzer: type a URL, hostname or IP address and see, live from the tenant, the path a user's traffic takes to it and what blocks or impacts it (opens in a new tab)"
                 title="Type a URL, a hostname or an IP address. Reads the tenant as it is right now and shows the path a user's traffic takes to that destination, hop by hop, with one verdict in plain words and every rule or profile that blocks or impacts it named. Read-only. Opens in a new tab.">
@@ -5189,6 +5194,13 @@ function openExportsTab() {
 // The results this page holds, for the Policy exports tab's assessment
 // Excel and Word buttons (the same body downloadXlsx and downloadDocx post).
 window.__assessmentReport = function () { return reportData; };
+function openZpaTab() {
+  // The tab reads the credentials (with the ZPA customer ID) from this page
+  // through window.opener (migrateCredBody) when it runs, so nothing is
+  // sent until Read ZPA and analyze or Diagnose is clicked.
+  const w = window.open('/report/zpa', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
 function openPathAnalyzerTab() {
   // The tab reads the credentials from this page through window.opener
   // (migrateCredBody) when it runs, so nothing is sent until Analyze.

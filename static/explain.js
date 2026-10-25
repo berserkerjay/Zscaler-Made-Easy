@@ -41,6 +41,14 @@
     get: 'The path diagram per policy pack, visibility by cloud-app category, and a list of every bypass with the object that causes it.',
     next: 'Close the SSL and bypass gaps first; DLP rules deployed behind a blind spot do nothing.',
   };
+  X.zpa = {
+    group: 'Find the gaps', name: 'ZPA analysis', href: '/report/zpa',
+    what: 'Reads the tenant\'s ZPA configuration once (app segments, segment and server groups, App Connectors, Private Service Edges, IdPs and the access, timeout, forwarding, inspection and isolation policies) and runs over two dozen ZPA analysis templates over it, then diagnoses one user and destination: which app segment matches, what serves it and which access rule decides. It reads only when ZPA is ticked on the Scope page.',
+    why: 'Private access fails quietly: an access rule an earlier rule always beats, a segment nobody can reach, two segments claiming the same host, a wildcard that opens a whole domain, a connector group with one connector. Each of these is invisible in the console until a user calls; this page names them with a fix each.',
+    when: 'During a ZPA health check or a zero trust review, before and after a ZPA change, and while troubleshooting a "I cannot reach this internal app" ticket, where Diagnose answers which segment and which rule decide for that user.',
+    get: 'Findings grouped by template with a severity filter, counts and a catalog of every template (what it checks, assessed or not), exported as CSV or JSON; and a diagnosis hop by hop: segment, segment group, access rules in order with why each did not match, server groups and connector status, plus the assumptions.',
+    next: 'Fix the named rule, segment or connector group in the ZPA console, then read ZPA again and confirm the finding is gone; use Diagnose with the user\'s groups to prove the access path before you close the ticket.',
+  };
   X.path = {
     group: 'Find the gaps', name: 'Path analyzer', href: '/report/path',
     what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named. It reads only what is in scope on the Scope page; a part out of scope says Not in scope, never \"no rule\".',
@@ -335,7 +343,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/shadow': 'shadow', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/shadow': 'shadow', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
@@ -386,7 +394,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'queue', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

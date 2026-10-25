@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/exports", "/report/motion", "/report/queue", "/report/insights", "/report/shadow", "/report/audit"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/exports", "/report/motion", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1205,6 +1205,9 @@ def _build_sdk_client(creds: Dict[str, str]):
     oneapi_cloud = _oneapi_cloud(cloud)
     if oneapi_cloud:
         config["cloud"] = oneapi_cloud
+    if c.get("customer_id"):
+        # ZPA services build their paths from it (/zpa/mgmtconfig/v1/admin/customers/{customerId}).
+        config["customerId"] = c["customer_id"]
     try:
         client = ZscalerClient(config)
         auth = getattr(client, "authenticate", None)
@@ -2211,6 +2214,212 @@ async def saas_apps():
     import saas_matrix
     m = saas_matrix.load()
     return {k: m.get(k) for k in ("source", "updated_at", "refreshed_from_pages", "types", "applications", "path", "new_since_seed")}
+
+
+# ── ZPA analysis and ZPA diagnostics (read-only) ─────────────────────
+# zpa_reader reads the ZPA configuration once (paced, Stop-able); the
+# templates and the diagnostics in zpa_analysis are pure functions over
+# that read, kept as a "zpa-" report so a second diagnosis needs no read.
+ZPA_NEEDS_ONEAPI = ("ZPA analysis needs a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+                    "Sign in with an API client that has a ZPA role, then run it again. Nothing was read.")
+ZPA_NEEDS_CUSTOMER_ID = ("ZPA analysis needs the ZPA customer ID (Connect to the tenant → Customer ID, or the saved profile): "
+                         "every ZPA API path carries it. Nothing was read.")
+
+
+class ZpaAnalysisRequest(MigrateRequest):
+    """Body of the ZPA analysis: tenant credentials (with the ZPA customer
+    id) and the Scope page selection; refused (400) before sign-in unless
+    ZPA is ticked (user rule 1)."""
+
+
+class ZpaDiagnoseRequest(MigrateRequest):
+    """Body of a ZPA diagnosis: the user context (any field left out means
+    "any"), the destination and port, and the id of the read to reuse
+    (`report_id`, from the analysis). Without a usable report id the
+    tenant is read first, as a job."""
+    report_id: str = ""
+    destination: str = ""
+    port: str = ""
+    protocol: str = "tcp"
+    user: Dict[str, Any] = {}
+
+
+@app.get("/report/zpa")
+async def report_zpa_page():
+    """ZPA analysis (static/report_zpa.html): the templates' findings and the diagnostics."""
+    page = os.path.join(STATIC_DIR, "report_zpa.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _zpa_scope(req: Any, what: str) -> Dict[str, Any]:
+    """ZPA ticked on the Scope page, else 400 before anything is signed in to or read."""
+    return _require_in_scope(req, "zpa", what)
+
+
+async def _zpa_client(req: Any):
+    """(client, tenant label) for a ZPA read: OneAPI with a customer id,
+    both refused (400) before sign-in."""
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=ZPA_NEEDS_ONEAPI)
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail=ZPA_NEEDS_CUSTOMER_ID)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    return client, tenant_auth.record_label(creds), creds
+
+
+def _zpa_report(rid: str) -> Optional[Dict[str, Any]]:
+    rep = _REPORTS.get(rid or "")
+    return rep if rep and str(rid).startswith("zpa-") else None
+
+
+def _zpa_public(rep: Dict[str, Any]) -> Dict[str, Any]:
+    """A stored ZPA report as the page gets it: everything but the raw read."""
+    return {k: v for k, v in rep.items() if k != "snapshot"}
+
+
+def _run_zpa_read(client, label: str, creds: Dict[str, Any], log, cancel, scope: Dict[str, Any]) -> Dict[str, Any]:
+    """Read ZPA once and run every template. Stop ends the run as stopped:
+    nothing more is read, nothing is kept and no partial result is returned."""
+    import zpa_analysis
+    import zpa_reader
+    logs: list = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    if scope.get("source"):
+        _log(f"In scope, from {scope['source']}: ZPA.")
+    try:
+        snap = zpa_reader.read(client, log=_log, cancel=cancel)
+    except zpa_reader.Stopped as e:
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
+    except zpa_reader.ReadError as e:
+        raise RuntimeError(tenant_auth.mask_secrets(str(e), creds))
+    if cancel is not None and cancel.is_set():
+        _log("STOPPED — you clicked Stop; the ZPA read was abandoned and is not kept.")
+        return {"stopped": zpa_reader.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    for v in (snap.get("collections") or {}).values():
+        if v.get("error"):
+            v["error"] = tenant_auth.mask_secrets(v["error"], creds)
+    analysis = zpa_analysis.analyze(snap)
+    readable = zpa_reader.readable(snap)
+    report = {"kind": "zpa", "snapshot": snap, "summary": zpa_reader.summary(snap), "collections": snap.get("collections") or {},
+              "readable": readable, "choices": zpa_analysis.choices(snap), "read_at": snap.get("read_at"),
+              "findings": analysis["findings"], "catalog": analysis["catalog"], "counts": analysis["counts"],
+              "not_assessed": analysis["not_assessed"], "assumptions": zpa_analysis.ASSUMPTIONS}
+    rid = _remember_report("zpa", report, label)
+    _log(f"Analysis done: {analysis['counts']['total']} finding(s) from {analysis['counts']['assessed']} of "
+         f"{analysis['counts']['templates']} templates.")
+    out = _zpa_public(_REPORTS[rid])
+    out["logs"] = logs
+    return out
+
+
+@app.post("/api/zpa/analysis/start")
+async def zpa_analysis_start(req: ZpaAnalysisRequest, request: Request):
+    """Read the ZPA configuration (only when ZPA is ticked on the Scope page)
+    and run every ZPA template, as a job the page follows: findings,
+    catalog and counts, kept as report `zpa-…` for diagnoses and exports.
+    Read-only. Poll GET /api/dlp-packs/jobs/{job_id}; Stop ends it with
+    nothing more read."""
+    import pack_jobs
+    scope = _zpa_scope(req, "ZPA analysis")          # before signing in (user rule 1)
+    client, label, creds = await _zpa_client(req)
+    job = pack_jobs.start("zpa", lambda log, cancel: _run_zpa_read(client, label, creds, log, cancel, scope), label="ZPA analysis",
+                          actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _zpa_diagnosis(rep: Dict[str, Any], req: ZpaDiagnoseRequest) -> Dict[str, Any]:
+    import zpa_analysis
+    try:
+        out = zpa_analysis.diagnose(rep["snapshot"], req.user or {}, req.destination, req.port, req.protocol)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    out["report_id"] = rep.get("report_id")
+    out["tenant_label"] = rep.get("tenant_label")
+    out["read_at"] = rep.get("read_at")
+    return out
+
+
+@app.post("/api/zpa/diagnose")
+async def zpa_diagnose(req: ZpaDiagnoseRequest, request: Request):
+    """Which app segment, server and connector groups and access rule decide
+    for one user context and destination. With the `report_id` of an
+    earlier ZPA read the answer comes at once ({status: done, result}), no
+    tenant call; otherwise ZPA is read first as a job ({job_id}) whose
+    result carries the analysis and the diagnosis. ZPA must be ticked on
+    the Scope page either way (400 otherwise)."""
+    import pack_jobs
+    import zpa_analysis
+    scope = _zpa_scope(req, "ZPA diagnostics")
+    try:
+        zpa_analysis.parse_destination(req.destination, req.port, req.protocol)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    rep = _zpa_report(req.report_id)
+    if rep is not None:
+        return {"status": "done", "result": await asyncio.to_thread(_zpa_diagnosis, rep, req)}
+    client, label, creds = await _zpa_client(req)
+
+    def run(log, cancel):
+        out = _run_zpa_read(client, label, creds, log, cancel, scope)
+        if out.get("stopped"):
+            return out
+        stored = _zpa_report(out.get("report_id"))
+        if stored is None:
+            return out
+        try:
+            out["diagnosis"] = _zpa_diagnosis(stored, req)
+        except HTTPException as e:
+            out["diagnosis_error"] = str(e.detail)
+        return out
+    job = pack_jobs.start("zpa", run, label=f"ZPA diagnosis {req.destination[:60]}", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/zpa/report/{report_id}")
+async def zpa_report_get(report_id: str):
+    rep = _zpa_report(report_id)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Run the ZPA analysis again.")
+    return _zpa_public(rep)
+
+
+@app.get("/api/zpa/report/{report_id}/export")
+async def zpa_report_export(report_id: str, format: str = "csv", severity: str = ""):
+    """The findings as CSV (every cell through csv_safe) or the findings,
+    catalog and counts as JSON; `severity` (comma-separated) filters."""
+    import io
+    import csv_safe
+    rep = _zpa_report(report_id)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    sev = {s.strip().lower() for s in (severity or "").split(",") if s.strip()}
+    findings = [f for f in rep.get("findings") or [] if not sev or f.get("severity") in sev]
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "csv").lower()
+    if fmt == "json":
+        body = {"tenant_label": rep.get("tenant_label"), "generated_at": rep.get("generated_at"), "counts": rep.get("counts"),
+                "severity_filter": sorted(sev), "findings": findings, "catalog": rep.get("catalog"), "assumptions": rep.get("assumptions")}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zpa_analysis_{ts}.json"})
+    if fmt != "csv":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    w.writerow(["severity", "template", "title", "object_type", "object", "reason", "fix"])
+    for f in findings:
+        w.writerow([f.get("severity"), f.get("template"), f.get("title"), f.get("object_type"), f.get("object"), f.get("reason"), f.get("fix")])
+    return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=zpa_analysis_{ts}.csv"})
 
 
 @app.get("/report/digest")
