@@ -455,7 +455,9 @@ def test_the_page_is_served_wired_and_explained():
     assert "group: 'Find the gaps', name: 'Traffic insights'" in entry[:200]
     idx = _read_static("index.html")
     assert idx.index('onclick="openInsightsTab()"') < idx.index('onclick="openDigestTab()"') and "function openInsightsTab()" in idx
-    assert '"/report/motion", "/report/insights"):' in open(os.path.join(ROOT, "dlp_api_server.py"), encoding="utf-8").read(), "never served stale"
+    src = open(os.path.join(ROOT, "dlp_api_server.py"), encoding="utf-8").read()
+    stale = src[src.index('request.url.path in ("/", "/app.css"'):]
+    assert '"/report/insights"' in stale[:stale.index(")")], "never served stale"
 
 
 def test_the_server_block_sits_before_the_beacon_page():
