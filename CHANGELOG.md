@@ -7,6 +7,14 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-25
 
+### ZHERO parity, phase 1: console badges and side panel, shadowed rules, Excel and PDF, HAR import, audit timeline
+- **What you asked for.** ZHERO's functionality and flow in DLP-Check's extension and app, following the app's interface guide, with DLP-Check as the only source of data.
+- **In the Zscaler admin console (extension 1.1).** Badges on DLP dictionaries, engines and rules (what uses them, or their most serious finding, including "can never match"), and a side panel: On this page, Search, an object's uses / used by / pack / findings, and a Staged list exported as a JSON pack, Terraform or both. The badges are opt-in (the console sites are asked for in the extension's settings); names are compared inside the page and nothing from the console is sent anywhere. The app trusts the extension (fixed ID) only on its read-only endpoints: the console index and Export from tenant. New `POST /api/console-index`, cached 30 minutes per tenant.
+- **Shadowed rules** (`/report/shadow`). Rules that can never match or never act across Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL inspection and Cloud Firewall: hidden below a broader rule or a catch-all, duplicated, superseded by a stricter rule where every rule is evaluated, disabled, or naming engines and categories that no longer exist; each with the rule that hides it, the reason and the fix. Anything it cannot compare safely counts as not shadowed.
+- **Excel and PDF, no new dependency.** In-house writers (`xlsx_writer.py`, `pdf_writer.py`): the assessment as an Excel workbook, the DLP inventory as Excel (with used-by counts), and a preflight plan as PDF or Excel with sign-off lines for change approval.
+- **HAR import** in the Path analyzer: the file is read in the browser and only host names and counts are sent; every host is analysed against one tenant read. **Audit timeline** (`/report/audit`): ZIA's admin audit log merged with DLP-Check's deployments and object writes, field diffs, and changes made by someone else to objects a pack created.
+- **Verified.** Full suite 3,253 passed, 9 skipped; every page loaded in Chromium with no errors; each feature driven end to end in Chromium against fake tenants (the console badges on a stand-in console page with the UI token gate on). Not yet checked against a real tenant or the real Zscaler console.
+
 ### A companion browser extension (Chrome and Edge)
 - **What you asked for.** An option to use DLP-Check as a browser extension.
 - **What it is.** A small extension that works with the app on your computer rather than replacing it: the app's Python side (Zscaler's SDK, jobs that wait out ZIA's rate limit, the OS keychain, the audit log) cannot run inside a browser extension, so the work and every safeguard stay in the app.

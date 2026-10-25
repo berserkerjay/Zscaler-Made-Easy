@@ -7,6 +7,31 @@ sign-in, UI token, write mode and audit log.
 
 ## What it does
 
+### In the Zscaler admin console (like ZHERO, with DLP-Check's data)
+- **Badges.** On the ZIA admin console, a DLP-Check badge appears next to
+  every DLP dictionary, engine and rule DLP-Check read from the tenant:
+  what uses it ("2 rules", "unused") or its most serious finding
+  ("monitor only", "disabled", shadowed by an earlier rule once that
+  analysis is installed). Off until you switch it on in the extension's
+  settings, which asks your browser to allow the extension on the
+  console's address (admin.zscaler.net and the other Zscaler clouds).
+- **Side panel.** Click a badge, or *Open the side panel* in the popup:
+  - *On this page*: the DLP objects the console page shows;
+  - *Search*: every dictionary, engine and rule DLP-Check read;
+  - an object's detail: what it uses and what uses it (each one a link),
+    the policy pack that created it, and its findings;
+  - *Staged*: stage objects across console pages, then export them in one
+    go as a JSON pack, Terraform or both, with or without what they use.
+- **Read the tenant.** The panel's *Read the tenant* asks DLP-Check to
+  read it (read-only, the DLP channels in scope, through the tenant you
+  pick); the answer is reused for 30 minutes until you read again.
+
+The flow follows ZHERO's (badge → panel → stage → act), but every answer
+comes from DLP-Check, and anything that changes the tenant (deploy,
+remove, fix) stays in DLP-Check behind write mode, its preview and the
+audit log.
+
+### Anywhere
 - **Analyze this site.** The toolbar button shows the site you are on;
   *Analyze this site* opens the Path analyzer with it filled in: what
   Zscaler does to a user's traffic to that destination, hop by hop.
@@ -43,8 +68,25 @@ Microsoft Edge Add-ons.
   the app's address. It never sees a client secret, the UI token or a
   tenant answer; the app's own pages do the work.
 - **Least privilege.** `activeTab` (the tab you click the button on, only
-  then), `contextMenus` and `storage`. It has no access to the pages you
-  browse, no content scripts and no `tabs` or `cookies` permission.
+  then), `contextMenus`, `storage`, `sidePanel` and `scripting` (to add the
+  console badges once you allow them). The ZIA admin consoles are an
+  *optional* permission, asked for only when you switch the badges on and
+  removed when you switch them off. No other site, no `tabs`, `cookies` or
+  `webRequest` permission.
+- **The console page stays in the browser.** The badge script compares the
+  text on the console page with the names DLP-Check read, inside the page,
+  and draws its badges in a closed shadow root. Nothing from the console
+  page is sent anywhere; a badge click sends only the key of an object
+  DLP-Check already knows. The read is kept in the browser's session
+  storage and is gone when the browser closes.
+- **Narrow trust in the app.** The extension has a fixed ID (the public key
+  in its manifest), and DLP-Check accepts requests from it only on its
+  read-only endpoints: the console index and *Export from tenant* (and
+  Stop on that export). A deploy, removal, fix or setting change from the
+  extension's origin is refused. It signs in with DLP-Check's own sign-in
+  in this browser (open DLP-Check once); it never stores a token.
+  `DLP_CHECK_EXTENSION_ID` moves that trust to a repacked build, or `off`
+  removes it.
 - **This computer only.** It talks only to `127.0.0.1` or `localhost`
   (host permissions and its Content Security Policy both say so), and the
   settings page refuses any other address.
@@ -52,9 +94,10 @@ Microsoft Edge Add-ons.
   query string or fragment (where session tokens and personal data tend to
   be), and a selection is used only when it is a single hostname, URL or
   IP address, never a sentence or an e-mail address.
-- **One request of its own.** `GET /api/ping`, which needs no sign-in and
-  answers only `{"ok": true}`; an answer without that is reported as
-  "something else is listening there".
+- **What it calls.** `GET /api/ping` (no sign-in; an answer other than
+  DLP-Check's `{"ok": true}` is reported as "something else is listening
+  there"), and from the side panel `GET /api/tenant-profiles`,
+  `POST /api/console-index` and *Export from tenant*'s job.
 
 ## Why a companion and not the whole app as an extension
 

@@ -81,6 +81,14 @@
     get: 'A live flow diagram with gaps highlighted and the fix for each.',
     next: 'Fix the SSL rule order or exemptions it points at, then refresh the diagram.',
   };
+  X.shadow = {
+    group: 'Find the gaps', name: 'Shadowed rules', href: '/report/shadow',
+    what: 'Reads the rules of every policy in scope (Inline Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL inspection and Cloud Firewall) and lists the rules that can never match or never act: hidden below a broader rule, below a catch-all, duplicated, superseded by a stricter rule, disabled, or naming engines and categories that no longer exist.',
+    why: 'A rule that can never match looks like protection on paper and does nothing in production. Customers add rules for years without removing old ones, and the one that matters often sits under a broad rule nobody remembers.',
+    when: 'After the assessment and before deploying a policy pack, during a policy clean-up, and whenever a customer says a rule "never fires".',
+    get: 'Findings per policy type with a severity, the rule and the rule that hides it, the reason in one sentence and the fix, a count per policy, the Inline Web DLP evaluation mode it assumed, and CSV and JSON exports.',
+    next: 'Fix the high findings first (a stricter rule that never applies), move or delete the rule as the fix says, then run the analysis again to prove it.',
+  };
   X.efficacy = {
     group: 'Find the gaps', name: 'DLP efficacy', href: '/report/view?tool=efficacy',
     what: 'Scores every custom dictionary and engine for false-positive risk and lets you paste sample text (or run the built-in corpus) to see which dictionaries, engines and predefined ones would fire.',
@@ -211,7 +219,7 @@
   };
   X.advanced = {
     group: 'Reference', name: 'Advanced settings', href: '/report/advanced',
-    what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (analyze any site with the Path analyzer from the browser), and see how this server is configured (bind host, token gate, write mode, limits).',
+    what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (badges and a side panel on DLP objects in the ZIA admin console, export to JSON or Terraform, and the Path analyzer for any site), and see how this server is configured (bind host, token gate, write mode, limits).',
     why: 'Customers and colleagues have their own designs; this puts them through the same preflight and deploy as the built-in packs.',
     when: 'When someone hands you a pack or an export from another tenant.',
     get: 'A validation preview (what it contains, what blocks it) before anything is added.',
@@ -232,6 +240,14 @@
     when: 'Glance at it before an engagement and after a Zscaler release; run the tenant API watch when a check starts answering 403 or 404 and you want to know whether the endpoint or the permission moved.',
     get: 'A "Changed since last run" list (versions that moved, drift that is new or cleared, pages that changed, tenant endpoints whose answer changed), the SDK, API and Terraform detail, and the last 30 runs.',
     next: 'Act on new drift: read the SDK or provider changelog before upgrading, grant the permission a 403 names, or report an endpoint that moved.',
+  };
+  X.audit = {
+    group: 'Troubleshoot', name: 'Audit timeline', href: '/report/audit',
+    what: 'One timeline, newest first, of who changed what in the tenant: ZIA\'s admin audit log for the window you choose, merged with DLP-Check\'s own deployment records and audit log, with filters, field-by-field diffs and CSV or JSON export.',
+    why: 'When a rule stops behaving as deployed, the first question is who touched it and when. The timeline marks every change someone else made to an object DLP-Check created, so drift is explained instead of guessed.',
+    when: 'After a deployment, before a review with the customer, or whenever a policy pack object no longer matches what was deployed and you need to know which admin changed it, through which interface.',
+    get: 'Every audit log entry with time, admin, action, category, object, interface and result; DLP-Check\'s deployments and writes beside them; changes by someone else to DLP-Check objects flagged; before and after values compared field by field.',
+    next: 'Open a flagged row to see exactly what changed, then decide with the customer whether to fold the change into the pack or restore the deployed version.',
   };
   X.logs = {
     group: 'Troubleshoot', name: 'Log analyzer', href: '/report/logs',
@@ -295,9 +311,9 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/shadow': 'shadow', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
 
@@ -346,8 +362,8 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
-    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
+    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],
