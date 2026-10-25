@@ -607,6 +607,11 @@
                 title="Reads the ZPA configuration once (only when ZPA is ticked on the Scope page) and runs the ZPA analysis templates: unreachable access rules, unused or overlapping segments, over-broad domains and ports, bypasses, connector redundancy. Diagnose tells you, for one user and destination, which segment matches and which access rule decides. Read-only. Opens in a new tab.">
           <span aria-hidden="true">🔐</span> ZPA analysis
         </button>
+        <button class="btn btn-ghost" onclick="openDevicePostureTab()"
+                aria-label="Open Device posture: what kind of device check each ZPA posture profile is, which access rules use it, which rules let devices in without one, and every access rule in plain words (opens in a new tab)"
+                title="Reads the ZPA posture profiles, trusted networks and access rules (only when ZPA is ticked on the Scope page), sorts each profile into a family (domain join, EDR, certificate, marker...), links it to the rules that use it as must pass or must fail, flags rules to sensitive apps with no posture check, and shows every rule's conditions in plain words. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🛡</span> Device posture
+        </button>
         <button class="btn btn-ghost" onclick="openPathAnalyzerTab()"
                 aria-label="Open Path analyzer: type a URL, hostname or IP address and see, live from the tenant, the path a user's traffic takes to it and what blocks or impacts it (opens in a new tab)"
                 title="Type a URL, a hostname or an IP address. Reads the tenant as it is right now and shows the path a user's traffic takes to that destination, hop by hop, with one verdict in plain words and every rule or profile that blocks or impacts it named. Read-only. Opens in a new tab.">
@@ -5229,6 +5234,13 @@ function openZpaTab() {
   // through window.opener (migrateCredBody) when it runs, so nothing is
   // sent until Read ZPA and analyze or Diagnose is clicked.
   const w = window.open('/report/zpa', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openDevicePostureTab() {
+  // Like ZPA analysis: the tab reads the credentials (with the ZPA customer
+  // ID) and the Scope page selection from this page through window.opener
+  // when it runs, so nothing is read until Read device posture.
+  const w = window.open('/report/device-posture', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openFleetTab() {

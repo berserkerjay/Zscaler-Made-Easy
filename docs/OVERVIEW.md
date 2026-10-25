@@ -97,6 +97,20 @@ what you get, what to do next.
   user and destination, which app segment matches, what serves it and
   which access rule decides, with every earlier rule and why it did not
   match. Read-only; Stop ends the read at once.
+- **Device posture** — the ZPA posture profiles, trusted networks and
+  access rules read once (only when ZPA is ticked on the Scope page; the
+  Client Connector trusted networks too when Client Connector is ticked).
+  Each posture profile is sorted into a family (domain join, EDR or
+  antivirus, certificate, disk encryption and hygiene, OS version, mobile
+  integrity, MDM, firewall, process, marker or override, unknown), marked
+  as reliable (from the posture type) or inferred (from the name); markers
+  never count as enforcement. Each profile and network lists the rules
+  that use it, as must pass or must fail. Findings name allow rules to
+  sensitive or broad apps with no posture check, negated checks that let
+  failing devices in, marker-only and optional checks, and unused
+  profiles. Every access rule is shown as nested AND, OR and NOT groups
+  with names instead of IDs, plus one plain sentence. Excel and JSON
+  exports. Read-only; Stop ends the read at once.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, the path a user's traffic takes to
   it, one verdict in plain words, and every rule or profile that blocks

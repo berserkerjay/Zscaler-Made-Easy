@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Device posture — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .dv-tabs { display: flex; gap: 0.4rem; margin: 0 0 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 0.6rem; }
+  .dv-tabs [role="tab"] { min-height: 34px; padding: 0.3rem 0.9rem; border-radius: var(--r-md); border: 1px solid var(--border); background: transparent; color: var(--dim); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+  .dv-tabs [role="tab"][aria-selected="true"] { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+  .dv-tabs [role="tab"]:focus-visible, .dv-page [role="tabpanel"]:focus-visible, .dv-filter :is(input, select):focus-visible, .dv-rule > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .dv-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; }
+  .dv-stat { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.55rem 0.75rem; }
+  .dv-stat .n { font-size: var(--fs-headline, 1.2rem); font-weight: 700; }
+  .dv-stat .k { font-size: 0.72rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .dv-stat.sev-high .n { color: var(--fail); } .dv-stat.sev-medium .n { color: var(--warn); }
+  .dv-lead { margin: 0 0 1rem; font-size: 0.92rem; line-height: 1.5; }
+  .dv-fams { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; padding: 0; list-style: none; }
+  .dv-fam { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card); padding: 0.55rem 0.75rem; display: grid; gap: 0.2rem; }
+  .dv-fam .t { font-weight: 600; font-size: 0.86rem; }
+  .dv-fam .m { font-size: 0.76rem; color: var(--dim); }
+  .dv-fam.empty { opacity: 0.7; }
+  .sev-chip { display: inline-flex; padding: 0.1rem 0.5rem; border-radius: var(--r-pill); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: var(--well); color: var(--dim); white-space: nowrap; }
+  .sev-chip.high { background: color-mix(in srgb, var(--fail) 18%, transparent); color: var(--fail); }
+  .sev-chip.medium { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .sev-chip.low { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .dv-uses { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
+  .dv-uses li { display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center; }
+  .dv-filter { display: flex; gap: 0.6rem 1rem; flex-wrap: wrap; align-items: center; margin: 0 0 0.8rem; }
+  .dv-filter label { display: inline-flex; gap: 0.4rem; align-items: center; font-size: 0.84rem; color: var(--dim); max-width: 100%; min-width: 0; }
+  .dv-filter label > :is(input, select) { flex: 1 1 auto; min-width: 0; }
+  .dv-page .dv-find td:first-child, .dv-page .dv-find thead th:first-child { white-space: nowrap; width: 1%; }
+  .dv-filter input[type="search"], .dv-filter select { font: inherit; font-size: 0.86rem; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.35rem 0.55rem; min-height: 34px; max-width: 100%; box-sizing: border-box; }
+  .dv-rule { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card); margin: 0 0 0.6rem; }
+  .dv-rule > summary { cursor: pointer; padding: 0.6rem 0.8rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .dv-rule > summary .ord { font-family: var(--mono); font-size: 0.75rem; color: var(--dim); }
+  .dv-rule .body { padding: 0 0.8rem 0.8rem; display: grid; gap: 0.6rem; }
+  .dv-rule .say { margin: 0; font-size: 0.92rem; line-height: 1.5; }
+  .dv-rule.off { opacity: 0.75; }
+  /* The readable conditions (device_posture.condition_html) */
+  .ct { font-size: 0.86rem; line-height: 1.5; }
+  .ct ul { list-style: none; margin: 0.2rem 0 0; padding: 0 0 0 0.9rem; border-left: 2px solid var(--border); display: grid; gap: 0.25rem; }
+  .ct-g { display: block; }
+  .ct-h { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+  .ct-or > ul { border-left-style: dashed; }
+  .ct-negated > .ct-h { color: var(--fail); }
+  .ct-negated > ul { border-left-color: color-mix(in srgb, var(--fail) 55%, transparent); }
+  .ct-not { display: inline-flex; padding: 0 0.4rem; border-radius: var(--r-pill); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; background: color-mix(in srgb, var(--fail) 16%, transparent); color: var(--fail); }
+  .ct-k { color: var(--dim); }
+  .ct-x { color: var(--warn); font-size: 0.8rem; }
+  .ct-none { color: var(--dim); margin: 0; }
+  .dv-page .df-tablewrap { max-width: 100%; }
+  .dv-page .df-table tbody th { text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 600; text-align: left; min-width: 8rem; }
+  .dv-page .df-table td, .dv-page .df-table th { vertical-align: top; }
+  .dv-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .dv-page .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .dv-empty { color: var(--dim); font-size: 0.86rem; margin: 0.3rem 0 1rem; }
+  .dv-page .dv-rule, .dv-page .df-table, .dv-fam { min-width: 0; overflow-wrap: anywhere; }
+  /* Narrow screens: each row of a stacked table becomes a card, every cell labelled. */
+  @media (max-width: 640px) {
+    .dv-stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .dv-stack, .dv-stack tbody, .dv-stack tr, .dv-stack th, .dv-stack td { display: block; width: auto; }
+    .dv-stack tr { border: 1px solid var(--border); border-radius: var(--r-md); margin: 0 0 0.6rem; padding: 0.3rem 0; }
+    .dv-stack td, .dv-stack tbody th { border-bottom: 0; padding: 0.25rem 0.7rem; }
+    .dv-stack td[data-label]::before { content: attr(data-label); display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+  }
+  @media (prefers-reduced-motion: reduce) { .dv-tabs [role="tab"], .dv-rule > summary { transition: none; } .pa-live .spin { animation: none; } }
+</style>
+</head>
+<body class="report-page dv-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Device</span> posture</h1>
+      <p>Shows which device checks (posture profiles and trusted networks) your ZPA access rules ask for, which rules let devices in without a real check, and every access rule's conditions in plain words. Read ZPA, then fix the rules under Findings first, high before medium.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="dvTenantWrap" hidden><span class="lbl">Tenant</span><select id="dvTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="dvRun">Read device posture</button>
+      <a class="rp-btn" id="expXlsx" hidden>Excel</a>
+      <a class="rp-btn" id="expJson" hidden>JSON</a>
+    </nav>
+    <main class="rp-card" id="dvMain">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="dvJob"></div>
+      <div class="pa-intro" id="dvHow">
+        <div class="pa-intro-t">How it works</div>
+        <ol class="pa-steps">
+          <li><strong>Tick ZPA on the Scope page</strong> and give the ZPA customer ID with the API client (Connect to the tenant). Nothing is read otherwise. Tick Client Connector too to also read its trusted networks.</li>
+          <li><strong>Read device posture.</strong> ZPA is read once, list by list, and shown live; Stop ends the read at once and keeps nothing.</li>
+          <li><strong>Read the findings</strong>, then the posture profiles (what kind of check each is, and which rules use it) and the access rules in plain words. Export everything to Excel.</li>
+        </ol>
+        <div class="df-hint">Read-only: nothing is written to the tenant. A list that could not be read is said so, never shown as empty.</div>
+      </div>
+      <div class="dv-tabs" role="tablist" aria-label="Device posture views" id="dvTabs" hidden>
+        <button type="button" role="tab" id="tab-findings" aria-controls="panel-findings" aria-selected="true" tabindex="0">Findings</button>
+        <button type="button" role="tab" id="tab-profiles" aria-controls="panel-profiles" aria-selected="false" tabindex="-1">Posture profiles</button>
+        <button type="button" role="tab" id="tab-networks" aria-controls="panel-networks" aria-selected="false" tabindex="-1">Trusted networks</button>
+        <button type="button" role="tab" id="tab-rules" aria-controls="panel-rules" aria-selected="false" tabindex="-1">Access rules</button>
+      </div>
+      <section role="tabpanel" id="panel-findings" aria-labelledby="tab-findings" tabindex="0" hidden></section>
+      <section role="tabpanel" id="panel-profiles" aria-labelledby="tab-profiles" tabindex="0" hidden></section>
+      <section role="tabpanel" id="panel-networks" aria-labelledby="tab-networks" tabindex="0" hidden></section>
+      <section role="tabpanel" id="panel-rules" aria-labelledby="tab-rules" tabindex="0" hidden>
+        <div class="dv-filter" role="group" aria-label="Filter the access rules">
+          <label>Search <input type="search" id="rSearch" placeholder="Rule, app, group or profile" autocomplete="off"></label>
+          <label>Show <select id="rShow">
+            <option value="all">Every access rule</option>
+            <option value="posture">Rules with a posture check</option>
+            <option value="flagged">Rules with a finding</option>
+            <option value="none">Allow rules without a posture check</option>
+          </select></label>
+          <span class="df-by" id="rCount"></span>
+        </div>
+        <div id="rList"></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    const live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const SEVS = ['high', 'medium', 'low', 'info'];
+    const SEV_LABEL = { high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
+    const SENSE = { must_pass: ['Must pass', 'st-ok'], must_fail: ['Must fail', 'st-fail'], on: ['Must be on', 'st-ok'], off: ['Must be off', 'st-warn'] };
+    const SOURCE = { type: ['From the type', 'st-ok', 'reliable'], name: ['From the name', 'st-warn', 'inferred'], none: ['Unknown', '', 'not classified'] };
+    let report = null, reportId = '';
+    let running = false, job = null, startToken = null, stopAsked = false;
+
+    // ── tabs (arrow keys, Home, End; roving tabindex) ───────────────
+    const tabs = Array.from(document.querySelectorAll('.dv-tabs [role="tab"]'));
+    function selectTab(t, focus) {
+      tabs.forEach(x => {
+        const on = x === t;
+        x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1;
+        $(x.getAttribute('aria-controls')).hidden = !on;
+      });
+      if (focus) t.focus();
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(t, false));
+      t.addEventListener('keydown', e => {
+        let j = null;
+        if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') j = 0;
+        else if (e.key === 'End') j = tabs.length - 1;
+        if (j !== null) { e.preventDefault(); selectTab(tabs[j], true); }
+      });
+    });
+
+    // ── credentials and scope (as ZPA analysis) ─────────────────────
+    async function tenantChoices() {
+      const wrap = $('dvTenantWrap'), sel = $('dvTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = $('dvTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    // Only the Scope page's ticks and each channel's choice are sent (never its notes).
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+
+    // ── the live job ────────────────────────────────────────────────
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function phase(logs) {
+      for (let i = logs.length - 1; i >= 0; i--) if (/^(Reading|Read |ZPA read|Done)/.test(logs[i])) return logs[i].replace(/…$/, '');
+      return logs.length ? 'Working…' : 'Connecting to the tenant…';
+    }
+    function liveHtml(what) {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>${E(what)}</strong><span class="df-by" id="dvPhase">Connecting to the tenant…</span><span class="sep"></span><span class="pa-elapsed" id="dvElapsed">0:00</span><button type="button" class="rp-btn" id="dvStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="dvLog" role="log" aria-live="polite" aria-label="What the read is doing">Connecting to the tenant…</div>
+      </div>`;
+    }
+    function liveUpdate(snap) {
+      const log = $('dvLog'); if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+      const ph = $('dvPhase'); if (ph) ph.textContent = phase(snap.logs || []);
+      const el = $('dvElapsed'); if (el && snap.elapsed_seconds != null) el.textContent = mmss(snap.elapsed_seconds);
+      const b = $('dvStop'); if (b && snap.cancel_requested) { b.disabled = true; b.textContent = 'Stopping…'; }
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 900));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the read continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        liveUpdate(Object.assign({}, snap, { logs }));
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!running || stopAsked) return;
+      stopAsked = true;
+      const b = $('dvStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        try {
+          await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) });
+        } catch (e) { /* cancelled by id as soon as it arrives */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+    async function runJob(url, payload, host, what) {
+      running = true; stopAsked = false; startToken = newStartToken(); job = null;
+      host.innerHTML = liveHtml(what);
+      $('dvStop').addEventListener('click', stop);
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = $('dvElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        job = d.job_id;
+        if (stopAsked) {
+          try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }
+        }
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result) throw new Error(snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the read finished: nothing more was read and nothing is kept.' : 'The read did not finish.'));
+        return { result: snap.result, logs: snap.logs || [] };
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false;
+      }
+    }
+    function failHtml(title, msg) {
+      if (/You clicked Stop/.test(msg)) title = 'Stopped';
+      const hint = /credential|sign in|token|401|403|profile/i.test(msg) ? ' Sign in on the assessment page first and open Device posture from there, or choose a saved tenant profile in the bar above.' : '';
+      return `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+
+    // ── read ────────────────────────────────────────────────────────
+    async function readPosture() {
+      if (running) return;
+      const btn = $('dvRun');
+      btn.disabled = true; btn.textContent = 'Reading…';
+      say('Reading ZPA posture profiles, trusted networks and access rules.');
+      try {
+        const { result, logs } = await runJob('/api/device-posture/start', Object.assign({}, credBody(), scopeSelection()), $('dvJob'), 'Reading ZPA for device posture');
+        $('dvJob').innerHTML = '';
+        setReport(result, logs);
+        say(`${result.counts.profiles} posture profile${result.counts.profiles === 1 ? '' : 's'}, ${result.counts.findings} finding${result.counts.findings === 1 ? '' : 's'}.`);
+      } catch (e) {
+        $('dvJob').innerHTML = failHtml('Device posture could not be read', e.message);
+        say(`Device posture could not be read: ${e.message}`);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Read device posture';
+      }
+    }
+    function setReport(res, logs) {
+      report = res; reportId = res.report_id || '';
+      $('rpMeta').textContent = `${res.tenant_label || ''} · read ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
+      $('dvHow').hidden = true; $('dvTabs').hidden = false;
+      const x = $('expXlsx'), j = $('expJson');
+      x.href = `/api/device-posture/report/${encodeURIComponent(reportId)}/export?format=xlsx`;
+      j.href = `/api/device-posture/report/${encodeURIComponent(reportId)}/export?format=json`;
+      x.title = 'Profiles, families, usage, findings and every access rule in plain words, as an Excel workbook';
+      j.title = 'The whole report as JSON';
+      x.hidden = j.hidden = !reportId;
+      renderFindings(logs || res.logs || []);
+      renderProfiles(); renderNetworks(); renderRules();
+      const cur = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
+      selectTab(cur, false);
+    }
+    function chip(map, k) { const [l, c] = map[k] || [k, '']; return `<span class="df-chip ${c}">${E(l)}</span>`; }
+    function sevChip(s) { return `<span class="sev-chip ${E(s)}">${E(SEV_LABEL[s] || s)}</span>`; }
+    function plural(n, one, many) { return `${n} ${n === 1 ? one : (many || one + 's')}`; }
+
+    function renderFindings(logs) {
+      const r = report, c = r.counts || {}, bySev = c.by_severity || {};
+      const notRead = Object.values(r.collections || {}).filter(x => x && x.read === false);
+      const titles = r.titles || {};
+      const groups = {};
+      (r.findings || []).forEach(f => { (groups[f.id] = groups[f.id] || []).push(f); });
+      const blocks = Object.keys(titles).filter(k => groups[k]).map(k => {
+        const rows = groups[k].map(f => `<tr><td data-label="Severity">${sevChip(f.severity)}</td><th scope="row">${E(f.object)}</th><td data-label="What is wrong">${E(f.reason)}</td><td data-label="What to do">${E(f.fix)}</td></tr>`).join('');
+        return `<h3 class="df-h">${E(titles[k])} (${E(groups[k].length)})</h3>
+          <div class="df-tablewrap"><table class="df-table dv-find dv-stack"><caption class="sr-only">${E(titles[k])}</caption><thead><tr><th scope="col">Severity</th><th scope="col">${E(groups[k][0].object_type)}</th><th scope="col">What is wrong</th><th scope="col">What to do</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      }).join('');
+      const enforced = c.allow_rules ? `${c.allow_rules_enforced} of ${c.allow_rules} enabled allow rules require a device check that enforces something (a marker or an optional check does not count).` : 'There is no enabled allow rule in the access policy.';
+      $('panel-findings').innerHTML = `
+        ${r.readable === false ? failHtml('Nothing could be read', 'No ZPA list could be read with this sign-in: check that the API client has a ZPA role and that the customer ID is right.') : ''}
+        <p class="dv-lead">${E(enforced)}</p>
+        <div class="dv-stats" role="group" aria-label="Counts">
+          <div class="dv-stat"><div class="n">${E(c.profiles || 0)}</div><div class="k">Posture profiles</div></div>
+          <div class="dv-stat"><div class="n">${E(c.trusted_networks || 0)}</div><div class="k">Trusted networks</div></div>
+          <div class="dv-stat"><div class="n">${E(c.access_rules || 0)}</div><div class="k">Access rules</div></div>
+          <div class="dv-stat sev-high"><div class="n">${E(bySev.high || 0)}</div><div class="k">High</div></div>
+          <div class="dv-stat sev-medium"><div class="n">${E(bySev.medium || 0)}</div><div class="k">Medium</div></div>
+          <div class="dv-stat"><div class="n">${E((bySev.low || 0) + (bySev.info || 0))}</div><div class="k">Low and info</div></div>
+        </div>
+        ${notRead.length ? `<div class="df-hint">Not read: ${E(notRead.map(x => `${x.label} (${x.error || 'no answer'})`).join('; '))}.</div>` : ''}
+        ${(r.not_assessed || []).length ? `<ul class="pa-assume">${r.not_assessed.map(n => `<li>${E(n)}</li>`).join('')}</ul>` : ''}
+        <h2 class="df-h">Findings</h2>
+        ${blocks || `<p class="dv-empty">No finding: every enabled allow rule to a sensitive or broad app checks the device, no rule lets a failing device in, and every profile and trusted network is used.</p>`}
+        <h2 class="df-h">Client Connector</h2>
+        <p class="dv-empty">${r.zcc && r.zcc.read ? `${E(plural(r.zcc.count, 'Client Connector trusted network'))} read and matched to ZPA by network ID.` : E((r.zcc && r.zcc.reason) || 'Not read.')} The SDK has no Client Connector device posture list, so the profiles come from ZPA only.</p>
+        <h2 class="df-h">Assumptions</h2>
+        <ul class="pa-assume">${(r.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>
+        <details class="pa-details"><summary>What was read (${E(plural(logs.length, 'line'))})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
+    }
+
+    function usesHtml(list, emptyWord) {
+      if (!list.length) return `<span class="df-by">${E(emptyWord)}</span>`;
+      return `<ul class="dv-uses">${list.map(u => `<li>${chip(SENSE, u.sense)}<span>${E(u.rule)}</span><span class="df-by">${E(u.policy_label)}${u.order != null ? `, order ${E(u.order)}` : ''}${u.action ? `, ${E(u.action)}` : ''}${u.disabled ? ', disabled' : ''}${u.optional ? ', optional (OR)' : ''}${u.via ? ` — ${E(u.via)}` : ''}</span></li>`).join('')}</ul>`;
+    }
+    function renderProfiles() {
+      const r = report, ps = r.profiles || [];
+      const fams = (r.families || []).map(f => `<li class="dv-fam${f.count ? '' : ' empty'}"><span class="t">${E(f.label)}</span>
+        <span class="m">${E(plural(f.count, 'profile'))}${f.count ? ` · ${E(f.reliable)} from the type, ${E(f.inferred)} from the name · ${E(f.used)} used` : ''}</span>
+        <span>${f.enforces ? '<span class="df-chip st-ok">Counts as enforcement</span>' : '<span class="df-chip st-warn">Not enforcement</span>'}</span></li>`).join('');
+      const rows = ps.map(p => {
+        const [sl, sc, sw] = SOURCE[p.source] || [p.source, '', ''];
+        return `<tr><th scope="row">${E(p.name)}${p.platforms && p.platforms.length ? `<div class="df-by">${E(p.platforms.join(', '))}</div>` : ''}</th>
+          <td data-label="Family">${E(p.label)}${p.enforces ? '' : '<div class="df-by">not counted as enforcement</div>'}</td>
+          <td data-label="Classified"><span class="df-chip ${sc}">${E(sl)}</span><div class="df-by">${E(sw)}${p.posture_type ? ` · type ${E(p.posture_type)}` : ''}</div></td>
+          <td data-label="Used by">${usesHtml(p.used_by || [], 'No rule uses it.')}</td>
+          <td data-label="Why this family">${E(p.why)}</td></tr>`;
+      }).join('');
+      const why = (r.collections && r.collections.posture_profiles && r.collections.posture_profiles.read === false) ? `Posture profiles could not be read (${r.collections.posture_profiles.error || 'no answer'}).` : 'The tenant has no ZPA posture profile, so no access rule can check a device.';
+      $('panel-profiles').innerHTML = `
+        <p class="dv-lead">Each profile's family comes from its posture type when the type is known (reliable) or from its name (inferred). Markers and overrides only prove that something is present on the device, so they never count as EDR, domain join or any other enforcement.</p>
+        <h2 class="df-h">Families</h2>
+        <ul class="dv-fams" aria-label="Posture families">${fams}</ul>
+        <h2 class="df-h">Profiles</h2>
+        ${rows ? `<div class="df-tablewrap"><table class="df-table dv-stack"><caption class="sr-only">Posture profiles, their family, how it was classified and the rules that use them</caption><thead><tr><th scope="col">Profile</th><th scope="col">Family</th><th scope="col">Classified</th><th scope="col">Used by</th><th scope="col">Why this family</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="dv-empty">${E(why)}</p>`}`;
+    }
+    function renderNetworks() {
+      const r = report, ns = r.trusted_networks || [];
+      const rows = ns.map(t => `<tr><th scope="row">${E(t.name)}</th>
+        <td data-label="Used by">${usesHtml(t.used_by || [], 'No rule uses it.')}</td>
+        <td data-label="Client Connector criteria">${t.zcc ? `${E((t.zcc.criteria || []).join(', ') || 'no criteria')}${t.zcc.active === false ? ' <span class="df-chip st-warn">Inactive</span>' : ''}` : `<span class="df-by">${r.zcc && r.zcc.read ? 'Not found in Client Connector' : 'Client Connector not read'}</span>`}</td></tr>`).join('');
+      const why = (r.collections && r.collections.trusted_networks && r.collections.trusted_networks.read === false) ? `Trusted networks could not be read (${r.collections.trusted_networks.error || 'no answer'}).` : 'The tenant has no ZPA trusted network, so no rule can depend on the corporate network.';
+      $('panel-networks').innerHTML = `
+        <p class="dv-lead">A trusted network says where a device is (for example on the office network), not whether the device is healthy. Use it beside a posture check, not instead of one.</p>
+        ${rows ? `<div class="df-tablewrap"><table class="df-table dv-stack"><caption class="sr-only">Trusted networks and the rules that use them</caption><thead><tr><th scope="col">Trusted network</th><th scope="col">Used by</th><th scope="col">Client Connector criteria</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="dv-empty">${E(why)}</p>`}`;
+    }
+    function ruleMatches(rr, q, show) {
+      if (show === 'posture' && !(rr.posture || []).length) return false;
+      if (show === 'flagged' && !(rr.flags || []).length) return false;
+      if (show === 'none' && ((rr.posture || []).length || rr.disabled || !['ALLOW', 'REQUIRE_APPROVAL'].includes(rr.action))) return false;
+      if (!q) return true;
+      return `${rr.name} ${rr.sentence} ${rr.text}`.toLowerCase().includes(q);
+    }
+    function renderRules() {
+      const r = report, all = r.rules || [];
+      const q = $('rSearch').value.trim().toLowerCase(), show = $('rShow').value;
+      const list = all.filter(x => ruleMatches(x, q, show));
+      const titles = r.titles || {};
+      $('rCount').textContent = `${list.length} of ${plural(all.length, 'rule')}`;
+      if (!all.length) {
+        const pol = r.collections && r.collections['policy:access'];
+        $('rList').innerHTML = `<p class="dv-empty">${E(pol && pol.read === false ? `The access policy could not be read (${pol.error || 'no answer'}).` : 'The access policy has no rule, so ZPA denies every request by default.')}</p>`;
+        return;
+      }
+      if (!list.length) { $('rList').innerHTML = '<p class="dv-empty">No access rule matches the search and the filter. Clear the search or choose Every access rule.</p>'; return; }
+      $('rList').innerHTML = list.map(x => `<details class="dv-rule${x.disabled ? ' off' : ''}" ${(x.flags || []).length ? 'open' : ''}>
+        <summary><span class="ord">${E(x.order == null ? '' : `#${x.order}`)}</span><strong>${E(x.name)}</strong>
+          <span class="df-chip ${x.action === 'DENY' ? 'st-fail' : x.action === 'ALLOW' ? 'st-ok' : ''}">${E(x.action || 'no action')}</span>
+          ${x.disabled ? '<span class="df-chip">Disabled</span>' : ''}
+          ${(x.flags || []).map(f => `<span class="df-chip st-warn" title="${E(titles[f] || f)}">${E(f)}</span>`).join('')}</summary>
+        <div class="body"><p class="say">${E(x.sentence)}</p>${x.html}
+          ${(x.flags || []).length ? `<div class="df-hint">${E(x.flags.map(f => `${f}: ${titles[f] || f}`).join('; '))}</div>` : ''}</div>
+      </details>`).join('');
+    }
+    $('rSearch').addEventListener('input', () => { if (report) renderRules(); });
+    $('rShow').addEventListener('change', () => { if (report) { renderRules(); say($('rCount').textContent + ' shown.'); } });
+
+    $('dvRun').addEventListener('click', readPosture);
+    tenantChoices();
+    const q = new URLSearchParams(location.search);
+    if (q.get('id') && q.get('id').startsWith('posture-')) {
+      // A link may show a report already in memory; it never starts a read.
+      fetch(`/api/device-posture/report/${encodeURIComponent(q.get('id'))}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(rep => { if (rep) setReport(rep, []); }).catch(() => {});
+    }
+  })();
+  </script>
+</body>
+</html>

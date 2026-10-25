@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/posture", "/report/sslcoverage"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/posture", "/report/sslcoverage"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -2422,6 +2422,111 @@ async def zpa_report_export(report_id: str, format: str = "csv", severity: str =
         w.writerow([f.get("severity"), f.get("template"), f.get("title"), f.get("object_type"), f.get("object"), f.get("reason"), f.get("fix")])
     return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename=zpa_analysis_{ts}.csv"})
+
+
+# ── Device posture (read-only) ───────────────────────────────────────
+# device_posture reads ZPA through zpa_reader (plus the Client Connector
+# trusted networks when Client Connector is in scope too), classifies the
+# posture profiles, links them to the access rules and says each rule's
+# conditions in plain words. Kept as a "posture-" report for the exports.
+@app.get("/report/device-posture")
+async def report_device_posture_page():
+    """Device posture (static/report_device_posture.html)."""
+    page = os.path.join(STATIC_DIR, "report_device_posture.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _posture_report(rid: str) -> Optional[Dict[str, Any]]:
+    rep = _REPORTS.get(rid or "")
+    return rep if rep and str(rid).startswith("posture-") else None
+
+
+def _run_device_posture(client, label: str, creds: Dict[str, Any], log, cancel, scope: Dict[str, Any], zcc: bool) -> Dict[str, Any]:
+    """Read ZPA once (and the Client Connector trusted networks with `zcc`),
+    then build the device posture report. Stop ends it as stopped with
+    nothing more read and nothing kept."""
+    import device_posture
+    import zpa_reader
+    logs: list = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    if scope.get("source"):
+        _log(f"In scope, from {scope['source']}: ZPA{' and Client Connector' if zcc else ''}.")
+    try:
+        snap, raw, zout = device_posture.read(client, log=_log, cancel=cancel, zcc=zcc)
+    except zpa_reader.Stopped as e:
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
+    except zpa_reader.ReadError as e:
+        raise RuntimeError(tenant_auth.mask_secrets(str(e), creds))
+    if cancel is not None and cancel.is_set():
+        _log("STOPPED — you clicked Stop; the ZPA read was abandoned and is not kept.")
+        return {"stopped": zpa_reader.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    cols = snap.get("collections") or {}
+    for v in cols.values():
+        if v.get("error"):
+            v["error"] = tenant_auth.mask_secrets(v["error"], creds)
+    zout["reason"] = tenant_auth.mask_secrets(zout.get("reason") or "", creds)
+    rep = device_posture.analyze(snap, raw.get("posture_profiles"), raw.get("trusted_networks"), zout)
+    report = dict(rep, kind="posture", read_at=snap.get("read_at"), collections=cols, readable=zpa_reader.readable(snap))
+    rid = _remember_report("posture", report, label)
+    _log(f"Done: {rep['counts']['profiles']} posture profile(s), {rep['counts']['access_rules']} access rule(s), "
+         f"{rep['counts']['findings']} finding(s).")
+    out = dict(_REPORTS[rid])
+    out["logs"] = logs
+    return out
+
+
+@app.post("/api/device-posture/start")
+async def device_posture_start(req: ZpaAnalysisRequest, request: Request):
+    """Read the ZPA posture profiles, trusted networks and access rules
+    (only when ZPA is ticked on the Scope page; the Client Connector
+    trusted networks too when Client Connector is ticked) as a job the page
+    follows. Read-only. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import pack_jobs
+    scope = _zpa_scope(req, "Device posture")          # before signing in (user rule 1)
+    zcc = "zcc" in (scope.get("scopes") or [])
+    client, label, creds = await _zpa_client(req)
+    job = pack_jobs.start("posture", lambda log, cancel: _run_device_posture(client, label, creds, log, cancel, scope, zcc),
+                          label="Device posture", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/device-posture/report/{report_id}")
+async def device_posture_report(report_id: str):
+    rep = _posture_report(report_id)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read device posture again.")
+    return rep
+
+
+@app.get("/api/device-posture/report/{report_id}/export")
+async def device_posture_export(report_id: str, format: str = "xlsx"):
+    """The report as an Excel workbook (profiles, families, usage, findings,
+    access rules with readable conditions) or as JSON."""
+    import device_posture
+    import xlsx_writer
+    rep = _posture_report(report_id)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        body = {k: v for k, v in rep.items() if k != "collections"}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=device_posture_{ts}.json"})
+    if fmt != "xlsx":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    data = await asyncio.to_thread(device_posture.workbook, rep)
+    return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
+                    headers={"Content-Disposition": f"attachment; filename=device_posture_{ts}.xlsx"})
 
 
 @app.get("/report/digest")

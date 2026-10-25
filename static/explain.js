@@ -49,6 +49,14 @@
     get: 'Findings grouped by template with a severity filter, counts and a catalog of every template (what it checks, assessed or not), exported as CSV or JSON; and a diagnosis hop by hop: segment, segment group, access rules in order with why each did not match, server groups and connector status, plus the assumptions.',
     next: 'Fix the named rule, segment or connector group in the ZPA console, then read ZPA again and confirm the finding is gone; use Diagnose with the user\'s groups to prove the access path before you close the ticket.',
   };
+  X.posture = {
+    group: 'Find the gaps', name: 'Device posture', href: '/report/device-posture',
+    what: 'Reads the ZPA posture profiles, trusted networks and access rules once, sorts every posture profile into a family (domain join, EDR or antivirus, certificate, disk encryption, OS version, jailbreak, MDM, firewall, process, marker or unknown) and says whether that came from the profile type or only from its name. It links each profile and network to the rules that use it, as must pass or must fail, and says every access rule in plain words. It reads only when ZPA is ticked on the Scope page.',
+    why: 'Zero trust is only as strong as the device check behind it. An allow rule to a sensitive app with no posture check, a negated check that lets failing devices in, or a check that only looks for a marker file all look fine in the console list, and each one lets an unmanaged or compromised laptop reach private apps.',
+    when: 'During a ZPA or zero trust review, before telling a customer that only healthy corporate devices reach a private app, after adding a new EDR or certificate check, and when an auditor asks which rules require a managed device.',
+    get: 'Findings with a fix each (no posture on sensitive or broad apps, negated checks, marker-only checks, optional checks, unused profiles and networks), the families with how each was classified, the rules using each profile, and every access rule as nested AND, OR and NOT groups plus one sentence, exported to Excel.',
+    next: 'Add a must-pass posture check that enforces something (EDR, domain join or a certificate) to the rules named under Findings, fix any negated check, then read device posture again and confirm the finding is gone.',
+  };
   X.path = {
     group: 'Find the gaps', name: 'Path analyzer', href: '/report/path',
     what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named. It reads only what is in scope on the Scope page; a part out of scope says Not in scope, never \"no rule\".',
@@ -383,7 +391,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'posture', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet' };
     return map[p] || '';

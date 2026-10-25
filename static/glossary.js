@@ -60,6 +60,11 @@
     'coverage': { term: 'coverage', def: 'Coverage is how many checks could run. If the app was not let in to look, that check is not in the score.' },
     'projected score': { term: 'projected score', def: 'A projected score is your score after the fixes you pick. It is a guess made with the real math, before you change a thing.' },
     'score drop': { term: 'score drop', def: 'A score drop means your score went down since last time. The app shows which checks started to fail.' },
+    'device posture': { term: 'device posture', def: 'Device posture is a health check on a computer or phone. It asks things like: is it a work device, and is its guard app on?' },
+    'trusted network': { term: 'trusted network', def: 'A trusted network is a network you own, like the office one. It says where a device is, not if the device is safe.' },
+    'edr': { term: 'EDR', def: 'EDR is a guard app on each computer. It watches for bad programs and stops them.' },
+    'domain-joined': { term: 'domain-joined', def: 'A domain-joined computer is one your company set up and controls. Home computers are not.' },
+    'negated condition': { term: 'negated condition', def: 'A negated condition is a check turned upside down. It matches when the thing is not true.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;
