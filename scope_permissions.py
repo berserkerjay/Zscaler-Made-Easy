@@ -264,6 +264,22 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         "note": "ZIdentity scope is meta — the API client itself lives in ZIdentity. You'll need 'ZIdentity Admin' to read the directory it's a member of.",
     },
 
+    "insights": {
+        "label": "ZIA Insights (traffic data)",
+        "description": "Traffic insights page: web traffic by action and location, cloud applications (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, and the users with the most security incidents. Traffic numbers, not configuration; no assessment check reads them.",
+        "service": "ZIA (Z-Insights)",
+        "permissions_read": [
+            "Z-Insights / Insights analytics (read) on the API client's role",
+        ],
+        "permissions_write": [],
+        "endpoints_used": [
+            "/zins/graphql (WEB_TRAFFIC, SHADOW_IT, SAAS_SECURITY, ZERO_TRUST_FIREWALL, CYBER_SECURITY)",
+        ],
+        "license_required": "Standard ZIA license for web and firewall traffic; Shadow IT and SaaS security sections show data only where the tenant has Cloud App Control and CASB.",
+        "customer_id_needed": False,
+        "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in cannot read Z-Insights. Shows customer traffic data, so it is off unless ticked.",
+    },
+
     "compliance": {
         "label": "Compliance",
         "description": "Maps assessment results to NIST 800-53/171, SOC 2, GDPR, HIPAA, PCI-DSS, ISO 27001, CIS frameworks.",

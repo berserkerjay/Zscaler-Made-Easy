@@ -96,16 +96,57 @@ export async function apiBlob(base, path) {
   return { blob: await r.blob(), name: m ? m[1] : 'export.zip' };
 }
 
-// One key per object, the same in the panel, the badges and the stage.
-export const objectKey = o => `${o.kind}:${o.kind === 'rule' ? `${o.channel}:` : ''}${o.name}`;
+// One key per object, the same in the panel, the badges and the stage
+// (the app sends it; an index read before it did is keyed the old way).
+export const objectKey = o => o.key || `${o.kind}:${o.kind === 'rule' ? `${o.channel}:` : ''}${o.name}`;
 
 export const PAGES = {
   home: { path: '/', label: 'Open DLP-Check' },
   path: { path: '/report/path', label: 'Path analyzer' },
   live: { path: '/report/live', label: 'Live DLP feed' },
   motion: { path: '/report/motion', label: 'Flow animator' },
+  shadow: { path: '/report/shadow', label: 'Shadowed rules' },
   help: { path: '/help', label: 'What does everything do?' },
 };
+
+// The kinds of object the index holds (the app sends the same list as
+// `kinds`; this is the fallback for an index read by an older app).
+export const KINDS = {
+  dictionary: { label: 'DLP dictionary', plural: 'DLP dictionaries', group: 'DLP', export: true },
+  engine: { label: 'DLP engine', plural: 'DLP engines', group: 'DLP', export: true },
+  rule: { label: 'DLP rule', plural: 'DLP rules', group: 'DLP', export: true },
+};
+export function kindInfo(index, kind) {
+  const k = ((index && index.kinds) || []).find(x => x.kind === kind) || KINDS[kind];
+  return k || { label: String(kind || 'object').replace(/_/g, ' '), plural: String(kind || 'object').replace(/_/g, ' ') + 's', group: 'Objects', export: false };
+}
+// Rule kinds the Shadowed rules page analyses (File Type Control is not one).
+export const SHADOW_KINDS = ['rule', 'url_rule', 'cac_rule', 'ssl_rule', 'firewall_rule'];
+const POLICY_RULE_KINDS = ['url_rule', 'cac_rule', 'ssl_rule', 'firewall_rule', 'ftc_rule'];
+
+const SEV_RANK = { high: 3, medium: 2, low: 1, info: 0 };
+const n = (x, one, many) => `${x} ${x === 1 ? one : (many || one + 's')}`;
+
+// What a console badge says about an object: its most serious finding
+// ("shadowed", "monitor only", "unused"), else what uses it ("used in 4
+// rules") or, for a rule, where it sits ("order 3 · block").
+export function badgeLabel(o) {
+  const findings = o.findings || [];
+  const sev = findings.reduce((a, f) => (SEV_RANK[f.severity] > SEV_RANK[a] ? f.severity : a), 'info');
+  const top = findings.find(f => f.severity === sev);
+  const c = o.counts || {};
+  let label;
+  if (top && sev !== 'info') label = top.short || top.text.split(':')[0].split('.')[0].toLowerCase();
+  else if (o.kind === 'dictionary') label = c.engines ? `${n(c.engines, 'engine')}, ${n(c.rules || 0, 'rule')}` : 'unused';
+  else if (o.kind === 'engine') label = c.rules ? n(c.rules, 'rule') : 'unused';
+  else if (o.kind === 'rule') label = String(o.state || '').toLowerCase() === 'disabled' ? 'disabled' : n(c.engines || 0, 'engine');
+  else if (POLICY_RULE_KINDS.includes(o.kind)) {
+    const act = String(o.action || (o.actions || [])[0] || '').toLowerCase().replace(/_/g, ' ');
+    label = String(o.state || '').toLowerCase() === 'disabled' ? 'disabled'
+      : [o.order !== undefined && o.order !== null ? `order ${o.order}` : '', act].filter(Boolean).join(' · ') || 'rule';
+  } else label = c.rules ? `used in ${n(c.rules, 'rule')}` : 'unused';
+  return { label: label.slice(0, 40), sev };
+}
 
 // Is the app running at `base`? {ok, build} or {ok: false, why}.
 export async function ping(base, timeoutMs = 2500) {
