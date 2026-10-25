@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/sslcoverage"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/posture", "/report/sslcoverage"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -280,6 +280,7 @@ GUI_ADDONS = [
     ("bypass_report.js", "script"),
     ("tool_tabs.js", "script"),
     ("simple_entry.js", "script"),   # the "Try Simple mode" banner and the deep links from /simple
+    ("posture_banner.js", "script"),  # the coverage line and the score-drop banner on the results (posture_plus)
     ("sidebar_order.js", "script"),  # drag / Alt+arrow reordering of the sidebar; dashboard.js starts it
     ("dashboard.js", "script"),     # last: wraps showResults / renderChecks / resetForm
 ]
@@ -7669,6 +7670,173 @@ async def shadow_rules_export(job_id: str, format: str = "csv"):
                         headers={"Content-Disposition": f"attachment; filename=shadowed_rules_{ts}.json"})
     return Response(content=shadow_rules.to_csv(res), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename=shadowed_rules_{ts}.csv"})
+
+
+# ── Posture: improve my score, projected score, trend, alerts, coverage ──
+# Pure computation (posture_plus.py) on the results the page already holds,
+# the tenant profile's history and the team change queue on this server.
+# Nothing here reads or writes a tenant.
+@app.get("/report/posture")
+async def report_posture_page():
+    """Improve my score (static/report_posture.html): the fixes that raise
+    the score most, the projected score, the trend with its causes and what
+    the last assessment could not check. Reads nothing from the tenant."""
+    page = os.path.join(STATIC_DIR, "report_posture.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+_POSTURE_MAX_CHECKS = 3000
+
+
+class PostureRequest(BaseModel):
+    """The results the page holds (checks, hidden_checks, channel_coverage),
+    the tenant profile whose history to use, the fixes ticked on the page,
+    and whether (and for which tenant) to count fixes staged in the change queue."""
+    checks: List[Dict[str, Any]] = []
+    hidden_checks: int = 0
+    channel_coverage: Optional[Dict[str, Any]] = None
+    profile_id: str = ""
+    selected: List[str] = []
+    include_queue: bool = True
+    queue_tenant: str = ""
+    logs: List[str] = []
+    limit: int = 10
+
+
+def _posture_checks(req: PostureRequest) -> List[Dict[str, Any]]:
+    if len(req.checks or []) > _POSTURE_MAX_CHECKS:
+        raise HTTPException(status_code=413, detail=f"Too many results ({len(req.checks)}); at most {_POSTURE_MAX_CHECKS}.")
+    out = []
+    for c in req.checks or []:
+        if not isinstance(c, dict):
+            continue
+        row = {k: c.get(k) for k in ("id", "sec", "section", "label", "status", "out_of_scope", "channel") if c.get(k) is not None}
+        row["id"] = str(row.get("id") or "")[:32]
+        row["label"] = str(row.get("label") or "")[:200]
+        row["status"] = str(row.get("status") or "").upper()[:10]
+        row["detail"] = str(c.get("detail") or "")[:600]
+        plain = c.get("plain")
+        if isinstance(plain, dict) and plain.get("do"):
+            row["plain"] = {"do": str(plain.get("do"))[:1200]}
+        if row["id"]:
+            out.append(row)
+    return out
+
+
+def _posture_history(profile_id: str) -> List[Dict[str, Any]]:
+    if not profile_id:
+        return []
+    try:
+        import tenant_profiles
+        return list((tenant_profiles.get(str(profile_id)[:80]) or {}).get("history") or [])
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _posture_queue(req: PostureRequest) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]], str]:
+    """(open requests of the chosen tenant, the tenants with open requests, the tenant used)."""
+    if not req.include_queue:
+        return [], [], ""
+    try:
+        import change_queue
+        items = change_queue.list_requests("", ["pending", "approved"])
+    except Exception:  # noqa: BLE001
+        return [], [], ""
+    tenants: Dict[str, str] = {}
+    for r in items:
+        tenants.setdefault(str(r.get("tenant")), str(r.get("tenant_label") or r.get("tenant")))
+    chosen = str(req.queue_tenant or "").strip().lower()
+    if not chosen and len(tenants) == 1:
+        chosen = next(iter(tenants))
+    return ([r for r in items if str(r.get("tenant")) == chosen] if chosen else [],
+            [{"key": k, "label": v} for k, v in sorted(tenants.items(), key=lambda kv: kv[1])], chosen)
+
+
+def _posture_digest_alerts(profile_id: str) -> List[Dict[str, Any]]:
+    """The score-drop alerts the latest digest raised for this profile."""
+    if not profile_id:
+        return []
+    try:
+        import continuous_eval
+        last = continuous_eval.list_digests(1)
+        d = continuous_eval.get_digest(str(last[0]["id"])) if last else None
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for t in (d or {}).get("tenants") or []:
+        if t.get("profile_id") == profile_id:
+            out.extend(dict(a, digest=d.get("id")) for a in t.get("score_alerts") or [])
+    return out
+
+
+@app.post("/api/posture/analyze")
+async def posture_analyze(req: PostureRequest):
+    """Everything the Improve my score page shows, from the results sent:
+    the ranked fixes, the projected score (ticked fixes and staged fix
+    recipes), the trend from the profile's history, the score-drop alert
+    and the coverage list. No tenant read."""
+    import posture_plus as pp
+    checks = _posture_checks(req)
+    history = _posture_history(req.profile_id)
+    queue, queue_tenants, chosen = _posture_queue(req)
+    report = {"checks": checks, "hidden_checks": req.hidden_checks, "channel_coverage": req.channel_coverage or {}}
+    cfg = pp.settings()
+    return {"ranking": pp.ranking(checks, limit=max(1, min(50, int(req.limit or 10)))),
+            "projection": pp.project(checks, req.selected, queue),
+            "queue": {"tenants": queue_tenants, "tenant": chosen},
+            "trend": pp.trend(history, checks),
+            "alert": pp.latest_drop(history, cfg["score_drop_points"], checks),
+            "digest_alerts": _posture_digest_alerts(req.profile_id),
+            "coverage": pp.coverage(report, (req.logs or [])[:2000]),
+            "settings": cfg}
+
+
+@app.post("/api/posture/project")
+async def posture_project(req: PostureRequest):
+    """The score after the ticked fixes and the staged fix recipes (no tenant read)."""
+    import posture_plus as pp
+    queue, queue_tenants, chosen = _posture_queue(req)
+    return dict(pp.project(_posture_checks(req), req.selected, queue), queue_tenants=queue_tenants, queue_tenant=chosen)
+
+
+@app.post("/api/posture/summary")
+async def posture_summary(req: PostureRequest):
+    """The main page's coverage line and score-drop banner (no tenant read)."""
+    import posture_plus as pp
+    checks = _posture_checks(req)
+    history = _posture_history(req.profile_id)
+    cov = pp.coverage({"checks": checks, "hidden_checks": req.hidden_checks, "channel_coverage": req.channel_coverage or {}})
+    cfg = pp.settings()
+    return {"coverage": {k: cov[k] for k in ("total", "ran", "not_ran", "pct", "hidden", "sentence", "by_category")},
+            "alert": pp.latest_drop(history, cfg["score_drop_points"], checks),
+            "digest_alerts": _posture_digest_alerts(req.profile_id), "settings": cfg}
+
+
+class PostureSettings(BaseModel):
+    """The score-drop alert: threshold in points, and whether a drop alone may make the digest send a notification."""
+    score_drop_points: int = 5
+    notify_score_drop: bool = False
+
+
+@app.get("/api/posture/settings")
+async def posture_settings_get():
+    import posture_plus as pp
+    return pp.settings()
+
+
+@app.put("/api/posture/settings")
+async def posture_settings_put(req: PostureSettings, request: Request):
+    """Save the score-drop alert settings (a local file next to the app;
+    nothing is sent anywhere). A server-wide setting, so under SSO only a
+    listed writer may change it."""
+    import posture_plus as pp
+    _security.require_writer()
+    saved = await asyncio.to_thread(pp.save_settings, req.model_dump())
+    _audit.record("posture_settings", actor=_actor(request) or _security.current_actor(), **saved)
+    return saved
 
 
 # ── Path Analyzer ─────────────────────────────────────────────────────

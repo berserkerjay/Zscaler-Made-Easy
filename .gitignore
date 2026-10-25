@@ -74,3 +74,4 @@ certs/*.crt
 certs/*.pem
 certs/*.cer
 update_container.log
+posture_settings.json

@@ -129,6 +129,14 @@
     get: 'Sortable tables for each section with its status (read, no data, partial, could not read) and the reason when a section fails, a plain list of what Insights cannot answer (URL category, per-user traffic, per-rule hits, one host), and CSV and JSON exports without the per-user table.',
     next: 'Take the busiest cloud applications and locations into the Path analyzer to see the policy path for them, then close what you find with a policy pack, preflight first.',
   };
+  X.posture = {
+    group: 'Find the gaps', name: 'Improve my score', href: '/report/posture',
+    what: 'Takes the results of the last assessment and says what to do next: the ten fixes that raise the score most (with the points each adds, the effort and whether a one-click fix exists in Review & remediate), the score after the fixes you tick or have staged in the change queue, the score over time with the checks that started or stopped failing between runs, and what the assessment could not check and why.',
+    why: 'A score on its own does not tell anyone what to do on Monday. Showing the cheapest fixes first, what the score will be after them, and why the score moved since the last visit turns the number into a plan the customer can follow and a result they can see.',
+    when: 'Right after an assessment, when you plan the next changes with the customer, and on every return visit to explain why the score went up or down. Save a tenant profile so each run is kept in its history.',
+    get: 'A ranked list of fixes with plain steps and a link to the fix, a projected score, a score trend with the cause of each change, a score-drop alert with its threshold (5 points by default), and a coverage list (area, what was not checked, why, how to fix).',
+    next: 'Tick the fixes the customer agrees to, open the first one-click fix in Review & remediate (or request approval in the change queue), give the API client any missing read permission the coverage list names, then run the assessment again.',
+  };
   X.digest = {
     group: 'Find the gaps', name: 'Digest — the evaluation loop', href: '/report/digest',
     what: 'When you click Run the loop now, it re-reads the guidance sources and, for every tenant profile that remembers its secret, only what that profile\'s Scope page puts in scope (FP/TP detection ratio and the ticked packs\' drift when DLP is in scope, the SaaS tenants when SaaS Security runs on Zscaler), writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
@@ -377,7 +385,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet' };
     return map[p] || '';
   }
 
@@ -426,7 +434,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'remediate', 'queue', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
@@ -460,6 +468,10 @@
     ['Z-Tunnel 1.0 / 2.0', 'The two ways Client Connector carries traffic. 2.0 (DTLS or TLS, needs outbound UDP or TCP 443) carries everything; 1.0 (HTTP CONNECT) carries only web ports. A firewall that blocks UDP 443 forces the fallback to 1.0.'],
     ['PAC file', 'A small script the browser or Client Connector runs for every request to decide: send it to Zscaler (PROXY) or straight out (DIRECT). Every DIRECT is a bypass that DLP never sees.'],
     ['Captive portal', 'The Wi-Fi sign-in page at hotels and airports. Until the user clicks through, nothing reaches Zscaler; Client Connector pauses so the page can load.'],
+    ['Projected score', 'The score the assessment would give after the fixes you tick on Improve my score (and any fix recipe staged in the change queue), worked out with the same formula as the real score. Nothing is changed or read to get it; run the assessment again to make it real.'],
+    ['Points gained', 'How much one fix raises the overall score: the score worked out again with that check configured, minus the score now. Every scoreable check weighs the same, so each fix adds about 100 divided by the number of scoreable checks.'],
+    ['Coverage', 'The share of the assessment\'s checks that ran and got an answer. A check that was not permitted to the API client, was rate limited, timed out or failed is left out of the score; Improve my score lists each one with the reason and the fix.'],
+    ['Score-drop alert', 'A note on the results and in the digest when the score fell by at least the threshold you set (5 points by default) since the previous run, with the checks that started failing. It is sent by e-mail or webhook only if notifications are already set up and you turned that on.'],
     ['Trusted network', 'A network the customer defined in the Forwarding Profile (office, VPN) where Client Connector may behave differently on purpose, for example not tunnelling at all.'],
   ];
   window.DLP_TROUBLE = [

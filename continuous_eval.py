@@ -19,7 +19,10 @@ profile_scope): nothing in scope, nothing read.
                   puts on Zscaler only, and compared with the last stage;
   5. digest       everything new since the last run is written as one
                   digest (JSON + Markdown) and, when it is noteworthy, sent
-                  by e-mail and/or to a Teams / Slack webhook.
+                  by e-mail and/or to a Teams / Slack webhook. A score that
+                  fell by at least the threshold (posture_plus, default 5
+                  points) is listed as a score-drop alert; it makes the
+                  digest sendable only when notify_score_drop is turned on.
 
 Every tenant read counts against the ZIA API rate limit, so nothing runs
 on its own by default. The same function runs when the operator clicks
@@ -306,6 +309,25 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
                                       "detection_health": None, "proposals": None, "tenants": None, "drift": None, "skipped": [],
                                       "errors": [f"profile: {type(e).__name__}: {str(e)[:200]}"]})
 
+    # Score-drop alerts (posture_plus): a journey score this run measured, or
+    # the latest assessment score, lower than the one before by at least the
+    # threshold (default 5 points). Each assessment drop is reported once.
+    # Listed in the digest; it makes the digest noteworthy (and so sendable
+    # through the notifications already configured) only when the operator
+    # turned notify_score_drop on.
+    try:
+        import posture_plus
+        import tenant_profiles
+        cfg = posture_plus.settings()
+        seen = _alerts_seen()
+        for t in digest["tenants"]:
+            full = tenant_profiles.get(str(t.get("profile_id") or "")) or {}
+            t["score_alerts"] = posture_plus.tenant_alerts(t, full.get("history") or [], cfg=cfg,
+                                                           seen={(k, a) for p, k, a in seen if p == t.get("profile_id")})
+        digest["score_drop_points"] = cfg["score_drop_points"]
+    except Exception as e:  # noqa: BLE001
+        digest["errors"].append(f"score alerts: {type(e).__name__}: {str(e)[:200]}")
+
     digest["duration_s"] = round(time.time() - started, 1)
     digest["noteworthy"] = noteworthy(digest)
     digest["summary"] = summarise(digest)
@@ -530,7 +552,9 @@ def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[
                          "relaxed": sum(1 for o in (b.get("objects") or []) if o.get("position") == "relaxed"),
                          "missing": sum(1 for o in (b.get("objects") or []) if o.get("position") == "missing"),
                          "next_steps": (b.get("next_steps") or [])[:3]})
-        out["drift"] = {"packs": rows, "changed": [r["name"] for r in rows if r["moved"] != "same" or r["relaxed"]]}
+        out["drift"] = {"packs": rows, "changed": [r["name"] for r in rows if r["moved"] != "same" or r["relaxed"]],
+                        # the overall journey score, against the last one recorded (the score-drop alert, posture_plus)
+                        "score": j.get("score"), "previous_score": _last_journey_score(full), "measured_at": _now()}
         if not_measured:
             out["drift"]["not_measured"] = not_measured
             out["drift"]["note"] = f"not measured (no rule on a DLP channel run on Zscaler): {', '.join(not_measured)}"
@@ -568,6 +592,15 @@ def _last_journey(profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return {}
 
 
+def _last_journey_score(profile: Dict[str, Any]) -> Any:
+    """The overall journey score of the last record that has one (None: never measured)."""
+    for entry in reversed(profile.get("history") or []):
+        j = entry.get("journey")
+        if isinstance(j, dict) and isinstance(j.get("score"), (int, float)):
+            return j["score"]
+    return None
+
+
 def _sync_reauthorise(tenant_key: str, not_active: List[Dict[str, Any]]) -> None:
     import proposals
     fresh = []
@@ -582,6 +615,22 @@ def _sync_reauthorise(tenant_key: str, not_active: List[Dict[str, Any]]) -> None
                       "rollback": {"note": "The consent is given in the vendor's admin console; nothing to roll back in ZIA."},
                       "gate": proposals.GATES.get("reauthorise_tenant", "approve"), "applies_via": "manual"})
     proposals.merge(tenant_key, fresh, source="continuous_evaluation")
+
+
+def _alerts_seen() -> set:
+    """(profile id, kind, at) of the assessment score drops the previous
+    digest already reported, so one drop is reported once."""
+    try:
+        last = list_digests(1)
+        prev = get_digest(str(last[0]["id"])) if last else None
+    except Exception:  # noqa: BLE001
+        prev = None
+    out = set()
+    for t in (prev or {}).get("tenants") or []:
+        for a in t.get("score_alerts") or []:
+            if a.get("kind") == "assessment":
+                out.add((t.get("profile_id"), "assessment", str(a.get("at"))))
+    return out
 
 
 # ── Digest ───────────────────────────────────────────────────────────
@@ -605,6 +654,8 @@ def noteworthy(d: Dict[str, Any]) -> bool:
             return True
         if t.get("errors"):
             return True
+        if any(a.get("notify") for a in t.get("score_alerts") or []):   # off by default (posture_plus.settings)
+            return True
     return bool(d.get("errors"))
 
 
@@ -620,6 +671,7 @@ def summarise(d: Dict[str, Any]) -> Dict[str, Any]:
             "stale_sources": len((d.get("sources") or {}).get("stale") or []),
             "tenants_not_active": sum(len((t.get("tenants") or {}).get("not_active") or []) for t in tenants),
             "drift_changed": sum(len((t.get("drift") or {}).get("changed") or []) for t in tenants),
+            "score_drops": sum(len(t.get("score_alerts") or []) for t in tenants),
             "errors": len(d.get("errors") or []) + sum(len(t.get("errors") or []) for t in tenants)}
 
 
@@ -628,7 +680,7 @@ def to_markdown(d: Dict[str, Any]) -> str:
     L = [f"# DLP-Check digest — {d.get('at')}", "",
          f"**{'Something needs a look.' if d.get('noteworthy') else 'Nothing new: the loop ran and found nothing to raise.'}** "
          f"{s['proposals_new']} new proposal(s), {s['proposals_open']} open, {s['guidance_new']} new guidance item(s), "
-         f"{s['stale_sources']} stale source(s), {s['tenants_not_active']} SaaS tenant(s) not active, {s['drift_changed']} pack(s) moved, {s['errors']} error(s).", ""]
+         f"{s['stale_sources']} stale source(s), {s['tenants_not_active']} SaaS tenant(s) not active, {s['drift_changed']} pack(s) moved, {s.get('score_drops', 0)} score drop(s), {s['errors']} error(s).", ""]
     g = d.get("guidance") or {}
     L.append("## New guidance")
     if g.get("first_run"):
@@ -653,6 +705,10 @@ def to_markdown(d: Dict[str, Any]) -> str:
     for t in d.get("tenants") or []:
         L.append("")
         L.append(f"## Tenant {t.get('name')} ({t.get('tenant')})")
+        for a in t.get("score_alerts") or []:
+            L.append(f"- **Score drop:** {a.get('what')} {a.get('from')}% → {a.get('to')}% (−{a.get('points')}, threshold {a.get('threshold')}). {a.get('sentence') or ''}".rstrip())
+            for c in (a.get("newly_failing") or [])[:10]:
+                L.append(f"  - started failing: {c.get('id')} {c.get('label')} ({c.get('from')} → {c.get('to')})")
         dh = t.get("detection_health")
         if dh and dh.get("incidents_read") is False:
             L.append(f"- FP/TP Detection Ratio: Workflow Automation incidents not read (not marked as run on Zscaler on the Scope page), so no rule is judged dead, noisy or ready to promote; incidents reach Workflow Automation via {dh.get('delivery') or 'unknown'}.")

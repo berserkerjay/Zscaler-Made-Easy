@@ -47,7 +47,7 @@ def test_real_index_html_survives_injection():
     assert _INLINE_SCRIPT.findall(out) == _INLINE_SCRIPT.findall(html), "inline script altered by injection"
     srcs = [x.split("?")[0] for x in _SRC_SCRIPT.findall(out)]
     # index.html loads the app-wide safety banner itself (every page does, see test_safety_banner.py); the rest are add-ons.
-    assert srcs == ["/static/safety_banner.js", "/static/icons.js", "/static/ui_auth.js", "/static/rate_gate.js", "/static/deploy_studio.js", "/static/explain.js", "/static/guide.js", "/static/update_beacon.js", "/static/eval_all.js", "/static/bypass_report.js", "/static/tool_tabs.js", "/static/simple_entry.js", "/static/sidebar_order.js", "/static/dashboard.js"], srcs
+    assert srcs == ["/static/safety_banner.js", "/static/icons.js", "/static/ui_auth.js", "/static/rate_gate.js", "/static/deploy_studio.js", "/static/explain.js", "/static/guide.js", "/static/update_beacon.js", "/static/eval_all.js", "/static/bypass_report.js", "/static/tool_tabs.js", "/static/simple_entry.js", "/static/posture_banner.js", "/static/sidebar_order.js", "/static/dashboard.js"], srcs
     assert all("?v=" in x for x in _SRC_SCRIPT.findall(out) if "safety_banner.js" not in x)   # add-ons are cache-busted (every /static file is revalidated anyway)
     assert out.count("</body>") == html.count("</body>")
 

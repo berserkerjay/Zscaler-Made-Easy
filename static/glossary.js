@@ -57,6 +57,9 @@
     'certificate pinning': { term: 'certificate pinning', def: 'Some apps only trust their own lock. When Zscaler opens their traffic, they stop working. We say they pin their certificate.' },
     'decrypt': { term: 'decrypt', def: 'To decrypt is to unlock traffic so Zscaler can read it. Then it is locked again on its way.' },
     'inspected': { term: 'inspected', def: 'Inspected traffic has been opened and checked by Zscaler. DLP can only check what is inspected.' },
+    'coverage': { term: 'coverage', def: 'Coverage is how many checks could run. If the app was not let in to look, that check is not in the score.' },
+    'projected score': { term: 'projected score', def: 'A projected score is your score after the fixes you pick. It is a guess made with the real math, before you change a thing.' },
+    'score drop': { term: 'score drop', def: 'A score drop means your score went down since last time. The app shows which checks started to fail.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

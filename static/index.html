@@ -652,6 +652,11 @@
                 title="When you click Run the loop now (the timer is off unless the operator sets DLP_CHECK_CONTINUOUS_EVAL_HOURS), the app re-reads guidance and, for every tenant profile that remembers its secret, only what its Scope page puts in scope: FP/TP detection ratio, the SaaS tenants and the ticked packs' drift. It writes a digest. It does not re-run the assessment. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
           <span aria-hidden="true">🔁</span> Digest
         </button>
+        <button class="btn btn-ghost" onclick="openPostureTab()"
+                aria-label="Open Improve my score: the fixes that raise the score most, the projected score, the score over time with what changed, and what the last assessment could not check (opens in a new tab)"
+                title="From the results on this page and the tenant profile's history: the ten fixes that raise the score most (points, effort, one-click fix), the score after the fixes you tick or have staged in the change queue, the score trend with the checks that started or stopped failing, score-drop alerts, and what could not be checked and why. Reads nothing from the tenant. Opens in a new tab.">
+          <span aria-hidden="true">🎯</span> Improve my score
+        </button>
       </div>
       <div class="tool-group" role="group" aria-label="Close the gaps" data-sb-id="close-gaps">
         <div class="tool-group-l">Close the gaps</div>
@@ -5243,6 +5248,13 @@ function openOperationsTab() {
   // selection and the assessor's name from this page through window.opener
   // when it runs, so nothing is read until Read from the tenant.
   const w = window.open('/report/operations', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openPostureTab() {
+  // The tab reads the results this page holds (window.__assessmentReport)
+  // and the tenant profile's history from the server; it reads nothing
+  // from the tenant.
+  const w = window.open('/report/posture', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {

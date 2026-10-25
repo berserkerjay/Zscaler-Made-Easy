@@ -191,6 +191,23 @@ what you get, what to do next.
   when there is something to decide). Every tenant read counts against
   the ZIA API rate limit, so the timer is off unless the operator sets
   `DLP_CHECK_CONTINUOUS_EVAL_HOURS`. It never writes to a tenant.
+- **Improve my score** (`/report/posture`, `posture_plus.py`) — from the
+  results on the assessment page: the ten fixes that raise the score most,
+  each with the points it adds (the real score formula run before and
+  after, so every scoreable check weighs the same and the cheapest fixes
+  come first), its effort, whether a one-click fix recipe exists in
+  Review & remediate, plain steps and a link to the fix; the projected
+  score after the fixes you tick and the fix recipes staged in the change
+  queue; the score over time from the tenant profile's history, with the
+  checks that started or stopped failing between runs (history entries
+  now keep each check's state, bounded; older entries still load); a
+  score-drop alert (5 points by default) on the results page and in the
+  digest, sent through the digest's notifications only when they are set
+  up and the operator ticks it; and what the last assessment could not
+  check (not permitted, rate limited, timed out, not licensed, left out by
+  the Scope page), with why and how to fix it. The results page shows
+  "Coverage: N% of checks ran" under the score. Reads nothing from the
+  tenant.
 - **Regulatory & compliance alignment** — the findings mapped to the
   frameworks the customer answers to (HIPAA, PCI DSS, NIST, CMMC, SOC 2,
   ISO 27001, GDPR, CIS, GLBA), scoped to the industry on the profile.

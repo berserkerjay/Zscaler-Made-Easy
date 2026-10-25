@@ -36,6 +36,7 @@ TOOLBAR = {
     "openReferenceTab('data-security-portfolio-framework')": "refportfolio", "openReferenceTab('ai-security-framework')": "refai",
     "openReferenceTab('genai-security-framework')": "refgenai", "openReferenceTab('framework-machine')": "refmachine",
     "openReferenceTab('data-security-architect')": "dsarchitect",
+    "openPostureTab()": "posture",
 }
 
 
