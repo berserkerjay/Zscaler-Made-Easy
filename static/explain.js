@@ -232,6 +232,13 @@
     when: 'Before a change board or an audit, when handing a tenant over, during a policy clean-up, and before trimming custom URL categories.',
     get: 'One workbook (or PDF review copy) per policy, a deduplicated URLs workbook with where each entry was found, and per custom-category URL whether Zscaler categorises it the same way, differently or not at all; each with a live log and Stop.',
     next: 'Send the policy workbooks with the change request, fix the rules the Usage and notes column flags, and remove custom-category URLs the analyzer marks redundant after checking with the customer.',
+  X.queue = {
+    group: 'Close the gaps', name: 'Change queue', href: '/report/queue',
+    what: 'The team change queue: a policy-pack deploy plan, a selective removal plan or a fix recipe that someone prepared and filed with Request approval, waiting for a second writer to approve or reject it, with its items, requester, comments and plan hash.',
+    why: 'A change to the customer\'s tenant is reviewed by a second person before it is made (four-eyes), and every step is in the audit log with who did it, which is what a change board or an auditor asks for.',
+    when: 'After a preflight or a recipe preview, when you want a colleague to review the change before it is applied, or when you are the reviewer with requests waiting.',
+    get: 'Pending, approved and history tabs; Approve, Reject (with a comment), Apply and Withdraw buttons shown according to your rights; the four-eyes setting and whether it can work here; and the queue as JSON or Markdown.',
+    next: 'Approve or reject what is pending; apply an approved request with write mode on and the typed confirmation (a request whose plan no longer matches the tenant is marked stale: request it again from a fresh preflight).',
   };
   X.advanced = {
     group: 'Reference', name: 'Advanced settings', href: '/report/advanced',
@@ -329,7 +336,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/shadow': 'shadow', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
 
@@ -379,7 +386,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
-    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
+    'digest', 'packs', 'flow', 'remediate', 'queue', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

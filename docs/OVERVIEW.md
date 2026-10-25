@@ -193,6 +193,19 @@ what you get, what to do next.
   guided change with a before/after view, applied only in write mode
   after approval. Where: the Dashboard, beside each finding that has a
   scripted fix.
+- **Change queue** — the team's shared queue of changes prepared but not
+  applied: a policy-pack deploy plan (Deploy policy packs, preflight step),
+  a selective removal plan (the rule picker's review) or a fix recipe
+  (Review & remediate, after the preview), each filed with *Request
+  approval*. A writer other than the requester approves or rejects it
+  (four-eyes, on by default; `DLP_CHECK_FOUR_EYES=0` turns it off for a
+  single-person install, and without SSO everyone is the same "local UI
+  token", so four-eyes needs SSO). An approved request is applied from the
+  queue through the same apply path, with write mode and the typed
+  confirmation; the plan is checked against the tenant first and a request
+  whose plan no longer matches is marked stale and nothing is written.
+  Every step is in the audit log with who did it; the queue exports as JSON
+  or Markdown.
 - **Terraform hand-off** — the same policy pack as a Terraform workspace
   for the official `zscaler/zia` provider. Static mode needs no
   credentials; gap mode reads the tenant and imports what exists so the

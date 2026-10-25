@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/exports", "/report/motion", "/report/insights", "/report/shadow", "/report/audit"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/exports", "/report/motion", "/report/queue", "/report/insights", "/report/shadow", "/report/audit"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1363,6 +1363,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     out["tenant_label"] = tenant_auth.record_label(creds)
     # The server keeps its own copy: Plan (PDF) / Plan (Excel) render from it, never from the page.
     out["report_id"] = _remember_plan(out, _assessor(req))
+    _cq_remember("pack_deploy", out, req, creds)   # lets "Request approval" file exactly this plan
     return out
 
 
@@ -1605,6 +1606,430 @@ async def proposals_list(tenant: str = "", include_closed: bool = False):
         raise HTTPException(status_code=400, detail="tenant (vanity domain) is required")
     return {"tenant": proposals.tenant_key(tenant), "items": proposals.list_queue(tenant, include_closed=include_closed),
             "summary": proposals.summary(tenant), "confirm_phrase": proposals.CONFIRM_PHRASE, "dismiss_days": proposals.DISMISS_DAYS}
+
+
+# ── Team change queue: change requests with four-eyes approval ────────────
+# A deploy plan, a selective removal plan or a fix recipe someone prepared
+# but did not apply, filed for another writer to approve (change_queue.py).
+# Who files, approves, rejects, withdraws or applies is always the server's
+# view of the caller (_actor), never a name sent by the page. Applying runs
+# the existing apply path (_run_apply, _run_removal, remediation.execute)
+# as a job the page follows at /api/dlp-packs/jobs/{id}.
+_CQ_PLANS: Dict[str, Dict[str, Any]] = {}     # plan_hash -> a preflight this server just produced
+_CQ_PLANS_LOCK = threading.Lock()
+_CQ_PLAN_TTL = 3600.0
+_CQ_PLAN_MAX = 64
+_CQ_WRITE_STATUSES = ("create", "modify", "restore")
+
+
+def _cq_tenant(creds: Dict[str, str]) -> Tuple[str, str]:
+    """(queue key, label) of the tenant these credentials sign in to: the
+    proposal queue's key (the vanity domain for OneAPI, an opaque
+    fingerprint for the classic API) and the label shown on screen."""
+    import proposals
+    import tenant_fingerprint
+    label = tenant_auth.record_label(creds)
+    return proposals.tenant_key(tenant_fingerprint.proposal_key(creds, label)), label
+
+
+def _cq_deploy_params(req: Any) -> Dict[str, Any]:
+    return {"pack_ids": sorted(req.pack_ids or []), "use_rank_0": bool(req.use_rank_0), "apply_tweaks": bool(req.apply_tweaks),
+            "restore_drift": bool(req.restore_drift),
+            "channel_targets": {k: sorted(v or []) for k, v in sorted((req.channel_targets or {}).items())}}
+
+
+def _cq_removal_params(req: Any) -> Dict[str, Any]:
+    rules = [{"kind": str(r.get("kind") or "policy"), "channel": str(r.get("channel") or ""), "id": str(r.get("id"))}
+             for r in (req.rules or []) if isinstance(r, dict) and r.get("id") is not None]
+    return {"rules": sorted(rules, key=lambda r: (r["kind"], r["channel"], r["id"]))}
+
+
+def _cq_remember(kind: str, report: Dict[str, Any], req: Any, creds: Dict[str, str]) -> None:
+    """Keep a preflight (deploy) or removal preview this server produced,
+    so filing it as a change request needs no second tenant read and the
+    approver sees exactly what the server planned, never what a page says
+    it planned. Never fails the preflight."""
+    try:
+        h = str(report.get("plan_hash") or "")
+        if not h:
+            return
+        tk, label = _cq_tenant(creds)
+        params = _cq_deploy_params(req) if kind == "pack_deploy" else _cq_removal_params(req)
+        now = time.time()
+        with _CQ_PLANS_LOCK:
+            for k in [k for k, v in _CQ_PLANS.items() if now - v["at"] > _CQ_PLAN_TTL]:
+                _CQ_PLANS.pop(k, None)
+            while len(_CQ_PLANS) >= _CQ_PLAN_MAX:
+                _CQ_PLANS.pop(min(_CQ_PLANS, key=lambda k: _CQ_PLANS[k]["at"]), None)
+            _CQ_PLANS[h] = {"at": now, "kind": kind, "tenant": tk, "label": label, "params": params, "report": report}
+    except Exception:  # noqa: BLE001 — a filing then re-reads the tenant instead
+        pass
+
+
+def _cq_cached(plan_hash: str, kind: str, tenant: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    with _CQ_PLANS_LOCK:
+        hit = _CQ_PLANS.get(plan_hash or "")
+        if hit and hit["kind"] == kind and hit["tenant"] == tenant and hit["params"] == params and time.time() - hit["at"] <= _CQ_PLAN_TTL:
+            return hit["report"]
+    return None
+
+
+def _cq_by(request: Request) -> str:
+    return _actor(request) or _security.current_actor() or "unknown"
+
+
+def _cq_fail(e: Exception):
+    import change_queue
+    if isinstance(e, change_queue.QueueError):
+        raise HTTPException(status_code=e.status, detail=str(e))
+    raise e
+
+
+class ChangeRequestDeploy(DLPPackDeployRequest):
+    """File a Deploy policy packs plan: the preflight's packs, options,
+    channel targets and plan_hash, plus a title and a first comment."""
+    title: str = ""
+    note: str = ""
+
+
+class ChangeRequestRemoval(PackRemovalRequest):
+    """File a selective removal plan: the picked rules and the preview's plan_hash."""
+    title: str = ""
+    note: str = ""
+
+
+class ChangeRequestRecipe(TenantCredsRequest):
+    """File a fix recipe: the check, the recipe parameters, a title and a first comment."""
+    check_id: str = ""
+    criteria: Dict[str, Any] = {}
+    title: str = ""
+    note: str = ""
+
+
+class ChangeRequestDecision(BaseModel):
+    """Approve, reject, withdraw or comment: the comment only. Who does it is the server's view of the caller."""
+    comment: str = ""
+    by: str = ""      # ignored if a page sends it: the server names the actor
+
+
+class ChangeRequestApply(TenantCredsRequest):
+    """Apply an approved request: the tenant credentials and the typed confirmation phrase."""
+    confirm: str = ""
+
+
+@app.post("/api/change-queue/deploy")
+async def change_queue_file_deploy(req: ChangeRequestDeploy, request: Request):
+    """File a policy-pack deploy plan as a pending change request. The plan
+    is the one this server's preflight produced for that plan_hash (kept
+    for an hour), else the preflight is run again and must give the same
+    plan_hash. Writes nothing to the tenant; needs no writer rights."""
+    import change_queue
+    import pack_deploy
+    if not req.pack_ids:
+        raise HTTPException(status_code=400, detail="Select at least one pack.")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="Run the preflight first: a change request carries the plan_hash of the plan it asks for.")
+    packs = _resolve_pack_ids(req.pack_ids)
+    creds = _tenant_creds(req)
+    tk, label = _cq_tenant(creds)
+    params = _cq_deploy_params(req)
+    report = _cq_cached(req.plan_hash, "pack_deploy", tk, params)
+    if report is None:
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        report = pack_deploy.public_report(await asyncio.to_thread(
+            pack_deploy.preflight, client, packs, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks, writes_enabled=writes_enabled(),
+            restore_drift=req.restore_drift, channel_targets=req.channel_targets or None))
+        if report.get("plan_hash") != req.plan_hash:
+            raise HTTPException(status_code=409, detail="The tenant changed since your preflight: run the preflight again and request approval for the new plan.")
+    if report.get("status") == "blocked":
+        raise HTTPException(status_code=409, detail="This plan is blocked: " + " ".join(report.get("blockers") or []) + " Resolve the blockers before requesting approval.")
+    all_items = report.get("items") or []
+    items = [{"kind": i.get("kind"), "name": i.get("name"), "status": i.get("status"),
+              "channel": (i.get("detail") or {}).get("channel") if i.get("kind") == "policy" else None,
+              "note": str(i.get("reason") or "")[:200]} for i in all_items if i.get("status") in _CQ_WRITE_STATUSES]
+    if not items:
+        raise HTTPException(status_code=409, detail="Nothing to write: every object of this plan already exists or is skipped, so there is nothing to approve.")
+    summary: Dict[str, int] = {}
+    for i in all_items:
+        summary[str(i.get("status"))] = summary.get(str(i.get("status")), 0) + 1
+    try:
+        rec = change_queue.file_request(
+            kind="pack_deploy", tenant=tk, tenant_label=label,
+            title=req.title or f"Deploy {', '.join(params['pack_ids'])}: {len(items)} change(s)", summary=summary, items=items,
+            plan_hash=req.plan_hash, requested_by=_cq_by(request), note=req.note, payload=dict(params, verify=bool(req.verify)))
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+    return {"request": rec}
+
+
+@app.post("/api/change-queue/removal")
+async def change_queue_file_removal(req: ChangeRequestRemoval, request: Request):
+    """File a selective removal plan (rules picked in Deploy policy packs and
+    the engines and dictionaries only they use) as a pending change request,
+    bound to the removal preview's plan_hash. Writes nothing."""
+    import change_queue
+    import pack_removal
+    if not req.rules:
+        raise HTTPException(status_code=400, detail="Pick the rules to remove first.")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="Preview the removal first: a change request carries the plan_hash of the plan it asks for.")
+    creds = _tenant_creds(req)
+    tk, label = _cq_tenant(creds)
+    params = _cq_removal_params(req)
+    report = _cq_cached(req.plan_hash, "pack_removal", tk, params)
+    if report is None:
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        report = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
+        if report.get("plan_hash") != req.plan_hash:
+            raise HTTPException(status_code=409, detail="The tenant changed since your preview: preview the removal again and request approval for the new plan.")
+    all_items = report.get("items") or []
+    items = [{"kind": i.get("kind"), "name": i.get("name"), "status": i.get("status"), "channel": i.get("channel"),
+              "note": str(i.get("keep") or "")[:200]} for i in all_items if i.get("status") in ("remove", "keep")]
+    if not any(i["status"] == "remove" for i in items):
+        raise HTTPException(status_code=409, detail="Nothing to remove in this plan, so there is nothing to approve.")
+    summary: Dict[str, int] = {}
+    for i in items:
+        summary[i["status"]] = summary.get(i["status"], 0) + 1
+    try:
+        rec = change_queue.file_request(
+            kind="pack_removal", tenant=tk, tenant_label=label,
+            title=req.title or f"Remove {summary.get('remove', 0)} object(s) from {label}", summary=summary, items=items,
+            plan_hash=req.plan_hash, requested_by=_cq_by(request), note=req.note, payload=params)
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+    return {"request": rec}
+
+
+@app.post("/api/change-queue/recipe")
+async def change_queue_file_recipe(req: ChangeRequestRecipe, request: Request):
+    """File a fix recipe (check id + recipe + parameters) as a pending change
+    request. The planned call is built here (remediation.plan, no tenant
+    read); its hash is the request's plan_hash."""
+    import change_queue
+    import remediation
+    creds = _validate_creds(_tenant_creds(req))
+    tk, label = _cq_tenant(creds)
+    criteria = {str(k)[:64]: v for k, v in (req.criteria or {}).items()}
+    plan = remediation.plan(req.check_id, criteria)
+    if not plan.get("ok"):
+        raise HTTPException(status_code=400, detail="The recipe's parameters are not valid: " + " ".join(plan.get("errors") or []))
+    recipe = remediation.get_recipe(req.check_id) or {}
+    try:
+        rec = change_queue.file_request(
+            kind="fix_recipe", tenant=tk, tenant_label=label,
+            title=req.title or f"{plan.get('recipe_label')} (check {req.check_id})",
+            summary={"api_call": 1, "write": 1 if plan.get("destructive") else 0},
+            items=[{"method": plan.get("method"), "endpoint": plan.get("endpoint"), "body": plan.get("body"), "status": "send",
+                    "kind": "call", "name": plan.get("recipe_label")}],
+            plan_hash=change_queue.recipe_plan_hash(req.check_id, plan), requested_by=_cq_by(request), note=req.note,
+            payload={"check_id": req.check_id, "recipe": recipe.get("check_id"), "criteria": criteria})
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+    return {"request": rec}
+
+
+@app.get("/api/change-queue")
+async def change_queue_list(request: Request, tenant: str = "", status: str = ""):
+    """The queue (newest first), with who is looking and what they may do:
+    the four-eyes setting, whether SSO is on, whether the viewer is a writer
+    and whether write mode is on."""
+    import change_queue
+    statuses = [s for s in (status or "").split(",") if s in change_queue.STATUSES] or None
+    items = change_queue.list_requests(tenant, statuses)
+    return {"items": items, "counts": change_queue.counts(tenant), "settings": change_queue.settings(),
+            "viewer": {"actor": _cq_by(request), "may_write": _security.may_write(), "sso": _sso.sso_enabled()},
+            "writes_enabled": writes_enabled(), "statuses": list(change_queue.STATUSES)}
+
+
+@app.get("/api/change-queue/export")
+async def change_queue_export(tenant: str = "", format: str = "markdown"):
+    """Download the queue as JSON or Markdown (change_queue.rows is the
+    shared row shape for the Excel and PDF exports)."""
+    import change_queue
+    items = change_queue.list_requests(tenant)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if format == "json":
+        return JSONResponse({"exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tenant": tenant or None,
+                             "items": items, "rows": change_queue.rows(items)},
+                            headers={"Content-Disposition": f'attachment; filename="change_queue_{stamp}.json"'})
+    return PlainTextResponse(change_queue.to_markdown(items), media_type="text/markdown",
+                             headers={"Content-Disposition": f'attachment; filename="change_queue_{stamp}.md"'})
+
+
+@app.get("/api/change-queue/{rid}")
+async def change_queue_get(rid: str):
+    import change_queue
+    rec = change_queue.get(rid)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Change request not found.")
+    return {"request": rec}
+
+
+@app.post("/api/change-queue/{rid}/approve")
+async def change_queue_approve(rid: str, req: ChangeRequestDecision, request: Request):
+    """Approve a pending request: writers only, and (four-eyes) not the requester."""
+    _security.require_writer()
+    import change_queue
+    try:
+        return {"request": change_queue.decide(rid, "approve", by=_cq_by(request), comment=req.comment)}
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+
+@app.post("/api/change-queue/{rid}/reject")
+async def change_queue_reject(rid: str, req: ChangeRequestDecision, request: Request):
+    """Reject a pending request with a comment: writers only."""
+    _security.require_writer()
+    import change_queue
+    try:
+        return {"request": change_queue.decide(rid, "reject", by=_cq_by(request), comment=req.comment)}
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+
+@app.post("/api/change-queue/{rid}/withdraw")
+async def change_queue_withdraw(rid: str, req: ChangeRequestDecision, request: Request):
+    """The requester withdraws a pending or approved request."""
+    import change_queue
+    try:
+        return {"request": change_queue.withdraw(rid, by=_cq_by(request), comment=req.comment)}
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+
+@app.post("/api/change-queue/{rid}/comment")
+async def change_queue_comment(rid: str, req: ChangeRequestDecision, request: Request):
+    """Add a comment to a request (anyone who can open the queue)."""
+    import change_queue
+    try:
+        return {"request": change_queue.comment(rid, by=_cq_by(request), text=req.comment)}
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+
+def _cq_outcome(kind: str, result: Dict[str, Any]) -> Tuple[str, str]:
+    """(queue status, note) for what the apply path returned."""
+    import change_queue
+    st = str(result.get("status") or "")
+    if st in ("plan_changed", "stale"):
+        return "stale", change_queue.STALE_MESSAGE
+    ok = {"pack_deploy": ("applied",), "pack_removal": ("removed", "nothing"), "fix_recipe": ("completed",)}.get(kind, ())
+    if st in ok:
+        return "applied", ""
+    why = result.get("message") or result.get("error") or result.get("reason") or "; ".join(result.get("blockers") or []) or st
+    return "failed", str(why)[:300]
+
+
+def _cq_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """What the request keeps of an apply's result: the outcome and its counts, no logs or tenant objects."""
+    keep = ("status", "summary", "message", "deployment_id", "http_status", "error", "reason", "blockers", "expected_hash", "current_hash",
+            "activation_required", "complete")
+    return {k: result[k] for k in keep if k in result and result[k] not in (None, "", [], {})}
+
+
+def _cq_recipe_run(client, rec: Dict[str, Any], log) -> Dict[str, Any]:
+    """A fix recipe through remediation.execute, after re-planning it: a
+    different plan (the recipe changed since it was requested) is stale."""
+    import change_queue
+    import remediation
+    p = rec.get("payload") or {}
+    log("Re-planning the recipe and checking it against the approved plan…")
+    plan = remediation.plan(p.get("check_id"), p.get("criteria") or {})
+    if not plan.get("ok") or change_queue.recipe_plan_hash(p.get("check_id"), plan) != rec.get("plan_hash"):
+        log("The planned call differs from the approved one: nothing was sent.")
+        return {"status": "stale", "message": change_queue.STALE_MESSAGE}
+    log(f"Sending {plan.get('method')} {plan.get('endpoint')}…")
+    out = remediation.execute(client, p.get("check_id"), p.get("criteria") or {}, dry_run=False)
+    log(f"Result: {out.get('status')}" + (f" (HTTP {out.get('http_status')})" if out.get("http_status") else ""))
+    return out
+
+
+@app.post("/api/change-queue/{rid}/apply")
+async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request):
+    """Apply an approved request through the existing apply path, as a job
+    (poll GET /api/dlp-packs/jobs/{job_id}). Writers only, write mode on,
+    the typed confirmation phrase, and the credentials of the tenant the
+    request was filed for. The apply re-runs the preflight first and stops,
+    marking the request stale, when its plan_hash no longer matches."""
+    _security.require_writer()
+    import change_queue
+    import pack_jobs
+    rec = change_queue.get(rid)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Change request not found.")
+    if rec.get("status") != "approved":
+        raise HTTPException(status_code=409, detail=f"Only an approved request can be applied; this one is {rec.get('status')}.")
+    if (req.confirm or "").strip().upper() != change_queue.CONFIRM_PHRASE:
+        raise HTTPException(status_code=400, detail=f'Type "{change_queue.CONFIRM_PHRASE}" to confirm the apply.')
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    creds = _tenant_creds(req)
+    tk, label = _cq_tenant(creds)
+    if tk != rec.get("tenant"):
+        raise HTTPException(status_code=409, detail=f"This request was filed for {rec.get('tenant_label') or rec.get('tenant')}, but the credentials are for {label}. Switch tenant first.")
+    by = _cq_by(request)
+    kind = rec.get("kind")
+    p = rec.get("payload") or {}
+    if kind == "pack_deploy":
+        _require_assessor(req)
+        dreq = DLPPackDeployRequest(**{k: getattr(req, k) for k in TenantCredsRequest.model_fields},
+                                    pack_ids=list(p.get("pack_ids") or []), use_rank_0=bool(p.get("use_rank_0")),
+                                    apply_tweaks=bool(p.get("apply_tweaks", True)), restore_drift=bool(p.get("restore_drift")),
+                                    verify=bool(p.get("verify", True)), channel_targets=p.get("channel_targets") or {},
+                                    plan_hash=rec["plan_hash"], confirm=True)
+        packs = _resolve_pack_ids(dreq.pack_ids)
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        job_kind, run = "deploy", (lambda log, cancel: _keyed(client, _run_apply, client, creds, dreq, packs, log, cancel))
+    elif kind == "pack_removal":
+        rreq = PackRemovalRequest(**{k: getattr(req, k) for k in TenantCredsRequest.model_fields},
+                                  rules=list(p.get("rules") or []), plan_hash=rec["plan_hash"], confirm=True)
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        job_kind, run = "removal", (lambda log, cancel: _keyed(client, _run_removal, client, rreq, None, [], log, cancel))
+    elif kind == "fix_recipe":
+        client = await asyncio.to_thread(_build_client, req)
+        job_kind, run = "remediation", (lambda log, cancel: _cq_recipe_run(client, rec, log))
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown change request kind: {kind}")
+
+    def _job_running(jid: str) -> bool:
+        j = pack_jobs.get(jid)
+        return j is not None and j.status == "running"
+
+    try:
+        change_queue.begin_apply(rid, by=by, job_running=_job_running)
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+    def fn(log, cancel):
+        log(f"Change request {rid}: {rec.get('title')} (requested by {rec.get('requested_by')}, approved by {rec.get('decided_by')}).")
+        try:
+            result = run(log, cancel)
+        except Exception as e:  # noqa: BLE001 — recorded, then reported by the job
+            change_queue.finish_apply(rid, by=by, status="failed", result={"status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"})
+            raise
+        status, note = _cq_outcome(kind, result)
+        if status == "stale":
+            log(change_queue.STALE_MESSAGE)
+        result["change_request"] = change_queue.finish_apply(rid, by=by, status=status, result=_cq_result(result), note=note)
+        return result
+
+    try:
+        job = pack_jobs.start(job_kind, fn, label=f"change request {rid}", actor=by, start_token=_start_token(request))
+    except Exception as e:  # noqa: BLE001
+        change_queue.release(rid, by=by, reason=str(e))
+        raise
+    change_queue.set_job(rid, job.id)
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "request_id": rid}
+
+
+@app.get("/report/queue")
+async def report_queue_page():
+    """Standalone tab for the change queue (static/report_queue.html)."""
+    page = os.path.join(STATIC_DIR, "report_queue.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/api/proposals/export")
@@ -2005,6 +2430,7 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal_deployment(client, rec))
     elif req.rules:
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
+        _cq_remember("pack_removal", out, req, creds)   # lets "Request approval" file exactly this plan
     else:
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
     out["writes_enabled"] = writes_enabled()
