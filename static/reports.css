@@ -187,6 +187,8 @@ body.flow-page .dz-flow-wrap { max-height: calc(100vh - 300px); min-height: 320p
 .df-page .rp-page { max-width: 1400px; }
 .df-ctl { display: inline-flex; align-items: center; gap: 0.35rem; }
 .df-ctl input:not([type="checkbox"]):not([type="radio"]), .df-ctl select { min-height: 34px; padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.82rem; }
+.rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+.rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
 .df-ctl input:not([type="checkbox"]):not([type="radio"]) { width: 240px; }
 .df-ctl input[type="checkbox"], .df-ctl input[type="radio"] { width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0; accent-color: var(--accent); }
 .df-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.6rem; padding: 1rem 1.2rem 0.4rem; }
