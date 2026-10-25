@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DLP-Check</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header><img src="icons/icon32.png" alt="" width="20" height="20"><h1>DLP-Check</h1></header>
+  <p id="status" class="status" role="status" aria-live="polite">Looking for the app…</p>
+  <section id="site" hidden>
+    <div class="lbl">This site</div>
+    <div id="siteName" class="site"></div>
+    <button type="button" id="analyze" class="primary">Analyze this site</button>
+    <p class="hint">Opens the Path analyzer with this site filled in: what Zscaler does to a user's traffic to it, hop by hop. The address is sent without its query string. Nothing runs until you click Analyze there.</p>
+  </section>
+  <nav id="links" aria-label="Open in DLP-Check"></nav>
+  <p id="down" class="hint" hidden>Start DLP-Check (START_Zscaler_Assessment, ./start.sh or the container), or set its address in <a href="#" id="opts">settings</a>.</p>
+  <footer><a href="#" id="settings">Settings</a><span id="addr"></span></footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

@@ -3277,6 +3277,41 @@ async def pack_library_delete(pack_id: str):
     return {"ok": True, "removed": removed}
 
 
+# ── Browser extension (companion) ────────────────────────────────────
+BROWSER_EXTENSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_extension")
+
+
+def browser_extension_zip() -> bytes:
+    """browser_extension/ as a zip with one folder, ready to unzip and load
+    unpacked in Chrome or Edge. Only the extension's own files: no
+    symlinks, nothing hidden, nothing outside the folder."""
+    import io as _io
+    import zipfile as _zip
+    buf = _io.BytesIO()
+    with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED) as z:
+        for dirpath, dirnames, filenames in os.walk(BROWSER_EXTENSION_DIR):
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            for name in sorted(filenames):
+                full = os.path.join(dirpath, name)
+                if name.startswith(".") or os.path.islink(full):
+                    continue
+                rel = os.path.relpath(full, BROWSER_EXTENSION_DIR).replace(os.sep, "/")
+                z.write(full, f"dlp-check-extension/{rel}")
+    return buf.getvalue()
+
+
+@app.get("/api/browser-extension.zip")
+async def browser_extension_download():
+    """The companion browser extension (browser_extension/): unzip it and
+    load it unpacked from chrome://extensions or edge://extensions. It
+    holds no credentials; it opens this app's pages."""
+    if not os.path.isfile(os.path.join(BROWSER_EXTENSION_DIR, "manifest.json")):
+        raise HTTPException(status_code=404, detail="The browser extension is not part of this install.")
+    data = await asyncio.to_thread(browser_extension_zip)
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="dlp-check-extension.zip"'})
+
+
 @app.get("/api/pack-library/{pack_id}/bundle")
 async def pack_library_bundle(pack_id: str):
     """One JSON file holding a pack: the upload format, and the starting
