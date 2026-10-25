@@ -1,0 +1,60 @@
+// ── Simple mode glossary ─────────────────────────────────────────────
+// The words Simple mode (/simple) uses that a newcomer may not know, each
+// explained in one or two short sentences a ten-year-old can follow. Simple
+// mode shows a word from this list as a small "tap to explain" chip; the
+// test (tests/test_simple_mode.py) checks that every chip has an entry here
+// and that every definition reads at or below the grade it allows.
+//
+// Keys are lower case. `term` is how the word is shown; `def` is the
+// definition. Keep each sentence short and the words plain.
+(function () {
+  // GLOSSARY-START
+  const G = {
+    'zscaler': { term: 'Zscaler', def: 'Zscaler is a service that sits between your computers and the internet. It checks the traffic to keep your company safe.' },
+    'dlp': { term: 'DLP', def: 'DLP stands for data loss prevention. It stops private data from leaving your company by mistake.' },
+    'sensitive data': { term: 'sensitive data', def: 'Sensitive data is private stuff, like card numbers, health notes or secret plans. Only the right people should see it.' },
+    'dictionary': { term: 'dictionary', def: 'A dictionary is a list of words and number shapes to look for. One might look for card numbers.' },
+    'engine': { term: 'engine', def: 'An engine mixes word lists into one test. It decides when a match is big enough to count.' },
+    'rule': { term: 'rule', def: 'A rule says what to do when an engine finds a match. It can watch, ask, or block.' },
+    'policy': { term: 'policy', def: 'A policy is a set of rules. It says what is allowed and what is not.' },
+    'policy pack': { term: 'policy pack', def: 'A policy pack is a ready-made set of word lists, engines and rules. It saves you days of work.' },
+    'monitor-only': { term: 'monitor-only', def: 'Monitor-only means a rule just watches and writes down what it saw. It does not stop anyone.' },
+    'block': { term: 'block', def: 'Block means Zscaler stops the action. The person sees a page that says why.' },
+    'write mode': { term: 'write mode', def: 'Write mode lets this app change your Zscaler. It stays off until you turn it on and type the safety words.' },
+    'read-only': { term: 'read-only', def: 'Read-only means the app can look but not touch. Nothing in your Zscaler changes.' },
+    'safety words': { term: 'safety words', def: 'The safety words are YES_I_UNDERSTAND. You type them to show you really mean to allow changes.' },
+    'ssl inspection': { term: 'SSL inspection', def: 'Most web traffic is locked. SSL inspection lets Zscaler open it and look inside. Without it, Zscaler sees where data goes but not what it is.' },
+    'encrypted': { term: 'encrypted', def: 'Encrypted means locked with a secret code. Only the right key can open it.' },
+    'pac file': { term: 'PAC file', def: 'A PAC file is a small list your browser reads. It says which sites go through Zscaler and which go around it.' },
+    'client connector': { term: 'Client Connector', def: 'Client Connector is the Zscaler app on each computer. It sends the web traffic of that computer to Zscaler.' },
+    'tenant': { term: 'tenant', def: 'Your tenant is the space your company has in Zscaler. It holds all of your settings.' },
+    'cloud': { term: 'cloud', def: 'The cloud is the group of Zscaler computers your company uses. Most companies use the main one.' },
+    'vanity domain': { term: 'vanity domain', def: 'The vanity domain is the short name of your company in Zscaler. In acme.zslogin.net, it is acme.' },
+    'client id': { term: 'client ID', def: 'The client ID is like a user name for this app. You get it in ZIdentity.' },
+    'client secret': { term: 'client secret', def: 'The client secret is like a password for this app. Keep it safe and never share it.' },
+    'api': { term: 'API', def: 'An API is a door that lets one program talk to another. This app uses it to read your settings.' },
+    'api client': { term: 'API client', def: 'An API client is a login made just for an app. It has its own ID and its own secret.' },
+    'zidentity': { term: 'ZIdentity', def: 'ZIdentity is the Zscaler site where you manage sign-ins. You make API clients there.' },
+    'zia': { term: 'ZIA', def: 'ZIA is the part of Zscaler that guards web traffic. Most of the rules this app checks live there.' },
+    'check-up': { term: 'check-up', def: 'A check-up looks at your settings one by one. It ends with a score and a list of things to fix.' },
+    'score': { term: 'score', def: 'The score shows how well your settings follow good advice. Higher is better, and 100 is the top.' },
+    'finding': { term: 'finding', def: 'A finding is one thing the check-up noticed. Some are fine and some need a fix.' },
+    'preflight': { term: 'preflight', def: 'Preflight is a practice run. It shows what would change, but it changes nothing.' },
+    'deploy': { term: 'deploy', def: 'Deploy means put new rules into your Zscaler. It only happens after you say yes.' },
+    'activate': { term: 'activate', def: 'Activate means switch saved changes on in Zscaler. Until then, they wait.' },
+    'bypass': { term: 'bypass', def: 'A bypass lets traffic skip Zscaler. Zscaler cannot check what it cannot see.' },
+    'url filtering': { term: 'URL filtering', def: 'URL filtering lets people visit some kinds of websites and stops others, like games or gambling.' },
+    'cloud app control': { term: 'Cloud App Control', def: 'Cloud App Control sets what people can do in web apps. For example, it can stop uploads to a file drive.' },
+    'endpoint': { term: 'endpoint', def: 'An endpoint is a computer or phone that people use. Endpoint rules work right on the device.' },
+    'channel': { term: 'channel', def: 'A channel is a road data can take, like the web, email or a cloud app.' },
+    'saas': { term: 'SaaS', def: 'SaaS means apps you use in a web browser, like Box or Google Drive. Zscaler can check the files kept there.' },
+    'path analyzer': { term: 'Path analyzer', def: 'The Path analyzer follows one website visit step by step. It shows what lets it through and what stops it.' },
+    'scope': { term: 'scope', def: 'Scope is what you let the app look at. It reads nothing outside of it.' },
+    'saved connection': { term: 'saved connection', def: 'A saved connection keeps the details for one company. Next time, you do not need to type them again.' },
+    'incident': { term: 'incident', def: 'An incident is a note that a rule found something. It says who, what and where.' },
+    'spreadsheet': { term: 'spreadsheet', def: 'A spreadsheet is a file with rows and boxes, like a table. Excel can open it.' },
+    'expert view': { term: 'expert view', def: 'The expert view is the full tool with every page and choice. It is made for people who know Zscaler well.' },
+  };
+  // GLOSSARY-END
+  window.SIMPLE_GLOSSARY = G;
+})();

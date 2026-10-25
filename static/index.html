@@ -584,6 +584,11 @@
     <div class="hero-toolbar" aria-label="Tools">
       <div class="tool-group" role="group" aria-label="Start" data-sb-id="start">
         <div class="tool-group-l">Start</div>
+        <button class="btn btn-ghost" onclick="openSimpleMode()"
+                aria-label="Open Simple mode: seven big tasks in plain words, one question at a time"
+                title="Seven big tasks in plain words (connect, check, fix, protect, why was something blocked, what changed, a report for your boss), one question per screen. Nothing changes your Zscaler without your yes.">
+          <span aria-hidden="true">💡</span> Simple mode
+        </button>
         <button class="btn btn-ghost" onclick="openHelpTab()"
                 aria-label="Open What does everything do: every function of this app explained in plain English (opens in a new tab)"
                 title="Every function of this app explained in plain English: what it is, why the customer cares, when to use it, what you get. Opens in a new tab.">
@@ -649,6 +654,11 @@
                 aria-label="Deploy policy packs: preflight, review, approve, deploy"
                 title="Pick a policy pack, see exactly what would be created, approve, deploy. Every rule arrives disabled.">
           <span aria-hidden="true">📦</span> Deploy policy packs
+        </button>
+        <button class="btn btn-ghost" onclick="openOperationsTab()"
+                aria-label="Open Bulk changes: enable or disable many rules, reorder a policy, move URLs between custom URL categories and ZPA domains between segments, each previewed item by item and reversible (opens in a new tab)"
+                title="Enable or disable up to 100 rules, reorder a policy with the fewest moves, add, remove, move or copy URLs on custom URL categories, and move ZPA domains between application segments. Every change is previewed item by item, applied only in write mode after you confirm the plan, checked again before each write, read back and recorded with Undo. Opens in a new tab.">
+          <span aria-hidden="true">🔧</span> Bulk changes
         </button>
         <button class="btn btn-ghost" onclick="openToolTab('terraform')"
                 aria-label="Hand the same policy pack to a platform team as a Terraform workspace (opens in a new tab)"
@@ -5209,6 +5219,19 @@ function openFleetTab() {
   // The tab reads the credentials and the Scope page selection from this
   // page through window.opener when it runs, so nothing is read until then.
   const w = window.open('/report/fleet', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+// Simple mode: the same app as big plain-language tasks (/simple). Opens in
+// this tab and is remembered per browser (simple_entry.js reads the choice).
+function openSimpleMode() {
+  try { localStorage.setItem('zsimple_mode', 'simple'); } catch (e) { /* storage blocked: still opens */ }
+  window.location.href = '/simple';
+}
+function openOperationsTab() {
+  // Like Shadowed rules: the tab reads the credentials, the Scope page's
+  // selection and the assessor's name from this page through window.opener
+  // when it runs, so nothing is read until Read from the tenant.
+  const w = window.open('/report/operations', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {

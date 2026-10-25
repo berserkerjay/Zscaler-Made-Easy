@@ -6,7 +6,8 @@ pdf_writer):
 * inventory_workbook: the tenant's DLP dictionaries, engines and rules
   per channel, with who uses what (from pack_export.read_tenant);
 * plan_pdf / plan_workbook: a Deploy policy packs preflight, for change
-  approval, with a sign-off block.
+  approval, with a sign-off block;
+* operation_pdf: a Bulk changes preview (admin_ops), the same way.
 
 Nothing here reads or writes a tenant: callers pass what was read. No
 credential is ever an input. Every text cell goes through xlsx_writer
@@ -522,3 +523,93 @@ def plan_workbook(report: Dict[str, Any]) -> bytes:
 def plan_filename(report: Dict[str, Any], ext: str) -> str:
     return (f"deployment_plan_{safe_filename_part(report.get('tenant_label'), 'tenant', 40)}_"
             f"{safe_filename_part(str(report.get('plan_hash') or 'nohash')[:12], 'nohash')}.{ext}")
+
+
+# ---------------------------------------------------------------------------
+# Bulk changes (admin_ops): the preview as a plan for change approval
+# ---------------------------------------------------------------------------
+
+OPERATION_STATUS = {"change": "Will change", "noop": "Already as asked", "excluded": "Excluded", "applied": "Applied",
+                    "conflict": "Conflict (left as it is)", "failed": "Failed", "skipped": "Not attempted"}
+OPERATION_NOTE = ("Nothing has been written to the tenant: this is the preview of a bulk change. Applying it applies only this "
+                  "plan: if the tenant changes before then, the plan hash changes and nothing is written until a new preview is "
+                  "reviewed. Right before each write the object is read again, and an item someone changed meanwhile is skipped, "
+                  "never overwritten. Undo is a new operation with its own preview.")
+
+
+def _op_value(v: Any, field: str) -> str:
+    if v is None:
+        return ""
+    if field in ("urls", "domain_names"):
+        return "listed" if v else "not listed"
+    if field == "exists":
+        return "exists" if v else "does not exist"
+    return str(v)
+
+
+def _op_object(u: Dict[str, Any]) -> str:
+    o = u.get("object") or {}
+    where = o.get("policy_label") or {"url_category": "URL category", "zpa_segment": "ZPA segment"}.get(o.get("type"), "")
+    name = str(o.get("name") or o.get("id") or "")
+    if o.get("rule_type"):
+        where = f"{where} ({o['rule_type']})"
+    return f"{name} [{where}]" if where else name
+
+
+def operation_pdf(prepared: Dict[str, Any], page_size: str = "A4") -> bytes:
+    """A Bulk changes preview as a printable plan with a sign-off block."""
+    label = str(prepared.get("tenant_label") or "tenant")
+    c = prepared.get("counts") or {}
+    doc = pdf_writer.PdfDocument(title=f"Bulk change plan: {label}", page_size=page_size,
+                                 footer=f"DLP-Check bulk change plan · {label} · plan {str(prepared.get('plan_hash') or 'none')[:16]}",
+                                 subject="Bulk changes: plan for change approval")
+    doc.heading("Bulk change plan for change approval")
+    doc.paragraph(OPERATION_NOTE, size=9, grey=0.3)
+    doc.key_values([
+        ("Tenant", label),
+        ("Operation", prepared.get("title") or prepared.get("type") or ""),
+        ("Product", {"zia": "ZIA (activated once after the last write)", "zpa": "ZPA (saved as written)"}.get(prepared.get("product"), "")),
+        ("Preview run", _date_text(prepared.get("generated_at"))),
+        ("Plan hash", prepared.get("plan_hash") or "None"),
+        ("Plan status", {"ready": "Ready to apply", "nothing_to_do": "Nothing to change", "blocked": "Blocked"}.get(
+            prepared.get("status"), str(prepared.get("status") or ""))),
+        ("Counts", f"{c.get('change', 0)} to change, {c.get('noop', 0)} already as asked, {c.get('excluded', 0)} excluded "
+                   f"({c.get('total', 0)} items)"),
+        ("Typed confirmation", prepared.get("confirm_phrase") or "Not needed (ten changes or fewer)"),
+        ("Undo of", prepared.get("undo_of") or "None"),
+    ])
+    for title, rows in (("Blockers", prepared.get("blockers")), ("Warnings", prepared.get("warnings")), ("Notes", prepared.get("notes"))):
+        rows = [str(x) for x in rows or [] if x]
+        if rows:
+            doc.heading(title, 2)
+            doc.bullets(rows)
+    impact = [i for i in prepared.get("impact") or [] if isinstance(i, dict)]
+    if impact:
+        doc.heading("Rules that use the affected categories", 2)
+        doc.table(["Category", "Rules in scope that name it", "Detail"],
+                  [[i.get("category", ""), "; ".join(f"{r.get('name')} ({r.get('policy_label')}, order {r.get('order')}, {str(r.get('state') or '').lower()})"
+                                                     for r in i.get("rules") or []) or "None", i.get("detail", "")] for i in impact],
+                  widths=[2.2, 5.5, 3.3])
+    order_after = prepared.get("order_after") or []
+    if order_after:
+        doc.heading("Rule order after the change", 2)
+        doc.table(["Order", "Rule", "Moves"], [[r.get("order"), r.get("name"), "moved" if r.get("moved") else ("locked" if r.get("locked") else "")]
+                                               for r in order_after], widths=[1, 6, 2])
+    doc.heading("Items", 2)
+    items = [u for u in prepared.get("items") or [] if isinstance(u, dict)]
+    if items:
+        doc.table(["Object", "Field", "Value", "Before", "After", "Status", "Reason"],
+                  [[_op_object(u), u.get("field", ""), u.get("value") or "", _op_value(u.get("before"), u.get("field")),
+                    _op_value(u.get("after"), u.get("field")), OPERATION_STATUS.get(u.get("status"), u.get("status")), u.get("reason") or ""]
+                   for u in items], widths=[3, 1.1, 2.4, 1.2, 1.2, 1.4, 3], size=7.5)
+    else:
+        doc.paragraph("The plan has no items.")
+    doc.heading("Sign-off", 2)
+    doc.paragraph("By signing, the approver accepts the plan above, identified by its plan hash.", size=9, grey=0.3)
+    doc.signature_lines(list(SIGN_OFF))
+    return doc.to_bytes()
+
+
+def operation_filename(prepared: Dict[str, Any], ext: str) -> str:
+    return (f"bulk_change_plan_{safe_filename_part(prepared.get('tenant_label'), 'tenant', 40)}_"
+            f"{safe_filename_part(str(prepared.get('plan_hash') or 'nohash')[:12], 'nohash')}.{ext}")

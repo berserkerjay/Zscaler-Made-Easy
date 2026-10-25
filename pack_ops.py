@@ -2,8 +2,9 @@
 out of a ZIA tenant goes through this module, whatever the pack.
 
 Deploy Policy Packs, the removal wizard, the undo of a recorded deployment,
-the legacy single-pack import endpoint and the continuous-evaluation
-proposals all end here. The contract (docs/SHARED_EXECUTION_PATH.md):
+the legacy single-pack import endpoint, the continuous-evaluation
+proposals and Bulk changes (admin_ops: rule state and order, custom URL
+categories, ZPA application segments) all end here. The contract (docs/SHARED_EXECUTION_PATH.md):
 
   validate(kind, definition)   one validator per kind, run before any
                                write: names, descriptions, ZIA limits
@@ -814,6 +815,29 @@ def _audited(action: str) -> Callable[[Callable[..., Outcome]], Callable[..., Ou
     return wrap
 
 
+# Administrative operations (admin_ops: Bulk changes) write through the same
+# create / update / delete below, for objects a pack never carries: Cloud
+# Firewall rules (the service pack_channels does not name), custom URL
+# categories, and ZPA application segments. For a ZPA kind the first
+# argument is the ZPA service root (client.zpa), not client.zia: ZPA has no
+# activation, so its writes get no activate-and-retry on a 403.
+ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules"}
+ADMIN_KINDS = ("url_category", "zpa_segment")
+
+
+def _admin_rule_service(zia, channel: Optional[str]):
+    svc = getattr(zia, ADMIN_RULE_SERVICES[channel], None)
+    return svc, (None if svc is not None else f"{ADMIN_RULE_SERVICES[channel]} is not available in the installed zscaler-sdk-python")
+
+
+def _zpa_write(zpa, method: str, *args: Any, op: str, name: str, log: Optional[Callable[[str], None]] = None,
+               kw: Optional[Dict[str, Any]] = None) -> Outcome:
+    """A ZPA application segment write: the same call() (retries, rate-limit
+    handling, run control), without the ZIA client, so a 403 is not
+    answered by a ZIA activation (ZPA has none)."""
+    return call(getattr(zpa.application_segment, method), *args, op=op, kind="zpa_segment", name=name, log=log, kw=kw)
+
+
 @_audited("create")
 def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = None, parent_id: Any = None,
            name: str = "", log: Optional[Callable[[str], None]] = None) -> Outcome:
@@ -831,13 +855,20 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
         if parent_id is not None:
             return call(pc.add_sub_rule, zia, parent_id, payload, op="create", kind=kind, name=name, channel=channel, log=log, zia=zia)
         return call(pc.add_rule, zia, channel, payload, op="create", kind=kind, name=name, channel=channel, log=log, zia=zia)
+    if kind == "url_category":
+        return call(zia.url_categories.add_url_category, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "zpa_segment":
+        return _zpa_write(zia, "add_segment", op="create", name=name, log=log, kw=payload)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
 @_audited("update")
 def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Optional[str] = None, parent_id: Any = None,
-           name: str = "", log: Optional[Callable[[str], None]] = None) -> Outcome:
-    """Overwrite one existing object of `kind` with its API payload."""
+           name: str = "", log: Optional[Callable[[str], None]] = None, action: Optional[str] = None) -> Outcome:
+    """Overwrite one existing object of `kind` with its API payload. For a
+    URL category, `action` ADD_TO_LIST / REMOVE_FROM_LIST changes only the
+    listed URLs (the SDK's incremental update); without it the payload
+    replaces the category."""
     name = name or str(payload.get("name") or "")
     if kind == "dictionary":
         return call(zia.dlp_dictionary.update_dict, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
@@ -845,10 +876,19 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(zia.dlp_engine.update_dlp_engine, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "app_group":
         return call(pc.update_app_group, zia, oid, payload, op="update", kind=kind, name=name, log=log, zia=zia)
+    if kind == "policy" and channel in ADMIN_RULE_SERVICES:
+        svc, err = _admin_rule_service(zia, channel)
+        if err:
+            return Outcome(False, error=err)
+        return call(svc.update_rule, oid, op="update", kind=kind, name=name, channel=channel, log=log, kw=payload, zia=zia)
     if kind == "policy":
         if parent_id is not None:
             return call(pc.update_sub_rule, zia, parent_id, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log, zia=zia)
         return call(pc.update_rule, zia, channel, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log, zia=zia)
+    if kind == "url_category":
+        return call(zia.url_categories.update_url_category, oid, action, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "zpa_segment":
+        return _zpa_write(zia, "update_segment", oid, op="update", name=name, log=log, kw=payload)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -863,6 +903,10 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         return call(zia.dlp_engine.delete_dlp_engine, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "app_group":
         return call(pc.raw_request, zia, "DELETE", f"{pc.APP_GROUPS_PATH}/{oid}", op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "url_category":
+        return call(zia.url_categories.delete_category, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "zpa_segment":
+        return _zpa_write(zia, "delete_segment", oid, op="delete", name=name, log=log)
     if kind != "policy":
         return Outcome(False, error=f"unknown object kind '{kind}'")
     if channel == pc.ENDPOINT and item.get("parent_id") is not None:
