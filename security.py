@@ -75,6 +75,28 @@ def _allowed_origins() -> set:
 
 ALLOWED_ORIGINS = _allowed_origins()
 
+# The companion browser extension (browser_extension/, its ID fixed by the
+# public key in its manifest) may POST to these read-only endpoints only:
+# the console index and Export from tenant (and Stop on its own job). It is
+# trusted for nothing else, so no write can ever come from it. Set
+# DLP_CHECK_EXTENSION_ID to another ID for a repacked build, or to "off".
+EXTENSION_ID = "febekapiipbdccnkbelfpajhillaplbe"
+EXTENSION_POST_PATHS = ("/api/console-index", "/api/dlp-packs/export/start")
+_EXTENSION_CANCEL = re.compile(r"^/api/dlp-packs/jobs/[A-Za-z0-9_-]{1,64}/cancel$")
+
+
+def extension_origin() -> str:
+    v = (os.environ.get("DLP_CHECK_EXTENSION_ID") or EXTENSION_ID).strip().lower()
+    if v in ("", "off", "0", "none") or not re.fullmatch(r"[a-p]{32}", v):
+        return ""
+    return f"chrome-extension://{v}"
+
+
+def extension_may_post(origin: str, path: str) -> bool:
+    """The extension's origin, on one of its read-only endpoints."""
+    ext = extension_origin()
+    return bool(ext) and origin == ext and (path in EXTENSION_POST_PATHS or bool(_EXTENSION_CANCEL.match(path)))
+
 # Hostname pattern for vanity_domain (RFC-1123 label, dot-separated).
 _HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
@@ -412,6 +434,8 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
         another origin, another local port included, is still refused."""
         o = origin.lower().rstrip("/")
         if o in ALLOWED_ORIGINS:
+            return True
+        if extension_may_post(o, request.url.path):
             return True
         host = (request.headers.get("host") or "").lower()
         return bool(host) and o == f"{request.url.scheme}://{host}"

@@ -35,10 +35,17 @@ def _manifest():
 def test_the_manifest_asks_for_the_least_it_needs():
     m = _manifest()
     assert m["manifest_version"] == 3
-    assert sorted(m["permissions"]) == ["activeTab", "contextMenus", "storage"]
+    assert sorted(m["permissions"]) == ["activeTab", "contextMenus", "scripting", "sidePanel", "storage"]
     assert m["host_permissions"] == ["http://127.0.0.1/*", "http://localhost/*"], "only the app on this computer"
-    assert "optional_permissions" not in m and "optional_host_permissions" not in m
-    assert "content_scripts" not in m, "it reads no page"
+    # The console badges are opt-in: the ZIA admin consoles are optional and asked for on a click.
+    assert "optional_permissions" not in m
+    import zscaler_clouds
+    consoles = sorted({f"https://{c['admin']}/*" for c in zscaler_clouds.CLOUDS.values()}) if hasattr(zscaler_clouds, "CLOUDS") else None
+    assert all(re.fullmatch(r"https://admin\.[a-z]+\.(net|us)/\*", o) for o in m["optional_host_permissions"])
+    if consoles:
+        assert sorted(m["optional_host_permissions"]) == consoles
+    assert "content_scripts" not in m, "no page script is declared; the console one is registered only once allowed"
+    assert m["side_panel"]["default_path"] == "panel.html"
     assert "externally_connectable" not in m and "web_accessible_resources" not in m
     csp = m["content_security_policy"]["extension_pages"]
     assert "script-src 'self'" in csp and "object-src 'none'" in csp and "unsafe" not in csp
@@ -51,7 +58,7 @@ def test_the_manifest_asks_for_the_least_it_needs():
 
 def test_every_file_the_manifest_names_exists_and_no_remote_code():
     m = _manifest()
-    named = [m["action"]["default_popup"], m["options_page"], m["background"]["service_worker"]]
+    named = [m["action"]["default_popup"], m["options_page"], m["background"]["service_worker"], m["side_panel"]["default_path"], "console.js", "tokens.css"]
     for n in named:
         assert os.path.isfile(os.path.join(EXT, n)), n
     for name in os.listdir(EXT):
@@ -61,7 +68,7 @@ def test_every_file_the_manifest_names_exists_and_no_remote_code():
         # Match patterns (http://*/*) say where the menu shows, not where anything is sent.
         urls = [u for u in re.findall(r"https?://[^\s'\"`)<]+", text) if "*" not in u]
         assert all(re.match(r"https?://(127\.0\.0\.1|localhost)\b", u) for u in urls), (name, urls)
-        assert "eval(" not in text and "new Function" not in text and "innerHTML" not in text, name
+        assert "eval(" not in text and "new Function" not in text and "innerHTML" not in text and "insertAdjacentHTML" not in text, name
         assert not re.search(r"(secret|password|token|client_id|api_key)\s*[:=]", text, re.I), f"{name} must hold no credential"
     for html in ("popup.html", "options.html"):
         text = _read(html)
@@ -98,12 +105,22 @@ console.log(JSON.stringify(out));
     assert out["empty"] == "http://127.0.0.1:8000/report/path"
 
 
-def test_the_extension_only_reads_ping_and_only_opens_pages():
+def test_the_extension_talks_only_to_the_app_and_holds_no_token():
     common = _read("common.js")
-    assert common.count("fetch(") == 1 and "${base}/api/ping" in common and "credentials: 'omit'" in common
-    assert "body.ok !== true" in common, "something else on the port is not taken for DLP-Check"
-    for name in ("background.js", "popup.js", "options.js"):
+    assert common.count("fetch(") == 3, "ping, the API call and a job's file: nothing else"
+    assert "${base}/api/ping" in common and "credentials: 'omit'" in common and "body.ok !== true" in common
+    assert common.count("credentials: 'include'") == 2, "the app's own sign-in cookie authenticates; the extension stores no token"
+    for name in ("background.js", "popup.js", "options.js", "panel.js", "console.js"):
         assert "fetch(" not in _read(name), name
+    calls = set(re.findall(r"api\(S\.base, '([^'`]+)", _read("panel.js")))
+    assert calls == {"/api/tenant-profiles", "/api/console-index", "/api/dlp-packs/export/start"}, calls
+    # The console script sends nothing from the page: only keys of objects DLP-Check already knows.
+    con = _read("console.js")
+    assert "sendMessage({ type: 'focus', key: e.key })" in con and "sendMessage({ type: 'names' })" in con
+    assert con.count("sendMessage(") == 2 and "fetch" not in con and "XMLHttpRequest" not in con
+    assert "attachShadow({ mode: 'closed' })" in con, "badges cannot be styled or read by the console page"
+    bg = _read("background.js")
+    assert "chrome.permissions.contains({ origins: CONSOLE_ORIGINS })" in bg and "registerContentScripts" in bg and "unregisterContentScripts" in bg
     bg = _read("background.js")
     assert "chrome.tabs.create" in bg and "contexts: ['link']" in bg and "contexts: ['selection']" in bg
     # The Path analyzer pre-fills from ?d= and does not run until Analyze is clicked.

@@ -27,6 +27,9 @@ async function main() {
     $('analyze').disabled = !up.ok;
     $('analyze').addEventListener('click', () => open(pathAnalyzerUrl(base, dest)));
   }
+  $('panel').addEventListener('click', async () => {
+    try { const w = await chrome.windows.getCurrent(); await chrome.sidePanel.open({ windowId: w.id }); window.close(); } catch (e) { /* the panel is still in the browser's side panel menu */ }
+  });
   const nav = $('links');
   Object.values(PAGES).forEach(p => {
     const b = document.createElement('button');

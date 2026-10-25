@@ -3429,6 +3429,38 @@ async def browser_extension_download():
                     headers={"Content-Disposition": 'attachment; filename="dlp-check-extension.zip"'})
 
 
+class ConsoleIndexRequest(ScopedTenantCredsRequest):
+    """Body of the browser extension's console index: which tenant (a saved
+    profile, or what this server is configured with) and whether to read
+    it again instead of using the last read (kept 30 minutes)."""
+    refresh: bool = False
+
+
+@app.post("/api/console-index")
+async def console_index(req: ConsoleIndexRequest):
+    """What DLP-Check knows about each DLP dictionary, engine and rule (what
+    it uses, what uses it, the pack that created it, findings), for the
+    companion extension's badges and side panel in the Zscaler admin
+    console. Read-only; only the DLP channels in scope are read; the last
+    read per tenant is reused for 30 minutes unless `refresh`."""
+    import console_index as ci
+    channels = _pack_channels_in_scope(req, "The browser extension's console index")
+    creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Pick a saved tenant (or configure one on this server) for the extension to read.")
+    key = ci.cache_key(getattr(req, "profile_id", "") or "", channels)
+    if not req.refresh:
+        hit = ci.cache_get(key)
+        if hit is not None:
+            return hit
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(lambda: ci.build(client, channels, tenant_label=tenant_auth.record_label(creds)))
+    if out.get("status") != "ready":
+        raise HTTPException(status_code=502, detail="; ".join(out.get("blockers") or ["Could not read the tenant."]))
+    ci.cache_put(key, out)
+    return dict(out, cached_at=None)
+
+
 @app.get("/api/pack-library/{pack_id}/bundle")
 async def pack_library_bundle(pack_id: str):
     """One JSON file holding a pack: the upload format, and the starting
