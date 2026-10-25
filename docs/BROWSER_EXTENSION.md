@@ -7,7 +7,7 @@ sign-in, UI token, write mode and audit log.
 
 ## What it does
 
-### In the Zscaler admin console (like ZHERO, with DLP-Check's data)
+### In the Zscaler admin console
 - **Badges.** On the ZIA admin console, a DLP-Check badge appears next to
   every object DLP-Check read from the tenant, wherever the console shows
   its exact name:
@@ -59,7 +59,7 @@ sign-in, UI token, write mode and audit log.
   reported as unused for the policies DLP-Check read (Bandwidth Control,
   Sandbox and the other policies that can use a category are not read).
 
-The flow follows ZHERO's (badge → panel → stage → act), but every answer
+The flow is badge → panel → stage → act, and every answer
 comes from DLP-Check, and anything that changes the tenant (deploy,
 remove, fix) stays in DLP-Check behind write mode, its preview and the
 audit log.
