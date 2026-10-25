@@ -150,7 +150,7 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform
 
 def analyze(client, destination: str, network: str = "off", platform: str = "windows", *,
             scope: Optional[Dict[str, Any]] = None, snapshot: Optional[Dict[str, Any]] = None, log: LogFn = None,
-            cancel: Any = None, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            cancel: Any = None, context: Optional[Dict[str, Any]] = None, lookup: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The live analysis. `scope` (data_flow.path_scope: the Scope page's
     ticked scopes and the channels marked Zscaler) is required, and only
     the parts of the tenant in it are read; every other hop says "not in
@@ -162,7 +162,9 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     sent and Stopped is raised: a partial read is never returned as a
     result. Returns the destination, the lookup, the trace, the verdict,
     the scope and the assumptions, plus `snapshot_for_cache` so the
-    caller can keep the tenant read for the next destination."""
+    caller can keep the tenant read for the next destination. `lookup`
+    (lookup_many's answer for this host) stands in for the live URL
+    lookup, so a batch asks ZIA once per hundred hosts."""
     _log = log or (lambda m: None)
 
     def _stopped() -> Stopped:
@@ -202,7 +204,9 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                     _log("Reading ZIA policy: " + ", ".join(zia_parts) + (", URL categories…" if scope["lookup"] else "…"))
                 zia = read_zia(client, scope=scope, cancel=cancel)
             _check()
-            if scope["lookup"]:
+            if scope["lookup"] and lookup is not None:
+                lk = dict(lookup)
+            elif scope["lookup"]:
                 _log(f"Asking ZIA which categories {d['host']} belongs to…")
                 lk = lookup_categories(client, d["host"])
                 _check()
@@ -393,4 +397,176 @@ def recommend_mitigations(t: Dict[str, Any], v: Dict[str, Any]) -> List[Dict[str
         out.append({"rank": len(out) + 1, "channel": "saas", "action": f"Onboard {v['applications'][0]} to SaaS Security API",
                     "why": "ZIA recognises this as a sanctioned cloud application, but no SaaS Security API rule scans it at rest, so data already stored there is never checked.",
                     "severity": "low"})
+    return out
+
+
+# ── Batch: every host a HAR file names, against one tenant read ──────────
+#
+# The Path analyzer page parses a HAR file in the browser (static/har_parse.js)
+# and sends only the host names with their request counts: never a header,
+# cookie, URL path or body. The batch reads the tenant once (or reuses a
+# kept read for the same scope), asks ZIA's URL lookup once per hundred
+# hosts (the chunk size zscaler-sdk-python's url_categories.lookup uses)
+# and traces each host against that read with analyze(). Stop is honoured
+# between hosts and inside every read; the hosts already analyzed are kept
+# and the rest are listed as not analyzed.
+
+BATCH_MAX = 200
+LOOKUP_CHUNK = 100
+
+# The outcome a results table shows, from the verdict's outcome.
+BATCH_OUTCOMES: Dict[str, str] = {
+    "bypassed": "bypassed", "blocked": "blocked", "blind": "blind", "enforce": "inspected", "monitor": "monitor-only",
+    "none": "no DLP", "conditional": "conditional", "metadata_only": "no content scan", "unknown": "unverified",
+    "out_of_scope": "not in scope",
+}
+
+
+def _lookup_key(value: Any) -> str:
+    s = str(value or "").strip().lower()
+    s = re.sub(r"^[a-z][a-z0-9+.-]*://", "", s)
+    return s.split("/", 1)[0].rstrip(".")
+
+
+def lookup_many(client, hosts: List[str], cancel: Any = None) -> Dict[str, Dict[str, Any]]:
+    """ZIA's URL lookup (POST /urlLookup) for many hosts, a hundred per
+    request. {host: the same dict lookup_categories returns}. A chunk the
+    lookup could not answer gives each of its hosts the error, never an
+    invented category. Raises ReadStopped once `cancel` is set."""
+    out: Dict[str, Dict[str, Any]] = {}
+    post = getattr(client, "post", None)
+    for i in range(0, len(hosts), LOOKUP_CHUNK):
+        if stop_requested(cancel):
+            raise ReadStopped("stopped")
+        chunk = hosts[i:i + LOOKUP_CHUNK]
+        blank = lambda err: {"categories": [], "security_alerts": [], "application": None, "error": err}  # noqa: E731
+        if not callable(post):
+            out.update({h: blank("this client cannot run a URL lookup") for h in chunk})
+            continue
+        try:
+            data, status = post("/zia/urlLookup", list(chunk))
+        except ReadStopped:
+            raise
+        except Exception as e:  # noqa: BLE001
+            out.update({h: blank(f"URL lookup failed: {str(e)[:160]}") for h in chunk})
+            continue
+        if stop_requested(cancel):
+            raise ReadStopped("stopped")
+        if status not in (200, 201) or not isinstance(data, list):
+            detail = data.get("error") if isinstance(data, dict) else ""
+            err = f"URL lookup answered HTTP {status}" + (f": {str(detail)[:160]}" if detail else "")
+            out.update({h: blank(err) for h in chunk})
+            continue
+        entries = [e for e in data if isinstance(e, dict)]
+        by_url = {_lookup_key(e.get("url")): e for e in entries if e.get("url")}
+        for pos, h in enumerate(chunk):
+            # Matched by the url ZIA echoes; by position only when it echoes none.
+            e = by_url.get(_lookup_key(h)) if by_url else (entries[pos] if pos < len(entries) else None)
+            if e is None:
+                out[h] = blank("the URL lookup returned no answer for this host")
+                continue
+            cats = e.get("urlClassifications") or e.get("url_classifications") or []
+            alerts = e.get("urlClassificationsWithSecurityAlert") or e.get("url_classifications_with_security_alert") or []
+            app = e.get("application") or e.get("app")
+            out[h] = {"categories": sorted({str(c).upper() for c in cats if c}), "security_alerts": sorted({str(c).upper() for c in alerts if c}),
+                      "application": str(app).upper() if app else None, "error": None}
+    return out
+
+
+def _hop(res: Dict[str, Any], key: str) -> Dict[str, Any]:
+    return next((h for h in (res.get("trace") or {}).get("hops") or [] if h.get("key") == key), {})
+
+
+def batch_row(host: str, res: Dict[str, Any], stats: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """One results-table row for an analysed host: the outcome in a word,
+    where it stops, the rule or profile that decides it and the DLP rules
+    on the path. `stats` are the HAR counts the page sent."""
+    v = res.get("verdict") or {}
+    outcome = v.get("outcome") or ""
+    name = lambda h: (h.get("decided_by") or {}).get("name") if h else None  # noqa: E731
+    if outcome in ("bypassed", "blocked"):
+        deciding = v.get("blocked_by") or next((name(h) for h in (res.get("trace") or {}).get("hops") or []
+                                                if h.get("status") in ("bypass", "blocked") and name(h)), None)
+    elif outcome == "blind":
+        deciding = name(_hop(res, "ssl"))
+    elif outcome in ("enforce", "monitor"):
+        deciding = name(_hop(res, "dlp"))
+    else:
+        deciding = None
+    dlp = _hop(res, "dlp")
+    rules = [str(r.get("name")) for r in (dlp.get("rules") or []) if isinstance(r, dict) and r.get("name")] \
+        if dlp.get("status") not in ("out_of_scope", "skipped", "not_reached") else []
+    s = stats or {}
+    return {"host": host, "requests": int(s.get("requests") or 0), "uploads": int(s.get("uploads") or 0),
+            "bytes_sent": int(s.get("bytes_sent") or 0), "methods": list(s.get("methods") or []),
+            "outcome": BATCH_OUTCOMES.get(outcome, outcome or "unverified"), "outcome_key": outcome,
+            "stops_at": v.get("stops_at") or ("reaches the destination" if outcome not in ("bypassed", "blocked") else ""),
+            "deciding_rule": deciding or "", "dlp_rules": rules, "headline": v.get("headline") or "",
+            "categories": list(v.get("categories") or [])}
+
+
+def analyze_batch(client, hosts: List[str], network: str = "off", platform: str = "windows", *,
+                  scope: Optional[Dict[str, Any]] = None, snapshot: Optional[Dict[str, Any]] = None, log: LogFn = None,
+                  cancel: Any = None, stats: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """Trace every host against one tenant read. Returns {rows, analyses
+    ({host: the full analyze() result}), snapshot_for_cache (a fresh read,
+    for the next run), stopped (the reason, or None), not_analyzed (hosts
+    Stop left out), errors ({host: reason} for a host that could not be
+    traced)}. Hosts must already be valid (parse_destination); at most
+    BATCH_MAX. Nothing is written to the tenant."""
+    _log = log or (lambda m: None)
+    if not scope or not scope.get("read"):
+        raise ValueError(NOTHING_IN_SCOPE)
+    if len(hosts) > BATCH_MAX:
+        raise ValueError(f"At most {BATCH_MAX} hosts per batch; {len(hosts)} were sent.")
+    rows: List[Dict[str, Any]] = []
+    analyses: Dict[str, Dict[str, Any]] = {}
+    errors: Dict[str, str] = {}
+    cache = None
+    out: Dict[str, Any] = {"rows": rows, "analyses": analyses, "errors": errors, "stopped": None, "not_analyzed": [], "fresh_read": snapshot is None}
+
+    def _stop(at: int) -> Dict[str, Any]:
+        _log(f"STOPPED — you clicked Stop after {at} of {len(hosts)} host(s); the rest were not analyzed. Nothing is ever written by this page.")
+        out["stopped"] = (f"You clicked Stop after {at} of {len(hosts)} host(s): the hosts already analyzed are shown, "
+                          "the rest were not analyzed and nothing more was read from the tenant. Nothing was written.")
+        out["not_analyzed"] = list(hosts[at:])
+        out["snapshot_for_cache"] = None
+        return out
+
+    lookups: Dict[str, Dict[str, Any]] = {}
+    if scope.get("lookup") and hosts:
+        _log(f"Asking ZIA which categories {len(hosts)} host(s) belong to ({(len(hosts) + LOOKUP_CHUNK - 1) // LOOKUP_CHUNK} lookup request(s))…")
+        try:
+            with stop_on(client, cancel):
+                lookups = lookup_many(client, hosts, cancel)
+        except ReadStopped:
+            return _stop(0)
+        failed = sum(1 for v in lookups.values() if v.get("error"))
+        if failed:
+            _log(f"The URL lookup could not answer for {failed} host(s); the tenant's own category lists decide their categories.")
+    for i, host in enumerate(hosts):
+        if stop_requested(cancel):
+            return _stop(i)
+        if i == 0 and snapshot is None:
+            _log("Reading the tenant once for every host (only what is in scope)…")
+        try:
+            res = analyze(client, host, network, platform, scope=scope, snapshot=snapshot, log=_log if i == 0 else None,
+                          cancel=cancel, lookup=lookups.get(host) if scope.get("lookup") else None)
+        except Stopped:
+            return _stop(i)
+        except ValueError as e:
+            errors[host] = str(e)[:200]
+            _log(f"{host}: not analyzed ({str(e)[:160]})")
+            continue
+        fresh = res.pop("snapshot_for_cache", None)
+        if fresh is not None:
+            cache = fresh
+            snapshot = fresh   # every later host is traced against this read
+        analyses[host] = res
+        row = batch_row(host, res, (stats or {}).get(host))
+        rows.append(row)
+        _log(f"Tracing {i + 1} of {len(hosts)}: {host} — {row['outcome']}")
+    if stop_requested(cancel):
+        return _stop(len(hosts))
+    out["snapshot_for_cache"] = cache
     return out

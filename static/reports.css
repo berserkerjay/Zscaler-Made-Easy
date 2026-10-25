@@ -527,3 +527,31 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .bc-page tr.bc-changed td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .bc-page .rp-bar input[type="checkbox"] { accent-color: var(--btn, #2563eb); }
 .bc-page #bcTenant { max-width: 100%; }
+/* ── Shadowed rules (/report/shadow) ──────────────────────────────── */
+.sh-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0 0.2rem; }
+.sh-policy { margin-top: 0.4rem; }
+.sh-note { margin: 0 0 0.5rem; max-width: 90ch; }
+.sh-by { margin-top: 0.2rem; color: var(--dim); }
+.sh-scope { margin: 0 0 0.6rem; }
+.sh-counts td { font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .sh-page .df-ctl { flex-wrap: wrap; max-width: 100%; } .sh-page .df-ctl select { max-width: 100%; min-width: 0; } }
+/* Path analyzer: HAR import */
+.pa-har-how { margin-top: 0.6rem; }
+.pa-har .pa-facts { margin: 0.3rem 0 0.8rem; }
+.pa-har-cap { margin: 0.6rem 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: var(--r-md); background: var(--well); font-size: 0.86rem; line-height: 1.5; }
+.pa-har-cap summary { cursor: pointer; color: var(--dim); margin-top: 0.3rem; }
+.pa-har-cap summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm, 6px); }
+.pa-har-more { columns: 2 16rem; margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; }
+.pa-har-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin: 0.6rem 0; }
+.pa-har-tools .sep { flex: 1; }
+.pa-har .df-tablewrap { position: relative; }
+.pa-har-table td { vertical-align: top; }
+.pa-har-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pa-har-table tbody tr[data-host] { cursor: pointer; }
+.pa-har-table tbody tr[data-host]:hover td { background: var(--well); }
+.pa-har-table code { font-size: 0.78rem; overflow-wrap: anywhere; }
+.pa-har-sort, .pa-har-host { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; text-align: left; }
+.pa-har-host { color: var(--accent); font-weight: 600; overflow-wrap: break-word; }
+.pa-har-table td:first-child { min-width: 11rem; }
+.pa-har-sort:focus-visible, .pa-har-host:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm, 6px); }
+.pa-har-back { margin: 0 0 0.6rem; }

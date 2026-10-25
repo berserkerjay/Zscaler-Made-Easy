@@ -178,4 +178,4 @@ def test_the_pages_send_the_scope_page_selection():
                 "/api/migrate/delete-all'", "/api/migrate/post'", "/api/dlp-packs/export/start'"):
         i = index.index(url)
         assert "scopePageSelection()" in index[i:i + 260], url
-    assert studio.count("..._dzScope()") == 3
+    assert studio.count("..._dzScope()") == 4   # removal picker, export picker, export run, DLP inventory (Excel)
