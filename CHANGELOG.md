@@ -5,6 +5,16 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-25
+
+### A companion browser extension (Chrome and Edge)
+- **What you asked for.** An option to use DLP-Check as a browser extension.
+- **What it is.** A small extension that works with the app on your computer rather than replacing it: the app's Python side (Zscaler's SDK, jobs that wait out ZIA's rate limit, the OS keychain, the audit log) cannot run inside a browser extension, so the work and every safeguard stay in the app.
+- **What it does.** Its toolbar button shows the site you are on and *Analyze this site* opens the Path analyzer with it filled in; a right-click does the same for a link, a selected hostname, URL or IP address, or the page. The popup also opens DLP-Check, the Path analyzer, the Live DLP feed, the Flow animator and the help page, and says whether the app is running. Nothing runs until you click Analyze in the app.
+- **Get it.** *Advanced settings → Browser extension → Download the extension*, unzip, and *Load unpacked* in `chrome://extensions` or `edge://extensions` (steps on the page and in `docs/BROWSER_EXTENSION.md`). Its *Settings* take the app's address (`http://127.0.0.1:8001` for the container).
+- **Security.** No credentials or tenant data in the extension; permissions `activeTab`, `contextMenus` and `storage` only (no access to the pages you browse); it talks only to 127.0.0.1 or localhost and refuses any other address; an address loses its query string and fragment before it is passed on; a selection is used only when it is one hostname, URL or IP address; its one request is the app's `GET /api/ping`, and an answer other than DLP-Check's is reported as such.
+- **Verified.** New `tests/test_browser_extension.py` (6 tests: permissions and CSP, no remote code or credentials, loopback-only addresses and trimmed destinations under node, the zip the app serves, the docs). The extension was loaded unpacked in Chromium against the running app: the popup found the app and opened its pages, the Path analyzer was pre-filled, the settings refused an outside address, and the right-click menus registered.
+
 ## 2026-10-24
 
 ### Export from tenant: dictionaries, engines and rules separately, as JSON or Terraform

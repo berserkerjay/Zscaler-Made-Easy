@@ -211,7 +211,7 @@
   };
   X.advanced = {
     group: 'Reference', name: 'Advanced settings', href: '/report/advanced',
-    what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, and see how this server is configured (bind host, token gate, write mode, limits).',
+    what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (analyze any site with the Path analyzer from the browser), and see how this server is configured (bind host, token gate, write mode, limits).',
     why: 'Customers and colleagues have their own designs; this puts them through the same preflight and deploy as the built-in packs.',
     when: 'When someone hands you a pack or an export from another tenant.',
     get: 'A validation preview (what it contains, what blocks it) before anything is added.',
