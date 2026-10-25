@@ -92,6 +92,12 @@ what you get, what to do next.
   as they land, enforced versus monitor-only per channel; and every flow
   of the Data Security Architect reference, with the steps people miss
   marked. Samples, labelled as such, until you have results. Read-only.
+- **Browser extension (companion)** — a small Chrome and Edge extension
+  for the app on your computer: its button or a right-click opens the Path
+  analyzer with the site, a link or a selected hostname filled in, and the
+  popup opens the Live DLP feed and the Flow animator. It holds no
+  credentials or tenant data and talks only to 127.0.0.1. Download it from
+  Advanced settings; see docs/BROWSER_EXTENSION.md.
 - **Live DLP feed** — Workflow Automation's DLP incidents polled every
   15 seconds: who, what triggered, where it was going, enforced or
   monitor-only, with a running tally. Above the table, the DLP chain from
