@@ -612,6 +612,11 @@
                 title="Polls Workflow Automation's DLP incidents live: who, the rule and dictionaries that matched, the destination, and whether the rule enforced it or only logged it, with a running seen / enforced / monitor / FP:TP tally. Covers DLP-matched traffic only, not every ZIA transaction — the page says so. Read-only. Opens in a new tab.">
           <span aria-hidden="true">📡</span> Live DLP feed
         </button>
+        <button class="btn btn-ghost" onclick="openShadowRulesTab()"
+                aria-label="Open Shadowed rules: the rules that can never match or never act in every policy in scope, with the rule that hides each one and the fix (opens in a new tab)"
+                title="Reads the DLP, URL filtering, Cloud App Control, SSL inspection and Cloud Firewall rules in scope and lists every rule that can never match or never act: shadowed by a broader rule, below a catch-all, duplicated, superseded, disabled or naming objects that no longer exist. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🔍</span> Shadowed rules
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -706,6 +711,11 @@
       </div>
       <div class="tool-group" role="group" aria-label="Troubleshoot" data-sb-id="troubleshoot">
         <div class="tool-group-l">Troubleshoot</div>
+        <button class="btn btn-ghost" onclick="openAuditTimelineTab()"
+                aria-label="Open Audit timeline: ZIA's admin audit log merged with DLP-Check's deployments and its own audit log, newest first, with changes someone else made to DLP-Check objects marked (opens in a new tab)"
+                title="Who changed what in the tenant, and what DLP-Check did, on one timeline: ZIA's admin audit log for a window you choose, DLP-Check's deployment records and audit log, filters, field-by-field diffs, CSV and JSON. Writes nothing to the tenant. Opens in a new tab.">
+          <span aria-hidden="true">📜</span> Audit timeline
+        </button>
         <button class="btn btn-ghost" onclick="openLogAnalyzerTab()"
                 aria-label="Open the Log analyzer: upload Client Connector log bundles or PAC files and get what happened, what it means and what to do next (opens in a new tab)"
                 title="Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Says what happened, what it means for the user and what to do next. Opens in a new tab.">
@@ -1240,6 +1250,7 @@
   <div id="results" role="region" aria-label="Assessment results">
     <div class="download-bar">
       <button class="btn btn-primary" onclick="downloadDocx()">Download Word report</button>
+      <button class="btn btn-secondary" onclick="downloadXlsx()" title="Summary, findings (one row each, filterable), compliance mapping and best practices">Excel workbook</button>
       <button class="btn btn-secondary" onclick="downloadJSON()">Download JSON</button>
       <button class="btn btn-ghost" onclick="openRemediationReview()"
               aria-label="Review and remediate findings"
@@ -4274,6 +4285,34 @@ async function downloadDocx() {
   }
 }
 
+// The same results as an Excel workbook (Summary, Findings, Compliance
+// mapping, Best practices), built by the server from the same body as the Word report.
+async function downloadXlsx() {
+  if (!reportData) return;
+  setStatus('Building the Excel workbook...', '');
+  try {
+    const resp = await fetch('/api/report/xlsx', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(reportData),
+    });
+    if (!resp.ok) {
+      let detail = `Server returned ${resp.status}`;
+      try { const err = await resp.json(); if (err.detail) detail = err.detail; } catch(e) {}
+      throw new Error(detail);
+    }
+    const cd = resp.headers.get('Content-Disposition') || '', m = /filename="([^"]+)"/.exec(cd);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await resp.blob());
+    a.download = m ? m[1] : `zscaler_${(reportData.metadata?.org || 'report').replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    setStatus('Excel workbook downloaded', 'success');
+  } catch(e) {
+    setStatus('Excel workbook failed: ' + e.message, 'error');
+  }
+}
+
 // The server's reason for refusing a run (FastAPI's {"detail": ...}), in words.
 async function refusalText(resp) {
   let d = '';
@@ -5053,6 +5092,19 @@ function openFlowAnimatorTab() {
   // The tab reads results this browser already holds (the last path and
   // plan) and, when asked, the tenant through window.opener.
   const w = window.open('/report/motion', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openShadowRulesTab() {
+  // Like the Path analyzer: the tab reads the credentials and the Scope
+  // page's selection from this page through window.opener when it runs,
+  // so nothing is read until Analyze.
+  const w = window.open('/report/shadow', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openAuditTimelineTab() {
+  // The tab reads the credentials from this page through window.opener
+  // (migrateCredBody) when it runs, so nothing is sent until it is built.
+  const w = window.open('/report/audit', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {

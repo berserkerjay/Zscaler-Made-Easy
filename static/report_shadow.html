@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shadowed rules — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page sh-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Shadowed</span> rules <span class="sf-live" id="shLive" hidden><i></i>live</span></h1>
+      <p>Rules that can never match or never act: hidden below a broader rule, below a catch-all, duplicated, superseded by a stricter rule, disabled, or naming objects that no longer exist. Read live from the tenant, only what is in scope on the Scope page, with the rule that hides each one and the fix.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl"><span class="lbl">Inline Web DLP evaluation</span><select id="shMode" aria-label="Inline Web DLP evaluation mode" aria-describedby="shModeHint">
+        <option value="">Read it from the tenant</option>
+        <option value="rule_order">By rule order (first match)</option>
+        <option value="evaluate_all">Evaluate all rules</option>
+      </select></label>
+      <label class="df-ctl" id="shTenantWrap" hidden><span class="lbl">Tenant</span><select id="shTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="shRun">Analyze</button>
+      <a class="rp-btn" id="expCsv" hidden>CSV</a>
+      <a class="rp-btn" id="expJson" hidden>JSON</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="shBody">
+        <div class="pa-intro" id="shHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Analyze.</strong> The page reads the rules of every policy in scope on the Scope page (Inline Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL inspection and, with ZIA platform ticked, Cloud Firewall), shown live as it reads. Stop ends the read at once.</li>
+            <li><strong>Read the findings</strong>, grouped by policy and sorted high first: each names the rule, the rule that hides it, why in one sentence, and what to do.</li>
+            <li><strong>Export</strong> the findings as CSV or JSON for the customer's change request.</li>
+          </ol>
+          <div class="df-hint" id="shModeHint">A rule is reported only when every criterion both rules carry can be compared; anything this page cannot compare safely counts as "not shadowed", so it never invents a finding. Inline Web DLP is first match By Rule Order unless the tenant runs Evaluate All Rules; when the mode cannot be read, rule order is assumed and every finding says so. Endpoint and Email DLP evaluate every rule and the most restrictive wins, so their rules can be superseded, never shadowed. Nothing is written to the tenant.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const body = document.getElementById('shBody');
+    const meta = document.getElementById('rpMeta');
+    const live = document.getElementById('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const SEVS = ['high', 'medium', 'low', 'info'];
+    const SEV_CLS = { high: 'st-fail', medium: 'st-warn', low: 'st-block', info: '' };
+    const KIND = { shadowed: 'Shadowed', after_catch_all: 'Below a catch-all', duplicate: 'Duplicate', superseded: 'Superseded',
+      missing_reference: 'Missing object', disabled: 'Disabled' };
+    const POLICY_ORDER = ['web_dlp', 'endpoint_dlp', 'email_dlp', 'saas_dlp', 'url_filtering', 'cloud_app_control', 'ssl_inspection', 'firewall'];
+    let running = false, job = null, startToken = null, stopAsked = false, last = null, sevFilter = '';
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+    document.getElementById('shLive').hidden = !(window.opener && !window.opener.closed);
+
+    // Credentials: the assessment tab that opened this page, a saved
+    // tenant profile, or what the server has in its environment.
+    async function tenantChoices() {
+      const wrap = document.getElementById('shTenantWrap'), sel = document.getElementById('shTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = document.getElementById('shTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    // The Scope page's selection, live from the opener or as the Scope
+    // page publishes it; never guessed. Only each channel's choice is sent.
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+
+    // ── the live job ────────────────────────────────────────────────
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function phase(logs) {
+      for (let i = logs.length - 1; i >= 0; i--) if (/^(Reading|Done)/.test(logs[i])) return logs[i].replace(/…$/, '').trim();
+      return logs.length ? 'Working…' : 'Connecting to the tenant…';
+    }
+    function liveHtml() {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>Reading the rules</strong><span class="df-by" id="shPhase">Connecting to the tenant…</span><span class="sep"></span><span class="pa-elapsed" id="shElapsed">0:00</span><button type="button" class="rp-btn" id="shStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="shLog" role="log" aria-live="polite" aria-label="What the analysis is doing">Connecting to the tenant…</div>
+      </div>`;
+    }
+    function liveUpdate(snap) {
+      const log = document.getElementById('shLog'); if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+      const ph = document.getElementById('shPhase'); if (ph) ph.textContent = phase(snap.logs || []);
+      const el = document.getElementById('shElapsed'); if (el && snap.elapsed_seconds != null) el.textContent = mmss(snap.elapsed_seconds);
+      const st = document.getElementById('shStop'); if (st && snap.cancel_requested) { st.disabled = true; st.textContent = 'Stopping…'; }
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1000));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the analysis continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        liveUpdate(Object.assign({}, snap, { logs }));
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!running || stopAsked) return;
+      stopAsked = true;
+      const b = document.getElementById('shStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        // Still signing in: the job this start creates begins stopped.
+        try {
+          await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) });
+        } catch (e) { /* cancelled by id as soon as it arrives */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+    async function run() {
+      if (running) return;
+      const btn = document.getElementById('shRun');
+      running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Analyzing…';
+      ['expCsv', 'expJson'].forEach(id => { document.getElementById(id).hidden = true; });
+      body.innerHTML = liveHtml();
+      document.getElementById('shStop').addEventListener('click', stop);
+      say('Reading the rules in scope.');
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = document.getElementById('shElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const payload = Object.assign({}, credBody(), scopeSelection(), { web_dlp_mode: document.getElementById('shMode').value });
+        const r = await fetch('/api/shadow-rules/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        job = d.job_id;
+        if (stopAsked) {   // Stop pressed while signing in: cancel by id too
+          try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }
+        }
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result || snap.result.status !== 'done') {
+          throw new Error((snap.result && snap.result.stopped) || snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the analysis finished.' : 'The analysis did not finish.'));
+        }
+        last = snap.result;
+        render(last, job, snap.logs || []);
+        const n = (last.findings || []).length;
+        say(`${n} finding${n === 1 ? '' : 's'}.`);
+      } catch (e) {
+        fail('The analysis could not run', e.message);
+        say(`The analysis could not run: ${e.message}`);
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; btn.disabled = false; btn.textContent = 'Analyze';
+      }
+    }
+    function fail(title, msg) {
+      if (/You clicked Stop/.test(msg)) { title = 'Stopped'; msg = msg.replace(/^Stopped:\s*/, ''); }
+      const hint = /credential|sign in|token|401|403|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open this page from there, or choose a saved tenant profile in the bar above.' : '';
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+
+    // ── the result ──────────────────────────────────────────────────
+    function sevChip(s) { return `<span class="df-chip ${SEV_CLS[s] || ''}">${E(s)}</span>`; }
+    function findingHtml(f) {
+      const by = f.shadowed_by ? `<div class="df-hop-d sh-by">Hidden by <strong>${E(f.shadowed_by.name)}</strong>${f.shadowed_by.order != null ? ` (order ${E(f.shadowed_by.order)})` : ''}</div>` : '';
+      return `<li class="pa-impact sev-${E(f.severity)}" data-sev="${E(f.severity)}">
+          <div class="df-hop-h">${sevChip(f.severity)}<strong>${E(f.rule)}</strong>${f.order != null && f.order !== '' ? `<span class="df-by">order ${E(f.order)}</span>` : ''}<span class="df-chip">${E(KIND[f.kind] || f.kind)}</span></div>
+          ${by}
+          <div class="df-hop-d">${E(f.reason)}</div>
+          <div class="df-hop-d pa-fix"><strong>What to do:</strong> ${E(f.fix)}</div>
+        </li>`;
+    }
+    function countsHtml(counts) {
+      const keys = POLICY_ORDER.filter(k => counts[k]);
+      if (!keys.length) return '<div class="df-hop-d pa-none">No rules were read.</div>';
+      const row = k => { const c = counts[k], s = c.by_severity || {};
+        return `<tr><th scope="row">${E(c.label)}</th><td>${E(c.rules)}</td><td>${E(c.enabled)}</td><td>${E(c.findings)}</td>${SEVS.map(x => `<td>${E(s[x] || 0)}</td>`).join('')}</tr>`; };
+      return `<div class="df-tablewrap"><table class="df-table sh-counts"><caption class="sr-only">Findings per policy</caption>
+        <thead><tr><th scope="col">Policy</th><th scope="col">Rules</th><th scope="col">Enabled</th><th scope="col">Findings</th>${SEVS.map(s => `<th scope="col">${E(s[0].toUpperCase() + s.slice(1))}</th>`).join('')}</tr></thead>
+        <tbody>${keys.map(row).join('')}</tbody></table></div>`;
+    }
+    function filterHtml(findings) {
+      const n = s => findings.filter(f => !s || f.severity === s).length;
+      return `<div class="sh-filter" role="group" aria-label="Show findings by severity">${[''].concat(SEVS).map(s =>
+        `<button type="button" class="rp-btn${sevFilter === s ? ' primary' : ''}" data-sev="${s}" aria-pressed="${sevFilter === s}">${E(s ? s[0].toUpperCase() + s.slice(1) : 'All')} (${n(s)})</button>`).join('')}</div>`;
+    }
+    function render(res, jobId, logs) {
+      const findings = res.findings || [];
+      const counts = res.counts_by_policy || {};
+      const mode = res.mode || {};
+      const modeLabel = { rule_order: 'By rule order', evaluate_all: 'Evaluate all rules', unknown: 'not known (rule order assumed)' }[mode.web_dlp] || mode.web_dlp;
+      meta.textContent = `${res.tenant_label || ''} · read ${new Date().toLocaleTimeString()} · ${findings.length} finding${findings.length === 1 ? '' : 's'}`;
+      const shown = findings.filter(f => !sevFilter || f.severity === sevFilter);
+      const groups = POLICY_ORDER.filter(k => counts[k]).map(k => {
+        const list = shown.filter(f => f.policy === k);
+        const note = (res.notes || {})[k];
+        return `<section class="sh-policy" aria-labelledby="shH-${k}">
+          <h2 class="df-h" id="shH-${k}">${E(counts[k].label)} (${list.length})</h2>
+          ${note ? `<div class="df-hint sh-note">${E(note)}</div>` : ''}
+          ${list.length ? `<ol class="pa-impacts">${list.map(findingHtml).join('')}</ol>` : `<div class="df-hop-d pa-none">${sevFilter ? 'Nothing at this severity.' : 'Every rule here can match and act.'}</div>`}
+        </section>`;
+      }).join('');
+      const errs = Object.entries(res.read_errors || {});
+      const nis = Object.entries(res.not_in_scope || {});
+      const label = k => (counts[k] && counts[k].label) || (res.policy_labels || {})[k] || k.replace(/_/g, ' ');
+      body.innerHTML = `
+        ${res.scope && res.scope.summary ? `<div class="df-hint sh-scope">${E(res.scope.summary)}</div>` : ''}
+        <h2 class="df-h">Findings per policy</h2>
+        ${countsHtml(counts)}
+        ${counts.web_dlp ? `<div class="df-hint">Inline Web DLP evaluation: <strong>${E(modeLabel)}</strong>${mode.detail ? ` · ${E(mode.detail)}` : ''}</div>` : ''}
+        ${errs.length ? `<h2 class="df-h">Could not be read</h2><ul class="pa-impacts">${errs.map(([k, v]) => `<li class="pa-impact sev-medium"><div class="df-hop-h"><strong>${E(label(k))}</strong></div><div class="df-hop-d">${E(v)}: nothing is claimed about these rules; run the analysis again once the API answers.</div></li>`).join('')}</ul>` : ''}
+        ${filterHtml(findings)}
+        ${groups || '<div class="df-hop-d pa-none">No rules were read.</div>'}
+        ${nis.length ? `<h2 class="df-h">Not in scope</h2><div class="df-hint">Left out on the Scope page, so not read and not assessed: not "no finding".</div>
+          <ul class="pa-impacts">${nis.map(([k, v]) => `<li class="pa-impact sev-info"><div class="df-hop-h"><strong>${E(label(k))}</strong></div><div class="df-hop-d">${E(v)}</div></li>`).join('')}</ul>` : ''}
+        <details class="pa-details"><summary>What was read (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
+      body.querySelectorAll('.sh-filter button').forEach(b => b.addEventListener('click', () => {
+        sevFilter = b.dataset.sev; render(res, jobId, logs);
+        const again = body.querySelector(`.sh-filter button[data-sev="${sevFilter}"]`); if (again) again.focus();
+        say(`Showing ${sevFilter || 'all'} findings.`);
+      }));
+      const csv = document.getElementById('expCsv'), json = document.getElementById('expJson');
+      csv.href = `/api/shadow-rules/jobs/${encodeURIComponent(jobId)}/export?format=csv`;
+      json.href = `/api/shadow-rules/jobs/${encodeURIComponent(jobId)}/export?format=json`;
+      csv.hidden = json.hidden = false;
+    }
+
+    document.getElementById('shRun').addEventListener('click', run);
+    tenantChoices();
+  })();
+  </script>
+</body>
+</html>

@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion", "/report/shadow", "/report/audit"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1361,6 +1361,8 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     out = pack_deploy.public_report(report)
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
+    # The server keeps its own copy: Plan (PDF) / Plan (Excel) render from it, never from the page.
+    out["report_id"] = _remember_plan(out, _assessor(req))
     return out
 
 
@@ -3247,6 +3249,121 @@ def _transcribe_pack_to_terraform(pack_id: str, pack_dir: str) -> Dict[str, Any]
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
+# ── Excel and PDF exports (report_exports, on the in-house xlsx_writer / pdf_writer) ──
+# Read-only: the assessment workbook is built from the results the page
+# holds (as the Word report is), the DLP inventory from a read of the
+# channels in scope, and the deployment plan from the server's own copy
+# of a preflight (never from JSON the page posts).
+_PLANS: Dict[str, Dict[str, Any]] = {}
+_PLANS_MAX = 10
+_PLAN_ID_RE = re.compile(r"plan-[A-Za-z0-9_-]{8,40}")
+
+
+def _remember_plan(report: Dict[str, Any], assessor: str = "") -> str:
+    """Keep a preflight report (the public one: no credentials, no
+    internal state) for the plan exports; the last _PLANS_MAX are kept."""
+    import copy
+    import secrets
+    rid = f"plan-{secrets.token_urlsafe(12)}"
+    rep = copy.deepcopy(report)
+    rep.update(report_id=rid, assessor=assessor or "", generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    _PLANS[rid] = rep
+    while len(_PLANS) > _PLANS_MAX:
+        _PLANS.pop(next(iter(_PLANS)))
+    return rid
+
+
+def _attachment(data: bytes, media: str, filename: str) -> Response:
+    return Response(content=data, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})
+
+
+@app.post("/api/report/xlsx")
+async def generate_xlsx(request: Request):
+    """The assessment results as an Excel workbook (Summary, Findings,
+    Frameworks, Compliance mapping, Best practices), from the same body
+    as /api/report/docx. Scores are recomputed here from the checks."""
+    import report_exports
+    try:
+        data = await request.json()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
+    if not isinstance(data, dict) or not data.get("checks"):
+        raise HTTPException(status_code=400, detail="No checks in request body — cannot build the workbook.")
+    try:
+        body = await asyncio.to_thread(report_exports.assessment_workbook, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _attachment(body, report_exports.XLSX, report_exports.assessment_filename(data))
+
+
+def _run_inventory_xlsx(client, creds: Dict[str, str], channels: List[str], log, cancel) -> Dict[str, Any]:
+    """Read the dictionaries, engines and the rules of the channels in
+    scope (pack_export.read_tenant) and build the DLP inventory workbook."""
+    import pack_channels as pc
+    import pack_export
+    import report_exports
+    label = tenant_auth.record_label(tenant_auth.normalize(creds))
+    log(f"DLP inventory of {label}: dictionaries, engines and the {', '.join(pc.label(ch) for ch in channels)} rules. "
+        "Nothing is written to the tenant.")
+    snap = pack_export.read_tenant(client, channels=channels, log=log, cancel=cancel)
+    if snap.get("stopped"):
+        return {"status": "stopped", "stopped": "You clicked Stop.", "tenant_label": label}
+    if snap.get("refused"):
+        return {"status": "error", "error": f"ZIA refused the {snap['refused']['what']} for its rate limit; no workbook was made. "
+                                            "Wait a few minutes and try again.", "tenant_label": label}
+    data = report_exports.inventory_workbook(snap, tenant_label=label, channels=channels)
+    if cancel is not None and cancel.is_set():
+        return {"status": "stopped", "stopped": "You clicked Stop.", "tenant_label": label}
+    name = report_exports.inventory_filename(label)
+    log(f"Ready: {name} ({max(1, len(data) // 1024)} KB).")
+    return {"status": "ready", "filename": name, "bytes": len(data), "tenant_label": label, "channels": channels,
+            "counts": {"dictionaries": len(snap.get("dictionaries") or []), "engines": len(snap.get("engines") or []),
+                       "rules": {ch: len(rs) for ch, rs in (snap.get("rules") or {}).items()}},
+            "errors": dict(snap.get("errors") or {}), "artifact": (name, report_exports.XLSX, data)}
+
+
+@app.post("/api/dlp-packs/inventory/start")
+async def dlp_packs_inventory_start(req: ScopedTenantCredsRequest, request: Request):
+    """DLP inventory (Excel) as a background job: the tenant's DLP
+    dictionaries, engines and the rules of the DLP channels in scope, with
+    who uses what. Read-only (no write mode, no writer check). Poll GET
+    /api/dlp-packs/jobs/{job_id}; the finished job's `download` path
+    serves the workbook."""
+    import pack_jobs
+    channels = _pack_channels_in_scope(req, "The DLP inventory")
+    creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to list its DLP objects.")
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    job = pack_jobs.start("inventory", lambda log, cancel: _keyed(client, _run_inventory_xlsx, client, creds, channels, log, cancel),
+                          label=tenant_auth.record_label(creds), actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/dlp-packs/plan/{report_id}/export")
+async def dlp_packs_plan_export(report_id: str, format: str = "pdf", page: str = "a4"):
+    """A Deploy policy packs preflight as a plan for change approval: PDF
+    (A4 or Letter) or Excel, rendered from the server's copy of that
+    preflight (kept in memory for the last few preflights)."""
+    import report_exports
+    rep = _PLANS.get(report_id) if _PLAN_ID_RE.fullmatch(report_id or "") else None
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Plan not found or expired (the last few preflights are kept in memory "
+                                                    "while the server runs). Run the preflight again.")
+    fmt = (format or "").lower()
+    if fmt == "pdf":
+        size = {"a4": "A4", "letter": "LETTER"}.get((page or "").lower())
+        if size is None:
+            raise HTTPException(status_code=400, detail="page must be a4 or letter.")
+        body = await asyncio.to_thread(report_exports.plan_pdf, rep, size)
+        return _attachment(body, report_exports.PDF, report_exports.plan_filename(rep, "pdf"))
+    if fmt == "xlsx":
+        body = await asyncio.to_thread(report_exports.plan_workbook, rep)
+        return _attachment(body, report_exports.XLSX, report_exports.plan_filename(rep, "xlsx"))
+    raise HTTPException(status_code=400, detail="format must be pdf or xlsx.")
+
+
 @app.get("/api/pack-library/{pack_id}/terraform.zip")
 async def pack_library_terraform(pack_id: str, assessor: str = "", profile_id: str = ""):
     """The pack as a Terraform workspace for the official zscaler/zia
@@ -3310,6 +3427,58 @@ async def browser_extension_download():
     data = await asyncio.to_thread(browser_extension_zip)
     return Response(content=data, media_type="application/zip",
                     headers={"Content-Disposition": 'attachment; filename="dlp-check-extension.zip"'})
+
+
+class ConsoleIndexRequest(ScopedTenantCredsRequest):
+    """Body of the browser extension's console index: which tenant (a saved
+    profile, or what this server is configured with) and whether to read
+    it again instead of using the last read (kept 30 minutes)."""
+    refresh: bool = False
+
+
+@app.post("/api/console-index")
+async def console_index(req: ConsoleIndexRequest):
+    """What DLP-Check knows about each DLP dictionary, engine and rule (what
+    it uses, what uses it, the pack that created it, findings), for the
+    companion extension's badges and side panel in the Zscaler admin
+    console. Read-only; only the DLP channels in scope are read; the last
+    read per tenant is reused for 30 minutes unless `refresh`."""
+    import console_index as ci
+    channels = _pack_channels_in_scope(req, "The browser extension's console index")
+    creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Pick a saved tenant (or configure one on this server) for the extension to read.")
+    key = ci.cache_key(getattr(req, "profile_id", "") or "", channels)
+    if not req.refresh:
+        hit = ci.cache_get(key)
+        if hit is not None:
+            return hit
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    shadow, shadow_note = await asyncio.to_thread(_console_shadow, req)
+    out = await asyncio.to_thread(lambda: ci.build(client, channels, tenant_label=tenant_auth.record_label(creds), shadow=shadow))
+    if out.get("status") != "ready":
+        raise HTTPException(status_code=502, detail="; ".join(out.get("blockers") or ["Could not read the tenant."]))
+    out["shadow"] = shadow_note
+    ci.cache_put(key, out)
+    return dict(out, cached_at=None)
+
+
+def _console_shadow(req: Any):
+    """The shadowed-rule findings for the console index: ({(channel, rule):
+    findings} or None, a note). Read-only; only what its own scope rules
+    allow; a failure leaves the index without them and says why."""
+    import console_index as ci
+    import shadow_rules
+    try:
+        sc, ch, source = _scope_selection(req)
+        scope = shadow_rules.scope_for(sc, ch)
+        if not scope["read"]:
+            return None, "not in scope"
+        raw = _build_client(req)
+        res = shadow_rules.run(raw, scope)
+        return ci.shadow_by_channel(res.get("findings")), f"{len(res.get('findings') or [])} finding(s)"
+    except Exception as e:  # noqa: BLE001 - the index is still useful without them
+        return None, f"not available: {str(e)[:160]}"
 
 
 @app.get("/api/pack-library/{pack_id}/bundle")
@@ -5710,6 +5879,266 @@ async def report_live_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
+# ── Path analyzer: HAR import (batch of hosts) ────────────────────────
+# The page parses the HAR file in the browser (static/har_parse.js): the
+# file never leaves it. Only the host names and their request counts are
+# sent here (`har_hosts`, which the audit log records by size only); the
+# tenant is read once and every host is traced against that read
+# (path_analyzer.analyze_batch). Read-only; Stop ends it between hosts.
+_PATH_BATCHES: Dict[str, Dict[str, Any]] = {}
+_PATH_BATCHES_MAX = 4
+_HAR_METHOD = re.compile(r"^[A-Z]{1,12}$")
+
+
+class PathBatchRequest(ScopedTenantCredsRequest):
+    """Body of the HAR batch: the hosts (each a name, or {host, requests,
+    uploads, bytes_sent, methods, schemes} with the counts the page took
+    from the HAR file; nothing else is read from an entry), the network,
+    the platform and optionally the id of a tenant read to reuse."""
+    har_hosts: List[Any] = []
+    network: str = "off"
+    platform: str = "windows"
+    report_id: str = ""
+
+
+def _batch_hosts(req: PathBatchRequest) -> Tuple[List[str], Dict[str, Dict[str, Any]], List[str]]:
+    """(valid hosts in order, {host: counts}, names that are not a hostname
+    or IP address). 400 for none, or more than path_analyzer.BATCH_MAX."""
+    import path_analyzer
+    hosts: List[str] = []
+    stats: Dict[str, Dict[str, Any]] = {}
+    skipped: List[str] = []
+    if len(req.har_hosts) > path_analyzer.BATCH_MAX:
+        raise HTTPException(status_code=400, detail=f"At most {path_analyzer.BATCH_MAX} hosts are analyzed per run; {len(req.har_hosts)} were sent.")
+    num = lambda v: max(0, min(int(v), 10 ** 12)) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0  # noqa: E731
+    for item in req.har_hosts:
+        raw = item.get("host") if isinstance(item, dict) else item
+        name = str(raw or "").strip()[:260]
+        try:
+            d = path_analyzer.parse_destination(name)
+        except ValueError:
+            skipped.append(name[:80])
+            continue
+        if d["kind"] == "url" or d["host"] in stats:
+            if d["kind"] == "url":
+                skipped.append(name[:80])
+            continue
+        h = d["host"]
+        hosts.append(h)
+        it = item if isinstance(item, dict) else {}
+        stats[h] = {"requests": num(it.get("requests")), "uploads": num(it.get("uploads")), "bytes_sent": num(it.get("bytes_sent")),
+                    "methods": [m for m in (it.get("methods") or []) if isinstance(m, str) and _HAR_METHOD.match(m)][:12],
+                    "schemes": [s for s in (it.get("schemes") or []) if s in ("http", "https", "ws", "wss")][:4]}
+    if not hosts:
+        raise HTTPException(status_code=400, detail="No hostname or IP address to analyze: the HAR file named none the analyzer can read.")
+    return hosts, stats, skipped
+
+
+def _run_path_batch(client, req: PathBatchRequest, hosts, stats, skipped, snapshot, label: str, log, cancel, scope) -> Dict[str, Any]:
+    """The batch job: analyze_batch, the fresh read kept as a Data Flow Map
+    report for the next run (same scope only), the full analyses kept here
+    for the page's row click and the exports."""
+    import pack_jobs
+    import path_analyzer
+    if scope.get("source"):
+        log(f"In scope, from {scope['source']}: {scope['summary']}")
+    if skipped:
+        log(f"{len(skipped)} name(s) are not a hostname or IP address and were skipped.")
+    out = path_analyzer.analyze_batch(client, hosts, req.network, req.platform, scope=scope, snapshot=snapshot, log=log, cancel=cancel, stats=stats)
+    cache = out.pop("snapshot_for_cache", None)
+    rid = req.report_id if snapshot is not None else ""
+    if cache is not None:
+        rows = out["rows"]
+        summary = {"destinations": len(rows), "traces": len(rows), "bypassed": sum(r["outcome_key"] == "bypassed" for r in rows),
+                   "blind": sum(r["outcome_key"] == "blind" for r in rows), "enforced": sum(r["outcome_key"] == "enforce" for r in rows),
+                   "monitored": sum(r["outcome_key"] == "monitor" for r in rows), "high": 0}
+        first = next(iter(out["analyses"].values()), {})
+        rid = _remember_report("dataflow", {"summary": summary, "platform": req.platform,
+                                            "networks": [n for n in path_analyzer.NETWORKS if n["key"] == first.get("network", req.network)],
+                                            "platforms": path_analyzer.PLATFORMS, "destinations": [a["destination"] for a in out["analyses"].values()],
+                                            "traces": [a["trace"] for a in out["analyses"].values()], "packs": [],
+                                            "required_controls": first.get("required_controls", []), "diagnostics": cache.get("diagnostics") or [],
+                                            "client_connector": cache["client_connector"], "snapshot": cache["snapshot"], "sources": {},
+                                            "path_scope": cache.get("path_scope")}, label)
+    analyses = out.pop("analyses")
+    for a in analyses.values():
+        a["report_id"] = rid
+        a["tenant_label"] = label
+        a["logs"] = []
+    job = pack_jobs.current()
+    batch_id = job.id if job is not None else ""
+    counts: Dict[str, int] = {}
+    for r in out["rows"]:
+        counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
+    result = {"rows": out["rows"], "errors": out["errors"], "skipped": skipped, "not_analyzed": out["not_analyzed"], "stopped": out["stopped"],
+              "status": "stopped" if out["stopped"] else "done", "report_id": rid, "tenant_label": label, "network": req.network,
+              "platform": req.platform, "batch_id": batch_id, "counts": counts, "fresh_read": out["fresh_read"] and cache is not None,
+              "scope": {"summary": scope.get("summary"), "key": scope.get("key")}, "read_at": time.time()}
+    if batch_id:
+        _PATH_BATCHES[batch_id] = {"analyses": analyses, "result": result}
+        while len(_PATH_BATCHES) > _PATH_BATCHES_MAX:
+            _PATH_BATCHES.pop(next(iter(_PATH_BATCHES)))
+    return result
+
+
+@app.post("/api/path-analyzer/batch/start")
+async def path_analyzer_batch_start(req: PathBatchRequest, request: Request):
+    """Start the Path analyzer for every host of a HAR file as a job the
+    page follows (poll GET /api/dlp-packs/jobs/{job_id}). Only what is in
+    scope on the Scope page is read, once for all hosts (or the read named
+    by `report_id`, when it was made for the same scope). Stop ends it
+    between hosts: the hosts done are kept, the rest listed as not
+    analyzed. Read-only."""
+    import pack_jobs
+    import path_analyzer
+    hosts, stats, skipped = _batch_hosts(req)
+    scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
+    snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
+    if snapshot is not None and not path_analyzer.reusable(snapshot, scope, req.platform):
+        snapshot = None
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("path-batch", lambda log, cancel: _run_path_batch(client, req, hosts, stats, skipped, snapshot, label, log, cancel, scope),
+                          label=f"{len(hosts)} host(s) from a HAR file", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "hosts": len(hosts), "skipped": len(skipped)}
+
+
+def _path_batch(job_id: str) -> Dict[str, Any]:
+    b = _PATH_BATCHES.get(job_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail="That HAR analysis is no longer kept (the last few are kept while the server runs). Analyze the file again.")
+    return b
+
+
+@app.get("/api/path-analyzer/batch/{job_id}/host")
+async def path_analyzer_batch_host(job_id: str, host: str = ""):
+    """One host's full analysis from a finished HAR batch (no tenant call)."""
+    a = _path_batch(job_id)["analyses"].get(str(host or "").strip().lower())
+    if a is None:
+        raise HTTPException(status_code=404, detail="That host was not analyzed in this run.")
+    return a
+
+
+_BATCH_COLUMNS = ("host", "requests", "uploads", "bytes_sent", "methods", "outcome", "stops_at", "deciding_rule", "dlp_rules", "categories", "headline")
+
+
+@app.get("/api/path-analyzer/batch/{job_id}/export")
+async def path_analyzer_batch_export(job_id: str, format: str = "csv"):
+    """The HAR batch results as CSV (spreadsheet-safe, csv_safe) or JSON."""
+    import csv_safe
+    import io
+    res = _path_batch(job_id)["result"]
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        body = {k: res.get(k) for k in ("tenant_label", "network", "platform", "counts", "rows", "not_analyzed", "skipped", "errors", "stopped", "scope")}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=path_har_{ts}.json"})
+    buf = io.StringIO()
+    w = csv_safe.dict_writer(buf, list(_BATCH_COLUMNS))
+    w.writeheader()
+    for r in res.get("rows") or []:
+        w.writerow({k: ("; ".join(map(str, r.get(k) or [])) if isinstance(r.get(k), list) else r.get(k, "")) for k in _BATCH_COLUMNS})
+    for h in res.get("not_analyzed") or []:
+        w.writerow({"host": h, "outcome": "not analyzed (stopped)"})
+    return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=path_har_{ts}.csv"})
+
+
+# ── Audit timeline ────────────────────────────────────────────────────
+@app.get("/report/audit")
+async def report_audit_page():
+    """Audit timeline (static/report_audit.html): ZIA's admin audit log
+    merged with DLP-Check's deployments and its own audit log."""
+    page = os.path.join(STATIC_DIR, "report_audit.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class AuditTimelineRequest(ScopedTenantCredsRequest):
+    """Body of the audit timeline: the window (`days` back from now, or
+    `start` / `end` dates) and whether to read ZIA's admin audit log
+    (`include_zia`; needs Automation readiness in scope on the Scope page)."""
+    days: int = 7
+    start: str = ""
+    end: str = ""
+    include_zia: bool = True
+
+
+def _run_audit_timeline(client, win: Dict[str, Any], include_zia: bool, label: str, labels, log, cancel) -> Dict[str, Any]:
+    """Read ZIA's audit log report (when asked), DLP-Check's deployment
+    records and its audit log, and merge them (audit_timeline.build)."""
+    import audit_timeline as at
+    import data_flow
+    import deployments
+    import pack_deploy
+    zia = None
+    if include_zia:
+        try:
+            with data_flow.stop_on(client, cancel):
+                zia = at.read_zia_audit(client, win["start_ms"], win["end_ms"], log=log, cancel=cancel)
+        except at.Stopped as e:
+            log("STOPPED — you clicked Stop; nothing more was asked of ZIA. Nothing is ever written by this page.")
+            return {"stopped": str(e), "status": "stopped", "tenant_label": label}
+        if zia.get("error"):
+            log(zia["error"])
+    log("Reading DLP-Check's deployment records and its own audit log…")
+    deps = deployments.list_all()
+    entries = _audit.tail(50000)
+    out = at.build(window_=win, zia=zia, deployments=deps, audit_entries=entries, labels=labels, known_packs=pack_deploy.library_ids(),
+                   tenant_label=label, zia_requested=include_zia,
+                   zia_reason="" if include_zia else "The ZIA admin audit log was not read (you chose DLP-Check's own records only).")
+    log(f"{out['summary']['events']} event(s) in the window; {out['summary']['foreign_changes']} change(s) by someone else to objects DLP-Check created.")
+    return out
+
+
+@app.post("/api/audit-timeline/start")
+async def audit_timeline_start(req: AuditTimelineRequest, request: Request):
+    """Start the audit timeline as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}). ZIA's admin audit log is read only with
+    `include_zia` and Automation readiness in scope (its permissions list
+    /zia/auditlogEntryReport, scope_permissions.py); otherwise the request
+    is refused (400) before anything is signed in to. Reading it creates an
+    audit log report (POST /auditlogEntryReport): that changes no
+    configuration, so it is a read here and needs no write mode. Stop ends
+    the job with nothing more asked of ZIA."""
+    import audit_timeline as at
+    import pack_jobs
+    try:
+        win = at.window(req.days, req.start, req.end)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    client, label, labels = None, "", None
+    if req.include_zia:
+        _require_in_scope(req, "automation", "The ZIA admin audit log")   # user rule 1: before any sign-in
+        creds = _tenant_creds(req)
+        client = await asyncio.to_thread(_build_client, req)
+        label, labels = tenant_auth.record_label(creds), list(tenant_auth.record_labels(creds))
+    job = pack_jobs.start("audit-timeline", lambda log, cancel: _run_audit_timeline(client, win, req.include_zia, label, labels, log, cancel),
+                          label=f"audit timeline, {win['days']:g} day(s)", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "window": {k: win[k] for k in ("start", "end", "days")}}
+
+
+@app.get("/api/audit-timeline/{job_id}/export")
+async def audit_timeline_export(job_id: str, format: str = "csv"):
+    """A finished timeline as CSV (spreadsheet-safe, csv_safe) or JSON
+    (every event with its raw ZIA row, pre / post values and diff)."""
+    import audit_timeline as at
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind != "audit-timeline" or not isinstance(job.result, dict) or "events" not in job.result:
+        raise HTTPException(status_code=404, detail="That timeline is no longer kept (jobs are kept for an hour). Build it again.")
+    res = job.result
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        return Response(content=json.dumps(res, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=audit_timeline_{ts}.json"})
+    return Response(content=at.to_csv(res["events"]), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=audit_timeline_{ts}.csv"})
+
+
 # ── Flow animator ─────────────────────────────────────────────────────
 @app.get("/report/motion")
 async def report_motion_page():
@@ -5721,6 +6150,118 @@ async def report_motion_page():
         raise HTTPException(status_code=404, detail="report page missing")
     with open(page, "r", encoding="utf-8") as f:
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+# ── Shadowed rules ────────────────────────────────────────────────────
+@app.get("/report/shadow")
+async def report_shadow_page():
+    """Shadowed rules (static/report_shadow.html): rules that can never
+    match or never act, per policy type, read live from the tenant."""
+    page = os.path.join(STATIC_DIR, "report_shadow.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class ShadowRulesRequest(ScopedTenantCredsRequest):
+    """Body of the shadowed-rule analysis: tenant credentials, what is in
+    scope (the Scope page's `scopes` and `channels`, else the profile's
+    saved selection) and, optionally, the Inline Web DLP evaluation mode
+    when the operator knows it: "" reads it from DLP Advanced Settings,
+    "rule_order" or "evaluate_all" declares it (the API does not expose
+    the setting on every tenant)."""
+    web_dlp_mode: str = ""
+
+
+_SHADOW_MODES = ("", "rule_order", "evaluate_all", "evaluate_all_rules")
+
+
+def _shadow_inputs(req: ShadowRulesRequest) -> Dict[str, Any]:
+    """What the analysis may read (shadow_rules.scope_for of the Scope
+    page's selection). 400 before signing in when the mode is not one we
+    know or when nothing it reads is in scope (user rule 1)."""
+    import shadow_rules
+    if str(req.web_dlp_mode or "").strip().lower() not in _SHADOW_MODES:
+        raise HTTPException(status_code=400, detail="web_dlp_mode must be empty (read it from the tenant), 'rule_order' or 'evaluate_all'.")
+    sc, ch, source = _scope_selection(req)
+    scope = shadow_rules.scope_for(sc, ch)
+    if not scope["read"]:
+        raise HTTPException(status_code=400, detail=shadow_rules.NOTHING_IN_SCOPE)
+    scope["source"] = source
+    return scope
+
+
+def _run_shadow_rules(client, req: ShadowRulesRequest, scope: Dict[str, Any], label: str, log, cancel) -> Dict[str, Any]:
+    """Read only what `scope` puts in scope and analyse it (shadow_rules).
+    Read-only: GET requests only. Stop (`cancel`) ends the run as stopped:
+    nothing more is read and no partial result is returned."""
+    import shadow_rules
+    logs: List[str] = []
+
+    def _log(line: str) -> None:
+        logs.append(line)
+        if log:
+            log(line)
+
+    _log(f"Reading {label}. Nothing is written to the tenant. " + (f"In scope, from {scope['source']}: " if scope.get("source") else "") + scope["summary"])
+    try:
+        out = shadow_rules.run(client, scope, declared_mode=req.web_dlp_mode, log=_log, cancel=cancel)
+    except shadow_rules.Stopped as e:
+        _log("STOPPED — you clicked Stop; nothing more was read and no partial result is kept.")
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
+    if cancel is not None and cancel.is_set():
+        _log("STOPPED — you clicked Stop; the analysis was abandoned.")
+        return {"stopped": shadow_rules.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    out.update(status="done", tenant_label=label, generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), logs=logs)
+    return out
+
+
+@app.post("/api/shadow-rules/start")
+async def shadow_rules_start(req: ShadowRulesRequest, request: Request):
+    """Find the rules that can never match or never act (shadowed, after a
+    catch-all, duplicate, superseded, disabled, naming objects that no
+    longer exist), per policy type in scope, as a job the page follows.
+    Poll GET /api/dlp-packs/jobs/{job_id}; the result is {findings,
+    counts_by_policy, read_errors, not_in_scope, mode, ...}. Read-only."""
+    import pack_jobs
+    scope = _shadow_inputs(req)   # before signing in: nothing in scope reads nothing
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("shadow", lambda log, cancel: _run_shadow_rules(client, req, scope, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/shadow-rules")
+async def shadow_rules_run(req: ShadowRulesRequest):
+    """The same analysis, waited for (for scripts)."""
+    scope = _shadow_inputs(req)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(_run_shadow_rules, client, req, scope, tenant_auth.record_label(creds), None, None)
+
+
+@app.get("/api/shadow-rules/jobs/{job_id}/export")
+async def shadow_rules_export(job_id: str, format: str = "csv"):
+    """A finished analysis's findings as CSV (every cell through csv_safe)
+    or as the JSON result."""
+    import pack_jobs
+    import shadow_rules
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind != "shadow":
+        raise HTTPException(status_code=404, detail="No such analysis. Results are kept for an hour after they finish; run it again.")
+    res = job.result or {}
+    if res.get("status") != "done":
+        raise HTTPException(status_code=409, detail="This analysis has no result to export" + (" yet; it is still running." if job.status == pack_jobs.RUNNING else "."))
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        body = {k: v for k, v in res.items() if k != "logs"}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=shadowed_rules_{ts}.json"})
+    return Response(content=shadow_rules.to_csv(res), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=shadowed_rules_{ts}.csv"})
 
 
 # ── Path Analyzer ─────────────────────────────────────────────────────
