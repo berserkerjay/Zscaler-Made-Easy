@@ -1,10 +1,14 @@
 // In-console badges (runs only on the ZIA admin console, and only after the
 // admin switched the badges on in the extension's settings).
 //
-// It looks for text on the page that is exactly the name of a DLP
-// dictionary, engine or rule DLP-Check read from the tenant, and puts a
-// small badge after it: what uses it, or its most serious finding. Clicking
-// a badge opens the side panel on that object. The comparison happens here,
+// It looks for text on the page that is exactly the name of an object
+// DLP-Check read from the tenant (DLP dictionaries, engines and rules; URL
+// filtering, Cloud App Control, SSL inspection, Cloud Firewall and File
+// Type Control rules; URL categories, locations, departments, groups, rule
+// labels, network services, IP groups...) and puts a small badge after it:
+// its most serious finding ("shadowed", "unused") or what uses it ("used in
+// 4 rules"). Names that several objects share get one "N objects" badge.
+// Clicking a badge opens the side panel on that object (or that list). The comparison happens here,
 // in the page: no text of the console page is sent anywhere; the only thing
 // that leaves is the key of an object DLP-Check already knows.
 (() => {
@@ -16,7 +20,7 @@
     light: { bg: 'rgba(0, 102, 204, 0.12)', fg: '#0066cc', high: '#d70015', medium: '#c93400', ring: '#0066cc' },
     dark: { bg: 'rgba(10, 132, 255, 0.16)', fg: '#0a84ff', high: '#ff453a', medium: '#ff9f0a', ring: '#0a84ff' },
   };
-  let names = null;                 // name -> [{key, kind, label, sev}]
+  let names = null;                 // name -> [{key, kind (its label), label, sev}]
   const badged = new Map();         // element -> keys
   let timer = 0;
 
@@ -29,7 +33,9 @@
     const root = host.attachShadow({ mode: 'closed' });
     const p = dark() ? PALETTE.dark : PALETTE.light;
     const e = entries[0];
-    const sevColor = e.sev === 'high' ? p.high : e.sev === 'medium' ? p.medium : p.fg;
+    const order = { high: 3, medium: 2, low: 1, info: 0 };
+    const sev = entries.reduce((a, x) => (order[x.sev] > order[a] ? x.sev : a), 'info');
+    const sevColor = sev === 'high' ? p.high : sev === 'medium' ? p.medium : p.fg;
     const style = document.createElement('style');
     style.textContent = `button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:0 7px;min-height:18px;border-radius:999px;`
       + `font:600 11px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:${p.bg};color:${sevColor};white-space:nowrap}`
@@ -41,7 +47,7 @@
     b.setAttribute('aria-label', `DLP-Check: ${entries.map(x => `${x.kind}, ${x.label}`).join('; ')}. Open in the side panel`);
     b.addEventListener('click', ev => {
       ev.preventDefault(); ev.stopPropagation();
-      chrome.runtime.sendMessage({ type: 'focus', key: e.key }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'focus', key: e.key, keys: entries.map(x => x.key) }).catch(() => {});
     });
     root.append(style, b);
     // Inside a table cell or list item, the badge stays in that cell; after an inline element otherwise.
@@ -63,7 +69,7 @@
     let n, seen = 0;
     while ((n = walker.nextNode()) && seen++ < MAX_NODES && badged.size < MAX_BADGES) {
       const t = (n.nodeValue || '').trim();
-      if (t.length < 3 || t.length > 255) continue;
+      if (t.length < 2 || t.length > 255) continue;
       const hit = names[t];
       if (!hit) continue;
       const el = n.parentElement;

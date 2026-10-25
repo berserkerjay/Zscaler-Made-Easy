@@ -1,6 +1,6 @@
 // The service worker: right-click menus, the in-console badges (an opt-in
 // content script on the ZIA admin console) and the side panel.
-import { CONSOLE_ORIGINS, CONSOLE_SCRIPT_ID, appUrl, destinationFromText, destinationFromUrl, objectKey, pathAnalyzerUrl } from './common.js';
+import { CONSOLE_ORIGINS, CONSOLE_SCRIPT_ID, appUrl, badgeLabel, destinationFromText, destinationFromUrl, kindInfo, objectKey, pathAnalyzerUrl } from './common.js';
 
 const MENUS = [
   { id: 'dlpcheck-link', title: 'Analyze this link with DLP-Check', contexts: ['link'] },
@@ -42,33 +42,29 @@ chrome.permissions.onRemoved.addListener(syncConsoleScript);
 
 // What a badge says, by exact object name: from the index the side panel
 // read through DLP-Check (kept in session storage, gone when the browser closes).
-function badgeEntry(o) {
-  const order = { high: 3, medium: 2, low: 1, info: 0 };
-  const sev = (o.findings || []).reduce((a, f) => (order[f.severity] > order[a] ? f.severity : a), 'info');
-  const top = (o.findings || []).find(f => f.severity === sev);
-  let label;
-  if (sev === 'high' || sev === 'medium') label = top.text.split(':')[0].split('.')[0].toLowerCase();
-  else if (o.kind === 'dictionary') label = o.counts.engines ? `${o.counts.engines} engine${o.counts.engines === 1 ? '' : 's'}, ${o.counts.rules} rule${o.counts.rules === 1 ? '' : 's'}` : 'unused';
-  else if (o.kind === 'engine') label = o.counts.rules ? `${o.counts.rules} rule${o.counts.rules === 1 ? '' : 's'}` : 'unused';
-  else label = String(o.state || '').toLowerCase() === 'disabled' ? 'disabled' : `${o.counts.engines} engine${o.counts.engines === 1 ? '' : 's'}`;
-  return { key: objectKey(o), kind: o.kind, label: label.slice(0, 40), sev };
+function badgeEntry(index, o) {
+  const { label, sev } = badgeLabel(o);
+  return { key: objectKey(o), kind: kindInfo(index, o.kind).label, label, sev };
 }
 async function namesMap() {
   let index = null;
   try { index = (await chrome.storage.session.get('index')).index; } catch (e) { index = null; }
   if (!index || !Array.isArray(index.objects)) return null;
   const names = {};
-  index.objects.forEach(o => { (names[o.name] = names[o.name] || []).push(badgeEntry(o)); });
+  index.objects.forEach(o => { (names[o.name] = names[o.name] || []).push(badgeEntry(index, o)); });
   return names;
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (!msg || typeof msg.type !== 'string') return false;
   if (msg.type === 'names') { namesMap().then(names => reply({ names })); return true; }
-  if (msg.type === 'focus' && typeof msg.key === 'string' && sender.tab) {
-    // Open the panel on the clicked object (a click is the user gesture the panel needs).
+  if (msg.type === 'focus' && sender.tab) {
+    // Open the panel on the clicked object, or on the list of objects that
+    // share the name (a click is the user gesture the panel needs).
+    const keys = (Array.isArray(msg.keys) ? msg.keys : [msg.key]).filter(k => typeof k === 'string').slice(0, 20).map(k => k.slice(0, 600));
+    if (!keys.length) return false;
     chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => {});
-    chrome.storage.session.set({ focus: { key: msg.key.slice(0, 600), at: Date.now() } });
+    chrome.storage.session.set({ focus: { key: keys[0], keys, at: Date.now() } });
     return false;
   }
   if (msg.type === 'index-updated') {
