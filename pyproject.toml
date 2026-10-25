@@ -48,15 +48,15 @@ dlp-check-evaluate = "continuous_eval:main"
 
 [tool.setuptools]
 py-modules = [
-    "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "channel_scope", "compliance_mapping", "console_index", "csv_safe", "xlsx_writer", "audit_timeline",
+    "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "change_queue", "channel_scope", "compliance_mapping", "console_index", "csv_safe", "xlsx_writer", "policy_exports", "url_tools", "audit_timeline",
     "continuous_eval", "corpus_engines", "data_flow", "deployments", "detection_health", "discover_endpoints",
-    "dlp_analysis", "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance",
+    "dlp_analysis", "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance", "insights",
     "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_export", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth", "tenant_fingerprint",
     "pack_removal", "pack_terraform", "permissions", "plain_english", "proposal_apply", "proposals", "remediation",
     "pdf_writer", "report_docx", "report_exports", "rule_migrator", "saas_email_checks", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security",
     "scenario_flow", "shadow_rules", "sso", "ssl_flow", "tenant_profiles", "upstream_check", "vendor_migrate", "vertical", "zcc_evaluation", "zia_rate", "zscaler_automation_checks", "zscaler_best_practices",
-    "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check",
-    "zscaler_zdx_checks", "zscaler_zidentity_checks",
+    "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check", "zcc_fleet",
+    "zscaler_zdx_checks", "zscaler_zidentity_checks", "zpa_analysis", "zpa_reader",
 ]
 
 [tool.pytest.ini_options]

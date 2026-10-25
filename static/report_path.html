@@ -264,6 +264,18 @@
       } catch (e) { /* storage full or blocked: the animator shows its sample */ }
     }
 
+    // Recent traffic to this destination: shown only when ZIA Insights is
+    // in scope. Insights cannot filter by host, so it says so (nothing is
+    // asked and nothing is made up).
+    function recentTrafficHtml(rt) {
+      if (!rt || !rt.in_scope) return '';
+      return `<section class="pa-recent" aria-labelledby="paRecentH">
+          <h2 class="df-h" id="paRecentH">Recent traffic to this destination</h2>
+          <div class="df-hop-d pa-none"><strong>Not available.</strong> ${E(rt.reason)}</div>
+          <p class="df-hint"><a href="/report/insights" target="_blank" rel="noopener">Open Traffic insights ↗</a></p>
+        </section>`;
+    }
+
     function render(res, logs) {
       const v = res.verdict, t = res.trace, d = res.destination, lk = res.lookup || {};
       const [olab, ocls] = DF_OUTCOME[v.outcome] || [v.outcome, 'dim'];
@@ -323,6 +335,7 @@
         <div class="df-flow-wrap">${_dfSvg(t)}</div>
         <div class="df-hint">Each box is a control in the order ZIA applies it; click one for the rule or profile that decided it.</div>
         <div class="df-hops" id="paHops">${(t.hops || []).map(_dfHopDetail).join('')}</div>
+        ${recentTrafficHtml(res.recent_traffic)}
         <h2 class="df-h">Other channels for the same data</h2>
         <div class="df-chans">${chans || '<div class="df-hop-d">No channel information.</div>'}</div>
         <h2 class="df-h">Assumptions</h2>

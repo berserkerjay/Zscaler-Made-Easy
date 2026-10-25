@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion", "/report/shadow", "/report/audit"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/exports", "/report/motion", "/report/fleet", "/report/zpa", "/report/queue", "/report/insights", "/report/shadow", "/report/audit"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1205,6 +1205,9 @@ def _build_sdk_client(creds: Dict[str, str]):
     oneapi_cloud = _oneapi_cloud(cloud)
     if oneapi_cloud:
         config["cloud"] = oneapi_cloud
+    if c.get("customer_id"):
+        # ZPA services build their paths from it (/zpa/mgmtconfig/v1/admin/customers/{customerId}).
+        config["customerId"] = c["customer_id"]
     try:
         client = ZscalerClient(config)
         auth = getattr(client, "authenticate", None)
@@ -1363,6 +1366,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     out["tenant_label"] = tenant_auth.record_label(creds)
     # The server keeps its own copy: Plan (PDF) / Plan (Excel) render from it, never from the page.
     out["report_id"] = _remember_plan(out, _assessor(req))
+    _cq_remember("pack_deploy", out, req, creds)   # lets "Request approval" file exactly this plan
     return out
 
 
@@ -1607,6 +1611,430 @@ async def proposals_list(tenant: str = "", include_closed: bool = False):
             "summary": proposals.summary(tenant), "confirm_phrase": proposals.CONFIRM_PHRASE, "dismiss_days": proposals.DISMISS_DAYS}
 
 
+# ── Team change queue: change requests with four-eyes approval ────────────
+# A deploy plan, a selective removal plan or a fix recipe someone prepared
+# but did not apply, filed for another writer to approve (change_queue.py).
+# Who files, approves, rejects, withdraws or applies is always the server's
+# view of the caller (_actor), never a name sent by the page. Applying runs
+# the existing apply path (_run_apply, _run_removal, remediation.execute)
+# as a job the page follows at /api/dlp-packs/jobs/{id}.
+_CQ_PLANS: Dict[str, Dict[str, Any]] = {}     # plan_hash -> a preflight this server just produced
+_CQ_PLANS_LOCK = threading.Lock()
+_CQ_PLAN_TTL = 3600.0
+_CQ_PLAN_MAX = 64
+_CQ_WRITE_STATUSES = ("create", "modify", "restore")
+
+
+def _cq_tenant(creds: Dict[str, str]) -> Tuple[str, str]:
+    """(queue key, label) of the tenant these credentials sign in to: the
+    proposal queue's key (the vanity domain for OneAPI, an opaque
+    fingerprint for the classic API) and the label shown on screen."""
+    import proposals
+    import tenant_fingerprint
+    label = tenant_auth.record_label(creds)
+    return proposals.tenant_key(tenant_fingerprint.proposal_key(creds, label)), label
+
+
+def _cq_deploy_params(req: Any) -> Dict[str, Any]:
+    return {"pack_ids": sorted(req.pack_ids or []), "use_rank_0": bool(req.use_rank_0), "apply_tweaks": bool(req.apply_tweaks),
+            "restore_drift": bool(req.restore_drift),
+            "channel_targets": {k: sorted(v or []) for k, v in sorted((req.channel_targets or {}).items())}}
+
+
+def _cq_removal_params(req: Any) -> Dict[str, Any]:
+    rules = [{"kind": str(r.get("kind") or "policy"), "channel": str(r.get("channel") or ""), "id": str(r.get("id"))}
+             for r in (req.rules or []) if isinstance(r, dict) and r.get("id") is not None]
+    return {"rules": sorted(rules, key=lambda r: (r["kind"], r["channel"], r["id"]))}
+
+
+def _cq_remember(kind: str, report: Dict[str, Any], req: Any, creds: Dict[str, str]) -> None:
+    """Keep a preflight (deploy) or removal preview this server produced,
+    so filing it as a change request needs no second tenant read and the
+    approver sees exactly what the server planned, never what a page says
+    it planned. Never fails the preflight."""
+    try:
+        h = str(report.get("plan_hash") or "")
+        if not h:
+            return
+        tk, label = _cq_tenant(creds)
+        params = _cq_deploy_params(req) if kind == "pack_deploy" else _cq_removal_params(req)
+        now = time.time()
+        with _CQ_PLANS_LOCK:
+            for k in [k for k, v in _CQ_PLANS.items() if now - v["at"] > _CQ_PLAN_TTL]:
+                _CQ_PLANS.pop(k, None)
+            while len(_CQ_PLANS) >= _CQ_PLAN_MAX:
+                _CQ_PLANS.pop(min(_CQ_PLANS, key=lambda k: _CQ_PLANS[k]["at"]), None)
+            _CQ_PLANS[h] = {"at": now, "kind": kind, "tenant": tk, "label": label, "params": params, "report": report}
+    except Exception:  # noqa: BLE001 — a filing then re-reads the tenant instead
+        pass
+
+
+def _cq_cached(plan_hash: str, kind: str, tenant: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    with _CQ_PLANS_LOCK:
+        hit = _CQ_PLANS.get(plan_hash or "")
+        if hit and hit["kind"] == kind and hit["tenant"] == tenant and hit["params"] == params and time.time() - hit["at"] <= _CQ_PLAN_TTL:
+            return hit["report"]
+    return None
+
+
+def _cq_by(request: Request) -> str:
+    return _actor(request) or _security.current_actor() or "unknown"
+
+
+def _cq_fail(e: Exception):
+    import change_queue
+    if isinstance(e, change_queue.QueueError):
+        raise HTTPException(status_code=e.status, detail=str(e))
+    raise e
+
+
+class ChangeRequestDeploy(DLPPackDeployRequest):
+    """File a Deploy policy packs plan: the preflight's packs, options,
+    channel targets and plan_hash, plus a title and a first comment."""
+    title: str = ""
+    note: str = ""
+
+
+class ChangeRequestRemoval(PackRemovalRequest):
+    """File a selective removal plan: the picked rules and the preview's plan_hash."""
+    title: str = ""
+    note: str = ""
+
+
+class ChangeRequestRecipe(TenantCredsRequest):
+    """File a fix recipe: the check, the recipe parameters, a title and a first comment."""
+    check_id: str = ""
+    criteria: Dict[str, Any] = {}
+    title: str = ""
+    note: str = ""
+
+
+class ChangeRequestDecision(BaseModel):
+    """Approve, reject, withdraw or comment: the comment only. Who does it is the server's view of the caller."""
+    comment: str = ""
+    by: str = ""      # ignored if a page sends it: the server names the actor
+
+
+class ChangeRequestApply(TenantCredsRequest):
+    """Apply an approved request: the tenant credentials and the typed confirmation phrase."""
+    confirm: str = ""
+
+
+@app.post("/api/change-queue/deploy")
+async def change_queue_file_deploy(req: ChangeRequestDeploy, request: Request):
+    """File a policy-pack deploy plan as a pending change request. The plan
+    is the one this server's preflight produced for that plan_hash (kept
+    for an hour), else the preflight is run again and must give the same
+    plan_hash. Writes nothing to the tenant; needs no writer rights."""
+    import change_queue
+    import pack_deploy
+    if not req.pack_ids:
+        raise HTTPException(status_code=400, detail="Select at least one pack.")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="Run the preflight first: a change request carries the plan_hash of the plan it asks for.")
+    packs = _resolve_pack_ids(req.pack_ids)
+    creds = _tenant_creds(req)
+    tk, label = _cq_tenant(creds)
+    params = _cq_deploy_params(req)
+    report = _cq_cached(req.plan_hash, "pack_deploy", tk, params)
+    if report is None:
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        report = pack_deploy.public_report(await asyncio.to_thread(
+            pack_deploy.preflight, client, packs, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks, writes_enabled=writes_enabled(),
+            restore_drift=req.restore_drift, channel_targets=req.channel_targets or None))
+        if report.get("plan_hash") != req.plan_hash:
+            raise HTTPException(status_code=409, detail="The tenant changed since your preflight: run the preflight again and request approval for the new plan.")
+    if report.get("status") == "blocked":
+        raise HTTPException(status_code=409, detail="This plan is blocked: " + " ".join(report.get("blockers") or []) + " Resolve the blockers before requesting approval.")
+    all_items = report.get("items") or []
+    items = [{"kind": i.get("kind"), "name": i.get("name"), "status": i.get("status"),
+              "channel": (i.get("detail") or {}).get("channel") if i.get("kind") == "policy" else None,
+              "note": str(i.get("reason") or "")[:200]} for i in all_items if i.get("status") in _CQ_WRITE_STATUSES]
+    if not items:
+        raise HTTPException(status_code=409, detail="Nothing to write: every object of this plan already exists or is skipped, so there is nothing to approve.")
+    summary: Dict[str, int] = {}
+    for i in all_items:
+        summary[str(i.get("status"))] = summary.get(str(i.get("status")), 0) + 1
+    try:
+        rec = change_queue.file_request(
+            kind="pack_deploy", tenant=tk, tenant_label=label,
+            title=req.title or f"Deploy {', '.join(params['pack_ids'])}: {len(items)} change(s)", summary=summary, items=items,
+            plan_hash=req.plan_hash, requested_by=_cq_by(request), note=req.note, payload=dict(params, verify=bool(req.verify)))
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+    return {"request": rec}
+
+
+@app.post("/api/change-queue/removal")
+async def change_queue_file_removal(req: ChangeRequestRemoval, request: Request):
+    """File a selective removal plan (rules picked in Deploy policy packs and
+    the engines and dictionaries only they use) as a pending change request,
+    bound to the removal preview's plan_hash. Writes nothing."""
+    import change_queue
+    import pack_removal
+    if not req.rules:
+        raise HTTPException(status_code=400, detail="Pick the rules to remove first.")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="Preview the removal first: a change request carries the plan_hash of the plan it asks for.")
+    creds = _tenant_creds(req)
+    tk, label = _cq_tenant(creds)
+    params = _cq_removal_params(req)
+    report = _cq_cached(req.plan_hash, "pack_removal", tk, params)
+    if report is None:
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        report = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
+        if report.get("plan_hash") != req.plan_hash:
+            raise HTTPException(status_code=409, detail="The tenant changed since your preview: preview the removal again and request approval for the new plan.")
+    all_items = report.get("items") or []
+    items = [{"kind": i.get("kind"), "name": i.get("name"), "status": i.get("status"), "channel": i.get("channel"),
+              "note": str(i.get("keep") or "")[:200]} for i in all_items if i.get("status") in ("remove", "keep")]
+    if not any(i["status"] == "remove" for i in items):
+        raise HTTPException(status_code=409, detail="Nothing to remove in this plan, so there is nothing to approve.")
+    summary: Dict[str, int] = {}
+    for i in items:
+        summary[i["status"]] = summary.get(i["status"], 0) + 1
+    try:
+        rec = change_queue.file_request(
+            kind="pack_removal", tenant=tk, tenant_label=label,
+            title=req.title or f"Remove {summary.get('remove', 0)} object(s) from {label}", summary=summary, items=items,
+            plan_hash=req.plan_hash, requested_by=_cq_by(request), note=req.note, payload=params)
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+    return {"request": rec}
+
+
+@app.post("/api/change-queue/recipe")
+async def change_queue_file_recipe(req: ChangeRequestRecipe, request: Request):
+    """File a fix recipe (check id + recipe + parameters) as a pending change
+    request. The planned call is built here (remediation.plan, no tenant
+    read); its hash is the request's plan_hash."""
+    import change_queue
+    import remediation
+    creds = _validate_creds(_tenant_creds(req))
+    tk, label = _cq_tenant(creds)
+    criteria = {str(k)[:64]: v for k, v in (req.criteria or {}).items()}
+    plan = remediation.plan(req.check_id, criteria)
+    if not plan.get("ok"):
+        raise HTTPException(status_code=400, detail="The recipe's parameters are not valid: " + " ".join(plan.get("errors") or []))
+    recipe = remediation.get_recipe(req.check_id) or {}
+    try:
+        rec = change_queue.file_request(
+            kind="fix_recipe", tenant=tk, tenant_label=label,
+            title=req.title or f"{plan.get('recipe_label')} (check {req.check_id})",
+            summary={"api_call": 1, "write": 1 if plan.get("destructive") else 0},
+            items=[{"method": plan.get("method"), "endpoint": plan.get("endpoint"), "body": plan.get("body"), "status": "send",
+                    "kind": "call", "name": plan.get("recipe_label")}],
+            plan_hash=change_queue.recipe_plan_hash(req.check_id, plan), requested_by=_cq_by(request), note=req.note,
+            payload={"check_id": req.check_id, "recipe": recipe.get("check_id"), "criteria": criteria})
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+    return {"request": rec}
+
+
+@app.get("/api/change-queue")
+async def change_queue_list(request: Request, tenant: str = "", status: str = ""):
+    """The queue (newest first), with who is looking and what they may do:
+    the four-eyes setting, whether SSO is on, whether the viewer is a writer
+    and whether write mode is on."""
+    import change_queue
+    statuses = [s for s in (status or "").split(",") if s in change_queue.STATUSES] or None
+    items = change_queue.list_requests(tenant, statuses)
+    return {"items": items, "counts": change_queue.counts(tenant), "settings": change_queue.settings(),
+            "viewer": {"actor": _cq_by(request), "may_write": _security.may_write(), "sso": _sso.sso_enabled()},
+            "writes_enabled": writes_enabled(), "statuses": list(change_queue.STATUSES)}
+
+
+@app.get("/api/change-queue/export")
+async def change_queue_export(tenant: str = "", format: str = "markdown"):
+    """Download the queue as JSON or Markdown (change_queue.rows is the
+    shared row shape for the Excel and PDF exports)."""
+    import change_queue
+    items = change_queue.list_requests(tenant)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if format == "json":
+        return JSONResponse({"exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tenant": tenant or None,
+                             "items": items, "rows": change_queue.rows(items)},
+                            headers={"Content-Disposition": f'attachment; filename="change_queue_{stamp}.json"'})
+    return PlainTextResponse(change_queue.to_markdown(items), media_type="text/markdown",
+                             headers={"Content-Disposition": f'attachment; filename="change_queue_{stamp}.md"'})
+
+
+@app.get("/api/change-queue/{rid}")
+async def change_queue_get(rid: str):
+    import change_queue
+    rec = change_queue.get(rid)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Change request not found.")
+    return {"request": rec}
+
+
+@app.post("/api/change-queue/{rid}/approve")
+async def change_queue_approve(rid: str, req: ChangeRequestDecision, request: Request):
+    """Approve a pending request: writers only, and (four-eyes) not the requester."""
+    _security.require_writer()
+    import change_queue
+    try:
+        return {"request": change_queue.decide(rid, "approve", by=_cq_by(request), comment=req.comment)}
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+
+@app.post("/api/change-queue/{rid}/reject")
+async def change_queue_reject(rid: str, req: ChangeRequestDecision, request: Request):
+    """Reject a pending request with a comment: writers only."""
+    _security.require_writer()
+    import change_queue
+    try:
+        return {"request": change_queue.decide(rid, "reject", by=_cq_by(request), comment=req.comment)}
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+
+@app.post("/api/change-queue/{rid}/withdraw")
+async def change_queue_withdraw(rid: str, req: ChangeRequestDecision, request: Request):
+    """The requester withdraws a pending or approved request."""
+    import change_queue
+    try:
+        return {"request": change_queue.withdraw(rid, by=_cq_by(request), comment=req.comment)}
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+
+@app.post("/api/change-queue/{rid}/comment")
+async def change_queue_comment(rid: str, req: ChangeRequestDecision, request: Request):
+    """Add a comment to a request (anyone who can open the queue)."""
+    import change_queue
+    try:
+        return {"request": change_queue.comment(rid, by=_cq_by(request), text=req.comment)}
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+
+def _cq_outcome(kind: str, result: Dict[str, Any]) -> Tuple[str, str]:
+    """(queue status, note) for what the apply path returned."""
+    import change_queue
+    st = str(result.get("status") or "")
+    if st in ("plan_changed", "stale"):
+        return "stale", change_queue.STALE_MESSAGE
+    ok = {"pack_deploy": ("applied",), "pack_removal": ("removed", "nothing"), "fix_recipe": ("completed",)}.get(kind, ())
+    if st in ok:
+        return "applied", ""
+    why = result.get("message") or result.get("error") or result.get("reason") or "; ".join(result.get("blockers") or []) or st
+    return "failed", str(why)[:300]
+
+
+def _cq_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """What the request keeps of an apply's result: the outcome and its counts, no logs or tenant objects."""
+    keep = ("status", "summary", "message", "deployment_id", "http_status", "error", "reason", "blockers", "expected_hash", "current_hash",
+            "activation_required", "complete")
+    return {k: result[k] for k in keep if k in result and result[k] not in (None, "", [], {})}
+
+
+def _cq_recipe_run(client, rec: Dict[str, Any], log) -> Dict[str, Any]:
+    """A fix recipe through remediation.execute, after re-planning it: a
+    different plan (the recipe changed since it was requested) is stale."""
+    import change_queue
+    import remediation
+    p = rec.get("payload") or {}
+    log("Re-planning the recipe and checking it against the approved plan…")
+    plan = remediation.plan(p.get("check_id"), p.get("criteria") or {})
+    if not plan.get("ok") or change_queue.recipe_plan_hash(p.get("check_id"), plan) != rec.get("plan_hash"):
+        log("The planned call differs from the approved one: nothing was sent.")
+        return {"status": "stale", "message": change_queue.STALE_MESSAGE}
+    log(f"Sending {plan.get('method')} {plan.get('endpoint')}…")
+    out = remediation.execute(client, p.get("check_id"), p.get("criteria") or {}, dry_run=False)
+    log(f"Result: {out.get('status')}" + (f" (HTTP {out.get('http_status')})" if out.get("http_status") else ""))
+    return out
+
+
+@app.post("/api/change-queue/{rid}/apply")
+async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request):
+    """Apply an approved request through the existing apply path, as a job
+    (poll GET /api/dlp-packs/jobs/{job_id}). Writers only, write mode on,
+    the typed confirmation phrase, and the credentials of the tenant the
+    request was filed for. The apply re-runs the preflight first and stops,
+    marking the request stale, when its plan_hash no longer matches."""
+    _security.require_writer()
+    import change_queue
+    import pack_jobs
+    rec = change_queue.get(rid)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Change request not found.")
+    if rec.get("status") != "approved":
+        raise HTTPException(status_code=409, detail=f"Only an approved request can be applied; this one is {rec.get('status')}.")
+    if (req.confirm or "").strip().upper() != change_queue.CONFIRM_PHRASE:
+        raise HTTPException(status_code=400, detail=f'Type "{change_queue.CONFIRM_PHRASE}" to confirm the apply.')
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    creds = _tenant_creds(req)
+    tk, label = _cq_tenant(creds)
+    if tk != rec.get("tenant"):
+        raise HTTPException(status_code=409, detail=f"This request was filed for {rec.get('tenant_label') or rec.get('tenant')}, but the credentials are for {label}. Switch tenant first.")
+    by = _cq_by(request)
+    kind = rec.get("kind")
+    p = rec.get("payload") or {}
+    if kind == "pack_deploy":
+        _require_assessor(req)
+        dreq = DLPPackDeployRequest(**{k: getattr(req, k) for k in TenantCredsRequest.model_fields},
+                                    pack_ids=list(p.get("pack_ids") or []), use_rank_0=bool(p.get("use_rank_0")),
+                                    apply_tweaks=bool(p.get("apply_tweaks", True)), restore_drift=bool(p.get("restore_drift")),
+                                    verify=bool(p.get("verify", True)), channel_targets=p.get("channel_targets") or {},
+                                    plan_hash=rec["plan_hash"], confirm=True)
+        packs = _resolve_pack_ids(dreq.pack_ids)
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        job_kind, run = "deploy", (lambda log, cancel: _keyed(client, _run_apply, client, creds, dreq, packs, log, cancel))
+    elif kind == "pack_removal":
+        rreq = PackRemovalRequest(**{k: getattr(req, k) for k in TenantCredsRequest.model_fields},
+                                  rules=list(p.get("rules") or []), plan_hash=rec["plan_hash"], confirm=True)
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        job_kind, run = "removal", (lambda log, cancel: _keyed(client, _run_removal, client, rreq, None, [], log, cancel))
+    elif kind == "fix_recipe":
+        client = await asyncio.to_thread(_build_client, req)
+        job_kind, run = "remediation", (lambda log, cancel: _cq_recipe_run(client, rec, log))
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown change request kind: {kind}")
+
+    def _job_running(jid: str) -> bool:
+        j = pack_jobs.get(jid)
+        return j is not None and j.status == "running"
+
+    try:
+        change_queue.begin_apply(rid, by=by, job_running=_job_running)
+    except Exception as e:  # noqa: BLE001
+        _cq_fail(e)
+
+    def fn(log, cancel):
+        log(f"Change request {rid}: {rec.get('title')} (requested by {rec.get('requested_by')}, approved by {rec.get('decided_by')}).")
+        try:
+            result = run(log, cancel)
+        except Exception as e:  # noqa: BLE001 — recorded, then reported by the job
+            change_queue.finish_apply(rid, by=by, status="failed", result={"status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"})
+            raise
+        status, note = _cq_outcome(kind, result)
+        if status == "stale":
+            log(change_queue.STALE_MESSAGE)
+        result["change_request"] = change_queue.finish_apply(rid, by=by, status=status, result=_cq_result(result), note=note)
+        return result
+
+    try:
+        job = pack_jobs.start(job_kind, fn, label=f"change request {rid}", actor=by, start_token=_start_token(request))
+    except Exception as e:  # noqa: BLE001
+        change_queue.release(rid, by=by, reason=str(e))
+        raise
+    change_queue.set_job(rid, job.id)
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "request_id": rid}
+
+
+@app.get("/report/queue")
+async def report_queue_page():
+    """Standalone tab for the change queue (static/report_queue.html)."""
+    page = os.path.join(STATIC_DIR, "report_queue.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
 @app.get("/api/proposals/export")
 async def proposals_export(tenant: str = "", format: str = "markdown"):
     """Download the proposal queue of one tenant as Markdown or JSON."""
@@ -1786,6 +2214,212 @@ async def saas_apps():
     import saas_matrix
     m = saas_matrix.load()
     return {k: m.get(k) for k in ("source", "updated_at", "refreshed_from_pages", "types", "applications", "path", "new_since_seed")}
+
+
+# ── ZPA analysis and ZPA diagnostics (read-only) ─────────────────────
+# zpa_reader reads the ZPA configuration once (paced, Stop-able); the
+# templates and the diagnostics in zpa_analysis are pure functions over
+# that read, kept as a "zpa-" report so a second diagnosis needs no read.
+ZPA_NEEDS_ONEAPI = ("ZPA analysis needs a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+                    "Sign in with an API client that has a ZPA role, then run it again. Nothing was read.")
+ZPA_NEEDS_CUSTOMER_ID = ("ZPA analysis needs the ZPA customer ID (Connect to the tenant → Customer ID, or the saved profile): "
+                         "every ZPA API path carries it. Nothing was read.")
+
+
+class ZpaAnalysisRequest(MigrateRequest):
+    """Body of the ZPA analysis: tenant credentials (with the ZPA customer
+    id) and the Scope page selection; refused (400) before sign-in unless
+    ZPA is ticked (user rule 1)."""
+
+
+class ZpaDiagnoseRequest(MigrateRequest):
+    """Body of a ZPA diagnosis: the user context (any field left out means
+    "any"), the destination and port, and the id of the read to reuse
+    (`report_id`, from the analysis). Without a usable report id the
+    tenant is read first, as a job."""
+    report_id: str = ""
+    destination: str = ""
+    port: str = ""
+    protocol: str = "tcp"
+    user: Dict[str, Any] = {}
+
+
+@app.get("/report/zpa")
+async def report_zpa_page():
+    """ZPA analysis (static/report_zpa.html): the templates' findings and the diagnostics."""
+    page = os.path.join(STATIC_DIR, "report_zpa.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _zpa_scope(req: Any, what: str) -> Dict[str, Any]:
+    """ZPA ticked on the Scope page, else 400 before anything is signed in to or read."""
+    return _require_in_scope(req, "zpa", what)
+
+
+async def _zpa_client(req: Any):
+    """(client, tenant label) for a ZPA read: OneAPI with a customer id,
+    both refused (400) before sign-in."""
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=ZPA_NEEDS_ONEAPI)
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail=ZPA_NEEDS_CUSTOMER_ID)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    return client, tenant_auth.record_label(creds), creds
+
+
+def _zpa_report(rid: str) -> Optional[Dict[str, Any]]:
+    rep = _REPORTS.get(rid or "")
+    return rep if rep and str(rid).startswith("zpa-") else None
+
+
+def _zpa_public(rep: Dict[str, Any]) -> Dict[str, Any]:
+    """A stored ZPA report as the page gets it: everything but the raw read."""
+    return {k: v for k, v in rep.items() if k != "snapshot"}
+
+
+def _run_zpa_read(client, label: str, creds: Dict[str, Any], log, cancel, scope: Dict[str, Any]) -> Dict[str, Any]:
+    """Read ZPA once and run every template. Stop ends the run as stopped:
+    nothing more is read, nothing is kept and no partial result is returned."""
+    import zpa_analysis
+    import zpa_reader
+    logs: list = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    if scope.get("source"):
+        _log(f"In scope, from {scope['source']}: ZPA.")
+    try:
+        snap = zpa_reader.read(client, log=_log, cancel=cancel)
+    except zpa_reader.Stopped as e:
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "logs": logs}
+    except zpa_reader.ReadError as e:
+        raise RuntimeError(tenant_auth.mask_secrets(str(e), creds))
+    if cancel is not None and cancel.is_set():
+        _log("STOPPED — you clicked Stop; the ZPA read was abandoned and is not kept.")
+        return {"stopped": zpa_reader.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    for v in (snap.get("collections") or {}).values():
+        if v.get("error"):
+            v["error"] = tenant_auth.mask_secrets(v["error"], creds)
+    analysis = zpa_analysis.analyze(snap)
+    readable = zpa_reader.readable(snap)
+    report = {"kind": "zpa", "snapshot": snap, "summary": zpa_reader.summary(snap), "collections": snap.get("collections") or {},
+              "readable": readable, "choices": zpa_analysis.choices(snap), "read_at": snap.get("read_at"),
+              "findings": analysis["findings"], "catalog": analysis["catalog"], "counts": analysis["counts"],
+              "not_assessed": analysis["not_assessed"], "assumptions": zpa_analysis.ASSUMPTIONS}
+    rid = _remember_report("zpa", report, label)
+    _log(f"Analysis done: {analysis['counts']['total']} finding(s) from {analysis['counts']['assessed']} of "
+         f"{analysis['counts']['templates']} templates.")
+    out = _zpa_public(_REPORTS[rid])
+    out["logs"] = logs
+    return out
+
+
+@app.post("/api/zpa/analysis/start")
+async def zpa_analysis_start(req: ZpaAnalysisRequest, request: Request):
+    """Read the ZPA configuration (only when ZPA is ticked on the Scope page)
+    and run every ZPA template, as a job the page follows: findings,
+    catalog and counts, kept as report `zpa-…` for diagnoses and exports.
+    Read-only. Poll GET /api/dlp-packs/jobs/{job_id}; Stop ends it with
+    nothing more read."""
+    import pack_jobs
+    scope = _zpa_scope(req, "ZPA analysis")          # before signing in (user rule 1)
+    client, label, creds = await _zpa_client(req)
+    job = pack_jobs.start("zpa", lambda log, cancel: _run_zpa_read(client, label, creds, log, cancel, scope), label="ZPA analysis",
+                          actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _zpa_diagnosis(rep: Dict[str, Any], req: ZpaDiagnoseRequest) -> Dict[str, Any]:
+    import zpa_analysis
+    try:
+        out = zpa_analysis.diagnose(rep["snapshot"], req.user or {}, req.destination, req.port, req.protocol)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    out["report_id"] = rep.get("report_id")
+    out["tenant_label"] = rep.get("tenant_label")
+    out["read_at"] = rep.get("read_at")
+    return out
+
+
+@app.post("/api/zpa/diagnose")
+async def zpa_diagnose(req: ZpaDiagnoseRequest, request: Request):
+    """Which app segment, server and connector groups and access rule decide
+    for one user context and destination. With the `report_id` of an
+    earlier ZPA read the answer comes at once ({status: done, result}), no
+    tenant call; otherwise ZPA is read first as a job ({job_id}) whose
+    result carries the analysis and the diagnosis. ZPA must be ticked on
+    the Scope page either way (400 otherwise)."""
+    import pack_jobs
+    import zpa_analysis
+    scope = _zpa_scope(req, "ZPA diagnostics")
+    try:
+        zpa_analysis.parse_destination(req.destination, req.port, req.protocol)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    rep = _zpa_report(req.report_id)
+    if rep is not None:
+        return {"status": "done", "result": await asyncio.to_thread(_zpa_diagnosis, rep, req)}
+    client, label, creds = await _zpa_client(req)
+
+    def run(log, cancel):
+        out = _run_zpa_read(client, label, creds, log, cancel, scope)
+        if out.get("stopped"):
+            return out
+        stored = _zpa_report(out.get("report_id"))
+        if stored is None:
+            return out
+        try:
+            out["diagnosis"] = _zpa_diagnosis(stored, req)
+        except HTTPException as e:
+            out["diagnosis_error"] = str(e.detail)
+        return out
+    job = pack_jobs.start("zpa", run, label=f"ZPA diagnosis {req.destination[:60]}", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/zpa/report/{report_id}")
+async def zpa_report_get(report_id: str):
+    rep = _zpa_report(report_id)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Run the ZPA analysis again.")
+    return _zpa_public(rep)
+
+
+@app.get("/api/zpa/report/{report_id}/export")
+async def zpa_report_export(report_id: str, format: str = "csv", severity: str = ""):
+    """The findings as CSV (every cell through csv_safe) or the findings,
+    catalog and counts as JSON; `severity` (comma-separated) filters."""
+    import io
+    import csv_safe
+    rep = _zpa_report(report_id)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    sev = {s.strip().lower() for s in (severity or "").split(",") if s.strip()}
+    findings = [f for f in rep.get("findings") or [] if not sev or f.get("severity") in sev]
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "csv").lower()
+    if fmt == "json":
+        body = {"tenant_label": rep.get("tenant_label"), "generated_at": rep.get("generated_at"), "counts": rep.get("counts"),
+                "severity_filter": sorted(sev), "findings": findings, "catalog": rep.get("catalog"), "assumptions": rep.get("assumptions")}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zpa_analysis_{ts}.json"})
+    if fmt != "csv":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    w.writerow(["severity", "template", "title", "object_type", "object", "reason", "fix"])
+    for f in findings:
+        w.writerow([f.get("severity"), f.get("template"), f.get("title"), f.get("object_type"), f.get("object"), f.get("reason"), f.get("fix")])
+    return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=zpa_analysis_{ts}.csv"})
 
 
 @app.get("/report/digest")
@@ -2005,6 +2639,7 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal_deployment(client, rec))
     elif req.rules:
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
+        _cq_remember("pack_removal", out, req, creds)   # lets "Request approval" file exactly this plan
     else:
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
     out["writes_enabled"] = writes_enabled()
@@ -3364,6 +3999,182 @@ async def dlp_packs_plan_export(report_id: str, format: str = "pdf", page: str =
     raise HTTPException(status_code=400, detail="format must be pdf or xlsx.")
 
 
+# ── Policy exports, the URLs export and the custom URL category analyzer ──
+# (policy_exports, url_tools). Read-only: GET requests, plus the URL
+# lookup's POST, which changes nothing in the tenant (the analyzer only).
+# Each refuses (400) before signing in when nothing it reads is in scope.
+@app.get("/report/exports")
+async def report_exports_page():
+    """Policy exports (static/report_exports.html): every export the app
+    has in one place, with the policy, URLs and category analyzer jobs."""
+    page = os.path.join(STATIC_DIR, "report_exports.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class PolicyExportRequest(ScopedTenantCredsRequest):
+    """Body of the policy exports: tenant credentials, what is in scope,
+    the policies (policy_exports.POLICIES keys; empty: every one in scope)
+    and the format (xlsx, or pdf for the review copy; `page` a4 or letter)."""
+    policies: List[str] = []
+    format: str = "xlsx"
+    page: str = "a4"
+
+
+def _stopped_result(label: str, reason: str, log) -> Dict[str, Any]:
+    if log:
+        log("STOPPED — you clicked Stop; nothing more was read and no file was made.")
+    return {"status": "stopped", "stopped": reason, "tenant_label": label}
+
+
+def _run_policy_exports(client, scope: Dict[str, Any], policies: List[str], fmt: str, page: str, label: str, log, cancel) -> Dict[str, Any]:
+    import policy_exports as pe
+    log(f"Exporting from {label}: {', '.join(pe.POLICIES[k]['label'] for k in policies)} as {fmt.upper()}. Nothing is written to the tenant. {scope['summary']}")
+    try:
+        out = pe.run(client, scope, policies, fmt, tenant_label=label, log=log, cancel=cancel, page_size=page)
+    except pe.Stopped as e:
+        return _stopped_result(label, str(e), log)
+    if cancel is not None and cancel.is_set():
+        return _stopped_result(label, pe.STOPPED_REASON, log)
+    out["tenant_label"] = label
+    out["not_in_scope"] = scope.get("asked_not_in_scope") or {}
+    return out
+
+
+@app.post("/api/exports/policies/start")
+async def exports_policies_start(req: PolicyExportRequest, request: Request):
+    """One workbook (or PDF review copy) per policy: URL filtering, Cloud
+    App Control, SSL inspection, Cloud Firewall, File Type Control, every
+    rule in order with names, the shadowed-rule findings per rule.
+    Read-only. Poll GET /api/dlp-packs/jobs/{job_id}; the finished job's
+    `download` serves the file (a zip when several policies)."""
+    import pack_jobs
+    import policy_exports as pe
+    fmt = (req.format or "").strip().lower()
+    if fmt not in pe.FORMATS:
+        raise HTTPException(status_code=400, detail="format must be xlsx or pdf.")
+    page = {"a4": "A4", "letter": "LETTER"}.get((req.page or "a4").strip().lower())
+    if page is None:
+        raise HTTPException(status_code=400, detail="page must be a4 or letter.")
+    sc, ch, source = _scope_selection(req)
+    scope = pe.scope_for(sc, ch)
+    if not scope["read"]:
+        raise HTTPException(status_code=400, detail=pe.NOTHING_IN_SCOPE)
+    try:
+        policies, why = pe.pick(scope, req.policies)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not policies:
+        raise HTTPException(status_code=400, detail="None of the policies picked is in scope on the Scope page: "
+                                                    + " ".join(f"{pe.POLICIES[k]['label']}: {v}" for k, v in why.items()) + " Nothing was read.")
+    scope["asked_not_in_scope"] = why
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("policy_export", lambda log, cancel: _run_policy_exports(client, scope, policies, fmt, page, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "policies": policies, "not_in_scope": why}
+
+
+def _run_urls_export(client, sources: Dict[str, Any], label: str, log, cancel) -> Dict[str, Any]:
+    import url_tools as ut
+    log(f"Collecting every URL the policy of {label} names. Nothing is written to the tenant. {sources['summary']}")
+    try:
+        out = ut.urls_export(client, sources, tenant_label=label, log=log, cancel=cancel)
+    except ut.Stopped as e:
+        return _stopped_result(label, str(e), log)
+    if cancel is not None and cancel.is_set():
+        return _stopped_result(label, ut.STOPPED_REASON, log)
+    out["tenant_label"] = label
+    return out
+
+
+@app.post("/api/exports/urls/start")
+async def exports_urls_start(req: ScopedTenantCredsRequest, request: Request):
+    """The URLs export: every URL, domain, IP and keyword the policy in
+    scope names (custom URL categories, URL filtering and SSL inspection
+    rules through them, Cloud Firewall destinations, Advanced settings
+    bypass lists, Client Connector bypasses, PAC DIRECT hosts) in one
+    deduplicated workbook. Read-only (GET only). Poll the job; download
+    the workbook from its `download`."""
+    import pack_jobs
+    import url_tools as ut
+    sc, ch, source = _scope_selection(req)
+    sources = ut.sources_for(sc, ch)
+    if not sources["read"]:
+        raise HTTPException(status_code=400, detail=ut.NOTHING_IN_SCOPE_URLS)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("urls_export", lambda log, cancel: _run_urls_export(client, sources, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "sources": sources["read"], "not_in_scope": sources["not_in_scope"]}
+
+
+class CategoryAnalyzerRequest(ScopedTenantCredsRequest):
+    """Body of the custom URL category analyzer: the categories to analyse
+    (ids or names; empty: every custom one) and at most how many URLs to
+    look up (capped at url_tools.MAX_LOOKUP_URLS)."""
+    categories: List[str] = []
+    max_urls: int = 0
+
+
+def _run_category_analyzer(client, req: CategoryAnalyzerRequest, label: str, log, cancel) -> Dict[str, Any]:
+    import url_tools as ut
+    from policy_exports import safe_part
+    log(f"Analysing the custom URL categories of {label}. {ut.LOOKUP_NOTE}")
+    try:
+        res = ut.analyze_categories(client, picked=req.categories, max_urls=req.max_urls or ut.MAX_LOOKUP_URLS, log=log, cancel=cancel)
+    except ut.Stopped as e:
+        return _stopped_result(label, str(e), log)
+    if cancel is not None and cancel.is_set():
+        return _stopped_result(label, ut.STOPPED_REASON, log)
+    res["tenant_label"] = label
+    if res.get("status") != "ready":
+        return res
+    data = ut.analyzer_workbook(res, tenant_label=label)
+    name = f"url_category_analysis_{safe_part(label)}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+    res.update(filename=name, artifact=(name, ut.XLSX, data))
+    res["rows"] = res["rows"][:500]   # the page shows the first 500; the workbook has them all
+    return res
+
+
+@app.post("/api/exports/url-categories/analyze/start")
+async def exports_category_analyzer_start(req: CategoryAnalyzerRequest, request: Request):
+    """For every custom URL category (or the ones picked), the categories
+    Zscaler itself assigns to each of its URLs (POST /urlLookup, 100 URLs
+    per request, paced, retried on 429, capped), with a verdict per URL:
+    redundant, categorised differently, not categorised. The lookup is a
+    POST that changes nothing; everything else is GET. Poll the job;
+    download the workbook from its `download`."""
+    import pack_jobs
+    import url_tools as ut
+    sc, ch, source = _scope_selection(req)
+    if not ut.analyzer_in_scope(sc, ch)["in_scope"]:
+        raise HTTPException(status_code=400, detail=ut.NOTHING_IN_SCOPE_CATS)
+    if req.max_urls < 0:
+        raise HTTPException(status_code=400, detail="max_urls must be 0 (the default cap) or more.")
+    if len(req.categories) > 500:
+        raise HTTPException(status_code=400, detail="Pick at most 500 categories.")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("category_analyzer", lambda log, cancel: _run_category_analyzer(client, req, label, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/exports/plans")
+async def exports_plans():
+    """The deployment plans kept in memory (the last few preflights), for
+    the Policy exports page's plan PDF / Excel buttons. No tenant read."""
+    return {"plans": [{"report_id": rid, "tenant_label": p.get("tenant_label") or "", "generated_at": p.get("generated_at") or "",
+                       "packs": [str(x.get("name") or x.get("id")) for x in p.get("packs") or [] if isinstance(x, dict)],
+                       "status": p.get("status") or ""} for rid, p in reversed(list(_PLANS.items()))]}
+
+
 @app.get("/api/pack-library/{pack_id}/terraform.zip")
 async def pack_library_terraform(pack_id: str, assessor: str = "", profile_id: str = ""):
     """The pack as a Terraform workspace for the official zscaler/zia
@@ -3438,45 +4249,69 @@ class ConsoleIndexRequest(ScopedTenantCredsRequest):
 
 @app.post("/api/console-index")
 async def console_index(req: ConsoleIndexRequest):
-    """What DLP-Check knows about each DLP dictionary, engine and rule (what
-    it uses, what uses it, the pack that created it, findings), for the
-    companion extension's badges and side panel in the Zscaler admin
-    console. Read-only; only the DLP channels in scope are read; the last
-    read per tenant is reused for 30 minutes unless `refresh`."""
+    """What DLP-Check knows about each object of the ZIA admin console, for
+    the companion extension's badges and side panel: DLP dictionaries,
+    engines and rules (what they use, what uses them, the pack that created
+    them, findings), and, where in scope, the URL filtering, Cloud App
+    Control, SSL inspection, Cloud Firewall and File Type Control rules
+    with shadowed-rule findings, the URL categories and the objects those
+    rules reference (locations, departments, groups, labels, network
+    services, IP groups) with how many rules use each. Read-only; only what
+    the Scope page puts in scope is read; the last read per tenant and
+    scope is reused for 30 minutes unless `refresh`."""
     import console_index as ci
-    channels = _pack_channels_in_scope(req, "The browser extension's console index")
+    zscope = _console_zia_scope(req)
+    try:
+        channels = _pack_channels_in_scope(req, "The browser extension's console index")
+    except HTTPException as e:
+        # No DLP channel in scope: the ZIA policies alone still make an index.
+        if e.status_code != 400 or not (zscope["scope"]["read"] or zscope["ftc"]):
+            raise
+        channels = []
     creds = _tenant_creds(req)
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Pick a saved tenant (or configure one on this server) for the extension to read.")
-    key = ci.cache_key(getattr(req, "profile_id", "") or "", channels)
+    key = ci.cache_key(getattr(req, "profile_id", "") or "", list(channels) + [f"zia:{k}" for k in zscope["scope"]["read"]]
+                       + (["zia:ftc"] if zscope["ftc"] else []))
     if not req.refresh:
         hit = ci.cache_get(key)
         if hit is not None:
             return hit
-    client = await asyncio.to_thread(_build_sdk_client, creds)
-    shadow, shadow_note = await asyncio.to_thread(_console_shadow, req)
-    out = await asyncio.to_thread(lambda: ci.build(client, channels, tenant_label=tenant_auth.record_label(creds), shadow=shadow))
+    client = await asyncio.to_thread(_build_sdk_client, creds) if channels else None
+    zia, zia_note = await asyncio.to_thread(_console_zia, req, zscope)
+    if not channels and zia is None:
+        raise HTTPException(status_code=502, detail=f"Could not read the ZIA policies in scope ({zia_note}).")
+    shadow = ci.shadow_by_channel(zia["findings"]) if zia else None
+    out = await asyncio.to_thread(lambda: ci.build(client, channels, tenant_label=tenant_auth.record_label(creds), shadow=shadow, zia=zia))
     if out.get("status") != "ready":
         raise HTTPException(status_code=502, detail="; ".join(out.get("blockers") or ["Could not read the tenant."]))
-    out["shadow"] = shadow_note
+    out["shadow"] = zia_note
     ci.cache_put(key, out)
     return dict(out, cached_at=None)
 
 
-def _console_shadow(req: Any):
-    """The shadowed-rule findings for the console index: ({(channel, rule):
-    findings} or None, a note). Read-only; only what its own scope rules
-    allow; a failure leaves the index without them and says why."""
-    import console_index as ci
+def _console_zia_scope(req: Any) -> Dict[str, Any]:
+    """What the console index may read beyond DLP: the shadowed-rule
+    analysis' scope (shadow_rules.scope_for) and whether the File Type
+    Control rules are in scope (data_flow.path_scope). Never reads."""
+    import data_flow
     import shadow_rules
+    sc, ch, _source = _scope_selection(req)
+    return {"scope": shadow_rules.scope_for(sc, ch), "ftc": "ftc" in data_flow.path_scope(sc, ch)["read"]}
+
+
+def _console_zia(req: Any, zscope: Dict[str, Any]):
+    """The ZIA part of the console index (console_index.zia_read: the rules
+    of every policy in scope, the URL categories, the shadowed-rule
+    findings): (read or None, a note). Read-only; only what the Scope page
+    allows; a failure leaves the index without it and says why."""
+    import console_index as ci
     try:
-        sc, ch, source = _scope_selection(req)
-        scope = shadow_rules.scope_for(sc, ch)
-        if not scope["read"]:
+        if not zscope["scope"]["read"] and not zscope["ftc"]:
             return None, "not in scope"
         raw = _build_client(req)
-        res = shadow_rules.run(raw, scope)
-        return ci.shadow_by_channel(res.get("findings")), f"{len(res.get('findings') or [])} finding(s)"
+        res = ci.zia_read(raw, zscope["scope"], ftc=zscope["ftc"])
+        return res, f"{len(res.get('findings') or [])} finding(s)"
     except Exception as e:  # noqa: BLE001 - the index is still useful without them
         return None, f"not available: {str(e)[:160]}"
 
@@ -3868,6 +4703,117 @@ async def beacon_scope_preview(req: BeaconScopeRequest):
     except HTTPException as e:
         return {"ok": False, "detail": e.detail, "endpoints": 0}
     return {"ok": True, **beacon_scope.describe(sel, sel["source"])}
+
+
+# ── Traffic insights (ZIA Insights, the Z-Insights GraphQL API) ─────────
+# Read-only traffic numbers (insights.py), only with ZIA Insights ticked on
+# the Scope page and a OneAPI sign-in; both refused (400) before signing in.
+class InsightsRequest(ScopedTenantCredsRequest):
+    """Body of POST /api/insights/start and /api/insights: the window (a
+    preset such as "7d", or start_ms and end_ms in epoch milliseconds),
+    the traffic unit (TRANSACTIONS or BYTES) and whether to ask for the
+    users with the most security incidents (shown on screen only)."""
+    window: str = "7d"
+    start_ms: Optional[int] = None
+    end_ms: Optional[int] = None
+    traffic_unit: str = "TRANSACTIONS"
+    include_users: bool = True
+
+
+def _insights_inputs(req: InsightsRequest) -> Dict[str, Any]:
+    """Scope, sign-in method, window and unit checked, in that order,
+    before anything is signed in to (user rule 1). Returns {creds, window,
+    unit, label, source}."""
+    import insights
+    sel = _require_in_scope(req, "insights", "Traffic insights")
+    creds = _tenant_creds(req)
+    if tenant_auth.normalize(creds)["auth_method"] == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=insights.LEGACY_REFUSED)
+    try:
+        win = insights.window(req.window, req.start_ms, req.end_ms)
+    except insights.WindowError as e:
+        raise HTTPException(status_code=400, detail=f"{e} Nothing was read.")
+    unit = str(req.traffic_unit or "TRANSACTIONS").strip().upper()
+    if unit not in insights.TRAFFIC_UNITS:
+        raise HTTPException(status_code=400, detail="Traffic unit must be TRANSACTIONS or BYTES. Nothing was read.")
+    return {"creds": creds, "window": win, "unit": unit, "label": tenant_auth.record_label(creds), "source": sel["source"]}
+
+
+def _run_insights(client, req: InsightsRequest, inp: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    """The Insights read, shared by the job and the waiting endpoint. Stop
+    ends it as stopped with no partial result. The kept report (exports)
+    never holds the per-user rows."""
+    import insights
+    logs: list = []
+
+    def _log(line: str) -> None:
+        logs.append(line)
+        if log:
+            log(line)
+
+    win = inp["window"]
+    if inp.get("source"):
+        _log(f"In scope, from {inp['source']}: ZIA Insights (traffic data), {win['label']}.")
+    try:
+        out = insights.read(client, win["start_ms"], win["end_ms"], traffic_unit=inp["unit"], include_users=bool(req.include_users),
+                            log=_log, cancel=cancel, scrub=lambda s: tenant_auth.mask_secrets(s, inp["creds"]))
+    except insights.Stopped as e:
+        return {"stopped": str(e), "status": "stopped", "tenant_label": inp["label"], "logs": logs}
+    finally:
+        _close_quietly(client)
+    out["window"]["label"] = win["label"]
+    out["tenant_label"] = inp["label"]
+    out["report_id"] = _remember_report("insights", insights.exportable(out), inp["label"])
+    out["logs"] = logs
+    return out
+
+
+@app.get("/report/insights")
+async def report_insights_page():
+    """Standalone tab for Traffic insights (static/report_insights.html)."""
+    page = os.path.join(STATIC_DIR, "report_insights.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.post("/api/insights/start")
+async def insights_start(req: InsightsRequest, request: Request):
+    """Start the Traffic insights read as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}); Stop ends it with nothing more asked.
+    Refused (400) before sign-in when ZIA Insights is not in scope, the
+    sign-in is the classic ZIA API, or the window is not one Insights takes."""
+    import pack_jobs
+    inp = _insights_inputs(req)
+    client = await asyncio.to_thread(_build_sdk_client, inp["creds"])
+    job = pack_jobs.start("insights", lambda log, cancel: _run_insights(client, req, inp, log, cancel), label=inp["window"]["label"],
+                          actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/insights")
+async def insights_run(req: InsightsRequest):
+    """The same read, waited for (for scripts)."""
+    inp = _insights_inputs(req)
+    client = await asyncio.to_thread(_build_sdk_client, inp["creds"])
+    return await asyncio.to_thread(_run_insights, client, req, inp, None, None)
+
+
+@app.get("/api/insights/export/{report_id}")
+async def insights_export(report_id: str, format: str = "csv"):
+    """A kept Traffic insights read as CSV (csv_safe) or JSON, without the
+    per-user rows, which are shown on screen only."""
+    import insights
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("insights-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        return Response(content=json.dumps(insights.exportable(rep), indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_insights_{ts}.json"})
+    return Response(content=insights.to_csv(rep), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_insights_{ts}.csv"})
 
 
 @app.get("/report/beacon")
@@ -5565,6 +6511,104 @@ def _remember_report(kind: str, report: Dict[str, Any], label: str = "") -> str:
     while len(_REPORTS) > _REPORTS_MAX:
         _REPORTS.pop(next(iter(_REPORTS)))
     return rid
+
+
+# ── Client Connector fleet health (zcc_fleet) ─────────────────────────────────
+FLEET_WHAT = "Client Connector fleet health"
+
+
+@app.get("/report/fleet")
+async def report_fleet_page():
+    """Standalone tab for Client Connector fleet health (static/report_fleet.html)."""
+    page = os.path.join(STATIC_DIR, "report_fleet.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class ZccFleetRequest(ScopedTenantCredsRequest):
+    """Tenant credentials and the Scope page selection; the fleet is read
+    only when ZCC is ticked there (else 400 before sign-in)."""
+
+
+def _zcc_fleet_clients(req: ZccFleetRequest, creds: Dict[str, str]):
+    """Sign in: the assessment client (profiles, PAC, through the paced
+    readers) and, for a OneAPI sign-in, the SDK client the enrolled devices
+    are read with. A classic ZIA sign-in has no Client Connector API, and an
+    SDK sign-in that fails leaves the run configuration only, with the
+    reason (never a secret)."""
+    client = _build_client(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        return client, None, "The classic ZIA API sign-in cannot read Client Connector devices; sign in with a OneAPI API client to see the fleet."
+    try:
+        return client, _build_sdk_client(creds), ""
+    except HTTPException as e:
+        return client, None, tenant_auth.mask_secrets(str(e.detail), creds)[:240]
+
+
+@app.post("/api/zcc/fleet/start")
+async def zcc_fleet_start(req: ZccFleetRequest, request: Request):
+    """Start Client Connector fleet health as a job the page follows: the
+    app and forwarding profiles, PAC files, enrolled devices and their
+    service status, read-only and paced, then the analysis. Refused (400)
+    before sign-in when ZCC is not in scope. Stop ends it with nothing more
+    read and no partial result. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import pack_jobs
+    import zcc_fleet
+    _require_in_scope(req, "zcc", FLEET_WHAT)   # user rule 1: nothing read out of scope
+    creds = _tenant_creds(req)
+    label = tenant_auth.record_label(creds)
+    client, sdk, why = await asyncio.to_thread(_zcc_fleet_clients, req, creds)
+
+    def fn(log, cancel):
+        try:
+            return zcc_fleet.run(client, sdk, log=log, cancel=cancel, label=label, sdk_reason=why)
+        finally:
+            _close_quietly(client)
+    job = pack_jobs.start("fleet", fn, label="Client Connector fleet", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _fleet_result(job_id: str) -> Dict[str, Any]:
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind != "fleet":
+        raise HTTPException(status_code=404, detail="No such fleet run. Runs are kept for an hour after they finish; run it again.")
+    res = job.result or {}
+    if job.status != pack_jobs.DONE or res.get("status") != "done":
+        raise HTTPException(status_code=409, detail="This fleet run has not finished (or was stopped); nothing to show.")
+    return res
+
+
+@app.get("/api/zcc/fleet/{job_id}/diff")
+async def zcc_fleet_diff(job_id: str, a: str = "", b: str = ""):
+    """Side-by-side settings and the JSON diff of two app profiles of a
+    finished run (secrets masked). No tenant call."""
+    import zcc_fleet
+    try:
+        return zcc_fleet.diff_from_result(_fleet_result(job_id), a, b)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e.args[0] if e.args else e))
+
+
+@app.get("/api/zcc/fleet/{job_id}/export")
+async def zcc_fleet_export(job_id: str, what: str = "plan", counts_only: bool = False, format: str = "csv"):
+    """The remediation plan, the device table or the summary of a finished
+    run as CSV (csv_safe). counts_only leaves every user and host name out
+    (the device table is then refused). Excel: when the app gains its
+    xlsx_writer module, `format=xlsx` is where it plugs in; until then CSV."""
+    import zcc_fleet
+    res = _fleet_result(job_id)
+    if (format or "csv").lower() != "csv":
+        raise HTTPException(status_code=400, detail="Excel export is not in this build yet; download CSV (it opens in Excel).")
+    try:
+        stem, text = zcc_fleet.export_csv(res, (what or "").lower(), counts_only)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    name = f"{stem}{'_counts' if counts_only else ''}_{ts}.csv"
+    return Response(content=text, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={name}"})
 
 
 @app.get("/report/view")

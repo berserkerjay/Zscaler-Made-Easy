@@ -116,7 +116,7 @@ def test_the_extension_talks_only_to_the_app_and_holds_no_token():
     assert calls == {"/api/tenant-profiles", "/api/console-index", "/api/dlp-packs/export/start"}, calls
     # The console script sends nothing from the page: only keys of objects DLP-Check already knows.
     con = _read("console.js")
-    assert "sendMessage({ type: 'focus', key: e.key })" in con and "sendMessage({ type: 'names' })" in con
+    assert "sendMessage({ type: 'focus', key: e.key, keys: entries.map(x => x.key) })" in con and "sendMessage({ type: 'names' })" in con
     assert con.count("sendMessage(") == 2 and "fetch" not in con and "XMLHttpRequest" not in con
     assert "attachShadow({ mode: 'closed' })" in con, "badges cannot be styled or read by the console page"
     bg = _read("background.js")
@@ -152,3 +152,54 @@ def test_the_extension_ships_in_the_container_and_the_docs():
     for needle in ("Load unpacked", "activeTab", "127.0.0.1", "query string"):
         assert needle in doc, needle
     assert "no credentials" in low
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_badges_say_what_uses_an_object_or_its_worst_finding_for_every_kind():
+    """The badge text for each kind, from the app's own index (console_index
+    built from the test fixtures), and the keys the panel, badges and stage share."""
+    import console_index as ci
+    import test_console_index as tci
+    idx = ci.from_inventory(tci._inventory(), zia=tci._zia(), now=1)
+    pick = {f"{o['kind']}|{o['name']}": o for o in idx["objects"]}
+    want = ["url_category|Partner sites", "url_category|Never used", "url_rule|Block gambling", "url_rule|Old rule", "url_rule|Allow all",
+            "firewall_rule|Allow DNS", "location|HQ", "group|Finance", "engine|Unused Engine", "rule|EP-Board", "dictionary|Board Phrases"]
+    objs = [pick[k] for k in want]
+    script = """
+const m = await import(process.argv[1]);
+const objs = JSON.parse(process.argv[2]);
+console.log(JSON.stringify({ labels: objs.map(o => m.badgeLabel(o)), keys: objs.map(m.objectKey),
+  legacy: m.objectKey({ kind: 'rule', channel: 'web', name: 'X' }), kinds: ['url_category', 'nope'].map(k => m.kindInfo(JSON.parse(process.argv[3]), k).label),
+  shadow: m.PAGES.shadow.path, shadowKinds: m.SHADOW_KINDS }));
+"""
+    r = subprocess.run([NODE, "--input-type=module", "-e", script, os.path.join(EXT, "common.js"), json.dumps(objs), json.dumps({"kinds": idx["kinds"]})],
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    labels = dict(zip(want, out["labels"]))
+    assert labels["url_category|Partner sites"] == {"label": "used in 3 rules", "sev": "info"}
+    assert labels["url_category|Never used"] == {"label": "unused", "sev": "low"}
+    assert labels["url_rule|Block gambling"] == {"label": "shadowed", "sev": "high"}
+    assert labels["url_rule|Old rule"]["label"] == "disabled"
+    assert labels["url_rule|Allow all"]["label"] == "order 1 · allow"
+    assert labels["firewall_rule|Allow DNS"]["label"] == "order 1 · allow"
+    assert labels["location|HQ"]["label"] == "used in 2 rules" and labels["group|Finance"]["label"] == "used in 2 rules"
+    assert labels["engine|Unused Engine"]["label"] == "unused" and labels["rule|EP-Board"]["label"] == "monitor only"
+    assert labels["dictionary|Board Phrases"]["label"].endswith("rules")
+    assert out["keys"] == [o["key"] for o in objs] and out["legacy"] == "rule:web:X"
+    assert out["kinds"] == ["URL category", "nope"] and out["shadow"] == "/report/shadow" and "ftc_rule" not in out["shadowKinds"]
+
+
+def test_the_panel_filters_by_kind_and_stages_only_what_export_supports():
+    panel = _read("panel.js")
+    # A kind filter (a labelled select grouped DLP / Policies / Objects) on On this page and Search.
+    assert "h('select', { id: 'kindFilter', 'aria-label': 'Kind'" in panel and "h('optgroup', { label: g.name }" in panel
+    assert panel.count("kindFilter(all, run)") == 2
+    # Used by is grouped per policy; uses per kind; a name shared by several objects lists them.
+    assert "function usedBySections(o)" in panel and "Used by ${policyLabel(p)} rules" in panel and "function viewSameName(keys)" in panel
+    # Only DLP objects (the kinds Export from tenant supports) can be staged; others get deep links.
+    assert "if (o && exportable(o) && !S.stage.includes(key))" in panel and "S.byKey.get(k)).filter(o => o && exportable(o))" in panel
+    assert "openIn('shadow')" in panel and "SHADOW_KINDS.includes(o.kind)" in panel
+    assert "not shown: DLP-Check keeps" in panel, "a capped kind says how many more there are"
+    bg = _read("background.js")
+    assert "slice(0, 20)" in bg and "typeof k === 'string'" in bg, "a badge click carries at most 20 known keys"

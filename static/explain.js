@@ -41,6 +41,14 @@
     get: 'The path diagram per policy pack, visibility by cloud-app category, and a list of every bypass with the object that causes it.',
     next: 'Close the SSL and bypass gaps first; DLP rules deployed behind a blind spot do nothing.',
   };
+  X.zpa = {
+    group: 'Find the gaps', name: 'ZPA analysis', href: '/report/zpa',
+    what: 'Reads the tenant\'s ZPA configuration once (app segments, segment and server groups, App Connectors, Private Service Edges, IdPs and the access, timeout, forwarding, inspection and isolation policies) and runs over two dozen ZPA analysis templates over it, then diagnoses one user and destination: which app segment matches, what serves it and which access rule decides. It reads only when ZPA is ticked on the Scope page.',
+    why: 'Private access fails quietly: an access rule an earlier rule always beats, a segment nobody can reach, two segments claiming the same host, a wildcard that opens a whole domain, a connector group with one connector. Each of these is invisible in the console until a user calls; this page names them with a fix each.',
+    when: 'During a ZPA health check or a zero trust review, before and after a ZPA change, and while troubleshooting a "I cannot reach this internal app" ticket, where Diagnose answers which segment and which rule decide for that user.',
+    get: 'Findings grouped by template with a severity filter, counts and a catalog of every template (what it checks, assessed or not), exported as CSV or JSON; and a diagnosis hop by hop: segment, segment group, access rules in order with why each did not match, server groups and connector status, plus the assumptions.',
+    next: 'Fix the named rule, segment or connector group in the ZPA console, then read ZPA again and confirm the finding is gone; use Diagnose with the user\'s groups to prove the access path before you close the ticket.',
+  };
   X.path = {
     group: 'Find the gaps', name: 'Path analyzer', href: '/report/path',
     what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named. It reads only what is in scope on the Scope page; a part out of scope says Not in scope, never \"no rule\".',
@@ -104,6 +112,14 @@
     when: 'On return visits, once incidents have been flowing for a few weeks.',
     get: 'Per-rule health with the reason, and typed proposals (raise a threshold, promote to block) you can approve or dismiss.',
     next: 'Approve the proposals the customer agrees with, then Preview and apply: the app re-reads the rules, shows the exact change, applies it with a read-back, and keeps a Roll back button.',
+  };
+  X.insights = {
+    group: 'Find the gaps', name: 'Traffic insights', href: '/report/insights',
+    what: 'What the tenant\'s traffic actually did over a time window, read from ZIA Insights: web traffic allowed and blocked, web traffic by location, the cloud applications in use (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, and the users with the most security incidents.',
+    why: 'Configuration says what should happen; traffic says what did. Seeing how much is blocked, which cloud applications carry the data and which locations send it tells the customer where a policy change matters most, without waiting for a log export.',
+    when: 'After the assessment, before proposing a policy pack, and whenever someone asks how much traffic a control really touches. It needs ZIA Insights ticked on the Scope page and a OneAPI API client whose role includes Z-Insights.',
+    get: 'Sortable tables for each section with its status (read, no data, partial, could not read) and the reason when a section fails, a plain list of what Insights cannot answer (URL category, per-user traffic, per-rule hits, one host), and CSV and JSON exports without the per-user table.',
+    next: 'Take the busiest cloud applications and locations into the Path analyzer to see the policy path for them, then close what you find with a policy pack, preflight first.',
   };
   X.digest = {
     group: 'Find the gaps', name: 'Digest — the evaluation loop', href: '/report/digest',
@@ -217,9 +233,25 @@
     get: 'Articles grouped by area with the link and the source rating.',
     next: 'Cite the article next to the finding in your write-up.',
   };
+  X.exports = {
+    group: 'Reference', name: 'Policy exports', href: '/report/exports',
+    what: 'Every export the app has, in one place: the assessment as Excel or Word, the DLP inventory, deployment plans as PDF or Excel, Export from tenant, and read-only exports of the URL filtering, Cloud App Control, SSL inspection, Cloud Firewall and File Type Control policies (every rule in order with names, not ids, and the shadowed-rule findings per rule), one workbook of every URL the policy names, and the custom URL category analyzer.',
+    why: 'Customers want the policy on paper for change boards, audits and handovers, and a custom URL category often repeats what Zscaler already knows or overrides it by mistake. A formatted export answers both without screenshots of the admin portal.',
+    when: 'Before a change board or an audit, when handing a tenant over, during a policy clean-up, and before trimming custom URL categories.',
+    get: 'One workbook (or PDF review copy) per policy, a deduplicated URLs workbook with where each entry was found, and per custom-category URL whether Zscaler categorises it the same way, differently or not at all; each with a live log and Stop.',
+    next: 'Send the policy workbooks with the change request, fix the rules the Usage and notes column flags, and remove custom-category URLs the analyzer marks redundant after checking with the customer.',
+  };
+  X.queue = {
+    group: 'Close the gaps', name: 'Change queue', href: '/report/queue',
+    what: 'The team change queue: a policy-pack deploy plan, a selective removal plan or a fix recipe that someone prepared and filed with Request approval, waiting for a second writer to approve or reject it, with its items, requester, comments and plan hash.',
+    why: 'A change to the customer\'s tenant is reviewed by a second person before it is made (four-eyes), and every step is in the audit log with who did it, which is what a change board or an auditor asks for.',
+    when: 'After a preflight or a recipe preview, when you want a colleague to review the change before it is applied, or when you are the reviewer with requests waiting.',
+    get: 'Pending, approved and history tabs; Approve, Reject (with a comment), Apply and Withdraw buttons shown according to your rights; the four-eyes setting and whether it can work here; and the queue as JSON or Markdown.',
+    next: 'Approve or reject what is pending; apply an approved request with write mode on and the typed confirmation (a request whose plan no longer matches the tenant is marked stale: request it again from a fresh preflight).',
+  };
   X.advanced = {
     group: 'Reference', name: 'Advanced settings', href: '/report/advanced',
-    what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (badges and a side panel on DLP objects in the ZIA admin console, export to JSON or Terraform, and the Path analyzer for any site), and see how this server is configured (bind host, token gate, write mode, limits).',
+    what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (badges and a side panel on DLP objects, policy rules and the objects they use in the ZIA admin console, export to JSON or Terraform, and the Path analyzer for any site), and see how this server is configured (bind host, token gate, write mode, limits).',
     why: 'Customers and colleagues have their own designs; this puts them through the same preflight and deploy as the built-in packs.',
     when: 'When someone hands you a pack or an export from another tenant.',
     get: 'A validation preview (what it contains, what blocks it) before anything is added.',
@@ -248,6 +280,14 @@
     when: 'After a deployment, before a review with the customer, or whenever a policy pack object no longer matches what was deployed and you need to know which admin changed it, through which interface.',
     get: 'Every audit log entry with time, admin, action, category, object, interface and result; DLP-Check\'s deployments and writes beside them; changes by someone else to DLP-Check objects flagged; before and after values compared field by field.',
     next: 'Open a flagged row to see exactly what changed, then decide with the customer whether to fold the change into the pack or restore the deployed version.',
+  };
+  X.fleet = {
+    group: 'Find the gaps', name: 'Client Connector fleet', href: '/report/fleet',
+    what: 'Reads the Client Connector app and forwarding profiles, the hosted PAC files, the enrolled devices and their per-device service status, and puts them together: ZIA, ZPA and ZDX activity, blind spots, bypass risk, ghost devices, registration anomalies, multi-device users and version drift, a profile heatmap, profile and PAC comparisons and a ranked remediation plan.',
+    why: 'A profile that looks fine on paper protects nothing on a device where ZIA is switched off, and a weak profile matters most when thousands of devices use it. This shows where the fleet really is, weighted by the devices each gap affects.',
+    when: 'After the assessment, when ZCC is in scope, to show the customer which devices Zscaler cannot see and which profile to fix first; and on every return visit to watch the drift.',
+    get: 'Fleet tiles, each alert with its exact definition and the devices in it, profiles against the checks (equal-weight and device-weighted scores), a side-by-side profile diff, the PAC comparison and a ranked plan you can export as CSV, with a counts-only option.',
+    next: 'Work down the remediation plan: the first lines are the gaps with the most devices behind them. Fix the profile in the Client Connector Portal, then read the fleet again.',
   };
   X.logs = {
     group: 'Troubleshoot', name: 'Log analyzer', href: '/report/logs',
@@ -311,9 +351,9 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/shadow': 'shadow', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/shadow': 'shadow', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/report/fleet': 'fleet' };
     return map[p] || '';
   }
 
@@ -362,8 +402,8 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
-    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance',
+    'digest', 'packs', 'flow', 'remediate', 'queue', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

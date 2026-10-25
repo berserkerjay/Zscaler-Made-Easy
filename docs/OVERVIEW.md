@@ -77,6 +77,15 @@ what you get, what to do next.
   filtering, Cloud App Control, file type control, DLP), with every point
   where inspection is lost, visibility by cloud-app category, and the
   path diagram per policy pack.
+- **ZPA analysis** — the ZPA configuration read once (only when ZPA is
+  ticked on the Scope page, with the ZPA customer ID) and checked by the
+  ZPA analysis templates: unreachable access rules, segments nobody
+  reaches or only deny rules reach, overlapping segments, over-broad
+  domains and ports, bypasses, server and connector groups that cannot
+  serve, connector redundancy and versions. Diagnose answers, for one
+  user and destination, which app segment matches, what serves it and
+  which access rule decides, with every earlier rule and why it did not
+  match. Read-only; Stop ends the read at once.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, the path a user's traffic takes to
   it, one verdict in plain words, and every rule or profile that blocks
@@ -107,7 +116,11 @@ what you get, what to do next.
 - **Browser extension (companion)** — a small Chrome and Edge extension
   for the app on your computer: its button or a right-click opens the Path
   analyzer with the site, a link or a selected hostname filled in, and the
-  popup opens the Live DLP feed and the Flow animator. It holds no
+  popup opens the Live DLP feed and the Flow animator. Switched on, it
+  badges the ZIA admin console: DLP objects, the URL filtering, Cloud App
+  Control, SSL inspection, Cloud Firewall and File Type Control rules, and
+  the URL categories, locations, groups and other objects they use (usage
+  counts, shadowed and unused findings), with a side panel. It holds no
   credentials or tenant data and talks only to 127.0.0.1. Download it from
   Advanced settings; see docs/BROWSER_EXTENSION.md.
 - **Live DLP feed** — Workflow Automation's DLP incidents polled every
@@ -117,9 +130,26 @@ what you get, what to do next.
   carries bits through its rule and the evidence lane to Workflow
   Automation, its rule tagged enforce or monitor. It covers DLP incidents
   only, not the whole traffic log, and says so.
+- **Traffic insights** — what the tenant's traffic actually did over a
+  time window (up to 92 days), from ZIA Insights: web traffic allowed and
+  blocked and by location, the cloud applications in use (Shadow IT), SaaS
+  security by application, firewall traffic by action, and the users with
+  the most security incidents (on screen only, never exported). Needs ZIA
+  Insights ticked on the Scope page and a OneAPI API client. It says
+  plainly what Insights cannot answer: traffic by URL category, per user,
+  per policy rule or to one host.
 - **Bypass & non-inspected traffic** — every SSL exemption, allow rule,
   Client Connector bypass and PAC exception that lets traffic skip
   inspection, with exports. Where: opened from Traffic flow & gaps.
+- **Client Connector fleet** — the Client Connector profiles, hosted PAC
+  files and enrolled devices together, read only when ZCC is in scope:
+  ZIA, ZPA and ZDX activity, blind spots, bypass risk, ghost devices,
+  registration anomalies, multi-device users and version drift, each with
+  its exact definition; a profile heatmap with equal-weight and
+  device-weighted scores, a side-by-side profile diff, a PAC comparison and
+  a remediation plan ranked by impact times devices, exported as CSV (with
+  a counts-only option). Without device permission it says so and shows
+  the configuration only. Read-only; Stop ends the read at once.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
   decides, whether the traffic is decrypted, and whether inline DLP can
   see it. Where: opened from Traffic flow & gaps.
@@ -181,6 +211,19 @@ what you get, what to do next.
   guided change with a before/after view, applied only in write mode
   after approval. Where: the Dashboard, beside each finding that has a
   scripted fix.
+- **Change queue** — the team's shared queue of changes prepared but not
+  applied: a policy-pack deploy plan (Deploy policy packs, preflight step),
+  a selective removal plan (the rule picker's review) or a fix recipe
+  (Review & remediate, after the preview), each filed with *Request
+  approval*. A writer other than the requester approves or rejects it
+  (four-eyes, on by default; `DLP_CHECK_FOUR_EYES=0` turns it off for a
+  single-person install, and without SSO everyone is the same "local UI
+  token", so four-eyes needs SSO). An approved request is applied from the
+  queue through the same apply path, with write mode and the typed
+  confirmation; the plan is checked against the tenant first and a request
+  whose plan no longer matches is marked stale and nothing is written.
+  Every step is in the audit log with who did it; the queue exports as JSON
+  or Markdown.
 - **Terraform hand-off** — the same policy pack as a Terraform workspace
   for the official `zscaler/zia` provider. Static mode needs no
   credentials; gap mode reads the tenant and imports what exists so the
@@ -206,6 +249,17 @@ what you get, what to do next.
 - **Best practices library** — curated Zscaler best-practice articles,
   rated by source and refreshed from help.zscaler.com, the blog and the
   developer portal.
+- **Policy exports** — every export in one place (assessment Excel and
+  Word, DLP inventory, deployment plans, Export from tenant), plus
+  read-only exports of the URL filtering, Cloud App Control, SSL
+  inspection, Cloud Firewall and File Type Control policies (one Excel
+  workbook or PDF review copy per policy: every rule in order, names not
+  ids, the shadowed-rule findings per rule), a URLs export (every URL,
+  domain and IP the policy names, deduplicated, with where each was
+  found) and the custom URL category analyzer (for each custom-category
+  URL, whether Zscaler already categorises it the same way, differently
+  or not at all, through ZIA's URL lookup, paced and capped). Only what
+  is in scope; a live log and Stop.
 - **Advanced settings** — add your own policy packs (JSON, Terraform,
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with
@@ -366,6 +420,11 @@ Being honest about the edges:
   filtering, Cloud App Control and firewall decisions that never trip a
   DLP rule are not in it; that is Web Insights or a Cloud NSS feed, which
   the app does not read.
+- **Traffic insights** reads ZIA Insights' aggregated numbers, not the
+  transaction log: the installed SDK's Z-Insights queries cannot group
+  traffic by URL category, user or policy rule, or filter it to one host,
+  so rule hit counts and the Path analyzer's recent traffic to a
+  destination are not available from it.
 - The **classic ZIA API** sign-in covers ZIA only.
 - **Review & remediate** covers the failed checks that have a known,
   scripted fix, not every finding.
