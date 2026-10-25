@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion", "/report/insights"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -3699,6 +3699,117 @@ async def beacon_scope_preview(req: BeaconScopeRequest):
     except HTTPException as e:
         return {"ok": False, "detail": e.detail, "endpoints": 0}
     return {"ok": True, **beacon_scope.describe(sel, sel["source"])}
+
+
+# ── Traffic insights (ZIA Insights, the Z-Insights GraphQL API) ─────────
+# Read-only traffic numbers (insights.py), only with ZIA Insights ticked on
+# the Scope page and a OneAPI sign-in; both refused (400) before signing in.
+class InsightsRequest(ScopedTenantCredsRequest):
+    """Body of POST /api/insights/start and /api/insights: the window (a
+    preset such as "7d", or start_ms and end_ms in epoch milliseconds),
+    the traffic unit (TRANSACTIONS or BYTES) and whether to ask for the
+    users with the most security incidents (shown on screen only)."""
+    window: str = "7d"
+    start_ms: Optional[int] = None
+    end_ms: Optional[int] = None
+    traffic_unit: str = "TRANSACTIONS"
+    include_users: bool = True
+
+
+def _insights_inputs(req: InsightsRequest) -> Dict[str, Any]:
+    """Scope, sign-in method, window and unit checked, in that order,
+    before anything is signed in to (user rule 1). Returns {creds, window,
+    unit, label, source}."""
+    import insights
+    sel = _require_in_scope(req, "insights", "Traffic insights")
+    creds = _tenant_creds(req)
+    if tenant_auth.normalize(creds)["auth_method"] == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=insights.LEGACY_REFUSED)
+    try:
+        win = insights.window(req.window, req.start_ms, req.end_ms)
+    except insights.WindowError as e:
+        raise HTTPException(status_code=400, detail=f"{e} Nothing was read.")
+    unit = str(req.traffic_unit or "TRANSACTIONS").strip().upper()
+    if unit not in insights.TRAFFIC_UNITS:
+        raise HTTPException(status_code=400, detail="Traffic unit must be TRANSACTIONS or BYTES. Nothing was read.")
+    return {"creds": creds, "window": win, "unit": unit, "label": tenant_auth.record_label(creds), "source": sel["source"]}
+
+
+def _run_insights(client, req: InsightsRequest, inp: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    """The Insights read, shared by the job and the waiting endpoint. Stop
+    ends it as stopped with no partial result. The kept report (exports)
+    never holds the per-user rows."""
+    import insights
+    logs: list = []
+
+    def _log(line: str) -> None:
+        logs.append(line)
+        if log:
+            log(line)
+
+    win = inp["window"]
+    if inp.get("source"):
+        _log(f"In scope, from {inp['source']}: ZIA Insights (traffic data), {win['label']}.")
+    try:
+        out = insights.read(client, win["start_ms"], win["end_ms"], traffic_unit=inp["unit"], include_users=bool(req.include_users),
+                            log=_log, cancel=cancel, scrub=lambda s: tenant_auth.mask_secrets(s, inp["creds"]))
+    except insights.Stopped as e:
+        return {"stopped": str(e), "status": "stopped", "tenant_label": inp["label"], "logs": logs}
+    finally:
+        _close_quietly(client)
+    out["window"]["label"] = win["label"]
+    out["tenant_label"] = inp["label"]
+    out["report_id"] = _remember_report("insights", insights.exportable(out), inp["label"])
+    out["logs"] = logs
+    return out
+
+
+@app.get("/report/insights")
+async def report_insights_page():
+    """Standalone tab for Traffic insights (static/report_insights.html)."""
+    page = os.path.join(STATIC_DIR, "report_insights.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.post("/api/insights/start")
+async def insights_start(req: InsightsRequest, request: Request):
+    """Start the Traffic insights read as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}); Stop ends it with nothing more asked.
+    Refused (400) before sign-in when ZIA Insights is not in scope, the
+    sign-in is the classic ZIA API, or the window is not one Insights takes."""
+    import pack_jobs
+    inp = _insights_inputs(req)
+    client = await asyncio.to_thread(_build_sdk_client, inp["creds"])
+    job = pack_jobs.start("insights", lambda log, cancel: _run_insights(client, req, inp, log, cancel), label=inp["window"]["label"],
+                          actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/insights")
+async def insights_run(req: InsightsRequest):
+    """The same read, waited for (for scripts)."""
+    inp = _insights_inputs(req)
+    client = await asyncio.to_thread(_build_sdk_client, inp["creds"])
+    return await asyncio.to_thread(_run_insights, client, req, inp, None, None)
+
+
+@app.get("/api/insights/export/{report_id}")
+async def insights_export(report_id: str, format: str = "csv"):
+    """A kept Traffic insights read as CSV (csv_safe) or JSON, without the
+    per-user rows, which are shown on screen only."""
+    import insights
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("insights-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        return Response(content=json.dumps(insights.exportable(rep), indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_insights_{ts}.json"})
+    return Response(content=insights.to_csv(rep), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_insights_{ts}.csv"})
 
 
 @app.get("/report/beacon")

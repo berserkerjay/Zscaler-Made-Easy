@@ -240,6 +240,11 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                            + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
     out = {"required_controls": zia.get("required_controls", []), "destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
            "network": network, "platform": platform, "read_at": time.time(), "fresh_read": snapshot is None}
+    # Recent traffic to this destination: only when ZIA Insights is in
+    # scope, and never faked. Z-Insights cannot filter by host or domain,
+    # so this says so without asking the tenant anything.
+    import insights
+    out["recent_traffic"] = insights.recent_traffic_for_host(d["host"], "insights" in (scope.get("scopes") or []))
     if snapshot is None:
         out["snapshot_for_cache"] = {"client_connector": zcc, "path_scope": scope["key"],
                                      "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue", "not_in_scope", "required_controls")},
