@@ -83,6 +83,15 @@ what you get, what to do next.
   or impacts it, each with a fix. It reads only what is in scope on the
   Scope page (a part out of scope says "not in scope"), and Stop ends the
   read at once.
+- **Shadowed rules** — reads the rules of every policy in scope (Inline
+  Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
+  inspection and, with ZIA platform ticked, Cloud Firewall) and lists the
+  rules that can never match or never act: hidden below a broader rule or
+  a catch-all, duplicated, superseded by a stricter rule (where every rule
+  is evaluated), disabled, or naming engines and categories that no longer
+  exist; each with the rule that hides it, the reason and the fix, and CSV
+  and JSON exports. A criterion it cannot compare safely counts as "not
+  shadowed". Read-only; Stop ends the read at once.
 - **Flow animator** — the flows the app analyses, animated from your own
   results: the last Path analyzer result hop by hop; inside DLP, the
   dictionary match counts, each engine term against its threshold and the

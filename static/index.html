@@ -612,6 +612,11 @@
                 title="Polls Workflow Automation's DLP incidents live: who, the rule and dictionaries that matched, the destination, and whether the rule enforced it or only logged it, with a running seen / enforced / monitor / FP:TP tally. Covers DLP-matched traffic only, not every ZIA transaction — the page says so. Read-only. Opens in a new tab.">
           <span aria-hidden="true">📡</span> Live DLP feed
         </button>
+        <button class="btn btn-ghost" onclick="openShadowRulesTab()"
+                aria-label="Open Shadowed rules: the rules that can never match or never act in every policy in scope, with the rule that hides each one and the fix (opens in a new tab)"
+                title="Reads the DLP, URL filtering, Cloud App Control, SSL inspection and Cloud Firewall rules in scope and lists every rule that can never match or never act: shadowed by a broader rule, below a catch-all, duplicated, superseded, disabled or naming objects that no longer exist. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🔍</span> Shadowed rules
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -5053,6 +5058,13 @@ function openFlowAnimatorTab() {
   // The tab reads results this browser already holds (the last path and
   // plan) and, when asked, the tenant through window.opener.
   const w = window.open('/report/motion', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openShadowRulesTab() {
+  // Like the Path analyzer: the tab reads the credentials and the Scope
+  // page's selection from this page through window.opener when it runs,
+  // so nothing is read until Analyze.
+  const w = window.open('/report/shadow', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {

@@ -81,6 +81,14 @@
     get: 'A live flow diagram with gaps highlighted and the fix for each.',
     next: 'Fix the SSL rule order or exemptions it points at, then refresh the diagram.',
   };
+  X.shadow = {
+    group: 'Find the gaps', name: 'Shadowed rules', href: '/report/shadow',
+    what: 'Reads the rules of every policy in scope (Inline Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL inspection and Cloud Firewall) and lists the rules that can never match or never act: hidden below a broader rule, below a catch-all, duplicated, superseded by a stricter rule, disabled, or naming engines and categories that no longer exist.',
+    why: 'A rule that can never match looks like protection on paper and does nothing in production. Customers add rules for years without removing old ones, and the one that matters often sits under a broad rule nobody remembers.',
+    when: 'After the assessment and before deploying a policy pack, during a policy clean-up, and whenever a customer says a rule "never fires".',
+    get: 'Findings per policy type with a severity, the rule and the rule that hides it, the reason in one sentence and the fix, a count per policy, the Inline Web DLP evaluation mode it assumed, and CSV and JSON exports.',
+    next: 'Fix the high findings first (a stricter rule that never applies), move or delete the rule as the fix says, then run the analysis again to prove it.',
+  };
   X.efficacy = {
     group: 'Find the gaps', name: 'DLP efficacy', href: '/report/view?tool=efficacy',
     what: 'Scores every custom dictionary and engine for false-positive risk and lets you paste sample text (or run the built-in corpus) to see which dictionaries, engines and predefined ones would fire.',
@@ -295,7 +303,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/shadow': 'shadow', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
@@ -346,7 +354,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'shadow', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
