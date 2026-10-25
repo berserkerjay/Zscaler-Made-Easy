@@ -66,6 +66,28 @@
           <div id="advPreview" class="adv-preview" hidden></div>
         </section>
 
+        <section id="extension" aria-labelledby="advExtH">
+          <h2 class="df-h" id="advExtH">Browser extension (companion)</h2>
+          <div class="adv-cols">
+            <div class="bp-card">
+              <div class="t">What it does</div>
+              <p>A small Chrome and Edge extension that works with this app on your computer. On any site, its button or a right-click opens the <strong>Path analyzer</strong> with that site, a link or a selected hostname filled in; the popup also opens the Live DLP feed, the Flow animator and this app.</p>
+              <p>It holds no credentials and no tenant data: it only opens this app's pages and checks that the app is running. Signing in, the UI token, write mode and every tenant read stay here. It asks for no access to the pages you visit (only the tab you click it on), drops the query string from any address it passes on, and talks only to <code>127.0.0.1</code> or <code>localhost</code>.</p>
+              <p><a class="rp-btn primary" href="/api/browser-extension.zip" download>Download the extension</a></p>
+            </div>
+            <div class="bp-card">
+              <div class="t">Install it</div>
+              <ol>
+                <li>Unzip <code>dlp-check-extension.zip</code> somewhere it can stay.</li>
+                <li>Open <code>chrome://extensions</code> (Edge: <code>edge://extensions</code>) and turn on <strong>Developer mode</strong>.</li>
+                <li>Click <strong>Load unpacked</strong> and choose the <code>dlp-check-extension</code> folder.</li>
+                <li>Pin it, then open its <strong>Settings</strong> if the app is not at <code>http://127.0.0.1:8000</code> (the container: <code>http://127.0.0.1:8001</code>).</li>
+              </ol>
+              <p>Managed browsers may block unpacked extensions; your IT team can allow it by policy. An install from the repository can load the <code>browser_extension</code> folder directly.</p>
+            </div>
+          </div>
+        </section>
+
         <section id="formats" aria-labelledby="advFmtH">
           <h2 class="df-h" id="advFmtH">What the app accepts</h2>
           <div class="adv-cols">
