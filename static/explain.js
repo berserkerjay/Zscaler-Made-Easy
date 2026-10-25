@@ -289,6 +289,14 @@
     get: 'One card per function: what it is, why it matters, when to use it, what you get, what to do next.',
     next: 'Follow the numbered first-engagement list; each page explains itself at the top.',
   };
+  X.simple = {
+    group: 'Start', name: 'Simple mode', href: '/simple',
+    what: 'The same app as seven big tasks in plain words, for someone with little Zscaler knowledge: connect, check how safe the data is, fix the top problems, protect sensitive data with a policy pack, why was something blocked, what changed, and a report for the boss. Each task is a short wizard with one question per screen, a tap-to-explain glossary and one recommended next step.',
+    why: 'A customer admin, a manager or a new engineer can get a score, the top three fixes and a Word report without learning the expert pages first; the expert view is one click away on every screen.',
+    when: 'For a first look, for a non-specialist who owns the tenant, or to walk someone through the basics; switch to expert mode for anything the wizards do not cover.',
+    get: 'Traffic-light answers with the words always shown, the assessment score and top findings, a policy-pack preview, the Path analyzer verdict in one sentence, the score history and a Word or spreadsheet report.',
+    next: 'Anything that changes the tenant opens the expert flow it belongs to (Deploy policy packs, Review & remediate) with its write mode, preview and confirmation; read-only tasks say so on screen.',
+  };
 
   // Which entry a page belongs to, by its path (and ?tool= on the results tab).
   function keyFor(loc) {
@@ -297,7 +305,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple' };
     return map[p] || '';
   }
 
@@ -323,7 +331,7 @@
   // remembered "hide" for people who no longer need it.
   function mount() {
     const key = keyFor();
-    if (!key || key === 'assessment' || key === 'help' || document.getElementById('xpBox')) return;
+    if (!key || key === 'assessment' || key === 'help' || key === 'simple' || document.getElementById('xpBox')) return;
     const hero = document.querySelector('.rp-hero');
     if (!hero) return;
     const box = document.createElement('section');
@@ -346,7 +354,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

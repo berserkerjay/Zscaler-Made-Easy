@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion", "/simple"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -279,6 +279,7 @@ GUI_ADDONS = [
     ("eval_all.js", "script"),
     ("bypass_report.js", "script"),
     ("tool_tabs.js", "script"),
+    ("simple_entry.js", "script"),   # the "Try Simple mode" banner and the deep links from /simple
     ("sidebar_order.js", "script"),  # drag / Alt+arrow reordering of the sidebar; dashboard.js starts it
     ("dashboard.js", "script"),     # last: wraps showResults / renderChecks / resetForm
 ]
@@ -5373,6 +5374,46 @@ async def generate_docx(request: Request):
                         background=BackgroundTask(_unlink_quietly, tmp_path))
 
 
+_CSV_STATUS = {"FAIL": "Fix this", "REVIEW": "Needs a look", "PASS": "Good"}
+
+
+@app.post("/api/report/findings-csv")
+async def findings_csv(request: Request):
+    """The assessment's findings as a spreadsheet (CSV that opens in Excel):
+    one row per check, the ones to fix first, in the plain words the
+    findings carry (what we found, what it means, what to do). Built from
+    the results the page already holds, like /api/report/docx; reads no
+    tenant. Every cell goes through csv_safe, so a rule or check name that
+    starts with = + - @ is shown as text, never run as a formula."""
+    import io
+    import csv_safe
+    import channel_scope
+    try:
+        data = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
+    results = (data or {}).get("checks") if isinstance(data, dict) else None
+    if not isinstance(results, list) or not results:
+        raise HTTPException(status_code=400, detail="No checks in request body — cannot make the spreadsheet.")
+    shown, _hidden = channel_scope.visible(results)
+    order = {"FAIL": 0, "REVIEW": 1}
+    rows = sorted((r for r in shown if isinstance(r, dict)), key=lambda r: order.get(str(r.get("status")), 2 if str(r.get("status")) != "PASS" else 3))
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    w.writerow(["Status", "Check", "Area", "Finding", "What we found", "What it means", "What to do", "Technical detail"])
+    for r in rows:
+        p = r.get("plain") if isinstance(r.get("plain"), dict) else {}
+        st = str(r.get("status") or "")
+        w.writerow([_CSV_STATUS.get(st, "Not checked" if st == "ERROR" else "For your information"), str(r.get("id") or ""), str(r.get("section") or ""),
+                    str(r.get("label") or ""), str(p.get("found") or ""), str(p.get("means") or ""), str(p.get("do") or ""), str(r.get("detail") or "")[:500]])
+    meta = (data or {}).get("metadata") or {}
+    org = re.sub(r"[^A-Za-z0-9_-]+", "_", str(meta.get("org", "report") if isinstance(meta, dict) else "report")).strip("_")[:60] or "report"
+    # A byte-order mark so Excel reads the file as UTF-8.
+    stamp = datetime.now().strftime("%Y%m%d")
+    return PlainTextResponse("\ufeff" + buf.getvalue(), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="zscaler_{org}_{stamp}_findings.csv"'})
+
+
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
@@ -5719,6 +5760,20 @@ async def report_motion_page():
     page = os.path.join(STATIC_DIR, "report_motion.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+# ── Simple mode ───────────────────────────────────────────────────────
+@app.get("/simple")
+async def simple_mode_page():
+    """Simple mode (static/simple.html): seven big tasks in plain words, each
+    a short wizard over the same endpoints the expert pages use. Anything
+    that would change the tenant is handed to the expert page's own flow
+    (write mode, preview, confirmation); this page never writes."""
+    page = os.path.join(STATIC_DIR, "simple.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="simple mode page missing")
     with open(page, "r", encoding="utf-8") as f:
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
