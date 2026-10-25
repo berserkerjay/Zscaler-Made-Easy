@@ -166,6 +166,7 @@ pack; generated Terraform per pack in `terraform/`; tests in `tests/`.
 | Tools | `tools/fan_out_channels.py` (channel mirrors), `tools/validate_detection.py` (offline detection validation), `app_update.py` (the Update app button), `upstream_check.py` (the SDK, the Terraform provider and Zscaler's API reference cross-checked against what the app sends; offline in `make check`, online daily in `.github/workflows/upstream_check.yml`), `beacon.py` (the same watchers in the app on a timer, what changed since the last run, and the GET-only tenant API watch) |
 
 Documentation: `docs/OVERVIEW.md` (what the app does, in five minutes),
+`docs/BROWSER_EXTENSION.md` (the companion browser extension),
 `INSTALL.md` (installing, click by click), `GETTING_STARTED.md` (first
 engagement, step by step),
 `POLICY_PACKS.md` (pack format), `docs/SHARED_EXECUTION_PATH.md` (how
