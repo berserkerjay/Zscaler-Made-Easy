@@ -1,7 +1,7 @@
 """
 Methodical removal of a deployed pack or baseline.
 
-Find what a pack put into a tenant — by its DLP-Check provenance tag, and
+Find what a pack put into a tenant — by its Zscaler Made Easy provenance tag, and
 by the names in the pack definition — and take it out safely, in reverse
 dependency order (rules, then endpoint application groups, then engines,
 then dictionaries). An object is removed only when nothing OUTSIDE the
@@ -163,8 +163,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
                  everything: bool = False) -> Dict[str, Any]:
     """Preview the removal of one or more deployed packs. Returns items
     (each remove | keep | not-found), a summary, and a plan_hash the apply
-    step must echo. With `everything`, the scope is everything DLP-Check
-    ever put in the tenant: any object carrying a DLP-Check provenance
+    step must echo. With `everything`, the scope is everything Zscaler Made Easy
+    ever put in the tenant: any object carrying a Zscaler Made Easy provenance
     tag (whatever pack id or version wrote it) plus the names of every
     given pack and of the objects earlier pack versions shipped."""
     snap = _tenant(client, packs, tenant_cache, everything=everything)
@@ -191,7 +191,7 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         def_engines |= {x["name"] for x in e if x.get("name")}
         def_policies |= {x["name"] for x in pol if x.get("name")}
     # The app's own historical names (packs renamed their objects over
-    # time) are always in scope: an object under an old name is DLP-Check's
+    # time) are always in scope: an object under an old name is Zscaler Made Easy's
     # whether one pack or everything is being removed. It is reported as a
     # name-only match for the operator to confirm.
     def_dicts |= LEGACY_NAMES["dictionary"]
@@ -296,7 +296,7 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     for it in items:
         it["status"] = "keep" if it.get("keep") else "remove"
         if it.get("match") == "name":
-            warnings.append(f"{it['kind']} '{it['name']}' matched by name only (no DLP-Check tag); confirm it is yours before removing.")
+            warnings.append(f"{it['kind']} '{it['name']}' matched by name only (no Zscaler Made Easy tag); confirm it is yours before removing.")
 
     # Dependency links, so the flow diagram can draw dictionary -> engine ->
     # rule for the objects in the plan (a rule depends on its engines, an
@@ -605,6 +605,14 @@ def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any
     # dictionaries no engine references. They cannot be reached through a
     # rule, so the pick screen lists them on their own.
     used_engines = {str(x) for r in rules for x in r["engine_ids"]}
+    import engine_explain
+    dict_names = {str(pd._field(d, "id")): n for n, d in (snap.get("dictionaries") or {}).items()}
+
+    def explained(e: Any) -> Dict[str, str]:
+        # The raw expression (kept for copying), the same with dictionary
+        # names, and one plain sentence (engine_explain).
+        expr = str(pd._field(e, "engine_expression", "expression", default="") or "")
+        return {"expression": expr, "readable": engine_explain.readable(expr, dict_names), "summary": engine_explain.summary(expr, dict_names)}
     orphan_engines = []
     for name, e in engines.items():
         eid = str(pd._field(e, "id"))
@@ -612,7 +620,8 @@ def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any
             continue
         pack = _tag_pack(pd._field(e, "description"), known)
         orphan_engines.append({"kind": "engine", "id": pd._field(e, "id"), "name": name, "tagged": pack is not None, "pack": pack,
-                               "dictionaries": sorted(n for n, d in (snap.get("dictionaries") or {}).items() if str(pd._field(d, "id")) in _engine_dict_ids(e))})
+                               "dictionaries": sorted(n for n, d in (snap.get("dictionaries") or {}).items() if str(pd._field(d, "id")) in _engine_dict_ids(e)),
+                               **explained(e)})
     used_dicts: set = set()
     for e in engines.values():
         used_dicts |= _engine_dict_ids(e)
@@ -632,7 +641,7 @@ def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any
             continue
         eid = str(pd._field(e, "id"))
         all_engines.append({"id": pd._field(e, "id"), "name": name, "used": eid in used_engines,
-                            "dictionaries": sorted(dict_by_id[i] for i in _engine_dict_ids(e) if i in dict_by_id)})
+                            "dictionaries": sorted(dict_by_id[i] for i in _engine_dict_ids(e) if i in dict_by_id), **explained(e)})
     all_engines.sort(key=lambda x: str(x["name"]).lower())
     return {"status": "ready", "rules": rules, "dictionaries": dicts, "engines": all_engines,
             "orphans": {"engines": orphan_engines, "dictionaries": orphan_dicts},

@@ -733,7 +733,7 @@ def test_url_copy_into_a_new_category_and_undo_deletes_it():
     assert any(u["kind"] == "create_category" and u["status"] == "change" for u in p["items"])
     res = apply(t, spec, p)
     new = next(c for c in t.zia.url_categories.rows if c["configured_name"] == "Finance copy")
-    assert new["urls"] == ["bank.example.com"] and "Jane Doe" in new["description"] and "DLP-Check" not in new["description"]
+    assert new["urls"] == ["bank.example.com"] and "Jane Doe" in new["description"] and "Zscaler Made Easy" not in new["description"]
     assert res["inverse"]["delete_categories"] == [{"id": new["id"], "name": "Finance copy", "urls": ["bank.example.com"]}]
     assert res["inverse"]["deltas"] == []
     undo = apply(t, res["inverse"])
@@ -926,7 +926,7 @@ def test_endpoint_preview_and_apply_with_every_gate(api, monkeypatch):
     assert client.post("/api/operations/apply", json=dict(body, confirm=False)).status_code == 400
     assert client.post("/api/operations/apply", json=dict(body, plan_hash="")).status_code == 400
     assert client.post("/api/operations/apply", json=dict(body, assessor="")).status_code == 400
-    assert client.post("/api/operations/apply", json=dict(body, assessor="DLP-Check")).status_code == 400
+    assert client.post("/api/operations/apply", json=dict(body, assessor="Zscaler Made Easy")).status_code == 400
     r = client.post("/api/operations/apply", json=dict(body, plan_hash="f" * 64))
     assert r.status_code == 409 and r.json()["status"] == "plan_changed" and t.writes == []
     monkeypatch.setattr(security, "may_write", lambda: False)

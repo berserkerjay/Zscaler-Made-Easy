@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zscaler Platform Assessment</title>
+<title>Zscaler Made Easy</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <style>
   /* ── Design tokens (Apple Human Interface Guidelines conventions, on the web) ──
@@ -577,7 +577,7 @@
   <header role="banner">
   <!-- Hero -->
   <div class="hero">
-    <h1><span class="accent">Zscaler</span> Platform Assessment</h1>
+    <h1><span class="accent">Zscaler</span> Made Easy</h1>
     <p>Automated best-practice validation across ZIA, ZPA, and ZCC</p>
     <span class="badge" id="totalChecksBadge">Loading...</span>
 
@@ -588,6 +588,11 @@
                 aria-label="Open Simple mode: seven big tasks in plain words, one question at a time"
                 title="Seven big tasks in plain words (connect, check, fix, protect, why was something blocked, what changed, a report for your boss), one question per screen. Nothing changes your Zscaler without your yes.">
           <span aria-hidden="true">💡</span> Simple mode
+        </button>
+        <button class="btn btn-ghost" onclick="openFindAnything()"
+                aria-label="Find anything: search pages, glossary terms, tenant objects, findings and to-dos (Ctrl+J or /)"
+                title="One search box over the whole app: pages and what they do, glossary words, the tenant's rules and dictionaries from the last read, the findings on screen and your to-dos. Typos are fine. Ctrl+J (Cmd+J on a Mac) or / opens it from any page.">
+          <span aria-hidden="true">🔎</span> Find anything
         </button>
         <button class="btn btn-ghost" onclick="openHelpTab()"
                 aria-label="Open What does everything do: every function of this app explained in plain English (opens in a new tab)"
@@ -606,6 +611,11 @@
                 aria-label="Open ZPA analysis: the ZPA configuration read once and checked by the ZPA analysis templates, and a diagnosis of which app segment and access rule decide for one user and destination (opens in a new tab)"
                 title="Reads the ZPA configuration once (only when ZPA is ticked on the Scope page) and runs the ZPA analysis templates: unreachable access rules, unused or overlapping segments, over-broad domains and ports, bypasses, connector redundancy. Diagnose tells you, for one user and destination, which segment matches and which access rule decides. Read-only. Opens in a new tab.">
           <span aria-hidden="true">🔐</span> ZPA analysis
+        </button>
+        <button class="btn btn-ghost" onclick="openDevicePostureTab()"
+                aria-label="Open Device posture: what kind of device check each ZPA posture profile is, which access rules use it, which rules let devices in without one, and every access rule in plain words (opens in a new tab)"
+                title="Reads the ZPA posture profiles, trusted networks and access rules (only when ZPA is ticked on the Scope page), sorts each profile into a family (domain join, EDR, certificate, marker...), links it to the rules that use it as must pass or must fail, flags rules to sensitive apps with no posture check, and shows every rule's conditions in plain words. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🛡</span> Device posture
         </button>
         <button class="btn btn-ghost" onclick="openPathAnalyzerTab()"
                 aria-label="Open Path analyzer: type a URL, hostname or IP address and see, live from the tenant, the path a user's traffic takes to it and what blocks or impacts it (opens in a new tab)"
@@ -627,6 +637,11 @@
                 title="Reads the DLP, URL filtering, Cloud App Control, SSL inspection and Cloud Firewall rules in scope and lists every rule that can never match or never act: shadowed by a broader rule, below a catch-all, duplicated, superseded, disabled or naming objects that no longer exist. Read-only. Opens in a new tab.">
           <span aria-hidden="true">🔍</span> Shadowed rules
         </button>
+        <button class="btn btn-ghost" onclick="openBrowserSecurityTab()"
+                aria-label="Open Browser security: what isolated web pages let users copy, download or print, the rules that isolate, allowed browser versions, and Browser Access and Privileged Remote Access, with a fix for each gap (opens in a new tab)"
+                title="Reads the Zero Trust Browser isolation profiles and the rules that use them, ZIA Browser Control and the ZPA browser side (Browser Access, managed browsers, Privileged Remote Access), only what the Scope page puts in scope, and names each data protection gap with a fix. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🛡️</span> Browser security
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -642,10 +657,20 @@
                 title="Reads ZIA Insights for a time window: web traffic allowed and blocked, by location, cloud applications in use, SaaS security and firewall actions, and the users with the most security incidents. Needs ZIA Insights ticked on the Scope page. Read-only. Opens in a new tab.">
           <span aria-hidden="true">📈</span> Traffic insights
         </button>
+        <button class="btn btn-ghost" onclick="openSslCoverageTab()"
+                aria-label="Open SSL coverage: how much traffic is not inspected, why, and a recovery plan (opens in a new tab)"
+                title="Lists every SSL inspection exemption, Client Connector and PAC file bypass that leaves traffic uninspected, ranks them by risk and gives a recovery plan with a safe-to-change note. With ZIA Insights in scope it also shows how much HTTPS and HTTP traffic is inspected. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🔒</span> SSL coverage
+        </button>
         <button class="btn btn-ghost" onclick="openDigestTab()"
                 aria-label="Open the Digest: what the evaluation loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
                 title="When you click Run the loop now (the timer is off unless the operator sets DLP_CHECK_CONTINUOUS_EVAL_HOURS), the app re-reads guidance and, for every tenant profile that remembers its secret, only what its Scope page puts in scope: FP/TP detection ratio, the SaaS tenants and the ticked packs' drift. It writes a digest. It does not re-run the assessment. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
           <span aria-hidden="true">🔁</span> Digest
+        </button>
+        <button class="btn btn-ghost" onclick="openPostureTab()"
+                aria-label="Open Improve my score: the fixes that raise the score most, the projected score, the score over time with what changed, and what the last assessment could not check (opens in a new tab)"
+                title="From the results on this page and the tenant profile's history: the ten fixes that raise the score most (points, effort, one-click fix), the score after the fixes you tick or have staged in the change queue, the score trend with the checks that started or stopped failing, score-drop alerts, and what could not be checked and why. Reads nothing from the tenant. Opens in a new tab.">
+          <span aria-hidden="true">🎯</span> Improve my score
         </button>
       </div>
       <div class="tool-group" role="group" aria-label="Close the gaps" data-sb-id="close-gaps">
@@ -659,6 +684,11 @@
                 aria-label="Open Bulk changes: enable or disable many rules, reorder a policy, move URLs between custom URL categories and ZPA domains between segments, each previewed item by item and reversible (opens in a new tab)"
                 title="Enable or disable up to 100 rules, reorder a policy with the fewest moves, add, remove, move or copy URLs on custom URL categories, and move ZPA domains between application segments. Every change is previewed item by item, applied only in write mode after you confirm the plan, checked again before each write, read back and recorded with Undo. Opens in a new tab.">
           <span aria-hidden="true">🔧</span> Bulk changes
+        </button>
+        <button class="btn btn-ghost" onclick="openTodoTab()"
+                aria-label="Open To-do list: the open to-dos written on rules, dictionaries, findings and other objects, per tenant, with tags (opens in a new tab)"
+                title="Every open to-do you or your team wrote on an object in Find anything, across your tenants: filter by tag, tick one when it is done, open the object it is on. Kept on this computer; nothing is written to the tenant. Opens in a new tab.">
+          <span aria-hidden="true">✅</span> To-do list
         </button>
         <button class="btn btn-ghost" onclick="openToolTab('terraform')"
                 aria-label="Hand the same policy pack to a platform team as a Terraform workspace (opens in a new tab)"
@@ -674,6 +704,11 @@
                 aria-label="Open the Inline DLP Rule migration wizard: move the tenant to Evaluate All Rules"
                 title="The migration wizard: reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely. Opens on this page.">
           <span aria-hidden="true">🔀</span> Rule migration wizard
+        </button>
+        <button class="btn btn-ghost" onclick="openSelfHealTab()"
+                aria-label="Open Self-healing: what the app fixed by itself, and the tenant settings that changed back since you approved them, with Heal and Accept (opens in a new tab)"
+                title="The app checks itself and fixes what it safely can (stuck jobs, damaged saved files, file permissions, old locks). For your tenant it lists every setting you approved that changed back, with who and when, and heals it only when you click Heal and confirm. Opens in a new tab.">
+          <span aria-hidden="true">↻</span> Self-healing
         </button>
       </div>
       <div class="tool-group" role="group" aria-label="Reference" data-sb-id="reference">
@@ -741,8 +776,8 @@
       <div class="tool-group" role="group" aria-label="Troubleshoot" data-sb-id="troubleshoot">
         <div class="tool-group-l">Troubleshoot</div>
         <button class="btn btn-ghost" onclick="openAuditTimelineTab()"
-                aria-label="Open Audit timeline: ZIA's admin audit log merged with DLP-Check's deployments and its own audit log, newest first, with changes someone else made to DLP-Check objects marked (opens in a new tab)"
-                title="Who changed what in the tenant, and what DLP-Check did, on one timeline: ZIA's admin audit log for a window you choose, DLP-Check's deployment records and audit log, filters, field-by-field diffs, CSV and JSON. Writes nothing to the tenant. Opens in a new tab.">
+                aria-label="Open Audit timeline: ZIA's admin audit log merged with Zscaler Made Easy's deployments and its own audit log, newest first, with changes someone else made to Zscaler Made Easy objects marked (opens in a new tab)"
+                title="Who changed what in the tenant, and what Zscaler Made Easy did, on one timeline: ZIA's admin audit log for a window you choose, Zscaler Made Easy's deployment records and audit log, filters, field-by-field diffs, CSV and JSON. Writes nothing to the tenant. Opens in a new tab.">
           <span aria-hidden="true">📜</span> Audit timeline
         <button class="btn btn-ghost" onclick="openFleetTab()"
                 aria-label="Open Client Connector fleet: enrolled devices, ZIA, ZPA and ZDX activity, blind spots, version drift, profile heatmap and a ranked remediation plan (opens in a new tab)"
@@ -867,7 +902,7 @@
   </div>
   </header>
 
-  <main id="main-content" role="main" tabindex="-1" aria-label="Zscaler Platform Assessment — Configuration and Results">
+  <main id="main-content" role="main" tabindex="-1" aria-label="Zscaler Made Easy — Configuration and Results">
 
   <!-- Step indicator — surfaces current progress across the 4 phases -->
   <nav id="stepBar" aria-label="Assessment workflow steps: each one is a button"
@@ -2831,7 +2866,7 @@ function buildPartialReport() {
   }
   const sum = assessmentSummary({ checks: partialResults });
   reportData = {
-    metadata: {tool:'Zscaler Platform Assessment (PARTIAL)', org: runMeta.org, assessor: runMeta.assessor, cloud: runMeta.cloud,
+    metadata: {tool:'Zscaler Made Easy (PARTIAL)', org: runMeta.org, assessor: runMeta.assessor, cloud: runMeta.cloud,
                scope: (runMeta.scopes || []).join(','), total_checks: partialResults.length, partial: true, timestamp: new Date().toISOString()},
     score: sum.score, maturity: sum.maturity, sections: sections, checks: partialResults, summary: sum,
     critical: partialResults.filter(c => c.status === 'FAIL'),
@@ -5131,6 +5166,39 @@ function openQueueTab() {
   const w = window.open('/report/queue', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
+function openSelfHealTab() {
+  // The tab reads the credentials and the Scope page's selection from this
+  // page through window.opener only when it shows or scans the tenant.
+  const w = window.open('/report/self-heal', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+// Self-healing banner: a small note under the title when the app found
+// something it could not fix, or a setting in a tenant drifted. Local data
+// only (GET /api/self-heal); the page says nothing when all is well.
+async function loadSelfHealBanner() {
+  let o;
+  try { const r = await fetch('/api/self-heal', { cache: 'no-store' }); if (!r.ok) return; o = await r.json(); } catch (e) { return; }
+  let el = document.getElementById('selfHealBanner');
+  if (!o || !o.attention) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'selfHealBanner'; el.setAttribute('role', 'status');
+    el.style.cssText = 'margin:0.8rem auto 0;max-width:760px;display:flex;gap:0.6rem;align-items:center;justify-content:center;flex-wrap:wrap;padding:0.5rem 0.8rem;border-radius:var(--r-md);border:1px solid var(--warn);background:color-mix(in srgb, var(--warn) 12%, transparent);font-size:0.85rem;color:var(--text);';
+    const hero = document.querySelector('.hero');
+    const tb = hero && hero.querySelector('.hero-toolbar');
+    if (tb) hero.insertBefore(el, tb); else if (hero) hero.appendChild(el); else return;
+  }
+  const parts = [];
+  if (o.needs_you) parts.push(`${o.needs_you} thing(s) in the app need you`);
+  if (o.tenant_heals_open) parts.push(`${o.tenant_heals_open} tenant setting(s) drifted from what you approved`);
+  el.textContent = '';
+  const t = document.createElement('span'); t.textContent = `Self-healing: ${parts.join('; ')}.`;
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-ghost'; b.textContent = 'Open Self-healing';
+  b.addEventListener('click', openSelfHealTab);
+  el.append(t, b);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadSelfHealBanner); else loadSelfHealBanner();
+setInterval(loadSelfHealBanner, 5 * 60 * 1000);
 function openAdvancedTab() {
   const w = window.open('/report/advanced', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
@@ -5186,10 +5254,23 @@ function openShadowRulesTab() {
   const w = window.open('/report/shadow', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
+function openBrowserSecurityTab() {
+  // Like Shadowed rules: the tab reads the credentials (with the ZPA
+  // customer ID) and the Scope page's selection from this page through
+  // window.opener when Read is clicked, so nothing is read until then.
+  const w = window.open('/report/browser', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
 function openAuditTimelineTab() {
   // The tab reads the credentials from this page through window.opener
   // (migrateCredBody) when it runs, so nothing is sent until it is built.
   const w = window.open('/report/audit', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openSslCoverageTab() {
+  // The tab reads the credentials and the Scope page's selection from this
+  // page through window.opener when Run is clicked, so nothing is sent until then.
+  const w = window.open('/report/sslcoverage', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openInsightsTab() {
@@ -5215,6 +5296,13 @@ function openZpaTab() {
   const w = window.open('/report/zpa', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
+function openDevicePostureTab() {
+  // Like ZPA analysis: the tab reads the credentials (with the ZPA customer
+  // ID) and the Scope page selection from this page through window.opener
+  // when it runs, so nothing is read until Read device posture.
+  const w = window.open('/report/device-posture', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
 function openFleetTab() {
   // The tab reads the credentials and the Scope page selection from this
   // page through window.opener when it runs, so nothing is read until then.
@@ -5232,6 +5320,22 @@ function openOperationsTab() {
   // selection and the assessor's name from this page through window.opener
   // when it runs, so nothing is read until Read from the tenant.
   const w = window.open('/report/operations', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openPostureTab() {
+  // The tab reads the results this page holds (window.__assessmentReport)
+  // and the tenant profile's history from the server; it reads nothing
+  // from the tenant.
+  const w = window.open('/report/posture', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openFindAnything() {
+  // Find anything (static/find_anything.js): the same dialog Ctrl+J and / open.
+  if (window.DLP_FIND) window.DLP_FIND.open();
+}
+function openTodoTab() {
+  // Workspace notes are local: the tab reads them from this server, never the tenant.
+  const w = window.open('/report/todo', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {
@@ -5485,7 +5589,7 @@ function _popOutSection(card, title) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${title} — Zscaler Assessment</title>
+<title>${title} — Zscaler Made Easy</title>
 <style>${styleEl ? styleEl.textContent : ''}</style>
 </head>
 <body class="${themeClass}" style="padding:2rem;">

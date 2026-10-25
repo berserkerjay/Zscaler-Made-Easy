@@ -1,4 +1,4 @@
-"""Audit timeline: who changed what in the tenant, and what DLP-Check did.
+"""Audit timeline: who changed what in the tenant, and what Zscaler Made Easy did.
 
 One timeline, newest first, merged from three sources:
 
@@ -20,19 +20,19 @@ One timeline, newest first, merged from three sources:
    when the Automation readiness scope (whose endpoints list
    /zia/auditlogEntryReport, scope_permissions.py) is ticked on the Scope
    page is it read at all (user rule 1).
-2. DLP-Check's **deployment records** (deployments.json): what each pack
+2. Zscaler Made Easy's **deployment records** (deployments.json): what each pack
    deployment created, and its undo.
-3. DLP-Check's **own audit log** (audit.log): every object it wrote
+3. Zscaler Made Easy's **own audit log** (audit.log): every object it wrote
    (`object_write`), every job (`job_finished`), write-mode switches,
    proposal decisions and sign-ins.
 
 The CSV is parsed defensively: its column names are matched loosely
 (ZIA's export is not documented column by column), a preamble before the
 header row is skipped, every raw row is kept, and pre / post values that
-are JSON are compared field by field. A ZIA change to an object DLP-Check
+are JSON are compared field by field. A ZIA change to an object Zscaler Made Easy
 created (its description carries the provenance tag
 "[<assessor> pack <id> v<version>]", or the deployment record lists it)
-that no DLP-Check write explains within CORRELATE_SECONDS is marked as
+that no Zscaler Made Easy write explains within CORRELATE_SECONDS is marked as
 made by someone else.
 
 Secrets: values under keys that look like secrets (password, token, key,
@@ -68,10 +68,10 @@ DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024
 REPORT_EP = "/zia/auditlogEntryReport"
 DOWNLOAD_EP = "/zia/auditlogEntryReport/download"
 
-READ_NOTE = ("The ZIA admin audit log is read through ZIA's audit log report: DLP-Check asks ZIA to prepare a report "
+READ_NOTE = ("The ZIA admin audit log is read through ZIA's audit log report: Zscaler Made Easy asks ZIA to prepare a report "
              "for the window (a POST that changes no configuration), waits for it and downloads it as CSV.")
 
-SOURCES = {"zia": "ZIA admin audit log", "deployment": "DLP-Check deployment", "app": "DLP-Check audit log"}
+SOURCES = {"zia": "ZIA admin audit log", "deployment": "Zscaler Made Easy deployment", "app": "Zscaler Made Easy audit log"}
 
 _SECRET_KEY = re.compile(r"secret|token|password|passwd|passphrase|credential|authorization|cookie|api_?key|private_?key|psk|pre_?shared", re.I)
 _SECRET_PAIR = re.compile(r'("(?:[^"]*(?:secret|token|password|passwd|passphrase|credential|authorization|cookie|api_?key|private_?key|psk)[^"]*)"\s*:\s*)"(?:[^"\\]|\\.)*"', re.I)
@@ -155,7 +155,7 @@ _OTHER_ZONE = re.compile(r"\s+[A-Z]{2,5}$")
 
 
 def parse_time(value: Any) -> Optional[datetime]:
-    """A time as ZIA's CSV or DLP-Check's records write it, as an aware
+    """A time as ZIA's CSV or Zscaler Made Easy's records write it, as an aware
     datetime (UTC when the text names no zone), or None."""
     s = str(value or "").strip()
     if not s:
@@ -266,7 +266,7 @@ def field_diff(pre: Any, post: Any, limit: int = 200) -> List[Dict[str, Any]]:
     return out
 
 
-# ── provenance (what DLP-Check created) ─────────────────────────────────
+# ── provenance (what Zscaler Made Easy created) ─────────────────────────────────
 
 def _descriptions(value: Any, depth: int = 0) -> List[str]:
     if depth > 6:
@@ -285,7 +285,7 @@ def _descriptions(value: Any, depth: int = 0) -> List[str]:
 
 
 def provenance(value: Any, known: Optional[Iterable[str]] = None) -> Optional[Dict[str, Any]]:
-    """The provenance tag a DLP-Check deploy writes at the end of a
+    """The provenance tag a Zscaler Made Easy deploy writes at the end of a
     description ("[<assessor> pack <id> v<version>]", pack_deploy), found in
     a parsed pre / post value or text: {by, pack, version, kind, tag}, or None."""
     import pack_deploy
@@ -510,7 +510,7 @@ def read_zia_audit(client, start_ms: int, end_ms: int, *, log: LogFn = None, can
     return {"status": "read", "error": None, "csv": parsed}
 
 
-# ── DLP-Check's own records ─────────────────────────────────────────────
+# ── Zscaler Made Easy's own records ─────────────────────────────────────────────
 
 def _tenant_ok(value: Any, labels: Optional[Iterable[str]]) -> bool:
     if not labels:
@@ -548,14 +548,14 @@ def deployment_events(records: List[Dict[str, Any]], labels: Optional[Iterable[s
         names = ", ".join(str(c.get("name")) for c in created[:8]) + (f" and {len(created) - 8} more" if len(created) > 8 else "")
         out.append(_ev("deployment", parse_time(r.get("at")), admin=str(r.get("by") or ""), action="Deploy policy packs",
                        category="Policy packs", resource=", ".join(map(str, r.get("packs") or [])), object=names,
-                       interface="DLP-Check", result=str(r.get("status") or ""), tenant=str(r.get("tenant_label") or ""),
+                       interface="Zscaler Made Easy", result=str(r.get("status") or ""), tenant=str(r.get("tenant_label") or ""),
                        detail="Created " + (", ".join(f"{n} {k}" for k, n in sorted(kinds.items())) or "nothing"),
                        object_id=str(r.get("id") or "")))
         undo = r.get("undo") if isinstance(r.get("undo"), dict) else None
         if undo:
             out.append(_ev("deployment", parse_time(undo.get("at")), admin=str(r.get("by") or ""), action="Undo deployment",
                            category="Policy packs", resource=", ".join(map(str, r.get("packs") or [])), object=str(r.get("id") or ""),
-                           interface="DLP-Check", result="complete" if undo.get("complete") else "partial", tenant=str(r.get("tenant_label") or ""),
+                           interface="Zscaler Made Easy", result="complete" if undo.get("complete") else "partial", tenant=str(r.get("tenant_label") or ""),
                            detail=f"{sum(1 for x in undo.get('results') or [] if isinstance(x, dict) and x.get('status') in ('deleted', 'gone'))} object(s) removed"))
     return out
 
@@ -564,7 +564,7 @@ _APP_EVENTS = ("object_write", "job_finished", "run_finished", "continuous_evalu
 
 
 def app_events(entries: List[Dict[str, Any]], labels: Optional[Iterable[str]] = None) -> List[Dict[str, Any]]:
-    """The app audit log entries that say what DLP-Check did: tenant
+    """The app audit log entries that say what Zscaler Made Easy did: tenant
     writes, jobs, proposal decisions, write-mode switches and sign-ins.
     The per-request `api` lines are left out (each tenant write already has
     its own entry), except the write-mode switch."""
@@ -580,7 +580,7 @@ def app_events(entries: List[Dict[str, Any]], labels: Optional[Iterable[str]] = 
                 continue
             body = a.get("body") if isinstance(a.get("body"), dict) else {}
             out.append(_ev("app", when, admin=actor, action="Write mode " + ("on" if body.get("enable") else "off"), category="Write mode",
-                           interface="DLP-Check", result=f"HTTP {a.get('status')}", detail="Server write mode switched from the app."))
+                           interface="Zscaler Made Easy", result=f"HTTP {a.get('status')}", detail="Server write mode switched from the app."))
             continue
         if ev not in _APP_EVENTS and not ev.startswith("proposal_"):
             continue
@@ -590,7 +590,7 @@ def app_events(entries: List[Dict[str, Any]], labels: Optional[Iterable[str]] = 
         if ev == "object_write":
             out.append(_ev("app", when, admin=actor, action=f"{a.get('action') or 'write'} {a.get('object_type') or 'object'}".strip(),
                            category=str(a.get("channel") or a.get("object_type") or ""), object=str(a.get("name") or ""),
-                           object_id=str(a.get("id") if a.get("id") is not None else ""), interface="DLP-Check (API)",
+                           object_id=str(a.get("id") if a.get("id") is not None else ""), interface="Zscaler Made Easy (API)",
                            result=str(a.get("result") or ""), tenant=tenant,
                            detail=(f"HTTP {a.get('http_status')}" if a.get("http_status") else "") + (f"; {a.get('error')}" if a.get("error") else ""),
                            write_action=str(a.get("action") or "")))
@@ -598,18 +598,18 @@ def app_events(entries: List[Dict[str, Any]], labels: Optional[Iterable[str]] = 
             counts = a.get("counts") if isinstance(a.get("counts"), dict) else {}
             c = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
             out.append(_ev("app", when, admin=actor, action=f"{a.get('kind') or a.get('run') or 'job'} {a.get('status') or a.get('result_status') or 'finished'}",
-                           category="Job", object=str(a.get("label") or ""), interface="DLP-Check", result=str(a.get("result_status") or a.get("status") or ""),
+                           category="Job", object=str(a.get("label") or ""), interface="Zscaler Made Easy", result=str(a.get("result_status") or a.get("status") or ""),
                            tenant=tenant, detail=(c or "no tenant writes") + (f"; stopped: {a.get('stopped')}" if a.get("stopped") else "")
                            + (f"; error: {a.get('error')}" if a.get("error") else "")))
         elif ev.startswith("proposal_"):
             out.append(_ev("app", when, admin=str(a.get("by") or actor), action=ev.replace("_", " "), category="Proposals",
-                           object=str(a.get("target") or ""), interface="DLP-Check", result=str(a.get("decision") or a.get("status") or ""),
+                           object=str(a.get("target") or ""), interface="Zscaler Made Easy", result=str(a.get("decision") or a.get("status") or ""),
                            detail=str(a.get("kind") or "")))
         elif ev == "continuous_evaluation":
             out.append(_ev("app", when, admin=actor, action="Continuous evaluation", category="Evaluation", object=str(a.get("digest") or ""),
-                           interface="DLP-Check"))
+                           interface="Zscaler Made Easy"))
         else:
-            out.append(_ev("app", when, admin=actor, action=ev.replace("_", " "), category="Sign-in", interface="DLP-Check"))
+            out.append(_ev("app", when, admin=actor, action=ev.replace("_", " "), category="Sign-in", interface="Zscaler Made Easy"))
     return out
 
 
@@ -642,8 +642,8 @@ def _object_ids(value: Any) -> List[str]:
 def zia_events(rows: List[Dict[str, Any]], created: List[Dict[str, Any]], own_writes: List[Dict[str, Any]],
                known_packs: Optional[Iterable[str]] = None) -> List[Dict[str, Any]]:
     """ZIA rows as timeline events, each marked when it touches an object
-    DLP-Check created (provenance tag, or listed in a deployment record)
-    and, when no DLP-Check write explains it within CORRELATE_SECONDS, as
+    Zscaler Made Easy created (provenance tag, or listed in a deployment record)
+    and, when no Zscaler Made Easy write explains it within CORRELATE_SECONDS, as
     a change made by someone else."""
     names = {str(c.get("name")).strip().lower() for c in created if c.get("name")}
     ids = {str(c.get("id")) for c in created if c.get("id") is not None}
@@ -675,14 +675,14 @@ def zia_events(rows: List[Dict[str, Any]], created: List[Dict[str, Any]], own_wr
                 why = []
                 if e["provenance"]:
                     p = e["provenance"]
-                    why.append(f"its description carries DLP-Check's provenance tag for pack {p.get('pack') or '?'}"
+                    why.append(f"its description carries Zscaler Made Easy's provenance tag for pack {p.get('pack') or '?'}"
                                + (f" v{p['version']}" if p.get("version") else "") + (f" (deployed by {p['by']})" if p.get("by") else ""))
                 else:
-                    why.append("a DLP-Check deployment record lists it as created")
+                    why.append("a Zscaler Made Easy deployment record lists it as created")
                 if e.get("tag_removed"):
                     why.append("this change removed the provenance tag")
                 e["foreign_change"] = True
-                e["foreign_reason"] = ("Changed by someone else: " + "; ".join(why) + f", and no DLP-Check write to it is recorded within "
+                e["foreign_reason"] = ("Changed by someone else: " + "; ".join(why) + f", and no Zscaler Made Easy write to it is recorded within "
                                        f"{CORRELATE_SECONDS // 60} minutes of this change" + (f" (by {e['admin']}" + (f" via {e['interface']}" if e["interface"] else "") + ")" if e["admin"] else "") + ".")
         out.append(e)
     return out
@@ -729,13 +729,13 @@ def build(*, window_: Dict[str, Any], zia: Optional[Dict[str, Any]], deployments
         if zia.get("error"):
             notes.append(zia["error"])
     elif not zia_requested:
-        notes.append(zia_reason or "The ZIA admin audit log was not read: only DLP-Check's own records are shown.")
+        notes.append(zia_reason or "The ZIA admin audit log was not read: only Zscaler Made Easy's own records are shown.")
     if outside:
         notes.append(f"{outside} record(s) fall outside the window and are not shown.")
     if cut:
         notes.append(f"Only the newest {MAX_EVENTS} events are shown; {cut} older one(s) were left out. Choose a shorter window.")
     if labels:
-        notes.append("DLP-Check's own records are shown for this tenant only (" + ", ".join(labels[:2]) + ").")
+        notes.append("Zscaler Made Easy's own records are shown for this tenant only (" + ", ".join(labels[:2]) + ").")
     untimed = sum(1 for e in events if e.get("ts") is None)
     if untimed:
         notes.append(f"{untimed} event(s) have a time this page could not read; they are listed last with the time as written.")

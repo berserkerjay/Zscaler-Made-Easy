@@ -503,7 +503,9 @@ def test_reduced_motion_visibility_and_scrolling_start_and_stop_the_frames():
     out = _pm_run(
         "const r={};const pos=c=>c.querySelector('.pm-bits').children.map(e=>e.getAttribute('cx')+','+e.getAttribute('cy')).join(';');"
         # Reduced motion: still, until Play.
-        "let w=H.load(PM,{reduce:true}),c=w.container(),m=w.ctx.renderPathMotion(c),b=c.querySelector('#pmToggle');"
+        # Each lane starts at a random point of its spawn cycle; pin it so a
+        # bit is always due within the frames below (it was flaky in CI).
+        "let w=H.load(PM,{reduce:true});w.run('Math.random=()=>0.999');let c=w.container(),m=w.ctx.renderPathMotion(c),b=c.querySelector('#pmToggle');"
         "r.reduceStart={pending:w.pending(),req:w.stats.requested,label:b.textContent,note:c.querySelector('#pmMotionNote').textContent};"
         "b.click();r.play={pending:w.pending(),label:b.textContent};w.frames(90);r.bits=c.querySelector('.pm-bits').children.length;"
         "const p0=pos(c);w.frames(5);r.moved=p0!==pos(c);"

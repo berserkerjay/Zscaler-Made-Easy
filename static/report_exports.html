@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Policy exports — Zscaler Assessment</title>
+<title>Policy exports — Zscaler Made Easy</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
@@ -12,7 +12,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Policy</span> exports</h1>
-      <p>Every export the app has, in one place. The tenant exports read live and read-only, only what is in scope on the Scope page, with a live log and Stop: each ZIA policy as a formatted workbook or a PDF review copy, every URL the policy names in one workbook, and which URLs of your custom URL categories Zscaler already categorises itself.</p>
+      <p>Every export the app has, in one place. The tenant exports read live and read-only, only what is in scope on the Scope page, with a live log and Stop: each ZIA policy as a formatted workbook or a PDF review copy, your locations and Client Connector profiles with what uses them, every URL the policy names in one workbook, and which URLs of your custom URL categories Zscaler already categorises itself. Pick an export, then choose Excel or PDF; the export options below set the columns and how several values share a cell.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -49,6 +49,16 @@
               <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exPolXlsx">Excel</button><button type="button" class="rp-btn" data-run id="exPolPdf">PDF</button></td>
             </tr>
             <tr>
+              <th scope="row"><div class="adv-pname">Locations</div><div class="adv-pdesc">Every location and sub-location with its settings (authentication, SSL scan, firewall, XFF forwarding, bandwidth, surrogate IP), the location groups, and which rules use each one, directly or through a location group.</div></th>
+              <td><div class="df-hint">Needs ZIA platform ticked. Which rules use a location comes from the URL filtering, Cloud Firewall, SSL inspection, File Type Control and Web DLP rules that are in scope. IP addresses and VPN credentials are counted, never listed; no pre-shared key or password is ever put in the file.</div></td>
+              <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exLocations">Excel</button></td>
+            </tr>
+            <tr>
+              <th scope="row"><div class="adv-pname">Client Connector profiles</div><div class="adv-pdesc">App profiles and forwarding profiles with their settings, the PAC files, and which profile uses which forwarding profile and PAC URL.</div></th>
+              <td><div class="df-hint">Needs ZCC ticked. Passwords, passcodes, tokens and keys the profiles carry are never exported; people are counted, not named.</div></td>
+              <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exZcc">Excel</button></td>
+            </tr>
+            <tr>
               <th scope="row"><div class="adv-pname">URLs export</div><div class="adv-pdesc">Every URL, domain, IP range and keyword the policy names, deduplicated, with a Found in column and every occurrence on its own sheet.</div></th>
               <td><div class="df-hint">Custom URL categories, URL filtering and SSL inspection rules through the categories they use, Cloud Firewall destinations and IP destination groups, Advanced settings bypass lists (ZIA platform), Client Connector bypasses and PAC DIRECT hosts (ZCC). Each source only when it is in scope.</div></td>
               <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exUrls">Excel</button></td>
@@ -76,6 +86,33 @@
             </tr>
           </tbody>
         </table></div>
+      </section>
+
+      <section aria-labelledby="exOptH" class="ex-opts">
+        <h2 class="df-h" id="exOptH">Export options</h2>
+        <p class="df-hint">These shape the Excel files of the policy, location and Client Connector exports. The defaults make the same workbooks as before; the PDF review copy keeps its fixed columns.</p>
+        <div class="ex-fields">
+          <fieldset class="ex-pick"><legend>Fields with several values</legend>
+            <label><input type="radio" name="exLayout" value="flat" checked> One row per rule, all values in one cell</label>
+            <label><input type="radio" name="exLayout" value="rows"> One row per value</label>
+          </fieldset>
+          <label class="df-ctl"><span class="lbl">Values in one cell separated by</span><select id="exSep" aria-label="Separator between several values in one cell">
+            <option value="newline">New line</option>
+            <option value="comma">Comma</option>
+            <option value="semicolon">Semicolon</option>
+          </select></label>
+        </div>
+        <details class="ex-cols" id="exColsBox">
+          <summary>Choose columns <span class="df-by" id="exColsCount">every column</span></summary>
+          <div class="ex-row">
+            <label class="df-ctl"><span class="lbl">Export</span><select id="exColsSheet" aria-label="Export whose columns to choose"></select></label>
+            <button type="button" class="rp-btn" id="exColsAll">Select all</button>
+            <button type="button" class="rp-btn" id="exColsNone">Clear</button>
+          </div>
+          <fieldset class="ex-colgrid" id="exColsList"><legend class="sr-only">Columns to export</legend></fieldset>
+          <p class="df-hint" id="exColsHint">The columns that name the rule or object (Order, Rule, Name) always stay. One row per value repeats the other cells on each row, so a filter on one value finds every rule that names it.</p>
+        </details>
+        <div class="ex-row"><button type="button" class="rp-btn" id="exOptReset">Reset to defaults</button><span class="df-by" id="exOptNote" role="status" aria-live="polite"></span></div>
       </section>
 
       <section aria-labelledby="exLiveH" id="exLiveSec" hidden>
@@ -113,6 +150,7 @@
   <script src="/static/report_theme.js"></script>
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -289,17 +327,110 @@
       return items.length ? `<p class="df-hint">${E(title)}</p><ul class="ex-list">${items.map(([k, v]) => `<li><strong>${E(k.replace(/_/g, ' '))}</strong>: ${E(v)}</li>`).join('')}</ul>` : '';
     }
 
+    // ── export options (the Excel files of the policy, location and
+    // Client Connector exports; policy_exports.options) ─────────────
+    const SHEET_LABELS = { url_filtering: 'URL filtering', cloud_app_control: 'Cloud App Control', ssl_inspection: 'SSL inspection',
+      firewall: 'Cloud Firewall', file_type_control: 'File Type Control', locations: 'Locations', location_groups: 'Location groups',
+      app_profiles: 'Client Connector app profiles', forwarding_profiles: 'Client Connector forwarding profiles', pac_files: 'PAC files' };
+    const OPT_KEY = 'zassess_export_options_v1';
+    const OPT = { catalogue: {}, identity: [], picked: {} };   // picked: sheet -> Set of headers (absent: every column)
+    function saveOpts() {
+      try {
+        const picked = {}; Object.entries(OPT.picked).forEach(([k, v]) => { picked[k] = Array.from(v); });
+        localStorage.setItem(OPT_KEY, JSON.stringify({ layout: layout(), separator: $('exSep').value, picked }));
+      } catch (e) { /* a convenience only */ }
+    }
+    function layout() { const x = document.querySelector('input[name="exLayout"]:checked'); return x ? x.value : 'flat'; }
+    function exportOptions() {
+      const columns = {};
+      Object.entries(OPT.picked).forEach(([k, set]) => {
+        const all = OPT.catalogue[k] || [];
+        if (set && all.some(c => !set.has(c) && !OPT.identity.includes(c))) columns[k] = all.filter(c => set.has(c) || OPT.identity.includes(c));
+      });
+      return { columns, layout: layout(), separator: $('exSep').value };
+    }
+    function colsCount() {
+      const n = Object.keys(exportOptions().columns).length;
+      $('exColsCount').textContent = n ? `fewer columns in ${n} export${n === 1 ? '' : 's'}` : 'every column';
+    }
+    function drawCols() {
+      const key = $('exColsSheet').value, all = OPT.catalogue[key] || [], set = OPT.picked[key];
+      const box = $('exColsList');
+      box.querySelectorAll('label').forEach(l => l.remove());
+      all.forEach((c, i) => {
+        const fixed = OPT.identity.includes(c);
+        const lab = document.createElement('label');
+        lab.innerHTML = `<input type="checkbox" value="${E(c)}" id="exCol${i}" ${fixed || !set || set.has(c) ? 'checked' : ''} ${fixed ? 'disabled' : ''}><span>${E(c)}${fixed ? ' (always)' : ''}</span>`;
+        box.appendChild(lab);
+      });
+      colsCount();
+    }
+    function pickCols(fn) {
+      const key = $('exColsSheet').value, all = OPT.catalogue[key] || [];
+      const set = fn(new Set(OPT.picked[key] || all));
+      if (all.every(c => set.has(c))) delete OPT.picked[key]; else OPT.picked[key] = set;
+      drawCols(); saveOpts();
+    }
+    async function loadOptions() {
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(OPT_KEY) || '{}') || {}; } catch (e) { saved = {}; }
+      if (saved.layout === 'rows') document.querySelector('input[name="exLayout"][value="rows"]').checked = true;
+      if (['newline', 'comma', 'semicolon'].includes(saved.separator)) $('exSep').value = saved.separator;
+      try {
+        const r = await fetch('/api/exports/columns', { cache: 'no-store' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        OPT.catalogue = d.columns || {}; OPT.identity = d.identity || [];
+      } catch (e) {
+        $('exColsHint').textContent = `The column list could not be loaded (${e.message}), so every column is exported.`;
+        $('exColsSheet').disabled = true; $('exColsAll').disabled = true; $('exColsNone').disabled = true;
+        return;
+      }
+      Object.entries(saved.picked || {}).forEach(([k, v]) => {
+        if (OPT.catalogue[k] && Array.isArray(v)) OPT.picked[k] = new Set(v.filter(c => OPT.catalogue[k].includes(c)));
+      });
+      $('exColsSheet').innerHTML = Object.keys(OPT.catalogue).map(k => `<option value="${E(k)}">${E(SHEET_LABELS[k] || k.replace(/_/g, ' '))}</option>`).join('');
+      drawCols();
+    }
+    $('exColsSheet').addEventListener('change', drawCols);
+    $('exColsList').addEventListener('change', ev => {
+      const x = ev.target; if (!x || x.type !== 'checkbox') return;
+      pickCols(set => { if (x.checked) set.add(x.value); else set.delete(x.value); return set; });
+    });
+    $('exColsAll').addEventListener('click', () => pickCols(() => new Set(OPT.catalogue[$('exColsSheet').value] || [])));
+    $('exColsNone').addEventListener('click', () => pickCols(() => new Set(OPT.identity)));
+    document.querySelectorAll('input[name="exLayout"]').forEach(x => x.addEventListener('change', saveOpts));
+    $('exSep').addEventListener('change', saveOpts);
+    $('exOptReset').addEventListener('click', () => {
+      OPT.picked = {}; document.querySelector('input[name="exLayout"][value="flat"]').checked = true; $('exSep').value = 'newline';
+      drawCols(); saveOpts(); $('exOptNote').textContent = 'Back to the defaults: every column, one row per rule, values on separate lines.';
+    });
+
     // ── each export ─────────────────────────────────────────────────
     function policies() { return Array.from(document.querySelectorAll('input[name="exPolicy"]:checked')).map(x => x.value); }
     function policyExport(fmt) {
       const picked = policies();
       if (!picked.length) { card('risk', 'Pick a policy', 'Tick at least one policy to export.'); say('Tick at least one policy to export.'); return; }
       runJob(fmt === 'pdf' ? 'Policy exports (PDF)' : 'Policy exports (Excel)', '/api/exports/policies/start',
-        { policies: picked, format: fmt, page: $('exPaper').value }, res => {
+        Object.assign({ policies: picked, format: fmt, page: $('exPaper').value }, exportOptions()), res => {
           const rows = Object.values(res.counts || {}).map(c => `<tr><th scope="row">${E(c.label)}</th><td>${E(c.rules)}</td><td>${E(c.findings)}</td></tr>`).join('');
           return (rows ? `<div class="df-tablewrap"><table class="df-table ex-sum"><caption class="sr-only">Rules and findings per policy</caption><thead><tr><th scope="col">Policy</th><th scope="col">Rules</th><th scope="col">Shadowed-rule findings</th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
             + listHtml('Could not be read:', res.read_errors) + listHtml('Not in scope, not exported:', res.not_in_scope);
         });
+    }
+    function locationsExport() {
+      runJob('Locations', '/api/exports/locations/start', exportOptions(), res => {
+        const c = res.counts || {};
+        return `<p>${E(c.locations || 0)} location${c.locations === 1 ? '' : 's'}, ${E(c.sublocations || 0)} sub-location${c.sublocations === 1 ? '' : 's'} and ${E(c.groups || 0)} location group${c.groups === 1 ? '' : 's'}. Which rules use them: ${E((c.usage || []).join(', ') || 'no policy was in scope or readable')}.</p>`
+          + listHtml('Could not be read:', res.errors) + listHtml('Not in scope, so their rules were not checked:', res.not_in_scope);
+      });
+    }
+    function zccExport() {
+      runJob('Client Connector profiles', '/api/exports/client-connector/start', exportOptions(), res => {
+        const c = res.counts || {};
+        return `<p>${E(c.app_profiles || 0)} app profile${c.app_profiles === 1 ? '' : 's'}, ${E(c.forwarding_profiles || 0)} forwarding profile${c.forwarding_profiles === 1 ? '' : 's'} and ${E(c.pac_files || 0)} PAC file${c.pac_files === 1 ? '' : 's'}.</p>`
+          + ((res.errors || []).length ? `<p class="df-hint">Could not be read:</p><ul class="ex-list">${res.errors.map(x => `<li>${E(x)}</li>`).join('')}</ul>` : '');
+      });
     }
     function urlsExport() {
       runJob('URLs export', '/api/exports/urls/start', {}, res =>
@@ -361,6 +492,8 @@
 
     $('exPolXlsx').addEventListener('click', () => policyExport('xlsx'));
     $('exPolPdf').addEventListener('click', () => policyExport('pdf'));
+    $('exLocations').addEventListener('click', locationsExport);
+    $('exZcc').addEventListener('click', zccExport);
     $('exUrls').addEventListener('click', urlsExport);
     $('exAnalyze').addEventListener('click', analyze);
     $('exInventory').addEventListener('click', inventory);
@@ -374,6 +507,7 @@
     tenantChoices();
     showScope();
     plans();
+    loadOptions();
   })();
   </script>
 </body>

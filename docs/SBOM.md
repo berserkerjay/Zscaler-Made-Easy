@@ -1,6 +1,6 @@
 # Software bill of materials
 
-`docs/sbom.cdx.json` is a CycloneDX 1.6 JSON SBOM of DLP-Check's own
+`docs/sbom.cdx.json` is a CycloneDX 1.6 JSON SBOM of Zscaler Made Easy's own
 dependencies, the Python packages and the Terraform provider:
 
 - every Python package pinned in `requirements.lock`, with its exact version,
@@ -11,7 +11,7 @@ dependencies, the Python packages and the Terraform provider:
   it pulls in (`pywin32-ctypes`, the `jaraco` packages, `more-itertools`);
 - the Terraform provider the policy packs use (`zscaler/zia`, pinned in
   `terraform/*/.terraform.lock.hcl`), with its licence (MPL-2.0);
-- DLP-Check itself as the root component (`LicenseRef-DLP-Check-Internal`,
+- Zscaler Made Easy itself as the root component (`LicenseRef-DLP-Check-Internal`,
   the terms in `LICENSE`).
 
 It holds the dependency graph too. The root depends on the packages

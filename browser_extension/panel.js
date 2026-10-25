@@ -1,9 +1,9 @@
-// The side panel: what DLP-Check knows about the objects on the console
+// The side panel: what Zscaler Made Easy knows about the objects on the console
 // page you are looking at (badges link here), a search over everything it
 // read (DLP dictionaries, engines and rules; the ZIA policies' rules; URL
 // categories, locations, groups and the other objects those rules use),
 // filtered by kind, and a stage of DLP objects to export as a JSON pack or
-// Terraform. Every answer comes from the DLP-Check app on this computer;
+// Terraform. Every answer comes from the Zscaler Made Easy app on this computer;
 // the panel never calls Zscaler and never holds a credential.
 import { PAGES, SHADOW_KINDS, api, apiBlob, appUrl, kindInfo, objectKey, ping } from './common.js';
 
@@ -65,7 +65,7 @@ async function connect() {
   $('conn').textContent = up.ok ? 'Connected' : 'Not running';
   $('conn').className = 'chip ' + (up.ok ? 'ok' : 'bad');
   $('read').disabled = !up.ok;
-  if (!up.ok) { $('readNote').textContent = `Start DLP-Check (${S.base.replace(/^https?:\/\//, '')}), or set its address in Settings.`; return false; }
+  if (!up.ok) { $('readNote').textContent = `Start Zscaler Made Easy (${S.base.replace(/^https?:\/\//, '')}), or set its address in Settings.`; return false; }
   try {
     const d = await api(S.base, '/api/tenant-profiles');
     S.profiles = (d && d.profiles) || [];
@@ -78,7 +78,7 @@ async function connect() {
   return true;
 }
 async function readTenant(refresh) {
-  $('read').disabled = true; $('readNote').textContent = 'Reading the tenant through DLP-Check (read-only)…';
+  $('read').disabled = true; $('readNote').textContent = 'Reading the tenant through Zscaler Made Easy (read-only)…';
   try {
     const idx = await api(S.base, '/api/console-index', { profile_id: S.profile || '', refresh: !!refresh });
     S.index = idx; indexMap(); await saveSession();
@@ -160,14 +160,14 @@ function moreNote() {
   const more = (S.index && S.index.more) || {};
   const ks = Object.keys(more).filter(k => !S.kind || k === S.kind);
   if (!ks.length) return null;
-  return h('p', { class: 'note', text: `${ks.map(k => `${more[k]} more ${inSentence(kindInfo(S.index, k).plural)}`).join(', ')} not shown: DLP-Check keeps the ones with findings and the most used of each kind. Search DLP-Check itself for the rest.` });
+  return h('p', { class: 'note', text: `${ks.map(k => `${more[k]} more ${inSentence(kindInfo(S.index, k).plural)}`).join(', ')} not shown: Zscaler Made Easy keeps the ones with findings and the most used of each kind. Search Zscaler Made Easy itself for the rest.` });
 }
 function viewPage() {
-  if (!S.index) return h('p', { class: 'empty', text: 'Read the tenant to see what DLP-Check knows about the objects on this page.' });
+  if (!S.index) return h('p', { class: 'empty', text: 'Read the tenant to see what Zscaler Made Easy knows about the objects on this page.' });
   if (S.pageKeys === null) return h('p', { class: 'empty', text: 'No badges on this tab. Open the ZIA admin console (DLP, URL filtering, firewall or other policy pages), and switch the badges on in Settings if you have not.' });
   const all = S.pageKeys.map(k => S.byKey.get(k)).filter(Boolean);
   const out = h('div');
-  const run = () => out.replaceChildren(list(all.filter(o => !S.kind || o.kind === S.kind), 'None of the objects DLP-Check read are on this page.'));
+  const run = () => out.replaceChildren(list(all.filter(o => !S.kind || o.kind === S.kind), 'None of the objects Zscaler Made Easy read are on this page.'));
   run();
   return h('div', {}, all.length ? kindFilter(all, run) : null, h('div', { style: 'height:8px' }), out);
 }
@@ -202,7 +202,7 @@ function viewSameName(keys) {
   return h('div', { class: 'detail' },
     h('button', { type: 'button', onclick: () => { S.focusList = null; render(); }, text: '← Back' }),
     h('p', { class: 'title', text: `${plural(objs.length, 'object')} named “${name}”` }),
-    h('p', { class: 'note', text: 'The console shows one name; DLP-Check knows several objects by it. Pick the one you mean.' }),
+    h('p', { class: 'note', text: 'The console shows one name; Zscaler Made Easy knows several objects by it. Pick the one you mean.' }),
     list(objs, 'These objects are no longer in the index: read the tenant again.'));
 }
 function viewStage() {
@@ -222,7 +222,7 @@ function viewStage() {
     h('div', { class: 'row' },
       h('button', { type: 'button', class: 'primary', id: 'exportGo', onclick: runExport, text: `Export ${plural(objs.length, 'object')}` }),
       h('button', { type: 'button', onclick: () => { S.stage = []; saveSession(); render(); }, text: 'Clear' })),
-    h('p', { class: 'note', id: 'exportNote', text: 'Read-only: DLP-Check reads the tenant and writes nothing. Deploying or removing stays in DLP-Check, with write mode and its preview.' }));
+    h('p', { class: 'note', id: 'exportNote', text: 'Read-only: Zscaler Made Easy reads the tenant and writes nothing. Deploying or removing stays in Zscaler Made Easy, with write mode and its preview.' }));
   return wrap;
 }
 function refButtons(kind, names, policy, total) {
@@ -249,12 +249,45 @@ function usedBySections(o) {
   const by = o.used_by || {}, counts = (o.counts && o.counts.by_policy) || {};
   const kinds = (S.index && S.index.policy_kinds) || {};
   const ps = Object.keys(by);
-  if (!ps.length) return [h('h3', { text: 'Used by' }), h('p', { class: 'note', text: 'No rule DLP-Check read uses it.' })];
+  if (!ps.length) return [h('h3', { text: 'Used by' }), h('p', { class: 'note', text: 'No rule Zscaler Made Easy read uses it.' })];
   return ps.flatMap(p => [h('h3', { text: `Used by ${policyLabel(p)} rules (${counts[p] ?? by[p].length})` }),
     refButtons(kinds[p] || 'rule', by[p], p, counts[p])]);
 }
+// An engine's expression with dictionary names and in one sentence; Copy
+// puts the expression as the tenant has it (dictionary ids) on the clipboard.
+function engineExpression(o) {
+  if (!o.expression && !o.readable) return [h('h3', { text: 'What it matches' }), h('p', { class: 'note', text: 'No expression: a predefined engine, or the tenant gave none.' })];
+  const done = h('span', { class: 'note', role: 'status', 'aria-live': 'polite' });
+  const copy = () => {
+    const ok = () => { done.textContent = 'Copied the expression with dictionary ids.'; };
+    const fail = () => { done.textContent = `Copy was blocked; the expression is: ${o.expression}`; };
+    try { navigator.clipboard.writeText(o.expression || '').then(ok, fail); } catch (e) { fail(); }
+  };
+  return [h('h3', { text: 'What it matches' }),
+    o.summary ? h('p', { class: 'summary', text: o.summary }) : h('p', { class: 'note', text: 'This expression is not one the app can put in a sentence; the names below are exact.' }),
+    h('code', { class: 'expr', title: o.expression || '', text: o.readable || o.expression }),
+    h('div', { class: 'row' }, h('button', { type: 'button', onclick: copy, 'aria-label': 'Copy the expression with dictionary ids', text: 'Copy expression' }), done)];
+}
 function openIn(page) {
-  return h('button', { type: 'button', onclick: () => chrome.tabs.create({ url: S.base + PAGES[page].path }), text: page === 'home' ? 'Open DLP-Check' : `Open ${PAGES[page].label} in DLP-Check` });
+  return h('button', { type: 'button', onclick: () => chrome.tabs.create({ url: S.base + PAGES[page].path }), text: page === 'home' ? 'Open Zscaler Made Easy' : `Open ${PAGES[page].label} in Zscaler Made Easy` });
+}
+// The object's workspace notes (tags, to-dos, comments) as the app keeps
+// them for this tenant: read-only here (GET); they are written in the app.
+function notesSection(o) {
+  const box = h('div', { class: 'notes', 'aria-live': 'polite' }, h('p', { class: 'note', text: 'Loading the notes…' }));
+  const tenant = (S.index && S.index.tenant_label) || '';
+  if (!tenant) { box.replaceChildren(h('p', { class: 'note', text: 'Read the tenant to see its notes.' })); return box; }
+  api(S.base, '/api/workspace/notes?' + new URLSearchParams({ tenant, kind: o.kind, ref: objectKey(o) }).toString()).then(d => {
+    const n = d && d.note;
+    if (!n) { box.replaceChildren(h('p', { class: 'note', text: 'No tags or notes. Add them on the object\'s card in the app (Find anything, Ctrl+J).' })); return; }
+    const open = (n.todos || []).filter(t => !t.done);
+    box.replaceChildren(
+      (n.tags || []).length ? h('div', { class: 'refs' }, n.tags.map(t => h('span', { class: 'chip', text: t }))) : null,
+      open.length ? h('ul', { class: 'list' }, open.map(t => h('li', { class: 'meta', text: `To-do: ${t.text}` }))) : null,
+      (n.comments || []).slice(-3).map(c => h('p', { class: 'note', text: `${c.by || ''}: ${c.text}` })),
+      h('p', { class: 'note', text: `${plural(open.length, 'open to-do')}, ${plural((n.comments || []).length, 'comment')}. Edit them in the app.` }));
+  }).catch(e => { box.replaceChildren(h('p', { class: 'note', text: `Notes not available: ${e.message}` })); });
+  return box;
 }
 function viewDetail(o) {
   const key = objectKey(o);
@@ -272,12 +305,13 @@ function viewDetail(o) {
   }
   if (o.kind === 'dictionary' && o.type) add('Type', String(o.type).toLowerCase().replace(/_/g, ' '));
   if (o.kind === 'url_category' && o.id) add('ID', o.id);
-  if (exportable(o)) add('Created by', o.pack ? `policy pack ${o.pack}` : 'not by a DLP-Check pack');
+  if (o.kind === 'file_type') { add('Type', o.category); add('API name', o.id); }
+  if (exportable(o)) add('Created by', o.pack ? `policy pack ${o.pack}` : 'not by a Zscaler Made Easy pack');
   const by = o.used_by || {};
   const sections = [];
   if (o.kind === 'dictionary') sections.push(h('h3', { text: `Used by engines (${o.counts.engines || 0})` }), refButtons('engine', by.engines),
     h('h3', { text: `Reaches rules (${o.counts.rules || 0})` }), refButtons('rule', by.rules));
-  else if (o.kind === 'engine') sections.push(...usesSections(o), h('h3', { text: `Used by rules (${o.counts.rules || 0})` }), refButtons('rule', by.rules));
+  else if (o.kind === 'engine') sections.push(...engineExpression(o), ...usesSections(o), h('h3', { text: `Used by rules (${o.counts.rules || 0})` }), refButtons('rule', by.rules));
   else if (o.kind === 'rule' || o.policy) sections.push(...usesSections(o));
   else sections.push(...usedBySections(o));
   const findings = (o.findings || []).map(f => h('div', { class: `finding sev-${f.severity}` }, h('span', { class: `chip sev-${f.severity}`, text: f.severity }), ' ', f.text));
@@ -296,7 +330,8 @@ function viewDetail(o) {
     o.name_derived ? h('p', { class: 'note', text: `Named after its ID: the API gives predefined categories no display name, so the console may spell it differently.` }) : null,
     ...sections,
     h('h3', { text: 'Findings' }), findings.length ? findings : h('p', { class: 'note', text: 'None.' }),
-    exportable(o) ? null : h('p', { class: 'note', text: 'Export from tenant covers DLP objects only; open DLP-Check for this one.' }),
+    h('h3', { text: 'Tags and notes' }), notesSection(o),
+    exportable(o) ? null : h('p', { class: 'note', text: 'Export from tenant covers DLP objects only; open Zscaler Made Easy for this one.' }),
     h('div', { class: 'row' }, actions));
 }
 function render() {
@@ -310,7 +345,7 @@ function showDetail(key) { S.focus = key; render(); }
 function stage(key) { const o = S.byKey.get(key); if (o && exportable(o) && !S.stage.includes(key)) S.stage.push(key); saveSession(); render(); }
 function unstage(key) { S.stage = S.stage.filter(k => k !== key); saveSession(); render(); }
 
-// ── Export the stage (read-only job in DLP-Check) ────────────────────
+// ── Export the stage (read-only job in Zscaler Made Easy) ────────────────────
 async function runExport() {
   const objs = S.stage.map(k => S.byKey.get(k)).filter(Boolean);
   const dictionaries = objs.filter(o => o.kind === 'dictionary' && o.id != null).map(o => String(o.id));
@@ -319,7 +354,7 @@ async function runExport() {
   objs.filter(o => o.kind === 'rule' && o.id != null && o.parent_id == null && o.channel).forEach(o => { (rules[o.channel] = rules[o.channel] || []).push(String(o.id)); });
   const parts = [dictionaries.length && 'dictionaries', engines.length && 'engines', Object.keys(rules).length && 'rules'].filter(Boolean);
   const note = $('exportNote'), go = $('exportGo');
-  go.disabled = true; note.textContent = 'Exporting through DLP-Check…';
+  go.disabled = true; note.textContent = 'Exporting through Zscaler Made Easy…';
   try {
     const start = await api(S.base, '/api/dlp-packs/export/start', {
       profile_id: S.profile || '', parts, dictionaries, engines, rules: Object.keys(rules).length ? rules : {},

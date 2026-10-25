@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser security — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .bw-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .bw-page .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .bw-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; }
+  .bw-stat { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.55rem 0.75rem; }
+  .bw-stat .n { font-size: var(--fs-headline, 1.2rem); font-weight: 700; }
+  .bw-stat .k { font-size: 0.72rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .bw-stat.sev-high .n { color: var(--fail); } .bw-stat.sev-medium .n { color: var(--warn); }
+  .bw-note { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.6rem 0.8rem; margin: 0 0 1rem; font-size: 0.88rem; max-width: 90ch; }
+  .bw-gloss { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 0.3rem 0.9rem; margin: 0.4rem 0 0; font-size: 0.88rem; }
+  .bw-gloss dt { font-weight: 600; } .bw-gloss dd { margin: 0; color: var(--text); }
+  .bw-page .df-tablewrap { max-width: 100%; }
+  .bw-page .df-table th[scope="row"] { text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 600; min-width: 8rem; }
+  .bw-page .df-table td { vertical-align: top; }
+  .bw-yes { color: var(--fail); font-weight: 600; } .bw-ok { color: var(--pass); } .bw-dim { color: var(--dim); }
+  .bw-assume { margin-top: 0.25rem; color: var(--dim); font-size: 0.8rem; }
+  .bw-sec { margin-top: 1.2rem; }
+  .bw-page :is(.pa-impact, .bw-note, .df-hint) { min-width: 0; overflow-wrap: anywhere; }
+  .bw-filter button:focus-visible, .bw-page summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 600px) { .bw-gloss { grid-template-columns: 1fr; } .bw-gloss dd { margin-bottom: 0.4rem; } }
+  @media (max-width: 760px) { .bw-page .rp-bar .df-ctl { flex-wrap: wrap; } }
+</style>
+</head>
+<body class="report-page bw-page sh-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Browser</span> security <span class="sf-live" id="bwLive" hidden><i></i>live</span></h1>
+      <p>This page shows how safely people use the web through Zscaler: what isolated web pages let them copy, download or print, which rules send sites to isolation, which browsers ZIA lets through, and who can reach Browser Access and Privileged Remote Access apps. Click <strong>Read</strong>, then fix the high findings first. Nothing is changed in your Zscaler.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="bwTenantWrap" hidden><span class="lbl">Tenant</span><select id="bwTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="bwRun">Read</button>
+      <a class="rp-btn" id="expXlsx" hidden>Excel</a>
+      <a class="rp-btn" id="expJson" hidden>JSON</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="bwBody">
+        <div class="pa-intro" id="bwHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Tick what to read on the Scope page.</strong> ZIA platform reads the isolation profiles, Browser Control and the URL filtering and Cloud App Control rules that isolate. ZPA reads the isolation controls, Browser Access, managed browsers, browser protection, Privileged Remote Access and user portals (it needs a OneAPI API client and the ZPA customer ID). Nothing else is read.</li>
+            <li><strong>Read.</strong> The page reads once, shown live as it reads. Stop ends the read at once.</li>
+            <li><strong>Fix the findings</strong>, high first: each says what is wrong in plain words, why it matters for data protection and what to change. Export them as Excel or JSON for the change request.</li>
+          </ol>
+          <div class="df-hint" id="bwNoApi"></div>
+        </div>
+        <section class="bw-sec" aria-labelledby="bwGlossH">
+          <h2 class="df-h" id="bwGlossH">Words on this page</h2>
+          <dl class="bw-gloss" id="bwGloss"></dl>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/glossary.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    const body = $('bwBody'), meta = $('rpMeta'), live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const SEVS = ['high', 'medium', 'low', 'info'];
+    const SEV_CLS = { high: 'st-fail', medium: 'st-warn', low: 'st-block', info: '' };
+    const AREAS = ['Isolation controls', 'Rules that isolate', 'Isolation profiles', 'Browser Control', 'Browser Access', 'Managed browsers'];
+    const NO_API = 'The Zscaler API has no endpoints for the standalone Zscaler Enterprise Browser or its own policies, so this page cannot read or check them.';
+    const GLOSS_KEYS = ['browser isolation', 'watermark', 'smart isolation', 'browser access', 'privileged remote access'];
+    let running = false, job = null, startToken = null, stopAsked = false, sevFilter = '', last = null, lastLogs = [];
+    $('bwLive').hidden = !(window.opener && !window.opener.closed);
+    $('bwNoApi').textContent = NO_API;
+
+    function glossaryHtml(extra) {
+      // The page's own words first (glossary.js); after a read, the fuller
+      // control list from the server, each term once.
+      const G = window.SIMPLE_GLOSSARY || {};
+      const rows = (extra || []).map(x => [x.term, x.meaning]);
+      const seen = new Set(rows.map(r => String(r[0]).toLowerCase()));
+      GLOSS_KEYS.filter(k => G[k] && !seen.has(k)).forEach(k => rows.push([G[k].term, G[k].def]));
+      return rows.map(([t, d]) => `<dt>${E(t)}</dt><dd>${E(d)}</dd>`).join('');
+    }
+    $('bwGloss').innerHTML = glossaryHtml();
+
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+    // Credentials: the assessment tab that opened this page (with the ZPA
+    // customer ID), a saved tenant profile, or what the server has saved.
+    async function tenantChoices() {
+      const wrap = $('bwTenantWrap'), sel = $('bwTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = $('bwTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    // The Scope page's selection, live from the opener or as the Scope page
+    // publishes it; never guessed.
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function scopeSelection() {
+      let scopes = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      return { scopes: scopes.map(String), channels: {}, from_page: true };
+    }
+
+    // ── the live job ────────────────────────────────────────────────
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function phase(logs) {
+      for (let i = logs.length - 1; i >= 0; i--) if (/^(Reading|Done)/.test(logs[i])) return logs[i].replace(/…$/, '').trim();
+      return logs.length ? 'Working…' : 'Connecting to the tenant…';
+    }
+    function liveHtml() {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>Reading browser security</strong><span class="df-by" id="bwPhase">Connecting to the tenant…</span><span class="sep"></span><span class="pa-elapsed" id="bwElapsed">0:00</span><button type="button" class="rp-btn" id="bwStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="bwLog" role="log" aria-live="polite" aria-label="What the read is doing">Connecting to the tenant…</div>
+      </div>`;
+    }
+    function liveUpdate(snap) {
+      const log = $('bwLog'); if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+      const ph = $('bwPhase'); if (ph) ph.textContent = phase(snap.logs || []);
+      const el = $('bwElapsed'); if (el && snap.elapsed_seconds != null) el.textContent = mmss(snap.elapsed_seconds);
+      const st = $('bwStop'); if (st && snap.cancel_requested) { st.disabled = true; st.textContent = 'Stopping…'; }
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1000));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the read continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        liveUpdate(Object.assign({}, snap, { logs }));
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!running || stopAsked) return;
+      stopAsked = true;
+      const b = $('bwStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        try {
+          await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) });
+        } catch (e) { /* cancelled by id as soon as it arrives */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+    async function run() {
+      if (running) return;
+      const btn = $('bwRun');
+      running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Reading…';
+      ['expXlsx', 'expJson'].forEach(id => { $(id).hidden = true; });
+      body.innerHTML = liveHtml();
+      $('bwStop').addEventListener('click', stop);
+      say('Reading browser security.');
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = $('bwElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const payload = Object.assign({}, credBody(), scopeSelection());
+        const r = await fetch('/api/browser-security/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        job = d.job_id;
+        if (stopAsked) {
+          try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }
+        }
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result || snap.result.status !== 'done') {
+          throw new Error((snap.result && snap.result.stopped) || snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the read finished.' : 'The read did not finish.'));
+        }
+        last = snap.result; lastLogs = snap.logs || [];
+        render();
+        const n = (last.findings || []).length;
+        say(`${n} finding${n === 1 ? '' : 's'}.`);
+      } catch (e) {
+        fail('The read could not run', e.message);
+        say(`The read could not run: ${e.message}`);
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; btn.disabled = false; btn.textContent = 'Read';
+      }
+    }
+    function fail(title, msg) {
+      if (/You clicked Stop/.test(msg)) { title = 'Stopped'; msg = msg.replace(/^Stopped:\s*/, ''); }
+      const hint = /credential|sign in|token|401|403|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open this page from there, or choose a saved tenant profile in the bar above.' : '';
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+
+    // ── the result ──────────────────────────────────────────────────
+    const yn = (v, bad) => v == null ? '<span class="bw-dim">not read</span>' : (v ? `<span class="${bad ? 'bw-yes' : ''}">Yes</span>` : `<span class="${bad ? 'bw-ok' : ''}">No</span>`);
+    const allowWord = v => v == null ? '<span class="bw-dim">not read</span>' : (v === 'none' ? '<span class="bw-ok">none</span>' : `<span class="bw-yes">${E(v)}</span>`);
+    function sevChip(s) { return `<span class="df-chip ${SEV_CLS[s] || ''}">${E(s)}</span>`; }
+    function table(caption, heads, rows, empty) {
+      if (!rows.length) return `<div class="df-hop-d pa-none">${E(empty)}</div>`;
+      return `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">${E(caption)}</caption>
+        <thead><tr>${heads.map(h => `<th scope="col">${E(h)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => `<tr><th scope="row">${r[0]}</th>${r.slice(1).map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    }
+    function findingHtml(f) {
+      return `<li class="pa-impact sev-${E(f.severity)}">
+        <div class="df-hop-h">${sevChip(f.severity)}<strong>${E(f.title)}</strong><span class="df-by">${E(f.object_type)}: ${E(f.object)}</span></div>
+        <div class="df-hop-d">${E(f.reason)}</div>
+        <div class="df-hop-d pa-fix"><strong>What to do:</strong> ${E(f.fix)}</div>
+        ${f.assumption ? `<div class="bw-assume">Assumption: ${E(f.assumption)}</div>` : ''}
+      </li>`;
+    }
+    function statsHtml(c) {
+      return `<div class="bw-stats">${[['total', 'Findings']].concat(SEVS.map(s => [s, s[0].toUpperCase() + s.slice(1)])).map(([k, l]) =>
+        `<div class="bw-stat sev-${k}"><div class="n">${E(c[k] || 0)}</div><div class="k">${E(l)}</div></div>`).join('')}</div>`;
+    }
+    function filterHtml(findings) {
+      const n = s => findings.filter(f => !s || f.severity === s).length;
+      return `<div class="sh-filter bw-filter" role="group" aria-label="Show findings by severity">${[''].concat(SEVS).map(s =>
+        `<button type="button" class="rp-btn${sevFilter === s ? ' primary' : ''}" data-sev="${s}" aria-pressed="${sevFilter === s}">${E(s ? s[0].toUpperCase() + s.slice(1) : 'All')} (${n(s)})</button>`).join('')}</div>`;
+    }
+    function findingsHtml(res) {
+      const findings = res.findings || [];
+      if (!findings.length) return `<div class="df-hop-d pa-none">No finding in what was read. Check "Not in scope" and "Not assessed" below: anything listed there was not checked.</div>`;
+      const shown = findings.filter(f => !sevFilter || f.severity === sevFilter);
+      const areas = AREAS.concat([...new Set(findings.map(f => f.area))].filter(a => !AREAS.includes(a)));
+      return filterHtml(findings) + areas.map(a => {
+        const list = shown.filter(f => f.area === a);
+        if (!list.length) return '';
+        return `<h3 class="df-h">${E(a)} (${list.length})</h3><ol class="pa-impacts">${list.map(findingHtml).join('')}</ol>`;
+      }).join('') + (shown.length ? '' : '<div class="df-hop-d pa-none">Nothing at this severity.</div>');
+    }
+    function profilesHtml(inv, res) {
+      const rows = (inv.isolation_profiles || []).map(p => [E(p.name) + (p.default ? ' <span class="df-chip">default</span>' : ''),
+        E(p.sources.join(', ')),
+        p.controls_read ? allowWord(p.copy_paste) : '<span class="bw-dim">not read</span>',
+        p.controls_read ? allowWord(p.upload_download) : '<span class="bw-dim">not read</span>',
+        p.controls_read ? yn(p.printing, true) : '<span class="bw-dim">not read</span>',
+        p.controls_read ? (p.watermark == null ? '<span class="bw-dim">not read</span>' : (p.watermark ? `<span class="bw-ok">Yes</span>${p.watermark_user_id === false ? ' (no user ID)' : ''}` : '<span class="bw-yes">No</span>')) : '<span class="bw-dim">not read</span>',
+        p.controls_read ? yn(p.local_render, true) : '<span class="bw-dim">not read</span>',
+        p.controls_read ? yn(p.session_persistence, true) : '<span class="bw-dim">not read</span>',
+        p.controls_read ? yn(p.debug_mode_allowed, true) : '<span class="bw-dim">not read</span>',
+        p.used == null ? '<span class="bw-dim">unknown</span>' : (p.used ? E((p.rules || []).join(', ') || (p.smart_isolation ? 'smart isolation' : 'yes')) : '<span class="bw-yes">nothing</span>')]);
+      const why = res.scope && !res.scope.zpa ? 'No isolation profile was read: ZIA has none, or it could not be read.' : 'No isolation profile was read: the tenant has none, or the isolation API could not be read (see "What was read").';
+      return table('Isolation profiles and their controls', ['Profile', 'Found in', 'Copy and paste', 'Upload and download', 'Printing', 'Watermark', 'Local rendering', 'Session persistence', 'Debug mode', 'Used by'], rows, why);
+    }
+    function rulesHtml(inv) {
+      const rows = (inv.isolation_rules || []).map(r => [E(r.rule), E(`${r.product} ${r.policy}`), r.enabled ? 'Yes' : '<span class="bw-dim">No</span>', E(r.action),
+        r.profile ? E(r.profile) : '<span class="bw-yes">none</span>', E(r.targets), E(r.sensitive || '')]);
+      return table('Rules that send traffic to isolation', ['Rule', 'Policy', 'Enabled', 'Action', 'Isolation profile', 'What it isolates', 'Sensitive use'], rows,
+        'No rule isolates anything in what was read, so no traffic is sent to isolation by a rule.');
+    }
+    function browserControlHtml(inv) {
+      const bc = inv.browser_control;
+      if (!bc) return '<div class="df-hop-d pa-none">Browser Control was not read: ZIA platform is not ticked on the Scope page, or the settings could not be read.</div>';
+      const p = bc.smart_isolation_profile || {};
+      const rows = [['Allow all browsers', yn(bc.allow_all_browsers, true)], ['Bypass all browsers', yn(bc.bypass_all_browsers, true)],
+        ['Warn on outdated browsers', yn(bc.enable_warnings)], ['Smart isolation', yn(bc.smart_isolation)],
+        ['Smart isolation profile', E(p.name || p.id || 'none')],
+        ['Smart isolation covers', E(`${bc.smart_isolation_users} user(s), ${bc.smart_isolation_groups} group(s)`)]]
+        .concat(Object.entries(bc.blocked || {}).map(([b, v]) => [`Blocked ${{ CHROME: 'Chrome', FIREFOX: 'Firefox', MSIE: 'Internet Explorer', SAFARI: 'Safari', OPERA: 'Opera' }[b] || b} versions`, E(v.join(', ') || 'none')]))
+        .concat((inv.outdated || []).map(o => [`Older ${o.name} versions not blocked`, `<span class="bw-yes">${E(o.not_blocked.join(', '))}</span>`]))
+        .map(([k, v]) => [E(k), v]);
+      return table('Browser Control settings', ['Setting', 'Value'], rows, '');
+    }
+    function baHtml(inv) {
+      const segs = inv.ba_segments;
+      const s = segs == null ? '<div class="df-hop-d pa-none">Browser Access was not read: ZPA is not ticked on the Scope page, or the app segments could not be read.</div>'
+        : table('Browser Access segments', ['Segment', 'Enabled', 'Web apps', 'Access rules that reach it'], segs.map(x => [E(x.name), x.enabled ? 'Yes' : 'No', E(x.ba_apps),
+          x.reached_by == null ? '<span class="bw-dim">access policy not read</span>' : (x.reached_by.length ? E(x.reached_by.join(', ')) : '<span class="bw-yes">none</span>')]),
+        'No app segment publishes a Browser Access app, so nothing is reachable from a plain browser.');
+      const mb = inv.managed_browsers;
+      const m = mb == null ? '' : `<h3 class="df-h">Managed browser profiles</h3>` + table('Managed browser profiles', ['Profile', 'Browser', 'CrowdStrike agent check', 'Access rules that use it'],
+        mb.map(x => [E(x.name), E(x.browser_type), yn(x.crowdstrike_agent), x.used_by == null ? '<span class="bw-dim">access policy not read</span>' : (x.used_by.length ? E(x.used_by.join(', ')) : '<span class="bw-yes">none</span>')]),
+        'No managed browser profile exists, so no access rule can check the browser through one.');
+      const bp = inv.browser_protection;
+      const b = bp == null ? '' : `<h3 class="df-h">Browser protection profiles</h3>` + table('Browser protection profiles', ['Profile', 'Active', 'Browser checks', 'System checks', 'Location'],
+        bp.map(x => [E(x.name), x.active ? 'Yes' : 'No', E(x.browser_criteria.join(', ') || 'none'), E(x.system_criteria.join(', ') || 'none'), x.location ? 'Yes' : 'No']),
+        'No browser protection profile was found.');
+      const up = inv.user_portals;
+      const u = up == null ? '' : `<h3 class="df-h">User portals</h3>` + table('User portals', ['Portal', 'Enabled'], up.map(x => [E(x.name), x.enabled ? 'Yes' : 'No']),
+        'No user portal exists.');
+      return s + m + b + u;
+    }
+    function praHtml(inv) {
+      if (inv.pra_portals == null && inv.pra_consoles == null) return '<div class="df-hop-d pa-none">Privileged Remote Access was not read: ZPA is not ticked on the Scope page, or it could not be read.</div>';
+      const segs = inv.pra_segments || [];
+      return `<div class="df-hint">${E((inv.pra_portals || []).length)} portal(s), ${E((inv.pra_consoles || []).length)} console(s), ${E(segs.length)} app segment(s) with PRA apps${segs.length ? ': ' + E(segs.join(', ')) : ''}.</div>`
+        + table('Privileged Remote Access consoles', ['Console', 'Enabled', 'App segment', 'Portals'], (inv.pra_consoles || []).map(c => [E(c.name), c.enabled ? 'Yes' : 'No', E(c.segment || ''), E((c.portals || []).join(', '))]),
+          'No PRA console exists, so nobody reaches a server through Privileged Remote Access.');
+    }
+    function listHtml(title, items, cls) {
+      if (!items.length) return '';
+      return `<h2 class="df-h">${E(title)}</h2><ul class="pa-impacts">${items.map(t => `<li class="pa-impact ${cls}"><div class="df-hop-d">${E(t)}</div></li>`).join('')}</ul>`;
+    }
+    function render() {
+      const res = last, inv = res.inventory || {}, c = res.counts || {};
+      meta.textContent = `${res.tenant_label || ''} · read ${new Date().toLocaleTimeString()} · ${c.total || 0} finding${c.total === 1 ? '' : 's'}`;
+      const errs = Object.values(res.sections || {}).filter(s => !s.read && s.error).map(s => `${s.product} ${s.label}: ${s.error}`);
+      const nis = Object.values(res.not_in_scope || {});
+      body.innerHTML = `
+        ${statsHtml(c)}
+        <div class="bw-note">${E(res.no_api_note || NO_API)}</div>
+        <h2 class="df-h">Findings</h2>
+        ${findingsHtml(res)}
+        <section class="bw-sec" aria-labelledby="bwProfH"><h2 class="df-h" id="bwProfH">Isolation profiles</h2>${profilesHtml(inv, res)}</section>
+        <section class="bw-sec" aria-labelledby="bwRulesH"><h2 class="df-h" id="bwRulesH">Rules that isolate</h2>${rulesHtml(inv)}</section>
+        <section class="bw-sec" aria-labelledby="bwBcH"><h2 class="df-h" id="bwBcH">Browser Control (ZIA)</h2>${browserControlHtml(inv)}</section>
+        <section class="bw-sec" aria-labelledby="bwBaH"><h2 class="df-h" id="bwBaH">Browser Access and browser posture (ZPA)</h2>${baHtml(inv)}</section>
+        <section class="bw-sec" aria-labelledby="bwPraH"><h2 class="df-h" id="bwPraH">Privileged Remote Access (ZPA)</h2>${praHtml(inv)}</section>
+        ${listHtml('Not in scope', nis, 'sev-info')}
+        ${listHtml('Not assessed', res.not_assessed || [], 'sev-info')}
+        ${listHtml('Could not be read', errs, 'sev-medium')}
+        <section class="bw-sec" aria-labelledby="bwGlossH2"><h2 class="df-h" id="bwGlossH2">What each control means</h2><dl class="bw-gloss">${glossaryHtml(res.glossary)}</dl></section>
+        <details class="pa-details"><summary>Assumptions (${(res.assumptions || []).length})</summary><ul>${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul></details>
+        <details class="pa-details"><summary>What was read (${lastLogs.length} line${lastLogs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(lastLogs.join('\n'))}</div></details>`;
+      body.querySelectorAll('.bw-filter button').forEach(b => b.addEventListener('click', () => {
+        sevFilter = b.dataset.sev; render();
+        const again = body.querySelector(`.bw-filter button[data-sev="${sevFilter}"]`); if (again) again.focus();
+        say(`Showing ${sevFilter || 'all'} findings.`);
+      }));
+      const x = $('expXlsx'), j = $('expJson');
+      x.href = `/api/browser-security/report/${encodeURIComponent(res.report_id)}/export?format=xlsx`;
+      j.href = `/api/browser-security/report/${encodeURIComponent(res.report_id)}/export?format=json`;
+      x.hidden = j.hidden = false;
+    }
+
+    $('bwRun').addEventListener('click', run);
+    tenantChoices();
+  })();
+  </script>
+</body>
+</html>

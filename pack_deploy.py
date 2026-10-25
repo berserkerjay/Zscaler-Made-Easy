@@ -119,11 +119,11 @@ _BY_BAD = re.compile(r"[\[\]\x00-\x1f\x7f]+")
 # A name that begins like the tool's own legacy tag ("DLP-Check pack alpha")
 # would put the literal "[DLP-Check pack alpha" marker into another pack's tag.
 _BY_FORGED = re.compile(r"(?i)^dlp-check(?=\s+(?:pack|baseline)\b)")
-# The tool's own name in any spelling ("DLP-Check", "dlp check", "DLPCheck",
+# The tool's own name in any spelling ("Zscaler Made Easy", "dlp check", "DLPCheck",
 # "DLP_Check", a Unicode dash) is never an assessor's name (user rule 2). One
 # rule for the API (dlp_api_server._require_assessor), the Terraform CLI and
 # the workspace's var.assessor validation (the same pattern in RE2/HCL).
-TOOL_NAME_PATTERN = r"(?i)dlp[\W_]*check"
+TOOL_NAME_PATTERN = r"(?i)dlp[\W_]*check|zscaler[\W_]*made[\W_]*easy"
 TOOL_NAME_RE = re.compile(TOOL_NAME_PATTERN)
 _TAG_SUFFIX = (r"(?P<suffix>(?: Measured on every journey check, never overwritten\.)?(?: Deployed DISABLED; enable once reviewed\.)?"
                r"(?: Terraform-managed\.?)?)")
@@ -1448,7 +1448,7 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
     impacts.append({
         "type": "activation",
         "title": "Changes must be activated to take effect",
-        "detail": "ZIA saves configuration as pending. DLP-Check activates the changes automatically when the deployment finishes; if that call is blocked, activate in the ZIA Admin Portal (or with ziaActivator).",
+        "detail": "ZIA saves configuration as pending. Zscaler Made Easy activates the changes automatically when the deployment finishes; if that call is blocked, activate in the ZIA Admin Portal (or with ziaActivator).",
         "severity": "info",
     })
     return impacts, blockers

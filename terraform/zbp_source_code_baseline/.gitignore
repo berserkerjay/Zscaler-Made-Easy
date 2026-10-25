@@ -1,4 +1,4 @@
-# Written by DLP-Check. Local Terraform state, saved plans, variable files and overrides. Commit .terraform.lock.hcl.
+# Written by Zscaler Made Easy. Local Terraform state, saved plans, variable files and overrides. Commit .terraform.lock.hcl.
 .terraform/
 *.tfstate
 *.tfstate.*

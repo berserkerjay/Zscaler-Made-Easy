@@ -304,13 +304,16 @@ def forwarding_actions(profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = None, platform: Optional[str] = None) -> Dict[str, Any]:
+def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = None, platform: Optional[str] = None,
+                          keep_raw: bool = False) -> Dict[str, Any]:
     """App profiles, forwarding profiles, trusted networks and PAC files in
     one normalised structure. Errors are recorded, never raised. With a
     `scope` (path_scope) only what is in scope is read; the rest is
     recorded in `not_in_scope`. `cancel` (the operator's Stop) is checked
     before every request: once set, ReadStopped is raised and nothing more
-    is sent."""
+    is sent. `keep_raw` keeps each app and forwarding profile as read
+    (`raw`, the app profile flattened) for a caller that exports its
+    settings; that caller must leave out secrets (config_exports does)."""
     out: Dict[str, Any] = {"app_profiles": [], "forwarding_profiles": [], "trusted_networks": [], "pac_files": [], "errors": [], "not_in_scope": {}}
     nis = (scope or {}).get("not_in_scope") or {}
     out["read_status"] = {}
@@ -363,6 +366,8 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                     "bypass": {"domains": domains, "apps": apps, "processes": processes, "ips": ips, "vpn_gateways": vpn},
                     "groups": _names(p.get("groups") or p.get("groupNames") or []),
                 })
+                if keep_raw:
+                    out["app_profiles"][-1]["raw"] = p
         except ReadStopped:
             raise
         except Exception as e:  # noqa: BLE001
@@ -380,6 +385,8 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                                                        "actions": forwarding_actions(p),
                                                        "trusted_networks": _names(p.get("trustedNetworks") or p.get("trustedNetworkNames") or []),
                                                        "pac_url": p.get("pacUrl") or p.get("customPacUrl") or p.get("forwardingProfilePacUrl")})
+                    if keep_raw:
+                        out["forwarding_profiles"][-1]["raw"] = p
         except ReadStopped:
             raise
         except Exception as e:  # noqa: BLE001

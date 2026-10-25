@@ -1,4 +1,4 @@
-# What DLP-Check does — an overview
+# What Zscaler Made Easy does — an overview
 
 This page is for someone who has just been handed the app: what it is
 for, what each part does, what it never does, and where it stops. It
@@ -8,7 +8,7 @@ for a first engagement step by step, see
 
 ## In one paragraph
 
-DLP-Check connects to a customer's Zscaler tenant with API credentials
+Zscaler Made Easy connects to a customer's Zscaler tenant with API credentials
 and answers three questions. **Where is the tenant today?** It runs 300+
 automated checks against the DLP assessment checklist and Zscaler's best
 practices and gives a scored maturity report with plain findings and the
@@ -69,6 +69,16 @@ what you get, what to do next.
   Detailed findings with a fix for each, in four plain sentences apiece.
 - **What does everything do?** — every function explained in plain
   English, in first-engagement order, with a glossary.
+- **Find anything** (Ctrl+J or Cmd+J, `/` outside a text field, or the
+  Find button on every page) — one search box over the app's pages and
+  what they do, the glossary words (with the plain meaning inline), the
+  tenant's objects from the last console index the app read, the findings
+  of the assessment on screen and the open to-dos. It forgives typos
+  ("terrafrom") and knows common synonyms ("block" and "deny", "tf" and
+  "Terraform"). Typing never reads the tenant: *Load tenant objects* reads
+  it once, read-only and only what is in scope. An object opens as a card:
+  what it uses, what uses it, its findings, the pages that act on it and
+  its tags, to-dos and comments.
 - **Simple mode** (`/simple`, first item in the sidebar) — the same app
   as seven big tasks for someone with little Zscaler knowledge: connect,
   check how safe the data is, fix the top three problems, protect
@@ -93,10 +103,30 @@ what you get, what to do next.
   ZPA analysis templates: unreachable access rules, segments nobody
   reaches or only deny rules reach, overlapping segments, over-broad
   domains and ports, bypasses, server and connector groups that cannot
-  serve, connector redundancy and versions. Diagnose answers, for one
+  serve, connector redundancy and versions. The Overview tab says the
+  counts in plain sentences (segments nobody can reach, connectors down or
+  outdated, rules that never decide), draws the infrastructure map from
+  users and IdPs through access rules, segment groups, app segments and
+  server groups to connector groups and App Connectors (large tenants are
+  grouped per column; a click on a box filters the tables of every object)
+  and exports it all as Excel. Diagnose answers, for one
   user and destination, which app segment matches, what serves it and
   which access rule decides, with every earlier rule and why it did not
   match. Read-only; Stop ends the read at once.
+- **Device posture** — the ZPA posture profiles, trusted networks and
+  access rules read once (only when ZPA is ticked on the Scope page; the
+  Client Connector trusted networks too when Client Connector is ticked).
+  Each posture profile is sorted into a family (domain join, EDR or
+  antivirus, certificate, disk encryption and hygiene, OS version, mobile
+  integrity, MDM, firewall, process, marker or override, unknown), marked
+  as reliable (from the posture type) or inferred (from the name); markers
+  never count as enforcement. Each profile and network lists the rules
+  that use it, as must pass or must fail. Findings name allow rules to
+  sensitive or broad apps with no posture check, negated checks that let
+  failing devices in, marker-only and optional checks, and unused
+  profiles. Every access rule is shown as nested AND, OR and NOT groups
+  with names instead of IDs, plus one plain sentence. Excel and JSON
+  exports. Read-only; Stop ends the read at once.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, the path a user's traffic takes to
   it, one verdict in plain words, and every rule or profile that blocks
@@ -115,6 +145,23 @@ what you get, what to do next.
   exist; each with the rule that hides it, the reason and the fix, and CSV
   and JSON exports. A criterion it cannot compare safely counts as "not
   shadowed". Read-only; Stop ends the read at once.
+- **Browser security** — Zscaler Zero Trust Browser and ZIA Browser
+  Control, read only as far as the Scope page allows (ZIA platform for
+  ZIA, ZPA for ZPA with a OneAPI API client and the customer ID): every
+  isolation profile's controls (copy and paste, upload and download,
+  printing, watermark, debug mode, local rendering, session persistence)
+  beside the URL filtering, Cloud App Control and ZPA isolation rules that
+  use it; Browser Control (allow all browsers, older versions not blocked,
+  smart isolation); and the ZPA browser side (Browser Access segments and
+  the access rules that reach them, managed browser profiles, browser
+  protection, Privileged Remote Access portals and consoles, user
+  portals). Findings in plain English with a severity and a fix, focused
+  on data protection (a permissive profile used for GenAI or unsanctioned
+  apps is high), a glossary of every control, the assumptions, and an
+  Excel or JSON export. It never shows the debug file password, a
+  certificate body or the people in the configuration, and says that the
+  standalone Zscaler Enterprise Browser has no API. Read-only; Stop ends
+  the read at once.
 - **Flow animator** — the flows the app analyses, animated from your own
   results: the last Path analyzer result hop by hop; inside DLP, the
   dictionary match counts, each engine term against its threshold and the
@@ -149,6 +196,18 @@ what you get, what to do next.
   Insights ticked on the Scope page and a OneAPI API client. It says
   plainly what Insights cannot answer: traffic by URL category, per user,
   per policy rule or to one host.
+- **SSL coverage** — how much web traffic is not inspected, why, and what
+  to change. Causes from configuration (SSL inspection rules that do not
+  decrypt, the default rule, certificate-pinned exemptions and, with ZCC
+  in scope, Client Connector bypasses, direct forwarding and PAC DIRECT
+  entries), each with a risk (file sharing or GenAI high; banking or
+  health for privacy "expected") and a recovery step, ordered into a
+  recovery plan with a safe-to-change note. With ZIA Insights in scope it
+  opens with the share of SSL/TLS and HTTP traffic inspected (from ZIA's
+  protocol names, mapped in one table in `ssl_coverage.py`), bytes per
+  exempted application and a daily trend of all web traffic; Insights has
+  no SSL or URL-category dimension and the page says so. Each run's
+  summary is kept locally for a trend across runs; Excel and JSON export.
 - **Bypass & non-inspected traffic** — every SSL exemption, allow rule,
   Client Connector bypass and PAC exception that lets traffic skip
   inspection, with exports. Where: opened from Traffic flow & gaps.
@@ -158,7 +217,8 @@ what you get, what to do next.
   registration anomalies, multi-device users and version drift, each with
   its exact definition; a profile heatmap with equal-weight and
   device-weighted scores, a side-by-side profile diff, a PAC comparison and
-  a remediation plan ranked by impact times devices, exported as CSV (with
+  a remediation plan ranked by impact times devices, exported as CSV or one
+  Excel workbook (devices, versions, operating systems, stale devices; with
   a counts-only option). Without device permission it says so and shows
   the configuration only. Read-only; Stop ends the read at once.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
@@ -179,6 +239,23 @@ what you get, what to do next.
   when there is something to decide). Every tenant read counts against
   the ZIA API rate limit, so the timer is off unless the operator sets
   `DLP_CHECK_CONTINUOUS_EVAL_HOURS`. It never writes to a tenant.
+- **Improve my score** (`/report/posture`, `posture_plus.py`) — from the
+  results on the assessment page: the ten fixes that raise the score most,
+  each with the points it adds (the real score formula run before and
+  after, so every scoreable check weighs the same and the cheapest fixes
+  come first), its effort, whether a one-click fix recipe exists in
+  Review & remediate, plain steps and a link to the fix; the projected
+  score after the fixes you tick and the fix recipes staged in the change
+  queue; the score over time from the tenant profile's history, with the
+  checks that started or stopped failing between runs (history entries
+  now keep each check's state, bounded; older entries still load); a
+  score-drop alert (5 points by default) on the results page and in the
+  digest, sent through the digest's notifications only when they are set
+  up and the operator ticks it; and what the last assessment could not
+  check (not permitted, rate limited, timed out, not licensed, left out by
+  the Scope page), with why and how to fix it. The results page shows
+  "Coverage: N% of checks ran" under the score. Reads nothing from the
+  tenant.
 - **Regulatory & compliance alignment** — the findings mapped to the
   frameworks the customer answers to (HIPAA, PCI DSS, NIST, CMMC, SOC 2,
   ISO 27001, GDPR, CIS, GLBA), scoped to the industry on the profile.
@@ -233,8 +310,37 @@ what you get, what to do next.
   queue through the same apply path, with write mode and the typed
   confirmation; the plan is checked against the tenant first and a request
   whose plan no longer matches is marked stale and nothing is written.
+  Every step is in the audit log with who did it; the queue exports as JSON,
+  Markdown or Excel (requests, items, approvals, comments, history).
   Every step is in the audit log with who did it; the queue exports as JSON
   or Markdown.
+- **Self-healing** — two layers on one page (`/report/self-heal`, toolbar
+  *Self-healing*). *This app*: small checks fix the app's own problems and
+  say what they did (a background job whose worker died or that is stuck is
+  ended as failed so it can be retried; a damaged saved file is moved aside
+  as `<name>.corrupt-<time>`, never deleted, and restored from its
+  `<name>.last-good` copy, else started empty and flagged; secrets and
+  stores others can read are set back to owner-only; locks left by a process
+  that is gone are released; a ZIA rate-limit pause longer than any limit
+  window is lifted; a cached sign-in that keeps failing is dropped; low disk
+  space prunes the app's own old digests; an update without a restart is
+  reported with a Restart button). They run at startup, every
+  `DLP_CHECK_SELF_HEAL_MINUTES` (10 by default, 0 off) and on *Check the app
+  now*; each run is in the audit log. Nothing here touches the tenant.
+  *Your tenant*: with DLP in scope, the ticked (or deployed) packs are read
+  and compared with what was approved; a rule turned off, an action made
+  weaker, an engine or dictionary edited or deleted, or a fix someone undid
+  becomes a heal proposal with what changed and, when Automation readiness
+  is in scope, who and when from ZIA's audit log. Changes this app recorded
+  (deployments, Bulk changes, applied proposals and change requests) and
+  progress (a rule turned on, a stricter action) are never drift. *Heal*
+  (one or many) goes through the proposal apply path: write mode, a fresh
+  read that refuses if the setting moved again, the typed confirmation,
+  read-back and an undo; *Accept* makes the current value the approved one
+  and stops proposing it (audited). The continuous evaluation loop's drift
+  step raises the same proposals. Nothing is ever applied on its own:
+  `DLP_CHECK_SELF_HEAL_AUTO_APPLY` is refused in this version, pending the
+  product owner's decision.
 - **Bulk changes** — many changes as one reviewed plan: enable or
   disable up to 100 rules (URL filtering, SSL inspection, Cloud Firewall,
   Cloud App Control, File Type Control and the four DLP channels), put one
@@ -251,6 +357,16 @@ what you get, what to do next.
   records the change with an Undo that is itself previewed. Cloud
   application sanction is not offered: the SDK cannot read an
   application's current state.
+- **To-do list** (`/report/todo`) — tags, comments and to-dos you write
+  on any object (a DLP rule, engine or dictionary, a URL filtering or
+  firewall rule, a URL category, a location, a finding) from its card in
+  Find anything, kept per tenant on the machine the app runs on
+  (`workspace_notes.json` beside the tenant profiles, owner-only), with who
+  wrote each one and an audit-log line for every change. The page lists the
+  open to-dos across tenants, filters by tenant and tag, ticks them done and
+  links back to the object. Nothing is read from or written to the tenant;
+  the browser extension's side panel shows an object's tags and notes
+  (read-only).
 - **Terraform hand-off** — the same policy pack as a Terraform workspace
   for the official `zscaler/zia` provider. Static mode needs no
   credentials; gap mode reads the tenant and imports what exists so the
@@ -285,8 +401,20 @@ what you get, what to do next.
   domain and IP the policy names, deduplicated, with where each was
   found) and the custom URL category analyzer (for each custom-category
   URL, whether Zscaler already categorises it the same way, differently
-  or not at all, through ZIA's URL lookup, paced and capped). Only what
-  is in scope; a live log and Stop.
+  or not at all, through ZIA's URL lookup, paced and capped). Also a
+  locations workbook (locations and sub-locations with their settings,
+  location groups, and which URL filtering, Cloud Firewall, SSL
+  inspection, File Type Control and Web DLP rules use each, directly or
+  through a group; IP addresses and VPN credentials counted, never
+  listed) and a Client Connector workbook (app and forwarding profiles
+  with their settings, PAC files, which profile uses which forwarding
+  profile and PAC URL; no password, token or key). Export options for
+  every workbook: choose columns, one row per value, and the separator
+  (new line, comma, semicolon); the defaults give the workbooks as
+  before. Every DLP engine (inventory workbook, Deploy views, browser
+  extension side panel) shows its expression with dictionary names and
+  one sentence saying when it fires; Copy keeps the expression with ids.
+  Only what is in scope; a live log and Stop.
 - **Advanced settings** — add your own policy packs (JSON, Terraform,
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with
@@ -320,10 +448,10 @@ what you get, what to do next.
 ### Troubleshoot
 
 - **Audit timeline** — ZIA's admin audit log for a window you choose
-  (the last 7 days by default, up to 180) merged with DLP-Check's own
+  (the last 7 days by default, up to 180) merged with Zscaler Made Easy's own
   deployment records and audit log, newest first, with filters, a
   field-by-field diff where the entry has before and after values, and
-  CSV or JSON export. A change someone else made to an object DLP-Check
+  CSV or JSON export. A change someone else made to an object Zscaler Made Easy
   created is marked. Reading ZIA's log needs Automation readiness in scope;
   asking ZIA for the report is a POST that changes no configuration.
 - **Log analyzer** — drop in the ZIP from Client Connector's Export Logs

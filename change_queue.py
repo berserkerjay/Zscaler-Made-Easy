@@ -172,6 +172,7 @@ def _write(data: Dict[str, Any]) -> None:
             os.chmod(tmp, 0o600)
         except OSError:
             pass
+        _keep_last_good(p)
         os.replace(tmp, p)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -491,3 +492,58 @@ def to_markdown(items: List[Dict[str, Any]], *, title: str = "Change queue") -> 
             lines.append(f"- Comment by {c.get('by')} at {c.get('at')}: {c.get('text')}")
         lines.append("")
     return "\n".join(lines)
+
+
+ROW_LABELS = {"id": "Request", "status": "Status", "kind": "Kind", "title": "Title", "tenant": "Tenant", "requested_by": "Requested by",
+              "requested_at": "Requested at", "decided_by": "Decided by", "decided_at": "Decided at", "applied_by": "Applied by",
+              "applied_at": "Applied at", "plan_hash": "Plan hash", "changes": "What it changes", "items": "Items", "comments": "Comments"}
+
+
+def to_xlsx(items: List[Dict[str, Any]], *, tenant: str = "") -> bytes:
+    """The queue as an Excel workbook: Requests (rows(), the same columns
+    as the JSON export), Items, Approvals, Comments and History. The names
+    are the ones the queue page shows (requester, approver, who applied,
+    who commented); the stored payload is not exported. Built with
+    xlsx_writer: no cell is ever a formula."""
+    import xlsx_writer
+    wb = xlsx_writer.Workbook(title="Change queue", subject=tenant or "all tenants", creator="Zscaler Made Easy")
+    req = wb.add_sheet("Requests", columns=[ROW_LABELS[c] for c in ROW_COLUMNS])
+    for r in rows(items):
+        req.append([r[c] for c in ROW_COLUMNS])
+    if not items:
+        req.append([f"No change requests{' for this tenant' if tenant else ''}."])
+    its = wb.add_sheet("Items", columns=["Request", "Title", "Change", "Kind", "Name", "Channel", "Note", "Method", "Endpoint", "Body"])
+    apr = wb.add_sheet("Approvals", columns=["Request", "Title", "Status", "Requested by", "Requested at", "Decision", "Decided by",
+                                             "Decided at", "Applied by", "Applied at", "Result"])
+    com = wb.add_sheet("Comments", columns=["Request", "When", "Who", "Comment"])
+    his = wb.add_sheet("Request history", columns=["Request", "When", "Step", "Who", "Comment or note"])
+    for r in items:
+        rid, title = r.get("id"), r.get("title")
+        for i in r.get("items") or []:
+            body = i.get("body")
+            its.append([rid, title, i.get("status"), i.get("kind"), i.get("name"), i.get("channel"), i.get("note"), i.get("method"),
+                        i.get("endpoint"), json.dumps(body, indent=1, default=str)[:4000] if body is not None else None])
+        total = int(r.get("items_total") or 0)
+        if total > len(r.get("items") or []):
+            its.append([rid, title, f"… {total - len(r.get('items') or [])} more items were not kept with the request"])
+        decision = {"approved": "Approved", "rejected": "Rejected"}.get(r.get("status"), "")
+        if r.get("decided_by") and not decision:
+            decision = "Approved"   # applied, failed or stale after an approval
+        res = r.get("result") or {}
+        apr.append([rid, title, r.get("status"), r.get("requested_by"), r.get("requested_at"), decision, r.get("decided_by") or "",
+                    r.get("decided_at") or "", r.get("applied_by") or "", r.get("applied_at") or "",
+                    " — ".join(str(x) for x in (res.get("status"), res.get("message") or res.get("error")) if x)])
+        for c in r.get("comments") or []:
+            com.append([rid, c.get("at"), c.get("by"), c.get("text")])
+        for h in r.get("history") or []:
+            his.append([rid, h.get("at"), h.get("action"), h.get("by"), h.get("comment") or h.get("note") or ""])
+    return wb.to_bytes()
+
+
+def _keep_last_good(path: str) -> None:
+    """The store as it was, kept as a last-good copy (self_heal) before it is replaced."""
+    try:
+        import self_heal
+        self_heal.keep_last_good(path)
+    except Exception:  # noqa: BLE001 - never stops a write
+        pass

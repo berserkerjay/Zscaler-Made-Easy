@@ -646,6 +646,52 @@ def paused_for(key: Optional[str] = None, *, reads: bool = False) -> float:
     return left if left > 0 else 0.0
 
 
+def overlong_holds(*, clear: bool = False, margin: float = 300.0) -> List[Dict[str, Any]]:
+    """Holds that end further away than the longest limit window (an hour
+    by default) plus `margin`: no refusal can justify them, so one is left
+    over from a clock that was set back, or a damaged state file. With
+    `clear` they are lifted, here and in the state file (whose later hold
+    would otherwise be merged back in). Each is reported by the first 8
+    characters of its opaque tenant key, never by a tenant name."""
+    limit = max(_longest(b) for b in DEFAULTS) + max(0.0, margin)
+    found: List[Dict[str, Any]] = []
+    with _lock:
+        _refresh()
+        now = _now()
+        for k, t in _tenants.items():
+            for kind, box in (("writes", t.hold), ("reads", t.read_hold)):
+                left = box[0] - now
+                if left > limit:
+                    found.append({"tenant": (k[:8] or "(no tenant)"), "kind": kind, "seconds_left": round(left)})
+                    if clear:
+                        box[0] = 0.0
+        if clear and found:
+            p = state_path()
+            try:
+                with _file_lock(p):
+                    data = _read_file()
+                    for d in (data.get("tenants") or {}).values() if isinstance(data.get("tenants"), dict) else []:
+                        if isinstance(d, dict):
+                            for key in ("hold_until", "read_hold_until"):
+                                if float(d.get(key) or 0) - now > limit:
+                                    d[key] = 0.0
+                    if float(data.get("hold_until") or 0) - now > limit:   # a version 1 file
+                        data["hold_until"] = 0.0
+                    if data:
+                        fd, tmp = tempfile.mkstemp(prefix=".zia_rate-", dir=os.path.dirname(p) or ".")
+                        try:
+                            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                                json.dump(data, f)
+                            os.replace(tmp, p)
+                        finally:
+                            with contextlib.suppress(OSError):
+                                os.remove(tmp)
+                _seen[0] = _stamp()
+            except Exception as e:  # noqa: BLE001 - the in-memory hold is lifted either way
+                logging.getLogger(__name__).warning("The ZIA rate-limit state file could not be corrected: %s", e)
+    return found
+
+
 def estimate(bucket: str, count: int) -> float:
     """Seconds `count` requests of `bucket` take at the configured limits,
     starting from an empty window (for a removal's time estimate)."""
@@ -1011,7 +1057,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
         last = blocked_hour[-1]
         run_after = last["at"] + HOUR
         verdict, severity = (f"Likely to fail: ZIA blocked this API client {_ago(now - last['at'])} ('{last['message']}'"
-                             + (f", after {last['writes_5m']} writes from DLP-Check in 5 minutes" if last.get("writes_5m") else "")
+                             + (f", after {last['writes_5m']} writes from Zscaler Made Easy in 5 minutes" if last.get("writes_5m") else "")
                              + f"). Run it after {_clock(run_after)}, an hour after that block. A run started now pauses for the "
                              f"limit's full window at each refusal and stops after 3."), "fail"
     elif ceiling and peak5 >= ceiling["writes_5m"]:
@@ -1022,7 +1068,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     elif too_fast:
         what = "; ".join(f"{BUCKET_LABELS[b]} is set to \"{(os.environ.get(_ENV[b]) or '').strip() or 'off'}\" ({_ENV[b]}), "
                          f"and this run would send more than ZIA's {n} {_PER.get(w, f'per {w:.0f}s')}" for b, (n, w) in too_fast)
-        verdict, severity = (f"Likely to fail: DLP-Check's own pacing is looser than ZIA's rate limits ({what}), so ZIA will refuse "
+        verdict, severity = (f"Likely to fail: the app's own pacing is looser than ZIA's rate limits ({what}), so ZIA will refuse "
                              f"part of this run. Remove the setting to pace at ZIA's documented limits."), "fail"
     elif held > 0:
         run_after = now + held
@@ -1064,11 +1110,11 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     if rows and severity != "fail" and (ublocked or unkeyed["hold"] > 0):
         if ublocked:
             u = ublocked[-1]
-            note = (f"A DLP-Check record that names no tenant (written before tenants were kept apart, or by a run that did not say "
+            note = (f"A Zscaler Made Easy record that names no tenant (written before tenants were kept apart, or by a run that did not say "
                     f"which tenant it wrote to) shows ZIA blocked an API client {_ago(now - u['at'])} ('{u['message']}'). If that was "
                     f"this tenant's, run this after {_clock(u['at'] + HOUR)}.")
         else:
-            note = (f"A DLP-Check record that names no tenant (written before tenants were kept apart) holds writes until "
+            note = (f"A Zscaler Made Easy record that names no tenant (written before tenants were kept apart) holds writes until "
                     f"{_clock(now + unkeyed['hold'])} after ZIA refused a request for its rate. If that was this tenant's, run this after then.")
         if severity == "ok":
             verdict, severity = f"Will probably succeed: goes straight through within ZIA's rate limits, about {_human(total)}. {note}", "warn"
@@ -1141,9 +1187,9 @@ def history_text(f: Dict[str, Any]) -> str:
     plural = {"write": "writes (POST/PUT)", "delete": "deletes", "endpoint_rules": "Endpoint DLP rule writes",
               "cloud_app": "Cloud App Control rule writes", "activate": "activations", "read": "reads (GET)"}
     if sent:
-        parts.append("In the last hour DLP-Check sent this tenant's API client " + ", ".join(f"{n} {plural.get(k, k)}" for k, n in sent.items()) + ".")
+        parts.append("In the last hour Zscaler Made Easy sent this tenant's API client " + ", ".join(f"{n} {plural.get(k, k)}" for k, n in sent.items()) + ".")
     else:
-        parts.append("DLP-Check sent this tenant's API client nothing in the last hour.")
+        parts.append("Zscaler Made Easy sent this tenant's API client nothing in the last hour.")
     tol = f.get("tolerated")
     if tol:
         parts.append(f"Fewest writes ZIA blocked it at: {tol['writes_5m']} in 5 minutes"

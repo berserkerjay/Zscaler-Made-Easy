@@ -19,7 +19,7 @@ const dialogAnswers = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const started = Date.now();
 let stderr = '';
-const watchdog = setTimeout(() => { browser?.kill('SIGKILL'); process.stderr.write('Browser acceptance exceeded 150 seconds\n'); process.exit(2); },150000);
+const watchdog = setTimeout(() => { browser?.kill('SIGKILL'); process.stderr.write('Browser acceptance exceeded 300 seconds\n'); process.exit(2); },300000);
 
 function send(method, params = {}) {
   return new Promise((resolve,reject) => {

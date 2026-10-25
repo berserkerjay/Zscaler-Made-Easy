@@ -663,7 +663,7 @@ def target_action(p: Dict[str, Any]) -> str:
 
 
 def ship_monitor(policies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """DLP-Check's convention, applied to every pack (built-in or uploaded)
+    """Zscaler Made Easy's convention, applied to every pack (built-in or uploaded)
     the moment it is loaded: every rule ships DISABLED, and every DLP rule
     (Web, Endpoint, SaaS, Email) ships with the channel's monitor action
     (ALLOW / report incident). A rule designed to block or confirm keeps
