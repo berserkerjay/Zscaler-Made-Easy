@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Update the DLP-Check container: pull the latest code for this checkout's
+# Update the Zscaler Made Easy container: pull the latest code for this checkout's
 # branch from GitHub and rebuild the container, only when GitHub has
 # something new. Run it on the computer that runs Docker, from the folder
 # that holds docker-compose.yml (a git clone, not a ZIP).
@@ -22,7 +22,7 @@ cd "$(dirname "$0")"
 DIR="$(pwd)"
 LOG="$DIR/update_container.log"
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S')  $*" | tee -a "$LOG"; }
-MARK="# DLP-Check container auto-update"
+MARK="# Zscaler Made Easy container auto-update"
 
 FORCE=""; SCHEDULE=""; WANT=""
 while [ $# -gt 0 ]; do
@@ -55,7 +55,7 @@ command -v git >/dev/null || { say "git is not installed; install it and run thi
 command -v docker >/dev/null || { say "docker is not installed or not on PATH."; exit 1; }
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   say "This folder is not a git clone (a ZIP download), so it cannot pull updates. Clone it once:"
-  say "  git clone https://github.com/berserkerjay/DLP-Check.git && cd DLP-Check && ./update_container.sh --force"
+  say "  git clone https://github.com/berserkerjay/DLP-Check.git && cd Zscaler Made Easy && ./update_container.sh --force"
   exit 1
 fi
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then

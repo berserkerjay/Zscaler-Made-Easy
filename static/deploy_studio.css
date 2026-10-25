@@ -399,3 +399,5 @@
 
 .dz-rate-note { margin: 0 0 0.6rem; font-size: 0.85rem; color: var(--muted, #555); line-height: 1.4; }
 .dz-rate-note .k { font-weight: 600; margin-right: 0.4rem; color: var(--fg, inherit); }
+.dz-row .dz-expr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-footnote); overflow-wrap: anywhere; }
+.dz-row .dz-expl { color: var(--text); }

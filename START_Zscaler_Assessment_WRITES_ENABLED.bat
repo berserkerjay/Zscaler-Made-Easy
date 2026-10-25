@@ -18,7 +18,7 @@ REM    - Runs every write as dry-run unless the caller explicitly passes
 REM      dry_run=false (which the GUI only sends after a confirm prompt)
 REM =====================================================================
 
-title Zscaler Platform Assessment (WRITES ENABLED)
+title Zscaler Made Easy (WRITES ENABLED)
 
 setlocal
 set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND
@@ -32,7 +32,7 @@ if exist "%~dp0local_settings.bat" call "%~dp0local_settings.bat"
 
 echo.
 echo  ============================================================
-echo   Zscaler Platform Assessment  -  WRITE ACTIONS ENABLED
+echo   Zscaler Made Easy  -  WRITE ACTIONS ENABLED
 echo  ============================================================
 echo   ENABLE_WRITE_ACTIONS = YES_I_UNDERSTAND
 echo   Binding: %ZSCALER_BIND_HOST%:%ZSCALER_PORT%

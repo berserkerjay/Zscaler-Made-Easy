@@ -117,5 +117,11 @@ Two different questions get two different numbers:
 - Word report: the title table (*Assessed*, *Overall Score* with
   "configured of scoreable") and the executive summary sentence with the
   formula and the exclusions.
-- The profile history keeps `score` (null when not assessed) and the
-  check count per run.
+- The profile history keeps `score` (null when not assessed), the
+  check count per run and, from this version, each check's state
+  (`states`: id to P, F, R, I or E, at most 1,200 per run), so Improve my
+  score can say which checks changed between runs. Older entries have no
+  `states` and still load; their changes say "not recorded".
+- Improve my score (`posture_plus.py`) computes "points gained" by running
+  this same formula with the check set to configured and subtracting the
+  current score; it never estimates.

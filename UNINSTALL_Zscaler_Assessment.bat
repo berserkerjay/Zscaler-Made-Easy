@@ -1,16 +1,16 @@
 @echo off
 REM ====================================================================
-REM  Zscaler Platform Assessment - UNINSTALL
+REM  Zscaler Made Easy - UNINSTALL
 REM  Removes desktop/start menu shortcuts and stops the background service
 REM ====================================================================
 
 echo.
-echo  Uninstalling Zscaler Platform Assessment...
+echo  Uninstalling Zscaler Made Easy...
 echo.
 
 REM Stop the running server the way STOP_Zscaler_Assessment.bat does:
 REM whatever listens on the app's port. (The server runs as python.exe
-REM under a hidden window titled "Zscaler Platform Assessment", so neither
+REM under a hidden window titled "Zscaler Made Easy", so neither
 REM an image-name kill of pythonw.exe nor a window-title match finds it.)
 if exist "%~dp0local_settings.bat" call "%~dp0local_settings.bat"
 if not defined ZSCALER_PORT set ZSCALER_PORT=8000

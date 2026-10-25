@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>To-do list — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .td-status { font-size: 0.86rem; color: var(--dim); min-height: 1.3em; margin: 0 0 0.6rem; }
+  .td-status.bad { color: var(--fail); }
+  .td-wrap { overflow-x: auto; }
+  table.td-t { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  table.td-t th, table.td-t td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+  table.td-t th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  table.td-t td.c { width: 2.5rem; }
+  table.td-t input[type=checkbox] { width: 1.1rem; height: 1.1rem; }
+  .td-done { text-decoration: line-through; color: var(--dim); }
+  .td-chip { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--well); margin: 0 0.2rem 0.2rem 0; }
+  .td-kind { color: var(--dim); font-size: 0.78rem; }
+  .td-meta { color: var(--dim); font-size: 0.78rem; }
+  .td-link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; text-align: left; }
+  .td-link:focus-visible, table.td-t input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .td-empty { color: var(--dim); font-size: 0.9rem; padding: 0.8rem 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  @media (max-width: 600px) {
+    table.td-t thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    table.td-t, table.td-t tbody, table.td-t tr, table.td-t td { display: block; width: 100%; }
+    table.td-t tr { border-bottom: 1px solid var(--border); padding: 0.4rem 0; }
+    table.td-t td { border: 0; padding: 0.15rem 0; }
+    table.td-t td.c { width: auto; }
+  }
+</style>
+</head>
+<body class="report-page td-page">
+  <a class="skip-link" href="#main-content">Skip to the to-do list</a>
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">To-do</span> list</h1>
+      <p>Every open to-do you or your team wrote on a rule, dictionary, finding or other object, per tenant. Tick one when it is done, or open the object it is on; add new ones from an object's card in Find anything (Ctrl+J or the Find button). These notes are kept by Zscaler Made Easy on this computer; nothing here reads or changes the tenant.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl"><span class="lbl">Tenant</span><select id="tdTenant" aria-label="Show the to-dos of this tenant"><option value="">All tenants</option></select></label>
+      <label class="df-ctl"><span class="lbl">Tag</span><select id="tdTag" aria-label="Show only the to-dos on objects with this tag"><option value="">All tags</option></select></label>
+      <label class="df-ctl"><input type="checkbox" id="tdShowDone"> <span class="lbl">Show done</span></label>
+      <button type="button" class="rp-btn" id="tdRefresh">↻ Refresh</button>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <p class="td-status" id="tdStatus">Loading…</p>
+      <div id="tdBody"></div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script>
+  (function () {
+    const $ = id => document.getElementById(id);
+    const live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
+    let notes = [], tenants = [];
+    function h(tag, attrs, ...kids) {
+      const el = document.createElement(tag);
+      Object.entries(attrs || {}).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === false) return;
+        if (k === 'class') el.className = v;
+        else if (k === 'text') el.textContent = v;
+        else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+        else el.setAttribute(k, v === true ? '' : String(v));
+      });
+      kids.flat().forEach(c => { if (c !== null && c !== undefined && c !== false) el.append(c instanceof Node ? c : document.createTextNode(String(c))); });
+      return el;
+    }
+    const KIND = { finding: 'Finding', page: 'Page', rule: 'DLP rule', engine: 'DLP engine', dictionary: 'DLP dictionary', url_rule: 'URL filtering rule',
+      cac_rule: 'Cloud App Control rule', ssl_rule: 'SSL inspection rule', firewall_rule: 'Cloud Firewall rule', ftc_rule: 'File Type Control rule',
+      url_category: 'URL category', location: 'Location', location_group: 'Location group', department: 'Department', group: 'Group', label: 'Rule label' };
+    const kindLabel = k => KIND[k] || String(k || 'object').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+    const when = t => String(t || '').replace('T', ' ').slice(0, 16);
+
+    async function load() {
+      const st = $('tdStatus'); st.className = 'td-status'; st.textContent = 'Loading…';
+      try {
+        const r = await fetch('/api/workspace/notes?all_tenants=1', { cache: 'no-store' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d && d.detail) || `HTTP ${r.status}`);
+        notes = d.notes || []; tenants = d.tenants || [];
+        fillFilters();
+        render();
+      } catch (e) {
+        st.className = 'td-status bad'; st.textContent = `Could not load the to-dos: ${e.message}`;
+        $('tdBody').replaceChildren();
+      }
+    }
+    function fillFilters() {
+      const ts = $('tdTenant'), tg = $('tdTag');
+      const keepT = ts.value, keepG = tg.value;
+      ts.replaceChildren(h('option', { value: '', text: 'All tenants' }), ...tenants.map(t => h('option', { value: t.tenant, text: `${t.tenant} (${plural(t.open_todos, 'open to-do')})` })));
+      ts.value = tenants.some(t => t.tenant === keepT) ? keepT : '';
+      const tags = [...new Set(notes.filter(n => !ts.value || n.tenant === ts.value).flatMap(n => n.tags || []))].sort((a, b) => a.localeCompare(b));
+      tg.replaceChildren(h('option', { value: '', text: 'All tags' }), ...tags.map(t => h('option', { value: t, text: t })));
+      tg.value = tags.includes(keepG) ? keepG : '';
+    }
+    function rows() {
+      const tenant = $('tdTenant').value, tag = $('tdTag').value.toLowerCase(), done = $('tdShowDone').checked;
+      const out = [];
+      notes.forEach(n => {
+        if (tenant && n.tenant !== tenant) return;
+        if (tag && !(n.tags || []).some(t => t.toLowerCase() === tag)) return;
+        (n.todos || []).forEach(t => { if (done || !t.done) out.push({ n, t }); });
+      });
+      out.sort((a, b) => (a.t.done - b.t.done) || String(b.t.at).localeCompare(String(a.t.at)));
+      return out;
+    }
+    function render() {
+      const list = rows();
+      const open = list.filter(r => !r.t.done).length;
+      const st = $('tdStatus'); st.className = 'td-status';
+      st.textContent = `${plural(open, 'open to-do')}${$('tdShowDone').checked ? `, ${plural(list.length - open, 'done')}` : ''} shown.`;
+      $('rpMeta').textContent = `${plural(tenants.length, 'tenant')} with notes`;
+      const body = $('tdBody');
+      if (!list.length) {
+        const any = notes.some(n => (n.todos || []).length);
+        body.replaceChildren(h('p', { class: 'td-empty', text: !notes.length
+          ? 'No to-dos yet, so the list is empty. Open Find anything (Ctrl+J or the Find button), open a rule, dictionary or finding, and add a to-do on its card.'
+          : !any ? 'The notes so far have tags or comments but no to-dos. Add a to-do on an object\'s card in Find anything.'
+            : 'Nothing matches these filters: every to-do here is done, or none is on an object with this tag. Choose All tags or tick Show done.' }));
+        return;
+      }
+      const tb = h('tbody');
+      list.forEach(({ n, t }) => {
+        const id = `td_${t.id}`;
+        tb.append(h('tr', {},
+          h('td', { class: 'c' }, h('input', { type: 'checkbox', id, checked: !!t.done, 'aria-label': `Done: ${t.text}`, onchange: e => setDone(n, t, e.target) })),
+          h('td', {}, h('label', { for: id, class: t.done ? 'td-done' : '', text: t.text }),
+            h('div', { class: 'td-meta', text: `Added by ${t.by || 'unknown'}, ${when(t.at)}${t.done ? ` · done by ${t.done_by || 'unknown'}, ${when(t.done_at)}` : ''}` })),
+          h('td', {}, h('button', { type: 'button', class: 'td-link', onclick: () => openObject(n), text: n.label || n.ref }),
+            h('div', { class: 'td-kind' }, kindLabel(n.kind), n.href ? [' · ', h('a', { href: n.href, text: 'open its page' })] : null)),
+          h('td', {}, (n.tags || []).length ? n.tags.map(tg => h('span', { class: 'td-chip', text: tg })) : h('span', { class: 'td-meta', text: 'none' })),
+          h('td', { text: n.tenant })));
+      });
+      body.replaceChildren(h('div', { class: 'td-wrap' }, h('table', { class: 'td-t' },
+        h('caption', { class: 'sr-only', text: 'To-dos on objects, newest first' }),
+        h('thead', {}, h('tr', {}, ['Done', 'To-do', 'On', 'Tags', 'Tenant'].map(x => h('th', { scope: 'col', text: x })))), tb)));
+    }
+    async function setDone(n, t, box) {
+      box.disabled = true;
+      try {
+        const r = await fetch('/api/workspace/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant: n.tenant, kind: n.kind, ref: n.ref, action: 'set_todo', item_id: t.id, done: box.checked }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d && d.detail) || `HTTP ${r.status}`);
+        say(box.checked ? `Done: ${t.text}` : `Open again: ${t.text}`);
+        await load();
+      } catch (e) {
+        box.checked = !box.checked; box.disabled = false;
+        const st = $('tdStatus'); st.className = 'td-status bad'; st.textContent = `Not saved: ${e.message}`;
+      }
+    }
+    // The object in Find anything (its card has the links to the pages
+    // that act on it); a finding or page opens where it lives.
+    function openObject(n) {
+      if (n.kind === 'page' && n.href) { location.href = n.href; return; }
+      const q = n.kind === 'finding' ? n.ref : (n.label || n.ref).replace(/^[^:]{1,40}:\s*/, '');
+      if (window.DLP_FIND) window.DLP_FIND.open(q);
+    }
+    $('tdTenant').addEventListener('change', () => { fillFilters(); render(); });
+    $('tdTag').addEventListener('change', render);
+    $('tdShowDone').addEventListener('change', render);
+    $('tdRefresh').addEventListener('click', load);
+    load();
+  })();
+  </script>
+</body>
+</html>

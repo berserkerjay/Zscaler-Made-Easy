@@ -1,4 +1,4 @@
-"""Console index: what DLP-Check knows about each object an admin sees in
+"""Console index: what Zscaler Made Easy knows about each object an admin sees in
 the Zscaler admin console, for the companion browser extension's badges
 and side panel.
 
@@ -15,8 +15,11 @@ Cloud Firewall and File Type Control rules (order, state, action, what
 they reference, shadowed-rule findings), the URL categories (custom ones,
 and predefined ones a rule references) and the objects the rules reference
 by name: locations and location groups, departments, groups, rule labels,
-network services and applications (and their groups) and IP groups, each
-with how many rules use it, per policy.
+network services and applications (and their groups), IP groups and file
+types (File Type Control and Web DLP rules), each with how many rules use
+it, per policy. Each custom engine carries its expression as the tenant
+has it, the same with dictionary names and a one-sentence summary
+(engine_explain).
 
 Pure apart from build(): the tests feed it an inventory and raw rules.
 
@@ -35,6 +38,7 @@ import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pack_channels as pc
+from engine_explain import file_type_label
 
 MONITOR_ACTIONS = {"ALLOW", "OFLCASB_DLP_REPORT_INCIDENT", "REPORT", "MONITOR"}
 
@@ -87,6 +91,10 @@ def from_inventory(inv: Dict[str, Any], *, tenant_label: str = "", shadow: Optio
         if not users:
             f.append(_finding("low", "No DLP rule uses this engine, so it never acts.", "unused"))
         objects.append({"kind": "engine", "name": e["name"], "id": e.get("id"), "custom": True,
+                        # The expression as the tenant has it (for copying), with
+                        # dictionary names, and in one sentence (engine_explain).
+                        "expression": str(e.get("expression") or "")[:MAX_EXPRESSION],
+                        "readable": str(e.get("readable") or "")[:MAX_EXPRESSION], "summary": str(e.get("summary") or "")[:MAX_EXPRESSION],
                         "uses": {"dictionaries": _names(e.get("dictionaries") or [])},
                         "used_by": {"rules": _names(r["name"] for r in users)},
                         "counts": {"rules": len({r["name"] for r in users}), "dictionaries": len(set(e.get("dictionaries") or []))},
@@ -173,6 +181,7 @@ KINDS: Dict[str, Dict[str, Any]] = {
     "network_application_group": {"label": "Network application group", "plural": "Network application groups", "group": "Objects"},
     "source_ip_group": {"label": "Source IP group", "plural": "Source IP groups", "group": "Objects"},
     "destination_ip_group": {"label": "Destination IP group", "plural": "Destination IP groups", "group": "Objects"},
+    "file_type": {"label": "File type", "plural": "File types", "group": "Objects"},
 }
 for _k in KINDS.values():
     _k.setdefault("export", False)
@@ -205,12 +214,14 @@ REF_FIELDS: Dict[str, str] = {
     "nwservices": "network_service", "nwservicegroups": "network_service_group",
     "nwapplications": "network_application", "nwapplicationgroups": "network_application_group",
     "srcipgroups": "source_ip_group", "sourceipgroups": "source_ip_group", "destipgroups": "destination_ip_group",
+    "filetypes": "file_type",
 }
 # References by id only (no name in the rule): resolved, or named after the id.
-_ID_KINDS = {"url_category", "network_application"}
+_ID_KINDS = {"url_category", "network_application", "file_type"}
 
 MAX_PER_KIND = 300
 MAX_NAMES = 25
+MAX_EXPRESSION = 600   # an engine's expression, readable form and summary, each
 
 _SHORT = {"shadowed": "shadowed", "after_catch_all": "shadowed", "duplicate": "duplicate", "superseded": "superseded",
           "missing_reference": "missing reference", "disabled": "disabled"}
@@ -269,6 +280,10 @@ def _ref_names(raw: Dict[str, Any], cats: Dict[str, Dict[str, Any]]) -> Dict[str
                 if rid is None or rid.upper() in _ANY:
                     continue
                 name = (cats.get(rid) or {}).get("name") or name or category_label(rid)
+            elif kind == "file_type":
+                if rid is None or rid.upper() in _ANY:
+                    continue
+                name = file_type_label(name or rid)[0]
             elif kind in _ID_KINDS:
                 name = name or rid
             if not name or str(name).upper() in _ANY:
@@ -353,6 +368,8 @@ def _zia(zia: Optional[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[Any,
             o: Dict[str, Any] = {"kind": rkind, "key": f"{rkind}:{name}", "name": name, "id": slot["id"],
                                  "used_by": {p: v[:MAX_NAMES] for p, v in by.items()},
                                  "counts": {"rules": total, "by_policy": {p: len(v) for p, v in by.items()}}, "pack": None, "findings": []}
+            if rkind == "file_type":
+                o["category"] = file_type_label(slot["id"])[1]
             if rkind == "url_category":
                 c = cats.get(str(slot["id"])) or {}
                 o["custom"] = bool(c.get("custom"))
@@ -453,6 +470,14 @@ def cache_get(key: str) -> Optional[Dict[str, Any]]:
     if not hit or time.time() - hit["at"] > CACHE_SECONDS:
         return None
     return dict(hit["index"], cached_at=int(hit["at"]))
+
+
+def cache_latest(profile_id: str) -> Optional[Dict[str, Any]]:
+    """The newest index still kept for a profile (any scope it was read
+    with), or None. Reads nothing."""
+    prefix = f"{profile_id or 'server'}|"
+    keys = [k for k in _CACHE if k.startswith(prefix) and time.time() - _CACHE[k]["at"] <= CACHE_SECONDS]
+    return cache_get(max(keys, key=lambda k: _CACHE[k]["at"])) if keys else None
 
 
 def cache_clear() -> None:

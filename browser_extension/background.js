@@ -3,9 +3,9 @@
 import { CONSOLE_ORIGINS, CONSOLE_SCRIPT_ID, appUrl, badgeLabel, destinationFromText, destinationFromUrl, kindInfo, objectKey, pathAnalyzerUrl } from './common.js';
 
 const MENUS = [
-  { id: 'dlpcheck-link', title: 'Analyze this link with DLP-Check', contexts: ['link'] },
-  { id: 'dlpcheck-selection', title: 'Analyze "%s" with DLP-Check', contexts: ['selection'] },
-  { id: 'dlpcheck-page', title: 'Analyze this site with DLP-Check', contexts: ['page'] },
+  { id: 'dlpcheck-link', title: 'Analyze this link with Zscaler Made Easy', contexts: ['link'] },
+  { id: 'dlpcheck-selection', title: 'Analyze "%s" with Zscaler Made Easy', contexts: ['selection'] },
+  { id: 'dlpcheck-page', title: 'Analyze this site with Zscaler Made Easy', contexts: ['page'] },
 ];
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -41,7 +41,7 @@ chrome.permissions.onAdded.addListener(syncConsoleScript);
 chrome.permissions.onRemoved.addListener(syncConsoleScript);
 
 // What a badge says, by exact object name: from the index the side panel
-// read through DLP-Check (kept in session storage, gone when the browser closes).
+// read through Zscaler Made Easy (kept in session storage, gone when the browser closes).
 function badgeEntry(index, o) {
   const { label, sev } = badgeLabel(o);
   return { key: objectKey(o), kind: kindInfo(index, o.kind).label, label, sev };

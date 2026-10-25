@@ -9,6 +9,9 @@ if ROOT not in sys.path:
 # The UI token guards every API call from a browser; the test suite talks to
 # the app directly, so it is off here. tests/test_ui_auth.py switches it on.
 os.environ.setdefault("ZSCALER_UI_AUTH", "0")
+# Self-healing's startup run and timer (self_heal.py) stay off in tests: a
+# test runs the checks itself, on its own temporary files.
+os.environ.setdefault("DLP_CHECK_SELF_HEAL_MINUTES", "0")
 
 
 import pytest

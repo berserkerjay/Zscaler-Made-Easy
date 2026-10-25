@@ -80,7 +80,7 @@ def test_a_block_in_the_last_hour_is_likely_to_fail_with_when_to_run(clock):
     zia_rate.note_refusal("write", "Resource Access Blocked", key=A, status=403)
     clock[0] += 600
     f = zia_rate.forecast({"write": 10, "activate": 1}, key=A)
-    assert f["severity"] == "fail" and "after 110 writes from DLP-Check in 5 minutes" in f["verdict"]
+    assert f["severity"] == "fail" and "after 110 writes from Zscaler Made Easy in 5 minutes" in f["verdict"]
     assert f["run_after"] == pytest.approx(clock[0] - 600 + 3600) and "UTC" in f["verdict"]
 
 
@@ -526,7 +526,7 @@ def test_the_quip_names_the_same_block_as_the_verdict(clock):
         clock[0] += 3600 if hour else 60
         t.refused[-1]["at"] = clock[0] - 60
         v = zia_rate.forecast({"write": 10}, key=A)["verdict"]
-        assert "40 writes" not in v and "after 110 writes from DLP-Check" in v, v
+        assert "40 writes" not in v and "after 110 writes from Zscaler Made Easy" in v, v
 
 
 def test_the_suite_does_not_take_the_tone_from_the_shell():

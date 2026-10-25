@@ -99,7 +99,7 @@ async function openToolTab(kind, arg) {
   const ready = () => {
     try {
       if (!win.document || !win.document.getElementById('rpBody') || typeof win.__ttApply !== 'function') return false;
-      win.document.title = `${spec.title} — Zscaler Assessment`;
+      win.document.title = `${spec.title} — Zscaler Made Easy`;
       const h = win.document.getElementById('rpTitle');
       const words = spec.title.split(' ');
       h.innerHTML = `<span class="accent">${_ttE(words[0])}</span> ${_ttE(words.slice(1).join(' '))}`;
