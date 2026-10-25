@@ -402,7 +402,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'fleet', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'queue', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
