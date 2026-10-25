@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "DLP-Check companion",
   "short_name": "DLP-Check",
-  "version": "1.1.0",
-  "description": "Works with the DLP-Check app on this computer: badges on DLP dictionaries, engines and rules in the ZIA admin console, a side panel with what uses them and their findings, export as JSON or Terraform, and the Path analyzer for any site.",
+  "version": "1.2.0",
+  "description": "Works with the DLP-Check app on this computer: badges in the ZIA admin console on DLP objects, policy rules, URL categories and the objects rules use, a side panel with what uses them and their findings, DLP export as JSON or Terraform, and the Path analyzer for any site.",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3KV/TkUwLEy4WA9H+JdESYVTEASJzqngeqCnVQuxic8kog/sA5+sdIEu0na4DWC9YGA6whggIqB09nex0iS9JnQB/ARPXRtnN9GqwCqPGGbigrJ6hOYXeg/UqCWTL/ayRirSs36m22tL+IU+s/mkmbaWHAqGtay0zHQcVFHsBChpBcKaJGJsEo5ORM31hlRtioFACf4yPSgqFmooa/2qmTKmiiNZ4U5hDWjYh55nakT/j31mE4Zg3cXbyEo/p2ABMH3tJprvLcZTt3bjS8Ka1k36K9/kKYNYBKN3fxdeM134t+2r94pkl9nkS5LHWoD3M0ATWD/KNeLJhVjRkF8azQIDAQAB",
   "icons": {

@@ -107,7 +107,11 @@ what you get, what to do next.
 - **Browser extension (companion)** — a small Chrome and Edge extension
   for the app on your computer: its button or a right-click opens the Path
   analyzer with the site, a link or a selected hostname filled in, and the
-  popup opens the Live DLP feed and the Flow animator. It holds no
+  popup opens the Live DLP feed and the Flow animator. Switched on, it
+  badges the ZIA admin console: DLP objects, the URL filtering, Cloud App
+  Control, SSL inspection, Cloud Firewall and File Type Control rules, and
+  the URL categories, locations, groups and other objects they use (usage
+  counts, shadowed and unused findings), with a side panel. It holds no
   credentials or tenant data and talks only to 127.0.0.1. Download it from
   Advanced settings; see docs/BROWSER_EXTENSION.md.
 - **Live DLP feed** — Workflow Automation's DLP incidents polled every

@@ -3438,45 +3438,69 @@ class ConsoleIndexRequest(ScopedTenantCredsRequest):
 
 @app.post("/api/console-index")
 async def console_index(req: ConsoleIndexRequest):
-    """What DLP-Check knows about each DLP dictionary, engine and rule (what
-    it uses, what uses it, the pack that created it, findings), for the
-    companion extension's badges and side panel in the Zscaler admin
-    console. Read-only; only the DLP channels in scope are read; the last
-    read per tenant is reused for 30 minutes unless `refresh`."""
+    """What DLP-Check knows about each object of the ZIA admin console, for
+    the companion extension's badges and side panel: DLP dictionaries,
+    engines and rules (what they use, what uses them, the pack that created
+    them, findings), and, where in scope, the URL filtering, Cloud App
+    Control, SSL inspection, Cloud Firewall and File Type Control rules
+    with shadowed-rule findings, the URL categories and the objects those
+    rules reference (locations, departments, groups, labels, network
+    services, IP groups) with how many rules use each. Read-only; only what
+    the Scope page puts in scope is read; the last read per tenant and
+    scope is reused for 30 minutes unless `refresh`."""
     import console_index as ci
-    channels = _pack_channels_in_scope(req, "The browser extension's console index")
+    zscope = _console_zia_scope(req)
+    try:
+        channels = _pack_channels_in_scope(req, "The browser extension's console index")
+    except HTTPException as e:
+        # No DLP channel in scope: the ZIA policies alone still make an index.
+        if e.status_code != 400 or not (zscope["scope"]["read"] or zscope["ftc"]):
+            raise
+        channels = []
     creds = _tenant_creds(req)
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Pick a saved tenant (or configure one on this server) for the extension to read.")
-    key = ci.cache_key(getattr(req, "profile_id", "") or "", channels)
+    key = ci.cache_key(getattr(req, "profile_id", "") or "", list(channels) + [f"zia:{k}" for k in zscope["scope"]["read"]]
+                       + (["zia:ftc"] if zscope["ftc"] else []))
     if not req.refresh:
         hit = ci.cache_get(key)
         if hit is not None:
             return hit
-    client = await asyncio.to_thread(_build_sdk_client, creds)
-    shadow, shadow_note = await asyncio.to_thread(_console_shadow, req)
-    out = await asyncio.to_thread(lambda: ci.build(client, channels, tenant_label=tenant_auth.record_label(creds), shadow=shadow))
+    client = await asyncio.to_thread(_build_sdk_client, creds) if channels else None
+    zia, zia_note = await asyncio.to_thread(_console_zia, req, zscope)
+    if not channels and zia is None:
+        raise HTTPException(status_code=502, detail=f"Could not read the ZIA policies in scope ({zia_note}).")
+    shadow = ci.shadow_by_channel(zia["findings"]) if zia else None
+    out = await asyncio.to_thread(lambda: ci.build(client, channels, tenant_label=tenant_auth.record_label(creds), shadow=shadow, zia=zia))
     if out.get("status") != "ready":
         raise HTTPException(status_code=502, detail="; ".join(out.get("blockers") or ["Could not read the tenant."]))
-    out["shadow"] = shadow_note
+    out["shadow"] = zia_note
     ci.cache_put(key, out)
     return dict(out, cached_at=None)
 
 
-def _console_shadow(req: Any):
-    """The shadowed-rule findings for the console index: ({(channel, rule):
-    findings} or None, a note). Read-only; only what its own scope rules
-    allow; a failure leaves the index without them and says why."""
-    import console_index as ci
+def _console_zia_scope(req: Any) -> Dict[str, Any]:
+    """What the console index may read beyond DLP: the shadowed-rule
+    analysis' scope (shadow_rules.scope_for) and whether the File Type
+    Control rules are in scope (data_flow.path_scope). Never reads."""
+    import data_flow
     import shadow_rules
+    sc, ch, _source = _scope_selection(req)
+    return {"scope": shadow_rules.scope_for(sc, ch), "ftc": "ftc" in data_flow.path_scope(sc, ch)["read"]}
+
+
+def _console_zia(req: Any, zscope: Dict[str, Any]):
+    """The ZIA part of the console index (console_index.zia_read: the rules
+    of every policy in scope, the URL categories, the shadowed-rule
+    findings): (read or None, a note). Read-only; only what the Scope page
+    allows; a failure leaves the index without it and says why."""
+    import console_index as ci
     try:
-        sc, ch, source = _scope_selection(req)
-        scope = shadow_rules.scope_for(sc, ch)
-        if not scope["read"]:
+        if not zscope["scope"]["read"] and not zscope["ftc"]:
             return None, "not in scope"
         raw = _build_client(req)
-        res = shadow_rules.run(raw, scope)
-        return ci.shadow_by_channel(res.get("findings")), f"{len(res.get('findings') or [])} finding(s)"
+        res = ci.zia_read(raw, zscope["scope"], ftc=zscope["ftc"])
+        return res, f"{len(res.get('findings') or [])} finding(s)"
     except Exception as e:  # noqa: BLE001 - the index is still useful without them
         return None, f"not available: {str(e)[:160]}"
 
