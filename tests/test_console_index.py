@@ -44,6 +44,16 @@ def test_shadowed_rule_findings_are_merged_when_given():
     assert {"severity": "high", "text": shadow[("web", "Web-PCI")][0]["reason"]} in pci["findings"]
 
 
+def test_shadow_findings_map_from_policy_to_channel_and_skip_disabled():
+    findings = [{"policy": "web_dlp", "rule": "Web-PCI", "kind": "shadowed", "severity": "high", "reason": "Shadowed."},
+                {"policy": "web_dlp", "rule": "Web-PCI", "kind": "disabled", "severity": "info", "reason": "Disabled."},
+                {"policy": "endpoint_dlp", "rule": "EP-Board", "kind": "superseded", "severity": "medium", "reason": "Superseded."},
+                {"policy": "url_filtering", "rule": "Block all", "kind": "duplicate", "severity": "low", "reason": "Dup."}]
+    by = ci.shadow_by_channel(findings)
+    assert set(by) == {("web", "Web-PCI"), ("endpoint", "EP-Board")}
+    assert [f["kind"] for f in by[("web", "Web-PCI")]] == ["shadowed"]
+
+
 def test_the_index_holds_no_secret_user_or_file_name():
     blob = json.dumps(ci.from_inventory(_inventory(), tenant_label="acme"))
     assert SECRET not in blob and "abc123456789" not in blob

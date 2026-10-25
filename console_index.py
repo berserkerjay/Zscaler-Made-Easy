@@ -96,32 +96,33 @@ def from_inventory(inv: Dict[str, Any], *, tenant_label: str = "", shadow: Optio
             "errors": inv.get("errors") or {}, "counts": counts, "objects": objects}
 
 
-def build(client, channels: Optional[Iterable[str]] = None, *, tenant_label: str = "") -> Dict[str, Any]:
-    """Read the tenant (read-only, the in-scope channels only) and index it."""
+def build(client, channels: Optional[Iterable[str]] = None, *, tenant_label: str = "",
+          shadow: Optional[Dict[Any, List[Dict[str, Any]]]] = None) -> Dict[str, Any]:
+    """Read the tenant (read-only, the in-scope channels only) and index it,
+    with the shadowed-rule findings (shadow_by_channel) when given."""
     import pack_removal
     inv = pack_removal.inventory(client, list(channels) if channels is not None else None)
     if inv.get("status") != "ready":
         return {"status": "blocked", "blockers": inv.get("blockers") or ["Could not read the tenant."], "errors": inv.get("errors") or {}}
-    shadow = None
-    try:   # the shadowed-rule analysis, when this install has it
-        import shadow_rules  # noqa: F401
-        shadow = _shadow_index(client, channels)
-    except Exception:  # noqa: BLE001 - optional: without it the index has no shadow findings
-        shadow = None
     out = from_inventory(inv, tenant_label=tenant_label, shadow=shadow)
     out["status"] = "ready"
     return out
 
 
-def _shadow_index(client, channels) -> Optional[Dict[Any, List[Dict[str, Any]]]]:
-    """Shadowed-rule findings by (policy, rule name), when shadow_rules
-    offers an analysis entry point; None otherwise."""
-    import shadow_rules
-    analyze = getattr(shadow_rules, "analyze_tenant", None)
-    if analyze is None:
-        return None
-    findings = analyze(client, channels)
-    return shadow_rules.index_by_rule(findings.get("findings") if isinstance(findings, dict) else findings)
+# shadow_rules names DLP policies by policy type; the index by channel.
+_SHADOW_CHANNEL = {"web_dlp": "web", "endpoint_dlp": "endpoint", "email_dlp": "email", "saas_dlp": "saas"}
+
+
+def shadow_by_channel(findings: Iterable[Dict[str, Any]]) -> Dict[Any, List[Dict[str, Any]]]:
+    """Shadowed-rule findings (shadow_rules) keyed (channel, rule name) for
+    the DLP rules the index holds. Disabled rules are left out: the index
+    already says so itself."""
+    out: Dict[Any, List[Dict[str, Any]]] = {}
+    for f in findings or []:
+        ch = _SHADOW_CHANNEL.get(str(f.get("policy") or ""))
+        if ch and f.get("rule") is not None and f.get("kind") != "disabled":
+            out.setdefault((ch, str(f["rule"])), []).append(f)
+    return out
 
 
 # ---------------------------------------------------------------------------

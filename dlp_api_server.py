@@ -3454,11 +3454,31 @@ async def console_index(req: ConsoleIndexRequest):
         if hit is not None:
             return hit
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(lambda: ci.build(client, channels, tenant_label=tenant_auth.record_label(creds)))
+    shadow, shadow_note = await asyncio.to_thread(_console_shadow, req)
+    out = await asyncio.to_thread(lambda: ci.build(client, channels, tenant_label=tenant_auth.record_label(creds), shadow=shadow))
     if out.get("status") != "ready":
         raise HTTPException(status_code=502, detail="; ".join(out.get("blockers") or ["Could not read the tenant."]))
+    out["shadow"] = shadow_note
     ci.cache_put(key, out)
     return dict(out, cached_at=None)
+
+
+def _console_shadow(req: Any):
+    """The shadowed-rule findings for the console index: ({(channel, rule):
+    findings} or None, a note). Read-only; only what its own scope rules
+    allow; a failure leaves the index without them and says why."""
+    import console_index as ci
+    import shadow_rules
+    try:
+        sc, ch, source = _scope_selection(req)
+        scope = shadow_rules.scope_for(sc, ch)
+        if not scope["read"]:
+            return None, "not in scope"
+        raw = _build_client(req)
+        res = shadow_rules.run(raw, scope)
+        return ci.shadow_by_channel(res.get("findings")), f"{len(res.get('findings') or [])} finding(s)"
+    except Exception as e:  # noqa: BLE001 - the index is still useful without them
+        return None, f"not available: {str(e)[:160]}"
 
 
 @app.get("/api/pack-library/{pack_id}/bundle")
