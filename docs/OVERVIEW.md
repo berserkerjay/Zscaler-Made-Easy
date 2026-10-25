@@ -295,6 +295,35 @@ what you get, what to do next.
   whose plan no longer matches is marked stale and nothing is written.
   Every step is in the audit log with who did it; the queue exports as JSON,
   Markdown or Excel (requests, items, approvals, comments, history).
+  Every step is in the audit log with who did it; the queue exports as JSON
+  or Markdown.
+- **Self-healing** — two layers on one page (`/report/self-heal`, toolbar
+  *Self-healing*). *This app*: small checks fix the app's own problems and
+  say what they did (a background job whose worker died or that is stuck is
+  ended as failed so it can be retried; a damaged saved file is moved aside
+  as `<name>.corrupt-<time>`, never deleted, and restored from its
+  `<name>.last-good` copy, else started empty and flagged; secrets and
+  stores others can read are set back to owner-only; locks left by a process
+  that is gone are released; a ZIA rate-limit pause longer than any limit
+  window is lifted; a cached sign-in that keeps failing is dropped; low disk
+  space prunes the app's own old digests; an update without a restart is
+  reported with a Restart button). They run at startup, every
+  `DLP_CHECK_SELF_HEAL_MINUTES` (10 by default, 0 off) and on *Check the app
+  now*; each run is in the audit log. Nothing here touches the tenant.
+  *Your tenant*: with DLP in scope, the ticked (or deployed) packs are read
+  and compared with what was approved; a rule turned off, an action made
+  weaker, an engine or dictionary edited or deleted, or a fix someone undid
+  becomes a heal proposal with what changed and, when Automation readiness
+  is in scope, who and when from ZIA's audit log. Changes this app recorded
+  (deployments, Bulk changes, applied proposals and change requests) and
+  progress (a rule turned on, a stricter action) are never drift. *Heal*
+  (one or many) goes through the proposal apply path: write mode, a fresh
+  read that refuses if the setting moved again, the typed confirmation,
+  read-back and an undo; *Accept* makes the current value the approved one
+  and stops proposing it (audited). The continuous evaluation loop's drift
+  step raises the same proposals. Nothing is ever applied on its own:
+  `DLP_CHECK_SELF_HEAL_AUTO_APPLY` is refused in this version, pending the
+  product owner's decision.
 - **Bulk changes** — many changes as one reviewed plan: enable or
   disable up to 100 rules (URL filtering, SSL inspection, Cloud Firewall,
   Cloud App Control, File Type Control and the four DLP channels), put one

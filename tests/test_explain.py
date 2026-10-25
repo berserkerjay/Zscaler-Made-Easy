@@ -31,6 +31,7 @@ TOOLBAR = {
     "openLogAnalyzerTab()": "logs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live", "openInsightsTab()": "insights", "openAuditTimelineTab()": "audit", "openSslCoverageTab()": "sslcoverage",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates", "openExportsTab()": "exports",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates", "openQueueTab()": "queue",
+    "openSelfHealTab()": "selfheal",
     "openLogAnalyzerTab()": "logs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live",
     "openLogAnalyzerTab()": "logs", "openBeaconTab()": "beacon", "openDigestTab()": "digest", "openLiveFeedTab()": "live", "openFleetTab()": "fleet",
     "openReferenceTab('data-security-portfolio-framework')": "refportfolio", "openReferenceTab('ai-security-framework')": "refai",

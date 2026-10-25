@@ -646,6 +646,52 @@ def paused_for(key: Optional[str] = None, *, reads: bool = False) -> float:
     return left if left > 0 else 0.0
 
 
+def overlong_holds(*, clear: bool = False, margin: float = 300.0) -> List[Dict[str, Any]]:
+    """Holds that end further away than the longest limit window (an hour
+    by default) plus `margin`: no refusal can justify them, so one is left
+    over from a clock that was set back, or a damaged state file. With
+    `clear` they are lifted, here and in the state file (whose later hold
+    would otherwise be merged back in). Each is reported by the first 8
+    characters of its opaque tenant key, never by a tenant name."""
+    limit = max(_longest(b) for b in DEFAULTS) + max(0.0, margin)
+    found: List[Dict[str, Any]] = []
+    with _lock:
+        _refresh()
+        now = _now()
+        for k, t in _tenants.items():
+            for kind, box in (("writes", t.hold), ("reads", t.read_hold)):
+                left = box[0] - now
+                if left > limit:
+                    found.append({"tenant": (k[:8] or "(no tenant)"), "kind": kind, "seconds_left": round(left)})
+                    if clear:
+                        box[0] = 0.0
+        if clear and found:
+            p = state_path()
+            try:
+                with _file_lock(p):
+                    data = _read_file()
+                    for d in (data.get("tenants") or {}).values() if isinstance(data.get("tenants"), dict) else []:
+                        if isinstance(d, dict):
+                            for key in ("hold_until", "read_hold_until"):
+                                if float(d.get(key) or 0) - now > limit:
+                                    d[key] = 0.0
+                    if float(data.get("hold_until") or 0) - now > limit:   # a version 1 file
+                        data["hold_until"] = 0.0
+                    if data:
+                        fd, tmp = tempfile.mkstemp(prefix=".zia_rate-", dir=os.path.dirname(p) or ".")
+                        try:
+                            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                                json.dump(data, f)
+                            os.replace(tmp, p)
+                        finally:
+                            with contextlib.suppress(OSError):
+                                os.remove(tmp)
+                _seen[0] = _stamp()
+            except Exception as e:  # noqa: BLE001 - the in-memory hold is lifted either way
+                logging.getLogger(__name__).warning("The ZIA rate-limit state file could not be corrected: %s", e)
+    return found
+
+
 def estimate(bucket: str, count: int) -> float:
     """Seconds `count` requests of `bucket` take at the configured limits,
     starting from an empty window (for a removal's time estimate)."""

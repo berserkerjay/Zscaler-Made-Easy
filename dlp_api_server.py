@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/todo", "/report/posture", "/report/sslcoverage"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1191,6 +1191,7 @@ def _build_sdk_client(creds: Dict[str, str]):
         except ImportError:
             raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
         except Exception as e:  # noqa: BLE001 — the helper signs in as it is built
+            _note_auth_failure()
             reason = tenant_auth.mask_secrets(str(e), c)[:200]
             raise HTTPException(status_code=401, detail=f"Authentication failed for {tenant_auth.identity(c)} on the classic ZIA API "
                                                         f"({zscaler_clouds_legacy_host(cloud)}): {reason}")
@@ -1217,10 +1218,20 @@ def _build_sdk_client(creds: Dict[str, str]):
         if callable(auth):
             auth()
     except Exception as e:
+        _note_auth_failure()
         reason = str(e).replace(sec, mask_secret(sec))[:200]
         raise HTTPException(status_code=401, detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason}")
     # Every ZIA answer on this client's session feeds the next preflight's rate-limit check.
     return zia_rate.attach_client(client, rate_key, rate_label)
+
+
+def _note_auth_failure() -> None:
+    """Self-healing counts sign-in failures (no detail, never a secret) to drop a cached sign-in that keeps failing."""
+    try:
+        import self_heal
+        self_heal.note_auth_failure()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _keyed(client, fn, *args):
@@ -8036,6 +8047,19 @@ async def report_posture_page():
     the score most, the projected score, the trend with its causes and what
     the last assessment could not check. Reads nothing from the tenant."""
     page = os.path.join(STATIC_DIR, "report_posture.html")
+# ── Self-healing (self_heal.py) ───────────────────────────────────────
+# Layer 1: the app repairs itself (stuck jobs, damaged stores, permissions,
+# stale locks, rate holds, cached sign-ins, disk space, version) at startup,
+# on a light timer (DLP_CHECK_SELF_HEAL_MINUTES, default 10, 0 off) and on
+# demand; nothing is written to the tenant. Layer 2: the tenant heals back
+# to what was approved: a scan (read-only, DLP in scope) raises heal
+# proposals; each is applied only when a person clicks Heal, through the
+# proposal apply path (write mode, re-read, typed confirmation, read-back,
+# rollback). Automatic application is refused in this version.
+@app.get("/report/self-heal")
+async def report_self_heal_page():
+    """Self-healing (static/report_self_heal.html): what the app fixed by itself, and the tenant settings that drifted."""
+    page = os.path.join(STATIC_DIR, "report_self_heal.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
     with open(page, "r", encoding="utf-8") as f:
@@ -8191,6 +8215,252 @@ async def posture_settings_put(req: PostureSettings, request: Request):
     saved = await asyncio.to_thread(pp.save_settings, req.model_dump())
     _audit.record("posture_settings", actor=_actor(request) or _security.current_actor(), **saved)
     return saved
+@app.get("/api/self-heal")
+async def self_heal_status():
+    """The last self-healing run (each check: ok / healed / needs you, what
+    was done, the next step), the settings and how many tenant heal
+    proposals are open. Local data only: nothing is read from a tenant."""
+    import self_heal
+    return await asyncio.to_thread(self_heal.overview)
+
+
+@app.post("/api/self-heal/run")
+async def self_heal_run(request: Request):
+    """Run the app's self-healing checks now. Repairs local files and jobs
+    only; never touches a tenant. Audited (self_heal_run, with who asked)."""
+    import self_heal
+    return await asyncio.to_thread(self_heal.run, "manual", _actor(request) or _security.current_actor())
+
+
+async def _self_heal_loop(minutes: float) -> None:
+    import self_heal
+    try:
+        await asyncio.sleep(5)
+        await asyncio.to_thread(self_heal.run, "startup")
+        while True:
+            await asyncio.sleep(minutes * 60)
+            await asyncio.to_thread(self_heal.run, "timer")
+    except asyncio.CancelledError:
+        return
+    except Exception:  # noqa: BLE001 - the timer never takes the server down
+        return
+
+
+@app.on_event("startup")
+async def _start_self_heal() -> None:
+    try:
+        import self_heal
+        self_heal.mark_started()
+        minutes = self_heal.interval_minutes()
+        if minutes > 0:
+            asyncio.create_task(_self_heal_loop(minutes))
+    except Exception:  # noqa: BLE001 - self-healing never stops the app starting
+        pass
+
+
+class SelfHealScanRequest(ScopedTenantCredsRequest):
+    """Scan the tenant for settings that drifted from what was approved: the
+    packs to measure (else the profile's ticked packs, else the packs this
+    app deployed to the tenant), and whether to read who changed them from
+    ZIA's admin audit log (needs Automation readiness in scope)."""
+    pack_ids: List[str] = []
+    include_who: bool = False
+    days: int = 7
+
+
+class SelfHealHealRequest(ScopedTenantCredsRequest):
+    """Heal selected drifts: the heal proposal ids and the typed confirmation phrase."""
+    ids: List[str] = []
+    confirm: str = ""
+
+
+class SelfHealAcceptRequest(ScopedTenantCredsRequest):
+    """Accept a drift (stop proposing it): the heal proposal id and an optional note."""
+    id: str = ""
+    note: str = ""
+
+
+def _self_heal_tenant(req: Any) -> Tuple[List[str], Dict[str, str], str, str]:
+    """(DLP channels in scope, credentials, queue key, label). The DLP scope
+    is checked first: nothing in scope is refused (400) before anything is
+    signed in to or read (user rule 1)."""
+    channels = _pack_channels_in_scope(req, "Self-healing for the tenant")
+    creds = _tenant_creds(req)
+    tk, label = _cq_tenant(creds)
+    return channels, creds, tk, label
+
+
+def _self_heal_packs(req: SelfHealScanRequest, channels: List[str], label: str) -> Tuple[List[Dict[str, Any]], Dict[str, List[str]]]:
+    """The packs to measure: the request's, else the profile's ticked packs,
+    else the packs this app deployed to this tenant; each on its own DLP
+    channels that are in scope (_journey_scope)."""
+    import deployments
+    ids = [str(x) for x in req.pack_ids or [] if x]
+    if not ids and req.profile_id:
+        try:
+            import tenant_profiles
+            ids = [str(x) for x in (tenant_profiles.get(req.profile_id) or {}).get("baseline_packs") or [] if x]
+        except Exception:  # noqa: BLE001
+            ids = []
+    if not ids:
+        seen: List[str] = []
+        for r in deployments.list_all(label):
+            for pid in r.get("packs") or []:
+                if pid not in seen:
+                    seen.append(pid)
+        ids = seen
+    _sc, ch, _src = _scope_selection(req)
+    return _journey_scope(ids, ch)
+
+
+def _self_heal_scan_job(client, packs, targets, channels, casb, tk, labels, include_who, days, log, cancel) -> Dict[str, Any]:
+    import self_heal
+    import zia_rate
+    who = None
+    with zia_rate.using_client(client):
+        if include_who:
+            import audit_timeline as at
+            import data_flow
+            import deployments
+            import pack_deploy
+            win = at.window(max(1, min(int(days or 7), 30)))
+            try:
+                with data_flow.stop_on(client, cancel):
+                    z = at.read_zia_audit(client, win["start_ms"], win["end_ms"], log=log, cancel=cancel)
+                created = [c for r in deployments.list_all() for c in at._created(r)]
+                who = at.zia_events(((z or {}).get("csv") or {}).get("rows") or [], created, [], pack_deploy.library_ids())
+                if z.get("error"):
+                    log(f"Who changed it: {z['error']}")
+            except at.Stopped:
+                log("STOPPED — you clicked Stop; nothing more was read. Nothing is ever written by a scan.")
+                return {"stopped": "stopped before the scan", "status": "stopped"}
+        if cancel.is_set():
+            return {"stopped": "stopped before the scan", "status": "stopped"}
+        log("Reading the ticked packs' objects from the tenant (read-only)…")
+        res = self_heal.scan(client, packs, tenant_key=tk, labels=labels, channels=channels, channel_targets=targets,
+                             casb=casb, who_events=who, log=log)
+    res["view"] = self_heal.tenant_view(tk)
+    res.pop("items", None)
+    return res
+
+
+@app.post("/api/self-heal/tenant/scan")
+async def self_heal_tenant_scan(req: SelfHealScanRequest, request: Request):
+    """Compare the tenant with what was approved and raise a heal proposal
+    for every setting that drifted back. A job (poll GET
+    /api/dlp-packs/jobs/{id}). Read-only: nothing is written to the tenant.
+    DLP must be in scope (400 before any sign-in otherwise); who changed it
+    is read from ZIA's admin audit log only with include_who and Automation
+    readiness in scope."""
+    import channel_scope
+    import pack_jobs
+    channels, creds, tk, label = _self_heal_tenant(req)
+    if req.include_who:
+        _require_in_scope(req, "automation", "Who changed it (ZIA's admin audit log)")
+    packs, targets = _self_heal_packs(req, channels, label)
+    if not packs:
+        raise HTTPException(status_code=400, detail=("No policy pack to measure: tick the packs you approved on the tenant profile, or deploy one, "
+                                                     "and mark its DLP channels as Zscaler on the Scope page. Nothing was read."))
+    _sc, ch, _src = _scope_selection(req)
+    casb = "saas_casb" in channel_scope.in_scope(ch)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    labels = list(tenant_auth.record_labels(creds))
+
+    def fn(log, cancel):
+        try:
+            return _self_heal_scan_job(client, packs, targets, channels, casb, tk, labels, req.include_who, req.days, log, cancel)
+        finally:
+            _close_quietly(client)
+    job = pack_jobs.start("self-heal-scan", fn, label=f"self-healing scan, {len(packs)} pack(s)", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "tenant": tk, "tenant_label": label, "packs": [p["id"] for p in packs]}
+
+
+@app.post("/api/self-heal/tenant/view")
+async def self_heal_tenant_view(req: ScopedTenantCredsRequest):
+    """The tenant's heal proposals, last scan and accepted drifts (local
+    data; nothing is signed in to or read). DLP must be in scope, like the drift step."""
+    import self_heal
+    _channels, _creds, tk, label = _self_heal_tenant(req)
+    out = await asyncio.to_thread(self_heal.tenant_view, tk)
+    out["tenant_label"] = label
+    out["writes_enabled"] = writes_enabled()
+    return out
+
+
+@app.post("/api/self-heal/tenant/heal")
+async def self_heal_tenant_heal(req: SelfHealHealRequest, request: Request):
+    """Heal the selected drifts, one by one, through the proposal apply path:
+    each is approved with the typed confirmation, then applied (write mode,
+    a preview that re-reads the rule and refuses when it moved again, the
+    update, read-back, recorded rollback). Only one-click heals (a rule's
+    state or action) on DLP channels in scope; nothing else is written."""
+    import proposal_apply
+    import proposals
+    channels, creds, tk, label = _self_heal_tenant(req)
+    _security.require_writer()
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    if (req.confirm or "").strip().upper() != proposals.CONFIRM_PHRASE:
+        raise HTTPException(status_code=400, detail=f'Healing changes the tenant: type "{proposals.CONFIRM_PHRASE}" to confirm.')
+    ids = [str(x) for x in req.ids or [] if x][:50]
+    if not ids:
+        raise HTTPException(status_code=400, detail="Select at least one drift to heal.")
+    todo, results = [], []
+    for pid in ids:
+        p = proposals.get(tk, pid)
+        why = ("not found (scan again)" if not p else "not a heal proposal" if p.get("kind") != "heal_drift"
+               else "made by hand, not from here (follow its steps)" if (p.get("change") or {}).get("apply") != "rule"
+               else f"its channel ({p.get('channel')}) is not in scope on the Scope page" if p.get("channel") not in channels
+               else f"it is {p.get('status')}" if p.get("status") not in ("open", "approved") else "")
+        if why:
+            results.append({"id": pid, "ok": False, "status": "refused", "why": why})
+        else:
+            todo.append(p)
+    by = (_actor(request) or _security.current_actor() or "")[:80]
+    if todo:
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        try:
+            for p in todo:
+                try:
+                    if p.get("status") == "open":
+                        proposals.decide(tk, p["id"], "approve", by=by, note="heal", confirm=req.confirm)
+                    logs: List[str] = []
+                    out = await asyncio.to_thread(lambda: proposal_apply.apply(client, tk, p["id"], writes_enabled=True, by=by, log=logs.append))
+                    results.append({"id": p["id"], "ok": bool(out.get("ok")), "status": out.get("status"), "title": p.get("title"),
+                                    "results": out.get("results"), "activation": out.get("activation"), "logs": logs})
+                except (ValueError, PermissionError) as e:
+                    results.append({"id": p["id"], "ok": False, "status": "refused", "title": p.get("title"), "why": str(e)[:300]})
+        finally:
+            await asyncio.to_thread(_close_quietly, client)
+    _audit.record("self_heal_heal", tenant=label, by=by, healed=[r["id"] for r in results if r.get("ok")],
+                  refused=[r["id"] for r in results if not r.get("ok")])
+    import self_heal
+    return {"results": results, "healed": sum(1 for r in results if r.get("ok")), "view": self_heal.tenant_view(tk),
+            "undo": "Each healed item can be rolled back from the proposal queue (Roll back), with the same re-read and read-back."}
+
+
+@app.post("/api/self-heal/tenant/accept")
+async def self_heal_tenant_accept(req: SelfHealAcceptRequest, request: Request):
+    """Accepted - stop proposing: the current value becomes the approved one
+    for this tenant and the heal proposal is dismissed. Audited. Nothing is
+    read from or written to the tenant."""
+    import self_heal
+    _channels, _creds, tk, label = _self_heal_tenant(req)
+    by = (_actor(request) or _security.current_actor() or "")[:80]
+    try:
+        await asyncio.to_thread(self_heal.accept, tk, req.id, by=by, note=req.note)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    out = await asyncio.to_thread(self_heal.tenant_view, tk)
+    out["tenant_label"] = label
+    return out
+
+
+@app.post("/api/self-heal/tenant/auto-apply")
+async def self_heal_auto_apply():
+    """Applying heals without a person is not enabled in this version, whatever DLP_CHECK_SELF_HEAL_AUTO_APPLY says."""
+    import self_heal
+    raise HTTPException(status_code=403, detail=self_heal.auto_apply()["why"])
 
 
 # ── Path Analyzer ─────────────────────────────────────────────────────

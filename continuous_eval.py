@@ -225,8 +225,21 @@ def run_lock():
         raise LoopRunInProgress("a run of the loop is already in progress (the server's Run the loop now or timer, "
                                 "or RUN_Continuous_Evaluation.bat / continuous_eval.py --once); wait for it to finish") from None
     try:
+        # Who holds it: self_heal releases a lock whose owner process is gone.
+        f.seek(0)
+        f.truncate()
+        f.write(f"{os.getpid()} {int(time.time())}\n")
+        f.flush()
+    except OSError:
+        pass
+    try:
         yield
     finally:
+        try:
+            f.seek(0)
+            f.truncate()
+        except OSError:
+            pass
         try:
             if os.name == "nt":
                 import msvcrt
@@ -540,6 +553,7 @@ def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[
             log(f"{pid}: drift not measured, the tenant reads failed")
             raise _Skip()
         j = pack_deploy.journey(rep)
+        heal = _heal_proposals(rep, tenant_key, creds, sc, log)
         last = _last_journey(full)
         rows = []
         for b in j.get("baselines") or []:
@@ -555,6 +569,9 @@ def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[
         out["drift"] = {"packs": rows, "changed": [r["name"] for r in rows if r["moved"] != "same" or r["relaxed"]],
                         # the overall journey score, against the last one recorded (the score-drop alert, posture_plus)
                         "score": j.get("score"), "previous_score": _last_journey_score(full), "measured_at": _now()}
+        out["drift"] = {"packs": rows, "changed": [r["name"] for r in rows if r["moved"] != "same" or r["relaxed"]]}
+        if heal is not None:
+            out["drift"]["heal"] = heal
         if not_measured:
             out["drift"]["not_measured"] = not_measured
             out["drift"]["note"] = f"not measured (no rule on a DLP channel run on Zscaler): {', '.join(not_measured)}"
@@ -578,6 +595,23 @@ def _pack_channels(pack: Dict[str, Any]) -> set:
     import pack_deploy
     src = pack_deploy.load_sources([pack])[0]
     return {pc.channel_of(p) for p in src.get("policies") or []} & set(pc.DLP_CHANNELS)
+
+
+def _heal_proposals(rep: Dict[str, Any], tenant_key: str, creds: Dict[str, Any], sc: Dict[str, Any], log) -> Optional[Dict[str, Any]]:
+    """Self-healing, layer 2: the same drift read compared with what was
+    approved; a setting that drifted back becomes a heal proposal in the
+    queue (self_heal.raise_from_report). Nothing is written to the tenant."""
+    try:
+        import self_heal
+        import tenant_auth
+        res = self_heal.raise_from_report(rep, tenant_key=tenant_key, labels=list(tenant_auth.record_labels(creds)),
+                                          channels=list(sc["pack_channels"]), source="continuous_evaluation")
+        if res.get("drifts"):
+            log(f"self-healing: {len(res['drifts'])} setting(s) drifted from what was approved; heal proposals are in the queue")
+        return {"drifted": len(res.get("drifts") or []), "proposals": res.get("proposals")}
+    except Exception as e:  # noqa: BLE001 - the drift step stands without it
+        log(f"self-healing: not measured ({type(e).__name__})")
+        return None
 
 
 class _Skip(Exception):

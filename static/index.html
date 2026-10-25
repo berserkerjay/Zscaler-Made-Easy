@@ -700,6 +700,11 @@
                 title="The migration wizard: reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely. Opens on this page.">
           <span aria-hidden="true">🔀</span> Rule migration wizard
         </button>
+        <button class="btn btn-ghost" onclick="openSelfHealTab()"
+                aria-label="Open Self-healing: what the app fixed by itself, and the tenant settings that changed back since you approved them, with Heal and Accept (opens in a new tab)"
+                title="The app checks itself and fixes what it safely can (stuck jobs, damaged saved files, file permissions, old locks). For your tenant it lists every setting you approved that changed back, with who and when, and heals it only when you click Heal and confirm. Opens in a new tab.">
+          <span aria-hidden="true">🛡️</span> Self-healing
+        </button>
       </div>
       <div class="tool-group" role="group" aria-label="Reference" data-sb-id="reference">
         <div class="tool-group-l">Reference</div>
@@ -5156,6 +5161,39 @@ function openQueueTab() {
   const w = window.open('/report/queue', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
+function openSelfHealTab() {
+  // The tab reads the credentials and the Scope page's selection from this
+  // page through window.opener only when it shows or scans the tenant.
+  const w = window.open('/report/self-heal', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+// Self-healing banner: a small note under the title when the app found
+// something it could not fix, or a setting in a tenant drifted. Local data
+// only (GET /api/self-heal); the page says nothing when all is well.
+async function loadSelfHealBanner() {
+  let o;
+  try { const r = await fetch('/api/self-heal', { cache: 'no-store' }); if (!r.ok) return; o = await r.json(); } catch (e) { return; }
+  let el = document.getElementById('selfHealBanner');
+  if (!o || !o.attention) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'selfHealBanner'; el.setAttribute('role', 'status');
+    el.style.cssText = 'margin:0.8rem auto 0;max-width:760px;display:flex;gap:0.6rem;align-items:center;justify-content:center;flex-wrap:wrap;padding:0.5rem 0.8rem;border-radius:var(--r-md);border:1px solid var(--warn);background:color-mix(in srgb, var(--warn) 12%, transparent);font-size:0.85rem;color:var(--text);';
+    const hero = document.querySelector('.hero');
+    const tb = hero && hero.querySelector('.hero-toolbar');
+    if (tb) hero.insertBefore(el, tb); else if (hero) hero.appendChild(el); else return;
+  }
+  const parts = [];
+  if (o.needs_you) parts.push(`${o.needs_you} thing(s) in the app need you`);
+  if (o.tenant_heals_open) parts.push(`${o.tenant_heals_open} tenant setting(s) drifted from what you approved`);
+  el.textContent = '';
+  const t = document.createElement('span'); t.textContent = `Self-healing: ${parts.join('; ')}.`;
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-ghost'; b.textContent = 'Open Self-healing';
+  b.addEventListener('click', openSelfHealTab);
+  el.append(t, b);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadSelfHealBanner); else loadSelfHealBanner();
+setInterval(loadSelfHealBanner, 5 * 60 * 1000);
 function openAdvancedTab() {
   const w = window.open('/report/advanced', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');

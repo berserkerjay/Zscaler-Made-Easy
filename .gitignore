@@ -79,3 +79,8 @@ certs/*.pem
 certs/*.cer
 update_container.log
 posture_settings.json
+# Self-healing (self_heal.py): its state, last-good copies of the stores and damaged files moved aside
+self_heal.json
+*.last-good
+*.corrupt-*
+.selfheal-*.tmp

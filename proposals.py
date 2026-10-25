@@ -42,13 +42,15 @@ GATES = {
     "extend_coverage": "approve",
     "reauthorise_tenant": "approve",
     "update_check": "approve",
+    # Self-healing: put back a setting that drifted from what was approved.
+    "heal_drift": "approve_double",
 }
 CONFIRM_PHRASE = "I UNDERSTAND"
 KIND_LABELS = {
     "promote_rule": "Promote rule", "retire_rule": "Retire rule", "tune_dictionary": "Tune dictionary",
     "enable_incident_forwarding": "Forward incidents", "extend_coverage": "Extend coverage",
     "reauthorise_tenant": "Re-authorise tenant", "update_check": "Update check", "restore_drift": "Restore drift",
-    "exclude_destination": "Exclude destination",
+    "exclude_destination": "Exclude destination", "heal_drift": "Heal drift",
 }
 
 
@@ -81,7 +83,17 @@ def _write(data: Dict[str, Any]) -> None:
         os.chmod(tmp, 0o600)
     except OSError:
         pass
+    _keep_last_good(p)
     os.replace(tmp, p)
+
+
+def _keep_last_good(path: str) -> None:
+    """The queue as it was, kept as a last-good copy (self_heal) before it is replaced."""
+    try:
+        import self_heal
+        self_heal.keep_last_good(path)
+    except Exception:  # noqa: BLE001 - never stops a write
+        pass
 
 
 def tenant_key(label: Any) -> str:

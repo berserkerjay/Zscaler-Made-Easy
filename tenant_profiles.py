@@ -165,6 +165,7 @@ def _write(data: Dict[str, Any]) -> None:
             os.chmod(tmp, 0o600)
         except OSError:
             pass
+        _keep_last_good(p)
         os.replace(tmp, p)
     finally:
         if os.path.exists(tmp):
@@ -424,3 +425,12 @@ def creds_from(profile: Dict[str, Any]) -> Dict[str, str]:
         if out[field] == KEYRING_MARK:   # a masked read: the marker is not a secret
             out[field] = ""
     return out
+
+
+def _keep_last_good(path: str) -> None:
+    """The store as it was, kept as a last-good copy (self_heal) before it is replaced."""
+    try:
+        import self_heal
+        self_heal.keep_last_good(path)
+    except Exception:  # noqa: BLE001 - never stops a write
+        pass

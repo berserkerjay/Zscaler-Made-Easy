@@ -281,6 +281,14 @@
     get: 'Pending, approved and history tabs; Approve, Reject (with a comment), Apply and Withdraw buttons shown according to your rights; the four-eyes setting and whether it can work here; and the queue as JSON or Markdown.',
     next: 'Approve or reject what is pending; apply an approved request with write mode on and the typed confirmation (a request whose plan no longer matches the tenant is marked stale: request it again from a fresh preflight).',
   };
+  X.selfheal = {
+    group: 'Close the gaps', name: 'Self-healing', href: '/report/self-heal',
+    what: 'Two things in one page. This app: the app checks itself (stuck jobs, damaged saved files, files others could read, locks left behind, rate-limit pauses that lasted too long, a sign-in that keeps failing, low disk space, an update without a restart), fixes what it safely can and says what it did. Your tenant: settings you approved that changed back since (a rule turned off, an action made weaker, an engine or dictionary edited or deleted, a fix someone undid).',
+    why: 'Problems in the app should not need an engineer to find, and a customer\'s protection quietly drifting back after a deployment is the most common way a good assessment goes stale. Seeing it, with who changed it and the exact change that puts it back, keeps the tenant where the customer agreed it should be.',
+    when: 'Whenever the main page shows the self-healing banner, after a colleague or another tool may have touched the tenant, and before a review meeting where the customer asks whether the settings are still as agreed.',
+    get: 'Each app check as OK, Healed or Needs you, with what was done and the next step; for the tenant, every drifted setting with what changed, who and when (from ZIA\'s audit log when Automation readiness is in scope), and Heal or Accept buttons. Nothing in the tenant changes until you click Heal.',
+    next: 'Heal what should go back (write mode on, typed confirmation, read again before and after, undo available), or click Accept when the change was agreed so it is not proposed again; then activate in the ZIA Admin Portal.',
+  };
   X.advanced = {
     group: 'Reference', name: 'Advanced settings', href: '/report/advanced',
     what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (badges and a side panel on DLP objects, policy rules and the objects they use in the ZIA admin console, export to JSON or Terraform, and the Path analyzer for any site), and see how this server is configured (bind host, token gate, write mode, limits).',
@@ -409,7 +417,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'posture', '/report/shadow': 'shadow', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo' };
     return map[p] || '';
   }
 
@@ -459,7 +467,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'fleet', 'health', 'compliance', 'posture',
-    'digest', 'packs', 'flow', 'remediate', 'queue', 'todo', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
+    'digest', 'packs', 'flow', 'remediate', 'queue', 'selfheal', 'todo', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

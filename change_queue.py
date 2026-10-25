@@ -172,6 +172,7 @@ def _write(data: Dict[str, Any]) -> None:
             os.chmod(tmp, 0o600)
         except OSError:
             pass
+        _keep_last_good(p)
         os.replace(tmp, p)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -537,3 +538,10 @@ def to_xlsx(items: List[Dict[str, Any]], *, tenant: str = "") -> bytes:
         for h in r.get("history") or []:
             his.append([rid, h.get("at"), h.get("action"), h.get("by"), h.get("comment") or h.get("note") or ""])
     return wb.to_bytes()
+def _keep_last_good(path: str) -> None:
+    """The store as it was, kept as a last-good copy (self_heal) before it is replaced."""
+    try:
+        import self_heal
+        self_heal.keep_last_good(path)
+    except Exception:  # noqa: BLE001 - never stops a write
+        pass
