@@ -30,6 +30,8 @@ from zscaler import ZscalerClient
 
 logger = logging.getLogger("dlp_assessment.sdk_client")
 
+SDK_REQUEST_TIMEOUT = 90   # seconds per tenant request, as dlp_api_server.SDK_REQUEST_TIMEOUT
+
 
 def _to_dicts(items: list) -> list:
     """Convert SDK model objects to plain dicts."""
@@ -112,6 +114,11 @@ class SdkClient:
             "clientSecret": client_secret,
             "vanityDomain": vanity_domain,
             "cloud": env or "production",
+            # Bounded waits, as the web app's client has (dlp_api_server.
+            # SDK_REQUEST_TIMEOUT): without them the SDK sends with no HTTP
+            # timeout at all and a silent tenant holds the call forever.
+            "requestTimeout": SDK_REQUEST_TIMEOUT,
+            "rateLimit": {"maxRetries": 2, "maxRetrySeconds": 30},
         }
         # Either sign-in (tenant_auth): OneAPI, or the classic ZIA API with
         # auth_method="legacy" (username, password, API key; ZIA only).
@@ -127,8 +134,15 @@ class SdkClient:
         import tenant_auth
         try:
             if self._creds["auth_method"] == tenant_auth.LEGACY:
-                self._zs = tenant_auth.build_legacy_sdk_client(self._creds)
+                self._zs = tenant_auth.build_legacy_sdk_client(self._creds, timeout=SDK_REQUEST_TIMEOUT)
             else:
+                # The vanity domain becomes the sign-in host's first labels
+                # and may come from an MCP tool argument: anything but a DNS
+                # name ('evil.example/?') would post the client secret to
+                # another host, so it is refused before the SDK is built.
+                import zscaler_clouds
+                zscaler_clouds.check_vanity(self._config["vanityDomain"])
+                tenant_auth.bound_sdk_sign_in()   # the SDK's token request has no timeout of its own
                 self._zs = ZscalerClient(self._config)
                 self._zs.authenticate()
             self._route_map = self._build_route_map()

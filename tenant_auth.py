@@ -305,6 +305,50 @@ class LegacyZiaClient:
         raise AttributeError(f"{name} is not available with the classic ZIA API sign-in; it covers ZIA only")
 
 
+# The SDK's OneAPI sign-in (zscaler.oneapi_oauth_client) posts the client
+# secret with the module-level requests.post and no timeout at all, so a
+# sign-in host that accepts the connection and never answers holds the
+# request thread forever (its requestTimeout covers API calls only).
+# bound_sdk_sign_in() gives that module a requests whose calls carry
+# SDK_SIGN_IN_TIMEOUT whenever the SDK passes none; nothing else changes.
+SDK_SIGN_IN_TIMEOUT = (10, 30)   # (connect, read) seconds
+
+
+class _BoundedRequests:
+    """The requests module, with a timeout on every call that has none."""
+
+    def __init__(self, module: Any) -> None:
+        self._requests = module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._requests, name)
+
+    def _bounded(self, call: str, *args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("timeout") is None:
+            kwargs["timeout"] = SDK_SIGN_IN_TIMEOUT
+        return getattr(self._requests, call)(*args, **kwargs)
+
+    def request(self, *args: Any, **kwargs: Any) -> Any:
+        return self._bounded("request", *args, **kwargs)
+
+    def get(self, *args: Any, **kwargs: Any) -> Any:
+        return self._bounded("get", *args, **kwargs)
+
+    def post(self, *args: Any, **kwargs: Any) -> Any:
+        return self._bounded("post", *args, **kwargs)
+
+
+def bound_sdk_sign_in() -> None:
+    """Make the SDK's OneAPI token request time out (idempotent; a no-op
+    when the SDK is not installed)."""
+    try:
+        import zscaler.oneapi_oauth_client as oauth
+    except ImportError:
+        return
+    if not isinstance(oauth.requests, _BoundedRequests):
+        oauth.requests = _BoundedRequests(oauth.requests)
+
+
 def build_legacy_sdk_client(creds: Dict[str, Any], *, timeout: int = 90, max_retries: int = 2,
                             max_retry_seconds: int = 30) -> LegacyZiaClient:
     """Sign in to the classic ZIA API through the Zscaler SDK's legacy
