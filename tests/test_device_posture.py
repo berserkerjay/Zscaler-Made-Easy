@@ -568,9 +568,10 @@ def test_the_page_follows_the_report_page_conventions():
 
 def test_the_page_is_explained_on_the_toolbar_in_the_overview_and_glossary():
     js = _read("static", "explain.js")
-    assert "  X.posture = {" in js and "'/report/device-posture': 'posture'" in js
-    assert "'posture'" in js[js.index("DLP_EXPLAIN_ORDER"):]
-    assert "group: 'Find the gaps', name: 'Device posture'" in js[js.index("  X.posture = {"):][:200]
+    # Its own key: X.posture is Improve my score (a shared key made this page show that page's explainer).
+    assert js.count("  X.deviceposture = {") == 1 and "'/report/device-posture': 'deviceposture'" in js
+    assert "'deviceposture'" in js[js.index("DLP_EXPLAIN_ORDER"):]
+    assert "group: 'Find the gaps', name: 'Device posture'" in js[js.index("  X.deviceposture = {"):][:200]
     html_ = _read("static", "index.html")
     assert 'onclick="openDevicePostureTab()"' in html_ and "function openDevicePostureTab()" in html_
     assert "Device posture" in _read("docs", "OVERVIEW.md")

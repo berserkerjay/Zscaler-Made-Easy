@@ -525,12 +525,12 @@
   if (heroCard) {
     heroCard.classList.add('db-dash');
     heroCard.innerHTML = `
+      <h2 class="sr-only">Dashboard</h2>
       <div class="db-grid">
         <div class="db-tile glow">
           <h3 class="db-tile-t">Overall maturity score</h3>
           <div class="db-ring">
             <svg viewBox="0 0 120 120" role="img" aria-labelledby="dbRingLbl"><title id="dbRingLbl">Overall maturity score</title>
-              <defs><linearGradient id="dbRingGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="0.6" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
               <circle class="track" cx="60" cy="60" r="50"/><circle class="arc" id="dbRingArc" cx="60" cy="60" r="50" stroke-dasharray="314.16" stroke-dashoffset="314.16"/>
             </svg>
             <div class="db-ring-txt">
@@ -539,7 +539,7 @@
               <div class="score-meta" id="scoreMeta"></div>
             </div>
           </div>
-          <div class="db-band" id="dbBand" aria-label="Maturity band"></div>
+          <div class="db-band" id="dbBand" role="group" aria-label="Maturity band"></div>
         </div>
         <div class="db-tile">
           <h3 class="db-tile-t">Completion</h3>
