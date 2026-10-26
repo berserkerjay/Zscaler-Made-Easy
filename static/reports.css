@@ -18,6 +18,12 @@
 .rp-btn.primary { background: var(--btn, #2563eb); color: #fff; border-color: transparent; }
 .rp-btn.primary:hover { background: var(--btn-hover, var(--accent)); }   /* darker on hover: white text stays above 4.5:1 */
 .rp-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+/* A long label wraps inside its button and a label with its control wraps under it, so neither widens a 320px page (WCAG 1.4.10). */
+.rp-btn { max-width: 100%; white-space: normal; text-align: center; }
+/* A long setting name, path or URL in prose breaks instead of widening the page. */
+.rp-page { overflow-wrap: break-word; }
+.rp-page code { overflow-wrap: anywhere; }
+.rp-page input[type="file"] { max-width: 100%; }
 .rp-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.4rem 1.5rem; box-shadow: var(--shadow-md); }
 .rp-wait { text-align: center; padding: 4rem 1rem; color: var(--dim); }
 .rp-wait .spin { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 1rem; animation: rp-spin 0.9s linear infinite; }
@@ -185,7 +191,7 @@ body.flow-page .dz-flow-wrap { max-height: calc(100vh - 300px); min-height: 320p
 
 /* ── Data Flow Map tab (/report/dataflow) ───────────────────────────── */
 .df-page .rp-page { max-width: 1400px; }
-.df-ctl { display: inline-flex; align-items: center; gap: 0.35rem; }
+.df-ctl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; max-width: 100%; }
 .df-ctl input:not([type="checkbox"]):not([type="radio"]), .df-ctl select { min-height: 34px; padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.82rem; }
 .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
 .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }

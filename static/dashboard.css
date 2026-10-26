@@ -66,7 +66,7 @@ body.db-layout #stepBar { margin-left: 0; margin-right: 0; max-width: none; }
 .db-tile { padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); position: relative; overflow: hidden; }
 .db-tile.glow::after { display: none; }
 .db-tile-t { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); margin-bottom: var(--sp-3); }
-.db-ring { display: flex; align-items: center; gap: var(--sp-4); }
+.db-ring { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); }   /* at 320px the score text goes under the ring, never past the edge */
 .db-ring svg { width: 132px; height: 132px; flex: none; transform: rotate(-90deg); }
 .db-ring .track { fill: none; stroke: var(--well-2); stroke-width: 10; }
 .db-ring .arc { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.8s var(--ease, ease); }
