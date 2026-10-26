@@ -56,6 +56,13 @@ self_heal.json
 **/*.last-good
 **/*.corrupt-*
 .selfheal-*.tmp
+# Temporary copies a crash can leave mid-write (they may hold the UI token or a
+# remembered secret): never in the image.
+.profiles-*
+.ui_token_*
+.fingerprint-*
+.deployments-*
+.posture-*
 # Editor, OS and build leftovers.
 *.py[cod]
 *$py.class
