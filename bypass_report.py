@@ -888,7 +888,7 @@ def to_markdown(report: Dict[str, Any]) -> str:
                 v = it.get(f)
                 if isinstance(v, list):
                     v = ", ".join(str(x) for x in v[:5])
-                row.append(str(v or "").replace("|", "\\|")[:80])
+                row.append(csv_safe.md_cell(str(v or "")[:80]))
             lines.append("| " + " | ".join(row) + " |")
         return "\n".join(lines) + "\n"
 
@@ -941,7 +941,7 @@ def to_markdown(report: Dict[str, Any]) -> str:
             )
             if len(it.get("rules") or []) > 6:
                 rules_str += f", +{len(it['rules']) - 6} more"
-            out.append(f"| {idx} | `{str(it.get('value',''))[:120]}` | {rules_str} |")
+            out.append(f"| {idx} | `{csv_safe.md_cell(str(it.get('value',''))[:120])}` | {csv_safe.md_cell(rules_str)} |")
         out.append("")
 
     _agg_block("ALL URLs Bypassed (explicit + inherited + ZCC domain bypass)", "all_urls_bypassed", "URL")
@@ -1033,6 +1033,8 @@ def to_docx(report: Dict[str, Any], output_path: str) -> str:
                 continue
         return None
 
+    import xlsx_writer
+    report = xlsx_writer.clean_tree(report)   # python-docx refuses XML-illegal characters
     doc = Document()
 
     # ── Cover ────────────────────────────────────────────────────

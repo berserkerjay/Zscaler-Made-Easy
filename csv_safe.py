@@ -19,6 +19,7 @@ import re
 from typing import Any, Iterable, Mapping
 
 _TRIGGERS = ("=", "+", "-", "@", "\t", "\r", "\n")
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 _PLAIN_NUMBER = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
 
 
@@ -26,6 +27,9 @@ def safe_cell(value: Any) -> Any:
     """Return ``value`` made safe to open in a spreadsheet."""
     if not isinstance(value, str) or not value:
         return value
+    # A lone surrogate (from a JSON \uD800 escape) cannot be written as
+    # UTF-8: it would fail the whole download. Show U+FFFD instead.
+    value = _LONE_SURROGATE.sub("\ufffd", value)
     if value[0] in _TRIGGERS and not _PLAIN_NUMBER.fullmatch(value):
         return "'" + value
     return value
@@ -75,3 +79,15 @@ def writer(f, *args, **kwargs) -> _SafeWriter:
 def dict_writer(f, fieldnames, *args, **kwargs) -> _SafeDictWriter:
     """csv.DictWriter whose values are sanitised cell by cell."""
     return _SafeDictWriter(csv.DictWriter(f, fieldnames, *args, **kwargs))
+
+
+_MD_BREAKS = re.compile(r"\r\n|[\r\n\v\f\x85\u2028\u2029]")
+
+
+def md_cell(value: Any) -> str:
+    """Text for one cell of a Markdown table: on one line, with its pipes
+    escaped. A tenant name such as "Allow | Finance" would otherwise add a
+    column and shift every value after it, and a line break would end the
+    row."""
+    s = "" if value is None else str(value)
+    return _MD_BREAKS.sub(" ", s).replace("|", "\\|")

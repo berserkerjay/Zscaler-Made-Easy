@@ -217,7 +217,7 @@ def _control_rule_hcl(channel: str, res: str, label: str, p: Dict[str, Any], met
                 r.append(_attr(opt, hcl_list(p[opt])))
         action, dropped = _filter_schema(p["action"], SSL_ACTION_SCHEMA)
         for d in dropped:
-            r.append(f"  # not in the zscaler/zia provider schema (set in the Admin Portal if needed): {d}\n")
+            r.append(f"  # not in the zscaler/zia provider schema (set in the Admin Portal if needed): {hcl_comment(d)}\n")
         r.append("  action " + _hcl_value(action, 1))
     r.append("}\n\n")
     return "".join(r)
@@ -237,12 +237,26 @@ def hcl_str(s: Any, *, interpolate: bool = False) -> str:
     """Quote a string for HCL, escaping backslashes, quotes and template
     sequences so regex patterns and literal ${ survive verbatim. With
     interpolate=True, ${...} references are left live (engine expressions)."""
-    s = "" if s is None else str(s)
-    s = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "")
+    s = _LONE_SURROGATE.sub("\ufffd", "" if s is None else str(s))
+    s = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
     if not interpolate:
         s = s.replace("${", "$${")
     s = s.replace("%{", "%%{")
     return f'"{s}"'
+
+
+# A lone surrogate cannot be written as UTF-8 (nor held by an HCL string).
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+# Everything a reader (or the HCL scanner) could take as the end of a line.
+_LINE_BREAKS = re.compile(r"\r\n|[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]")
+
+
+def hcl_comment(s: Any) -> str:
+    """Text for a `#` comment: one line, whatever it carries. A name from
+    the tenant or an uploaded pack with a line break in it would otherwise
+    end the comment and put the rest of the name into the workspace as
+    live HCL (a resource terraform apply would create)."""
+    return _LONE_SURROGATE.sub("\ufffd", _LINE_BREAKS.sub(" ", "" if s is None else str(s)))
 
 
 def hcl_list(items: Iterable[Any], *, raw: bool = False) -> str:
@@ -523,7 +537,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     # Data sources go at the top of dictionaries.tf now that we know them all.
     data = []
     for emitted_name, (label, note) in data_dicts.items():
-        comment = f"  # {note}\n" if note else ""
+        comment = f"  # {hcl_comment(note)}\n" if note else ""
         data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n{comment}  name = {hcl_str(emitted_name)}\n}}\n\n')
     files["dictionaries.tf"] = out[0] + "".join(data) + "".join(out[1:])
     files["engines.tf"] = "".join(eng)
@@ -592,7 +606,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         r.append(_attr("state", hcl_str("DISABLED")))
         r.append(_attr("action", hcl_str(p.get("action", pc.default_action(channel)))))
         if p.get("target_action"):
-            r.append(f"  # Ships monitor-only; the designed action once incidents are tuned is {p['target_action']}.\n")
+            r.append(f"  # Ships monitor-only; the designed action once incidents are tuned is {hcl_comment(p['target_action'])}.\n")
         if p.get("severity"):
             r.append(_attr("severity", hcl_str(p["severity"])))
         r.append(_attr("without_content_inspection", "true" if p.get("without_content_inspection") else "false"))
@@ -810,12 +824,12 @@ def _gap_import(imports: List[str], counts: Dict[str, int], item: Optional[Dict[
         note = ("customized in the tenant: " + ", ".join(item.get("drift") or ["content"])
                 + " — terraform apply would overwrite this with the policy pack; delete this import block to leave the customer's version alone"
                 if customized else "in sync")
-        imports.append(f"# {item['name']} — {note}\nimport {{\n  to = {res}.{label}\n  id = {hcl_str(import_id if import_id is not None else str(tid))}\n}}\n\n")
+        imports.append(f"# {hcl_comment(item['name'])} — {hcl_comment(note)}\nimport {{\n  to = {res}.{label}\n  id = {hcl_str(import_id if import_id is not None else str(tid))}\n}}\n\n")
     elif status == "create":
         counts["missing"] += 1
     else:
         counts["blocked"] += 1
-        imports.append(f"# {item['name']} — {status}: {item.get('reason', '')}\n\n")
+        imports.append(f"# {hcl_comment(item['name'])} — {hcl_comment(status)}: {hcl_comment(item.get('reason', ''))}\n\n")
 
 
 def _versions_tf(backend: Optional[Dict[str, str]], *, provider_version: str = PROVIDER_VERSION) -> str:
@@ -1081,8 +1095,8 @@ def hcl_template_str(s: Any) -> str:
     JSON configuration, where every string is a template and `$${` / `%%{`
     are the escapes): backslashes, quotes and newlines are escaped, the
     template sequences are kept exactly as they are."""
-    s = "" if s is None else str(s)
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "") + '"'
+    s = _LONE_SURROGATE.sub("\ufffd", "" if s is None else str(s))
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r") + '"'
 
 
 def _json_value_hcl(v: Any, indent: int = 1) -> str:

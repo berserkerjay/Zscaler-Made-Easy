@@ -585,6 +585,10 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     # is what the assessment already left out; an older report that still
     # carries "Not in scope" rows has them dropped and counted here.
     import channel_scope
+    import xlsx_writer
+    # Tenant text (rule names in a detail) may carry characters XML cannot:
+    # python-docx refuses them, so clean the inputs once, here.
+    results, cfg = xlsx_writer.clean_tree(list(results or [])), xlsx_writer.clean_tree(dict(cfg or {}))
     results, dropped = channel_scope.visible(results)
     try:
         hidden = max(0, int((cfg or {}).get("hidden_checks") or 0)) + dropped

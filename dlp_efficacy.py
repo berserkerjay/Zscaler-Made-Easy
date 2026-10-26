@@ -1151,7 +1151,8 @@ def export_docx(analysis: Dict[str, Any]) -> bytes:
             "Install with: pip install python-docx"
         ) from e
 
-    a = analysis or {}
+    import xlsx_writer
+    a = xlsx_writer.clean_tree(analysis or {})   # python-docx refuses XML-illegal characters
     c = a.get("counts", {}) or {}
     avg = a.get("averages", {}) or {}
     dist = a.get("fp_risk_distribution", {}) or {}

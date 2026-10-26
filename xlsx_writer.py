@@ -68,6 +68,21 @@ def clean_text(value: Any) -> str:
     return _BAD_XML.sub("", str(value))
 
 
+def clean_tree(value: Any) -> Any:
+    """`value` (a report: dicts, lists, strings) with every string made
+    text XML can carry, keys included. The Word writers take tenant text
+    through python-docx, which refuses a control character or a lone
+    surrogate outright; cleaning the report first keeps one odd rule name
+    from failing the whole export."""
+    if isinstance(value, str):
+        return clean_text(value)
+    if isinstance(value, dict):
+        return {clean_tree(k): clean_tree(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(clean_tree(v) for v in value)
+    return value
+
+
 def _esc(value: Any) -> str:
     return _xml_escape(clean_text(value), {'"': "&quot;"})
 
@@ -135,7 +150,9 @@ def cell_text(value: Any) -> Optional[str]:
     if isinstance(value, datetime):
         return value.isoformat(timespec="seconds")
     if isinstance(value, (list, tuple, set, frozenset)):
-        return "\n".join(str(x) for x in value if x is not None and str(x) != "")
+        # One line per item, then the same rules as any text: a list of
+        # tenant names is tenant text too (formula quote, length cap).
+        value = "\n".join(str(x) for x in value if x is not None and str(x) != "")
     s = clean_text(value).replace("\r\n", "\n").replace("\r", "\n")
     if len(s) > MAX_CELL_CHARS:
         s = s[: MAX_CELL_CHARS - len(TRUNCATED)] + TRUNCATED
