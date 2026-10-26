@@ -237,7 +237,7 @@
     try {
       const r = await fetch('/api/app/restart', { method: 'POST' });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
-    } catch (e) { lines[lines.length - 1] = { name: 'Restart could not be scheduled', ok: false, detail: e.message + '. Close the app with STOP_Zscaler_Assessment.bat and open it again.' }; show(); return; }
+    } catch (e) { lines[lines.length - 1] = { name: 'Restart could not be scheduled', ok: false, detail: e.message + '. Close the app with STOP_Zscaler_Made_Easy.bat and open it again.' }; show(); return; }
     const started = Date.now();
     const poll = async () => {
       try {

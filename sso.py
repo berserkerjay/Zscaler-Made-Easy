@@ -58,7 +58,7 @@ REQUIRED_ENV = ("ZSCALER_SSO_ISSUER", "ZSCALER_SSO_CLIENT_ID", "ZSCALER_SSO_CLIE
 _DISCOVERY_CACHE: Dict[str, Dict[str, Any]] = {}
 _JWKS_CACHE: Dict[str, Dict[str, Any]] = {}
 _CACHE_TTL_SECONDS = 3600
-_PENDING_LOGINS: Dict[str, Dict[str, Any]] = {}   # state -> {nonce, verifier, at}
+_PENDING_LOGINS: Dict[str, Dict[str, Any]] = {}   # state -> {nonce, verifier, at, binding}
 _PENDING_TTL_SECONDS = 600
 _HTTP_TIMEOUT = 10
 _SESSIONS: Dict[str, Dict[str, Any]] = {}          # session id -> {sub, email, groups, created, last_seen, expires}
@@ -149,16 +149,25 @@ def _sweep_pending() -> None:
         _PENDING_LOGINS.pop(state, None)
 
 
-def start_login() -> str:
+def new_login_binding() -> str:
+    """A random value the server sets in a cookie on the browser that starts
+    a sign-in (security.set_login_cookie); start_login and complete_login tie
+    the state to it, so a callback URL replayed in another browser is refused
+    (login CSRF, RFC 6749 section 10.12)."""
+    return secrets.token_urlsafe(32)
+
+
+def start_login(binding: Optional[str] = None) -> str:
     """Build the redirect to the identity provider and remember the
-    state/nonce/PKCE verifier server-side until the callback arrives.
+    state/nonce/PKCE verifier server-side until the callback arrives,
+    bound to `binding` (the browser's login cookie) when given.
     Returns the URL to send the browser to."""
     require_configured()
     _sweep_pending()
     state = secrets.token_urlsafe(24)
     nonce = secrets.token_urlsafe(24)
     verifier, challenge = _pkce_pair()
-    _PENDING_LOGINS[state] = {"nonce": nonce, "verifier": verifier, "at": time.time()}
+    _PENDING_LOGINS[state] = {"nonce": nonce, "verifier": verifier, "at": time.time(), "binding": binding}
     params = {
         "response_type": "code",
         "client_id": os.environ["ZSCALER_SSO_CLIENT_ID"],
@@ -172,16 +181,20 @@ def start_login() -> str:
     return discovery()["authorization_endpoint"] + "?" + urlencode(params)
 
 
-def complete_login(state: str, code: str) -> Dict[str, Any]:
+def complete_login(state: str, code: str, binding: Optional[str] = None) -> Dict[str, Any]:
     """Exchange the authorization code for tokens and verify the ID
-    token's signature, issuer, audience and nonce. Returns the verified
-    claims (sub, email, ...) on success. Raises on any failure — every
-    failure here means the login did not happen; nothing is granted."""
+    token's signature, issuer, audience and nonce. A sign-in started with a
+    binding completes only with the same binding (the same browser). Returns
+    the verified claims (sub, email, ...) on success. Raises on any failure —
+    every failure here means the login did not happen; nothing is granted."""
     require_configured()
     _sweep_pending()
     pending = _PENDING_LOGINS.pop(state, None)
     if pending is None:
         raise RuntimeError("This sign-in attempt was not recognised (it may have expired — try again).")
+    expected = pending.get("binding")
+    if expected is not None and not secrets.compare_digest(str(binding or "").encode(), str(expected).encode()):
+        raise RuntimeError("This sign-in was started in another browser (or its sign-in cookie is missing) — start it again here.")
     doc = discovery()
     resp = requests.post(doc["token_endpoint"], data={
         "grant_type": "authorization_code",
@@ -254,16 +267,26 @@ def sign_in_allowed(claims: Dict[str, Any]) -> bool:
     return any(g.lower() in allowed for g in claim_groups(claims))
 
 
+def email_verified(claims: Dict[str, Any]) -> bool:
+    """True only when the ID token says the identity provider verified the
+    email (email_verified true, or "true" from providers that send strings).
+    Absent or false: the email is whatever the person typed and grants nothing."""
+    v = claims.get("email_verified")
+    return v is True or (isinstance(v, str) and v.strip().lower() == "true")
+
+
 def is_writer(session: Optional[Dict[str, Any]]) -> bool:
-    """With ZSCALER_SSO_WRITERS set, only a session whose email or one of
-    whose groups is listed may change the tenant. Unset: everyone."""
+    """With ZSCALER_SSO_WRITERS set, only a session one of whose groups is
+    listed, or whose verified email is listed, may change the tenant. An
+    email the identity provider did not verify never counts: on many
+    providers a user can set it to anyone's address. Unset: everyone."""
     wanted = {w.lower() for w in writers()}
     if not wanted:
         return True
     if not session:
         return False
     mine = {str(g).lower() for g in session.get("groups") or []}
-    if session.get("email"):
+    if session.get("email") and session.get("email_verified") is True:
         mine.add(str(session["email"]).lower())
     return bool(wanted & mine)
 
@@ -280,7 +303,8 @@ def create_session(claims: Dict[str, Any]) -> str:
     sid = secrets.token_urlsafe(32)
     with _SESSIONS_LOCK:
         _sweep_sessions(now)
-        _SESSIONS[sid] = {"sub": claims.get("sub"), "email": claims.get("email"), "groups": claim_groups(claims),
+        _SESSIONS[sid] = {"sub": claims.get("sub"), "email": claims.get("email"), "email_verified": email_verified(claims),
+                          "groups": claim_groups(claims),
                           "created": now, "last_seen": now, "expires": now + SESSION_MAX_SECONDS}
     return sid
 

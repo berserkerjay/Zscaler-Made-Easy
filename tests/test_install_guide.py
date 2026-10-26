@@ -65,7 +65,7 @@ def test_the_install_guide_uses_the_apps_own_words():
     assert "UI token" in INSTALL and "sign-in code" not in INSTALL, "the app calls it the UI token everywhere"
     assert "Add python.exe to PATH" in INSTALL, "the current python.org installer's checkbox label"
     assert "server.log" in INSTALL and "launcher.log" in INSTALL, "where the Windows server's output goes"
-    assert "STOP_Zscaler_Assessment.bat" in INSTALL and "Closing the browser does not stop it" in INSTALL
+    assert "STOP_Zscaler_Made_Easy.bat" in INSTALL and "Closing the browser does not stop it" in INSTALL
     assert "Open http://localhost:8000/?token=" in INSTALL, "what start.sh prints, quoted"
     assert "Python is not installed or only the Microsoft Store stub was found." in INSTALL, "the start script's real message"
     assert "ERROR: Python is not installed." in INSTALL, "the installer's real message"
@@ -78,14 +78,14 @@ def test_the_install_guide_uses_the_apps_own_words():
 
 
 def test_the_windows_installer_does_what_the_guide_says():
-    bat = _read("INSTALL_Zscaler_Assessment.bat")
+    bat = _read("INSTALL_Zscaler_Made_Easy.bat")
     assert "sys.version_info >= (3, 11)" in bat, "an old Python first on PATH is refused with its version named"
     assert "INSTALL FAILED" in bat and bat.index("INSTALL FAILED") < bat.index("Installation complete!"), "a failed pip install never reads as complete"
     failed = bat[bat.index("INSTALL FAILED"):bat.index("[2/2]")]
     assert "pause" in failed and "exit /b 1" in failed, "the window stays open on failure, and the shortcuts are not made"
     assert 'call "%INSTALL_DIR%\\local_settings.bat"' in bat and "PIP_CERT" in bat, "the CA bundle and proxy apply to the install too"
     closing = bat[bat.index("Installation complete!"):]
-    assert "console window" not in closing and "server.log" in closing and "STOP_Zscaler_Assessment.bat" in closing, "the closing text matches the silent launcher"
+    assert "console window" not in closing and "server.log" in closing and "STOP_Zscaler_Made_Easy.bat" in closing, "the closing text matches the silent launcher"
     label = bat.index("\n:oldpython")
     main_flow = bat[:label]
     assert main_flow.rstrip().endswith("exit /b 0"), "a bare exit closes the Command Prompt that called it"
@@ -99,16 +99,16 @@ def test_the_windows_installer_does_what_the_guide_says():
 
 
 def test_stop_and_uninstall_find_the_server_by_its_port():
-    stop = _read("STOP_Zscaler_Assessment.bat")
+    stop = _read("STOP_Zscaler_Made_Easy.bat")
     assert "ZSCALER_PORT" in stop and 'call "%~dp0local_settings.bat"' in stop, "a port changed in local_settings.bat is honoured"
-    un = "\n".join(l for l in _read("UNINSTALL_Zscaler_Assessment.bat").splitlines() if not l.strip().upper().startswith("REM"))
+    un = "\n".join(l for l in _read("UNINSTALL_Zscaler_Made_Easy.bat").splitlines() if not l.strip().upper().startswith("REM"))
     assert "pythonw.exe" not in un and "WindowTitle" not in un, "the server runs as python.exe under a differently titled window"
     assert "netstat -ano" in un and "ZSCALER_PORT" in un, "the uninstaller stops the server the way STOP does"
     assert "zscaler_launcher.vbs" not in un, "a file that never existed"
 
 
 def test_the_silent_launcher_waits_for_the_server_before_reading_the_token():
-    vbs = _read("START_Zscaler_Assessment.vbs")
+    vbs = _read("START_Zscaler_Made_Easy.vbs")
     assert "Do While Not Pinging() And waited < 30000" in vbs and "WScript.Sleep 4000" not in vbs
     assert vbs.index("Do While Not Pinging()") < vbs.index('tokenPath = dir & "\\ui_token.txt"'), "the token file is read once the server answers, so it is never stale"
 
@@ -178,7 +178,7 @@ def test_the_unlock_dialog_and_the_update_help_do_not_assume_a_windows_console()
     assert "local_settings.env" in body and "./install.sh" in body and "fresh ZIP" in body
     import app_update as au
     src = _read("app_update.py")
-    assert "xcode-select --install" in src and "fresh ZIP" in src and "run INSTALL_Zscaler_Assessment.bat from the clone" not in src
+    assert "xcode-select --install" in src and "fresh ZIP" in src and "run INSTALL_Zscaler_Made_Easy.bat from the clone" not in src
     assert 'echo $! > "{pid}"' in src, "an in-app update on Mac/Linux records server.pid so ./stop.sh works afterwards"
     assert "./start.sh" in au.manual_restart_hint("/tmp/x") or os.name == "nt"
     # `python3 app_update.py` from a terminal installs the new dependencies into the app's own .venv, not the system Python.
@@ -209,8 +209,8 @@ def test_the_scripts_fixed_after_the_second_round_of_readers():
     st = _read("start.sh")
     assert st.index("rm -f ui_token.txt") < st.index("nohup .venv/bin/python") and 'grep -q "Open http" server.log' in st
     # A ")" inside a for-block's echo is escaped.
-    assert "^(was listening on :%ZSCALER_PORT%^)" in _read("STOP_Zscaler_Assessment.bat")
-    assert "4 s after the start" not in _read("START_Zscaler_Assessment.vbs")
+    assert "^(was listening on :%ZSCALER_PORT%^)" in _read("STOP_Zscaler_Made_Easy.bat")
+    assert "4 s after the start" not in _read("START_Zscaler_Made_Easy.vbs")
     # cmd reads a .bat in the OEM code page: the Windows scripts are plain ASCII.
     import glob
     for path in glob.glob(os.path.join(ROOT, "*.bat")) + glob.glob(os.path.join(ROOT, "*.vbs")):

@@ -28,6 +28,7 @@ audit log with the actor.
 """
 from __future__ import annotations
 
+import md_safe
 import contextlib
 import hashlib
 import json
@@ -37,6 +38,8 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterator, List, Optional
+
+import safe_files
 
 try:  # POSIX
     import fcntl  # type: ignore
@@ -127,7 +130,7 @@ def _locked() -> Iterator[None]:
     read-modify-write never interleaves with another thread or process."""
     with _LOCK:
         p = store_path()
-        os.makedirs(os.path.dirname(os.path.abspath(p)) or ".", exist_ok=True)
+        safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)) or ".")
         fd = os.open(p + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
         try:
             if fcntl is not None:
@@ -211,7 +214,16 @@ def _same_person(a: Any, b: Any) -> bool:
 
 
 def _history(rec: Dict[str, Any], action: str, by: str, **fields: Any) -> None:
-    rec.setdefault("history", []).append({"at": _now(), "action": action, "by": by, **{k: v for k, v in fields.items() if v not in (None, "")}})
+    hist = rec.setdefault("history", [])
+    hist.append({"at": _now(), "action": action, "by": by, **{k: v for k, v in fields.items() if v not in (None, "")}})
+    if action == "commented":
+        # Comments are capped (MAX_COMMENTS); so are their history lines, or
+        # repeated comments would grow the record (and every write of the
+        # store) without bound. Decisions are never dropped; the audit log
+        # keeps every comment event.
+        said = [i for i, h in enumerate(hist) if h.get("action") == "commented"]
+        for i in reversed(said[:max(0, len(said) - MAX_COMMENTS)]):
+            del hist[i]
 
 
 def _clean_text(text: Any, limit: int = MAX_COMMENT) -> str:
@@ -467,6 +479,8 @@ def _item_line(i: Dict[str, Any]) -> str:
 
 
 def to_markdown(items: List[Dict[str, Any]], *, title: str = "Change queue") -> str:
+    # Titles, names, people and comments are free text: inert in the Markdown.
+    items, title = md_safe.escape_data(items), md_safe.text(title)
     lines = [f"# {title}", "", f"Exported {_now()}. {len(items)} request(s).", ""]
     if not items:
         lines.append("No change requests.")

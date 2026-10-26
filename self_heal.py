@@ -67,6 +67,8 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Tuple
 
+import safe_files
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OK, HEALED, NEEDS_YOU = "ok", "healed", "needs_you"
 STATUS_WORDS = {OK: "OK", HEALED: "Healed", NEEDS_YOU: "Needs you"}
@@ -176,7 +178,7 @@ def _chmod(path: str, mode: int) -> None:
 
 def _atomic_write_bytes(path: str, raw: bytes) -> None:
     folder = os.path.dirname(os.path.abspath(path)) or "."
-    os.makedirs(folder, exist_ok=True)
+    safe_files.private_makedirs(folder)
     fd, tmp = tempfile.mkstemp(prefix=".selfheal-", suffix=".tmp", dir=folder)
     try:
         with os.fdopen(fd, "wb") as f:

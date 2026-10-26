@@ -21,6 +21,8 @@ import re
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+import safe_files
+
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SEED_FILE = os.path.join(ROOT, "saas_apps.json")
@@ -174,7 +176,7 @@ def refresh(safe_get, *, pages: Sequence[str] = PAGES) -> Dict[str, Any]:
         out = {"source": "Zscaler help pages (refreshed)", "pages": list(pages), "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                "refreshed_from_pages": True, "types": seed.get("types") or {}, "applications": merged, "new_since_seed": new_names}
         try:
-            with open(_local_path(), "w", encoding="utf-8") as f:
+            with safe_files.private_open(_local_path(), "w", encoding="utf-8") as f:
                 json.dump(out, f, indent=2)
         except OSError as e:
             errors.append(f"could not write the refreshed matrix: {e}")

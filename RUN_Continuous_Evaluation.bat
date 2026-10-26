@@ -15,7 +15,7 @@ set "PY="
 if exist "%~dp0.venv\Scripts\python.exe" set "PY=%~dp0.venv\Scripts\python.exe"
 if not defined PY for /f "delims=" %%i in ('where python 2^>nul') do if not defined PY set "PY=%%i"
 if not defined PY (
-    echo Python was not found. Run INSTALL_Zscaler_Assessment.bat first.
+    echo Python was not found. Run INSTALL_Zscaler_Made_Easy.bat first.
     exit /b 1
 )
 "%PY%" continuous_eval.py --once %*

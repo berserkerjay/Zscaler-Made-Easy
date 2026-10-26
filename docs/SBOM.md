@@ -59,7 +59,7 @@ Do this whenever `requirements.lock` changes (after `make lock`) or a
 Terraform provider is upgraded. `make sbom` runs the same commands:
 
 ```sh
-python -m pip install cyclonedx-bom==7.5.0
+python -m pip install --require-hashes --no-deps -r requirements-ci.lock   # cyclonedx-bom, hash-pinned
 cyclonedx-py requirements --pyproject pyproject.toml --mc-type application \
   --output-reproducible --of JSON -o docs/sbom.cdx.json requirements.lock
 python tools/sbom_enrich.py docs/sbom.cdx.json
@@ -92,6 +92,9 @@ described here is no longer true.
 (`uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade`).
 Platform-only dependencies are kept with their `sys_platform` markers, so the
 `--no-deps` installs on Windows, Linux, macOS and in the container all get a
-complete set. After re-locking, run `pip-audit -r requirements.lock --strict`
-and `make sbom`. CI audits the lock on Linux and again on Windows, where the
-Windows-only pins are resolved.
+complete set. After re-locking, run `pip-audit -r requirements.lock --disable-pip --strict`
+and `make sbom`. CI audits every lock (`requirements.lock`, `requirements-dev.lock`
+and the CI tools' `requirements-ci.lock` and `requirements-pip.lock`) on Linux,
+and the first three again on Windows, where the Windows-only pins are resolved.
+The tools CI runs (pip, uv, pip-audit, cyclonedx-bom) are installed from those
+two hash-pinned locks too (`make lock-ci` re-pins them).

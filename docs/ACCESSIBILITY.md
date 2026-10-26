@@ -63,6 +63,37 @@ Each state is audited twice, in the dark theme and in the light theme.
 Numbers are axe violation nodes. The first audit of the same states, before
 this work, reported 390.
 
+## Regression audit (2026-10-26, WCAG 2.2 AA)
+
+axe-core 4.10 (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`,
+`best-practice`) with Playwright against fake tenant data, both themes,
+reduced motion on, on every page the app serves (35 routes) and on the
+result states of SSL coverage, Improve my score, Self-healing, Browser
+security, Device posture, ZPA overview, To-do, Policy exports and Bulk
+changes, plus the Find anything dialog with results open. Every page also
+had a keyboard walk (focus ring on each stop), a focus-trap and
+focus-return check of Find anything and the app's own dialog, and a check
+that no animation or smooth scroll runs under reduced motion. Result: 0
+violations after the fixes below (the first pass found contrast failures on
+every page in the dark theme and on most in the light one).
+
+* **Colour tokens**: every text token is now at least 4.5:1 on the page,
+  the card and the well in both themes, and every status colour on its own
+  12% tint (dark `--accent`, `--fail`, `--chip-purple`, `--dim`; light
+  `--accent`, `--pass`, `--warn`, `--fail`, `--dim`). Fills under white
+  text use `--btn`, `--btn-danger`, `--btn-warn` or `--btn-ok`, never a
+  text colour. `tests/test_accessibility.py` computes the ratios from the
+  stylesheet, so a token edit that breaks AA fails the build.
+* **Status chips** mix their tint into the opaque card, so a well or a
+  tinted row under a chip cannot lower its contrast.
+* **Reduced motion** also covers scripted scrolling: Chromium animates
+  `scrollIntoView({behavior: 'smooth'})` even when the user asked for
+  reduced motion, so every page turns those scrolls into instant ones.
+* **Targets** (SC 2.5.8): every disclosure (`summary`) is at least 24px tall.
+* Heading levels, a named region for the scrolling path animation and the
+  Find anything results, sentence case on headings, buttons and labels,
+  and Device posture's own explainer (it showed Improve my score's).
+
 ## What was changed
 
 * **Landmarks**: every report tab has a `header`, a `nav` for its actions

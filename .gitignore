@@ -84,3 +84,12 @@ self_heal.json
 *.last-good
 *.corrupt-*
 .selfheal-*.tmp
+# Atomic-write temporaries of the stores that hold secrets or tenant data: a
+# crash between the write and the rename leaves one behind (tenant profiles
+# can hold a remembered secret, the UI token file the token, the fingerprint
+# key the install's key), so it is never committed.
+.profiles-*
+.ui_token_*
+.fingerprint-*
+.deployments-*
+.posture-*

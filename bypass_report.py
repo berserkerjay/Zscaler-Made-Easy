@@ -34,6 +34,7 @@ from __future__ import annotations
 import csv_safe
 import io
 import json
+import md_safe
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -875,7 +876,8 @@ def to_markdown(report: Dict[str, Any]) -> str:
     if report.get("risk_flags"):
         out.append("## ⚠ Risk Flags\n")
         for r in report["risk_flags"]:
-            out.append(f"- **{r['name']}** ({r['source']} #{r['id']}, action `{r['action']}`) — {r['reason']}")
+            out.append(f"- **{md_safe.text(r['name'])}** ({md_safe.text(r['source'])} #{md_safe.text(r['id'])}, "
+                       f"action {md_safe.code(r['action'])}) — {md_safe.text(r['reason'])}")
         out.append("")
 
     def _items_table(items, fields):
@@ -888,7 +890,7 @@ def to_markdown(report: Dict[str, Any]) -> str:
                 v = it.get(f)
                 if isinstance(v, list):
                     v = ", ".join(str(x) for x in v[:5])
-                row.append(str(v or "").replace("|", "\\|")[:80])
+                row.append(md_safe.text(v or "", 80))   # tenant values: inert text, pipes escaped
             lines.append("| " + " | ".join(row) + " |")
         return "\n".join(lines) + "\n"
 
@@ -936,12 +938,12 @@ def to_markdown(report: Dict[str, Any]) -> str:
         out.append("|---|---|---|")
         for idx, it in enumerate(items, 1):
             rules_str = ", ".join(
-                f"{r.get('source','?')}#{r.get('id','?')} '{r.get('name','?')}'"
+                f"{md_safe.text(r.get('source', '?'))}#{md_safe.text(r.get('id', '?'))} '{md_safe.text(r.get('name', '?'))}'"
                 for r in (it.get("rules") or [])[:6]
             )
             if len(it.get("rules") or []) > 6:
                 rules_str += f", +{len(it['rules']) - 6} more"
-            out.append(f"| {idx} | `{str(it.get('value',''))[:120]}` | {rules_str} |")
+            out.append(f"| {idx} | {md_safe.cell_code(it.get('value', ''), 120)} | {rules_str} |")
         out.append("")
 
     _agg_block("ALL URLs Bypassed (explicit + inherited + ZCC domain bypass)", "all_urls_bypassed", "URL")
@@ -1033,6 +1035,8 @@ def to_docx(report: Dict[str, Any], output_path: str) -> str:
                 continue
         return None
 
+    import xlsx_writer
+    report = xlsx_writer.clean_tree(report)   # python-docx refuses XML-illegal characters
     doc = Document()
 
     # ── Cover ────────────────────────────────────────────────────

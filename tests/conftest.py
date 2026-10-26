@@ -6,15 +6,69 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+# The app's own settings never leak in from the shell that runs the tests
+# (a developer's ZSCALER_UI_AUTH=1 or ZSCALER_PORT=8443 must not change a
+# result): every one is cleared, and a test that needs one sets it.
+APP_ENV_PREFIXES = ("ZSCALER_", "DLP_CHECK_", "DLPCHECK_")
+APP_ENV_NAMES = ("ENABLE_WRITE_ACTIONS", "ASSESS_CHECK_TIMEOUT", "ASSESS_JOURNEY_TIMEOUT", "ASSESS_WORKERS")
+
+
+def scrub_app_env(environ):
+    """Remove every app setting from `environ` (a dict or os.environ); the
+    names removed, sorted. Test switches (CHROME_BIN, DLP_RUN_BROWSER_ACCEPTANCE...) stay."""
+    gone = sorted(k for k in list(environ) if k.startswith(APP_ENV_PREFIXES) or k in APP_ENV_NAMES)
+    for k in gone:
+        del environ[k]
+    return gone
+
+
+scrub_app_env(os.environ)
+
 # The UI token guards every API call from a browser; the test suite talks to
 # the app directly, so it is off here. tests/test_ui_auth.py switches it on.
-os.environ.setdefault("ZSCALER_UI_AUTH", "0")
+os.environ["ZSCALER_UI_AUTH"] = "0"
 # Self-healing's startup run and timer (self_heal.py) stay off in tests: a
 # test runs the checks itself, on its own temporary files.
-os.environ.setdefault("DLP_CHECK_SELF_HEAL_MINUTES", "0")
+os.environ["DLP_CHECK_SELF_HEAL_MINUTES"] = "0"
+
+# Every file the app writes (its stores, audit log, caches) lives in a data
+# folder, as /data does in the container (Dockerfile), never in the repository
+# or the user's ~/.cache, which other runs share. Each test gets its own (the
+# autouse fixture below); this session folder is the floor underneath, so a
+# background thread that outlives its test still never writes next to the code.
+STORE_ENV = {
+    "DLPCHECK_PROPOSALS_FILE": "proposals.json",
+    "DLPCHECK_CHANGE_QUEUE_FILE": "change_requests.json",
+    "DLP_CHECK_PROFILES": "tenant_profiles.json",
+    "DLP_CHECK_DEPLOYMENTS": "deployments.json",
+    "DLP_CHECK_ZIA_RATE_STATE": "zia_rate.json",
+    "DLP_CHECK_AUDIT": "audit.log",
+    "DLP_CHECK_UI_TOKEN_DIR": "",
+    "DLP_CHECK_DIGESTS": "digests",
+    "DLP_CHECK_GUIDANCE_STATE": "guidance_state.json",
+    "DLP_CHECK_CHECKS_CONFIG": "checks_config.json",
+    "DLP_CHECK_SAAS_MATRIX": "saas_apps.local.json",
+    "DLP_CHECK_POSTURE_SETTINGS": "posture_settings.json",
+    "DLP_CHECK_USER_PACKS": "user_packs",
+    "DLP_CHECK_FINGERPRINT_KEY": "tenant_fingerprint.key",
+    "XDG_CACHE_HOME": "cache",      # Beacon, SSL coverage, update and best-practice caches (Linux)
+    "LOCALAPPDATA": "cache",        # the same caches on Windows
+}
 
 
-import pytest
+def point_stores_at(folder):
+    """{setting: path} for every app store inside `folder`."""
+    folder = str(folder)
+    return {k: os.path.join(folder, v) if v else folder for k, v in STORE_ENV.items()}
+
+
+import tempfile  # noqa: E402
+
+SESSION_DATA = tempfile.mkdtemp(prefix="dlp-check-tests-")
+os.environ.update(point_stores_at(SESSION_DATA))
+
+
+import pytest  # noqa: E402
 
 
 # Every test process is hermetic: a forgotten SDK/request mock must never
@@ -84,10 +138,10 @@ def _no_backoff_sleep(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(zia_rate, "_covers", lambda bucket: True)
     monkeypatch.setattr(zia_rate, "_sleep", lambda s: None)
     monkeypatch.delenv("DLP_CHECK_RATE_TONE", raising=False)   # the verdict's tone as shipped, whatever the shell says
-    monkeypatch.setenv("DLP_CHECK_ZIA_RATE_STATE", str(tmp_path_factory.mktemp("zia_rate") / "zia_rate.json"))
-    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path_factory.mktemp("audit") / "audit.log"))   # never the repo's own audit.log
-    # The classic-API fingerprint key: never one next to the repo's own files.
-    monkeypatch.setenv("DLP_CHECK_FINGERPRINT_KEY", str(tmp_path_factory.getbasetemp() / "tenant_fingerprint.key"))
+    # This test's own data folder for every store (STORE_ENV): never the repo's
+    # audit.log or proposals.json, never ~/.cache, never another test's files.
+    for key, value in point_stores_at(tmp_path_factory.mktemp("data")).items():
+        monkeypatch.setenv(key, value)
     zia_rate.reset()
     full = sys.modules.get("dlp_assessment_full_auto")
     if full is not None and hasattr(full, "_reset_tenant_gates"):
@@ -125,3 +179,40 @@ def _fresh_rate_limit_bucket():
             layer = getattr(layer, "app", None)
     _reset()
     yield
+
+
+class FakeClock:
+    """A clock for the request pacer that moves only when the code under
+    test sleeps: a sleep moves it forward to that sleeper's wake-up time
+    (never back) at once, so pacing is checked exactly, with no real waits
+    and no dependence on how busy the machine is. `wakeups` lists every
+    sleeper's wake-up time: the send slots the pacer booked."""
+
+    def __init__(self, start=1_000_000.0):
+        import threading
+        self.now, self.start, self.wakeups = float(start), float(start), []
+        self._lock = threading.Lock()
+
+    def time(self):
+        with self._lock:
+            return self.now
+
+    def sleep(self, seconds):
+        with self._lock:
+            target = self.now + max(0.0, float(seconds))
+            self.wakeups.append(target)
+            self.now = max(self.now, target)
+
+
+@pytest.fixture
+def pacer_clock(monkeypatch):
+    """The tenant pacer (dlp_assessment_full_auto) and ZIA's rate state
+    (zia_rate) on one FakeClock."""
+    import dlp_assessment_full_auto as full
+    import zia_rate
+    clock = FakeClock()
+    for mod in (full, zia_rate):
+        monkeypatch.setattr(mod, "_now", clock.time)
+        monkeypatch.setattr(mod, "_sleep", clock.sleep)
+    zia_rate.reset()
+    return clock

@@ -130,7 +130,7 @@ def assessment_workbook(report: Dict[str, Any]) -> bytes:
     except Exception:  # noqa: BLE001
         cov = None
     org = _clip(meta.get("org") or meta.get("org_name") or "", 200)
-    wb = xlsx_writer.Workbook(title=f"Zscaler assessment {org}".strip(), subject="Assessment results")
+    wb = xlsx_writer.Workbook(title=f"Zscaler Made Easy assessment {org}".strip(), subject="Assessment results")
 
     s = wb.add_sheet("Summary", columns=["Item", "Value"], autofilter=False)
     s.extend([

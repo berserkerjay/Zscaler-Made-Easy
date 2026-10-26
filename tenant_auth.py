@@ -62,7 +62,7 @@ def normalize_method(value: Any) -> str:
         return ""
     if v in _METHOD_ALIASES:
         return _METHOD_ALIASES[v]
-    raise ValueError(f"Unknown sign-in method '{value}'. Use 'oneapi' (ZIdentity API client) or 'legacy' (ZIA admin username, password and API key).")
+    raise ValueError(f"Unknown sign-in method '{str(value)[:40]}'. Use 'oneapi' (ZIdentity API client) or 'legacy' (ZIA admin username, password and API key).")
 
 
 def method_of(creds: Dict[str, Any]) -> str:
@@ -198,13 +198,33 @@ def mask_secrets(text: str, creds: Dict[str, Any]) -> str:
     """`text` with every secret value of `creds` replaced by a fixed
     '[redacted <field>]', so an error can be shown without leaking a
     password or a key. No character and no length of a secret is kept;
-    partial masking (_mask) is only for identifiers such as client_id."""
+    partial masking (_mask) is only for identifiers such as client_id.
+    A secret echoed back in an error is masked in the forms a request
+    carries it too: as typed, form/URL-encoded (the OAuth token request is
+    a form post) and JSON-escaped (the classic sign-in is a JSON body)."""
     out = str(text or "")
     for k in SECRET_KEYS:
         v = str((creds or {}).get(k) or "")
-        if v and v in out:
-            out = out.replace(v, f"[redacted {k}]")
+        if not v:
+            continue
+        for form in sorted(secret_forms(v), key=len, reverse=True):
+            if form in out:
+                out = out.replace(form, f"[redacted {k}]")
     return out
+
+
+def secret_forms(value: str) -> set:
+    """`value` as typed and in the encodings a request may carry it in
+    (URL path/query, form body, JSON string), each of which an error that
+    echoes the request can show."""
+    from urllib.parse import quote, quote_plus
+    import json as _json
+    v = str(value or "")
+    if not v:
+        return set()
+    forms = {v, quote(v, safe=""), quote_plus(v, safe=""), _json.dumps(v)[1:-1], _json.dumps(v, ensure_ascii=False)[1:-1]}
+    forms |= {re.sub(r"%[0-9A-F]{2}", lambda m: m.group(0).lower(), f) for f in forms}   # %2b as well as %2B
+    return {f for f in forms if f}
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +323,50 @@ class LegacyZiaClient:
     def __getattr__(self, name: str) -> Any:
         # ZPA, ZCC, ZDX and the rest have no classic client: say so plainly.
         raise AttributeError(f"{name} is not available with the classic ZIA API sign-in; it covers ZIA only")
+
+
+# The SDK's OneAPI sign-in (zscaler.oneapi_oauth_client) posts the client
+# secret with the module-level requests.post and no timeout at all, so a
+# sign-in host that accepts the connection and never answers holds the
+# request thread forever (its requestTimeout covers API calls only).
+# bound_sdk_sign_in() gives that module a requests whose calls carry
+# SDK_SIGN_IN_TIMEOUT whenever the SDK passes none; nothing else changes.
+SDK_SIGN_IN_TIMEOUT = (10, 30)   # (connect, read) seconds
+
+
+class _BoundedRequests:
+    """The requests module, with a timeout on every call that has none."""
+
+    def __init__(self, module: Any) -> None:
+        self._requests = module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._requests, name)
+
+    def _bounded(self, call: str, *args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("timeout") is None:
+            kwargs["timeout"] = SDK_SIGN_IN_TIMEOUT
+        return getattr(self._requests, call)(*args, **kwargs)
+
+    def request(self, *args: Any, **kwargs: Any) -> Any:
+        return self._bounded("request", *args, **kwargs)
+
+    def get(self, *args: Any, **kwargs: Any) -> Any:
+        return self._bounded("get", *args, **kwargs)
+
+    def post(self, *args: Any, **kwargs: Any) -> Any:
+        return self._bounded("post", *args, **kwargs)
+
+
+def bound_sdk_sign_in() -> None:
+    """Make the SDK's OneAPI token request time out (idempotent; a no-op
+    when the SDK is not installed)."""
+    try:
+        import zscaler.oneapi_oauth_client as oauth
+    except ImportError:
+        return
+    if not isinstance(oauth.requests, _BoundedRequests):
+        oauth.requests = _BoundedRequests(oauth.requests)
 
 
 def build_legacy_sdk_client(creds: Dict[str, Any], *, timeout: int = 90, max_retries: int = 2,

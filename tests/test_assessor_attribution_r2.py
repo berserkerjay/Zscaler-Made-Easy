@@ -253,7 +253,7 @@ def test_the_single_pack_import_tags_and_records_the_assessor(monkeypatch, tmp_p
         seen.update(kw)
         return {"status": "applied", "results": [{"kind": "dictionary", "name": "d", "id": 1, "status": "created"}], "summary": {"created": 1}}
     monkeypatch.setattr(pd, "apply", fake_apply)
-    r = TestClient(srv.app).post("/api/dlp-packs/alpha/import", json=_legacy_body(plan_hash="h", assessor=" Jane ]Doe "))
+    r = TestClient(srv.app).post("/api/dlp-packs/alpha/import", json=_legacy_body(plan_hash="h", assessor=" Jane ]Doe ", confirm=True))
     assert r.status_code == 200, r.text
     rec = deployments._read()["deployments"][-1]
     assert seen["assessor"] == rec["by"] == "Jane Doe"
@@ -274,9 +274,9 @@ def test_undo_and_removal_accept_old_label_records_and_refuse_another_classic_te
     mine = deployments.add(deployments.from_apply(created, tenant_label="classic API (zscalerten)", packs=["alpha"], options={},
                                                   tenant_key=srv._tenant_key(tenant_auth.normalize(LEGACY))))
     c = TestClient(srv.app)
-    assert c.post(f"/api/deployments/{old['id']}/undo", json=_legacy_body(confirm=True)).status_code == 200
-    assert c.post(f"/api/deployments/{mine['id']}/undo", json=_legacy_body(confirm=True)).status_code == 200
-    r = c.post(f"/api/deployments/{theirs['id']}/undo", json=_legacy_body(confirm=True))
+    assert c.post(f"/api/deployments/{old['id']}/undo", json=_legacy_body(confirm=True, assessor="Jane Doe")).status_code == 200
+    assert c.post(f"/api/deployments/{mine['id']}/undo", json=_legacy_body(confirm=True, assessor="Jane Doe")).status_code == 200
+    r = c.post(f"/api/deployments/{theirs['id']}/undo", json=_legacy_body(confirm=True, assessor="Jane Doe"))
     assert r.status_code == 409 and "Switch tenant" in r.json()["detail"]
     creds = tenant_auth.normalize(LEGACY)
     assert srv._deployment_for_removal(srv.PackRemovalRequest(deployment_id=old["id"]), creds)["id"] == old["id"]

@@ -515,13 +515,15 @@ def test_heal_goes_through_the_write_gate_and_the_typed_confirmation(env, baseli
     client, built = _drifted_endpoint_setup(monkeypatch, baseline_pack)
     [p] = _heals()
     c = TestClient(srv.app)
-    body = {**CREDS, **DLP_SCOPE, "ids": [p["id"]], "confirm": "I UNDERSTAND"}
+    body = {**CREDS, **DLP_SCOPE, "ids": [p["id"]], "confirm": "I UNDERSTAND", "assessor": "Jane Doe"}
     monkeypatch.setattr(srv, "writes_enabled", lambda: False)
     r = c.post("/api/self-heal/tenant/heal", json=body)
     assert r.status_code == 403 and "ENABLE_WRITE_ACTIONS" in r.json()["detail"]
     monkeypatch.setattr(srv, "writes_enabled", lambda: True)
     r = c.post("/api/self-heal/tenant/heal", json={**body, "confirm": "yes"})
     assert r.status_code == 400 and "I UNDERSTAND" in r.json()["detail"]
+    r = c.post("/api/self-heal/tenant/heal", json={**body, "assessor": ""})
+    assert r.status_code == 400 and "assessor" in r.json()["detail"]
     assert built == [] and client.zia.dlp_web_rules.updated == [], "refused before signing in or writing"
     r = c.post("/api/self-heal/tenant/heal", json=body)
     assert r.status_code == 200, r.text
@@ -539,7 +541,8 @@ def test_heal_refuses_when_the_setting_moved_again(env, baseline_pack, monkeypat
     [p] = _heals()
     client.zia.dlp_web_rules.items[0].action = "CONFIRM"   # moved again since the scan
     monkeypatch.setattr(srv, "writes_enabled", lambda: True)
-    r = TestClient(srv.app).post("/api/self-heal/tenant/heal", json={**CREDS, **DLP_SCOPE, "ids": [p["id"]], "confirm": "I UNDERSTAND"})
+    r = TestClient(srv.app).post("/api/self-heal/tenant/heal", json={**CREDS, **DLP_SCOPE, "ids": [p["id"]], "confirm": "I UNDERSTAND",
+                                                                     "assessor": "Jane Doe"})
     assert r.status_code == 200
     res = r.json()["results"][0]
     assert not res["ok"] and "not ALLOW" in res["why"] and client.zia.dlp_web_rules.updated == []

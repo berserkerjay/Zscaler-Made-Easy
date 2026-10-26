@@ -48,6 +48,8 @@ import tempfile
 import threading
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import safe_files
+
 SCORED = ("PASS", "FAIL", "REVIEW")
 FAILING = ("FAIL", "REVIEW")
 STATE_CODES = {"PASS": "P", "FAIL": "F", "REVIEW": "R", "INFO": "I", "ERROR": "E"}
@@ -369,7 +371,18 @@ def trend(history: Iterable[Dict[str, Any]], current: Iterable[Dict[str, Any]] =
 
 # ── 4. Score-drop alerts ───────────────────────────────────────────────
 def settings_path() -> str:
-    return os.environ.get("DLP_CHECK_POSTURE_SETTINGS") or os.path.join(_APP_DIR, "posture_settings.json")
+    """posture_settings.json beside the proposals store (DLPCHECK_PROPOSALS_FILE's
+    folder: the app folder on a local install, /data in the read-only
+    container), or DLP_CHECK_POSTURE_SETTINGS."""
+    env = os.environ.get("DLP_CHECK_POSTURE_SETTINGS")
+    if env:
+        return env
+    try:
+        import proposals
+        folder = os.path.dirname(os.path.abspath(proposals.store_path()))
+    except Exception:  # noqa: BLE001
+        folder = _APP_DIR
+    return os.path.join(folder, "posture_settings.json")
 
 
 def settings() -> Dict[str, Any]:
@@ -397,7 +410,7 @@ def save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
     clean = normalise_settings(data)
     p = settings_path()
     with _LOCK:
-        os.makedirs(os.path.dirname(os.path.abspath(p)) or ".", exist_ok=True)
+        safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)) or ".")
         fd, tmp = tempfile.mkstemp(prefix=".posture-", dir=os.path.dirname(os.path.abspath(p)) or ".")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:

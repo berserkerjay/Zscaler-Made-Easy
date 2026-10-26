@@ -183,7 +183,7 @@ def _client(monkeypatch, token):
 
 START_CASES = {
     "deploy": ("/api/dlp-packs/apply/start", dict(CREDS, pack_ids=["zbp_enterprise_baseline"], plan_hash="h", confirm=True, assessor="Pat")),
-    "removal": ("/api/dlp-packs/removal/apply/start", dict(CREDS, pack_ids=["zbp_enterprise_baseline"], plan_hash="h", confirm=True)),
+    "removal": ("/api/dlp-packs/removal/apply/start", dict(CREDS, pack_ids=["zbp_enterprise_baseline"], plan_hash="h", confirm=True, assessor="Jane Doe")),
     "export": ("/api/dlp-packs/export/start", dict(CREDS, rules={"web": "all"}, scopes=["dlp"], channels={"web_dlp": "zscaler"}, from_page=True)),
     "path": ("/api/path-analyzer/start", dict(CREDS, destination="chat.openai.com", scopes=["dlp"], channels={"web_dlp": "zscaler"})),
     "terraform": ("/api/dlp-packs/terraform/start", dict(CREDS, pack_ids=["zbp_enterprise_baseline"], mode="gap", assessor="Pat")),

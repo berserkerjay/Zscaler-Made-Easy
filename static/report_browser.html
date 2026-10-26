@@ -127,16 +127,28 @@
     function readJson(key, fallback) {
       try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
     }
+    // The channel declaration goes with the scopes: Cloud App Control rules
+    // are read only when Cloud App Control is marked Zscaler (user rule 1).
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
     function scopeSelection() {
-      let scopes = null;
+      let scopes = null, channels = null;
       const op = window.opener && !window.opener.closed ? window.opener : null;
       try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
       if (!Array.isArray(scopes)) {
         const lv = readJson('zassess_scopes_live_v1', null);
         scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
       }
       if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
-      return { scopes: scopes.map(String), channels: {}, from_page: true };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
     }
 
     // ── the live job ────────────────────────────────────────────────

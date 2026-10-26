@@ -328,3 +328,22 @@ def test_the_page_is_served_wired_and_explained():
     assert "/api/posture/summary" in banner and "innerHTML" not in banner   # server text is never rendered as HTML
     overview = open(os.path.join(ROOT, "docs", "OVERVIEW.md"), encoding="utf-8").read()
     assert "**Improve my score** (`/report/posture`" in overview
+
+
+def test_score_alert_settings_live_with_the_other_stores_in_the_container(monkeypatch, tmp_path):
+    """ASVS V14.1.1 · CWE-732: the read-only container keeps the score-alert settings on its data volume, beside the proposals store, never in the app folder."""
+    # Arrange
+    import posture_plus as pp
+    monkeypatch.delenv("DLP_CHECK_POSTURE_SETTINGS", raising=False)
+    monkeypatch.setenv("DLPCHECK_PROPOSALS_FILE", str(tmp_path / "data" / "proposals.json"))
+    # Act
+    path = pp.settings_path()
+    # Assert
+    assert path == str(tmp_path / "data" / "posture_settings.json")
+
+
+def test_the_score_alert_settings_path_can_still_be_set(monkeypatch, tmp_path):
+    """ASVS V14.1.1: an explicit DLP_CHECK_POSTURE_SETTINGS wins over the default folder."""
+    import posture_plus as pp
+    monkeypatch.setenv("DLP_CHECK_POSTURE_SETTINGS", str(tmp_path / "x.json"))
+    assert pp.settings_path() == str(tmp_path / "x.json")

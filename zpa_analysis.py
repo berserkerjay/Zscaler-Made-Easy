@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import threading
 import time
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -267,9 +268,32 @@ def _has_app_operand(c: Dict[str, Any]) -> bool:
     return any(o["type"] in APP_TYPES for o in c["operands"])
 
 
+# While analyze() runs, the shape of each rule is worked out once, not once
+# per pair of rules or per segment (thousands of access rules would cost
+# minutes otherwise). Per thread, so two analyses never share it.
+_MEMO = threading.local()
+
+
+def _memo(kind: str, rule: Dict[str, Any], fn):
+    cache = getattr(_MEMO, "cache", None)
+    if cache is None:
+        return fn(rule)
+    key = (kind, id(rule))
+    hit = cache.get(key)
+    if hit is not None and hit[0] is rule:
+        return hit[1]
+    out = fn(rule)
+    cache[key] = (rule, out)   # the rule is held, so its id is not reused while the cache lives
+    return out
+
+
 def _app_scope(rule: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """{"all": True} when the rule names no application; {"segments", "groups",
     "negated"} otherwise; None when the app conditions are not a plain shape."""
+    return _memo("scope", rule, _app_scope_of)
+
+
+def _app_scope_of(rule: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     conds = [c for c in rule["conditions"] if _has_app_operand(c)]
     if not conds:
         return {"all": True}
@@ -293,7 +317,7 @@ def _reaches(rule: Dict[str, Any], seg: Dict[str, Any]) -> bool:
 
 
 def _user_conditions(rule: Dict[str, Any]) -> List[Dict[str, Any]]:
-    return [c for c in rule["conditions"] if not _is_app_cond(c) and c["operands"]]
+    return _memo("users", rule, lambda r: [c for c in r["conditions"] if not _is_app_cond(c) and c["operands"]])
 
 
 # ── unreachable rules (strict: anything not comparable is reachable) ────
@@ -363,13 +387,59 @@ def shadows(a: Dict[str, Any], b: Dict[str, Any], ix: _Index) -> bool:
     return all(_implied(ca, ub) for ca in ua)
 
 
+def _shadow_candidates(rules: List[Dict[str, Any]], ix: _Index):
+    """A function giving, for rule b, the indexes of the rules that can
+    cover b's applications at all (what _app_superset needs): those naming
+    every application, those naming b's first segment or its segment group,
+    or b's first group. Every other earlier rule fails shadows() on its
+    applications, so it is not compared: thousands of access rules then
+    cost a comparison per plausible pair, not per pair."""
+    broad: List[int] = []
+    by_seg: Dict[str, List[int]] = {}
+    by_group: Dict[str, List[int]] = {}
+    plain: List[int] = []
+    for k, a in enumerate(rules):
+        sc = _app_scope(a)
+        if a.get("disabled") or a["action"] not in TERMINAL_ACCESS or sc is None:
+            continue
+        if sc.get("all"):
+            broad.append(k)
+            continue
+        if sc["negated"]:
+            continue
+        plain.append(k)
+        for x in sc["segments"]:
+            by_seg.setdefault(x, []).append(k)
+        for g in sc["groups"]:
+            by_group.setdefault(g, []).append(k)
+
+    def candidates(b: Dict[str, Any], j: int) -> List[int]:
+        sb = _app_scope(b)
+        if sb is None:
+            return []
+        if sb.get("all") or sb["negated"]:
+            pool = broad
+        elif sb["segments"]:
+            first = sorted(sb["segments"])[0]
+            seg = ix.segments.get(first)
+            pool = broad + by_seg.get(first, []) + (by_group.get(seg["segment_group_id"], []) if seg and seg.get("segment_group_id") else [])
+        elif sb["groups"]:
+            pool = broad + by_group.get(sorted(sb["groups"])[0], [])
+        else:
+            pool = broad + plain
+        return sorted({k for k in pool if k < j})
+    return candidates
+
+
 def _shadowed(snap: Dict[str, Any], ix: _Index) -> List[Dict[str, Any]]:
     out = []
     rules = _enabled_rules(snap, "access")
+    candidates = _shadow_candidates(rules, ix)
     for j, b in enumerate(rules):
         if b.get("default_rule"):
             continue
-        for a in rules[:j]:
+        for k in candidates(b, j):
+            a = rules[k]
             if shadows(a, b, ix):
                 differ = a["action"] != b["action"]
                 out.append(_finding("ZPA-AP-01", "high" if differ else "medium", b["name"], "access rule", b["id"],
@@ -546,15 +616,45 @@ def _t_no_access_rules(snap, ix):
                      "Create access rules that allow each user group the segments it needs, ending with a catch-all deny.")]
 
 
+def _reach_index(rules: List[Dict[str, Any]]):
+    """A function giving, for a segment, the rules that reach it, in rule
+    order: the same answer as [r for r in rules if _reaches(r, seg)], from
+    an index of the segments and groups each rule names, so thousands of
+    segments and rules are not compared pair by pair."""
+    always: List[int] = []
+    negated: List[Tuple[int, Dict[str, Any]]] = []
+    by_seg: Dict[str, List[int]] = {}
+    by_group: Dict[str, List[int]] = {}
+    for k, r in enumerate(rules):
+        sc = _app_scope(r)
+        if sc is None or sc.get("all"):
+            always.append(k)
+        elif sc["negated"]:
+            negated.append((k, sc))
+        else:
+            for x in sc["segments"]:
+                by_seg.setdefault(x, []).append(k)
+            for g in sc["groups"]:
+                by_group.setdefault(g, []).append(k)
+
+    def reaching(seg: Dict[str, Any]) -> List[Dict[str, Any]]:
+        gid = seg.get("segment_group_id")
+        ks = set(always) | set(by_seg.get(seg["id"], ())) | (set(by_group.get(gid, ())) if gid else set())
+        ks |= {k for k, sc in negated if not (seg["id"] in sc["segments"] or (gid and gid in sc["groups"]))}
+        return [rules[k] for k in sorted(ks)]
+    return reaching
+
+
 def _t_unused(snap, ix):
     out = []
     rules = _enabled_rules(snap, "access")
     if not rules:
         return out   # ZPA-AP-07 says it once
+    reaching = _reach_index(rules)
     for s in _lst(snap, "segments"):
         if not s["enabled"]:
             continue
-        hits = [r for r in rules if _reaches(r, s)]
+        hits = reaching(s)
         if not hits:
             out.append(_finding("ZPA-AS-01", "medium", s["name"], "app segment", s["id"],
                                 f"No enabled access rule applies to app segment \"{s['name']}\" (by the segment or its segment group), so nobody can use it.",
@@ -570,6 +670,15 @@ def _entry_key(d: str) -> str:
     return d.strip().lower().rstrip(".")
 
 
+MAX_OVERLAP_FINDINGS = 200     # overlapping pairs listed; past it one finding says there are more
+MAX_OVERLAP_PAIRS = 200_000    # pairs of segments compared at most (a domain shared by thousands of segments)
+
+
+def _overlap_summary(reason: str) -> Dict[str, Any]:
+    return _finding("ZPA-AS-03", "medium", "More app segments", "app segment", "", reason,
+                    "Fix the pairs listed (keep each domain and port in one segment), then run the analysis again to see the rest.")
+
+
 def _t_overlap(snap, ix):
     out, seen = [], set()
     segs = [s for s in _lst(snap, "segments") if s["enabled"]]
@@ -577,9 +686,19 @@ def _t_overlap(snap, ix):
     for s in segs:
         for d in {_entry_key(x) for x in s["domains"]}:
             by_domain.setdefault(d, []).append(s)
+    # Every pair of segments sharing a domain is one finding, so a domain in
+    # thousands of segments would make millions: the list stops at
+    # MAX_OVERLAP_FINDINGS and the comparing at MAX_OVERLAP_PAIRS, and one
+    # more finding says so.
+    compared = 0
     for d, group in sorted(by_domain.items()):
         for i, a in enumerate(group):
             for b in group[i + 1:]:
+                compared += 1
+                if compared > MAX_OVERLAP_PAIRS:
+                    out.append(_overlap_summary(f"Comparing stopped after {MAX_OVERLAP_PAIRS:,} pairs of app segments that share a domain: the "
+                                                f"{len(out)} overlapping pairs found by then are listed and there may be more."))
+                    return out
                 for proto in ("tcp", "udp"):
                     ov = [(max(x[0], y[0]), min(x[1], y[1])) for x in a[proto] for y in b[proto] if max(x[0], y[0]) <= min(x[1], y[1])]
                     if not ov:
@@ -587,6 +706,9 @@ def _t_overlap(snap, ix):
                     key = (min(a["id"], b["id"]), max(a["id"], b["id"]), d)
                     if key in seen:
                         continue
+                    if len(out) >= MAX_OVERLAP_FINDINGS:
+                        out.append(_overlap_summary(f"More app segments overlap than are listed here: the first {len(out)} overlapping pairs are shown."))
+                        return out
                     seen.add(key)
                     multimatch = "INCLUSIVE" in (a.get("match_style"), b.get("match_style"))
                     out.append(_finding("ZPA-AS-03", "medium", f"{a['name']} / {b['name']}", "app segment", a["id"],
@@ -853,6 +975,14 @@ _PRODUCED_BY = {"ZPA-AS-02": "ZPA-AS-01", "ZPA-SV-02": "ZPA-SV-01", "ZPA-CG-02":
 def analyze(snap: Dict[str, Any], now: Optional[float] = None) -> Dict[str, Any]:
     """Every template over the snapshot: findings (most severe first),
     the catalog with each template's status, counts and what was not assessed."""
+    _MEMO.cache = {}
+    try:
+        return _analyze(snap, now)
+    finally:
+        _MEMO.cache = None
+
+
+def _analyze(snap: Dict[str, Any], now: Optional[float]) -> Dict[str, Any]:
     now = time.time() if now is None else now
     ix = _Index(snap)
     findings: List[Dict[str, Any]] = []

@@ -104,9 +104,10 @@ def test_http_routes_gate_writes_and_confirmation(tmp_path, monkeypatch):
     assert r.status_code == 200 and r.json()["ok"] and r.json()["steps"][0]["to"] == "CONFIRM"
     assert c.post(f"/api/proposals/acme/{promo['id']}/apply", json=creds).status_code == 400          # confirm missing
     monkeypatch.setattr(srv, "writes_enabled", lambda: False)
-    assert c.post(f"/api/proposals/acme/{promo['id']}/apply", json={**creds, "confirm": True}).status_code == 403
+    assert c.post(f"/api/proposals/acme/{promo['id']}/apply", json={**creds, "confirm": True, "assessor": "Jane Doe"}).status_code == 403
     monkeypatch.setattr(srv, "writes_enabled", lambda: True)
-    r = c.post(f"/api/proposals/acme/{promo['id']}/apply", json={**creds, "confirm": True, "by": "jane"})
+    assert c.post(f"/api/proposals/acme/{promo['id']}/apply", json={**creds, "confirm": True}).status_code == 400   # no assessor
+    r = c.post(f"/api/proposals/acme/{promo['id']}/apply", json={**creds, "confirm": True, "by": "jane", "assessor": "Jane Doe"})
     assert r.status_code == 200 and r.json()["status"] == "applied" and r.json()["results"][0]["verified"]
     assert c.post(f"/api/proposals/acme/{promo['id']}/apply", json={}).status_code == 400, "no credentials: explained, not attempted"
 
@@ -133,7 +134,8 @@ def test_a_proposal_is_never_previewed_applied_or_rolled_back_on_another_tenant(
         return globex
     monkeypatch.setattr(srv, "_build_sdk_client", build)
     other = {"cloud": "production", "vanity_domain": "globex", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
-    for step, body in (("preview", other), ("apply", {**other, "confirm": True}), ("rollback", {**other, "confirm": True})):
+    for step, body in (("preview", other), ("apply", {**other, "confirm": True, "assessor": "Jane Doe"}),
+                       ("rollback", {**other, "confirm": True, "assessor": "Jane Doe"})):
         r = c.post(f"/api/proposals/acme/{promo['id']}/{step}", json=body)
         assert r.status_code == 409, (step, r.text)
         assert "globex" not in r.json()["detail"] or "another tenant" in r.json()["detail"]
@@ -155,9 +157,9 @@ def test_a_classic_api_tenant_can_preview_apply_and_roll_back_its_proposals(tmp_
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: client)
     r = c.post(f"/api/proposals/{key}/{promo['id']}/preview", json=legacy)
     assert r.status_code == 200 and r.json()["steps"][0]["to"] == "CONFIRM", r.text
-    r = c.post(f"/api/proposals/{key}/{promo['id']}/apply", json={**legacy, "confirm": True})
+    r = c.post(f"/api/proposals/{key}/{promo['id']}/apply", json={**legacy, "confirm": True, "assessor": "Jane Doe"})
     assert r.status_code == 200 and r.json()["status"] == "applied", r.text
-    r = c.post(f"/api/proposals/{key}/{promo['id']}/rollback", json={**legacy, "confirm": True})
+    r = c.post(f"/api/proposals/{key}/{promo['id']}/rollback", json={**legacy, "confirm": True, "assessor": "Jane Doe"})
     assert r.status_code == 200 and r.json()["status"] == "rolled_back", r.text
     # Another classic login is another tenant.
     other = dict(legacy, username="admin@other.example")

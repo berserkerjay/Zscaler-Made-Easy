@@ -220,9 +220,11 @@ def test_single_pack_import_and_verify_endpoints_use_the_shared_path(monkeypatch
     assert r.status_code == 200 and r.json()["status"] == "plan" and r.json()["plan_hash"] and "Nothing was written" in r.json()["message"]
     assert client.zia.dlp_dictionary.added == []
     plan_hash = r.json()["plan_hash"]
-    assert c.post("/api/dlp-packs/zbp_source_code_baseline/import", json=dict(creds, plan_hash=plan_hash)).status_code == 403
+    assert c.post("/api/dlp-packs/zbp_source_code_baseline/import", json=dict(creds, plan_hash=plan_hash, confirm=True)).status_code == 403
     monkeypatch.setattr(srv, "writes_enabled", lambda: True)
-    r = c.post("/api/dlp-packs/zbp_source_code_baseline/import", json=dict(creds, plan_hash=plan_hash, verify=False))
+    assert c.post("/api/dlp-packs/zbp_source_code_baseline/import", json=dict(creds, plan_hash=plan_hash)).status_code == 400   # no confirm
+    assert client.zia.dlp_dictionary.added == []
+    r = c.post("/api/dlp-packs/zbp_source_code_baseline/import", json=dict(creds, plan_hash=plan_hash, verify=False, confirm=True))
     body = r.json()
     assert r.status_code == 200 and body["status"] == "applied" and body["summary"]["created"] > 0 and body["events"], body.get("summary")
     assert deployments.list_all() and deployments.list_all()[0]["packs"] == ["zbp_source_code_baseline"]

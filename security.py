@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Security hardening for the Zscaler Assessment API server.
+Security hardening for the Zscaler Made Easy API server.
 
 Implements secure-by-design controls aligned with CISA's
 "Secure by Design" principles:
@@ -60,20 +60,17 @@ from starlette.types import ASGIApp
 import zscaler_clouds as _clouds
 ALLOWED_CLOUDS = set(_clouds.ALLOWED)
 
-# Browser-borne origins we trust for state-changing requests: this
-# server's own address only (the default port and the configured
-# ZSCALER_PORT, so a GUI on another port is not rejected with 403).
+# Browser-borne origins we trust for state-changing requests and CORS: this
+# server's own address on its configured port only (ZSCALER_PORT, default
+# 8000). Never another port: a page served by any other local web server
+# (port 80 included) is same-site with this one, so its requests carry the
+# SameSite=Strict token cookie, and trusting its origin would let it read
+# and drive the API. A page this server served on another port or host name
+# is still trusted by OriginCheckMiddleware's same-origin rule.
 def _allowed_origins() -> set:
-    out = {"http://localhost:8000", "http://127.0.0.1:8000", "http://localhost", "http://127.0.0.1"}
-    try:
-        port = int(os.environ.get("ZSCALER_PORT", "8000"))
-        out |= {f"http://localhost:{port}", f"http://127.0.0.1:{port}"}
-    except ValueError:
-        pass
-    return out
+    port = get_port() if os.environ.get("ZSCALER_PORT", "").strip() else DEFAULT_PORT
+    return {f"http://localhost:{port}", f"http://127.0.0.1:{port}"}
 
-
-ALLOWED_ORIGINS = _allowed_origins()
 
 # The companion browser extension (browser_extension/, its ID fixed by the
 # public key in its manifest) may POST to these read-only endpoints only:
@@ -93,12 +90,34 @@ def extension_origin() -> str:
 
 
 def extension_may_post(origin: str, path: str) -> bool:
-    """The extension's origin, on one of its read-only endpoints."""
+    """The extension's origin, on one of its read-only endpoints. `path` is
+    the path the router matches (the request scope's "path"), compared
+    exactly: no trailing newline, slash or other variant is the same path."""
     ext = extension_origin()
-    return bool(ext) and origin == ext and (path in EXTENSION_POST_PATHS or bool(_EXTENSION_CANCEL.match(path)))
+    return bool(ext) and origin == ext and (path in EXTENSION_POST_PATHS or bool(_EXTENSION_CANCEL.fullmatch(path)))
+
+
+def from_extension(request: Request) -> bool:
+    """Did this request come from the companion extension's origin (its
+    Origin header, or its Referer when a browser sent no Origin)? Endpoints
+    the extension may call use it to narrow what it may do there further."""
+    ext = extension_origin()
+    if not ext:
+        return False
+    origin = request.headers.get("origin")
+    if origin:
+        return origin.lower().rstrip("/") == ext
+    p = urlparse(request.headers.get("referer") or "")
+    return f"{p.scheme}://{p.netloc}".lower() == ext
+
+
+# The jobs the extension starts (Export from tenant): the only ones it may Stop.
+EXTENSION_JOB_KINDS = ("export",)
+
+
 
 # Hostname pattern for vanity_domain (RFC-1123 label, dot-separated).
-_HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+_HOST_RE = _clouds.VANITY_RE   # the one vanity-domain pattern (zscaler_clouds.token_url checks it too)
 
 # Credential length caps — hard enough that a junk paste fails fast,
 # loose enough not to clip a legit value.
@@ -131,6 +150,9 @@ def get_port() -> int:
         import sys
         print(f"  ZSCALER_PORT={raw!r} is not a port number between 1 and 65535; using {DEFAULT_PORT}.", file=sys.stderr)
         return DEFAULT_PORT
+
+
+ALLOWED_ORIGINS = _allowed_origins()
 
 
 def get_max_body_bytes() -> int:
@@ -172,7 +194,7 @@ def write_enable_hint() -> str:
                 "that runs Docker, then run: docker compose up -d (the container restarts with writes on; remove the line "
                 "and run it again to go back to read-only)")
     if os.name == "nt":
-        return "start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat"
+        return "start the server with START_Zscaler_Made_Easy_WRITES_ENABLED.bat"
     return f"start the server with: ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} ./start.sh"
 
 
@@ -435,7 +457,9 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
         o = origin.lower().rstrip("/")
         if o in ALLOWED_ORIGINS:
             return True
-        if extension_may_post(o, request.url.path):
+        # The router's own path (scope["path"]), not request.url.path: the URL
+        # parser drops tabs and newlines, so the two can differ.
+        if extension_may_post(o, request.scope.get("path") or ""):
             return True
         host = (request.headers.get("host") or "").lower()
         return bool(host) and o == f"{request.url.scheme}://{host}"
@@ -582,6 +606,8 @@ UI_TOKEN_COOKIE = "dlpcheck_token"
 UI_TOKEN_HEADER = "X-DLP-Check-Token"
 UI_TOKEN_FILE = "ui_token.txt"
 SSO_SESSION_COOKIE = "dlpcheck_session"   # with SSO on: the per-person session id (sso.py), never the UI token
+SSO_LOGIN_COOKIE = "dlpcheck_sso_login"   # with SSO on: ties a sign-in's state to the browser that started it
+SSO_CALLBACK_PATH = "/api/auth/sso/callback"
 _ui_token: "str | None" = None
 # Paths a browser needs before it can present the token: the page itself,
 # its assets, the standalone report pages (they then call the API with the
@@ -612,9 +638,12 @@ def ui_token() -> str:
 
 
 def ui_token_ok(candidate: Optional[str]) -> bool:
-    """Constant-time comparison of a presented token with this process's token."""
+    """Constant-time comparison of a presented token with this process's token.
+    Compared as UTF-8 bytes: compare_digest on str raises TypeError for any
+    non-ASCII character, which a header or cookie can carry, and that would
+    turn a wrong token into an unaudited 500 instead of a 401."""
     c = (candidate or "").strip()
-    return bool(c) and _secrets.compare_digest(c, ui_token())
+    return bool(c) and _secrets.compare_digest(c.encode("utf-8", "surrogateescape"), ui_token().encode("utf-8", "surrogateescape"))
 
 
 def write_ui_token_file(app_dir: str) -> Optional[str]:
@@ -689,6 +718,20 @@ def set_session_cookie(response, request: Request, session_id: str) -> None:
     response.set_cookie(SSO_SESSION_COOKIE, session_id, httponly=True, samesite="lax", secure=_https(request), path="/", max_age=12 * 3600)
 
 
+def set_login_cookie(response, request: Request, binding: str) -> None:
+    """Attach the sign-in binding cookie (sso.new_login_binding): HttpOnly,
+    SameSite=Lax (the identity provider's redirect back is a cross-site
+    top-level GET), Secure over HTTPS, sent to the callback only, and gone
+    when the pending sign-in would expire anyway."""
+    import sso as _sso
+    response.set_cookie(SSO_LOGIN_COOKIE, binding, httponly=True, samesite="lax", secure=_https(request),
+                        path=SSO_CALLBACK_PATH, max_age=_sso._PENDING_TTL_SECONDS)
+
+
+def clear_login_cookie(response, request: Request) -> None:
+    response.delete_cookie(SSO_LOGIN_COOKIE, path=SSO_CALLBACK_PATH, httponly=True, samesite="lax", secure=_https(request))
+
+
 def clear_session_cookie(response, request: Request) -> None:
     response.delete_cookie(SSO_SESSION_COOKIE, path="/", httponly=True, samesite="lax", secure=_https(request))
 
@@ -745,12 +788,17 @@ def _audit_denied(request: Request, event: str, reason: str) -> None:
                   client=request.client.host if request.client else "?", reason=reason)
 
 
-_LOOPBACK_HOST_NAMES = ("localhost", "127.0.0.1", "::1", "testserver")
+_TEST_CLIENT_HOST = "testserver"   # Starlette's in-process TestClient; never a real socket
 
 
 def _loopback_host_header(request: Request) -> bool:
-    """True when the Host header names this computer's loopback (or the
-    test client): what a browser sends for http://localhost:<port>/."""
+    """True when the Host header names this computer's loopback: "localhost"
+    or a loopback IP address literal (127.0.0.0/8, ::1), what a browser sends
+    for http://localhost:<port>/. A DNS name is never trusted for looking like
+    one (127.0.0.1.nip.io, 127.attacker.example): a rebinding attacker picks
+    the name. The test client's "testserver" counts only on the in-process
+    transport, whose scope["server"] carries that name instead of an IP."""
+    import ipaddress
     host = (request.headers.get("host") or "").strip().lower()
     if not host:
         return True          # HTTP/1.0 without Host: not a browser, and not reachable by rebinding
@@ -758,7 +806,15 @@ def _loopback_host_header(request: Request) -> bool:
         name = host[1:host.find("]")] if "]" in host else host
     else:
         name = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
-    return name in _LOOPBACK_HOST_NAMES or name.startswith("127.")
+    if name == "localhost":
+        return True
+    if name == _TEST_CLIENT_HOST:
+        server = request.scope.get("server") or ("",)
+        return bool(server) and server[0] == _TEST_CLIENT_HOST
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
 
 
 def _arrived_beyond_loopback(request: Request) -> bool:
@@ -786,7 +842,12 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
     from (current_actor) for the audit log and the writer check."""
 
     async def dispatch(self, request: Request, call_next):
-        token = _CALLER.set(_caller_for(request, sso_session(request)))
+        caller = _caller_for(request, sso_session(request))
+        if caller["actor"] == LOCAL_TOKEN_ACTOR and not ui_token_ok(_token_from_request(request)):
+            # A public route (unlock, status, a page) reached without the token:
+            # the audit log must not credit it to the token holder.
+            caller = {"actor": NOT_SIGNED_IN, "session": None}
+        token = _CALLER.set(caller)
         try:
             return await self._dispatch(request, call_next)
         finally:

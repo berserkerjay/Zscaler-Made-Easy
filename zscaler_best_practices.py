@@ -33,6 +33,8 @@ here; every consumer re-renders from this module.
 from __future__ import annotations
 import os
 from typing import Any, Dict, List
+import safe_files
+
 
 try:
     from bp_sources import credibility_for, get_source
@@ -461,20 +463,8 @@ def _discovered_store_path() -> str:
     """Writable location for crawler-discovered entries that persist
     across sessions. Mirrors the update-checker's cache location so
     everything sits under one per-user data dir."""
-    import sys
-    try:
-        if sys.platform == "win32":
-            base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
-            d = os.path.join(base, "ZscalerAssessment")
-        elif sys.platform == "darwin":
-            d = os.path.expanduser("~/Library/Caches/ZscalerAssessment")
-        else:
-            d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
-                             "zscaler_assessment")
-        os.makedirs(d, exist_ok=True)
-    except Exception:
-        d = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(d, "bp_discovered.json")
+    from zscaler_update_check import data_dir
+    return os.path.join(data_dir(), "bp_discovered.json")
 
 
 def _load_discovered() -> List[Dict[str, Any]]:
@@ -521,7 +511,7 @@ def save_discovered(new_entries: List[Dict[str, Any]]) -> int:
         return 0
     merged = existing + added
     try:
-        with open(_discovered_store_path(), "w", encoding="utf-8") as f:
+        with safe_files.private_open(_discovered_store_path(), "w", encoding="utf-8") as f:
             json.dump({"entries": merged, "updated_at": time.time()}, f, indent=2)
     except Exception:
         pass

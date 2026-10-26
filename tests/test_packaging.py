@@ -46,8 +46,8 @@ def test_installer_and_container_install_the_same_pinned_file_and_run_the_same_e
     assert "requirements.lock" in dockerfile and "--require-hashes" in dockerfile
     assert 'CMD ["python", "dlp_api_server.py"]' in dockerfile
     assert "requirements.lock" in _read("install.sh") and "--require-hashes" in _read("install.sh")
-    assert "requirements.lock" in _read("INSTALL_Zscaler_Assessment.bat") and "--require-hashes" in _read("INSTALL_Zscaler_Assessment.bat")
-    assert "dlp_api_server.py" in _read("start.sh") and "dlp_api_server.py" in _read("START_Zscaler_Assessment.bat")
+    assert "requirements.lock" in _read("INSTALL_Zscaler_Made_Easy.bat") and "--require-hashes" in _read("INSTALL_Zscaler_Made_Easy.bat")
+    assert "dlp_api_server.py" in _read("start.sh") and "dlp_api_server.py" in _read("START_Zscaler_Made_Easy.bat")
     compose = _read("docker-compose.yml")
     assert "context: ." in compose and '"${DLP_CHECK_HOST_BIND:-127.0.0.1}:${DLP_CHECK_HOST_PORT:-8001}:8000"' in compose and "read_only: true" in compose
 
@@ -179,7 +179,7 @@ def test_read_only_messages_say_how_to_turn_writes_on_where_the_app_runs(monkeyp
     assert ".env" in st["how_to_enable"]
     monkeypatch.delenv("DLP_CHECK_IN_CONTAINER")
     hint = security.write_enable_hint()
-    assert ("START_Zscaler_Assessment_WRITES_ENABLED.bat" in hint) if os.name == "nt" else ("./start.sh" in hint)
+    assert ("START_Zscaler_Made_Easy_WRITES_ENABLED.bat" in hint) if os.name == "nt" else ("./start.sh" in hint)
     for name in ("dlp_api_server.py", "pack_deploy.py", "remediation.py", os.path.join("static", "deploy_studio.js")):
         assert "WRITES_ENABLED.bat" not in _read(name), f"{name} still hard-codes the Windows start script"
 
