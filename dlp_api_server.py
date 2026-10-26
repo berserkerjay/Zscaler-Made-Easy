@@ -5252,6 +5252,15 @@ def _beacon_start_background(online: bool, trigger: str, client: Any = None, lab
     return True
 
 
+def _beacon_running() -> bool:
+    """Whether a Beacon run is in progress. A status read samples this
+    before it loads the history: a run that saves its snapshot and ends
+    while the history is read would otherwise be reported finished with
+    the history from before it (a poller then stops on a missing run)."""
+    import beacon
+    return bool(_BEACON_STATE["running"] or beacon.RUN_LOCK.locked())
+
+
 def _beacon_last_online_age(history: List[Dict[str, Any]]) -> Optional[float]:
     """Seconds since the newest online run, or None when there is none."""
     for s in reversed(history):
@@ -5395,10 +5404,11 @@ async def beacon_get():
     """The latest Beacon snapshot, what changed since the run before it,
     the history (newest first) and the timer."""
     import beacon
+    running = _beacon_running()   # before the read: a run that ends during it still says running, so the page reads again
     history = await asyncio.to_thread(beacon.load_history)
     latest = history[-1] if history else None
     return {"latest": latest, "diff": (latest or {}).get("diff"), "history": beacon.history_rows(history),
-            "running": _BEACON_STATE["running"] or beacon.RUN_LOCK.locked(), "running_since": _BEACON_STATE["running_since"],
+            "running": running or _beacon_running(), "running_since": _BEACON_STATE["running_since"],
             "timer": _beacon_timer(), "state_file": beacon.state_path(), "keep": beacon.HISTORY_KEEP}
 
 
@@ -5411,6 +5421,7 @@ async def beacon_status(refresh: bool = False):
     Reads the kept snapshot only; `refresh` starts an online run in the
     background when the newest online one is over an hour old."""
     import beacon
+    running = _beacon_running()   # before the read, as GET /api/beacon
     history = await asyncio.to_thread(beacon.load_history)
     started = False
     if refresh:
@@ -5430,7 +5441,7 @@ async def beacon_status(refresh: bool = False):
     return {"at": (latest or {}).get("at"), "online_at": (online or {}).get("at"), "drift": drift, "drift_key": key,
             "current_drift": len(current), "pending_confirmation": max(0, len(current) - len(drift)),
             "changes": len(diff.get("changes") or []), "summary": (diff.get("summary") or [None])[0],
-            "running": _BEACON_STATE["running"] or beacon.RUN_LOCK.locked(), "started": started, "details": "/report/beacon",
+            "running": running or _beacon_running(), "started": started, "details": "/report/beacon",
             "next_run_at": _BEACON_STATE.get("next_run_at")}
 
 

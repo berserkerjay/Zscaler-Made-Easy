@@ -484,12 +484,16 @@ def test_a_stop_before_the_job_exists_reads_nothing(monkeypatch):
 
 
 def test_stop_message_says_nothing_more_is_read():
+    """SSDF PW.8.2 · CWE-459: Stop says nothing more is read, and the job (with its audit entry) ends inside the test."""
     import pack_jobs
     gate = threading.Event()
     job = pack_jobs.start("fleet", lambda log, cancel: (gate.wait(5), {"status": "stopped", "stopped": "x"})[1])
     assert pack_jobs.cancel(job.id)
     gate.set()
     assert any("nothing more is read" in line for line in job.logs)
+    # The job ends (and writes its audit entry) inside this test, never after it.
+    job.thread.join(10)
+    assert not job.thread.is_alive() and job.status == pack_jobs.CANCELLED
 
 
 def test_classic_sign_in_does_not_build_an_sdk_client(monkeypatch):
