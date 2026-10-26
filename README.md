@@ -167,6 +167,7 @@ pack; generated Terraform per pack in `terraform/`; tests in `tests/`.
 
 Documentation: `docs/OVERVIEW.md` (what the app does, in five minutes),
 `docs/BROWSER_EXTENSION.md` (the companion browser extension),
+`docs/SECURITY_TESTING.md` (every security and regression test, mapped to OWASP ASVS, CWE, WSTG, WCAG, SLSA and SSDF),
 `INSTALL.md` (installing, click by click), `GETTING_STARTED.md` (first
 engagement, step by step),
 `POLICY_PACKS.md` (pack format), `docs/SHARED_EXECUTION_PATH.md` (how
