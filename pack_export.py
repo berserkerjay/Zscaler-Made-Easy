@@ -1182,10 +1182,16 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
     return {"status": "ready", "pack": pack, "validation": validation}
 
 
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
 def pack_files(pack: Dict[str, Any]) -> Dict[str, str]:
     """The pack as files: pack.json and configs/dlp_*.json (plus the
     endpoint application groups when it has any)."""
-    dump = lambda obj: json.dumps(obj, indent=2, ensure_ascii=False) + "\n"  # noqa: E731
+    # A lone surrogate (a tenant name can carry one through a JSON \uD800
+    # escape) cannot be written as UTF-8: keep it as the same JSON escape,
+    # so the file is valid UTF-8 and reads back to the identical name.
+    dump = lambda obj: _LONE_SURROGATE.sub(lambda m: "\\u%04x" % ord(m.group()), json.dumps(obj, indent=2, ensure_ascii=False)) + "\n"  # noqa: E731
     files = {"pack.json": dump(pack["meta"]),
              "configs/dlp_dictionaries.json": dump(pack["dictionaries"]),
              "configs/dlp_engines.json": dump(pack["engines"]),
@@ -1244,7 +1250,7 @@ def terraform_files(pack: Dict[str, Any], assessor: str = "") -> Tuple[str, Dict
         names = ref.get(key) or []
         if names and fname in files:
             note = (f"# Exported without dependencies: these {kind} are not created by this workspace. They are looked up\n"
-                    f"# by name, so they must already exist in the tenant under these names: {', '.join(names)}.\n\n")
+                    f"# by name, so they must already exist in the tenant under these names: {pack_terraform.hcl_comment(', '.join(names))}.\n\n")
             head, sep, rest = files[fname].partition("\n\n")
             files[fname] = head + sep + note + rest if sep else note + files[fname]
     return pack_id, files
