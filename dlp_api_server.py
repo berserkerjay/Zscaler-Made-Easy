@@ -1411,7 +1411,13 @@ def _dlp_read_scope(req: Any) -> Dict[str, Any]:
     the scheduled loop reads a profile, plus where it came from. Never
     reads a tenant."""
     import continuous_eval
+    import data_flow
     sc, ch, source = _scope_selection(req)
+    # Only the Scope page's own keys count, exactly as every other tenant
+    # read checks them (_require_in_scope): profile_scope's lenient
+    # spelling ("DLP", " dlp") is for hand-edited saved profiles in the
+    # loop, and must not put a request in scope here (fail closed).
+    sc = [s for s in sc if s in data_flow.SCOPE_KEYS]
     import dlp_analysis
     out = continuous_eval.profile_scope({"scopes": sc, "channels": dlp_analysis.channels(ch, sc)})
     out["required_controls"] = dlp_analysis.requirements(sc, ch)
@@ -2477,8 +2483,8 @@ def _browser_inputs(req: BrowserSecurityRequest) -> Tuple[Dict[str, Any], Dict[s
     before anything is signed in to or read when nothing it reads is in
     scope, or when only ZPA is and it cannot be read (user rule 1)."""
     import browser_security as bs
-    sc, _ch, source = _scope_selection(req)
-    scope = bs.scope_for(sc)
+    sc, ch, source = _scope_selection(req)
+    scope = bs.scope_for(sc, ch)
     if not scope["read"]:
         raise HTTPException(status_code=400, detail=bs.NOTHING_IN_SCOPE)
     scope["source"] = source
@@ -4933,7 +4939,9 @@ async def console_index(req: ConsoleIndexRequest):
                        + (["zia:ftc"] if zscope["ftc"] else []))
     if not req.refresh:
         hit = ci.cache_get(key)
-        if hit is not None:
+        # Typed credentials share the "server" key: an index kept for another
+        # tenant never answers for this one (it is read again instead).
+        if hit is not None and hit.get("tenant_label") and _same_tenant(hit, creds):
             return hit
     client = await asyncio.to_thread(_build_sdk_client, creds) if channels else None
     zia, zia_note = await asyncio.to_thread(_console_zia, req, zscope)
@@ -7863,17 +7871,14 @@ async def path_analyzer_batch_start(req: PathBatchRequest, request: Request):
     """Start the Path analyzer for every host of a HAR file as a job the
     page follows (poll GET /api/dlp-packs/jobs/{job_id}). Only what is in
     scope on the Scope page is read, once for all hosts (or the read named
-    by `report_id`, when it was made for the same scope). Stop ends it
-    between hosts: the hosts done are kept, the rest listed as not
+    by `report_id`, when it was made for the same scope and tenant). Stop
+    ends it between hosts: the hosts done are kept, the rest listed as not
     analyzed. Read-only."""
     import pack_jobs
-    import path_analyzer
     hosts, stats, skipped = _batch_hosts(req)
     scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
-    snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
-    if snapshot is not None and not path_analyzer.reusable(snapshot, scope, req.platform):
-        snapshot = None
     creds = _tenant_creds(req)
+    snapshot = _kept_path_read(req.report_id, scope, creds, req.platform)
     client = await asyncio.to_thread(_build_client, req)
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("path-batch", lambda log, cancel: _run_path_batch(client, req, hosts, stats, skipped, snapshot, label, log, cancel, scope),
@@ -8845,6 +8850,21 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
     return out
 
 
+def _kept_path_read(report_id: str, scope: Dict[str, Any], creds: Dict[str, str], platform: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """The kept tenant read `report_id` names, only when it may answer this
+    request: made for exactly this scope (path_analyzer.reusable) and in
+    the tenant these credentials point at (tenant_fingerprint.same_tenant,
+    the label required). Otherwise None and the tenant is read again: a
+    read kept for one tenant never answers for another."""
+    import path_analyzer
+    import tenant_fingerprint
+    snap = _REPORTS.get(report_id) if report_id and report_id.startswith("dataflow-") else None
+    if snap is None or not snap.get("tenant_label") or not tenant_fingerprint.same_tenant(snap, creds):
+        return None
+    ok = path_analyzer.reusable(snap, scope) if platform is None else path_analyzer.reusable(snap, scope, platform)
+    return snap if ok else None
+
+
 async def _path_analysis_inputs(req: PathAnalyzerRequest):
     import path_analyzer
     try:
@@ -8852,10 +8872,8 @@ async def _path_analysis_inputs(req: PathAnalyzerRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
-    snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
-    if snapshot is not None and not path_analyzer.reusable(snapshot, scope):
-        snapshot = None        # a read for another scope is never reused (analyze says so in the log)
     creds = _tenant_creds(req)
+    snapshot = _kept_path_read(req.report_id, scope, creds)   # a read for another scope or tenant is never reused
     client = await asyncio.to_thread(_build_client, req)
     return client, snapshot, tenant_auth.record_label(creds), scope   # never the classic API's admin login (user rule 3)
 
