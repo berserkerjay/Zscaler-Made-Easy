@@ -3058,14 +3058,18 @@ async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):
 
 
 @app.post("/api/dlp-packs/jobs/{job_id}/cancel")
-async def dlp_pack_job_cancel(job_id: str):
+async def dlp_pack_job_cancel(job_id: str, request: Request):
     """Stop a running job after the write in flight. Nothing more is sent
     to the tenant; activation and the read-back still run so what was
-    written is live and recorded."""
+    written is live and recorded. The browser extension may stop only the
+    read-only export it started itself, never a deploy, removal or any
+    other job (security.EXTENSION_POST_PATHS)."""
     import pack_jobs
     job = pack_jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="No such job.")
+    if _security.from_extension(request) and not (job.kind == "export" and job.started_by == "extension"):
+        raise HTTPException(status_code=403, detail="The browser extension may stop only the export it started. Stop this job in Zscaler Made Easy.")
     return {"job_id": job.id, "cancelled": pack_jobs.cancel(job_id), "status": job.status}
 
 
@@ -3791,6 +3795,8 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
     job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel),
                           label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request),
                           start_token=_start_token(request))
+    if _security.from_extension(request):
+        job.started_by = "extension"   # the one job kind the extension may stop
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 

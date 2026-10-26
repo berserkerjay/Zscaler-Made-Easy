@@ -115,8 +115,13 @@ Microsoft Edge Add-ons.
 - **Narrow trust in the app.** The extension has a fixed ID (the public key
   in its manifest), and Zscaler Made Easy accepts requests from it only on its
   read-only endpoints: the console index and *Export from tenant* (and
-  Stop on that export). A deploy, removal, fix or setting change from the
-  extension's origin is refused. It signs in with Zscaler Made Easy's own sign-in
+  Stop on the export it started itself, never on a deploy, removal or any
+  other job). The paths are compared exactly as the server routes them. A
+  deploy, removal, fix or setting change from the extension's origin is
+  refused. Inside the extension, each message is accepted only from the
+  sender it is meant for (the badges from a ZIA admin console tab, the side
+  panel's note from the extension's own page), and console text is never
+  looked up beyond the names Zscaler Made Easy read. It signs in with Zscaler Made Easy's own sign-in
   in this browser (open Zscaler Made Easy once); it never stores a token.
   `DLP_CHECK_EXTENSION_ID` moves that trust to a repacked build, or `off`
   removes it.

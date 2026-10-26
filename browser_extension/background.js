@@ -50,15 +50,32 @@ async function namesMap() {
   let index = null;
   try { index = (await chrome.storage.session.get('index')).index; } catch (e) { index = null; }
   if (!index || !Array.isArray(index.objects)) return null;
-  const names = {};
-  index.objects.forEach(o => { (names[o.name] = names[o.name] || []).push(badgeEntry(index, o)); });
+  // No prototype: an object named "constructor" or "__proto__" is a name like any other.
+  const names = Object.create(null);
+  index.objects.forEach(o => {
+    if (!o || typeof o.name !== 'string') return;
+    (names[o.name] = names[o.name] || []).push(badgeEntry(index, o));
+  });
   return names;
+}
+
+// Who may send what: the badge script only from a ZIA admin console page
+// (a tab), the "index updated" note only from this extension's own pages
+// (the side panel). Anything else is ignored.
+const CONSOLE_HOSTS = new Set(CONSOLE_ORIGINS.map(o => new URL(o.replace('/*', '/')).origin));
+function fromConsole(sender) {
+  if (!sender || sender.id !== chrome.runtime.id || !sender.tab) return false;
+  try { return CONSOLE_HOSTS.has(new URL(sender.url || '').origin); } catch (e) { return false; }
+}
+function fromOwnPage(sender) {
+  return !!sender && sender.id === chrome.runtime.id && !sender.tab
+    && typeof sender.url === 'string' && sender.url.startsWith(chrome.runtime.getURL(''));
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (!msg || typeof msg.type !== 'string') return false;
-  if (msg.type === 'names') { namesMap().then(names => reply({ names })); return true; }
-  if (msg.type === 'focus' && sender.tab) {
+  if (msg.type === 'names' && fromConsole(sender)) { namesMap().then(names => reply({ names }), () => reply({ names: null })); return true; }
+  if (msg.type === 'focus' && fromConsole(sender)) {
     // Open the panel on the clicked object, or on the list of objects that
     // share the name (a click is the user gesture the panel needs).
     const keys = (Array.isArray(msg.keys) ? msg.keys : [msg.key]).filter(k => typeof k === 'string').slice(0, 20).map(k => k.slice(0, 600));
@@ -67,7 +84,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     chrome.storage.session.set({ focus: { key: keys[0], keys, at: Date.now() } });
     return false;
   }
-  if (msg.type === 'index-updated') {
+  if (msg.type === 'index-updated' && fromOwnPage(sender)) {
     chrome.tabs.query({ url: CONSOLE_ORIGINS }).then(tabs => tabs.forEach(t => chrome.tabs.sendMessage(t.id, { type: 'refresh' }).catch(() => {}))).catch(() => {});
     return false;
   }

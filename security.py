@@ -90,9 +90,25 @@ def extension_origin() -> str:
 
 
 def extension_may_post(origin: str, path: str) -> bool:
-    """The extension's origin, on one of its read-only endpoints."""
+    """The extension's origin, on one of its read-only endpoints. `path` is
+    the path the router matches (the request scope's "path"), compared
+    exactly: no trailing newline, slash or other variant is the same path."""
     ext = extension_origin()
-    return bool(ext) and origin == ext and (path in EXTENSION_POST_PATHS or bool(_EXTENSION_CANCEL.match(path)))
+    return bool(ext) and origin == ext and (path in EXTENSION_POST_PATHS or bool(_EXTENSION_CANCEL.fullmatch(path)))
+
+
+def from_extension(request: Request) -> bool:
+    """Did this request come from the companion extension's origin (its
+    Origin header, or its Referer when a browser sent no Origin)? Endpoints
+    the extension may call use it to narrow what it may do there further."""
+    ext = extension_origin()
+    if not ext:
+        return False
+    origin = request.headers.get("origin")
+    if origin:
+        return origin.lower().rstrip("/") == ext
+    p = urlparse(request.headers.get("referer") or "")
+    return f"{p.scheme}://{p.netloc}".lower() == ext
 
 # Hostname pattern for vanity_domain (RFC-1123 label, dot-separated).
 _HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
@@ -435,7 +451,9 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
         o = origin.lower().rstrip("/")
         if o in ALLOWED_ORIGINS:
             return True
-        if extension_may_post(o, request.url.path):
+        # The router's own path (scope["path"]), not request.url.path: the URL
+        # parser drops tabs and newlines, so the two can differ.
+        if extension_may_post(o, request.scope.get("path") or ""):
             return True
         host = (request.headers.get("host") or "").lower()
         return bool(host) and o == f"{request.url.scheme}://{host}"
