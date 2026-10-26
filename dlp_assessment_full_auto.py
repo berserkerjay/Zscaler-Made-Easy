@@ -179,21 +179,32 @@ _STOPPED = ({"error": "run stopped", "status": 0}, 0)
 _UNANSWERED_CODES = frozenset({0, 429, 502, 503, 504})
 
 
+def _now():
+    """The pacer's clock (wall time, as zia_rate's holds). One seam, so a
+    test drives the pacing with a fake clock instead of real sleeps."""
+    return time.time()
+
+
+def _sleep(seconds):
+    """The pacer's sleep; see _now."""
+    time.sleep(seconds)
+
+
 def _nap(seconds, stop=None):
     """Sleep `seconds`, in steps of at most half a second when `stop()` can
     end it early. True when it slept the whole time, False when stopped."""
-    end = time.time() + max(0.0, float(seconds))
+    end = _now() + max(0.0, float(seconds))
     if stop is None:
         if seconds > 0:
-            time.sleep(seconds)
+            _sleep(seconds)
         return True
     while True:
         if stop():
             return False
-        left = end - time.time()
+        left = end - _now()
         if left <= 0:
             return True
-        time.sleep(min(0.5, left))
+        _sleep(min(0.5, left))
 
 
 class _TenantGate:
@@ -291,11 +302,11 @@ class _RateLimiter:
             import zia_rate
             left = zia_rate.paused_for(s._key, reads=True)
             if left > 0:
-                until = max(until, time.time() + left)
+                until = max(until, _now() + left)
         return until
     def held_for(s):
         """Seconds left on the tenant's read hold (0 when there is none)."""
-        return max(0.0, s._held_until() - time.time())
+        return max(0.0, s._held_until() - _now())
     def wait(s, stop=None):
         """Wait for this request's turn. With `stop` (a callable: the run's
         Stop), a stop seen while waiting, also during a long 429 pause,
@@ -306,7 +317,7 @@ class _RateLimiter:
                 return False
             held_until = s._held_until()   # outside the gate's lock: zia_rate takes its own
             with g.lock:
-                now = time.time()
+                now = _now()
                 at = max(now, g.next, g.pause_until, held_until)
                 if at - now < 5:            # short waits are booked inside the lock
                     g.next = at + s.min_gap
@@ -322,7 +333,7 @@ class _RateLimiter:
         and through zia_rate the SDK's sessions and other processes too."""
         g = s._gate
         with g.lock:
-            g.pause_until = max(g.pause_until, time.time() + float(seconds))
+            g.pause_until = max(g.pause_until, _now() + float(seconds))
         if s._key:
             import zia_rate
             zia_rate.hold(float(seconds), key=s._key, reads=True)
@@ -2600,13 +2611,13 @@ def main():
     """Command-line entry point: run the assessment against one tenant and
     write the JSON (and Word) report. Exit code 0 on success, 1 when the
     tenant refuses the credentials, 2 for a configuration or file error."""
-    ap=argparse.ArgumentParser(description="Zscaler Assessment — Full Auto")
+    ap=argparse.ArgumentParser(description="Zscaler Made Easy — Full Auto")
     ap.add_argument("--config"); ap.add_argument("--output")
     ap.add_argument("--scope", default="dlp", choices=["dlp","full","zia","zpa","zcc","all"],
                     help="Assessment scope: dlp (default), full (dlp+platform), zia, zpa, zcc, or all")
     args=ap.parse_args(); con=Console() if HAS_RICH else None
     def prompt_config():
-        print("\n"+"="*64+"\n  ZSCALER ASSESSMENT — FULL AUTO\n"+"="*64)
+        print("\n"+"="*64+"\n  ZSCALER MADE EASY — FULL AUTO\n"+"="*64)
         c={}; c["org_name"]=input("  Org: ").strip(); c["assessor"]=input("  Assessor: ").strip()
         print("  Clouds: "+", ".join(f"{i+1}.{k}" for i,k in enumerate(CLOUDS)))
         try: c["cloud"]=CLOUDS[int(input("  Select: ").strip())-1]
@@ -2616,7 +2627,7 @@ def main():
         if input("  Run? (y/n): ").strip().lower()!="y": sys.exit(0)
         return c
     def prompt_config_rich(con):
-        con.print(Panel.fit("[bold cyan]ZSCALER ASSESSMENT — FULL AUTO[/]\n[dim]Zero manual checks[/]",border_style="cyan"))
+        con.print(Panel.fit("[bold cyan]ZSCALER MADE EASY — FULL AUTO[/]\n[dim]Zero manual checks[/]",border_style="cyan"))
         c={}; c["org_name"]=Prompt.ask("[bold]Org"); c["assessor"]=Prompt.ask("[bold]Assessor")
         t=Table(show_header=False,box=None)
         for i,k in enumerate(CLOUDS,1): t.add_row(f"  {i}.",k)

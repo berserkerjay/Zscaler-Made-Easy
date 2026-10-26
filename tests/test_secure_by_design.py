@@ -142,7 +142,7 @@ def test_tls_hints_point_to_a_ca_bundle_and_state_the_risk_of_switching_off():
     import requests
     import zscaler_update_check as uc
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for name in ("START_Zscaler_Assessment.bat", "local_settings.env.example"):
+    for name in ("START_Zscaler_Made_Easy.bat", "local_settings.env.example"):
         with open(os.path.join(root, name), encoding="utf-8") as f:
             text = re.sub(r"\s*\n\s*(?:REM\b|#)?\s*", " ", f.read())   # comment lines joined into prose
         at = text.index("ZSCALER_UPDATE_VERIFY_TLS=0")

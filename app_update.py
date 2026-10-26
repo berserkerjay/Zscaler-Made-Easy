@@ -1,6 +1,6 @@
 """
 Update the app in place: from the web UI (Update app on the Start here
-card) or from UPDATE_Zscaler_Assessment.bat, which runs this file.
+card) or from UPDATE_Zscaler_Made_Easy.bat, which runs this file.
 
 What an update does
 -------------------
@@ -57,7 +57,7 @@ SETTING_KEYS = (
     "ZSCALER_CLOUD", "ZSCALER_VANITY_DOMAIN", "ZSCALER_CLIENT_ID", "ZSCALER_CLIENT_SECRET",
     "ENABLE_WRITE_ACTIONS",
 )
-START_SCRIPTS = ("START_Zscaler_Assessment.bat", "START_Zscaler_Assessment_WRITES_ENABLED.bat")
+START_SCRIPTS = ("START_Zscaler_Made_Easy.bat", "START_Zscaler_Made_Easy_WRITES_ENABLED.bat")
 _SET_RE = re.compile(r"^\s*set\s+\"?([A-Z_][A-Z0-9_]*)=([^\"\r\n]*)\"?\s*$", re.I)
 
 
@@ -237,7 +237,8 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
     DLP_CHECK_GITHUB_TOKEN is sent (only to api.github.com, never logged),
     as github_branch_head() does.
 
-    Skipped, not failed, when origin is not github.com, no token is set
+    Skipped, not failed, when origin is not github.com, origin is a fork
+    or mirror rather than the upstream repository, no token is set
     for the private repository, or the API cannot be reached (offline,
     blocked outbound) — {"checked": False, "reason": ...}; update() then
     records the skip as a visible step. Otherwise
@@ -246,6 +247,15 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
     if not owner_repo:
         return {"checked": False, "reason": "origin is not a github.com remote"}
     owner, repo = owner_repo
+    # Only the upstream repository counts: a fork or a mirror on github.com
+    # would vouch for whatever it serves itself, so "verified" would mean
+    # nothing. Deny by default; DLP_CHECK_GITHUB_REPO names another
+    # repository the operator trusts (the same setting github_branch_head uses).
+    upstream = os.environ.get("DLP_CHECK_GITHUB_REPO", "").strip() or UPSTREAM_REPO
+    if f"{owner}/{repo}".lower() != upstream.lower():
+        return {"checked": False, "reason": (f"origin is {owner}/{repo}, not the upstream repository {upstream} (a fork or a mirror), "
+                                             "so GitHub's API for it cannot vouch for the pull. Set DLP_CHECK_GITHUB_REPO to it "
+                                             "only if that is the repository you trust")}
     token = os.environ.get("DLP_CHECK_GITHUB_TOKEN", "").strip()
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     if token:
@@ -661,14 +671,17 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
                 result["deps_ok"] = cp.returncode == 0
                 step("Install Python dependencies", cp.returncode == 0,
                      "requirements.lock installed (hash-verified)" if cp.returncode == 0
-                     else "pip reported a problem; the app still runs. If a feature fails to import, run INSTALL_Zscaler_Assessment.bat once. "
+                     else "pip reported a problem; the app still runs. If a feature fails to import, run INSTALL_Zscaler_Made_Easy.bat once. "
                           + (cp.stderr or cp.stdout or "").strip()[-400:], soft=True)
             except subprocess.TimeoutExpired:
                 result["deps_ok"] = False
-                step("Install Python dependencies", False, "pip did not finish within 5 minutes; run INSTALL_Zscaler_Assessment.bat once.", soft=True)
+                step("Install Python dependencies", False, "pip did not finish within 5 minutes; run INSTALL_Zscaler_Made_Easy.bat once.", soft=True)
             except Exception as e:  # noqa: BLE001
                 result["deps_ok"] = False
                 step("Install Python dependencies", False, str(e)[:300], soft=True)
+    sc = refresh_shortcuts(app_dir)
+    if sc is not None:
+        step("Refresh the desktop shortcuts", sc["ok"], sc["detail"], soft=True)
     result["ok"] = True
     result["restart_required"] = result["updated"]
     return result
@@ -689,6 +702,61 @@ def _restore(app_dir: str, stashed: bool, step, result: Dict[str, Any]) -> None:
              "(run  git stash list  in the app folder). The app runs on the new build. " + _err(cp), soft=True)
 
 
+# ── Shortcuts ─────────────────────────────────────────────────────────
+
+SHORTCUT_NAME = "Zscaler Made Easy.lnk"
+# What the desktop and Start Menu shortcuts were called before the rename
+# to Zscaler Made Easy: an update replaces such a shortcut with the new one.
+LEGACY_SHORTCUT_NAME = "Zscaler Assessment.lnk"
+SHORTCUT_TIMEOUT = 60
+
+# Run by powershell -Command with the app folder in the environment
+# (DLPCHECK_SHORTCUT_APP_DIR), never in the script text, so no folder name
+# can change what PowerShell runs. Only a shortcut that already exists and
+# belongs to this folder (its working directory) is rewritten: a shortcut
+# the user deleted is not brought back, and one that starts another copy of
+# the app is left alone. The old name goes once the new shortcut exists.
+SHORTCUT_SCRIPT = (
+    "$ErrorActionPreference = 'Stop'; $app = $env:DLPCHECK_SHORTCUT_APP_DIR.TrimEnd('\\'); "
+    "$ws = New-Object -ComObject WScript.Shell; "
+    "foreach ($folder in 'Desktop', 'Programs') { "
+    "$dir = [Environment]::GetFolderPath($folder); if (-not $dir) { continue }; "
+    f"$new = Join-Path $dir '{SHORTCUT_NAME}'; $old = Join-Path $dir '{LEGACY_SHORTCUT_NAME}'; "
+    "$ours = @($new, $old | Where-Object { (Test-Path -LiteralPath $_) -and "
+    "($ws.CreateShortcut($_).WorkingDirectory.TrimEnd('\\') -eq $app) }); "
+    "if ($ours.Count -eq 0) { continue }; "
+    "$lnk = $ws.CreateShortcut($new); $lnk.TargetPath = 'wscript.exe'; "
+    "$lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Made_Easy.vbs') + [char]34; "
+    "$lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; "
+    "$lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save(); "
+    "if ((Test-Path -LiteralPath $new) -and ($old -in $ours)) { Remove-Item -LiteralPath $old }; "
+    "Write-Output $folder }"
+)
+
+
+def refresh_shortcuts(app_dir: str) -> Optional[Dict[str, Any]]:
+    """Windows only (None elsewhere): rewrite this folder's desktop and
+    Start Menu shortcuts as "Zscaler Made Easy" pointing at the current
+    silent launcher, and remove one under the old name. Never raises; the
+    update reports the result as a soft step."""
+    if sys.platform != "win32":
+        return None
+    env = {**os.environ, "DLPCHECK_SHORTCUT_APP_DIR": os.path.abspath(app_dir)}
+    try:
+        cp = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", SHORTCUT_SCRIPT],
+                            cwd=app_dir, env=env, capture_output=True, text=True, timeout=SHORTCUT_TIMEOUT,
+                            creationflags=0x08000000)   # CREATE_NO_WINDOW
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "detail": f"Could not run PowerShell ({type(e).__name__}); the shortcuts were left as they were."}
+    if cp.returncode != 0:
+        return {"ok": False, "detail": "PowerShell could not rewrite the shortcuts (a locked-down PowerShell refuses it); "
+                                       "they were left as they were. " + (cp.stderr or cp.stdout or "").strip()[-300:]}
+    done = [line.strip() for line in (cp.stdout or "").splitlines() if line.strip() in ("Desktop", "Programs")]
+    names = {"Desktop": "desktop", "Programs": "Start Menu"}
+    return {"ok": True, "detail": ("Rewrote the " + " and ".join(names[d] for d in done) + " shortcut as Zscaler Made Easy"
+                                   if done else "No shortcut of this folder to rewrite")}
+
+
 # ── Restart ───────────────────────────────────────────────────────────
 
 def restart_command(app_dir: str) -> List[str]:
@@ -702,8 +770,8 @@ def restart_command(app_dir: str) -> List[str]:
     console ("Input redirection is not supported") and the relaunch
     silently never happened."""
     if sys.platform == "win32":
-        vbs = os.path.join(app_dir, "START_Zscaler_Assessment.vbs")
-        bat = os.path.join(app_dir, "START_Zscaler_Assessment.bat")
+        vbs = os.path.join(app_dir, "START_Zscaler_Made_Easy.vbs")
+        bat = os.path.join(app_dir, "START_Zscaler_Made_Easy.bat")
         if os.path.isfile(vbs):
             return ["wscript.exe", "//B", "//Nologo", vbs, "/restart"]
         return ["cmd", "/c", f'ping -n 4 127.0.0.1 >nul && "{bat}"']
@@ -719,8 +787,8 @@ def restart_command(app_dir: str) -> List[str]:
 def manual_restart_hint(app_dir: str) -> str:
     """What to do by hand when the relaunch does not come back."""
     if sys.platform == "win32":
-        return ("Close the app with STOP_Zscaler_Assessment.bat and open it again from the desktop shortcut "
-                f"(or run START_Zscaler_Assessment.bat in {app_dir}). launcher.log next to the app records why a silent start failed.")
+        return ("Close the app with STOP_Zscaler_Made_Easy.bat and open it again from the desktop shortcut "
+                f"(or run START_Zscaler_Made_Easy.bat in {app_dir}). launcher.log next to the app records why a silent start failed.")
     return f"Start it again: cd \"{app_dir}\" && ./start.sh   (./stop.sh first if it says the port is in use)"
 
 
@@ -760,7 +828,7 @@ def schedule_restart(app_dir: str, delay: float = 0.8, dry_run: bool = False) ->
     return {"scheduled": True, "command": cmd, "hint": manual_restart_hint(app_dir)}
 
 
-# ── Command line (used by UPDATE_Zscaler_Assessment.bat) ──────────────
+# ── Command line (used by UPDATE_Zscaler_Made_Easy.bat) ──────────────
 
 def main(argv: Optional[List[str]] = None) -> int:
     import argparse

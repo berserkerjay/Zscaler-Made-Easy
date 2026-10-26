@@ -33,6 +33,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 RUNNING, DONE, FAILED, CANCELLED = "running", "done", "failed", "cancelled"
 
 KEEP_SECONDS = 3600.0     # finished jobs stay this long
+MAX_FINISHED_JOBS = 200   # and at most this many of them (the oldest go first): each can hold a result and a file
 MAX_LOG_LINES = 5000      # a runaway log is cut at the top, never grows unbounded
 
 JobFn = Callable[[Callable[[str], None], threading.Event], Dict[str, Any]]
@@ -58,6 +59,9 @@ class Job:
     lock: threading.Lock = field(default_factory=threading.Lock)
     # Who started it (the start endpoint's actor), when known.
     actor: Optional[str] = None
+    # "extension" when the companion browser extension started it: the only
+    # jobs the extension may stop (dlp_api_server.dlp_pack_job_cancel).
+    started_by: Optional[str] = None
     # The tenant's ZIA rate-limit key, once the run inside knows it
     # (dlp_api_server._keyed), so the snapshot can say when a pause ends.
     rate_key: Optional[str] = None
@@ -342,13 +346,20 @@ def snapshot(job: Job, since: int = 0) -> Dict[str, Any]:
 
 
 def prune(now: Optional[float] = None) -> int:
-    """Drop finished jobs older than KEEP_SECONDS. Returns how many."""
+    """Drop finished jobs older than KEEP_SECONDS, then the oldest finished
+    ones beyond MAX_FINISHED_JOBS, so a burst of starts cannot pile up
+    results and files in memory for an hour. Running jobs are never
+    dropped. Returns how many were dropped."""
     now = now or time.time()
     with _registry_lock:
         old = [k for k, j in _jobs.items() if j.finished and now - j.finished > KEEP_SECONDS]
         for k in old:
             del _jobs[k]
-    return len(old)
+        done = sorted((j.finished, k) for k, j in _jobs.items() if j.finished)
+        extra = [k for _, k in done[:max(0, len(done) - MAX_FINISHED_JOBS)]]
+        for k in extra:
+            del _jobs[k]
+    return len(old) + len(extra)
 
 
 def running() -> List[Job]:

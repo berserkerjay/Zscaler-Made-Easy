@@ -237,8 +237,8 @@ def test_the_history_keeps_the_last_30_runs_newest_first(tmp_path):
 
 def test_the_state_file_follows_the_update_check_cache_folder(monkeypatch, tmp_path):
     monkeypatch.delenv("DLP_CHECK_BEACON_STATE")
-    monkeypatch.setattr(zu, "_cache_path", lambda: str(tmp_path / "ZscalerAssessment" / "update_cache.json"))
-    assert beacon.state_path() == str(tmp_path / "ZscalerAssessment" / "beacon_state.json")
+    monkeypatch.setattr(zu, "_cache_path", lambda: str(tmp_path / "ZscalerMadeEasy" / "update_cache.json"))
+    assert beacon.state_path() == str(tmp_path / "ZscalerMadeEasy" / "beacon_state.json")
 
 
 # ── Offline and unreachable ───────────────────────────────────────────

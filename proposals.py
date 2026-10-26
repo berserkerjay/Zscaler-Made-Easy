@@ -18,6 +18,7 @@ by tenant. Every decision is recorded in audit.log.
 """
 from __future__ import annotations
 
+import md_safe
 import hashlib
 import json
 import os
@@ -368,15 +369,16 @@ def set_status(tenant: str, pid: str, status: str, **fields: Any) -> Optional[Di
 
 
 def to_markdown(tenant: str, items: List[Dict[str, Any]]) -> str:
-    lines = [f"# Proposals — {tenant}", ""]
+    lines = [f"# Proposals — {md_safe.text(tenant)}", ""]
     if not items:
         lines.append("Nothing open.")
     for p in items:
-        lines.append(f"## [{p.get('status')}] {p.get('title')}")
-        lines.append(f"- Kind: {p.get('label')} · gate: {p.get('gate')} · first raised {p.get('created_at')} · seen {p.get('times_seen', 1)}×")
-        lines.append(f"- Change: {json.dumps(p.get('change'))}")
-        lines.append(f"- Expected: {p.get('expected_effect')}")
-        lines.append(f"- Rollback: {json.dumps(p.get('rollback'))}")
-        lines.append(f"- Evidence: {json.dumps(p.get('evidence'))[:600]}")
+        t = md_safe.text
+        lines.append(f"## [{t(p.get('status'))}] {t(p.get('title'))}")
+        lines.append(f"- Kind: {t(p.get('label'))} · gate: {t(p.get('gate'))} · first raised {t(p.get('created_at'))} · seen {t(p.get('times_seen', 1))}×")
+        lines.append(f"- Change: {md_safe.code(json.dumps(p.get('change')))}")
+        lines.append(f"- Expected: {t(p.get('expected_effect'))}")
+        lines.append(f"- Rollback: {md_safe.code(json.dumps(p.get('rollback')))}")
+        lines.append(f"- Evidence: {md_safe.code(json.dumps(p.get('evidence')), 600)}")
         lines.append("")
     return "\n".join(lines)

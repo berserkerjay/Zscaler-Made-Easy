@@ -105,7 +105,7 @@ def test_profile_secret_goes_to_the_file_without_keyring_only_when_opted_in(monk
 def test_installs_are_hash_pinned_and_container_files_are_present():
     lock = open(os.path.join(ROOT, "requirements.lock")).read()
     assert lock.count("--hash=sha256:") > 100 and "fastapi==" in lock and "zscaler-sdk-python==" in lock
-    assert "--require-hashes" in open(os.path.join(ROOT, "INSTALL_Zscaler_Assessment.bat")).read()
+    assert "--require-hashes" in open(os.path.join(ROOT, "INSTALL_Zscaler_Made_Easy.bat")).read()
     assert "--require-hashes" in open(os.path.join(ROOT, "app_update.py")).read()
     df = open(os.path.join(ROOT, "Dockerfile")).read()
     assert "USER dlpcheck" in df and "--require-hashes" in df and "HEALTHCHECK" in df

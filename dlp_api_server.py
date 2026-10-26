@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Zscaler Assessment API Server + Web GUI
-=========================================
+Zscaler Made Easy API Server + Web GUI
+========================================
 FastAPI server with SSE streaming and a web frontend.
 
 Run:
@@ -167,7 +167,7 @@ _security.require_safe_bind()
 
 @app.middleware("http")
 async def _no_stale_static(request, call_next):
-    """The GUI is updated in place by UPDATE_Zscaler_Assessment.bat; make
+    """The GUI is updated in place by UPDATE_Zscaler_Made_Easy.bat; make
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
@@ -189,6 +189,10 @@ app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
 
 
 # ── Generic exception handler — never leak stack traces ────────────
+_LOG_LINE_MAX = 2000      # characters of one traceback entry (or the message) written to server.log
+_LOG_TRACE_MAX = 32768    # characters of one whole traceback
+
+
 @app.exception_handler(Exception)
 async def _safe_exception_handler(request: Request, exc: Exception):
     """Catch-all so internal errors never expose tracebacks to the client."""
@@ -202,12 +206,148 @@ async def _safe_exception_handler(request: Request, exc: Exception):
         )
     # In normal mode, return a generic message — log details server-side only
     # (server.log carries the traceback so the failure can be reported).
+    # Bounded: an exception quoting a request value (a 10 MB field) must not
+    # write tens of megabytes to server.log per call.
     import traceback
-    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path}: {exc}\n{traceback.format_exc()}")
+    parts = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    trace = "".join(p if len(p) <= _LOG_LINE_MAX else p[:_LOG_LINE_MAX] + " … [cut]\n" for p in parts)
+    if len(trace) > _LOG_TRACE_MAX:
+        trace = trace[:_LOG_TRACE_MAX // 2] + "\n… [cut] …\n" + trace[-_LOG_TRACE_MAX // 2:]
+    what = str(exc)
+    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path[:300]}: {what[:_LOG_LINE_MAX]}\n{trace}")
     return JSONResponse(
         {"detail": f"Internal error ({type(exc).__name__}). The traceback is in server.log next to the app; run with ZSCALER_DEBUG=1 to see it here."},
         status_code=500,
     )
+
+
+# ── Error bodies never echo the request back ───────────────────────
+# FastAPI's 422 lists each invalid field with its `input`: for a missing
+# field that is the whole body, client_secret and password included, and a
+# 200 kB field comes back as a 200 kB error. A refusal says which field and
+# why (`loc`, `msg`, `type`: what the pages read) and nothing the caller
+# sent; any string in an HTTPException detail is cut to _MAX_DETAIL_CHARS so
+# a message quoting a bad value cannot reflect an unbounded one.
+_MAX_DETAIL_CHARS = 1000
+_MAX_LOC_CHARS = 100
+
+
+def _bounded(value: Any, limit: int = _MAX_DETAIL_CHARS) -> Any:
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[:limit] + "…"
+    if isinstance(value, dict):
+        return {(_bounded(k, _MAX_LOC_CHARS) if isinstance(k, str) else k): _bounded(v, limit) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_bounded(v, limit) for v in value]
+    return value
+
+
+from fastapi.exceptions import RequestValidationError as _RequestValidationError
+from starlette.exceptions import HTTPException as _StarletteHTTPException
+from fastapi.exception_handlers import http_exception_handler as _default_http_exception_handler
+
+
+@app.exception_handler(_RequestValidationError)
+async def _validation_error_handler(request: Request, exc: _RequestValidationError):
+    """422 with each problem's loc / msg / type only (never `input`, `ctx` or `url`)."""
+    errors = [{"type": str(e.get("type", "")), "loc": [_bounded(p, _MAX_LOC_CHARS) for p in e.get("loc", ())],
+               "msg": _bounded(str(e.get("msg", "")))} for e in exc.errors()[:50]]
+    return JSONResponse({"detail": errors}, status_code=422)
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def _bounded_http_exception_handler(request: Request, exc: _StarletteHTTPException):
+    """Every HTTPException, its detail's strings bounded (headers such as Retry-After kept)."""
+    detail = _bounded(exc.detail)
+    if detail != exc.detail:
+        exc = _StarletteHTTPException(status_code=exc.status_code, detail=detail, headers=exc.headers)
+    return await _default_http_exception_handler(request, exc)
+
+
+async def _json_object(request: Request) -> Dict[str, Any]:
+    """The body of an endpoint that reads it itself (no request model), as a
+    JSON object; 400 for a body that is not JSON or not an object (deny by
+    default: such a body never reaches the handler's .get())."""
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001 - not JSON, not UTF-8, nested past the parser's depth
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body: send a JSON object.")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Invalid request body: send a JSON object.")
+    return data
+
+
+def _object_list(data: Dict[str, Any], key: str, missing: str) -> List[Dict[str, Any]]:
+    """`data[key]` as a non-empty list of JSON objects; 400 (`missing` when absent or empty) otherwise."""
+    items = data.get(key)
+    if not items:
+        raise HTTPException(status_code=400, detail=missing)
+    if not isinstance(items, list) or not all(isinstance(x, dict) for x in items):
+        raise HTTPException(status_code=400, detail=f"`{key}` must be a list of JSON objects.")
+    return items
+
+
+# The text fields of an assessment check row (the `complete` payload the
+# report endpoints take back): each is text, and a missing or null one is "".
+_CHECK_TEXT_KEYS = ("id", "section", "label", "status", "detail")
+
+
+def _check_rows(data: Dict[str, Any], missing: str) -> List[Dict[str, Any]]:
+    """`data["checks"]` as check rows whose text fields are strings (filled
+    with "" when absent or null); 400 naming the first field that is not text."""
+    rows = _object_list(data, "checks", missing)
+    for i, row in enumerate(rows):
+        for k in _CHECK_TEXT_KEYS:
+            if row.get(k) is None:
+                row[k] = ""
+            elif not isinstance(row[k], str):
+                raise HTTPException(status_code=400, detail=f"`checks[{i}].{k}` must be text.")
+    return rows
+
+
+_XML_UNSAFE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def _xml_text(value: Any) -> Any:
+    """`value` with every string stripped of the characters XML 1.0 cannot
+    hold (control characters, lone surrogates): a Word document is XML, and
+    one such character in a check or metadata field made the build fail (500)."""
+    if isinstance(value, str):
+        return _XML_UNSAFE.sub("", value)
+    if isinstance(value, dict):
+        return {_xml_text(k): _xml_text(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_xml_text(v) for v in value]
+    return value
+
+
+def _rule_rows(data: Dict[str, Any], missing: str) -> List[Dict[str, Any]]:
+    """`data["rules"]` (the Evaluate All Rules migration's DLP rules) as
+    objects whose name, state and action are text or absent; 400 otherwise."""
+    rows = _object_list(data, "rules", missing)
+    for i, row in enumerate(rows):
+        for k in ("name", "state", "action"):
+            if row.get(k) is not None and not isinstance(row[k], str):
+                raise HTTPException(status_code=400, detail=f"`rules[{i}].{k}` must be text.")
+    return rows
+
+@app.exception_handler(RecursionError)
+async def _json_too_deep_handler(request: Request, exc: RecursionError):
+    """A request body nested deeper than the JSON decoder goes (routes that
+    read request.json() themselves) is the caller's error: 400, not 500."""
+    if "decoding a JSON" in str(exc):
+        return JSONResponse({"detail": "The JSON body is nested too deeply."}, status_code=400)
+    return await _safe_exception_handler(request, exc)
+
+
+# Assessment results posted back for a report view or export: an assessment
+# has a few hundred checks (report_exports.MAX_CHECKS bounds the workbook);
+# more is refused, and the work runs off the event loop.
+def _require_report_size(results: Any) -> None:
+    import report_exports
+    if isinstance(results, list) and len(results) > report_exports.MAX_CHECKS:
+        raise HTTPException(status_code=413, detail=f"Too many checks in one report ({len(results)}; at most {report_exports.MAX_CHECKS}).")
+
 
 # Serve static files (web GUI)
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -411,6 +551,7 @@ async def auth_unlock(req: UnlockRequest, request: Request):
     if _sso.sso_enabled():
         raise HTTPException(status_code=403, detail="This server requires SSO sign-in. Use the Sign in button, not a pasted token.")
     if not _security.ui_token_ok(req.token):
+        _security._audit_denied(request, "auth_denied", "the UI token offered to unlock was not valid")
         raise HTTPException(status_code=401, detail="That UI token is not valid for this server. Read ui_token.txt next to the app (or the console) and try again.")
     resp = JSONResponse({"ok": True, "required": True})
     _security.set_ui_cookie(resp, request)
@@ -418,15 +559,19 @@ async def auth_unlock(req: UnlockRequest, request: Request):
 
 
 @app.get("/api/auth/sso/login")
-async def sso_login():
-    """Start an OpenID Connect sign-in: redirect to the identity provider."""
+async def sso_login(request: Request):
+    """Start an OpenID Connect sign-in: redirect to the identity provider,
+    with a cookie that binds the sign-in to this browser."""
     if not _sso.sso_enabled():
         raise HTTPException(status_code=404, detail="SSO is not enabled on this server.")
+    binding = _sso.new_login_binding()
     try:
-        url = _sso.start_login()
+        url = _sso.start_login(binding)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not start SSO sign-in: {e}")
-    return RedirectResponse(url, status_code=302)
+    resp = RedirectResponse(url, status_code=302)
+    _security.set_login_cookie(resp, request, binding)
+    return resp
 
 
 @app.get("/api/auth/sso/callback")
@@ -444,7 +589,7 @@ async def sso_callback(request: Request, code: str = "", state: str = "", error:
     if error:
         return HTMLResponse(f"<p>Sign-in was not completed: {_html.escape(error_description or error)}</p>", status_code=401)
     try:
-        claims = _sso.complete_login(state, code)
+        claims = _sso.complete_login(state, code, request.cookies.get(_security.SSO_LOGIN_COOKIE) or "")
     except Exception as e:
         return HTMLResponse(f"<p>Sign-in failed: could not verify the identity provider's response ({_html.escape(str(e))}).</p>", status_code=401)
     who = str(claims.get("email") or claims.get("sub") or "unknown")
@@ -461,6 +606,7 @@ async def sso_callback(request: Request, code: str = "", state: str = "", error:
     session_id = _sso.create_session(claims)
     resp = RedirectResponse("/", status_code=303)
     _security.set_session_cookie(resp, request, session_id)
+    _security.clear_login_cookie(resp, request)
     _audit.record("sso_login", actor=who, email=claims.get("email"), subject=claims.get("sub"), groups=_sso.claim_groups(claims))
     return resp
 
@@ -484,7 +630,7 @@ async def auth_logout(request: Request):
 async def serve_gui():
     """Serve the web GUI.
     Forces revalidation on every page load so users always get the
-    latest UI after running UPDATE_Zscaler_Assessment.bat — no more
+    latest UI after running UPDATE_Zscaler_Made_Easy.bat — no more
     'Ctrl+F5 to clear cache' surprises.
     """
     index = os.path.join(STATIC_DIR, "index.html")
@@ -549,6 +695,9 @@ class RemediationExecuteRequest(BaseModel):
     check_id: str = ""
     criteria: dict = {}
     dry_run: bool = True
+    confirm: bool = False      # dry_run=false needs confirm=true, the assessor, a writer and write mode
+    assessor: str = ""
+    profile_id: str = ""
 
 
 @app.get("/api/remediation/catalog")
@@ -576,13 +725,14 @@ async def remediation_plan(req: RemediationPlanRequest):
 @app.post("/api/remediation/execute")
 async def remediation_execute(req: RemediationExecuteRequest):
     """Plan + optionally execute. dry_run=True returns the plan only;
-    dry_run=False requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND."""
+    dry_run=False needs a writer, confirm=true, the assessor's name and
+    write mode, all checked before the tenant is signed in to."""
     try:
         from remediation import execute
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
     if not req.dry_run:
-        _security.require_writer()
+        _require_tenant_write(req, confirmed=req.confirm, what="Applying a remediation")
     client = await asyncio.to_thread(_build_client, req)
     result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)
     return result
@@ -944,6 +1094,7 @@ class DLPPackImportRequest(TenantCredsRequest):
     apply_tweaks: bool = True
     verify: bool = True
     plan_hash: str = ""   # the hash of the plan the caller reviewed; without it the endpoint only returns the plan
+    confirm: bool = False  # deploying (plan_hash given) needs confirm=true too
 
 
 class DLPPackDeployRequest(TenantCredsRequest):
@@ -998,6 +1149,10 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     `auth_method` is resolved. A source is used only while the credentials
     are still incomplete for their sign-in, and never mixes a typed
     identity with a stored secret."""
+    try:   # an unknown sign-in method is the caller's mistake: 400 here, never a ValueError (500) further in
+        tenant_auth.normalize_method(getattr(req, "auth_method", ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
     if not tenant_auth.started(creds):
         # Nothing typed for a tenant: the source that has the sign-in decides
@@ -1068,6 +1223,34 @@ def _require_assessor(req: Any) -> str:
     if not name:
         raise HTTPException(status_code=400, detail=ASSESSOR_REQUIRED)
     return name
+
+
+TENANT_WRITE_ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name) before changing the tenant: "
+                                  "every change to a tenant is made in the name of the person who assesses it.")
+
+
+def _require_write_assessor(req: Any) -> str:
+    """_require_assessor for any tenant write, with a message that is not
+    about packs. The name falls back to the saved profile's assessor."""
+    try:
+        return _require_assessor(req)
+    except HTTPException as e:
+        if e.detail == ASSESSOR_REQUIRED:
+            raise HTTPException(status_code=400, detail=TENANT_WRITE_ASSESSOR_REQUIRED)
+        raise
+
+
+def _require_tenant_write(req: Any, *, confirmed: bool, what: str) -> str:
+    """Every refusal a tenant write makes before it signs in (deny by
+    default, fail closed): a writer (SSO), the explicit confirmation, the
+    assessor's name and write mode. Returns the assessor's name."""
+    _security.require_writer()
+    if confirmed is not True:
+        raise HTTPException(status_code=400, detail=f"{what} requires explicit confirmation (confirm=true).")
+    by = _require_write_assessor(req)
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    return by
 
 
 def _tenant_key(c: Dict[str, Any]) -> str:
@@ -1212,6 +1395,7 @@ def _build_sdk_client(creds: Dict[str, str]):
     if c.get("customer_id"):
         # ZPA services build their paths from it (/zpa/mgmtconfig/v1/admin/customers/{customerId}).
         config["customerId"] = c["customer_id"]
+    tenant_auth.bound_sdk_sign_in()   # the SDK's token request has no timeout of its own
     try:
         client = ZscalerClient(config)
         auth = getattr(client, "authenticate", None)
@@ -1219,7 +1403,7 @@ def _build_sdk_client(creds: Dict[str, str]):
             auth()
     except Exception as e:
         _note_auth_failure()
-        reason = str(e).replace(sec, mask_secret(sec))[:200]
+        reason = tenant_auth.mask_secrets(str(e), c)[:200]   # no character or length of the secret, in any encoding
         raise HTTPException(status_code=401, detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason}")
     # Every ZIA answer on this client's session feeds the next preflight's rate-limit check.
     return zia_rate.attach_client(client, rate_key, rate_label)
@@ -1411,7 +1595,13 @@ def _dlp_read_scope(req: Any) -> Dict[str, Any]:
     the scheduled loop reads a profile, plus where it came from. Never
     reads a tenant."""
     import continuous_eval
+    import data_flow
     sc, ch, source = _scope_selection(req)
+    # Only the Scope page's own keys count, exactly as every other tenant
+    # read checks them (_require_in_scope): profile_scope's lenient
+    # spelling ("DLP", " dlp") is for hand-edited saved profiles in the
+    # loop, and must not put a request in scope here (fail closed).
+    sc = [s for s in sc if s in data_flow.SCOPE_KEYS]
     import dlp_analysis
     out = continuous_eval.profile_scope({"scopes": sc, "channels": dlp_analysis.channels(ch, sc)})
     out["required_controls"] = dlp_analysis.requirements(sc, ch)
@@ -1983,6 +2173,10 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
         raise HTTPException(status_code=409, detail=f"Only an approved request can be applied; this one is {rec.get('status')}.")
     if (req.confirm or "").strip().upper() != change_queue.CONFIRM_PHRASE:
         raise HTTPException(status_code=400, detail=f'Type "{change_queue.CONFIRM_PHRASE}" to confirm the apply.')
+    if rec.get("kind") == "pack_deploy":
+        _require_assessor(req)
+    else:
+        _require_write_assessor(req)
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     creds = _tenant_creds(req)
@@ -2131,10 +2325,7 @@ async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
     re-read, update, read-back, recorded way back. Nothing is activated."""
     _security.require_writer()
     import proposal_apply
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Applying requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Applying")
     client = await asyncio.to_thread(_proposal_client, req, tenant)
     logs: list = []
     by = (_security.current_actor() or "")[:80]
@@ -2152,10 +2343,7 @@ async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
     with the same re-read and read-back."""
     _security.require_writer()
     import proposal_apply
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Rolling back requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Rolling back")
     client = await asyncio.to_thread(_proposal_client, req, tenant)
     logs: list = []
     by = (_security.current_actor() or "")[:80]
@@ -2477,8 +2665,8 @@ def _browser_inputs(req: BrowserSecurityRequest) -> Tuple[Dict[str, Any], Dict[s
     before anything is signed in to or read when nothing it reads is in
     scope, or when only ZPA is and it cannot be read (user rule 1)."""
     import browser_security as bs
-    sc, _ch, source = _scope_selection(req)
-    scope = bs.scope_for(sc)
+    sc, ch, source = _scope_selection(req)
+    scope = bs.scope_for(sc, ch)
     if not scope["read"]:
         raise HTTPException(status_code=400, detail=bs.NOTHING_IN_SCOPE)
     scope["source"] = source
@@ -2945,10 +3133,7 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Removal")
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
@@ -3000,10 +3185,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request
     import pack_jobs
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Removal")
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
@@ -3052,14 +3234,18 @@ async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):
 
 
 @app.post("/api/dlp-packs/jobs/{job_id}/cancel")
-async def dlp_pack_job_cancel(job_id: str):
+async def dlp_pack_job_cancel(job_id: str, request: Request):
     """Stop a running job after the write in flight. Nothing more is sent
     to the tenant; activation and the read-back still run so what was
-    written is live and recorded."""
+    written is live and recorded. The browser extension may stop only the
+    read-only export it started itself, never a deploy, removal or any
+    other job (security.EXTENSION_POST_PATHS)."""
     import pack_jobs
     job = pack_jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="No such job.")
+    if _security.from_extension(request) and not (job.kind in _security.EXTENSION_JOB_KINDS and job.started_by == "extension"):
+        raise HTTPException(status_code=403, detail="The browser extension may stop only the export it started. Stop this job in Zscaler Made Easy.")
     return {"job_id": job.id, "cancelled": pack_jobs.cancel(job_id), "status": job.status}
 
 
@@ -3109,7 +3295,7 @@ def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, 
     elif "tunnel connection failed" in low or "proxyerror" in low or "max retries" in low or "name resolution" in low or "nodename" in low:
         cause = "This machine could not reach Zscaler's login service at all (network, proxy or DNS)."
         fix = ("Confirm the vanity domain is the short name from your login URL (acme for acme.zslogin.net). "
-               "If you are behind a corporate proxy, set HTTPS_PROXY in START_Zscaler_Assessment.bat. "
+               "If you are behind a corporate proxy, set HTTPS_PROXY in START_Zscaler_Made_Easy.bat. "
                "Check that outbound HTTPS to *.zslogin.net and api.zsapi.net is allowed.")
     elif "vanity" in low:
         cause = "The vanity domain is not valid."
@@ -3785,6 +3971,8 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
     job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel),
                           label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request),
                           start_token=_start_token(request))
+    if _security.from_extension(request):
+        job.started_by = "extension"   # the one job kind the extension may stop
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -3927,10 +4115,7 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: 
     rec = deployments.get(dep_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Deployment not found.")
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Undo requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Undo")
     creds = _tenant_creds(req)
     _require_same_tenant(rec, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
@@ -3951,8 +4136,15 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
     _security.require_writer()
     import pack_deploy
     pack = _resolve_pack_ids([pack_id])[0]
-    # A deploying call needs the assessor's name before the tenant is signed in to.
-    by = _require_assessor(req) if req.plan_hash else ""
+    # A deploying call needs confirm=true, the assessor's name and write mode
+    # before the tenant is signed in to.
+    by = ""
+    if req.plan_hash:
+        by = _require_assessor(req)
+        if req.confirm is not True:
+            raise HTTPException(status_code=400, detail="Deployment requires explicit confirmation (confirm=true).")
+        if not writes_enabled():
+            raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
     if not req.plan_hash:
         report = await asyncio.to_thread(lambda: pack_deploy.preflight(client, [pack], use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
@@ -4016,6 +4208,11 @@ async def dlp_pack_upload(req: DLPPackUploadRequest):
     """Older single-call upload: the three JSON lists in one body. Kept for
     scripts; the Advanced settings tab uses /api/pack-library/upload."""
     _require_pack_library_writes()
+    # Off the event loop, as every upload parser is: a large pack must not hold up every other request.
+    return await asyncio.to_thread(_dlp_pack_upload, req)
+
+
+def _dlp_pack_upload(req: DLPPackUploadRequest) -> Dict[str, Any]:
     import pack_library as pl
     bundle = {"name": req.pack_name, "dictionaries": req.dictionaries or [], "engines": req.engines or [], "policies": req.policies or []}
     try:
@@ -4072,7 +4269,12 @@ async def pack_library_list():
 @app.post("/api/pack-library/preview")
 async def pack_library_preview(req: PackLibraryUploadRequest):
     """Parse and validate an upload without saving it: what it contains,
-    what would block it, what to watch."""
+    what would block it, what to watch. Off the event loop (a large upload
+    must not hold up every other request)."""
+    return await asyncio.to_thread(_pack_library_preview, req)
+
+
+def _pack_library_preview(req: PackLibraryUploadRequest) -> Dict[str, Any]:
     import pack_library as pl
     import pack_channels as _pc
     try:
@@ -4103,8 +4305,13 @@ async def pack_library_preview(req: PackLibraryUploadRequest):
 async def pack_library_upload(req: PackLibraryUploadRequest):
     """Add a pack to the library from JSON, Terraform or a ZIP. It is then
     an ordinary pack: Deploy Policy Packs, the Data Flow Map, the
-    Terraform hand-off and the validator all list it."""
+    Terraform hand-off and the validator all list it. Off the event loop
+    (a large upload must not hold up every other request)."""
     _require_pack_library_writes()
+    return await asyncio.to_thread(_pack_library_upload, req)
+
+
+def _pack_library_upload(req: PackLibraryUploadRequest) -> Dict[str, Any]:
     import pack_library as pl
     try:
         pack = pl.assemble_pack([f.model_dump() for f in req.files], pack_name=req.pack_name, description=req.description)
@@ -4172,11 +4379,8 @@ async def generate_xlsx(request: Request):
     Frameworks, Compliance mapping, Best practices), from the same body
     as /api/report/docx. Scores are recomputed here from the checks."""
     import report_exports
-    try:
-        data = await request.json()
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
-    if not isinstance(data, dict) or not data.get("checks"):
+    data = await _json_object(request)
+    if not data.get("checks"):
         raise HTTPException(status_code=400, detail="No checks in request body — cannot build the workbook.")
     try:
         body = await asyncio.to_thread(report_exports.assessment_workbook, data)
@@ -4933,7 +5137,9 @@ async def console_index(req: ConsoleIndexRequest):
                        + (["zia:ftc"] if zscope["ftc"] else []))
     if not req.refresh:
         hit = ci.cache_get(key)
-        if hit is not None:
+        # Typed credentials share the "server" key: an index kept for another
+        # tenant never answers for this one (it is read again instead).
+        if hit is not None and hit.get("tenant_label") and _same_tenant(hit, creds):
             return hit
     client = await asyncio.to_thread(_build_sdk_client, creds) if channels else None
     zia, zia_note = await asyncio.to_thread(_console_zia, req, zscope)
@@ -5252,6 +5458,15 @@ def _beacon_start_background(online: bool, trigger: str, client: Any = None, lab
     return True
 
 
+def _beacon_running() -> bool:
+    """Whether a Beacon run is in progress. A status read samples this
+    before it loads the history: a run that saves its snapshot and ends
+    while the history is read would otherwise be reported finished with
+    the history from before it (a poller then stops on a missing run)."""
+    import beacon
+    return bool(_BEACON_STATE["running"] or beacon.RUN_LOCK.locked())
+
+
 def _beacon_last_online_age(history: List[Dict[str, Any]]) -> Optional[float]:
     """Seconds since the newest online run, or None when there is none."""
     for s in reversed(history):
@@ -5395,10 +5610,11 @@ async def beacon_get():
     """The latest Beacon snapshot, what changed since the run before it,
     the history (newest first) and the timer."""
     import beacon
+    running = _beacon_running()   # before the read: a run that ends during it still says running, so the page reads again
     history = await asyncio.to_thread(beacon.load_history)
     latest = history[-1] if history else None
     return {"latest": latest, "diff": (latest or {}).get("diff"), "history": beacon.history_rows(history),
-            "running": _BEACON_STATE["running"] or beacon.RUN_LOCK.locked(), "running_since": _BEACON_STATE["running_since"],
+            "running": running or _beacon_running(), "running_since": _BEACON_STATE["running_since"],
             "timer": _beacon_timer(), "state_file": beacon.state_path(), "keep": beacon.HISTORY_KEEP}
 
 
@@ -5411,6 +5627,7 @@ async def beacon_status(refresh: bool = False):
     Reads the kept snapshot only; `refresh` starts an online run in the
     background when the newest online one is over an hour old."""
     import beacon
+    running = _beacon_running()   # before the read, as GET /api/beacon
     history = await asyncio.to_thread(beacon.load_history)
     started = False
     if refresh:
@@ -5430,7 +5647,7 @@ async def beacon_status(refresh: bool = False):
     return {"at": (latest or {}).get("at"), "online_at": (online or {}).get("at"), "drift": drift, "drift_key": key,
             "current_drift": len(current), "pending_confirmation": max(0, len(current) - len(drift)),
             "changes": len(diff.get("changes") or []), "summary": (diff.get("summary") or [None])[0],
-            "running": _BEACON_STATE["running"] or beacon.RUN_LOCK.locked(), "started": started, "details": "/report/beacon",
+            "running": running or _beacon_running(), "started": started, "details": "/report/beacon",
             "next_run_at": _BEACON_STATE.get("next_run_at")}
 
 
@@ -5712,7 +5929,7 @@ async def serve_permissions_page():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Required API Access · Zscaler Made Easy</title>
+<title>Required API access · Zscaler Made Easy</title>
 <style>
   :root {{
     --bg: #0a0e1a;
@@ -5783,7 +6000,7 @@ async def serve_permissions_page():
 <body>
 <main class="container" role="main">
   <button class="print-btn" onclick="window.print()" aria-label="Print this page">🖨 Print</button>
-  <h1><span class="accent">Required API Access</span> per Assessment Scope</h1>
+  <h1><span class="accent">Required API access</span> per assessment scope</h1>
   <p class="lead">Minimum OneAPI role permissions to grant on the API client before running each assessment scope. All checks are read-only.</p>
   <div class="notes">
     <h2>Before you start</h2>
@@ -5987,7 +6204,7 @@ def _latest_remote_commit(branch: str = "main") -> Optional[str]:
 
 
 # ── Update the app from the web UI ─────────────────────────────────────────────
-# Same as UPDATE_Zscaler_Assessment.bat, without a command prompt: pull
+# Same as UPDATE_Zscaler_Made_Easy.bat, without a command prompt: pull
 # the chosen branch fast-forward (main, or the one the install is on),
 # install requirements, restart the server. Localhost only (like write
 # mode); every request also passes the origin check. The branch is one
@@ -6121,7 +6338,9 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
     except Exception:
         get_compliance_for_check = lambda x: {}
 
-    suffix = scope or "all"
+    # Only a scope the catalogue knows names the file: anything else exported every check, and a
+    # caller's text never goes into the Content-Disposition header (non-Latin-1 text there was a 500).
+    suffix = scope if scope in ("dlp", "zia", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac") else "all"
     fname_base = f"zscaler_checks_{suffix}_{datetime.now().strftime('%Y%m%d')}"
 
     if format == "json":
@@ -6139,7 +6358,7 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
             headers={"Content-Disposition": f'attachment; filename="{fname_base}.json"'},
         )
     elif format == "md":
-        lines = [f"# Zscaler Assessment Checks ({suffix})\n",
+        lines = [f"# Zscaler Made Easy Checks ({suffix})\n",
                  f"Total: {len(all_checks)} checks\n",
                  f"Generated: {datetime.now().strftime('%Y-%m-%d')}\n",
                  "\n| Check ID | Section | Description | Frameworks |",
@@ -6198,11 +6417,10 @@ async def compliance_summary(request: Request):
         from compliance_mapping import get_framework_summary
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
-    data = await request.json()
-    results = data.get("checks", [])
-    if not results:
-        raise HTTPException(status_code=400, detail="No checks in request body")
-    return get_framework_summary(results)
+    data = await _json_object(request)
+    results = _check_rows(data, "No checks in request body")
+    _require_report_size(results)
+    return await asyncio.to_thread(get_framework_summary, results)
 
 
 @app.post("/api/compliance/drilldown")
@@ -6212,11 +6430,10 @@ async def compliance_drilldown(request: Request):
         from compliance_mapping import get_control_drilldown
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
-    data = await request.json()
-    results = data.get("checks", [])
-    if not results:
-        raise HTTPException(status_code=400, detail="No checks in request body")
-    return get_control_drilldown(results)
+    data = await _json_object(request)
+    results = _check_rows(data, "No checks in request body")
+    _require_report_size(results)
+    return await asyncio.to_thread(get_control_drilldown, results)
 
 
 @app.post("/api/compliance/report")
@@ -6228,13 +6445,13 @@ async def compliance_report(request: Request):
         from compliance_mapping import get_framework_summary, get_control_drilldown, FRAMEWORK_DESCRIPTIONS
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
-    data = await request.json()
-    results = data.get("checks", [])
-    if not results:
-        raise HTTPException(status_code=400, detail="No checks in request body")
+    data = await _json_object(request)
+    results = _check_rows(data, "No checks in request body")
     selected = [str(k) for k in (data.get("frameworks") or []) if str(k) in FRAMEWORK_DESCRIPTIONS]
-    meta = data.get("metadata") or {}
-    rep = {"summary": get_framework_summary(results), "drilldown": get_control_drilldown(results),
+    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    _require_report_size(results)
+    summary, drilldown = await asyncio.to_thread(lambda: (get_framework_summary(results), get_control_drilldown(results)))
+    rep = {"summary": summary, "drilldown": drilldown,
            "descriptions": dict(FRAMEWORK_DESCRIPTIONS), "frameworks_selected": selected,
            "check_count": len(__import__("channel_scope").visible(results)[0]),   # checks outside the scope are hidden
            "metadata": {k: meta.get(k) for k in ("org", "assessor", "vanity_domain", "cloud", "date") if meta.get(k)}}
@@ -6272,6 +6489,8 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
                 w.writerow([d.get("framework_name") or k, c.get("control"), c.get("status"), c.get("passing_count"), c.get("failing_count"),
                             c.get("review_count"), c.get("info_count"), " ".join(str(e.get("check_id")) for e in (c.get("evidence") or []))])
         return PlainTextResponse(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.csv"'})
+    import md_safe
+    rep = md_safe.escape_data(rep)   # evidence details name tenant objects: inert text in the Markdown
     lines = [f"# Regulatory & Compliance Alignment{' — ' + rep['tenant_label'] if rep.get('tenant_label') else ''}", "",
              f"{rep.get('check_count', 0)} checks mapped. Generated {rep.get('generated_at', '')}.", ""]
     for k in keys:
@@ -6369,10 +6588,11 @@ async def vendor_migrate_vendors():
 @app.post("/api/vendor-migrate/inventory")
 async def vendor_migrate_inventory(req: VendorMigrateInventoryRequest):
     """Inventory an export in memory: every policy with its id and name,
-    the export's SHA-256, and a decisions template to review. Read-only."""
+    the export's SHA-256, and a decisions template to review. Read-only.
+    Off the event loop (a large export must not hold up every other request)."""
     import vendor_migrate
     try:
-        return vendor_migrate.inventory_upload(req.vendor, req.export.model_dump())
+        return await asyncio.to_thread(vendor_migrate.inventory_upload, req.vendor, req.export.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -6384,7 +6604,7 @@ async def vendor_migrate_compile(req: VendorMigrateCompileRequest):
     is blocked. Nothing is written to the tenant or to disk."""
     import vendor_migrate
     try:
-        return vendor_migrate.compile_upload(req.vendor, req.export.model_dump(), req.decisions)
+        return await asyncio.to_thread(vendor_migrate.compile_upload, req.vendor, req.export.model_dump(), req.decisions)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -6399,7 +6619,7 @@ async def vendor_migrate_workspace(req: VendorMigrateCompileRequest):
     blocked. Nothing is written to the tenant or to disk."""
     import vendor_migrate
     try:
-        out = vendor_migrate.compile_upload(req.vendor, req.export.model_dump(), req.decisions)
+        out = await asyncio.to_thread(vendor_migrate.compile_upload, req.vendor, req.export.model_dump(), req.decisions)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not out.get("terraform"):
@@ -6437,21 +6657,20 @@ async def benchmarks_report(request: Request):
     computed from an assessment report (the `complete` payload or a saved
     JSON)."""
     import benchmarks
-    data = await request.json()
-    if not isinstance(data, dict) or not data.get("checks"):
-        raise HTTPException(status_code=400, detail="No checks in request body")
-    return benchmarks.benchmark_report(data)
+    data = await _json_object(request)
+    _require_report_size(_check_rows(data, "No checks in request body"))
+    return await asyncio.to_thread(benchmarks.benchmark_report, data)
 
 
 @app.post("/api/benchmarks/export")
 async def benchmarks_export(request: Request, format: str = "markdown"):
     """The same benchmarks as Markdown (default) or JSON, for a customer note."""
     import benchmarks
-    data = await request.json()
-    if not isinstance(data, dict) or not data.get("checks"):
-        raise HTTPException(status_code=400, detail="No checks in request body")
-    b = benchmarks.benchmark_report(data)
-    org = str((data.get("metadata") or {}).get("org") or "")
+    data = await _json_object(request)
+    _require_report_size(_check_rows(data, "No checks in request body"))
+    b = await asyncio.to_thread(benchmarks.benchmark_report, data)
+    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    org = str(meta.get("org") or "")
     ts = datetime.now().strftime("%Y%m%d")
     if format == "json":
         return Response(content=json.dumps(b, indent=2, default=str), media_type="application/json",
@@ -6657,8 +6876,11 @@ async def migrate_optimize(req: OptimizeRequest):
 
 # ── Step 4: Enable Evaluate All Rules ────────────────────────────
 class EnableRequest(MigrateRequest):
-    """Body for enabling Evaluate All Rules (dry run by default)."""
+    """Body for enabling Evaluate All Rules (dry run by default; dry_run=false
+    needs confirm=true, the assessor, a writer and write mode)."""
     dry_run: bool = True
+    confirm: bool = False
+    assessor: str = ""
 
 
 @app.post("/api/migrate/enable")
@@ -6669,7 +6891,7 @@ async def migrate_enable(req: EnableRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
-        _security.require_writer()
+        _require_tenant_write(req, confirmed=req.confirm, what="Enabling Evaluate All Rules")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
@@ -6677,8 +6899,11 @@ async def migrate_enable(req: EnableRequest):
 
 # ── Step 4b: Delete All Existing Rules (gated) ───────────────────────
 class DeleteAllRequest(MigrateRequest):
-    """Body for deleting every Web DLP rule (dry run by default)."""
+    """Body for deleting every Web DLP rule (dry run by default; dry_run=false
+    needs confirm=true, the assessor, a writer and write mode)."""
     dry_run: bool = True
+    confirm: bool = False
+    assessor: str = ""
 
 
 @app.post("/api/migrate/delete-all")
@@ -6689,7 +6914,7 @@ async def migrate_delete_all(req: DeleteAllRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
-        _security.require_writer()
+        _require_tenant_write(req, confirmed=req.confirm, what="Deleting every Inline Web DLP rule")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(delete_all_rules, client, req.dry_run)
@@ -6701,6 +6926,8 @@ class PostRequest(MigrateRequest):
     proposed_rules: list[dict] = []
     dry_run: bool = True
     mode: str = "auto"  # "auto" | "create" | "update"
+    confirm: bool = False   # dry_run=false needs confirm=true, the assessor, a writer and write mode
+    assessor: str = ""
 
 
 @app.post("/api/migrate/post")
@@ -6718,7 +6945,7 @@ async def migrate_post(req: PostRequest):
     if not req.proposed_rules:
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
     if not req.dry_run:
-        _security.require_writer()
+        _require_tenant_write(req, confirmed=req.confirm, what="Posting rules to the tenant")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
@@ -6792,10 +7019,8 @@ async def migrate_analyze(request: Request):
         from rule_migrator import analyze_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
-    data = await request.json()
-    rules = data.get("rules", [])
-    if not rules:
-        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    data = await _json_object(request)
+    rules = _rule_rows(data, "No rules provided in request body.")
     return analyze_rules(rules)
 
 
@@ -6806,10 +7031,8 @@ async def migrate_plan(request: Request):
         from rule_migrator import generate_migration_plan
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
-    data = await request.json()
-    rules = data.get("rules", [])
-    if not rules:
-        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    data = await _json_object(request)
+    rules = _rule_rows(data, "No rules provided in request body.")
     return generate_migration_plan(rules)
 
 
@@ -6820,10 +7043,8 @@ async def migrate_export(request: Request, format: str = "json"):
         from rule_migrator import generate_migration_plan, export_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
-    data = await request.json()
-    rules = data.get("rules", [])
-    if not rules:
-        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    data = await _json_object(request)
+    rules = _rule_rows(data, "No rules provided in request body.")
     plan = generate_migration_plan(rules)
     content = export_rules(plan["proposed_order"], format=format)
     from fastapi.responses import Response
@@ -7231,22 +7452,26 @@ async def assess_stream(req: AssessRequest):
     )
 
 
+# python-docx appends each paragraph after scanning the body, so the time a
+# document takes grows with the square of its length: 4,000 checks took
+# 70 s (2,000: 22 s, off the event loop). An assessment has a few hundred;
+# more than this is refused.
+_DOCX_MAX_CHECKS = 1000
+
+
 @app.post("/api/report/docx")
 async def generate_docx(request: Request):
-    """Generate a Word doc from assessment results."""
+    """Generate a Word doc from assessment results (at most _DOCX_MAX_CHECKS
+    checks; built off the event loop)."""
     import traceback as _tb
     try:
         from report_docx import generate_report
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"python-docx not installed: {e}. Run: pip install python-docx")
 
-    try:
-        data = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
-
-    results = data.get("checks", [])
-    cfg = dict(data.get("metadata") or {})
+    data = _xml_text(await _json_object(request))
+    results = _check_rows(data, "No checks in request body — cannot generate report.")
+    cfg = dict(data["metadata"]) if isinstance(data.get("metadata"), dict) else {}
     # The Scope page's channel declaration rides along for the Channel Coverage
     # section, and the count of the checks hidden as outside the scope.
     if isinstance(data.get("channel_coverage"), dict):
@@ -7254,14 +7479,18 @@ async def generate_docx(request: Request):
     if data.get("hidden_checks"):
         cfg["hidden_checks"] = data.get("hidden_checks")
 
-    if not results:
-        raise HTTPException(status_code=400, detail="No checks in request body — cannot generate report.")
+    if len(results) > _DOCX_MAX_CHECKS:
+        raise HTTPException(status_code=413, detail=f"Too many results ({len(results)}); "
+                                                    f"a Word report holds at most {_DOCX_MAX_CHECKS} checks.")
 
+    tmp_path = ""
     try:
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
             tmp_path = tmp.name
-        generate_report(results, cfg, tmp_path, compute, maturity)
+        await asyncio.to_thread(generate_report, results, cfg, tmp_path, compute, maturity)
     except Exception as e:
+        if tmp_path:
+            _unlink_quietly(tmp_path)   # a failed report leaves no copy of the assessment behind
         # Surface the real error to the browser instead of a generic 500
         tb = _tb.format_exc()
         print(f"\n=== Word generation failed ===\n{tb}===\n", flush=True)
@@ -7288,11 +7517,8 @@ async def findings_csv(request: Request):
     import io
     import csv_safe
     import channel_scope
-    try:
-        data = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
-    results = (data or {}).get("checks") if isinstance(data, dict) else None
+    data = await _json_object(request)
+    results = data.get("checks")
     if not isinstance(results, list) or not results:
         raise HTTPException(status_code=400, detail="No checks in request body — cannot make the spreadsheet.")
     shown, _hidden = channel_scope.visible(results)
@@ -7566,7 +7792,7 @@ async def report_bypass_page():
 async def report_bypass_get(report_id: str):
     """One bypass inventory report, while it is still in memory."""
     rep = _REPORTS.get(report_id)
-    if not rep:
+    if not rep or not report_id.startswith("bypass-"):   # another kind's report id is not a bypass report
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
     return rep
 
@@ -7574,7 +7800,7 @@ async def report_bypass_get(report_id: str):
 @app.get("/api/report/bypass/export/{report_id}")
 async def report_bypass_export_cached(report_id: str, format: str = "csv"):
     rep = _REPORTS.get(report_id)
-    if not rep:
+    if not rep or not report_id.startswith("bypass-"):
         raise HTTPException(status_code=404, detail="Report not found or expired.")
     return await _bypass_export_response(rep, format)
 
@@ -7863,17 +8089,14 @@ async def path_analyzer_batch_start(req: PathBatchRequest, request: Request):
     """Start the Path analyzer for every host of a HAR file as a job the
     page follows (poll GET /api/dlp-packs/jobs/{job_id}). Only what is in
     scope on the Scope page is read, once for all hosts (or the read named
-    by `report_id`, when it was made for the same scope). Stop ends it
-    between hosts: the hosts done are kept, the rest listed as not
+    by `report_id`, when it was made for the same scope and tenant). Stop
+    ends it between hosts: the hosts done are kept, the rest listed as not
     analyzed. Read-only."""
     import pack_jobs
-    import path_analyzer
     hosts, stats, skipped = _batch_hosts(req)
     scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
-    snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
-    if snapshot is not None and not path_analyzer.reusable(snapshot, scope, req.platform):
-        snapshot = None
     creds = _tenant_creds(req)
+    snapshot = _kept_path_read(req.report_id, scope, creds, req.platform)
     client = await asyncio.to_thread(_build_client, req)
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("path-batch", lambda log, cancel: _run_path_batch(client, req, hosts, stats, skipped, snapshot, label, log, cancel, scope),
@@ -8526,6 +8749,7 @@ async def self_heal_tenant_heal(req: SelfHealHealRequest, request: Request):
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     if (req.confirm or "").strip().upper() != proposals.CONFIRM_PHRASE:
         raise HTTPException(status_code=400, detail=f'Healing changes the tenant: type "{proposals.CONFIRM_PHRASE}" to confirm.')
+    _require_write_assessor(req)
     ids = [str(x) for x in req.ids or [] if x][:50]
     if not ids:
         raise HTTPException(status_code=400, detail="Select at least one drift to heal.")
@@ -8845,6 +9069,21 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
     return out
 
 
+def _kept_path_read(report_id: str, scope: Dict[str, Any], creds: Dict[str, str], platform: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """The kept tenant read `report_id` names, only when it may answer this
+    request: made for exactly this scope (path_analyzer.reusable) and in
+    the tenant these credentials point at (tenant_fingerprint.same_tenant,
+    the label required). Otherwise None and the tenant is read again: a
+    read kept for one tenant never answers for another."""
+    import path_analyzer
+    import tenant_fingerprint
+    snap = _REPORTS.get(report_id) if report_id and report_id.startswith("dataflow-") else None
+    if snap is None or not snap.get("tenant_label") or not tenant_fingerprint.same_tenant(snap, creds):
+        return None
+    ok = path_analyzer.reusable(snap, scope) if platform is None else path_analyzer.reusable(snap, scope, platform)
+    return snap if ok else None
+
+
 async def _path_analysis_inputs(req: PathAnalyzerRequest):
     import path_analyzer
     try:
@@ -8852,10 +9091,8 @@ async def _path_analysis_inputs(req: PathAnalyzerRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
-    snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
-    if snapshot is not None and not path_analyzer.reusable(snapshot, scope):
-        snapshot = None        # a read for another scope is never reused (analyze says so in the log)
     creds = _tenant_creds(req)
+    snapshot = _kept_path_read(req.report_id, scope, creds)   # a read for another scope or tenant is never reused
     client = await asyncio.to_thread(_build_client, req)
     return client, snapshot, tenant_auth.record_label(creds), scope   # never the classic API's admin login (user rule 3)
 
@@ -9177,7 +9414,7 @@ def _port_problem(host: str, port: int) -> Optional[str]:
     except OSError as e:
         if e.errno in (errno.EADDRINUSE, 10048):
             return (f"port {port} on {host} is already in use. Another copy of the app is probably running "
-                    f"(STOP_Zscaler_Assessment.bat or ./stop.sh stops it), or set ZSCALER_PORT to a free port and start again.")
+                    f"(STOP_Zscaler_Made_Easy.bat or ./stop.sh stops it), or set ZSCALER_PORT to a free port and start again.")
         if e.errno in (errno.EADDRNOTAVAIL, errno.EACCES, 10049, 10013):
             return (f"{host}:{port} cannot be used: {e.strerror or e}. Check ZSCALER_BIND_HOST (an address this machine owns; "
                     f"127.0.0.1 is the default) and ZSCALER_PORT (ports below 1024 need administrator rights).")
@@ -9253,7 +9490,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except OSError as e:
         if getattr(e, "errno", None) in (48, 98, 10048) or "address already in use" in str(e).lower():
             print(f"\n  Could not start: port {port} on {host} is already in use.\n"
-                  f"  Another copy of the app is probably running (STOP_Zscaler_Assessment or stop.sh stops it),\n"
+                  f"  Another copy of the app is probably running (STOP_Zscaler_Made_Easy or stop.sh stops it),\n"
                   f"  or set ZSCALER_PORT to a free port and start again.", file=sys.stderr)
         else:
             print(f"\n  Could not start the server on {host}:{port}: {e}\n"

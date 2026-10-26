@@ -32,6 +32,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import zipfile
 
 from native_zscaler import convert_parts, is_native, kind_of
@@ -40,11 +41,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pack_channels as pc
 import pack_ops as ops
+import safe_files
 from dlp_importer import PACKS_ROOT, template_candidates
 
 USER_PACKS_DIRNAME = "user_packs"
 _SLUG_RE = re.compile(r"[^a-z0-9_]+")
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+MAX_EXPRESSION_CHARS = 16384      # an engine expression this long is refused, not read (the built-in packs stay under 1000)
+REF_LOOKUP_BUDGET = 10_000_000    # dictionary-name lookups one pack's engine expressions may cost (about 3 s at worst)
 
 
 def user_packs_dir(root: Optional[str] = None) -> str:
@@ -102,7 +106,7 @@ _TOKEN_RE = re.compile(r"""
   | (?P<heredoc><<-?(?P<hd>[A-Za-z_][A-Za-z0-9_]*)\n(?P<hdbody>.*?)\n[ \t]*(?P=hd)(?=\n|$))
   | (?P<string>"(?:\\.|\$\$\{|%%\{|[^"\\])*")
   | (?P<number>-?\d+(?:\.\d+)?)
-  | (?P<ident>[A-Za-z_][A-Za-z0-9_\-]*(?:\.[A-Za-z_*][A-Za-z0-9_\-*]*|\[[^\]]*\])*)
+  | (?P<ident>[A-Za-z_][A-Za-z0-9_\-]*(?:\.[A-Za-z_*][A-Za-z0-9_\-*]*|\[[^\[\]]*\])*)
   | (?P<punct>==|!=|<=|>=|&&|\|\||[{}\[\]()=,:?+\-*/%!<>.])
 """, re.S | re.X)
 
@@ -126,10 +130,21 @@ def _unescape(s: str) -> str:
     return "".join(out)
 
 
+_HEREDOC_START = re.compile(r"<<-?[A-Za-z_][A-Za-z0-9_]*\n")
+MAX_HCL_DEPTH = 64   # blocks, lists and objects nested deeper are refused (a parse error, never a crash)
+
+
 def _tokenize(text: str) -> List[Tuple[str, Any]]:
+    """Tokens of a Terraform file. A /* comment or a heredoc that is never
+    closed is an error at once: retried at every later opener, the search
+    for its end would cost time in proportion to the square of the file."""
     pos, out = 0, []
     while pos < len(text):
+        if text.startswith("/*", pos) and text.find("*/", pos + 2) < 0:
+            raise HCLError(f"a /* comment at offset {pos} is not closed")
         m = _TOKEN_RE.match(text, pos)
+        if m and m.group("punct") == "<" and _HEREDOC_START.match(text, pos):
+            raise HCLError(f"a heredoc at offset {pos} is not closed")
         if not m:
             raise HCLError(f"unexpected character {text[pos]!r} at offset {pos}")
         pos = m.end()
@@ -155,6 +170,17 @@ class _Parser:
     def __init__(self, tokens: List[Tuple[str, Any]]):
         self.t = tokens
         self.i = 0
+        self.depth = 0
+
+    def _nested(self, fn, *args):
+        """fn(*args) one level deeper; HCLError past MAX_HCL_DEPTH."""
+        self.depth += 1
+        try:
+            if self.depth > MAX_HCL_DEPTH:
+                raise HCLError(f"blocks, lists or objects are nested more than {MAX_HCL_DEPTH} levels deep")
+            return fn(*args)
+        finally:
+            self.depth -= 1
 
     def peek(self, k: int = 0):
         j = self.i + k
@@ -172,6 +198,9 @@ class _Parser:
     def body(self, closer: Optional[str] = "}") -> Dict[str, Any]:
         """Attributes and blocks until `closer` (or EOF at top level).
         Repeated keys become lists; blocks are dicts carrying `_labels`."""
+        return self._nested(self._body, closer)
+
+    def _body(self, closer: Optional[str]) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         while True:
             self.skip_nl()
@@ -215,6 +244,9 @@ class _Parser:
                 out[key] = value
 
     def expr(self):
+        return self._nested(self._expr)
+
+    def _expr(self):
         kind, val = self.peek()
         if kind == "string":
             self.i += 1
@@ -625,7 +657,7 @@ def _expand(files: List[Dict[str, Any]]) -> List[Tuple[str, bytes]]:
                     total += info.file_size
                     if total > MAX_UPLOAD_BYTES:
                         raise ValueError("ZIP contents are larger than the upload limit")
-                    out.append((info.filename, zf.read(info)))
+                    out.append((info.filename, safe_files.zip_member(zf, info, MAX_UPLOAD_BYTES)))
         else:
             out.append((name, data))
     return out
@@ -693,7 +725,10 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
             continue
         raise ValueError(f"{base}: expected a pack bundle object or a list of dictionaries / engines / rules")
     if tf_files:
-        tf_pack, tf_warn = pack_from_terraform(tf_files)
+        try:
+            tf_pack, tf_warn = pack_from_terraform(tf_files)
+        except RecursionError:   # HCL nested past what the reader walks: refused, not a server error
+            raise ValueError("the Terraform files are nested too deeply to be a policy pack") from None
         warnings.extend(tf_warn)
         for k in parts:
             parts[k].extend(tf_pack.get(k) or [])
@@ -740,12 +775,51 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
 _REF_NAME_RE = re.compile(r"D:(.+?)(?=\s*(?:[<>=]|\bAND\b|\bOR\b|\)\s*(?:AND\b|OR\b|\)|$)|$))")   # find_refs is the paren-aware reader
 
 
+class _TooLargeToCheck(ValueError):
+    """The pack's engine expressions need more name lookups than REF_LOOKUP_BUDGET."""
+
+
+class _NameIndex:
+    """A set of dictionary names grouped by length, built once per pack,
+    with the number of name lookups the whole pack may spend."""
+
+    def __init__(self, names: Any, budget: int = 0):
+        self.names = {n for n in names if isinstance(n, str) and n}
+        self.lengths = sorted({len(n) for n in self.names})
+        self.budget = budget or REF_LOOKUP_BUDGET
+
+
+def _referenced_names(expr: str, names: Any) -> set:
+    """The names that follow some "D:" in `expr`: for each "D:" only one
+    slice per distinct name length is looked up, so the cost follows the
+    expression and the number of name lengths, not the number of names.
+    The pack's lookup budget bounds the total (_TooLargeToCheck)."""
+    ix = names if isinstance(names, _NameIndex) else _NameIndex(names)
+    out: set = set()
+    i = expr.find("D:")
+    while i >= 0:
+        ix.budget -= len(ix.lengths)
+        if ix.budget < 0:
+            raise _TooLargeToCheck("the engine expressions are too large to check")
+        for size in ix.lengths:
+            if i + 2 + size > len(expr):
+                break
+            piece = expr[i + 2:i + 2 + size]
+            if piece in ix.names:
+                out.add(piece)
+        i = expr.find("D:", i + 1)
+    return out
+
+
 def _without_known_refs(expr: str, names: Any) -> Tuple[str, List[str]]:
     """(the expression with every D:<name> reference to one of `names` taken
     out, the names found). Longest names first, as the deploy resolves
     them, and only where the name ends as a reference ends."""
     found: List[str] = []
-    for name in sorted(names, key=len, reverse=True):
+    # Only the names that occur in this expression after a "D:" are worth a
+    # pattern; a pack with thousands of dictionaries and engines must not
+    # cost a compiled regex for every pair (see _referenced_names).
+    for name in sorted(_referenced_names(expr, names), key=len, reverse=True):
         pat = re.compile(re.escape(f"D:{name}") + r"(?=\s*(?:[<>=+)]|AND\b|OR\b|$))")
         if pat.search(expr):
             expr = pat.sub("\x00", expr)
@@ -798,6 +872,7 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(meta_predefined, list):
         ref_names.update(x for x in meta_predefined if isinstance(x, str) and x.strip())
 
+    ref_index = _NameIndex(ref_names)
     eng_seen: set = set()
     for e in engines:
         if not isinstance(e, dict) or not str(e.get("name") or "").strip():
@@ -811,12 +886,19 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
         if not expr.strip():
             problems.append(f"engine '{n}': empty expression")
             continue
+        if len(expr) > MAX_EXPRESSION_CHARS:
+            problems.append(f"engine '{n}': expression is {len(expr)} characters; this app reads engine expressions of up to {MAX_EXPRESSION_CHARS}")
+            continue
         for msg in ops.validate("engine", e):
             problems.append(f"engine '{n}': {msg}")
         # A dictionary name ZIA accepts may hold a lone parenthesis or a
         # "D7.S"; the references to names the pack knows are taken out
         # before the checks that read the expression as a whole.
-        rest, named = _without_known_refs(expr, ref_names)
+        try:
+            rest, named = _without_known_refs(expr, ref_index)
+        except _TooLargeToCheck:
+            problems.append(f"engine '{n}': the pack's engine expressions name too many dictionaries to check here; split the pack")
+            break
         if rest.count("(") != rest.count(")"):
             problems.append(f"engine '{n}': unbalanced parentheses in expression")
         for m in _NUMERIC_REF_RE.finditer(rest):
@@ -893,6 +975,16 @@ def save_pack(pack: Dict[str, Any], *, pack_id: str = "", root: Optional[str] = 
     v = validate_pack(pack)
     if not v["ok"]:
         raise ValueError("; ".join(v["problems"][:5]))
+    # Uploads are parsed off the event loop, so two can arrive at once: the
+    # check that the id is free and the writing happen under one lock.
+    with _SAVE_LOCK:
+        return _save_pack(pack, v, pack_id, root)
+
+
+_SAVE_LOCK = threading.Lock()
+
+
+def _save_pack(pack: Dict[str, Any], v: Dict[str, Any], pack_id: str, root: Optional[str]) -> Dict[str, Any]:
     slug = pack_slug(pack_id or pack["meta"].get("name") or "")
     if not slug:
         raise ValueError("the pack needs a name")
@@ -903,7 +995,10 @@ def save_pack(pack: Dict[str, Any], *, pack_id: str = "", root: Optional[str] = 
     if os.path.exists(pack_dir):
         raise FileExistsError(f"'{slug}' already exists in the library")
     configs = os.path.join(pack_dir, "configs")
-    os.makedirs(configs)
+    # An uploaded pack is the customer's own policy: owner-only (0700 / 0600).
+    safe_files.private_makedirs(lib)
+    os.mkdir(pack_dir, safe_files.DIR_MODE)
+    safe_files.private_makedirs(configs)
     meta = dict(pack["meta"])
     meta.update({
         "source": "uploaded",
@@ -911,13 +1006,13 @@ def save_pack(pack: Dict[str, Any], *, pack_id: str = "", root: Optional[str] = 
         "upload_format": pack.get("format", "json"),
         "upload_files": list(pack.get("sources") or []),
     })
-    with open(os.path.join(pack_dir, "pack.json"), "w", encoding="utf-8") as f:
+    with safe_files.private_open(os.path.join(pack_dir, "pack.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
     for fname, key in (("dlp_dictionaries.json", "dictionaries"), ("dlp_engines.json", "engines"), ("dlp_policies.json", "policies")):
-        with open(os.path.join(configs, fname), "w", encoding="utf-8") as f:
+        with safe_files.private_open(os.path.join(configs, fname), "w", encoding="utf-8") as f:
             json.dump(pack.get(key) or [], f, indent=2)
     if pack.get("app_groups"):
-        with open(os.path.join(configs, "endpoint_application_groups.json"), "w", encoding="utf-8") as f:
+        with safe_files.private_open(os.path.join(configs, "endpoint_application_groups.json"), "w", encoding="utf-8") as f:
             json.dump(pack["app_groups"], f, indent=2)
     from dlp_importer import load_pack_metadata
     out = load_pack_metadata(pack_dir)

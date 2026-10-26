@@ -40,5 +40,5 @@ def test_reference_back_link_has_its_own_colour_and_sits_bottom_left():
     the injected link needs a literal fallback, and their brand sits
     top-left where the link used to cover it."""
     theme = _page().get("/static/report_theme.js").text
-    assert "background:var(--accent, #0a84ff)" in theme and "bottom:0.9rem;left:0.9rem" in theme
+    assert "background:var(--btn, #0071e3)" in theme and "bottom:0.9rem;left:0.9rem" in theme
     assert "top:0.6rem;left:0.6rem" not in theme

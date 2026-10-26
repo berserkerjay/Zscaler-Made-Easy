@@ -35,6 +35,7 @@ The contract, unchanged from the stand-alone tool this grew from:
 Nothing here contacts a tenant or writes to one."""
 from __future__ import annotations
 
+import md_safe
 import argparse
 import base64
 import hashlib
@@ -45,6 +46,8 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+import safe_files
 
 # The same Terraform and provider constraints as the pack hand-off, so the two
 # converters cannot drift: a `~>` constraint in the configuration, the exact
@@ -422,8 +425,7 @@ def _policy_facets(node) -> Dict[str, Any]:
 def inventory_bytes(data: bytes, source_name: str = "export.xml") -> Dict[str, Any]:
     """Symantec XML export → {source_file, sha256, policies}. Read-only;
     DTDs and entities are refused before parsing."""
-    if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
-        raise ValueError("DTD/entities are not accepted")
+    _refuse_dtd(data, "DTD/entities are not accepted")
     try:
         root = ET.fromstring(data)
     except ET.ParseError as e:
@@ -465,7 +467,8 @@ def _is_zip(data: bytes) -> bool:
 
 def _unzip(data: bytes, source_name: str) -> List[Tuple[str, bytes]]:
     """The text members of an uploaded zip, read in memory: (member name,
-    bytes). Password-protected archives, more than ZIP_MEMBER_LIMIT members
+    bytes). Password-protected archives, more than ZIP_MEMBER_LIMIT members,
+    members compressed other than stored or deflate (safe_files.zip_member)
     and archives that expand beyond MAX_EXPORT_BYTES are refused. Nothing is
     written to disk."""
     import io
@@ -489,7 +492,7 @@ def _unzip(data: bytes, source_name: str) -> List[Tuple[str, bytes]]:
             base = info.filename.rsplit("/", 1)[-1]
             if not base.lower().endswith(_TEXT_MEMBERS) or base.startswith(".") or "__MACOSX" in info.filename:
                 continue
-            members.append((info.filename, zf.read(info)))
+            members.append((info.filename, safe_files.zip_member(zf, info, MAX_EXPORT_BYTES)))
     if not members:
         raise ValueError(f"{source_name}: the archive holds no .json, .xml, .csv or .txt file")
     return members
@@ -504,11 +507,39 @@ def _text(data: bytes, name: str) -> str:
     raise ValueError(f"{name}: not UTF-8 or UTF-16 text")
 
 
+MAX_NESTING = 64   # an export nested deeper is refused in words (the readers below walk it recursively)
+
+
+def _depth_ok(node: Any, children) -> bool:
+    """Whether `node` nests at most MAX_NESTING levels deep, checked with
+    an explicit stack (never recursion). `children(n)` lists n's children."""
+    stack = [(node, 1)]
+    while stack:
+        n, d = stack.pop()
+        if d > MAX_NESTING:
+            return False
+        stack.extend((c, d + 1) for c in children(n))
+    return True
+
+
+def _json_children(n: Any) -> List[Any]:
+    if isinstance(n, dict):
+        return [v for v in n.values() if isinstance(v, (dict, list))]
+    if isinstance(n, list):
+        return [v for v in n if isinstance(v, (dict, list))]
+    return []
+
+
 def _load_json(data: bytes, name: str) -> Any:
     try:
-        return json.loads(_text(data, name))
+        obj = json.loads(_text(data, name))
     except json.JSONDecodeError as e:
         raise ValueError(f"{name}: not valid JSON ({e.msg} at line {e.lineno})")
+    except RecursionError:
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    if not _depth_ok(obj, _json_children):
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    return obj
 
 
 def _csv_rows(data: bytes, name: str) -> List[List[str]]:
@@ -519,7 +550,10 @@ def _csv_rows(data: bytes, name: str) -> List[List[str]]:
         dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
     except csv.Error:
         dialect = csv.excel
-    rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), dialect)]
+    try:
+        rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), dialect)]
+    except csv.Error as e:   # a field past the csv module's limit, a stray NUL...: refused, not a server error
+        raise ValueError(f"{name}: not a CSV export this reader can read ({str(e)[:80]})") from None
     return [r for r in rows if any(r)]
 
 
@@ -533,13 +567,40 @@ def _csv_records(rows: List[List[str]]) -> List[Dict[str, str]]:
     return [{(header[i] if i < len(header) else f"col{i}"): c for i, c in enumerate(r)} for r in rows[1:]]
 
 
-def _xml_root(data: bytes, name: str):
+def _refuse_dtd(data: bytes, message: str) -> None:
+    """Refuse any DOCTYPE or entity declaration, in whatever encoding the
+    document is written: the parser reads UTF-16 (or a BOM, or an encoding
+    declaration) where a byte search sees only '<\\0!\\0D...', so the document
+    is first read by expat with handlers that refuse a DTD (fail closed)."""
     if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
-        raise ValueError(f"{name}: DTD/entities are not accepted")
+        raise ValueError(message)
+    from xml.parsers import expat
+
+    class _Refused(Exception):
+        pass
+
+    def refuse(*_args: Any) -> None:
+        raise _Refused()
+    p = expat.ParserCreate()
+    p.StartDoctypeDeclHandler = refuse
+    p.EntityDeclHandler = refuse
     try:
-        return ET.fromstring(data)
+        p.Parse(data, True)
+    except _Refused:
+        raise ValueError(message) from None
+    except expat.ExpatError:
+        pass   # not well-formed: the real parse below says where
+
+
+def _xml_root(data: bytes, name: str):
+    _refuse_dtd(data, f"{name}: DTD/entities are not accepted")
+    try:
+        root = ET.fromstring(data)
     except ET.ParseError as e:
         raise ValueError(f"{name}: not well-formed XML ({e})")
+    if not _depth_ok(root, list):
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    return root
 
 
 def _xml_to_obj(el) -> Any:
@@ -1138,7 +1199,11 @@ def inventory_export(vendor_id: str, data: bytes, source_name: str = "") -> Dict
     ext = os.path.splitext(str(source_name or ""))[1].lower()
     if ext and ext not in v["accepts"]:
         raise ValueError(f"{v['name']}: {ext} files are not an export this adapter reads; it accepts {', '.join(v['accepts'])}")
-    snap = READERS[v["id"]](data, source_name or ("export" + (v["accepts"][0] if v["accepts"] else "")))
+    name = source_name or ("export" + (v["accepts"][0] if v["accepts"] else ""))
+    try:
+        snap = READERS[v["id"]](data, name)
+    except RecursionError:   # JSON or XML nested past what a reader walks: refused, not a server error
+        raise ValueError(f"{os.path.basename(name)}: nested too deeply to be a policy export") from None
     snap["vendor"] = v["id"]
     return snap
 
@@ -1432,7 +1497,7 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
                 missing.append(m.group(1))
             return "${zia_dlp_dictionaries." + ref + ".id}"
         expr2 = re.sub(r"\{\{dict:([A-Za-z0-9_-]+)\}\}", sub, expr)
-        if missing or "{{" in expr2 or "${" in expr:
+        if missing or "{{" in expr2 or "${" in expr or "%{" in expr:   # %{ is a Terraform template directive (if/for), as live as ${
             question(e.get("id", "?"), "Unresolved dictionary reference or unsafe interpolation: " + ", ".join(missing))
             continue
         res["zia_dlp_engines"][key] = {"name": _lit(e["name"]), "description": _lit(_fit(e.get("description") or default_desc, ENGINE_DESCRIPTION_MAX)),
@@ -1624,7 +1689,7 @@ def workspace_files(tf: Dict[str, Any], report: Dict[str, Any], vendor_name: str
     import pack_terraform as pt
     counts = report.get("counts") or {}
     note = (f"Generated by Zscaler Made Easy from a reviewed {vendor_name} export"
-            + (f" (`{source_file}`" if source_file else " (")
+            + (f" ({md_safe.code(source_file)}" if source_file else " (")   # an uploaded file's name: a code span it cannot leave
             + f"{', ' if source_file else ''}SHA-256 `{str(report.get('source_sha256', ''))[:12]}…`): "
             f"{counts.get('converted_rules', 0)} rules from {counts.get('source_policies', 0)} source policies, "
             f"{counts.get('dispositions', 0)} retired or out of scope. `migration-report.json` beside these files is the review record "
@@ -1662,6 +1727,10 @@ def compile_upload(vendor_id: str, export_file: Dict[str, Any], decisions: Any) 
             decisions = json.loads(decode_upload(decisions).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
             raise ValueError(f"Decisions file is not valid JSON: {e}")
+        except RecursionError:
+            raise ValueError(f"Decisions file is nested more than {MAX_NESTING} levels deep") from None
+        if not _depth_ok(decisions, _json_children):
+            raise ValueError(f"Decisions file is nested more than {MAX_NESTING} levels deep")
     tf, report = compile_export(snapshot, decisions, prefix=v["prefix"], vendor_id=v["id"])
     return {"vendor": v["id"], "vendor_name": v["name"],
             "snapshot": {"source_file": snapshot["source_file"], "sha256": snapshot["sha256"], "policy_count": len(snapshot["policies"])},

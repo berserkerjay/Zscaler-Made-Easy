@@ -45,6 +45,7 @@ requirements, inputs, outputs, state and verification steps.
 """
 from __future__ import annotations
 
+import md_safe
 import io
 import json
 import os
@@ -53,6 +54,8 @@ import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
+import safe_files
+
 from dlp_importer import (find_refs, DICT_DESCRIPTION_MAX, ENGINE_DESCRIPTION_MAX, _load_json, _resolve_configs, clone_settings, fit_description,
                           heal_predefined_names, load_pack_metadata)
 
@@ -217,7 +220,7 @@ def _control_rule_hcl(channel: str, res: str, label: str, p: Dict[str, Any], met
                 r.append(_attr(opt, hcl_list(p[opt])))
         action, dropped = _filter_schema(p["action"], SSL_ACTION_SCHEMA)
         for d in dropped:
-            r.append(f"  # not in the zscaler/zia provider schema (set in the Admin Portal if needed): {d}\n")
+            r.append(f"  # not in the zscaler/zia provider schema (set in the Admin Portal if needed): {hcl_comment(d)}\n")
         r.append("  action " + _hcl_value(action, 1))
     r.append("}\n\n")
     return "".join(r)
@@ -233,16 +236,43 @@ _REF_RE = re.compile(r"D:(.+?)(?=\s*(?:[<>=]|\bAND\b|\bOR\b|\)\s*(?:AND\b|OR\b|\
 # HCL helpers
 # ---------------------------------------------------------------------------
 
+def one_line(v: Any) -> str:
+    """Text for an HCL ``#`` comment: line breaks and other control
+    characters become a space, so a name or reason from a pack or the
+    tenant can never end the comment and start HCL of its own (a
+    ``resource`` with a ``local-exec`` provisioner, say)."""
+    return re.sub(r"[\s\x00-\x1f\x7f\u2028\u2029]+", " ", "" if v is None else str(v)).strip()
+
+
+# The only interpolations an engine expression may carry: the references
+# generate() itself writes for a dictionary (resource or data lookup).
+_OWN_REF_RE = re.compile(r"\$\{(?!(?:data\.)?zia_dlp_dictionaries\.[a-z0-9_]+\.id\})")
+
+
 def hcl_str(s: Any, *, interpolate: bool = False) -> str:
     """Quote a string for HCL, escaping backslashes, quotes and template
     sequences so regex patterns and literal ${ survive verbatim. With
     interpolate=True, ${...} references are left live (engine expressions)."""
-    s = "" if s is None else str(s)
-    s = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "")
+    s = _LONE_SURROGATE.sub("\ufffd", "" if s is None else str(s))
+    s = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
     if not interpolate:
         s = s.replace("${", "$${")
     s = s.replace("%{", "%%{")
     return f'"{s}"'
+
+
+# A lone surrogate cannot be written as UTF-8 (nor held by an HCL string).
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+# Everything a reader (or the HCL scanner) could take as the end of a line.
+_LINE_BREAKS = re.compile(r"\r\n|[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]")
+
+
+def hcl_comment(s: Any) -> str:
+    """Text for a `#` comment: one line, whatever it carries. A name from
+    the tenant or an uploaded pack with a line break in it would otherwise
+    end the comment and put the rest of the name into the workspace as
+    live HCL (a resource terraform apply would create)."""
+    return _LONE_SURROGATE.sub("\ufffd", _LINE_BREAKS.sub(" ", "" if s is None else str(s)))
 
 
 def hcl_list(items: Iterable[Any], *, raw: bool = False) -> str:
@@ -513,6 +543,11 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         # A term inside a Sum (D1.S + D2.S) > n carries no comparison of its own.
         from dlp_importer import default_counts
         expr = default_counts(expr, re.compile(r"(D\$\{[^}]+\}\.S)(?!\s*[<>=+])"))
+        # Any other ${ came from the pack (or the tenant it was exported
+        # from): escape it, so it stays text and is never evaluated by
+        # Terraform (${nonsensitive(var.zscaler_client_secret)} would send
+        # the secret to the tenant inside the engine).
+        expr = _OWN_REF_RE.sub("$${", expr)
         eng.append(f'resource "zia_dlp_engines" "{label}" {{\n')
         eng.append(_attr("name", hcl_str(e["name"])))
         eng.append(_attr("description", hcl_str(_provenance(meta, pack_id, e.get("description", ""), limit=ENGINE_DESCRIPTION_MAX))))
@@ -523,7 +558,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     # Data sources go at the top of dictionaries.tf now that we know them all.
     data = []
     for emitted_name, (label, note) in data_dicts.items():
-        comment = f"  # {note}\n" if note else ""
+        comment = f"  # {hcl_comment(note)}\n" if note else ""
         data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n{comment}  name = {hcl_str(emitted_name)}\n}}\n\n')
     files["dictionaries.tf"] = out[0] + "".join(data) + "".join(out[1:])
     files["engines.tf"] = "".join(eng)
@@ -592,7 +627,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         r.append(_attr("state", hcl_str("DISABLED")))
         r.append(_attr("action", hcl_str(p.get("action", pc.default_action(channel)))))
         if p.get("target_action"):
-            r.append(f"  # Ships monitor-only; the designed action once incidents are tuned is {p['target_action']}.\n")
+            r.append(f"  # Ships monitor-only; the designed action once incidents are tuned is {hcl_comment(p['target_action'])}.\n")
         if p.get("severity"):
             r.append(_attr("severity", hcl_str(p["severity"])))
         r.append(_attr("without_content_inspection", "true" if p.get("without_content_inspection") else "false"))
@@ -786,7 +821,6 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     files["README.md"] = _readme(meta, pack_id, src, bool(report), gap_summary, report, variables_extra=variables_extra, tenant_vars=tenant_vars)
     # Every file says what generated it and from what (the style guide's
     # provenance comment for generated configuration).
-    one_line = lambda v: re.sub(r"[\s\x00-\x1f\x7f]+", " ", str(v)).strip()   # noqa: E731
     header = (f"{GENERATED_MARK} from {'policy pack' if meta.get('baseline') else 'pack'} {one_line(pack_id)}"
               + (f" v{one_line(meta.get('version'))}" if meta.get("version") else "") + f" for {PROVIDER_SOURCE} {PROVIDER_VERSION}.\n\n")
     for name in list(files):
@@ -810,12 +844,12 @@ def _gap_import(imports: List[str], counts: Dict[str, int], item: Optional[Dict[
         note = ("customized in the tenant: " + ", ".join(item.get("drift") or ["content"])
                 + " — terraform apply would overwrite this with the policy pack; delete this import block to leave the customer's version alone"
                 if customized else "in sync")
-        imports.append(f"# {item['name']} — {note}\nimport {{\n  to = {res}.{label}\n  id = {hcl_str(import_id if import_id is not None else str(tid))}\n}}\n\n")
+        imports.append(f"# {hcl_comment(item['name'])} — {hcl_comment(note)}\nimport {{\n  to = {res}.{label}\n  id = {hcl_str(import_id if import_id is not None else str(tid))}\n}}\n\n")
     elif status == "create":
         counts["missing"] += 1
     else:
         counts["blocked"] += 1
-        imports.append(f"# {item['name']} — {status}: {item.get('reason', '')}\n\n")
+        imports.append(f"# {hcl_comment(item['name'])} — {hcl_comment(status)}: {hcl_comment(item.get('reason', ''))}\n\n")
 
 
 def _versions_tf(backend: Optional[Dict[str, str]], *, provider_version: str = PROVIDER_VERSION) -> str:
@@ -963,7 +997,7 @@ def _tfvars_example(extra: List[str], *, base_values: bool = True, tenant_vars: 
     for v in _extra_variable_rows(extra):
         t = str(v["type"])
         example = '{ "Rule name" = [123456] }' if t.startswith("map(") else ('"..."' if t == "string" else "[123456]")
-        out.append(f"# {v['name']} = {example}\n")
+        out.append(f"# {one_line(v['name'])} = {example}\n")
     return "".join(out)
 
 
@@ -971,9 +1005,9 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
             report: Optional[Dict[str, Any]], *, variables_extra: Optional[List[str]] = None,
             tenant_vars: Optional[Dict[str, bool]] = None) -> str:
     b = meta.get("baseline")
-    lines = [f"# {meta.get('name', pack_id)} — Terraform\n\n",
-             f"Generated by Zscaler Made Easy from pack `{pack_id}`"
-             + (f" v{meta.get('version')}" if meta.get("version") else "") + " for the official "
+    lines = [f"# {md_safe.text(meta.get('name', pack_id))} — Terraform\n\n",
+             f"Generated by Zscaler Made Easy from pack {md_safe.code(pack_id)}"
+             + (f" v{md_safe.text(meta.get('version'))}" if meta.get("version") else "") + " for the official "
              f"[zscaler/zia]({REGISTRY_URL}) provider ({PROVIDER_VERSION}).\n\n",
              f"{len(src['dictionaries'])} dictionaries · {len(src['engines'])} engines · {len(src['policies'])} rules"
              + (" · **policy pack**" if b else "") + "\n\n"]
@@ -984,7 +1018,7 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
                      "when the customer wants the tenant converged (an enabled rule or a hardened action is usually progress to keep, "
                      "not something to revert — update the pack instead). Objects the policy pack does not define are never touched.\n\n")
     if gap:
-        lines.append(f"## Gap against {report.get('tenant_label', 'the tenant') if report else 'the tenant'}\n\n"
+        lines.append(f"## Gap against {md_safe.text(report.get('tenant_label', 'the tenant')) if report else 'the tenant'}\n\n"
                      f"| In sync | Customized | Missing | Blocked |\n|---|---|---|---|\n"
                      f"| {counts.get('in_sync', 0)} | {counts.get('customized', 0)} | {counts.get('missing', 0)} | {counts.get('blocked', 0)} |\n\n"
                      "`imports.tf` adopts every existing object into state on the first apply. In-sync objects import with no "
@@ -1081,8 +1115,8 @@ def hcl_template_str(s: Any) -> str:
     JSON configuration, where every string is a template and `$${` / `%%{`
     are the escapes): backslashes, quotes and newlines are escaped, the
     template sequences are kept exactly as they are."""
-    s = "" if s is None else str(s)
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "") + '"'
+    s = _LONE_SURROGATE.sub("\ufffd", "" if s is None else str(s))
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r") + '"'
 
 
 def _json_value_hcl(v: Any, indent: int = 1) -> str:
@@ -1193,7 +1227,7 @@ def render_json_workspace(tf: Dict[str, Any], *, title: str, source_note: str, p
     files[".gitignore"] = GITIGNORE
     counts = {k: len(v) for k, v in refs.items()}
     files["README.md"] = (
-        f"# {title} — Terraform\n\n{source_note}\n\n"
+        f"# {md_safe.text(title)} — Terraform\n\n{source_note}\n\n"
         f"{counts['dictionaries']} dictionaries · {counts['engines']} engines · {counts['rules']} rules, every rule **DISABLED**, "
         f"for the official [zscaler/zia]({REGISTRY_URL}) provider ({pv}).\n\n"
         "## Use\n\n```bash\nterraform init      # then commit .terraform.lock.hcl beside these files\nterraform plan      # review: every object is a create on a tenant that has none of them\nterraform apply\n```\n\n"
@@ -1246,11 +1280,11 @@ def write_workspace(files: Dict[str, str], out_dir: str) -> List[str]:
     earlier that it no longer emits (see _generated_here). Anything else in
     the folder (the team's own .tf files, terraform.tfvars, state,
     .terraform/, the lock file) is left alone."""
-    os.makedirs(out_dir, exist_ok=True)
+    safe_files.private_makedirs(out_dir)
     written = []
     for name, content in files.items():
         path = os.path.join(out_dir, name)
-        with open(path, "w", encoding="utf-8", newline="\n") as f:
+        with safe_files.private_open(path, "w", encoding="utf-8", newline="\n") as f:   # the pack's policy: owner-only
             f.write(content)
         written.append(path)
     for name in os.listdir(out_dir):

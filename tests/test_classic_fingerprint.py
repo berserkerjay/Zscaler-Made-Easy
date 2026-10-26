@@ -47,7 +47,7 @@ def server(monkeypatch, tmp_path):
 
 def _deploy(c, creds):
     # A pack push names its assessor (it is refused without one).
-    r = c.post("/api/dlp-packs/alpha/import", json=dict(creds, plan_hash="h", assessor="Jane Doe"))
+    r = c.post("/api/dlp-packs/alpha/import", json=dict(creds, plan_hash="h", assessor="Jane Doe", confirm=True))
     assert r.status_code == 200, r.text
     return deployments._read()["deployments"][-1], r
 
@@ -101,7 +101,7 @@ def test_two_classic_api_tenants_on_one_cloud_cannot_undo_or_remove_each_others_
     rec, _ = _deploy(c, A)
     assert rec["tenant_label"] == "classic API (zscalerten)" and rec["tenant_fp"] == tf.fingerprint(A)
     assert "tenant_key" not in rec and "acme" not in json.dumps(rec) and "admin@" not in json.dumps(rec)
-    r = c.post(f"/api/deployments/{rec['id']}/undo", json=dict(B, confirm=True))
+    r = c.post(f"/api/deployments/{rec['id']}/undo", json=dict(B, confirm=True, assessor="Jane Doe"))
     assert r.status_code == 409 and "another classic API (zscalerten) tenant" in r.json()["detail"]
     r = c.post("/api/dlp-packs/removal/preflight", json=dict(B, deployment_id=rec["id"]))
     assert r.status_code == 409
@@ -111,14 +111,14 @@ def test_two_classic_api_tenants_on_one_cloud_cannot_undo_or_remove_each_others_
     # The same login with another stale vanity domain is the same tenant.
     mine = dict(A, vanity_domain="")
     assert c.post("/api/dlp-packs/removal/preflight", json=dict(mine, deployment_id=rec["id"])).status_code == 200
-    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(mine, confirm=True)).status_code == 200
+    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(mine, confirm=True, assessor="Jane Doe")).status_code == 200
 
 
 def test_a_oneapi_tenant_cannot_undo_a_classic_api_deployment(server):
     _, c = server
     rec, _ = _deploy(c, A)
     oneapi = {"auth_method": "oneapi", "vanity_domain": "acme", "client_id": "cid", "client_secret": "s", "cloud": "zscalerten"}
-    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(oneapi, confirm=True)).status_code == 409
+    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(oneapi, confirm=True, assessor="Jane Doe")).status_code == 409
 
 
 @pytest.mark.parametrize("label", ["classic API (zscalerten)", "acme-stale (zscalerten)"])
@@ -127,7 +127,7 @@ def test_a_record_written_before_the_fingerprint_still_undoes(server, label):
     old = deployments.add(deployments.from_apply(CREATED, tenant_label=label, packs=["alpha"], options={}))
     assert "tenant_fp" not in old and "tenant_key" not in old
     assert srv._deployment_for_removal(srv.PackRemovalRequest(deployment_id=old["id"]), tenant_auth.normalize(A))["id"] == old["id"]
-    assert c.post(f"/api/deployments/{old['id']}/undo", json=dict(A, confirm=True)).status_code == 200
+    assert c.post(f"/api/deployments/{old['id']}/undo", json=dict(A, confirm=True, assessor="Jane Doe")).status_code == 200
 
 
 def test_a_record_with_the_earlier_unkeyed_key_still_undoes_for_its_own_tenant_only(server):
@@ -135,8 +135,8 @@ def test_a_record_with_the_earlier_unkeyed_key_still_undoes_for_its_own_tenant_o
     rec = deployments.from_apply(CREATED, tenant_label="classic API (zscalerten)", packs=["alpha"], options={})
     rec["tenant_key"] = tf.legacy_unkeyed_key(A)          # what the previous build wrote
     deployments.add(rec)
-    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(B, confirm=True)).status_code == 409
-    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(A, confirm=True)).status_code == 200
+    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(B, confirm=True, assessor="Jane Doe")).status_code == 409
+    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(A, confirm=True, assessor="Jane Doe")).status_code == 200
 
 
 def test_oneapi_records_keep_the_vanity_domain_label_and_their_key(server):
@@ -145,8 +145,8 @@ def test_oneapi_records_keep_the_vanity_domain_label_and_their_key(server):
     rec, _ = _deploy(c, one)
     assert rec["tenant_label"] == "acme (zscalerten)" and rec.get("tenant_key") and "tenant_fp" not in rec
     other = dict(one, vanity_domain="other")
-    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(other, confirm=True)).status_code == 409
-    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(one, confirm=True)).status_code == 200
+    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(other, confirm=True, assessor="Jane Doe")).status_code == 409
+    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(one, confirm=True, assessor="Jane Doe")).status_code == 200
 
 
 # --- never shown -------------------------------------------------------------------
@@ -160,8 +160,8 @@ def test_the_fingerprint_never_appears_in_an_api_response_or_the_ui(server, monk
               c.get("/api/deployments", params={"tenant_label": "classic API (zscalerten)"}).text,
               c.post("/api/dlp-packs/removal/preflight", json=dict(A, deployment_id=rec["id"])).text,
               c.post("/api/rate-check", json=dict(A, counts={"write": 2})).text,
-              c.post(f"/api/deployments/{rec['id']}/undo", json=dict(A, confirm=True)).text,
-              c.post(f"/api/deployments/{rec['id']}/undo", json=dict(B, confirm=True)).text]
+              c.post(f"/api/deployments/{rec['id']}/undo", json=dict(A, confirm=True, assessor="Jane Doe")).text,
+              c.post(f"/api/deployments/{rec['id']}/undo", json=dict(B, confirm=True, assessor="Jane Doe")).text]
     for body in bodies:
         assert fp not in body and "tenant_fp" not in body and "tenant_key" not in body
         assert "admin@acme.com" not in body and "acme-stale" not in body

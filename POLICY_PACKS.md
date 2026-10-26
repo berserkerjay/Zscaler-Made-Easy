@@ -338,7 +338,7 @@ for p in dlp_importer.discover_packs():
 ### Web UI: Deploy Studio (recommended)
 
 1. Drop the pack directory in the project root.
-2. Start the server with **`START_Zscaler_Assessment_WRITES_ENABLED.bat`** (deploying writes to the tenant, so it is gated behind `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`). Hard-refresh the browser (Ctrl+Shift+R).
+2. Start the server with **`START_Zscaler_Made_Easy_WRITES_ENABLED.bat`** (deploying writes to the tenant, so it is gated behind `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`). Hard-refresh the browser (Ctrl+Shift+R).
 3. Enter the tenant credentials at the top of the page, then click **📦 Deploy Policy Packs**.
 4. **Select** — toggle any number of packs. Options: *Apply confidence tweaks* and *Rank 0*.
 5. **Preflight** — the tenant is read and every item is cross-referenced. Nothing is written. You get a status (Ready / Review / Blocked) and, per dictionary, engine, policy and tweak:
@@ -390,15 +390,17 @@ curl -X POST http://localhost:8080/api/dlp-packs/preflight \
 curl -X POST http://localhost:8080/api/dlp-packs/apply \
   -H 'Content-Type: application/json' \
   -d '{"pack_ids": ["fed_policy_pack", "cjis_policy_pack"],
-       "plan_hash": "<sha256 from preflight>", "confirm": true,
+       "plan_hash": "<sha256 from preflight>", "confirm": true, "assessor": "Jane Doe",
        "use_rank_0": false, "apply_tweaks": true, "verify": true,
        "cloud": "production", "vanity_domain": "acme",
        "client_id": "...", "client_secret": "..."}'
 
-# Single-pack legacy import (no cross-pack checks, no approval step)
+# Single-pack import (no cross-pack checks): without plan_hash it returns the plan;
+# deploying it needs that plan_hash, "confirm": true, the assessor and write mode
 curl -X POST http://localhost:8080/api/dlp-packs/my_pack_name/import \
   -H 'Content-Type: application/json' \
-  -d '{"use_rank_0": false, "apply_tweaks": true, "verify": true}'
+  -d '{"use_rank_0": false, "apply_tweaks": true, "verify": true,
+       "plan_hash": "<plan_hash from the plan>", "confirm": true, "assessor": "Jane Doe"}'
 
 # Verify a pack against the tenant (read-only)
 curl -X POST http://localhost:8080/api/dlp-packs/my_pack_name/verify

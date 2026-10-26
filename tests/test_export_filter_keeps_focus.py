@@ -40,17 +40,23 @@ window.setupRemoval = function(n){
 
 DRIVER = r"""
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 const [chrome, url, dir, which] = process.argv.slice(2);
-const port = 9400 + Math.floor(Math.random()*500);
-const p = spawn(chrome, ['--headless=new', `--remote-debugging-port=${port}`, '--no-first-run', `--user-data-dir=${dir}`, 'about:blank'], { stdio: 'ignore' });
+const p = spawn(chrome, ['--headless=new', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--no-first-run', `--user-data-dir=${dir}`, 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Chrome picks a free port itself (port 0) and writes it to DevToolsActivePort in its own profile:
+// never a guessed port that another browser on this machine may already own.
+let port; for (let i = 0; i < 200 && !port; i++) { try { port = (await readFile(`${dir}/DevToolsActivePort`, 'utf8')).split('\n')[0].trim(); } catch {} if (!port) await sleep(100); }
+if (!port) throw new Error('Chrome did not open its debugging port');
 let tabs; for (let i=0;i<200;i++){ try { tabs = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); if (tabs.find(t=>t.type==='page')) break; } catch {} await sleep(200); }
 const ws = new WebSocket(tabs.find(t=>t.type==='page').webSocketDebuggerUrl);
 await new Promise(r => ws.onopen = r);
 let id=0; const pend={}; ws.onmessage = e => { const m=JSON.parse(e.data); if(m.id&&pend[m.id]) {pend[m.id](m); delete pend[m.id];} };
 const send=(method,params={})=>new Promise(r=>{const i=++id; pend[i]=r; ws.send(JSON.stringify({id:i,method,params}));});
 const ev=async x=>(await send('Runtime.evaluate',{expression:x,returnByValue:true,awaitPromise:true})).result.result.value;
-await send('Page.enable'); await send('Page.navigate',{url}); await sleep(1500);
+await send('Page.enable'); await send('Page.navigate',{url});
+// Ready when the harness has defined its setup functions, however long loading takes on a busy machine.
+for (let i=0;i<200 && !(await ev(`typeof setup === 'function' && typeof setupRemoval === 'function'`));i++) await sleep(50);
 await ev(which === 'removal' ? `setupRemoval(900)` : `setup(900)`);
 await ev(`document.querySelector('input[aria-label="Filter rules"]').focus(), 1`);
 for (const ch of 'Rule 12') { await send('Input.insertText',{text:ch}); }

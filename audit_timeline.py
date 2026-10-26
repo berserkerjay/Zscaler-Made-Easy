@@ -119,14 +119,18 @@ def window(days: Any = None, start: str = "", end: str = "", now: Optional[float
     def _parse(s: str, end_of_day: bool) -> datetime:
         d = parse_time(s)
         if d is None:
-            raise ValueError(f"'{s}' is not a date. Use a date such as 2026-10-01.")
+            shown = s if len(s) <= 40 else s[:40] + "…"
+            raise ValueError(f"'{shown}' is not a date. Use a date such as 2026-10-01.")
         if re.fullmatch(r"\s*\d{4}-\d{2}-\d{2}\s*", s) and end_of_day:
             d = d + timedelta(days=1) - timedelta(milliseconds=1)
         return d
 
     if start or end:
-        e = _parse(end, True) if end else now_dt
-        s = _parse(start, False) if start else e - timedelta(days=DEFAULT_DAYS)
+        try:
+            e = _parse(end, True) if end else now_dt
+            s = _parse(start, False) if start else e - timedelta(days=DEFAULT_DAYS)
+        except OverflowError:   # a date at the calendar's edge (year 1 or 9999): no window around it
+            raise ValueError("That date is at the very edge of the calendar. Choose a recent date, such as 2026-10-01.")
     else:
         try:
             n = int(days if days not in (None, "") else DEFAULT_DAYS)
@@ -134,6 +138,8 @@ def window(days: Any = None, start: str = "", end: str = "", now: Optional[float
             raise ValueError("The number of days must be a whole number.")
         if n < 1:
             raise ValueError("Choose at least one day.")
+        if n > MAX_DAYS:   # checked before the date arithmetic, which overflows for a huge n
+            raise ValueError(f"The window is longer than {MAX_DAYS} days, the most ZIA keeps the audit log for. Choose a shorter one.")
         e, s = now_dt, now_dt - timedelta(days=n)
     e = min(e, now_dt)
     if s >= e:
@@ -150,15 +156,16 @@ def window(days: Any = None, start: str = "", end: str = "", now: Optional[float
 _FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M",
             "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %I:%M %p", "%B %d, %Y %I:%M:%S %p", "%b %d, %Y %I:%M:%S %p", "%B %d, %Y %H:%M:%S",
             "%b %d, %Y %H:%M:%S", "%a %b %d %H:%M:%S %Y", "%d %b %Y %H:%M:%S", "%d-%b-%Y %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y")
-_ZONE_WORD = re.compile(r"\s+(UTC|GMT|Z)$", re.I)
-_OTHER_ZONE = re.compile(r"\s+[A-Z]{2,5}$")
+_ZONE_WORD = re.compile(r"(?<!\s)\s+(UTC|GMT|Z)$", re.I)
+_OTHER_ZONE = re.compile(r"(?<!\s)\s+[A-Z]{2,5}$")
+MAX_TIME_TEXT = 64   # no time ZIA or this app writes is longer; longer text is not a time (and is never pattern-matched)
 
 
 def parse_time(value: Any) -> Optional[datetime]:
     """A time as ZIA's CSV or Zscaler Made Easy's records write it, as an aware
     datetime (UTC when the text names no zone), or None."""
     s = str(value or "").strip()
-    if not s:
+    if not s or len(s) > MAX_TIME_TEXT:
         return None
     if re.fullmatch(r"\d{9,13}", s):
         n = int(s)

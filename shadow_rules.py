@@ -60,6 +60,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import threading
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import csv_safe
@@ -122,11 +123,29 @@ def _token(x: Any) -> Optional[str]:
     return str(x)
 
 
+# While analyse() runs, each criterion list is turned into its set of
+# tokens once, not once per pair of rules compared (thousands of rules make
+# millions of pairs). Per thread, so two analyses never share it.
+_MEMO = threading.local()
+
+
 def _tokens(v: Any) -> frozenset:
     """A list criterion as a set of ids (or names). 'ANY' style values
     are dropped: they mean the same as an empty list (everything)."""
     if v is None:
         return frozenset()
+    cache = getattr(_MEMO, "tokens", None)
+    if cache is not None and isinstance(v, list):
+        hit = cache.get(id(v))
+        if hit is not None and hit[0] is v:
+            return hit[1]
+        out = _tokens_of(v)
+        cache[id(v)] = (v, out)   # the list is held, so its id is not reused while the cache lives
+        return out
+    return _tokens_of(v)
+
+
+def _tokens_of(v: Any) -> frozenset:
     items = v if isinstance(v, (list, tuple, set, frozenset)) else [v]
     out = set()
     for x in items:
@@ -562,6 +581,31 @@ def _first_match(rules: List[Dict[str, Any]], mode_note: str = "") -> List[Dict[
     return out
 
 
+def _content_candidates(live: List[Dict[str, Any]]) -> Callable[[Dict[str, Any]], List[Dict[str, Any]]]:
+    """For a DLP rule b, the rules that can cover it at all, in their order:
+    covers() needs the same criteria (sig) or the DLP content to cover
+    (_content_covers: A without content inspection, or the same non-empty
+    engines). Thousands of rules then cost a comparison per plausible pair,
+    not per pair."""
+    pos = {id(a): k for k, a in enumerate(live)}
+    no_ci = [a for a in live if a["criteria"].get("withoutcontentinspection")]
+    by_engines: Dict[frozenset, List[Dict[str, Any]]] = {}
+    by_sig: Dict[str, List[Dict[str, Any]]] = {}
+    for a in live:
+        eng = _tokens(a["criteria"].get("dlpengines"))
+        if eng:
+            by_engines.setdefault(eng, []).append(a)
+        by_sig.setdefault(a["sig"], []).append(a)
+
+    def candidates(b: Dict[str, Any]) -> List[Dict[str, Any]]:
+        pool = {id(a): a for a in no_ci}
+        if not b["criteria"].get("withoutcontentinspection"):
+            pool.update((id(a), a) for a in by_engines.get(_tokens(b["criteria"].get("dlpengines")), ()))
+        pool.update((id(a), a) for a in by_sig.get(b["sig"], ()))
+        return sorted(pool.values(), key=lambda a: pos[id(a)])
+    return candidates
+
+
 def _superseded(rules: List[Dict[str, Any]], *, ties: bool, mode_label: str) -> List[Dict[str, Any]]:
     """Evaluate-all: every rule sees the transaction and the strictest
     action wins (`ties`: the same action, the lower order wins). A rule B
@@ -570,12 +614,13 @@ def _superseded(rules: List[Dict[str, Any]], *, ties: bool, mode_label: str) -> 
     a matching child replaces its parent's action in the same pass."""
     out: List[Dict[str, Any]] = []
     live = [r for r in rules if r["enabled"] and not r["sub_rules"]]
+    candidates = _content_candidates(live)
     for b in live:
         sb = _DLP_STRICT.get(b.get("action") or "")
         if sb is None:
             continue
         best = None
-        for a in live:
+        for a in candidates(b):
             if a is b:
                 continue
             sa = _DLP_STRICT.get(a.get("action") or "")
@@ -694,6 +739,15 @@ def analyse(rules_by_policy: Dict[str, List[Dict[str, Any]]], *, web_dlp_mode: s
     notes}. `engines` / `categories`: the tenant's DLP engines and URL
     categories (dicts or ids) when they were read completely, else None
     (no missing-reference claim). Never reads a tenant."""
+    _MEMO.tokens = {}
+    try:
+        return _analyse(rules_by_policy, web_dlp_mode, engines, categories)
+    finally:
+        _MEMO.tokens = None
+
+
+def _analyse(rules_by_policy: Dict[str, List[Dict[str, Any]]], web_dlp_mode: str, engines: Optional[Iterable[Any]],
+             categories: Optional[Iterable[Any]]) -> Dict[str, Any]:
     eng = _lookup(engines) if engines is not None else None
     cats = set(_lookup(categories).keys()) if categories is not None else None
     findings: List[Dict[str, Any]] = []

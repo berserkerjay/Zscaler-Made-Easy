@@ -39,6 +39,7 @@ Architecture notes
 """
 from __future__ import annotations
 
+import md_safe
 import re
 import json
 import subprocess
@@ -1054,7 +1055,7 @@ def export_markdown(analysis: Dict[str, Any]) -> bytes:
       - Dictionaries table (Name / TP% / FP risk / Health / Drivers)
       - Engines table (same columns)
       - Detail section per item below each table, with nuances."""
-    a = analysis or {}
+    a = md_safe.escape_data(analysis or {})   # names and drivers come from the tenant: inert text
     c = a.get("counts", {}) or {}
     avg = a.get("averages", {}) or {}
     dist = a.get("fp_risk_distribution", {}) or {}
@@ -1151,7 +1152,8 @@ def export_docx(analysis: Dict[str, Any]) -> bytes:
             "Install with: pip install python-docx"
         ) from e
 
-    a = analysis or {}
+    import xlsx_writer
+    a = xlsx_writer.clean_tree(analysis or {})   # python-docx refuses XML-illegal characters
     c = a.get("counts", {}) or {}
     avg = a.get("averages", {}) or {}
     dist = a.get("fp_risk_distribution", {}) or {}

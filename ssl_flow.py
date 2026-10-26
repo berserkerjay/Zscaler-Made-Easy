@@ -17,6 +17,7 @@ camelCase (raw API) — every field read here accepts both.
 """
 from __future__ import annotations
 
+import md_safe
 import csv_safe
 import io
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -704,6 +705,8 @@ def to_csv(report: Dict[str, Any]) -> str:
 
 
 def to_markdown(report: Dict[str, Any]) -> str:
+    raw = report
+    report = md_safe.escape_data(report)   # rule, category and tenant names: inert text
     s = report.get("summary", {})
     lines = ["# SSL Inspection Flow — inline DLP visibility", ""]
     if report.get("tenant_label"):
@@ -714,7 +717,8 @@ def to_markdown(report: Dict[str, Any]) -> str:
     lines += ["| Traffic | SSL decision | Decided by | Inline DLP | Status |", "|---|---|---|---|---|"]
     for c in report.get("classes", []):
         d = c.get("decided_by") or {}
-        lines.append(f"| {c['label']} | {c['decision'].replace('_', ' ')} | {d.get('name', '—')} | {', '.join(r['name'] for r in c.get('dlp_rules', [])) or '—'} | {c.get('dlp_status', '')} |")
+        m = str   # cells already made inert once by md_safe.escape_data above
+        lines.append(f"| {m(c['label'])} | {m(c['decision'].replace('_', ' '))} | {m(d.get('name', '—'))} | {m(', '.join(r['name'] for r in c.get('dlp_rules', [])) or '—')} | {m(c.get('dlp_status', ''))} |")
     lines += ["", "## Required data-security controls", ""]
     for c in report.get("classes", []):
         for h in c.get("controls", []):
@@ -733,7 +737,8 @@ def to_markdown(report: Dict[str, Any]) -> str:
     for r in report.get("ssl_rules", []):
         targets = ("everything" if r["catch_all"] else "Zscaler-maintained list" if r["zscaler_maintained"] else
                    ", ".join(r["url_categories"][:6] + r["cloud_applications"][:6]) + (" …" if len(r["url_categories"]) + len(r["cloud_applications"]) > 12 else ""))
-        lines.append(f"| {r.get('order', '')} | {r['name']} | {r['action']} | {r['state']} | {targets} | {', '.join(r['scope']) or 'everyone'} |")
+        m = str   # cells already made inert once by md_safe.escape_data above
+        lines.append(f"| {m(r.get('order', ''))} | {m(r['name'])} | {m(r['action'])} | {m(r['state'])} | {m(targets)} | {m(', '.join(r['scope']) or 'everyone')} |")
     import dlp_analysis
-    lines.extend(dlp_analysis.markdown(report))
+    lines.extend(dlp_analysis.markdown(raw))
     return "\n".join(lines) + "\n"

@@ -10,19 +10,28 @@ secret.
 
 Limits (a hostile archive must not exhaust the server): a bounded number of
 members, a bounded size per member and in total (a .gz is streamed and
-never inflated past the per-member cap), one level of nesting,
-binary members skipped, member names never used as paths.
+never inflated past the per-member cap; ZIP members only stored or
+deflate, read in bounded steps; a compressed tar is read as one stream that
+stops at the total cap, so skipping a member never inflates more), one
+level of nesting, binary members skipped, member names never used as paths. Each line is read up to MAX_LINE_CHARS (a hostile single 10 MB line must not feed the
+pattern matching), and every pattern that scans a run of characters for
+an address starts only at the beginning of that run, so its cost grows
+with the length of the text, never with its square.
 """
 from __future__ import annotations
 
 import base64
+import bz2
 import gzip
 import io
+import lzma
 import re
 import tarfile
 import zipfile
 from collections import Counter
 from typing import Any, Dict, List, Tuple
+
+import safe_files
 
 MAX_MEMBERS = 600
 MAX_MEMBER_BYTES = 48 * 1024 * 1024
@@ -30,6 +39,7 @@ MAX_TOTAL_BYTES = 160 * 1024 * 1024
 MAX_EVIDENCE = 4
 EVIDENCE_WIDTH = 240
 TOP_ERRORS = 6
+MAX_LINE_CHARS = 4096   # a log or PAC line longer than this is read up to here
 
 ARCHIVE_EXT = (".zip", ".tar", ".tgz", ".tar.gz", ".gz")
 PAC_EXT = (".pac", ".dat", ".js")
@@ -107,6 +117,42 @@ class _Budget:
         return True
 
 
+_TAR_SLACK = 1024 * 1024   # headers and padding around the members the budget allows
+
+
+class _CappedReader(io.RawIOBase):
+    """A read-only stream that ends after `cap` bytes and remembers that it did."""
+
+    def __init__(self, raw: Any, cap: int) -> None:
+        super().__init__()
+        self._raw, self._left, self.capped = raw, cap, False
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b: Any) -> int:
+        if self._left <= 0:
+            self.capped = self.capped or bool(self._raw.read(1))
+            return 0
+        n = min(len(b), self._left)
+        chunk = self._raw.read(n)
+        b[:len(chunk)] = chunk
+        self._left -= len(chunk)
+        return len(chunk)
+
+
+def _decompressed(data: bytes) -> Any:
+    """A reader of `data` as a tar stream: gzip, bzip2 and xz are inflated
+    as they are read (bounded by the caller), anything else as it is."""
+    if data[:2] == b"\x1f\x8b":
+        return gzip.GzipFile(fileobj=io.BytesIO(data))
+    if data[:3] == b"BZh":
+        return bz2.BZ2File(io.BytesIO(data))
+    if data[:6] == b"\xfd7zXZ\x00":
+        return lzma.LZMAFile(io.BytesIO(data))
+    return io.BytesIO(data)
+
+
 def expand(files: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, bytes]], List[str]]:
     """[(name, bytes)] for every readable member of every upload, and notes
     about what was skipped. Archives are opened one level deep."""
@@ -134,8 +180,11 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
                     if not budget.take(member, info.file_size):
                         continue
                     try:
-                        payload = z.open(info).read(MAX_MEMBER_BYTES + 1)
-                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError) as e:
+                        payload = safe_files.zip_member(z, info, MAX_MEMBER_BYTES)
+                    except safe_files.ArchiveRefused as e:
+                        budget.notes.append(f"{member}: skipped, {str(e).split(': ', 1)[-1]}")
+                        continue
+                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError, OSError, EOFError) as e:
                         budget.notes.append(f"{member}: could not be read ({e})")
                         continue
                     _expand_one(member, payload, out, budget, depth + 1)
@@ -146,9 +195,16 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         if depth > 1:
             budget.notes.append(f"{name}: nested archive not opened (one level only)")
             return
+        # One forward pass over the (decompressed) stream, which stops at the
+        # total cap: skipping a member, or a long-name / pax header, would
+        # otherwise inflate whatever size its header claims.
+        stream = _CappedReader(_decompressed(data), MAX_TOTAL_BYTES + _TAR_SLACK)
         try:
-            with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as t:
+            with tarfile.open(fileobj=stream, mode="r|") as t:
                 for info in t:
+                    if budget.members >= MAX_MEMBERS:
+                        budget.notes.append(f"stopped after {MAX_MEMBERS} files; the rest of the archive was not read")
+                        break
                     if not info.isfile():
                         continue
                     member = _basename(info.name)
@@ -158,8 +214,11 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
                     if fh is None:
                         continue
                     _expand_one(member, fh.read(MAX_MEMBER_BYTES + 1), out, budget, depth + 1)
-        except tarfile.TarError as e:
-            budget.notes.append(f"{name}: not a valid tar archive ({e})")
+        except (tarfile.TarError, OSError, EOFError, lzma.LZMAError) as e:
+            if not stream.capped:
+                budget.notes.append(f"{name}: not a valid tar archive ({e})")
+        if stream.capped:
+            budget.notes.append(f"{name}: stopped after {MAX_TOTAL_BYTES // (1024 * 1024)} MB of the unpacked archive; the rest was not read")
         return
     if low.endswith(".gz"):
         if depth > 1:
@@ -484,7 +543,17 @@ SIGNATURES: List[Dict[str, Any]] = [
     },
 ]
 
-_COMPILED = [(s, re.compile(s["pattern"], re.I), re.compile(s["exclude"], re.I) if s.get("exclude") else None) for s in SIGNATURES]
+def _bounded(pattern: str) -> str:
+    """A signature with its open-ended word runs (\\w* and \\w+ after a
+    prefix such as fail\\w*) bounded to 64 characters: a match restarted at
+    every 'fail' inside one long run of letters would otherwise rescan the
+    rest of the run each time (time growing with the square of its length).
+    No real word in a log is longer."""
+    return pattern.replace(r"\w*", r"\w{0,64}").replace(r"\w+", r"\w{1,64}")
+
+
+_COMPILED = [(s, re.compile(_bounded(s["pattern"]), re.I), re.compile(_bounded(s["exclude"]), re.I) if s.get("exclude") else None)
+             for s in SIGNATURES]
 _SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "info": 3}
 
 
@@ -497,7 +566,7 @@ def catalogue() -> List[Dict[str, str]]:
 _FACT_VERSION = re.compile(r"\b(?:app|client|zcc|zscaler|zsa\w*)\b[^\n]{0,30}?\bversion\b[^0-9\n]{0,12}(\d+\.\d+\.\d+(?:\.\d+)?)", re.I)
 _FACT_VERSION2 = re.compile(r"\bversion\b[^0-9\n]{0,10}(\d+\.\d+\.\d+(?:\.\d+)?)", re.I)
 _FACT_OS = re.compile(r"\b(Windows (?:1[01]|Server[ \w]{0,12}|[\d.]+)|macOS[ \w.]{0,20}|Mac OS X[ \d.]{0,12}|Ubuntu[ \d.]{0,12}|Android[ \d.]{0,8}|iOS[ \d.]{0,8})", re.I)
-_FACT_USER = re.compile(r"\b([\w.+-]+@[\w-]+(?:\.[\w-]+)+)\b")
+_FACT_USER = re.compile(r"(?<![\w.+-])([\w.+-]+@[\w-]+(?:\.[\w-]+)+)\b")
 _FACT_CLOUD = re.compile(r"\b(zscaler(?:one|two|three|beta|gov|govus)?|zscloud)\.net\b", re.I)
 _FACT_T2 = re.compile(r"z-?tunnel\s*2\.0|ztunnel2|dtls", re.I)
 _FACT_T1 = re.compile(r"z-?tunnel\s*1\.0|ztunnel1", re.I)
@@ -530,9 +599,13 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
         n = 0
         f_first, f_last = "", ""
         for raw in text.splitlines():
+            raw = raw[:MAX_LINE_CHARS]
             if not raw.strip():
                 continue
             n += 1
+            # A Client Connector line is short; a crafted one megabytes long
+            # would cost every signature a full scan. Only its head is read.
+            raw = raw[:MAX_LINE_CHARS]
             p = parse_line(raw)
             ts = p["ts"] if p["ts"] and not p["ts"].startswith("?") else ""
             if ts:
@@ -656,11 +729,12 @@ def _add_context_notes(findings: List[Dict[str, Any]]) -> None:
 _PAC_RETURN = re.compile(r"return\s*(['\"])(.*?)\1", re.I | re.S)
 _PAC_MACROS = ("${GATEWAY}", "${SECONDARY_GATEWAY}", "${GATEWAY_FX}", "${SECONDARY_GATEWAY_FX}", "${GATEWAY_HOST}", "${SECONDARY_GATEWAY_HOST}",
                "${SRCIP}", "${COUNTRY}", "${ZAPP_LOCAL_PROXY}", "${SUBCLOUD}", "${ZSCALER_LOCAL_PROXY}", "${CLOUD}")
-_PAC_COND_FN = re.compile(r"\b(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet|isPlainHostName|isResolvable|dnsDomainLevels|myIpAddress|dnsResolve)\s*\(([^)]*)\)", re.I)
+_PAC_COND_FN = re.compile(r"\b(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet|isPlainHostName|isResolvable|dnsDomainLevels|myIpAddress|dnsResolve)\s*\(([^()]*)\)", re.I)
 _PAC_ISINNET = re.compile(r"isInNet\s*\(((?:[^()]|\([^()]*\))*)\)", re.I)
 _PAC_STR = re.compile(r"['\"]([^'\"]+)['\"]")
 _PRIVATE_NET = re.compile(r"^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|169\.254\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)")
 _RISKY_HOST = re.compile(r"(dropbox|box\.com|drive\.google|docs\.google|onedrive|sharepoint|1drv|slack|gmail|mail\.google|outlook|office365|office\.com|wetransfer|icloud|mega\.nz|github|gitlab|bitbucket|chatgpt|openai|anthropic|gemini|copilot|whatsapp|telegram|discord|teams\.microsoft|zoom)", re.I)
+_PAC_ZSCALER_HOST = re.compile(r"(?i)(?<![\w.-])([\w.-]+\.zscaler\w*\.net|[\w.-]+\.zscloud\.net)\b")
 _BROAD = re.compile(r"^\*?\.?(\*|\*\.\w{2,3}|\w{2,3})$")
 
 
@@ -690,7 +764,7 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                          "do": ["End the function with a final return, for example return \"PROXY ${GATEWAY}:80; PROXY ${SECONDARY_GATEWAY}:80; DIRECT\";"], "evidence": []})
     macros = [m for m in _PAC_MACROS if m in body]
     proxies = [r for _, r in returns if "PROXY" in r.upper() or "HTTPS " in r.upper() or "SOCKS" in r.upper()]
-    hardcoded = sorted({h for r in proxies for h in re.findall(r"(?i)\b([\w.-]+\.zscaler\w*\.net|[\w.-]+\.zscloud\.net)\b", r)})
+    hardcoded = sorted({h for r in proxies for h in _PAC_ZSCALER_HOST.findall(r)})
     gateway_hosts = sorted({h for r in proxies for h in re.findall(r"(?i)PROXY\s+([^:;\s]+)", r)})
     last_return = returns[-1][1] if returns else ""
     default_action = "direct" if last_return.upper().strip() == "DIRECT" else ("proxy" if last_return else "none")
@@ -726,7 +800,7 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
 
     # Bypass inventory: DIRECT returns and the conditions that lead to them.
     bypasses: List[Dict[str, Any]] = []
-    lines = body.splitlines()
+    lines = [ln[:MAX_LINE_CHARS] for ln in body.splitlines()]
     for i, line in enumerate(lines):
         if not re.search(r"return\s*['\"]\s*DIRECT\s*['\"]", line, re.I):
             continue

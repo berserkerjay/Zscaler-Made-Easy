@@ -450,7 +450,7 @@ def test_only_listed_writers_may_change_the_tenant(monkeypatch, idp):
     assert "ZSCALER_SSO_WRITERS" not in reader.post("/api/remediation/execute", json={"check_id": "x", "dry_run": True}).text   # previews
     assert reader.get("/api/auth/status").json()["may_write"] is False
     for writer in (_sign_in(monkeypatch, idp, email="someone@example.com", groups=["DLP-Admins"]),
-                   _sign_in(monkeypatch, idp, email="Boss@Example.com")):
+                   _sign_in(monkeypatch, idp, email="Boss@Example.com", email_verified=True)):   # an email counts only when verified (test_auth_session)
         assert writer.get("/api/auth/status").json()["may_write"] is True
         for path, body in WRITER_CALLS:
             assert "ZSCALER_SSO_WRITERS" not in writer.post(path, json=body).text, path
@@ -477,12 +477,16 @@ def test_every_endpoint_that_writes_to_the_tenant_checks_the_writer_list():
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dlp_api_server.py"), encoding="utf-8").read()
     handlers = re.split(r"\n@app\.", src)
     gated = [h for h in handlers if "if not writes_enabled():" in h or "req.dry_run)" in h or "req.dry_run, req.mode)" in h
-             or "set_write_mode(req" in h]
+             or "set_write_mode(req" in h or "_require_tenant_write(req" in h]
     assert len(gated) >= 13, len(gated)
+    # The shared tenant-write gate checks the writer list first, before write mode.
+    gate = src[src.index("def _require_tenant_write("):]
+    gate = gate[:gate.index("\n\n\n")]
+    assert gate.index("_security.require_writer()") < gate.index("if not writes_enabled():")
     for h in gated:
         head = h.split("\n", 1)[0]
-        assert "_security.require_writer()" in h, head
-        if "if not writes_enabled():" in h:
+        assert "_security.require_writer()" in h or "_require_tenant_write(req" in h, head
+        if "if not writes_enabled():" in h and "_security.require_writer()" in h:
             assert h.index("_security.require_writer()") < h.index("if not writes_enabled():"), head
 
 

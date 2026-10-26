@@ -29,6 +29,8 @@ have different best-practice ordering and are not covered by this
 module — by design.
 """
 
+import bisect
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 # String values that represent "Evaluate All Rules is ON" in enum-style
@@ -96,6 +98,18 @@ def _action_key(rule: Dict[str, Any]) -> int:
     return ACTION_PRIORITY.get(action, 30)
 
 
+MAX_OVERLAP_ISSUES = 500   # Allow/Block overlaps listed; past it one issue says there are more
+
+
+def _category_keys(rule: Dict[str, Any]) -> set:
+    """A rule's URL categories as a set (a category given as an object is
+    compared by its JSON text)."""
+    out = set()
+    for c in rule.get("urlCategories") or []:
+        out.add(c if isinstance(c, (str, int, float, bool)) else json.dumps(c, sort_keys=True, default=str))
+    return out
+
+
 def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Analyze rules for issues that affect Evaluate All Rules migration.
@@ -114,6 +128,15 @@ def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Index by name to detect duplicates
     by_name = {}
     engines_used = {}
+    # Block rules by URL category, so each Allow rule is compared with the
+    # Block rules that share a category, not with every rule (thousands of
+    # uploaded rules otherwise take minutes); and the pairs listed are capped.
+    blocks_by_cat: Dict[Any, List[int]] = {}
+    for j, other in enumerate(rules):
+        if (other.get("action") or "").upper() in ("BLOCK", "BLOCK_DROP"):
+            for cat in _category_keys(other):
+                blocks_by_cat.setdefault(cat, []).append(j)
+    overlaps, unlisted = 0, False
 
     for i, r in enumerate(rules):
         rid = str(r.get("id", i + 1))
@@ -168,25 +191,40 @@ def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "message": "Under Rule Order mode this Allow rule stops evaluation; under Evaluate All it has no suppressive effect. Consider consolidating or removing.",
             })
 
-        # Deep scope check for cross-type shadowing (same categories + opposite actions)
-        for j, other in enumerate(rules):
-            if j <= i:
+        # Deep scope check for cross-type shadowing (same categories + opposite
+        # actions): an Allow rule against every later Block rule sharing a
+        # URL category.
+        if action in ("ALLOW", "BYPASS"):
+            our_cats = _category_keys(r)
+            lists = [blocks_by_cat[cat] for cat in our_cats if cat in blocks_by_cat]
+            if overlaps >= MAX_OVERLAP_ISSUES:
+                # Nothing more is listed: only whether there would have been (each list is in rule order).
+                unlisted = unlisted or any(lst[-1] > i for lst in lists)
                 continue
-            other_action = (other.get("action") or "").upper()
-            if other_action == action:
-                continue
-            # Overlapping URL categories?
-            our_cats = set(r.get("urlCategories") or [])
-            their_cats = set(other.get("urlCategories") or [])
-            if our_cats and their_cats and our_cats & their_cats:
-                if action in ("ALLOW", "BYPASS") and other_action in ("BLOCK", "BLOCK_DROP"):
-                    issues.append({
-                        "severity": "WARNING",
-                        "rule_id": rid,
-                        "rule_name": name,
-                        "type": "Conflicting Overlap",
-                        "message": f"Allows overlap with Block in rule '{(other.get('name') or '?')}' on categories: {', '.join(sorted(our_cats & their_cats))}. Under Evaluate All, block wins.",
-                    })
+            later = sorted({j for lst in lists for j in lst[bisect.bisect_right(lst, i):]})
+            for j in later:
+                if overlaps >= MAX_OVERLAP_ISSUES:
+                    unlisted = True
+                    break
+                overlaps += 1
+                other = rules[j]
+                shared = our_cats & _category_keys(other)
+                issues.append({
+                    "severity": "WARNING",
+                    "rule_id": rid,
+                    "rule_name": name,
+                    "type": "Conflicting Overlap",
+                    "message": f"Allows overlap with Block in rule '{(other.get('name') or '?')}' on categories: {', '.join(sorted(map(str, shared)))}. Under Evaluate All, block wins.",
+                })
+
+    if unlisted:
+        issues.append({
+            "severity": "WARNING",
+            "rule_id": "",
+            "rule_name": "",
+            "type": "Conflicting Overlap",
+            "message": f"More Allow rules overlap with Block rules than the first {MAX_OVERLAP_ISSUES} listed above; fix those and analyze again to see the rest.",
+        })
 
     return {
         "total_rules": len(rules),
@@ -1014,7 +1052,7 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     if not __import__("security").writes_enabled():
         return {
             "status": "blocked",
-            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat).",
+            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (relaunch via START_Zscaler_Made_Easy_WRITES_ENABLED.bat).",
             "current": current,
         }
 

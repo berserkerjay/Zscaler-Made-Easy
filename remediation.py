@@ -414,7 +414,9 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
         return {"status": "dry_run", **p,
                 "message": f"DRY RUN: Would {p['method']} {p['endpoint']}. Set dry_run=false + ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND to actually apply."}
 
-    if p.get("destructive") and not __import__("security").writes_enabled():
+    # Deny by default: any live call is a tenant write, whatever the recipe's
+    # `destructive` flag says (a recipe without it must not slip past write mode).
+    if not __import__("security").writes_enabled():
         return {"status": "blocked", **p,
                 "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. To turn them on, " + __import__("security").write_enable_hint() + "."}
 
