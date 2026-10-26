@@ -799,6 +799,17 @@ def load_history(tenant: str, path: Optional[str] = None) -> List[Dict[str, Any]
     return list(_load_all(path).get(tenant_auth.scrub_classic_login(str(tenant or "tenant"))[:120], []))
 
 
+def _owner_only(path: str) -> int:
+    """A file descriptor for writing `path`, owner-only (0600) from the
+    first byte whatever the umask: the file holds tenant data."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+    except (AttributeError, OSError):   # Windows: no fchmod; the folder's own access rules apply
+        pass
+    return fd
+
+
 def record(tenant: str, rep: Mapping[str, Any], path: Optional[str] = None) -> List[Dict[str, Any]]:
     """Append this run's summary for `tenant` (a record label, never a
     login) and return that tenant's history, oldest first."""

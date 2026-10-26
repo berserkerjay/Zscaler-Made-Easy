@@ -126,6 +126,17 @@ def _scrub(value: Any) -> Any:
     return value
 
 
+def _owner_only(path: str) -> int:
+    """A file descriptor for writing `path`, owner-only (0600) from the
+    first byte whatever the umask: the file holds tenant data."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+    except (AttributeError, OSError):   # Windows: no fchmod; the folder's own access rules apply
+        pass
+    return fd
+
+
 def save_history(snapshots: List[Dict[str, Any]], path: Optional[str] = None) -> str:
     """Keep the newest HISTORY_KEEP snapshots; written to a temporary file
     and moved into place so a crash never leaves half a file."""

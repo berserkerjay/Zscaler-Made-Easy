@@ -198,13 +198,33 @@ def mask_secrets(text: str, creds: Dict[str, Any]) -> str:
     """`text` with every secret value of `creds` replaced by a fixed
     '[redacted <field>]', so an error can be shown without leaking a
     password or a key. No character and no length of a secret is kept;
-    partial masking (_mask) is only for identifiers such as client_id."""
+    partial masking (_mask) is only for identifiers such as client_id.
+    A secret echoed back in an error is masked in the forms a request
+    carries it too: as typed, form/URL-encoded (the OAuth token request is
+    a form post) and JSON-escaped (the classic sign-in is a JSON body)."""
     out = str(text or "")
     for k in SECRET_KEYS:
         v = str((creds or {}).get(k) or "")
-        if v and v in out:
-            out = out.replace(v, f"[redacted {k}]")
+        if not v:
+            continue
+        for form in sorted(secret_forms(v), key=len, reverse=True):
+            if form in out:
+                out = out.replace(form, f"[redacted {k}]")
     return out
+
+
+def secret_forms(value: str) -> set:
+    """`value` as typed and in the encodings a request may carry it in
+    (URL path/query, form body, JSON string), each of which an error that
+    echoes the request can show."""
+    from urllib.parse import quote, quote_plus
+    import json as _json
+    v = str(value or "")
+    if not v:
+        return set()
+    forms = {v, quote(v, safe=""), quote_plus(v, safe=""), _json.dumps(v)[1:-1], _json.dumps(v, ensure_ascii=False)[1:-1]}
+    forms |= {re.sub(r"%[0-9A-F]{2}", lambda m: m.group(0).lower(), f) for f in forms}   # %2b as well as %2B
+    return {f for f in forms if f}
 
 
 # ---------------------------------------------------------------------------

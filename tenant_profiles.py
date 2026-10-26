@@ -169,9 +169,44 @@ def _write(data: Dict[str, Any]) -> None:
             pass
         _keep_last_good(p)
         os.replace(tmp, p)
+        _forget_in_last_good(p, data)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
+
+
+def _plain_secrets(data: Dict[str, Any]) -> set:
+    """The secrets a store holds in plain text (DLP_CHECK_SECRET_STORE=file):
+    every remembered secret that is not the credential-store marker."""
+    out = set()
+    for p in (data.get("profiles") or {}).values() if isinstance(data, dict) else []:
+        if isinstance(p, dict):
+            out |= {str(p[f]) for f in SECRET_FIELDS if p.get(f) and p.get(f) != KEYRING_MARK}
+    return out
+
+
+def _forget_in_last_good(path: str, data: Dict[str, Any]) -> None:
+    """The last-good copy is the store before this write. When this write
+    forgot a secret (remember unticked, a new secret, a deleted profile),
+    that copy would keep it on disk: it is then refreshed from the store as
+    written now, so a forgotten secret is gone from both files."""
+    lg = path + ".last-good"
+    try:
+        with open(lg, "r", encoding="utf-8") as f:
+            old = json.load(f)
+    except (OSError, ValueError):
+        return
+    if not (_plain_secrets(old) - _plain_secrets(data)):
+        return
+    try:
+        import self_heal
+        with open(path, "rb") as f:
+            self_heal._atomic_write_bytes(lg, f.read())
+    except Exception:  # noqa: BLE001 - fail closed: no copy rather than one holding a forgotten secret
+        try:
+            os.unlink(lg)
+        except OSError:
+            pass
 
 
 def masked(p: Dict[str, Any], *, with_history: bool = True) -> Dict[str, Any]:

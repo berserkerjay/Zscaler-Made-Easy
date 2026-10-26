@@ -789,6 +789,17 @@ def to_markdown(d: Dict[str, Any]) -> str:
     return "\n".join(L)
 
 
+def _owner_only(path: str) -> int:
+    """A file descriptor for writing `path`, owner-only (0600) from the
+    first byte whatever the umask: the file holds tenant data."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+    except (AttributeError, OSError):   # Windows: no fchmod; the folder's own access rules apply
+        pass
+    return fd
+
+
 def write_digest(d: Dict[str, Any]) -> str:
     dd = digest_dir()
     # The id is the run's second; a run in the same second as the previous
@@ -892,7 +903,8 @@ def _send_email(subject: str, body: str, e: Dict[str, Any]) -> Dict[str, Any]:
             smtp.send_message(msg)
         return {"channel": "email", "sent": True, "to": e["to"]}
     except Exception as ex:  # noqa: BLE001
-        return {"channel": "email", "sent": False, "why": f"{type(ex).__name__}: {str(ex)[:200]}"}
+        why = _scrub_secrets(str(ex), [os.environ.get("DLP_CHECK_SMTP_PASSWORD", "")])
+        return {"channel": "email", "sent": False, "why": f"{type(ex).__name__}: {why[:200]}"}
 
 
 def _send_webhook(subject: str, body: str, url: str) -> Dict[str, Any]:
@@ -909,9 +921,37 @@ def _send_webhook(subject: str, body: str, url: str) -> Dict[str, Any]:
             return {"channel": "webhook", "sent": False, "host": urlparse(url).hostname, "status": r.status_code,
                     "why": "the webhook answered with a redirect, which is not followed; use the webhook's final https:// URL"}
         ok = 200 <= r.status_code < 300
-        return {"channel": "webhook", "sent": ok, "host": urlparse(url).hostname, "status": r.status_code, **({} if ok else {"why": (r.text or "")[:200]})}
+        return {"channel": "webhook", "sent": ok, "host": urlparse(url).hostname, "status": r.status_code,
+                **({} if ok else {"why": _scrub_secrets(r.text or "", _webhook_secrets(url))[:200]})}
     except Exception as ex:  # noqa: BLE001
-        return {"channel": "webhook", "sent": False, "why": f"{type(ex).__name__}: {str(ex)[:200]}"}
+        # requests names the URL it failed on, and a Teams or Slack webhook's
+        # path and query ARE its credential: never kept in the digest.
+        return {"channel": "webhook", "sent": False, "host": urlparse(url).hostname,
+                "why": f"{type(ex).__name__}: {_scrub_secrets(str(ex), _webhook_secrets(url))[:200]}"}
+
+
+def _webhook_secrets(url: str) -> List[str]:
+    """What of a webhook URL is a credential: everything after the host (the
+    path, the query and each of their parts), in the forms an error shows."""
+    u = urlparse(url or "")
+    tail = u.path + (("?" + u.query) if u.query else "")
+    parts = [tail, u.path, u.query] + [p for p in re.split(r"[/?&=]", tail) if len(p) >= 6]
+    return [p for p in parts if p and p != "/"]
+
+
+def _scrub_secrets(text: str, secrets: List[str]) -> str:
+    """`text` with each secret (as given, URL-encoded or JSON-escaped)
+    replaced by [redacted]: a delivery failure is recorded in the digest,
+    which the API returns and the digests folder keeps."""
+    out = str(text or "")
+    try:
+        import tenant_auth
+        forms = {f for s in secrets if s for f in tenant_auth.secret_forms(s)}
+    except Exception:  # noqa: BLE001 - fail closed: no detail at all
+        return "[details withheld]" if any(s for s in secrets) else out
+    for f in sorted(forms, key=len, reverse=True):
+        out = out.replace(f, "[redacted]")
+    return out
 
 
 # ── Command line ─────────────────────────────────────────────────────
