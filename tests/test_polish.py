@@ -60,8 +60,8 @@ def test_contrast_tokens_landmarks_and_headings():
     assert "--info: #98989f;" in html and "--info: #64748b" not in html
     # No gradient anywhere: a destructive or write action is a flat semantic-colour fill.
     assert "linear-gradient(135deg,#f59e0b,#ef4444)" not in html and "linear-gradient(135deg, #f59e0b, #ef4444)" not in html
-    assert "linear-gradient(135deg,#b45309,#b91c1c)" not in html and "background:var(--fail);color:white" in html
-    assert ".activate-btn {" in html and "background: var(--warn); color: #fff;" in html
+    assert "linear-gradient(135deg,#b45309,#b91c1c)" not in html and "background:var(--btn-danger);color:white" in html
+    assert ".activate-btn {" in html and "background: var(--btn-warn); color: #fff;" in html
     assert ".field input::placeholder { color: var(--dim); opacity: 0.8; }" in html
     assert "body.theme-light #zccDiagModal > div" in html
     assert 'role="document"' not in html and '<div id="results" role="region" aria-label="Assessment results">' in html

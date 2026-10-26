@@ -1,5 +1,5 @@
 // ── Evaluate All Rules: how ZIA decides ───────────────────────────────
-// Rendered into #evalAllFlow inside the Inline DLP Rule migration modal
+// Rendered into #evalAllFlow inside the Inline DLP rule migration modal
 // and on the /report/evalall reference tab. Pure DOM, no tenant call.
 //
 // What ZIA does (Zscaler: "Configuring DLP Policy Rules with Evaluate All

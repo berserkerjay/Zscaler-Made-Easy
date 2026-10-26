@@ -49,7 +49,7 @@
     get: 'An overview of plain sentences (segments nobody can reach, connectors down or outdated, rules that never decide), an infrastructure map from users to App Connectors whose boxes filter the tables of every object, and the whole overview as Excel; findings grouped by template with a severity filter, counts and a catalog of every template, exported as CSV, JSON or Excel; and a diagnosis hop by hop: segment, segment group, access rules in order with why each did not match, server groups and connector status, plus the assumptions.',
     next: 'Fix the named rule, segment or connector group in the ZPA console, then read ZPA again and confirm the finding is gone; use Diagnose with the user\'s groups to prove the access path before you close the ticket.',
   };
-  X.posture = {
+  X.deviceposture = {
     group: 'Find the gaps', name: 'Device posture', href: '/report/device-posture',
     what: 'Reads the ZPA posture profiles, trusted networks and access rules once, sorts every posture profile into a family (domain join, EDR or antivirus, certificate, disk encryption, OS version, jailbreak, MDM, firewall, process, marker or unknown) and says whether that came from the profile type or only from its name. It links each profile and network to the rules that use it, as must pass or must fail, and says every access rule in plain words. It reads only when ZPA is ticked on the Scope page.',
     why: 'Zero trust is only as strong as the device check behind it. An allow rule to a sensitive app with no posture check, a negated check that lets failing devices in, or a check that only looks for a marker file all look fine in the console list, and each one lets an unmanaged or compromised laptop reach private apps.',
@@ -263,7 +263,7 @@
     why: 'Engineers get this wrong constantly and then cannot explain an incident. Five minutes here saves an argument with the customer.',
     when: 'Before the migration wizard, or when an incident\'s winning rule surprises someone.',
     get: 'The diagram and which channels use it (Web, Endpoint, Email; SaaS is first-match, no tie-breaker).',
-    next: 'Open the Inline DLP Rule migration wizard to see the tenant\'s own rules in order, then set the Advanced Settings switch in ZIA when the customer agrees.',
+    next: 'Open the Inline DLP rule migration wizard to see the tenant\'s own rules in order, then set the Advanced Settings switch in ZIA when the customer agrees.',
   };
   X.bestpractices = {
     group: 'Reference', name: 'Best practices library', href: '/report/view?tool=bestpractices',
@@ -423,7 +423,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'posture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo' };
     return map[p] || '';
@@ -474,7 +474,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'dataflow', 'zpa', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

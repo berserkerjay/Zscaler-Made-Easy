@@ -151,11 +151,29 @@
       // Bottom-left, clear of the page's own header (the reference pages
       // put their brand top-left), with literal fallbacks: those pages do
       // not define the app's tokens.
-      b.style.cssText = 'position:fixed;bottom:0.9rem;left:0.9rem;z-index:2147483000;min-height:36px;display:inline-flex;align-items:center;padding:0 0.9rem;border-radius:10px;background:var(--accent, #0a84ff);color:#fff;font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,0.25);';
+      b.style.cssText = 'position:fixed;bottom:0.9rem;left:0.9rem;z-index:2147483000;min-height:36px;display:inline-flex;align-items:center;padding:0 0.9rem;border-radius:10px;background:var(--btn, #0071e3);color:#fff;font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,0.25);';
       b.addEventListener('click', goHome);
       document.body.appendChild(b);
     }
   }
   if (document.body) init(); else document.addEventListener('DOMContentLoaded', init);
   window.__dlpGoHome = goHome;
+})();
+
+// Reduced motion covers scripted scrolling too (WCAG 2.3.3): Chromium
+// animates scrollIntoView / scrollTo({ behavior: 'smooth' }) even when the
+// user asked the system for reduced motion, so while that preference is on
+// every smooth scroll the page asks for becomes an instant one.
+(function () {
+  if (window.__dlpCalmScroll || !window.matchMedia) return;
+  const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const calm = o => (mq.matches && o && typeof o === 'object' && o.behavior === 'smooth') ? Object.assign({}, o, { behavior: 'auto' }) : o;
+  const wrap = (obj, name) => {
+    const orig = obj && obj[name];
+    if (typeof orig !== 'function') return;
+    obj[name] = function (first, ...rest) { return orig.call(this, calm(first), ...rest); };
+  };
+  ['scrollIntoView', 'scroll', 'scrollTo', 'scrollBy'].forEach(n => wrap(Element.prototype, n));
+  ['scroll', 'scrollTo', 'scrollBy'].forEach(n => wrap(window, n));
+  window.__dlpCalmScroll = calm;
 })();

@@ -471,6 +471,7 @@
 .fa-head h2{margin:0;font-size:var(--fs-headline,0.9375rem);font-weight:600;flex:0 0 auto}
 .fa-input{flex:1 1 auto;min-width:0;min-height:var(--ctl-md,36px);padding:0 10px;border:1px solid var(--border);border-radius:var(--r-md,10px);background:var(--well);color:var(--text);font:inherit;font-size:var(--fs-body,0.9375rem)}
 .fa-input:focus-visible,.fa-dlg button:focus-visible,.fa-dlg a:focus-visible,.fa-dlg input:focus-visible,.fa-dlg textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fa-body:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .fa-x,.fa-btn{min-height:var(--ctl-sm,28px);padding:0 10px;border:1px solid var(--border);border-radius:var(--r-sm,6px);background:var(--well);color:var(--text);font:inherit;cursor:pointer}
 .fa-btn:disabled{opacity:.55;cursor:default}
 .fa-body{flex:1 1 auto;overflow:auto;min-height:80px}
@@ -514,7 +515,9 @@ button.fa-chip{cursor:pointer;font:inherit;font-size:var(--fs-footnote,0.75rem)}
       'aria-autocomplete': 'list', 'aria-describedby': 'faKeys', autocomplete: 'off', spellcheck: 'false',
       placeholder: 'Search pages, terms, rules, dictionaries, findings…', 'aria-label': 'Find anything' });
     listEl = h('ul', { id: 'faList', class: 'fa-list', role: 'listbox', 'aria-label': 'Results' });
-    bodyEl = h('div', { class: 'fa-body', id: 'faBody' }, listEl);
+    // The results scroll: a focusable region, so the keyboard can scroll a long
+    // detail view in every browser (WCAG 2.1.1), not only where scrollers are focusable.
+    bodyEl = h('div', { class: 'fa-body', id: 'faBody', tabindex: '0', role: 'region', 'aria-label': 'Find anything results' }, listEl);
     const box = h('div', { class: 'fa-dlg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'faTitle' },
       h('div', { class: 'fa-head' }, h('h2', { id: 'faTitle', text: 'Find anything' }), input,
         h('button', { type: 'button', class: 'fa-x', 'aria-label': 'Close Find anything', onclick: close, text: 'Close' })),

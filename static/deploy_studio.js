@@ -2278,7 +2278,7 @@ function _tfEnsureModal() {
   if (document.getElementById('terraformModal')) return;
   const m = document.createElement('div');
   m.id = 'terraformModal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'terraformModalTitle');
-  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2rem 1rem;';
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:2rem 1rem;';
   m.innerHTML = `<div style="max-width:1040px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.4rem 1.6rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:0.6rem;">
       <div><h2 id="terraformModalTitle" style="margin:0;">Terraform hand-off</h2>

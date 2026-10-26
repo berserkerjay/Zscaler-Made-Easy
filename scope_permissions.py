@@ -30,7 +30,7 @@ from typing import Any, Dict
 SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
 
     "dlp": {
-        "label": "DLP Assessment",
+        "label": "DLP assessment",
         "description": "All 170 DLP-specific checks (Inline Web DLP, engines, dictionaries, ICAP, EDM).",
         "service": "ZIA",
         "permissions_read": [
@@ -60,7 +60,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
     },
 
     "zia_extras": {
-        "label": "ZIA Platform",
+        "label": "ZIA platform",
         "description": "Cloud firewall, URL filtering, SSL inspection, locations, traffic forwarding, security policy, sandbox.",
         "service": "ZIA",
         "permissions_read": [
@@ -172,7 +172,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
     },
 
     "genai": {
-        "label": "GenAI & Prompts",
+        "label": "GenAI & prompts",
         "description": "AI/ML controls, GenAI app categorization, prompt-leak risk surfaces.",
         "service": "ZIA",
         "permissions_read": [
@@ -192,7 +192,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
     },
 
     "automation": {
-        "label": "Automation Readiness",
+        "label": "Automation readiness",
         "description": "Validates tenant readiness for Zscaler SDKs / Terraform / Ansible (github.com/zscaler).",
         "service": "ZIA + ZPA + ZCC",
         "permissions_read": [

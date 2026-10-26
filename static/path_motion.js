@@ -392,7 +392,7 @@ function renderPathMotion(container) {
       <span class="sep"></span>
       <button type="button" class="rp-btn" id="pmToggle" aria-controls="pmStage">Pause motion</button>
     </div>
-    <div class="pm-wrap" id="pmStage">${_pmSvg()}</div>
+    <div class="pm-wrap" id="pmStage" tabindex="0" role="region" aria-label="Path animation (scrolls sideways on a narrow window)">${_pmSvg()}</div>
     <div class="pm-legend" aria-hidden="true"><span><i class="lane-main"></i>content and verdict</span><span><i class="lane-ev"></i>evidence lane (feeds Workflow Automation)</span><span><i class="lane-tel"></i>telemetry and parallel paths (never feed it)</span><span><b class="pm-x">✕</b>where the chain breaks</span><span><b class="pm-sq">■</b>where policy blocks it</span><span><b class="pm-q">?</b>rules that could not be read</span><span><b class="pm-o">–</b>not in scope (not read)</span><span><i class="lane-assumed"></i>evidence path assumed, not confirmed (ICAP only)</span></div>
     <div class="df-hint" id="pmMotionNote"></div>
     <ul class="pm-summary" id="pmSummary"></ul>`;
