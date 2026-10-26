@@ -371,7 +371,18 @@ def trend(history: Iterable[Dict[str, Any]], current: Iterable[Dict[str, Any]] =
 
 # ── 4. Score-drop alerts ───────────────────────────────────────────────
 def settings_path() -> str:
-    return os.environ.get("DLP_CHECK_POSTURE_SETTINGS") or os.path.join(_APP_DIR, "posture_settings.json")
+    """posture_settings.json beside the proposals store (DLPCHECK_PROPOSALS_FILE's
+    folder: the app folder on a local install, /data in the read-only
+    container), or DLP_CHECK_POSTURE_SETTINGS."""
+    env = os.environ.get("DLP_CHECK_POSTURE_SETTINGS")
+    if env:
+        return env
+    try:
+        import proposals
+        folder = os.path.dirname(os.path.abspath(proposals.store_path()))
+    except Exception:  # noqa: BLE001
+        folder = _APP_DIR
+    return os.path.join(folder, "posture_settings.json")
 
 
 def settings() -> Dict[str, Any]:
