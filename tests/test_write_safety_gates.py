@@ -978,6 +978,7 @@ def test_the_extension_may_stop_only_the_export_it_started(world, kind, ext_may_
         release.wait(10)
         return {"status": "done", "stopped": cancel.is_set()}
     job = _REAL_JOB_START(kind, fn, label="qa")
+    job.started_by = "extension"   # even a job marked as the extension's must be an export for it to stop it
     try:
         # Act
         by_ext = world.client(WRITER, origin=EXT_ORIGIN).post(f"/api/dlp-packs/jobs/{job.id}/cancel", json={})
