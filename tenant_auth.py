@@ -62,7 +62,7 @@ def normalize_method(value: Any) -> str:
         return ""
     if v in _METHOD_ALIASES:
         return _METHOD_ALIASES[v]
-    raise ValueError(f"Unknown sign-in method '{value}'. Use 'oneapi' (ZIdentity API client) or 'legacy' (ZIA admin username, password and API key).")
+    raise ValueError(f"Unknown sign-in method '{str(value)[:40]}'. Use 'oneapi' (ZIdentity API client) or 'legacy' (ZIA admin username, password and API key).")
 
 
 def method_of(creds: Dict[str, Any]) -> str:

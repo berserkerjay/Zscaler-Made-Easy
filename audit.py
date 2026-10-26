@@ -193,7 +193,7 @@ class AuditMiddleware:
         if body:
             try:
                 parsed = json.loads(body.decode("utf-8"))
-            except (ValueError, UnicodeDecodeError):
+            except (ValueError, UnicodeDecodeError, RecursionError):   # not JSON, or nested past the parser's depth: the app answers 400
                 parsed = f"<{len(body)} bytes>"
         replayed = {"done": False}
 

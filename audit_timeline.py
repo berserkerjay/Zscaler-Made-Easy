@@ -125,8 +125,11 @@ def window(days: Any = None, start: str = "", end: str = "", now: Optional[float
         return d
 
     if start or end:
-        e = _parse(end, True) if end else now_dt
-        s = _parse(start, False) if start else e - timedelta(days=DEFAULT_DAYS)
+        try:
+            e = _parse(end, True) if end else now_dt
+            s = _parse(start, False) if start else e - timedelta(days=DEFAULT_DAYS)
+        except OverflowError:   # a date at the calendar's edge (year 1 or 9999): no window around it
+            raise ValueError("That date is at the very edge of the calendar. Choose a recent date, such as 2026-10-01.")
     else:
         try:
             n = int(days if days not in (None, "") else DEFAULT_DAYS)
@@ -134,6 +137,8 @@ def window(days: Any = None, start: str = "", end: str = "", now: Optional[float
             raise ValueError("The number of days must be a whole number.")
         if n < 1:
             raise ValueError("Choose at least one day.")
+        if n > MAX_DAYS:   # checked before the date arithmetic, which overflows for a huge n
+            raise ValueError(f"The window is longer than {MAX_DAYS} days, the most ZIA keeps the audit log for. Choose a shorter one.")
         e, s = now_dt, now_dt - timedelta(days=n)
     e = min(e, now_dt)
     if s >= e:

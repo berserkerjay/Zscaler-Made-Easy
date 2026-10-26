@@ -209,6 +209,117 @@ async def _safe_exception_handler(request: Request, exc: Exception):
         status_code=500,
     )
 
+
+# ── Error bodies never echo the request back ───────────────────────
+# FastAPI's 422 lists each invalid field with its `input`: for a missing
+# field that is the whole body, client_secret and password included, and a
+# 200 kB field comes back as a 200 kB error. A refusal says which field and
+# why (`loc`, `msg`, `type`: what the pages read) and nothing the caller
+# sent; any string in an HTTPException detail is cut to _MAX_DETAIL_CHARS so
+# a message quoting a bad value cannot reflect an unbounded one.
+_MAX_DETAIL_CHARS = 1000
+_MAX_LOC_CHARS = 100
+
+
+def _bounded(value: Any, limit: int = _MAX_DETAIL_CHARS) -> Any:
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[:limit] + "…"
+    if isinstance(value, dict):
+        return {(_bounded(k, _MAX_LOC_CHARS) if isinstance(k, str) else k): _bounded(v, limit) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_bounded(v, limit) for v in value]
+    return value
+
+
+from fastapi.exceptions import RequestValidationError as _RequestValidationError
+from starlette.exceptions import HTTPException as _StarletteHTTPException
+from fastapi.exception_handlers import http_exception_handler as _default_http_exception_handler
+
+
+@app.exception_handler(_RequestValidationError)
+async def _validation_error_handler(request: Request, exc: _RequestValidationError):
+    """422 with each problem's loc / msg / type only (never `input`, `ctx` or `url`)."""
+    errors = [{"type": str(e.get("type", "")), "loc": [_bounded(p, _MAX_LOC_CHARS) for p in e.get("loc", ())],
+               "msg": _bounded(str(e.get("msg", "")))} for e in exc.errors()[:50]]
+    return JSONResponse({"detail": errors}, status_code=422)
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def _bounded_http_exception_handler(request: Request, exc: _StarletteHTTPException):
+    """Every HTTPException, its detail's strings bounded (headers such as Retry-After kept)."""
+    detail = _bounded(exc.detail)
+    if detail != exc.detail:
+        exc = _StarletteHTTPException(status_code=exc.status_code, detail=detail, headers=exc.headers)
+    return await _default_http_exception_handler(request, exc)
+
+
+async def _json_object(request: Request) -> Dict[str, Any]:
+    """The body of an endpoint that reads it itself (no request model), as a
+    JSON object; 400 for a body that is not JSON or not an object (deny by
+    default: such a body never reaches the handler's .get())."""
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001 - not JSON, not UTF-8, nested past the parser's depth
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body: send a JSON object.")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Invalid request body: send a JSON object.")
+    return data
+
+
+def _object_list(data: Dict[str, Any], key: str, missing: str) -> List[Dict[str, Any]]:
+    """`data[key]` as a non-empty list of JSON objects; 400 (`missing` when absent or empty) otherwise."""
+    items = data.get(key)
+    if not items:
+        raise HTTPException(status_code=400, detail=missing)
+    if not isinstance(items, list) or not all(isinstance(x, dict) for x in items):
+        raise HTTPException(status_code=400, detail=f"`{key}` must be a list of JSON objects.")
+    return items
+
+
+# The text fields of an assessment check row (the `complete` payload the
+# report endpoints take back): each is text, and a missing or null one is "".
+_CHECK_TEXT_KEYS = ("id", "section", "label", "status", "detail")
+
+
+def _check_rows(data: Dict[str, Any], missing: str) -> List[Dict[str, Any]]:
+    """`data["checks"]` as check rows whose text fields are strings (filled
+    with "" when absent or null); 400 naming the first field that is not text."""
+    rows = _object_list(data, "checks", missing)
+    for i, row in enumerate(rows):
+        for k in _CHECK_TEXT_KEYS:
+            if row.get(k) is None:
+                row[k] = ""
+            elif not isinstance(row[k], str):
+                raise HTTPException(status_code=400, detail=f"`checks[{i}].{k}` must be text.")
+    return rows
+
+
+_XML_UNSAFE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def _xml_text(value: Any) -> Any:
+    """`value` with every string stripped of the characters XML 1.0 cannot
+    hold (control characters, lone surrogates): a Word document is XML, and
+    one such character in a check or metadata field made the build fail (500)."""
+    if isinstance(value, str):
+        return _XML_UNSAFE.sub("", value)
+    if isinstance(value, dict):
+        return {_xml_text(k): _xml_text(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_xml_text(v) for v in value]
+    return value
+
+
+def _rule_rows(data: Dict[str, Any], missing: str) -> List[Dict[str, Any]]:
+    """`data["rules"]` (the Evaluate All Rules migration's DLP rules) as
+    objects whose name, state and action are text or absent; 400 otherwise."""
+    rows = _object_list(data, "rules", missing)
+    for i, row in enumerate(rows):
+        for k in ("name", "state", "action"):
+            if row.get(k) is not None and not isinstance(row[k], str):
+                raise HTTPException(status_code=400, detail=f"`rules[{i}].{k}` must be text.")
+    return rows
+
 # Serve static files (web GUI)
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(_APP_DIR, "static")
@@ -1009,6 +1120,10 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     `auth_method` is resolved. A source is used only while the credentials
     are still incomplete for their sign-in, and never mixes a typed
     identity with a stored secret."""
+    try:   # an unknown sign-in method is the caller's mistake: 400 here, never a ValueError (500) further in
+        tenant_auth.normalize_method(getattr(req, "auth_method", ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
     if not tenant_auth.started(creds):
         # Nothing typed for a tenant: the source that has the sign-in decides
@@ -4214,11 +4329,8 @@ async def generate_xlsx(request: Request):
     Frameworks, Compliance mapping, Best practices), from the same body
     as /api/report/docx. Scores are recomputed here from the checks."""
     import report_exports
-    try:
-        data = await request.json()
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
-    if not isinstance(data, dict) or not data.get("checks"):
+    data = await _json_object(request)
+    if not data.get("checks"):
         raise HTTPException(status_code=400, detail="No checks in request body — cannot build the workbook.")
     try:
         body = await asyncio.to_thread(report_exports.assessment_workbook, data)
@@ -6163,7 +6275,9 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
     except Exception:
         get_compliance_for_check = lambda x: {}
 
-    suffix = scope or "all"
+    # Only a scope the catalogue knows names the file: anything else exported every check, and a
+    # caller's text never goes into the Content-Disposition header (non-Latin-1 text there was a 500).
+    suffix = scope if scope in ("dlp", "zia", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac") else "all"
     fname_base = f"zscaler_checks_{suffix}_{datetime.now().strftime('%Y%m%d')}"
 
     if format == "json":
@@ -6240,10 +6354,8 @@ async def compliance_summary(request: Request):
         from compliance_mapping import get_framework_summary
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
-    data = await request.json()
-    results = data.get("checks", [])
-    if not results:
-        raise HTTPException(status_code=400, detail="No checks in request body")
+    data = await _json_object(request)
+    results = _check_rows(data, "No checks in request body")
     return get_framework_summary(results)
 
 
@@ -6254,10 +6366,8 @@ async def compliance_drilldown(request: Request):
         from compliance_mapping import get_control_drilldown
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
-    data = await request.json()
-    results = data.get("checks", [])
-    if not results:
-        raise HTTPException(status_code=400, detail="No checks in request body")
+    data = await _json_object(request)
+    results = _check_rows(data, "No checks in request body")
     return get_control_drilldown(results)
 
 
@@ -6270,12 +6380,10 @@ async def compliance_report(request: Request):
         from compliance_mapping import get_framework_summary, get_control_drilldown, FRAMEWORK_DESCRIPTIONS
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
-    data = await request.json()
-    results = data.get("checks", [])
-    if not results:
-        raise HTTPException(status_code=400, detail="No checks in request body")
+    data = await _json_object(request)
+    results = _check_rows(data, "No checks in request body")
     selected = [str(k) for k in (data.get("frameworks") or []) if str(k) in FRAMEWORK_DESCRIPTIONS]
-    meta = data.get("metadata") or {}
+    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
     rep = {"summary": get_framework_summary(results), "drilldown": get_control_drilldown(results),
            "descriptions": dict(FRAMEWORK_DESCRIPTIONS), "frameworks_selected": selected,
            "check_count": len(__import__("channel_scope").visible(results)[0]),   # checks outside the scope are hidden
@@ -6479,9 +6587,8 @@ async def benchmarks_report(request: Request):
     computed from an assessment report (the `complete` payload or a saved
     JSON)."""
     import benchmarks
-    data = await request.json()
-    if not isinstance(data, dict) or not data.get("checks"):
-        raise HTTPException(status_code=400, detail="No checks in request body")
+    data = await _json_object(request)
+    _check_rows(data, "No checks in request body")
     return benchmarks.benchmark_report(data)
 
 
@@ -6489,11 +6596,11 @@ async def benchmarks_report(request: Request):
 async def benchmarks_export(request: Request, format: str = "markdown"):
     """The same benchmarks as Markdown (default) or JSON, for a customer note."""
     import benchmarks
-    data = await request.json()
-    if not isinstance(data, dict) or not data.get("checks"):
-        raise HTTPException(status_code=400, detail="No checks in request body")
+    data = await _json_object(request)
+    _check_rows(data, "No checks in request body")
     b = benchmarks.benchmark_report(data)
-    org = str((data.get("metadata") or {}).get("org") or "")
+    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    org = str(meta.get("org") or "")
     ts = datetime.now().strftime("%Y%m%d")
     if format == "json":
         return Response(content=json.dumps(b, indent=2, default=str), media_type="application/json",
@@ -6842,10 +6949,8 @@ async def migrate_analyze(request: Request):
         from rule_migrator import analyze_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
-    data = await request.json()
-    rules = data.get("rules", [])
-    if not rules:
-        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    data = await _json_object(request)
+    rules = _rule_rows(data, "No rules provided in request body.")
     return analyze_rules(rules)
 
 
@@ -6856,10 +6961,8 @@ async def migrate_plan(request: Request):
         from rule_migrator import generate_migration_plan
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
-    data = await request.json()
-    rules = data.get("rules", [])
-    if not rules:
-        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    data = await _json_object(request)
+    rules = _rule_rows(data, "No rules provided in request body.")
     return generate_migration_plan(rules)
 
 
@@ -6870,10 +6973,8 @@ async def migrate_export(request: Request, format: str = "json"):
         from rule_migrator import generate_migration_plan, export_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
-    data = await request.json()
-    rules = data.get("rules", [])
-    if not rules:
-        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    data = await _json_object(request)
+    rules = _rule_rows(data, "No rules provided in request body.")
     plan = generate_migration_plan(rules)
     content = export_rules(plan["proposed_order"], format=format)
     from fastapi.responses import Response
@@ -7290,22 +7391,15 @@ async def generate_docx(request: Request):
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"python-docx not installed: {e}. Run: pip install python-docx")
 
-    try:
-        data = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
-
-    results = data.get("checks", [])
-    cfg = dict(data.get("metadata") or {})
+    data = _xml_text(await _json_object(request))
+    results = _check_rows(data, "No checks in request body — cannot generate report.")
+    cfg = dict(data["metadata"]) if isinstance(data.get("metadata"), dict) else {}
     # The Scope page's channel declaration rides along for the Channel Coverage
     # section, and the count of the checks hidden as outside the scope.
     if isinstance(data.get("channel_coverage"), dict):
         cfg["channel_coverage"] = data["channel_coverage"]
     if data.get("hidden_checks"):
         cfg["hidden_checks"] = data.get("hidden_checks")
-
-    if not results:
-        raise HTTPException(status_code=400, detail="No checks in request body — cannot generate report.")
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
@@ -7338,11 +7432,8 @@ async def findings_csv(request: Request):
     import io
     import csv_safe
     import channel_scope
-    try:
-        data = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
-    results = (data or {}).get("checks") if isinstance(data, dict) else None
+    data = await _json_object(request)
+    results = data.get("checks")
     if not isinstance(results, list) or not results:
         raise HTTPException(status_code=400, detail="No checks in request body — cannot make the spreadsheet.")
     shown, _hidden = channel_scope.visible(results)
@@ -7616,7 +7707,7 @@ async def report_bypass_page():
 async def report_bypass_get(report_id: str):
     """One bypass inventory report, while it is still in memory."""
     rep = _REPORTS.get(report_id)
-    if not rep:
+    if not rep or not report_id.startswith("bypass-"):   # another kind's report id is not a bypass report
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
     return rep
 
@@ -7624,7 +7715,7 @@ async def report_bypass_get(report_id: str):
 @app.get("/api/report/bypass/export/{report_id}")
 async def report_bypass_export_cached(report_id: str, format: str = "csv"):
     rep = _REPORTS.get(report_id)
-    if not rep:
+    if not rep or not report_id.startswith("bypass-"):
         raise HTTPException(status_code=404, detail="Report not found or expired.")
     return await _bypass_export_response(rep, format)
 

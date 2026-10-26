@@ -74,7 +74,7 @@ def normalize(cloud: Optional[str]) -> str:
         return c
     if c in ALIASES:
         return ALIASES[c]
-    raise ValueError(f"Unknown Zscaler cloud '{cloud}'. Use the name in the tenant's admin URL: {', '.join(sorted(CLOUDS))}.")
+    raise ValueError(f"Unknown Zscaler cloud '{str(cloud)[:60]}'. Use the name in the tenant's admin URL: {', '.join(sorted(CLOUDS))}.")
 
 
 def environment(cloud: Optional[str]) -> Optional[str]:
