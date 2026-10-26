@@ -411,6 +411,7 @@ async def auth_unlock(req: UnlockRequest, request: Request):
     if _sso.sso_enabled():
         raise HTTPException(status_code=403, detail="This server requires SSO sign-in. Use the Sign in button, not a pasted token.")
     if not _security.ui_token_ok(req.token):
+        _security._audit_denied(request, "auth_denied", "the UI token offered to unlock was not valid")
         raise HTTPException(status_code=401, detail="That UI token is not valid for this server. Read ui_token.txt next to the app (or the console) and try again.")
     resp = JSONResponse({"ok": True, "required": True})
     _security.set_ui_cookie(resp, request)
@@ -418,15 +419,19 @@ async def auth_unlock(req: UnlockRequest, request: Request):
 
 
 @app.get("/api/auth/sso/login")
-async def sso_login():
-    """Start an OpenID Connect sign-in: redirect to the identity provider."""
+async def sso_login(request: Request):
+    """Start an OpenID Connect sign-in: redirect to the identity provider,
+    with a cookie that binds the sign-in to this browser."""
     if not _sso.sso_enabled():
         raise HTTPException(status_code=404, detail="SSO is not enabled on this server.")
+    binding = _sso.new_login_binding()
     try:
-        url = _sso.start_login()
+        url = _sso.start_login(binding)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not start SSO sign-in: {e}")
-    return RedirectResponse(url, status_code=302)
+    resp = RedirectResponse(url, status_code=302)
+    _security.set_login_cookie(resp, request, binding)
+    return resp
 
 
 @app.get("/api/auth/sso/callback")
@@ -444,7 +449,7 @@ async def sso_callback(request: Request, code: str = "", state: str = "", error:
     if error:
         return HTMLResponse(f"<p>Sign-in was not completed: {_html.escape(error_description or error)}</p>", status_code=401)
     try:
-        claims = _sso.complete_login(state, code)
+        claims = _sso.complete_login(state, code, request.cookies.get(_security.SSO_LOGIN_COOKIE) or "")
     except Exception as e:
         return HTMLResponse(f"<p>Sign-in failed: could not verify the identity provider's response ({_html.escape(str(e))}).</p>", status_code=401)
     who = str(claims.get("email") or claims.get("sub") or "unknown")
@@ -461,6 +466,7 @@ async def sso_callback(request: Request, code: str = "", state: str = "", error:
     session_id = _sso.create_session(claims)
     resp = RedirectResponse("/", status_code=303)
     _security.set_session_cookie(resp, request, session_id)
+    _security.clear_login_cookie(resp, request)
     _audit.record("sso_login", actor=who, email=claims.get("email"), subject=claims.get("sub"), groups=_sso.claim_groups(claims))
     return resp
 

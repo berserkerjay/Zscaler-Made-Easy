@@ -450,7 +450,7 @@ def test_only_listed_writers_may_change_the_tenant(monkeypatch, idp):
     assert "ZSCALER_SSO_WRITERS" not in reader.post("/api/remediation/execute", json={"check_id": "x", "dry_run": True}).text   # previews
     assert reader.get("/api/auth/status").json()["may_write"] is False
     for writer in (_sign_in(monkeypatch, idp, email="someone@example.com", groups=["DLP-Admins"]),
-                   _sign_in(monkeypatch, idp, email="Boss@Example.com")):
+                   _sign_in(monkeypatch, idp, email="Boss@Example.com", email_verified=True)):   # an email counts only when verified (test_auth_session)
         assert writer.get("/api/auth/status").json()["may_write"] is True
         for path, body in WRITER_CALLS:
             assert "ZSCALER_SSO_WRITERS" not in writer.post(path, json=body).text, path
