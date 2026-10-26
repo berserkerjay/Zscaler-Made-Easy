@@ -139,22 +139,30 @@ class Stopped(RuntimeError):
 
 
 # ── scope ──────────────────────────────────────────────────────────────
-def scope_for(scopes: Any) -> Dict[str, Any]:
-    """What this page may read for the Scope page's ticked scopes: ZIA
-    when ZIA platform is ticked, ZPA when ZPA is. Pure."""
+def scope_for(scopes: Any, channels: Any = None) -> Dict[str, Any]:
+    """What this page may read for the Scope page's ticked scopes and
+    channel declaration: ZIA when ZIA platform is ticked (its Cloud App
+    Control rules only when Cloud App Control is marked Zscaler, as
+    everywhere else: data_flow.path_scope), ZPA when ZPA is. No channel
+    declaration reads no Cloud App Control rule. Pure."""
+    import data_flow
     sc = {str(s).strip() for s in scopes} if isinstance(scopes, (list, tuple, set)) else set()
     zia, zpa = "zia_extras" in sc, "zpa" in sc
+    cac = zia and "cac" in data_flow.path_scope(sorted(sc), channels)["read"]
     nis = {}
     if not zia:
         nis["zia"] = ("Not in scope: ZIA platform is not ticked on the Scope page, so ZIA isolation profiles, Browser Control "
                       "and the URL filtering and Cloud App Control rules that isolate were not read.")
+    elif not cac:
+        nis["cloud_app_control"] = ("Not in scope: Cloud App Control is not marked as run on Zscaler on the Scope page, so its "
+                                    "rules that isolate were not read.")
     if not zpa:
         nis["zpa"] = ("Not in scope: ZPA is not ticked on the Scope page, so the isolation controls, Browser Access, managed "
                       "browsers, browser protection, Privileged Remote Access and user portals were not read.")
     parts = [p for p, on in (("ZIA (isolation profiles, Browser Control, rules that isolate)", zia),
                              ("ZPA (isolation controls, Browser Access, managed browsers, PRA, user portals)", zpa)) if on]
     summary = ("Reads only what is in scope on the Scope page: " + " and ".join(parts) + ".") if parts else NOTHING_IN_SCOPE
-    return {"zia": zia, "zpa": zpa, "read": bool(parts), "not_in_scope": nis, "summary": summary}
+    return {"zia": zia, "zpa": zpa, "cac": cac, "read": bool(parts), "not_in_scope": nis, "summary": summary}
 
 
 # ── small helpers ──────────────────────────────────────────────────────
@@ -292,8 +300,9 @@ def normalize_supported(x: Dict[str, Any]) -> Dict[str, Any]:
             "older": [as_str(v) for v in (get(x, "olderVersions") or []) if as_str(v)]}
 
 
-def read_zia(client: Any, log: Callable[[str], None], cancel: Optional[threading.Event]) -> Dict[str, Any]:
-    """ZIA's side (see the module docstring). Raises Stopped on Stop."""
+def read_zia(client: Any, log: Callable[[str], None], cancel: Optional[threading.Event], read_cac: bool = False) -> Dict[str, Any]:
+    """ZIA's side (see the module docstring); the Cloud App Control rules
+    only with `read_cac` (in scope, scope_for). Raises Stopped on Stop."""
     import pack_export as pe
     from dlp_assessment_full_auto import _CAC_TYPES
     zia = getattr(client, "zia", None)
@@ -378,6 +387,8 @@ def read_zia(client: Any, log: Callable[[str], None], cancel: Optional[threading
             section("url_filtering", "URL filtering rules", True, len(out["rules"]["url_filtering"]))
             log(f"URL filtering rules: {len(out['rules']['url_filtering'])} found.")
 
+    if not read_cac:   # out of scope: not read, and not reported as a failed read (scope_for says why)
+        return out
     cac = getattr(zia, "cloudappcontrol", None)
     log(f"Reading the Cloud App Control rules ({len(_CAC_TYPES)} rule types, one request each)…")
     if cac is None:
@@ -659,7 +670,7 @@ def read(client: Any, scope: Dict[str, Any], log: Optional[Callable[[str], None]
         snap["not_in_scope"]["zpa"] = zpa_blocked
     stop_point()
     if scope.get("zia"):
-        snap["zia"] = read_zia(client, say, cancel)
+        snap["zia"] = read_zia(client, say, cancel, read_cac=bool(scope.get("cac")))
     stop_point()
     if scope.get("zpa") and not zpa_blocked:
         snap["zpa"] = read_zpa(client, say, cancel, pace)
