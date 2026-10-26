@@ -78,9 +78,9 @@ versions, and, for anything **High** or **Critical**, a **CWE**
 ## Supported versions
 
 `main` is the supported branch: what customers run, and what the in-app
-**Update app** button (or `UPDATE_Zscaler_Assessment.bat`) fast-forwards
+**Update app** button (or `UPDATE_Zscaler_Made_Easy.bat`) fast-forwards
 to by default. The button's **Branch** choice (or
-`UPDATE_Zscaler_Assessment.bat dev`, `python app_update.py --branch dev`)
+`UPDATE_Zscaler_Made_Easy.bat dev`, `python app_update.py --branch dev`)
 can also move an install to `qa` (QA) or `dev` (development) —
 the two branches a fix passes through before it reaches `main` (README,
 *Branching and releases*) — so a fix can be tried before it is promoted.

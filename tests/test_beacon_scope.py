@@ -330,7 +330,7 @@ def test_the_scope_preview_says_what_will_be_read_without_touching_a_tenant(serv
 def test_beacon_js_sends_the_scope_page_selection():
     js = open(os.path.join(ROOT, "static", "beacon.js"), encoding="utf-8").read()
     assert "'zassess_scopes_live_v1'" in js and "'zassess_channels_v1'" in js
-    assert "'zscaler_assessment_config'" not in js, "the last Save config copy can be stale; never read it"
+    assert "'zscaler_made_easy_config'" not in js, "the last Save config copy can be stale; never read it"
     assert "getSelectedScopes" in js and "__dbChannelScope" in js, "the open assessment tab's live selection first"
     assert "scopes: sc.scopes, channels: sc.channels" in js, "the run body carries the selection"
     assert "'/api/beacon/scope'" in js and "id=\"bcScope\"" in open(os.path.join(ROOT, "static", "report_beacon.html"), encoding="utf-8").read()
@@ -503,7 +503,7 @@ CHANNELS = '{"web_dlp":{"choice":"zscaler","note":"Contact: Jane Doe jane.doe@cu
 
 def test_the_page_sends_live_scopes_and_channel_choices_only(tmp_path):
     d = _page({"zassess_scopes_live_v1": '{"scopes":["dlp"]}', "zassess_channels_v1": CHANNELS,
-               "zscaler_assessment_config": '{"scopes":["zpa","zdx"]}'}, tmp_path)
+               "zscaler_made_easy_config": '{"scopes":["zpa","zdx"]}'}, tmp_path)
     body = d["posts"][0]["body"]
     assert body["scopes"] == ["dlp"], "the live ticks, not the last Save config copy"
     assert body["channels"] == {"web_dlp": "zscaler"}, "only the choice; the free-text note never leaves the browser"
@@ -511,7 +511,7 @@ def test_the_page_sends_live_scopes_and_channel_choices_only(tmp_path):
 
 
 def test_without_the_live_ticks_the_page_sends_no_selection(tmp_path):
-    d = _page({"zassess_channels_v1": CHANNELS, "zscaler_assessment_config": '{"scopes":["zpa","zdx"]}'}, tmp_path)
+    d = _page({"zassess_channels_v1": CHANNELS, "zscaler_made_easy_config": '{"scopes":["zpa","zdx"]}'}, tmp_path)
     assert d["posts"][0]["body"]["scopes"] == [] and d["posts"][0]["body"]["channels"] == {}, "the profile's selection is used whole"
 
 

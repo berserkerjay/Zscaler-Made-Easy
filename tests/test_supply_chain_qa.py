@@ -102,7 +102,7 @@ def _pip_install_violation(cmd: str):
 # installers, the updater, the developer Makefile and the CI install driver.
 INSTALL_SOURCES = (
     [os.path.relpath(p, ROOT) for p in WORKFLOWS]
-    + ["Dockerfile", "Makefile", "install.sh", "INSTALL_Zscaler_Assessment.bat", "UPDATE_Zscaler_Assessment.bat",
+    + ["Dockerfile", "Makefile", "install.sh", "INSTALL_Zscaler_Made_Easy.bat", "UPDATE_Zscaler_Made_Easy.bat",
        "app_update.py", os.path.join("tools", "verify_native_install.py")]
 )
 

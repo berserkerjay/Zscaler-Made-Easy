@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Security hardening for the Zscaler Assessment API server.
+Security hardening for the Zscaler Made Easy API server.
 
 Implements secure-by-design controls aligned with CISA's
 "Secure by Design" principles:
@@ -194,7 +194,7 @@ def write_enable_hint() -> str:
                 "that runs Docker, then run: docker compose up -d (the container restarts with writes on; remove the line "
                 "and run it again to go back to read-only)")
     if os.name == "nt":
-        return "start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat"
+        return "start the server with START_Zscaler_Made_Easy_WRITES_ENABLED.bat"
     return f"start the server with: ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} ./start.sh"
 
 

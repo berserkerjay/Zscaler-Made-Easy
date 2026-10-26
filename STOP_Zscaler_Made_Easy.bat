@@ -1,7 +1,7 @@
 @echo off
 setlocal
-title Zscaler Assessment - Stop
-echo Stopping Zscaler Assessment server...
+title Zscaler Made Easy - Stop
+echo Stopping Zscaler Made Easy server...
 
 REM The port comes from local_settings.bat when it was changed there (the
 REM start and update scripts read the same file), else 8000.

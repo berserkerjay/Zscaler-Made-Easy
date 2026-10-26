@@ -338,7 +338,7 @@ for p in dlp_importer.discover_packs():
 ### Web UI: Deploy Studio (recommended)
 
 1. Drop the pack directory in the project root.
-2. Start the server with **`START_Zscaler_Assessment_WRITES_ENABLED.bat`** (deploying writes to the tenant, so it is gated behind `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`). Hard-refresh the browser (Ctrl+Shift+R).
+2. Start the server with **`START_Zscaler_Made_Easy_WRITES_ENABLED.bat`** (deploying writes to the tenant, so it is gated behind `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`). Hard-refresh the browser (Ctrl+Shift+R).
 3. Enter the tenant credentials at the top of the page, then click **📦 Deploy Policy Packs**.
 4. **Select** — toggle any number of packs. Options: *Apply confidence tweaks* and *Rank 0*.
 5. **Preflight** — the tenant is read and every item is cross-referenced. Nothing is written. You get a status (Ready / Review / Blocked) and, per dictionary, engine, policy and tweak:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local installer for Linux and macOS (Windows: INSTALL_Zscaler_Assessment.bat).
+# Local installer for Linux and macOS (Windows: INSTALL_Zscaler_Made_Easy.bat).
 #
 # Creates a private Python environment in .venv next to this file, installs
 # the dependencies pinned by hash in requirements.lock (the same file the

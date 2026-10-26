@@ -1436,7 +1436,15 @@ let partialResults = [];
 // the server then cancels the checks still queued (no further tenant read).
 let assessAbort = null;
 let runMeta = null;
-const LS_KEY = 'zscaler_assessment_config';
+const LS_KEY = 'zscaler_made_easy_config';
+// Saved config from before the rename to Zscaler Made Easy: moved to the new key once.
+(function moveSavedConfig(oldKey) {
+  try {
+    const old = localStorage.getItem(oldKey);
+    if (old !== null && localStorage.getItem(LS_KEY) === null) localStorage.setItem(LS_KEY, old);
+    localStorage.removeItem(oldKey);
+  } catch (e) { /* storage blocked: nothing saved to move */ }
+})('zscaler_assessment_config');
 
 // The check count and the build come from /api/health, fetched once the
 // page (and the token-unlock fetch wrapper further down) is ready: a 401
@@ -1451,7 +1459,7 @@ function loadHealthBadge() {
     const n = Number(d.total_checks);
     const commit = d.git_commit && d.git_commit !== 'unknown' ? ` · build ${d.git_commit}` : '';
     badge.textContent = `${Number.isFinite(n) ? n : '—'} automated checks available${commit}`;
-    if (commit) console.log(`[Zscaler Assessment] Running commit: ${d.git_commit} (expected ≥ ${d.expected_min_commit})`);
+    if (commit) console.log(`[Zscaler Made Easy] Running commit: ${d.git_commit} (expected ≥ ${d.expected_min_commit})`);
   }).catch(() => { badge.textContent = 'Server not reachable'; });
 }
 document.addEventListener('DOMContentLoaded', loadHealthBadge);
@@ -2207,7 +2215,7 @@ async function step3bDeleteAll(dryRun) {
     } else if (r.status === 'blocked') {
       el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>
         <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">
-          Launch via <code>START_Zscaler_Assessment_WRITES_ENABLED.bat</code> to enable write actions.
+          Launch via <code>START_Zscaler_Made_Easy_WRITES_ENABLED.bat</code> to enable write actions.
         </div>`;
     } else {
       clearPendingAction('step3b');
@@ -2415,7 +2423,7 @@ async function step4Activate() {
         <div style="color:var(--warn);font-weight:600;">Blocked.</div>
         <div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>
         <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">
-          Relaunch via <code>START_Zscaler_Assessment_WRITES_ENABLED.bat</code> to enable write actions.
+          Relaunch via <code>START_Zscaler_Made_Easy_WRITES_ENABLED.bat</code> to enable write actions.
         </div>`;
       return;
     }
@@ -2506,7 +2514,7 @@ async function step5Post(dryRun) {
       if (r.failed_count) summary += `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>`;
       clearPendingAction('step5');
     } else if (r.status === 'blocked') {
-      summary = `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">Relaunch via <code>START_Zscaler_Assessment_WRITES_ENABLED.bat</code> to enable write actions.</div>`;
+      summary = `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">Relaunch via <code>START_Zscaler_Made_Easy_WRITES_ENABLED.bat</code> to enable write actions.</div>`;
     }
     el.innerHTML = `
       <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')} · mode: ${r.mode || 'auto'}</div>
@@ -3526,7 +3534,7 @@ async function remediationActivate() {
   const recipe = _findRecipeForCheck(check_id);
   if (!recipe) return;
   if (recipe.destructive) {
-    if (!confirm(`This will APPLY the remediation to your tenant.\n\nRecipe: ${recipe.label}\n\nMake sure you launched via START_Zscaler_Assessment_WRITES_ENABLED.bat. Continue?`)) return;
+    if (!confirm(`This will APPLY the remediation to your tenant.\n\nRecipe: ${recipe.label}\n\nMake sure you launched via START_Zscaler_Made_Easy_WRITES_ENABLED.bat. Continue?`)) return;
   }
   if (window.zdRateGate && !(await window.zdRateGate({ write: recipe.writes || 1, activate: 1 }, migrateCredBody(), `Apply the remediation '${recipe.label}'.`))) return;
   const criteria = _collectRemediationCriteria();
@@ -3741,7 +3749,7 @@ function _showWizardStep() {
   document.getElementById('wizardRecipe').textContent = recipe.label;
   document.getElementById('wizardSummary').textContent = recipe.summary;
   document.getElementById('wizardDestructive').innerHTML = recipe.destructive
-    ? '<div style="margin:0.4rem 0;padding:0.45rem 0.65rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;font-size:0.78rem;"><strong>⚠ Writes to the tenant.</strong> Requires START_Zscaler_Assessment_WRITES_ENABLED.bat. Preview first; confirm before apply.</div>'
+    ? '<div style="margin:0.4rem 0;padding:0.45rem 0.65rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;font-size:0.78rem;"><strong>⚠ Writes to the tenant.</strong> Requires START_Zscaler_Made_Easy_WRITES_ENABLED.bat. Preview first; confirm before apply.</div>'
     : '';
   const fields = document.getElementById('wizardFormFields');
   fields.innerHTML = recipe.fields.map(f => _renderField(f)).join('');

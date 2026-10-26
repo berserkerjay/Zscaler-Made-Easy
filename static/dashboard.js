@@ -28,7 +28,7 @@
   aside.id = 'dbSidebar';
   aside.setAttribute('aria-label', 'Navigation');
   aside.innerHTML = `
-    <div class="db-brand"><span class="db-mark" aria-hidden="true">Z</span><div><div class="db-brand-t">Zscaler Assessment</div><div class="db-brand-s">Zscaler Made Easy</div></div></div>
+    <div class="db-brand"><span class="db-mark" aria-hidden="true">Z</span><div><div class="db-brand-t">Zscaler Made Easy</div></div></div>
     <div id="dbTools" class="db-sections" role="navigation" aria-label="Workflow and tools">
     <div class="db-nav" role="group" aria-label="Workflow" data-sb-id="workflow">
       <div class="db-nav-l">Workflow</div>

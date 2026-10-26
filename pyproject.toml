@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
 # The runtime dependencies. Installs pin every wheel by hash from
-# requirements.lock (install.sh, INSTALL_Zscaler_Assessment.bat and the
+# requirements.lock (install.sh, INSTALL_Zscaler_Made_Easy.bat and the
 # Dockerfile all install from that file); this list is the source it is
 # compiled from (make lock): uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade --output-file requirements.lock requirements.txt
 dependencies = [

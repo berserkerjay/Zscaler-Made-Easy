@@ -70,7 +70,7 @@ def test_pages_and_launcher_carry_the_unlock_flow():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     idx = open(os.path.join(root, "static", "index.html"), encoding="utf-8").read()
     theme = open(os.path.join(root, "static", "report_theme.js"), encoding="utf-8").read()
-    vbs = open(os.path.join(root, "START_Zscaler_Assessment.vbs"), encoding="utf-8").read()
+    vbs = open(os.path.join(root, "START_Zscaler_Made_Easy.vbs"), encoding="utf-8").read()
     assert "/api/auth/unlock" in idx and "token_required" in idx and "/api/auth/status" in idx
     assert "/api/auth/unlock" in theme and "token_required" in theme
     assert "ui_token.txt" in vbs and "/api/ping" in vbs and "?token=" in vbs

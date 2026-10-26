@@ -98,21 +98,9 @@ Progress = Optional[Callable[[Dict[str, Any]], None]]
 
 
 def _cache_path() -> str:
-    """Same OS conventions as the update-checker cache."""
-    try:
-        import sys
-        if sys.platform == "win32":
-            base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
-            d = os.path.join(base, "ZscalerAssessment")
-        elif sys.platform == "darwin":
-            d = os.path.expanduser("~/Library/Caches/ZscalerAssessment")
-        else:
-            d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
-                             "zscaler_assessment")
-        safe_files.private_makedirs(d)   # the per-user cache folder: owner-only (0700)
-    except Exception:
-        d = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(d, "bp_crawl_cache.json")
+    """In the update checker's per-user cache folder."""
+    from zscaler_update_check import data_dir
+    return os.path.join(data_dir(), "bp_crawl_cache.json")
 
 
 def _load_cache() -> Dict[str, Any]:

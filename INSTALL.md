@@ -62,7 +62,7 @@ below.
 | | **Git** (recommended if you will keep using the app) | **ZIP** (simplest for a one-off) |
 |---|---|---|
 | What it needs | Installing Git once (free, two minutes) and signing in to GitHub once | Nothing extra |
-| Updating later | Click **Update app** inside the app, or double-click `UPDATE_Zscaler_Assessment.bat` on Windows | Stop the app, download a fresh ZIP, replace the folder, run the installer again |
+| Updating later | Click **Update app** inside the app, or double-click `UPDATE_Zscaler_Made_Easy.bat` on Windows | Stop the app, download a fresh ZIP, replace the folder, run the installer again |
 | Trying a fix before it is released (the **Branch** dropdown) | Works | Not available |
 
 ---
@@ -125,7 +125,7 @@ it installed once, the same way it needs a PDF reader to open a PDF.
 4. Move that inner folder somewhere you will remember, for example
    `Documents`, so its path is `Documents\DLP-Check-main`.
 
-Either way you should now see a file called `INSTALL_Zscaler_Assessment`
+Either way you should now see a file called `INSTALL_Zscaler_Made_Easy`
 (Windows may hide the `.bat` ending; its type shows as "Windows Batch
 File").
 
@@ -135,7 +135,7 @@ describes. The installer reads it.
 
 **Step 3 — Run the installer.**
 
-1. Double-click `INSTALL_Zscaler_Assessment.bat`. If Windows asks "Are you
+1. Double-click `INSTALL_Zscaler_Made_Easy.bat`. If Windows asks "Are you
    sure you want to run this software?", click **Run**; if it shows
    "Windows protected your PC", click **More info**, then **Run anyway**.
    Both happen because the file came from the internet.
@@ -144,7 +144,9 @@ describes. The installer reads it.
    output for one to three minutes; that is normal, it is downloading.
 3. **Success** looks like this: it prints "Installation complete!" and the
    window closes by itself after five seconds. A shortcut named
-   **Zscaler Assessment** is now on your desktop and in the Start menu.
+   **Zscaler Made Easy** is now on your desktop and in the Start menu.
+   Installed before the app had this name? The installer replaces the old
+   shortcut with this one, and the old one keeps working until then.
 4. **Failure** looks like one of two things, and either way the window
    stays open with "Press any key to continue": a line starting
    **ERROR:** (Python missing, or an old Python found first; see
@@ -164,20 +166,20 @@ launch and update scripts prefer this private interpreter; an older
 installation can migrate by rerunning the installer.
 
 **Step 4 — Open it.**
-Double-click the **Zscaler Assessment** desktop shortcut. Within about
+Double-click the **Zscaler Made Easy** desktop shortcut. Within about
 ten seconds your browser opens to the app. **Nothing else appears on
 screen**: the program runs in the background with no window, and what it
 prints goes into a file named `server.log` in the app folder. To stop it,
-double-click `STOP_Zscaler_Assessment.bat` in the app folder; closing the
+double-click `STOP_Zscaler_Made_Easy.bat` in the app folder; closing the
 browser does not stop it.
 
 No shortcut on the desktop (some company laptops do not let the installer
-make one; it says so)? Double-click `START_Zscaler_Assessment` (a
+make one; it says so)? Double-click `START_Zscaler_Made_Easy` (a
 "Windows Batch File") in the app folder instead; it starts the same way.
 
 If nothing happens when you double-click the shortcut: in the app folder,
 click File Explorer's address bar, type `cmd`, press Enter, then type
-`START_Zscaler_Assessment.bat --console` and press Enter. The window that
+`START_Zscaler_Made_Easy.bat --console` and press Enter. The window that
 stays open shows the reason; if the app does start this way, the window
 prints a `UI token:` line and the browser asks for that token (copy it
 from the window, or open the `Open http://localhost:8000/?token=…`
@@ -317,7 +319,7 @@ token** once: on `github.com`, click your avatar → **Settings** →
 git config --global credential.helper store   # remember the sign-in, so updates work later
 cd ~
 git clone https://github.com/berserkerjay/DLP-Check.git
-cd Zscaler Made Easy
+cd DLP-Check
 ```
 
 When `git clone` asks `Username for 'https://github.com':`, type your
@@ -367,7 +369,7 @@ folder you want the app in):
 ```powershell
 # Windows (PowerShell)
 git clone https://github.com/berserkerjay/DLP-Check.git
-cd Zscaler Made Easy
+cd DLP-Check
 powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
 docker logs dlp-check
 ```
@@ -375,7 +377,7 @@ docker logs dlp-check
 ```bash
 # Mac (Terminal) or Linux
 git clone https://github.com/berserkerjay/DLP-Check.git
-cd Zscaler Made Easy
+cd DLP-Check
 ./update_container.sh --force
 docker logs dlp-check
 ```
@@ -561,7 +563,7 @@ the first time.
   ```powershell
   cd $HOME\Documents
   git clone https://github.com/berserkerjay/DLP-Check.git
-  cd Zscaler Made Easy
+  cd DLP-Check
   ```
 
   A browser window opens to sign in to GitHub (Git Credential Manager);
@@ -573,7 +575,7 @@ the first time.
   ```bash
   cd ~/Documents
   git clone https://github.com/berserkerjay/DLP-Check.git
-  cd Zscaler Made Easy
+  cd DLP-Check
   ```
 
   If macOS offers to install the "command line developer tools", click
@@ -991,16 +993,23 @@ shows the CA bundle in use, so you can check it took.
 
 | I want to… | Windows | Mac / Linux |
 |---|---|---|
-| Open the app | Double-click the **Zscaler Assessment** desktop shortcut | `./start.sh` in the app folder |
-| Close it | Double-click `STOP_Zscaler_Assessment.bat`. Closing the browser does not stop it; it keeps running in the background until you do | `Ctrl + C` in the terminal window running it; `./stop.sh` if you started it with `./start.sh --background` or it restarted itself after **Update app** |
-| Get the latest version (Git install) | Click **Update app** on the Start here card (it reads **Update app now** when a newer build was found), or double-click `UPDATE_Zscaler_Assessment.bat` | Click **Update app** inside the app. Afterwards the Terminal window returns to a prompt and the app keeps running in the background (its output now goes to `server.log`); stop it with `./stop.sh`, not `Ctrl + C`. A second browser tab may open; close either. Or stop it, run `git pull`, then `./install.sh` and `./start.sh` |
+| Open the app | Double-click the **Zscaler Made Easy** desktop shortcut | `./start.sh` in the app folder |
+| Close it | Double-click `STOP_Zscaler_Made_Easy.bat`. Closing the browser does not stop it; it keeps running in the background until you do | `Ctrl + C` in the terminal window running it; `./stop.sh` if you started it with `./start.sh --background` or it restarted itself after **Update app** |
+| Get the latest version (Git install) | Click **Update app** on the Start here card (it reads **Update app now** when a newer build was found), or double-click `UPDATE_Zscaler_Made_Easy.bat` | Click **Update app** inside the app. Afterwards the Terminal window returns to a prompt and the app keeps running in the background (its output now goes to `server.log`); stop it with `./stop.sh`, not `Ctrl + C`. A second browser tab may open; close either. Or stop it, run `git pull`, then `./install.sh` and `./start.sh` |
 | Get the latest version (ZIP install) | Stop the app, download a fresh ZIP, replace the folder (keep your `local_settings.bat`), double-click the installer again | Stop the app, download a fresh ZIP, replace the folder (keep `local_settings.env`), run `./install.sh` and `./start.sh` |
 | Try a fix before it is released (Git install) | Pick **QA (qa)** or **Development (dev)** in the **Branch** dropdown next to the Update button, then click Update app; pick **Stable (main)** to go back | Same dropdown; or stop the app (`Ctrl + C`, or `./stop.sh`), run `.venv/bin/python app_update.py --branch dev` (`--branch main` to go back), then `./start.sh` |
-| Remove it completely | Double-click `STOP_Zscaler_Assessment.bat`, then `UNINSTALL_Zscaler_Assessment.bat` (removes the shortcuts), then delete the folder | Stop it, then delete the app's folder |
+| Remove it completely | Double-click `STOP_Zscaler_Made_Easy.bat`, then `UNINSTALL_Zscaler_Made_Easy.bat` (removes the shortcuts), then delete the folder | Stop it, then delete the app's folder |
 
 (Container: to update, get the latest code and run `docker compose up
 --build` again; to remove it, `docker compose down -v` deletes the
 container and its saved data, then delete the folder.)
+
+Installed on Windows before the app was called Zscaler Made Easy? The
+scripts now end in `_Zscaler_Made_Easy`. The old start and update script
+names still work, so an existing shortcut keeps opening the app. Running
+the installer again, or any update made from this version on (the **Update
+app** button or `UPDATE_Zscaler_Made_Easy.bat`), renames the shortcut to
+**Zscaler Made Easy**; the uninstaller removes a shortcut under either name.
 
 ---
 
@@ -1017,8 +1026,8 @@ container and its saved data, then delete the folder.)
 | `Permission denied` running `./install.sh` | The script is not marked as runnable yet | Run `chmod +x install.sh start.sh stop.sh` once, then try again |
 | `Operation not permitted` on every command (Mac) | Terminal was refused access to Documents | System Settings → Privacy & Security → Files and Folders → Terminal: allow Documents, then try again |
 | The browser says it can't connect / "site can't be reached" | The app is not running, or has not finished starting | Wait ten seconds and refresh. Still nothing? Windows: open `server.log` in Notepad; a last line ending in `ModuleNotFoundError` means the install did not finish, so rerun the installer. Mac/Linux: read the terminal window |
-| Nothing at all happens when you double-click the shortcut (Windows) | The silent launcher was blocked or failed | Run `START_Zscaler_Assessment.bat --console` from a Command Prompt in the app folder and read the window; check `launcher.log` |
-| `Windows Script Host access is disabled on this machine` | Your company blocks `.vbs` launchers, which the shortcut uses | Open a Command Prompt in the app folder and run `START_Zscaler_Assessment.bat --console`; leave that window open while you use the app (closing it stops the app) |
+| Nothing at all happens when you double-click the shortcut (Windows) | The silent launcher was blocked or failed | Run `START_Zscaler_Made_Easy.bat --console` from a Command Prompt in the app folder and read the window; check `launcher.log` |
+| `Windows Script Host access is disabled on this machine` | Your company blocks `.vbs` launchers, which the shortcut uses | Open a Command Prompt in the app folder and run `START_Zscaler_Made_Easy.bat --console`; leave that window open while you use the app (closing it stops the app) |
 | `permission denied while trying to connect to the Docker daemon socket` | Your user may not talk to Docker yet | `sudo usermod -aG docker $USER`, then log out and back in; or put `sudo` in front of the docker commands |
 | `docker: command not found` or `'docker' is not recognized` | Docker is not installed, or the terminal was opened before it was | Install Docker (container Step 1), then open a new terminal |
 | `Cannot connect to the Docker daemon` or `error during connect` | Docker Desktop is not running (Windows, Mac), or the Docker service is stopped (Linux) | Start Docker Desktop and wait for **Engine running**; on Linux `sudo systemctl start docker` |
@@ -1028,7 +1037,7 @@ container and its saved data, then delete the folder.)
 | `CERTIFICATE_VERIFY_FAILED` during `docker compose up --build` (step `[6/8]`, `pip install`) | The build's downloads go through TLS inspection | Put the company root certificate in the `certs` folder and build again: *On a work network with TLS inspection* under container Step 1 has the one-line export |
 | Asked for a UI token you don't have | You opened the address by hand, or the app restarted | Find it as described in [First run](#first-run-the-ui-token) |
 | `That UI token is not valid for this server` | The app restarted and minted a new token | Open the app from the shortcut again, or read the new token from `ui_token.txt` |
-| `port 8000 … is already in use` | A previous copy of the app is still running (or something else uses port 8000) | Windows: `STOP_Zscaler_Assessment.bat` (it stops whatever listens on the port). Mac/Linux: `Ctrl + C` in the other terminal, or `./stop.sh` |
+| `port 8000 … is already in use` | A previous copy of the app is still running (or something else uses port 8000) | Windows: `STOP_Zscaler_Made_Easy.bat` (it stops whatever listens on the port). Mac/Linux: `Ctrl + C` in the other terminal, or `./stop.sh` |
 | `Nothing to stop: no server started by ./start.sh --background is running.` | The app is running in a terminal window, not in the background | Press `Ctrl + C` in that window |
 | Authenticate says "intercepted by TLS inspection", or any certificate error | Your company's network intercepts secure traffic | Follow the [work laptop box](#work-laptop-tls-inspection-or-a-proxy) and restart the app |
 

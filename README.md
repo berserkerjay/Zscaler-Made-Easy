@@ -22,7 +22,7 @@ Two ways to run it, built from this one source tree:
 
 | Mode | For | How |
 |---|---|---|
-| **Local** | a consultant's laptop | `INSTALL_Zscaler_Assessment.bat` (Windows) or `./install.sh` (Linux, macOS), then the Start script |
+| **Local** | a consultant's laptop | `INSTALL_Zscaler_Made_Easy.bat` (Windows) or `./install.sh` (Linux, macOS), then the Start script |
 | **Container** | a server or cloud host | `docker compose up --build` (or `docker build -t dlp-check .`) |
 
 Both install the same hash-pinned dependencies (`requirements.lock`) and
@@ -33,10 +33,10 @@ run the same entry point (`dlp_api_server.py`). A test
 
 Windows: install Python 3.11+ (tick *Add python.exe to PATH*), get the code
 (`git clone`, or the ZIP from the Code button), double-click
-`INSTALL_Zscaler_Assessment.bat`, then the desktop shortcut it creates.
+`INSTALL_Zscaler_Made_Easy.bat`, then the desktop shortcut it creates.
 The installer uses a private `.venv` on Windows as well as Mac/Linux. The
 server runs in the background (output in `server.log`);
-`STOP_Zscaler_Assessment.bat` stops it.
+`STOP_Zscaler_Made_Easy.bat` stops it.
 
 Linux / macOS:
 
@@ -56,14 +56,14 @@ There is no published image: Docker builds it from this code. Install Docker fir
 
 ```powershell
 # Windows (PowerShell)
-git clone https://github.com/berserkerjay/DLP-Check.git; cd Zscaler Made Easy
+git clone https://github.com/berserkerjay/DLP-Check.git; cd DLP-Check
 powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
 docker logs dlp-check              # shows the UI token and http://localhost:8001/?token=…
 ```
 
 ```bash
 # Mac or Linux
-git clone https://github.com/berserkerjay/DLP-Check.git && cd Zscaler Made Easy
+git clone https://github.com/berserkerjay/DLP-Check.git && cd DLP-Check
 ./update_container.sh --force
 docker logs dlp-check              # shows the UI token and http://localhost:8001/?token=…
 ```
@@ -202,7 +202,7 @@ ahead one is of the next. `git rev-list --left-right --count qa...main`
 out of order and needs attention before promoting further.
 
 An install can be pointed at any of the three from the **Update app** card
-(the **Branch** dropdown), `UPDATE_Zscaler_Assessment.bat <branch>`, or
+(the **Branch** dropdown), `UPDATE_Zscaler_Made_Easy.bat <branch>`, or
 `python app_update.py --branch <branch>`, so a fix can be tried on `dev`
 or `qa` before it is promoted. The names are a strict allowlist
 (`app_update.BRANCHES`); with no branch given, an update stays on the

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Zscaler Assessment — Word Document Report Generator
+Zscaler Made Easy — Word Document Report Generator
 =====================================================
 Generates a professional .docx report from assessment results.
 
@@ -680,7 +680,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             counts["INFO"] += 1
 
     summary = doc.add_paragraph()
-    summary.add_run(f"The Zscaler platform assessment for {cfg.get('org_name', 'the organization')} "
+    summary.add_run(f"The assessment of the Zscaler platform for {cfg.get('org_name', 'the organization')} "
                     f"evaluated {len(results)} configuration checks across all deployed Zscaler services. ")
     summary.add_run(f"The overall maturity score is {overall_text} ({mat}). ").bold = True
     if cov:
