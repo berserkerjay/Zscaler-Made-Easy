@@ -1744,6 +1744,14 @@ function migrateValidateCreds() {
   return b;
 }
 
+// A live tenant write (dry_run=false) carries the confirmation the operator
+// just gave and the assessor's name: the server refuses it without either.
+function tenantWriteBody(body) {
+  body.confirm = true;
+  body.assessor = ((document.getElementById('assessor') || {}).value || '').trim();
+  return body;
+}
+
 // Single-source credential-gate: pops a real browser alert listing
 // which fields are missing, flags them red, scrolls to the first one,
 // and focuses it. Called from every action that would otherwise fail
@@ -2135,6 +2143,7 @@ async function step3bDeleteAll(dryRun) {
   // banner accurate when the user re-runs the preview.
   clearPendingAction('step3b');
   body.dry_run = dryRun;
+  if (!dryRun) tenantWriteBody(body);
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
   try {
@@ -2346,6 +2355,7 @@ async function step4Activate() {
   if (window.zdRateGate && !(await window.zdRateGate({ write: 1, activate: 1 }, migrateCredBody(), 'Enable "Evaluate All DLP Rules" (one write, or a few if the field has to be probed).'))) return;
   const body = migrateValidateCreds(); if (!body) return;
   body.dry_run = false;
+  tenantWriteBody(body);
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">③ Activating via API... (trying found field, then candidate combinations)</span>';
   try {
@@ -2437,6 +2447,7 @@ async function step5Post(dryRun) {
   clearPendingAction('step5');
   body.proposed_rules = sourceRules;
   body.dry_run = !!dryRun;
+  if (!dryRun) tenantWriteBody(body);
   body.mode = document.getElementById('step5Mode').value || 'auto';
   if (!dryRun) {
     if (!confirm(`This will write ${sourceRules.length} rule(s) live to the tenant in mode="${body.mode}".\n\nDry-run first if you haven't. Continue?`)) return;
@@ -3493,6 +3504,7 @@ async function remediationActivate() {
   body.check_id = check_id;
   body.criteria = criteria;
   body.dry_run = false;
+  tenantWriteBody(body);
   const resultEl = document.getElementById('remediationResult');
   resultEl.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Applying...</div>';
   try {
@@ -3773,6 +3785,7 @@ async function wizardApply() {
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();
   body.dry_run = false;
+  tenantWriteBody(body);
   const resultEl = document.getElementById('wizardResult');
   resultEl.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">⏳ Applying…</div>';
   try {

@@ -164,8 +164,12 @@
     }
     function credBody() {
       const v = $('shTenant').value || 'server', op = opener();
-      if (v === 'opener' && op) { const b = op.migrateCredBody(); delete b.customer_id; return b; }
-      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      if (v === 'opener' && op) {
+        const b = op.migrateCredBody(); delete b.customer_id;
+        try { const a = op.document.getElementById('assessor'); if (a && a.value.trim()) b.assessor = a.value.trim(); } catch (e) { /* no assessor field */ }
+        return b;
+      }
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };   // the server uses the profile's assessor
       return {};
     }
     function readJson(key, fallback) { try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; } }

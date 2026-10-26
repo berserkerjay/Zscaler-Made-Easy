@@ -110,6 +110,12 @@ def from_extension(request: Request) -> bool:
     p = urlparse(request.headers.get("referer") or "")
     return f"{p.scheme}://{p.netloc}".lower() == ext
 
+
+# The jobs the extension starts (Export from tenant): the only ones it may Stop.
+EXTENSION_JOB_KINDS = ("export",)
+
+
+
 # Hostname pattern for vanity_domain (RFC-1123 label, dot-separated).
 _HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
