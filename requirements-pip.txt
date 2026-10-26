@@ -1,0 +1,4 @@
+# The pip every CI job (and `make lock-ci`) upgrades to before it installs
+# anything else, pinned by hash like everything else: a new pip release or a
+# swapped wheel cannot change what CI runs. Re-pin with: make lock-ci
+pip==26.2.1

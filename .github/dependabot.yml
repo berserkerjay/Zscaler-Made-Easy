@@ -2,7 +2,9 @@ version: 2
 updates:
   # Python: one grouped PR a month. requirements.lock must be regenerated with
   # the same tooling after merging (make lock: uv pip compile --universal --generate-hashes; it also re-pins
-  # requirements-dev.lock, and pyproject's dev extra must follow it).
+  # requirements-dev.lock, requirements-ci.lock and requirements-pip.lock, and pyproject's dev extra must
+  # follow the dev lock). requirements-ci.txt / requirements-pip.txt pin CI's own tools (pip, uv,
+  # pip-audit, cyclonedx-bom), so they are proposed here too.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:

@@ -131,12 +131,16 @@ def test_pyproject_licence_is_the_license_file_not_a_free_text_claim():
 
 
 def test_ci_pins_its_supply_chain_tools_and_checks_the_enriched_sbom():
+    """SLSA v1.0 Build L3 · Scorecard Pinned-Dependencies · SSDF PW.4.1 · CWE-494: CI's SBOM and audit tools are hash-locked; the SBOM is checked."""
     wf = _read(".github", "workflows", "tests.yml")
+    # The tools are pinned exactly and, with every dependency they pull in, by
+    # hash (requirements-ci.lock); CI installs them only from that lock.
+    wanted, locked = _read("requirements-ci.txt"), _read("requirements-ci.lock")
     for tool in ("cyclonedx-bom", "pip-audit", "uv"):
-        installs = re.findall(rf"pip install[^\n]*\b{re.escape(tool)}\b[^\n]*", wf)
-        assert installs, tool
-        for line in installs:
-            assert re.search(rf"\b{re.escape(tool)}==\d", line), f"unpinned: {line.strip()}"
+        assert re.search(rf"^{re.escape(tool)}==\d", wanted, re.M), f"unpinned: {tool}"
+        assert re.search(rf"^{re.escape(tool)}==\S+ \\\n    --hash=sha256:", locked, re.M), f"not hash-locked: {tool}"
+        assert not re.search(rf"pip install[^\n]*\b{re.escape(tool)}\b", wf), f"{tool} installed outside the lock"
+    assert "pip install --require-hashes --no-deps -r requirements-ci.lock" in wf
     assert "tools/sbom_enrich.py" in wf
     assert re.search(r"git diff --exit-code[^\n]*docs/sbom\.cdx\.json[^\n]*THIRD_PARTY_NOTICES\.md", wf)
     # Windows-only pins (pywin32, colorama) are audited on Windows too.

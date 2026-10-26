@@ -42,3 +42,26 @@ checks_config.json.tmp
 zia_rate_state.json*
 .zia_rate-*
 updater_backup/
+# Every other git-ignored local state file (tests/test_supply_chain_qa.py keeps
+# this list a superset of .gitignore): the team change queue, Posture plus
+# settings, self-healing state and the last-good / damaged copies it keeps of
+# the stores above (a tenant_profiles.json.last-good holds what
+# tenant_profiles.json holds), and atomic-write temporaries.
+change_requests.json
+change_requests.json.lock
+.change_requests.*.tmp
+.workspace_notes.*.tmp
+posture_settings.json
+self_heal.json
+**/*.last-good
+**/*.corrupt-*
+.selfheal-*.tmp
+# Editor, OS and build leftovers.
+*.py[cod]
+*$py.class
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

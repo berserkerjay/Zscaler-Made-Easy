@@ -10,15 +10,21 @@ on:
     - cron: "23 6 * * *"   # daily, 06:23 UTC
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
+# Least privilege: nothing at the workflow level; the one job gets read
+# access to the code and write access to issues (to open, update or close
+# the drift issue), nothing else.
+permissions: {}
 
 jobs:
   upstream:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read   # check out the code
+      issues: write    # open, update or close the upstream-drift issue
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false  # nothing here pushes: keep GITHUB_TOKEN out of .git/config
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
@@ -31,7 +37,7 @@ jobs:
 
       - name: Install the pinned dependencies (the SDK this app runs on)
         run: |
-          python -m pip install pip==26.2.1
+          python -m pip install --require-hashes --no-deps -r requirements-pip.lock
           pip install --require-hashes --no-deps -r requirements.lock
 
       - name: Cross-check the SDK, the provider and the API reference against what the app sends
@@ -51,10 +57,13 @@ jobs:
 
       - name: Open, update or close the drift issue
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b  # v7.1.0
+        env:
+          # Through the environment, never spliced into the script text.
+          CHECK_RC: ${{ steps.check.outputs.rc }}
         with:
           script: |
             const fs = require('fs');
-            const drift = '${{ steps.check.outputs.rc }}' !== '0';
+            const drift = process.env.CHECK_RC !== '0';
             const body = fs.readFileSync('upstream_report.md', 'utf8')
               + `\n\n_Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}_`;
             const label = 'upstream-drift';

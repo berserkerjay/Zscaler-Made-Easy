@@ -10,18 +10,24 @@ on:
   push:
     paths: ["patches/*.patch"]
 
-permissions:
-  contents: write
+# Least privilege: nothing at the workflow level; only the job that
+# pushes the rewritten branch gets write access to the code.
+permissions: {}
 
 jobs:
   apply:
     # Only the repository owner may have CI rewrite a branch from a patch.
     if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # git push of the rewritten branch
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 2
+          # Kept (the default) on purpose: the push below uses it. This job
+          # runs only git and uploads no artifact.
+          persist-credentials: true
 
       - name: Replace carrier commit with the patch's commit
         env:
