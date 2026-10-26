@@ -1219,7 +1219,7 @@ def _build_sdk_client(creds: Dict[str, str]):
             auth()
     except Exception as e:
         _note_auth_failure()
-        reason = str(e).replace(sec, mask_secret(sec))[:200]
+        reason = tenant_auth.mask_secrets(str(e), c)[:200]   # no character or length of the secret, in any encoding
         raise HTTPException(status_code=401, detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason}")
     # Every ZIA answer on this client's session feeds the next preflight's rate-limit check.
     return zia_rate.attach_client(client, rate_key, rate_label)
