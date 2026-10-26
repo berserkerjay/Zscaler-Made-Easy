@@ -237,7 +237,8 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
     DLP_CHECK_GITHUB_TOKEN is sent (only to api.github.com, never logged),
     as github_branch_head() does.
 
-    Skipped, not failed, when origin is not github.com, no token is set
+    Skipped, not failed, when origin is not github.com, origin is a fork
+    or mirror rather than the upstream repository, no token is set
     for the private repository, or the API cannot be reached (offline,
     blocked outbound) — {"checked": False, "reason": ...}; update() then
     records the skip as a visible step. Otherwise
@@ -246,6 +247,15 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
     if not owner_repo:
         return {"checked": False, "reason": "origin is not a github.com remote"}
     owner, repo = owner_repo
+    # Only the upstream repository counts: a fork or a mirror on github.com
+    # would vouch for whatever it serves itself, so "verified" would mean
+    # nothing. Deny by default; DLP_CHECK_GITHUB_REPO names another
+    # repository the operator trusts (the same setting github_branch_head uses).
+    upstream = os.environ.get("DLP_CHECK_GITHUB_REPO", "").strip() or UPSTREAM_REPO
+    if f"{owner}/{repo}".lower() != upstream.lower():
+        return {"checked": False, "reason": (f"origin is {owner}/{repo}, not the upstream repository {upstream} (a fork or a mirror), "
+                                             "so GitHub's API for it cannot vouch for the pull. Set DLP_CHECK_GITHUB_REPO to it "
+                                             "only if that is the repository you trust")}
     token = os.environ.get("DLP_CHECK_GITHUB_TOKEN", "").strip()
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     if token:

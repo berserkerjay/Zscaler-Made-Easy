@@ -1,0 +1,9 @@
+# Supply-chain tools CI runs (and `make lock` / `make sbom` use): the lock
+# re-resolver, the vulnerability audit and the SBOM generator. Installed
+# only from requirements-ci.lock (--require-hashes), so their dependencies
+# are pinned by hash too, not resolved fresh from PyPI on every run.
+# Compiled against requirements.lock and requirements-pip.lock so a package
+# they share with the app keeps the app's pin: make lock-ci
+uv==0.13.4
+pip-audit==2.10.1
+cyclonedx-bom==7.5.0
