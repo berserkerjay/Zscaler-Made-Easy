@@ -25,7 +25,8 @@ lists what each batch of changes did, newest first.
   - **Accessibility:** every text and button colour meets WCAG AA contrast in both themes; reduced motion stops scripted scrolling; no page scrolls sideways at 320 or 390 px, the results page with findings included.
   - **Tests themselves:** the suite is hermetic and order-independent (no files left in the repo, app settings in the shell ignored, pacing on an injected clock, browsers on ports the OS picks); a Beacon status race that made tests flaky is fixed in the app.
 - **Needs the owner (GitHub settings).** Protect `main` (pull request required, the CI checks required, no force pushes); confirm Actions workflow permissions are read-only and Dependabot alerts are on.
-- **Verified.** Full suite 7,749 passed; every page and button in Chromium with no errors, external requests or writes.
+- **Windows launchers renamed** to `*_Zscaler_Made_Easy.*` and the shortcut to *Zscaler Made Easy*; shortcuts made before the rename keep working through three forwarding files, and the next update or install renames them. A test keeps the old product name out of every file except those and the few strings needed to clean it up.
+- **Verified.** Full suite 7,804 passed; every page (34) and sidebar button (48) in Chromium with no errors, external requests or writes, and no sideways scroll at 390 px.
 
 ## 2026-10-25
 
