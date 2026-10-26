@@ -58,6 +58,9 @@ class Job:
     lock: threading.Lock = field(default_factory=threading.Lock)
     # Who started it (the start endpoint's actor), when known.
     actor: Optional[str] = None
+    # "extension" when the companion browser extension started it: the only
+    # jobs the extension may stop (dlp_api_server.dlp_pack_job_cancel).
+    started_by: Optional[str] = None
     # The tenant's ZIA rate-limit key, once the run inside knows it
     # (dlp_api_server._keyed), so the snapshot can say when a pause ends.
     rate_key: Optional[str] = None
