@@ -390,15 +390,17 @@ curl -X POST http://localhost:8080/api/dlp-packs/preflight \
 curl -X POST http://localhost:8080/api/dlp-packs/apply \
   -H 'Content-Type: application/json' \
   -d '{"pack_ids": ["fed_policy_pack", "cjis_policy_pack"],
-       "plan_hash": "<sha256 from preflight>", "confirm": true,
+       "plan_hash": "<sha256 from preflight>", "confirm": true, "assessor": "Jane Doe",
        "use_rank_0": false, "apply_tweaks": true, "verify": true,
        "cloud": "production", "vanity_domain": "acme",
        "client_id": "...", "client_secret": "..."}'
 
-# Single-pack legacy import (no cross-pack checks, no approval step)
+# Single-pack import (no cross-pack checks): without plan_hash it returns the plan;
+# deploying it needs that plan_hash, "confirm": true, the assessor and write mode
 curl -X POST http://localhost:8080/api/dlp-packs/my_pack_name/import \
   -H 'Content-Type: application/json' \
-  -d '{"use_rank_0": false, "apply_tweaks": true, "verify": true}'
+  -d '{"use_rank_0": false, "apply_tweaks": true, "verify": true,
+       "plan_hash": "<plan_hash from the plan>", "confirm": true, "assessor": "Jane Doe"}'
 
 # Verify a pack against the tenant (read-only)
 curl -X POST http://localhost:8080/api/dlp-packs/my_pack_name/verify

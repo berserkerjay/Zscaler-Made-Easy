@@ -288,8 +288,10 @@ def test_undo_endpoints(store, tmp_path, monkeypatch):
     lst = c.get("/api/deployments").json()
     assert lst["deployments"][0]["id"] == rec["id"] and lst["deployments"][0]["remaining"] == 3
     assert c.get("/api/deployments?tenant_label=other").json()["deployments"] == []
-    body = {"cloud": "production", "vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "s3cret-s3cret", "confirm": True}
+    body = {"cloud": "production", "vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "s3cret-s3cret", "confirm": True,
+            "assessor": "Jane Doe"}
     assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(body, confirm=False)).status_code == 400
+    assert c.post(f"/api/deployments/{rec['id']}/undo", json=dict(body, assessor="")).status_code == 400
     assert c.post("/api/deployments/nope/undo", json=body).status_code == 404
     monkeypatch.setattr(srv, "writes_enabled", lambda: False)
     assert c.post(f"/api/deployments/{rec['id']}/undo", json=body).status_code == 403

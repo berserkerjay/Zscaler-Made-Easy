@@ -105,6 +105,14 @@ function _dhCreds() {
   try { if (window.opener && !window.opener.closed && typeof window.opener.migrateValidateCreds === 'function') { const b = window.opener.migrateValidateCreds(); if (b) return b; } } catch (e) { /* cross-window */ }
   return { profile_id: (window.__dhReport || {}).profile_id || '' };
 }
+// The assessor's name a write carries (the main page's field); blank lets the
+// server use the saved profile's assessor, else it refuses the write.
+function _dhAssessor() {
+  try {
+    const a = document.getElementById('assessor') || (window.opener && !window.opener.closed && window.opener.document.getElementById('assessor'));
+    return a ? String(a.value || '').trim() : '';
+  } catch (e) { return ''; }
+}
 async function _dhPost(url, body) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
@@ -136,7 +144,7 @@ async function _dhApplyFlow(tenant, p, direction, box, host) {
     go.disabled = true;
     box.querySelector('.df-hint').textContent = `${verb === 'Apply' ? 'Applying' : 'Rolling back'}… each rule is updated and read back.`;
     try {
-      const out = await _dhPost(`/api/proposals/${encodeURIComponent(tenant)}/${encodeURIComponent(p.id)}/${direction}`, { ...creds, confirm: true, by: (host.querySelector('#dhBy') || {}).value || '' });
+      const out = await _dhPost(`/api/proposals/${encodeURIComponent(tenant)}/${encodeURIComponent(p.id)}/${direction}`, { ...creds, confirm: true, assessor: _dhAssessor(), by: (host.querySelector('#dhBy') || {}).value || '' });
       box.innerHTML = `<div class="dh-preview"><strong>${out.ok ? (direction === 'apply' ? 'Applied and verified.' : 'Rolled back and verified.') : 'Some rules could not be changed.'}</strong>${_dhStepsHtml({ field: out.field, steps: out.results })}<div class="df-hint">${_dhE(out.activation || '')}</div></div>`;
       setTimeout(() => renderProposals(tenant, host), 1500);
     } catch (e) { box.innerHTML = `<div class="df-hint">Not applied: ${_dhE(e.message)}</div>`; }

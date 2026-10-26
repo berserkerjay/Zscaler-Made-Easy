@@ -549,6 +549,9 @@ class RemediationExecuteRequest(BaseModel):
     check_id: str = ""
     criteria: dict = {}
     dry_run: bool = True
+    confirm: bool = False      # dry_run=false needs confirm=true, the assessor, a writer and write mode
+    assessor: str = ""
+    profile_id: str = ""
 
 
 @app.get("/api/remediation/catalog")
@@ -576,13 +579,14 @@ async def remediation_plan(req: RemediationPlanRequest):
 @app.post("/api/remediation/execute")
 async def remediation_execute(req: RemediationExecuteRequest):
     """Plan + optionally execute. dry_run=True returns the plan only;
-    dry_run=False requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND."""
+    dry_run=False needs a writer, confirm=true, the assessor's name and
+    write mode, all checked before the tenant is signed in to."""
     try:
         from remediation import execute
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
     if not req.dry_run:
-        _security.require_writer()
+        _require_tenant_write(req, confirmed=req.confirm, what="Applying a remediation")
     client = await asyncio.to_thread(_build_client, req)
     result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)
     return result
@@ -944,6 +948,7 @@ class DLPPackImportRequest(TenantCredsRequest):
     apply_tweaks: bool = True
     verify: bool = True
     plan_hash: str = ""   # the hash of the plan the caller reviewed; without it the endpoint only returns the plan
+    confirm: bool = False  # deploying (plan_hash given) needs confirm=true too
 
 
 class DLPPackDeployRequest(TenantCredsRequest):
@@ -1068,6 +1073,34 @@ def _require_assessor(req: Any) -> str:
     if not name:
         raise HTTPException(status_code=400, detail=ASSESSOR_REQUIRED)
     return name
+
+
+TENANT_WRITE_ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name) before changing the tenant: "
+                                  "every change to a tenant is made in the name of the person who assesses it.")
+
+
+def _require_write_assessor(req: Any) -> str:
+    """_require_assessor for any tenant write, with a message that is not
+    about packs. The name falls back to the saved profile's assessor."""
+    try:
+        return _require_assessor(req)
+    except HTTPException as e:
+        if e.detail == ASSESSOR_REQUIRED:
+            raise HTTPException(status_code=400, detail=TENANT_WRITE_ASSESSOR_REQUIRED)
+        raise
+
+
+def _require_tenant_write(req: Any, *, confirmed: bool, what: str) -> str:
+    """Every refusal a tenant write makes before it signs in (deny by
+    default, fail closed): a writer (SSO), the explicit confirmation, the
+    assessor's name and write mode. Returns the assessor's name."""
+    _security.require_writer()
+    if confirmed is not True:
+        raise HTTPException(status_code=400, detail=f"{what} requires explicit confirmation (confirm=true).")
+    by = _require_write_assessor(req)
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    return by
 
 
 def _tenant_key(c: Dict[str, Any]) -> str:
@@ -1983,6 +2016,10 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
         raise HTTPException(status_code=409, detail=f"Only an approved request can be applied; this one is {rec.get('status')}.")
     if (req.confirm or "").strip().upper() != change_queue.CONFIRM_PHRASE:
         raise HTTPException(status_code=400, detail=f'Type "{change_queue.CONFIRM_PHRASE}" to confirm the apply.')
+    if rec.get("kind") == "pack_deploy":
+        _require_assessor(req)
+    else:
+        _require_write_assessor(req)
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     creds = _tenant_creds(req)
@@ -2131,10 +2168,7 @@ async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
     re-read, update, read-back, recorded way back. Nothing is activated."""
     _security.require_writer()
     import proposal_apply
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Applying requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Applying")
     client = await asyncio.to_thread(_proposal_client, req, tenant)
     logs: list = []
     by = (_security.current_actor() or "")[:80]
@@ -2152,10 +2186,7 @@ async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
     with the same re-read and read-back."""
     _security.require_writer()
     import proposal_apply
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Rolling back requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Rolling back")
     client = await asyncio.to_thread(_proposal_client, req, tenant)
     logs: list = []
     by = (_security.current_actor() or "")[:80]
@@ -2945,10 +2976,7 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Removal")
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
@@ -3000,10 +3028,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request
     import pack_jobs
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Removal")
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
@@ -3052,14 +3077,18 @@ async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):
 
 
 @app.post("/api/dlp-packs/jobs/{job_id}/cancel")
-async def dlp_pack_job_cancel(job_id: str):
+async def dlp_pack_job_cancel(job_id: str, request: Request):
     """Stop a running job after the write in flight. Nothing more is sent
     to the tenant; activation and the read-back still run so what was
-    written is live and recorded."""
+    written is live and recorded. The browser extension may stop only the
+    export it started (security.EXTENSION_JOB_KINDS), never a deploy,
+    removal or other job of the app's."""
     import pack_jobs
     job = pack_jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="No such job.")
+    if _security.from_extension(request) and job.kind not in _security.EXTENSION_JOB_KINDS:
+        raise HTTPException(status_code=403, detail="The browser extension may stop only the export it started.")
     return {"job_id": job.id, "cancelled": pack_jobs.cancel(job_id), "status": job.status}
 
 
@@ -3927,10 +3956,7 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: 
     rec = deployments.get(dep_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Deployment not found.")
-    if not req.confirm:
-        raise HTTPException(status_code=400, detail="Undo requires explicit confirmation (confirm=true).")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    _require_tenant_write(req, confirmed=req.confirm, what="Undo")
     creds = _tenant_creds(req)
     _require_same_tenant(rec, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
@@ -3951,8 +3977,15 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
     _security.require_writer()
     import pack_deploy
     pack = _resolve_pack_ids([pack_id])[0]
-    # A deploying call needs the assessor's name before the tenant is signed in to.
-    by = _require_assessor(req) if req.plan_hash else ""
+    # A deploying call needs confirm=true, the assessor's name and write mode
+    # before the tenant is signed in to.
+    by = ""
+    if req.plan_hash:
+        by = _require_assessor(req)
+        if req.confirm is not True:
+            raise HTTPException(status_code=400, detail="Deployment requires explicit confirmation (confirm=true).")
+        if not writes_enabled():
+            raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
     if not req.plan_hash:
         report = await asyncio.to_thread(lambda: pack_deploy.preflight(client, [pack], use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
@@ -6657,8 +6690,11 @@ async def migrate_optimize(req: OptimizeRequest):
 
 # ── Step 4: Enable Evaluate All Rules ────────────────────────────
 class EnableRequest(MigrateRequest):
-    """Body for enabling Evaluate All Rules (dry run by default)."""
+    """Body for enabling Evaluate All Rules (dry run by default; dry_run=false
+    needs confirm=true, the assessor, a writer and write mode)."""
     dry_run: bool = True
+    confirm: bool = False
+    assessor: str = ""
 
 
 @app.post("/api/migrate/enable")
@@ -6669,7 +6705,7 @@ async def migrate_enable(req: EnableRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
-        _security.require_writer()
+        _require_tenant_write(req, confirmed=req.confirm, what="Enabling Evaluate All Rules")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
@@ -6677,8 +6713,11 @@ async def migrate_enable(req: EnableRequest):
 
 # ── Step 4b: Delete All Existing Rules (gated) ───────────────────────
 class DeleteAllRequest(MigrateRequest):
-    """Body for deleting every Web DLP rule (dry run by default)."""
+    """Body for deleting every Web DLP rule (dry run by default; dry_run=false
+    needs confirm=true, the assessor, a writer and write mode)."""
     dry_run: bool = True
+    confirm: bool = False
+    assessor: str = ""
 
 
 @app.post("/api/migrate/delete-all")
@@ -6689,7 +6728,7 @@ async def migrate_delete_all(req: DeleteAllRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
-        _security.require_writer()
+        _require_tenant_write(req, confirmed=req.confirm, what="Deleting every Inline Web DLP rule")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(delete_all_rules, client, req.dry_run)
@@ -6701,6 +6740,8 @@ class PostRequest(MigrateRequest):
     proposed_rules: list[dict] = []
     dry_run: bool = True
     mode: str = "auto"  # "auto" | "create" | "update"
+    confirm: bool = False   # dry_run=false needs confirm=true, the assessor, a writer and write mode
+    assessor: str = ""
 
 
 @app.post("/api/migrate/post")
@@ -6718,7 +6759,7 @@ async def migrate_post(req: PostRequest):
     if not req.proposed_rules:
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
     if not req.dry_run:
-        _security.require_writer()
+        _require_tenant_write(req, confirmed=req.confirm, what="Posting rules to the tenant")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
@@ -8526,6 +8567,7 @@ async def self_heal_tenant_heal(req: SelfHealHealRequest, request: Request):
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     if (req.confirm or "").strip().upper() != proposals.CONFIRM_PHRASE:
         raise HTTPException(status_code=400, detail=f'Healing changes the tenant: type "{proposals.CONFIRM_PHRASE}" to confirm.')
+    _require_write_assessor(req)
     ids = [str(x) for x in req.ids or [] if x][:50]
     if not ids:
         raise HTTPException(status_code=400, detail="Select at least one drift to heal.")

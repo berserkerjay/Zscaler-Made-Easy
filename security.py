@@ -97,6 +97,23 @@ def extension_may_post(origin: str, path: str) -> bool:
     ext = extension_origin()
     return bool(ext) and origin == ext and (path in EXTENSION_POST_PATHS or bool(_EXTENSION_CANCEL.match(path)))
 
+
+# The jobs the extension starts (Export from tenant): the only ones it may Stop.
+EXTENSION_JOB_KINDS = ("export",)
+
+
+def from_extension(request: Request) -> bool:
+    """True when a browser request comes from the extension's origin (its
+    Origin header, or without one its Referer)."""
+    ext = extension_origin()
+    if not ext:
+        return False
+    origin = (request.headers.get("origin") or "").lower().rstrip("/")
+    if not origin:
+        ref = urlparse(request.headers.get("referer") or "")
+        origin = f"{ref.scheme}://{ref.netloc}".lower() if ref.scheme else ""
+    return origin == ext
+
 # Hostname pattern for vanity_domain (RFC-1123 label, dot-separated).
 _HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
