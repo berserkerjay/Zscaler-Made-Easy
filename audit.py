@@ -193,7 +193,9 @@ class AuditMiddleware:
         if body:
             try:
                 parsed = json.loads(body.decode("utf-8"))
-            except (ValueError, UnicodeDecodeError):
+            except (ValueError, UnicodeDecodeError, RecursionError):
+                # RecursionError: JSON nested too deep to decode. The call is
+                # still recorded (by size) and the app answers it with a 400.
                 parsed = f"<{len(body)} bytes>"
         replayed = {"done": False}
 

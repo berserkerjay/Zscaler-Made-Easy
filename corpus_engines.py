@@ -115,7 +115,7 @@ DETECTORS: List[Dict[str, Any]] = [
      "pattern": r"\b[1-9][A-Z][A-Z0-9]\d[A-Z][A-Z0-9]\d[A-Z]{2}\d{2}\b", "validate": mbi_ok,
      "note": "Medicare Beneficiary Identifier shape."},
     {"key": "email", "match": r"e-?mail",
-     "pattern": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "validate": _ALWAYS,
+     "pattern": r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "validate": _ALWAYS,
      "note": "RFC-shaped e-mail addresses."},
     {"key": "phone", "match": r"phone|telephone",
      "pattern": r"(?<!\d)(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}(?!\d)", "validate": _ALWAYS,
@@ -279,6 +279,8 @@ _TOKEN = re.compile(r"\s*(?:(?P<lp>\()|(?P<rp>\))|(?P<and>AND\b)|(?P<or>OR\b)|(?
                     r"|(?P<bare>D\(?\s*(?P<bid>\d+)\s*\)?(?:\.S)?))", re.I)
 
 UNKNOWN = None   # tri-state: True fires, False does not, None unknown
+MAX_NESTING = 40  # an engine expression nested deeper is not evaluated (unknown)
+MAX_EXPRESSION = 4000   # nor a longer one (engine_explain's limit): the Sum pattern's cost grows with the square of a run of spaces
 
 
 def _cmp(count: Optional[int], op: str, n: int) -> Optional[bool]:
@@ -319,6 +321,8 @@ def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Op
     ids: List[int] = []
     pos = 0
     s = (expr or "").strip()
+    if len(s) > MAX_EXPRESSION:
+        return UNKNOWN, ids, [f"not evaluated: the expression is longer than {MAX_EXPRESSION} characters"]
     sums: Dict[str, Tuple[List[int], str, int]] = {}
 
     def _sum(m):
@@ -352,6 +356,19 @@ def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Op
         return UNKNOWN, ids, ["empty expression"]
     explained: List[str] = []
     i = 0
+    depth = 0
+
+    def deeper(fn):
+        # Parentheses or NOTs nested past MAX_NESTING are "could not parse"
+        # (unknown), never a RecursionError that ends the whole corpus test.
+        nonlocal depth
+        depth += 1
+        try:
+            if depth > MAX_NESTING:
+                raise ValueError(f"nested more than {MAX_NESTING} levels deep")
+            return fn()
+        finally:
+            depth -= 1
 
     def parse_or():
         nonlocal i
@@ -373,7 +390,7 @@ def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Op
         nonlocal i
         if i < len(toks) and toks[i][0] == "NOT":
             i += 1
-            return _not(parse_not())
+            return _not(deeper(parse_not))
         return parse_atom()
 
     def parse_atom():
@@ -383,7 +400,7 @@ def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Op
         kind, val = toks[i]
         if kind == "(":
             i += 1
-            v = parse_or()
+            v = deeper(parse_or)
             if i >= len(toks) or toks[i][0] != ")":
                 raise ValueError("unbalanced")
             i += 1

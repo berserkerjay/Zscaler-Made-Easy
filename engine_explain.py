@@ -25,6 +25,7 @@ import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 MAX_EXPRESSION = 4000          # longer expressions are named, not parsed
+MAX_NESTING = 40               # parentheses or NOTs nested deeper are named, not parsed (never a RecursionError)
 _NUM_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
 _OPS = (">=", "<=", "==", "!=", ">", "<", "=")
 
@@ -40,6 +41,7 @@ _TOKEN_RE = re.compile(
     r"|(?P<num>\d+)"
     r")", re.I)
 _ID_TERM_RE = re.compile(r"D(\d+)\.([A-Za-z]+)")
+_SPACES = re.compile(r"\s+")
 
 
 class ParseError(ValueError):
@@ -124,6 +126,17 @@ class _Parser:
 
     def __init__(self, toks: List[Tuple[str, Any]]):
         self.t, self.i = toks, 0
+        self.depth = 0
+
+    def _deeper(self, fn):
+        """fn() one nesting level down; ParseError past MAX_NESTING."""
+        self.depth += 1
+        try:
+            if self.depth > MAX_NESTING:
+                raise ParseError(f"nested more than {MAX_NESTING} levels deep")
+            return fn()
+        finally:
+            self.depth -= 1
 
     def peek(self) -> Optional[str]:
         return self.t[self.i][0] if self.i < len(self.t) else None
@@ -160,7 +173,7 @@ class _Parser:
     def not_(self) -> tuple:
         if self.peek() == "NOT":
             self.i += 1
-            return ("not", _cond(self.not_()))
+            return ("not", _cond(self._deeper(self.not_)))
         return self.cmp()
 
     def cmp(self) -> tuple:
@@ -191,7 +204,7 @@ class _Parser:
         k = self.peek()
         if k == "(":
             self.i += 1
-            node = self.or_()
+            node = self._deeper(self.or_)
             self.take(")")
             return node
         if k == "term":
@@ -208,7 +221,10 @@ def parse(expr: str) -> tuple:
     s = str(expr or "")
     if len(s) > MAX_EXPRESSION:
         raise ParseError("expression too long to explain")
-    return _Parser(_tokens(s)).parse()
+    # Runs of white space read as one space: a D:<name> term is found by
+    # trying each longer name and looking past the spaces after it, which
+    # on one long run of spaces would cost the square of its length.
+    return _Parser(_tokens(_SPACES.sub(" ", s))).parse()
 
 
 # ── rendering ────────────────────────────────────────────────────────

@@ -470,6 +470,7 @@ def _unzip(data: bytes, source_name: str) -> List[Tuple[str, bytes]]:
     written to disk."""
     import io
     import zipfile
+    import zlib
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as e:
@@ -489,7 +490,11 @@ def _unzip(data: bytes, source_name: str) -> List[Tuple[str, bytes]]:
             base = info.filename.rsplit("/", 1)[-1]
             if not base.lower().endswith(_TEXT_MEMBERS) or base.startswith(".") or "__MACOSX" in info.filename:
                 continue
-            members.append((info.filename, zf.read(info)))
+            try:
+                # zipfile stops at the declared size: a member that lies about it fails its CRC here.
+                members.append((info.filename, zf.read(info)))
+            except (zipfile.BadZipFile, RuntimeError, NotImplementedError, EOFError, zlib.error) as e:
+                raise ValueError(f"{source_name}: {base} could not be read from the archive ({type(e).__name__})") from e
     if not members:
         raise ValueError(f"{source_name}: the archive holds no .json, .xml, .csv or .txt file")
     return members
@@ -504,11 +509,39 @@ def _text(data: bytes, name: str) -> str:
     raise ValueError(f"{name}: not UTF-8 or UTF-16 text")
 
 
+MAX_NESTING = 64   # an export nested deeper is refused in words (the readers below walk it recursively)
+
+
+def _depth_ok(node: Any, children) -> bool:
+    """Whether `node` nests at most MAX_NESTING levels deep, checked with
+    an explicit stack (never recursion). `children(n)` lists n's children."""
+    stack = [(node, 1)]
+    while stack:
+        n, d = stack.pop()
+        if d > MAX_NESTING:
+            return False
+        stack.extend((c, d + 1) for c in children(n))
+    return True
+
+
+def _json_children(n: Any) -> List[Any]:
+    if isinstance(n, dict):
+        return [v for v in n.values() if isinstance(v, (dict, list))]
+    if isinstance(n, list):
+        return [v for v in n if isinstance(v, (dict, list))]
+    return []
+
+
 def _load_json(data: bytes, name: str) -> Any:
     try:
-        return json.loads(_text(data, name))
+        obj = json.loads(_text(data, name))
     except json.JSONDecodeError as e:
         raise ValueError(f"{name}: not valid JSON ({e.msg} at line {e.lineno})")
+    except RecursionError:
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    if not _depth_ok(obj, _json_children):
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    return obj
 
 
 def _csv_rows(data: bytes, name: str) -> List[List[str]]:
@@ -537,9 +570,12 @@ def _xml_root(data: bytes, name: str):
     if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
         raise ValueError(f"{name}: DTD/entities are not accepted")
     try:
-        return ET.fromstring(data)
+        root = ET.fromstring(data)
     except ET.ParseError as e:
         raise ValueError(f"{name}: not well-formed XML ({e})")
+    if not _depth_ok(root, list):
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    return root
 
 
 def _xml_to_obj(el) -> Any:
@@ -1662,6 +1698,10 @@ def compile_upload(vendor_id: str, export_file: Dict[str, Any], decisions: Any) 
             decisions = json.loads(decode_upload(decisions).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
             raise ValueError(f"Decisions file is not valid JSON: {e}")
+        except RecursionError:
+            raise ValueError(f"Decisions file is nested more than {MAX_NESTING} levels deep")
+        if not _depth_ok(decisions, _json_children):
+            raise ValueError(f"Decisions file is nested more than {MAX_NESTING} levels deep")
     tf, report = compile_export(snapshot, decisions, prefix=v["prefix"], vendor_id=v["id"])
     return {"vendor": v["id"], "vendor_name": v["name"],
             "snapshot": {"source_file": snapshot["source_file"], "sha256": snapshot["sha256"], "policy_count": len(snapshot["policies"])},

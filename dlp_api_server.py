@@ -189,6 +189,10 @@ app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
 
 
 # ── Generic exception handler — never leak stack traces ────────────
+_LOG_LINE_MAX = 2000      # characters of one traceback entry (or the message) written to server.log
+_LOG_TRACE_MAX = 32768    # characters of one whole traceback
+
+
 @app.exception_handler(Exception)
 async def _safe_exception_handler(request: Request, exc: Exception):
     """Catch-all so internal errors never expose tracebacks to the client."""
@@ -202,12 +206,38 @@ async def _safe_exception_handler(request: Request, exc: Exception):
         )
     # In normal mode, return a generic message — log details server-side only
     # (server.log carries the traceback so the failure can be reported).
+    # Bounded: an exception quoting a request value (a 10 MB field) must not
+    # write tens of megabytes to server.log per call.
     import traceback
-    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path}: {exc}\n{traceback.format_exc()}")
+    parts = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    trace = "".join(p if len(p) <= _LOG_LINE_MAX else p[:_LOG_LINE_MAX] + " … [cut]\n" for p in parts)
+    if len(trace) > _LOG_TRACE_MAX:
+        trace = trace[:_LOG_TRACE_MAX // 2] + "\n… [cut] …\n" + trace[-_LOG_TRACE_MAX // 2:]
+    what = str(exc)
+    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path[:300]}: {what[:_LOG_LINE_MAX]}\n{trace}")
     return JSONResponse(
         {"detail": f"Internal error ({type(exc).__name__}). The traceback is in server.log next to the app; run with ZSCALER_DEBUG=1 to see it here."},
         status_code=500,
     )
+
+
+@app.exception_handler(RecursionError)
+async def _json_too_deep_handler(request: Request, exc: RecursionError):
+    """A request body nested deeper than the JSON decoder goes (routes that
+    read request.json() themselves) is the caller's error: 400, not 500."""
+    if "decoding a JSON" in str(exc):
+        return JSONResponse({"detail": "The JSON body is nested too deeply."}, status_code=400)
+    return await _safe_exception_handler(request, exc)
+
+
+# Assessment results posted back for a report view or export: an assessment
+# has a few hundred checks (report_exports.MAX_CHECKS bounds the workbook);
+# more is refused, and the work runs off the event loop.
+def _require_report_size(results: Any) -> None:
+    import report_exports
+    if isinstance(results, list) and len(results) > report_exports.MAX_CHECKS:
+        raise HTTPException(status_code=413, detail=f"Too many checks in one report ({len(results)}; at most {report_exports.MAX_CHECKS}).")
+
 
 # Serve static files (web GUI)
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -4016,6 +4046,11 @@ async def dlp_pack_upload(req: DLPPackUploadRequest):
     """Older single-call upload: the three JSON lists in one body. Kept for
     scripts; the Advanced settings tab uses /api/pack-library/upload."""
     _require_pack_library_writes()
+    # Off the event loop, as every upload parser is: a large pack must not hold up every other request.
+    return await asyncio.to_thread(_dlp_pack_upload, req)
+
+
+def _dlp_pack_upload(req: DLPPackUploadRequest) -> Dict[str, Any]:
     import pack_library as pl
     bundle = {"name": req.pack_name, "dictionaries": req.dictionaries or [], "engines": req.engines or [], "policies": req.policies or []}
     try:
@@ -4072,7 +4107,12 @@ async def pack_library_list():
 @app.post("/api/pack-library/preview")
 async def pack_library_preview(req: PackLibraryUploadRequest):
     """Parse and validate an upload without saving it: what it contains,
-    what would block it, what to watch."""
+    what would block it, what to watch. Off the event loop (a large upload
+    must not hold up every other request)."""
+    return await asyncio.to_thread(_pack_library_preview, req)
+
+
+def _pack_library_preview(req: PackLibraryUploadRequest) -> Dict[str, Any]:
     import pack_library as pl
     import pack_channels as _pc
     try:
@@ -4103,8 +4143,13 @@ async def pack_library_preview(req: PackLibraryUploadRequest):
 async def pack_library_upload(req: PackLibraryUploadRequest):
     """Add a pack to the library from JSON, Terraform or a ZIP. It is then
     an ordinary pack: Deploy Policy Packs, the Data Flow Map, the
-    Terraform hand-off and the validator all list it."""
+    Terraform hand-off and the validator all list it. Off the event loop
+    (a large upload must not hold up every other request)."""
     _require_pack_library_writes()
+    return await asyncio.to_thread(_pack_library_upload, req)
+
+
+def _pack_library_upload(req: PackLibraryUploadRequest) -> Dict[str, Any]:
     import pack_library as pl
     try:
         pack = pl.assemble_pack([f.model_dump() for f in req.files], pack_name=req.pack_name, description=req.description)
@@ -6202,7 +6247,8 @@ async def compliance_summary(request: Request):
     results = data.get("checks", [])
     if not results:
         raise HTTPException(status_code=400, detail="No checks in request body")
-    return get_framework_summary(results)
+    _require_report_size(results)
+    return await asyncio.to_thread(get_framework_summary, results)
 
 
 @app.post("/api/compliance/drilldown")
@@ -6216,7 +6262,8 @@ async def compliance_drilldown(request: Request):
     results = data.get("checks", [])
     if not results:
         raise HTTPException(status_code=400, detail="No checks in request body")
-    return get_control_drilldown(results)
+    _require_report_size(results)
+    return await asyncio.to_thread(get_control_drilldown, results)
 
 
 @app.post("/api/compliance/report")
@@ -6232,9 +6279,11 @@ async def compliance_report(request: Request):
     results = data.get("checks", [])
     if not results:
         raise HTTPException(status_code=400, detail="No checks in request body")
+    _require_report_size(results)
     selected = [str(k) for k in (data.get("frameworks") or []) if str(k) in FRAMEWORK_DESCRIPTIONS]
     meta = data.get("metadata") or {}
-    rep = {"summary": get_framework_summary(results), "drilldown": get_control_drilldown(results),
+    summary, drilldown = await asyncio.to_thread(lambda: (get_framework_summary(results), get_control_drilldown(results)))
+    rep = {"summary": summary, "drilldown": drilldown,
            "descriptions": dict(FRAMEWORK_DESCRIPTIONS), "frameworks_selected": selected,
            "check_count": len(__import__("channel_scope").visible(results)[0]),   # checks outside the scope are hidden
            "metadata": {k: meta.get(k) for k in ("org", "assessor", "vanity_domain", "cloud", "date") if meta.get(k)}}
@@ -6369,10 +6418,11 @@ async def vendor_migrate_vendors():
 @app.post("/api/vendor-migrate/inventory")
 async def vendor_migrate_inventory(req: VendorMigrateInventoryRequest):
     """Inventory an export in memory: every policy with its id and name,
-    the export's SHA-256, and a decisions template to review. Read-only."""
+    the export's SHA-256, and a decisions template to review. Read-only.
+    Off the event loop (a large export must not hold up every other request)."""
     import vendor_migrate
     try:
-        return vendor_migrate.inventory_upload(req.vendor, req.export.model_dump())
+        return await asyncio.to_thread(vendor_migrate.inventory_upload, req.vendor, req.export.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -6384,7 +6434,7 @@ async def vendor_migrate_compile(req: VendorMigrateCompileRequest):
     is blocked. Nothing is written to the tenant or to disk."""
     import vendor_migrate
     try:
-        return vendor_migrate.compile_upload(req.vendor, req.export.model_dump(), req.decisions)
+        return await asyncio.to_thread(vendor_migrate.compile_upload, req.vendor, req.export.model_dump(), req.decisions)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -6399,7 +6449,7 @@ async def vendor_migrate_workspace(req: VendorMigrateCompileRequest):
     blocked. Nothing is written to the tenant or to disk."""
     import vendor_migrate
     try:
-        out = vendor_migrate.compile_upload(req.vendor, req.export.model_dump(), req.decisions)
+        out = await asyncio.to_thread(vendor_migrate.compile_upload, req.vendor, req.export.model_dump(), req.decisions)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not out.get("terraform"):
@@ -6440,7 +6490,8 @@ async def benchmarks_report(request: Request):
     data = await request.json()
     if not isinstance(data, dict) or not data.get("checks"):
         raise HTTPException(status_code=400, detail="No checks in request body")
-    return benchmarks.benchmark_report(data)
+    _require_report_size(data["checks"])
+    return await asyncio.to_thread(benchmarks.benchmark_report, data)
 
 
 @app.post("/api/benchmarks/export")
@@ -6450,7 +6501,8 @@ async def benchmarks_export(request: Request, format: str = "markdown"):
     data = await request.json()
     if not isinstance(data, dict) or not data.get("checks"):
         raise HTTPException(status_code=400, detail="No checks in request body")
-    b = benchmarks.benchmark_report(data)
+    _require_report_size(data["checks"])
+    b = await asyncio.to_thread(benchmarks.benchmark_report, data)
     org = str((data.get("metadata") or {}).get("org") or "")
     ts = datetime.now().strftime("%Y%m%d")
     if format == "json":
@@ -7231,9 +7283,17 @@ async def assess_stream(req: AssessRequest):
     )
 
 
+# python-docx appends each paragraph after scanning the body, so the time a
+# document takes grows with the square of its length: 4,000 checks took
+# 70 s (2,000: 22 s, off the event loop). An assessment has a few hundred;
+# more than this is refused.
+_DOCX_MAX_CHECKS = 1000
+
+
 @app.post("/api/report/docx")
 async def generate_docx(request: Request):
-    """Generate a Word doc from assessment results."""
+    """Generate a Word doc from assessment results (at most _DOCX_MAX_CHECKS
+    checks; built off the event loop)."""
     import traceback as _tb
     try:
         from report_docx import generate_report
@@ -7256,11 +7316,14 @@ async def generate_docx(request: Request):
 
     if not results:
         raise HTTPException(status_code=400, detail="No checks in request body — cannot generate report.")
+    if not isinstance(results, list) or len(results) > _DOCX_MAX_CHECKS:
+        raise HTTPException(status_code=413, detail=f"Too many results ({len(results) if isinstance(results, list) else 'not a list'}); "
+                                                    f"a Word report holds at most {_DOCX_MAX_CHECKS} checks.")
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
             tmp_path = tmp.name
-        generate_report(results, cfg, tmp_path, compute, maturity)
+        await asyncio.to_thread(generate_report, results, cfg, tmp_path, compute, maturity)
     except Exception as e:
         # Surface the real error to the browser instead of a generic 500
         tb = _tb.format_exc()
