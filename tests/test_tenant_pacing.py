@@ -3,7 +3,8 @@ request or job, as dlp_api_server._raw_client builds them) shares a send
 gap and a 429 hold; a ZIA write is counted once against ZIA's write limit
 however long the client's own pacer held it; and ZIA's Retry-After
 ("0 seconds") is read on writes as on reads. Fakes only: no tenant is
-called."""
+called. The pacing tests run on a fake clock (conftest.FakeClock) that
+moves only when the pacer sleeps: exact, and independent of machine load."""
 from __future__ import annotations
 
 import threading
@@ -27,7 +28,7 @@ class _Adapter(BaseAdapter):
         r = Response()
         r.request, r._content, r.status_code = request, b"[]", code
         r.headers.update(headers)
-        self.log.append((time.time(), request.method, request.url, code))
+        self.log.append((full._now(), request.method, request.url, code))   # the pacer's clock (fake in pacing tests)
         return r
 
     def close(self):
@@ -41,7 +42,21 @@ def _client(answer, log, vd="acme.com"):
     return c
 
 
-def test_a_429_seen_by_one_client_holds_every_client_of_the_same_tenant():
+def _on_pause(client):
+    """An Event set once `client` has published a 429 hold for its tenant
+    (the adapter logs the 429 before Client.get reads its Retry-After)."""
+    held = threading.Event()
+    real = client._limiter.pause
+
+    def pause(seconds):
+        real(seconds)
+        held.set()
+    client._limiter.pause = pause
+    return held
+
+
+def test_a_429_seen_by_one_client_holds_every_client_of_the_same_tenant(pacer_clock):
+    """ASVS V11.1.4 · CWE-770: a 429 seen by one client holds every client of the tenant (fake clock, exact)."""
     # Two jobs on one tenant: client A is refused with Retry-After: 2, and
     # client B (a separate Client, same tenant) sends nothing until it passed.
     log = []
@@ -55,34 +70,38 @@ def test_a_429_seen_by_one_client_holds_every_client_of_the_same_tenant():
 
     a, b = _client(answer, log), _client(answer, log)
     assert a.rate_key == b.rate_key and a is not b
+    held = _on_pause(a)
     ta = threading.Thread(target=lambda: a.get("/zia/webDlpRules"))
     ta.start()
-    deadline = time.time() + 5
-    while not log and time.time() < deadline:
-        time.sleep(0.01)
+    assert held.wait(10), "client A published its 429 hold"
     assert log and log[0][3] == 429
     assert b.get("/zia/dlpEngines")[1] == 200
-    ta.join()
+    ta.join(10)
+    assert not ta.is_alive()
     refused_at = log[0][0]
     later = log[1:]
     assert len(later) == 2
     assert all(at - refused_at >= 1.9 for at, *_ in later), [(round(at - refused_at, 2), u) for at, _, u, _ in later]
 
 
-def test_another_tenant_is_not_held_by_a_429():
+def test_another_tenant_is_not_held_by_a_429(pacer_clock):
+    """ASVS V11.1.4 · CWE-770: another tenant is not held by a 429 (fake clock: no wait at all)."""
     log = []
     a = _client(lambda r: (200, {}), log)
     other = _client(lambda r: (200, {}), log, vd="other.com")
     assert a.rate_key != other.rate_key
     a._limiter.pause(5)
-    t0 = time.time()
+    t0 = pacer_clock.time()
     assert other.get("/zia/dlpEngines")[1] == 200
-    assert time.time() - t0 < 1
+    assert pacer_clock.time() - t0 < 1 and pacer_clock.wakeups == [], "the other tenant did not wait"
 
 
-def test_clients_of_one_tenant_share_the_send_gap():
+def test_clients_of_one_tenant_share_the_send_gap(pacer_clock):
+    """ASVS V11.1.4 · CWE-770: two clients of one tenant book slots exactly one gap apart (fake clock)."""
     # Non-ZIA reads have no other pacing: two jobs on one tenant together
-    # keep the client's gap, not twice its rate.
+    # keep the client's gap, not twice its rate. The slots the pacer books
+    # are read from the fake clock (when a send is logged depends on thread
+    # scheduling; the slot it was given does not).
     log = []
     a, b = _client(lambda r: (200, {}), log), _client(lambda r: (200, {}), log)
     for c in (a, b):
@@ -94,10 +113,12 @@ def test_clients_of_one_tenant_share_the_send_gap():
         t.start()
     for t in ts:
         t.join()
-    stamps = sorted(at for at, *_ in log)
-    assert len(stamps) == 8
-    gaps = [y - x for x, y in zip(stamps, stamps[1:])]
-    assert min(gaps) >= 0.18, gaps
+    assert len(log) == 8
+    slots = sorted([pacer_clock.start] + pacer_clock.wakeups)   # the one send with no wait went at the start
+    assert len(slots) == 8, slots
+    gaps = [round(y - x, 6) for x, y in zip(slots, slots[1:])]
+    assert gaps == [0.2] * 7, gaps
+    assert all(at >= slot for at, slot in zip(sorted(at for at, *_ in log), slots)), "nothing is sent before its slot"
 
 
 def test_a_write_held_by_the_clients_pacer_is_counted_once(monkeypatch):
@@ -215,19 +236,19 @@ def test_a_hourly_body_without_a_long_retry_after_is_still_not_retried(monkeypat
 
 
 def test_a_clients_429_holds_the_sdk_reads_of_the_same_tenant():
+    """ASVS V11.1.4 · CWE-770: a client's 429 holds the SDK reads of the same tenant (event, not polling)."""
     # An assessment's Client is refused (Retry-After 20): an export's SDK
     # session on the same tenant waits for it before it reads.
     log = []
     answers = iter([(429, {"Retry-After": "20"})])
     c = _client(lambda r: next(answers, (200, {})), log)
+    held = _on_pause(c)
     t = threading.Thread(target=lambda: c.get("/zia/webDlpRules"))
     t.start()
     try:
-        # The adapter logs before Client.get processes Retry-After. Wait for
-        # the cooldown publication as well, preserving the actual wait check.
-        deadline = time.monotonic() + 5
-        while (not log or zia_rate.paused_for(c.rate_key, reads=True) <= 0) and time.monotonic() < deadline:
-            time.sleep(0.01)
+        # The adapter logs before Client.get processes Retry-After: wait for
+        # the hold's publication itself, preserving the actual wait check.
+        assert held.wait(10), "the client published its 429 hold"
         assert log and log[0][3] == 429
         assert zia_rate.paused_for(c.rate_key) >= 19
         waited = zia_rate.wait("GET", "/dlpDictionaries", key=c.rate_key)
@@ -240,21 +261,23 @@ def test_a_clients_429_holds_the_sdk_reads_of_the_same_tenant():
     assert not t.is_alive()
 
 
-def test_a_hold_set_after_an_sdk_read_refusal_holds_the_clients_reads():
+def test_a_hold_set_after_an_sdk_read_refusal_holds_the_clients_reads(pacer_clock):
+    """ASVS V11.1.4 · CWE-770: a read hold set by the SDK holds the client's reads; a write hold does not (fake clock)."""
     # The export's read was refused and it holds the tenant: the
     # assessment's Client on the same tenant does not read into that hold.
     log = []
     c = _client(lambda r: (200, {}), log)
     zia_rate.hold(2, key=c.rate_key, reads=True)
-    t0 = time.time()
+    t0 = pacer_clock.time()
     assert c.get("/zia/dlpEngines")[1] == 200
-    assert time.time() - t0 >= 1.8, "the Client waited for the export's hold"
+    assert pacer_clock.time() - t0 >= 1.8, "the Client waited for the export's hold"
+    assert log[-1][0] >= t0 + 2, "and sent nothing before it ended"
     # A hold after a write refusal does not hold reads (a preview still reads).
     zia_rate.reset()
     zia_rate.hold(30, key=c.rate_key)
-    t0 = time.time()
+    t0 = pacer_clock.time()
     assert c.get("/zia/dlpDictionaries")[1] == 200
-    assert time.time() - t0 < 1
+    assert pacer_clock.time() - t0 < 1
 
 
 def test_a_read_hold_is_kept_in_the_state_file_for_other_processes():

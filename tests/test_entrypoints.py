@@ -22,7 +22,17 @@ def test_get_port_accepts_a_valid_port_and_falls_back_with_a_warning(monkeypatch
     assert security.get_port() == security.DEFAULT_PORT
 
 
+def _free_port() -> int:
+    """A port nothing on this machine listens on now (the OS picks it), so a
+    test of the launcher never depends on whether 8000 happens to be taken."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 def test_server_main_reports_a_taken_port_instead_of_a_traceback(monkeypatch, capsys):
+    """ASVS V7.4.1 · CWE-209: a taken port is reported in plain words, on a port the OS says is free (never 8000)."""
     import dlp_api_server as srv
     import uvicorn
 
@@ -30,10 +40,11 @@ def test_server_main_reports_a_taken_port_instead_of_a_traceback(monkeypatch, ca
         raise OSError(98, "Address already in use")
     monkeypatch.setattr(uvicorn, "run", taken)
     monkeypatch.setenv("ZSCALER_UI_AUTH", "0")
-    monkeypatch.setenv("ZSCALER_PORT", "8000")
+    port = _free_port()   # free for the pre-start check, so uvicorn's own failure is what is reported
+    monkeypatch.setenv("ZSCALER_PORT", str(port))
     assert srv.main([]) == 2
     err = capsys.readouterr().err
-    assert "port 8000" in err and "already in use" in err and "Traceback" not in err
+    assert f"port {port}" in err and "already in use" in err and "Traceback" not in err
 
 
 def test_server_main_checks_the_port_before_uvicorn_starts(monkeypatch, capsys):
@@ -74,12 +85,15 @@ def test_server_main_reports_any_other_bind_failure(monkeypatch, capsys):
 
 
 def test_server_main_returns_zero_when_the_server_stops_normally(monkeypatch, capsys):
+    """SSDF PW.8.2 · Scorecard CI-Tests: the launcher returns 0 on a normal stop, whatever else listens on 8000."""
     import dlp_api_server as srv
     import uvicorn
     monkeypatch.setattr(uvicorn, "run", lambda app, host, port, **kw: None)
     monkeypatch.setenv("ZSCALER_UI_AUTH", "0")
+    port = _free_port()   # never 8000, which another server on this machine may hold
+    monkeypatch.setenv("ZSCALER_PORT", str(port))
     assert srv.main([]) == 0
-    assert "Open http://localhost:8000/" in capsys.readouterr().out
+    assert f"Open http://localhost:{port}/" in capsys.readouterr().out
 
 
 def test_config_file_errors_are_explained(tmp_path):

@@ -119,31 +119,33 @@ def test_journey_failure_is_reported_not_fatal(monkeypatch):
     assert j["status"] == "error" and "secret-secret-secret" not in j["error"]
 
 
-def test_rate_limiter_paces_threads_and_holds_everyone_after_a_429():
+def test_rate_limiter_paces_threads_and_holds_everyone_after_a_429(pacer_clock):
+    """ASVS V11.1.4 · CWE-770: the pacer keeps its gap across threads and holds everyone after a 429 (fake clock, exact)."""
+    # On the fake clock (conftest.FakeClock): the send slots the pacer books
+    # are exact, whatever the machine's load (it measured 0.0398 s for a
+    # 0.04 s gap on a busy machine when this ran on the real clock).
     lim = _RateLimiter(0.05)
-    stamps = []
-    lock = threading.Lock()
+    t0 = pacer_clock.time()
 
     def worker():
         for _ in range(5):
-            lim.wait()
-            with lock:
-                stamps.append(time.time())
+            assert lim.wait()
 
     ts = [threading.Thread(target=worker) for _ in range(4)]
-    t0 = time.time()
     for t in ts:
         t.start()
     for t in ts:
-        t.join()
-    stamps.sort()
-    gaps = [b - a for a, b in zip(stamps, stamps[1:])]
-    assert min(gaps) >= 0.04, min(gaps)                 # never two requests inside the gap
-    assert time.time() - t0 >= 19 * 0.05                # 20 requests take at least 19 gaps
+        t.join(10)
+    assert not any(t.is_alive() for t in ts)
+    slots = sorted([t0] + pacer_clock.wakeups)          # the first request went at once, every other one waited for its slot
+    assert len(slots) == 20, slots
+    gaps = [round(b - a, 6) for a, b in zip(slots, slots[1:])]
+    assert gaps == [0.05] * 19, gaps                    # never two requests inside the gap
+    assert slots[-1] - t0 >= 19 * 0.05 - 1e-9           # 20 requests take at least 19 gaps
     lim.pause(0.3)
-    t1 = time.time()
-    lim.wait()
-    assert time.time() - t1 >= 0.25                    # the pause holds the next request
+    t1 = pacer_clock.time()
+    assert lim.wait()
+    assert pacer_clock.time() - t1 >= 0.25             # the pause holds the next request
 
 
 def test_preflight_reads_the_tenant_once_per_journey(monkeypatch):
