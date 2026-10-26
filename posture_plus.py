@@ -48,6 +48,8 @@ import tempfile
 import threading
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import safe_files
+
 SCORED = ("PASS", "FAIL", "REVIEW")
 FAILING = ("FAIL", "REVIEW")
 STATE_CODES = {"PASS": "P", "FAIL": "F", "REVIEW": "R", "INFO": "I", "ERROR": "E"}
@@ -397,7 +399,7 @@ def save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
     clean = normalise_settings(data)
     p = settings_path()
     with _LOCK:
-        os.makedirs(os.path.dirname(os.path.abspath(p)) or ".", exist_ok=True)
+        safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)) or ".")
         fd, tmp = tempfile.mkstemp(prefix=".posture-", dir=os.path.dirname(os.path.abspath(p)) or ".")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:

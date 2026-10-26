@@ -34,6 +34,7 @@ import threading
 from typing import Any, Dict, Optional, Tuple
 
 import tenant_auth
+import safe_files
 
 KEY_FILE = "tenant_fingerprint.key"
 LENGTH = 16
@@ -64,7 +65,7 @@ def _create(path: str) -> Optional[bytes]:
     there first, its key wins."""
     d = os.path.dirname(path) or "."
     try:
-        os.makedirs(d, exist_ok=True)
+        safe_files.private_makedirs(d)
         fd, tmp = tempfile.mkstemp(prefix=".fingerprint-", dir=d)
     except OSError:
         return None

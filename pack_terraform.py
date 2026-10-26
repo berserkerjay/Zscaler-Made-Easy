@@ -53,6 +53,8 @@ import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
+import safe_files
+
 from dlp_importer import (find_refs, DICT_DESCRIPTION_MAX, ENGINE_DESCRIPTION_MAX, _load_json, _resolve_configs, clone_settings, fit_description,
                           heal_predefined_names, load_pack_metadata)
 
@@ -1260,11 +1262,11 @@ def write_workspace(files: Dict[str, str], out_dir: str) -> List[str]:
     earlier that it no longer emits (see _generated_here). Anything else in
     the folder (the team's own .tf files, terraform.tfvars, state,
     .terraform/, the lock file) is left alone."""
-    os.makedirs(out_dir, exist_ok=True)
+    safe_files.private_makedirs(out_dir)
     written = []
     for name, content in files.items():
         path = os.path.join(out_dir, name)
-        with open(path, "w", encoding="utf-8", newline="\n") as f:
+        with safe_files.private_open(path, "w", encoding="utf-8", newline="\n") as f:   # the pack's policy: owner-only
             f.write(content)
         written.append(path)
     for name in os.listdir(out_dir):

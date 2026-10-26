@@ -59,6 +59,8 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, urljoin
+import safe_files
+
 
 
 # File extensions we never fetch — attachments, media, archives.
@@ -107,7 +109,7 @@ def _cache_path() -> str:
         else:
             d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
                              "zscaler_assessment")
-        os.makedirs(d, exist_ok=True)
+        safe_files.private_makedirs(d)   # the per-user cache folder: owner-only (0700)
     except Exception:
         d = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(d, "bp_crawl_cache.json")
@@ -124,7 +126,7 @@ def _load_cache() -> Dict[str, Any]:
 
 def _save_cache(data: Dict[str, Any]) -> None:
     try:
-        with open(_cache_path(), "w", encoding="utf-8") as f:
+        with safe_files.private_open(_cache_path(), "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception:
         pass

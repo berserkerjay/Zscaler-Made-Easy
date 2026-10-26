@@ -38,6 +38,8 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
+import safe_files
+
 try:  # POSIX
     import fcntl  # type: ignore
 except ImportError:  # pragma: no cover - Windows
@@ -127,7 +129,7 @@ def _locked() -> Iterator[None]:
     read-modify-write never interleaves with another thread or process."""
     with _LOCK:
         p = store_path()
-        os.makedirs(os.path.dirname(os.path.abspath(p)) or ".", exist_ok=True)
+        safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)) or ".")
         fd = os.open(p + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
         try:
             if fcntl is not None:
