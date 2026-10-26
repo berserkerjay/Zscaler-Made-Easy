@@ -1052,7 +1052,7 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     if not __import__("security").writes_enabled():
         return {
             "status": "blocked",
-            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat).",
+            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (relaunch via START_Zscaler_Made_Easy_WRITES_ENABLED.bat).",
             "current": current,
         }
 

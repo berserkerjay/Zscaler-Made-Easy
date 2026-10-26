@@ -9,7 +9,7 @@ REM    - Enable Evaluate All Rules toggle
 REM
 REM  Use this batch file ONLY when you intend to make changes to the
 REM  tenant. For read-only assessment, reporting, and bypass-inventory,
-REM  use the regular START_Zscaler_Assessment.bat.
+REM  use the regular START_Zscaler_Made_Easy.bat.
 REM
 REM  The server still:
 REM    - Binds to 127.0.0.1 (no network exposure)

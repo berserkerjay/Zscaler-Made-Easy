@@ -6,8 +6,8 @@ REM launcher so no console window stays open. Pass --console to keep this
 REM window (for troubleshooting); the launcher sets DLPCHECK_HIDDEN itself.
 if /i "%~1"=="--console" goto :console
 if defined DLPCHECK_HIDDEN goto :console
-if exist "%~dp0START_Zscaler_Assessment.vbs" (
-    start "" wscript.exe "%~dp0START_Zscaler_Assessment.vbs"
+if exist "%~dp0START_Zscaler_Made_Easy.vbs" (
+    start "" wscript.exe "%~dp0START_Zscaler_Made_Easy.vbs"
     exit /b 0
 )
 :console

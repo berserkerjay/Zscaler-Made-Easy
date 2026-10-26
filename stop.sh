@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop a server started with ./start.sh --background (Windows: STOP_Zscaler_Assessment.bat).
+# Stop a server started with ./start.sh --background (Windows: STOP_Zscaler_Made_Easy.bat).
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"

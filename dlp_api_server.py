@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Zscaler Assessment API Server + Web GUI
-=========================================
+Zscaler Made Easy API Server + Web GUI
+========================================
 FastAPI server with SSE streaming and a web frontend.
 
 Run:
@@ -167,7 +167,7 @@ _security.require_safe_bind()
 
 @app.middleware("http")
 async def _no_stale_static(request, call_next):
-    """The GUI is updated in place by UPDATE_Zscaler_Assessment.bat; make
+    """The GUI is updated in place by UPDATE_Zscaler_Made_Easy.bat; make
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
@@ -630,7 +630,7 @@ async def auth_logout(request: Request):
 async def serve_gui():
     """Serve the web GUI.
     Forces revalidation on every page load so users always get the
-    latest UI after running UPDATE_Zscaler_Assessment.bat — no more
+    latest UI after running UPDATE_Zscaler_Made_Easy.bat — no more
     'Ctrl+F5 to clear cache' surprises.
     """
     index = os.path.join(STATIC_DIR, "index.html")
@@ -3295,7 +3295,7 @@ def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, 
     elif "tunnel connection failed" in low or "proxyerror" in low or "max retries" in low or "name resolution" in low or "nodename" in low:
         cause = "This machine could not reach Zscaler's login service at all (network, proxy or DNS)."
         fix = ("Confirm the vanity domain is the short name from your login URL (acme for acme.zslogin.net). "
-               "If you are behind a corporate proxy, set HTTPS_PROXY in START_Zscaler_Assessment.bat. "
+               "If you are behind a corporate proxy, set HTTPS_PROXY in START_Zscaler_Made_Easy.bat. "
                "Check that outbound HTTPS to *.zslogin.net and api.zsapi.net is allowed.")
     elif "vanity" in low:
         cause = "The vanity domain is not valid."
@@ -6204,7 +6204,7 @@ def _latest_remote_commit(branch: str = "main") -> Optional[str]:
 
 
 # ── Update the app from the web UI ─────────────────────────────────────────────
-# Same as UPDATE_Zscaler_Assessment.bat, without a command prompt: pull
+# Same as UPDATE_Zscaler_Made_Easy.bat, without a command prompt: pull
 # the chosen branch fast-forward (main, or the one the install is on),
 # install requirements, restart the server. Localhost only (like write
 # mode); every request also passes the origin check. The branch is one
@@ -6358,7 +6358,7 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
             headers={"Content-Disposition": f'attachment; filename="{fname_base}.json"'},
         )
     elif format == "md":
-        lines = [f"# Zscaler Assessment Checks ({suffix})\n",
+        lines = [f"# Zscaler Made Easy Checks ({suffix})\n",
                  f"Total: {len(all_checks)} checks\n",
                  f"Generated: {datetime.now().strftime('%Y-%m-%d')}\n",
                  "\n| Check ID | Section | Description | Frameworks |",
@@ -9414,7 +9414,7 @@ def _port_problem(host: str, port: int) -> Optional[str]:
     except OSError as e:
         if e.errno in (errno.EADDRINUSE, 10048):
             return (f"port {port} on {host} is already in use. Another copy of the app is probably running "
-                    f"(STOP_Zscaler_Assessment.bat or ./stop.sh stops it), or set ZSCALER_PORT to a free port and start again.")
+                    f"(STOP_Zscaler_Made_Easy.bat or ./stop.sh stops it), or set ZSCALER_PORT to a free port and start again.")
         if e.errno in (errno.EADDRNOTAVAIL, errno.EACCES, 10049, 10013):
             return (f"{host}:{port} cannot be used: {e.strerror or e}. Check ZSCALER_BIND_HOST (an address this machine owns; "
                     f"127.0.0.1 is the default) and ZSCALER_PORT (ports below 1024 need administrator rights).")
@@ -9490,7 +9490,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except OSError as e:
         if getattr(e, "errno", None) in (48, 98, 10048) or "address already in use" in str(e).lower():
             print(f"\n  Could not start: port {port} on {host} is already in use.\n"
-                  f"  Another copy of the app is probably running (STOP_Zscaler_Assessment or stop.sh stops it),\n"
+                  f"  Another copy of the app is probably running (STOP_Zscaler_Made_Easy or stop.sh stops it),\n"
                   f"  or set ZSCALER_PORT to a free port and start again.", file=sys.stderr)
         else:
             print(f"\n  Could not start the server on {host}:{port}: {e}\n"

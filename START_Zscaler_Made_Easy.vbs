@@ -1,7 +1,7 @@
-' Zscaler Assessment - silent launcher.
+' Zscaler Made Easy - silent launcher.
 ' Starts the server with no console window and opens the browser.
 ' The desktop and Start Menu shortcuts point here. Server output goes to
-' server.log next to this file; STOP_Zscaler_Assessment.bat stops it.
+' server.log next to this file; STOP_Zscaler_Made_Easy.bat stops it.
 '
 ' With /restart (used by the Update app button) it first waits for the
 ' old server to release the port, then starts the new one and does not
@@ -85,9 +85,9 @@ If Not running Then
   ' DLPCHECK_HIDDEN tells the script it is already running silently.
   sh.Environment("PROCESS")("DLPCHECK_HIDDEN") = "1"
   sh.CurrentDirectory = dir
-  sh.Run "cmd /c """"" & dir & "\START_Zscaler_Assessment.bat"" > """ & logPath & """ 2>&1""", 0, False
+  sh.Run "cmd /c """"" & dir & "\START_Zscaler_Made_Easy.bat"" > """ & logPath & """ 2>&1""", 0, False
   If Err.Number <> 0 Then
-    Note "could not run START_Zscaler_Assessment.bat: " & Err.Description
+    Note "could not run START_Zscaler_Made_Easy.bat: " & Err.Description
     Err.Clear
   End If
   ' Wait until the server answers (at most 30 s) rather than a fixed 4 s:

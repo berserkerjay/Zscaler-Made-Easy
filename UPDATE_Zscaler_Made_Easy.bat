@@ -1,5 +1,5 @@
 @echo off
-title Zscaler Assessment - Update
+title Zscaler Made Easy - Update
 
 REM The pull replaces this very file. cmd reads a batch file as it runs,
 REM so run from a copy in %TEMP% and remember the app folder.
@@ -15,7 +15,7 @@ set "INSTALL_DIR=%DLPCHECK_APP_DIR:~0,-1%"
 cd /d "%INSTALL_DIR%"
 
 echo ============================================================
-echo  Zscaler Assessment - Update to Latest Code
+echo  Zscaler Made Easy - Update to Latest Code
 echo  Folder: %INSTALL_DIR%
 echo ============================================================
 echo.
@@ -65,7 +65,7 @@ if errorlevel 1 (
     exit /b 1
 )
 REM Optional first argument: the branch to update to - main, qa or dev
-REM (default: the branch this install is on). Example: UPDATE_Zscaler_Assessment.bat dev
+REM (default: the branch this install is on). Example: UPDATE_Zscaler_Made_Easy.bat dev
 set "BRANCH_ARG="
 if not "%~1"=="" set "BRANCH_ARG=--branch %~1"
 "%PYTHON_EXE%" "%INSTALL_DIR%\app_update.py" --dir "%INSTALL_DIR%" %BRANCH_ARG%
@@ -80,8 +80,10 @@ if errorlevel 1 (
 echo.
 
 REM ----- Step 3b: Refresh the desktop / Start Menu shortcuts -----
-powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Assessment.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save();"
-powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Assessment.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
+REM A shortcut made before the rename to Zscaler Made Easy had the old name; it is
+REM removed once the new one exists.
+powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $new = Join-Path $desktop 'Zscaler Made Easy.lnk'; $lnk = $ws.CreateShortcut($new); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Made_Easy.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save(); if (Test-Path -LiteralPath $new) { Remove-Item -LiteralPath (Join-Path $desktop 'Zscaler Assessment.lnk') -ErrorAction SilentlyContinue }"
+powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $new = Join-Path $start 'Zscaler Made Easy.lnk'; $lnk = $ws.CreateShortcut($new); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Made_Easy.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save(); if (Test-Path -LiteralPath $new) { Remove-Item -LiteralPath (Join-Path $start 'Zscaler Assessment.lnk') -ErrorAction SilentlyContinue }" >nul 2>&1
 echo       Shortcuts refreshed (silent launcher).
 echo.
 
@@ -91,11 +93,11 @@ echo.
 echo ============================================================
 echo  Update complete. Server starting at http://localhost:%ZSCALER_PORT%
 echo  The server runs in the background (output in server.log).
-echo  STOP_Zscaler_Assessment.bat stops it. Next time, use the
+echo  STOP_Zscaler_Made_Easy.bat stops it. Next time, use the
 echo  Update app button on the Start here card instead.
 echo ============================================================
 echo.
-wscript.exe "%INSTALL_DIR%\START_Zscaler_Assessment.vbs"
+wscript.exe "%INSTALL_DIR%\START_Zscaler_Made_Easy.vbs"
 timeout /t 3 >nul 2>&1
 
 endlocal

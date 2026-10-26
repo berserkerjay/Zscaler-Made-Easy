@@ -1,6 +1,6 @@
 @echo off
 REM Copy this file to local_settings.bat (same folder). It is git-ignored, so
-REM the settings survive UPDATE_Zscaler_Assessment.bat and fresh clones.
+REM the settings survive UPDATE_Zscaler_Made_Easy.bat and fresh clones.
 REM Remove the "REM " in front of a line to activate it.
 
 REM Laptop behind Zscaler Client Connector or another TLS-inspecting proxy:
@@ -30,7 +30,7 @@ REM Beacon: how often (in hours) the server re-checks the Zscaler SDK, the
 REM ZIA API and the Terraform provider for changes while it runs. Default 24;
 REM 0 turns the timer off (Run now on the Beacon tab still works). The timer
 REM never reads a tenant. The history is kept in
-REM %LOCALAPPDATA%\ZscalerAssessment\beacon_state.json unless this moves it.
+REM %LOCALAPPDATA%\ZscalerMadeEasy\beacon_state.json unless this moves it.
 REM set DLP_CHECK_BEACON_HOURS=24
 REM set DLP_CHECK_BEACON_STATE=C:\DLP-Check-data\beacon_state.json
 

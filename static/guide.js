@@ -248,8 +248,8 @@ function _gdUpdateHelp() {
   const win = /^[A-Za-z]:[\\/]|^\\\\/.test(dir);
   const settings = win ? 'local_settings.bat' : 'local_settings.env';
   const cmd = win
-    ? 'cd /d "%USERPROFILE%" && (if exist "Zscaler Made Easy\\\\.git" (cd /d "%USERPROFILE%\\\\Zscaler Made Easy" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git && cd /d "%USERPROFILE%\\\\Zscaler Made Easy")) && call INSTALL_Zscaler_Assessment.bat && call UPDATE_Zscaler_Assessment.bat'
-    : 'cd ~ && git clone https://github.com/berserkerjay/DLP-Check.git && cd Zscaler Made Easy && ./install.sh && ./start.sh';
+    ? 'cd /d "%USERPROFILE%" && (if exist "Zscaler Made Easy\\\\.git" (cd /d "%USERPROFILE%\\\\Zscaler Made Easy" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git "Zscaler Made Easy" && cd /d "%USERPROFILE%\\\\Zscaler Made Easy")) && call INSTALL_Zscaler_Made_Easy.bat && call UPDATE_Zscaler_Made_Easy.bat'
+    : 'cd ~ && git clone https://github.com/berserkerjay/DLP-Check.git "Zscaler Made Easy" && cd "Zscaler Made Easy" && ./install.sh && ./start.sh';
   const where = win ? 'a Command Prompt' : 'Terminal';
   const does = win ? 'it clones the repository under your user folder, installs it and repoints the shortcuts' : 'it clones the repository into your home folder, installs it and starts it';
   _gdUpdateBox(`<div class="gd-upd-line">This copy was not installed with git (a ZIP download), so it cannot pull updates. The simple way: stop the app, download a fresh ZIP from GitHub, replace this folder keeping <code>${settings}</code>, and run the installer again. Or, once, run this in ${where}; ${does}, and Update app works from then on. Copy <code>${settings}</code> from the old folder afterwards.</div>
@@ -295,7 +295,7 @@ async function _gdUpdateApp() {
   if (!res.ok) { show(); if (btn) { btn.disabled = false; btn.textContent = 'Update app'; } return; }
   if (!res.updated) { show('<div class="gd-upd-line ok">Already on the latest build.</div>'); if (btn) { btn.disabled = false; btn.textContent = 'Update app'; } _gdUpdateCheck(); return; }
   lines.push({ name: `Restarting the app on build ${res.after}`, ok: null }); show();
-  let hint = 'Close the app with STOP_Zscaler_Assessment.bat and open it again from the shortcut.';
+  let hint = 'Close the app with STOP_Zscaler_Made_Easy.bat and open it again from the shortcut.';
   try {
     const r = await fetch('/api/app/restart', { method: 'POST' });
     const rs = await r.json().catch(() => ({}));

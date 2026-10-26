@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the web app on this machine (Linux / macOS). Windows: START_Zscaler_Assessment.bat.
+# Start the web app on this machine (Linux / macOS). Windows: START_Zscaler_Made_Easy.bat.
 #
 #   ./start.sh              foreground: the address and UI token are printed; Ctrl-C stops it
 #   ./start.sh --background start detached, output in server.log, stop with ./stop.sh

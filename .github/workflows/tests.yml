@@ -226,7 +226,7 @@ jobs:
           path: sbom.cdx.json
 
   windows-lock:
-    # The Windows installer (INSTALL_Zscaler_Assessment.bat) installs the lock
+    # The Windows installer (INSTALL_Zscaler_Made_Easy.bat) installs the lock
     # with --no-deps, so every Windows-only dependency must be pinned in it.
     runs-on: windows-latest
     steps:

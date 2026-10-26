@@ -270,7 +270,7 @@ def test_remediation_path_parameters_cannot_retarget_the_write():
 
 
 def test_installs_never_fall_back_to_an_unhashed_requirements_txt():
-    for name in ("install.sh", "INSTALL_Zscaler_Assessment.bat", "app_update.py"):
+    for name in ("install.sh", "INSTALL_Zscaler_Made_Easy.bat", "app_update.py"):
         text = _read(name)
         assert "-r requirements.txt" not in text and '-r "%INSTALL_DIR%\\requirements.txt"' not in text and '"-r", req]' not in text, name
         assert "requirements.lock is missing" in text, name

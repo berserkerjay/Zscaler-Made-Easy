@@ -30,10 +30,10 @@ Design notes
   Next call reports what CHANGED, not the full content.
 - Gracefully degrades when offline: each source reports its own
   status (ok | error | changed | unchanged | new).
-- Cache location follows the OS convention:
-    Windows: %LOCALAPPDATA%\\ZscalerAssessment\\update_cache.json
-    macOS:   ~/Library/Caches/ZscalerAssessment/update_cache.json
-    Linux:   ~/.cache/zscaler_assessment/update_cache.json
+- Cache location follows the OS convention (see data_dir()):
+    Windows: %LOCALAPPDATA%\\ZscalerMadeEasy\\update_cache.json
+    macOS:   ~/Library/Caches/ZscalerMadeEasy/update_cache.json
+    Linux:   ~/.cache/zscaler_made_easy/update_cache.json
 
 Security
 --------
@@ -44,7 +44,7 @@ Security
 - Short hard timeouts (8s connect + read).
 - No automatic upgrades — this module only REPORTS. Applying
   updates (e.g. pulling new git commits or upgrading the SDK) is
-  an explicit user action via UPDATE_Zscaler_Assessment.bat.
+  an explicit user action via UPDATE_Zscaler_Made_Easy.bat.
 """
 from __future__ import annotations
 
@@ -171,24 +171,48 @@ ALLOWED_HOSTS = {
 
 FETCH_TIMEOUT = 8  # seconds, both connect and read
 MAX_REDIRECTS = 5  # each hop is checked against the allowlist before it is fetched
-USER_AGENT = "Mozilla/5.0 (compatible; Zscaler-Assessment/1.0; +localhost)"  # browser-compatible prefix: some CDNs refuse unknown agents
+USER_AGENT = "Mozilla/5.0 (compatible; Zscaler-Made-Easy/1.0; +localhost)"  # browser-compatible prefix: some CDNs refuse unknown agents
 
 
 # ── Cache ────────────────────────────────────────────────────────────
 
-def _cache_path() -> str:
+# The per-user folder for the caches and the Beacon history: (current name,
+# name before the rename to Zscaler Made Easy). The old folder is moved to
+# the new name once, so the Beacon history and the crawler's finds are kept.
+DATA_DIR_NAMES = {"win32": ("ZscalerMadeEasy", "ZscalerAssessment"),
+                  "darwin": ("ZscalerMadeEasy", "ZscalerAssessment"),
+                  "other": ("zscaler_made_easy", "zscaler_assessment")}
+
+
+def data_dir() -> str:
+    """The per-user cache folder, owner-only (0700): under %LOCALAPPDATA% on
+    Windows, ~/Library/Caches on macOS, $XDG_CACHE_HOME or ~/.cache elsewhere.
+    A folder left under the old name is renamed to the new one; while it
+    cannot be (a file in it is open), it is used as it is. Falls back to the
+    app folder when no folder can be made."""
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
-        d = os.path.join(base, "ZscalerAssessment")
     elif sys.platform == "darwin":
-        d = os.path.expanduser("~/Library/Caches/ZscalerAssessment")
+        base = os.path.expanduser("~/Library/Caches")
     else:
-        d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "zscaler_assessment")
+        base = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+    name, legacy_name = DATA_DIR_NAMES.get(sys.platform, DATA_DIR_NAMES["other"])
+    d, legacy = os.path.join(base, name), os.path.join(base, legacy_name)
+    if not os.path.lexists(d) and os.path.isdir(legacy) and not os.path.islink(legacy):
+        try:
+            os.rename(legacy, d)
+        except OSError:
+            if not os.path.lexists(d):   # not moved by another process meanwhile
+                d = legacy
     try:
         safe_files.private_makedirs(d)   # the per-user cache folder: owner-only (0700)
     except Exception:
         d = os.path.dirname(os.path.abspath(__file__))  # fallback to app dir
-    return os.path.join(d, "update_cache.json")
+    return d
+
+
+def _cache_path() -> str:
+    return os.path.join(data_dir(), "update_cache.json")
 
 
 def _load_cache() -> Dict[str, Any]:

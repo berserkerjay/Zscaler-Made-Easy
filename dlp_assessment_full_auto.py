@@ -2611,13 +2611,13 @@ def main():
     """Command-line entry point: run the assessment against one tenant and
     write the JSON (and Word) report. Exit code 0 on success, 1 when the
     tenant refuses the credentials, 2 for a configuration or file error."""
-    ap=argparse.ArgumentParser(description="Zscaler Assessment — Full Auto")
+    ap=argparse.ArgumentParser(description="Zscaler Made Easy — Full Auto")
     ap.add_argument("--config"); ap.add_argument("--output")
     ap.add_argument("--scope", default="dlp", choices=["dlp","full","zia","zpa","zcc","all"],
                     help="Assessment scope: dlp (default), full (dlp+platform), zia, zpa, zcc, or all")
     args=ap.parse_args(); con=Console() if HAS_RICH else None
     def prompt_config():
-        print("\n"+"="*64+"\n  ZSCALER ASSESSMENT — FULL AUTO\n"+"="*64)
+        print("\n"+"="*64+"\n  ZSCALER MADE EASY — FULL AUTO\n"+"="*64)
         c={}; c["org_name"]=input("  Org: ").strip(); c["assessor"]=input("  Assessor: ").strip()
         print("  Clouds: "+", ".join(f"{i+1}.{k}" for i,k in enumerate(CLOUDS)))
         try: c["cloud"]=CLOUDS[int(input("  Select: ").strip())-1]
@@ -2627,7 +2627,7 @@ def main():
         if input("  Run? (y/n): ").strip().lower()!="y": sys.exit(0)
         return c
     def prompt_config_rich(con):
-        con.print(Panel.fit("[bold cyan]ZSCALER ASSESSMENT — FULL AUTO[/]\n[dim]Zero manual checks[/]",border_style="cyan"))
+        con.print(Panel.fit("[bold cyan]ZSCALER MADE EASY — FULL AUTO[/]\n[dim]Zero manual checks[/]",border_style="cyan"))
         c={}; c["org_name"]=Prompt.ask("[bold]Org"); c["assessor"]=Prompt.ask("[bold]Assessor")
         t=Table(show_header=False,box=None)
         for i,k in enumerate(CLOUDS,1): t.add_row(f"  {i}.",k)

@@ -94,6 +94,13 @@ def wait_server(base, up=True):
     raise AssertionError(f'Server failed to become {"ready" if up else "stopped"}: {base}')
 
 
+# What the shortcuts were called before the rename to Zscaler Made Easy.
+LEGACY_SHORTCUT = 'Zscaler Assessment.lnk'
+PLANT_LEGACY_SHORTCUTS = ("$w=New-Object -ComObject WScript.Shell; foreach($folder in @('Desktop','Programs')) { "
+                          "$s=$w.CreateShortcut((Join-Path ([Environment]::GetFolderPath($folder)) '" + LEGACY_SHORTCUT + "')); "
+                          "$s.TargetPath='wscript.exe'; $s.WorkingDirectory=$env:NATIVE_INSTALL_DIR; $s.Save() }")
+
+
 def source_files(source):
     return subprocess.check_output(['git', 'ls-files', '-z'], cwd=source).decode().split('\0')[:-1]
 
@@ -142,10 +149,14 @@ def verify_mode(source, work, artifacts, mode, record, working_tree=False):
         settings.write_text(''.join(f'{k}={shlex.quote(v)}\n' for k, v in values.items()), encoding='utf-8')
         settings.chmod(0o600)
     original_settings = settings.read_bytes()
-    installer = batch(app / 'INSTALL_Zscaler_Assessment.bat') if WINDOWS else ['bash', str(app / 'install.sh')]
+    installer = batch(app / 'INSTALL_Zscaler_Made_Easy.bat') if WINDOWS else ['bash', str(app / 'install.sh')]
     python = app / '.venv' / ('Scripts/python.exe' if WINDOWS else 'bin/python')
     logs = artifacts / mode
     logs.mkdir()
+    if WINDOWS:
+        # Shortcuts left by an install from before the rename: the installer replaces them.
+        env['NATIVE_INSTALL_DIR'] = str(app)
+        run(['powershell', '-NoProfile', '-Command', PLANT_LEGACY_SHORTCUTS], app, env, logs / 'legacy-shortcuts.log')
     sentinel = app / '.venv' / 'native-reinstall-sentinel'
     for phase in ('fresh', 'reinstall'):
         run(installer, app.parent, env, logs / f'install-{phase}.log')
@@ -181,19 +192,19 @@ print(json.dumps({'python': sys.version, 'executable': sys.executable, 'prefix':
     run([python, '-c', probe], app, env, logs / 'installed-environment.json')
     record(f'{mode}-private-python-editable-commands-native-dependencies')
     if WINDOWS:
-        command = '''$ErrorActionPreference='Stop'; $w=New-Object -ComObject WScript.Shell; foreach($folder in @('Desktop','Programs')) { $p=Join-Path ([Environment]::GetFolderPath($folder)) 'Zscaler Assessment.lnk'; if (!(Test-Path $p)) {throw "Missing shortcut: $p"}; $s=$w.CreateShortcut($p); if ($s.WorkingDirectory -ne $env:NATIVE_INSTALL_DIR) {throw 'Wrong shortcut working directory'}; if ($s.Arguments -ne ('"' + (Join-Path $env:NATIVE_INSTALL_DIR 'START_Zscaler_Assessment.vbs') + '"')) {throw 'Wrong shortcut arguments'}; Write-Output $p }'''
+        command = ('''$ErrorActionPreference='Stop'; $w=New-Object -ComObject WScript.Shell; foreach($folder in @('Desktop','Programs')) { $p=Join-Path ([Environment]::GetFolderPath($folder)) 'Zscaler Made Easy.lnk'; if (!(Test-Path $p)) {throw "Missing shortcut: $p"}; if (Test-Path (Join-Path ([Environment]::GetFolderPath($folder)) ''' + repr(LEGACY_SHORTCUT) + ''')) {throw "Old shortcut left in $folder"}; $s=$w.CreateShortcut($p); if ($s.WorkingDirectory -ne $env:NATIVE_INSTALL_DIR) {throw 'Wrong shortcut working directory'}; if ($s.Arguments -ne ('"' + (Join-Path $env:NATIVE_INSTALL_DIR 'START_Zscaler_Made_Easy.vbs') + '"')) {throw 'Wrong shortcut arguments'}; Write-Output $p }''')
         env['NATIVE_INSTALL_DIR'] = str(app)
         run(['powershell', '-NoProfile', '-Command', command], app, env, logs / 'shortcuts.log')
-        record(f'{mode}-desktop-and-start-menu-shortcuts')
+        record(f'{mode}-desktop-and-start-menu-shortcuts-replace-pre-rename-ones')
     # The actual launchers run the real server; sitecustomize only blocks
     # non-loopback DNS/TCP so a regression cannot reach a real tenant.
     runtime = env.copy()
     runtime['PYTHONPATH'] = str(app / 'tests' / 'native_support')
     runtime['NATIVE_EGRESS_LOG'] = str(logs / 'blocked-egress.jsonl')
     runtime['NATIVE_GUARD_MARKER'] = str(logs / 'guard-active')
-    starter = (['cscript.exe', '//nologo', str(app / 'START_Zscaler_Assessment.vbs')]
+    starter = (['cscript.exe', '//nologo', str(app / 'START_Zscaler_Made_Easy.vbs')]
                if WINDOWS else ['bash', str(app / 'start.sh'), '--background'])
-    stopper = batch(app / 'STOP_Zscaler_Assessment.bat') if WINDOWS else ['bash', str(app / 'stop.sh')]
+    stopper = batch(app / 'STOP_Zscaler_Made_Easy.bat') if WINDOWS else ['bash', str(app / 'stop.sh')]
     proc = None
     try:
         run(starter, app.parent, runtime, logs / 'start.log', timeout=90)
@@ -237,8 +248,20 @@ print(json.dumps({'python': sys.version, 'executable': sys.executable, 'prefix':
         run(stopper, app.parent, runtime, logs / 'stop.log')
         wait_server(base, up=False)
         record(f'{mode}-documented-stop-releases-port')
+        if WINDOWS:
+            # The names from before the rename still start the app: the silent
+            # launcher as an old build's Update app restart runs it, then the
+            # batch file as an old build's restart fallback runs it.
+            legacy_starts = (('legacy-vbs-restart', ['wscript.exe', '//B', '//Nologo', str(app / 'START_Zscaler_Assessment.vbs'), '/restart']),
+                             ('legacy-bat', batch(app / 'START_Zscaler_Assessment.bat')))
+            for name, legacy in legacy_starts:
+                run(legacy, app, runtime, logs / f'{name}.log', timeout=90)
+                wait_server(base)
+                run(stopper, app.parent, runtime, logs / f'{name}-stop.log')
+                wait_server(base, up=False)
+                record(f'{mode}-{name}-starts-the-app')
         # Exercise the foreground debugging/CLI route too, after a real stop.
-        foreground = batch(app / 'START_Zscaler_Assessment.bat', '--console') if WINDOWS else ['bash', str(app / 'start.sh')]
+        foreground = batch(app / 'START_Zscaler_Made_Easy.bat', '--console') if WINDOWS else ['bash', str(app / 'start.sh')]
         with (logs / 'foreground.log').open('w', encoding='utf-8') as output:
             proc = subprocess.Popen(foreground, cwd=app.parent, env=runtime, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT)
             wait_server(base)
@@ -274,11 +297,13 @@ print(json.dumps({'python': sys.version, 'executable': sys.executable, 'prefix':
              'tests/test_native_tls_proxy.py', '--junitxml=' + str(logs / 'native-tests.xml')], app, test_env, logs / 'native-tests.log', timeout=360)
         record(f'{mode}-real-browser-and-native-contract-tests')
     if WINDOWS:
-        run(batch(app / 'UNINSTALL_Zscaler_Assessment.bat'), app.parent, env, logs / 'uninstall.log')
-        verify_removed = "foreach($folder in @('Desktop','Programs')) { if (Test-Path (Join-Path ([Environment]::GetFolderPath($folder)) 'Zscaler Assessment.lnk')) { exit 1 } }; exit 0"
+        run(['powershell', '-NoProfile', '-Command', PLANT_LEGACY_SHORTCUTS], app, env, logs / 'legacy-shortcuts-before-uninstall.log')
+        run(batch(app / 'UNINSTALL_Zscaler_Made_Easy.bat'), app.parent, env, logs / 'uninstall.log')
+        verify_removed = ("foreach($folder in @('Desktop','Programs')) { foreach($name in @('Zscaler Made Easy.lnk', '" + LEGACY_SHORTCUT + "')) { "
+                          "if (Test-Path (Join-Path ([Environment]::GetFolderPath($folder)) $name)) { exit 1 } } }; exit 0")
         run(['powershell', '-NoProfile', '-Command', verify_removed], app, env, logs / 'uninstall-shortcuts.log')
         assert (app / 'dlp_api_server.py').is_file() and python.is_file(), 'Uninstaller deleted application files'
-        record(f'{mode}-uninstall-removes-shortcuts-and-keeps-application-files')
+        record(f'{mode}-uninstall-removes-shortcuts-under-both-names-and-keeps-application-files')
     return app
 
 

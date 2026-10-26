@@ -31,14 +31,14 @@ def test_unix_loads_proxy_and_ca_before_the_first_download():
 
 
 def test_windows_installs_both_dependencies_and_commands_into_private_environment():
-    script = text('INSTALL_Zscaler_Assessment.bat')
+    script = text('INSTALL_Zscaler_Made_Easy.bat')
     private = script.index('set "PYTHON_EXE=%INSTALL_DIR%\\.venv\\Scripts\\python.exe"')
     assert script.index('-m venv') < private < script.index('--require-hashes')
     assert '--no-deps --no-build-isolation -e "%INSTALL_DIR%"' in script
     assert '-m pip --version' in script and 'goto :makevenv' in script
 
 
-@pytest.mark.parametrize('script', ['START_Zscaler_Assessment.bat', 'START_Zscaler_Assessment_WRITES_ENABLED.bat', 'UPDATE_Zscaler_Assessment.bat'])
+@pytest.mark.parametrize('script', ['START_Zscaler_Made_Easy.bat', 'START_Zscaler_Made_Easy_WRITES_ENABLED.bat', 'UPDATE_Zscaler_Made_Easy.bat'])
 def test_all_windows_server_paths_prefer_the_apps_interpreter(script):
     source = text(script)
     assert source.index('.venv\\Scripts\\python.exe') < source.index('where python')
@@ -46,7 +46,7 @@ def test_all_windows_server_paths_prefer_the_apps_interpreter(script):
 
 
 def test_silent_shortcut_loads_settings_before_selecting_port():
-    script = text('START_Zscaler_Assessment.vbs')
+    script = text('START_Zscaler_Made_Easy.vbs')
     assert script.index('call """ & dir & "\\local_settings.bat') < script.index('port = sh.ExpandEnvironmentStrings')
     assert 'DLPCHECK_SETTINGS_LOADED' in script
     assert 'sh.Environment("PROCESS")("DLPCHECK_SETTINGS_LOADED") = ""' in script
@@ -54,7 +54,7 @@ def test_silent_shortcut_loads_settings_before_selecting_port():
     assert 'ZSCALER_OPEN_BROWSER' in script
 
 
-@pytest.mark.parametrize('name', ['INSTALL_Zscaler_Assessment.bat', 'UPDATE_Zscaler_Assessment.bat'])
+@pytest.mark.parametrize('name', ['INSTALL_Zscaler_Made_Easy.bat', 'UPDATE_Zscaler_Made_Easy.bat'])
 def test_shortcuts_do_not_embed_the_install_path_as_powershell_source(name):
     script = text(name)
     shortcut_lines = [line for line in script.splitlines() if 'CreateShortcut' in line]
@@ -64,7 +64,7 @@ def test_shortcuts_do_not_embed_the_install_path_as_powershell_source(name):
         assert '%INSTALL_DIR%' not in line, 'An apostrophe in the user folder must not break PowerShell quoting'
 
 
-@pytest.mark.parametrize('name', ['START_Zscaler_Assessment.bat', 'START_Zscaler_Assessment_WRITES_ENABLED.bat'])
+@pytest.mark.parametrize('name', ['START_Zscaler_Made_Easy.bat', 'START_Zscaler_Made_Easy_WRITES_ENABLED.bat'])
 def test_console_launchers_use_the_servers_authenticated_browser_url(name):
     script = text(name)
     assert 'ZSCALER_OPEN_BROWSER' in script
@@ -72,7 +72,7 @@ def test_console_launchers_use_the_servers_authenticated_browser_url(name):
 
 
 def test_python_override_exists_on_both_installer_platforms():
-    for name in ('install.sh', 'INSTALL_Zscaler_Assessment.bat'):
+    for name in ('install.sh', 'INSTALL_Zscaler_Made_Easy.bat'):
         assert 'DLP_CHECK_PYTHON' in text(name)
         assert 'sys.version_info >= (3, 11)' in text(name)
 
@@ -166,16 +166,16 @@ def test_native_lifecycle_fails_if_runtime_attempts_remote_networking():
 
 
 def test_windows_stop_reports_kill_result_not_headless_cosmetic_timeout():
-    script = text('STOP_Zscaler_Assessment.bat')
+    script = text('STOP_Zscaler_Made_Easy.bat')
     assert 'set "STOP_FAILED=0"' in script
     assert 'set "STOP_FAILED=1"' in script
     assert 'if not defined DLPCHECK_STOPPED_%%a' in script
     assert script.rstrip().endswith('exit /b %STOP_FAILED%')
     assert 'timeout /t 2 >nul 2>&1' in script
-    assert text('UPDATE_Zscaler_Assessment.bat').rstrip().endswith('exit /b 0')
+    assert text('UPDATE_Zscaler_Made_Easy.bat').rstrip().endswith('exit /b 0')
 
 
-@pytest.mark.parametrize('name', ['STOP_Zscaler_Assessment.bat', 'UPDATE_Zscaler_Assessment.bat', 'UNINSTALL_Zscaler_Assessment.bat'])
+@pytest.mark.parametrize('name', ['STOP_Zscaler_Made_Easy.bat', 'UPDATE_Zscaler_Made_Easy.bat', 'UNINSTALL_Zscaler_Made_Easy.bat'])
 def test_windows_lifecycle_matches_the_exact_port_not_a_prefix(name):
     script = text(name)
     assert 'findstr /C:":%ZSCALER_PORT% "' in script
@@ -183,7 +183,7 @@ def test_windows_lifecycle_matches_the_exact_port_not_a_prefix(name):
 
 
 def test_incomplete_active_environment_is_not_deleted_by_its_own_interpreter():
-    unix, windows = text('install.sh'), text('INSTALL_Zscaler_Assessment.bat')
+    unix, windows = text('install.sh'), text('INSTALL_Zscaler_Made_Easy.bat')
     assert unix.index('Run deactivate') < unix.index('rm -rf .venv')
     assert windows.index('goto :activebrokenvenv') < windows.index('rmdir /s /q')
     assert 'The environment has not been deleted.' in windows
@@ -210,3 +210,38 @@ def test_installed_source_probe_uses_filesystem_identity_for_windows_short_paths
     driver = text('tools/verify_native_install.py')
     assert 'pathlib.Path(dlp_api_server.__file__).resolve().parent.samefile(pathlib.Path.cwd())' in driver
     assert "app = (work / f'{mode} install with spaces').resolve()" in driver
+
+
+@pytest.mark.parametrize('name', ['INSTALL_Zscaler_Made_Easy.bat', 'UPDATE_Zscaler_Made_Easy.bat'])
+def test_shortcuts_are_made_as_zscaler_made_easy_and_replace_the_old_name(name):
+    lines = [line for line in text(name).splitlines() if 'CreateShortcut' in line]
+    assert [("'Desktop'" in l, "'Programs'" in l) for l in lines] == [(True, False), (False, True)]
+    for line in lines:
+        assert line.count('"') == 2 and line.startswith('powershell -NoProfile -Command "') and line.split('"')[2] in ('', ' >nul 2>&1'), \
+            'one cmd-quoted PowerShell command: no inner double quote for cmd to pair up'
+        assert '%' not in line, 'cmd would expand it'
+        assert "$new = Join-Path " in line and "'Zscaler Made Easy.lnk'" in line and '$ws.CreateShortcut($new)' in line
+        assert "(Join-Path $app 'START_Zscaler_Made_Easy.vbs')" in line
+        removal = "if (Test-Path -LiteralPath $new) { Remove-Item -LiteralPath (Join-Path "
+        assert line.index('$lnk.Save()') < line.index(removal) and "'Zscaler Assessment.lnk') -ErrorAction SilentlyContinue }" in line, \
+            'the old shortcut goes only once the new one exists'
+
+
+def test_installer_reports_the_new_shortcut_name():
+    script = text('INSTALL_Zscaler_Made_Easy.bat')
+    assert 'set "SHORTCUT_NOTE=Desktop shortcut: "Zscaler Made Easy""' in script
+    assert "GetFolderPath('Desktop')) 'Zscaler Made Easy.lnk')) { exit 0 }" in script
+
+
+def test_uninstall_removes_the_shortcut_under_both_names_in_both_folders():
+    script = text('UNINSTALL_Zscaler_Made_Easy.bat')
+    both = "foreach ($name in 'Zscaler Made Easy.lnk', 'Zscaler Assessment.lnk') { Remove-Item -LiteralPath (Join-Path $%s $name) -ErrorAction SilentlyContinue };"
+    for var, folder in (('desktop', 'Desktop'), ('start', 'Programs')):
+        assert f"\"${var} = [Environment]::GetFolderPath('{folder}');\" ^" in script
+        assert both % var in script
+
+
+def test_launchers_point_at_each_other_by_their_new_names():
+    assert 'start "" wscript.exe "%~dp0START_Zscaler_Made_Easy.vbs"' in text('START_Zscaler_Made_Easy.bat')
+    assert 'dir & "\\START_Zscaler_Made_Easy.bat""' in text('START_Zscaler_Made_Easy.vbs')
+    assert text('UPDATE_Zscaler_Made_Easy.bat').count('wscript.exe "%INSTALL_DIR%\\START_Zscaler_Made_Easy.vbs"') == 1

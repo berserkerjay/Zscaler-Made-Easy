@@ -463,20 +463,8 @@ def _discovered_store_path() -> str:
     """Writable location for crawler-discovered entries that persist
     across sessions. Mirrors the update-checker's cache location so
     everything sits under one per-user data dir."""
-    import sys
-    try:
-        if sys.platform == "win32":
-            base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
-            d = os.path.join(base, "ZscalerAssessment")
-        elif sys.platform == "darwin":
-            d = os.path.expanduser("~/Library/Caches/ZscalerAssessment")
-        else:
-            d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
-                             "zscaler_assessment")
-        safe_files.private_makedirs(d)   # the per-user cache folder: owner-only (0700)
-    except Exception:
-        d = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(d, "bp_discovered.json")
+    from zscaler_update_check import data_dir
+    return os.path.join(data_dir(), "bp_discovered.json")
 
 
 def _load_discovered() -> List[Dict[str, Any]]:

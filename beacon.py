@@ -81,9 +81,9 @@ def _now() -> str:
 
 def state_path() -> str:
     """DLP_CHECK_BEACON_STATE, else beacon_state.json beside
-    zscaler_update_check's cache (%LOCALAPPDATA%\\ZscalerAssessment on
-    Windows, ~/Library/Caches/ZscalerAssessment on macOS,
-    ~/.cache/zscaler_assessment on Linux)."""
+    zscaler_update_check's cache (%LOCALAPPDATA%\\ZscalerMadeEasy on
+    Windows, ~/Library/Caches/ZscalerMadeEasy on macOS,
+    ~/.cache/zscaler_made_easy on Linux)."""
     env = os.environ.get("DLP_CHECK_BEACON_STATE")
     if env:
         return env

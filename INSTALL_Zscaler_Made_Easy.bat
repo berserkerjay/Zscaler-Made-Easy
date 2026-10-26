@@ -94,16 +94,18 @@ if not exist "%INSTALL_DIR%\local_settings.bat" copy /y "%INSTALL_DIR%\local_set
 
 echo  [2/2] Creating desktop shortcut...
 
-REM Desktop shortcut: silent launcher (no console window); server output goes to server.log
-powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Assessment.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save();"
+REM Desktop shortcut: silent launcher (no console window); server output goes to server.log.
+REM A shortcut made before the rename to Zscaler Made Easy had the old name; it is
+REM removed once the new one exists (each shortcut command below does both).
+powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $new = Join-Path $desktop 'Zscaler Made Easy.lnk'; $lnk = $ws.CreateShortcut($new); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Made_Easy.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save(); if (Test-Path -LiteralPath $new) { Remove-Item -LiteralPath (Join-Path $desktop 'Zscaler Assessment.lnk') -ErrorAction SilentlyContinue }"
 
 REM Also create Start Menu shortcut
-powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Assessment.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
+powershell -NoProfile -Command "$app = $env:INSTALL_DIR; $ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $new = Join-Path $start 'Zscaler Made Easy.lnk'; $lnk = $ws.CreateShortcut($new); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = [char]34 + (Join-Path $app 'START_Zscaler_Made_Easy.vbs') + [char]34; $lnk.WorkingDirectory = $app; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Made Easy (opens the browser; the server runs silently)'; $lnk.Save(); if (Test-Path -LiteralPath $new) { Remove-Item -LiteralPath (Join-Path $start 'Zscaler Assessment.lnk') -ErrorAction SilentlyContinue }" >nul 2>&1
 
 REM A locked-down PowerShell (Constrained Language Mode) refuses COM objects and makes no shortcut; say so.
-set "SHORTCUT_NOTE=Desktop shortcut: "Zscaler Assessment""
-powershell -NoProfile -Command "if (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Zscaler Assessment.lnk')) { exit 0 } else { exit 1 }" >nul 2>&1
-if errorlevel 1 set "SHORTCUT_NOTE=No desktop shortcut could be made on this computer. Double-click START_Zscaler_Assessment.bat in this folder to start the app instead."
+set "SHORTCUT_NOTE=Desktop shortcut: "Zscaler Made Easy""
+powershell -NoProfile -Command "if (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Zscaler Made Easy.lnk')) { exit 0 } else { exit 1 }" >nul 2>&1
+if errorlevel 1 set "SHORTCUT_NOTE=No desktop shortcut could be made on this computer. Double-click START_Zscaler_Made_Easy.bat in this folder to start the app instead."
 
 echo.
 echo  ============================================================
@@ -114,7 +116,7 @@ echo   %SHORTCUT_NOTE%
 echo.
 echo   Double-click the shortcut to launch. Your browser opens by itself.
 echo   The server runs in the background with no window; its output is
-echo   in server.log next to this file. STOP_Zscaler_Assessment.bat
+echo   in server.log next to this file. STOP_Zscaler_Made_Easy.bat
 echo   stops it (closing the browser does not).
 echo.
 echo  Closing in 5 seconds...
