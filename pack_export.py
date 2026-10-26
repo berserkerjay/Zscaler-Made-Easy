@@ -1244,7 +1244,7 @@ def terraform_files(pack: Dict[str, Any], assessor: str = "") -> Tuple[str, Dict
         names = ref.get(key) or []
         if names and fname in files:
             note = (f"# Exported without dependencies: these {kind} are not created by this workspace. They are looked up\n"
-                    f"# by name, so they must already exist in the tenant under these names: {', '.join(names)}.\n\n")
+                    f"# by name, so they must already exist in the tenant under these names: {pack_terraform.one_line(', '.join(map(str, names)))}.\n\n")
             head, sep, rest = files[fname].partition("\n\n")
             files[fname] = head + sep + note + rest if sep else note + files[fname]
     return pack_id, files

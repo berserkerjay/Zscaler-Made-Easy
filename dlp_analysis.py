@@ -6,6 +6,7 @@ Configuration inventory is not proof of traffic enforcement or incident delivery
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import md_safe
 import channel_scope
 
 CONTROLS = (
@@ -136,7 +137,7 @@ class ScopedClient(channel_scope.ScopedClient):
 
 
 def markdown(report):
-    rows = report.get("required_controls") or []
+    rows = md_safe.escape_data(report.get("required_controls") or [])   # tenant-derived detail: inert text
     if not rows:
         return []
     return ["", "## Required DLP controls", NOTE, ""] + [

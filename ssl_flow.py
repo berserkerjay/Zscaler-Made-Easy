@@ -17,6 +17,7 @@ camelCase (raw API) — every field read here accepts both.
 """
 from __future__ import annotations
 
+import md_safe
 import csv_safe
 import io
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -704,6 +705,8 @@ def to_csv(report: Dict[str, Any]) -> str:
 
 
 def to_markdown(report: Dict[str, Any]) -> str:
+    raw = report
+    report = md_safe.escape_data(report)   # rule, category and tenant names: inert text
     s = report.get("summary", {})
     lines = ["# SSL Inspection Flow — inline DLP visibility", ""]
     if report.get("tenant_label"):
@@ -735,5 +738,5 @@ def to_markdown(report: Dict[str, Any]) -> str:
                    ", ".join(r["url_categories"][:6] + r["cloud_applications"][:6]) + (" …" if len(r["url_categories"]) + len(r["cloud_applications"]) > 12 else ""))
         lines.append(f"| {r.get('order', '')} | {r['name']} | {r['action']} | {r['state']} | {targets} | {', '.join(r['scope']) or 'everyone'} |")
     import dlp_analysis
-    lines.extend(dlp_analysis.markdown(report))
+    lines.extend(dlp_analysis.markdown(raw))
     return "\n".join(lines) + "\n"

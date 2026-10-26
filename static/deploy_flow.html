@@ -110,7 +110,7 @@ const FLOWS = {
   ],
 };
 let current = 'deploy';
-function esc(s) { return String(s); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function render() {
   const ol = document.getElementById('flow');
   ol.innerHTML = FLOWS[current].map((st, i) => `

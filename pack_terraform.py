@@ -45,6 +45,7 @@ requirements, inputs, outputs, state and verification steps.
 """
 from __future__ import annotations
 
+import md_safe
 import io
 import json
 import os
@@ -217,7 +218,7 @@ def _control_rule_hcl(channel: str, res: str, label: str, p: Dict[str, Any], met
                 r.append(_attr(opt, hcl_list(p[opt])))
         action, dropped = _filter_schema(p["action"], SSL_ACTION_SCHEMA)
         for d in dropped:
-            r.append(f"  # not in the zscaler/zia provider schema (set in the Admin Portal if needed): {d}\n")
+            r.append(f"  # not in the zscaler/zia provider schema (set in the Admin Portal if needed): {one_line(d)}\n")
         r.append("  action " + _hcl_value(action, 1))
     r.append("}\n\n")
     return "".join(r)
@@ -232,6 +233,19 @@ _REF_RE = re.compile(r"D:(.+?)(?=\s*(?:[<>=]|\bAND\b|\bOR\b|\)\s*(?:AND\b|OR\b|\
 # ---------------------------------------------------------------------------
 # HCL helpers
 # ---------------------------------------------------------------------------
+
+def one_line(v: Any) -> str:
+    """Text for an HCL ``#`` comment: line breaks and other control
+    characters become a space, so a name or reason from a pack or the
+    tenant can never end the comment and start HCL of its own (a
+    ``resource`` with a ``local-exec`` provisioner, say)."""
+    return re.sub(r"[\s\x00-\x1f\x7f\u2028\u2029]+", " ", "" if v is None else str(v)).strip()
+
+
+# The only interpolations an engine expression may carry: the references
+# generate() itself writes for a dictionary (resource or data lookup).
+_OWN_REF_RE = re.compile(r"\$\{(?!(?:data\.)?zia_dlp_dictionaries\.[a-z0-9_]+\.id\})")
+
 
 def hcl_str(s: Any, *, interpolate: bool = False) -> str:
     """Quote a string for HCL, escaping backslashes, quotes and template
@@ -513,6 +527,11 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         # A term inside a Sum (D1.S + D2.S) > n carries no comparison of its own.
         from dlp_importer import default_counts
         expr = default_counts(expr, re.compile(r"(D\$\{[^}]+\}\.S)(?!\s*[<>=+])"))
+        # Any other ${ came from the pack (or the tenant it was exported
+        # from): escape it, so it stays text and is never evaluated by
+        # Terraform (${nonsensitive(var.zscaler_client_secret)} would send
+        # the secret to the tenant inside the engine).
+        expr = _OWN_REF_RE.sub("$${", expr)
         eng.append(f'resource "zia_dlp_engines" "{label}" {{\n')
         eng.append(_attr("name", hcl_str(e["name"])))
         eng.append(_attr("description", hcl_str(_provenance(meta, pack_id, e.get("description", ""), limit=ENGINE_DESCRIPTION_MAX))))
@@ -523,7 +542,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     # Data sources go at the top of dictionaries.tf now that we know them all.
     data = []
     for emitted_name, (label, note) in data_dicts.items():
-        comment = f"  # {note}\n" if note else ""
+        comment = f"  # {one_line(note)}\n" if note else ""
         data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n{comment}  name = {hcl_str(emitted_name)}\n}}\n\n')
     files["dictionaries.tf"] = out[0] + "".join(data) + "".join(out[1:])
     files["engines.tf"] = "".join(eng)
@@ -592,7 +611,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         r.append(_attr("state", hcl_str("DISABLED")))
         r.append(_attr("action", hcl_str(p.get("action", pc.default_action(channel)))))
         if p.get("target_action"):
-            r.append(f"  # Ships monitor-only; the designed action once incidents are tuned is {p['target_action']}.\n")
+            r.append(f"  # Ships monitor-only; the designed action once incidents are tuned is {one_line(p['target_action'])}.\n")
         if p.get("severity"):
             r.append(_attr("severity", hcl_str(p["severity"])))
         r.append(_attr("without_content_inspection", "true" if p.get("without_content_inspection") else "false"))
@@ -786,7 +805,6 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     files["README.md"] = _readme(meta, pack_id, src, bool(report), gap_summary, report, variables_extra=variables_extra, tenant_vars=tenant_vars)
     # Every file says what generated it and from what (the style guide's
     # provenance comment for generated configuration).
-    one_line = lambda v: re.sub(r"[\s\x00-\x1f\x7f]+", " ", str(v)).strip()   # noqa: E731
     header = (f"{GENERATED_MARK} from {'policy pack' if meta.get('baseline') else 'pack'} {one_line(pack_id)}"
               + (f" v{one_line(meta.get('version'))}" if meta.get("version") else "") + f" for {PROVIDER_SOURCE} {PROVIDER_VERSION}.\n\n")
     for name in list(files):
@@ -810,12 +828,12 @@ def _gap_import(imports: List[str], counts: Dict[str, int], item: Optional[Dict[
         note = ("customized in the tenant: " + ", ".join(item.get("drift") or ["content"])
                 + " — terraform apply would overwrite this with the policy pack; delete this import block to leave the customer's version alone"
                 if customized else "in sync")
-        imports.append(f"# {item['name']} — {note}\nimport {{\n  to = {res}.{label}\n  id = {hcl_str(import_id if import_id is not None else str(tid))}\n}}\n\n")
+        imports.append(f"# {one_line(item['name'])} — {one_line(note)}\nimport {{\n  to = {res}.{label}\n  id = {hcl_str(import_id if import_id is not None else str(tid))}\n}}\n\n")
     elif status == "create":
         counts["missing"] += 1
     else:
         counts["blocked"] += 1
-        imports.append(f"# {item['name']} — {status}: {item.get('reason', '')}\n\n")
+        imports.append(f"# {one_line(item['name'])} — {one_line(status)}: {one_line(item.get('reason', ''))}\n\n")
 
 
 def _versions_tf(backend: Optional[Dict[str, str]], *, provider_version: str = PROVIDER_VERSION) -> str:
@@ -963,7 +981,7 @@ def _tfvars_example(extra: List[str], *, base_values: bool = True, tenant_vars: 
     for v in _extra_variable_rows(extra):
         t = str(v["type"])
         example = '{ "Rule name" = [123456] }' if t.startswith("map(") else ('"..."' if t == "string" else "[123456]")
-        out.append(f"# {v['name']} = {example}\n")
+        out.append(f"# {one_line(v['name'])} = {example}\n")
     return "".join(out)
 
 
@@ -971,9 +989,9 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
             report: Optional[Dict[str, Any]], *, variables_extra: Optional[List[str]] = None,
             tenant_vars: Optional[Dict[str, bool]] = None) -> str:
     b = meta.get("baseline")
-    lines = [f"# {meta.get('name', pack_id)} — Terraform\n\n",
-             f"Generated by Zscaler Made Easy from pack `{pack_id}`"
-             + (f" v{meta.get('version')}" if meta.get("version") else "") + " for the official "
+    lines = [f"# {md_safe.text(meta.get('name', pack_id))} — Terraform\n\n",
+             f"Generated by Zscaler Made Easy from pack {md_safe.code(pack_id)}"
+             + (f" v{md_safe.text(meta.get('version'))}" if meta.get("version") else "") + " for the official "
              f"[zscaler/zia]({REGISTRY_URL}) provider ({PROVIDER_VERSION}).\n\n",
              f"{len(src['dictionaries'])} dictionaries · {len(src['engines'])} engines · {len(src['policies'])} rules"
              + (" · **policy pack**" if b else "") + "\n\n"]
@@ -984,7 +1002,7 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
                      "when the customer wants the tenant converged (an enabled rule or a hardened action is usually progress to keep, "
                      "not something to revert — update the pack instead). Objects the policy pack does not define are never touched.\n\n")
     if gap:
-        lines.append(f"## Gap against {report.get('tenant_label', 'the tenant') if report else 'the tenant'}\n\n"
+        lines.append(f"## Gap against {md_safe.text(report.get('tenant_label', 'the tenant')) if report else 'the tenant'}\n\n"
                      f"| In sync | Customized | Missing | Blocked |\n|---|---|---|---|\n"
                      f"| {counts.get('in_sync', 0)} | {counts.get('customized', 0)} | {counts.get('missing', 0)} | {counts.get('blocked', 0)} |\n\n"
                      "`imports.tf` adopts every existing object into state on the first apply. In-sync objects import with no "
@@ -1193,7 +1211,7 @@ def render_json_workspace(tf: Dict[str, Any], *, title: str, source_note: str, p
     files[".gitignore"] = GITIGNORE
     counts = {k: len(v) for k, v in refs.items()}
     files["README.md"] = (
-        f"# {title} — Terraform\n\n{source_note}\n\n"
+        f"# {md_safe.text(title)} — Terraform\n\n{source_note}\n\n"
         f"{counts['dictionaries']} dictionaries · {counts['engines']} engines · {counts['rules']} rules, every rule **DISABLED**, "
         f"for the official [zscaler/zia]({REGISTRY_URL}) provider ({pv}).\n\n"
         "## Use\n\n```bash\nterraform init      # then commit .terraform.lock.hcl beside these files\nterraform plan      # review: every object is a create on a tenant that has none of them\nterraform apply\n```\n\n"

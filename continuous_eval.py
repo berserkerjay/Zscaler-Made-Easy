@@ -34,6 +34,7 @@ Nothing here writes to any tenant.
 """
 from __future__ import annotations
 
+import md_safe
 import argparse
 import json
 import math
@@ -710,6 +711,7 @@ def summarise(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def to_markdown(d: Dict[str, Any]) -> str:
     s = d.get("summary") or summarise(d)
+    d = md_safe.escape_data(d)   # titles, tenant and pack names, errors: inert text
     L = [f"# Zscaler Made Easy digest — {d.get('at')}", "",
          f"**{'Something needs a look.' if d.get('noteworthy') else 'Nothing new: the loop ran and found nothing to raise.'}** "
          f"{s['proposals_new']} new proposal(s), {s['proposals_open']} open, {s['guidance_new']} new guidance item(s), "

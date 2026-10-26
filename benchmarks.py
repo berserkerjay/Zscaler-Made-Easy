@@ -19,6 +19,7 @@ Every function is pure (results in, dict out) so the Word report, the
 API and the page share one computation."""
 from __future__ import annotations
 
+import md_safe
 import re
 from typing import Any, Dict, List, Optional
 
@@ -210,6 +211,7 @@ def benchmark_report(report: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def to_markdown(b: Dict[str, Any], org: str = "") -> str:
+    b, org = md_safe.escape_data(b), md_safe.text(org)   # findings name tenant objects; org is typed in: inert text
     bp = b["best_practices"]
     lines = [f"# Benchmark alignment{' — ' + org if org else ''}", "",
              f"Assessment score {_pct_text(b.get('score'))} ({b.get('maturity') or 'Not assessed'}). Zscaler best-practice alignment {_pct_text(bp['pct'])} (grade {bp['grade']}): "
