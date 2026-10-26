@@ -402,7 +402,7 @@
 
     const fmt = (v, field) => v == null ? '' : field === 'urls' || field === 'domain_names' ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist') : String(v);
     const chip = st => { const [l, c] = STATUS[st] || [st, '']; return `<span class="df-chip ${c}">${E(l)}</span>`; };
-    function objName(u) { const o = u.object || {}; return `${o.name || o.id || ''}${o.policy_label ? ` <span class="df-by">${E(o.policy_label)}${o.rule_type ? ' · ' + E(o.rule_type) : ''}</span>` : o.type === 'url_category' ? ' <span class="df-by">URL category</span>' : o.type === 'zpa_segment' ? ' <span class="df-by">ZPA segment</span>' : ''}`; }
+    function objName(u) { const o = u.object || {}; return `${E(o.name || o.id || '')}${o.policy_label ? ` <span class="df-by">${E(o.policy_label)}${o.rule_type ? ' · ' + E(o.rule_type) : ''}</span>` : o.type === 'url_category' ? ' <span class="df-by">URL category</span>' : o.type === 'zpa_segment' ? ' <span class="df-by">ZPA segment</span>' : ''}`; }
     function itemsTable(items, caption) {
       return `<div class="df-tablewrap"><table class="df-table op-items"><caption class="sr-only">${E(caption)}</caption>
         <thead><tr><th scope="col">Object</th><th scope="col">Field</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Status</th><th scope="col">Why</th></tr></thead>

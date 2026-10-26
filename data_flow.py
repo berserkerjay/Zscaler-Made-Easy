@@ -28,6 +28,7 @@ and the raw value is kept next to every interpretation.
 """
 from __future__ import annotations
 
+import md_safe
 import contextlib
 import fnmatch
 import json
@@ -1276,6 +1277,8 @@ def trace_from_report(report: Dict[str, Any], destination: str, network: str, pl
 
 
 def to_markdown(report: Dict[str, Any], label: str = "") -> str:
+    raw = report
+    report, label = md_safe.escape_data(report), md_safe.text(label)   # destination and tenant names: inert text
     s = report["summary"]
     lines = [f"# Data Flow Map{' — ' + label if label else ''}", "",
              f"{s['traces']} paths traced ({s['destinations']} destinations × {len(report['networks'])} network contexts, {report['platform']}). "
@@ -1293,5 +1296,5 @@ def to_markdown(report: Dict[str, Any], label: str = "") -> str:
             lines.append(f"- Pack {p['name']}: {p['coverage']}" + (f" — {p['weak_point']}" if p.get("weak_point") else ""))
         lines.append("")
     import dlp_analysis
-    lines.extend(dlp_analysis.markdown(report))
+    lines.extend(dlp_analysis.markdown(raw))
     return "\n".join(lines)

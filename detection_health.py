@@ -27,6 +27,7 @@ be overridden per request; nothing here writes to the tenant.
 """
 from __future__ import annotations
 
+import md_safe
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -830,7 +831,9 @@ def _not_measured(ev: Dict[str, Any]) -> None:
 
 
 def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
-    from csv_safe import md_cell as m   # tenant names, hosts and users: one cell each
+    m = str   # cells: already inert (md_safe.escape_data below escapes pipes and line breaks once)
+    raw = rep
+    rep, label = md_safe.escape_data(rep), md_safe.text(label)   # rule, user and destination names: inert text
     s = rep.get("summary") or {}
     lines = [f"# FP/TP Detection Ratio{' — ' + label if label else ''}", "",
              f"FP/TP ratio {s.get('fp_tp_ratio', '–')} ({s.get('fp', 0)} not real : {s.get('tp', 0)} real"
@@ -876,7 +879,7 @@ def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
     if rep.get("errors"):
         lines += ["", "## Read problems"] + [f"- {e}" for e in rep["errors"]]
     import dlp_analysis
-    lines.extend(dlp_analysis.markdown(rep))
+    lines.extend(dlp_analysis.markdown(raw))
     return "\n".join(lines)
 
 

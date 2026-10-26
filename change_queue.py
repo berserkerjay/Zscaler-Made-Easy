@@ -28,6 +28,7 @@ audit log with the actor.
 """
 from __future__ import annotations
 
+import md_safe
 import contextlib
 import hashlib
 import json
@@ -469,6 +470,8 @@ def _item_line(i: Dict[str, Any]) -> str:
 
 
 def to_markdown(items: List[Dict[str, Any]], *, title: str = "Change queue") -> str:
+    # Titles, names, people and comments are free text: inert in the Markdown.
+    items, title = md_safe.escape_data(items), md_safe.text(title)
     lines = [f"# {title}", "", f"Exported {_now()}. {len(items)} request(s).", ""]
     if not items:
         lines.append("No change requests.")

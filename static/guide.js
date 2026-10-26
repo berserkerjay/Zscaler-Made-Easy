@@ -17,7 +17,9 @@ const GD_LS_MODE = 'zassess_guide_mode';
 const GD_LS_CONN = 'zassess_guide_conn';
 const GD_LS_DEPLOY = 'zassess_last_deploy';
 
-const _gdE = s => (typeof escapeHtml === 'function' ? escapeHtml(String(s == null ? '' : s)) : String(s == null ? '' : s));
+// The guide's own HTML escaper: it never depends on a global being there, so
+// a page that loads guide.js without index.html's escapeHtml still escapes.
+const _gdE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Authenticate only signs in: it obtains the token (or the classic API's
 // session) and reads nothing from the tenant, because every read counts
 // against the tenant's ZIA API rate limit. The tenant is read only by an

@@ -558,6 +558,20 @@ def _add_styled_row(table, cells_data):
 
 # ── Main Generator ───────────────────────────────────────────────────
 
+def _xml_safe(obj):
+    """A copy of ``obj`` whose strings hold only characters XML can carry.
+    Check details quote tenant names and uploaded text; one control
+    character in them would make python-docx refuse the whole report."""
+    from xlsx_writer import clean_text
+    if isinstance(obj, str):
+        return clean_text(obj)
+    if isinstance(obj, dict):
+        return {k: _xml_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_xml_safe(v) for v in obj]
+    return obj
+
+
 def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None, template_path=None):
     """
     Generate a Word document report from assessment results.
@@ -573,6 +587,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                        layout, preserving header/footer/styles. Auto-detects
                        'zscaler_template.docx' in the same folder as this file.
     """
+    results, cfg = _xml_safe(results or []), _xml_safe(cfg or {})
     # Import compute/maturity if not provided
     if compute_fn is None or maturity_fn is None:
         from dlp_assessment_full_auto import compute, maturity

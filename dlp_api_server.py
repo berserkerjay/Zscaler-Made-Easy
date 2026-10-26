@@ -6430,6 +6430,8 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
                 w.writerow([d.get("framework_name") or k, c.get("control"), c.get("status"), c.get("passing_count"), c.get("failing_count"),
                             c.get("review_count"), c.get("info_count"), " ".join(str(e.get("check_id")) for e in (c.get("evidence") or []))])
         return PlainTextResponse(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.csv"'})
+    import md_safe
+    rep = md_safe.escape_data(rep)   # evidence details name tenant objects: inert text in the Markdown
     lines = [f"# Regulatory & Compliance Alignment{' — ' + rep['tenant_label'] if rep.get('tenant_label') else ''}", "",
              f"{rep.get('check_count', 0)} checks mapped. Generated {rep.get('generated_at', '')}.", ""]
     for k in keys:
