@@ -898,7 +898,12 @@ def _send_webhook(subject: str, body: str, url: str) -> Dict[str, Any]:
         import requests
         text = f"**{subject}**\n\n{body}"
         payload = {"text": text[:38000]}
-        r = requests.post(url, json=payload, timeout=20)
+        # Never followed: a redirect would re-post the digest to whatever
+        # host the Location names (http://, 127.0.0.1, 169.254.169.254).
+        r = requests.post(url, json=payload, timeout=20, allow_redirects=False)
+        if 300 <= r.status_code < 400:
+            return {"channel": "webhook", "sent": False, "host": urlparse(url).hostname, "status": r.status_code,
+                    "why": "the webhook answered with a redirect, which is not followed; use the webhook's final https:// URL"}
         ok = 200 <= r.status_code < 300
         return {"channel": "webhook", "sent": ok, "host": urlparse(url).hostname, "status": r.status_code, **({} if ok else {"why": (r.text or "")[:200]})}
     except Exception as ex:  # noqa: BLE001

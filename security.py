@@ -117,7 +117,7 @@ EXTENSION_JOB_KINDS = ("export",)
 
 
 # Hostname pattern for vanity_domain (RFC-1123 label, dot-separated).
-_HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+_HOST_RE = _clouds.VANITY_RE   # the one vanity-domain pattern (zscaler_clouds.token_url checks it too)
 
 # Credential length caps — hard enough that a junk paste fails fast,
 # loose enough not to clip a legit value.

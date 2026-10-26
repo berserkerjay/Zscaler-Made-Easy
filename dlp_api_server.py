@@ -1251,6 +1251,7 @@ def _build_sdk_client(creds: Dict[str, str]):
     if c.get("customer_id"):
         # ZPA services build their paths from it (/zpa/mgmtconfig/v1/admin/customers/{customerId}).
         config["customerId"] = c["customer_id"]
+    tenant_auth.bound_sdk_sign_in()   # the SDK's token request has no timeout of its own
     try:
         client = ZscalerClient(config)
         auth = getattr(client, "authenticate", None)
