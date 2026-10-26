@@ -26,6 +26,8 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+import safe_files
+
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _LOCK = threading.Lock()
 HISTORY_LIMIT = 50
@@ -156,7 +158,7 @@ def _upgrade_classic_profiles(data: Dict[str, Any]) -> bool:
 def _write(data: Dict[str, Any]) -> None:
     p = store_path()
     d = os.path.dirname(p) or "."
-    os.makedirs(d, exist_ok=True)
+    safe_files.private_makedirs(d)
     fd, tmp = tempfile.mkstemp(prefix=".profiles-", dir=d)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

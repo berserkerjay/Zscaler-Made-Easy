@@ -33,6 +33,8 @@ here; every consumer re-renders from this module.
 from __future__ import annotations
 import os
 from typing import Any, Dict, List
+import safe_files
+
 
 try:
     from bp_sources import credibility_for, get_source
@@ -471,7 +473,7 @@ def _discovered_store_path() -> str:
         else:
             d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
                              "zscaler_assessment")
-        os.makedirs(d, exist_ok=True)
+        safe_files.private_makedirs(d)   # the per-user cache folder: owner-only (0700)
     except Exception:
         d = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(d, "bp_discovered.json")
@@ -521,7 +523,7 @@ def save_discovered(new_entries: List[Dict[str, Any]]) -> int:
         return 0
     merged = existing + added
     try:
-        with open(_discovered_store_path(), "w", encoding="utf-8") as f:
+        with safe_files.private_open(_discovered_store_path(), "w", encoding="utf-8") as f:
             json.dump({"entries": merged, "updated_at": time.time()}, f, indent=2)
     except Exception:
         pass

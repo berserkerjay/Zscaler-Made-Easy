@@ -48,6 +48,8 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
+import safe_files
+
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DIGEST_DIRNAME = "digests"
@@ -191,7 +193,7 @@ def _now() -> str:
 
 def digest_dir() -> str:
     d = os.environ.get("DLP_CHECK_DIGESTS") or os.path.join(ROOT, DIGEST_DIRNAME)
-    os.makedirs(d, exist_ok=True)
+    safe_files.private_makedirs(d)   # digests name tenants and their rules: owner-only (0700)
     return d
 
 
@@ -792,9 +794,9 @@ def write_digest(d: Dict[str, Any]) -> str:
     while os.path.exists(os.path.join(dd, f"digest-{d['id']}.json")):
         d["id"] = (datetime.strptime(d["id"], "%Y%m%d-%H%M%S") + timedelta(seconds=1)).strftime("%Y%m%d-%H%M%S")
     base = os.path.join(dd, f"digest-{d['id']}")
-    with open(base + ".json", "w", encoding="utf-8") as f:
+    with safe_files.private_open(base + ".json", "w", encoding="utf-8") as f:
         json.dump({k: v for k, v in d.items() if k != "path"}, f, indent=2, default=str)
-    with open(base + ".md", "w", encoding="utf-8") as f:
+    with safe_files.private_open(base + ".md", "w", encoding="utf-8") as f:
         f.write(to_markdown(d))
     # keep the newest KEEP_DIGESTS
     files = sorted(x for x in os.listdir(dd) if x.startswith("digest-") and x.endswith(".json"))

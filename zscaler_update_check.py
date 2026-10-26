@@ -58,6 +58,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote, urlparse
 
+import safe_files
+
 # ── Sources to monitor ───────────────────────────────────────────────
 
 SOURCES: List[Dict[str, Any]] = [
@@ -180,7 +182,7 @@ def _cache_path() -> str:
     else:
         d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "zscaler_assessment")
     try:
-        os.makedirs(d, exist_ok=True)
+        safe_files.private_makedirs(d)   # the per-user cache folder: owner-only (0700)
     except Exception:
         d = os.path.dirname(os.path.abspath(__file__))  # fallback to app dir
     return os.path.join(d, "update_cache.json")
@@ -196,7 +198,7 @@ def _load_cache() -> Dict[str, Any]:
 
 def _save_cache(data: Dict[str, Any]) -> None:
     try:
-        with open(_cache_path(), "w", encoding="utf-8") as f:
+        with safe_files.private_open(_cache_path(), "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception:
         pass  # best-effort; not fatal

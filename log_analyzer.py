@@ -10,24 +10,31 @@ secret.
 
 Limits (a hostile archive must not exhaust the server): a bounded number of
 members, a bounded size per member and in total (a .gz is streamed and
-never inflated past the per-member cap), one level of nesting,
-binary members skipped, member names never used as paths.
+never inflated past the per-member cap; ZIP members only stored or
+deflate, read in bounded steps; a compressed tar is read as one stream that
+stops at the total cap, so skipping a member never inflates more), one
+level of nesting, binary members skipped, member names never used as paths.
 """
 from __future__ import annotations
 
 import base64
+import bz2
 import gzip
 import io
+import lzma
 import re
 import tarfile
 import zipfile
 from collections import Counter
 from typing import Any, Dict, List, Tuple
 
+import safe_files
+
 MAX_MEMBERS = 600
 MAX_MEMBER_BYTES = 48 * 1024 * 1024
 MAX_TOTAL_BYTES = 160 * 1024 * 1024
 MAX_EVIDENCE = 4
+MAX_LINE_CHARS = 8192   # of one log line, what the signatures read
 EVIDENCE_WIDTH = 240
 TOP_ERRORS = 6
 
@@ -107,6 +114,42 @@ class _Budget:
         return True
 
 
+_TAR_SLACK = 1024 * 1024   # headers and padding around the members the budget allows
+
+
+class _CappedReader(io.RawIOBase):
+    """A read-only stream that ends after `cap` bytes and remembers that it did."""
+
+    def __init__(self, raw: Any, cap: int) -> None:
+        super().__init__()
+        self._raw, self._left, self.capped = raw, cap, False
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b: Any) -> int:
+        if self._left <= 0:
+            self.capped = self.capped or bool(self._raw.read(1))
+            return 0
+        n = min(len(b), self._left)
+        chunk = self._raw.read(n)
+        b[:len(chunk)] = chunk
+        self._left -= len(chunk)
+        return len(chunk)
+
+
+def _decompressed(data: bytes) -> Any:
+    """A reader of `data` as a tar stream: gzip, bzip2 and xz are inflated
+    as they are read (bounded by the caller), anything else as it is."""
+    if data[:2] == b"\x1f\x8b":
+        return gzip.GzipFile(fileobj=io.BytesIO(data))
+    if data[:3] == b"BZh":
+        return bz2.BZ2File(io.BytesIO(data))
+    if data[:6] == b"\xfd7zXZ\x00":
+        return lzma.LZMAFile(io.BytesIO(data))
+    return io.BytesIO(data)
+
+
 def expand(files: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, bytes]], List[str]]:
     """[(name, bytes)] for every readable member of every upload, and notes
     about what was skipped. Archives are opened one level deep."""
@@ -134,8 +177,11 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
                     if not budget.take(member, info.file_size):
                         continue
                     try:
-                        payload = z.open(info).read(MAX_MEMBER_BYTES + 1)
-                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError) as e:
+                        payload = safe_files.zip_member(z, info, MAX_MEMBER_BYTES)
+                    except safe_files.ArchiveRefused as e:
+                        budget.notes.append(f"{member}: skipped, {str(e).split(': ', 1)[-1]}")
+                        continue
+                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError, OSError, EOFError) as e:
                         budget.notes.append(f"{member}: could not be read ({e})")
                         continue
                     _expand_one(member, payload, out, budget, depth + 1)
@@ -146,9 +192,16 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         if depth > 1:
             budget.notes.append(f"{name}: nested archive not opened (one level only)")
             return
+        # One forward pass over the (decompressed) stream, which stops at the
+        # total cap: skipping a member, or a long-name / pax header, would
+        # otherwise inflate whatever size its header claims.
+        stream = _CappedReader(_decompressed(data), MAX_TOTAL_BYTES + _TAR_SLACK)
         try:
-            with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as t:
+            with tarfile.open(fileobj=stream, mode="r|") as t:
                 for info in t:
+                    if budget.members >= MAX_MEMBERS:
+                        budget.notes.append(f"stopped after {MAX_MEMBERS} files; the rest of the archive was not read")
+                        break
                     if not info.isfile():
                         continue
                     member = _basename(info.name)
@@ -158,8 +211,11 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
                     if fh is None:
                         continue
                     _expand_one(member, fh.read(MAX_MEMBER_BYTES + 1), out, budget, depth + 1)
-        except tarfile.TarError as e:
-            budget.notes.append(f"{name}: not a valid tar archive ({e})")
+        except (tarfile.TarError, OSError, EOFError, lzma.LZMAError) as e:
+            if not stream.capped:
+                budget.notes.append(f"{name}: not a valid tar archive ({e})")
+        if stream.capped:
+            budget.notes.append(f"{name}: stopped after {MAX_TOTAL_BYTES // (1024 * 1024)} MB of the unpacked archive; the rest was not read")
         return
     if low.endswith(".gz"):
         if depth > 1:
@@ -533,6 +589,9 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
             if not raw.strip():
                 continue
             n += 1
+            # A Client Connector line is short; a crafted one megabytes long
+            # would cost every signature a full scan. Only its head is read.
+            raw = raw[:MAX_LINE_CHARS]
             p = parse_line(raw)
             ts = p["ts"] if p["ts"] and not p["ts"].startswith("?") else ""
             if ts:

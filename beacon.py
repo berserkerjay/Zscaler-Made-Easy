@@ -46,6 +46,8 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
+import safe_files
+
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_KEEP = 30
@@ -128,21 +130,25 @@ def save_history(snapshots: List[Dict[str, Any]], path: Optional[str] = None) ->
     """Keep the newest HISTORY_KEEP snapshots; written to a temporary file
     and moved into place so a crash never leaves half a file."""
     p = path or state_path()
-    os.makedirs(os.path.dirname(os.path.abspath(p)), exist_ok=True)
-    tmp = f"{p}.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"version": 1, "snapshots": _scrub(snapshots[-HISTORY_KEEP:])}, f, indent=1)
-    # On Windows the move fails while another thread (GET /api/beacon's
-    # load_history) has the file open: retry briefly, so a run's snapshot is
-    # not lost to a poll that happened to read at the same moment.
-    for attempt in range(20):
-        try:
-            os.replace(tmp, p)
-            break
-        except PermissionError:
-            if attempt == 19:
-                raise
-            time.sleep(0.05)
+    safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)))
+    fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(p) + ".", suffix=".tmp", dir=os.path.dirname(os.path.abspath(p)))   # owner-only (0600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"version": 1, "snapshots": _scrub(snapshots[-HISTORY_KEEP:])}, f, indent=1)
+        # On Windows the move fails while another thread (GET /api/beacon's
+        # load_history) has the file open: retry briefly, so a run's snapshot is
+        # not lost to a poll that happened to read at the same moment.
+        for attempt in range(20):
+            try:
+                os.replace(tmp, p)
+                break
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.05)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
     return p
 
 

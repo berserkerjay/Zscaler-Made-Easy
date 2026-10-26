@@ -46,6 +46,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import safe_files
+
 # The same Terraform and provider constraints as the pack hand-off, so the two
 # converters cannot drift: a `~>` constraint in the configuration, the exact
 # build fixed by the team's .terraform.lock.hcl.
@@ -422,8 +424,7 @@ def _policy_facets(node) -> Dict[str, Any]:
 def inventory_bytes(data: bytes, source_name: str = "export.xml") -> Dict[str, Any]:
     """Symantec XML export → {source_file, sha256, policies}. Read-only;
     DTDs and entities are refused before parsing."""
-    if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
-        raise ValueError("DTD/entities are not accepted")
+    _refuse_dtd(data, "DTD/entities are not accepted")
     try:
         root = ET.fromstring(data)
     except ET.ParseError as e:
@@ -465,7 +466,8 @@ def _is_zip(data: bytes) -> bool:
 
 def _unzip(data: bytes, source_name: str) -> List[Tuple[str, bytes]]:
     """The text members of an uploaded zip, read in memory: (member name,
-    bytes). Password-protected archives, more than ZIP_MEMBER_LIMIT members
+    bytes). Password-protected archives, more than ZIP_MEMBER_LIMIT members,
+    members compressed other than stored or deflate (safe_files.zip_member)
     and archives that expand beyond MAX_EXPORT_BYTES are refused. Nothing is
     written to disk."""
     import io
@@ -489,7 +491,7 @@ def _unzip(data: bytes, source_name: str) -> List[Tuple[str, bytes]]:
             base = info.filename.rsplit("/", 1)[-1]
             if not base.lower().endswith(_TEXT_MEMBERS) or base.startswith(".") or "__MACOSX" in info.filename:
                 continue
-            members.append((info.filename, zf.read(info)))
+            members.append((info.filename, safe_files.zip_member(zf, info, MAX_EXPORT_BYTES)))
     if not members:
         raise ValueError(f"{source_name}: the archive holds no .json, .xml, .csv or .txt file")
     return members
@@ -519,7 +521,10 @@ def _csv_rows(data: bytes, name: str) -> List[List[str]]:
         dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
     except csv.Error:
         dialect = csv.excel
-    rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), dialect)]
+    try:
+        rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), dialect)]
+    except csv.Error as e:   # a field past the csv module's limit, a stray NUL...: refused, not a server error
+        raise ValueError(f"{name}: not a CSV export this reader can read ({str(e)[:80]})") from None
     return [r for r in rows if any(r)]
 
 
@@ -533,9 +538,33 @@ def _csv_records(rows: List[List[str]]) -> List[Dict[str, str]]:
     return [{(header[i] if i < len(header) else f"col{i}"): c for i, c in enumerate(r)} for r in rows[1:]]
 
 
-def _xml_root(data: bytes, name: str):
+def _refuse_dtd(data: bytes, message: str) -> None:
+    """Refuse any DOCTYPE or entity declaration, in whatever encoding the
+    document is written: the parser reads UTF-16 (or a BOM, or an encoding
+    declaration) where a byte search sees only '<\\0!\\0D...', so the document
+    is first read by expat with handlers that refuse a DTD (fail closed)."""
     if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
-        raise ValueError(f"{name}: DTD/entities are not accepted")
+        raise ValueError(message)
+    from xml.parsers import expat
+
+    class _Refused(Exception):
+        pass
+
+    def refuse(*_args: Any) -> None:
+        raise _Refused()
+    p = expat.ParserCreate()
+    p.StartDoctypeDeclHandler = refuse
+    p.EntityDeclHandler = refuse
+    try:
+        p.Parse(data, True)
+    except _Refused:
+        raise ValueError(message) from None
+    except expat.ExpatError:
+        pass   # not well-formed: the real parse below says where
+
+
+def _xml_root(data: bytes, name: str):
+    _refuse_dtd(data, f"{name}: DTD/entities are not accepted")
     try:
         return ET.fromstring(data)
     except ET.ParseError as e:
@@ -1138,7 +1167,11 @@ def inventory_export(vendor_id: str, data: bytes, source_name: str = "") -> Dict
     ext = os.path.splitext(str(source_name or ""))[1].lower()
     if ext and ext not in v["accepts"]:
         raise ValueError(f"{v['name']}: {ext} files are not an export this adapter reads; it accepts {', '.join(v['accepts'])}")
-    snap = READERS[v["id"]](data, source_name or ("export" + (v["accepts"][0] if v["accepts"] else "")))
+    name = source_name or ("export" + (v["accepts"][0] if v["accepts"] else ""))
+    try:
+        snap = READERS[v["id"]](data, name)
+    except RecursionError:   # JSON or XML nested past what a reader walks: refused, not a server error
+        raise ValueError(f"{os.path.basename(name)}: nested too deeply to be a policy export") from None
     snap["vendor"] = v["id"]
     return snap
 
@@ -1662,6 +1695,8 @@ def compile_upload(vendor_id: str, export_file: Dict[str, Any], decisions: Any) 
             decisions = json.loads(decode_upload(decisions).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
             raise ValueError(f"Decisions file is not valid JSON: {e}")
+        except RecursionError:
+            raise ValueError("Decisions file is nested too deeply to be a decisions file") from None
     tf, report = compile_export(snapshot, decisions, prefix=v["prefix"], vendor_id=v["id"])
     return {"vendor": v["id"], "vendor_name": v["name"],
             "snapshot": {"source_file": snapshot["source_file"], "sha256": snapshot["sha256"], "policy_count": len(snapshot["policies"])},

@@ -29,6 +29,8 @@ import json
 import os
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+import safe_files
+
 
 from pack_deploy import _field, _items_set  # tenant object readers (snake/camel case)
 
@@ -158,7 +160,7 @@ def write_pack(pack_dir: str, dicts: List[Dict[str, Any]], engines: List[Dict[st
     """Replace the pack's dictionaries and engines; rules keep everything
     else and now reference every new engine. Returns what was replaced."""
     cfg = os.path.join(pack_dir, "configs")
-    os.makedirs(cfg, exist_ok=True)
+    safe_files.private_makedirs(cfg)
     before = {"dictionaries": [], "engines": []}
     old: Dict[str, List[Dict[str, Any]]] = {"dictionaries": [], "engines": []}
     for kind in ("dictionaries", "engines"):
@@ -181,8 +183,11 @@ def write_pack(pack_dir: str, dicts: List[Dict[str, Any]], engines: List[Dict[st
     kept_dicts = [d for d in old["dictionaries"] if d["name"] in kept_refs and d["name"] not in lang_dicts]
     engines = list(engines) + kept_engines
     dicts = list(dicts) + kept_dicts
-    json.dump(dicts, open(os.path.join(cfg, "dlp_dictionaries.json"), "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-    json.dump(engines, open(os.path.join(cfg, "dlp_engines.json"), "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+    # The tenant's own dictionaries and engines: owner-only (0600).
+    with safe_files.private_open(os.path.join(cfg, "dlp_dictionaries.json"), "w", encoding="utf-8") as f:
+        json.dump(dicts, f, indent=2, ensure_ascii=False)
+    with safe_files.private_open(os.path.join(cfg, "dlp_engines.json"), "w", encoding="utf-8") as f:
+        json.dump(engines, f, indent=2, ensure_ascii=False)
     pol_path = os.path.join(cfg, "dlp_policies.json")
     rewired = []
     if os.path.exists(pol_path):
@@ -192,7 +197,8 @@ def write_pack(pack_dir: str, dicts: List[Dict[str, Any]], engines: List[Dict[st
         for p in policies:
             if p.get("engines") and not (set(p["engines"]) & kept_names):
                 p["engines"] = names; rewired.append(p["name"])
-        json.dump(policies, open(pol_path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        with safe_files.private_open(pol_path, "w", encoding="utf-8") as f:
+            json.dump(policies, f, indent=2, ensure_ascii=False)
     return {"removed_dictionaries": [n for n in before["dictionaries"] if n not in {d["name"] for d in dicts}],
             "removed_engines": [n for n in before["engines"] if n not in {e["name"] for e in engines}],
             "rules_rewired": rewired}

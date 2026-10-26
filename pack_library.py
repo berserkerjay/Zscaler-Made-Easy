@@ -40,6 +40,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pack_channels as pc
 import pack_ops as ops
+import safe_files
 from dlp_importer import PACKS_ROOT, template_candidates
 
 USER_PACKS_DIRNAME = "user_packs"
@@ -625,7 +626,7 @@ def _expand(files: List[Dict[str, Any]]) -> List[Tuple[str, bytes]]:
                     total += info.file_size
                     if total > MAX_UPLOAD_BYTES:
                         raise ValueError("ZIP contents are larger than the upload limit")
-                    out.append((info.filename, zf.read(info)))
+                    out.append((info.filename, safe_files.zip_member(zf, info, MAX_UPLOAD_BYTES)))
         else:
             out.append((name, data))
     return out
@@ -693,7 +694,10 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
             continue
         raise ValueError(f"{base}: expected a pack bundle object or a list of dictionaries / engines / rules")
     if tf_files:
-        tf_pack, tf_warn = pack_from_terraform(tf_files)
+        try:
+            tf_pack, tf_warn = pack_from_terraform(tf_files)
+        except RecursionError:   # HCL nested past what the reader walks: refused, not a server error
+            raise ValueError("the Terraform files are nested too deeply to be a policy pack") from None
         warnings.extend(tf_warn)
         for k in parts:
             parts[k].extend(tf_pack.get(k) or [])
@@ -903,7 +907,10 @@ def save_pack(pack: Dict[str, Any], *, pack_id: str = "", root: Optional[str] = 
     if os.path.exists(pack_dir):
         raise FileExistsError(f"'{slug}' already exists in the library")
     configs = os.path.join(pack_dir, "configs")
-    os.makedirs(configs)
+    # An uploaded pack is the customer's own policy: owner-only (0700 / 0600).
+    safe_files.private_makedirs(lib)
+    os.mkdir(pack_dir, safe_files.DIR_MODE)
+    safe_files.private_makedirs(configs)
     meta = dict(pack["meta"])
     meta.update({
         "source": "uploaded",
@@ -911,13 +918,13 @@ def save_pack(pack: Dict[str, Any], *, pack_id: str = "", root: Optional[str] = 
         "upload_format": pack.get("format", "json"),
         "upload_files": list(pack.get("sources") or []),
     })
-    with open(os.path.join(pack_dir, "pack.json"), "w", encoding="utf-8") as f:
+    with safe_files.private_open(os.path.join(pack_dir, "pack.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
     for fname, key in (("dlp_dictionaries.json", "dictionaries"), ("dlp_engines.json", "engines"), ("dlp_policies.json", "policies")):
-        with open(os.path.join(configs, fname), "w", encoding="utf-8") as f:
+        with safe_files.private_open(os.path.join(configs, fname), "w", encoding="utf-8") as f:
             json.dump(pack.get(key) or [], f, indent=2)
     if pack.get("app_groups"):
-        with open(os.path.join(configs, "endpoint_application_groups.json"), "w", encoding="utf-8") as f:
+        with safe_files.private_open(os.path.join(configs, "endpoint_application_groups.json"), "w", encoding="utf-8") as f:
             json.dump(pack["app_groups"], f, indent=2)
     from dlp_importer import load_pack_metadata
     out = load_pack_metadata(pack_dir)

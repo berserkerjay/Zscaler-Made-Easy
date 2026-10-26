@@ -7257,11 +7257,14 @@ async def generate_docx(request: Request):
     if not results:
         raise HTTPException(status_code=400, detail="No checks in request body — cannot generate report.")
 
+    tmp_path = ""
     try:
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
             tmp_path = tmp.name
         generate_report(results, cfg, tmp_path, compute, maturity)
     except Exception as e:
+        if tmp_path:
+            _unlink_quietly(tmp_path)   # a failed report leaves no copy of the assessment behind
         # Surface the real error to the browser instead of a generic 500
         tb = _tb.format_exc()
         print(f"\n=== Word generation failed ===\n{tb}===\n", flush=True)
