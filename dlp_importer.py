@@ -638,19 +638,22 @@ def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) ->
     work = expr
     for i, (n, tag) in enumerate(names):
         key = f"§{tag}{i}§"
+        if f"D:{n}" not in work:
+            continue   # not in this expression: no pattern to compile (see engine_references)
         pat = re.compile(r"D:" + re.escape(n) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|<|=|\+|$))")
         if pat.search(work):
             work = pat.sub(key, work)
             back[key] = f"D:{n}"
     pos, toks = 0, []
-    for m in _ENGINE_TOKEN_RE.finditer(work):
-        if m.start() != pos:
+    while pos < len(work):
+        # Anchored at pos: text that is not a token ends the parse at once
+        # (a search for the next token would rescan the rest each time).
+        m = _ENGINE_TOKEN_RE.match(work, pos)
+        if m is None or m.end() == pos:
             return None, []          # unparseable text between tokens
         if not m.group(0).isspace():
             toks.append(m.group(0))
         pos = m.end()
-    if pos != len(work):
-        return None, []
 
     def parse(i: int):
         items: list = []
@@ -724,6 +727,9 @@ def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) ->
     return out, sorted(dropped)
 
 
+_REF_END_WORD = re.compile(r"(?:AND|OR)\b")
+
+
 def find_refs(expr: str) -> List[str]:
     """Every `D:<name>` reference in an engine expression, in order, with
     the name read paren-aware: a name may contain balanced parentheses
@@ -740,15 +746,27 @@ def find_refs(expr: str) -> List[str]:
         depth = 0
         while j < n:
             ch = expr[j]
-            rest = expr[j:]
             if ch == "(":
                 depth += 1
             elif ch == ")":
                 if depth == 0:
                     break
                 depth -= 1
-            elif depth == 0 and (ch in "<>=+" or re.match(r"\s+(?:AND|OR)\b", rest) or re.match(r"\s+[<>=+]", rest) or re.match(r"\s+\)", rest)):
+            elif depth == 0 and ch in "<>=+":
                 break
+            elif depth == 0 and ch.isspace():
+                # A run of spaces ends the name when an AND / OR, a
+                # comparison, a + or a closing parenthesis follows it.
+                # The run is read once (never re-read from each of its
+                # spaces), so a long expression costs time in proportion
+                # to its length.
+                k = j
+                while k < n and expr[k].isspace():
+                    k += 1
+                if k < n and (expr[k] in "<>=+)" or _REF_END_WORD.match(expr, k)):
+                    break
+                j = k
+                continue
             j += 1
         name = expr[i + 2:j].strip()
         if name:
@@ -764,6 +782,11 @@ def engine_references(expr: str, candidate_names: Iterable[str]) -> List[str]:
     false hit."""
     found = []
     for name in candidate_names:
+        # Only a name the expression contains is worth a pattern: a tenant
+        # with thousands of dictionaries must not cost a compiled regex per
+        # dictionary for every engine.
+        if f"D:{name}" not in expr:
+            continue
         if re.search(r"D:" + re.escape(name) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|\+|$))", expr):
             found.append(name)
     return found

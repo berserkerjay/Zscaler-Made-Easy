@@ -13,7 +13,10 @@ members, a bounded size per member and in total (a .gz is streamed and
 never inflated past the per-member cap; ZIP members only stored or
 deflate, read in bounded steps; a compressed tar is read as one stream that
 stops at the total cap, so skipping a member never inflates more), one
-level of nesting, binary members skipped, member names never used as paths.
+level of nesting, binary members skipped, member names never used as paths. Each line is read up to MAX_LINE_CHARS (a hostile single 10 MB line must not feed the
+pattern matching), and every pattern that scans a run of characters for
+an address starts only at the beginning of that run, so its cost grows
+with the length of the text, never with its square.
 """
 from __future__ import annotations
 
@@ -34,9 +37,9 @@ MAX_MEMBERS = 600
 MAX_MEMBER_BYTES = 48 * 1024 * 1024
 MAX_TOTAL_BYTES = 160 * 1024 * 1024
 MAX_EVIDENCE = 4
-MAX_LINE_CHARS = 8192   # of one log line, what the signatures read
 EVIDENCE_WIDTH = 240
 TOP_ERRORS = 6
+MAX_LINE_CHARS = 4096   # a log or PAC line longer than this is read up to here
 
 ARCHIVE_EXT = (".zip", ".tar", ".tgz", ".tar.gz", ".gz")
 PAC_EXT = (".pac", ".dat", ".js")
@@ -540,7 +543,17 @@ SIGNATURES: List[Dict[str, Any]] = [
     },
 ]
 
-_COMPILED = [(s, re.compile(s["pattern"], re.I), re.compile(s["exclude"], re.I) if s.get("exclude") else None) for s in SIGNATURES]
+def _bounded(pattern: str) -> str:
+    """A signature with its open-ended word runs (\\w* and \\w+ after a
+    prefix such as fail\\w*) bounded to 64 characters: a match restarted at
+    every 'fail' inside one long run of letters would otherwise rescan the
+    rest of the run each time (time growing with the square of its length).
+    No real word in a log is longer."""
+    return pattern.replace(r"\w*", r"\w{0,64}").replace(r"\w+", r"\w{1,64}")
+
+
+_COMPILED = [(s, re.compile(_bounded(s["pattern"]), re.I), re.compile(_bounded(s["exclude"]), re.I) if s.get("exclude") else None)
+             for s in SIGNATURES]
 _SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "info": 3}
 
 
@@ -553,7 +566,7 @@ def catalogue() -> List[Dict[str, str]]:
 _FACT_VERSION = re.compile(r"\b(?:app|client|zcc|zscaler|zsa\w*)\b[^\n]{0,30}?\bversion\b[^0-9\n]{0,12}(\d+\.\d+\.\d+(?:\.\d+)?)", re.I)
 _FACT_VERSION2 = re.compile(r"\bversion\b[^0-9\n]{0,10}(\d+\.\d+\.\d+(?:\.\d+)?)", re.I)
 _FACT_OS = re.compile(r"\b(Windows (?:1[01]|Server[ \w]{0,12}|[\d.]+)|macOS[ \w.]{0,20}|Mac OS X[ \d.]{0,12}|Ubuntu[ \d.]{0,12}|Android[ \d.]{0,8}|iOS[ \d.]{0,8})", re.I)
-_FACT_USER = re.compile(r"\b([\w.+-]+@[\w-]+(?:\.[\w-]+)+)\b")
+_FACT_USER = re.compile(r"(?<![\w.+-])([\w.+-]+@[\w-]+(?:\.[\w-]+)+)\b")
 _FACT_CLOUD = re.compile(r"\b(zscaler(?:one|two|three|beta|gov|govus)?|zscloud)\.net\b", re.I)
 _FACT_T2 = re.compile(r"z-?tunnel\s*2\.0|ztunnel2|dtls", re.I)
 _FACT_T1 = re.compile(r"z-?tunnel\s*1\.0|ztunnel1", re.I)
@@ -586,6 +599,7 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
         n = 0
         f_first, f_last = "", ""
         for raw in text.splitlines():
+            raw = raw[:MAX_LINE_CHARS]
             if not raw.strip():
                 continue
             n += 1
@@ -715,11 +729,12 @@ def _add_context_notes(findings: List[Dict[str, Any]]) -> None:
 _PAC_RETURN = re.compile(r"return\s*(['\"])(.*?)\1", re.I | re.S)
 _PAC_MACROS = ("${GATEWAY}", "${SECONDARY_GATEWAY}", "${GATEWAY_FX}", "${SECONDARY_GATEWAY_FX}", "${GATEWAY_HOST}", "${SECONDARY_GATEWAY_HOST}",
                "${SRCIP}", "${COUNTRY}", "${ZAPP_LOCAL_PROXY}", "${SUBCLOUD}", "${ZSCALER_LOCAL_PROXY}", "${CLOUD}")
-_PAC_COND_FN = re.compile(r"\b(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet|isPlainHostName|isResolvable|dnsDomainLevels|myIpAddress|dnsResolve)\s*\(([^)]*)\)", re.I)
+_PAC_COND_FN = re.compile(r"\b(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet|isPlainHostName|isResolvable|dnsDomainLevels|myIpAddress|dnsResolve)\s*\(([^()]*)\)", re.I)
 _PAC_ISINNET = re.compile(r"isInNet\s*\(((?:[^()]|\([^()]*\))*)\)", re.I)
 _PAC_STR = re.compile(r"['\"]([^'\"]+)['\"]")
 _PRIVATE_NET = re.compile(r"^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|169\.254\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)")
 _RISKY_HOST = re.compile(r"(dropbox|box\.com|drive\.google|docs\.google|onedrive|sharepoint|1drv|slack|gmail|mail\.google|outlook|office365|office\.com|wetransfer|icloud|mega\.nz|github|gitlab|bitbucket|chatgpt|openai|anthropic|gemini|copilot|whatsapp|telegram|discord|teams\.microsoft|zoom)", re.I)
+_PAC_ZSCALER_HOST = re.compile(r"(?i)(?<![\w.-])([\w.-]+\.zscaler\w*\.net|[\w.-]+\.zscloud\.net)\b")
 _BROAD = re.compile(r"^\*?\.?(\*|\*\.\w{2,3}|\w{2,3})$")
 
 
@@ -749,7 +764,7 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                          "do": ["End the function with a final return, for example return \"PROXY ${GATEWAY}:80; PROXY ${SECONDARY_GATEWAY}:80; DIRECT\";"], "evidence": []})
     macros = [m for m in _PAC_MACROS if m in body]
     proxies = [r for _, r in returns if "PROXY" in r.upper() or "HTTPS " in r.upper() or "SOCKS" in r.upper()]
-    hardcoded = sorted({h for r in proxies for h in re.findall(r"(?i)\b([\w.-]+\.zscaler\w*\.net|[\w.-]+\.zscloud\.net)\b", r)})
+    hardcoded = sorted({h for r in proxies for h in _PAC_ZSCALER_HOST.findall(r)})
     gateway_hosts = sorted({h for r in proxies for h in re.findall(r"(?i)PROXY\s+([^:;\s]+)", r)})
     last_return = returns[-1][1] if returns else ""
     default_action = "direct" if last_return.upper().strip() == "DIRECT" else ("proxy" if last_return else "none")
@@ -785,7 +800,7 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
 
     # Bypass inventory: DIRECT returns and the conditions that lead to them.
     bypasses: List[Dict[str, Any]] = []
-    lines = body.splitlines()
+    lines = [ln[:MAX_LINE_CHARS] for ln in body.splitlines()]
     for i, line in enumerate(lines):
         if not re.search(r"return\s*['\"]\s*DIRECT\s*['\"]", line, re.I):
             continue

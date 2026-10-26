@@ -507,11 +507,39 @@ def _text(data: bytes, name: str) -> str:
     raise ValueError(f"{name}: not UTF-8 or UTF-16 text")
 
 
+MAX_NESTING = 64   # an export nested deeper is refused in words (the readers below walk it recursively)
+
+
+def _depth_ok(node: Any, children) -> bool:
+    """Whether `node` nests at most MAX_NESTING levels deep, checked with
+    an explicit stack (never recursion). `children(n)` lists n's children."""
+    stack = [(node, 1)]
+    while stack:
+        n, d = stack.pop()
+        if d > MAX_NESTING:
+            return False
+        stack.extend((c, d + 1) for c in children(n))
+    return True
+
+
+def _json_children(n: Any) -> List[Any]:
+    if isinstance(n, dict):
+        return [v for v in n.values() if isinstance(v, (dict, list))]
+    if isinstance(n, list):
+        return [v for v in n if isinstance(v, (dict, list))]
+    return []
+
+
 def _load_json(data: bytes, name: str) -> Any:
     try:
-        return json.loads(_text(data, name))
+        obj = json.loads(_text(data, name))
     except json.JSONDecodeError as e:
         raise ValueError(f"{name}: not valid JSON ({e.msg} at line {e.lineno})")
+    except RecursionError:
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    if not _depth_ok(obj, _json_children):
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    return obj
 
 
 def _csv_rows(data: bytes, name: str) -> List[List[str]]:
@@ -567,9 +595,12 @@ def _refuse_dtd(data: bytes, message: str) -> None:
 def _xml_root(data: bytes, name: str):
     _refuse_dtd(data, f"{name}: DTD/entities are not accepted")
     try:
-        return ET.fromstring(data)
+        root = ET.fromstring(data)
     except ET.ParseError as e:
         raise ValueError(f"{name}: not well-formed XML ({e})")
+    if not _depth_ok(root, list):
+        raise ValueError(f"{name}: nested more than {MAX_NESTING} levels deep; export it again from the console")
+    return root
 
 
 def _xml_to_obj(el) -> Any:
@@ -1697,7 +1728,9 @@ def compile_upload(vendor_id: str, export_file: Dict[str, Any], decisions: Any) 
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
             raise ValueError(f"Decisions file is not valid JSON: {e}")
         except RecursionError:
-            raise ValueError("Decisions file is nested too deeply to be a decisions file") from None
+            raise ValueError(f"Decisions file is nested more than {MAX_NESTING} levels deep") from None
+        if not _depth_ok(decisions, _json_children):
+            raise ValueError(f"Decisions file is nested more than {MAX_NESTING} levels deep")
     tf, report = compile_export(snapshot, decisions, prefix=v["prefix"], vendor_id=v["id"])
     return {"vendor": v["id"], "vendor_name": v["name"],
             "snapshot": {"source_file": snapshot["source_file"], "sha256": snapshot["sha256"], "policy_count": len(snapshot["policies"])},

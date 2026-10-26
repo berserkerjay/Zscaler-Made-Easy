@@ -246,13 +246,13 @@ def test_deeply_nested_json_exports_are_refused_not_a_server_error(vendor):
     import dlp_api_server as srv
     r = TestClient(srv.app, raise_server_exceptions=False).post(
         "/api/vendor-migrate/inventory", json={"vendor": vendor, "export": {"name": "export.json", "content": DEEP_JSON}})
-    assert r.status_code == 400 and "nested too deeply" in r.json()["detail"]
+    assert r.status_code == 400 and re.search(r"nested (too deeply|more than \d+ levels)", r.json()["detail"])
 
 
 def test_a_deeply_nested_decisions_file_is_refused_not_a_server_error():
     """ASVS V7.4.1 · CWE-674 · A04:2021 · WSTG-ERRH-01: the decisions upload is read with the same guard."""
     xml = '<policies><policy id="7" name="Card numbers"/></policies>'
-    with pytest.raises(ValueError, match="nested too deeply"):
+    with pytest.raises(ValueError, match=r"nested (too deeply|more than \d+ levels)"):
         vendor_migrate.compile_upload("symantec", {"name": "export.xml", "content": xml}, {"name": "d.json", "content": DEEP_JSON})
 
 
@@ -268,7 +268,7 @@ def test_deeply_nested_terraform_in_a_pack_upload_is_refused_not_a_server_error(
     r = client.post(route, json={"files": [{"name": "main.tf", "content": DEEP_TF[shape]}], "pack_id": "deep"})
     assert r.status_code in (200, 400), r.text
     body = r.json()
-    assert "nested too deeply" in (body.get("detail") or " ".join(body.get("problems") or []))
+    assert re.search(r"nested (too deeply|more than \d+ levels)", body.get("detail") or " ".join(body.get("problems") or []))
     assert not (tmp / "user_packs" / "deep").exists()
 
 

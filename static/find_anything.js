@@ -112,8 +112,12 @@
   // A query as terms: each term is the word the person typed and its
   // synonyms (a phrase such as "data loss" is one term). Stop words go,
   // unless nothing else is left.
+  // A query is read up to MAX_QUERY_CHARS and MAX_TERMS words: every term is
+  // matched against every field of every item, so a pasted page of text
+  // would otherwise freeze the tab for minutes.
+  const MAX_QUERY_CHARS = 200, MAX_TERMS = 12;
   function parseQuery(q) {
-    const all = words(q);
+    const all = words(String(q == null ? '' : q).slice(0, MAX_QUERY_CHARS));
     let ws = all.filter(w => !STOP.has(w));
     if (!ws.length) ws = all;
     const terms = [];
@@ -128,7 +132,7 @@
       terms.push({ text: w, alts: [{ w, syn: false }].concat(synonymsOf(w).map(s => ({ w: s, syn: true }))) });
       i += used - 1;
     }
-    return terms;
+    return terms.slice(0, MAX_TERMS);
   }
 
   // How well one alternative matches one field (0..1).
@@ -187,7 +191,7 @@
   function search(items, q, limit) {
     const terms = parseQuery(q);
     if (!terms.length) return [];
-    const qn = norm(q);
+    const qn = norm(String(q).slice(0, MAX_QUERY_CHARS));
     const out = [];
     for (const it of items) {
       if (!it._f) prepare(it);
@@ -273,7 +277,8 @@
     return out;
   }
 
-  const core = { norm, osa, parseQuery, synonymsOf, search, prepare, pageItems, termItems, objectItems, findingItems, todoItems, objKey, SYNONYMS, STOP };
+  const core = { norm, osa, parseQuery, synonymsOf, search, prepare, pageItems, termItems, objectItems, findingItems, todoItems, objKey, SYNONYMS, STOP,
+    MAX_QUERY_CHARS, MAX_TERMS };
   if (typeof window === 'undefined') {
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
     return;
@@ -512,7 +517,7 @@ button.fa-chip{cursor:pointer;font:inherit;font-size:var(--fs-footnote,0.75rem)}
     if (dlg) return;
     if (!document.getElementById('faStyle')) { const st = document.createElement('style'); st.id = 'faStyle'; st.textContent = CSS; document.head.appendChild(st); }
     input = h('input', { id: 'faInput', class: 'fa-input', type: 'text', role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'faList',
-      'aria-autocomplete': 'list', 'aria-describedby': 'faKeys', autocomplete: 'off', spellcheck: 'false',
+      'aria-autocomplete': 'list', 'aria-describedby': 'faKeys', autocomplete: 'off', spellcheck: 'false', maxlength: MAX_QUERY_CHARS,
       placeholder: 'Search pages, terms, rules, dictionaries, findings…', 'aria-label': 'Find anything' });
     listEl = h('ul', { id: 'faList', class: 'fa-list', role: 'listbox', 'aria-label': 'Results' });
     // The results scroll: a focusable region, so the keyboard can scroll a long

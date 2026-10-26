@@ -51,7 +51,7 @@ import ipaddress
 import re
 import threading
 import time
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import zpa_analysis
 import zpa_reader
@@ -610,17 +610,35 @@ def _rule_segments(rule: Dict[str, Any], names: Names) -> Optional[List[Dict[str
     conds = [c for c in rule.get("conditions") or [] if any(o.get("type") in APP_TYPES for o in c.get("operands") or [])]
     if not conds:
         return None
-    segs = [s for s in names.segments.values() if s.get("enabled", True)]
-    chosen = set(x["id"] for x in segs)
+    segs, all_ids, by_group, order = _segment_index(names)
+    chosen: Optional[Set[str]] = None   # None: every enabled segment so far
     for c in conds:
         ids = {o["rhs"] for o in c["operands"] if o.get("type") == "APP"}
         gids = {o["rhs"] for o in c["operands"] if o.get("type") == "APP_GROUP"}
         for g in gids:
-            ids |= {s["id"] for s in segs if s.get("segment_group_id") == g}
+            ids |= by_group.get(g, set())
             ids |= set((names.segment_groups.get(g) or {}).get("application_ids") or [])
-        named = {s["id"] for s in segs if s["id"] in ids}
-        chosen &= (set(x["id"] for x in segs) - named) if c.get("negated") else named
-    return [s for s in segs if s["id"] in chosen]
+        named = ids & all_ids
+        if c.get("negated"):
+            chosen = (all_ids - named) if chosen is None else (chosen - named)
+        else:
+            chosen = named if chosen is None else (chosen & named)
+    return [segs[k] for k in sorted(order[i] for i in (chosen if chosen is not None else all_ids))]
+
+
+def _segment_index(names: Names) -> Tuple[List[Dict[str, Any]], Set[str], Dict[Any, Set[str]], Dict[str, int]]:
+    """(enabled segments, their ids, their ids per segment group, their
+    order), worked out once per report: a rule naming a few segments then
+    costs those few, not a pass over every segment of the tenant."""
+    ix = getattr(names, "_segment_index", None)
+    if ix is None:
+        segs = [s for s in names.segments.values() if s.get("enabled", True)]
+        by_group: Dict[Any, Set[str]] = {}
+        for s in segs:
+            by_group.setdefault(s.get("segment_group_id"), set()).add(s["id"])
+        ix = (segs, {s["id"] for s in segs}, by_group, {s["id"]: k for k, s in enumerate(segs)})
+        names._segment_index = ix
+    return ix
 
 
 def _finding(fid: str, severity: str, title: str, obj: str, obj_type: str, obj_id: str, reason: str, fix: str) -> Dict[str, Any]:
