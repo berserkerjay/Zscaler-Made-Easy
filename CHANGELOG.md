@@ -5,6 +5,28 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-26
+
+### Security and regression review: 15 checks, every finding fixed, mapped to standards
+- **What you asked for.** Fifteen regression and vulnerability checks, run by as many agents as possible at once, each looping until nothing new is found, and every test following industry best practice and secure-by-design standards.
+- **How.** Fifteen agents in parallel, one per check, each on its own branch: run the check, reproduce each finding, fix the cause with a test that fails before the fix, re-run, until a full pass finds nothing new. Every new test opens with the controls it checks (OWASP ASVS 4.0.3 Level 2, OWASP Top 10 2021, CWE, WSTG, WCAG 2.2 AA, SLSA, OpenSSF Scorecard, NIST SSDF); `docs/SECURITY_TESTING.md` lists them by standard and CI fails when a QA test names none or the document is stale. Fixes follow CISA Secure by Design: secure defaults, deny by default, fail closed, least privilege.
+- **Highest-impact fixes.**
+  - **Writes:** every tenant write needs all four gates (write mode, a writer, the assessor named, the typed confirmation), checked before signing in; the migration wizard, fix recipes and pack import had gaps.
+  - **Login and session:** pages on other local ports could use the API; with the UI token off, look-alike loopback names passed; the SSO sign-in was not bound to the browser; unverified e-mails could make writers.
+  - **Secrets:** the AI-assistant tool argument could send the client secret to any host; encoded secrets in sign-in errors, webhook URLs in digests, and Client Connector passcodes are now masked; a forgotten secret no longer survives in the backup copy.
+  - **Outbound requests:** the fetcher no longer follows redirects to internal addresses or accepts parser tricks; the webhook no longer follows redirects; the OneAPI sign-in has a timeout.
+  - **Injection:** tenant names can no longer inject Terraform (comments, `${}`, `%{}`), HTML (operations preview, rule migrator) or Markdown; spreadsheet formulas from lists are neutralised.
+  - **Denial of service:** linear-time patterns on all user and tenant text, nesting caps, zip and tar bomb limits, large-tenant analyses that compare only the pairs that matter, uploads and reports off the event loop, bounded logs, jobs and stores.
+  - **Scope:** one tenant can no longer receive another tenant's cached read or console index; Browser security reads Cloud App Control only when it is in scope.
+  - **API:** no route answers 500 to malformed input; 422 errors never echo the body; error text is bounded.
+  - **Files:** everything the app writes is owner-only; uploads refuse DTDs in any encoding; no route reads a file named by a traversal id.
+  - **Browser extension:** it may stop only an export it started; messages are checked by sender; page text cannot break the badges.
+  - **Supply chain and CI:** CI tools are hash-locked; workflow tokens are least-privilege; checkout no longer leaves the token behind; local data is kept out of the container image; the update check no longer vouches for a fork.
+  - **Accessibility:** every text and button colour meets WCAG AA contrast in both themes; reduced motion stops scripted scrolling; no page scrolls sideways at 320 or 390 px, the results page with findings included.
+  - **Tests themselves:** the suite is hermetic and order-independent (no files left in the repo, app settings in the shell ignored, pacing on an injected clock, browsers on ports the OS picks); a Beacon status race that made tests flaky is fixed in the app.
+- **Needs the owner (GitHub settings).** Protect `main` (pull request required, the CI checks required, no force pushes); confirm Actions workflow permissions are read-only and Dependabot alerts are on.
+- **Verified.** Full suite 7,749 passed; every page and button in Chromium with no errors, external requests or writes.
+
 ## 2026-10-25
 
 ### Zscaler Made Easy: new name, SSL coverage, Improve my score, self-healing, browser security, Find anything and more
