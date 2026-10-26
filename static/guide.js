@@ -17,7 +17,9 @@ const GD_LS_MODE = 'zassess_guide_mode';
 const GD_LS_CONN = 'zassess_guide_conn';
 const GD_LS_DEPLOY = 'zassess_last_deploy';
 
-const _gdE = s => (typeof escapeHtml === 'function' ? escapeHtml(String(s == null ? '' : s)) : String(s == null ? '' : s));
+// The guide's own HTML escaper: it never depends on a global being there, so
+// a page that loads guide.js without index.html's escapeHtml still escapes.
+const _gdE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Authenticate only signs in: it obtains the token (or the classic API's
 // session) and reads nothing from the tenant, because every read counts
 // against the tenant's ZIA API rate limit. The tenant is read only by an
@@ -122,9 +124,9 @@ function _gdSteps() {
     {
       n: 6, title: 'Move the tenant to Evaluate All Rules',
       state: assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo',
-      what: 'By default ZIA stops at the first matching DLP rule, so a broad monitor rule near the top silently shadows every block rule below it. Evaluate All Rules lets every matching rule fire and log its own incident, which is what a layered policy (monitor + block + caution) needs. The Inline DLP Rule migration wizard reads the current mode, reorders the rules so the switch is safe, and shows you the plan before anything changes.',
+      what: 'By default ZIA stops at the first matching DLP rule, so a broad monitor rule near the top silently shadows every block rule below it. Evaluate All Rules lets every matching rule fire and log its own incident, which is what a layered policy (monitor + block + caution) needs. The Inline DLP rule migration wizard reads the current mode, reorders the rules so the switch is safe, and shows you the plan before anything changes.',
       need: 'Check 5.20 in the assessment says whether the tenant is already in Evaluate All Rules mode and whether the current order is safe to switch. The switch itself is made in the ZIA Admin Portal under Policy > Data Loss Prevention > Advanced Settings.',
-      status: 'Open the Inline DLP Rule migration card below the results and follow its five steps.',
+      status: 'Open the Inline DLP rule migration card below the results and follow its five steps.',
       actions: [{ label: 'Open Rule migration', fn: '_gdGoMigration()', kind: 'primary' }],
     },
     {
@@ -141,7 +143,7 @@ function _gdSteps() {
 // no longer an always-present section on the page.
 function _gdGoMigration() {
   const m = document.getElementById('migrateModal');
-  if (!m) { alert('The Inline DLP Rule migration wizard is not available on this page.'); return; }
+  if (!m) { alert('The Inline DLP rule migration wizard is not available on this page.'); return; }
   GD._migrateOpener = document.activeElement;   // focus goes back there on close
   m.style.display = 'block';
   document.body.style.overflow = 'hidden';
@@ -246,8 +248,8 @@ function _gdUpdateHelp() {
   const win = /^[A-Za-z]:[\\/]|^\\\\/.test(dir);
   const settings = win ? 'local_settings.bat' : 'local_settings.env';
   const cmd = win
-    ? 'cd /d "%USERPROFILE%" && (if exist "Zscaler Made Easy\\\\.git" (cd /d "%USERPROFILE%\\\\Zscaler Made Easy" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git && cd /d "%USERPROFILE%\\\\Zscaler Made Easy")) && call INSTALL_Zscaler_Assessment.bat && call UPDATE_Zscaler_Assessment.bat'
-    : 'cd ~ && git clone https://github.com/berserkerjay/DLP-Check.git && cd Zscaler Made Easy && ./install.sh && ./start.sh';
+    ? 'cd /d "%USERPROFILE%" && (if exist "Zscaler Made Easy\\\\.git" (cd /d "%USERPROFILE%\\\\Zscaler Made Easy" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git "Zscaler Made Easy" && cd /d "%USERPROFILE%\\\\Zscaler Made Easy")) && call INSTALL_Zscaler_Made_Easy.bat && call UPDATE_Zscaler_Made_Easy.bat'
+    : 'cd ~ && git clone https://github.com/berserkerjay/DLP-Check.git "Zscaler Made Easy" && cd "Zscaler Made Easy" && ./install.sh && ./start.sh';
   const where = win ? 'a Command Prompt' : 'Terminal';
   const does = win ? 'it clones the repository under your user folder, installs it and repoints the shortcuts' : 'it clones the repository into your home folder, installs it and starts it';
   _gdUpdateBox(`<div class="gd-upd-line">This copy was not installed with git (a ZIP download), so it cannot pull updates. The simple way: stop the app, download a fresh ZIP from GitHub, replace this folder keeping <code>${settings}</code>, and run the installer again. Or, once, run this in ${where}; ${does}, and Update app works from then on. Copy <code>${settings}</code> from the old folder afterwards.</div>
@@ -293,7 +295,7 @@ async function _gdUpdateApp() {
   if (!res.ok) { show(); if (btn) { btn.disabled = false; btn.textContent = 'Update app'; } return; }
   if (!res.updated) { show('<div class="gd-upd-line ok">Already on the latest build.</div>'); if (btn) { btn.disabled = false; btn.textContent = 'Update app'; } _gdUpdateCheck(); return; }
   lines.push({ name: `Restarting the app on build ${res.after}`, ok: null }); show();
-  let hint = 'Close the app with STOP_Zscaler_Assessment.bat and open it again from the shortcut.';
+  let hint = 'Close the app with STOP_Zscaler_Made_Easy.bat and open it again from the shortcut.';
   try {
     const r = await fetch('/api/app/restart', { method: 'POST' });
     const rs = await r.json().catch(() => ({}));
@@ -594,7 +596,7 @@ function _gdHelp(open) {
         <dt>Tenant profiles</dt><dd>One saved record per customer (details, scopes, applicable policy packs, optional remembered secret) with the history of every assessment.</dd>
         <dt>Deploy policy packs</dt><dd>Pick a policy pack, choose which DLP channels its engines go into (Inline Web, Endpoint DLP, SaaS Security, Outbound Email: a ticked channel the pack has no rule for gets a monitor-only rule with the pack's engines, an unticked one is skipped), preflight against the tenant, review the exact plan, enable write mode, approve, deploy. Every rule arrives disabled; existing objects are kept. <em>Where is this tenant?</em> on a policy pack card measures the journey. Every deployment is recorded under <em>Previous deployments</em>, where <em>Undo</em> deletes exactly what it created.</dd>
         <dt>Terraform hand-off</dt><dd>The same policy pack as a Terraform workspace for the official zscaler/zia provider, for platform teams that manage Zscaler as code. Gap mode imports what already exists so the first plan is exactly the gap. The repository also carries a validated workspace per pack under terraform/.</dd>
-        <dt>Evaluate All Rules (Inline DLP Rule migration)</dt><dd>Reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely; check 5.20 in the assessment says whether it is needed.</dd>
+        <dt>Evaluate All Rules (Inline DLP rule migration)</dt><dd>Reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely; check 5.20 in the assessment says whether it is needed.</dd>
         <dt>Bypass / non-inspected</dt><dd>Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection, with exports. Opens in its own tab.</dd>
         <dt>SSL inspection flow</dt><dd>Live flow diagram: for each DLP-relevant traffic class (file sharing, webmail, AI, social, uncategorised sites…) which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps are highlighted with the fix. Refresh or auto-refresh from the tab.</dd>
         <dt>DLP efficacy</dt><dd>Scores every custom dictionary and engine for false-positive risk and lets you test sample text against them.</dd>

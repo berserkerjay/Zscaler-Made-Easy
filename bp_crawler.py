@@ -59,6 +59,8 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, urljoin
+import safe_files
+
 
 
 # File extensions we never fetch — attachments, media, archives.
@@ -96,21 +98,9 @@ Progress = Optional[Callable[[Dict[str, Any]], None]]
 
 
 def _cache_path() -> str:
-    """Same OS conventions as the update-checker cache."""
-    try:
-        import sys
-        if sys.platform == "win32":
-            base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
-            d = os.path.join(base, "ZscalerAssessment")
-        elif sys.platform == "darwin":
-            d = os.path.expanduser("~/Library/Caches/ZscalerAssessment")
-        else:
-            d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
-                             "zscaler_assessment")
-        os.makedirs(d, exist_ok=True)
-    except Exception:
-        d = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(d, "bp_crawl_cache.json")
+    """In the update checker's per-user cache folder."""
+    from zscaler_update_check import data_dir
+    return os.path.join(data_dir(), "bp_crawl_cache.json")
 
 
 def _load_cache() -> Dict[str, Any]:
@@ -124,7 +114,7 @@ def _load_cache() -> Dict[str, Any]:
 
 def _save_cache(data: Dict[str, Any]) -> None:
     try:
-        with open(_cache_path(), "w", encoding="utf-8") as f:
+        with safe_files.private_open(_cache_path(), "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception:
         pass
@@ -146,14 +136,18 @@ def _host_of(url: str) -> str:
 
 
 def _is_allowed_for_source(url: str, source_host: str) -> bool:
-    """A URL is crawlable within a source only if (a) scheme is http/s
-    and (b) its host matches the source's declared host exactly. This
+    """A URL is crawlable within a source only if (a) the fetcher would
+    fetch it (zscaler_update_check._allowed_url: https, an allowlisted
+    host, no user name, no character URL parsers read differently) and
+    (b) its host matches the source's declared host exactly. This
     keeps a help.zscaler.com crawl from wandering onto www.zscaler.com
     (and vice versa) — each source is walked in isolation so the
-    credibility attribution stays honest."""
+    credibility attribution stays honest — and keeps a link the fetcher
+    would refuse out of the library."""
     try:
-        p = urlparse(url)
-        return p.scheme in ("http", "https") and (p.hostname or "").lower() == source_host
+        from zscaler_update_check import _allowed_url
+        host, refusal = _allowed_url(url)
+        return not refusal and host == source_host
     except Exception:
         return False
 

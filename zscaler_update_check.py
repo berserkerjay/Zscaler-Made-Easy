@@ -30,19 +30,21 @@ Design notes
   Next call reports what CHANGED, not the full content.
 - Gracefully degrades when offline: each source reports its own
   status (ok | error | changed | unchanged | new).
-- Cache location follows the OS convention:
-    Windows: %LOCALAPPDATA%\\ZscalerAssessment\\update_cache.json
-    macOS:   ~/Library/Caches/ZscalerAssessment/update_cache.json
-    Linux:   ~/.cache/zscaler_assessment/update_cache.json
+- Cache location follows the OS convention (see data_dir()):
+    Windows: %LOCALAPPDATA%\\ZscalerMadeEasy\\update_cache.json
+    macOS:   ~/Library/Caches/ZscalerMadeEasy/update_cache.json
+    Linux:   ~/.cache/zscaler_made_easy/update_cache.json
 
 Security
 --------
 - Fetches only from an allowlist of domains (help.zscaler.com,
-  developer.zscaler.com, pypi.org).
+  developer.zscaler.com, pypi.org), over https only, with no user name
+  in the URL and no character URL parsers read differently; redirects
+  are followed by _safe_get itself and every hop is checked the same way.
 - Short hard timeouts (8s connect + read).
 - No automatic upgrades — this module only REPORTS. Applying
   updates (e.g. pulling new git commits or upgrading the SDK) is
-  an explicit user action via UPDATE_Zscaler_Assessment.bat.
+  an explicit user action via UPDATE_Zscaler_Made_Easy.bat.
 """
 from __future__ import annotations
 
@@ -56,7 +58,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
+
+import safe_files
 
 # ── Sources to monitor ───────────────────────────────────────────────
 
@@ -166,24 +170,49 @@ ALLOWED_HOSTS = {
 }
 
 FETCH_TIMEOUT = 8  # seconds, both connect and read
-USER_AGENT = "Mozilla/5.0 (compatible; Zscaler-Assessment/1.0; +localhost)"  # browser-compatible prefix: some CDNs refuse unknown agents
+MAX_REDIRECTS = 5  # each hop is checked against the allowlist before it is fetched
+USER_AGENT = "Mozilla/5.0 (compatible; Zscaler-Made-Easy/1.0; +localhost)"  # browser-compatible prefix: some CDNs refuse unknown agents
 
 
 # ── Cache ────────────────────────────────────────────────────────────
 
-def _cache_path() -> str:
+# The per-user folder for the caches and the Beacon history: (current name,
+# name before the rename to Zscaler Made Easy). The old folder is moved to
+# the new name once, so the Beacon history and the crawler's finds are kept.
+DATA_DIR_NAMES = {"win32": ("ZscalerMadeEasy", "ZscalerAssessment"),
+                  "darwin": ("ZscalerMadeEasy", "ZscalerAssessment"),
+                  "other": ("zscaler_made_easy", "zscaler_assessment")}
+
+
+def data_dir() -> str:
+    """The per-user cache folder, owner-only (0700): under %LOCALAPPDATA% on
+    Windows, ~/Library/Caches on macOS, $XDG_CACHE_HOME or ~/.cache elsewhere.
+    A folder left under the old name is renamed to the new one; while it
+    cannot be (a file in it is open), it is used as it is. Falls back to the
+    app folder when no folder can be made."""
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
-        d = os.path.join(base, "ZscalerAssessment")
     elif sys.platform == "darwin":
-        d = os.path.expanduser("~/Library/Caches/ZscalerAssessment")
+        base = os.path.expanduser("~/Library/Caches")
     else:
-        d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "zscaler_assessment")
+        base = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+    name, legacy_name = DATA_DIR_NAMES.get(sys.platform, DATA_DIR_NAMES["other"])
+    d, legacy = os.path.join(base, name), os.path.join(base, legacy_name)
+    if not os.path.lexists(d) and os.path.isdir(legacy) and not os.path.islink(legacy):
+        try:
+            os.rename(legacy, d)
+        except OSError:
+            if not os.path.lexists(d):   # not moved by another process meanwhile
+                d = legacy
     try:
-        os.makedirs(d, exist_ok=True)
+        safe_files.private_makedirs(d)   # the per-user cache folder: owner-only (0700)
     except Exception:
         d = os.path.dirname(os.path.abspath(__file__))  # fallback to app dir
-    return os.path.join(d, "update_cache.json")
+    return d
+
+
+def _cache_path() -> str:
+    return os.path.join(data_dir(), "update_cache.json")
 
 
 def _load_cache() -> Dict[str, Any]:
@@ -196,13 +225,41 @@ def _load_cache() -> Dict[str, Any]:
 
 def _save_cache(data: Dict[str, Any]) -> None:
     try:
-        with open(_cache_path(), "w", encoding="utf-8") as f:
+        with safe_files.private_open(_cache_path(), "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception:
         pass  # best-effort; not fatal
 
 
 # ── Fetchers ─────────────────────────────────────────────────────────
+
+def _allowed_url(url: str) -> Tuple[str, str]:
+    """(host, "") when `url` may be fetched, else (host, why not): https
+    only, a host on ALLOWED_HOSTS, no user name or password, and no
+    character two URL parsers could read differently (a backslash,
+    whitespace or a control character). The host is checked as both
+    urllib.parse and urllib3 (the parser requests connects with) read it,
+    so 'https://127.0.0.1\\@help.zscaler.com/' cannot pass the check as
+    help.zscaler.com and then connect to 127.0.0.1."""
+    url = str(url or "")
+    if re.search(r"[\\\s\x00-\x1f\x7f]", url):
+        return "", "URL refused: it contains a backslash, a space or a control character"
+    try:
+        from urllib3.util import parse_url
+        parsed, other = urlparse(url), parse_url(url)
+    except Exception:  # noqa: BLE001 — a URL neither parser can read is refused
+        return "", "URL refused: it cannot be parsed"
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or (other.scheme or "").lower() != "https":
+        return host, f"only https:// URLs are fetched (got {parsed.scheme or 'none'}://)"
+    if parsed.username is not None or parsed.password is not None or other.auth:
+        return host, "URL refused: it carries a user name or password"
+    if host != (other.host or "").lower():
+        return host, "URL refused: its host is ambiguous"
+    if host not in ALLOWED_HOSTS:
+        return host, f"host not in allowlist: {host}"
+    return host, ""
+
 
 def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[bytes], int, str]:
     """Fetch URL via requests with strict allowlist + timeout. Returns (body, status, error).
@@ -214,9 +271,9 @@ def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[byt
     verify_tls: explicit override. None = use env-var default (verify),
                 False = skip TLS verification (for corporate TLS MITM).
     """
-    host = (urlparse(url).hostname or "").lower()
-    if host not in ALLOWED_HOSTS:
-        return None, 0, f"host not in allowlist: {host}"
+    host, refusal = _allowed_url(url)
+    if refusal:
+        return None, 0, refusal
     try:
         import requests
     except Exception:
@@ -243,14 +300,26 @@ def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[byt
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             except Exception:
                 pass
-        r = requests.get(
-            url,
-            timeout=FETCH_TIMEOUT,
-            headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/json,*/*"},
-            proxies=proxies,
-            verify=verify_tls,
-        )
-        return r.content, r.status_code, ""
+        # Redirects are followed here, not by requests: every hop must pass
+        # the same allowlist (an allowlisted page that redirects to
+        # 127.0.0.1, 169.254.169.254 or another site is refused, not read).
+        for _hop in range(MAX_REDIRECTS + 1):
+            r = requests.get(
+                url,
+                timeout=FETCH_TIMEOUT,
+                headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/json,*/*"},
+                proxies=proxies,
+                verify=verify_tls,
+                allow_redirects=False,
+            )
+            location = (r.headers or {}).get("Location") if getattr(r, "is_redirect", False) else None
+            if not location:
+                return r.content, r.status_code, ""
+            url = urljoin(url, location)
+            host, refusal = _allowed_url(url)
+            if refusal:
+                return None, 0, f"redirect refused ({refusal})"
+        return None, 0, f"more than {MAX_REDIRECTS} redirects"
     except requests.exceptions.SSLError as e:
         return None, 0, (f"TLS error (corporate TLS inspection?): {str(e)[:200]}. "
                          f"If a corporate proxy intercepts TLS, point REQUESTS_CA_BUNDLE at its root "

@@ -29,6 +29,8 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
+import safe_files
+
 
 STATE_FILE = "guidance_state.json"
 CONFIG_FILE = "checks_config.json"
@@ -205,10 +207,7 @@ def _read_json(path: str, default: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _write_json(path: str, data: Dict[str, Any]) -> None:
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, sort_keys=True)
-    os.replace(tmp, path)
+    safe_files.write_private_atomic(path, json.dumps(data, indent=2, sort_keys=True))
 
 
 def load_state() -> Dict[str, Any]:

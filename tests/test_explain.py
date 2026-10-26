@@ -23,7 +23,7 @@ def _read(name):
 # AND to explain.js, so nothing ships unexplained.
 TOOLBAR = {
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openShadowRulesTab()": "shadow",
-    "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openZpaTab()": "zpa", "openDevicePostureTab()": "posture",
+    "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openZpaTab()": "zpa", "openDevicePostureTab()": "deviceposture",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openZpaTab()": "zpa",
     "openBrowserSecurityTab()": "browser",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openSimpleMode()": "simple",
@@ -107,3 +107,21 @@ def test_help_page_and_guide_share_one_catalogue():
     js = _read("explain.js")
     for term in ("Client Connector (ZCC)", "PAC file", "Captive portal", "Z-Tunnel 1.0 / 2.0"):
         assert term in js
+
+
+def test_every_page_has_its_own_explainer_entry():
+    """WCAG 2.2 SC 3.3.2, 2.4.6 · each page's explainer is its own: no catalogue key is defined twice (a second X.posture
+    replaced Device posture with Improve my score), and every mapped path opens the entry whose href is that path."""
+    js = _read("explain.js")
+    keys = re.findall(r"^\s{2}X\.(\w+) = \{", js, re.M)
+    dupes = sorted({k for k in keys if keys.count(k) > 1})
+    assert not dupes, f"explain.js defines these keys twice: {dupes}"
+    mapping = dict(re.findall(r"'(/[^']*)': '(\w+)'", js.split("function keyFor", 1)[1].split("return map[p]", 1)[0]))
+    assert mapping, "keyFor has a path map"
+    for path, key in mapping.items():
+        block = js[js.index(f"  X.{key} = {{"):]
+        href = re.search(r"href: '([^']*)'", block[: block.index("\n  };")])
+        if href and href.group(1).startswith("/report/"):
+            assert href.group(1) == path, f"{path} opens X.{key}, whose href is {href.group(1)}"
+    order = re.search(r"DLP_EXPLAIN_ORDER = \[([^\]]+)\]", js).group(1)
+    assert "'deviceposture'" in order and "'posture'" in order

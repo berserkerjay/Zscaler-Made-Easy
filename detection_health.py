@@ -27,6 +27,7 @@ be overridden per request; nothing here writes to the tenant.
 """
 from __future__ import annotations
 
+import md_safe
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -830,6 +831,9 @@ def _not_measured(ev: Dict[str, Any]) -> None:
 
 
 def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
+    m = str   # cells: already inert (md_safe.escape_data below escapes pipes and line breaks once)
+    raw = rep
+    rep, label = md_safe.escape_data(rep), md_safe.text(label)   # rule, user and destination names: inert text
     s = rep.get("summary") or {}
     lines = [f"# FP/TP Detection Ratio{' — ' + label if label else ''}", "",
              f"FP/TP ratio {s.get('fp_tp_ratio', '–')} ({s.get('fp', 0)} not real : {s.get('tp', 0)} real"
@@ -848,34 +852,34 @@ def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
         lines.append("| Destination | Incidents | Users | Closed | Not real | Real | Telemetry | Exclude | Rules |")
         lines.append("|---|---:|---:|---:|---:|---:|---|---|---|")
         for h in rep["destinations"]:
-            lines.append(f"| {h['name']} | {h['incidents']} | {h.get('users', 0)} | {h['closed']} | {h['not_real']} | {h.get('real', 0)} | "
-                         f"{'yes' if h.get('telemetry') else ''} | {'yes' if h.get('exclude') else ''} | {', '.join((h.get('rules') or [])[:4])} |")
+            lines.append(f"| {m(h['name'])} | {h['incidents']} | {h.get('users', 0)} | {h['closed']} | {h['not_real']} | {h.get('real', 0)} | "
+                         f"{'yes' if h.get('telemetry') else ''} | {'yes' if h.get('exclude') else ''} | {m(', '.join((h.get('rules') or [])[:4]))} |")
         lines.append("")
     if rep.get("users"):
         lines.append("## Who is transacting")
         lines.append("| User | Department | Incidents | Closed | Not real | Real | Top destinations |")
         lines.append("|---|---|---:|---:|---:|---:|---|")
         for u in rep["users"]:
-            lines.append(f"| {u['name']} | {u.get('department') or ''} | {u['incidents']} | {u['closed']} | {u['not_real']} | {u.get('real', 0)} | "
-                         f"{', '.join(f'{n} ({c})' for n, c in (u.get('destinations') or []))} |")
+            lines.append(f"| {m(u['name'])} | {m(u.get('department') or '')} | {u['incidents']} | {u['closed']} | {u['not_real']} | {u.get('real', 0)} | "
+                         f"{m(', '.join(f'{n} ({c})' for n, c in (u.get('destinations') or [])))} |")
         lines.append("")
     lines.append("## Rules")
     lines.append("| Rule | Channel | State | Incidents | Closed | Not real | FP % | Status |")
     lines.append("|---|---|---|---:|---:|---:|---:|---|")
     for r in rep.get("rules", []):
-        lines.append(f"| {r['name']} | {r.get('channel') or ''} | {r.get('state') or ''} | {r['incidents']} | {r['closed']} | {r['not_real']} | "
-                     f"{r['fp_rate_pct'] if r['fp_rate_pct'] is not None else '–'} | {r['status']} |")
+        lines.append(f"| {m(r['name'])} | {m(r.get('channel') or '')} | {m(r.get('state') or '')} | {r['incidents']} | {r['closed']} | {r['not_real']} | "
+                     f"{r['fp_rate_pct'] if r['fp_rate_pct'] is not None else '–'} | {m(r['status'])} |")
     lines.append("")
     lines.append("## Dictionaries")
     lines.append("| Dictionary | Incidents | Closed | Not real | FP % | Why it is noisy | Fix |")
     lines.append("|---|---:|---:|---:|---:|---|---|")
     for d in rep.get("dictionaries", []):
-        lines.append(f"| {d['name']} | {d['incidents']} | {d['closed']} | {d['not_real']} | {d['fp_rate_pct'] if d['fp_rate_pct'] is not None else '–'} | "
-                     f"{' '.join(d.get('why') or [])} | {d.get('fix') or ''} |")
+        lines.append(f"| {m(d['name'])} | {d['incidents']} | {d['closed']} | {d['not_real']} | {d['fp_rate_pct'] if d['fp_rate_pct'] is not None else '–'} | "
+                     f"{m(' '.join(d.get('why') or []))} | {m(d.get('fix') or '')} |")
     if rep.get("errors"):
         lines += ["", "## Read problems"] + [f"- {e}" for e in rep["errors"]]
     import dlp_analysis
-    lines.extend(dlp_analysis.markdown(rep))
+    lines.extend(dlp_analysis.markdown(raw))
     return "\n".join(lines)
 
 

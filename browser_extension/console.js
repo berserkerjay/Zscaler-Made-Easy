@@ -70,8 +70,10 @@
     while ((n = walker.nextNode()) && seen++ < MAX_NODES && badged.size < MAX_BADGES) {
       const t = (n.nodeValue || '').trim();
       if (t.length < 2 || t.length > 255) continue;
-      const hit = names[t];
-      if (!hit) continue;
+      // Page text is untrusted: only an own entry of the map counts, so text
+      // such as "constructor" or "__proto__" is never mistaken for a name.
+      const hit = Object.prototype.hasOwnProperty.call(names, t) ? names[t] : null;
+      if (!Array.isArray(hit) || !hit.length) continue;
       const el = n.parentElement;
       // The whole element must be the name (not a sentence that mentions it).
       if (badged.has(el) || el.querySelector('[data-dlpcheck-badge]') || (el.textContent || '').trim() !== t
@@ -88,13 +90,14 @@
   async function load() {
     try {
       const res = await chrome.runtime.sendMessage({ type: 'names' });
-      names = res && res.names ? res.names : null;
+      names = res && res.names && typeof res.names === 'object' ? res.names : null;
     } catch (e) { names = null; }
     clear(); later();
   }
 
-  chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-    if (!msg) return false;
+  chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+    // Only this extension's own pages (the side panel) talk to the badges.
+    if (!msg || !sender || sender.id !== chrome.runtime.id || sender.tab) return false;
     if (msg.type === 'list') { reply({ keys: [...new Set([...badged.values()].flat())] }); return false; }
     if (msg.type === 'refresh') { load(); return false; }
     return false;

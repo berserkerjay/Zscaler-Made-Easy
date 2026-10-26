@@ -2,7 +2,10 @@
 hand-edited files, restart scheduling, and the endpoints."""
 from __future__ import annotations
 
+import ntpath
 import os
+import re
+import shlex
 import subprocess
 import time
 
@@ -204,25 +207,25 @@ def test_update_switches_back_to_main_and_installs_deps(repos, monkeypatch):
 def test_hand_edited_files_are_preserved_and_settings_move_to_local_settings(repos):
     app = str(repos["app"])
     # Older instructions: proxy / CA bundle set inside the start script.
-    (repos["work"] / "START_Zscaler_Assessment.bat").write_text("@echo off\nREM set HTTPS_PROXY=http://proxy:8080\npython dlp_api_server.py\n")
+    (repos["work"] / "START_Zscaler_Made_Easy.bat").write_text("@echo off\nREM set HTTPS_PROXY=http://proxy:8080\npython dlp_api_server.py\n")
     _git(repos["work"], "add", "."); _git(repos["work"], "commit", "-q", "-m", "start script"); _git(repos["work"], "push", "-q", "origin", "HEAD:main")
     _git(app, "pull", "-q", "--ff-only", "origin", "main")
-    (repos["app"] / "START_Zscaler_Assessment.bat").write_text(
+    (repos["app"] / "START_Zscaler_Made_Easy.bat").write_text(
         "@echo off\nset REQUESTS_CA_BUNDLE=C:\\certs\\corp-root.pem\nset HTTPS_PROXY=http://proxy.corp:8080\npython dlp_api_server.py\n")
     (repos["app"] / "requirements.txt").write_text("requests>=2.28.0\n# my note\n")   # an unrelated hand edit
     v2 = _push_v2(repos["work"])
     st = au.status(app)
-    assert st["can_update"] and sorted(st["dirty_files"]) == ["START_Zscaler_Assessment.bat", "requirements.txt"] and "keeps these edits" in st["reason"]
+    assert st["can_update"] and sorted(st["dirty_files"]) == ["START_Zscaler_Made_Easy.bat", "requirements.txt"] and "keeps these edits" in st["reason"]
     res = au.update(app, install_deps=False)
     assert res["ok"] and res["updated"] and res["after"] == v2, res
     names = [s["name"] for s in res["steps"]]
     assert names == ["Check this folder", "Move settings to local_settings.bat", "Set aside hand-edited files", "Fetch from GitHub",
                      "Pull latest code", "Verify against GitHub: skipped", "Re-apply hand-edited files"] and all(s["ok"] for s in res["steps"] if s["name"] != "Verify against GitHub: skipped")
-    assert res["migrated"] == ["START_Zscaler_Assessment.bat: REQUESTS_CA_BUNDLE", "START_Zscaler_Assessment.bat: HTTPS_PROXY"]
+    assert res["migrated"] == ["START_Zscaler_Made_Easy.bat: REQUESTS_CA_BUNDLE", "START_Zscaler_Made_Easy.bat: HTTPS_PROXY"]
     ls = (repos["app"] / "local_settings.bat").read_text()
     assert "set REQUESTS_CA_BUNDLE=C:\\certs\\corp-root.pem" in ls and "set HTTPS_PROXY=http://proxy.corp:8080" in ls and ls.startswith("@echo off")
     # The start script is the committed one again; the unrelated edit survived the pull.
-    assert "REQUESTS_CA_BUNDLE" not in (repos["app"] / "START_Zscaler_Assessment.bat").read_text()
+    assert "REQUESTS_CA_BUNDLE" not in (repos["app"] / "START_Zscaler_Made_Easy.bat").read_text()
     assert "# my note" in (repos["app"] / "requirements.txt").read_text() and res["preserved"] == ["requirements.txt"]
     assert (repos["app"] / "dlp_api_server.py").read_text() == "print('v2')\n"
     # Second update with the same edit still present: nothing lost, nothing to migrate twice.
@@ -323,17 +326,17 @@ def test_not_a_checkout_and_no_git(tmp_path, monkeypatch):
 def test_restart_command_and_dry_run(tmp_path, monkeypatch):
     app = str(tmp_path)
     monkeypatch.setattr(au.sys, "platform", "win32")
-    (tmp_path / "START_Zscaler_Assessment.vbs").write_text("x")
+    (tmp_path / "START_Zscaler_Made_Easy.vbs").write_text("x")
     cmd = au.restart_command(app)
     # The launcher runs in batch mode (no Windows Script Host dialogs) with
     # /restart so it waits for the port; never `cmd /c timeout`, which
     # refuses to run without a console and silently never relaunched.
-    assert cmd[0] == "wscript.exe" and "//B" in cmd and cmd[-2].endswith("START_Zscaler_Assessment.vbs") and cmd[-1] == "/restart"
+    assert cmd[0] == "wscript.exe" and "//B" in cmd and cmd[-2].endswith("START_Zscaler_Made_Easy.vbs") and cmd[-1] == "/restart"
     assert "timeout" not in " ".join(cmd)
-    (tmp_path / "START_Zscaler_Assessment.vbs").unlink()
+    (tmp_path / "START_Zscaler_Made_Easy.vbs").unlink()
     cmd = au.restart_command(app)
-    assert cmd[:2] == ["cmd", "/c"] and "ping -n 4" in cmd[2] and "START_Zscaler_Assessment.bat" in cmd[2]
-    assert "STOP_Zscaler_Assessment.bat" in au.manual_restart_hint(app)
+    assert cmd[:2] == ["cmd", "/c"] and "ping -n 4" in cmd[2] and "START_Zscaler_Made_Easy.bat" in cmd[2]
+    assert "STOP_Zscaler_Made_Easy.bat" in au.manual_restart_hint(app)
     monkeypatch.setattr(au.sys, "platform", "linux")
     cmd = au.restart_command(app)
     assert cmd[:2] == ["sh", "-c"] and "dlp_api_server.py" in cmd[2] and "sleep 3" in cmd[2]
@@ -354,7 +357,7 @@ def test_restart_command_and_dry_run(tmp_path, monkeypatch):
 
 
 def test_launcher_never_shows_a_script_host_dialog():
-    vbs = open(os.path.join(ROOT, "START_Zscaler_Assessment.vbs"), encoding="utf-8").read()
+    vbs = open(os.path.join(ROOT, "START_Zscaler_Made_Easy.vbs"), encoding="utf-8").read()
     assert "On Error Resume Next" in vbs and "launcher.log" in vbs and "/restart" in vbs
     assert 'WScript.Arguments' in vbs and "Do While Pinging()" in vbs and "WScript.Quit 0" in vbs
     # The .gitignore keeps the launcher log out of commits.
@@ -490,3 +493,177 @@ def test_only_the_allowed_branches_are_accepted_and_a_missing_one_is_refused_bef
     assert [b["name"] for b in au.branch_choices(app)] == ["main", "qa", "dev"]
     assert au.current_branch(app) == "main" and (repos["app"] / "dlp_api_server.py").read_text() == "print('v1')\n"
     assert au.main(["--dir", app, "--status", "--branch", "main"]) == 0
+
+
+# ── Restart and shortcuts across the rename to Zscaler Made Easy ──────
+#
+# A build from before the rename keeps running until it restarts. Its
+# Update app restart runs START_Zscaler_Assessment.vbs (or, without it,
+# START_Zscaler_Assessment.bat) from the freshly pulled folder, and its
+# desktop shortcut runs the same .vbs. Those names are now shims that hand
+# over to the renamed launchers. Windows itself runs them in
+# tools/verify_native_install.py; here the shims are evaluated the way
+# Windows Script Host and cmd would expand them.
+
+WIN_APP = r"C:\Users\Jo O'Neil & Co\Zscaler Made Easy"
+
+
+def _old_build_restart_command(app_dir):
+    """What app_update.restart_command did before the rename (Windows)."""
+    vbs = ntpath.join(app_dir, "START_Zscaler_Assessment.vbs")
+    bat = ntpath.join(app_dir, "START_Zscaler_Assessment.bat")
+    if os.path.isfile(os.path.join(ROOT, ntpath.basename(vbs))):
+        return ["wscript.exe", "//B", "//Nologo", vbs, "/restart"]
+    return ["cmd", "/c", f'ping -n 4 127.0.0.1 >nul && "{bat}"']
+
+
+def _vbs_expr(expr, names):
+    """Evaluate a VBScript string expression of literals, names and &."""
+    out = []
+    for tok in re.findall(r'"(?:[^"]|"")*"|[A-Za-z_][\w.]*(?:\(i\))?|&', expr):
+        if tok == "&":
+            continue
+        out.append(tok[1:-1].replace('""', '"') if tok.startswith('"') else names[tok])
+    return "".join(out)
+
+
+def _run_vbs_shim(app_dir, args):
+    """The command line START_Zscaler_Assessment.vbs runs, and whether it waits."""
+    src = open(os.path.join(ROOT, "START_Zscaler_Assessment.vbs"), encoding="utf-8").read()
+    target = re.search(r'launcher = fso\.BuildPath\(fso\.GetParentFolderName\(WScript\.ScriptFullName\), "([^"]+)"\)', src).group(1)
+    names = {"launcher": ntpath.join(app_dir, target), "args": ""}
+    loop = re.search(r"For i = 0 To WScript\.Arguments\.Count - 1\n\s*args = (.+)\nNext", src).group(1)
+    for a in args:
+        names["args"] = _vbs_expr(loop, {**names, "WScript.Arguments(i)": a})
+    run = re.search(r"rc = sh\.Run\((.+), 0, (True|False)\)\n", src)
+    return _vbs_expr(run.group(1), names), run.group(2) == "True", src
+
+
+def _run_bat_shim(name, app_dir, args):
+    """The one command a .bat shim runs, with %~dp0 and %* expanded as cmd does."""
+    lines = [l for l in open(os.path.join(ROOT, name), encoding="utf-8").read().splitlines()
+             if l.strip() and not l.lstrip().upper().startswith(("REM ", "@ECHO OFF"))]
+    assert len(lines) == 1, "a shim runs exactly one command"
+    return lines[0].replace("%~dp0", app_dir + "\\").replace("%*", " ".join(args))
+
+
+def test_an_old_builds_update_restart_reaches_the_renamed_launcher(monkeypatch, tmp_path):
+    # Arrange: the old build finds its launcher name in the pulled folder.
+    old = _old_build_restart_command(WIN_APP)
+    assert old[:3] == ["wscript.exe", "//B", "//Nologo"] and ntpath.basename(old[3]) == "START_Zscaler_Assessment.vbs"
+    # Act: the shim builds the next command line from its own folder and arguments.
+    line, waits, src = _run_vbs_shim(ntpath.dirname(old[3]), old[4:])
+    # Assert: the renamed launcher, with /restart, the same one a new build restarts through.
+    argv = shlex.split(line)
+    monkeypatch.setattr(au.sys, "platform", "win32")
+    (tmp_path / "START_Zscaler_Made_Easy.vbs").write_text("x")
+    new = au.restart_command(str(tmp_path))
+    assert argv == ["wscript.exe", "//B", "//Nologo", ntpath.join(WIN_APP, "START_Zscaler_Made_Easy.vbs"), "/restart"]
+    assert argv[:3] == new[:3] and ntpath.basename(argv[3]) == os.path.basename(new[3]) and argv[4:] == new[4:]
+    assert waits and "WScript.Quit rc" in src, "the shim waits and passes the launcher's exit code on"
+    assert "On Error Resume Next" in src, "no Windows Script Host dialog from the shim either"
+
+
+def test_an_old_desktop_shortcut_reaches_the_renamed_launcher():
+    # An old shortcut runs:  wscript.exe "<app>\START_Zscaler_Assessment.vbs"  with no arguments.
+    line, waits, _ = _run_vbs_shim(WIN_APP, [])
+    assert shlex.split(line) == ["wscript.exe", "//B", "//Nologo", ntpath.join(WIN_APP, "START_Zscaler_Made_Easy.vbs")]
+
+
+def test_an_old_builds_restart_fallback_reaches_the_renamed_batch_launcher(monkeypatch):
+    # Arrange: an old build without the .vbs falls back to the batch file.
+    monkeypatch.setattr(os.path, "isfile", lambda p: False)
+    old = _old_build_restart_command(WIN_APP)
+    monkeypatch.undo()
+    bat = re.search(r'&& "(.+)"$', old[2]).group(1)
+    assert ntpath.basename(bat) == "START_Zscaler_Assessment.bat"
+    # Act
+    line = _run_bat_shim(ntpath.basename(bat), ntpath.dirname(bat), [])
+    # Assert: handed over (no call, so cmd never reads the shim again) to the renamed launcher.
+    assert line == '"' + ntpath.join(WIN_APP, "START_Zscaler_Made_Easy.bat") + '" '
+    assert not line.lower().startswith("call ")
+
+
+@pytest.mark.parametrize("shim, target, args", [
+    ("START_Zscaler_Assessment.bat", "START_Zscaler_Made_Easy.bat", ["--console"]),
+    ("UPDATE_Zscaler_Assessment.bat", "UPDATE_Zscaler_Made_Easy.bat", ["dev"]),
+])
+def test_old_batch_names_pass_their_arguments_on(shim, target, args):
+    line = _run_bat_shim(shim, WIN_APP, args)
+    assert line == '"' + ntpath.join(WIN_APP, target) + '" ' + " ".join(args)
+    assert os.path.isfile(os.path.join(ROOT, target))
+
+
+def test_new_builds_restart_through_the_renamed_launcher_only(monkeypatch, tmp_path):
+    monkeypatch.setattr(au.sys, "platform", "win32")
+    (tmp_path / "START_Zscaler_Made_Easy.vbs").write_text("x")
+    (tmp_path / "START_Zscaler_Assessment.vbs").write_text("x")
+    assert os.path.basename(au.restart_command(str(tmp_path))[3]) == "START_Zscaler_Made_Easy.vbs"
+    assert "START_Zscaler_Made_Easy" in au.manual_restart_hint(str(tmp_path))
+
+
+def test_shortcut_refresh_is_windows_only(monkeypatch, tmp_path):
+    monkeypatch.setattr(au.sys, "platform", "linux")
+    monkeypatch.setattr(au.subprocess, "run", lambda *a, **k: pytest.fail("no PowerShell off Windows"))
+    assert au.refresh_shortcuts(str(tmp_path)) is None
+
+
+def test_shortcut_refresh_passes_the_folder_in_the_environment_not_the_script(monkeypatch, tmp_path):
+    """ASVS V5.3.8 · CWE-78 · A03:2021: a folder name with quotes or an ampersand cannot change what PowerShell runs."""
+    # Arrange
+    app = tmp_path / "Jo's & \"Co\" $(calc)"
+    app.mkdir()
+    seen = {}
+    def fake_run(cmd, **kw):
+        seen.update(cmd=cmd, **kw)
+        return subprocess.CompletedProcess(cmd, 0, "Desktop\nPrograms\n", "")
+    monkeypatch.setattr(au.sys, "platform", "win32")
+    monkeypatch.setattr(au.subprocess, "run", fake_run)
+    # Act
+    out = au.refresh_shortcuts(str(app))
+    # Assert
+    assert seen["cmd"] == ["powershell", "-NoProfile", "-NonInteractive", "-Command", au.SHORTCUT_SCRIPT]
+    assert str(app) not in au.SHORTCUT_SCRIPT and seen["env"]["DLPCHECK_SHORTCUT_APP_DIR"] == str(app)
+    assert seen["creationflags"] == 0x08000000 and seen["timeout"] == au.SHORTCUT_TIMEOUT
+    assert out == {"ok": True, "detail": "Rewrote the desktop and Start Menu shortcut as Zscaler Made Easy"}
+
+
+def test_shortcut_script_replaces_only_this_folders_shortcut_and_removes_the_old_name_last():
+    s = au.SHORTCUT_SCRIPT
+    assert "$env:DLPCHECK_SHORTCUT_APP_DIR" in s and '"' not in s
+    assert "'Zscaler Made Easy.lnk'" in s and "'Zscaler Assessment.lnk'" in s and "'START_Zscaler_Made_Easy.vbs'" in s
+    assert "WorkingDirectory.TrimEnd('\\') -eq $app" in s, "a shortcut of another copy of the app is left alone"
+    assert "if ($ours.Count -eq 0) { continue }" in s, "a shortcut the user deleted is not brought back"
+    assert s.index("$lnk.Save()") < s.index("if ((Test-Path -LiteralPath $new) -and ($old -in $ours)) { Remove-Item -LiteralPath $old }")
+    assert s.count("Remove-Item") == 1
+
+
+@pytest.mark.parametrize("result, expected", [
+    (subprocess.CompletedProcess([], 0, "", ""), "No shortcut of this folder to rewrite"),
+    (subprocess.CompletedProcess([], 0, "Desktop\n", ""), "Rewrote the desktop shortcut as Zscaler Made Easy"),
+    (subprocess.CompletedProcess([], 1, "", "Cannot create type. Only core types are supported in this language mode."), "left as they were"),
+])
+def test_shortcut_refresh_reports_what_it_did(monkeypatch, tmp_path, result, expected):
+    monkeypatch.setattr(au.sys, "platform", "win32")
+    monkeypatch.setattr(au.subprocess, "run", lambda *a, **k: result)
+    out = au.refresh_shortcuts(str(tmp_path))
+    assert out["ok"] is (result.returncode == 0) and expected in out["detail"]
+
+
+def test_shortcut_refresh_never_raises(monkeypatch, tmp_path):
+    def missing(*a, **k):
+        raise FileNotFoundError("powershell")
+    monkeypatch.setattr(au.sys, "platform", "win32")
+    monkeypatch.setattr(au.subprocess, "run", missing)
+    out = au.refresh_shortcuts(str(tmp_path))
+    assert out["ok"] is False and "left as they were" in out["detail"]
+
+
+def test_the_in_app_update_refreshes_the_shortcuts_as_a_soft_step(repos, monkeypatch):
+    app = str(repos["app"])
+    _push_v2(repos["work"])
+    calls = []
+    monkeypatch.setattr(au, "refresh_shortcuts", lambda d: calls.append(d) or {"ok": False, "detail": "PowerShell could not"})
+    res = au.update(app, install_deps=False)
+    step = res["steps"][-1]
+    assert calls == [app] and res["ok"] and step["name"] == "Refresh the desktop shortcuts" and step["soft"] and not step["ok"]

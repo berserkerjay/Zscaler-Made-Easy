@@ -51,7 +51,7 @@
   .dz-step.is-active { background: var(--card-solid); color: var(--text); font-weight: 600; box-shadow: var(--shadow-sm); }
   .dz-step.is-active .n { background: var(--btn, #2563eb); color: #fff; }
   .dz-step.is-done { color: var(--pass); }
-  .dz-step.is-done .n { background: var(--pass); color: #fff; }
+  .dz-step.is-done .n { background: var(--btn-ok); color: #fff; }
 
   .dz-body { padding: var(--sp-3) var(--sp-6) var(--sp-5); overflow: auto; flex: 1 1 auto; min-height: 0; }
   .dz-foot {
@@ -75,7 +75,7 @@
   .dz-btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .dz-btn.primary { background: var(--btn, #2563eb); border-color: transparent; color: #fff; }
   .dz-btn.primary:hover:not(:disabled) { background: var(--btn-hover, #1d4ed8); }
-  .dz-btn.danger { background: var(--fail); border-color: transparent; color: #fff; }
+  .dz-btn.danger { background: var(--btn-danger); border-color: transparent; color: #fff; }
   .dz-btn.quiet { background: transparent; border-color: transparent; color: var(--accent); }
 
   /* Pack cards */
@@ -287,7 +287,7 @@
   .dz-stage .nm { font-weight: 600; font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dz-stage .ct { margin-left: auto; font-size: 0.68rem; color: var(--dim); }
   .dz-stage.done { border-color: var(--pass); color: var(--text); }
-  .dz-stage.done .n { background: var(--pass); color: #fff; }
+  .dz-stage.done .n { background: var(--btn-ok); color: #fff; }
   .dz-stage.cur { border-color: var(--accent); color: var(--text); background: var(--accent-tint); }
   .dz-stage.cur .n { background: var(--btn, #2563eb); color: #fff; }
   .dz-journey .counts { color: var(--text); }

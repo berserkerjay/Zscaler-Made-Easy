@@ -147,7 +147,8 @@ what you get, what to do next.
   shadowed". Read-only; Stop ends the read at once.
 - **Browser security** — Zscaler Zero Trust Browser and ZIA Browser
   Control, read only as far as the Scope page allows (ZIA platform for
-  ZIA, ZPA for ZPA with a OneAPI API client and the customer ID): every
+  ZIA, its Cloud App Control rules only when Cloud App Control is marked
+  Zscaler, ZPA for ZPA with a OneAPI API client and the customer ID): every
   isolation profile's controls (copy and paste, upload and download,
   printing, watermark, debug mode, local rendering, session persistence)
   beside the URL filtering, Cloud App Control and ZPA isolation rules that

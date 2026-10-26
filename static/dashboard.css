@@ -10,14 +10,14 @@ body.db-layout .container > header, body.db-layout .container > main { max-width
 #dbSidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--db-w); z-index: 900; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) var(--sp-3) var(--sp-3); overflow-y: auto; overscroll-behavior: contain;
   background: var(--card); border-right: 1px solid var(--border); }
 .db-brand { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); }
-.db-mark { width: 36px; height: 36px; border-radius: var(--r-md); display: grid; place-items: center; font-weight: 700; font-size: var(--fs-title3); color: #fff; background: var(--accent); }
+.db-mark { width: 36px; height: 36px; border-radius: var(--r-md); display: grid; place-items: center; font-weight: 700; font-size: var(--fs-title3); color: #fff; background: var(--btn); }
 .db-brand-t { font-weight: 600; font-size: var(--fs-headline); line-height: 1.15; }
 .db-brand-s { font-size: var(--fs-caption); color: var(--dim); letter-spacing: 0.05em; text-transform: uppercase; }
 .db-nav { display: grid; gap: 2px; }
 .db-nav-l, #dbSidebar .tool-group-l { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); padding: var(--sp-3) var(--sp-2) var(--sp-1); }
 .db-item, #dbSidebar .db-sections .btn { display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: var(--ctl-md); padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); border: 1px solid transparent; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-subhead); font-weight: 500; text-align: left; cursor: pointer; white-space: normal; justify-content: flex-start; transition: background 0.15s var(--ease, ease), color 0.15s var(--ease, ease); }
 .db-item:hover, #dbSidebar .db-sections .btn:hover { color: var(--text); background: var(--well); border-color: transparent; transform: none; }
-.db-item[aria-current="page"] { color: #fff; background: var(--accent); }
+.db-item[aria-current="page"] { color: #fff; background: var(--btn); }
 .db-item .db-ico, #dbSidebar .db-sections .btn > span[aria-hidden] { width: 1.5rem; text-align: center; flex: none; font-size: 1rem; }
 #dbSidebar .tool-group { display: grid; gap: 2px; padding: 0; border: 0; background: transparent; }
 .db-sections { display: flex; flex-direction: column; gap: var(--sp-1); }
@@ -66,7 +66,7 @@ body.db-layout #stepBar { margin-left: 0; margin-right: 0; max-width: none; }
 .db-tile { padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); position: relative; overflow: hidden; }
 .db-tile.glow::after { display: none; }
 .db-tile-t { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); margin-bottom: var(--sp-3); }
-.db-ring { display: flex; align-items: center; gap: var(--sp-4); }
+.db-ring { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); }   /* at 320px the score text goes under the ring, never past the edge */
 .db-ring svg { width: 132px; height: 132px; flex: none; transform: rotate(-90deg); }
 .db-ring .track { fill: none; stroke: var(--well-2); stroke-width: 10; }
 .db-ring .arc { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.8s var(--ease, ease); }
@@ -78,7 +78,7 @@ body.db-layout #stepBar { margin-left: 0; margin-right: 0; max-width: none; }
 .db-band { display: flex; gap: var(--sp-1); margin-top: var(--sp-4); flex-wrap: wrap; }
 .db-band span { flex: 1 1 auto; text-align: center; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); font-size: var(--fs-caption); font-weight: 600; color: var(--dim); background: var(--well); border: 1px solid transparent; }
 .db-band span.done { color: var(--text); background: var(--accent-tint); }
-.db-band span.now { color: #fff; background: var(--accent); }
+.db-band span.now { color: #fff; background: var(--btn); }
 body.theme-light .db-band span.now { color: #fff; }
 .db-comp-n { font-size: var(--fs-title1); font-weight: 700; line-height: 1; }
 .db-comp-s { font-size: var(--fs-footnote); color: var(--dim); }

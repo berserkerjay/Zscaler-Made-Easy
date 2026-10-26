@@ -20,6 +20,8 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+import safe_files
+
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LIMIT = 200
 UNDOABLE_KINDS = ("policy", "app_group", "engine", "dictionary")
@@ -50,7 +52,7 @@ def _read() -> Dict[str, Any]:
 def _write(data: Dict[str, Any]) -> None:
     p = store_path()
     d = os.path.dirname(p) or "."
-    os.makedirs(d, exist_ok=True)
+    safe_files.private_makedirs(d)
     fd, tmp = tempfile.mkstemp(prefix=".deployments-", dir=d)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

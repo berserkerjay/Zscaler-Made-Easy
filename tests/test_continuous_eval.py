@@ -114,7 +114,7 @@ def test_quiet_run_is_not_noteworthy_and_notifies_only_when_told(tmp_path, monke
         def send_message(self, msg): sent["subject"] = msg["Subject"]; sent["to"] = msg["To"]
     monkeypatch.setattr(ce.smtplib, "SMTP", _SMTP)
     posted = {}
-    monkeypatch.setattr("requests.post", lambda url, json=None, timeout=0: (posted.update({"url": url, "text": json["text"]}) or types.SimpleNamespace(status_code=200, text="ok")))
+    monkeypatch.setattr("requests.post", lambda url, json=None, timeout=0, allow_redirects=True: (posted.update({"url": url, "text": json["text"], "allow_redirects": allow_redirects}) or types.SimpleNamespace(status_code=200, text="ok")))
     monkeypatch.setenv("DLP_CHECK_NOTIFY", "always")
     monkeypatch.setenv("DLP_CHECK_SMTP_HOST", "smtp.example.test"); monkeypatch.setenv("DLP_CHECK_DIGEST_TO", "soc@example.test"); monkeypatch.setenv("DLP_CHECK_SMTP_USER", "bot")
     monkeypatch.setenv("DLP_CHECK_DIGEST_WEBHOOK", "https://example.webhook.office.com/webhookb2/abc")

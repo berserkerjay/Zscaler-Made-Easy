@@ -34,6 +34,8 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
+import safe_files
+
 try:  # POSIX
     import fcntl  # type: ignore
 except ImportError:  # pragma: no cover - Windows
@@ -59,8 +61,13 @@ MAX_COMMENTS = 100
 MAX_COMMENT_LEN = 2000
 MAX_TODOS = 100
 MAX_TODO_LEN = 500
+# The whole store, as compact JSON. The caps above multiply out to far more
+# (tenants x notes x comments): every change rewrites the store under one
+# lock, so a store of hundreds of megabytes would stall every note request.
+MAX_STORE_BYTES = 8 * 1024 * 1024
 
 ACTIONS = ("set_tags", "add_tag", "remove_tag", "add_comment", "delete_comment", "add_todo", "set_todo", "delete_todo")
+_GROWS = ("set_tags", "add_tag", "add_comment", "add_todo")   # the changes that can make the store bigger
 
 _KIND_RE = re.compile(r"^[a-z][a-z0-9_]{0,%d}$" % (MAX_KIND_LEN - 1))
 # A tag: a word, then words, spaces and a few separators (no quotes, no
@@ -104,7 +111,7 @@ def _locked() -> Iterator[None]:
     read-modify-write never interleaves with another thread or process."""
     with _LOCK:
         p = store_path()
-        os.makedirs(os.path.dirname(os.path.abspath(p)) or ".", exist_ok=True)
+        safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)) or ".")
         fd = os.open(p + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
         try:
             if fcntl is not None:
@@ -373,6 +380,8 @@ def apply(tenant: str, kind: str, ref: str, action: str, *, by: str, label: str 
         else:
             notes[nid] = note
             result = dict(_copy(note), tenant=tenant)
+        if action in _GROWS and len(json.dumps(data, separators=(",", ":"))) > MAX_STORE_BYTES:
+            raise NotesError(f"the notes store is full ({MAX_STORE_BYTES // (1024 * 1024)} MB); delete notes or comments you no longer need", 413)
         _write(data)
     _audit(action, tenant, kind, ref, by, **extra)
     return result

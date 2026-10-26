@@ -26,6 +26,7 @@ gives that host; "Commercial" without a cloud name means zscaler.net.
 """
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Optional
 
 # value the app stores → (label for people, ZIA admin host, OneAPI environment or None for commercial)
@@ -73,7 +74,7 @@ def normalize(cloud: Optional[str]) -> str:
         return c
     if c in ALIASES:
         return ALIASES[c]
-    raise ValueError(f"Unknown Zscaler cloud '{cloud}'. Use the name in the tenant's admin URL: {', '.join(sorted(CLOUDS))}.")
+    raise ValueError(f"Unknown Zscaler cloud '{str(cloud)[:60]}'. Use the name in the tenant's admin URL: {', '.join(sorted(CLOUDS))}.")
 
 
 def environment(cloud: Optional[str]) -> Optional[str]:
@@ -83,9 +84,27 @@ def environment(cloud: Optional[str]) -> Optional[str]:
     return CLOUDS[normalize(cloud)]["environment"]
 
 
+# A vanity domain is a DNS name (RFC 1123 labels, at most 253 characters):
+# it becomes the first labels of the sign-in host, so anything else (a
+# '/', '?', '#', '@', ':' or a backslash) could move the client secret to
+# another host. security.validate_vanity uses the same pattern.
+VANITY_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+
+
+def check_vanity(vanity_domain: str) -> str:
+    """The vanity domain, stripped, when it is a DNS name; ValueError
+    otherwise (the value is not echoed)."""
+    vd = str(vanity_domain or "").strip()
+    if not vd or len(vd) > 253 or not VANITY_RE.match(vd):
+        raise ValueError("Invalid vanity domain: use the short name from the ZIdentity login URL (acme for acme.zslogin.net).")
+    return vd
+
+
 def token_url(vanity_domain: str, cloud: Optional[str]) -> str:
-    """The OAuth2 token endpoint for a tenant on `cloud`."""
-    return "https://" + _ENV_HOSTS[environment(cloud)]["login"].format(vanity=vanity_domain) + "/oauth2/v1/token"
+    """The OAuth2 token endpoint for a tenant on `cloud`: always a host
+    under the cloud's Zscaler sign-in domain (ValueError for a vanity
+    domain that is not a DNS name)."""
+    return "https://" + _ENV_HOSTS[environment(cloud)]["login"].format(vanity=check_vanity(vanity_domain)) + "/oauth2/v1/token"
 
 
 def api_base(cloud: Optional[str]) -> str:

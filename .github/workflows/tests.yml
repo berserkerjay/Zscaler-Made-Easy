@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false  # nothing here pushes: keep GITHUB_TOKEN out of .git/config
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
@@ -21,11 +23,11 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
-          node-version: "22"  # built-in WebSocket required by the browser acceptance drivers
+          node-version: "22.22.2"  # exact, not the moving 22 line; built-in WebSocket required by the browser acceptance drivers
 
       - name: Install dependencies
         run: |
-          python -m pip install pip==26.2.1
+          python -m pip install --require-hashes --no-deps -r requirements-pip.lock
           # Hash-verified, same as the installer, the updater and the container —
           # the tests run against exactly what a real install gets, not a loose
           # requirements.txt resolution.
@@ -116,16 +118,18 @@ jobs:
       DLP_RUN_BROWSER_ACCEPTANCE: "1"
       BROWSER_ACCEPTANCE_ARTIFACTS: artifacts/browser-acceptance
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.11"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: "22"
+          node-version: "22.22.2"  # exact, as above
       - name: Install the same hash-pinned application and test dependencies
         run: |
-          python -m pip install pip==26.2.1
+          python -m pip install --require-hashes --no-deps -r requirements-pip.lock
           pip install --require-hashes --no-deps -r requirements.lock
           pip install --require-hashes --no-deps -r requirements-dev.lock
           pip check
@@ -149,14 +153,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false  # nothing here pushes: keep GITHUB_TOKEN out of .git/config
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.11"
 
-      - name: Lock file matches requirements.txt (hash-pinned)
+      - name: Install pip, the app and the supply-chain tools (all hash-verified)
         run: |
-          python -m pip install pip==26.2.1 uv==0.12.22
+          python -m pip install --require-hashes --no-deps -r requirements-pip.lock
+          pip install --require-hashes --no-deps -r requirements.lock
+          # uv, pip-audit and cyclonedx-bom with every dependency they pull in,
+          # pinned by hash and compiled against requirements.lock (make lock-ci),
+          # so nothing here is resolved fresh from PyPI on this run.
+          pip install --require-hashes --no-deps -r requirements-ci.lock
+          pip check
+
+      - name: Lock files match their requirements (hash-pinned)
+        run: |
           # Compile on top of the committed lock: uv keeps every pin that still
           # satisfies requirements.txt, so this fails when requirements.txt
           # changed without a re-lock, not whenever a dependency publishes a new
@@ -167,24 +182,36 @@ jobs:
           cp requirements.lock requirements.check
           uv pip compile --quiet --universal --python-version 3.11 --generate-hashes --output-file requirements.check requirements.txt
           # Only the pinned package set must match; hashes are refreshed by the same tool.
-          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.check | sort)             || { echo "::error::requirements.lock is stale (a dependency published a new version); run: make lock  (uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade --output-file requirements.lock requirements.txt) and commit the result"; exit 1; }
+          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.check | sort) \
+            || { echo "::error::requirements.lock is stale (a dependency published a new version); run: make lock  (uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade --output-file requirements.lock requirements.txt) and commit the result"; exit 1; }
           # Same for the test tools' lock, resolved against the app's lock.
           cp requirements-dev.lock requirements-dev.check
           uv pip compile --quiet --universal --python-version 3.11 --generate-hashes -c requirements.lock --output-file requirements-dev.check requirements-dev.txt
-          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements-dev.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements-dev.check | sort)             || { echo "::error::requirements-dev.lock is stale; run: make lock-dev and commit the result"; exit 1; }
+          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements-dev.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements-dev.check | sort) \
+            || { echo "::error::requirements-dev.lock is stale; run: make lock-dev and commit the result"; exit 1; }
+          # And the CI tools' locks (pip itself; uv, pip-audit, cyclonedx-bom).
+          cp requirements-pip.lock requirements-pip.check
+          uv pip compile --quiet --universal --python-version 3.11 --generate-hashes --output-file requirements-pip.check requirements-pip.txt
+          cp requirements-ci.lock requirements-ci.check
+          uv pip compile --quiet --universal --python-version 3.11 --generate-hashes -c requirements.lock -c requirements-pip.lock --output-file requirements-ci.check requirements-ci.txt
+          for l in requirements-pip requirements-ci; do
+            diff <(grep -E '^[a-zA-Z0-9_.-]+==' $l.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' $l.check | sort) \
+              || { echo "::error::$l.lock is stale; run: make lock-ci and commit the result"; exit 1; }
+          done
 
-      - name: Install from the lock (hash-verified)
-        run: pip install --require-hashes --no-deps -r requirements.lock
-
-      - name: Known-vulnerability audit
+      - name: Known-vulnerability audit (every lock CI or an install uses)
         run: |
-          pip install pip-audit==2.10.1
-          pip-audit -r requirements.lock --strict --desc on
+          # --disable-pip: the locks are fully pinned and hashed, so pip-audit
+          # audits exactly those pins and never runs pip (which would otherwise
+          # upgrade pip, wheel and setuptools, unpinned, in a temporary venv).
+          for l in requirements.lock requirements-dev.lock requirements-ci.lock requirements-pip.lock; do
+            echo "== $l"
+            pip-audit -r "$l" --disable-pip --strict --desc on
+          done
 
       - name: Software bill of materials (CycloneDX)
         run: |
-          pip install cyclonedx-bom==7.5.0
-          # Same commands as docs/SBOM.md. cyclonedx-py reads only the lock,
+          # cyclonedx-bom came from requirements-ci.lock above. Same commands as docs/SBOM.md. cyclonedx-py reads only the lock,
           # which holds no licences and no Terraform provider; sbom_enrich.py
           # adds both, builds the dependency graph from the lock (fails on a
           # package with no recorded licence) and
@@ -199,11 +226,13 @@ jobs:
           path: sbom.cdx.json
 
   windows-lock:
-    # The Windows installer (INSTALL_Zscaler_Assessment.bat) installs the lock
+    # The Windows installer (INSTALL_Zscaler_Made_Easy.bat) installs the lock
     # with --no-deps, so every Windows-only dependency must be pinned in it.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false  # nothing here pushes: keep GITHUB_TOKEN out of .git/config
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
@@ -212,14 +241,16 @@ jobs:
       - name: Install from the lock on Windows (hash-verified, no resolver)
         shell: bash
         run: |
-          python -m pip install pip==26.2.1
+          python -m pip install --require-hashes --no-deps -r requirements-pip.lock
           python -m pip install --require-hashes --no-deps -r requirements.lock
           python -m pip check
           python -c "import dlp_api_server, dlp_mcp_server"
+          python -m pip install --require-hashes --no-deps -r requirements-ci.lock
 
       - name: Known-vulnerability audit of the Windows install
-        # The Linux audit resolves the lock for Linux and skips the
-        # Windows-only pins (pywin32, colorama); this one covers them.
+        # pip-audit evaluates the locks' sys_platform markers on the machine it
+        # runs on, so the Linux audit skips the Windows-only pins (pywin32,
+        # colorama); this one covers them.
         shell: bash
         env:
           # The advisories' descriptions are not all cp1252; without this the
@@ -227,13 +258,17 @@ jobs:
           PYTHONIOENCODING: utf-8
           PYTHONUTF8: "1"
         run: |
-          python -m pip install pip-audit==2.10.1
-          pip-audit -r requirements.lock --strict --desc on
+          for l in requirements.lock requirements-dev.lock requirements-ci.lock; do
+            echo "== $l"
+            pip-audit -r "$l" --disable-pip --strict --desc on
+          done
 
   container:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false  # nothing here pushes: keep GITHUB_TOKEN out of .git/config
 
       - name: Build the image
         run: docker build -t dlp-check:ci .

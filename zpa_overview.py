@@ -203,6 +203,14 @@ class _Model:
         # Which enabled segments each rule applies to (zpa_analysis._reaches, with the scope worked out once).
         reach: Dict[str, Optional[List[str]]] = {}
         rules_on_seg: Dict[str, List[Dict[str, Any]]] = {s["id"]: [] for s in segs}
+        # The enabled segments by id and by group, so a rule naming a few
+        # segments costs those few, not a pass over every segment (thousands
+        # of rules times thousands of segments otherwise).
+        seg_order = {s["id"]: k for k, s in enumerate(enabled_segs)}
+        segs_in_group: Dict[str, List[str]] = {}
+        for s in enabled_segs:
+            if s.get("segment_group_id"):
+                segs_in_group.setdefault(s["segment_group_id"], []).append(s["id"])
         for r in rules:
             sc = za._app_scope(r)
             if sc is None or sc.get("all"):
@@ -210,12 +218,18 @@ class _Model:
                 if not r.get("disabled"):   # a disabled rule gives no access: it links to nothing
                     self.all_apps.append(f"access_rules:{r['id']}")
                 hit = [s["id"] for s in enabled_segs]
-            else:
+            elif sc["negated"]:
                 hit = []
                 for s in enabled_segs:
                     named = s["id"] in sc["segments"] or bool(s.get("segment_group_id") and s["segment_group_id"] in sc["groups"])
-                    if (not named) if sc["negated"] else named:
+                    if not named:
                         hit.append(s["id"])
+                reach[r["id"]] = hit
+            else:
+                named_ids = {x for x in sc["segments"] if x in seg_order}
+                for g in sc["groups"]:
+                    named_ids.update(segs_in_group.get(g, ()))
+                hit = sorted(named_ids, key=seg_order.__getitem__)
                 reach[r["id"]] = hit
             if not r.get("disabled"):
                 for sid in hit:
@@ -267,10 +281,16 @@ class _Model:
         self.seg_group = seg_group
 
         # ── segment groups
+        naming_group: Dict[str, List[Dict[str, Any]]] = {}
+        for r in rules:
+            sc = za._app_scope(r)
+            if not r.get("disabled") and sc and sc.get("groups"):
+                for g in sc["groups"]:
+                    naming_group.setdefault(g, []).append(r)
         for g in snap.get("segment_groups") or []:
             gid = g["id"]
             members = [m for m in ix.group_segments.get(gid, set()) if m in ix.segments]
-            named = [r for r in rules if not r.get("disabled") and (za._app_scope(r) or {}).get("groups") and gid in za._app_scope(r)["groups"]]
+            named = naming_group.get(gid, [])
             reaching = {r["id"] for m in members for r in rules_on_seg.get(m, [])}
             row = self._row("segment_groups", gid, g.get("enabled"), [], {
                 "name": g["name"], "enabled": bool(g.get("enabled")), "segments": len(members),

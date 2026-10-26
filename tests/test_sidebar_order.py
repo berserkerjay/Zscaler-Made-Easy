@@ -130,10 +130,14 @@ window.sid = id => `[data-sb-id="${id}"]`;
 
 DRIVER = r"""
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 const [chrome, base, dir] = process.argv.slice(2);
-const port = 9400 + Math.floor(Math.random() * 500);
-const p = spawn(chrome, ['--headless=new', `--remote-debugging-port=${port}`, '--no-first-run', '--no-default-browser-check', `--user-data-dir=${dir}`, '--window-size=1280,900', 'about:blank'], { stdio: 'ignore' });
+const p = spawn(chrome, ['--headless=new', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${dir}`, '--window-size=1280,900', 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Chrome picks a free port itself (port 0) and writes it to DevToolsActivePort in its own profile:
+// never a guessed port that another browser on this machine may already own.
+let port; for (let i = 0; i < 200 && !port; i++) { try { port = (await readFile(`${dir}/DevToolsActivePort`, 'utf8')).split('\n')[0].trim(); } catch {} if (!port) await sleep(100); }
+if (!port) throw new Error('Chrome did not open its debugging port');
 let tabs; for (let i = 0; i < 200; i++) { try { tabs = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); if (tabs.find(t => t.type === 'page')) break; } catch {} await sleep(200); }
 const ws = new WebSocket(tabs.find(t => t.type === 'page').webSocketDebuggerUrl);
 await new Promise(r => ws.onopen = r);

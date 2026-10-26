@@ -32,15 +32,15 @@ short version, for a Windows laptop with Git already installed:
 3. In a Command Prompt or PowerShell:
    ```
    git clone https://github.com/berserkerjay/DLP-Check.git
-   cd Zscaler Made Easy
-   .\INSTALL_Zscaler_Assessment.bat
+   cd DLP-Check
+   .\INSTALL_Zscaler_Made_Easy.bat
    ```
-4. A **Zscaler Assessment** shortcut appears on the desktop. Double-click it.
+4. A **Zscaler Made Easy** shortcut appears on the desktop. Double-click it.
    The browser opens to http://localhost:8000; the server runs silently in
    the background (its output is in `server.log` next to the app).
-   `STOP_Zscaler_Assessment.bat` stops it. Double-clicking
-   `START_Zscaler_Assessment.bat` also starts silently; run it as
-   `START_Zscaler_Assessment.bat --console` when you want to watch the
+   `STOP_Zscaler_Made_Easy.bat` stops it. Double-clicking
+   `START_Zscaler_Made_Easy.bat` also starts silently; run it as
+   `START_Zscaler_Made_Easy.bat --console` when you want to watch the
    server output in a window.
 
 On a Mac or Linux it is `./install.sh` then `./start.sh` in the app folder
@@ -53,7 +53,7 @@ installs any new dependencies, restarts itself and reloads the page. It
 shows each step. Hand-edited files are kept: proxy or CA-bundle lines
 that older instructions had you put into the start script are moved into
 `local_settings.bat`, and any other edit is set aside and re-applied after
-the pull. `UPDATE_Zscaler_Assessment.bat` does the same from a command
+the pull. `UPDATE_Zscaler_Made_Easy.bat` does the same from a command
 prompt. The repository is private, so git on the laptop must be signed in
 to GitHub once (`git fetch` in the app folder prompts for it). A copy that
 was installed from a ZIP (not with git) cannot update in place: stop it,
@@ -84,7 +84,7 @@ the start scripts (an update or a fresh clone replaces them). Instead:
 2. Remove the `REM ` in front of the lines you need, for example
    `set REQUESTS_CA_BUNDLE=C:\certs\zscaler-root-ca.pem` or
    `set HTTPS_PROXY=http://proxy.corp:8080`.
-3. Stop and start the server (`STOP_Zscaler_Assessment.bat`, then the
+3. Stop and start the server (`STOP_Zscaler_Made_Easy.bat`, then the
    desktop shortcut). Start here shows the CA bundle in use.
 
 On a **Mac or Linux** the same settings live in `local_settings.env` in
@@ -548,7 +548,7 @@ The server starts **read-only**, so preflight and the plan always work but
 deploying is refused. Deploy Policy Packs shows the mode at the top. When
 the customer has agreed to the plan, click **Enable write mode** and type
 the confirmation phrase it asks for; it lasts until the server restarts.
-(`START_Zscaler_Assessment_WRITES_ENABLED.bat` starts in write mode from
+(`START_Zscaler_Made_Easy_WRITES_ENABLED.bat` starts in write mode from
 the outset, for scripted use.)
 
 ## 7. After deploying
@@ -575,9 +575,9 @@ the outset, for scripted use.)
 | "… intercepted by TLS inspection" | Laptop behind ZCC/proxy | `REQUESTS_CA_BUNDLE` to the corporate root CA, or another machine |
 | "0 endpoints probed" in ZCC diagnostics | Credentials rejected | Authenticate first |
 | Preflight **Blocked** card | A named prerequisite is missing | Read the card; onboard the SaaS tenant, or deselect that rule's pack |
-| "Write actions require ENABLE_WRITE_ACTIONS" | Read-only mode | Start with `START_Zscaler_Assessment_WRITES_ENABLED.bat` |
+| "Write actions require ENABLE_WRITE_ACTIONS" | Read-only mode | Start with `START_Zscaler_Made_Easy_WRITES_ENABLED.bat` |
 | "The tenant changed since you approved" | Someone edited the tenant mid-flow | Re-run preflight and approve the new plan |
-| Only one usage of each socket address (port 8000) | Old server still running | `STOP_Zscaler_Assessment.bat` then start again |
+| Only one usage of each socket address (port 8000) | Old server still running | `STOP_Zscaler_Made_Easy.bat` then start again |
 
 ## 8b. When the API client is missing a permission
 

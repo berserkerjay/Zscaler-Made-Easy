@@ -205,9 +205,14 @@ class FakeTenant:
         return copy.deepcopy(chunk), Resp(chunk), None
 
 
+# The fixture tenant runs Cloud App Control on Zscaler: its rules that isolate
+# are read only when the Scope page says so (browser_security.scope_for).
+CAC_ON_ZSCALER = {"cloud_app_control": "zscaler"}
+
+
 def run(scopes=("zia_extras", "zpa"), d=None, **kw):
     t = FakeTenant(d, **{k: v for k, v in kw.items() if k in ("hook", "fail")})
-    out = bs.run(t, bs.scope_for(list(scopes)), pace=0, **{k: v for k, v in kw.items() if k in ("cancel", "zpa_blocked")})
+    out = bs.run(t, bs.scope_for(list(scopes), CAC_ON_ZSCALER), pace=0, **{k: v for k, v in kw.items() if k in ("cancel", "zpa_blocked")})
     return out, t
 
 
@@ -334,7 +339,7 @@ def _texts_of_workbook(blob: bytes) -> str:
 def test_no_password_certificate_body_logo_or_person_in_any_output(full):
     out, _t = full
     logs = []
-    again = bs.run(FakeTenant(), bs.scope_for(["zia_extras", "zpa"]), log=logs.append, pace=0)
+    again = bs.run(FakeTenant(), bs.scope_for(["zia_extras", "zpa"], CAC_ON_ZSCALER), log=logs.append, pace=0)
     blobs = [json.dumps(out), json.dumps(again), "\n".join(logs), _texts_of_workbook(bs.workbook(dict(out, tenant_label="acme")))]
     for blob in blobs:
         for s in SECRETS:
@@ -418,7 +423,7 @@ def test_the_reader_drives_the_real_sdk_services_and_paths():
         zia = ZIAService(Executor())
         zpa = ZPAService(Executor(), {"client": {"customerId": "216196257331281920"}})
 
-    out = bs.run(Client(), bs.scope_for(["zia_extras", "zpa"]), pace=0)
+    out = bs.run(Client(), bs.scope_for(["zia_extras", "zpa"], CAC_ON_ZSCALER), pace=0)
     assert seen and all(m == "GET" for m, _u in seen), "read-only"
     urls = [u for _m, u in seen]
     cbi = "/zpa/cbiconfig/cbi/api/customers/216196257331281920"

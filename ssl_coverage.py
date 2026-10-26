@@ -45,6 +45,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -52,6 +53,8 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import ssl_flow
 from ssl_flow import TRAFFIC_CLASSES, normalize_ssl_rule
+import safe_files
+
 
 # ── Messages ────────────────────────────────────────────────────────────
 OUT_OF_SCOPE = ("SSL coverage is not in scope: it reads the SSL inspection rules. On the Scope page tick DLP or "
@@ -796,6 +799,17 @@ def load_history(tenant: str, path: Optional[str] = None) -> List[Dict[str, Any]
     return list(_load_all(path).get(tenant_auth.scrub_classic_login(str(tenant or "tenant"))[:120], []))
 
 
+def _owner_only(path: str) -> int:
+    """A file descriptor for writing `path`, owner-only (0600) from the
+    first byte whatever the umask: the file holds tenant data."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+    except (AttributeError, OSError):   # Windows: no fchmod; the folder's own access rules apply
+        pass
+    return fd
+
+
 def record(tenant: str, rep: Mapping[str, Any], path: Optional[str] = None) -> List[Dict[str, Any]]:
     """Append this run's summary for `tenant` (a record label, never a
     login) and return that tenant's history, oldest first."""
@@ -808,18 +822,23 @@ def record(tenant: str, rep: Mapping[str, Any], path: Optional[str] = None) -> L
         data[key] = hist
         while len(data) > HISTORY_TENANTS:
             data.pop(next(iter(data)))
-        os.makedirs(os.path.dirname(os.path.abspath(p)), exist_ok=True)
-        tmp = f"{p}.tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"version": 1, "tenants": data}, f, indent=1)
-        for attempt in range(20):
-            try:
-                os.replace(tmp, p)
-                break
-            except PermissionError:
-                if attempt == 19:
-                    raise
-                time.sleep(0.05)
+        safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)))
+        # A unique owner-only (0600) temporary file: the history names tenants.
+        fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(p) + ".", suffix=".tmp", dir=os.path.dirname(os.path.abspath(p)))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump({"version": 1, "tenants": data}, f, indent=1)
+            for attempt in range(20):
+                try:
+                    os.replace(tmp, p)
+                    break
+                except PermissionError:
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.05)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
     return hist
 
 

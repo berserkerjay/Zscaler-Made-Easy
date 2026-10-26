@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Zscaler Assessment — Word Document Report Generator
+Zscaler Made Easy — Word Document Report Generator
 =====================================================
 Generates a professional .docx report from assessment results.
 
@@ -558,6 +558,20 @@ def _add_styled_row(table, cells_data):
 
 # ── Main Generator ───────────────────────────────────────────────────
 
+def _xml_safe(obj):
+    """A copy of ``obj`` whose strings hold only characters XML can carry.
+    Check details quote tenant names and uploaded text; one control
+    character in them would make python-docx refuse the whole report."""
+    from xlsx_writer import clean_text
+    if isinstance(obj, str):
+        return clean_text(obj)
+    if isinstance(obj, dict):
+        return {k: _xml_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_xml_safe(v) for v in obj]
+    return obj
+
+
 def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None, template_path=None):
     """
     Generate a Word document report from assessment results.
@@ -573,6 +587,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                        layout, preserving header/footer/styles. Auto-detects
                        'zscaler_template.docx' in the same folder as this file.
     """
+    results, cfg = _xml_safe(results or []), _xml_safe(cfg or {})
     # Import compute/maturity if not provided
     if compute_fn is None or maturity_fn is None:
         from dlp_assessment_full_auto import compute, maturity
@@ -585,6 +600,10 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     # is what the assessment already left out; an older report that still
     # carries "Not in scope" rows has them dropped and counted here.
     import channel_scope
+    import xlsx_writer
+    # Tenant text (rule names in a detail) may carry characters XML cannot:
+    # python-docx refuses them, so clean the inputs once, here.
+    results, cfg = xlsx_writer.clean_tree(list(results or [])), xlsx_writer.clean_tree(dict(cfg or {}))
     results, dropped = channel_scope.visible(results)
     try:
         hidden = max(0, int((cfg or {}).get("hidden_checks") or 0)) + dropped
@@ -661,7 +680,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             counts["INFO"] += 1
 
     summary = doc.add_paragraph()
-    summary.add_run(f"The Zscaler platform assessment for {cfg.get('org_name', 'the organization')} "
+    summary.add_run(f"The assessment of the Zscaler platform for {cfg.get('org_name', 'the organization')} "
                     f"evaluated {len(results)} configuration checks across all deployed Zscaler services. ")
     summary.add_run(f"The overall maturity score is {overall_text} ({mat}). ").bold = True
     if cov:

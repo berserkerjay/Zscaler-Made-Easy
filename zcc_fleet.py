@@ -689,7 +689,19 @@ def service_values_seen(devs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 # ── analysis: profiles ───────────────────────────────────────────────
-_SECRET_KEY = re.compile(r"password|passwd|secret|otp|token|apikey|api_key|privatekey|cert(ificate)?data", re.I)
+_SECRET_KEY = re.compile(r"password|passwd|passcode|passphrase|secret|otp|token|apikey|api_key|private_?key|pre_?shared_?key|psk|"
+                         r"cert(ificate)?data", re.I)
+# The Client Connector's own short spellings of its passwords: exitPass,
+# uninstallPass, zpaDisablePass, zdSettingsAccessPass (zcc/models/
+# secrets_passwords.py); "bypass" is not one.
+_PASS_SUFFIX = re.compile(r"(?:^pass|(?<![A-Za-z])pass|[a-z0-9_]Pass)$")
+
+
+def is_secret_key(key: Any) -> bool:
+    """True for a setting whose name says it holds a password, passcode,
+    pre-shared key, private key, OTP or token (its value is never shown)."""
+    k = str(key)
+    return bool(_SECRET_KEY.search(k) or _PASS_SUFFIX.search(k))
 _PRIVATE_CIDR = re.compile(r"^(10\.0\.0\.0/8|172\.16\.0\.0/12|192\.168\.0\.0/16|100\.64\.0\.0/10|169\.254\.0\.0/16|127\.0\.0\.0/8|224\.0\.0\.0/4|fc00::/7|fe80::/10)$", re.I)
 
 
@@ -700,7 +712,7 @@ def mask_settings(obj: Any) -> Any:
     if isinstance(obj, dict):
         out = {}
         for k, v in obj.items():
-            if _SECRET_KEY.search(str(k)) and not isinstance(v, (dict, list)):
+            if is_secret_key(k) and not isinstance(v, (dict, list)):
                 out[k] = v if v in ("(set)", "(not set)") else "(set)" if str(v if v is not None else "").strip() else "(not set)"
             else:
                 out[k] = mask_settings(v)
