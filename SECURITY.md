@@ -121,11 +121,13 @@ container is deliberately published beyond loopback (`DLP_CHECK_HOST_BIND`).
 |---|---|
 | `ZSCALER_SSO_IDLE_MINUTES` | Minutes a session may sit unused before it ends (default 30). Every session ends after 12 hours regardless. |
 | `ZSCALER_SSO_ALLOWED_GROUPS` | Comma-separated group names or ids. When set, a person in none of them is refused at sign-in, and the refusal is written to `audit.log`. Unset: anyone your identity provider signs in for this app. |
-| `ZSCALER_SSO_WRITERS` | Comma-separated groups or email addresses. When set, only matching people may turn on write mode or change the tenant (deploy, removal, import, undo, remediation, Evaluate All Rules changes, proposal apply and rollback). Everyone else gets 403 with the reason and can still assess, read and preview. Unset: every signed-in person may, as before. |
+| `ZSCALER_SSO_WRITERS` | Comma-separated groups or email addresses. An email address matches only when the ID token marks it verified (`email_verified` true); an unverified email, which many providers let the user set, never makes anyone a writer, so list group ids for providers that do not send `email_verified` (Microsoft Entra ID). When set, only matching people may turn on write mode or change the tenant (deploy, removal, import, undo, remediation, Evaluate All Rules changes, proposal apply and rollback). Everyone else gets 403 with the reason and can still assess, read and preview. Unset: every signed-in person may, as before. |
 | `ZSCALER_SSO_GROUPS_CLAIM` | The ID token claim that lists the person's groups (default `groups`). |
 
 Sessions are kept in the server's memory: **restarting the app signs
-everyone out**, and each person signs in again.
+everyone out**, and each person signs in again. A sign-in completes only in
+the browser that started it (a short-lived HttpOnly cookie binds the
+sign-in's state to it), so a callback link replayed in another browser is refused.
 
 **Getting the identity provider to send groups.** The group settings
 match against a claim in the ID token, so the provider must put it there:
