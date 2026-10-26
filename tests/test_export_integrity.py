@@ -417,12 +417,10 @@ def test_csv_cells_are_always_utf8_writable(value, want):
         out.encode("utf-8")
 
 
-def test_a_pipe_in_a_tenant_name_is_escaped_exactly_once_in_markdown():
-    """ASVS V5.3.1 · CWE-116: two escaping layers must not stack; a pipe in a name is written as one escaped pipe."""
-    import detection_health
-    import ssl_flow
-    rep_dh = {"summary": {}, "rules": [{"name": "Allow | Finance", "fp": 1, "tp": 0}], "findings": []}
-    out = detection_health.to_markdown(rep_dh, "acme")
-    assert "\\\\|" not in out
-    import inspect
-    assert "m = str" in inspect.getsource(ssl_flow) and "csv_safe.md_cell" not in inspect.getsource(ssl_flow)
+@pytest.mark.parametrize("writer", [_md_ssl_flow, _md_detection_health, _md_bypass], ids=["ssl_flow", "detection_health", "bypass"])
+def test_a_pipe_in_a_tenant_name_is_escaped_exactly_once_in_markdown(writer):
+    """ASVS V5.3.1 · CWE-116: two escaping layers must not stack; a pipe in a name is written as one escaped pipe, never a doubled backslash."""
+    # Act
+    md = writer("Allow | Finance")
+    # Assert
+    assert "Allow \\| Finance" in md and "\\\\|" not in md
