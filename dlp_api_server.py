@@ -6074,6 +6074,8 @@ async def health():
     # Surface the running git commit so users can verify they're on latest code.
     commit = "unknown"
     try:
+        if getattr(sys, "frozen", False):
+            raise LookupError("the standalone edition has no .git: the build records its commit")
         import subprocess
         commit = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -6084,8 +6086,8 @@ async def health():
     except Exception:
         pass
     in_container = os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1"
-    if commit == "unknown" and in_container:
-        # No .git in the image: the build records its commit instead.
+    if commit == "unknown" and (in_container or getattr(sys, "frozen", False)):
+        # No .git in the image or the standalone edition: the build records its commit instead.
         commit = os.environ.get("DLP_CHECK_BUILD_COMMIT", "").strip() or "unknown"
     hb = _health_branch()
     return {
@@ -6252,8 +6254,8 @@ async def app_update_run(req: Optional[AppUpdateRequest] = None):
     overwritten."""
     _update_allowed()
     import app_update
-    if app_update.in_container():
-        raise HTTPException(status_code=409, detail=app_update.CONTAINER_UPDATE_HELP)
+    if app_update.in_container() or app_update.in_standalone():
+        raise HTTPException(status_code=409, detail=app_update.CONTAINER_UPDATE_HELP if app_update.in_container() else app_update.STANDALONE_UPDATE_HELP)
     target = _update_branch(req.branch if req else None)
     result = await asyncio.to_thread(app_update.update, _APP_DIR, branch=target)
     _LATEST.pop(target, None)

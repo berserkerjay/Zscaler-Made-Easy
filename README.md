@@ -16,7 +16,9 @@ of what the app can do and what it never does. **[INSTALL.md](INSTALL.md)**
 is a click-by-click install walkthrough for Windows, Mac, Linux or a
 container, written for someone who has never installed a developer tool
 before; **[GETTING_STARTED.md](GETTING_STARTED.md)** then walks through a
-first engagement.
+first engagement. Nothing to install at all: each release also ships a
+standalone edition for Windows, Mac and Linux, checked by checksum and
+build attestation before you run it (INSTALL.md, *Download and run*).
 
 Two ways to run it, built from this one source tree:
 

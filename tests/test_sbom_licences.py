@@ -136,7 +136,7 @@ def test_ci_pins_its_supply_chain_tools_and_checks_the_enriched_sbom():
     # The tools are pinned exactly and, with every dependency they pull in, by
     # hash (requirements-ci.lock); CI installs them only from that lock.
     wanted, locked = _read("requirements-ci.txt"), _read("requirements-ci.lock")
-    for tool in ("cyclonedx-bom", "pip-audit", "uv"):
+    for tool in ("cyclonedx-bom", "pip-audit", "uv", "pyinstaller"):
         assert re.search(rf"^{re.escape(tool)}==\d", wanted, re.M), f"unpinned: {tool}"
         assert re.search(rf"^{re.escape(tool)}==\S+ \\\n    --hash=sha256:", locked, re.M), f"not hash-locked: {tool}"
         assert not re.search(rf"pip install[^\n]*\b{re.escape(tool)}\b", wf), f"{tool} installed outside the lock"

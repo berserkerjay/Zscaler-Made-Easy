@@ -64,7 +64,7 @@ lock: ci-tools
 lock-dev: ci-tools
 	$(PY) -m uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade -c requirements.lock --output-file requirements-dev.lock requirements-dev.txt
 
-# The supply-chain tools (uv, pip-audit, cyclonedx-bom) with every dependency
+# The supply-chain tools (uv, pip-audit, cyclonedx-bom, PyInstaller) with every dependency
 # they pull in, hash-pinned in requirements-ci.lock as CI installs them, and
 # compiled against requirements.lock, so installing them into the app's
 # environment never changes one of its pins.
