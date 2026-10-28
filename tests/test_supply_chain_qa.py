@@ -156,7 +156,7 @@ def test_ci_tool_locks_are_complete_hash_pinned_and_keep_the_app_pins():
     # Assert
     assert unhashed == []
     assert clash == {}, "installed with --no-deps after requirements.lock, a different version would replace the app's pin"
-    assert set(wanted) == {"uv", "pip-audit", "cyclonedx-bom"} and all(ci[n] == v for n, v in wanted.items())
+    assert set(wanted) == {"uv", "pip-audit", "cyclonedx-bom", "pyinstaller"} and all(ci[n] == v for n, v in wanted.items())
     assert list(pip_lock) == ["pip"] and ci.get("pip") == pip_lock["pip"], "one pip version everywhere"
 
 
@@ -202,7 +202,11 @@ def test_ci_audits_every_lock_with_pip_disabled():
 # ── GitHub Actions: least privilege, no injection, no token at rest ────
 
 # The only write grants any workflow needs, and the job that needs each.
-WRITE_GRANTS = {("apply-patch.yml", "apply", "contents"), ("upstream_check.yml", "upstream", "issues")}
+WRITE_GRANTS = {("apply-patch.yml", "apply", "contents"), ("upstream_check.yml", "upstream", "issues"),
+                # The standalone builds: a Sigstore certificate and the stored provenance per build,
+                # and the GitHub Release on a version tag (release-standalone.yml).
+                ("release-standalone.yml", "build", "id-token"), ("release-standalone.yml", "build", "attestations"),
+                ("release-standalone.yml", "release", "contents")}
 
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=os.path.basename)

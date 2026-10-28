@@ -11,6 +11,146 @@ for a shared server rather than a laptop.
 Budget about 15 minutes. Not sure what the app is for? Read
 [docs/OVERVIEW.md](docs/OVERVIEW.md) first; it is a five-minute tour.
 
+Want to skip installing altogether? [Download and run](#download-and-run-no-installation)
+the standalone edition: one download, nothing to install, no Python.
+
+---
+
+## Download and run (no installation)
+
+The standalone edition is the same app packed with everything it needs,
+for Windows (x64), Mac (Apple silicon and Intel) and Linux (x64). There
+is no installer, no Python and no administrator rights: you download one
+archive, check it, unpack it and double-click the program in it. It is
+built by GitHub from this repository's code for every release, by the
+workflow `.github/workflows/release-standalone.yml`; nothing built is ever
+stored in the repository itself.
+
+**1. Download the archive for your computer** from the repository's
+**Releases** page (on GitHub: **Code** tab, **Releases** on the right).
+Take the one file for your system, plus **SHA256SUMS.txt**:
+
+| Your computer | File name ends with |
+|---|---|
+| Windows 10 or 11 | `-windows-x64.zip` |
+| Mac with Apple silicon (M1 or later; Apple menu, **About This Mac**, says "Chip: Apple …") | `-macos-arm64.tar.gz` |
+| Mac with an Intel processor ("Processor: Intel …") | `-macos-x64.tar.gz` |
+| Linux on x64 with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or newer) | `-linux-x64.tar.gz` |
+
+**2. Check the checksum.** It proves the file arrived exactly as GitHub
+published it (no damaged or swapped download). In a terminal, in the
+folder the file was saved to (usually Downloads):
+
+```powershell
+# Windows (PowerShell)
+Get-FileHash .\ZscalerMadeEasy-<version>-windows-x64.zip -Algorithm SHA256
+```
+
+```bash
+# Mac
+shasum -a 256 ZscalerMadeEasy-<version>-macos-arm64.tar.gz
+# Linux
+sha256sum ZscalerMadeEasy-<version>-linux-x64.tar.gz
+```
+
+The long number it prints must be exactly the one on that file's line in
+SHA256SUMS.txt (case does not matter). If it is not, delete the download
+and do not run it.
+
+**3. Check the build attestation.** The checksum only says the file is the
+one on the Releases page; the attestation says GitHub itself built it,
+from this repository's code, with its release workflow, and records the
+commit. It is a signed record (SLSA build provenance) that the GitHub CLI
+checks. Install the GitHub CLI once from https://cli.github.com, sign in
+with `gh auth login` (the repository is private, so use the account that
+can see it), then:
+
+```bash
+gh attestation verify ZscalerMadeEasy-<version>-windows-x64.zip --repo berserkerjay/DLP-Check \
+  --signer-workflow berserkerjay/DLP-Check/.github/workflows/release-standalone.yml
+```
+
+(use your file's name; on Windows put both lines on one line without the
+`\`). It must end by saying the verification succeeded. If it says no
+attestation was found, or that verification failed, delete the download
+and do not run it.
+
+**4. Unpack it and start it.**
+
+- **Windows:** right-click the .zip, **Extract All…**, **Extract**. Open
+  the new folder and double-click **ZscalerMadeEasy** (ZscalerMadeEasy.exe).
+- **Mac:** double-click the .tar.gz in Finder; it unpacks into a folder
+  next to it. Open the folder and double-click **ZscalerMadeEasy**; it
+  opens in Terminal.
+- **Linux:** `tar -xzf ZscalerMadeEasy-<version>-linux-x64.tar.gz`, then
+  run `./ZscalerMadeEasy-<version>-linux-x64/ZscalerMadeEasy`.
+
+A window shows the app's address and UI token, the same lines `start.sh`
+prints (`Open http://localhost:8000/?token=…`), and your browser opens
+the app with the token already in it. Keep that window open while you use
+the app: closing it (or **Ctrl+C** in it) stops the app. If port 8000 is
+taken, by another copy for example, it uses the next free port and says so
+in that address. Starting it again later is the same double-click.
+
+**If Windows or the Mac warns about the program.** The release notes
+say whether each build is code-signed. A signed build starts without a
+warning. An **unsigned** build makes the system ask once, because it
+cannot tell who made the program; steps 2 and 3 are how you tell. Only
+after both succeeded:
+
+- **Windows** ("Windows protected your PC"): click **More info**, check
+  that the file name is the one you verified, then **Run anyway**. Do not
+  turn SmartScreen or Microsoft Defender off.
+- **Mac** ("ZscalerMadeEasy" Not Opened, or "Apple could not verify…"):
+  click **Done** (not **Move to Trash**). Open **System Settings**, **Privacy
+  & Security**, scroll down to **Security**, click **Open Anyway** next to
+  the line about ZscalerMadeEasy and confirm with your password. This
+  allows that one program only, and only that copy. If macOS then asks the
+  same about files inside the folder's `_internal` folder, delete the
+  unpacked folder, and in Terminal clear the download mark from the one
+  archive you verified, then unpack it again:
+
+  ```bash
+  xattr -d com.apple.quarantine ZscalerMadeEasy-<version>-macos-arm64.tar.gz
+  ```
+
+  That command names one file you have just checked yourself. Do not run
+  it on a file or folder you have not checked, do not add `-r` to clear a
+  whole folder, never prefix it with `sudo`, and never turn Gatekeeper off
+  (`spctl --master-disable`).
+
+**What stays fixed in this edition.** It listens on `127.0.0.1` only
+(this computer), it always asks for the UI token, and it starts
+read-only: changing a tenant needs write mode and its confirmations,
+exactly as in an installed copy. ZSCALER_BIND_HOST and ZSCALER_UI_AUTH=0
+are ignored here; for a copy other people reach over the network, use
+[the container](#run-it-in-a-container-instead) with sign-in through your
+identity provider.
+
+**Where your data is.** Not in the unpacked folder, so a new version can
+replace it: tenant profiles, the audit log, deployments, settings and
+`ui_token.txt` live in your own data folder, readable only by you:
+
+| System | Data folder |
+|---|---|
+| Windows | `%LOCALAPPDATA%\ZscalerMadeEasy` |
+| Mac | `~/Library/Caches/ZscalerMadeEasy` |
+| Linux | `~/.cache/zscaler_made_easy` |
+
+On a Mac, a "clean up caches" tool would delete saved tenant profiles
+there too; leave that folder out of such clean-ups. A proxy or the
+corporate root certificate for TLS inspection
+([Work laptop](#work-laptop-tls-inspection-or-a-proxy)) goes in a text
+file `local_settings.env` in that folder, one KEY=VALUE per line, for
+example `REQUESTS_CA_BUNDLE=C:\certs\corporate-root-ca.pem`; start the app
+again after changing it.
+
+**Updating** is a new download: steps 1 to 4 again, then delete the old
+folder. Your data folder is kept. (**Update app** inside the standalone
+edition says the same: it cannot update itself.) **Removing** it: delete
+the unpacked folder, and the data folder too if you want your saved
+tenant profiles and audit log gone.
+
 ---
 
 ## Before you start — a checklist
