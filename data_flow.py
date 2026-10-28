@@ -815,7 +815,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             if pev["status"] == "bypass":
                 reaches_zscaler = False; ends = "pac"
             hops.append(_hop("pac", "PAC file", "unknown" if pev["status"] == "error" else pev["status"], pev["decided_by"], pev["detail"],
-                             pev.get("weak_point"), module_view=pev["module_view"], pac_outcomes=pev["evaluation"]["outcomes"],
+                             pev.get("weak_point"), module_hop=pev["module_hop"], pac_outcomes=pev["evaluation"]["outcomes"],
                              depends_on=pev["evaluation"]["depends_on"]))
         for f in pacs:
             hit = _domain_hit(f.get("direct_hosts") or [], host) if host else None

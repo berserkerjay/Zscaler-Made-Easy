@@ -506,8 +506,10 @@ def evaluate(snap: Dict[str, Any], w: Dict[str, Any], d: Dict[str, Any], zpa_seg
     go_of = lambda r: FORWARD.get(r["forward_method"], ("zia", f"forward method {r['forward_method']}"))[0]  # noqa: E731
     go = go_of(decided[0]) if decided else "zia"
     possible = sorted({go_of(r) for r, _ in cond} | {go})
-    overlaps = [f"“{r['name']}” (order {r['order']}, {r['forward_method']}) could decide instead: "
-                + ", ".join(c["name"] for c in row["criteria"] if c["state"] == "unknown")[:240] for r, row in cond[:8]]
+    could = [{"name": r["name"], "order": r["order"], "action": r["forward_method"],
+              "criteria": [c for c in row["criteria"] if c["state"] == "unknown"]} for r, row in cond[:8]]
+    overlaps = [f"“{c['name']}” (order {c['order']}, {c['action']}) could decide instead: "
+                + ", ".join(x["name"] for x in c["criteria"])[:240] for c in could]
     if decided:
         r, row = decided
         words = FORWARD.get(r["forward_method"], ("zia", f"forward method {r['forward_method']}"))[1]
@@ -520,7 +522,7 @@ def evaluate(snap: Dict[str, Any], w: Dict[str, Any], d: Dict[str, Any], zpa_seg
         note = "No forwarding rule matches, so the connector forwards the traffic to ZIA (assumed default)."
         notes, crit, rule_ref = [note, ec_note], [], None
     verdict = "conditional" if len(possible) > 1 else {"drop": "dropped", "direct": "bypassed", "local": "bypassed", "proxy": "bypassed"}.get(go, "forwarded")
-    mods.append(zpa_path.module_hop("Connector forwarding", verdict, rule_ref, overlaps, crit, notes, key="connector_forwarding"))
+    mods.append(zpa_path.module_hop("Connector forwarding", verdict, rule_ref, [], crit, notes, key="connector_forwarding", could_override=could))
     status = {"dropped": "blocked", "bypassed": "bypass", "conditional": "conditional"}.get(verdict, "pass")
     hops.append(zpa_path.flow_hop("connector", "Connector forwarding", status, note, {"name": rule_ref["name"], "order": rule_ref["order"], "action": decided[0]["forward_method"]} if decided else None))
     impacts = []

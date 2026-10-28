@@ -29,7 +29,7 @@ def _unlink_quietly(path: str) -> None:
         os.unlink(path)
     except OSError:
         pass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,7 +38,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTM
 
 import tenant_auth
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 # ── Security hardening (secure-by-design controls) ───────────────────
 from security import (
@@ -1167,6 +1167,13 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     if off is not None:
         return off
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
+    # A cloud the body did not send is the model's default ("production"),
+    # not a typed value: the profile, environment or tenant_config.json
+    # names the cloud, and the default applies only when none does.
+    sent = getattr(req, "model_fields_set", None)
+    default_cloud = ""
+    if sent is not None and "cloud" not in sent:
+        default_cloud, creds["cloud"] = creds["cloud"], ""
     if not tenant_auth.started(creds):
         # Nothing typed for a tenant: the source that has the sign-in decides
         # its method (the form always sends its selector, OneAPI by default).
@@ -1186,7 +1193,10 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
                     creds = tenant_auth.merge(tenant_auth.without_identity(creds), cfg)
             except Exception:
                 pass
-    return tenant_auth.normalize(creds)
+    creds = tenant_auth.normalize(creds)
+    if not creds["cloud"] and default_cloud:
+        creds["cloud"] = default_cloud
+    return creds
 
 
 def _assessor(req: Any) -> str:
@@ -9451,25 +9461,53 @@ async def report_path_page():
 
 
 class PathAnalyzerRequest(MigrateRequest):
-    """Body of the Path Analyzer: what the user would type, the network the
-    device is on, the platform, optionally the id of a tenant read to
-    reuse (an earlier analysis for the same scope), and what is in scope:
-    the Scope page's ticked `scopes` and its channel declaration
-    (`channels`, {id: choice}). With neither, and `from_page` false, the
-    chosen profile's saved selection is used; with nothing in scope the
-    request is refused before anything is read."""
+    """Body of the Path analyzer (POST /api/path-analyzer/start and the
+    waited-for POST /api/path-analyzer): what the user would type, the
+    network the device is on, the platform, the traffic (protocol and
+    port), the what-if identity, where the traffic comes from (a user
+    device, or a workload behind a Cloud or Branch Connector), the ids of
+    the tenant reads to reuse, and what is in scope: the Scope page's
+    ticked `scopes` and its channel declaration (`channels`, {id: choice}).
+    With neither, and `from_page` false, the chosen profile's saved
+    selection is used; with nothing in scope the request is refused before
+    anything is read."""
     destination: str = ""
     network: str = "off"
     platform: str = "windows"
-    report_id: str = ""
+    report_id: str = ""            # the ZIA (and Client Connector) read to reuse
     scopes: List[str] = []
     channels: Dict[str, Any] = {}
     from_page: bool = False
-    # The traffic to trace (zia_path_modules.traffic_context): "tcp" or
-    # "udp" and a port; empty means the URL's scheme decides (else TCP/443).
+    # The traffic (zia_path_modules.traffic_context, the one place it is
+    # checked, before sign-in): protocol "tcp", "udp" or "" (the URL's
+    # scheme decides, else TCP); port 1-65535 as a number or a numeric
+    # string, or nothing (the URL's port, else its scheme's, else 443).
     protocol: str = ""
-    port: Optional[int] = None
-    identity: Dict[str, Any] = {}   # what-if: {user, group, department, location} (path_whatif)
+    port: Optional[Union[str, int]] = None
+    identity: Dict[str, Any] = {}  # what-if: {user, group, department, location} (path_whatif)
+    source: str = "device"         # "device" (Client Connector) or "workload" (Cloud or Branch Connector)
+    workload: Dict[str, Any] = {}  # ip, tags, workload_group, connector_group (workload_path.workload_input)
+    zpa_report_id: str = ""        # the ZPA read to reuse
+    ztw_report_id: str = ""        # the Cloud & Branch Connector read to reuse
+
+    @field_validator("protocol", mode="before")
+    @classmethod
+    def _protocol(cls, v: Any) -> Any:
+        return v.strip().lower()[:8] if isinstance(v, str) else ("" if v is None else v)
+
+    @field_validator("port", mode="before")
+    @classmethod
+    def _port(cls, v: Any) -> Any:
+        # A number or a numeric string becomes an int; another scalar is
+        # kept as text so the route refuses it in words (400); a list or an
+        # object is the wrong type (422).
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, int) and not isinstance(v, bool):
+            return v
+        if isinstance(v, str) and v.strip().isdigit() and len(v.strip()) <= 6:
+            return int(v.strip())
+        return str(v)[:12] if isinstance(v, (str, bool, float)) else v
 
 
 class FlowScenarioRequest(MigrateRequest):
@@ -9732,27 +9770,6 @@ async def _path_analysis_inputs(req: PathAnalyzerRequest):
     return client, snapshot, tenant_auth.record_label(creds), scope   # never the classic API's admin login (user rule 3)
 
 
-@app.post("/api/path-analyzer/start")
-async def path_analyzer_start(req: PathAnalyzerRequest, request: Request):
-    """Start the Path Analyzer as a job the page follows (the first run
-    reads the tenant, only what is in scope on the Scope page; later runs
-    for the same scope reuse that read through `report_id` and only look
-    the destination up). Stop ends the job as cancelled with nothing more
-    read. Poll GET /api/dlp-packs/jobs/{job_id}."""
-    import pack_jobs
-    client, snapshot, label, scope = await _path_analysis_inputs(req)
-    job = pack_jobs.start("path", lambda log, cancel: _run_path_analysis(client, req, snapshot, label, log, cancel, scope), label=req.destination[:80],
-                          start_token=_start_token(request))
-    return {"job_id": job.id, "status": job.status, "kind": job.kind}
-
-
-@app.post("/api/path-analyzer")
-async def path_analyzer_run(req: PathAnalyzerRequest):
-    """The same analysis, waited for (for scripts)."""
-    client, snapshot, label, scope = await _path_analysis_inputs(req)
-    return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None, scope)
-
-
 # ── POV planner (pov.py): one proof of value per tenant profile ─────────
 # Local: the POV lives in the tenant profile's folder (tenant_profiles.
 # pov_path) and is bound to the profile's tenant. Prove it and the Insights
@@ -9996,35 +10013,25 @@ async def pov_insights_start(req: PovInsightsRequest, request: Request):
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
-# ── Path analyzer: ZPA first, and workload traffic (zpa_path, workload_path) ──
-# The page's Analyze goes here. For a user device, ZPA is evaluated first
-# (ZPA ticked): a destination ZPA carries never reaches ZIA, so ZIA is not
-# traced; otherwise the ZIA path is traced exactly as /api/path-analyzer/start
-# does (_run_path_analysis) with the ZPA stage in front. For a workload
-# (Cloud & Branch Connector ticked), the connector forwarding rules decide
-# first, then ZIA or ZPA. Read-only; every part is read only when in scope.
-PATH_FULL_NOTHING = ("Nothing the Path analyzer reads is in scope — on the Scope page tick ZPA, ZCC, DLP or ZIA platform "
-                     "and mark the channels you run on Zscaler, then analyze again.")
+# ── Path analyzer: one analysis, ZPA first, then ZIA ──────────────────
+# POST /api/path-analyzer/start (a job the page, Simple mode and scripts
+# follow) and POST /api/path-analyzer (the same, waited for) take one body
+# (PathAnalyzerRequest). For a user device, ZPA is evaluated first (ZPA
+# ticked): a destination ZPA carries never reaches ZIA, so ZIA is not
+# traced; otherwise the ZIA path is traced (_run_path_analysis: Client
+# Connector, forwarding, the PAC file evaluated, every ZIA module in order,
+# the what-if) with the ZPA stage in front. For a workload (Cloud & Branch
+# Connector ticked), the connector forwarding rules decide first, then ZIA
+# or ZPA. Read-only; every part is read only when in scope.
+PATH_NOTHING = ("Nothing the Path analyzer reads is in scope — on the Scope page tick ZPA, ZCC, DLP or ZIA platform "
+                "and mark the channels you run on Zscaler, then analyze again.")
 PATH_WORKLOAD_NOT_IN_SCOPE = ("Workload traffic is not in scope: on the Scope page tick Cloud & Branch Connector, then analyze again. "
                               "Nothing was read.")
 PATH_WORKLOAD_NEEDS_ONEAPI = ("Workload traffic needs a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
                               "Sign in with an API client that has a Cloud & Branch Connector role. Nothing was read.")
 
 
-class PathFullRequest(PathAnalyzerRequest):
-    """The Path analyzer body plus: where the traffic comes from (`source`:
-    device or workload), the port and protocol, the workload (`workload`:
-    ip, tags, workload_group, connector_group) and the ids of the ZPA and
-    connector reads to reuse."""
-    source: str = "device"
-    port: str = ""
-    protocol: str = "tcp"
-    workload: Dict[str, Any] = {}
-    zpa_report_id: str = ""
-    ztw_report_id: str = ""
-
-
-def _path_full_kept(rid: str, kind: str, creds: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _path_kept(rid: str, kind: str, creds: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """A ZPA or connector read kept from an earlier analysis, only for the same tenant."""
     import tenant_fingerprint
     rep = _REPORTS.get(rid or "") if (rid or "").startswith(kind + "-") else None
@@ -10033,19 +10040,22 @@ def _path_full_kept(rid: str, kind: str, creds: Dict[str, Any]) -> Optional[Dict
     return rep
 
 
-def _path_full_inputs(req: PathFullRequest) -> Dict[str, Any]:
-    """Everything decided before sign-in: the destination, the scope of
-    each part, the workload. HTTPException 400 for nothing in scope or a
-    bad input; never reads a tenant."""
+def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
+    """Everything decided before sign-in: the destination and its traffic
+    (protocol and port), the scope of each part, the workload.
+    HTTPException 400 for nothing in scope or a bad input; never reads a
+    tenant."""
     import data_flow
     import path_analyzer
     import workload_path
+    import zia_path_modules
     import zpa_path
     source = (req.source or "device").strip().lower()
     if source not in ("device", "workload"):
         raise HTTPException(status_code=400, detail="Traffic comes from a user device or a workload.")
     try:
         pdest = path_analyzer.parse_destination(req.destination)
+        zia_path_modules.traffic_context(pdest, req.protocol, req.port)   # the one check of protocol and port
         d = zpa_path.destination(req.destination, req.port, req.protocol)
         w = workload_path.workload_input(req.workload) if source == "workload" else None
     except ValueError as e:
@@ -10066,7 +10076,7 @@ def _path_full_inputs(req: PathFullRequest) -> Dict[str, Any]:
                               if read else "No ZIA policy is in scope."))
     zpa_on = "zpa" in sc
     if source == "device" and not scope["read"] and not zpa_on:
-        raise HTTPException(status_code=400, detail=PATH_FULL_NOTHING)
+        raise HTTPException(status_code=400, detail=PATH_NOTHING)
     creds = _tenant_creds(req)
     oneapi = creds.get("auth_method") != tenant_auth.LEGACY
     if source == "workload" and not oneapi:
@@ -10078,17 +10088,17 @@ def _path_full_inputs(req: PathFullRequest) -> Dict[str, Any]:
         zpa_problem = "ZPA was not read: the ZPA customer ID is missing (Connect to the tenant → Customer ID), so whether ZPA carries this destination is unknown."
     if source == "device" and not scope["read"] and zpa_problem:
         raise HTTPException(status_code=400, detail=zpa_problem.replace("ZPA was not read: ", "ZPA cannot be read: ") + " Nothing was read.")
-    zpa_kept = _path_full_kept("" if zpa_problem else req.zpa_report_id, "pathzpa", creds) if zpa_on else None
-    ztw_kept = _path_full_kept(req.ztw_report_id, "pathztw", creds) if source == "workload" else None
+    zpa_kept = _path_kept("" if zpa_problem else req.zpa_report_id, "pathzpa", creds) if zpa_on else None
+    ztw_kept = _path_kept(req.ztw_report_id, "pathztw", creds) if source == "workload" else None
     return {"source": source, "pdest": pdest, "d": d, "w": w, "scope": scope, "zpa_on": zpa_on, "zpa_problem": zpa_problem,
             "creds": creds, "label": tenant_auth.record_label(creds), "zia_kept": _kept_path_read(req.report_id, scope, creds) if scope["read"] else None,
             "zpa_kept": zpa_kept, "ztw_kept": ztw_kept,
             "need_sdk": (zpa_on and not zpa_problem and zpa_kept is None) or (source == "workload" and ztw_kept is None)}
 
 
-def _run_path_full(inp: Dict[str, Any], req: PathFullRequest, raw_client, sdk_client, log, cancel) -> Dict[str, Any]:
-    """The job: connector and ZPA stages, then ZIA when it applies. Stop
-    ends it as stopped with nothing more read and no partial result."""
+def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_client, log, cancel) -> Dict[str, Any]:
+    """The analysis: connector and ZPA stages, then ZIA when it applies.
+    Stop ends it as stopped with nothing more read and no partial result."""
     import path_analyzer
     import workload_path
     import zpa_analysis
@@ -10266,20 +10276,39 @@ def _run_path_full(inp: Dict[str, Any], req: PathFullRequest, raw_client, sdk_cl
     return finish(zia(zst["hops"], zst["modules"], zst.get("impacts") or [], zst.get("assumptions") or [], note))
 
 
-@app.post("/api/path-analyzer/full/start")
-async def path_analyzer_full_start(req: PathFullRequest, request: Request):
-    """The Path analyzer with ZPA evaluated first and workload traffic
-    (Cloud & Branch Connector), as a job the page follows. Reads only what
-    is in scope; 400 before sign-in for nothing in scope or a bad input.
-    Poll GET /api/dlp-packs/jobs/{job_id}; Stop ends it with nothing more
-    read. Nothing is written."""
-    import pack_jobs
-    inp = _path_full_inputs(req)
+async def _path_clients(inp: Dict[str, Any], req: PathAnalyzerRequest):
+    """Sign in only to what this analysis reads: the ZIA client when a ZIA
+    or Client Connector part is in scope, the OneAPI SDK client when ZPA
+    or the connector must be read (never the classic API's admin login)."""
     raw_client = await asyncio.to_thread(_build_client, req) if inp["scope"]["read"] else None
     sdk_client = await asyncio.to_thread(_build_sdk_client, inp["creds"]) if inp["need_sdk"] else None
-    job = pack_jobs.start("path", lambda log, cancel: _run_path_full(inp, req, raw_client, sdk_client, log, cancel), label=req.destination[:80],
+    return raw_client, sdk_client
+
+
+@app.post("/api/path-analyzer/start")
+async def path_analyzer_start(req: PathAnalyzerRequest, request: Request):
+    """Start the Path analyzer as a job the page follows: ZPA first (ZPA
+    ticked), workload traffic through its connector (Cloud & Branch
+    Connector ticked), then the ZIA path (only the parts in scope on the
+    Scope page). The first run reads the tenant; later runs reuse that read
+    through `report_id`, `zpa_report_id` and `ztw_report_id` and only look
+    the destination up. 400 before sign-in for nothing in scope or a bad
+    input. Poll GET /api/dlp-packs/jobs/{job_id}; Stop ends it with nothing
+    more read. Nothing is written."""
+    import pack_jobs
+    inp = _path_inputs(req)
+    raw_client, sdk_client = await _path_clients(inp, req)
+    job = pack_jobs.start("path", lambda log, cancel: _run_path(inp, req, raw_client, sdk_client, log, cancel), label=req.destination[:80],
                           actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/path-analyzer")
+async def path_analyzer_run(req: PathAnalyzerRequest):
+    """The same analysis, waited for (for scripts)."""
+    inp = _path_inputs(req)
+    raw_client, sdk_client = await _path_clients(inp, req)
+    return await asyncio.to_thread(_run_path, inp, req, raw_client, sdk_client, None, None)
 
 
 class PathIdentityRequest(MigrateRequest):

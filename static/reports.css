@@ -649,6 +649,10 @@ summary { min-height: 24px; }
 .pm-note { margin-top: 0.25rem; }
 .rp-bar .pm-port input:not([type="checkbox"]) { width: 6.5rem; }
 .pm-port-hint { margin-top: 0; align-self: center; }
+/* The Path analyzer's controls: "Traffic from" swaps Network and Platform
+   for the workload's own bar, which scrolls with the page under the sticky one. */
+.rp-bar .df-ctl[hidden], .rp-bar.pa-workload[hidden] { display: none; }
+.rp-bar.pa-workload { position: static; }
 @media (max-width: 760px) { .pm-crit td:first-child { white-space: normal; } }
 
 /* ── Tabs on a report page (role="tablist"; the ZPA analysis look) ── */

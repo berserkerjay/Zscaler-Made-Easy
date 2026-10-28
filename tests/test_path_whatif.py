@@ -296,10 +296,12 @@ def test_a_refused_lookup_is_reported_not_invented():
 
 # ── The page ───────────────────────────────────────────────────────────
 def test_the_page_loads_the_what_if_script():
-    """WCAG 2.2 SC 1.3.1 · SC 4.1.2: the Path analyzer page loads the what-if inputs, labelled, with a live status region."""
+    """WCAG 2.2 SC 1.3.1 · SC 4.1.2: the Path analyzer page has the what-if inputs, labelled, with a live status region, and sends them itself."""
     html = TestClient(srv.app).get("/report/path").text
     assert '<script src="/static/path_whatif.js"></script>' in html
+    assert 'role="status" aria-live="polite"' in html and html.count('<label class="df-ctl"><span class="lbl">User</span>') == 1
+    assert "identity: PathWhatIf.identity()" in html and "PathWhatIf.init({ credBody, scopeSelection })" in html
     js = TestClient(srv.app).get("/static/path_whatif.js").text
-    assert 'role="status" aria-live="polite"' in js and '<label class="df-ctl">' in js and 'aria-expanded' in js
+    assert 'aria-expanded' in js and "window.fetch" not in js
     assert "Policy action also depends on" in js and 'class="df-table"' in js and "df-chip" in js
     assert "/api/path-analyzer/identities" in js and "zia_extras" in js

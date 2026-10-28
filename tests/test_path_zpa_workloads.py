@@ -1,5 +1,6 @@
 """Path analyzer, ZPA first and workload traffic (zpa_path, workload_path,
-POST /api/path-analyzer/full/start, static/path_zpa.js).
+through the one start endpoint POST /api/path-analyzer/start; the page's
+own controls in static/report_path.html, rendered by static/path_modules.js).
 
 Fake tenants only: the ZPA side answers with the SDK's own models through
 tests/test_zpa_analysis.FakeTenant; the Cloud & Branch Connector side is a
@@ -26,7 +27,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET = "canary-secret-7f3a91"
 CREDS = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": SECRET, "customer_id": "216196257331281920"}
 CHANNELS = {"web_dlp": "zscaler", "ssl_inspection": "zscaler", "cloud_app_control": "zscaler"}
-MODULE_KEYS = {"key", "module", "verdict", "rule", "overlaps", "criteria", "notes"}
+MODULE_KEYS = {"key", "module", "verdict", "rule", "overlaps", "could_override", "criteria", "notes", "detail"}
 
 
 # ── fake tenants ────────────────────────────────────────────────────────
@@ -182,7 +183,8 @@ def test_a_less_specific_match_is_listed_as_an_overlap_and_a_port_miss_as_a_hint
     seg = st["modules"][0]
     assert st["segment"]["name"] == "Corp wildcard"
     assert any("“Git” lists git.corp.example but serves TCP 443, not 22" in n for n in seg["notes"])
-    assert stage("git.corp.example")["modules"][0]["overlaps"][0].startswith("“Corp wildcard”")
+    assert stage("git.corp.example")["modules"][0]["overlaps"][0] == {"name": "Corp wildcard", "order": None, "differs": False,
+                                                                     "detail": "*.corp.example, TCP 1-65535: less specific"}
 
 
 @pytest.mark.parametrize("dest,hint", [
@@ -279,12 +281,15 @@ def test_an_operand_this_tool_cannot_evaluate_is_flagged_and_makes_the_answer_co
     assert st["flagged"] == [{"rule": "Deny risky", "order": 1, "types": ["RISK_FACTOR_TYPE"]}]
     assert st["outcome"] == "zpa_conditional" and st["carries"] is True
     acc = next(m for m in st["modules"] if m["module"] == "ZPA access policy")
-    assert acc["overlaps"] and acc["overlaps"][0].startswith("“Deny risky” (order 1, DENY) could decide instead")
+    assert acc["overlaps"] == [] and acc["could_override"][0]["name"] == "Deny risky"
+    assert (acc["could_override"][0]["order"], acc["could_override"][0]["action"]) == (1, "DENY")
+    assert acc["could_override"][0]["detail"].startswith("Could decide instead: it depends on")
     assert any(i["label"] == "ZPA rule not fully evaluated" for i in st["impacts"])
 
 
 def test_every_hop_has_the_shared_module_shape():
-    """ASVS V5.1.3 · CWE-20: each ZPA and connector step is {module, verdict, rule: {name, order}, overlaps, criteria, notes}."""
+    """ASVS V5.1.3 · CWE-20: each ZPA and connector step is the one hop shape static/path_modules.js renders, in its one vocabulary."""
+    import zia_path_modules as zpm
     # Arrange
     st = stage("git.corp.example")
     ev = wp.evaluate(ztw_snap(), wl(ip="10.9.1.1"), zp.destination("example.com"))
@@ -292,7 +297,8 @@ def test_every_hop_has_the_shared_module_shape():
     for m in st["modules"] + ev["modules"]:
         assert set(m) == MODULE_KEYS
         assert m["rule"] is None or set(m["rule"]) == {"name", "order"}
-        assert all(set(c) == {"name", "state"} and c["state"] in ("match", "nomatch", "unknown") for c in m["criteria"])
+        assert all(set(c) == {"name", "state"} and c["state"] in zpm.CRITERION_STATES for c in m["criteria"])
+        assert m["verdict"] in zpm.VERDICTS
 
 
 def test_an_unreadable_segment_list_is_unknown_never_not_zpa():
@@ -367,7 +373,9 @@ def test_a_criterion_this_tool_cannot_evaluate_makes_the_rule_conditional():
     # Assert
     assert ev["go"] == "conditional" and ev["possible"] == ["direct", "zia"]
     fm = next(m for m in ev["modules"] if m["module"] == "Connector forwarding")
-    assert fm["overlaps"][0].startswith("“Countries direct” (order 1, DIRECT) could decide instead: Destination country (not evaluated)")
+    could = fm["could_override"][0]
+    assert (could["name"], could["order"], could["action"]) == ("Countries direct", 1, "DIRECT")
+    assert could["criteria"] == [{"name": "Destination country (not evaluated)", "state": "unknown"}]
 
 
 def test_a_hostname_is_never_resolved_against_ip_destinations():
@@ -466,7 +474,7 @@ def api(tmp_path, monkeypatch):
     state = {"raw": raw, "sdk": Sdk(), "built": []}
     monkeypatch.setattr(srv, "_build_client", lambda req: state["built"].append("raw") or state["raw"])
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: state["built"].append("sdk") or state["sdk"])
-    state["post"] = lambda **body: TestClient(srv.app).post("/api/path-analyzer/full/start", json=dict(CREDS, from_page=True, **body))
+    state["post"] = lambda **body: TestClient(srv.app).post("/api/path-analyzer/start", json=dict(CREDS, from_page=True, **body))
     state["result"] = lambda: jobs["last"].result
     return state
 
@@ -576,8 +584,8 @@ def test_the_classic_sign_in_cannot_read_workloads_and_says_zpa_was_not_read(api
     import dlp_api_server as srv
     t = TestClient(srv.app)
     # Act
-    w = t.post("/api/path-analyzer/full/start", json=dict(legacy, cloud="zscaler", from_page=True, destination="example.com", source="workload", scopes=["ztw"]))
-    z = t.post("/api/path-analyzer/full/start", json=dict(legacy, cloud="zscaler", from_page=True, destination="example.com", scopes=["zpa"]))
+    w = t.post("/api/path-analyzer/start", json=dict(legacy, cloud="zscaler", from_page=True, destination="example.com", source="workload", scopes=["ztw"]))
+    z = t.post("/api/path-analyzer/start", json=dict(legacy, cloud="zscaler", from_page=True, destination="example.com", scopes=["zpa"]))
     # Assert
     assert w.status_code == 400 and "OneAPI" in w.json()["detail"]
     assert z.status_code == 400 and "classic ZIA API" in z.json()["detail"] and api["built"] == []
@@ -594,22 +602,167 @@ def test_no_secret_reaches_the_result_or_the_log(api):
     assert SECRET not in repr(api["result"]())
 
 
-# ── the page ────────────────────────────────────────────────────────────
-def test_the_page_loads_the_zpa_script_in_one_block_and_keeps_its_conventions():
-    """WCAG 2.2 SC 1.3.1 · WCAG 2.2 SC 4.1.2 · ASVS V14.4.3: the page adds labelled controls and one table with headers, wired in one place."""
-    # Arrange
-    html = open(os.path.join(ROOT, "static", "report_path.html"), encoding="utf-8").read()
-    js = open(os.path.join(ROOT, "static", "path_zpa.js"), encoding="utf-8").read()
+# ── one start endpoint ──────────────────────────────────────────────────
+@pytest.mark.parametrize("method", ["post", "get"])
+def test_the_second_start_endpoint_is_gone(api, method):
+    """ASVS V1.14.5 · ASVS V14.5.1 · CWE-1059: the Path analyzer has one start endpoint; the old /full/start answers 404 or 405 and reads nothing."""
+    import dlp_api_server as srv
+    # Act
+    r = getattr(TestClient(srv.app), method)("/api/path-analyzer/full/start", **({"json": dict(CREDS, destination="example.com", scopes=["zpa"])} if method == "post" else {}))
     # Assert
-    block = html[html.index('<script src="/static/path_zpa.js"></script>'):html.index("const E = _dfE;")]
-    assert block.count("\n") <= 8 and "PathZpa.fetch" in block and "PathZpa.decorate" in block
-    assert html.index("har_parse.js") < html.index("path_zpa.js") < html.index("const E = _dfE;")
-    assert "/api/path-analyzer/full/start" in js and "'/api/path-analyzer/start'" in js
-    for needle in ('aria-label="Where the traffic comes from"', 'aria-label="The workload\'s source IP address"', '<th scope="col">Criteria</th>',
-                   '<caption class="sr-only">', 'class="df-chip st-', 'class="df-table'):
-        assert needle in js, needle
-    assert not re.search(r"#[0-9a-fA-F]{3,6}\b", js), "no hex colour literals"
-    assert "innerHTML" not in js, "values are inserted escaped through insertAdjacentHTML with E()"
+    assert r.status_code in (404, 405) and api["built"] == []
+    assert not [x for x in srv.app.routes if getattr(x, "path", "") == "/api/path-analyzer/full/start"]
+
+
+def test_one_start_body_reaches_the_workload_the_zia_modules_and_the_what_if(api):
+    """ASVS V1.4.4 · ASVS V5.1.3 · CWE-20: one body with protocol, port (as text), identity and source=workload drives every part of one analysis."""
+    # Act
+    r = api["post"](destination="https://casino.example/x", protocol="tcp", port="8443", identity={"group": "Interns"},
+                    source="workload", workload={"ip": "10.7.0.1", "tags": "Env=qa", "connector_group": "AWS-US"},
+                    scopes=["ztw", "zpa", "dlp", "zcc", "zia_extras"], channels=CHANNELS)
+    # Assert
+    assert r.status_code == 200, r.text
+    res = api["result"]()
+    assert res["source"] == "workload" and [m["module"] for m in res["modules"]][:2] == ["Workload groups", "Connector forwarding"]
+    assert res["ztw_report_id"].startswith("pathztw-") and res["zpa_report_id"].startswith("pathzpa-")   # ZPA read for the segment criteria
+    assert res["zia_modules"]["traffic"]["label"].startswith("TCP/8443")
+    assert res["whatif"]["identity_label"] == "group Interns"
+    assert api["built"] == ["raw", "sdk"]
+
+
+def test_one_start_body_reaches_zpa_the_pac_file_the_zia_modules_and_the_what_if(api):
+    """ASVS V1.4.4 · ASVS V5.1.3 · CWE-20: a device body with protocol, port and identity gives ZPA, then the evaluated PAC file, then the ZIA modules and the what-if."""
+    # Act: macOS off network forwards by PAC in the Data Flow fake; no ZPA segment matches casino.example.
+    r = api["post"](destination="https://casino.example/x", network="off", platform="macos", protocol="tcp", port=443,
+                    identity={"user": "jane@acme.example"}, scopes=["zpa", "dlp", "zcc", "zia_extras"], channels=CHANNELS)
+    # Assert
+    assert r.status_code == 200, r.text
+    res = api["result"]()
+    keys = [m["key"] for m in res["modules"]]
+    assert keys[0] == "zpa_segment" and keys[-1] == "pac" and res["modules"][-1]["verdict"] == "forwarded"
+    assert res["zia_modules"]["modules"] and res["zia_modules"]["traffic"]["label"].startswith("TCP/443")
+    assert res["whatif"]["identity_label"].startswith("user jane@acme.example")
+    import zia_path_modules as zpm
+    assert all(set(m) >= set(MODULE_KEYS) and m["verdict"] in zpm.VERDICTS for m in res["modules"])
+
+
+@pytest.mark.parametrize("port,status", [("443", 200), (8443, 200), (" 22 ", 200), ("", 200), ("0", 400), ("65536", 400), ("eighty", 400), (True, 400)])
+def test_the_port_is_a_number_or_a_numeric_string_from_1_to_65535(api, port, status):
+    """ASVS V5.1.3 · ASVS V5.1.4 · CWE-20 · WSTG-INPV-01: one port definition: a number or numeric text, 1 to 65535; anything else is a 400 in words before sign-in."""
+    # Act
+    r = api["post"](destination="example.com", port=port, scopes=["zpa"])
+    # Assert
+    assert r.status_code == status, r.text
+    if status == 400:
+        assert "port" in r.json()["detail"] and api["built"] == []
+
+
+@pytest.mark.parametrize("protocol,status", [("tcp", 200), ("UDP", 200), ("", 200), ("icmp", 400)])
+def test_the_protocol_is_tcp_udp_or_empty(api, protocol, status):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: one protocol definition: TCP, UDP or empty (the URL's scheme decides)."""
+    # Act
+    r = api["post"](destination="example.com", protocol=protocol, scopes=["zpa"])
+    # Assert
+    assert r.status_code == status, r.text
+
+
+def test_a_profile_only_request_uses_the_profiles_cloud(api, monkeypatch):
+    """ASVS V4.2.1 · CWE-639 · CWE-1188: a body with only a profile id signs in to the profile's saved cloud, never the model's "production" default."""
+    import dlp_api_server as srv
+    import tenant_profiles
+    # Arrange
+    pid = tenant_profiles.upsert({"name": "Acme two", "cloud": "zscalertwo", "vanity_domain": "acme", "client_id": CREDS["client_id"],
+                                  "customer_id": CREDS["customer_id"]})["id"]
+    # Act
+    r = TestClient(srv.app).post("/api/path-analyzer/start", json={"profile_id": pid, "destination": "git.corp.example", "scopes": ["zpa"], "from_page": True})
+    # Assert
+    assert r.status_code == 200, r.text
+    assert api["result"]()["tenant_label"] == "acme (zscalertwo)"
+
+
+def _cloud_default_models():
+    import dlp_api_server as srv
+    from pydantic import BaseModel
+    return sorted((c for c in vars(srv).values() if isinstance(c, type) and issubclass(c, BaseModel) and "profile_id" in c.model_fields
+                   and "cloud" in c.model_fields and c.model_fields["cloud"].default == "production"), key=lambda c: c.__name__)
+
+
+@pytest.mark.parametrize("model", _cloud_default_models(), ids=lambda c: c.__name__)
+def test_every_request_model_with_a_production_default_takes_the_profiles_cloud(api, model):
+    """ASVS V4.2.1 · CWE-639 · CWE-1188: the shared credential resolver (_tenant_creds) fills an unsent cloud from the profile, for every request model."""
+    import dlp_api_server as srv
+    import tenant_profiles
+    # Arrange
+    pid = tenant_profiles.upsert({"name": "Acme two", "cloud": "zscalertwo", "vanity_domain": "acme", "client_id": CREDS["client_id"]})["id"]
+    # Act
+    creds = srv._tenant_creds(model.model_validate({"profile_id": pid}))
+    # Assert
+    assert creds["cloud"] == "zscalertwo" and srv._tenant_creds(model.model_validate({}))["cloud"] == "production"
+
+
+def test_a_typed_cloud_still_wins_over_the_profiles(api):
+    """ASVS V4.2.1 · CWE-639: a cloud the body sends is used as sent."""
+    import dlp_api_server as srv
+    # Act
+    TestClient(srv.app).post("/api/path-analyzer/start", json=dict(CREDS, cloud="zscalerthree", destination="git.corp.example", scopes=["zpa"], from_page=True))
+    # Assert
+    assert api["result"]()["tenant_label"] == "acme (zscalerthree)"
+
+
+# ── the page ────────────────────────────────────────────────────────────
+def _page():
+    return open(os.path.join(ROOT, "static", "report_path.html"), encoding="utf-8").read()
+
+
+def test_the_page_has_one_start_call_and_no_wrappers():
+    """ASVS V14.4.3 · ASVS V1.14.5 · CWE-1059: Analyze is the page's own start call with the traffic fields; no page function is reassigned and fetch is never shadowed."""
+    # Arrange
+    html = _page()
+    script = html[html.rindex("<script>"):]
+    js = {n: open(os.path.join(ROOT, "static", n), encoding="utf-8").read() for n in ("path_modules.js", "path_whatif.js", "path_list.js")}
+    # Assert
+    assert not os.path.exists(os.path.join(ROOT, "static", "path_zpa.js")) and "path_zpa.js" not in html
+    assert script.count("fetch('/api/path-analyzer/start'") == 1 and "full/start" not in html + "".join(js.values())
+    assert "credBody(), scopeSelection(), traffic()," in script
+    assert not re.search(r"^\s*(credBody|render|fetch|run)\s*=", script, re.M), "a page function is reassigned"
+    assert "const fetch" not in script
+    for name, text in js.items():
+        assert "window.fetch =" not in text and "realFetch" not in text, name
+        assert "MutationObserver" not in text, name
+
+
+def test_the_page_controls_sit_in_its_bar_with_its_classes():
+    """WCAG 2.2 SC 1.3.1 · WCAG 2.2 SC 4.1.2 · WCAG 2.2 SC 2.1.1: Traffic from, protocol, port, the workload fields and the what-if are labelled controls in the page's own markup."""
+    # Arrange
+    html = _page()
+    bar = html[html.index('<nav class="rp-bar" aria-label="Page actions">'):html.index("</nav>")]
+    panel = html[html.index('id="panel-one"'):html.index('id="panel-list"')]
+    # Assert
+    for needle in ('id="paSource" aria-label="Where the traffic comes from"', 'id="paProto" aria-label="Protocol of the traffic"',
+                   'id="paPort" inputmode="numeric"', 'aria-label="Destination port'):
+        assert needle in bar and '<label class="df-ctl' in bar, needle
+    wl = html[html.index('id="paWorkload"'):html.index('<main class="rp-card">')]
+    assert 'class="rp-bar pa-workload"' in html and 'role="group"' in wl and wl.count('<label class="df-ctl">') == 4
+    assert 'aria-label="The workload\'s source IP address"' in wl
+    assert '<details class="pa-framework pa-whatif" id="paWhatIf">' in panel and panel.count('class="rp-btn" data-wi-find=') == 4
+    assert 'id="paWiLive" role="status" aria-live="polite"' in panel
+    assert panel.index('id="paWhatIf"') < panel.index('id="paFramework"') < panel.index('id="paBody"')
+    css = open(os.path.join(ROOT, "static", "reports.css"), encoding="utf-8").read()
+    assert ".rp-bar .df-ctl[hidden]" in css and ".rp-bar.pa-workload { position: static; }" in css
+
+
+def test_the_steps_before_zia_are_drawn_by_the_shared_renderer():
+    """WCAG 2.2 SC 1.3.1 · ASVS V14.4.1: ZPA, connector and PAC hops go through PathModules (one hop renderer, one verdict vocabulary)."""
+    # Arrange
+    import zia_path_modules as zpm
+    html, js = _page(), open(os.path.join(ROOT, "static", "path_modules.js"), encoding="utf-8").read()
+    # Assert
+    assert "${PathModules.section(res)}" in html and "PathWhatIf.section(res.whatif)" in html
+    assert "function beforeSection(res)" in js and "res.modules" in js and "root.PathModules = { render, hop, section, portHint" in js
+    table = js[js.index("const VERDICT = {"):js.index("const STATE = {")]
+    assert set(re.findall(r"(\w+): \['", table)) == set(zpm.VERDICTS)
+    data_flow = open(os.path.join(ROOT, "static", "data_flow.js"), encoding="utf-8").read()
+    assert "zpa_allowed: ['Carried by ZPA'" in data_flow and "zpa_allowed: ['Carried by ZPA and allowed" in data_flow
 
 
 def test_the_scope_page_offers_cloud_and_branch_connector_off_by_default():

@@ -359,9 +359,10 @@ def test_the_path_hop_evaluates_the_pac_and_names_the_answer():
     t = _trace(CORP, "www.dropbox.com")
     h = _pac_hop(t)
     assert h["status"] == "bypass" and t["outcome"] == "bypassed" and h["decided_by"]["name"] == "Corp PAC"
-    v = h["module_view"]
-    assert set(v) == {"module", "verdict", "rule", "overlaps", "criteria", "notes"}
-    assert v["module"] == "pac" and v["verdict"] == "direct" and v["rule"] == {"name": "Corp PAC", "order": None}
+    v = h["module_hop"]
+    assert set(v) == {"key", "module", "verdict", "rule", "overlaps", "could_override", "criteria", "notes", "detail"}
+    assert v["key"] == "pac" and v["module"] == "PAC file" and v["verdict"] == "bypassed" and v["rule"] == {"name": "Corp PAC", "order": None}
+    assert v["detail"] == h["detail"]
     assert {"name": 'shExpMatch(host, "*.dropbox.com")', "state": "match"} in v["criteria"]
     z = _trace(CORP, "www.example.com")
     assert _pac_hop(z)["status"] == "pass" and "fail-open" in _pac_hop(z)["detail"] and z["reaches_zscaler"]

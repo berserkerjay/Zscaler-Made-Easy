@@ -696,6 +696,59 @@ def _overlap(e: Dict[str, Any], verdict: str, criteria: bool = False) -> Dict[st
     return o
 
 
+# ── The one hop shape every Path analyzer module shares ──────────────
+# static/path_modules.js renders it, for the ZIA modules here and for the
+# steps before ZIA (ZPA, the Cloud or Branch Connector, the PAC file). The
+# verdict words are one vocabulary (path_modules.js VERDICT); the ZPA and
+# connector words that mean the same as a ZIA word are folded into it.
+VERDICTS = frozenset({
+    "allow", "block", "caution", "isolate", "redirect", "inspect", "decrypt", "no_decrypt", "none", "blind", "skipped",
+    "conditional", "unknown", "not_applicable", "not_reached", "out_of_scope",
+    # the steps before ZIA
+    "matched", "not_matched", "intercepted", "bypassed", "forwarded", "dropped", "carried",
+})
+_VERDICT_ALIASES = {"allowed": "allow", "denied": "block", "not_in_scope": "out_of_scope"}
+CRITERION_STATES = ("match", "no_match", "unknown")
+_STATE_ALIASES = {"nomatch": "no_match"}
+
+
+def _ref(r: Any, *keys: str) -> Dict[str, Any]:
+    out = {"name": str(r.get("name") or ""), "order": r.get("order")}
+    for k in keys:
+        if r.get(k) not in (None, "", []):
+            out[k] = r[k]
+    return out
+
+
+def criterion(c: Dict[str, Any]) -> Dict[str, Any]:
+    """One criterion in the shared shape: {name, state, detail?}."""
+    state = _STATE_ALIASES.get(str(c.get("state") or ""), str(c.get("state") or "unknown"))
+    out = {"name": str(c.get("name") or ""), "state": state if state in CRITERION_STATES else "unknown"}
+    if c.get("detail"):
+        out["detail"] = str(c["detail"])
+    return out
+
+
+def module_hop(module: str, verdict: str, rule: Optional[Dict[str, Any]] = None, *, key: str = "",
+               overlaps: Iterable[Dict[str, Any]] = (), could_override: Iterable[Dict[str, Any]] = (),
+               criteria: Iterable[Dict[str, Any]] = (), notes: Iterable[str] = (), detail: str = "") -> Dict[str, Any]:
+    """One step of a traced path in the shape static/path_modules.js
+    renders: {key, module, verdict, rule: {name, order} | None, overlaps:
+    [{name, order, action?, differs, detail?}] (other rules that also
+    match and never apply), could_override: [{name, order, action?,
+    criteria, detail?}] (earlier rules that could decide instead),
+    criteria: [{name, state: match | no_match | unknown, detail?}], notes,
+    detail}. Used for the steps before ZIA; the ZIA modules (_module)
+    carry the same keys and a few more."""
+    v = _VERDICT_ALIASES.get(verdict, verdict)
+    return {"key": key, "module": module, "verdict": v if v in VERDICTS else "unknown",
+            "rule": _ref(rule) if rule and rule.get("name") else None,
+            "overlaps": [dict(_ref(o, "action", "detail"), differs=bool(o.get("differs"))) for o in overlaps if o and o.get("name")][:20],
+            "could_override": [dict(_ref(o, "action", "detail"), criteria=[criterion(c) for c in o.get("criteria") or []][:30])
+                               for o in could_override if o and o.get("name")][:8],
+            "criteria": [criterion(c) for c in criteria][:30], "notes": [str(n) for n in notes if n][:12], "detail": str(detail or "")}
+
+
 def _module(module: str, key: str, verdict: str, certainty: str, status: str, **kw: Any) -> Dict[str, Any]:
     """One module's result, in the shape static/path_modules.js renders:
     {module, key, verdict, certainty, status, rule: {name, order, ...} |
@@ -1140,6 +1193,9 @@ def extend_trace(t: Dict[str, Any], result: Dict[str, Any]) -> None:
             if h.get("key") in _WEB_HOPS or h.get("key") == "pac":
                 h.update(status="not_reached", decided_by=None, weak_point=None, why="sent direct by the forwarding profile",
                          detail="Not reached: the forwarding profile sends this traffic direct.")
+                if h.get("module_hop"):
+                    h["module_hop"] = module_hop(h["module_hop"]["module"], "not_reached", key=h["module_hop"]["key"],
+                                                 detail="Not reached: the forwarding profile sends this traffic direct.")
         for m in result["modules"]:
             m.update(verdict="not_reached", status="not_reached", certainty="definite", rule=None, criteria=[], overlaps=[], overlaps_catch_all=0,
                      could_override=[], detail="Not reached: the forwarding mode sends this traffic direct.")

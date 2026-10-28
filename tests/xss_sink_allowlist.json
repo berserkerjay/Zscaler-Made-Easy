@@ -435,6 +435,8 @@
   "cls": [3, "CSS class or icon from the page's own status table"],
   "ocls": [1, "CSS class or icon from the page's own status table"],
   "(t.hops || []).map(_dfHopDetail).join('')": [1, "HTML the page or server builds with every value escaped (reviewed at its source)"],
+  "PathWhatIf.section(res.whatif)": [1, "HTML the page or server builds with every value escaped (reviewed at its source: static/path_whatif.js, scanned on its own)"],
+  "PathModules.section(res)": [1, "HTML the page or server builds with every value escaped (reviewed at its source: static/path_modules.js, scanned on its own)"],
   "HarParse.MAX_HOSTS": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
   "m.requests": [1, "number the server computes (count, percentage, score, stage, position)"],
   "m.uploads": [1, "number the server computes (count, percentage, score, stage, position)"],

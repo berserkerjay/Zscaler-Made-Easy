@@ -1,19 +1,24 @@
 // ── Path modules: one renderer for every policy module on a traced path ──
-// Shared by every Path analyzer view that shows a module's decision (ZIA
-// modules, ZPA, workloads, what-if, test a list). Each hop renders as its
-// name, a verdict chip, the deciding rule with its order, the later rules
-// that also match (compressed), and each criterion of the deciding rule as
+// The Path analyzer's steps, in the order they apply, all in one shape and
+// drawn by this one file: ZPA (application segment, bypass, client
+// forwarding, access policy), the Cloud or Branch Connector for a
+// workload, the PAC file (evaluated, never run) and every ZIA module. Each
+// hop renders as its name, a verdict chip, the deciding rule with its
+// order, the other rules that also match (compressed), the earlier rules
+// that could decide instead, and each criterion of the deciding rule as
 // match, no match or unknown. It uses the page's own classes (df-hop,
 // df-chip, df-table, df-hint) and colour tokens only.
 //
-// The data shape of one hop:
+// The data shape of one hop (zia_path_modules.module_hop on the server):
 //   {
 //     module:   'Cloud Firewall',                 // the module's name, shown as is
 //     verdict:  'block',                          // allow | block | caution | isolate | redirect | inspect |
 //                                                 // decrypt | no_decrypt | none | blind | skipped | conditional |
-//                                                 // unknown | not_applicable | not_reached | out_of_scope
+//                                                 // unknown | not_applicable | not_reached | out_of_scope |
+//                                                 // and before ZIA: matched | not_matched | intercepted |
+//                                                 // bypassed | forwarded | dropped | carried
 //     rule:     { name: 'Block QUIC', order: 1 }, // the deciding rule, or null (optional: action, default)
-//     overlaps: [{ name, order, action, differs }],// later rules that also match; differs: another outcome
+//     overlaps: [{ name, order, action, differs, detail }],// other rules that also match; differs: another outcome
 //     criteria: [{ name, state, detail }],        // the deciding rule's criteria;
 //                                                 // state: 'match' | 'no_match' | 'unknown'
 //     notes:    ['...'],                          // plain sentences
@@ -21,14 +26,16 @@
 // Optional fields: key, detail (one sentence under the name), certainty
 // ('definite' | 'conditional' | 'unknown'), overlaps_catch_all (how many
 // catch-all or default rules also match), could_override ([{ name, order,
-// action, criteria }]: earlier rules with an unknown criterion and another
-// outcome), modifier (true: it changes what later modules see, like SSL
-// inspection), position (its place in the order).
+// action, criteria, detail }]: earlier rules with an unknown criterion and
+// another outcome), modifier (true: it changes what later modules see, like
+// SSL inspection), position (its place in the order).
 //
 // API: PathModules.render(hops) -> HTML (an ordered list);
-//      PathModules.hop(hop) -> HTML for one hop.
-// PathModules.zia holds the Path analyzer's ZIA-module parts: the protocol
-// and port inputs and the result section.
+//      PathModules.hop(hop) -> HTML for one hop;
+//      PathModules.section(res) -> the Path analyzer result's module
+//        sections: the steps before ZIA (res.modules), then the ZIA modules
+//        (res.zia_modules), each in order;
+//      PathModules.portHint(protocol, port) -> the name of a well-known port.
 (function (root) {
   'use strict';
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -39,6 +46,9 @@
     none: ['No rule', 'dim'], blind: ['Blind', 'fail'], skipped: ['Skipped', 'dim'], conditional: ['Conditional', 'warn'],
     unknown: ['Unknown', 'dim'], not_applicable: ['Not applicable', 'dim'], not_reached: ['Not reached', 'dim'],
     out_of_scope: ['Not in scope', 'dim'],
+    // the steps before ZIA (ZPA, the connector, the PAC file)
+    matched: ['Matches', 'ok'], not_matched: ['No match', 'dim'], intercepted: ['Intercepted', 'ok'], bypassed: ['Bypasses', 'warn'],
+    forwarded: ['Forwarded', 'ok'], dropped: ['Dropped', 'block'], carried: ['Carried', 'ok'],
   };
   const STATE = { match: ['Match', 'ok'], no_match: ['No match', 'dim'], unknown: ['Unknown', 'warn'] };
 
@@ -59,7 +69,7 @@
   function ruleRows(list) {
     return `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Rules</caption>
       <thead><tr><th scope="col">Rule</th><th scope="col">Order</th><th scope="col">Action</th><th scope="col">Outcome</th></tr></thead>
-      <tbody>${list.map(o => `<tr><td><code>${E(o.name)}</code></td><td>${E(o.order == null ? '' : o.order)}</td><td>${E(o.action || '')}</td><td>${o.differs ? 'different' : 'same'}</td></tr>`).join('')}</tbody></table></div>`;
+      <tbody>${list.map(o => `<tr><td><code>${E(o.name)}</code>${o.detail ? `<div class="df-hop-d">${E(o.detail)}</div>` : ''}</td><td>${E(o.order == null ? '' : o.order)}</td><td>${E(o.action || '')}</td><td>${o.differs ? 'different' : 'same'}</td></tr>`).join('')}</tbody></table></div>`;
   }
   // Overlaps, compressed to one line; the rules themselves on demand.
   function overlapsHtml(h) {
@@ -69,14 +79,14 @@
     const bits = [];
     if (list.length) bits.push(`${list.length} rule${list.length === 1 ? '' : 's'}${differ ? ` (${differ} with another outcome)` : ''}`);
     if (extra) bits.push(`${extra} catch-all or default rule${extra === 1 ? '' : 's'}`);
-    const line = `<strong>Also matched later:</strong> ${E(bits.join(' and '))}. They never apply here: the first match decides.`;
+    const line = `<strong>Also matched:</strong> ${E(bits.join(' and '))}. They never apply here: ${h.key === 'zpa_segment' ? 'the most specific match decides' : 'the first match decides'}.`;
     return list.length ? `<details class="pm-more"><summary class="df-hop-d">${line}</summary>${ruleRows(list)}</details>` : `<div class="df-hop-d">${line}</div>`;
   }
   function couldHtml(h) {
     const list = h.could_override || [];
     if (!list.length) return '';
     return `<details class="pm-more"><summary class="df-hop-d"><strong>Could apply first:</strong> ${E(list.length)} rule${list.length === 1 ? '' : 's'} whose conditions are not all known, with another outcome.</summary>
-      ${list.map(o => `<div class="pm-could"><div class="df-hop-d">${ruleText(o)}</div>${(o.criteria || []).length ? criteriaTable(o.criteria, `Criteria of ${o.name}`) : ''}</div>`).join('')}</details>`;
+      ${list.map(o => `<div class="pm-could"><div class="df-hop-d">${ruleText(o)}</div>${o.detail ? `<div class="df-hop-d">${E(o.detail)}</div>` : ''}${(o.criteria || []).length ? criteriaTable(o.criteria, `Criteria of ${o.name}`) : ''}</div>`).join('')}</details>`;
   }
   function hop(h) {
     const [, cls] = VERDICT[h.verdict] || ['', 'dim'];
@@ -97,8 +107,8 @@
     return `<ol class="pm-list">${list.map(hop).join('')}</ol>`;
   }
 
-  // ── The Path analyzer's ZIA modules ───────────────────────────────
-  // The well-known ports the inputs explain as they are typed. The server
+  // ── The Path analyzer's parts ─────────────────────────────────────
+  // The well-known ports the page names as they are typed. The server
   // (zia_path_modules.WELL_KNOWN) is what decides; this is the hint only.
   const PORT_HINT = {
     'tcp/80': 'HTTP (web)', 'tcp/443': 'HTTPS (web)', 'udp/443': 'QUIC (HTTP/3 over UDP): never seen by the web proxy',
@@ -110,31 +120,26 @@
     'udp/51820': 'WireGuard', 'tcp/1723': 'PPTP VPN', 'udp/3478': 'STUN (calls and meetings)', 'tcp/1433': 'Microsoft SQL Server',
     'tcp/3306': 'MySQL', 'tcp/5432': 'PostgreSQL',
   };
-  function hint() {
-    const p = document.getElementById('paProto'), n = document.getElementById('paPort'), out = document.getElementById('paPortHint');
-    if (!p || !n || !out) return;
-    const proto = p.value || 'tcp', port = String(n.value || '').trim();
-    if (!port) { out.textContent = p.value ? `${proto.toUpperCase()}, port from the URL (else 443).` : ''; return; }
-    const name = PORT_HINT[`${proto}/${port}`];
-    out.textContent = `${proto.toUpperCase()}/${port}${name ? ` is ${name}` : ''}.`;
+  // One sentence for the protocol and port chosen ('' when nothing is).
+  function portHint(protocol, port) {
+    const proto = protocol || 'tcp', p = String(port == null ? '' : port).trim();
+    if (!p) return protocol ? `${proto.toUpperCase()}, port from the URL (else 443).` : '';
+    const name = PORT_HINT[`${proto}/${p}`];
+    return `${proto.toUpperCase()}/${p}${name ? ` is ${name}` : ''}.`;
   }
-  // The protocol and port inputs, placed after `after` (the platform control).
-  function mountControls(after) {
-    if (!after || document.getElementById('paProto')) return;
-    after.insertAdjacentHTML('afterend', `<label class="df-ctl"><span class="lbl">Protocol</span><select id="paProto" aria-label="Protocol of the traffic" aria-describedby="paPortHint">
-        <option value="">From the URL</option><option value="tcp">TCP</option><option value="udp">UDP</option></select></label>
-      <label class="df-ctl pm-port"><span class="lbl">Port</span><input type="number" id="paPort" min="1" max="65535" step="1" inputmode="numeric" placeholder="443" aria-label="Destination port (1 to 65535)" aria-describedby="paPortHint"></label>
-      <span class="df-hint pm-port-hint" id="paPortHint" aria-live="polite"></span>`);
-    document.getElementById('paProto').addEventListener('change', hint);
-    document.getElementById('paPort').addEventListener('input', hint);
-  }
-  // What the request adds: {protocol, port}, only what the operator chose.
-  function input() {
-    const p = document.getElementById('paProto'), n = document.getElementById('paPort');
-    const out = {};
-    if (p && p.value) out.protocol = p.value;
-    if (n && String(n.value).trim() !== '') out.port = Number(n.value);
-    return out;
+  // The steps before ZIA: ZPA, the connector for a workload, the PAC file.
+  function beforeSection(res) {
+    const list = (res && res.modules) || [];
+    if (!list.length) return '';
+    const has = test => list.some(m => test(String(m.key || '')));
+    const parts = [has(k => k === 'zpa' || k.startsWith('zpa_')) && 'ZPA', has(k => k === 'workload_groups' || k === 'connector_forwarding') && 'the connector',
+      has(k => k === 'pac') && 'the PAC file'].filter(Boolean);
+    const said = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : (parts[0] || 'the steps in front');
+    return `<section class="pm-section" aria-labelledby="pmBeforeH">
+      <h2 class="df-h" id="pmBeforeH">Before ZIA: ${E(said)}</h2>
+      <p class="df-hint">What decides the traffic before ZIA, in the order it is applied.${parts.includes('ZPA') ? ' ZPA comes first: a destination ZPA carries never reaches ZIA.' : ''}${parts.includes('the PAC file') ? ' The PAC file is evaluated, never run.' : ''} A criterion marked Unknown depends on something you did not give, or on a condition this page cannot evaluate.</p>
+      ${render(list)}
+    </section>`;
   }
   // Where the traffic ends: the module that blocks for certain, else a
   // block that depends on unknown conditions, else the verdict's stop.
@@ -147,7 +152,7 @@
     return maybe ? `${maybe.module}, if its conditions hold` : 'reaches the destination';
   }
   const CERTAINTY = { definite: ['Definite', 'ok'], conditional: ['Conditional', 'warn'] };
-  function section(res) {
+  function ziaSection(res) {
     const z = res && res.zia_modules;
     if (!z || !Array.isArray(z.modules)) return '';
     const v = res.verdict || {};
@@ -165,15 +170,8 @@
       ${render(z.modules)}
     </section>`;
   }
-  // Put the section right after the verdict of a rendered result.
-  function mount(container, res) {
-    if (!container) return;
-    const old = container.querySelector('.pm-section'); if (old) old.remove();
-    const html = section(res);
-    if (!html) return;
-    const verdict = container.querySelector('.pa-verdict');
-    if (verdict) verdict.insertAdjacentHTML('afterend', html); else container.insertAdjacentHTML('afterbegin', html);
-  }
+  // Every module section of a result, in the order the traffic meets them.
+  function section(res) { return beforeSection(res) + ziaSection(res); }
 
-  root.PathModules = { render, hop, VERDICT, STATE, zia: { mountControls, input, section, mount } };
+  root.PathModules = { render, hop, section, portHint, VERDICT, STATE };
 })(window);

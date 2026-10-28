@@ -1346,13 +1346,30 @@ _KIND_WORDS = {"direct": "DIRECT (no Zscaler)", "zscaler": "Zscaler", "other_pro
                "invalid": "an answer browsers do not understand"}
 
 
+# The PAC answer as the shared hop's verdict: to Zscaler is forwarded;
+# DIRECT or another proxy bypasses Zscaler; branches that differ are
+# conditional; anything else is unknown.
+_PAC_VERDICT = {"zscaler": "forwarded", "direct": "bypassed", "other_proxy": "bypassed", "mixed": "conditional"}
+
+
 def path_hop(pacs: List[Dict[str, Any]], host: str, url: str) -> Optional[Dict[str, Any]]:
     """The PAC hop of a traced path: each linked PAC file (with its
     `source`) evaluated for `url`. None when no linked file has its source
     (the caller keeps its static check). Returns {status (bypass, warn,
-    pass, unknown), decided_by, detail, weak_point, evaluation, module_view}
-    where module_view is the shared hop shape {module, verdict, rule,
-    overlaps, criteria, notes}."""
+    pass, unknown), decided_by, detail, weak_point, evaluation, module_hop}
+    where module_hop is the PAC step in the one hop shape every Path
+    analyzer module shares (zia_path_modules.module_hop, rendered by
+    static/path_modules.js): the file is the rule, each condition it
+    tested a criterion, and the answer the verdict (forwarded to Zscaler,
+    bypassed, conditional or unknown)."""
+    out = _path_hop(pacs, host, url)
+    if out is not None:
+        out["module_hop"]["detail"] = out["detail"]
+    return out
+
+
+def _path_hop(pacs: List[Dict[str, Any]], host: str, url: str) -> Optional[Dict[str, Any]]:
+    from zia_path_modules import module_hop
     usable = [f for f in pacs if isinstance(f.get("source"), str) and f.get("source")]
     if not usable or not host:
         return None
@@ -1363,13 +1380,13 @@ def path_hop(pacs: List[Dict[str, Any]], host: str, url: str) -> Optional[Dict[s
     notes = list(ev.get("assumptions") or []) + [f"Depends on {r}." for r in ev.get("depends_on") or []]
     if len(usable) > 1:
         notes.append(f"{len(usable)} PAC files share this URL; the first, '{name}', was evaluated.")
-    view = {"module": "pac", "verdict": ev["kind"], "rule": {"name": name, "order": None}, "overlaps": [],
-            "criteria": list(ev.get("trail") or []), "notes": notes}
+    verdict = _PAC_VERDICT.get(ev["kind"], "unknown")
+    if ev["status"] == "error":
+        notes = [ev["error"]] + notes
+    view = module_hop("PAC file", verdict, {"name": name, "order": None}, key="pac", criteria=ev.get("trail") or [], notes=notes)
     by = {"name": name, "id": f.get("id")}
     if ev["status"] == "error":
-        view["verdict"] = "unknown"
-        view["notes"] = [ev["error"]] + notes
-        return {"status": "error", "decided_by": None, "evaluation": ev, "module_view": view,
+        return {"status": "error", "decided_by": None, "evaluation": ev, "module_hop": view,
                 "detail": f"PAC '{name}' {ev['error']}. Only its literal DIRECT patterns were checked; nothing in it was run."}
     outs = ev["outcomes"]
     shown = "; ".join(f"'{o['result']}' ({_KIND_WORDS.get(o['kind'], o['kind'])})" for o in outs[:4]) or "an answer that cannot be known in advance"
@@ -1377,22 +1394,22 @@ def path_hop(pacs: List[Dict[str, Any]], host: str, url: str) -> Optional[Dict[s
         o = outs[0]
         if o["kind"] in ("direct", "other_proxy"):
             what = "returns DIRECT" if o["kind"] == "direct" else f"sends it to another proxy ({o['proxy']}), not Zscaler"
-            return {"status": "bypass", "decided_by": by, "evaluation": ev, "module_view": view,
+            return {"status": "bypass", "decided_by": by, "evaluation": ev, "module_hop": view,
                     "detail": f"PAC '{name}' {what} for {host} (evaluated: '{o['result']}'): the browser connects without Zscaler.",
                     "weak_point": {"severity": "high", "title": "PAC sends this destination around Zscaler",
                                    "fix": "Remove the DIRECT (or other-proxy) clause or narrow it; Zscaler recommends returning the ZIA proxy for everything except RFC1918 and explicit local hosts."}}
         if o["kind"] == "zscaler":
             tail = " If every listed gateway is unreachable it falls back to DIRECT (fail-open)." if o["fallback_direct"] else ""
-            return {"status": "pass", "decided_by": by, "evaluation": ev, "module_view": view,
+            return {"status": "pass", "decided_by": by, "evaluation": ev, "module_hop": view,
                     "detail": f"PAC '{name}' answers '{o['result']}' for {host}: the browser sends it to Zscaler.{tail}"
                               + (" Assumed: " + "; ".join(ev["assumptions"]) + "." if ev["assumptions"] else "")}
-        return {"status": "unknown", "decided_by": by, "evaluation": ev, "module_view": view,
+        return {"status": "unknown", "decided_by": by, "evaluation": ev, "module_hop": view,
                 "detail": f"PAC '{name}' answers '{o['result']}' for {host}, which is not a valid proxy answer; browsers usually go direct."}
     deps = ", ".join(ev["depends_on"]) or "values this app cannot know"
     if ev["kind"] == "zscaler":
-        return {"status": "pass", "decided_by": by, "evaluation": ev, "module_view": view,
+        return {"status": "pass", "decided_by": by, "evaluation": ev, "module_hop": view,
                 "detail": f"PAC '{name}' sends {host} to Zscaler whatever {deps} turns out to be: {shown}."}
-    return {"status": "warn", "decided_by": by, "evaluation": ev, "module_view": view,
+    return {"status": "warn", "decided_by": by, "evaluation": ev, "module_hop": view,
             "detail": f"PAC '{name}' answers differently for {host} depending on {deps}: {shown}. On the answers that are not Zscaler the browser connects without it.",
             "weak_point": {"severity": "medium", "title": "PAC answer depends on the device or the time",
                            "fix": "Make the PAC send this destination to Zscaler on every branch, or move the location logic to the Forwarding Profile's trusted-network criteria."}}
