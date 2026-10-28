@@ -696,7 +696,9 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     if counts["change"] == 0 and not prepared["blockers"]:
         prepared["warnings"].append("Nothing to change: every item is already as asked or excluded.")
     prepared["status"] = "blocked" if prepared["blockers"] else ("nothing_to_do" if counts["change"] == 0 else "ready")
-    prepared["confirm_phrase"] = confirm_phrase(counts["change"])
+    # A plugin may ask for its typed phrase whatever the count (a delete): `confirm_always`.
+    always = str(prepared.get("confirm_always") or "").strip().upper()
+    prepared["confirm_phrase"] = always if always and counts["change"] else confirm_phrase(counts["change"])
     prepared["needs_activation"] = prepared.get("product") == "zia"
     prepared["kind"] = KIND
     prepared["tenant_label"] = tenant_label

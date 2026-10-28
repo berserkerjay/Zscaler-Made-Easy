@@ -89,6 +89,8 @@
     'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
     'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
     'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
+    'provisioning key': { term: 'provisioning key', def: 'A provisioning key is a one-time code. A new App Connector uses it to join its connector group. Keep it secret.' },
+    'prefix': { term: 'prefix', def: 'A prefix is a short tag at the start of a name, like pov1. The builder puts it on all it makes, so it can find them again.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

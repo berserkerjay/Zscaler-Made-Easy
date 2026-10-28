@@ -339,6 +339,10 @@ ROUTES: List[Route] = [
     Route("/api/operations/preview", RULE_STATE_WEB),
     Route("/api/operations/op-qa-1/undo/preview/start", setup=_recorded_operation),
     Route("/api/operations/op-qa-1/undo/preview", setup=_recorded_operation),
+    # The ZPA builder (ops_zpa): plugin types and their pick lists on the same routes
+    Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/operations/preview/start", {"operation": {"type": "zpa_policies", "prefix": "pov1", "access": True}}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zpa_prefix_delete", "prefix": "pov1", "everything": True}}, partial=ZPA, out=ZPA_OUT),
     Route("/api/digests/run", setup=_profile_from, nothing=200,
           why="by design: the loop reads saved profiles, and one with nothing in scope is reported 'not read' in the digest"),
 ]
@@ -409,6 +413,8 @@ EXPLICIT_PICKS = [
     ("/api/operations/preview", {"operation": {"type": "reorder", "policy": "ssl_inspection", "order": [1]}}, WEB),
     ("/api/operations/objects", {"family": "zpa_segments"}, WEB),
     ("/api/operations/objects", {"family": "url_categories"}, ZPA),
+    ("/api/operations/preview", {"operation": {"type": "zpa_connector_group", "prefix": "pov1"}}, WEB),
+    ("/api/operations/objects", {"family": "zpa_objects"}, ZIA),
     ("/api/self-heal/tenant/scan", {"pack_ids": ["zbp_enterprise_baseline"], "include_who": True}, WEB),
     ("/api/audit-timeline/start", {"include_zia": True}, WEB),
     ("/api/device-posture/start", {}, ZCC),

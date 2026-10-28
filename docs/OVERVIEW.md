@@ -358,6 +358,21 @@ what you get, what to do next.
   records the change with an Undo that is itself previewed. Cloud
   application sanction is not offered: the SDK cannot read an
   application's current state.
+  Under **Build new** (also linked from the ZPA analysis page as *Build ZPA
+  objects*, ZPA ticked on the Scope page), the **ZPA builder** makes a
+  proof-of-value ZPA set-up through the same preview, gates, read-back and
+  Undo, every object named with a short prefix so a re-run updates in place:
+  an App Connector group (or an existing one) with a provisioning key that
+  is shown once and never kept, logged or exported; a segment group, a
+  server group and application segments from a `*.domain` wildcard, a
+  healthcare, finance, education or general preset, or a CSV of up to 500
+  rows (created disabled unless you ask), optionally Browser Access and
+  Privileged Remote Access consoles; access, timeout, inspection (Zscaler's
+  predefined OWASP controls) and isolation rules. *Delete ZPA objects by
+  prefix* reads ZPA again and deletes only objects carrying the prefix, in
+  dependency order (policies, segments, server groups, segment groups,
+  connector groups), keeping and naming anything still used by an object
+  that is not being deleted; it needs `DELETE <PREFIX>` typed.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in
