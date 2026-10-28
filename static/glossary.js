@@ -89,6 +89,10 @@
     'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
     'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
     'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
+    'custom url category': { term: 'custom URL category', def: 'A custom URL category is your own list of sites. A rule can block or allow the whole list at once.' },
+    'ip group': { term: 'IP group', def: 'An IP group is a list of addresses you make in Zscaler. A firewall rule can name the group to block or allow them all.' },
+    'allowed but blockable': { term: 'allowed but blockable', def: 'Allowed but blockable means a site gets through today. A rule could block it, but that rule is only for some people or places.' },
+    'threat category': { term: 'threat category', def: 'A threat category is a group of sites Zscaler knows are bad, like phishing or malware. Threat protection blocks them for everyone.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

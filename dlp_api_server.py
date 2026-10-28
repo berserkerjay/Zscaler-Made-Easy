@@ -8145,6 +8145,167 @@ async def path_analyzer_batch_export(job_id: str, format: str = "csv"):
                     headers={"Content-Disposition": f"attachment; filename=path_har_{ts}.csv"})
 
 
+# ── Path analyzer: Test a list (bulk_test) ─────────────────────────────
+# The Path analyzer page's "Test a list" view: a CSV of destinations
+# (IPs, hosts, URLs, CIDR blocks and ranges, with optional port, protocol,
+# source IP, location, country, category, user, label and the expected
+# block or allow) is parsed here before sign-in (an untrusted file: size,
+# line and row caps), then every row is traced against one tenant read
+# (only what is in scope) with ZIA's URL lookup a hundred per request.
+# The `text` field is recorded in the audit log by its size only.
+# Read-only; "Fix selected" only prepares a Bulk changes URL category
+# operation, which writes nothing without its own four gates.
+_BULK_RUNS: Dict[str, Any] = {}
+_BULK_RUNS_MAX = 2
+
+
+class BulkTestRequest(ScopedTenantCredsRequest):
+    """Body of Test a list: the list as text (a CSV file read in the
+    browser, or pasted), the network and platform, whether to ask ZIA's
+    URL lookup, its request limit for this run, and optionally the id of a
+    tenant read to reuse."""
+    text: str = ""
+    network: str = "off"
+    platform: str = "windows"
+    lookup: bool = True
+    max_lookup_requests: int = 400
+    report_id: str = ""
+
+
+class BulkFixRequest(ScopedTenantCredsRequest):
+    """Body of Fix selected: 1-based row numbers, or an area (url, dns,
+    cloud_app), and whether the destinations are to be blocked or allowed."""
+    rows: List[int] = []
+    area: str = ""
+    purpose: str = "block"
+
+
+def _bulk_parse(req: BulkTestRequest):
+    import bulk_test
+    if not 1 <= req.max_lookup_requests <= bulk_test.MAX_LOOKUP_REQUESTS:
+        raise HTTPException(status_code=400, detail=f"max_lookup_requests must be 1 to {bulk_test.MAX_LOOKUP_REQUESTS}.")
+    try:
+        return bulk_test.parse(req.text)
+    except bulk_test.ListError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _run_bulk_test(client, req: BulkTestRequest, parsed, snapshot, label: str, log, cancel, scope: Dict[str, Any]) -> Dict[str, Any]:
+    import bulk_test
+    import pack_jobs
+    import path_analyzer
+    if scope.get("source"):
+        log(f"In scope, from {scope['source']}: {scope['summary']}")
+    rn = bulk_test.run(client, parsed, scope=scope, network=req.network, platform=req.platform, snapshot=snapshot, tenant_label=label,
+                       lookup=req.lookup, max_lookup_requests=req.max_lookup_requests, log=log, cancel=cancel)
+    s = rn.summary
+    cache = s.pop("snapshot_for_cache", None)
+    rid = req.report_id if snapshot is not None else ""
+    if cache is not None:
+        rid = _remember_report("dataflow", {"summary": {"destinations": 0, "traces": 0, "bypassed": 0, "blind": 0, "enforced": 0, "monitored": 0, "high": 0},
+                                            "platform": req.platform, "networks": [n for n in path_analyzer.NETWORKS if n["key"] == req.network],
+                                            "platforms": path_analyzer.PLATFORMS, "destinations": [], "traces": [], "packs": [], "required_controls": [],
+                                            "diagnostics": cache.get("diagnostics") or [], "client_connector": cache["client_connector"],
+                                            "snapshot": cache["snapshot"], "sources": {}, "path_scope": cache.get("path_scope")}, label)
+    job = pack_jobs.current()
+    run_id = job.id if job is not None else ""
+    result = dict(s, status="stopped" if s.get("stopped") else "done", report_id=rid, run_id=run_id, read_at=time.time())
+    if run_id:
+        _BULK_RUNS[run_id] = rn
+        while len(_BULK_RUNS) > _BULK_RUNS_MAX:
+            _BULK_RUNS.pop(next(iter(_BULK_RUNS)))
+    return result
+
+
+@app.post("/api/bulk-test/start")
+async def bulk_test_start(req: BulkTestRequest, request: Request):
+    """Test a list of destinations as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}). The list is parsed before sign-in (400
+    for one that cannot be tested); only what is in scope on the Scope
+    page is read, once for every row (or the read `report_id` names, when
+    it was made for the same scope and tenant). Stop keeps the rows tested.
+    Read-only: the URL lookup is a POST that changes nothing."""
+    import pack_jobs
+    parsed = await asyncio.to_thread(_bulk_parse, req)
+    scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
+    creds = _tenant_creds(req)
+    snapshot = _kept_path_read(req.report_id, scope, creds, req.platform)
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("bulk-test", lambda log, cancel: _run_bulk_test(client, req, parsed, snapshot, label, log, cancel, scope),
+                          label=f"{len(parsed)} destination(s) from a list", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "rows": len(parsed), "skipped": parsed.skipped_count}
+
+
+def _bulk_run(job_id: str):
+    rn = _BULK_RUNS.get(str(job_id))
+    if rn is None:
+        raise HTTPException(status_code=404, detail="That list's results are no longer kept (the last two are kept while the server runs). Test the list again.")
+    return rn
+
+
+@app.get("/api/bulk-test/{job_id}/export")
+async def bulk_test_export(job_id: str, format: str = "csv", rows: str = "all"):
+    """A tested list as CSV (every row, spreadsheet-safe through csv_safe)
+    or Excel (xlsx_writer; the results sheet holds the first 100,000 rows):
+    all rows, the flagged ones or the ones not as expected. No tenant call."""
+    import bulk_test
+    rn = _bulk_run(job_id)
+    which = rows if rows in bulk_test.ROW_FILTERS else None
+    fmt = (format or "").lower()
+    if which is None or fmt not in ("csv", "xlsx"):
+        raise HTTPException(status_code=400, detail="format is csv or xlsx; rows is all, flagged or unmet.")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    name = f"path_list_{which}_{ts}"
+    if fmt == "xlsx":
+        data, _cut = await asyncio.to_thread(bulk_test.workbook, rn, which)
+        import xlsx_writer
+        return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE, headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
+    return StreamingResponse(bulk_test.csv_lines(rn, which), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f"attachment; filename={name}.csv"})
+
+
+@app.get("/api/bulk-test/{job_id}/list")
+async def bulk_test_area_list(job_id: str, area: str = "", purpose: str = "block"):
+    """The destinations to paste for one area (atp, firewall, url, dns,
+    client_connector, cloud_app) and purpose (block or allow), one per
+    line, as plain text. No tenant call."""
+    import bulk_test
+    rn = _bulk_run(job_id)
+    if area not in bulk_test.AREA_KEYS or purpose not in ("block", "allow"):
+        raise HTTPException(status_code=400, detail=f"area is one of {', '.join(bulk_test.AREA_KEYS)}; purpose is block or allow.")
+    lines = bulk_test.area_list(rn, area, purpose)
+    return PlainTextResponse("\n".join(lines) + ("\n" if lines else ""), headers={"Content-Disposition": f"attachment; filename=path_list_{area}_{purpose}.txt"})
+
+
+@app.post("/api/bulk-test/{job_id}/fix")
+async def bulk_test_fix(job_id: str, req: BulkFixRequest):
+    """Fix selected: the chosen destinations as a URL category operation
+    for the Bulk changes page to preview (it opens with /report/operations
+    ?fix=<id>). Refused (400) when custom URL categories are not in scope.
+    Writes nothing: Bulk changes applies only in write mode, for a writer,
+    with the assessor's name and the typed confirmation."""
+    import bulk_test
+    _ops_scope(req, "url_categories")
+    rn = _bulk_run(job_id)
+    try:
+        rec = bulk_test.fix_handoff(rn, rows=req.rows, area=req.area, purpose=req.purpose)
+    except bulk_test.ListError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"fix_id": rec["id"], "urls": len(rec["urls"]), "excluded": rec["excluded"], "over_limit": rec["over_limit"],
+            "open": f"/report/operations?fix={rec['id']}", "note": rec["note"]}
+
+
+@app.get("/api/bulk-test/fix/{fix_id}")
+async def bulk_test_fix_get(fix_id: str):
+    """A Fix selected hand-off for the Bulk changes page (kept an hour)."""
+    import bulk_test
+    rec = bulk_test.get_fix(fix_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="That hand-off is no longer kept (an hour). Pick the rows again on the Path analyzer's Test a list view.")
+    return {k: rec[k] for k in ("urls", "excluded", "over_limit", "purpose", "note")}
+
+
 # ── Audit timeline ────────────────────────────────────────────────────
 @app.get("/report/audit")
 async def report_audit_page():

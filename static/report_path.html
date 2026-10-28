@@ -32,6 +32,35 @@
     </nav>
     <main class="rp-card">
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <!-- Test a list: the views of this page (static/path_list.js moves the framework and #paBody into panel-one) -->
+      <div class="rp-tabs" role="tablist" aria-label="Path analyzer views">
+        <button type="button" role="tab" id="tab-one" aria-controls="panel-one" aria-selected="true" tabindex="0">One destination or a HAR file</button>
+        <button type="button" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="false" tabindex="-1">Test a list</button>
+      </div>
+      <section role="tabpanel" id="panel-one" aria-labelledby="tab-one" tabindex="0"></section>
+      <section role="tabpanel" id="panel-list" aria-labelledby="tab-list" tabindex="0" hidden>
+        <div class="pa-intro" id="plHow">
+          <div class="pa-intro-t">Test a list</div>
+          <p class="pl-lead">Test many destinations at once and see which are blocked, allowed or sent around Zscaler, and, when your list says what you expected, where to fix each miss. Choose a CSV file or paste the list, then click Test the list.</p>
+          <div class="df-hint">One destination per line: an IP address, a CIDR block (up to a /16), a range such as 10.0.0.1-10.0.0.50, a host name or a URL. A first line with column names lets you add: port, protocol, source IP, location, country, category, user, label and expected (block or allow). The Network, Platform and Tenant above apply. Up to 8 MB and 250,000 rows; the file is read in this browser and only its text is sent to this app. Nothing is written to the tenant.</div>
+        </div>
+        <div class="pl-form">
+          <div class="pl-row">
+            <label class="df-ctl"><span class="lbl">CSV file</span><input type="file" id="plFile" accept=".csv,.txt,text/csv,text/plain" aria-describedby="plHow"></label>
+            <span class="df-hint" id="plFileInfo" role="status" aria-live="polite"></span>
+          </div>
+          <label class="op-block"><span class="lbl">Or paste the list</span><textarea id="plText" rows="6" spellcheck="false" autocomplete="off" aria-describedby="plHow" placeholder="destination,port,expected&#10;203.0.113.0/24,443,block&#10;dropbox.com,,allow"></textarea></label>
+          <div class="pl-row">
+            <label class="df-ctl"><input type="checkbox" id="plLookup" checked><span class="lbl">Ask ZIA which categories each destination is in</span></label>
+            <label class="df-ctl"><span class="lbl">Lookup requests at most</span><input type="number" id="plMax" class="pl-num" min="1" max="2500" value="400" aria-describedby="plMaxHint"></label>
+            <span class="df-hint" id="plMaxHint">100 destinations per request; ZIA allows about 400 an hour.</span>
+            <span class="sep"></span>
+            <button type="button" class="rp-btn primary" id="plRun">Test the list</button>
+          </div>
+        </div>
+        <div id="plBody"></div>
+      </section>
+      <!-- /Test a list -->
       <details class="pa-framework" id="paFramework" open>
         <summary>The framework: how Zscaler processes a policy, device to incident</summary>
         <div class="df-hint">This view models the relevant web-request controls, starting from a <strong>candidate Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose, then Cloud App Control, URL Filtering, SSL Inspection, File Type Control and Web DLP, with separate Endpoint DLP, SaaS Security API and Email DLP inventories. Those channels were not tested on this data. Execution and prerequisites depend on the channel and operation; this reference does not prove that every displayed stage executed.</div>
@@ -59,6 +88,7 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/data_flow.js"></script>
   <script src="/static/har_parse.js"></script>
+  <script src="/static/path_list.js"></script>
   <script>
   (function () {
     const E = _dfE;
