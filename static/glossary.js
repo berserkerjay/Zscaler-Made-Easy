@@ -133,6 +133,13 @@
     'department': { term: 'department', def: 'A department is a team in your company, like Sales or Finance. A rule can name a department to act only on its people.' },
     'time window': { term: 'time window', def: 'A time window is a set of days and hours, like work hours. A rule with one only acts at those times.' },
     'device trust level': { term: 'device trust level', def: 'The device trust level says how much Zscaler trusts a computer: low, medium or high. A rule can act only on some levels.' },
+    'baseline': { term: 'baseline', def: 'A baseline is a starting set of safe rules. You check it, then turn the rules on one by one.' },
+    'tier': { term: 'tier', def: 'A tier is how strict the baseline is. Strict blocks the most, and Permissive blocks the least.' },
+    'compliance overlay': { term: 'compliance overlay', def: 'An overlay adds the rules of a law or standard, like HIPAA, to each rule it fits. It shows why each rule is there.' },
+    'catch-all rule': { term: 'catch-all rule', def: 'A catch-all rule matches all traffic the rules above it did not. It must stay at the bottom.' },
+    'framework file': { term: 'framework file', def: 'A framework file is a saved copy of web rules from one tenant. You can load it to build the same rules in another.' },
+    'intermediate certificate': { term: 'intermediate certificate', def: 'Zscaler uses this certificate to open locked web traffic. Your computers must trust it, or sites show a warning.' },
+    'trusted resolver': { term: 'Trusted Resolver', def: 'The Trusted Resolver is the Zscaler service that looks up web names. It keeps people off bad sites.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

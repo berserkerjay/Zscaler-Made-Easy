@@ -2062,10 +2062,11 @@ function _dzExportSetObj(kind, on) {
 // How many objects the export would start from: the picked rules, engines and dictionaries of the ticked parts.
 function _dzExportCount(X) {
   const P = _dzExportParts(X);
-  return (P.has('rules') ? X.selected.size : 0) + (P.has('engines') ? (X.selEngines || new Set()).size : 0) + (P.has('dictionaries') ? (X.selDicts || new Set()).size : 0);
+  return (P.has('rules') ? X.selected.size : 0) + (P.has('engines') ? (X.selEngines || new Set()).size : 0) + (P.has('dictionaries') ? (X.selDicts || new Set()).size : 0)
+    + (P.has('framework') ? 1 : 0);
 }
 const DZ_EXPORT_FMT = { json: 'JSON pack', terraform: 'Terraform', both: 'JSON pack and Terraform' };
-const DZ_EXPORT_PART = { dictionaries: 'Dictionaries', engines: 'Engines', rules: 'Rules' };
+const DZ_EXPORT_PART = { dictionaries: 'Dictionaries', engines: 'Engines', rules: 'Rules', framework: 'ZIA policy framework' };
 function _dzExportClose() { DZ.exportPack = null; DZ.step = 1; _dzRender(); }
 function _dzExportToggle(k, on) { const X = DZ.exportPack; if (!X) return; if (on) X.selected.add(k); else X.selected.delete(k); _dzExportRender(); }
 function _dzExportShown() {
@@ -2098,7 +2099,7 @@ function _dzExportRender() {
       ${X.running ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t" id="dzJobPhase">${_dzE(_dzJobPhase(DZ.job))}</div><div class="d">Elapsed <span id="dzJobElapsed">${_dzMMSS((DZ.job || {}).elapsed_seconds)}</span></div></div></div>` : ''}
       ${R.error ? `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">The export did not finish</div><div class="d">${_dzE(R.error)}</div></div></div>` : ''}
       ${R.status === 'ready' ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Downloaded ${_dzE(R.filename || 'the pack')}</div>
-        <div class="d">${_dzN(c.rules || 0, 'rule')}, ${_dzN(c.engines || 0, 'custom engine')}, ${_dzN(c.dictionaries || 0, 'dictionary', 'dictionaries')} (${_dzN(c.clones || 0, 'clone')}) from ${_dzE(R.tenant_label || label)}${R.format && R.format !== 'json' ? `, as ${_dzE(DZ_EXPORT_FMT[R.format] || R.format)}` : ''}. ${R.format === 'terraform' ? '' : `Add the pack to the library under Advanced settings → Add a pack; it then shows here as a pack.${c.rules ? ' Deploying it creates every rule DISABLED and monitor-only; the pack keeps each rule\'s action and state as the tenant has them.' : ''}`}${R.format && R.format !== 'json' ? ` The Terraform workspace is for the zscaler/zia provider${c.rules ? '; every rule is created DISABLED' : ''}.${R.assessor_named ? '' : ' No assessor name was set, so <code>terraform apply</code> asks for <code>assessor</code>.'}` : ''}</div></div></div>` : ''}
+        <div class="d">${R.framework_counts ? `ZIA policy framework: ${_dzE(Object.entries(R.framework_counts).map(([a, k]) => `${k} ${({ url: 'URL filtering', firewall: 'Cloud Firewall', ssl: 'SSL inspection', sandbox: 'Sandbox', dns: 'DNS Control', ftc: 'File Type Control' })[a] || a}`).join(', ') || 'no rules')}. ` : ''}${_dzN(c.rules || 0, 'rule')}, ${_dzN(c.engines || 0, 'custom engine')}, ${_dzN(c.dictionaries || 0, 'dictionary', 'dictionaries')} (${_dzN(c.clones || 0, 'clone')}) from ${_dzE(R.tenant_label || label)}${R.format && R.format !== 'json' ? `, as ${_dzE(DZ_EXPORT_FMT[R.format] || R.format)}` : ''}. ${R.format === 'terraform' ? '' : `Add the pack to the library under Advanced settings → Add a pack; it then shows here as a pack.${c.rules ? ' Deploying it creates every rule DISABLED and monitor-only; the pack keeps each rule\'s action and state as the tenant has them.' : ''}`}${R.format && R.format !== 'json' ? ` The Terraform workspace is for the zscaler/zia provider${c.rules ? '; every rule is created DISABLED' : ''}.${R.assessor_named ? '' : ' No assessor name was set, so <code>terraform apply</code> asks for <code>assessor</code>.'}` : ''}</div></div></div>` : ''}
       ${R.status === 'ready' && (R.part_files || []).length ? `<div class="dz-h">Download one part</div>
         <div class="dz-pick-tools">${R.part_files.map(f => `<button type="button" class="dz-btn" onclick="_dzExportFile('${_dzE(f.path)}')">${_dzE(DZ_EXPORT_PART[f.part] || f.part)} · ${f.format === 'terraform' ? 'Terraform (.tf)' : 'JSON'}</button>`).join('')}
           <button type="button" class="dz-btn" onclick="_dzExportFile('')">Everything (${_dzE(R.filename || '.zip')})</button></div>
@@ -2140,13 +2141,14 @@ function _dzExportRender() {
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">${_dzN(X.rules.length, 'DLP rule')}, ${_dzN(nEngines, 'custom engine')} and ${_dzN(nDicts, 'custom dictionary', 'custom dictionaries')} in the tenant</div>
       <div class="d">Export rules, engines and dictionaries together or each on its own. Custom dictionaries go in full, clones as clones, predefined dictionaries and engines by name. Endpoint sub-rules come with their parent rule.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
     <fieldset class="dz-pick-tools" style="border:0;padding:0;margin:0 0 0.4rem;"><legend class="dz-h" style="padding:0;">What to export</legend>
-      ${['dictionaries', 'engines', 'rules'].map(part => `<label class="dz-chk"><input type="checkbox" ${P.has(part) ? 'checked' : ''} onchange="_dzExportPart('${part}', this.checked)"> ${DZ_EXPORT_PART[part]}</label>`).join(' ')}
+      ${['dictionaries', 'engines', 'rules', 'framework'].map(part => `<label class="dz-chk"${part === 'framework' ? ' title="The URL filtering, Cloud Firewall, SSL inspection, Sandbox, DNS Control and File Type Control rules in scope, as a file the ZIA security baseline (Bulk changes) applies to another tenant."' : ''}><input type="checkbox" ${P.has(part) ? 'checked' : ''} onchange="_dzExportPart('${part}', this.checked)"> ${DZ_EXPORT_PART[part]}</label>`).join(' ')}
       <label class="dz-chk" title="On: engines bring the dictionaries they use, rules the engines and dictionaries they use. Off: only what you picked; what it uses is named and must already exist where it goes."><input type="checkbox" ${deps ? 'checked' : ''} onchange="_dzExportOpt('deps', this.checked)"> Include what they use</label>
     </fieldset>
     <fieldset class="dz-pick-tools" style="border:0;padding:0;margin:0 0 0.4rem;"><legend class="dz-h" style="padding:0;">Format</legend>
       ${['json', 'terraform', 'both'].map(f => `<label class="dz-chk"><input type="radio" name="dzExportFmt" value="${f}" ${fmt === f ? 'checked' : ''} onchange="_dzExportOpt('format', '${f}')"> ${DZ_EXPORT_FMT[f]}</label>`).join(' ')}
     </fieldset>
     ${fmt !== 'json' ? `<div class="dz-note">Terraform is a workspace for the official zscaler/zia provider, built like the Terraform hand-off: every rule is created DISABLED, and every object's description names the assessor (Scope assessment → Assessor name${String((_dzCreds() || {}).assessor || '').trim() ? `: ${_dzE(String(_dzCreds().assessor).trim())}` : '; not set, so terraform apply will ask for it'}).</div>` : ''}
+    ${P.has('framework') ? '<div class="dz-note">The ZIA policy framework reads the URL filtering, Cloud Firewall, SSL inspection, Sandbox, DNS Control and File Type Control rules in scope on the Scope page (not the defaults or predefined rules) and saves them as zia_policy_framework.json, JSON whatever the format. Users, groups, locations and other objects of this tenant are left out and listed. To put it into another tenant, open Bulk changes, pick ZIA security baseline and load the file: every rule arrives disabled.</div>' : ''}
     ${!deps ? '<div class="dz-note">Without what they use, picked engines name their dictionaries and picked rules their engines; those must already exist under the same names where this is deployed.</div>' : ''}
     <div class="dz-pick-tools">
       <input type="text" class="dz-input" placeholder="Pack name (optional)" maxlength="120" value="${_dzE(X.name || '')}" oninput="DZ.exportPack.name=this.value" aria-label="Pack name">
@@ -2158,9 +2160,9 @@ function _dzExportRender() {
     ${P.has('dictionaries') ? objSection('dict', 'Dictionaries', X.dicts || []) : ''}
     ${P.has('engines') ? objSection('engine', 'Engines', X.engines || []) : ''}
     ${P.has('rules') ? (groups || '<div class="dz-empty">No rules match the filter.</div>') : ''}
-    ${!P.size ? '<div class="dz-empty">Tick dictionaries, engines or rules above.</div>' : ''}`;
+    ${!P.size ? '<div class="dz-empty">Tick dictionaries, engines, rules or the ZIA policy framework above.</div>' : ''}`;
   document.getElementById('dzFoot').innerHTML = `
-    <div class="dz-summary">${n ? `<strong style="color:var(--text);">${[P.has('dictionaries') ? _dzN((X.selDicts || new Set()).size, 'dictionary', 'dictionaries') : '', P.has('engines') ? _dzN((X.selEngines || new Set()).size, 'engine') : '', P.has('rules') ? _dzN(X.selected.size, 'rule') : ''].filter(Boolean).join(', ')}</strong> ticked, as ${_dzE(DZ_EXPORT_FMT[fmt])}. The export reads the tenant and writes nothing.` : 'Tick at least one dictionary, engine or rule to export.'}</div>
+    <div class="dz-summary">${n ? `<strong style="color:var(--text);">${[P.has('dictionaries') ? _dzN((X.selDicts || new Set()).size, 'dictionary', 'dictionaries') : '', P.has('engines') ? _dzN((X.selEngines || new Set()).size, 'engine') : '', P.has('rules') ? _dzN(X.selected.size, 'rule') : '', P.has('framework') ? 'the ZIA policy framework' : ''].filter(Boolean).join(', ')}</strong> ticked, as ${_dzE(DZ_EXPORT_FMT[fmt])}. The export reads the tenant and writes nothing.` : 'Tick at least one dictionary, engine or rule, or the ZIA policy framework, to export.'}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="_dzExportClose()">Cancel</button>
       <button type="button" class="dz-btn primary" onclick="_dzExportRun()" ${n ? '' : 'disabled'}>Download ${fmt === 'json' ? 'pack' : fmt === 'terraform' ? 'Terraform' : 'pack and Terraform'} (${n})</button>

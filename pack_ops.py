@@ -824,8 +824,13 @@ def _audited(action: str) -> Callable[[Callable[..., Outcome]], Callable[..., Ou
 # categories, and ZPA application segments. For a ZPA kind the first
 # argument is the ZPA service root (client.zpa), not client.zia: ZPA has no
 # activation, so its writes get no activate-and-retry on a 403.
-ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules"}
-ADMIN_KINDS = ("url_category", "zpa_segment")  # and the ZPA builder kinds in ZPA_KINDS below
+# The ZIA security baseline (ops_zia_baseline) adds Sandbox and DNS Control rules
+# (zscaler-sdk-python zia/sandbox_rules.py, zia/cloud_firewall_dns.py:
+# add_rule / update_rule / delete_rule) and the Advanced Threat Protection
+# settings (zia/atp_policy.py update_atp_settings, PUT
+# /cyberThreatProtection/advancedThreatSettings).
+ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules", "sandbox": "sandbox_rules", "dns": "cloud_firewall_dns"}
+ADMIN_KINDS = ("url_category", "zpa_segment", "atp_settings")  # and the ZPA builder kinds in ZPA_KINDS below
 # ZDX probe setup (ops_zdx): for these kinds the first argument is the ZDX
 # configuration API (ops_zdx.ZdxApi), not client.zia. ZDX has no activation,
 # so a 403 gets no activate-and-retry.
@@ -838,7 +843,6 @@ def _zdx_write(api, method: str, *args: Any, op: str, kind: str, name: str, log:
         return Outcome(False, error="the ZDX configuration API is not available on this sign-in")
     return call(fn, *args, op=op, kind=kind, name=name, log=log)
 
-ADMIN_KINDS = ("url_category", "zpa_segment")
 # AI Guard (ops_aiguard): the ZIA objects that proxy-chain GenAI apps to AI
 # Guard, and the AI Guard detection policy objects. For an AI Guard kind the
 # first argument is the AI Guard service root (client.aiguard), not
@@ -991,6 +995,11 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(pc.update_rule, zia, channel, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if kind == "url_category":
         return call(zia.url_categories.update_url_category, oid, action, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "atp_settings":
+        svc = getattr(zia, "atp_policy", None)
+        if svc is None:
+            return Outcome(False, error="atp_policy is not available in the installed zscaler-sdk-python")
+        return call(svc.update_atp_settings, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "zpa_segment":
         return _zpa_write(zia, "update_segment", oid, op="update", name=name, log=log, kw=payload)
     if kind == "zdx_app":   # ZDX changes an app's or probe's state only (action: activate | deactivate)
@@ -1042,6 +1051,11 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if kind != "policy":
         return Outcome(False, error=f"unknown object kind '{kind}'")
+    if channel in ADMIN_RULE_SERVICES:
+        svc, err = _admin_rule_service(zia, channel)
+        if err:
+            return Outcome(False, error=err)
+        return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if channel == pc.ENDPOINT and item.get("parent_id") is not None:
         return call(pc.raw_request, zia, "DELETE", f"/endPointDlpRules/{item['parent_id']}/subRule/{oid}", op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if channel == pc.CLOUD_APP:
