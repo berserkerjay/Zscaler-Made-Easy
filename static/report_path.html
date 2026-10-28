@@ -59,8 +59,19 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/data_flow.js"></script>
   <script src="/static/har_parse.js"></script>
+  <script src="/static/path_modules.js"></script>
   <script>
   (function () {
+    // ZIA modules (static/path_modules.js): a protocol and port beside the
+    // platform, sent with every analysis (they ride with the request body
+    // credBody builds), and each module's decision, in order, right after
+    // the verdict. The page's own functions are wrapped, not changed.
+    if (window.PathModules) {
+      PathModules.zia.mountControls(document.getElementById('paPlat').closest('label'));
+      const baseBody = credBody, baseRender = render;
+      credBody = function () { return Object.assign(baseBody(), PathModules.zia.input()); };
+      render = function (res, logs) { baseRender(res, logs); PathModules.zia.mount(document.getElementById('paBody'), res); };
+    }
     const E = _dfE;
     const body = document.getElementById('paBody');
     const meta = document.getElementById('rpMeta');

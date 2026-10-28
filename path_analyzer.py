@@ -28,6 +28,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlsplit
 
+import zia_path_modules
 from data_flow import (NETWORKS, NOTHING_IN_SCOPE, PATH_SECTIONS, PLATFORMS, ReadStopped, full_path_scope, load_packs,  # noqa: F401
                        path_scope, read_client_connector, read_zia, resolve_destination, stop_on, stop_requested, trace, unread_sections)
 
@@ -142,7 +143,7 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform
     for exactly the same parts of the tenant. A read for a wider scope
     would show what is now out of scope; one for a narrower scope would
     say "not in scope" for what is now in it."""
-    return (bool(snapshot) and snapshot_scope_key(snapshot) == scope.get("key") and
+    return (bool(snapshot) and snapshot_scope_key(snapshot) == scope.get("key") and zia_path_modules.snapshot_ready(snapshot, scope) and
             ("zcc" not in scope.get("read", []) or
              ((snapshot.get("client_connector") or {}).get("profile_schema") == 4 and
               (snapshot.get("client_connector") or {}).get("profile_platform") in (None, platform))))
@@ -150,7 +151,8 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform
 
 def analyze(client, destination: str, network: str = "off", platform: str = "windows", *,
             scope: Optional[Dict[str, Any]] = None, snapshot: Optional[Dict[str, Any]] = None, log: LogFn = None,
-            cancel: Any = None, context: Optional[Dict[str, Any]] = None, lookup: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            cancel: Any = None, context: Optional[Dict[str, Any]] = None, lookup: Optional[Dict[str, Any]] = None,
+            protocol: Optional[str] = None, port: Optional[int] = None) -> Dict[str, Any]:
     """The live analysis. `scope` (data_flow.path_scope: the Scope page's
     ticked scopes and the channels marked Zscaler) is required, and only
     the parts of the tenant in it are read; every other hop says "not in
@@ -164,7 +166,9 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     the scope and the assumptions, plus `snapshot_for_cache` so the
     caller can keep the tenant read for the next destination. `lookup`
     (lookup_many's answer for this host) stands in for the live URL
-    lookup, so a batch asks ZIA once per hundred hosts."""
+    lookup, so a batch asks ZIA once per hundred hosts. `protocol` (tcp or
+    udp) and `port` trace traffic other than HTTPS (zia_path_modules:
+    every ZIA module in order, `zia_modules` in the result)."""
     _log = log or (lambda m: None)
 
     def _stopped() -> Stopped:
@@ -180,6 +184,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     if (context or {}).get("channel") not in (None, "", "web"):
         raise ValueError("The Path analyzer models inline web traffic; use channel-specific evidence for Endpoint, SaaS or Email operations.")
     d = parse_destination(destination)
+    traffic = zia_path_modules.traffic_context(d, protocol, port)
     network = network if network in {n["key"] for n in NETWORKS} else "off"
     platform = platform if platform in PLATFORMS else "windows"
     if snapshot and not reusable(snapshot, scope, platform):
@@ -203,6 +208,8 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                 if zia_parts:
                     _log("Reading ZIA policy: " + ", ".join(zia_parts) + (", URL categories…" if scope["lookup"] else "…"))
                 zia = read_zia(client, scope=scope, cancel=cancel)
+                _check()
+                zia["modules"] = zia_path_modules.read(client, scope, cancel, _log)
             _check()
             if scope["lookup"] and lookup is not None:
                 lk = dict(lookup)
@@ -234,15 +241,21 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     rd["lookup"] = lk
     _log("Tracing the path hop by hop…")
     t = trace(rd, network, platform, zcc, zia, load_packs(), scope=scope, context=context)
+    zm = zia_path_modules.evaluate(t, d, traffic, zia, lk, context)
+    zia_path_modules.extend_trace(t, zm)
     verdict = derive_verdict(t, d, lk)
+    zia_path_modules.annotate_verdict(verdict, zm, d["host"])
     _log(f"Verdict: {verdict['headline']}")
     sc = {"summary": scope["summary"], "read": list(scope["read"]), "not_in_scope": dict(scope["not_in_scope"]), "key": scope["key"],
           "scopes": list(scope.get("scopes") or []), "channels": dict(scope.get("channels") or {})}
-    assumptions = list(ASSUMPTIONS)
+    assumptions = [a if traffic["web"] and traffic["encrypted"] or not a.startswith("Browser traffic over HTTPS") else
+                   f"{traffic['label']} traffic from a managed device running Client Connector on the platform you chose, on the network you chose."
+                   for a in ASSUMPTIONS] + zia_path_modules.ASSUMPTIONS + traffic["notes"]
     if scope["not_in_scope"]:
         assumptions.append("Only what is in scope on the Scope page was read; these parts are not in scope and their hops are not assessed: "
                            + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
     out = {"required_controls": zia.get("required_controls", []), "destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
+           "zia_modules": zm,
            "network": network, "platform": platform, "read_at": time.time(), "fresh_read": snapshot is None}
     # Recent traffic to this destination: only when ZIA Insights is in
     # scope, and never faked. Z-Insights cannot filter by host or domain,
@@ -251,7 +264,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     out["recent_traffic"] = insights.recent_traffic_for_host(d["host"], "insights" in (scope.get("scopes") or []))
     if snapshot is None:
         out["snapshot_for_cache"] = {"client_connector": zcc, "path_scope": scope["key"],
-                                     "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue", "not_in_scope", "required_controls")},
+                                     "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue", "not_in_scope", "required_controls", "modules")},
                                                   "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"),
                                                                      "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                                                  for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},

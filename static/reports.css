@@ -636,3 +636,17 @@ summary { min-height: 24px; }
 .op-items td { vertical-align: top; }
 .op-page .df-ctl input[type="checkbox"] + span { font-size: 0.86rem; }
 @media (max-width: 760px) { .op-page .df-ctl { flex-wrap: wrap; max-width: 100%; } .op-page .df-ctl select, .op-page .df-ctl input { max-width: 100%; min-width: 0; } }
+/* Path modules (static/path_modules.js): one card per policy module on a traced path. */
+.pm-section { margin: 0.8rem 0 0.4rem; }
+.pm-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+.pm-section, .pm-list > .pm-hop { min-width: 0; }   /* a wide table scrolls inside its card, never the page */
+.pm-hop code, .pm-crit td:last-child { overflow-wrap: anywhere; }
+.pm-list.pm-modifier .pm-hop { border-style: dashed; border-left-style: solid; }
+.pm-hop .df-tablewrap { margin-top: 0.35rem; }
+.pm-crit td:first-child, .pm-more { margin-top: 0.35rem; }
+.pm-more > summary { cursor: pointer; }
+.pm-could { margin-top: 0.35rem; }
+.pm-note { margin-top: 0.25rem; }
+.rp-bar .pm-port input:not([type="checkbox"]) { width: 6.5rem; }
+.pm-port-hint { margin-top: 0; align-self: center; }
+@media (max-width: 760px) { .pm-crit td:first-child { white-space: normal; } }

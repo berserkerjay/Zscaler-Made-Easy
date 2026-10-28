@@ -89,6 +89,13 @@
     'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
     'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
     'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
+    'advanced threat protection': { term: 'Advanced Threat Protection', def: 'Advanced Threat Protection blocks sites known to be bad, like fake login pages. It also has lists of sites to always block or always let through.' },
+    'cloud firewall': { term: 'Cloud Firewall', def: 'The Cloud Firewall checks all traffic, not just the web. Its rules allow or block by port, address and app.' },
+    'dns control': { term: 'DNS Control', def: 'Before a computer visits a site, it asks for the address of the name. DNS Control can block or change that answer.' },
+    'sandbox': { term: 'Sandbox', def: 'The Sandbox runs a new file on a Zscaler computer to see what it does. A bad file is stopped before it reaches you.' },
+    'port': { term: 'port', def: 'A port is a number that says which service traffic is for. Web pages use 443, and a remote desktop uses 3389.' },
+    'quic': { term: 'QUIC', def: 'QUIC is a fast way to load web pages that uses UDP on port 443. Zscaler cannot look inside it, so many companies block it.' },
+    'conditional': { term: 'conditional', def: 'A conditional result could change with things this app cannot check, like the time of day or who the user is.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;
