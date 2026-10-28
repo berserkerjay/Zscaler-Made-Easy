@@ -136,6 +136,16 @@ what you get, what to do next.
   browser session reached in one run: the file is read in the browser and
   only host names and request counts are sent; the results table sorts,
   filters, opens any host's full analysis and exports as CSV or JSON.
+  With ZPA ticked, ZPA is checked first: the most specific application
+  segment (exact name, longest wildcard, longest address range) with its
+  port, the segment's bypass setting (Never, On-Net, Always), the client
+  forwarding policy (Intercept, Intercept accessible, Bypass) and the
+  access policy, with device posture answered both passing and failing; a
+  destination ZPA carries is not traced through ZIA. **Traffic from a
+  workload** (Cloud & Branch Connector ticked) takes a source IP, tags,
+  workload group and connector group: the connector's forwarding rules
+  decide first (ZIA, ZPA, direct, local switch, proxy chaining or drop),
+  then ZIA or ZPA.
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the

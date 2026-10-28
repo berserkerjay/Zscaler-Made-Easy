@@ -9118,6 +9118,292 @@ async def path_analyzer_run(req: PathAnalyzerRequest):
     return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None, scope)
 
 
+# ── Path analyzer: ZPA first, and workload traffic (zpa_path, workload_path) ──
+# The page's Analyze goes here. For a user device, ZPA is evaluated first
+# (ZPA ticked): a destination ZPA carries never reaches ZIA, so ZIA is not
+# traced; otherwise the ZIA path is traced exactly as /api/path-analyzer/start
+# does (_run_path_analysis) with the ZPA stage in front. For a workload
+# (Cloud & Branch Connector ticked), the connector forwarding rules decide
+# first, then ZIA or ZPA. Read-only; every part is read only when in scope.
+PATH_FULL_NOTHING = ("Nothing the Path analyzer reads is in scope — on the Scope page tick ZPA, ZCC, DLP or ZIA platform "
+                     "and mark the channels you run on Zscaler, then analyze again.")
+PATH_WORKLOAD_NOT_IN_SCOPE = ("Workload traffic is not in scope: on the Scope page tick Cloud & Branch Connector, then analyze again. "
+                              "Nothing was read.")
+PATH_WORKLOAD_NEEDS_ONEAPI = ("Workload traffic needs a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+                              "Sign in with an API client that has a Cloud & Branch Connector role. Nothing was read.")
+
+
+class PathFullRequest(PathAnalyzerRequest):
+    """The Path analyzer body plus: where the traffic comes from (`source`:
+    device or workload), the port and protocol, the workload (`workload`:
+    ip, tags, workload_group, connector_group) and the ids of the ZPA and
+    connector reads to reuse."""
+    source: str = "device"
+    port: str = ""
+    protocol: str = "tcp"
+    workload: Dict[str, Any] = {}
+    zpa_report_id: str = ""
+    ztw_report_id: str = ""
+
+
+def _path_full_kept(rid: str, kind: str, creds: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """A ZPA or connector read kept from an earlier analysis, only for the same tenant."""
+    import tenant_fingerprint
+    rep = _REPORTS.get(rid or "") if (rid or "").startswith(kind + "-") else None
+    if rep is None or not rep.get("tenant_label") or not tenant_fingerprint.same_tenant(rep, creds):
+        return None
+    return rep
+
+
+def _path_full_inputs(req: PathFullRequest) -> Dict[str, Any]:
+    """Everything decided before sign-in: the destination, the scope of
+    each part, the workload. HTTPException 400 for nothing in scope or a
+    bad input; never reads a tenant."""
+    import data_flow
+    import path_analyzer
+    import workload_path
+    import zpa_path
+    source = (req.source or "device").strip().lower()
+    if source not in ("device", "workload"):
+        raise HTTPException(status_code=400, detail="Traffic comes from a user device or a workload.")
+    try:
+        pdest = path_analyzer.parse_destination(req.destination)
+        d = zpa_path.destination(req.destination, req.port, req.protocol)
+        w = workload_path.workload_input(req.workload) if source == "workload" else None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    sc, ch, src = _scope_selection(req)
+    scope = data_flow.path_scope(sc, ch)
+    scope["source"] = src
+    if source == "workload":
+        if "ztw" not in sc:
+            raise HTTPException(status_code=400, detail=PATH_WORKLOAD_NOT_IN_SCOPE)
+        # Client Connector is not on a workload's path: those hops are not read.
+        nis = dict(scope["not_in_scope"])
+        for k in ("zcc", "pac"):
+            nis[k] = "Not on this path: workload traffic is forwarded by a Cloud or Branch Connector, not by Client Connector."
+        read = [k for k in scope["read"] if k not in ("zcc", "pac")]
+        scope = dict(scope, read=read, not_in_scope=nis, key=scope["key"] + "|workload",
+                     summary=("Reads only what is in scope on the Scope page: " + ", ".join(data_flow.PATH_SECTIONS[k][0] for k in read) + "."
+                              if read else "No ZIA policy is in scope."))
+    zpa_on = "zpa" in sc
+    if source == "device" and not scope["read"] and not zpa_on:
+        raise HTTPException(status_code=400, detail=PATH_FULL_NOTHING)
+    creds = _tenant_creds(req)
+    oneapi = creds.get("auth_method") != tenant_auth.LEGACY
+    if source == "workload" and not oneapi:
+        raise HTTPException(status_code=400, detail=PATH_WORKLOAD_NEEDS_ONEAPI)
+    zpa_problem = ""
+    if zpa_on and not oneapi:
+        zpa_problem = "ZPA was not read: the classic ZIA API sign-in reaches ZIA only, so whether ZPA carries this destination is unknown."
+    elif zpa_on and not validate_customer_id(creds.get("customer_id") or ""):
+        zpa_problem = "ZPA was not read: the ZPA customer ID is missing (Connect to the tenant → Customer ID), so whether ZPA carries this destination is unknown."
+    if source == "device" and not scope["read"] and zpa_problem:
+        raise HTTPException(status_code=400, detail=zpa_problem.replace("ZPA was not read: ", "ZPA cannot be read: ") + " Nothing was read.")
+    zpa_kept = _path_full_kept("" if zpa_problem else req.zpa_report_id, "pathzpa", creds) if zpa_on else None
+    ztw_kept = _path_full_kept(req.ztw_report_id, "pathztw", creds) if source == "workload" else None
+    return {"source": source, "pdest": pdest, "d": d, "w": w, "scope": scope, "zpa_on": zpa_on, "zpa_problem": zpa_problem,
+            "creds": creds, "label": tenant_auth.record_label(creds), "zia_kept": _kept_path_read(req.report_id, scope, creds) if scope["read"] else None,
+            "zpa_kept": zpa_kept, "ztw_kept": ztw_kept,
+            "need_sdk": (zpa_on and not zpa_problem and zpa_kept is None) or (source == "workload" and ztw_kept is None)}
+
+
+def _run_path_full(inp: Dict[str, Any], req: PathFullRequest, raw_client, sdk_client, log, cancel) -> Dict[str, Any]:
+    """The job: connector and ZPA stages, then ZIA when it applies. Stop
+    ends it as stopped with nothing more read and no partial result."""
+    import path_analyzer
+    import workload_path
+    import zpa_analysis
+    import zpa_path
+    logs: list = []
+    creds, label, d, pd = inp["creds"], inp["label"], inp["d"], inp["pdest"]
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    def stopped() -> Dict[str, Any]:
+        _log("STOPPED — you clicked Stop; the analysis was abandoned and nothing more was read. Nothing is ever written by this page.")
+        return {"stopped": path_analyzer.STOPPED_REASON, "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
+
+    scope = inp["scope"]
+    sc = {"summary": scope["summary"], "read": list(scope["read"]), "not_in_scope": dict(scope["not_in_scope"]), "key": scope["key"],
+          "scopes": list(scope.get("scopes") or []), "channels": dict(scope.get("channels") or {})}
+    if scope.get("source"):
+        _log(f"In scope, from {scope['source']}: {scope['summary']}" + (" ZPA." if inp["zpa_on"] else "")
+             + (" Cloud & Branch Connector." if inp["source"] == "workload" else ""))
+    out_ids: Dict[str, str] = {}
+    # 1. The connector read (workload traffic)
+    ztw = None
+    if inp["source"] == "workload":
+        if inp["ztw_kept"] is not None:
+            ztw = inp["ztw_kept"]["snapshot"]
+            out_ids["ztw_report_id"] = inp["ztw_kept"]["report_id"]
+            _log("Using the Cloud & Branch Connector configuration read a moment ago (Fresh read reads it again).")
+        else:
+            try:
+                ztw = workload_path.read(sdk_client, log=_log, cancel=cancel)
+            except workload_path.Stopped:
+                return stopped()
+            except zpa_path.ReadError as e:
+                raise RuntimeError(tenant_auth.mask_secrets(str(e), creds))
+            for v in ztw["collections"].values():
+                if v.get("error"):
+                    v["error"] = tenant_auth.mask_secrets(v["error"], creds)
+            out_ids["ztw_report_id"] = _remember_report("pathztw", {"kind": "pathztw", "snapshot": ztw}, label)
+    # 2. The ZPA read
+    zsnap, profiles, zst = None, None, None
+    if inp["zpa_on"]:
+        if inp["zpa_problem"]:
+            zst = zpa_path.not_read(inp["zpa_problem"])
+            _log(inp["zpa_problem"])
+        elif inp["zpa_kept"] is not None:
+            zsnap, profiles = inp["zpa_kept"]["snapshot"], inp["zpa_kept"]["profiles"]
+            out_ids["zpa_report_id"] = inp["zpa_kept"]["report_id"]
+            _log("Using the ZPA configuration read a moment ago (Fresh read reads it again).")
+        else:
+            _log("Reading ZPA first: application segments, client forwarding and access policies…")
+            try:
+                zsnap, profiles = zpa_path.read(sdk_client, log=_log, cancel=cancel)
+            except zpa_path.Stopped:
+                return stopped()
+            except zpa_path.ReadError as e:
+                zst = zpa_path.not_read("ZPA could not be read (" + tenant_auth.mask_secrets(str(e), creds)[:160] + "), so whether ZPA carries this destination is unknown.")
+            if zsnap is not None:
+                for v in (zsnap.get("collections") or {}).values():
+                    if v.get("error"):
+                        v["error"] = tenant_auth.mask_secrets(v["error"], creds)
+                out_ids["zpa_report_id"] = _remember_report("pathzpa", {"kind": "pathzpa", "snapshot": zsnap, "profiles": profiles}, label)
+    if cancel is not None and cancel.is_set():
+        return stopped()
+    zpa_not_in_scope = [] if inp["zpa_on"] else [{"hop": "zpa", "label": "ZPA", "detail": "Not in scope: ZPA is not ticked on the Scope page, so whether ZPA carries this destination was not assessed."}]
+
+    def zia(pre_hops, modules, impacts, assumptions, note):
+        """The ZIA path with the earlier stages in front, or 'not in scope'."""
+        if not scope["read"]:
+            res = zpa_path.standalone(pre_hops, modules, outcome="out_of_scope", headline=f"Reaches ZIA; what ZIA does with {pd['host']} is not assessed: no ZIA part is in scope.",
+                                      summary=(note + " Put ZIA policy in scope on the Scope page and analyze again to assess it.").strip(), dest=pd,
+                                      network=req.network, platform=req.platform, scope=sc, impacts=impacts, assumptions=assumptions,
+                                      stops_at=None, blocked_by=None, reaches_zscaler=True)
+            res["verdict"]["not_in_scope"] = [{"hop": "zia", "label": "ZIA policy", "detail": "Not in scope: no ZIA policy section is ticked on the Scope page."}]
+            return res
+        _log("Tracing the ZIA path…")
+        res = _run_path_analysis(raw_client, req, inp["zia_kept"], label, _log, cancel, scope)
+        if res.get("stopped"):
+            return res
+        return zpa_path.merge(res, pre_hops, modules, impacts, assumptions, note)
+
+    def finish(res):
+        if res.get("stopped"):
+            res["logs"] = logs
+            return res
+        res.setdefault("tenant_label", label)
+        res.update(out_ids, source=inp["source"], logs=logs)
+        v = res.get("verdict") or {}
+        v["not_in_scope"] = list(v.get("not_in_scope") or []) + zpa_not_in_scope
+        _log(f"Verdict: {v.get('headline', '')}")
+        return res
+
+    # 3. Workload: the connector decides first
+    if inp["source"] == "workload":
+        w = inp["w"]
+        seg = None
+        if zsnap is not None:
+            sm = zpa_analysis.match_segment(zsnap, d)
+            seg = zpa_analysis._Index(zsnap).segments.get(sm["match"]["id"]) if sm["match"] else None
+        wl = workload_path.evaluate(ztw, w, d, seg, zsnap is not None)
+        mods, hops, impacts = list(wl["modules"]), list(wl["hops"]), list(wl["impacts"])
+        assumptions = list(workload_path.ASSUMPTIONS)
+        rule = (wl.get("rule") or {}).get("name")
+        go = wl["go"]
+        if go in ("direct", "local", "proxy", "drop"):
+            words = {"direct": "sends it direct to the internet", "local": "switches it locally between workloads", "proxy": "chains it to another proxy",
+                     "drop": "drops it"}[go]
+            outcome = "blocked" if go == "drop" else "bypassed"
+            imp = {"hop": "connector", "label": "Connector forwarding", "status": "blocked" if go == "drop" else "bypass", "rule": rule,
+                   "severity": "high" if go in ("direct", "proxy") else "info", "detail": f"Forwarding rule “{rule}” {words}.",
+                   "fix": "Forward this workload traffic to ZIA so it is inspected." if go in ("direct", "proxy") else None}
+            res = zpa_path.standalone(hops, mods, outcome=outcome, headline=f"The connector {words}: forwarding rule “{rule}”." if rule else f"The connector {words}.",
+                                      summary="Neither ZIA nor ZPA sees this traffic." if go != "drop" else "The connection never leaves the connector.",
+                                      dest=pd, network=req.network, platform=req.platform, scope=sc, impacts=[imp] + impacts, assumptions=assumptions,
+                                      stops_at="Connector forwarding", blocked_by=rule, reaches_zscaler=False,
+                                      mitigations=[{"rank": 1, "channel": "web", "action": "Forward this workload traffic to ZIA", "severity": "high",
+                                                    "why": "Traffic the connector sends direct or to another proxy is never inspected by ZIA, so no DLP rule can see it."}]
+                                      if go in ("direct", "proxy") else [])
+            return finish(res)
+        if go == "zpa":
+            if zsnap is None:
+                res = zpa_path.standalone(hops + (zst or zpa_path.not_read("Not in scope: ZPA is not ticked on the Scope page.", "out_of_scope"))["hops"],
+                                          mods, outcome="out_of_scope", headline=f"The connector forwards {pd['host']} to ZPA; ZPA is not assessed.",
+                                          summary=(zst or {}).get("reason") or "Tick ZPA on the Scope page and analyze again to see whether ZPA allows it.",
+                                          dest=pd, network=req.network, platform=req.platform, scope=sc, impacts=impacts, assumptions=assumptions,
+                                          stops_at=None, blocked_by=None, reaches_zscaler=True)
+                return finish(res)
+            st = zpa_path.stage(zsnap, d, source="workload", profiles=profiles)
+            if st.get("outcome") == "not_zpa":
+                st.update(outcome="zpa_denied", headline=f"The connector forwards {pd['host']} to ZPA, but no ZPA application segment matches it: ZPA cannot carry it.",
+                          summary=st.get("summary") or "")
+            res = zpa_path.standalone(hops + st["hops"], mods + st["modules"], outcome=st["outcome"], headline=st["headline"], summary=st["summary"],
+                                      dest=pd, network=req.network, platform=req.platform, scope=sc, impacts=impacts + st["impacts"],
+                                      assumptions=assumptions + [a for a in st["assumptions"] if "Client Connector" not in a and "posture" not in a],
+                                      stops_at="ZPA" if st["outcome"] == "zpa_denied" else None, blocked_by=(st.get("scenarios", {}).get("none") or {}).get("rule"),
+                                      reaches_zscaler=True, mitigations=zpa_path.zpa_mitigations(st))
+            return finish(res)
+        note = wl["headline"] if go == "zia" else "Where the connector sends this traffic is not certain (see Connector forwarding); if it goes to ZIA:"
+        res = zia(hops, mods, impacts, assumptions, note)
+        if not res.get("stopped"):
+            t = res.get("trace") or {}
+            t["hops"] = [dict(h, status="na", detail="Not on this path: workload traffic is forwarded by a Cloud or Branch Connector, not by Client Connector.",
+                              why="workload traffic", weak_point=None)
+                         if h.get("key") in ("zcc", "forwarding", "pac") and h.get("status") == "out_of_scope" else h for h in t.get("hops") or []]
+            v = res.get("verdict") or {}
+            v["not_in_scope"] = [x for x in v.get("not_in_scope") or [] if x.get("hop") not in ("zcc", "forwarding", "pac")]
+            v["impacts"] = [x for x in v.get("impacts") or [] if x.get("hop") not in ("zcc", "forwarding", "pac")]
+            res["assumptions"] = [a for a in res.get("assumptions") or [] if not a.startswith("Browser traffic over HTTPS from a managed device")]
+            ec = wl.get("connector_group") or {}
+            if ec.get("location"):
+                res["assumptions"].append(f"ZIA sees this traffic at the connector group's location “{ec['location']}”; location-scoped rules are named where they apply.")
+        return finish(res)
+
+    # 4. User device: ZPA first
+    if zst is None and zsnap is not None:
+        _log("Placing the destination in ZPA: application segment, bypass, client forwarding, access policy…")
+        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles)
+        _log("ZPA: " + zst["headline"])
+    if zst is not None and zst.get("carries") is True:
+        res = zpa_path.standalone(zst["hops"], zst["modules"], outcome=zst["outcome"], headline=zst["headline"], summary=zst["summary"],
+                                  dest=pd, network=req.network, platform=req.platform, scope=sc, impacts=zst["impacts"], assumptions=zst["assumptions"],
+                                  stops_at="ZPA" if zst["outcome"] == "zpa_denied" else None,
+                                  blocked_by=next((m["rule"]["name"] for m in zst["modules"] if m["key"] == "zpa_access" and m["rule"]), None)
+                                  if zst["outcome"] == "zpa_denied" else None,
+                                  reaches_zscaler=True, mitigations=zpa_path.zpa_mitigations(zst))
+        return finish(res)
+    if zst is None:
+        return finish(zia([], [], [], [], ""))
+    note = {"not_zpa": "ZPA does not carry it (no application segment matches), so it is internet traffic:",
+            "outside": "ZPA does not carry it: " + zst.get("headline", "") + " So it is internet traffic:",
+            "zpa_conditional": "ZPA may carry it (see ZPA below); when it does not:", "not_read": zst.get("reason", "")}.get(zst.get("outcome"), "")
+    return finish(zia(zst["hops"], zst["modules"], zst.get("impacts") or [], zst.get("assumptions") or [], note))
+
+
+@app.post("/api/path-analyzer/full/start")
+async def path_analyzer_full_start(req: PathFullRequest, request: Request):
+    """The Path analyzer with ZPA evaluated first and workload traffic
+    (Cloud & Branch Connector), as a job the page follows. Reads only what
+    is in scope; 400 before sign-in for nothing in scope or a bad input.
+    Poll GET /api/dlp-packs/jobs/{job_id}; Stop ends it with nothing more
+    read. Nothing is written."""
+    import pack_jobs
+    inp = _path_full_inputs(req)
+    raw_client = await asyncio.to_thread(_build_client, req) if inp["scope"]["read"] else None
+    sdk_client = await asyncio.to_thread(_build_sdk_client, inp["creds"]) if inp["need_sdk"] else None
+    job = pack_jobs.start("path", lambda log, cancel: _run_path_full(inp, req, raw_client, sdk_client, log, cancel), label=req.destination[:80],
+                          actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
 @app.get("/api/report/data-flow/{report_id}")
 async def report_data_flow_get(report_id: str):
     rep = _REPORTS.get(report_id)

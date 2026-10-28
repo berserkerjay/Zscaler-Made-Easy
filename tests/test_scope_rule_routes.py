@@ -36,7 +36,7 @@ import dlp_api_server as srv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CREDS = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "customer_id": "7210000000000"}
-ALL_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights"]
+ALL_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "ztw"]
 ALL_CHANNELS = {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "genai_security", "shadow_it",
                                        "endpoint_scan", "ssl_inspection", "cloud_app_control", "device_control",
                                        "workflow_automation")}
@@ -215,6 +215,7 @@ ZPA = page(["zpa"])
 ZCC = page(["zcc"])
 INSIGHTS = page(["insights"])
 AUTOMATION = page(["automation"])
+ZTW = page(["ztw"])
 
 # What each partial selection leaves out: a read naming any of these is out of scope.
 OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules", "saas_security_api", "casb_tenant",
@@ -229,6 +230,7 @@ ZPA_OUT = ("zia.", "/zia/", "zcc.", "/zcc/", "zins.", "zwa.")
 ZCC_OUT = ("zia.", "zpa.", "zins.", "zwa.") + tuple(f"/zia/{x}" for x in ("webDlpRules", "urlFilteringRules", "sslInspectionRules", "fileTypeRules",
                                                                          "firewallFilteringRules", "cloudApplicationRules", "urlCategories"))
 INSIGHTS_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zwa.")
+ZTW_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -287,6 +289,9 @@ ROUTES: List[Route] = [
     Route("/api/path-analyzer/start", DEST),
     Route("/api/path-analyzer", DEST),
     Route("/api/path-analyzer/batch/start", {"har_hosts": ["example.com"]}),
+    Route("/api/path-analyzer/full/start", DEST),
+    Route("/api/path-analyzer/full/start", DEST, partial=ZPA, out=ZPA_OUT),
+    Route("/api/path-analyzer/full/start", dict(DEST, source="workload", workload={"ip": "10.0.0.5"}), partial=ZTW, out=ZTW_OUT),
     Route("/api/report/data-flow"),
     Route("/api/report/ssl-flow"),
     Route("/api/report/bypass"),

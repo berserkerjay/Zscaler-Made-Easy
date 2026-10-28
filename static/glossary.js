@@ -89,6 +89,11 @@
     'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
     'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
     'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
+    'client forwarding policy': { term: 'client forwarding policy', def: 'The client forwarding policy tells Client Connector whether to send a private app to ZPA or let it go another way.' },
+    'access policy': { term: 'access policy', def: 'The access policy is the list of ZPA rules that say who may open which private app. If no rule allows it, ZPA says no.' },
+    'workload': { term: 'workload', def: 'A workload is a server or cloud machine, not a person. Its traffic leaves through a Cloud or Branch Connector.' },
+    'workload group': { term: 'workload group', def: 'A workload group picks workloads by their cloud tags, like all machines tagged Env=prod. Rules can name the group.' },
+    'cloud & branch connector': { term: 'Cloud & Branch Connector', def: 'A Cloud or Branch Connector sends the traffic of servers and offices to Zscaler, the way Client Connector does for a computer.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;
