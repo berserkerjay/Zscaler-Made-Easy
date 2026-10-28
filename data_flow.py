@@ -29,6 +29,7 @@ and the raw value is kept next to every interpretation.
 from __future__ import annotations
 
 import md_safe
+import pac_eval
 import contextlib
 import fnmatch
 import json
@@ -38,6 +39,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tupl
 from bypass_report import _fetch_url_category_lookup, _rules_to_list
 from zcc_profiles import read_profiles, read_app_profiles
 from zcc_evaluation import flatten_profile, _v, _truthy
+from path_whatif import scope_items
 from ssl_flow import (TRAFFIC_CLASSES, _fetch_app_catalogue, _fetch_rules, _matches, _names, _scope, _sort_key,
                       _upper, normalize_dlp_rule, normalize_ssl_rule)
 
@@ -413,7 +415,8 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                 if isinstance(f, dict):
                     content = str(_v(f, "pacContent", "content", "pacScript", default=""))
                     out["pac_files"].append({"id": f.get("id"), "name": f.get("name"), "url": _v(f, "pacUrl", "pacUrlObfuscated", "url"),
-                                             "direct_hosts": _pac_direct_hosts(content), "has_content": bool(content)})
+                                             "direct_hosts": _pac_direct_hosts(content), "has_content": bool(content),
+                                             "source": content[:pac_eval.MAX_SOURCE + 1]})
         except ReadStopped:
             raise
         except Exception as e:  # noqa: BLE001
@@ -421,20 +424,10 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
     return out
 
 
-_PAC_LINE = re.compile(r"(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet)\s*\(\s*\w+\s*,\s*[\"']([^\"']+)[\"']", re.I)
-
-
 def _pac_direct_hosts(content: str) -> List[str]:
-    """Hostname patterns a PAC file sends DIRECT (never to Zscaler)."""
-    out: List[str] = []
-    if not content:
-        return out
-    for block in re.split(r"\breturn\b", content):
-        pass
-    for m in re.finditer(r"if\s*\((?P<cond>[^{]*)\)\s*\{?\s*return\s+[\"']DIRECT[\"']", content, re.I | re.S):
-        for h in _PAC_LINE.finditer(m.group("cond")):
-            out.append(h.group(2))
-    return sorted(set(out))
+    """Hostname and network patterns a PAC file sends DIRECT (never to
+    Zscaler), read by pac_eval from its parse; never run."""
+    return pac_eval.direct_hosts(content)
 
 
 # ── ZIA readers ───────────────────────────────────────────────────────
@@ -456,7 +449,7 @@ def _norm_generic(r: Dict[str, Any]) -> Dict[str, Any]:
         "file_types": _upper(_names(r.get("fileTypes") or r.get("file_types") or [])),
         "operation": str(r.get("operation") or "").upper(),
         "request_methods": _upper(_names(r.get("requestMethods") or r.get("request_methods") or [])),
-        "scope": _scope(r), "scoped": bool(_scope(r)),
+        "scope": _scope(r), "scoped": bool(_scope(r)), "scope_items": scope_items(r),
         "protocols": _upper(_names(r.get("protocols") or [])),
     }
 
@@ -665,7 +658,7 @@ def connector_references(zcc: Dict[str, Any]) -> Dict[str, Any]:
                      "forwarding_reference": ref, "status": "linked" if fwd else "unverified",
                      "networks": {k: {"mode": a.get("mode_label"), "kind": a.get("mode_kind"), "pac_url": a.get("pac_url")}
                                   for k, a in (fwd or {}).get("actions", {}).items()}})
-    return {"profiles": refs, "forwarding_profiles": zcc.get("forwarding_profiles", []), "pac_files": zcc.get("pac_files", []), "errors": zcc.get("errors", []), "read_status": zcc.get("read_status", {}),
+    return {"profiles": refs, "forwarding_profiles": zcc.get("forwarding_profiles", []), "pac_files": [{k: v for k, v in f.items() if k != "source"} for f in zcc.get("pac_files", [])], "errors": zcc.get("errors", []), "read_status": zcc.get("read_status", {}),
             "note": "Tenant configuration context. The incident feed does not establish which app profile or network a device used."}
 
 
@@ -805,6 +798,16 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         direct = []
         pac_url = (act.get("pac_url") if fwd else None) or (prof or {}).get("pac_url") or (fwd or {}).get("pac_url")
         pacs = [f for f in zcc.get("pac_files", []) if pac_url and f.get("url") == pac_url]
+        # Evaluated by pac_eval (parsed and interpreted, never run); a PAC
+        # it cannot evaluate safely is unverified, not "no DIRECT clause".
+        pev = pac_eval.path_hop(pacs, host, dest.get("url") or (f"https://{host}/" if host else ""))
+        if pev is not None:
+            pacs = []
+            if pev["status"] == "bypass":
+                reaches_zscaler = False; ends = "pac"
+            hops.append(_hop("pac", "PAC file", "unknown" if pev["status"] == "error" else pev["status"], pev["decided_by"], pev["detail"],
+                             pev.get("weak_point"), module_view=pev["module_view"], pac_outcomes=pev["evaluation"]["outcomes"],
+                             depends_on=pev["evaluation"]["depends_on"]))
         for f in pacs:
             hit = _domain_hit(f.get("direct_hosts") or [], host) if host else None
             if hit:
@@ -815,7 +818,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             hops.append(_hop("pac", "PAC file", "bypass", {"name": f.get("name"), "id": f.get("id")},
                              f"PAC '{f.get('name')}' returns DIRECT for {hit}: the browser connects without Zscaler.",
                              _weak("high", "PAC sends this destination DIRECT", "Remove the DIRECT clause or narrow it; Zscaler recommends returning the ZIA proxy for everything except RFC1918 and explicit local hosts.")))
-        else:
+        elif pev is None:
             verified = bool(pacs) and all(f.get("has_content") for f in pacs)
             hops.append(_hop("pac", "PAC file", "pass" if verified else "unknown", None,
                              (f"{len(pacs)} linked PAC file(s) read; no DIRECT pattern found for this destination" + (" (host-level check needs a hostname)." if not host else ".")) if verified else "The referenced PAC URL could not be linked to readable content. PAC routing is unverified.", None))

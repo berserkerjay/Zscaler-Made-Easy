@@ -8837,6 +8837,7 @@ class PathAnalyzerRequest(MigrateRequest):
     scopes: List[str] = []
     channels: Dict[str, Any] = {}
     from_page: bool = False
+    identity: Dict[str, Any] = {}   # what-if: {user, group, department, location} (path_whatif)
 
 
 class FlowScenarioRequest(MigrateRequest):
@@ -9042,7 +9043,8 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
     if scope.get("source"):
         _log(f"In scope, from {scope['source']}: {scope['summary']}")
     try:
-        out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel)
+        out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel,
+                                    identity=req.identity)
     except path_analyzer.Stopped as e:
         return {"stopped": str(e), "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
     if cancel is not None and cancel.is_set():
@@ -9116,6 +9118,32 @@ async def path_analyzer_run(req: PathAnalyzerRequest):
     """The same analysis, waited for (for scripts)."""
     client, snapshot, label, scope = await _path_analysis_inputs(req)
     return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None, scope)
+
+
+class PathIdentityRequest(MigrateRequest):
+    """Look one user, group, department or location up in ZIA by name, for
+    the Path analyzer's what-if. Read only when ZIA platform is ticked on
+    the Scope page; one page of at most path_whatif.SEARCH_LIMIT answers."""
+    kind: str = "user"
+    query: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+@app.post("/api/path-analyzer/identities")
+async def path_analyzer_identities(req: PathIdentityRequest):
+    """Search ZIA's users, groups, departments or locations by name (never a
+    bulk listing). 400 before signing in when ZIA platform is not in scope,
+    the kind is unknown or the query is not 2 to 64 characters."""
+    import path_whatif
+    _require_in_scope(req, "zia_extras", "Looking up users, groups and locations")
+    if req.kind not in path_whatif.SEARCH_KINDS:
+        raise HTTPException(status_code=400, detail=f"Search for one of: {', '.join(path_whatif.SEARCH_KINDS)}. Nothing was read.")
+    if path_whatif.valid_query(req.query) is None:
+        raise HTTPException(status_code=400, detail="Type 2 to 64 characters to search. Nothing was read.")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(path_whatif.search_identities, client, req.kind, req.query)
 
 
 @app.get("/api/report/data-flow/{report_id}")

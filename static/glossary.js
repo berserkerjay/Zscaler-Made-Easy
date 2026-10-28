@@ -89,6 +89,10 @@
     'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
     'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
     'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
+    'what-if': { term: 'what-if', def: 'A what-if asks what would happen for one person. You type a user, a group, a team or a place, and the app checks the rules for them.' },
+    'department': { term: 'department', def: 'A department is a team in your company, like Sales or Finance. A rule can name a department to act only on its people.' },
+    'time window': { term: 'time window', def: 'A time window is a set of days and hours, like work hours. A rule with one only acts at those times.' },
+    'device trust level': { term: 'device trust level', def: 'The device trust level says how much Zscaler trusts a computer: low, medium or high. A rule can act only on some levels.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

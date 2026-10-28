@@ -150,7 +150,8 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform
 
 def analyze(client, destination: str, network: str = "off", platform: str = "windows", *,
             scope: Optional[Dict[str, Any]] = None, snapshot: Optional[Dict[str, Any]] = None, log: LogFn = None,
-            cancel: Any = None, context: Optional[Dict[str, Any]] = None, lookup: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            cancel: Any = None, context: Optional[Dict[str, Any]] = None, lookup: Optional[Dict[str, Any]] = None,
+            identity: Any = None) -> Dict[str, Any]:
     """The live analysis. `scope` (data_flow.path_scope: the Scope page's
     ticked scopes and the channels marked Zscaler) is required, and only
     the parts of the tenant in it are read; every other hop says "not in
@@ -232,18 +233,29 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
             if lk["application"] in apps and cls not in rd["app_classes"]:
                 rd["app_classes"].append(cls)
     rd["lookup"] = lk
+    rd["url"] = f"{d['scheme']}://{d['host']}{':' + str(d['port']) if d['port'] else ''}{d['path']}{'?' + d['query'] if d['query'] else ''}"
+    # What-if (path_whatif): rules scoped to the identity given apply, the
+    # others are skipped; the PAC file is evaluated by pac_eval, never run.
+    import path_whatif
+    ident = path_whatif.normalize_identity(identity)
+    zia_t, wcounts = path_whatif.apply_identity(zia, ident)
+    if ident:
+        _log(f"Evaluating rules scoped to the identity you gave: {wcounts['applies']} apply, {wcounts['skipped']} are for others, {wcounts['open']} still depend on something not given.")
     _log("Tracing the path hop by hop…")
-    t = trace(rd, network, platform, zcc, zia, load_packs(), scope=scope, context=context)
+    t = trace(rd, network, platform, zcc, zia_t, load_packs(), scope=scope, context=context)
     verdict = derive_verdict(t, d, lk)
     _log(f"Verdict: {verdict['headline']}")
     sc = {"summary": scope["summary"], "read": list(scope["read"]), "not_in_scope": dict(scope["not_in_scope"]), "key": scope["key"],
           "scopes": list(scope.get("scopes") or []), "channels": dict(scope.get("channels") or {})}
     assumptions = list(ASSUMPTIONS)
+    if ident:
+        assumptions[0] = path_whatif.assumption(ident)
     if scope["not_in_scope"]:
         assumptions.append("Only what is in scope on the Scope page was read; these parts are not in scope and their hops are not assessed: "
                            + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
     out = {"required_controls": zia.get("required_controls", []), "destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
-           "network": network, "platform": platform, "read_at": time.time(), "fresh_read": snapshot is None}
+           "network": network, "platform": platform, "read_at": time.time(), "fresh_read": snapshot is None,
+           "whatif": path_whatif.whatif(zia_t, t["destination"], ident, wcounts, scope.get("not_in_scope"))}
     # Recent traffic to this destination: only when ZIA Insights is in
     # scope, and never faked. Z-Insights cannot filter by host or domain,
     # so this says so without asking the tenant anything.

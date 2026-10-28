@@ -287,6 +287,7 @@ ROUTES: List[Route] = [
     Route("/api/path-analyzer/start", DEST),
     Route("/api/path-analyzer", DEST),
     Route("/api/path-analyzer/batch/start", {"har_hosts": ["example.com"]}),
+    Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
     Route("/api/report/data-flow"),
     Route("/api/report/ssl-flow"),
     Route("/api/report/bypass"),

@@ -136,6 +136,15 @@ what you get, what to do next.
   browser session reached in one run: the file is read in the browser and
   only host names and request counts are sent; the results table sorts,
   filters, opens any host's full analysis and exports as CSV or JSON.
+  The PAC file is evaluated for the destination (`pac_eval.py`: parsed
+  and interpreted, never run; anything outside the PAC subset says
+  "could not evaluate safely"), and each answer is classified DIRECT,
+  Zscaler or another proxy. **What-if**: optionally give a user, group,
+  department and location (looked up in ZIA only with ZIA platform in
+  scope, 20 names at most per search); rules scoped to them apply and
+  rules for others are skipped. Every result lists what the policy action
+  also depends on: each scoped condition that would change it, with the
+  rule and the action it would give (`path_whatif.py`).
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the

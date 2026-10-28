@@ -636,3 +636,11 @@ summary { min-height: 24px; }
 .op-items td { vertical-align: top; }
 .op-page .df-ctl input[type="checkbox"] + span { font-size: 0.86rem; }
 @media (max-width: 760px) { .op-page .df-ctl { flex-wrap: wrap; max-width: 100%; } .op-page .df-ctl select, .op-page .df-ctl input { max-width: 100%; min-width: 0; } }
+/* Path analyzer what-if (static/path_whatif.js) */
+.pa-whatif .pa-wi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.6rem 1rem; margin: 0.6rem 0 0.2rem; }
+.pa-whatif .pa-wi-field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.pa-whatif .pa-wi-field .df-ctl input { width: 100%; min-width: 0; }
+.pa-wi-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; max-height: 14rem; overflow-y: auto; }
+.pa-wi-results .rp-btn { width: 100%; text-align: left; justify-content: flex-start; }
+.pa-whatif-out .df-table td { vertical-align: top; }
+.pa-whatif-out .df-table td > div + div { margin-top: 0.25rem; }
