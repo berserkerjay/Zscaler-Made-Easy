@@ -125,6 +125,10 @@
     'workload': { term: 'workload', def: 'A workload is a server or cloud machine, not a person. Its traffic leaves through a Cloud or Branch Connector.' },
     'workload group': { term: 'workload group', def: 'A workload group picks workloads by their cloud tags, like all machines tagged Env=prod. Rules can name the group.' },
     'cloud & branch connector': { term: 'Cloud & Branch Connector', def: 'A Cloud or Branch Connector sends the traffic of servers and offices to Zscaler, the way Client Connector does for a computer.' },
+    'custom url category': { term: 'custom URL category', def: 'A custom URL category is your own list of sites. A rule can block or allow the whole list at once.' },
+    'ip group': { term: 'IP group', def: 'An IP group is a list of addresses you make in Zscaler. A firewall rule can name the group to block or allow them all.' },
+    'allowed but blockable': { term: 'allowed but blockable', def: 'Allowed but blockable means a site gets through today. A rule could block it, but that rule is only for some people or places.' },
+    'threat category': { term: 'threat category', def: 'A threat category is a group of sites Zscaler knows are bad, like phishing or malware. Threat protection blocks them for everyone.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

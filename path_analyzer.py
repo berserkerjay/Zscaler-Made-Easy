@@ -152,7 +152,8 @@ def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any], platform
 def analyze(client, destination: str, network: str = "off", platform: str = "windows", *,
             scope: Optional[Dict[str, Any]] = None, snapshot: Optional[Dict[str, Any]] = None, log: LogFn = None,
             cancel: Any = None, context: Optional[Dict[str, Any]] = None, lookup: Optional[Dict[str, Any]] = None,
-            protocol: Optional[str] = None, port: Optional[int] = None) -> Dict[str, Any]:
+            protocol: Optional[str] = None, port: Optional[int] = None,
+            packs: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """The live analysis. `scope` (data_flow.path_scope: the Scope page's
     ticked scopes and the channels marked Zscaler) is required, and only
     the parts of the tenant in it are read; every other hop says "not in
@@ -168,7 +169,9 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     (lookup_many's answer for this host) stands in for the live URL
     lookup, so a batch asks ZIA once per hundred hosts. `protocol` (tcp or
     udp) and `port` trace traffic other than HTTPS (zia_path_modules:
-    every ZIA module in order, `zia_modules` in the result)."""
+    every ZIA module in order, `zia_modules` in the result). `packs`
+    (data_flow.load_packs(), read once by a caller that traces many
+    destinations) saves reading the pack library again for each one."""
     _log = log or (lambda m: None)
 
     def _stopped() -> Stopped:
@@ -240,7 +243,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                 rd["app_classes"].append(cls)
     rd["lookup"] = lk
     _log("Tracing the path hop by hop…")
-    t = trace(rd, network, platform, zcc, zia, load_packs(), scope=scope, context=context)
+    t = trace(rd, network, platform, zcc, zia, load_packs() if packs is None else packs, scope=scope, context=context)
     zm = zia_path_modules.evaluate(t, d, traffic, zia, lk, context)
     zia_path_modules.extend_trace(t, zm)
     verdict = derive_verdict(t, d, lk)

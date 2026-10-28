@@ -196,6 +196,22 @@ what you get, what to do next.
   workload group and connector group: the connector's forwarding rules
   decide first (ZIA, ZPA, direct, local switch, proxy chaining or drop),
   then ZIA or ZPA.
+  **Test a list** (a tab on the same page) does it for a whole list: a
+  CSV or pasted list of IP addresses, CIDR blocks (up to a /16 per row),
+  ranges, hosts and URLs, up to 250,000 rows, with optional port,
+  protocol, source IP, location, country, category, user, label and
+  what each row is expected to do (block or allow). The tenant is read
+  once, ZIA's URL lookup is asked a hundred destinations per request,
+  paced for ZIA's rate limit (a quota that runs out labels the rest
+  "rerun later"), and a category in the file overrides the lookup. You
+  get counts (blocked, allowed, bypassed, isolated, caution, allowed but
+  blockable), the top deciding rules and categories, the rows to look
+  at, for each row that misses what was expected the area to fix it in
+  (ATP, Cloud Firewall, URL filtering, DNS Control, Client Connector,
+  Cloud App Control) with advice per category, a list per area to paste
+  into a custom URL category or IP group, and CSV and Excel downloads.
+  Fix selected opens Bulk changes with the picked destinations filled in
+  as a URL category change; it writes nothing on its own.
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the

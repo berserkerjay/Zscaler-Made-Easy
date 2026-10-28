@@ -338,8 +338,8 @@
     }
     function renderUrls(res, where) {
       const cats = res.categories || [];
-      const act = ($('opUrlAct') || {}).value || 'move', src = ($('opUrlSrc') || {}).value || (cats[0] || {}).id || '', tgt = ($('opUrlTgt') || {}).value || '';
-      const newName = ($('opUrlNew') || {}).value || '', typed = ($('opUrls') || {}).value || '';
+      const act = ($('opUrlAct') || {}).value || (S.handoff ? 'add' : 'move'), src = ($('opUrlSrc') || {}).value || (cats[0] || {}).id || '', tgt = ($('opUrlTgt') || {}).value || '';
+      const newName = ($('opUrlNew') || {}).value || '', typed = $('opUrls') ? $('opUrls').value : (S.handoff ? S.handoff.urls.join('\n') : '');
       const needSrc = act !== 'add', needTgt = act !== 'remove';
       const srcCat = cats.find(c => String(c.id) === String(src));
       where.innerHTML = `${errorsHtml(res)}
@@ -538,7 +538,29 @@
       where.querySelectorAll('button[data-undo]').forEach(b => b.addEventListener('click', () => undo(b.dataset.undo)));
     }
 
-    tenantChoices(); refreshWrite(); renderObjects(); loadHistory();
+    // ── A hand-off from the Path analyzer's Test a list view (?fix=<id>):
+    // the URL category change is picked and its "add" list filled in. It
+    // only fills the form: reading, the preview and the four write gates
+    // are the same as for any change typed here.
+    async function takeHandoff() {
+      const id = new URLSearchParams(location.search).get('fix') || '';
+      if (!/^[a-f0-9]{24}$/.test(id)) return;
+      let h = null;
+      try { const r = await fetch(`/api/bulk-test/fix/${id}`, { cache: 'no-store' }); if (r.ok) h = await r.json(); } catch (e) { h = null; }
+      const note = document.createElement('div');
+      note.className = h ? 'bp-card' : 'bp-card warn';
+      note.setAttribute('role', 'status');
+      if (!h || !Array.isArray(h.urls)) { note.innerHTML = '<div class="t">The list from the Path analyzer is no longer kept</div><div>Pick the rows again on the Path analyzer\'s Test a list view, then Fix selected.</div>'; $('opH1').after(note); return; }
+      S.handoff = h;
+      const radio = document.querySelector('input[name="opKind"][value="url_categories"]');
+      if (radio) { radio.checked = true; S.kind = 'url_categories'; }
+      note.innerHTML = `<div class="t">${E(h.urls.length)} destination(s) from the Path analyzer's Test a list view</div><div>${E(h.note)}${(h.excluded || []).length ? ` ${E(h.excluded.length)} could not go into a URL category and were left out.` : ''}${h.over_limit ? ` ${E(h.over_limit)} more were over the limit of one operation.` : ''} Click Read from the tenant, pick the category in To, then preview.</div>`;
+      $('opH1').after(note);
+      renderObjects();
+      say(`${h.urls.length} destinations from the Path analyzer are ready to add to a URL category. Read from the tenant, pick the category, then preview.`);
+    }
+
+    tenantChoices(); refreshWrite(); renderObjects(); loadHistory(); takeHandoff();
   })();
   </script>
 </body>
