@@ -31,8 +31,9 @@ Thumbs.db
 # Local run artifacts
 *.log
 
-# Tenant profiles (local, may hold remembered secrets)
+# Tenant profiles (local, may hold remembered secrets) and their saved snapshots
 tenant_profiles.json
+tenant_snapshots/
 
 # Silent launcher output
 server.log

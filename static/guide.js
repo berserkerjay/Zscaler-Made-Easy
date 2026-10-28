@@ -887,7 +887,10 @@ function _gdProfilesRender() {
           <span class="gd-need">Also the admin password and API key for the classic sign-in. Goes to this laptop's credential store (Windows Credential Manager or the macOS Keychain, through the <code>keyring</code> package the installer pins with the app). On Linux and in the container, or if the store refuses it, it is not remembered, unless the app was started with <code>DLP_CHECK_SECRET_STORE=file</code>, which keeps it in <code>tenant_profiles.json</code> next to the app (owner-only file). Never sent back to the browser. Unticked, nothing secret is written and the form's values live only in this browser tab. Leave unticked on a shared machine.</span></label>
       </div>
       ${sel ? `<div class="gd-prof-hist"><span class="lbl">History${last ? ` · last assessed ${_gdE(new Date(last.at).toLocaleString())}, ${last.score ?? '?'}%${last.journey ? `, journey stage ${last.journey.stage || 0} of 5` : ''}` : ''}</span>${_gdHistoryHtml(det)}</div>` : ''}
-    </details>`;
+    </details>
+    <div id="gdOffline" class="gd-offline"></div>`;
+  // The sample tenant and this profile's snapshots (offline_tenant.js).
+  if (window.zmeOffline) window.zmeOffline.render(document.getElementById('gdOffline'), sel);
 }
 
 // ── Boot ───────────────────────────────────────────────────────────

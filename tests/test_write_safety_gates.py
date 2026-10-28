@@ -326,6 +326,13 @@ WRITE_CASES: List[WriteCase] = [
 # Routes that never change a tenant (they may write the app's own files),
 # with why. A new state-changing route must be added to one of the tables.
 READ_ONLY: Dict[Tuple[str, str], str] = {
+    ("POST", "/api/offline/sample"): "uses the in-memory sample tenant in this browser (offline_tenant): no tenant is reached",
+    ("POST", "/api/offline/leave"): "back to the live tenant in this browser: clears a cookie",
+    ("POST", "/api/tenant-profiles/snapshots/open-file"): "opens an uploaded snapshot offline and read-only",
+    ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/open"): "opens a saved snapshot offline and read-only",
+    ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/delete"): "deletes a local snapshot file, never anything in a tenant",
+    ("POST", "/api/tenant-profiles/snapshots/save/start"): "a GET-only, scoped tenant read kept in a local file",
+    ("POST", "/api/tenant-profiles/snapshots/compare/start"): "a GET-only, scoped tenant read compared with a snapshot",
     ("POST", "/api/auth/unlock"): "session sign-in",
     ("POST", "/api/auth/logout"): "session sign-out",
     ("POST", "/api/remediation/plan"): "builds a plan, sends nothing",

@@ -182,6 +182,9 @@ app.add_middleware(
     allow_headers=["Content-Type", "Accept"],
     max_age=3600,
 )
+# The browser's offline tenant (the sample or a snapshot, offline_tenant.py), for _tenant_creds.
+import offline_tenant as _offline_src
+app.add_middleware(_offline_src.SourceMiddleware)
 app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
 # Outermost: caps declared and streamed (chunked) request bodies before any
 # other layer reads them (see BodySizeLimitMiddleware).
@@ -415,6 +418,7 @@ GUI_ADDONS = [
     ("deploy_studio.js", "script"),
     ("explain.js", "script"),
     ("find_anything.js", "script"),  # Find anything (Ctrl/Cmd+J): pages, glossary terms, tenant objects, findings
+    ("offline_tenant.js", "script"),  # the sample tenant and snapshots, beside the tenant profiles (guide.js draws them)
     ("guide.js", "script"),
     ("update_beacon.js", "script"),  # checks for updates in the background and shows a notice when one is out
     ("eval_all.js", "script"),
@@ -780,7 +784,12 @@ class MigrateRequest(BaseModel):
 
 def _raw_client(creds: Dict[str, str]):
     """The raw-HTTP assessment client for validated credentials, either
-    sign-in (tenant_auth). Not yet signed in."""
+    sign-in (tenant_auth). Not yet signed in. Offline credentials (the
+    sample tenant, a snapshot) get the offline client, which has no network
+    code (offline_tenant)."""
+    off = _offline_client(creds, "raw")
+    if off is not None:
+        return off
     return Client(creds["client_id"], creds["client_secret"], creds["vanity_domain"], creds["cloud"], creds["customer_id"],
                   auth_method=creds["auth_method"], username=creds["username"], password=creds["password"], api_key=creds["api_key"])
 
@@ -1153,6 +1162,9 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
         tenant_auth.normalize_method(getattr(req, "auth_method", ""))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    off = _offline_creds()   # the sample tenant or an opened snapshot (offline_tenant): never the form's, a profile's or the server's
+    if off is not None:
+        return off
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
     if not tenant_auth.started(creds):
         # Nothing typed for a tenant: the source that has the sign-in decides
@@ -1355,8 +1367,12 @@ def _build_sdk_client(creds: Dict[str, str]):
     `.zia.*` services the importer and planner require): the OneAPI client
     for a ZIdentity API client, the SDK's legacy ZIA client for the classic
     sign-in (tenant_auth). Validates every input and never echoes a secret
-    in an error."""
+    in an error. Offline credentials (the sample tenant, a snapshot) get
+    the offline client before anything else: it has no network code."""
     import zia_rate
+    off = _offline_client(creds, "sdk")
+    if off is not None:
+        return off
     c = _validate_creds(creds)
     cloud, vd, cid, sec = c["cloud"], c["vanity_domain"], c["client_id"], c["client_secret"]
     # The tenant's API client, for ZIA's rate limits: its requests, holds and
@@ -3448,7 +3464,8 @@ async def tenant_profiles_list():
     """Saved tenant profiles (secrets never returned; has_secret says
     whether one is remembered) with each tenant's last assessment."""
     import tenant_profiles
-    return {"profiles": tenant_profiles.list_profiles(), "store": os.path.basename(tenant_profiles.store_path())}
+    return {"profiles": tenant_profiles.list_profiles(), "store": os.path.basename(tenant_profiles.store_path()),
+            "unfiled_snapshots": tenant_profiles.list_snapshots("")}
 
 
 @app.get("/api/vertical-scope")
@@ -3544,6 +3561,229 @@ async def tenant_profile_delete(profile_id: str):
     if not tenant_profiles.delete(profile_id):
         raise HTTPException(status_code=404, detail=f"No tenant profile '{profile_id}'.")
     return {"deleted": profile_id}
+
+
+# ── Offline tenants: the sample tenant and saved snapshots ─────────────
+# (offline_tenant.py, sample_tenant.py; snapshots are kept beside the
+# tenant profiles, tenant_profiles.py.) "Try with a sample tenant" and
+# "Open a snapshot" set a cookie for this browser; while it is set,
+# _tenant_creds answers with offline credentials and the client factories
+# (_raw_client, _build_sdk_client) hand out the offline clients, which
+# have no network code: every page works on it and nothing reaches a
+# tenant. "Leave" clears it. A snapshot is saved from a read-only, scoped
+# tenant read with no credentials in it, owner-only.
+import offline_tenant as _offline   # its SourceMiddleware is added with the other layers, inside the size cap
+
+
+def _offline_creds() -> Optional[Dict[str, str]]:
+    """This request's offline credentials (None: the live tenant); 409 when
+    its offline tenant is no longer open (fail closed, never the live one)."""
+    try:
+        return _offline.current_creds()
+    except _offline.OfflineError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+def _offline_client(creds: Dict[str, str], kind: str):
+    """The offline client for offline credentials, None for real ones."""
+    try:
+        return _offline.client_for(creds, kind)
+    except _offline.OfflineError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+def _offline_answer(request: Request, body: Dict[str, Any], source: Optional[str]) -> JSONResponse:
+    """`body` as JSON, with this browser's offline tenant set (or cleared)."""
+    resp = JSONResponse(body)
+    if source:
+        resp.set_cookie(_offline.COOKIE, source, httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
+    else:
+        resp.delete_cookie(_offline.COOKIE, path="/")
+    return resp
+
+
+class OfflineSampleRequest(BaseModel):
+    """Open the sample tenant; `reset` throws away its in-memory changes."""
+    reset: bool = False
+
+
+class SnapshotFileRequest(BaseModel):
+    """A snapshot file chosen in the browser: its text (checked as untrusted)."""
+    name: str = ""
+    content: str
+
+
+class SnapshotCompareRequest(ScopedTenantCredsRequest):
+    """Compare a saved (or opened) snapshot with the live tenant."""
+    snapshot_id: str = ""
+
+
+@app.get("/api/offline/status")
+async def offline_status():
+    """Which tenant this browser uses: the live one, the sample tenant or a
+    snapshot (with its label and when it was read). Reads nothing."""
+    return _offline.status()
+
+
+@app.post("/api/offline/sample")
+async def offline_sample(req: OfflineSampleRequest, request: Request):
+    """Use the sample tenant (Larkspur Freight, made up) in this browser.
+    Nothing here is real; its changes stay in this server's memory."""
+    st = await asyncio.to_thread(_offline.sample_store, req.reset)
+    return _offline_answer(request, st.describe(), st.id)
+
+
+@app.post("/api/offline/leave")
+async def offline_leave(request: Request):
+    """Back to the live tenant in this browser (the sample or snapshot is closed here)."""
+    return _offline_answer(request, {"mode": "live"}, None)
+
+
+@app.post("/api/tenant-profiles/snapshots/open-file")
+async def snapshot_open_file(req: SnapshotFileRequest, request: Request):
+    """Open a snapshot file chosen in the browser, offline and read-only. The
+    file is untrusted: size, nesting depth, schema and every path are
+    checked, and nothing in it names a file, an id or a credential."""
+    try:
+        st = await asyncio.to_thread(_offline.open_document, req.content)
+    except _offline.OfflineError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    return _offline_answer(request, st.describe(), st.id)
+
+
+@app.post("/api/tenant-profiles/snapshots/{snapshot_id}/open")
+async def snapshot_open(snapshot_id: str, request: Request):
+    """Open a saved snapshot (listed with its tenant profile), offline and read-only."""
+    try:
+        st = await asyncio.to_thread(_offline.open_saved, snapshot_id)
+    except _offline.OfflineError as e:
+        raise HTTPException(status_code=404 if e.status == 404 else e.status, detail=str(e))
+    return _offline_answer(request, st.describe(), st.id)
+
+
+@app.get("/api/tenant-profiles/snapshots/{snapshot_id}/download")
+async def snapshot_download(snapshot_id: str):
+    """A saved snapshot as a file, to open on another computer."""
+    import tenant_profiles
+    try:
+        raw = await asyncio.to_thread(tenant_profiles.read_snapshot, snapshot_id, _offline.MAX_SNAPSHOT_BYTES)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return Response(raw, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="zscaler-snapshot-{snapshot_id[5:]}.json"'})
+
+
+@app.post("/api/tenant-profiles/snapshots/{snapshot_id}/delete")
+async def snapshot_delete(snapshot_id: str, request: Request):
+    """Delete a saved snapshot (the file and its place in the profile list)."""
+    import tenant_profiles
+    try:
+        ok = tenant_profiles.delete_snapshot(snapshot_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="No such snapshot.")
+    _offline.forget(snapshot_id)
+    in_use = _offline.current_source() == snapshot_id
+    return _offline_answer(request, {"deleted": snapshot_id, "mode": "live" if in_use else _offline.status().get("mode")},
+                           None if in_use else _offline.current_source())
+
+
+def _snapshot_live(req: Any, what: str) -> Tuple[Dict[str, str], List[str], Dict[str, Any]]:
+    """The live tenant's credentials and the Scope page selection for a
+    snapshot read (before any sign-in): 400 when nothing it reads is in scope."""
+    sc, ch, _source = _scope_selection(req)
+    scopes = [s for s in sc if s in _offline.KNOWN_SCOPES]
+    if not _offline.capture_plan(scopes):
+        raise HTTPException(status_code=400, detail=f"{what}: nothing is in scope. On the Scope page tick what to keep "
+                                                    "(DLP, ZIA platform, ZPA, Client Connector, ZDX or ZIdentity). Nothing was read.")
+    with _offline.using(None):   # always the live tenant
+        creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail=f"Fill in the tenant details (or pick a saved tenant) for {what.lower()}.")
+    return creds, scopes, ch
+
+
+def _signed_in_raw(creds: Dict[str, str]):
+    """The live raw-HTTP client, signed in (401 in words otherwise; no secret echoed)."""
+    c = _validate_creds(creds)
+    client = _raw_client(c)
+    ok = client.auth()
+    if ok is not True:
+        reason = tenant_auth.mask_secrets(str(ok[1]) if isinstance(ok, tuple) and len(ok) == 2 else "", c)
+        raise HTTPException(status_code=401, detail=f"Authentication failed for {tenant_auth.identity(c)}: {reason[:200]}")
+    return client
+
+
+@app.post("/api/tenant-profiles/snapshots/save/start")
+async def snapshot_save_start(req: ScopedTenantCredsRequest, request: Request):
+    """Save a snapshot of the live tenant, as a background job: a read-only
+    read of only what is in scope on the Scope page, kept beside the tenant
+    profile as an owner-only file with no credentials in it. Poll
+    GET /api/dlp-packs/jobs/{job_id}."""
+    import pack_jobs
+    import tenant_profiles
+    if _offline.current_source():
+        raise HTTPException(status_code=409, detail="This browser is using the sample tenant or a snapshot. Choose Leave first, then save "
+                                                    "a snapshot of your own tenant.")
+    creds, scopes, channels = _snapshot_live(req, "Save a snapshot")
+    client = await asyncio.to_thread(_signed_in_raw, creds)
+    label = tenant_auth.record_label(creds)
+    profile_id = req.profile_id if (req.profile_id and tenant_profiles.get(req.profile_id)) else ""
+
+    def run(log, cancel):
+        try:
+            got = _offline.capture(client, scopes, channels, log, cancel)
+        finally:
+            client.close()
+        if got["stopped"]:
+            return {"stopped": True}
+        if not got["responses"]:
+            raise RuntimeError("Nothing could be read from the tenant, so no snapshot was saved.")
+        meta = {"tenant_label": label, "saved_at": _offline._now(), "auth_method": creds["auth_method"], "scopes": scopes,
+                "channels": __import__("channel_scope").normalize(channels), "counts": got["counts"], "unread": got["unread"]}
+        text = _offline.dumps(_offline.build_snapshot(got["responses"], meta))
+        if len(text.encode("utf-8")) > _offline.MAX_SNAPSHOT_BYTES:
+            raise RuntimeError("The tenant read is larger than a snapshot may be; untick some scopes and save again.")
+        entry = tenant_profiles.save_snapshot(text, {"saved_at": meta["saved_at"], "tenant_label": label, "scopes": scopes,
+                                                     "counts": got["counts"]}, profile_id)
+        log(f"Snapshot saved: {got['counts']['answers']} lists, {got['counts']['objects']} objects, no credentials.")
+        return {"snapshot": entry, "counts": got["counts"], "unread": got["unread"][:50]}
+
+    job = pack_jobs.start("snapshot", run, label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id}
+
+
+@app.post("/api/tenant-profiles/snapshots/compare/start")
+async def snapshot_compare_start(req: SnapshotCompareRequest, request: Request):
+    """Compare a snapshot with the live tenant, as a background job: the
+    live tenant is read (read-only, only what is in scope) and every list
+    the two have in common is compared: objects added, removed, changed."""
+    import pack_jobs
+    sid = str(req.snapshot_id or "")
+    if sid == _offline.SAMPLE or not _offline.SOURCE_RE.match(sid):
+        raise HTTPException(status_code=404, detail="Pick a saved or opened snapshot to compare.")
+    old = await asyncio.to_thread(_offline.store, sid)
+    if old is None:
+        raise HTTPException(status_code=404, detail="That snapshot is not open or saved any more.")
+    creds, scopes, channels = _snapshot_live(req, "Compare with the live tenant")
+    client = await asyncio.to_thread(_signed_in_raw, creds)
+    label = tenant_auth.record_label(creds)
+
+    def run(log, cancel):
+        try:
+            got = _offline.capture(client, scopes, channels, log, cancel)
+        finally:
+            client.close()
+        if got["stopped"]:
+            return {"stopped": True}
+        diff = _offline.compare(old.responses, got["responses"])
+        log(f"Compared {diff['compared']} lists: {diff['totals']['added']} added, {diff['totals']['removed']} removed, "
+            f"{diff['totals']['changed']} changed.")
+        return dict(diff, snapshot=old.describe(), live_label=label, unread=got["unread"][:50])
+
+    job = pack_jobs.start("snapshot-compare", run, label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id}
 
 
 def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
@@ -7163,6 +7403,10 @@ async def assess_stream(req: AssessRequest):
         raise HTTPException(status_code=400, detail=_nothing)
     # Validate inputs BEFORE the SSE stream opens so failures return 400, not 200+stream
     creds = _validate_creds(_tenant_creds(req))
+    if _offline.is_offline_creds(creds):
+        # The sample tenant or a snapshot: its run is never kept in a real profile's history.
+        profile = None
+        req.org_name = (_offline.store_for_creds(creds).meta.get("company") or req.org_name) if req.org_name in ("", "Unknown") else req.org_name
     cloud, vd = creds["cloud"], creds["vanity_domain"]
     checks = _get_checks(str(req.scope or "").strip(), req.scopes)
     if not checks:

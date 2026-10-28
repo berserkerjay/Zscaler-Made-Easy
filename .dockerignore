@@ -17,6 +17,7 @@ local_settings.bat
 local_settings.env
 tenant_config.json
 tenant_profiles.json
+tenant_snapshots/
 deployments.json
 tenant_fingerprint.key
 ui_token.txt

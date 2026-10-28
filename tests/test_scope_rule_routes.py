@@ -254,6 +254,14 @@ def _recorded_operation(sel: Dict[str, Any]) -> Dict[str, Any]:
     return dict(CREDS, **sel)
 
 
+def _opened_snapshot(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A snapshot opened from a file, to compare with the live tenant (offline_tenant)."""
+    import offline_tenant
+    doc = offline_tenant.build_snapshot({"/zia/api/v1/webDlpRules": {"status": 200, "body": []}}, {"tenant_label": "acme (production)"})
+    st = offline_tenant.open_document(offline_tenant.dumps(doc))
+    return dict(CREDS, snapshot_id=st.id, **sel)
+
+
 class Route:
     """One tenant-reading route: its body, the partial selection that puts
     only part of what it reads in scope and what that selection leaves out,
@@ -339,6 +347,11 @@ ROUTES: List[Route] = [
     Route("/api/operations/preview", RULE_STATE_WEB),
     Route("/api/operations/op-qa-1/undo/preview/start", setup=_recorded_operation),
     Route("/api/operations/op-qa-1/undo/preview", setup=_recorded_operation),
+    # Snapshots (offline_tenant): saving one, and comparing one with the live tenant
+    Route("/api/tenant-profiles/snapshots/save/start"),
+    Route("/api/tenant-profiles/snapshots/save/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/tenant-profiles/snapshots/compare/start", setup=_opened_snapshot),
+    Route("/api/tenant-profiles/snapshots/compare/start", setup=_opened_snapshot, partial=ZCC, out=ZCC_OUT),
     Route("/api/digests/run", setup=_profile_from, nothing=200,
           why="by design: the loop reads saved profiles, and one with nothing in scope is reported 'not read' in the digest"),
 ]
