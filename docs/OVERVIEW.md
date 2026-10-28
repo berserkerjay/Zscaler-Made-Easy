@@ -64,6 +64,21 @@ what you get, what to do next.
   Authenticate only signs in (it reads none of the tenant's configuration)
   and answers "Signed in" or a plain reason why not; right after it, the
   readiness check (see Required API access) says what the API client can do.
+- **Sample tenant and snapshots** (on the Connect page, under the tenant
+  profiles, and in Simple mode's Connect task) — *Try with a sample tenant*
+  uses Larkspur Freight, a made-up company with DLP dictionaries,
+  engines and rules on every channel, URL filtering, SSL inspection,
+  Cloud Firewall, Cloud App Control, Client Connector profiles, ZPA
+  segments and policies and ZDX applications. Every page works on it, and
+  a banner on every page says "Sample tenant: nothing here is real"; its
+  changes stay in the app's memory. *Save a snapshot* reads the live
+  tenant (read-only, only what is in scope) into an owner-only file kept
+  beside the profile, with no credentials and no secret field values in
+  it; *Open* uses it offline and read-only, *Compare with the live tenant*
+  says what was added, removed or changed since. The sample and a
+  snapshot are served by clients with no network code, so they can never
+  reach a tenant; a snapshot file opened from disk is checked as
+  untrusted (size, nesting, format, every path).
 - **Assessment results** — the full results in their own tab: Summary
   (score and maturity), Scores by section, Best practices and
   benchmarks, Regulatory alignment, the Data governance journey, and

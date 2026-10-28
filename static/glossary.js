@@ -51,6 +51,8 @@
     'path analyzer': { term: 'Path analyzer', def: 'The Path analyzer follows one website visit step by step. It shows what lets it through and what stops it.' },
     'scope': { term: 'scope', def: 'Scope is what you let the app look at. It reads nothing outside of it.' },
     'saved connection': { term: 'saved connection', def: 'A saved connection keeps the details for one company. Next time, you do not need to type them again.' },
+    'sample tenant': { term: 'sample tenant', def: 'The sample tenant is a made-up company. You can try every part of the app on it, and nothing you do touches a real one.' },
+    'snapshot': { term: 'snapshot', def: 'A snapshot is a copy of your settings, saved on this computer. You can open it later without the internet. It never holds a secret key.' },
     'incident': { term: 'incident', def: 'An incident is a note that a rule found something. It says who, what and where.' },
     'spreadsheet': { term: 'spreadsheet', def: 'A spreadsheet is a file with rows and boxes, like a table. Excel can open it.' },
     'tag': { term: 'tag', def: 'A tag is a short word you stick on a rule or another item, like a label. It helps you find and group things later.' },

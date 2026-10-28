@@ -527,9 +527,11 @@ class _AiGuard(types.ModuleType):
 
 
 @pytest.mark.parametrize("fn,state", [
-    (lambda c: {"ok": True, "detail": "AI Guard answered"}, "ok"),
-    (lambda c: (_ for _ in ()).throw(ApiError(403)), "denied"),
-    (lambda c: "not a dict", "error"),
+    (lambda c, **kw: {"ok": True, "detail": "AI Guard answered"}, "ok"),
+    (lambda c, **kw: {"checks": [], "aiguard": {"read": True, "reachable": True, "error": None}}, "ok"),
+    (lambda c, **kw: {"checks": [], "aiguard": {"read": True, "reachable": False, "error": "not linked"}}, "error"),
+    (lambda c, **kw: (_ for _ in ()).throw(ApiError(403)), "denied"),
+    (lambda c, **kw: "not a dict", "error"),
 ])
 def test_ai_guard_uses_its_own_readiness_when_installed(monkeypatch, fn, state):
     """ASVS V5.1.3 · CWE-20 · CWE-209: ai_guard.readiness(client) is called through importlib when present; its answer is reduced to safe fields."""

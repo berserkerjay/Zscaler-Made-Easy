@@ -15,6 +15,13 @@ returned by the API (only ``has_secret``).
 
 Storage: ``tenant_profiles.json`` next to the app (git-ignored), or the
 path in ``DLP_CHECK_PROFILES``. Written with owner-only permissions.
+
+Snapshots: a saved tenant read (offline_tenant.py, "Save a snapshot") is a
+file in ``tenant_snapshots/`` beside the profile store (folder 0700, file
+0600, named by the app: ``snap-<16 hex>.json``), listed with the profile it
+was read for (``snapshots`` of each profile; ``unfiled_snapshots`` for a
+read made without a profile). It holds API answers only, never a
+credential, and is deleted with its profile.
 """
 from __future__ import annotations
 
@@ -227,7 +234,9 @@ def masked(p: Dict[str, Any], *, with_history: bool = True) -> Dict[str, Any]:
 def list_profiles() -> List[Dict[str, Any]]:
     with _LOCK:
         data = _read()
-    rows = [masked(p, with_history=False) for p in data["profiles"].values()]
+    snaps = _snapshot_rows(data)
+    rows = [dict(masked(p, with_history=False), snapshots=[s for s in snaps if s.get("profile_id") == p.get("id")])
+            for p in data["profiles"].values()]
     rows.sort(key=lambda r: (r.get("name") or "").lower())
     return rows
 
@@ -379,6 +388,10 @@ def delete(profile_id: str) -> bool:
         for field in SECRET_FIELDS:
             _forget_secret(profile_id, p.get(field), field)
         del data["profiles"][profile_id]
+        for sid, ref in list((data.get("snapshots") or {}).items()):
+            if isinstance(ref, dict) and ref.get("profile_id") == profile_id:   # its snapshots go with it
+                _unlink_snapshot(sid)
+                data["snapshots"].pop(sid, None)
         _write(data)
         return True
 
@@ -471,3 +484,103 @@ def _keep_last_good(path: str) -> None:
         self_heal.keep_last_good(path)
     except Exception:  # noqa: BLE001 - never stops a write
         pass
+
+
+# ── Snapshots (offline_tenant.py) ─────────────────────────────────────
+SNAPSHOT_DIR = "tenant_snapshots"
+MAX_SNAPSHOTS_PER_PROFILE = 20
+SNAPSHOT_ID = re.compile(r"^snap-[0-9a-f]{16}$")
+_SNAPSHOT_FIELDS = ("saved_at", "tenant_label", "scopes", "counts", "bytes", "profile_name")
+
+
+def snapshots_dir() -> str:
+    """tenant_snapshots/ beside the profile store."""
+    return os.path.join(os.path.dirname(os.path.abspath(store_path())), SNAPSHOT_DIR)
+
+
+def snapshot_path(snapshot_id: str) -> str:
+    """The file of a snapshot id the app made; ValueError for any other text."""
+    if not isinstance(snapshot_id, str) or not SNAPSHOT_ID.match(snapshot_id):
+        raise ValueError("No such snapshot.")
+    return os.path.join(snapshots_dir(), snapshot_id + ".json")
+
+
+def _unlink_snapshot(snapshot_id: str) -> None:
+    try:
+        os.unlink(snapshot_path(snapshot_id))
+    except (OSError, ValueError):
+        pass
+
+
+def _snapshot_rows(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    rows = []
+    for sid, ref in (data.get("snapshots") or {}).items():
+        if isinstance(ref, dict) and SNAPSHOT_ID.match(str(sid)):
+            rows.append(dict({k: ref.get(k) for k in _SNAPSHOT_FIELDS}, id=sid, profile_id=ref.get("profile_id") or ""))
+    rows.sort(key=lambda r: str(r.get("saved_at") or ""), reverse=True)
+    return rows
+
+
+def list_snapshots(profile_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Saved snapshots, newest first; with `profile_id` ("" for those made
+    without a profile) only that profile's."""
+    with _LOCK:
+        data = _read()
+    rows = _snapshot_rows(data)
+    return rows if profile_id is None else [r for r in rows if r["profile_id"] == profile_id]
+
+
+def save_snapshot(text: str, entry: Dict[str, Any], profile_id: str = "") -> Dict[str, Any]:
+    """Write a snapshot (owner-only) under a new id the app makes and list
+    it with its profile. A profile keeps its newest MAX_SNAPSHOTS_PER_PROFILE."""
+    import secrets
+    sid = "snap-" + secrets.token_hex(8)
+    with _LOCK:
+        data = _read()
+        pid = profile_id if profile_id in data["profiles"] else ""
+        safe_files.private_makedirs(snapshots_dir())
+        safe_files.write_private_atomic(snapshot_path(sid), text)
+        ref = {k: entry.get(k) for k in _SNAPSHOT_FIELDS}
+        ref.update(profile_id=pid, bytes=len(text.encode("utf-8")))
+        if pid:
+            ref["profile_name"] = data["profiles"][pid].get("name") or pid
+        snaps = data.setdefault("snapshots", {})
+        snaps[sid] = ref
+        mine = sorted((k for k, v in snaps.items() if isinstance(v, dict) and v.get("profile_id") == pid),
+                      key=lambda k: str(snaps[k].get("saved_at") or ""))
+        for old in mine[:-MAX_SNAPSHOTS_PER_PROFILE]:
+            _unlink_snapshot(old)
+            snaps.pop(old, None)
+        _write(data)
+    return dict(ref, id=sid)
+
+
+def read_snapshot(snapshot_id: str, limit: int) -> bytes:
+    """The bytes of a saved snapshot (at most `limit`); ValueError when it
+    is not listed, missing or too large."""
+    path = snapshot_path(snapshot_id)
+    with _LOCK:
+        if snapshot_id not in (_read().get("snapshots") or {}):
+            raise ValueError("No such snapshot.")
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(path, flags)
+        with os.fdopen(fd, "rb") as f:
+            raw = f.read(limit + 1)
+    except OSError:
+        raise ValueError("The snapshot file is missing.")
+    if len(raw) > limit:
+        raise ValueError("The snapshot file is too large.")
+    return raw
+
+
+def delete_snapshot(snapshot_id: str) -> bool:
+    snapshot_path(snapshot_id)
+    with _LOCK:
+        data = _read()
+        if snapshot_id not in (data.get("snapshots") or {}):
+            return False
+        _unlink_snapshot(snapshot_id)
+        data["snapshots"].pop(snapshot_id, None)
+        _write(data)
+        return True

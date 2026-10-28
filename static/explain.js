@@ -19,9 +19,9 @@
   };
   X.connect = {
     group: 'Start', name: 'Connect to the tenant (sign-in details, profiles, Authenticate)', href: '/',
-    what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer.',
+    what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer. No tenant at hand? Try with a sample tenant (Larkspur Freight, made up: every page works on it and nothing is real), or open a snapshot: a tenant read saved beside its profile (only what was in scope, no credentials) that works offline and read-only.',
     why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does not read the tenant\'s configuration, because every read counts against the tenant\'s ZIA API rate limit. Right after it, the readiness check reads only the API client\'s role and the licences, for what is in scope; the configuration is read only when you run an assessment.',
-    when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history.',
+    when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history. Save a snapshot before you change things, to compare with the live tenant later; use the sample tenant to learn or demo the app.',
     get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection). Then a readiness summary: per product whether the API client can read, change or not reach it, and every scope or change that will not work, greyed out with the steps to ask the admin for.',
     next: 'Open Scope assessment: mark the channels the customer owns, choose what to check and which frameworks to map to, name the organisation and assessor, and click Run assessment.',
   };

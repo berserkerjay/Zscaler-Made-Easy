@@ -1761,6 +1761,8 @@ function profileHasSecret() { return !!(window.GD && GD.profile && GD.profileHas
 function missingSignInFields(b) {
   b = b || migrateCredBody();
   const missing = [];
+  // The sample tenant or a snapshot (offline_tenant.js): the server uses it, not the form.
+  if (window.zmeOffline && window.zmeOffline.active()) return missing;
   const blank = s => !s || !s.trim();
   if (b.auth_method === 'legacy') {
     if (blank(b.username)) missing.push(['zuser', 'Admin username']);

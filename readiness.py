@@ -174,6 +174,7 @@ SCOPE_FEATURES: "OrderedDict[str, F]" = OrderedDict([
     ("zidentity", {"product": "ZIDENTITY"}),
     ("rbac", {"product": "ZIA", "needs": [("ADMINISTRATOR_MANAGEMENT", "ROLE_MANAGEMENT")], "optional": [("AUTHENTICATION_SETTINGS",)]}),
     ("insights", {"product": "ZINSIGHTS", "oneapi_only": True}),
+    ("aiguard", {"product": "ZGUARD", "oneapi_only": True}),
 ])
 SCOPE_LABELS = {"rbac": "RBAC", "zidentity": "ZIdentity"}
 
@@ -193,6 +194,9 @@ WRITE_KINDS: "OrderedDict[str, F]" = OrderedDict([
     ("activation", {"needs": [], "info": "This app never activates by itself; an admin activates in the ZIA portal."}),
 ])
 
+# ZPA object classes the ZPA builder creates (matched on the role's friendly names; assumed).
+ZPA_BUILD_CLASSES = ("Application Segment", "Segment Group", "Server Group", "Connector Group", "Provisioning Key", "Policy")
+
 # The app's features that change the tenant: the WRITE_KINDS they write.
 # `any`: the feature works when at least one kind is writable (it acts per policy).
 WRITE_FEATURES: "OrderedDict[str, F]" = OrderedDict([
@@ -203,6 +207,12 @@ WRITE_FEATURES: "OrderedDict[str, F]" = OrderedDict([
     ("bulk_changes", {"label": "Bulk changes (rules, order, URL categories)", "kinds": ("web", "endpoint", "email", "saas", "url", "ssl", "cloud_app", "file_type"), "any": True}),
     ("remediation", {"label": "Review and remediate (one-click fixes)", "kinds": ("web", "url", "ssl", "cloud_app", "file_type", "dictionary", "engine"), "any": True}),
     ("zpa_segment_moves", {"label": "Move ZPA domains between segments (Bulk changes)", "product": "ZPA", "zpa_classes": ("Application Segment",)}),
+    # The Build new plugins on Bulk changes (ops_*.py): judged on their product's own access.
+    ("zia_baseline", {"label": "ZIA security baseline and SSL certificates (Build new)", "kinds": ("url", "ssl", "cloud_app", "file_type"), "any": True}),
+    ("zpa_builder", {"label": "ZPA builder (Build new)", "product": "ZPA", "zpa_classes": ZPA_BUILD_CLASSES}),
+    ("zcc_builder", {"label": "Client Connector profiles (Build new)", "product": "ZCC"}),
+    ("zdx_probes", {"label": "ZDX probe setup (Build new)", "product": "ZDX"}),
+    ("aiguard_builders", {"label": "AI Guard routing and detection policy (Build new)", "product": "ZGUARD"}),
 ])
 
 # ZPA object classes this app reads or writes (matched on the role's friendly names; assumed).
@@ -668,11 +678,15 @@ def ai_guard_probe(client: Any, *, legacy: bool = False, log: Optional[Callable[
         return {"responds": False, "state": "not_checked"}
     say("AI Guard: asking whether it answers…")
     try:
-        res = fn(client)
+        # Only the AI Guard side: ZIA is read by its own probe.
+        res = fn(client, zia=False, aiguard=True)
     except Exception as e:  # noqa: BLE001
         code = _status_of(None, e)
         return {"responds": False, "state": "denied" if code in (401, 403) else "error", "code": code}
     res = res if isinstance(res, dict) else {}
+    ag = res.get("aiguard") if isinstance(res.get("aiguard"), dict) else {}
+    if ag:   # ai_guard.readiness: {aiguard: {read, reachable, error}, checks: [...]}
+        res = {"ok": ag.get("reachable") is True, "detail": ag.get("error") or ""}
     ok = bool(res.get("ok", res.get("responds", res.get("reachable", False))))
     state = _clean_text(res.get("state") or res.get("status") or ("ok" if ok else "error"), 24).lower()
     return {"responds": ok, "state": state if re.fullmatch(r"[a-z_]{1,24}", state) else ("ok" if ok else "error"),
@@ -891,6 +905,9 @@ def evaluate(facts: Dict[str, Any]) -> Dict[str, Any]:
         kinds[k] = f
     writes: List[Dict[str, Any]] = []
     for key, spec in WRITE_FEATURES.items():
+        if spec.get("product") in ("ZCC", "ZDX", "ZGUARD"):
+            writes.append(_feature(key, spec["label"], spec["product"], facts, products, needs=[], optional=[], level=2, kind="write"))
+            continue
         if spec.get("product") == "ZPA":
             f = _feature(key, spec["label"], "ZPA", facts, products, needs=[], optional=[], level=2, kind="write")
             classes = ((facts.get("probes") or {}).get("ZPA") or {}).get("classes") or {}
