@@ -12,7 +12,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Path</span> analyzer <span class="sf-live" id="paLive" hidden><i></i>live</span></h1>
-      <p>Type what a user would type: a URL, a hostname or an IP address. The analyzer reads the tenant as it is right now and walks the traffic step by step: ZPA first, then Client Connector and the PAC file (evaluated, never run), then every ZIA module in the order the cloud applies them. It tells you in one line where the traffic stops, what decides that, and everything on the way that blocks or impacts it. Try it for a given user, group, department or location, for traffic from a workload behind a Cloud or Branch Connector, or for a whole list at once.</p>
+      <p>Type what a user would type: a URL, a hostname or an IP address. The analyzer reads the tenant as it is right now and walks the traffic step by step: ZPA first, then Client Connector and the PAC file (evaluated, never run), then every ZIA module, one by one. It tells you in one line where the traffic stops, what decides that, and everything on the way that blocks or impacts it. Try it for a given user, group, department or location, for traffic from a workload behind a Cloud or Branch Connector, or for a whole list at once.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -78,7 +78,7 @@
           <ol class="pa-steps">
             <li><strong>Type a destination</strong> exactly as a user would: a full URL, a hostname or an IP address. Say where the traffic comes from: a user device (pick its network and platform) or a workload (give its source IP, tags and, if you know them, its workload group and connector group). Pick a protocol and port to trace traffic that is not web, such as UDP/443 (QUIC) or TCP/22 (SSH).</li>
             <li><strong>Analyze.</strong> The first run reads the tenant, only what is in scope on the Scope page (ZPA, Client Connector profiles, PAC files, the Cloud and Branch Connector rules and every ZIA policy: about a minute of API calls, shown live). Later runs reuse that read and only look the destination up, so they take a few seconds.</li>
-            <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every step before ZIA and every ZIA module, in order, with its deciding rule and each of its conditions as match, no match or unknown, then everything that blocks or impacts the traffic, by name, and the path hop by hop against the framework above.</li>
+            <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every step before ZIA, in order, and every ZIA module, each with its deciding rule and each of its conditions as match, no match or unknown, then everything that blocks or impacts the traffic, by name, and the path hop by hop against the framework above.</li>
             <li><strong>Ask what if.</strong> Open What-if to evaluate the rules scoped to a user, group, department or location. Without one, the result lists what the policy action also depends on.</li>
           </ol>
           <div class="df-hint">Nothing is written to the tenant. This is a configuration prediction, not an observed transaction or payload scan. Identity-scoped rules remain conditional unless you give the identity; the assumptions are listed under every result.</div>

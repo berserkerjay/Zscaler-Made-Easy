@@ -522,3 +522,22 @@ def test_no_build_output_is_committed():
     assert "dist/" in gi and "build/" in gi
     run = "\n".join(s.get("run") or "" for j in _workflow()["jobs"].values() for s in j["steps"])
     assert "git push" not in run and "git commit" not in run
+
+def test_provenance_is_gated_on_the_repository_and_fails_closed_when_on():
+    """SLSA v1.0 Build L2 · SSDF PS.3.2 · CWE-345: provenance runs when the repository can have it and must then pass verification; off, the notes say there is none."""
+    # Arrange
+    wf = _workflow()
+    build = wf["jobs"]["build"]["steps"]
+    rel = wf["jobs"]["release"]["steps"]
+    attest = next(s for s in build if str(s.get("uses", "")).startswith("actions/attest-build-provenance@"))
+    verify = next(s for s in rel if "gh attestation verify" in (s.get("run") or ""))
+    notes = next(s for s in rel if "notes.md" in (s.get("run") or "") and "echo" in (s.get("run") or ""))
+    # Act / Assert: one switch, from the repository's visibility or an explicit variable
+    gate = wf["env"]["PROVENANCE"]
+    assert "github.event.repository.private" in gate and "vars.STANDALONE_PROVENANCE == 'true'" in gate
+    assert attest["if"] == "env.PROVENANCE == 'true'"
+    assert "continue-on-error" not in attest   # when on, a failed attestation stops the build
+    run = verify["run"]
+    assert run.index('if [ "$PROVENANCE" = "true" ]') < run.index("gh attestation verify")
+    assert "set -euo pipefail" in run           # a failed verification stops the release
+    assert "No build provenance" in notes["run"]

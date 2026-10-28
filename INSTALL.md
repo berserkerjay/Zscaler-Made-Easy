@@ -75,6 +75,12 @@ gh attestation verify ZscalerMadeEasy-<version>-windows-x64.zip --repo berserker
 attestation was found, or that verification failed, delete the download
 and do not run it.
 
+While the repository is private, GitHub does not attest its builds (it
+does so only for public repositories and Enterprise Cloud), and the
+release notes then say **No build provenance**. For such a release skip
+this step: the checksum in step 2 is the only check. A release whose
+notes do not say that must pass this step.
+
 **4. Unpack it and start it.**
 
 - **Windows:** right-click the .zip, **Extract All…**, **Extract**. Open

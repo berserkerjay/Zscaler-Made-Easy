@@ -185,8 +185,8 @@ what you get, what to do next.
   forwarding profile and the **PAC file**, evaluated for the destination
   (`pac_eval.py`: parsed and interpreted, never run; anything outside the
   PAC subset says "could not evaluate safely") and classified DIRECT,
-  Zscaler or another proxy. Then **every ZIA module** in the order the
-  cloud applies them (Advanced Threat Protection, Cloud Firewall, DNS
+  Zscaler or another proxy. Then **every ZIA module**, one by one (the
+  page does not claim the cloud's enforcement order: Advanced Threat Protection, Cloud Firewall, DNS
   Control, Cloud App Control and URL filtering, Sandbox, File Type Control
   and DLP, with SSL inspection deciding what later modules see). Every
   step has the same shape: its deciding rule and order, the other rules

@@ -158,7 +158,7 @@
     const v = res.verdict || {};
     const reasons = z.reasons || [];
     return `<section class="pm-section" aria-labelledby="pmZiaH">
-      <h2 class="df-h" id="pmZiaH">ZIA modules, in the order the cloud applies them</h2>
+      <h2 class="df-h" id="pmZiaH">ZIA modules</h2>
       <p class="df-hint">Each module shows the rule that decides, the rules that also match later, and every condition of the deciding rule as match, no match or unknown. A condition this tool cannot check is unknown, never guessed.</p>
       <div class="pa-facts">
         <span class="df-prof"><span class="k">Traffic</span><span class="v">${E((z.traffic || {}).label || '')}</span></span>

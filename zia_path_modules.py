@@ -1,5 +1,5 @@
-"""The ZIA modules the Path analyzer walks, in the order the cloud applies
-them, each with the rule that decides, the rules that also match, and
+"""The ZIA modules the Path analyzer walks (listed module by module; no
+claim is made about the order the cloud enforces them in), each with the rule that decides, the rules that also match, and
 every criterion as match, no match or unknown.
 
 The Path analyzer (path_analyzer.analyze) traces a destination through

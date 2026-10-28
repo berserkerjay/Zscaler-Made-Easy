@@ -12,6 +12,13 @@ name: Release standalone
 #            (+ MACOS_NOTARY_APPLE_ID, MACOS_NOTARY_TEAM_ID, MACOS_NOTARY_PASSWORD to notarize)
 # Without them the build is unsigned, and the archive's README and the release
 # notes say so.
+#
+# Build provenance (SLSA, actions/attest-build-provenance) needs GitHub's
+# attestations, which a private repository has only on Enterprise Cloud. It
+# runs when the repository is public or the repository variable
+# STANDALONE_PROVENANCE is "true"; then it must succeed and every archive is
+# verified before publishing. Otherwise it is skipped and the release notes
+# say the build has no provenance (the checksums are still checked).
 
 on:
   workflow_dispatch:
@@ -20,6 +27,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  PROVENANCE: ${{ (!github.event.repository.private || vars.STANDALONE_PROVENANCE == 'true') && 'true' || 'false' }}
 
 concurrency:
   group: release-standalone-${{ github.ref }}
@@ -180,6 +190,7 @@ jobs:
         run: python tools/smoke_standalone.py "$ARCHIVE" --commit "$GITHUB_SHA"
 
       - name: SLSA build provenance (signed, verifiable with gh attestation verify)
+        if: env.PROVENANCE == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
           subject-path: ${{ steps.package.outputs.archive }}
@@ -219,9 +230,13 @@ jobs:
           cd release
           for f in *.sha256; do sha256sum --check --strict "$f"; done
           cat *.sha256 | sort -k2 > SHA256SUMS.txt
-          for f in *.zip *.tar.gz; do
-            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-standalone.yml"
-          done
+          if [ "$PROVENANCE" = "true" ]; then
+            for f in *.zip *.tar.gz; do
+              gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-standalone.yml"
+            done
+          else
+            echo "Build provenance is off for this repository (private, and STANDALONE_PROVENANCE is not true): the checksums were checked, no attestation exists."
+          fi
 
       - name: Write the release notes (says plainly when a build is unsigned)
         run: |
@@ -239,16 +254,20 @@ jobs:
             echo "### Check the download first"
             echo
             echo "1. Its SHA-256 must match \`SHA256SUMS.txt\` (and the archive's own \`.sha256\` file)."
-            echo "2. GitHub must vouch that it was built from this repository by this workflow:"
-            echo "   \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`"
+            if [ "$PROVENANCE" = "true" ]; then
+              echo "2. GitHub must vouch that it was built from this repository by this workflow:"
+              echo "   \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`"
+            else
+              echo "2. **No build provenance.** This repository is private, and GitHub attests builds only for public repositories (or Enterprise Cloud), so there is no attestation to verify; the checksum is the only check."
+            fi
             echo
             echo "### Code signing"
             echo
-            if [ "$HAS_WINDOWS_SIGNING" = "true" ]; then echo "- Windows: signed (Authenticode, timestamped)."; else echo "- **Windows: UNSIGNED.** SmartScreen will warn on the first start; allow it only after both checks above succeed."; fi
+            if [ "$HAS_WINDOWS_SIGNING" = "true" ]; then echo "- Windows: signed (Authenticode, timestamped)."; else echo "- **Windows: UNSIGNED.** SmartScreen will warn on the first start; allow it only after the checks above succeed."; fi
             if [ "$HAS_MACOS_SIGNING" = "true" ] && [ "$HAS_MACOS_NOTARY" = "true" ]; then echo "- macOS: signed with a Developer ID and notarized by Apple."
-            elif [ "$HAS_MACOS_SIGNING" = "true" ]; then echo "- **macOS: signed but NOT notarized.** Gatekeeper will ask on the first start; allow it only after both checks above succeed."
-            else echo "- **macOS: UNSIGNED.** Gatekeeper will block the first start; allow it only after both checks above succeed (INSTALL.md says how, without turning Gatekeeper off)."; fi
-            echo "- **Linux: unsigned** (Linux has no system-wide code signing for programs); the checksum and the attestation are the checks."
+            elif [ "$HAS_MACOS_SIGNING" = "true" ]; then echo "- **macOS: signed but NOT notarized.** Gatekeeper will ask on the first start; allow it only after the checks above succeed."
+            else echo "- **macOS: UNSIGNED.** Gatekeeper will block the first start; allow it only after the checks above succeed (INSTALL.md says how, without turning Gatekeeper off)."; fi
+            echo "- **Linux: unsigned** (Linux has no system-wide code signing for programs); the checksum$( [ "$PROVENANCE" = "true" ] && echo " and the attestation are the checks" || echo " is the check")."
             echo
             echo "Secure defaults that cannot be switched off in this edition: it listens on 127.0.0.1 only, asks every browser for the UI token, and starts read-only."
           } > notes.md
