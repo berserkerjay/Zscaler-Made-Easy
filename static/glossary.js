@@ -89,6 +89,13 @@
     'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
     'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
     'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
+    'baseline': { term: 'baseline', def: 'A baseline is a starting set of safe rules. You check it, then turn the rules on one by one.' },
+    'tier': { term: 'tier', def: 'A tier is how strict the baseline is. Strict blocks the most, and Permissive blocks the least.' },
+    'compliance overlay': { term: 'compliance overlay', def: 'An overlay adds the rules of a law or standard, like HIPAA, to each rule it fits. It shows why each rule is there.' },
+    'catch-all rule': { term: 'catch-all rule', def: 'A catch-all rule matches all traffic the rules above it did not. It must stay at the bottom.' },
+    'framework file': { term: 'framework file', def: 'A framework file is a saved copy of web rules from one tenant. You can load it to build the same rules in another.' },
+    'intermediate certificate': { term: 'intermediate certificate', def: 'Zscaler uses this certificate to open locked web traffic. Your computers must trust it, or sites show a warning.' },
+    'trusted resolver': { term: 'Trusted Resolver', def: 'The Trusted Resolver is the Zscaler service that looks up web names. It keeps people off bad sites.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

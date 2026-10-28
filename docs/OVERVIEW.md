@@ -282,7 +282,12 @@ what you get, what to do next.
   another tenant), a Terraform workspace for the zscaler/zia provider
   (built like the Terraform hand-off: rules DISABLED, the assessor named,
   what is not included looked up by name), or both; each part
-  (dictionaries, engines, rules) also downloads as its own file. Scope
+  (dictionaries, engines, rules) also downloads as its own file. A
+  fourth part, the **ZIA policy framework**, saves the URL filtering,
+  Cloud Firewall, SSL inspection, Sandbox, DNS Control and File Type
+  Control rules in scope (not the default or predefined ones) as
+  `zia_policy_framework.json`, which the ZIA security baseline in Bulk
+  changes applies to another tenant. Scope
   that only exists in the source tenant (users, groups, locations, ...)
   is left out and listed in the pack. Read-only; an empty pick is refused
   before any read, an hourly rate refusal fails the export, and Stop gives
@@ -357,7 +362,22 @@ what you get, what to do next.
   item someone changed meanwhile, activates ZIA once, reads back, and
   records the change with an Undo that is itself previewed. Cloud
   application sanction is not offered: the SDK cannot read an
-  application's current state.
+  application's current state. Two builders run on the same engine
+  (*Build new*, `ops_zia_baseline.py`): the **ZIA security baseline**
+  (URL filtering, Cloud Firewall, SSL inspection, Sandbox, DNS Control
+  with the Trusted Resolver, DoH inspection and geo-blocking, File Type
+  Control, Cloud App Control and, only when picked, the Advanced Threat
+  Protection settings) from a Strict, Balanced, Permissive or Healthcare
+  zero trust tier or a saved framework, with optional compliance overlays
+  (HIPAA, HITRUST, NIST 800-53 and 800-171, PCI DSS, CJIS, SOX, FERPA,
+  GDPR) that cite each control's source; every rule can be switched off
+  or set to Allow, Block or Isolate (or the whole baseline to allow all
+  or block all), weaker-than-tier choices are flagged, Allow-Web and
+  Allow-NTP are locked, names fit ZIA's 31 characters, what the tenant
+  lacks is dropped with a warning, the SSL catch-all goes last, rules
+  arrive disabled and re-runs update in place; and the **SSL certificate
+  manager**, which lists the intermediate certificate each SSL inspection
+  rule uses and moves picked Inspect rules to another ready-to-use one.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in

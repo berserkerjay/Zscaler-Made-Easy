@@ -10,6 +10,10 @@
   "E(tf.download)": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"],
   "cls": [1, "CSS class or icon from the page's own status table"]
  },
+ "static/ops_zia_baseline.js": {
+  "E(httpsOnly(s.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"],
+  "E(httpsOnly(c.source.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"]
+ },
  "static/beacon.js": {
   "E(c.url)": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"],
   "E(ref.url)": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"],

@@ -3872,7 +3872,9 @@ class PackExportRequest(ScopedTenantCredsRequest):
     (only those channels are read).
 
     `parts` picks what is exported: dictionaries, engines and/or rules
-    (empty: rules, as before). `dictionaries` and `engines` pick custom
+    (empty: rules, as before), and/or "framework": the ZIA policy
+    framework (ops_zia_baseline.capture: URL filtering, Cloud Firewall, SSL
+    inspection, Sandbox, DNS Control and File Type Control rules in scope). `dictionaries` and `engines` pick custom
     ones by id ("all" or omitted: every custom one).
     `include_dependencies` (default on) brings what the picked engines and
     rules use; off, that is named, not copied. `format` is json (the pack),
@@ -3887,7 +3889,8 @@ class PackExportRequest(ScopedTenantCredsRequest):
     format: str = "json"
 
 
-def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, selection, log, cancel) -> Dict[str, Any]:
+def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, selection, log, cancel,
+                     framework_areas: Optional[List[str]] = None) -> Dict[str, Any]:
     """Read the tenant and build the pack (pack_export), zipped. The zip
     travels as the result's `artifact`; the JSON result says what is in it
     and what could not be exported."""
@@ -3905,7 +3908,7 @@ def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, sele
             + ". Nothing is written to the tenant.")
     res = pack_export.export_pack(client, selection=selection, name=req.pack_name[:120], tenant_label=label, log=log, cancel=cancel,
                                   parts=parts, dictionaries=req.dictionaries, engines=req.engines,
-                                  include_dependencies=req.include_dependencies)
+                                  include_dependencies=req.include_dependencies, framework_areas=framework_areas or ())
     if res["status"] != "ready":
         return dict(res, tenant_label=label)
     pack = res["pack"]
@@ -3921,6 +3924,7 @@ def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, sele
             "part_files": part_files, "referenced_only": pack["meta"].get("referenced_only") or {},
             "assessor_named": bool(_assessor(req)),
             "counts": pack["meta"]["counts"], "not_exported": pack["meta"]["not_exported"], "warnings": pack["warnings"],
+            "framework_counts": (pack.get("framework") or {}).get("counts"),
             "validation": {"ok": v["ok"], "problems": v["problems"], "warnings": v["warnings"]},
             "artifact": (name, "application/zip", data)}
 
@@ -3944,16 +3948,27 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
         engine_pick = pack_export.normalize_object_pick(req.engines, "engines")
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
-    if parts == ("rules",) and pack_export.nothing_picked(selection):   # nothing to read the tenant for
+    # The ZIA policy framework part reads only the rule areas in scope (ops_zia_baseline.capture_scope).
+    framework_areas: List[str] = []
+    if pack_export.FRAMEWORK in parts:
+        import ops_zia_baseline
+        sc, ch, _src = _scope_selection(req)
+        framework_areas = ops_zia_baseline.capture_scope(sc, ch)
+        if not framework_areas:
+            raise HTTPException(status_code=400, detail="The ZIA policy framework is not in scope on the Scope page: tick ZIA platform "
+                                                        "(Cloud Firewall, Sandbox, DNS Control) or DLP (URL filtering, File Type Control, "
+                                                        "SSL inspection when marked Zscaler). Nothing was read.")
+        parts = tuple(p for p in parts if p != pack_export.FRAMEWORK)
+    if parts == ("rules",) and pack_export.nothing_picked(selection) and not framework_areas:   # nothing to read the tenant for
         raise HTTPException(status_code=400, detail=pack_export.NOTHING_PICKED)
     if (("rules" not in parts or pack_export.nothing_picked(selection)) and ("dictionaries" not in parts or dict_pick == set())
-            and ("engines" not in parts or engine_pick == set())):
+            and ("engines" not in parts or engine_pick == set()) and not framework_areas):
         raise HTTPException(status_code=400, detail=pack_export.NOTHING_IN_PARTS)
     if fmt != "json" and pack_deploy.is_tool_name(req.assessor):
         # Terraform tags every object with the assessor: never the tool's own name.
         raise HTTPException(status_code=400, detail=ASSESSOR_NOT_TOOL)
     # Only the channels in scope on the Scope page are read (user rule 1).
-    in_scope = _pack_channels_in_scope(req, "Export from tenant")
+    in_scope = _pack_channels_in_scope(req, "Export from tenant") if parts else []
     if "rules" not in parts:
         selection = {}
     elif selection is None:
@@ -3968,7 +3983,8 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to export its rules.")
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel),
+    job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel,
+                                                               framework_areas),
                           label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request),
                           start_token=_start_token(request))
     if _security.from_extension(request):
