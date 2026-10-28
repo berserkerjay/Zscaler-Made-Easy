@@ -97,6 +97,8 @@
     'web probe': { term: 'Web probe', def: 'A Web probe opens one web page every few minutes. It shows if the page loads and how long it takes.' },
     'cloudpath probe': { term: 'CloudPath probe', def: 'A CloudPath probe follows the road from a computer to an app. It shows which stop on the way is slow.' },
     'predefined app': { term: 'predefined app', def: 'A predefined app is one Zscaler already knows, like Microsoft 365 or Zoom. Zscaler sets up its tests for you.' },
+    'provisioning key': { term: 'provisioning key', def: 'A provisioning key is a one-time code. A new App Connector uses it to join its connector group. Keep it secret.' },
+    'prefix': { term: 'prefix', def: 'A prefix is a short tag at the start of a name, like pov1. The builder puts it on all it makes, so it can find them again.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

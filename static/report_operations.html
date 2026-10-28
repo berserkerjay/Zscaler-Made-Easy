@@ -513,6 +513,8 @@
         ${itemsTable(r.items || [], 'Result per item')}
         <details class="pa-details"><summary>What was done (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
       where.querySelectorAll('button[data-undo]').forEach(b => b.addEventListener('click', () => undo(b.dataset.undo)));
+      const plugDone = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[r.type];
+      if (plugDone && typeof plugDone.result === 'function') plugDone.result(r, where, H);   // e.g. a value shown once
       S.preview = null; renderApply();
       say(`${head[0]}: ${c.applied || 0} applied, ${c.conflict || 0} conflicts, ${c.failed || 0} failed.`);
     }

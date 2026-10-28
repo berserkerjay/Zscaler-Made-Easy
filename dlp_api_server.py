@@ -4994,6 +4994,25 @@ async def operations_plugins():
     return {"plugins": admin_ops.plugin_catalog()}
 
 
+class OneTimeKeyRequest(BaseModel):
+    """The token a ZPA build's result names for its new provisioning key."""
+    token: str = ""
+
+
+@app.post("/api/operations/zpa/provisioning-key")
+async def operations_zpa_provisioning_key(req: OneTimeKeyRequest, request: Request):
+    """The provisioning key a ZPA build (ops_zpa) just created, once: held in
+    memory only, for ten minutes, for the person who ran the build, and gone
+    after this answer. Reaches no tenant; never logged, stored or exported."""
+    import ops_zpa
+    _security.require_writer()
+    got = ops_zpa.reveal(req.token, actor=_actor(request))
+    if not got:
+        raise HTTPException(status_code=404, detail="No key to show: a provisioning key is shown once, within ten minutes of the build, "
+                                                    "to the person who ran it. Copy it from the ZPA Admin Portal instead.")
+    return JSONResponse(got, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
 @app.get("/api/operations/{op_id}")
 async def operations_get(op_id: str):
     """One recorded bulk change: every item with its before, after and status, and its inverse."""

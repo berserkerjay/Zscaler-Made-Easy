@@ -391,6 +391,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/operations/preview"): "preview",
     ("POST", "/api/operations/{op_id}/undo/preview/start"): "preview",
     ("POST", "/api/operations/{op_id}/undo/preview"): "preview",
+    ("POST", "/api/operations/zpa/provisioning-key"): "reveals once a value held in this app's memory; reaches no tenant",
     ("POST", "/api/console-index"): "reads (extension allow-list)",
     ("POST", "/api/workspace/notes"): "local notes",
     ("DELETE", "/api/workspace/notes"): "local notes",

@@ -696,8 +696,10 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     if counts["change"] == 0 and not prepared["blockers"]:
         prepared["warnings"].append("Nothing to change: every item is already as asked or excluded.")
     prepared["status"] = "blocked" if prepared["blockers"] else ("nothing_to_do" if counts["change"] == 0 else "ready")
-    # A plugin may name its own typed confirmation (upper case: it is compared case-insensitively), e.g. the name of a profile it deletes.
-    prepared["confirm_phrase"] = str(prepared.get("confirm_phrase") or "").strip().upper() or confirm_phrase(counts["change"])
+    # A plugin may name its own typed confirmation (a profile's name), or ask for its
+    # phrase whatever the count (`confirm_always`, a delete); upper case, compared case-insensitively.
+    own = str(prepared.get("confirm_phrase") or prepared.get("confirm_always") or "").strip().upper()
+    prepared["confirm_phrase"] = own if own and counts["change"] else confirm_phrase(counts["change"])
     prepared["needs_activation"] = prepared.get("product") == "zia"
     prepared["kind"] = KIND
     prepared["tenant_label"] = tenant_label

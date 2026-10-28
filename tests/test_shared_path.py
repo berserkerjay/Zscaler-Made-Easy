@@ -42,7 +42,14 @@ WRITE_CALL = re.compile(r"\.(add_dict|add_dlp_engine|add_rule|add_sub_rule|updat
                         r"add_segment|update_segment|delete_segment|bulk_update|"
                         # ZDX probe setup (ops_zdx.ZdxApi): its writes go through pack_ops too.
                         r"zdx_create_app|zdx_create_probe|zdx_create_collection|zdx_set_app_state|zdx_set_probe_state|zdx_delete_app|"
-                        r"zdx_delete_probe)\(|\bclient\.(post|put|patch|delete)\(")
+                        r"zdx_delete_probe|"
+
+                        # The ZPA builder (ops_zpa): its kinds in pack_ops.ZPA_KINDS.
+                        r"add_connector_group|update_connector_group|delete_connector_group|add_provisioning_key|update_provisioning_key|"
+                        r"delete_provisioning_key|add_group|update_group|delete_group|add_segment_pra|update_segment_pra|delete_segment_pra|"
+                        r"add_profile|update_profile|delete_profile|add_console|update_console|delete_console|add_access_rule|"
+                        r"update_access_rule|add_timeout_rule|update_timeout_rule|add_app_protection_rule|update_app_protection_rule|"
+                        r"add_isolation_rule|update_isolation_rule)\(|\bclient\.(post|put|patch|delete)\(")
 # The only files allowed to name an SDK write method, and why.
 ALLOWED = {
     "pack_ops.py": "the shared execution path itself",

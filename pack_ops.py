@@ -825,7 +825,7 @@ def _audited(action: str) -> Callable[[Callable[..., Outcome]], Callable[..., Ou
 # argument is the ZPA service root (client.zpa), not client.zia: ZPA has no
 # activation, so its writes get no activate-and-retry on a 403.
 ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules"}
-ADMIN_KINDS = ("url_category", "zpa_segment")
+ADMIN_KINDS = ("url_category", "zpa_segment")  # and the ZPA builder kinds in ZPA_KINDS below
 # ZDX probe setup (ops_zdx): for these kinds the first argument is the ZDX
 # configuration API (ops_zdx.ZdxApi), not client.zia. ZDX has no activation,
 # so a 403 gets no activate-and-retry.
@@ -850,6 +850,44 @@ def _zpa_write(zpa, method: str, *args: Any, op: str, name: str, log: Optional[C
     handling, run control), without the ZIA client, so a 403 is not
     answered by a ZIA activation (ZPA has none)."""
     return call(getattr(zpa.application_segment, method), *args, op=op, kind="zpa_segment", name=name, log=log, kw=kw)
+
+
+# The ZPA builder (ops_zpa) writes these further ZPA kinds through the same
+# create / update / delete: kind -> (service on client.zpa, create, update,
+# delete method). Verified against the installed SDK's zscaler/zpa services.
+# Provisioning keys take the key type ("connector") after the id; policy
+# rules are deleted by policy type and id. The first argument is client.zpa.
+ZPA_KINDS: Dict[str, Tuple[str, str, str, str]] = {
+    "zpa_connector_group": ("app_connector_groups", "add_connector_group", "update_connector_group", "delete_connector_group"),
+    "zpa_provisioning_key": ("provisioning", "add_provisioning_key", "update_provisioning_key", "delete_provisioning_key"),
+    "zpa_segment_group": ("segment_groups", "add_group", "update_group", "delete_group"),
+    "zpa_server_group": ("server_groups", "add_group", "update_group", "delete_group"),
+    "zpa_pra_segment": ("app_segments_pra", "add_segment_pra", "update_segment_pra", "delete_segment_pra"),
+    "zpa_inspection_profile": ("app_protection", "add_profile", "update_profile", "delete_profile"),
+    "zpa_pra_console": ("pra_console", "add_console", "update_console", "delete_console"),
+    "zpa_access_rule": ("policies", "add_access_rule", "update_access_rule", "delete_rule"),
+    "zpa_timeout_rule": ("policies", "add_timeout_rule", "update_timeout_rule", "delete_rule"),
+    "zpa_inspection_rule": ("policies", "add_app_protection_rule", "update_app_protection_rule", "delete_rule"),
+    "zpa_isolation_rule": ("policies", "add_isolation_rule", "update_isolation_rule", "delete_rule"),
+}
+ZPA_RULE_POLICY = {"zpa_access_rule": "access", "zpa_timeout_rule": "timeout", "zpa_inspection_rule": "inspection",
+                   "zpa_isolation_rule": "isolation"}
+
+
+def _zpa_kind_write(zpa, kind: str, op: str, oid: Any = None, payload: Optional[Dict[str, Any]] = None, *, name: str = "",
+                    log: Optional[Callable[[str], None]] = None) -> Outcome:
+    svc_name, c, u, d = ZPA_KINDS[kind]
+    svc = getattr(zpa, svc_name, None) if zpa is not None else None
+    if svc is None:
+        return Outcome(False, error=f"{svc_name} is not available in the installed zscaler-sdk-python")
+    key = ("connector",) if kind == "zpa_provisioning_key" else ()
+    if op == "create":
+        return call(getattr(svc, c), *key, op="create", kind=kind, name=name, log=log, kw=payload)
+    if op == "update":
+        return call(getattr(svc, u), oid, *key, op="update", kind=kind, name=name, log=log, kw=payload)
+    if kind in ZPA_RULE_POLICY:
+        return call(getattr(svc, d), ZPA_RULE_POLICY[kind], oid, op="delete", kind=kind, name=name, log=log)
+    return call(getattr(svc, d), oid, *key, op="delete", kind=kind, name=name, log=log)
 
 
 @_audited("create")
@@ -879,6 +917,8 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
         return _zdx_write(zia, "zdx_create_probe", parent_id, payload, op="create", kind=kind, name=name, log=log)
     if kind == "zdx_collection":
         return _zdx_write(zia, "zdx_create_collection", payload, op="create", kind=kind, name=name, log=log)
+    if kind in ZPA_KINDS:
+        return _zpa_kind_write(zia, kind, "create", payload=payload, name=name, log=log)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -913,6 +953,8 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return _zdx_write(zia, "zdx_set_app_state", oid, action, op="update", kind=kind, name=name, log=log)
     if kind == "zdx_probe":
         return _zdx_write(zia, "zdx_set_probe_state", parent_id, oid, action, op="update", kind=kind, name=name, log=log)
+    if kind in ZPA_KINDS:
+        return _zpa_kind_write(zia, kind, "update", oid, payload, name=name, log=log)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -930,11 +972,15 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
     if kind == "url_category":
         return call(zia.url_categories.delete_category, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "zpa_segment":
-        return _zpa_write(zia, "delete_segment", oid, op="delete", name=name, log=log)
+        # force_delete: ZPA also drops the segment's mapping to its segment group (the builder's delete)
+        return _zpa_write(zia, "delete_segment", oid, op="delete", name=name, log=log,
+                          kw={"force_delete": True} if item.get("force_delete") else None)
     if kind == "zdx_app":
         return _zdx_write(zia, "zdx_delete_app", oid, op="delete", kind=kind, name=name, log=log)
     if kind == "zdx_probe":
         return _zdx_write(zia, "zdx_delete_probe", item.get("parent_id"), oid, op="delete", kind=kind, name=name, log=log)
+    if kind in ZPA_KINDS:
+        return _zpa_kind_write(zia, kind, "delete", oid, name=name, log=log)
     if kind != "policy":
         return Outcome(False, error=f"unknown object kind '{kind}'")
     if channel == pc.ENDPOINT and item.get("parent_id") is not None:
