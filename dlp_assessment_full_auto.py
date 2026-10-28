@@ -1807,11 +1807,30 @@ def c_6_2(cl):
     if e: return e
     ph=[p for p in d if p.get("phasedRollout") or p.get("appStoreEnabled")]
     return R(R.PASS,f"Phased rollout on {len(ph)}.") if ph else R(R.WARN,"No phased rollout.")
+# Numeric device states follow the SDK's registration codes
+# (zscaler.utils.zcc_param_map["reg_type"]); the SDK model types `state` as
+# Any, and the API returns text or a number.
+_ZCC_STATE_CODES={1:"registered",3:"removal_pending",4:"unregistered",5:"removed",6:"quarantined"}
+_ZCC_ORPHANED=("removed","orphaned","inactive")
+def _zcc_state(v):
+    """A Client Connector device state (int, numeric text, text or None) as
+    lower-case text: "" when absent, "unknown" when not recognisable."""
+    if v is None: return ""
+    if isinstance(v,bool): return "unknown"
+    if isinstance(v,float) and v.is_integer(): v=int(v)
+    if isinstance(v,int): return _ZCC_STATE_CODES.get(v,"unknown")
+    if isinstance(v,str):
+        s=v.strip().lower()
+        if s.isdigit(): return _ZCC_STATE_CODES.get(int(s),"unknown")
+        return s
+    return "unknown"
 def c_6_3(cl):
     """Check 6.3 (6 — Versions): Device hygiene."""
-    d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
-    orph=[x for x in devs if (x.get("state") or x.get("status") or "").lower() in("removed","orphaned","inactive")]
-    return R(R.WARN,f"{len(orph)} orphaned device(s).") if orph else R(R.PASS,"Device states clean.")
+    d,c=cl.get("/zcc/devices"); devs=[x for x in _ls(d) if isinstance(x,dict)] if c in(200,204) else []
+    states=[_zcc_state(x.get("state")) or _zcc_state(x.get("status")) for x in devs]
+    orph=sum(1 for s in states if s in _ZCC_ORPHANED); unk=sum(1 for s in states if s=="unknown")
+    note=f" {unk} device(s) report a state this app does not recognise." if unk else ""
+    return R(R.WARN,f"{orph} orphaned device(s).{note}") if orph else R(R.PASS,f"Device states clean.{note}")
 def c_6_4(cl):
     """Check 6.4 (6 — Versions): Inspect list."""
     return c_4_1(cl)

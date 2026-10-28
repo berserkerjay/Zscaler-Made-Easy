@@ -175,6 +175,47 @@ def test_ci_tools_are_not_on_a_version_with_a_known_advisory(tool):
     assert Version(_pins("requirements-ci.lock")[tool]) >= Version(floor), why
 
 
+# Advisories against an app dependency (deterministic floor table; CI's
+# pip-audit of every lock is the live source). Each floor holds in every lock
+# that pins the package, in the declared minimum (requirements.txt and
+# pyproject.toml, so a re-lock cannot fall back) and in the committed SBOM.
+APP_FLOORS = {
+    "msgpack": ("1.2.3", "CVE-2026-114613 / GHSA-j586-36cw-2gc2: fixed in 1.2.3"),
+}
+LOCKS = ("requirements.lock", "requirements-dev.lock", "requirements-ci.lock", "requirements-pip.lock")
+
+
+@pytest.mark.parametrize("lock", LOCKS)
+@pytest.mark.parametrize("pkg", sorted(APP_FLOORS))
+def test_no_lock_pins_a_dependency_version_with_a_known_advisory(pkg, lock):
+    """Scorecard Vulnerabilities · SSDF RV.1.1 · CWE-1395 · A06:2021: no lock pins a version below the advisory's fix."""
+    from packaging.version import Version
+    floor, why = APP_FLOORS[pkg]
+    pinned = _pins(lock).get(pkg)
+    assert pinned is None or Version(pinned) >= Version(floor), (lock, pinned, why)
+
+
+@pytest.mark.parametrize("source", ["requirements.txt", "pyproject.toml"])
+@pytest.mark.parametrize("pkg", sorted(APP_FLOORS))
+def test_declared_minimum_excludes_the_vulnerable_versions(pkg, source):
+    """Scorecard Vulnerabilities · SSDF PW.4.4 · CWE-1395: the declared minimum is the fixed version, so a re-lock cannot pick a vulnerable one."""
+    from packaging.version import Version
+    floor, why = APP_FLOORS[pkg]
+    mins = re.findall(rf"""^\s*["']?{re.escape(pkg)}\s*>=\s*([0-9][^\s"',;#]*)""", _read(source), re.M)
+    assert mins and all(Version(m) >= Version(floor) for m in mins), (source, mins, why)
+
+
+@pytest.mark.parametrize("pkg", sorted(APP_FLOORS))
+def test_sbom_lists_the_locked_version(pkg):
+    """SSDF PS.3.2 · Scorecard SBOM · CWE-1395: docs/sbom.cdx.json and THIRD_PARTY_NOTICES.md name the version requirements.lock pins."""
+    import json
+    pinned = _pins("requirements.lock")[pkg]
+    sbom = json.loads(_read("docs", "sbom.cdx.json"))
+    versions = {c.get("version") for c in sbom.get("components", []) if c.get("name") == pkg}
+    assert versions == {pinned}, (versions, pinned)
+    assert re.search(rf"^\| {re.escape(pkg)} \| {re.escape(pinned)} \|", _read("THIRD_PARTY_NOTICES.md"), re.M)
+
+
 def test_ci_audits_every_lock_with_pip_disabled():
     """Scorecard Vulnerabilities · SSDF RV.1.1 · CWE-1395: every lock is audited, and the audit itself runs no unpinned pip."""
     # Arrange
