@@ -170,32 +170,45 @@ what you get, what to do next.
   with names instead of IDs, plus one plain sentence. Excel and JSON
   exports. Read-only; Stop ends the read at once.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
-  from the tenant as it is right now, the path a user's traffic takes to
-  it, one verdict in plain words, and every rule or profile that blocks
-  or impacts it, each with a fix. It reads only what is in scope on the
-  Scope page (a part out of scope says "not in scope"), and Stop ends the
-  read at once. **Import a HAR file** there to analyze every host a
-  browser session reached in one run: the file is read in the browser and
-  only host names and request counts are sent; the results table sorts,
+  from the tenant as it is right now, every step the traffic takes, the
+  rule that decides each one, one verdict in plain words (definite or
+  conditional), and every rule or profile that blocks or impacts it, each
+  with a fix. The steps are walked in the order they apply. **ZPA first**
+  (ZPA ticked): the most specific application segment (exact name,
+  longest wildcard, longest address range) with its port, the segment's
+  bypass setting (Never, On-Net, Always), the client forwarding policy
+  (Intercept, Intercept accessible, Bypass) and the access policy, with
+  device posture answered both passing and failing; a destination ZPA
+  carries is not traced through ZIA. Then Client Connector's app and
+  forwarding profile and the **PAC file**, evaluated for the destination
+  (`pac_eval.py`: parsed and interpreted, never run; anything outside the
+  PAC subset says "could not evaluate safely") and classified DIRECT,
+  Zscaler or another proxy. Then **every ZIA module** in the order the
+  cloud applies them (Advanced Threat Protection, Cloud Firewall, DNS
+  Control, Cloud App Control and URL filtering, Sandbox, File Type Control
+  and DLP, with SSL inspection deciding what later modules see). Every
+  step has the same shape: its deciding rule and order, the other rules
+  that also match, the earlier rules that could decide instead, and every
+  criterion as match, no match or unknown (`zia_path_modules.py`,
+  `zpa_path.py`, drawn by `static/path_modules.js`). A protocol and port
+  (UDP/443 is QUIC, TCP/22 is SSH) trace traffic that is not web.
+  **Traffic from a workload** (Cloud & Branch Connector ticked) takes a
+  source IP, tags, workload group and connector group: the connector's
+  forwarding rules decide first (ZIA, ZPA, direct, local switch, proxy
+  chaining or drop), then ZIA or ZPA (`workload_path.py`). **What-if**:
+  optionally give a user, group, department and location (looked up in
+  ZIA only with ZIA platform in scope, 20 names at most per search);
+  rules scoped to them apply and rules for others are skipped, and every
+  result lists what the policy action also depends on: each scoped
+  condition that would change it, with the rule and the action it would
+  give (`path_whatif.py`). All of it is one request,
+  `POST /api/path-analyzer/start` (or `POST /api/path-analyzer` for
+  scripts). It reads only what is in scope on the Scope page (a part out
+  of scope says "not in scope"), writes nothing, and Stop ends the read
+  at once. **Import a HAR file** there to analyze every host a browser
+  session reached in one run: the file is read in the browser and only
+  host names and request counts are sent; the results table sorts,
   filters, opens any host's full analysis and exports as CSV or JSON.
-  The trace walks every ZIA module in the order the cloud applies them
-  (Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App
-  Control and URL filtering, Sandbox, File Type Control and DLP, with SSL
-  inspection deciding what later modules see), each with its deciding
-  rule and order, the rules that also match later, and every criterion as
-  match, no match or unknown; the result says definite or conditional. A
-  protocol and port (UDP/443 is QUIC, TCP/22 is SSH) trace traffic that is
-  not web (`zia_path_modules.py`, `static/path_modules.js`).
-  With ZPA ticked, ZPA is checked first: the most specific application
-  segment (exact name, longest wildcard, longest address range) with its
-  port, the segment's bypass setting (Never, On-Net, Always), the client
-  forwarding policy (Intercept, Intercept accessible, Bypass) and the
-  access policy, with device posture answered both passing and failing; a
-  destination ZPA carries is not traced through ZIA. **Traffic from a
-  workload** (Cloud & Branch Connector ticked) takes a source IP, tags,
-  workload group and connector group: the connector's forwarding rules
-  decide first (ZIA, ZPA, direct, local switch, proxy chaining or drop),
-  then ZIA or ZPA.
   **Test a list** (a tab on the same page) does it for a whole list: a
   CSV or pasted list of IP addresses, CIDR blocks (up to a /16 per row),
   ranges, hosts and URLs, up to 250,000 rows, with optional port,
@@ -212,15 +225,6 @@ what you get, what to do next.
   into a custom URL category or IP group, and CSV and Excel downloads.
   Fix selected opens Bulk changes with the picked destinations filled in
   as a URL category change; it writes nothing on its own.
-  The PAC file is evaluated for the destination (`pac_eval.py`: parsed
-  and interpreted, never run; anything outside the PAC subset says
-  "could not evaluate safely"), and each answer is classified DIRECT,
-  Zscaler or another proxy. **What-if**: optionally give a user, group,
-  department and location (looked up in ZIA only with ZIA platform in
-  scope, 20 names at most per search); rules scoped to them apply and
-  rules for others are skipped. Every result lists what the policy action
-  also depends on: each scoped condition that would change it, with the
-  rule and the action it would give (`path_whatif.py`).
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the

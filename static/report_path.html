@@ -12,7 +12,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Path</span> analyzer <span class="sf-live" id="paLive" hidden><i></i>live</span></h1>
-      <p>Type what a user would type: a URL, a hostname or an IP address. The analyzer reads the tenant as it is right now and walks that user's traffic hop by hop, from Client Connector to the DLP rule, and tells you in one line where it stops, what decides that, and everything on the way that blocks or impacts it.</p>
+      <p>Type what a user would type: a URL, a hostname or an IP address. The analyzer reads the tenant as it is right now and walks the traffic step by step: ZPA first, then Client Connector and the PAC file (evaluated, never run), then every ZIA module in the order the cloud applies them. It tells you in one line where the traffic stops, what decides that, and everything on the way that blocks or impacts it. Try it for a given user, group, department or location, for traffic from a workload behind a Cloud or Branch Connector, or for a whole list at once.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -21,8 +21,14 @@
       <a class="rp-btn" href="/report/motion#path" target="_blank" rel="noopener" title="Flow animator: replay this result hop by hop, with what happens inside DLP (opens in a new tab)">Animate ↗</a>
       <span class="sep"></span>
       <label class="df-ctl"><span class="lbl">Destination</span><input type="text" id="paDest" placeholder="https://drive.google.com/…, dropbox.com or 203.0.113.10" aria-label="Destination: a URL, hostname or IP address" aria-describedby="paHow" autocomplete="off" spellcheck="false"></label>
-      <label class="df-ctl"><span class="lbl">Network</span><select id="paNet" aria-label="Network the device is on"></select></label>
-      <label class="df-ctl"><span class="lbl">Platform</span><select id="paPlat" aria-label="Platform"></select></label>
+      <label class="df-ctl"><span class="lbl">Traffic from</span><select id="paSource" aria-label="Where the traffic comes from" aria-describedby="paSourceHow">
+        <option value="device">A user device</option><option value="workload">A workload</option></select></label>
+      <label class="df-ctl" id="paNetWrap"><span class="lbl">Network</span><select id="paNet" aria-label="Network the device is on"></select></label>
+      <label class="df-ctl" id="paPlatWrap"><span class="lbl">Platform</span><select id="paPlat" aria-label="Platform"></select></label>
+      <label class="df-ctl"><span class="lbl">Protocol</span><select id="paProto" aria-label="Protocol of the traffic" aria-describedby="paPortHint">
+        <option value="">From the URL</option><option value="tcp">TCP</option><option value="udp">UDP</option></select></label>
+      <label class="df-ctl pm-port"><span class="lbl">Port</span><input type="text" id="paPort" inputmode="numeric" maxlength="5" placeholder="443" aria-label="Destination port (1 to 65535; empty: from the URL)" aria-describedby="paPortHint" autocomplete="off"></label>
+      <span class="df-hint pm-port-hint" id="paPortHint" aria-live="polite"></span>
       <label class="df-ctl" id="paTenantWrap" hidden><span class="lbl">Tenant</span><select id="paTenant" aria-label="Tenant to read"></select></label>
       <button type="button" class="rp-btn primary" id="paRun">Analyze</button>
       <button type="button" class="rp-btn" id="paFresh" title="Read the tenant again before analyzing (otherwise the last read is reused)" aria-pressed="false">↻ Fresh read</button>
@@ -30,14 +36,57 @@
       <button type="button" class="rp-btn" id="paHarBtn" aria-describedby="paHarHow" title="Analyze every host a browser HAR file names. The file is read in this browser; only host names and request counts are sent.">📂 Import a HAR file</button>
       <input type="file" id="paHar" accept=".har,.json,application/json" hidden aria-label="HAR file to import">
     </nav>
+    <div class="rp-bar pa-workload" id="paWorkload" role="group" aria-labelledby="paWorkloadL" hidden>
+      <span class="lbl" id="paWorkloadL">The workload</span>
+      <label class="df-ctl"><span class="lbl">Source IP</span><input type="text" id="paWlIp" maxlength="45" placeholder="10.1.2.3" aria-label="The workload's source IP address" autocomplete="off" spellcheck="false"></label>
+      <label class="df-ctl"><span class="lbl">Tags</span><input type="text" id="paWlTags" maxlength="2000" placeholder="VPC: Vpc-id=vpc-123, Env=prod" aria-label="The workload's tags: key=value, comma separated, optionally with a type such as VPC: or VM:" autocomplete="off" spellcheck="false"></label>
+      <label class="df-ctl"><span class="lbl">Workload group</span><input type="text" id="paWlGroup" maxlength="200" placeholder="optional" aria-label="The workload group, if you know it (optional)" autocomplete="off"></label>
+      <label class="df-ctl"><span class="lbl">Connector group</span><input type="text" id="paWlEc" maxlength="200" placeholder="optional" aria-label="The Cloud or Branch Connector group the workload sits behind (optional)" autocomplete="off"></label>
+    </div>
     <main class="rp-card">
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
-      <!-- Test a list: the views of this page (static/path_list.js moves the framework and #paBody into panel-one) -->
+      <!-- Test a list: the views of this page (static/path_list.js runs the tabs and the list) -->
       <div class="rp-tabs" role="tablist" aria-label="Path analyzer views">
         <button type="button" role="tab" id="tab-one" aria-controls="panel-one" aria-selected="true" tabindex="0">One destination or a HAR file</button>
         <button type="button" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="false" tabindex="-1">Test a list</button>
       </div>
-      <section role="tabpanel" id="panel-one" aria-labelledby="tab-one" tabindex="0"></section>
+      <section role="tabpanel" id="panel-one" aria-labelledby="tab-one" tabindex="0">
+      <details class="pa-framework pa-whatif" id="paWhatIf">
+        <summary>What-if: a user, group, department or location (optional)</summary>
+        <div class="df-hint">Leave these empty to analyze for anyone; the result then lists what the policy action also depends on. Fill any of them to evaluate rules scoped to that identity: rules for it apply, rules for others are skipped. Groups you give are taken as the user's only groups.</div>
+        <div class="pa-wi-grid">
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">User</span><input type="text" id="paWi_user" placeholder="jane@acme.com or a display name" autocomplete="off" spellcheck="false" maxlength="200"></label>
+            <button type="button" class="rp-btn" data-wi-find="user" aria-describedby="paWiScope">Look up in ZIA</button><ul class="pa-wi-results" id="paWiRes_user" aria-label="User matches in ZIA" hidden></ul></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">Group</span><input type="text" id="paWi_group" placeholder="one or more, separated by commas" autocomplete="off" spellcheck="false" maxlength="200"></label>
+            <button type="button" class="rp-btn" data-wi-find="group" aria-describedby="paWiScope">Look up in ZIA</button><ul class="pa-wi-results" id="paWiRes_group" aria-label="Group matches in ZIA" hidden></ul></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">Department</span><input type="text" id="paWi_department" placeholder="Finance" autocomplete="off" spellcheck="false" maxlength="200"></label>
+            <button type="button" class="rp-btn" data-wi-find="department" aria-describedby="paWiScope">Look up in ZIA</button><ul class="pa-wi-results" id="paWiRes_department" aria-label="Department matches in ZIA" hidden></ul></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">Location</span><input type="text" id="paWi_location" placeholder="HQ office" autocomplete="off" spellcheck="false" maxlength="200"></label>
+            <button type="button" class="rp-btn" data-wi-find="location" aria-describedby="paWiScope">Look up in ZIA</button><ul class="pa-wi-results" id="paWiRes_location" aria-label="Location matches in ZIA" hidden></ul></div>
+        </div>
+        <p class="df-hint" id="paWiScope"></p>
+        <div class="sr-only" id="paWiLive" role="status" aria-live="polite"></div>
+      </details>
+      <details class="pa-framework" id="paFramework" open>
+        <summary>The framework: how Zscaler processes a policy, device to incident</summary>
+        <div class="df-hint">Every analysis follows this order. With ZPA in scope, ZPA is checked first (application segment, bypass, client forwarding and access policy): a destination ZPA carries never reaches ZIA. Otherwise the path starts from a <strong>candidate Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose (for a workload, the Cloud or Branch Connector forwarding rules), then the PAC file, evaluated for the destination but never run, then the ZIA modules: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control and URL filtering, SSL inspection (which decides what the later modules can see), Sandbox, File Type Control and Web DLP. Traffic that is not web is decided by the Cloud Firewall (and DNS Control for its lookup). Endpoint DLP, SaaS Security API and Email DLP are separate inventories, not tested on this path. This is a configuration prediction: it does not prove that every stage executed for a real transaction.</div>
+        <div id="paFrameworkBody"></div>
+      </details>
+      <div id="paBody">
+        <div class="pa-intro" id="paHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Type a destination</strong> exactly as a user would: a full URL, a hostname or an IP address. Say where the traffic comes from: a user device (pick its network and platform) or a workload (give its source IP, tags and, if you know them, its workload group and connector group). Pick a protocol and port to trace traffic that is not web, such as UDP/443 (QUIC) or TCP/22 (SSH).</li>
+            <li><strong>Analyze.</strong> The first run reads the tenant, only what is in scope on the Scope page (ZPA, Client Connector profiles, PAC files, the Cloud and Branch Connector rules and every ZIA policy: about a minute of API calls, shown live). Later runs reuse that read and only look the destination up, so they take a few seconds.</li>
+            <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every step before ZIA and every ZIA module, in order, with its deciding rule and each of its conditions as match, no match or unknown, then everything that blocks or impacts the traffic, by name, and the path hop by hop against the framework above.</li>
+            <li><strong>Ask what if.</strong> Open What-if to evaluate the rules scoped to a user, group, department or location. Without one, the result lists what the policy action also depends on.</li>
+          </ol>
+          <div class="df-hint">Nothing is written to the tenant. This is a configuration prediction, not an observed transaction or payload scan. Identity-scoped rules remain conditional unless you give the identity; the assumptions are listed under every result.</div>
+          <p class="df-hint" id="paSourceHow">ZPA is checked first when ZPA is ticked on the Scope page. For a workload, tick Cloud &amp; Branch Connector: its forwarding rules decide whether the traffic goes to ZIA, ZPA, direct or is dropped.</p>
+          <p class="df-hint pa-har-how" id="paHarHow"><strong>Or import a HAR file</strong> (browser developer tools, Network tab, Save all as HAR) to analyze every host a user's session reached. The file is read in this browser and never uploaded: cookies, headers, URL paths and bodies stay here; only the host names, request counts, methods and upload sizes are sent. Up to 100 MB and 200 hosts per run (hosts that sent data first). To test a list of destinations, use the Test a list tab.</p>
+        </div>
+      </div>
+      </section>
       <section role="tabpanel" id="panel-list" aria-labelledby="tab-list" tabindex="0" hidden>
         <div class="pa-intro" id="plHow">
           <div class="pa-intro-t">Test a list</div>
@@ -61,23 +110,6 @@
         <div id="plBody"></div>
       </section>
       <!-- /Test a list -->
-      <details class="pa-framework" id="paFramework" open>
-        <summary>The framework: how Zscaler processes a policy, device to incident</summary>
-        <div class="df-hint">This view models the relevant web-request controls, starting from a <strong>candidate Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose, then Cloud App Control, URL Filtering, SSL Inspection, File Type Control and Web DLP, with separate Endpoint DLP, SaaS Security API and Email DLP inventories. Those channels were not tested on this data. Execution and prerequisites depend on the channel and operation; this reference does not prove that every displayed stage executed.</div>
-        <div id="paFrameworkBody"></div>
-      </details>
-      <div id="paBody">
-        <div class="pa-intro" id="paHow">
-          <div class="pa-intro-t">How it works</div>
-          <ol class="pa-steps">
-            <li><strong>Type a destination</strong> exactly as a user would: a full URL, a hostname or an IP address. Pick the network the device is on and its platform.</li>
-            <li><strong>Analyze.</strong> The first run reads the tenant (Client Connector profiles, PAC files and every ZIA policy: about a minute of API calls, shown live). Later runs reuse that read and only look the destination up, so they take a few seconds.</li>
-            <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every point that blocks or impacts the traffic is listed with the rule or profile by name, then the path hop by hop against the framework above.</li>
-          </ol>
-          <div class="df-hint">Nothing is written to the tenant. This is a configuration prediction, not an observed transaction or payload scan. Identity-scoped rules remain conditional; the assumptions are listed under every result.</div>
-          <p class="df-hint pa-har-how" id="paHarHow"><strong>Or import a HAR file</strong> (browser developer tools, Network tab, Save all as HAR) to analyze every host a user's session reached. The file is read in this browser and never uploaded: cookies, headers, URL paths and bodies stay here; only the host names, request counts, methods and upload sizes are sent. Up to 100 MB and 200 hosts per run (hosts that sent data first).</p>
-        </div>
-      </div>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -88,27 +120,11 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/data_flow.js"></script>
   <script src="/static/har_parse.js"></script>
-  <script src="/static/path_modules.js"></script>
-  <script src="/static/path_zpa.js"></script>
+  <script src="/static/path_modules.js"></script><!-- every module on the path, one hop shape -->
+  <script src="/static/path_whatif.js"></script><!-- what-if lookups and "Policy action also depends on" -->
   <script src="/static/path_list.js"></script>
-  <script src="/static/path_whatif.js"></script><!-- what-if inputs and "Policy action also depends on" (path_whatif.py) -->
   <script>
   (function () {
-    // ZIA modules (static/path_modules.js): a protocol and port beside the
-    // platform, sent with every analysis (they ride with the request body
-    // credBody builds), and each module's decision, in order, right after
-    // the verdict. The page's own functions are wrapped, not changed.
-    if (window.PathModules) {
-      PathModules.zia.mountControls(document.getElementById('paPlat').closest('label'));
-      const baseBody = credBody, baseRender = render;
-      credBody = function () { return Object.assign(baseBody(), PathModules.zia.input()); };
-      render = function (res, logs) { baseRender(res, logs); PathModules.zia.mount(document.getElementById('paBody'), res); };
-    }
-    // ZPA first and workload traffic (static/path_zpa.js): Analyze goes to
-    // /api/path-analyzer/full/start with the "Traffic from" fields, and the
-    // ZPA and connector steps are shown under the verdict.
-    const fetch = window.PathZpa ? window.PathZpa.fetch : window.fetch;
-    if (window.PathZpa) { const ziaRender = render; render = (res, logs) => { ziaRender(res, logs); window.PathZpa.decorate(res); }; }
     const E = _dfE;
     const body = document.getElementById('paBody');
     const meta = document.getElementById('rpMeta');
@@ -120,6 +136,7 @@
     const STATUS = Object.assign({ alert: ['Security alert', 'fail'] }, DF_STATUS);
     const SEV_RANK = { high: 0, medium: 1, low: 2, info: 3 };
     let lastReport = '';   // report_id of the last tenant read, reused for the next destination
+    const kept = { zpa: '', ztw: '' };   // the ZPA and connector reads, reused the same way
     let fresh = false, running = false, job = null;
     // The start request signs in first, so it has no job id for a while; a
     // Stop pressed then is sent with this start's token (X-Start-Token) and
@@ -134,11 +151,22 @@
     document.getElementById('paNet').innerHTML = NETWORKS.map(([k, l]) => `<option value="${k}">${E(l)}</option>`).join('');
     document.getElementById('paPlat').innerHTML = PLATFORMS.map(p => `<option value="${p}">${p}</option>`).join('');
     document.getElementById('paLive').hidden = !(window.opener && !window.opener.closed);
+    // Where the traffic comes from: a user device has a network and a
+    // platform; a workload has its own fields instead.
+    function syncSource() {
+      const wl = document.getElementById('paSource').value === 'workload';
+      document.getElementById('paWorkload').hidden = !wl;
+      document.getElementById('paNetWrap').hidden = wl;
+      document.getElementById('paPlatWrap').hidden = wl;
+    }
+    function syncPortHint() {
+      document.getElementById('paPortHint').textContent = PathModules.portHint(document.getElementById('paProto').value, document.getElementById('paPort').value);
+    }
     // The reference framework diagram (Zscaler's own documented policy
     // order, device to incident) is static — it needs no tenant read and
     // is shown before any destination is analyzed, so the page always
     // represents the framework every result is measured against.
-    renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'));
+    renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'), DF_PATH_ENFORCEMENT);
 
     // Credentials: the assessment tab that opened this page holds them;
     // otherwise a saved tenant profile, or what the server has in its
@@ -160,6 +188,16 @@
       if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
       if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
       return {};
+    }
+    // What is traced: the protocol and port (empty: the URL decides), where
+    // the traffic comes from, the what-if identity and the reads to reuse.
+    function traffic() {
+      const val = id => document.getElementById(id).value.trim();
+      const out = { source: val('paSource') || 'device', identity: PathWhatIf.identity(), zpa_report_id: fresh ? '' : kept.zpa, ztw_report_id: fresh ? '' : kept.ztw };
+      if (val('paProto')) out.protocol = val('paProto');
+      if (val('paPort')) out.port = val('paPort');
+      if (out.source === 'workload') out.workload = { ip: val('paWlIp'), tags: val('paWlTags'), workload_group: val('paWlGroup'), connector_group: val('paWlEc') };
+      return out;
     }
 
     // What is in scope: the Scope page's selection. The analyzer reads only
@@ -261,7 +299,7 @@
       const t0 = Date.now();
       const tick = setInterval(() => { const el = document.getElementById('paElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
       try {
-        const payload = Object.assign({}, credBody(), scopeSelection(), { destination: dest, network: net, platform: plat, report_id: fresh ? '' : lastReport });
+        const payload = Object.assign({}, credBody(), scopeSelection(), traffic(), { destination: dest, network: net, platform: plat, report_id: fresh ? '' : lastReport });
         const r = await fetch('/api/path-analyzer/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
@@ -273,6 +311,8 @@
         if (snap.status !== 'done' || !snap.result) throw new Error(snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the analysis finished.' : 'The analysis did not finish.'));
         const res = snap.result;
         if (res.report_id) lastReport = res.report_id;
+        if (res.zpa_report_id) kept.zpa = res.zpa_report_id;
+        if (res.ztw_report_id) kept.ztw = res.ztw_report_id;
         setFresh(false);
         render(res, snap.logs || []);
         keepForAnimator(res);
@@ -352,7 +392,7 @@
       body.innerHTML = `
         ${connectorInventoryHtml(t.connector_inventory)}
         <section class="pa-verdict st-${ocls}" aria-labelledby="paHeadline">
-          <div class="pa-verdict-top">${chip(v.outcome === 'bypassed' ? 'bypass' : v.outcome === 'blocked' ? 'blocked' : v.outcome)}<span class="df-by">${E(d.input)} · ${E(NET_LABEL[res.network] || res.network)} · ${E(res.platform)}</span></div>
+          <div class="pa-verdict-top">${chip(v.outcome === 'bypassed' ? 'bypass' : v.outcome === 'blocked' ? 'blocked' : v.outcome)}<span class="df-by">${E(d.input)} · ${res.source === 'workload' ? 'from a workload' : `${E(NET_LABEL[res.network] || res.network)} · ${E(res.platform)}`}</span></div>
           <h2 id="paHeadline" class="pa-headline">${E(v.headline)}</h2>
           <p class="pa-summary">${E(v.summary)}</p>
           <div class="pa-facts">
@@ -364,12 +404,15 @@
             <span class="df-prof"><span class="k">ZIA categories</span><span class="v">${E((v.categories || []).join(', ') || (lk.not_in_scope ? 'not in scope (URL lookup not asked)' : lk.error ? `lookup failed: ${lk.error}` : 'none returned'))}</span></span>
             ${(v.applications || []).length ? `<span class="df-prof"><span class="k">Cloud app</span><span class="v">${E(v.applications.join(', '))}</span></span>` : ''}
           </div>
-          <div class="df-profiles">
+          <div class="df-profiles">${res.source === 'workload' ? `
+            <span class="df-prof"><span class="k">Connector forwarding rule</span><span class="v">${E((((res.modules || []).find(m => m.key === 'connector_forwarding') || {}).rule || {}).name || '—')}</span></span>` : `
             <span class="df-prof"><span class="k">Candidate Client Connector app profile</span><span class="v">${outOf('zcc') ? 'not in scope' : E(appProf)}</span></span>
-            <span class="df-prof"><span class="k">Linked forwarding profile</span><span class="v">${outOf('forwarding') ? 'not in scope' : `${E(fwdProf)}${E(fwdMode)}`}</span></span>
+            <span class="df-prof"><span class="k">Linked forwarding profile</span><span class="v">${outOf('forwarding') ? 'not in scope' : `${E(fwdProf)}${E(fwdMode)}`}</span></span>`}
           </div>
           ${res.scope && res.scope.summary ? `<div class="df-hint pa-scope">${E(res.scope.summary)}</div>` : ''}
         </section>
+        ${res.whatif ? PathWhatIf.section(res.whatif) : ''}
+        ${PathModules.section(res)}
         <h2 class="df-h">What blocks this traffic</h2>
         ${blockers.length ? `<ol class="pa-impacts">${blockers.map(item).join('')}</ol>` : '<div class="df-hop-d pa-none">Nothing blocks it: the traffic reaches the destination.</div>'}
         <h2 class="df-h">What impacts it on the way</h2>
@@ -390,6 +433,7 @@
         <h2 class="df-h">Assumptions</h2>
         <ul class="pa-assume">${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>
         <details class="pa-details"><summary>What was read (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
+      PathWhatIf.wire(body);
       body.querySelectorAll('.df-node').forEach(n => {
         const go = () => { const el = body.querySelector(`.df-hop[data-hop="${n.dataset.hop}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('sel'); setTimeout(() => el.classList.remove('sel'), 1600); } };
         n.addEventListener('click', go);
@@ -399,7 +443,9 @@
       exp.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(res, null, 2));
       exp.download = `path-${(d.host || 'analysis').replace(/[^a-z0-9.-]/gi, '_')}.json`;
       exp.hidden = false;
-      history.replaceState(null, '', `/report/path?d=${encodeURIComponent(d.input)}&n=${encodeURIComponent(res.network)}&p=${encodeURIComponent(res.platform)}`);
+      const extra = (res.source === 'workload' ? '&src=workload' : '') + (document.getElementById('paProto').value ? `&proto=${encodeURIComponent(document.getElementById('paProto').value)}` : '')
+        + (/^\d{1,5}$/.test(document.getElementById('paPort').value.trim()) ? `&port=${document.getElementById('paPort').value.trim()}` : '');
+      history.replaceState(null, '', `/report/path?d=${encodeURIComponent(d.input)}&n=${encodeURIComponent(res.network)}&p=${encodeURIComponent(res.platform)}${extra}`);
     }
 
     // ── HAR import: every host a browser session reached ─────────────
@@ -566,6 +612,10 @@
     document.getElementById('paHarBtn').addEventListener('click', () => document.getElementById('paHar').click());
     document.getElementById('paHar').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; harPicked(f); });
 
+    document.getElementById('paSource').addEventListener('change', syncSource);
+    document.getElementById('paProto').addEventListener('change', syncPortHint);
+    document.getElementById('paPort').addEventListener('input', syncPortHint);
+    PathWhatIf.init({ credBody, scopeSelection });
     document.getElementById('paRun').addEventListener('click', run);
     document.getElementById('paDest').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
     document.getElementById('paFresh').addEventListener('click', () => { setFresh(!fresh); say(fresh ? 'The next analysis reads the tenant again.' : 'The next analysis reuses the last read.'); });
@@ -575,6 +625,10 @@
     if (q.get('n') && NET_LABEL[q.get('n')]) document.getElementById('paNet').value = q.get('n');
     if (q.get('p') && PLATFORMS.includes(q.get('p'))) document.getElementById('paPlat').value = q.get('p');
     if (q.get('id') && q.get('id').startsWith('dataflow-')) lastReport = q.get('id');
+    if (q.get('src') === 'workload') document.getElementById('paSource').value = 'workload';
+    if (['tcp', 'udp'].includes(q.get('proto'))) document.getElementById('paProto').value = q.get('proto');
+    if (/^\d{1,5}$/.test(q.get('port') || '')) document.getElementById('paPort').value = q.get('port');
+    syncSource(); syncPortHint();
     // A link may fill the form in, never start it: the tenant is read only
     // when the user clicks Analyze (or presses Enter). An old ?run=1 link
     // gets the form filled and a pointer to the button.

@@ -170,7 +170,8 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     (lookup_many's answer for this host) stands in for the live URL
     lookup, so a batch asks ZIA once per hundred hosts. `protocol` (tcp or
     udp) and `port` trace traffic other than HTTPS (zia_path_modules:
-    every ZIA module in order, `zia_modules` in the result). `packs`
+    every ZIA module in order, `zia_modules` in the result; the steps
+    before ZIA, such as the evaluated PAC file, are `modules`). `packs`
     (data_flow.load_packs(), read once by a caller that traces many
     destinations) saves reading the pack library again for each one."""
     _log = log or (lambda m: None)
@@ -270,6 +271,9 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                            + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
     out = {"required_controls": zia.get("required_controls", []), "destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
            "zia_modules": zm,
+           # The steps before ZIA in the shared hop shape (the evaluated PAC
+           # file here; zpa_path.merge puts ZPA and the connector in front).
+           "modules": [h["module_hop"] for h in t.get("hops") or [] if h.get("module_hop")],
            "network": network, "platform": platform, "read_at": time.time(), "fresh_read": snapshot is None,
            "whatif": path_whatif.whatif(zia_t, t["destination"], ident, wcounts, scope.get("not_in_scope"))}
     # Recent traffic to this destination: only when ZIA Insights is in

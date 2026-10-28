@@ -35,11 +35,12 @@ When ZPA carries the traffic, ZIA does not apply: the result says so and
 the ZIA hops are not traced. When it does not, the caller traces ZIA and
 `merge` puts the ZPA stage in front of that result.
 
-Every stage is also returned as a module hop in the shape the Path
-analyzer's modules share: {module, verdict, rule: {name, order},
-overlaps: [], criteria: [{name, state: match | nomatch | unknown}],
-notes: []}. Conditions are worded by device_posture's readable-condition
-helpers (Names, plain_sentence).
+Every stage is also returned as a module hop in the one shape every
+Path analyzer module shares (zia_path_modules.module_hop, rendered by
+static/path_modules.js): {key, module, verdict, rule: {name, order},
+overlaps, could_override, criteria: [{name, state: match | no_match |
+unknown}], notes, detail}. Conditions are worded by device_posture's
+readable-condition helpers (Names, plain_sentence).
 """
 from __future__ import annotations
 
@@ -47,6 +48,7 @@ import time
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import device_posture
+import zia_path_modules
 import zpa_analysis
 import zpa_reader
 
@@ -67,20 +69,13 @@ ASSUMPTIONS = [
     "Device posture is evaluated twice: with every posture profile passing and with every one failing. Identity (IdP, SCIM, SAML), country and machine group are left as any user.",
 ]
 
-VERDICT_WORDS = {"matched": "Matches", "not_matched": "No match", "allowed": "Allowed", "denied": "Denied", "bypassed": "Bypasses",
-                 "intercepted": "Intercepted", "forwarded": "Forwarded", "dropped": "Dropped", "conditional": "Conditional",
-                 "unknown": "Unable to verify", "not_reached": "Not reached", "not_in_scope": "Not in scope", "carried": "Carried"}
-
-
 # ── the shared module-hop shape ─────────────────────────────────────────
-def module_hop(module: str, verdict: str, rule: Optional[Dict[str, Any]] = None, overlaps: Iterable[str] = (),
-               criteria: Iterable[Dict[str, str]] = (), notes: Iterable[str] = (), key: str = "") -> Dict[str, Any]:
-    """{module, verdict, rule: {name, order} | None, overlaps, criteria, notes, key}."""
-    r = None
-    if rule:
-        r = {"name": str(rule.get("name") or ""), "order": rule.get("order")}
-    return {"key": key, "module": module, "verdict": verdict, "rule": r, "overlaps": [str(x) for x in overlaps if x][:20],
-            "criteria": [{"name": str(c["name"]), "state": c["state"]} for c in criteria][:30], "notes": [str(n) for n in notes if n][:12]}
+def module_hop(module: str, verdict: str, rule: Optional[Dict[str, Any]] = None, overlaps: Iterable[Dict[str, Any]] = (),
+               criteria: Iterable[Dict[str, str]] = (), notes: Iterable[str] = (), key: str = "",
+               could_override: Iterable[Dict[str, Any]] = ()) -> Dict[str, Any]:
+    """zia_path_modules.module_hop: the one hop shape of the Path analyzer."""
+    return zia_path_modules.module_hop(module, verdict, rule, key=key, overlaps=overlaps, could_override=could_override,
+                                       criteria=criteria, notes=notes)
 
 
 def flow_hop(key: str, label: str, status: str, detail: str, decided_by: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -247,7 +242,8 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
     seg = ix.segments.get(sm["match"]["id"]) if sm["match"] else None
     out: Dict[str, Any] = {"read": True, "status": "read", "segment": sm["match"], "hints": hints, "flagged": [],
                            "candidates": [c["name"] for c in sm["candidates"]], "port_assumed": d.get("port_assumed")}
-    seg_overlaps = [f"“{c['name']}” ({c['entry']}, {d['protocol'].upper()} {c['ports']})" + (": equally specific" if c in sm["ambiguous"] else ": less specific")
+    seg_overlaps = [{"name": c["name"], "order": None, "differs": False,
+                     "detail": f"{c['entry']}, {d['protocol'].upper()} {c['ports']}: " + ("equally specific" if c in sm["ambiguous"] else "less specific")}
                     for c in sm["candidates"][1:]]
     if not seg:
         detail = f"No enabled ZPA application segment covers {dest_txt}, so ZPA does not carry it." + (" " + " ".join(hints) if hints else "")
@@ -336,10 +332,11 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
                 FORWARDING_LABELS.get(scen["fail"]["fwd"]["effect"].upper(), scen["fail"]["fwd"]["effect"]) + "."
     fwd_reached = bverdict != "bypassed"
     modules.append(module_hop("ZPA client forwarding policy", fv if fwd_reached else "not_reached", (f["rule"] or {}) if fwd_reached else None,
-                              _overlaps(f) if fwd_reached else [],
+                              [],
                               _criteria(f["rule"], first["u"], seg, ix, names) if (f["rule"] and fwd_reached) else [],
                               ([fnote, device_posture.plain_sentence(f["rule"], names)] if f["rule"] else [fnote]) if fwd_reached else
-                              ["Not reached: the segment's bypass sends the traffic outside ZPA first."], key="zpa_forwarding"))
+                              ["Not reached: the segment's bypass sends the traffic outside ZPA first."], key="zpa_forwarding",
+                              could_override=_overlaps(f) if fwd_reached else []))
     hops.append(flow_hop("zpa_forwarding", "ZPA client forwarding", ("bypass" if fv == "bypassed" else "conditional" if fv == "conditional" else
                                                                        "unknown" if fv == "unknown" else "pass") if fwd_reached else "not_reached",
                          fnote if fwd_reached else "Not reached.", f["rule"] if fwd_reached else None))
@@ -352,11 +349,12 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
     else:
         av, anote = _access_words(scen, source)
     modules.append(module_hop("ZPA access policy", av if acc_reached else "not_reached", (a["rule"] or {}) if acc_reached else None,
-                              _overlaps(a) if acc_reached else [],
+                              [],
                               _criteria(a["rule"], first["u"], seg, ix, names) if (a["rule"] and acc_reached) else [],
                               ([anote] + ([device_posture.plain_sentence(a["rule"], names)] if a["rule"] else [])
                                + [f"Not evaluated: {', '.join(x['types'])} in rule “{x['rule']}”." for x in out["flagged"][:5]]) if acc_reached else
-                              ["Not reached: the traffic goes outside ZPA before the access policy."], key="zpa_access"))
+                              ["Not reached: the traffic goes outside ZPA before the access policy."], key="zpa_access",
+                              could_override=_overlaps(a) if acc_reached else []))
     hops.append(flow_hop("zpa_access", "ZPA access policy", ({"allowed": "pass", "denied": "blocked"}.get(av, av if av in ("conditional", "unknown") else "pass"))
                          if acc_reached else "not_reached", anote if acc_reached else "Not reached.", a["rule"] if acc_reached else None))
 
@@ -378,9 +376,11 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
     return out
 
 
-def _overlaps(fm: Dict[str, Any]) -> List[str]:
-    """Rules before the deciding one that could decide instead (compressed)."""
-    return [f"“{c['name']}” (order {c.get('order')}, {c['action']}) could decide instead: it depends on {zpa_analysis._and_list(c['depends_on']) or 'facts not given'}"
+def _overlaps(fm: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Rules before the deciding one that could decide instead: the shared
+    hop's could_override entries."""
+    return [{"name": c["name"], "order": c.get("order"), "action": c["action"],
+             "detail": f"Could decide instead: it depends on {zpa_analysis._and_list(c['depends_on']) or 'facts not given'}."}
             for c in fm["conditional"][:8]]
 
 

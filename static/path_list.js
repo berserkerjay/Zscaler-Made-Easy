@@ -1,8 +1,8 @@
 // Path analyzer: the "Test a list" view (bulk_test.py on the server).
 //
 // The page's two views are ARIA tabs (arrow keys, Home, End, roving
-// tabindex): "One destination or a HAR file" (the page as it was: this
-// script moves the framework and #paBody into its panel) and "Test a list".
+// tabindex): "One destination or a HAR file" (the page's analysis, in
+// its own panel) and "Test a list".
 // A CSV file is read in this browser and only its text is sent to
 // /api/bulk-test/start, with the Network, Platform and Tenant of the bar
 // and the Scope page's selection; the job is followed and its summary
@@ -25,8 +25,6 @@
   if (!$('panel-list') || !$('panel-one')) return;
 
   // ── the tabs ────────────────────────────────────────────────────────
-  const one = $('panel-one');
-  ['paFramework', 'paBody'].forEach(id => { const el = $(id); if (el) one.appendChild(el); });
   const tabs = Array.from(document.querySelectorAll('.rp-tabs [role="tab"]'));
   function selectTab(t, focus) {
     tabs.forEach(x => {

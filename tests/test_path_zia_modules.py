@@ -364,9 +364,9 @@ def test_the_page_loads_the_shared_module_renderer_with_its_documented_shape():
     """WCAG 2.2 SC 1.3.1 · ASVS V14.4.1: the renderer is one shared file, documents its data shape and uses the page's chip and table classes."""
     page = open(os.path.join(ROOT, "static", "report_path.html"), encoding="utf-8").read()
     js = open(os.path.join(ROOT, "static", "path_modules.js"), encoding="utf-8").read()
-    assert page.index('src="/static/har_parse.js"') < page.index('src="/static/path_modules.js"') < page.index("PathModules.zia.mountControls")
+    assert page.index('src="/static/har_parse.js"') < page.index('src="/static/path_modules.js"') < page.index("${PathModules.section(res)}")
     head = js[:2500]
     for word in ("module:", "verdict:", "rule:", "overlaps:", "criteria:", "notes:", "'match' | 'no_match' | 'unknown'"):
         assert word in head, word
-    assert "df-chip" in js and "df-table" in js and '<th scope="col">' in js and "aria-label=\"Destination port" in js
+    assert "df-chip" in js and "df-table" in js and '<th scope="col">' in js and "aria-label=\"Destination port" in page
     assert not re.search(r"#[0-9a-fA-F]{3,6}\b", open(os.path.join(ROOT, "static", "reports.css"), encoding="utf-8").read().split("/* Path modules")[1])

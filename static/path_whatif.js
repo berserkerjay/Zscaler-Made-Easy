@@ -1,14 +1,14 @@
 // ── Path analyzer: what-if for a user, group, department and location ──
-// Adds the optional identity inputs to the Path analyzer and, under each
-// result, the list "Policy action also depends on" (path_whatif.py on the
-// server). Loaded by report_path.html after its other scripts; it keeps to
-// itself so the page needs only its <script> line:
+// The what-if panel's inputs are in the page (report_path.html, #paWhatIf);
+// this file holds what they do and what the result shows:
 //
-// * the identity is added to the body of POST /api/path-analyzer/start
-//   (only that request, only when something was typed);
-// * the result is read from the job poll the page already makes
-//   (GET /api/dlp-packs/jobs/<id>, a copy of the answer) and the list is
-//   shown under the verdict once the page has drawn it.
+// * PathWhatIf.init({ credBody, scopeSelection }) wires each "Look up in
+//   ZIA" button with the page's own credentials and Scope page selection;
+// * PathWhatIf.identity() is what the page adds to its start request
+//   (`identity`, only what was typed or picked);
+// * PathWhatIf.section(whatif) is "Policy action also depends on" for a
+//   result (path_whatif.py on the server), and PathWhatIf.wire(container)
+//   wires its "Show more" button.
 //
 // Names are looked up in ZIA only when ZIA platform is ticked on the Scope
 // page (the server checks it again): one search of at most 20 names per
@@ -16,51 +16,16 @@
 (function () {
   'use strict';
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const FIELDS = [
-    ['user', 'User', 'jane@acme.com or a display name'],
-    ['group', 'Group', 'one or more, separated by commas'],
-    ['department', 'Department', 'Finance'],
-    ['location', 'Location', 'HQ office'],
-  ];
+  const FIELDS = ['user', 'group', 'department', 'location'];
   const STATE = { match: ['met', 'ok'], nomatch: ['not met', 'fail'], unknown: ['depends', 'warn'] };
   const picked = {};          // field -> {id, name, email?} chosen from a ZIA search
-  let lastResult = null;      // the newest Path analyzer result seen in a job poll
-
-  // ── Credentials and scope, read the way the page reads them ──────────
-  function credBody() {
-    const sel = document.getElementById('paTenant');
-    const v = (sel && sel.value) || 'server';
-    const op = window.opener && !window.opener.closed ? window.opener : null;
-    if (v === 'opener' && op && typeof op.migrateCredBody === 'function') return op.migrateCredBody() || {};
-    if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
-    return {};
-  }
-  function readJson(key, fallback) {
-    try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
-  }
-  function scopeSelection() {
-    let scopes = null, channels = null;
-    const op = window.opener && !window.opener.closed ? window.opener : null;
-    try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
-    try { if (op && typeof op.__dbChannelScope === 'function') channels = op.__dbChannelScope(); } catch (e) { channels = null; }
-    if (!Array.isArray(scopes)) {
-      const live = readJson('zassess_scopes_live_v1', null);
-      scopes = live && Array.isArray(live.scopes) ? live.scopes : null;
-    }
-    if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
-    const out = {};
-    Object.entries(channels || readJson('zassess_channels_v1', {}) || {}).forEach(([id, v]) => {
-      const c = v && typeof v === 'object' ? v.choice : v;
-      if (c === 'zscaler' || c === 'alternative') out[id] = c;
-    });
-    return { scopes: scopes.map(String), channels: out, from_page: true };
-  }
-  const lookupAllowed = () => scopeSelection().scopes.includes('zia_extras');
+  let page = { credBody: () => ({}), scopeSelection: () => ({ scopes: [], channels: {}, from_page: false }) };
+  const lookupAllowed = () => (page.scopeSelection().scopes || []).includes('zia_extras');
 
   // ── The inputs ───────────────────────────────────────────────────────
   function identity() {
     const out = {};
-    FIELDS.forEach(([k]) => {
+    FIELDS.forEach(k => {
       const el = document.getElementById(`paWi_${k}`);
       const v = el ? el.value.trim().slice(0, 200) : '';
       if (!v) return;
@@ -70,25 +35,11 @@
     if (picked.groups && out.group === picked.groups.map(g => g.name).join(', ')) { out.groups = picked.groups; delete out.group; }
     return out;
   }
-  function mount() {
-    const main = document.querySelector('main.rp-card');
-    const body = document.getElementById('paBody');
-    if (!main || !body || document.getElementById('paWhatIf')) return;
-    const box = document.createElement('details');
-    box.className = 'pa-framework pa-whatif';
-    box.id = 'paWhatIf';
-    box.innerHTML = `<summary>What-if: a user, group, department or location (optional)</summary>
-      <div class="df-hint">Leave these empty to analyze for anyone; the result then lists what the policy action also depends on. Fill any of them to evaluate rules scoped to that identity: rules for it apply, rules for others are skipped. Groups you give are taken as the user's only groups.</div>
-      <div class="pa-wi-grid">${FIELDS.map(([k, label, ph]) => `
-        <div class="pa-wi-field">
-          <label class="df-ctl"><span class="lbl">${E(label)}</span><input type="text" id="paWi_${E(k)}" placeholder="${E(ph)}" autocomplete="off" spellcheck="false" maxlength="200"></label>
-          <button type="button" class="rp-btn" data-wi-find="${E(k)}" aria-describedby="paWiScope">Look up in ZIA</button>
-          <ul class="pa-wi-results" id="paWiRes_${E(k)}" aria-label="${E(label)} matches in ZIA" hidden></ul>
-        </div>`).join('')}
-      </div>
-      <p class="df-hint" id="paWiScope"></p>
-      <div class="sr-only" id="paWiLive" role="status" aria-live="polite"></div>`;
-    main.insertBefore(box, body);
+  // The panel is in the page; this wires its buttons and the scope hint.
+  function init(fns) {
+    page = Object.assign(page, fns || {});
+    const box = document.getElementById('paWhatIf');
+    if (!box) return;
     const hint = document.getElementById('paWiScope');
     const refresh = () => {
       const ok = lookupAllowed();
@@ -115,7 +66,7 @@
     if (btn) { btn.disabled = true; btn.textContent = 'Looking up…'; }
     try {
       const r = await fetch('/api/path-analyzer/identities', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({}, credBody(), scopeSelection(), { kind, query: q })) });
+        body: JSON.stringify(Object.assign({}, page.credBody(), page.scopeSelection(), { kind, query: q })) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
       found[kind] = d.results || [];
@@ -176,52 +127,18 @@
         <div class="df-hint">Each row is a rule scoped to a user, group, department, location, time window or device trust level that would change what happens to this traffic, most disruptive first.</div>
         ${who}${table}</section>`;
   }
-  function place() {
-    const res = lastResult;
-    const body = document.getElementById('paBody');
-    const verdict = body && body.querySelector('.pa-verdict');
-    if (!res || !res.whatif || !verdict || document.getElementById('paWhatIfOut')) return;
-    const head = document.getElementById('paHeadline');
-    if (!head || !res.verdict || head.textContent !== res.verdict.headline) return;
-    verdict.insertAdjacentHTML('afterend', section(res.whatif));
-    const more = document.getElementById('paWiMore');
-    if (more) more.addEventListener('click', () => {
+  // The "Show more" button of a drawn section.
+  function wire(container) {
+    const more = container && container.querySelector('#paWiMore');
+    if (!more) return;
+    more.addEventListener('click', () => {
+      const rows = container.querySelectorAll('#paWhatIfOut [data-wi-more]');
       const open = more.getAttribute('aria-expanded') !== 'true';
-      document.querySelectorAll('#paWhatIfOut [data-wi-more]').forEach(tr => { tr.hidden = !open; });
+      rows.forEach(tr => { tr.hidden = !open; });
       more.setAttribute('aria-expanded', open ? 'true' : 'false');
-      more.textContent = open ? 'Show fewer' : `Show ${document.querySelectorAll('#paWhatIfOut [data-wi-more]').length} more`;
+      more.textContent = open ? 'Show fewer' : `Show ${rows.length} more`;
     });
   }
 
-  // ── The two requests this joins ───────────────────────────────────────
-  const START = '/api/path-analyzer/start';
-  const JOBS = /^\/api\/dlp-packs\/jobs\/[A-Za-z0-9_-]+(\?|$)/;
-  const realFetch = window.fetch.bind(window);
-  window.fetch = function (input, init) {
-    const url = typeof input === 'string' ? input : (input && input.url) || '';
-    let path = '';
-    try { const u = new URL(url, location.href); if (u.origin === location.origin) path = u.pathname + u.search; } catch (e) { path = ''; }
-    if (path === START && init && typeof init.body === 'string') {
-      try {
-        const ident = identity();
-        if (Object.keys(ident).length) init = Object.assign({}, init, { body: JSON.stringify(Object.assign(JSON.parse(init.body), { identity: ident })) });
-      } catch (e) { /* the body is sent as the page made it */ }
-      lastResult = null;
-    }
-    const p = realFetch(input, init);
-    if (JOBS.test(path)) {
-      p.then(r => (r.ok ? r.clone().json() : null)).then(snap => {
-        if (snap && snap.status === 'done' && snap.result && snap.result.verdict && snap.result.whatif) { lastResult = snap.result; place(); }
-      }).catch(() => { /* the page reports its own errors */ });
-    }
-    return p;
-  };
-
-  function init() {
-    mount();
-    const body = document.getElementById('paBody');
-    if (body && window.MutationObserver) new MutationObserver(place).observe(body, { childList: true });
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
-  window.PathWhatIf = { identity, section };
+  window.PathWhatIf = { init, identity, section, wire };
 })();

@@ -17,6 +17,7 @@ const DF_STATUS = {
   assumed: ['Assumed tunnel', 'dim'], na: ['Not evaluated', 'dim'], step: ['Step', 'ok'],
   out_of_scope: ['Not in scope', 'dim'], not_reached: ['Not reached', 'dim'], conditional: ['Conditional', 'dim'],
   inventory: ['Inventory only', 'dim'], metadata_only: ['No content scan', 'dim'],
+  zpa_allowed: ['Carried by ZPA', 'ok'], zpa_denied: ['Blocked by ZPA', 'block'], zpa_conditional: ['Depends on the user', 'dim'],
 };
 const DF_OUTCOME = {
   bypassed: ['Never reaches Zscaler', 'fail'], blocked: ['Blocked before content', 'block'], blind: ['Reaches ZIA encrypted: DLP blind', 'fail'],
@@ -24,6 +25,8 @@ const DF_OUTCOME = {
   conditional: ['Applicability conditional', 'dim'], metadata_only: ['No content-inspecting engine established', 'dim'],
   unknown: ['Unable to verify the path or rules', 'dim'],
   out_of_scope: ['Not in scope: not assessed', 'dim'],
+  zpa_allowed: ['Carried by ZPA and allowed: ZIA does not apply', 'ok'], zpa_denied: ['Blocked by ZPA: ZIA does not apply', 'block'],
+  zpa_conditional: ['ZPA: depends on the user or device', 'dim'],
 };
 const DF_HOP_ORDER = ['device', 'zcc', 'forwarding', 'pac', 'cac', 'url', 'ssl', 'ftc', 'dlp', 'incident'];
 
@@ -56,12 +59,27 @@ const DF_ENFORCEMENT = [
   { key: 'workflow', label: 'Workflow Automation', sub: 'triage · notify · resolve', text: 'Workflow Automation can ingest incidents through a supported configured integration. This configuration report does not observe successful delivery; verify integration readiness and correlate an actual incident.' },
 ];
 
+// The Path analyzer's framework: the same flow with what it checks before
+// ZIA. ZPA comes first (Client Connector sends a destination a ZPA
+// application segment matches to ZPA, never to ZIA), a workload's traffic
+// is forwarded by its Cloud or Branch Connector instead of Client
+// Connector, and the PAC file is evaluated, never run.
+const DF_PATH_ENFORCEMENT = (() => {
+  const zpa = { key: 'zpa', label: 'ZPA', sub: 'checked first', text: 'Client Connector checks ZPA before anything else: the application segment that matches the destination and port, the segment\'s bypass setting, the client forwarding policy and the access policy. A destination ZPA carries goes to the application through ZPA and never reaches ZIA. Traffic from a workload is forwarded by its Cloud or Branch Connector instead, whose forwarding rules send it to ZIA, to ZPA, direct, or drop it.' };
+  const out = DF_ENFORCEMENT.map(s => (s.key !== 'pac' ? s : Object.assign({}, s, {
+    text: s.text + ' The Path analyzer evaluates the PAC file for the destination (parsed and interpreted, never run) and says what it answers.' })));
+  out.splice(1, 0, zpa);
+  return out;
+})();
+
 // The reference flow as a diagram in the same style as a traced path,
 // with an explanation per stage; clicking a stage scrolls to its text.
-function renderPolicyEnforcementFlow(container) {
+// `stages` is DF_ENFORCEMENT unless a page gives its own (DF_PATH_ENFORCEMENT).
+function renderPolicyEnforcementFlow(container, stages) {
+  const list = stages || DF_ENFORCEMENT;
   const t = { platform: 'Any device', network: 'any network',
-    hops: DF_ENFORCEMENT.filter(s => s.key !== 'device').map(s => ({ key: s.key, label: s.label, status: 'step', detail: s.sub })) };
-  const steps = DF_ENFORCEMENT.map((s, i) => `<li class="df-step" data-hop="${_dfE(s.key)}"><strong>${i + 1}. ${_dfE(s.label)}</strong> <span class="df-by">${_dfE(s.sub)}</span><div class="df-hop-d">${_dfE(s.text)}</div></li>`).join('');
+    hops: list.filter(s => s.key !== 'device').map(s => ({ key: s.key, label: s.label, status: 'step', detail: s.sub })) };
+  const steps = list.map((s, i) => `<li class="df-step" data-hop="${_dfE(s.key)}"><strong>${i + 1}. ${_dfE(s.label)}</strong> <span class="df-by">${_dfE(s.sub)}</span><div class="df-hop-d">${_dfE(s.text)}</div></li>`).join('');
   container.innerHTML = `<div class="df-flow-wrap">${_dfSvg(t)}</div>
     <div class="df-hint">Reference model for a ZIA web request; it is not a universal execution order for every channel or transaction. Click a stage for what it does. Endpoint DLP, SaaS Security API and Email DLP have separate capture and rule flows. Each channel requires its own supported evidence delivery integration.</div>
     <ol class="df-steps">${steps}</ol>

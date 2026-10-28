@@ -192,7 +192,7 @@ def test_the_page_shows_the_policy_framework_and_the_assigned_profiles():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     html = TestClient(srv.app).get("/report/path").text
     assert 'id="paFramework"' in html and "how Zscaler processes a policy" in html
-    assert "renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'))" in html
+    assert "renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'), DF_PATH_ENFORCEMENT)" in html
     assert "candidate Client Connector app profile" in html and "forwarding profile" in html.lower()
     assert 'Candidate Client Connector app profile' in html and 'Linked forwarding profile' in html
     css = open(os.path.join(root, "static", "reports.css"), encoding="utf-8").read()
