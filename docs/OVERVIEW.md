@@ -61,8 +61,9 @@ what you get, what to do next.
   the customer's cloud, vanity domain, API client ID and secret, or the
   classic ZIA API sign-in (admin username, password, API key); tenant
   profiles save those details and the run history per customer.
-  Authenticate only signs in (it reads nothing from the tenant) and
-  answers "Signed in" or a plain reason why not.
+  Authenticate only signs in (it reads none of the tenant's configuration)
+  and answers "Signed in" or a plain reason why not; right after it, the
+  readiness check (see Required API access) says what the API client can do.
 - **Assessment results** — the full results in their own tab: Summary
   (score and maturity), Scores by section, Best practices and
   benchmarks, Regulatory alignment, the Data governance journey, and
@@ -461,9 +462,20 @@ what you get, what to do next.
 - **Diagnose ZCC access** — probes every Client Connector API endpoint
   with the credentials you entered and shows which answer. Where: the
   Connect to the tenant card.
-- **Required API access** — the exact API roles and scopes the app needs
-  per assessment scope, to send to the customer's admin. Where: the
-  Connect to the tenant card (`/permissions`).
+- **Required API access** — what this API client can do now and the exact
+  API roles and scopes the app needs per assessment scope, to send to the
+  customer's admin. The live part comes from the readiness check that runs
+  right after Authenticate: per product (ZIA, ZPA, Client Connector, ZDX,
+  Z-Insights, AI Guard) whether the client can read, change or not reach
+  it, read from the OneAPI access token (decoded without checking its
+  signature, for display only; the token is never shown, logged or kept)
+  and a few reads for what is in scope (the ZIA licences and API role, the
+  Client Connector company switches and roles, the ZPA roles, one ZDX and
+  one Z-Insights call); the licences and SKUs; and every Scope page key and
+  every change of this app that will not work, with the plain steps to ask
+  the admin for. On the Start page the same check shows as a short summary,
+  greys out the scopes that will not work and stops a deploy or removal
+  the role cannot make. Where: the Connect to the tenant card (`/permissions`).
 
 ## The policy packs it ships with
 

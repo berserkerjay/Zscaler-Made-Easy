@@ -416,6 +416,7 @@ GUI_ADDONS = [
     ("explain.js", "script"),
     ("find_anything.js", "script"),  # Find anything (Ctrl/Cmd+J): pages, glossary terms, tenant objects, findings
     ("guide.js", "script"),
+    ("readiness.js", "script"),     # the readiness summary after sign-in; greys out what this API client cannot do
     ("update_beacon.js", "script"),  # checks for updates in the background and shows a notice when one is out
     ("eval_all.js", "script"),
     ("bypass_report.js", "script"),
@@ -3391,6 +3392,9 @@ async def tenant_check(req: TenantCredsRequest):
     method = creds["auth_method"]
     try:
         client = await asyncio.to_thread(_build_sdk_client, creds)   # signs in as it is built; no listing
+        # What the sign-in token says (products and role names; decoded, never
+        # verified, never returned): readiness.py. Reads nothing from the tenant.
+        access = _readiness_token_access(client, method)
         # Sign-in only: end the session at once (the classic ZIA API keeps
         # an admin session open until it idles out otherwise).
         await asyncio.to_thread(_close_quietly, client)
@@ -3399,7 +3403,7 @@ async def tenant_check(req: TenantCredsRequest):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail={"tenant_label": label, "auth_method": method,
                                                      **_explain_connection_error(tenant_auth.mask_secrets(str(e), creds), method)})
-    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": []}
+    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": [], "access": access}
     if method == tenant_auth.LEGACY:
         out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
     return out
@@ -5883,6 +5887,10 @@ async def serve_permissions_page():
     notes_html = "".join(
         f'<li>{esc(n)}</li>' for n in data.get("global_notes", [])
     )
+    import readiness as _rd
+    latest = _readiness_latest()
+    live_html = _rd.html_section(latest)
+    verdict = {f["key"]: f for f in (latest[0].get("scopes") or [])} if latest else {}
     cards_html = []
     for key, s in (data.get("scopes") or {}).items():
         reads = "".join(
@@ -5920,6 +5928,7 @@ async def serve_permissions_page():
           <div class="license"><strong>License / subscription:</strong> {esc(s.get("license_required", "—"))}</div>
           {customer_id_note}
           {note_block}
+          {_rd.scope_badge(verdict.get(key))}
         </section>
         """)
 
@@ -5988,6 +5997,29 @@ async def serve_permissions_page():
               border-radius: 4px; font-size: 0.82rem; }}
   .note {{ margin-top: 0.4rem; color: var(--dim); font-size: 0.82rem; }}
   .muted {{ color: var(--dim); }}
+  .rd {{ margin-bottom: 1.5rem; }}
+  .rd h2 {{ font-size: 1.25rem; margin-bottom: 0.3rem; }}
+  .rd h3 {{ font-size: 1.05rem; margin-bottom: 0.4rem; }}
+  .rd h4 {{ font-size: 0.92rem; margin: 0.8rem 0 0.35rem; }}
+  .rd-card {{ border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 0.8rem; }}
+  .rd-wrap {{ overflow-x: auto; max-width: 100%; margin: 0.5rem 0; }}
+  .rd-t {{ width: 100%; border-collapse: collapse; font-size: 0.84rem; }}
+  .rd-t caption {{ text-align: left; color: var(--dim); font-size: 0.8rem; padding-bottom: 0.3rem; }}
+  .rd-t th, .rd-t td {{ text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }}
+  .rd-t thead th {{ color: var(--dim); font-size: 0.75rem; }}
+  .rd-chip {{ display: inline-block; font-size: 0.74rem; font-weight: 700; padding: 0.05rem 0.45rem; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }}
+  .rd-chip.none, .rd-chip.blocked, .rd-chip.not_licensed {{ border-color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }}
+  .rd-chip.read_only, .rd-chip.partial {{ border-color: var(--warn); }}
+  .rd-chip.write, .rd-chip.read {{ border-color: var(--accent); }}
+  .rd-kind {{ color: var(--dim); font-size: 0.75rem; margin-left: 0.4rem; }}
+  .rd-gaps {{ list-style: none; font-size: 0.86rem; }}
+  .rd-gaps li {{ border-left: 3px solid var(--warn); padding: 0.35rem 0.6rem; margin-bottom: 0.4rem; }}
+  .rd-note, .rd-flags, .rd-empty, .rd-ok {{ color: var(--dim); font-size: 0.84rem; margin: 0.3rem 0; }}
+  .rd-steps summary {{ cursor: pointer; color: var(--accent); font-size: 0.82rem; margin-top: 0.2rem; }}
+  .rd-steps ol {{ margin: 0.3rem 0 0 1.3rem; font-size: 0.82rem; }}
+  .rd-badge {{ margin-top: 0.5rem; padding: 0.45rem 0.6rem; border-left: 3px solid var(--border); border-radius: 4px; font-size: 0.82rem; }}
+  .rd-badge.bad {{ border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); }}
+  .rd-badge.good {{ border-left-color: var(--accent); }}
   .print-btn {{
     float: right; margin-bottom: 1rem;
     background: #2563eb; color: white; border: 0;
@@ -6001,7 +6033,7 @@ async def serve_permissions_page():
 <main class="container" role="main">
   <button class="print-btn" onclick="window.print()" aria-label="Print this page">🖨 Print</button>
   <h1><span class="accent">Required API access</span> per assessment scope</h1>
-  <p class="lead">Minimum OneAPI role permissions to grant on the API client before running each assessment scope. All checks are read-only.</p>
+  <p class="lead">What this API client can do right now (from the last readiness check), then the minimum OneAPI role permissions to grant before running each assessment scope. All checks are read-only.</p>
   <div class="notes">
     <h2>Before you start</h2>
     <ol>{notes_html}</ol>
@@ -6010,6 +6042,7 @@ async def serve_permissions_page():
       <a href="{esc(portal)}" target="_blank" rel="noopener noreferrer" class="portal-link">{esc(portal)} ↗</a>
     </p>
   </div>
+  {live_html}
   {''.join(cards_html)}
 </main>
 </body>
@@ -6032,12 +6065,95 @@ async def permissions_required():
     try:
         import permissions as _perm
         out["write_permissions"] = _perm.write_permissions_needed(_perm.WRITE_PERMISSIONS.keys())
+        import readiness as _rd
+        out["readiness"] = _rd.catalog()
         out["partial_note"] = ("A client that lacks a permission does not stop the tool: the checks, report sections and plan items it "
                                "cannot read are marked as not permitted and everything else runs. The assessment results list what a "
                                "full scan would need; a preflight lists what a verified plan would need.")
     except Exception:  # noqa: BLE001
         pass
     return out
+
+
+# ── Readiness: what this API client can do here (readiness.py) ─────────────────
+# Shown on Start right after sign-in and, in full, on Required API access
+# (/permissions). The token is decoded for display only; reads are only for
+# what is in scope; the latest answers are kept in memory, never on disk.
+READINESS_WHAT = "The readiness check"
+import collections as _collections
+_READINESS: "_collections.OrderedDict[str, Dict[str, Any]]" = _collections.OrderedDict()
+_READINESS_MAX = 8
+
+
+def _readiness_token_access(client: Any, method: str) -> Dict[str, Any]:
+    """The sign-in token's products and role names (readiness.token_access); never raises."""
+    try:
+        import readiness
+        return readiness.token_access(client, method)
+    except Exception:  # noqa: BLE001 — display only: a failure here never fails the sign-in
+        return {"ok": False, "why": "The access token could not be read.", "products": [], "scopes": []}
+
+
+def _readiness_latest() -> List[Dict[str, Any]]:
+    """The latest readiness answers, newest first (memory only)."""
+    return [dict(v) for v in reversed(list(_READINESS.values()))]
+
+
+class ReadinessRequest(ScopedTenantCredsRequest):
+    """Tenant credentials and the Scope page selection: readiness reads only
+    the products in scope (else 400 before sign-in). `customer_id` is the
+    ZPA customer ID (ZPA roles are read only with one)."""
+    customer_id: str = ""
+
+
+@app.post("/api/readiness/start")
+async def readiness_start(req: ReadinessRequest, request: Request):
+    """Start the readiness check as a job the page follows: the access
+    token's products and roles (decoded, not verified), then for the
+    products in scope only the ZIA licences and API role, Client Connector
+    company info and roles, ZPA roles, and one ZDX and one Z-Insights call.
+    Read-only. Refused (400) before sign-in when nothing it reads is in
+    scope. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import pack_jobs
+    import readiness
+    sc, _ch, _src = _scope_selection(req)   # user rule 1: nothing read out of scope
+    if not readiness.in_scope_products(sc):
+        raise HTTPException(status_code=400, detail=f"{READINESS_WHAT} is not in scope: on the Scope page tick at least one of DLP, ZIA platform, "
+                                                    "ZPA, ZCC, ZDX or ZIA Insights, then run it again. Nothing was read.")
+    creds = _tenant_creds(req)
+    creds["customer_id"] = validate_customer_id(req.customer_id) if req.customer_id else (creds.get("customer_id") or "")
+    label = tenant_auth.record_label(creds)
+    method = creds["auth_method"]
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+
+    def fn(log, cancel):
+        try:
+            out = readiness.run(client, sc, auth_method=method, customer_id=creds.get("customer_id", ""), log=log, cancel=cancel, label=label)
+        finally:
+            _close_quietly(client)
+        if out.get("status") == "done":
+            _READINESS.pop(label, None)
+            _READINESS[label] = out
+            while len(_READINESS) > _READINESS_MAX:
+                _READINESS.popitem(last=False)
+        return out
+    job = pack_jobs.start("readiness", fn, label="Readiness check", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/readiness/latest")
+async def readiness_latest():
+    """The latest readiness answers this server holds (memory only, newest
+    first, at most 8 tenants). No tenant call."""
+    return {"results": _readiness_latest()}
+
+
+@app.get("/api/readiness/catalog")
+async def readiness_catalog():
+    """What every Scope page key and every write feature needs: product,
+    ZIA permission and licence (readiness.catalog). No tenant call."""
+    import readiness
+    return readiness.catalog()
 
 
 @app.get("/api/branding")

@@ -89,6 +89,10 @@
     'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
     'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
     'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
+    'access token': { term: 'access token', def: 'An access token is a short pass Zscaler gives this app when it signs in. It lists what the app may use. The app shows what it says, but never keeps it.' },
+    'api role': { term: 'API role', def: 'An API role is the set of things an API client may do. An admin picks it. It can let the app look, change things, or do nothing.' },
+    'licence': { term: 'licence', def: 'A licence is a part of Zscaler your company pays for. If a part is not on the list, its rules will not work.' },
+    'readiness check': { term: 'readiness check', def: 'The readiness check looks at what this app may do, right after you sign in. It greys out what will not work and says what to ask for.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

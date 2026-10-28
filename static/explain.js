@@ -20,9 +20,9 @@
   X.connect = {
     group: 'Start', name: 'Connect to the tenant (sign-in details, profiles, Authenticate)', href: '/',
     what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer.',
-    why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does nothing else: it reads nothing from the tenant, because every read counts against the tenant\'s ZIA API rate limit. The tenant is read only when you run an assessment, and only for what you put in scope.',
+    why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does not read the tenant\'s configuration, because every read counts against the tenant\'s ZIA API rate limit. Right after it, the readiness check reads only the API client\'s role and the licences, for what is in scope; the configuration is read only when you run an assessment.',
     when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history.',
-    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection). Signing in reads nothing, so a role that cannot read DLP shows up only when the assessment runs, as checks the client was not permitted to run.',
+    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection). Then a readiness summary: per product whether the API client can read, change or not reach it, and every scope or change that will not work, greyed out with the steps to ask the admin for.',
     next: 'Open Scope assessment: mark the channels the customer owns, choose what to check and which frameworks to map to, name the organisation and assessor, and click Run assessment.',
   };
   X.results = {
@@ -355,11 +355,11 @@
   };
   X.permissions = {
     group: 'Troubleshoot', name: 'Required API access', href: '/permissions',
-    what: 'The exact API roles and scopes the app needs per assessment scope, and what a configuration change needs on top.',
-    why: 'The customer admin will ask "what access does this tool need?" before creating the API client. This is the answer, and the least access that works.',
-    when: 'Before the engagement, when the API client is being created; and when a scope comes back partial.',
-    get: 'A per-scope list you can send to the customer as-is.',
-    next: 'Send it; then run Authenticate again once the client is updated.',
+    what: 'What this API client can do now, per product (ZIA, ZPA, Client Connector, ZDX, Z-Insights, AI Guard): can read, can change or no access, the licences and SKUs the tenant has, and what each gap blocks in this app. Below that, the minimum API roles each assessment scope needs and what a configuration change needs on top.',
+    why: 'The customer admin will ask "what access does this tool need?" before creating the API client, and a role that is a little too small fails quietly later. This answers both: the least access that works, and what is missing right now, with the steps to ask the admin for.',
+    when: 'Before the engagement, when the API client is being created; right after Authenticate, which runs the readiness check by itself; and whenever a scope comes back partial.',
+    get: 'A per-product table read from the access token (without checking its signature, for display only) and a few reads in scope, the licence list, every Scope page key and every change that will not work with the reason and plain steps, and the per-scope list you can send to the customer as-is.',
+    next: 'Send the steps to the customer admin; once they have added the access, click Authenticate again and reload this page to see the new answer.',
   };
   X.remediate = {
     group: 'Close the gaps', name: 'Review & remediate', href: '',

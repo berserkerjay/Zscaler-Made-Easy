@@ -24,7 +24,7 @@ const _gdE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&
 // session) and reads nothing from the tenant, because every read counts
 // against the tenant's ZIA API rate limit. The tenant is read only by an
 // assessment the operator runs, for what the Scope page puts in scope.
-const GD_SIGNIN_ONLY = 'Sign-in only: the tenant\'s configuration was not read. The assessment reads only what you put in scope on the Scope page, when you click Run assessment.';
+const GD_SIGNIN_ONLY = 'The tenant\'s configuration was not read. Right after sign-in the readiness check reads only the API client\'s role and the licences, for what is in scope. The assessment reads only what you put in scope on the Scope page, when you click Run assessment.';
 const _gdVal = id => ((document.getElementById(id) || {}).value || '').trim();
 
 // The connection record is kept across restarts, so it never holds the
@@ -421,7 +421,7 @@ function _gdAuthStatus() {
   if (GD.testing) { st.textContent = 'Authenticating…'; st.className = 'auth-status'; return; }
   if (!c || c.vd !== _gdIdent()) { st.textContent = ''; st.className = 'auth-status'; return; }
   st.className = 'auth-status ' + (c.ok ? 'ok' : 'bad');
-  st.textContent = c.ok ? `Signed in to ${c.label || c.name || 'the tenant'}. Nothing in the tenant was read. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
+  st.textContent = c.ok ? `Signed in to ${c.label || c.name || 'the tenant'}. The tenant's configuration was not read; the readiness check in Start here says what this API client can do. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
 }
 function _gdConnHtml() {
   const c = GD.conn;
@@ -505,6 +505,8 @@ async function _gdTest() {
       GD.conn = { ok: false, kind: r.status === 403 ? 'permission' : 'tenant', ...idn, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw, status: r.status };
     } else {
       GD.conn = { ok: true, ...idn, label: data.tenant_label, problems: data.problems || [], at: new Date().toISOString() };
+      // Readiness right after sign-in (static/readiness.js): the token's products now, then the scoped check.
+      if (window.dlpReadiness) setTimeout(() => window.dlpReadiness.signedIn(data.access), 0);
     }
   } catch (e) {
     const msg = String(e && e.message || e);
@@ -525,7 +527,7 @@ async function _gdTest() {
 function _gdAuthVerdict(conn) {
   if (!conn) return;
   if (conn.ok) {
-    if (typeof announce === 'function') announce(`Signed in to ${conn.label || conn.name || 'the tenant'}. Nothing in the tenant was read. Next: choose what to assess on the Scope page and click Run assessment.`);
+    if (typeof announce === 'function') announce(`Signed in to ${conn.label || conn.name || 'the tenant'}. The tenant's configuration was not read. The readiness check now says what this API client can do. Next: choose what to assess on the Scope page and click Run assessment.`);
     if (typeof window.__dbSignedIn === 'function') window.__dbSignedIn();   // clears the sidebar's "Sign in first"
     const card = document.querySelector('.gd-conn.ok');
     if (card) { card.setAttribute('tabindex', '-1'); try { card.focus({ preventScroll: false }); } catch (e) {} }
