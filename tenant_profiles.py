@@ -46,6 +46,20 @@ def store_path() -> str:
     return os.environ.get("DLP_CHECK_PROFILES") or os.path.join(_APP_DIR, "tenant_profiles.json")
 
 
+# A profile's POV (pov.py) lives in the profile's folder: povs/<profile id>.json
+# beside this store, owner-only. It goes with its profile (delete).
+POV_DIR = "povs"
+_PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
+
+
+def pov_path(profile_id: str) -> str:
+    """The file that holds the profile's POV; ValueError for an id that is
+    not a profile id (nothing from a request becomes a path unchecked)."""
+    if not isinstance(profile_id, str) or not _PROFILE_ID_RE.match(profile_id):
+        raise ValueError("not a tenant profile id")
+    return os.path.join(os.path.dirname(os.path.abspath(store_path())), POV_DIR, f"{profile_id}.json")
+
+
 def slugify(name: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
     return s[:48] or "tenant"
@@ -380,7 +394,16 @@ def delete(profile_id: str) -> bool:
             _forget_secret(profile_id, p.get(field), field)
         del data["profiles"][profile_id]
         _write(data)
+    try:   # the profile's POV (and its last-good copy) goes with it
+        path = pov_path(profile_id)
+    except ValueError:
         return True
+    for f in (path, path + ".last-good"):
+        try:
+            os.unlink(f)
+        except OSError:
+            pass
+    return True
 
 
 def mark_proposal_queue_migrated(profile_id: str) -> bool:

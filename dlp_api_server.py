@@ -171,7 +171,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage", "/report/browser"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage", "/report/browser", "/report/pov"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -9116,6 +9116,249 @@ async def path_analyzer_run(req: PathAnalyzerRequest):
     """The same analysis, waited for (for scripts)."""
     client, snapshot, label, scope = await _path_analysis_inputs(req)
     return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None, scope)
+
+
+# ── POV planner (pov.py): one proof of value per tenant profile ─────────
+# Local: the POV lives in the tenant profile's folder (tenant_profiles.
+# pov_path) and is bound to the profile's tenant. Prove it and the Insights
+# counts read the tenant through the Path analyzer and Traffic insights
+# readers (scope gate first, read-only, Stop); nothing here writes to a
+# tenant. Every change to the POV is in the audit log with who made it.
+class PovRequest(TenantCredsRequest):
+    """A POV call: the tenant profile it belongs to (profile_id) and, for
+    the call that needs it, the intake, the changes and the revision they
+    are made on, an imported file, a template name or the report format.
+    Sign-in details typed on the assessment page may come too: they must
+    name the profile's tenant."""
+    intake: Dict[str, Any] = {}
+    template_id: str = ""
+    rev: Optional[int] = None
+    changes: Dict[str, Any] = {}
+    content: str = ""
+    replace: bool = False
+    confirm: bool = False
+    format: str = "pdf"
+    name: str = ""
+    description: str = ""
+
+
+class PovProveRequest(PathAnalyzerRequest):
+    """Prove it: the runbook test whose destination the Path analyzer
+    traces (its own destination, or `destination` to try another one)."""
+    test_id: str = ""
+
+
+class PovInsightsRequest(InsightsRequest):
+    """The Insights counts a POV records: the window, as Traffic insights takes it."""
+
+
+def _pov_call(fn, *args, **kwargs):
+    import pov
+    try:
+        return fn(*args, **kwargs)
+    except pov.PovError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except ValueError as e:   # a refusal in words (an untrusted import, a value out of range), never a 500
+        raise HTTPException(status_code=400, detail=str(e)[:300])
+
+
+def _pov_typed(req: Any) -> Dict[str, str]:
+    """The sign-in details the request typed itself (never a profile's or
+    the server's): its tenant must be the profile's (when it names one),
+    and its secrets are masked out of anything the POV keeps."""
+    typed = {k: str(getattr(req, k, "") or "").strip() for k in ("auth_method", "cloud", "vanity_domain", "username", "client_secret", "password", "api_key")}
+    try:
+        tenant_auth.normalize_method(typed["auth_method"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return tenant_auth.normalize(typed)
+
+
+def _pov_view(b: Dict[str, str], p: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    import pov
+    return {"tenant_label": b["label"], "pov": p, "templates": pov.list_templates()}
+
+
+@app.get("/report/pov")
+async def report_pov_page():
+    """Standalone tab for the POV planner (static/report_pov.html)."""
+    page = os.path.join(STATIC_DIR, "report_pov.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/api/pov/catalog")
+async def pov_catalog():
+    """What the planner draws: products, vertical presets, the runbook,
+    the test kit and the saved templates. No tenant data."""
+    import pov
+    return dict(pov.catalog(), templates=pov.list_templates())
+
+
+@app.post("/api/pov/open")
+async def pov_open(req: PovRequest):
+    """The profile's POV, or none yet. Local, never reads the tenant."""
+    import pov
+    b, p = _pov_call(pov.get, req.profile_id, _pov_typed(req))
+    return _pov_view(b, p)
+
+
+@app.post("/api/pov/create")
+async def pov_create(req: PovRequest, request: Request):
+    """Start the profile's POV from the intake (and a template)."""
+    import pov
+    p = _pov_call(pov.create, req.profile_id, _pov_typed(req), req.intake, by=_cq_by(request), template_id=req.template_id)
+    return _pov_view(p["tenant"], p)
+
+
+@app.post("/api/pov/update")
+async def pov_update(req: PovRequest, request: Request):
+    """Save changes to parts of the POV made on revision `rev`."""
+    import pov
+    p = _pov_call(pov.update, req.profile_id, _pov_typed(req), req.rev, req.changes, by=_cq_by(request))
+    return _pov_view(p["tenant"], p)
+
+
+@app.post("/api/pov/delete")
+async def pov_delete(req: PovRequest, request: Request):
+    """Delete the profile's POV (confirm=true)."""
+    import pov
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Deleting a POV needs confirm=true; export it first to keep a copy.")
+    if not _pov_call(pov.delete, req.profile_id, _pov_typed(req), by=_cq_by(request)):
+        raise HTTPException(status_code=404, detail="This tenant profile has no POV.")
+    return {"deleted": True}
+
+
+@app.post("/api/pov/export")
+async def pov_export(req: PovRequest):
+    """The POV as a JSON file (no secret is ever in a POV)."""
+    import pov
+    import report_exports
+    _b, p = _pov_call(pov.require, req.profile_id, _pov_typed(req))
+    name = report_exports.safe_filename_part((p.get("intake") or {}).get("customer"), "customer", 40)
+    return Response(content=json.dumps(pov.export(p), indent=1, ensure_ascii=False), media_type="application/json",
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_pov_{name}.json"})
+
+
+@app.post("/api/pov/import")
+async def pov_import(req: PovRequest, request: Request):
+    """Import an exported POV file into the profile (an untrusted upload:
+    size, JSON, depth, format and every field checked, off the event loop).
+    A file made for another tenant is refused."""
+    import pov
+    p = await asyncio.to_thread(_pov_call, pov.import_pov, req.profile_id, _pov_typed(req), req.content, replace=bool(req.replace),
+                                by=_cq_by(request))
+    return _pov_view(p["tenant"], p)
+
+
+@app.post("/api/pov/report")
+async def pov_report(req: PovRequest):
+    """The customer report (Word or PDF) from what actually ran: tests with
+    a result, the criteria, the evidence, and the changes this app's
+    deployment and bulk-change records show for the tenant since the POV
+    started. Local: reads no tenant."""
+    import pov
+    import tenant_profiles
+    fmt = (req.format or "pdf").lower()
+    if fmt not in ("pdf", "docx"):
+        raise HTTPException(status_code=400, detail="The report format must be pdf or docx.")
+    _b, p = _pov_call(pov.require, req.profile_id, _pov_typed(req))
+    creds = tenant_profiles.creds_from(tenant_profiles.get(req.profile_id) or {})
+    model = pov.report_model(p, await asyncio.to_thread(pov.changes_made, creds, str(p.get("created_at") or "")))
+    data = await asyncio.to_thread(pov.report_docx if fmt == "docx" else pov.report_pdf, model)
+    media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if fmt == "docx" else "application/pdf"
+    return Response(content=data, media_type=media, headers={"Content-Disposition": f"attachment; filename={pov.report_filename(model, fmt)}"})
+
+
+@app.post("/api/pov/templates")
+async def pov_template_save(req: PovRequest, request: Request):
+    """Save the POV's plan (vertical, products, criteria) as a template:
+    never the customer, the domain, the tenant, results or notes."""
+    import pov
+    _b, p = _pov_call(pov.require, req.profile_id, _pov_typed(req))
+    t = _pov_call(pov.save_template, p, req.name, req.description, by=_cq_by(request))
+    return {"template": t, "templates": pov.list_templates()}
+
+
+@app.delete("/api/pov/templates/{template_id}")
+async def pov_template_delete(template_id: str, request: Request):
+    import pov
+    if not _pov_call(pov.delete_template, template_id, by=_cq_by(request)):
+        raise HTTPException(status_code=404, detail="No such template.")
+    return {"deleted": True, "templates": pov.list_templates()}
+
+
+@app.get("/api/pov/kit/{file_id}")
+async def pov_kit_file(file_id: str):
+    """One test kit file: synthetic DLP records, the EICAR test string or a
+    unique harmless PDF. Never real data."""
+    import pov
+    data, media, name = _pov_call(pov.kit_file, file_id)
+    return Response(content=data, media_type=media, headers={"Content-Disposition": f"attachment; filename={name}",
+                                                              "Cache-Control": "no-store"})
+
+
+@app.post("/api/pov/prove/start")
+async def pov_prove_start(req: PovProveRequest, request: Request):
+    """Prove it: the Path analyzer's verdict for a runbook test's
+    destination (the same read-only, scope-gated analysis as
+    /api/path-analyzer/start), recorded on the test as evidence with
+    whether the configuration gives the expected result."""
+    import pack_jobs
+    import pov
+    test = pov.RUNBOOK_BY_ID.get(req.test_id)
+    if test is None:
+        raise HTTPException(status_code=404, detail="Unknown runbook test.")
+    if not (req.vanity_domain or req.username):
+        req.cloud = ""   # nothing typed: the profile's cloud, not this model's "production" default
+    req.destination = (req.destination or "").strip() or test["destination"]
+    if not req.destination:
+        raise HTTPException(status_code=400, detail=test["prove_note"] or "This test has no web destination for the Path analyzer.")
+    _path_scope(req)   # nothing in scope: 400 before anything else (user rule 1)
+    creds = _tenant_creds(req)
+    _pov_call(pov.require, req.profile_id, creds)   # the POV and the sign-in name the same tenant, before sign-in
+    client, snapshot, label, scope = await _path_analysis_inputs(req)
+    by = _cq_by(request)
+
+    def run(log, cancel):
+        out = _run_path_analysis(client, req, snapshot, label, log, cancel, scope)
+        if out.get("verdict") and not out.get("stopped"):
+            try:
+                p = pov.add_system_evidence(req.profile_id, creds, test["id"], pov.prove_evidence(test, out), by=by)
+                out["pov_rev"], out["evidence"] = p["rev"], p["tests"][test["id"]]["evidence"][-1]
+            except pov.PovError as e:   # the verdict stands; why it was not recorded is said
+                out["pov_error"] = str(e)
+        return out
+    job = pack_jobs.start("path", run, label=f"POV {test['id']}", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/pov/insights/start")
+async def pov_insights_start(req: PovInsightsRequest, request: Request):
+    """The Insights counts for the POV's tests (the Traffic insights read,
+    without the per-user rows), recorded on the POV as counts only."""
+    import pack_jobs
+    import pov
+    req.include_users = False
+    inp = _insights_inputs(req)
+    _pov_call(pov.require, req.profile_id, inp["creds"])
+    client = await asyncio.to_thread(_build_sdk_client, inp["creds"])
+    by = _cq_by(request)
+
+    def run(log, cancel):
+        out = _run_insights(client, req, inp, log, cancel)
+        if out.get("sections") and not out.get("stopped"):
+            try:
+                p = pov.add_insights(req.profile_id, inp["creds"], pov.insights_counts(out, inp["window"]["label"]), by=by)
+                out["pov_rev"], out["counts"] = p["rev"], p["insights"][-1]["counts"]
+            except pov.PovError as e:
+                out["pov_error"] = str(e)
+        return out
+    job = pack_jobs.start("insights", run, label=f"POV {inp['window']['label']}", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
 @app.get("/api/report/data-flow/{report_id}")

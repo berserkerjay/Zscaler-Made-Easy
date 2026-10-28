@@ -91,6 +91,32 @@ what you get, what to do next.
   their own write mode, preview and confirmation. "Switch to expert mode"
   goes back; the browser remembers the choice.
 
+- **POV planner** (`/report/pov`, `pov.py`) — one customer proof of value
+  per saved tenant profile, kept in the profile's folder (`povs/` beside
+  the profiles, owner-only, no secret) and bound to the profile's tenant (a
+  sign-in or an imported file naming another tenant is refused). The Plan
+  tab holds the intake (customer, internal domain, a short prefix made from
+  the name, a vertical preset: Healthcare, Financial services, General
+  enterprise or Education, and the products in scope), the customer's
+  success criteria linked to the tests that prove them, and the timeline.
+  The Runbook tab lists tests per product (URL filtering, threat, cloud
+  apps, firewall, DNS, DLP, SSL, ZPA, ZDX) with steps, the expected result,
+  pass or fail, notes and evidence; *Prove it* runs the Path analyzer on
+  the test's destination (read-only, only what is in scope) and records
+  whether the configuration gives the expected result, and *Read Insights
+  counts* records the Traffic insights counts (no user rows). The Test kit
+  tab serves synthetic DLP files per vertical (published test card numbers,
+  SSNs from the reserved block 987-65-4320 to 4329, specimen identifiers,
+  from `corpus_engines.sample`), the EICAR test file and links to the
+  EICAR and AMTSO test pages, and a harmless PDF that is new on every
+  download for Cloud Sandbox. The Report tab writes a Word or PDF customer
+  report from what actually ran (tests with a result, criteria, evidence,
+  the latest counts and the changes the app's deployment and bulk-change
+  records show for the tenant since the POV began), exports and imports
+  the POV (an untrusted file: size, JSON depth, format and every field
+  checked) and keeps templates (vertical, products, criteria; never the
+  customer). It never writes to the tenant. Simple mode links to it.
+
 ### Find the gaps
 
 - **Traffic flow & gaps** — the exact path a user's transaction takes

@@ -27,6 +27,7 @@ QA_FILES = (
     "test_extension_security.py", "test_auth_session.py", "test_xss_sinks.py",
     "test_xss_render_sites.py", "test_files_paths.py", "test_secret_canaries.py",
     "test_supply_chain_qa.py", "test_outbound_ssrf.py", "test_dos_limits.py", "test_findings_reflow.py", "test_report_reflow.py",
+    "test_pov.py",
 )
 
 STANDARDS = [

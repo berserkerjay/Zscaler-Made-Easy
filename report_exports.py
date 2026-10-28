@@ -616,3 +616,33 @@ def operation_pdf(prepared: Dict[str, Any], page_size: str = "A4") -> bytes:
 def operation_filename(prepared: Dict[str, Any], ext: str) -> str:
     return (f"bulk_change_plan_{safe_filename_part(prepared.get('tenant_label'), 'tenant', 40)}_"
             f"{safe_filename_part(str(prepared.get('plan_hash') or 'nohash')[:12], 'nohash')}.{ext}")
+
+
+# ---------------------------------------------------------------------------
+# POV customer report (pov.report_document)
+# ---------------------------------------------------------------------------
+
+def pov_pdf(rep: Dict[str, Any], page_size: str = "A4") -> bytes:
+    """A POV customer report: title, summary, details, then each section's
+    paragraphs, table, bullets and sub-items (pov.report_document)."""
+    doc = pdf_writer.PdfDocument(title=str(rep.get("title") or "Proof of value"), page_size=page_size, footer=str(rep.get("footer") or ""),
+                                 subject="Proof of value report")
+    doc.heading(str(rep.get("title") or "Proof of value"))
+    if rep.get("summary"):
+        doc.paragraph(str(rep["summary"]))
+    doc.key_values([(str(k), v) for k, v in rep.get("details") or []])
+    for sec in rep.get("sections") or []:
+        doc.heading(str(sec.get("heading") or ""), 2)
+        for p in sec.get("paragraphs") or []:
+            doc.paragraph(str(p))
+        t = sec.get("table")
+        if t:
+            doc.table(list(t["columns"]), [list(r) for r in t["rows"]], widths=t.get("widths"))
+        for item in sec.get("items") or []:
+            doc.paragraph(str(item.get("title") or ""), bold=True)
+            doc.bullets([str(b) for b in item.get("bullets") or []])
+        if sec.get("bullets"):
+            doc.bullets([str(b) for b in sec["bullets"]])
+        if sec.get("note"):
+            doc.paragraph(str(sec["note"]), size=9, grey=0.3)
+    return doc.to_bytes()
