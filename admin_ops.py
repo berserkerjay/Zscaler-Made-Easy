@@ -70,6 +70,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import os
 import re
 import threading
 import time
@@ -89,6 +90,76 @@ URL_MAX_LEN = 1024         # assumed ZIA limit for one custom URL
 
 KIND = "admin_operation"
 TYPES = ("rule_state", "reorder", "url_categories", "zpa_domains")
+
+# ---------------------------------------------------------------------------
+# Plugins: further operation types, each in its own ops_<name>.py module
+# ---------------------------------------------------------------------------
+# A builder (Client Connector profiles, ZPA objects, ZDX probes, AI Guard, a
+# ZIA baseline, ...) is one more operation type on this same engine and page:
+# planned from the tenant as it is now, previewed item by item, approved by
+# its plan hash, applied through the same gates with a re-read before every
+# write, read back and reversible. A module ops_<name>.py next to this file
+# calls register() at import; load_plugins() imports them all once.
+PLUGINS: Dict[str, Dict[str, Any]] = {}
+PLUGIN_FAMILIES: Dict[str, Dict[str, Any]] = {}
+PLUGIN_HANDLERS: Dict[str, Callable[..., None]] = {}
+_PLUGIN_NAME = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
+
+
+def register(type_name: str, *, family: str, product: str, label: str, hint: str, in_scope: Callable[[Dict[str, Any]], Optional[str]],
+             plan: Callable[..., Dict[str, Any]], read_objects: Callable[..., Dict[str, Any]], handlers: Dict[str, Callable[..., None]],
+             verify: Optional[Callable[..., Dict[str, Any]]] = None, inverse: Optional[Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]] = None,
+             group: str = "Build new", script: str = "") -> None:
+    """Add an operation type. `in_scope(scope)` returns why it is out of scope
+    (None when it may run) and is checked before anything is read;
+    `plan(client, spec, scope, say, cancel)` returns the prepared operation
+    ({type, product, title, spec, items (see _unit), groups ({key, handler,
+    target}), warnings, blockers}) and never writes; `read_objects(client,
+    scope, say, cancel)` lists what the page can pick from; each group's
+    handler(run, group, units) writes through pack_ops (run.outcome marks the
+    units) and sets run.wrote_zia when it changed ZIA; `verify(run)` reads
+    back the applied units ({checked, confirmed, mismatched, unread});
+    `inverse(result)` is the operation that undoes it. `script` names the
+    page's form for it under static/ (ops_<name>.js)."""
+    for n in (type_name, family):
+        if not _PLUGIN_NAME.match(n) or n in TYPES or n in ("rules", "url_categories", "zpa_segments"):
+            raise ValueError(f"invalid or reserved operation name: {n!r}")
+    if script and not re.fullmatch(r"ops_[a-z0-9_]{1,40}\.js", script):
+        raise ValueError(f"invalid plugin script name: {script!r}")
+    for h in handlers:
+        if h in HANDLERS or (h in PLUGIN_HANDLERS and PLUGIN_HANDLERS[h] is not handlers[h]):
+            raise ValueError(f"handler name already taken: {h!r}")
+    PLUGINS[type_name] = {"type": type_name, "family": family, "product": product, "label": label, "hint": hint, "group": group,
+                          "script": script, "in_scope": in_scope, "plan": plan, "verify": verify, "inverse": inverse}
+    PLUGIN_FAMILIES[family] = {"in_scope": in_scope, "read_objects": read_objects}
+    PLUGIN_HANDLERS.update(handlers)
+
+
+_plugins_loaded = False
+
+
+def load_plugins() -> None:
+    """Import every ops_<name>.py beside this module once (they register themselves)."""
+    global _plugins_loaded
+    if _plugins_loaded:
+        return
+    _plugins_loaded = True
+    import importlib
+    here = os.path.dirname(os.path.abspath(__file__))
+    for fn in sorted(os.listdir(here)):
+        if fn.startswith("ops_") and fn.endswith(".py") and _PLUGIN_NAME.match(fn[:-3]):
+            importlib.import_module(fn[:-3])
+
+
+def types() -> Tuple[str, ...]:
+    load_plugins()
+    return TYPES + tuple(sorted(PLUGINS))
+
+
+def plugin_catalog() -> List[Dict[str, Any]]:
+    """What the page needs to offer the plugin types: no callables."""
+    load_plugins()
+    return [{k: p[k] for k in ("type", "family", "product", "label", "hint", "group", "script")} for p in sorted(PLUGINS.values(), key=lambda p: (p["group"], p["label"]))]
 STATES = ("ENABLED", "DISABLED")
 
 # Policy types an operation can change: label, the pack_channels channel
@@ -159,11 +230,14 @@ def scope_for(scopes: Any, channels: Any) -> Dict[str, Any]:
         nis["url_categories"] = "Not in scope: custom URL categories are changed only when URL filtering is in scope (tick DLP or ZIA platform)."
     if not zpa:
         nis["zpa_segments"] = "Not in scope: ZPA is not ticked on the Scope page, so the application segments are not read."
-    return {"policies": read, "url_categories": urls, "zpa": zpa, "not_in_scope": nis}
+    return {"policies": read, "url_categories": urls, "zpa": zpa, "not_in_scope": nis,
+            # the raw Scope page selection, for plugin types (register) that gate on other keys
+            "scopes": sorted(given), "channels": dict(channels) if isinstance(channels, dict) else {}}
 
 
 def require_scope(spec_or_family: Any, scope: Dict[str, Any]) -> None:
     """OperationError naming what is out of scope, before anything is read."""
+    load_plugins()
     t = spec_or_family if isinstance(spec_or_family, str) else str((spec_or_family or {}).get("type") or "")
     if t in ("rules", "rule_state", "reorder"):
         if not scope["policies"]:
@@ -181,8 +255,13 @@ def require_scope(spec_or_family: Any, scope: Dict[str, Any]) -> None:
     elif t in ("zpa_segments", "zpa_domains"):
         if not scope["zpa"]:
             raise OperationError(scope["not_in_scope"]["zpa_segments"])
+    elif t in PLUGINS or t in PLUGIN_FAMILIES:
+        reg = PLUGINS.get(t) or PLUGIN_FAMILIES[t]
+        why = reg["in_scope"](scope)
+        if why:
+            raise OperationError(str(why))
     else:
-        raise OperationError(f"Unknown operation '{t}'. Use one of: {', '.join(TYPES)}.")
+        raise OperationError(f"Unknown operation '{t}'. Use one of: {', '.join(types())}.")
 
 
 # ---------------------------------------------------------------------------
@@ -649,6 +728,10 @@ def plan(client, spec: Dict[str, Any], *, scope: Dict[str, Any], tenant_label: s
         prepared = _plan_urls(client.zia, spec, scope, say, cancel)
     elif t == "zpa_domains":
         prepared = _plan_zpa(getattr(client, "zpa", None), spec, say, cancel)
+    elif t in PLUGINS:
+        prepared = PLUGINS[t]["plan"](client, spec, scope, say, cancel)
+        prepared.setdefault("type", t)
+        prepared.setdefault("spec", spec)
     else:  # require_scope refused it already
         raise OperationError(f"Unknown operation '{t}'.")
     _check_stop(cancel)
@@ -1614,6 +1697,8 @@ def _verify(run: _Run) -> Dict[str, Any]:
     if not applied:
         return out
     t = run.p["type"]
+    if t in PLUGINS and PLUGINS[t].get("verify"):
+        return PLUGINS[t]["verify"](run)
     if t == "reorder":
         spec = run.p["spec"]
         rows, err = read_rules(run.zia, spec["policy"], rule_type=spec["rule_type"])
@@ -1687,6 +1772,9 @@ def inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not applied:
         return None
     t = result.get("type")
+    if t in PLUGINS:
+        inv = PLUGINS[t].get("inverse")
+        return inv(result) if inv else None
     if t == "rule_state":
         return {"type": "rule_state", "targets": [{"policy": u["object"]["policy"], "id": u["object"]["id"],
                                                    "rule_type": u["object"].get("rule_type") or "", "to": u["before"]} for u in applied]}
@@ -1789,7 +1877,7 @@ def _execute(client, spec, *, plan_hash, scope, confirm_text, assessor, tenant_l
                 ready.append(u)
         if not ready:
             continue
-        HANDLERS[g["handler"]](run, g, ready)
+        (HANDLERS.get(g["handler"]) or PLUGIN_HANDLERS[g["handler"]])(run, g, ready)
         if ops.stop_reason():
             run.halt = ops.stop_reason()
         if run.halt and not getattr(run, "_told", False):
@@ -1925,5 +2013,7 @@ def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = Non
             out["errors"]["zpa_segments"] = err
         out["segments"] = [segment_summary(s) for s in sorted(segs, key=lambda s: str(pc._field(s, "name", default="")).lower())]
         say(f"{len(out['segments'])} application segments.")
+    elif family in PLUGIN_FAMILIES:
+        out.update(PLUGIN_FAMILIES[family]["read_objects"](client, scope, say, cancel) or {})
     _check_stop(cancel)
     return out

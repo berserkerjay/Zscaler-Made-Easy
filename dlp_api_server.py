@@ -4986,6 +4986,14 @@ async def operations_list(tenant_label: Optional[str] = None):
     return {"operations": deployments.list_operations(tenant_label), "writes_enabled": writes_enabled()}
 
 
+@app.get("/api/operations/plugins")
+async def operations_plugins():
+    """The builder types registered on the Bulk changes engine (admin_ops.register):
+    type, label, hint, group and the page script for each; read-only."""
+    import admin_ops
+    return {"plugins": admin_ops.plugin_catalog()}
+
+
 @app.get("/api/operations/{op_id}")
 async def operations_get(op_id: str):
     """One recorded bulk change: every item with its before, after and status, and its inverse."""
