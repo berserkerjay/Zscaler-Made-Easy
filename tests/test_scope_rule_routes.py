@@ -215,6 +215,7 @@ ZPA = page(["zpa"])
 ZCC = page(["zcc"])
 INSIGHTS = page(["insights"])
 AUTOMATION = page(["automation"])
+ZDX = page(["zdx"])
 
 # What each partial selection leaves out: a read naming any of these is out of scope.
 OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules", "saas_security_api", "casb_tenant",
@@ -229,6 +230,7 @@ ZPA_OUT = ("zia.", "/zia/", "zcc.", "/zcc/", "zins.", "zwa.")
 ZCC_OUT = ("zia.", "zpa.", "zins.", "zwa.") + tuple(f"/zia/{x}" for x in ("webDlpRules", "urlFilteringRules", "sslInspectionRules", "fileTypeRules",
                                                                          "firewallFilteringRules", "cloudApplicationRules", "urlCategories"))
 INSIGHTS_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zwa.")
+ZDX_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "zidentity.")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -278,6 +280,8 @@ DEST = {"destination": "example.com"}
 RULE_STATE_WEB = {"operation": {"type": "rule_state", "targets": [{"policy": "web_dlp", "id": 1, "to": "DISABLED"}]}}
 ZCC_BUILD = {"operation": {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
                            "app": {"template": "best_practice", "name": "QA app"}}}
+ZDX_SETUP = {"operation": {"type": "zdx_probes", "predefined": [{"provider": "MICROSOFT_LOGIN"}],
+                           "custom": [{"name": "Intranet", "url": "https://intranet.example.com/"}]}}
 
 ROUTES: List[Route] = [
     # Job starts and their waited-for twins
@@ -339,6 +343,10 @@ ROUTES: List[Route] = [
     Route("/api/operations/objects", {"family": "rules"}),
     Route("/api/operations/preview/start", RULE_STATE_WEB),
     Route("/api/operations/preview", RULE_STATE_WEB),
+    Route("/api/operations/objects/start", {"family": "zdx_apps"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/preview", ZDX_SETUP, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/preview/start", {"operation": {"type": "zdx_probe_state", "targets": [{"app": "1", "to": "off"}]}},
+          partial=ZDX, out=ZDX_OUT),
     Route("/api/operations/op-qa-1/undo/preview/start", setup=_recorded_operation),
     Route("/api/operations/op-qa-1/undo/preview", setup=_recorded_operation),
     # Client Connector profiles: plugin types on the same engine (ops_zcc), and the install command builder's token read
@@ -417,6 +425,8 @@ EXPLICIT_PICKS = [
     ("/api/operations/preview", {"operation": {"type": "reorder", "policy": "ssl_inspection", "order": [1]}}, WEB),
     ("/api/operations/objects", {"family": "zpa_segments"}, WEB),
     ("/api/operations/objects", {"family": "url_categories"}, ZPA),
+    ("/api/operations/preview", ZDX_SETUP, WEB),
+    ("/api/operations/objects", {"family": "zdx_apps"}, ZPA),
     ("/api/self-heal/tenant/scan", {"pack_ids": ["zbp_enterprise_baseline"], "include_who": True}, WEB),
     ("/api/audit-timeline/start", {"include_zia": True}, WEB),
     ("/api/device-posture/start", {}, ZCC),

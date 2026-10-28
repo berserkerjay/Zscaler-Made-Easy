@@ -377,6 +377,21 @@ what you get, what to do next.
   typed name and is refused while the profile is in use (an enabled app
   profile, or a forwarding profile an app profile links to).
   Tamper-protection passwords are never set from here.
+  Under *Build new* on the same page, **ZDX probe setup** (only when ZDX
+  is ticked on the Scope page, with a OneAPI API client) sets up Zscaler
+  Digital Experience apps and probes from a template (Best practice:
+  Microsoft 365 sign-in plus a custom app; Microsoft 365; or start
+  empty): predefined apps (Microsoft 365, Teams, SharePoint, OneDrive,
+  Zoom, Okta, Box, Salesforce, ServiceNow, Webex; some need the
+  customer's tenant prefix) and custom apps by URL, each with a Web probe
+  and by default a CloudPath probe, every 5 to 30 minutes, for all users.
+  Apps that already exist are skipped or get only what they lack; a
+  custom app whose setup fails half way is removed again. Two more types
+  turn any ZDX app or probe on or off, and delete custom apps (probes
+  first) and custom probes, each name typed to confirm. ZDX's own words
+  are shown when it refuses something (a refused host, a missing
+  permission). The ZDX configuration API is not in the Zscaler SDK, so
+  its paths are assumed and the page says so (`ops_zdx.py`).
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in
