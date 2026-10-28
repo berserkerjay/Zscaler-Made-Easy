@@ -60,6 +60,7 @@
   <script src="/static/data_flow.js"></script>
   <script src="/static/har_parse.js"></script>
   <script src="/static/path_modules.js"></script>
+  <script src="/static/path_zpa.js"></script>
   <script>
   (function () {
     // ZIA modules (static/path_modules.js): a protocol and port beside the
@@ -72,6 +73,11 @@
       credBody = function () { return Object.assign(baseBody(), PathModules.zia.input()); };
       render = function (res, logs) { baseRender(res, logs); PathModules.zia.mount(document.getElementById('paBody'), res); };
     }
+    // ZPA first and workload traffic (static/path_zpa.js): Analyze goes to
+    // /api/path-analyzer/full/start with the "Traffic from" fields, and the
+    // ZPA and connector steps are shown under the verdict.
+    const fetch = window.PathZpa ? window.PathZpa.fetch : window.fetch;
+    if (window.PathZpa) { const ziaRender = render; render = (res, logs) => { ziaRender(res, logs); window.PathZpa.decorate(res); }; }
     const E = _dfE;
     const body = document.getElementById('paBody');
     const meta = document.getElementById('rpMeta');

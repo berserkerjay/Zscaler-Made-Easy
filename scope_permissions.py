@@ -311,6 +311,22 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         "customer_id_needed": False,
         "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in has no AI Guard. The proxy gateway cannot be created through the API; the builder says how to make it in the ZIA portal.",
     },
+    "ztw": {
+        "label": "Cloud & Branch Connector",
+        "description": "Path analyzer, traffic from a workload: the Cloud & Branch Connector traffic forwarding rules, workload groups, connector groups and IP source and destination groups, to say where a workload's traffic goes (ZIA, ZPA, direct, local switch, proxy chaining or drop). No assessment check reads them.",
+        "service": "Cloud & Branch Connector (ZTW)",
+        "permissions_read": [
+            "Cloud & Branch Connector (read) on the API client's role: forwarding control, workload groups, connector groups, IP groups",
+        ],
+        "permissions_write": [],
+        "endpoints_used": [
+            "/ztw/api/v1/ecRules/ecRdr", "/ztw/api/v1/workloadGroups", "/ztw/api/v1/ecgroup",
+            "/ztw/api/v1/ipSourceGroups", "/ztw/api/v1/ipDestinationGroups",
+        ],
+        "license_required": "Cloud Connector or Branch Connector subscription.",
+        "customer_id_needed": False,
+        "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in cannot read Cloud & Branch Connector. Off unless ticked.",
+    },
 
     "compliance": {
         "label": "Compliance",

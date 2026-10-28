@@ -39,7 +39,7 @@ SECRETS = {"client_secret": CLIENT_SECRET, "password": PASSWORD, "api_key": API_
 
 CHANNELS = {k: "zscaler" for k in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "genai_security", "shadow_it", "endpoint_scan",
                                    "ssl_inspection", "cloud_app_control", "device_control", "workflow_automation")}
-SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights"]
+SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "ztw"]
 ONEAPI = {"cloud": "zscalerten", "vanity_domain": "acme", "client_id": "acmeclientid0001", "client_secret": CLIENT_SECRET,
           "customer_id": "216196257331281920", "scopes": SCOPES, "channels": CHANNELS, "from_page": True, "assessor": "QA tester",
           "pack_ids": ["fed_policy_pack"], "destination": "https://example.com", "destinations": ["https://example.com"]}

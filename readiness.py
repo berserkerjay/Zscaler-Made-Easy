@@ -72,9 +72,10 @@ PRODUCTS: "OrderedDict[str, Dict[str, Any]]" = OrderedDict([
     ("ZINSIGHTS", {"label": "Z-Insights (traffic data)", "scopes": ("insights",), "codes": ("ZINSIGHTS",), "portal": "ZIdentity"}),
     ("ZGUARD", {"label": "AI Guard", "scopes": ("aiguard", "ai_guard"), "codes": ("ZGUARD", "AIGUARD"), "portal": "the AI Guard console"}),
     ("ZIDENTITY", {"label": "ZIdentity", "scopes": ("zidentity",), "codes": ("ZIAM", "ZIDENTITY"), "portal": "ZIdentity"}),
+    ("ZTW", {"label": "Cloud & Branch Connector", "scopes": ("ztw",), "codes": ("ZTW",), "portal": "the Cloud & Branch Connector Admin Portal"}),
 ])
 _CODE_TO_PRODUCT = {code: key for key, p in PRODUCTS.items() for code in p["codes"]}
-PROBED = ("ZIA", "ZPA", "ZCC", "ZDX", "ZINSIGHTS", "ZGUARD")   # ZIdentity: token only
+PROBED = ("ZIA", "ZPA", "ZCC", "ZDX", "ZINSIGHTS", "ZGUARD")   # ZIdentity, Cloud & Branch Connector: token only
 
 # ── ZIA feature permissions (keys verified in the SDK's admin_roles docs) ─
 ZIA_PERMS: Dict[str, str] = {
@@ -175,6 +176,7 @@ SCOPE_FEATURES: "OrderedDict[str, F]" = OrderedDict([
     ("rbac", {"product": "ZIA", "needs": [("ADMINISTRATOR_MANAGEMENT", "ROLE_MANAGEMENT")], "optional": [("AUTHENTICATION_SETTINGS",)]}),
     ("insights", {"product": "ZINSIGHTS", "oneapi_only": True}),
     ("aiguard", {"product": "ZGUARD", "oneapi_only": True}),
+    ("ztw", {"product": "ZTW", "oneapi_only": True}),
 ])
 SCOPE_LABELS = {"rbac": "RBAC", "zidentity": "ZIdentity"}
 
