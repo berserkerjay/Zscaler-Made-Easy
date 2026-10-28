@@ -8628,7 +8628,9 @@ async def path_analyzer_batch_export(job_id: str, format: str = "csv"):
 # source IP, location, country, category, user, label and the expected
 # block or allow) is parsed here before sign-in (an untrusted file: size,
 # line and row caps), then every row is traced against one tenant read
-# (only what is in scope) with ZIA's URL lookup a hundred per request.
+# (only what is in scope) with ZIA's URL lookup a hundred per request:
+# ZPA first when ZPA is ticked (one ZPA read, as /api/path-analyzer/full
+# reads it), then every ZIA module for the row's protocol and port.
 # The `text` field is recorded in the audit log by its size only.
 # Read-only; "Fix selected" only prepares a Bulk changes URL category
 # operation, which writes nothing without its own four gates.
@@ -8639,14 +8641,16 @@ _BULK_RUNS_MAX = 2
 class BulkTestRequest(ScopedTenantCredsRequest):
     """Body of Test a list: the list as text (a CSV file read in the
     browser, or pasted), the network and platform, whether to ask ZIA's
-    URL lookup, its request limit for this run, and optionally the id of a
-    tenant read to reuse."""
+    URL lookup, its request limit for this run, and optionally the ids of
+    the tenant and ZPA reads to reuse."""
     text: str = ""
     network: str = "off"
     platform: str = "windows"
     lookup: bool = True
     max_lookup_requests: int = 400
     report_id: str = ""
+    zpa_report_id: str = ""
+    customer_id: str = ""   # ZPA's customer ID (as the Path analyzer's body carries it)
 
 
 class BulkFixRequest(ScopedTenantCredsRequest):
@@ -8667,16 +8671,39 @@ def _bulk_parse(req: BulkTestRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-def _run_bulk_test(client, req: BulkTestRequest, parsed, snapshot, label: str, log, cancel, scope: Dict[str, Any]) -> Dict[str, Any]:
+def _bulk_zpa_inputs(req: BulkTestRequest, creds: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """(ZPA ticked, why it cannot be read, a kept ZPA read for this tenant)
+    as /api/path-analyzer/full decides them; never reads a tenant."""
+    sc, _ch, _src = _scope_selection(req)
+    if "zpa" not in sc:
+        return False, "", None
+    problem = ""
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        problem = "ZPA was not read: the classic ZIA API sign-in reaches ZIA only, so whether ZPA carries each row is unknown."
+    elif not validate_customer_id(creds.get("customer_id") or ""):
+        problem = "ZPA was not read: the ZPA customer ID is missing (Connect to the tenant → Customer ID), so whether ZPA carries each row is unknown."
+    return True, problem, (_path_full_kept(req.zpa_report_id, "pathzpa", creds) if not problem else None)
+
+
+def _run_bulk_test(client, req: BulkTestRequest, parsed, snapshot, label: str, log, cancel, scope: Dict[str, Any],
+                   zpa: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     import bulk_test
     import pack_jobs
     import path_analyzer
     if scope.get("source"):
-        log(f"In scope, from {scope['source']}: {scope['summary']}")
+        log(f"In scope, from {scope['source']}: {scope['summary']}" + (" ZPA." if zpa else ""))
     rn = bulk_test.run(client, parsed, scope=scope, network=req.network, platform=req.platform, snapshot=snapshot, tenant_label=label,
-                       lookup=req.lookup, max_lookup_requests=req.max_lookup_requests, log=log, cancel=cancel)
+                       lookup=req.lookup, max_lookup_requests=req.max_lookup_requests, log=log, cancel=cancel, zpa=zpa)
     s = rn.summary
     cache = s.pop("snapshot_for_cache", None)
+    zcache = s.pop("zpa_for_cache", None)
+    zrid = (zpa or {}).get("report_id") or ""
+    if zcache is not None:
+        mask = (zpa or {}).get("mask") or (lambda x: x)
+        for v in (zcache["snapshot"].get("collections") or {}).values():
+            if v.get("error"):
+                v["error"] = mask(v["error"])
+        zrid = _remember_report("pathzpa", {"kind": "pathzpa", "snapshot": zcache["snapshot"], "profiles": zcache["profiles"]}, label)
     rid = req.report_id if snapshot is not None else ""
     if cache is not None:
         rid = _remember_report("dataflow", {"summary": {"destinations": 0, "traces": 0, "bypassed": 0, "blind": 0, "enforced": 0, "monitored": 0, "high": 0},
@@ -8686,7 +8713,7 @@ def _run_bulk_test(client, req: BulkTestRequest, parsed, snapshot, label: str, l
                                             "snapshot": cache["snapshot"], "sources": {}, "path_scope": cache.get("path_scope")}, label)
     job = pack_jobs.current()
     run_id = job.id if job is not None else ""
-    result = dict(s, status="stopped" if s.get("stopped") else "done", report_id=rid, run_id=run_id, read_at=time.time())
+    result = dict(s, status="stopped" if s.get("stopped") else "done", report_id=rid, zpa_report_id=zrid, run_id=run_id, read_at=time.time())
     if run_id:
         _BULK_RUNS[run_id] = rn
         while len(_BULK_RUNS) > _BULK_RUNS_MAX:
@@ -8700,16 +8727,34 @@ async def bulk_test_start(req: BulkTestRequest, request: Request):
     /api/dlp-packs/jobs/{job_id}). The list is parsed before sign-in (400
     for one that cannot be tested); only what is in scope on the Scope
     page is read, once for every row (or the read `report_id` names, when
-    it was made for the same scope and tenant). Stop keeps the rows tested.
-    Read-only: the URL lookup is a POST that changes nothing."""
+    it was made for the same scope and tenant): ZPA first when it is ticked
+    (or the ZPA read `zpa_report_id` names, for the same tenant), then ZIA.
+    Stop keeps the rows tested. Read-only: the URL lookup is a POST that
+    changes nothing."""
+    import data_flow
     import pack_jobs
     parsed = await asyncio.to_thread(_bulk_parse, req)
-    scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
+    sc, ch, src = _scope_selection(req)   # before signing in: nothing in scope reads nothing
+    scope = data_flow.path_scope(sc, ch)
+    scope["source"] = src
+    if not scope["read"] and "zpa" not in sc:
+        raise HTTPException(status_code=400, detail=PATH_FULL_NOTHING)
     creds = _tenant_creds(req)
-    snapshot = _kept_path_read(req.report_id, scope, creds, req.platform)
-    client = await asyncio.to_thread(_build_client, req)
+    zpa_on, zpa_problem, zpa_kept = _bulk_zpa_inputs(req, creds)
+    if not scope["read"] and zpa_problem:
+        raise HTTPException(status_code=400, detail=zpa_problem.replace("ZPA was not read: ", "ZPA cannot be read: ") + " Nothing was read.")
+    snapshot = _kept_path_read(req.report_id, scope, creds, req.platform) if scope["read"] else None
+    client = await asyncio.to_thread(_build_client, req) if scope["read"] else None
     label = tenant_auth.record_label(creds)
-    job = pack_jobs.start("bulk-test", lambda log, cancel: _run_bulk_test(client, req, parsed, snapshot, label, log, cancel, scope),
+    zpa: Optional[Dict[str, Any]] = None
+    if zpa_on and zpa_problem:
+        zpa = {"problem": zpa_problem}
+    elif zpa_kept is not None:
+        zpa = {"snapshot": zpa_kept["snapshot"], "profiles": zpa_kept["profiles"], "report_id": zpa_kept["report_id"]}
+    elif zpa_on:
+        sdk = await asyncio.to_thread(_build_sdk_client, creds)
+        zpa = {"client": sdk, "mask": lambda x: tenant_auth.mask_secrets(str(x), creds)}
+    job = pack_jobs.start("bulk-test", lambda log, cancel: _run_bulk_test(client, req, parsed, snapshot, label, log, cancel, scope, zpa),
                           label=f"{len(parsed)} destination(s) from a list", actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind, "rows": len(parsed), "skipped": parsed.skipped_count}
 

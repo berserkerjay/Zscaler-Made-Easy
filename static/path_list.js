@@ -18,7 +18,7 @@
   const RESULT_LABEL = { blocked: 'Blocked', allowed: 'Allowed', bypassed: 'Bypassed', isolated: 'Isolated', caution: 'Caution',
     allowed_but_blockable: 'Allowed but blockable', unverified: 'Unverified', not_tested: 'Not tested' };
   const RESULT_CLS = { blocked: '', allowed: 'mute', bypassed: 'bad', isolated: 'warn', caution: 'warn', allowed_but_blockable: 'warn', unverified: 'warn', not_tested: 'mute' };
-  const AREA_KEY = { 'ATP': 'atp', 'Firewall': 'firewall', 'URL': 'url', 'DNS': 'dns', 'Client Connector': 'client_connector', 'Cloud App': 'cloud_app' };
+  const AREA_KEY = { 'ATP': 'atp', 'Firewall': 'firewall', 'URL': 'url', 'DNS': 'dns', 'Client Connector': 'client_connector', 'Cloud App': 'cloud_app', 'ZPA': 'zpa' };
   const FIX_AREAS = ['URL', 'DNS', 'Cloud App'];
   const live = $('liveRegion');
   const say = t => { if (!live) return; live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
@@ -227,7 +227,7 @@
     const head = ['Pick', 'Row', 'Destination', 'Result', 'Deciding rule', 'Category', 'Expected', 'Recommended area', 'Recommendation'];
     const body = rows.map(r => `<tr><td><input type="checkbox" class="pl-pick" data-row="${E(r.row)}" aria-label="Pick row ${E(r.row)}, ${E(r.target)}"></td>
       <td class="num">${E(r.row)}</td><td>${E(r.target)}${r.label ? ` <span class="df-by">${E(r.label)}</span>` : ''}</td><td>${resultChip(r)}${r.blockable_by ? `<div class="df-by">could be blocked by ${E(r.blockable_by)}</div>` : ''}</td>
-      <td>${E(r.rule)}${r.area ? ` <span class="df-by">${E(r.area)}</span>` : ''}</td><td>${E(r.category || '–')}</td><td>${E(r.expected ? r.expected.toLowerCase() : '–')}${r.meets ? ` <span class="df-by">${r.meets === 'yes' ? 'met' : 'not met'}</span>` : ''}</td>
+      <td>${E(r.rule)}${r.area ? ` <span class="df-by">${E(r.area)}</span>` : ''}${r.segment ? ` <span class="df-by">segment ${E(r.segment)}</span>` : ''}</td><td>${E(r.category || '–')}</td><td>${E(r.expected ? r.expected.toLowerCase() : '–')}${r.meets ? ` <span class="df-by">${r.meets === 'yes' ? 'met' : 'not met'}</span>` : ''}</td>
       <td>${E(r.recommended_area)}</td><td>${E(r.recommendation || r.notes)}</td></tr>`);
     const why = res.rows ? 'Every row is allowed with no scoped rule that would block it, and none misses what your file expected, so there is nothing to look at here.' : 'No row was tested.';
     return `<h2 class="df-h" id="plRowsH">Rows to look at (${n(res.unmet)} not as expected, ${n(res.flagged)} flagged)</h2>
@@ -239,7 +239,7 @@
   function expectationsHtml(res) {
     const ex = res.expectations;
     if (!ex) return `<h2 class="df-h">Where to fix the misses</h2><div class="df-hint pa-none">Your list has no "expected" column (block or allow), so no row can be compared with what you want. Add one and test again to get a recommendation per row.</div>`;
-    const byArea = (ex.by_area || []).map(a => `<tr><td>${E(a.expected.toLowerCase())}</td><td>${E(a.area_label || a.area)}</td><td class="num">${n(a.count)}</td><td>${E(a.examples.join(', '))}</td><td>${E(a.recommendation)}</td></tr>`);
+    const byArea = (ex.by_area || []).map(a => `<tr><td>${E(a.expected.toLowerCase())}</td><td>${E(a.area_label || a.area)}</td><td class="num">${n(a.count)}</td><td>${E(a.examples.join(', '))}</td><td>${E(a.recommendation)}${(a.segments || []).length ? `<div class="df-by">ZPA segments: ${E(a.segments.join(', '))}</div>` : ''}</td></tr>`);
     const cats = (ex.categories || []).map(c => `<tr><td>${E(c.expected.toLowerCase())}</td><td>${E(c.category)}</td><td>${E(c.kind.replace('_', ' '))}</td><td class="num">${n(c.count)}</td><td>${E(c.advice)}</td></tr>`);
     return `<h2 class="df-h">Where to fix the misses</h2>
       <div class="df-hint">${n(ex.meets)} of ${n(ex.rows)} row(s) meet what your file expected; ${n(ex.misses)} do not.</div>
@@ -251,13 +251,13 @@
     const lists = res.lists || [];
     const rows = lists.map((l, i) => {
       const key = AREA_KEY[l.area];
-      return `<tr><td>${E(l.area_label)}</td><td>${E(l.purpose === 'block' ? 'to block' : 'to allow')}</td><td class="num">${n(l.count)}</td><td>${E(l.where)}</td>
+      return `<tr><td>${E(l.area_label)}</td><td>${E(l.purpose === 'block' ? 'to block' : 'to allow')}</td><td class="num">${n(l.count)}</td><td>${E(l.where)}${l.note ? `<div class="df-by">${E(l.note)}</div>` : ''}</td>
         <td class="pl-list"><button type="button" class="rp-btn" data-list="${i}" aria-expanded="false" aria-controls="plList${i}">Show</button> <a class="rp-btn" href="/api/bulk-test/${encodeURIComponent(runId)}/list?area=${E(key)}&amp;purpose=${E(l.purpose)}" download>Download</a>
         ${FIX_AREAS.includes(l.area) ? ` <button type="button" class="rp-btn" data-fixarea="${E(key)}" data-purpose="${E(l.purpose)}">Fix in Bulk changes</button>` : ''}
         <textarea id="plList${i}" readonly hidden aria-label="${E(l.area_label)} destinations ${l.purpose === 'block' ? 'to block' : 'to allow'}, one per line"></textarea></td></tr>`;
     });
     return `<h2 class="df-h">Lists to paste</h2>
-      <div class="df-hint">The destinations that miss what your file expected, per area, one per line: paste them into a custom URL category or an IP group in the ZIA Admin Portal, or open the URL ones in Bulk changes.</div>
+      <div class="df-hint">The destinations that miss what your file expected, per area, one per line: paste them into an IP destination group (Cloud Firewall) or a custom URL category (URL filtering) in the ZIA Admin Portal, or open the URL ones in Bulk changes. Rows ZPA carries are changed in ZPA: their list names the segments.</div>
       ${table('Lists to paste', ['Area', 'Purpose', 'Destinations', 'Paste into', 'List'], rows, res.expectations ? 'No row misses what your file expected, so there is nothing to paste.' : 'Add an "expected" column to get these lists.')}`;
   }
   function render(res, logs) {

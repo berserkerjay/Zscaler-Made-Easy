@@ -35,10 +35,10 @@
   };
   X.dataflow = {
     group: 'Find the gaps', name: 'Traffic flow & gaps', href: '/report/dataflow',
-    what: 'A map of the exact path a user\'s transaction takes: Client Connector app and forwarding profile, PAC, SSL inspection, URL filtering, Cloud App Control, file type control and DLP, with every point where inspection is lost (bypasses, SSL blind spots).',
+    what: 'A map of the path the tenant\'s configuration gives a user\'s web traffic to each traffic class (or a destination you type), for any user: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and Web DLP, with the points on those paths where inspection is lost (bypasses, SSL blind spots). It reads configuration; it does not observe traffic.',
     why: 'DLP can only stop what it can see. A bypass or an un-decrypted app category is a hole the customer usually does not know they have.',
     when: 'After the assessment, when the customer asks "why did DLP not catch that upload?" or before deploying a policy pack.',
-    get: 'The path diagram per policy pack, visibility by cloud-app category, and a list of every bypass with the object that causes it.',
+    get: 'The path for each traffic class on each network with each policy pack\'s rules overlaid by name, visibility by cloud-app category, and the bypasses and blind spots on those paths with the object that causes each (the Bypass inventory lists every bypass in the tenant).',
     next: 'Close the SSL and bypass gaps first; DLP rules deployed behind a blind spot do nothing.',
   };
   X.zpa = {

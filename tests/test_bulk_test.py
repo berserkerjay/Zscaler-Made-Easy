@@ -22,6 +22,7 @@ import path_analyzer as pa
 from test_data_flow import ROUTES as DF_ROUTES
 from test_path_analyzer import SCOPE_ALL
 from test_ssl_flow import CATALOGUE, FakeCl
+from zia_module_fixtures import MODULE_ROUTES
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FULL = pa.full_path_scope()
@@ -428,12 +429,274 @@ def test_each_row_is_compared_with_what_was_expected_and_given_an_area(dest, exp
     assert r["recommendation"]
 
 
-def test_a_non_web_port_to_a_host_goes_to_dns_control():
-    """ASVS V1.1.2 · CWE-1059: a host that must be blocked on a port URL filtering does not see is sent to DNS Control."""
+# ── Every module, per row (the single-destination analyzer's answer) ────
+
+PAC_SOURCE = ('function FindProxyForURL(url, host) { if (isInNet(host, "172.16.0.0", "255.240.0.0")) return "DIRECT"; '
+              'if (shExpMatch(url, "*://*.direct.example/*")) return "DIRECT"; return "PROXY gateway.zscaler.net:80"; }')
+
+
+def _module_routes():
+    """The Data Flow fake plus every ZIA module (zia_module_fixtures), a
+    Cloud Firewall rule for a source range and one that allows NTP, and a
+    PAC file whose DIRECT clauses are not literal host patterns."""
+    routes = dict(ROUTES, **copy.deepcopy(MODULE_ROUTES))
+    routes["/zia/firewallFilteringRules"] = [
+        {"id": 10, "name": "Block lab sources", "order": 0, "state": "ENABLED", "action": "BLOCK_DROP", "srcIps": ["10.66.0.0/16"]},
+        {"id": 9, "name": "Allow NTP", "order": 1, "state": "ENABLED", "action": "ALLOW", "nwServices": [{"id": 15, "name": "NTP"}]},
+    ] + routes["/zia/firewallFilteringRules"]
+    routes["/zia/networkServices"] = routes["/zia/networkServices"] + [{"id": 15, "name": "NTP", "tag": "NTP", "destUdpPorts": [{"start": 123}]}]
+    routes["/zia/pacFiles"] = [{"id": 1, "name": "corp.pac", "pacUrl": "https://pac.example/corp.pac", "pacContent": PAC_SOURCE}]
+    return routes
+
+
+class ModTenant(Tenant):
+    """Tenant with every ZIA module; records every GET path."""
+
+    def __init__(self, script=None):
+        super().__init__(script)
+        self.routes = _module_routes()
+        self.paths = []
+
+    def get(self, ep, p=None):
+        self.paths.append(ep)
+        return super().get(ep, p)
+
+
+def _zpa():
+    import zpa_reader
+    from test_path_zpa_workloads import zpa_snap
+    old, zpa_reader.PACE_SECONDS = zpa_reader.PACE_SECONDS, 0.0
+    try:
+        snap, profiles = zpa_snap()
+    finally:
+        zpa_reader.PACE_SECONDS = old
+    return {"snapshot": snap, "profiles": profiles}
+
+
+def _mrun(text, client=None, **kw):
+    kw.setdefault("sleep", Sleeps())
+    return bt.run(client or ModTenant(), bt.parse(text), scope=kw.pop("scope", FULL), **kw)
+
+
+def _one(text, **kw):
+    rows = list(_mrun(text, **kw).rows())
+    assert len(rows) == 1, rows
+    return rows[0]
+
+
+def test_a_firewall_decided_row_names_the_rule_and_an_ip_group_list():
+    """ASVS V1.1.2 · CWE-670: traffic that is not web is decided by the Cloud Firewall for the row's port and protocol; a miss goes to an IP destination group."""
     # Act
-    r = _rows(_run("destination,port,expected\nplain.example,53,block\n"))["plain.example"]
+    rn = _mrun("destination,port,protocol,expected\nssh.example,22,tcp,block\ntime.example,123,udp,block\n198.51.100.7,22,tcp,allow\n")
+    rows = _rows(rn)
     # Assert
-    assert r["recommended_area"] == "DNS"
+    ssh, ntp, bad = rows["ssh.example"], rows["time.example"], rows["198.51.100.7"]
+    assert (ssh["result"], ssh["area"], ssh["rule"], ssh["meets"]) == ("blocked", "Firewall", "Default Firewall Filtering Rule", "yes")
+    assert (ntp["result"], ntp["area"], ntp["rule"], ntp["recommended_area"]) == ("allowed", "Firewall", "Allow NTP", "Firewall")
+    assert (bad["result"], bad["area"], bad["rule"], bad["recommended_area"]) == ("blocked", "Firewall", "Block SSH to bad nets", "Firewall")
+    assert "IP destination group" in bad["recommendation"] and "not inspected" in ntp["inspection"]
+    assert bt.area_list(rn, "firewall", "block") == ["time.example"] and bt.area_list(rn, "firewall", "allow") == ["198.51.100.7"]
+    assert "IP destination group" in next(x["where"] for x in rn.summary["lists"] if x["area"] == "Firewall")
+
+
+def test_a_dns_decided_row_stops_before_url_filtering():
+    """ASVS V1.1.2 · CWE-670: DNS Control blocks the lookup before URL filtering decides; the area to fix an unwanted block is DNS Control."""
+    # Act
+    r = _one("destination,expected\ncasino.example,allow\n")
+    # Assert
+    assert (r["result"], r["area"], r["rule"], r["stops_at"]) == ("blocked", "DNS", "Block gambling lookups", "DNS Control")
+    assert (r["meets"], r["recommended_area"]) == ("no", "DNS") and "DNS Control rule 'Block gambling lookups'" in r["recommendation"]
+
+
+def test_an_atp_decided_row_is_an_atp_area():
+    """ASVS V1.1.2 · CWE-670: a destination on the ATP denylist is blocked by Advanced Threat Protection, not by URL filtering."""
+    # Act
+    r = _one("destination,expected\nbad.example,allow\n")
+    # Assert
+    assert (r["result"], r["area"], r["rule"]) == ("blocked", "ATP", "Malicious URLs (ATP denylist)")
+    assert r["recommended_area"] == "ATP" and "security exceptions" in r["recommendation"]
+
+
+def test_a_zpa_carried_row_is_answered_by_zpa_and_never_traced_in_zia():
+    """ASVS V1.4.4 · CWE-284 · CWE-670: ZPA first: a row an application segment carries gets ZPA's answer and its segment note; ZIA is not traced for it."""
+    # Arrange
+    c = ModTenant()
+    # Act
+    rn = _mrun("destination,port,protocol,expected\ngit.corp.example,443,tcp,block\ncasino.example,,,block\n", client=c, zpa=_zpa())
+    rows = _rows(rn)
+    git = rows["git.corp.example"]
+    # Assert
+    assert (git["result"], git["area"], git["rule"], git["segment"], git["inspection"]) == \
+        ("allowed", "ZPA", "Allow corp", "Git", "carried by ZPA (ZIA does not apply)")
+    assert (git["meets"], git["recommended_area"]) == ("no", "ZPA") and "segment 'Git'" in git["recommendation"]
+    assert rows["casino.example"]["area"] == "DNS"
+    assert [u for b in c.lookups for u in b] == ["git.corp.example", "casino.example"], "the lookup is asked before ZPA decides"
+    zpa_list = next(x for x in rn.summary["lists"] if x["area"] == "ZPA")
+    assert zpa_list["note"].endswith("Git.") and bt.area_list(rn, "zpa", "block") == ["git.corp.example"]
+    assert next(a for a in rn.summary["expectations"]["by_area"] if a["area"] == "ZPA")["segments"] == ["Git"]
+    assert rn.summary["zpa"]["state"] == "kept" and rn.summary["traced"] == 1
+
+
+def test_a_zpa_denied_row_is_blocked_by_zpa():
+    """ASVS V1.4.4 · CWE-284: ZPA's default deny decides a carried row it has no access rule for; ZIA does not apply."""
+    # Arrange
+    import zpa_reader
+    from test_path_zpa_workloads import zpa_snap
+    old, zpa_reader.PACE_SECONDS = zpa_reader.PACE_SECONDS, 0.0
+    try:
+        snap, profiles = zpa_snap(access=[])
+    finally:
+        zpa_reader.PACE_SECONDS = old
+    # Act
+    r = _one("destination,expected\ngit.corp.example,allow\n", zpa={"snapshot": snap, "profiles": profiles})
+    # Assert
+    assert (r["result"], r["area"], r["rule"], r["recommended_area"]) == ("blocked", "ZPA", "ZPA default deny", "ZPA")
+
+
+def test_zpa_is_read_once_for_every_row_and_only_when_ticked():
+    """ASVS V4.1.3 · CWE-272: ZPA is read once per run when it is in scope, and not at all when it is not."""
+    # Arrange
+    import zpa_reader
+    from test_path_zpa_workloads import zpa_data
+    from test_zpa_analysis import FakeTenant
+    old, zpa_reader.PACE_SECONDS = zpa_reader.PACE_SECONDS, 0.0
+    calls = []
+    sdk = FakeTenant(zpa_data())
+    real = zpa_reader.read
+
+    def counted(*a, **k):
+        calls.append(1)
+        return real(*a, **k)
+    try:
+        zpa_reader.read = counted
+        rn = _mrun("10.1.0.0/30\ngit.corp.example\nsvc.corp.example,22,tcp\n", zpa={"client": sdk})
+    finally:
+        zpa_reader.read, zpa_reader.PACE_SECONDS = real, old
+    off = _mrun("git.corp.example\n")
+    # Assert
+    assert len(calls) == 1 and rn.summary["zpa"]["state"] == "read" and rn.summary["zpa_for_cache"]["snapshot"]
+    assert {r["area"] for r in rn.rows()} == {"ZPA"}
+    assert off.summary["zpa"]["state"] == "not_in_scope" and _rows(off)["git.corp.example"]["area"] != "ZPA"
+    assert any("ZPA is not in scope" in a for a in off.summary["assumptions"])
+
+
+def test_zpa_that_cannot_be_read_is_said_once_and_zia_still_answers():
+    """ASVS V1.4.4 · CWE-754: ZPA ticked but not readable is stated once in the assumptions; every row still gets ZIA's answer, never a guess about ZPA."""
+    # Act
+    rn = _mrun("git.corp.example\ncasino.example\n", zpa={"problem": "ZPA was not read: the ZPA customer ID is missing."})
+    rows = _rows(rn)
+    # Assert
+    assert rn.summary["zpa"] == {"state": "not_read", "note": "ZPA was not read: the ZPA customer ID is missing."}
+    assert "ZPA was not read: the ZPA customer ID is missing." in rn.summary["assumptions"]
+    assert rows["git.corp.example"]["area"] != "ZPA" and "ZPA" not in rows["git.corp.example"]["notes"]
+    assert rows["casino.example"]["area"] == "DNS"
+
+
+def test_a_pac_direct_row_is_found_by_evaluating_the_pac_file():
+    """ASVS V1.1.2 · CWE-693: the PAC file is evaluated per row (pac_eval, never run): DIRECT by address range or by URL pattern bypasses Zscaler."""
+    # Act
+    rn = _mrun("destination,expected\n172.20.1.5,block\nx.direct.example,block\n203.0.113.9,block\ny.example,block\n", platform="macos")
+    rows = _rows(rn)
+    # Assert
+    for h in ("172.20.1.5", "x.direct.example"):
+        assert (rows[h]["result"], rows[h]["area"], rows[h]["rule"], rows[h]["stops_at"]) == ("bypassed", "Client Connector", "corp.pac", "PAC file"), h
+        assert rows[h]["recommended_area"] == "Client Connector"
+    assert rows["203.0.113.9"]["result"] == "allowed" and rows["y.example"]["result"] == "allowed"
+
+
+def test_an_identity_scoped_row_is_evaluated_for_that_identity():
+    """ASVS V1.1.2 · CWE-863: a row's group decides a group-scoped rule: it applies to Finance, is skipped for Sales, and stays blockable for anyone."""
+    # Act
+    rn = _mrun("destination,group,user,department,location\nsocial.example,Finance,,,\nsocial.example,Sales,,,\nsocial.example,,,,\n"
+               "social.example,Finance; Sales,alice@example.com,Risk,HQ\n")
+    rows = list(rn.rows())
+    # Assert
+    assert (rows[0]["result"], rows[0]["rule"]) == ("blocked", "Block social for finance")
+    assert rows[1]["result"] == "allowed" and "Block social for finance" not in rows[1]["blockable_by"]
+    assert rows[2]["result"] == "allowed" and "Block social for finance" in rows[2]["blockable_by"]
+    assert rows[3]["result"] == "blocked" and (rows[3]["user"], rows[3]["department"]) == ("alice@example.com", "Risk")
+
+
+def test_a_source_ip_is_matched_against_the_firewall_source_conditions():
+    """ASVS V1.1.2 · CWE-670: a row's source IP decides a source-scoped firewall rule; without one the rule only makes the row blockable."""
+    # Act
+    rows = list(_mrun("destination,port,source ip\n203.0.113.9,443,10.66.1.1\n203.0.113.9,443,10.1.1.1\n203.0.113.9,443,\n").rows())
+    # Assert
+    assert (rows[0]["result"], rows[0]["area"], rows[0]["rule"]) == ("blocked", "Firewall", "Block lab sources")
+    assert rows[1]["result"] == "allowed" and not rows[1]["blockable_by"]
+    assert rows[2]["result"] == "allowed" and rows[2]["blockable_by"] == "Block lab sources"
+
+
+def test_an_out_of_scope_module_says_not_in_scope_and_is_not_read():
+    """ASVS V4.1.3 · CWE-272: with ZIA platform not ticked the Cloud Firewall is not read, and a row it would decide says not in scope."""
+    # Arrange
+    scope = pa.path_scope(["dlp", "zcc"], {"web_dlp": "zscaler", "ssl_inspection": "zscaler", "cloud_app_control": "zscaler"})
+    c = ModTenant()
+    # Act
+    rn = _mrun("destination,port,protocol\nssh.example,22,tcp\nplain.example,443,tcp\n", client=c, scope=scope)
+    rows = _rows(rn)
+    # Assert
+    assert (rows["ssh.example"]["result"], rows["ssh.example"]["inspection"]) == ("unverified", "not in scope")
+    assert "Cloud Firewall: not in scope on the Scope page" in rows["ssh.example"]["notes"]
+    assert rows["plain.example"]["result"] == "allowed"
+    assert not [p for p in c.paths if p in zpm_endpoints()]
+    assert any("not in scope" in a and "Cloud Firewall" in a for a in rn.summary["assumptions"])
+
+
+def zpm_endpoints():
+    import zia_path_modules
+    return set(zia_path_modules.ENDPOINTS)
+
+
+def test_icmp_and_any_protocol_rows_say_how_they_were_traced():
+    """ASVS V5.1.3 · CWE-20: an ICMP row is not traced and says so; protocol 'any' is traced as TCP and says so."""
+    # Act
+    rows = list(_mrun("destination,protocol\nx.example,icmp\ny.example,any\n").rows())
+    # Assert
+    assert rows[0]["result"] == "unverified" and "ICMP is not traced" in rows[0]["notes"]
+    assert rows[1]["result"] == "allowed" and "traced as TCP" in rows[1]["notes"]
+
+
+def test_a_url_gives_its_port_from_its_scheme_or_its_own_port():
+    """ASVS V5.1.3 · CWE-20: http:// is port 80 and https://x:8443/ is 8443, as the single-destination analyzer reads them; a port column wins."""
+    # Act
+    p = bt.parse("destination,port\nhttp://a.example/x,\nhttps://b.example:8443/,\nhttp://c.example/,22\nhttps://d.example/,\n")
+    # Assert
+    assert [e.get("port") for e in p.entries] == [80, 8443, 22, None]
+
+
+ROW_CASES = [("chat.openai.com", "udp", 443, None, None), ("ssh.example", "tcp", 22, None, None), ("203.0.113.10", "tcp", 3389, None, None),
+             ("casino.example", None, None, None, None), ("bad.example", None, None, None, None), ("social.example", None, None, {"groups": ["Finance"]}, None),
+             ("203.0.113.9", "tcp", 443, None, "10.66.1.1"), ("time.example", "udp", 123, None, None), ("x.direct.example", None, None, None, None)]
+
+
+@pytest.mark.parametrize("platform", ["windows", "macos"])
+def test_every_row_gets_the_single_destination_analyzers_answer(platform):
+    """ASVS V1.4.4 · CWE-682: each row (port, protocol, identity, source IP), shared or not, equals what path_analyzer.analyze says for it alone."""
+    # Arrange
+    lines = ["destination,protocol,port,group,source ip"]
+    for host, proto, port, ident, src in ROW_CASES:
+        lines.append(f"{host},{proto or ''},{port or ''},{(ident or {}).get('groups', [''])[0]},{src or ''}")
+    rn = _mrun("\n".join(lines) + "\n", platform=platform)
+    rows = list(rn.rows())
+    snap = pa.analyze(ModTenant(), "seed.example", "off", platform, scope=FULL)["snapshot_for_cache"]
+    # Act / Assert
+    for r, (host, proto, port, ident, src) in zip(rows, ROW_CASES):
+        alone = bt.summarize_analysis(pa.analyze(ModTenant(), host, "off", platform, scope=FULL, snapshot=snap, lookup=rn.lookups[host],
+                                                 protocol=proto, port=port, identity=ident, context={"source_ip": src} if src else None))
+        assert (r["result"], r["rule"], r["area"], r["inspection"]) == (alone["result"], alone["rule"], alone["area"], alone["inspection"]), (host, platform)
+
+
+def test_rows_that_relate_alike_to_the_tenant_share_one_trace():
+    """ASVS V11.1.4 · CWE-400: a /24 and a port mix trace a handful of times, not once per row, and the tenant is read once."""
+    # Arrange
+    c = ModTenant()
+    # Act
+    rn = _mrun("destination,port,protocol\n203.0.113.0/24,443,tcp\n203.0.113.0/24,22,tcp\n198.51.100.0/25,22,tcp\n", client=c)
+    # Assert
+    assert len(rn.p) == 640 and rn.summary["traced"] <= 4
+    assert c.paths.count("/zia/firewallFilteringRules") == 1 and c.paths.count("/zia/urlFilteringRules") == 1
+    assert {r["rule"] for r in rn.rows() if r["port"] == 22} == {"Block SSH to bad nets", "Default Firewall Filtering Rule"}
 
 
 @pytest.mark.parametrize("cat,alerts,kind", [("MALWARE_SITE", [], "threat"), ("SOME_NEW_THREAT", ["SOME_NEW_THREAT"], "threat"),
@@ -588,6 +851,52 @@ def test_the_route_runs_a_job_exports_lists_and_hands_off(monkeypatch, tmp_path)
     assert not c.writes
     log = audit_log.read_text(encoding="utf-8")
     assert "/api/bulk-test/start" in log and "alice@example.com" not in log and "casino.example" not in log and "secret-secret-secret" not in log
+
+
+def test_the_route_reads_zpa_first_keeps_it_and_reuses_it(monkeypatch, tmp_path):
+    """ASVS V4.1.3 · ASVS V4.2.1 · CWE-272 · CWE-639: with ZPA ticked the job reads ZPA once, answers carried rows from it and keeps the read for the same tenant."""
+    # Arrange
+    import dlp_api_server as srv
+    import zpa_reader
+    from fastapi.testclient import TestClient
+    from test_path_zpa_workloads import Sdk
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
+    monkeypatch.setattr(zpa_reader, "PACE_SECONDS", 0.0)
+    monkeypatch.setattr(srv, "_REPORTS", {})
+    c, built = ModTenant(), []
+    monkeypatch.setattr(srv, "_build_client", lambda req: built.append("raw") or c)
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append("sdk") or Sdk())
+    t = TestClient(srv.app)
+    body = dict(CREDS, customer_id="216196257331281920", scopes=["zpa", "dlp", "zcc", "zia_extras"], from_page=True,
+                text="destination,expected\ngit.corp.example,block\ncasino.example,allow\n")
+    # Act
+    first = _follow(t, t.post("/api/bulk-test/start", json=body).json()["job_id"])["result"]
+    again = _follow(t, t.post("/api/bulk-test/start", json=dict(body, zpa_report_id=first["zpa_report_id"])).json()["job_id"])["result"]
+    zpa_only = t.post("/api/bulk-test/start", json=dict(body, scopes=["zpa"]))
+    assert zpa_only.status_code == 200, zpa_only.text
+    only = _follow(t, zpa_only.json()["job_id"])["result"]
+    # Assert
+    assert first["status"] == "done" and first["zpa_report_id"].startswith("pathzpa-") and first["zpa"]["state"] == "read"
+    assert again["zpa"]["state"] == "kept" and again["zpa_report_id"] == first["zpa_report_id"]
+    assert built == ["raw", "sdk", "raw", "sdk"], built   # the kept ZPA read signs in to ZIA only; ZPA alone to ZPA only
+    rows = {r["target"]: r for r in first["preview"]}
+    assert rows["git.corp.example"]["area"] == "ZPA" and rows["casino.example"]["area"] == "DNS"
+    assert zpa_only.status_code == 200 and only["counts"]["unverified"] == 1 and only["counts"]["allowed"] == 1
+    assert not c.writes
+
+
+def test_the_route_refuses_zpa_only_without_a_customer_id_before_signing_in(monkeypatch):
+    """ASVS V4.1.3 · CWE-272: ZPA alone without a customer ID cannot be read: a 400 before any client is built."""
+    # Arrange
+    import dlp_api_server as srv
+    from fastapi.testclient import TestClient
+    built = []
+    monkeypatch.setattr(srv, "_build_client", lambda req: built.append("raw"))
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append("sdk"))
+    # Act
+    r = TestClient(srv.app).post("/api/bulk-test/start", json=dict(CREDS, scopes=["zpa"], channels={}, from_page=True, text="git.corp.example"))
+    # Assert
+    assert r.status_code == 400 and "customer ID" in r.json()["detail"] and built == []
 
 
 def test_a_list_that_cannot_be_tested_is_refused_before_signing_in(monkeypatch):

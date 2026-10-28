@@ -541,17 +541,31 @@ def _crit_destination(rule: Dict[str, Any], ctx: Dict[str, Any], groups: Optiona
     return _crit(label, "no_match", f"{host} is not in {what}.")
 
 
-def _crit_source(rule: Dict[str, Any], groups: Optional[Dict[str, Dict[str, Any]]]) -> Optional[Dict[str, str]]:
+def _crit_source(rule: Dict[str, Any], groups: Optional[Dict[str, Dict[str, Any]]], src: Any = None) -> Optional[Dict[str, str]]:
+    """The rule's source IP condition. Unknown unless the caller gave the
+    source address (`src`, an ip_address: context["source_ip"]); then a
+    match, or no match when every group's members are known."""
     ips = [str(x) for x in _list(_f(rule, "srcIps"))]
     names_ = []
+    unresolved = []
     for g in _list(_f(rule, "srcIpGroups")):
         full = (groups or {}).get(_id(g) or "")
         names_.append(_name(g))
-        ips += [str(x) for x in _list(_f(full or {}, "ipAddresses"))]
+        members = [str(x) for x in _list(_f(full or {}, "ipAddresses"))]
+        if not members:
+            unresolved.append(_name(g))
+        ips += members
     if not ips and not names_:
         return None
     what = _short(ips + [f"group {n}" for n in names_], 4)
-    return _crit("Source IP", "unknown", f"Applies to {what}; the user's source IP address is not known.")
+    if src is None:
+        return _crit("Source IP", "unknown", f"Applies to {what}; the user's source IP address is not known.")
+    hit = next((x for x in ips if _is_ip_entry(x) and _ip_rel(src, x)), None)
+    if hit:
+        return _crit("Source IP", "match", f"The source {src} is in {hit}.")
+    if unresolved:
+        return _crit("Source IP", "unknown", f"Applies to {what}; the members of {_short(unresolved, 3)} are not known.")
+    return _crit("Source IP", "no_match", f"The source {src} is not in {what}.")
 
 
 def _services(rule: Dict[str, Any], fw: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
@@ -877,7 +891,7 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     sgroups = None if data.get("ip_source_groups") is None else {str(g.get("id")): g for g in data["ip_source_groups"]}
 
     def criteria(r):
-        return [_crit_source(r, sgroups), _crit_destination(r, ctx, dgroups), _crit_services(r, ctx, fw), _crit_network_apps(r, ctx, fw)] + \
+        return [_crit_source(r, sgroups, ctx.get("source_ip")), _crit_destination(r, ctx, dgroups), _crit_services(r, ctx, fw), _crit_network_apps(r, ctx, fw)] + \
             unevaluated(r, skip=("srcIps", "srcIpGroups", "sourceIpGroups"))
 
     def verdict_of(r):
@@ -1090,7 +1104,10 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
     """Pure: the trace, the destination (path_analyzer.parse_destination
     plus the resolved categories), the traffic, the tenant read (with
     `modules` from read) and the URL lookup -> {traffic, modifier (SSL),
-    modules (in order), stops_at, certainty, reasons}."""
+    modules (in order), stops_at, certainty, reasons}. `context` may give
+    `file_types` and `source_ip` (the device's address as ZIA sees it,
+    matched against the Cloud Firewall's source conditions; without it
+    they are unknown)."""
     mods = zia.get("modules") or {}
     rd = t.get("destination") or {}
     ip = None
@@ -1098,7 +1115,12 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
         ip = ipaddress.ip_address(str(dest.get("host") or ""))
     except ValueError:
         pass
-    ctx = {"host": dest.get("host") or "", "ip": ip, "dest": dest, "traffic": traffic, "visible": None,
+    src = None
+    try:
+        src = ipaddress.ip_address(str((context or {}).get("source_ip") or ""))
+    except ValueError:
+        pass
+    ctx = {"host": dest.get("host") or "", "ip": ip, "dest": dest, "traffic": traffic, "visible": None, "source_ip": src,
            "categories": sorted({str(c).upper() for c in rd.get("categories") or []}), "alerts": sorted({str(c).upper() for c in lookup.get("security_alerts") or []}),
            "applications": sorted({str(a).upper() for a in rd.get("applications") or []}), "app_classes": sorted({str(a).upper() for a in rd.get("app_classes") or []}),
            "file_types": sorted({str(x).upper() for x in (context or {}).get("file_types") or [] if x})}

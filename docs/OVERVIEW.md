@@ -135,11 +135,13 @@ what you get, what to do next.
 
 ### Find the gaps
 
-- **Traffic flow & gaps** — the exact path a user's transaction takes
-  (Client Connector app and forwarding profile, PAC, SSL inspection, URL
-  filtering, Cloud App Control, file type control, DLP), with every point
-  where inspection is lost, visibility by cloud-app category, and the
-  path diagram per policy pack.
+- **Traffic flow & gaps** — the path the tenant's configuration gives a
+  user's web traffic to each traffic class, for any user (Client Connector
+  app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL
+  inspection, File Type Control, Web DLP), with the points on those paths
+  where inspection is lost, visibility by cloud-app category, and each
+  policy pack's rules overlaid by name. Configuration only: no traffic is
+  observed.
 - **ZPA analysis** — the ZPA configuration read once (only when ZPA is
   ticked on the Scope page, with the ZPA customer ID) and checked by the
   ZPA analysis templates: unreachable access rules, segments nobody
@@ -212,17 +214,22 @@ what you get, what to do next.
   **Test a list** (a tab on the same page) does it for a whole list: a
   CSV or pasted list of IP addresses, CIDR blocks (up to a /16 per row),
   ranges, hosts and URLs, up to 250,000 rows, with optional port,
-  protocol, source IP, location, country, category, user, label and
-  what each row is expected to do (block or allow). The tenant is read
-  once, ZIA's URL lookup is asked a hundred destinations per request,
+  protocol, source IP, location, country, category, user, group,
+  department, label and what each row is expected to do (block or
+  allow). Each row gets the answer the single-destination analyzer
+  gives: ZPA first when ticked, then every ZIA module for the row's
+  protocol and port, its identity and its source IP. The tenant (and
+  ZPA) is read once, ZIA's URL lookup is asked a hundred destinations per request,
   paced for ZIA's rate limit (a quota that runs out labels the rest
   "rerun later"), and a category in the file overrides the lookup. You
   get counts (blocked, allowed, bypassed, isolated, caution, allowed but
   blockable), the top deciding rules and categories, the rows to look
-  at, for each row that misses what was expected the area to fix it in
-  (ATP, Cloud Firewall, URL filtering, DNS Control, Client Connector,
-  Cloud App Control) with advice per category, a list per area to paste
-  into a custom URL category or IP group, and CSV and Excel downloads.
+  at, for each row that misses what was expected the area to fix it in,
+  from the module that decided the row (ATP, Cloud Firewall, URL
+  filtering, DNS Control, Client Connector, Cloud App Control, ZPA) with
+  advice per category, a list per area to paste (an IP destination group
+  for the Cloud Firewall, a custom URL category for URL filtering, the
+  segments to change for ZPA), and CSV and Excel downloads.
   Fix selected opens Bulk changes with the picked destinations filled in
   as a URL category change; it writes nothing on its own.
 - **Shadowed rules** — reads the rules of every policy in scope (Inline

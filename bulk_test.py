@@ -3,7 +3,8 @@
 The Path analyzer page's "Test a list" view sends a CSV of destinations
 (IP addresses, host names, URLs, CIDR blocks and ranges, with optional
 port, protocol, source IP, location, destination country, category,
-user, label and the expected result, block or allow). This module:
+user, group, department, label and the expected result, block or
+allow). This module:
 
 1. parses it defensively (`parse`): the file is untrusted, so it has a
    size cap, a line and cell length cap, no formula is ever evaluated and
@@ -20,21 +21,27 @@ user, label and the expected result, block or allow). This module:
    with the label "rerun later" on every row not looked up. A category
    column in the file overrides the lookup for its row. Answers are kept
    for the run;
-3. runs every row through the evaluators (`EVALUATORS`). Today that is
-   the Path analyzer's own evaluation (path_analyzer.analyze against one
-   tenant read, reused, not duplicated). Evaluators for more policy areas
-   (Cloud Firewall, DNS Control, Advanced Threat Protection, ZPA) plug in
-   with `register`: each gets the row (destination, port, protocol,
-   source IP, location, country, user, categories) and answers for its
-   area, and `combine` lets the one that decides first win;
+3. runs every row through the evaluators (`EVALUATORS`): the Path
+   analyzer's own evaluation, the same answer the single-destination
+   analyzer gives (one code path, `PathEvaluator`): ZPA first when it is
+   in scope (zpa_path: segment, bypass, client forwarding, access
+   policy), then path_analyzer.analyze against one tenant read for the
+   row's protocol and port (Client Connector, the PAC file evaluated by
+   pac_eval, and every ZIA module in order: zia_path_modules), for the
+   row's identity when it names a user, group, department or location
+   (path_whatif). Nothing is re-implemented here and no reader is added:
+   the reads are path_analyzer.analyze's (ZIA, each module only when in
+   scope) and zpa_path.read's. More evaluators plug in with `register`,
+   and `combine` lets the one that decides first win;
 4. sums it up (blocked, allowed, bypassed, isolated, caution, allowed but
    blockable, unverified), names the top deciding rules and categories,
    compares each row with what the file expected and recommends where
-   to fix a miss (ATP, Cloud Firewall, URL filtering, DNS Control, Client
-   Connector, Cloud App Control), with per-category advice, exports
-   (csv_safe / xlsx_writer, formula-neutralised) and a plain list of
-   destinations per area to paste into a custom URL category or an IP
-   group.
+   to fix a miss, from the module that decided the row (ATP, Cloud
+   Firewall, URL filtering, DNS Control, Client Connector, Cloud App
+   Control, ZPA), with per-category advice, exports (csv_safe /
+   xlsx_writer, formula-neutralised) and a plain list of destinations per
+   area to paste: an IP destination group for the Cloud Firewall, a
+   custom URL category for URL filtering, the segment to change for ZPA.
 
 "Fix selected" (`fix_handoff`) only prepares the chosen destinations for
 the Bulk changes page's URL category operation (admin_ops), which
@@ -76,16 +83,18 @@ RATE_WAITS = (30, 60, 120)          # a 429 the client could not wait out
 REFUSED_WAITS = (60, 120, 300)      # 401/403 after lookups had worked: usually a quota
 WAIT_CAP = 900
 
-AREAS = ("ATP", "Firewall", "URL", "DNS", "Client Connector", "Cloud App")
-AREA_KEYS = {"atp": "ATP", "firewall": "Firewall", "url": "URL", "dns": "DNS", "client_connector": "Client Connector", "cloud_app": "Cloud App"}
+AREAS = ("ATP", "Firewall", "URL", "DNS", "Client Connector", "Cloud App", "ZPA")
+AREA_KEYS = {"atp": "ATP", "firewall": "Firewall", "url": "URL", "dns": "DNS", "client_connector": "Client Connector", "cloud_app": "Cloud App",
+             "zpa": "ZPA"}
 AREA_LABELS = {"ATP": "Advanced Threat Protection", "Firewall": "Cloud Firewall", "URL": "URL filtering", "DNS": "DNS Control",
-               "Client Connector": "Client Connector", "Cloud App": "Cloud App Control"}
+               "Client Connector": "Client Connector", "Cloud App": "Cloud App Control", "ZPA": "ZPA"}
 AREA_PASTE = {"ATP": "the ATP denylist (Malicious URLs) or, to allow, the ATP security exceptions",
-              "Firewall": "an IP destination group used by a Cloud Firewall rule",
+              "Firewall": "an IP destination group (type IP for addresses, FQDN for host names) used by a Cloud Firewall rule",
               "URL": "a custom URL category used by a URL filtering rule",
               "DNS": "a custom URL category used by a DNS Control rule",
               "Client Connector": "the app profile's bypass list (remove them to send them to Zscaler)",
-              "Cloud App": "a custom URL category, or name the cloud application in a Cloud App Control rule"}
+              "Cloud App": "a custom URL category, or name the cloud application in a Cloud App Control rule",
+              "ZPA": "the ZPA application segment named for each row: ZPA's access policy decides these, not a ZIA list"}
 RESULTS = ("blocked", "allowed", "bypassed", "isolated", "caution", "unverified")
 DECIDING = ("blocked", "bypassed", "isolated", "caution")
 ROW_FILTERS = ("all", "flagged", "unmet")
@@ -112,11 +121,16 @@ LOW_COLLATERAL = frozenset({"MISCELLANEOUS_OR_UNKNOWN", "OTHER_MISCELLANEOUS", "
 WEB_PORTS = frozenset({80, 443, 8080, 8443})
 
 ASSUMPTIONS = [
-    "Each row is traced like the Path analyzer traces one destination: any user, group and location, browser traffic over HTTPS from a managed device "
-    "with Client Connector, on the network and platform you chose. Rules scoped to users, groups, locations or request methods do not decide a row; "
-    "a scoped rule that would block it makes the row 'allowed but blockable'.",
-    "Port, protocol, source IP, location, destination country and user are carried into the results but not evaluated: the policy areas that use them "
-    "(Cloud Firewall, DNS Control, Advanced Threat Protection, ZPA) are not read by this view yet.",
+    "Each row is traced as the Path analyzer traces one destination, from a managed device with Client Connector on the network and platform you "
+    "chose: ZPA first when it is in scope, then Client Connector and the PAC file (evaluated, never run), then every ZIA module in order "
+    "(Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control and URL filtering, Sandbox, File Type Control, DLP) for the "
+    "row's protocol and port. A row with no port is HTTPS (TCP/443); a URL's own port or http:// scheme gives its port.",
+    "A row with a user, group, department or location is evaluated for that identity: rules scoped to it apply and rules scoped to others are "
+    "skipped. Without one the row is for any user. A scoped rule that could still block it (or a rule that depends on a time window, device "
+    "trust or anything else not given) makes the row 'allowed but blockable'.",
+    "A row's source IP is matched against the Cloud Firewall's source IP conditions, taken as the address ZIA sees for the device. Destination "
+    "country is carried into the results but not evaluated: this tool does not geolocate.",
+    "ICMP rows are not traced (the Path analyzer evaluates TCP and UDP); a row with the protocol 'any' is traced as TCP.",
     "A URL is tested by its host: URL filtering here decides by host and category, not by path.",
     "A category column in the file overrides ZIA's lookup for its row; rows ZIA could not look up are placed by the tenant's own custom categories only.",
 ]
@@ -142,11 +156,14 @@ ALIASES: Dict[str, Tuple[str, ...]] = {
     "dest_country": ("destcountry", "destinationcountry", "country"),
     "category": ("category", "categories", "urlcategory", "urlcategories"),
     "user": ("user", "username", "email", "upn"),
+    "group": ("group", "groups", "usergroup", "usergroups"),
+    "department": ("department", "departments", "dept"),
     "label": ("label", "name", "note", "notes", "comment", "description", "tag"),
     "expected": ("expected", "expect", "expectation", "should", "desired", "intent", "expectedaction", "expectedresult"),
 }
 _HEADER = {alias: key for key, names in ALIASES.items() for alias in names}
-FIELDS = ("line", "input", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "label", "expected", "notes")
+FIELDS = ("line", "input", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "group", "department", "label", "expected",
+          "notes")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _CATEGORY_ID = re.compile(r"^[A-Z0-9_]{2,64}$")
 _PROTOCOLS = {"tcp": "TCP", "udp": "UDP", "icmp": "ICMP", "any": "ANY", "http": "TCP", "https": "TCP"}
@@ -220,7 +237,7 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
             e["source_ip"] = str(ipaddress.ip_address(src))
         except ValueError:
             notes.append("source IP ignored: not an IP address")
-    for key in ("location", "dest_country", "user", "label"):
+    for key in ("location", "dest_country", "user", "group", "department", "label"):
         if raw.get(key):
             e[key] = raw[key][:128]
     if raw.get("category"):
@@ -277,9 +294,14 @@ def _ip_range(text: str) -> Optional[Tuple[int, int, int]]:
     return None
 
 
-def _destination(text: str) -> Tuple[str, str, Optional[str]]:
-    """(target, kind 'ip' or 'host', note) for one IP address, host name or
-    URL; ValueError with the reason otherwise."""
+_SCHEME_PORTS = {"http": 80, "ftp": 21}
+
+
+def _destination(text: str) -> Tuple[str, str, Optional[str], Optional[int]]:
+    """(target, kind 'ip' or 'host', note, the URL's port) for one IP
+    address, host name or URL; ValueError with the reason otherwise. The
+    port is the URL's own (https://x:8443/) or its scheme's when that is
+    not HTTPS (http:// is 80), as the single-destination analyzer reads it."""
     import path_analyzer
     t = text.strip()
     note = None
@@ -289,7 +311,8 @@ def _destination(text: str) -> Tuple[str, str, Optional[str]]:
     d = path_analyzer.parse_destination(t)
     if d["kind"] == "url":
         note = "tested by its host; the URL path is not evaluated"
-    return d["host"], ("ip" if d["is_ip"] else "host"), note
+    port = d["port"] or (_SCHEME_PORTS.get(d["scheme"]) if re.match(r"^[a-z][a-z0-9+.-]*://", t, re.I) else None)
+    return d["host"], ("ip" if d["is_ip"] else "host"), note, port
 
 
 class ParsedList:
@@ -359,7 +382,9 @@ def parse(text: str) -> ParsedList:
         try:
             rng = _ip_range(dest)
             if rng is None:
-                target, kind, note = _destination(dest)
+                target, kind, note, url_port = _destination(dest)
+                if url_port and "port" not in e:
+                    e["port"] = url_port
         except ValueError as ex:
             out.skip(line_no, dest, str(ex).split(". Examples")[0][:160])
             continue
@@ -587,24 +612,34 @@ def lookup_all(client, keys: Sequence[str], *, cancel: Any = None, log: LogFn = 
 #
 # An evaluator answers for its policy area(s), one row at a time. It is
 # built once per run by a factory called with keyword arguments (client,
-# scope, network, platform, snapshot, packs, log, cancel) and has:
+# scope, network, platform, snapshot, packs, zpa, log, cancel) and has:
 #   key, label        a short id and what it evaluates
 #   precedence        lower decides first when two evaluators decide
 #   prepare()         reads the tenant once (raises Stopped on Stop)
 #   evaluate(row)     a result dict (see _result) or None when the row is
 #                     not its business (a web-only evaluator and ICMP, say)
 # A row is a dict: target, host, is_ip, private, port, protocol, source_ip,
-# location, dest_country, user, lookup (the lookup answer or None).
+# location, dest_country, user, group, department, lookup (the lookup
+# answer or None).
 
 def _result(**kw: Any) -> Dict[str, Any]:
     r = {"result": "allowed", "area": "", "action": "", "rule": "", "stops_at": "", "inspection": "", "headline": "", "blockable_by": [],
-         "categories": [], "security_alerts": [], "application": None, "notes": [], "evaluator": ""}
+         "categories": [], "security_alerts": [], "application": None, "notes": [], "evaluator": "", "segment": ""}
     r.update(kw)
     return r
 
 
-_URL_HOP_AREA = {"zcc": "Client Connector", "forwarding": "Client Connector", "pac": "Client Connector", "url": "URL", "cac": "Cloud App"}
+# The area a deciding hop belongs to (data_flow.trace's hops and the ZIA
+# modules zia_path_modules.extend_trace draws as hops).
+_HOP_AREA = {"zcc": "Client Connector", "forwarding": "Client Connector", "pac": "Client Connector", "url": "URL", "cac": "Cloud App",
+             "atp": "ATP", "firewall": "Firewall", "dns": "DNS"}
 _BLOCKING = ("BLOCK", "BLOCK_RESET", "DROP")
+_MODULE_LABEL = {"atp": "Advanced Threat Protection", "firewall": "Cloud Firewall", "dns": "DNS Control"}
+ICMP_NOTE = ("ICMP is not traced: the Path analyzer evaluates TCP and UDP. Check the Cloud Firewall's rules for ICMP in the ZIA Admin Portal.")
+ANY_NOTE = "Protocol 'any' traced as TCP."
+ZIA_NOT_IN_SCOPE = ("Reaches ZIA; what ZIA does with it is not assessed: no ZIA part is in scope. Put ZIA policy in scope on the Scope page "
+                    "and test again to assess it.")
+_PROTO_ARG = {"TCP": "tcp", "UDP": "udp"}
 
 
 def _rule_blocks(r: Dict[str, Any]) -> bool:
@@ -613,8 +648,39 @@ def _rule_blocks(r: Dict[str, Any]) -> bool:
     return act in _BLOCKING or act.startswith("BLOCK") or any(a.startswith("BLOCK") for a in acts)
 
 
+def _context_only(o: Dict[str, Any]) -> bool:
+    """A rule whose every unknown criterion is about who, where, when or
+    which device (a user, a location, a time window, device trust, a source
+    address): it matches this destination and traffic, but applies only in
+    some contexts. A rule unknown on the destination itself (no category
+    known, a host name against address ranges) is not counted."""
+    from zia_path_modules import UNEVALUATED
+    ctx = {label for _, label, _ in UNEVALUATED} | {"Source IP"}
+    unknown = [c for c in o.get("criteria") or [] if c.get("state") == "unknown"]
+    return bool(unknown) and all(c.get("name") in ctx for c in unknown)
+
+
+def _module_blockable(mods: Dict[str, Dict[str, Any]]) -> List[str]:
+    """Rules of Advanced Threat Protection, the Cloud Firewall and DNS
+    Control that could still block a row they did not block: a block an
+    earlier rule might override, or an earlier block rule that matches the
+    destination but applies only in some contexts (_context_only)."""
+    out: List[str] = []
+    for k in ("atp", "firewall", "dns"):
+        m = mods.get(k) or {}
+        if m.get("status") != "evaluated":
+            continue
+        if m.get("verdict") == "block" and m.get("certainty") == "conditional" and (m.get("rule") or {}).get("name"):
+            out.append(str(m["rule"]["name"]))
+        elif m.get("verdict") != "block":
+            out += [str(o.get("name")) for o in m.get("could_override") or [] if o.get("verdict") == "block" and o.get("name") and _context_only(o)]
+    return out
+
+
 def summarize_analysis(res: Dict[str, Any]) -> Dict[str, Any]:
-    """One row's result from a path_analyzer.analyze() answer."""
+    """One row's result from a path_analyzer.analyze() answer: the deciding
+    module names the area (Client Connector, ATP, Cloud Firewall, DNS
+    Control, Cloud App Control, URL filtering)."""
     import path_analyzer
     v = res.get("verdict") or {}
     t = res.get("trace") or {}
@@ -624,59 +690,207 @@ def summarize_analysis(res: Dict[str, Any]) -> Dict[str, Any]:
     url = next((h for h in hops if h.get("key") == "url"), {})
     name = lambda h: str(((h or {}).get("decided_by") or {}).get("name") or "")  # noqa: E731
     lk = res.get("lookup") or {}
+    zm = res.get("zia_modules") or {}
+    mods = {m.get("key"): m for m in zm.get("modules") or []}
+    traffic = zm.get("traffic") or {}
+    web = traffic.get("web", True)
     base = dict(categories=list(v.get("categories") or []), security_alerts=list(lk.get("security_alerts") or []),
                 application=lk.get("application"), inspection=path_analyzer.BATCH_OUTCOMES.get(outcome, outcome or "unverified"),
                 headline=v.get("headline") or "", evaluator="path")
     blockable = [str(r.get("name")) for h in hops if h.get("status") == "conditional" and h.get("key") in ("url", "cac")
                  for r in h.get("candidate_rules") or [] if isinstance(r, dict) and r.get("name") and _rule_blocks(r)]
+    blockable = list(dict.fromkeys(blockable + _module_blockable(mods)))
     if outcome == "bypassed" and stop:
         return _result(result="bypassed", area="Client Connector", action="BYPASS", rule=name(stop), stops_at=stop.get("label") or "", **base)
     if outcome == "blocked" and stop:
         action = str((stop.get("decided_by") or {}).get("action") or "BLOCK")
-        return _result(result="blocked", area=_URL_HOP_AREA.get(stop.get("key"), "URL"), action=action if isinstance(action, str) else "BLOCK",
+        return _result(result="blocked", area=_HOP_AREA.get(stop.get("key"), "URL"), action=action if isinstance(action, str) else "BLOCK",
                        rule=name(stop), stops_at=stop.get("label") or "", **base)
+    if t.get("conditional"):
+        return _result(result="unverified", area="", blockable_by=blockable, notes=["how the device reaches Zscaler could not be verified"], **base)
+    if not web:
+        # Not web: only the Cloud Firewall decides (DNS Control and ATP
+        # block first when they do; that is the `blocked` case above).
+        fw = mods.get("firewall") or {}
+        r = fw.get("rule") or {}
+        label = traffic.get("label") or "this traffic"
+        if fw.get("status") == "out_of_scope":
+            return _result(result="unverified", area="Firewall", blockable_by=blockable,
+                           notes=["Cloud Firewall: not in scope on the Scope page, so not assessed."], **dict(base, inspection="not in scope"))
+        if fw.get("verdict") == "unknown" or fw.get("status") != "evaluated":
+            return _result(result="unverified", area="Firewall", blockable_by=blockable,
+                           notes=[f"Cloud Firewall: {(fw.get('detail') or 'not established').rstrip('.')}."], **base)
+        if fw.get("verdict") == "block":   # a block an earlier rule might override: not certain either way
+            return _result(result="unverified", area="Firewall", rule=str(r.get("name") or ""), action=str(r.get("action") or ""), blockable_by=blockable,
+                           notes=[f"Cloud Firewall: {fw.get('reason') or 'an earlier rule with a condition this tool cannot evaluate could decide instead'}."],
+                           **base)
+        return _result(result="allowed", area="Firewall", action=str(r.get("action") or "ALLOW"), rule=str(r.get("name") or ""),
+                       stops_at="reaches the destination", blockable_by=blockable, **dict(base, inspection=f"not inspected ({label} is not web)"))
     act = str((url.get("decided_by") or {}).get("action") or "").upper()
     if url.get("status") == "warn" and act == "CAUTION":
         return _result(result="caution", area="URL", action="CAUTION", rule=name(url), stops_at="URL filtering", blockable_by=blockable, **base)
     if url.get("status") == "warn" and "ISOLATE" in act:
         return _result(result="isolated", area="URL", action="ISOLATE", rule=name(url), stops_at="URL filtering", blockable_by=blockable, **base)
-    if t.get("conditional") or url.get("status") == "unknown":
-        why = ("how the device reaches Zscaler could not be verified" if t.get("conditional")
-               else "the URL filtering rules could not be read")
-        return _result(result="unverified", area="URL", action="", rule="", stops_at="", blockable_by=blockable, notes=[why], **base)
+    if url.get("status") == "unknown":
+        return _result(result="unverified", area="URL", action="", rule="", stops_at="", blockable_by=blockable,
+                       notes=["the URL filtering rules could not be read"], **base)
     deciding = name(url) if url.get("status") in ("pass", "warn") else ""
     return _result(result="allowed", area="URL" if url else "", action=act or "ALLOW", rule=deciding, stops_at="reaches the destination",
                    blockable_by=blockable, **base)
 
 
+def summarize_zpa(st: Dict[str, Any], rep: str = "", host: str = "") -> Optional[Dict[str, Any]]:
+    """One row's result when ZPA carries it (zpa_path.stage with carries
+    True): allowed or denied by the access policy, or unverified when it
+    depends on who the user is. None when ZPA does not carry it."""
+    if st.get("carries") is not True:
+        return None
+    seg = str((st.get("segment") or {}).get("name") or "")
+    acc = next((m for m in st.get("modules") or [] if m.get("key") == "zpa_access"), {})
+    rule = str((acc.get("rule") or {}).get("name") or "")
+    head = str(st.get("headline") or "")
+    if rep and host and rep != host:
+        head = head.replace(rep, host)
+    base = dict(area="ZPA", segment=seg, headline=head, inspection="carried by ZPA (ZIA does not apply)", evaluator="zpa")
+    if st.get("outcome") == "zpa_allowed":
+        notes = ["ZPA allows it, but no App Connector serving the segment is connected, so the connection fails."] if st.get("reachable") is False else []
+        return _result(result="allowed", action="ALLOW", rule=rule, stops_at="reaches the application through ZPA", notes=notes, **base)
+    if st.get("outcome") == "zpa_denied":
+        return _result(result="blocked", action="DENY", rule=rule or "ZPA default deny", stops_at="ZPA access policy", **base)
+    return _result(result="unverified", action="", rule="", stops_at="ZPA", notes=[head], **base)
+
+
+def _net(entry: str) -> Optional[Tuple[int, int, int]]:
+    """(IP version, first, last) for an address, CIDR block or a-b range."""
+    try:
+        if "-" in entry:
+            a, b = (ipaddress.ip_address(x.strip()) for x in entry.split("-", 1))
+            return (a.version, int(a), int(b)) if a.version == b.version else None
+        n = ipaddress.ip_network(entry, strict=False)
+        return n.version, int(n.network_address), int(n.broadcast_address)
+    except ValueError:
+        return None
+
+
+class _HostIndex:
+    """Every host, domain, wildcard and address entry of the tenant's lists
+    that name destinations (Client Connector bypasses, PAC DIRECT patterns,
+    custom URL categories, the ATP lists, Cloud Firewall and DNS Control
+    destinations). `match` answers which entries a destination is related
+    to and how (the host itself, a subdomain of it, a wildcard, inside an
+    address range): destinations with the same answer are traced alike."""
+
+    def __init__(self, entries: Iterable[Any]) -> None:
+        self.names: Dict[str, List[str]] = {}
+        self.nets: List[Tuple[int, int, int, str]] = []
+        self.globs: List[Tuple[str, str]] = []
+        for raw in entries:
+            self._add(str(raw or "").strip())
+
+    def __bool__(self) -> bool:
+        return bool(self.names or self.nets or self.globs)
+
+    def _add(self, raw: str) -> None:
+        if not raw:
+            return
+        low = raw.lower()
+        net = _net(low)
+        if net is not None:
+            self.nets.append((net[0], net[1], net[2], raw))
+            return
+        h = re.sub(r"^[a-z][a-z0-9+.-]*://", "", low).split("/", 1)[0]
+        if h.count(":") == 1:
+            h = h.split(":", 1)[0]
+        body = h[2:] if h.startswith("*.") else h
+        if any(ch in body for ch in "*?[]"):
+            self.globs.append((h, raw))
+            return
+        key = h.lstrip("*").lstrip(".")
+        if key:
+            self.names.setdefault(key, []).append(raw)
+
+    def match(self, host: str, ip: Any = None) -> frozenset:
+        out = set()
+        if ip is not None and self.nets:
+            ver, n = ip.version, int(ip)
+            for v, lo, hi, raw in self.nets:
+                if v == ver and lo <= n <= hi:
+                    out.add((raw, "in"))
+        if self.names:
+            parts = host.split(".")
+            for i in range(len(parts)):
+                for raw in self.names.get(".".join(parts[i:]), ()):
+                    out.add((raw, "eq" if i == 0 else "sub"))
+        for pat, raw in self.globs:
+            if fnmatch.fnmatch(host, pat):
+                out.add((raw, "glob"))
+        return frozenset(out)
+
+
+def _strings(v: Any) -> List[str]:
+    if isinstance(v, (list, tuple)):
+        return [str(x) for x in v if isinstance(x, (str, int))]
+    return []
+
+
+def _identity_raw(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The row's identity as the Path analyzer's what-if takes it (a group
+    cell may name several groups, separated by ; or |), or None."""
+    if not any(row.get(k) for k in ("user", "group", "department", "location")):
+        return None
+    groups = [g.strip() for g in re.split(r"[;|]", str(row.get("group") or "")) if g.strip()]
+    return {"user": row.get("user") or None, "groups": groups, "department": row.get("department") or None, "location": row.get("location") or None}
+
+
 class PathEvaluator:
-    """The Path analyzer's evaluation, unchanged: Client Connector app and
-    forwarding profiles, PAC, Cloud App Control, URL filtering, SSL
-    inspection and DLP, against one tenant read. Destinations that no
-    host-specific list names (a bypass domain, a PAC DIRECT host, a custom
-    category's URLs) and that share their categories trace identically,
-    so they are traced once and share the answer."""
+    """The Path analyzer's evaluation, the same answer the single-destination
+    analyzer gives: ZPA first when it is in scope (zpa_path.stage), then
+    path_analyzer.analyze for the row's protocol and port, source IP and
+    identity: Client Connector app and forwarding profiles, the PAC file
+    (pac_eval), Advanced Threat Protection, Cloud Firewall, DNS Control,
+    Cloud App Control, URL filtering, SSL inspection, Sandbox, File Type
+    Control and DLP, against one tenant read. Destinations that relate to
+    the tenant's destination lists in the same way (_HostIndex), get the
+    same PAC answer, share their categories, traffic, identity and source
+    address trace identically, so they are traced once and share the
+    answer; ZPA's answer is shared per application segment and port."""
 
     key = "path"
-    label = "Path analyzer: Client Connector, Cloud App Control, URL filtering, SSL inspection, DLP"
+    label = ("Path analyzer: ZPA, Client Connector and PAC, Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control, "
+             "URL filtering, SSL inspection, Sandbox, File Type Control, DLP")
     precedence = 50
 
     def __init__(self, *, client, scope: Dict[str, Any], network: str = "off", platform: str = "windows",
                  snapshot: Optional[Dict[str, Any]] = None, packs: Optional[List[Dict[str, Any]]] = None, log: LogFn = None,
-                 cancel: Any = None, **_: Any) -> None:
+                 cancel: Any = None, zpa: Optional[Dict[str, Any]] = None, **_: Any) -> None:
         self.client, self.scope, self.network, self.platform = client, scope, network, platform
         self.snapshot = snapshot
         self.fresh: Optional[Dict[str, Any]] = None
         self.packs = packs
         self.log = log or (lambda m: None)
         self.cancel = cancel
+        # zpa: None (ZPA not in scope), {"problem": why} (in scope, not
+        # readable), {"snapshot", "profiles"} (a kept read) or {"client",
+        # "mask"} (read it in prepare).
+        self.zpa_in = zpa
+        self.zsnap: Optional[Dict[str, Any]] = None
+        self.zprofiles: Optional[List[Dict[str, Any]]] = None
+        self.zpa_fresh: Optional[Dict[str, Any]] = None
+        self.zpa_note: Optional[str] = None
+        self.zpa_state = "not_in_scope" if not zpa else "not_read"
+        self._zpa_cache: Dict[Tuple[Any, ...], Tuple[str, Dict[str, Any]]] = {}
+        self._zidx: Optional[_HostIndex] = None
         self._shared: Dict[Tuple[Any, ...], Tuple[str, Dict[str, Any]]] = {}
-        self._index: Optional[Tuple[set, List[str], set]] = None
+        self._index: Optional[Tuple[_HostIndex, Optional[_HostIndex], set, List[str]]] = None
         self.traced = 0
 
     def prepare(self, first_host: str) -> None:
-        """Read the tenant once (or take the kept read), only what is in scope."""
+        """Read the tenant once (or take the kept reads), only what is in
+        scope: ZPA when it is ticked, then ZIA's parts in scope."""
         import path_analyzer
+        self._prepare_zpa()
+        if not self.scope.get("read"):
+            return
         if self.packs is None:
             from data_flow import load_packs
             self.packs = load_packs()
@@ -693,66 +907,200 @@ class PathEvaluator:
         self.fresh = res.pop("snapshot_for_cache", None)
         self.snapshot = self.fresh
 
-    # The lists that make a host's trace depend on the host itself.
-    def _build_index(self) -> Tuple[set, List[str], set]:
-        from data_flow import TRAFFIC_CLASSES, _hostname_of
+    def _prepare_zpa(self) -> None:
+        z = self.zpa_in
+        if not z:
+            return
+        import zpa_analysis
+        import zpa_path
+        if z.get("problem"):
+            self.zpa_note = str(z["problem"])
+            self.log(self.zpa_note)
+            return
+        if z.get("snapshot") is not None:
+            self.zsnap, self.zprofiles = z["snapshot"], z.get("profiles")
+            self.zpa_state = "kept"
+            self.log("Using the ZPA configuration read a moment ago.")
+        elif z.get("client") is not None:
+            mask = z.get("mask") or (lambda s: s)
+            self.log("Reading ZPA first: application segments, client forwarding and access policies…")
+            try:
+                self.zsnap, self.zprofiles = zpa_path.read(z["client"], log=self.log, cancel=self.cancel)
+            except zpa_path.Stopped:
+                raise Stopped(STOPPED_REASON)
+            except zpa_path.ReadError as e:
+                self.zpa_note = "ZPA could not be read (" + mask(str(e))[:160] + "), so whether ZPA carries each row is unknown."
+                self.log(self.zpa_note)
+                return
+            self.zpa_fresh = {"snapshot": self.zsnap, "profiles": self.zprofiles}
+            self.zpa_state = "read"
+        if self.zsnap is not None and not zpa_analysis._Index(self.zsnap).read("segments"):
+            self.zpa_note = "The ZPA application segments could not be read, so whether ZPA carries each row is unknown."
+            self.zsnap = None
+        if self.zsnap is not None:
+            # Every segment's domains, so a row no entry can match (zpa_analysis
+            # matches the host, a wildcard suffix, an address range or "*")
+            # skips the segment walk.
+            self._zidx = _HostIndex(e for sg in zpa_analysis._lst(self.zsnap, "segments") for e in sg.get("domains") or [])
+
+    # The lists that make a destination's trace depend on the destination itself.
+    def _build_index(self) -> Tuple[_HostIndex, Optional[_HostIndex], set, List[str]]:
+        from data_flow import TRAFFIC_CLASSES
+        from zia_path_modules import _f
         snap = self.snapshot or {}
         zcc = snap.get("client_connector") or {}
-        pats: List[str] = []
+        dest: List[Any] = []
         for p in zcc.get("app_profiles") or []:
-            pats += list(((p or {}).get("bypass") or {}).get("domains") or [])
+            dest += list(((p or {}).get("bypass") or {}).get("domains") or [])
+        pacs: List[str] = []
         for f in zcc.get("pac_files") or []:
-            pats += list((f or {}).get("direct_hosts") or [])
+            dest += list((f or {}).get("direct_hosts") or [])
+            src = (f or {}).get("source")
+            if isinstance(src, str) and src and src not in pacs:
+                pacs.append(src)
+        zia = (snap.get("snapshot") or {}).get("zia") or {}
         cats = ((snap.get("snapshot") or {}).get("categories") or {})
         for c in cats.values():
             if isinstance(c, dict):
-                pats += list(c.get("urls") or []) + list(c.get("db_categorized_urls") or c.get("dbCategorizedUrls") or [])
-        exact: set = set()
-        wild: List[str] = []
-        for p in pats:
-            ph = _hostname_of(str(p or ""))
-            if not ph:
-                continue
-            body = ph[2:] if ph.startswith("*.") else ph
-            if any(ch in body for ch in "*?[]"):
-                wild.append(ph)
-            exact.add(ph.lstrip("*."))
+                dest += list(c.get("urls") or []) + list(c.get("db_categorized_urls") or c.get("dbCategorizedUrls") or [])
+        mods = zia.get("modules") or {}
+        part = lambda sec, p: (((mods.get(sec) or {}).get("parts") or {}).get(p) or {}).get("data")  # noqa: E731
+        for p, k in (("exceptions", "bypassUrls"), ("malicious", "maliciousUrls"), ("allowlist", "whitelistUrls"), ("denylist", "blacklistUrls")):
+            d = part("atp", p)
+            dest += _strings(_f(d, k)) if isinstance(d, dict) else _strings(d)
+        src_entries: List[Any] = []
+        for r in part("firewall", "rules") or []:
+            dest += _strings(_f(r, "destAddresses"))
+            src_entries += _strings(_f(r, "srcIps"))
+        for g in part("firewall", "ip_destination_groups") or []:
+            dest += _strings(_f(g, "addresses"))
+        for g in part("firewall", "ip_source_groups") or []:
+            src_entries += _strings(_f(g, "ipAddresses"))
+        for r in part("dns", "rules") or []:
+            dest += _strings(_f(r, "destAddresses"))
         names = {str(k).upper() for k in cats} | {str(k["key"]).upper() for k in TRAFFIC_CLASSES} | {str(k["label"]).upper() for k in TRAFFIC_CLASSES}
-        apps = (((snap.get("snapshot") or {}).get("zia") or {}).get("catalogue") or {})
-        for lst in apps.values():
+        for lst in (zia.get("catalogue") or {}).values():
             names |= {str(a).upper() for a in lst or []}
-        return exact, wild, names
+        if pacs and not self._pac_in_play():
+            pacs = []
+        return _HostIndex(dest), (_HostIndex(src_entries) if src_entries else None), names, pacs
 
-    def host_specific(self, host: str) -> bool:
+    def _pac_in_play(self) -> bool:
+        """Whether the PAC file is evaluated on this platform and network at
+        all: one trace of a name no tenant list holds (against the read
+        already made, no request) says whether the path has a PAC step that
+        pac_eval answered. Only then does each row's PAC answer matter."""
+        import path_analyzer
+        try:
+            res = path_analyzer.analyze(self.client, "pac-probe.invalid", self.network, self.platform, scope=self.scope, snapshot=self.snapshot,
+                                        cancel=self.cancel, lookup=blank_lookup() if self.scope.get("lookup") else None, packs=self.packs)
+        except path_analyzer.Stopped:
+            raise Stopped(STOPPED_REASON)
+        return any(h.get("key") == "pac" and ("pac_outcomes" in h or h.get("status") in ("unknown", "out_of_scope"))
+                   for h in (res.get("trace") or {}).get("hops") or [])
+
+    def _fingerprint(self, host: str, is_ip: bool) -> Tuple[Any, ...]:
+        """How `host` relates to the tenant's destination lists, and what
+        each PAC file answers for it (pac_eval: evaluated, never run)."""
+        import pac_eval
         if self._index is None:
             self._index = self._build_index()
-        exact, wild, names = self._index
-        parts = host.split(".")
-        if any(".".join(parts[i:]) in exact for i in range(len(parts))):
-            return True
-        if host.upper() in names or host.upper().replace(" ", "_") in names:
-            return True
-        return any(fnmatch.fnmatch(host, w) for w in wild)
+        dest, _src, names, pacs = self._index
+        ip = ipaddress.ip_address(host) if is_ip else None
+        named = host.upper() in names or host.upper().replace(" ", "_") in names
+        pac: List[Any] = []
+        for src in pacs:
+            ev = pac_eval.evaluate(src, f"https://{host}/", host, dns="none" if pac_eval._is_ipv4(host) else "assume_public")
+            pac.append((ev.get("status"), ev.get("error"), tuple((o.get("kind"), o.get("result"), o.get("fallback_direct")) for o in ev.get("outcomes") or []),
+                        tuple(ev.get("depends_on") or ()), tuple(ev.get("assumptions") or ())))
+        return (dest.match(host, ip), host if named else None, tuple(pac))
+
+    def _source_fp(self, src: Optional[str]) -> Any:
+        if not src:
+            return None
+        if self._index is None:
+            self._index = self._build_index()
+        idx = self._index[1]
+        if idx is None:
+            return None    # no source condition anywhere: the address cannot change the answer
+        try:
+            return idx.match("", ipaddress.ip_address(src))
+        except ValueError:
+            return None
 
     def evaluate(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        import path_analyzer
+        proto = row.get("protocol") or ""
+        if proto == "ICMP":
+            return _result(result="unverified", inspection="not traced", notes=[ICMP_NOTE], evaluator="path")
+        p = _PROTO_ARG.get(proto)
+        port = row.get("port") or None
+        extra = [ANY_NOTE] if proto == "ANY" else []
+        out, note = self._zpa(row, p, port)
+        if out is None:
+            out = self._zia(row, p, port)
+        if note:
+            extra.append(note)
+        if extra:
+            out = dict(out, notes=list(out.get("notes") or []) + [n for n in extra if n not in (out.get("notes") or [])])
+        return out
+
+    def _zpa(self, row: Dict[str, Any], p: Optional[str], port: Optional[int]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """(the row's result when ZPA carries it, else None; a note when ZPA
+        matched it but does not carry it, may carry it, or was not read)."""
+        if self.zsnap is None:
+            return None, None   # ZPA not in scope, or not read: said once in the assumptions, not on every row
+        import zpa_analysis
+        import zpa_path
         host = row["host"]
+        if self._zidx is not None and not self._zidx.match(host, ipaddress.ip_address(host) if row.get("is_ip") else None):
+            return None, None
+        try:
+            d = zpa_path.destination(host, port, p or "tcp")
+        except ValueError:
+            return None, None
+        sm = zpa_analysis.match_segment(self.zsnap, d)
+        if not sm["match"]:
+            return None, None
+        key = (sm["match"]["id"], d["protocol"], d["port"], bool(d.get("port_assumed")))
+        hit = self._zpa_cache.get(key)
+        if hit is None:
+            st = zpa_path.stage(self.zsnap, d, network=self.network, platform=self.platform, profiles=self.zprofiles)
+            hit = (host, st)
+            self._zpa_cache[key] = hit
+        rep, st = hit
+        out = summarize_zpa(st, rep, host)
+        if out is not None:
+            return out, None
+        head = str(st.get("headline") or "").replace(rep, host)
+        if st.get("outcome") == "zpa_conditional":
+            return None, "ZPA may carry it (" + head.rstrip(".") + "); when it does not, ZIA applies as shown."
+        return None, head
+
+    def _zia(self, row: Dict[str, Any], p: Optional[str], port: Optional[int]) -> Dict[str, Any]:
+        import path_analyzer
+        import path_whatif
+        if not self.scope.get("read"):
+            return _result(result="unverified", inspection="not in scope", notes=[ZIA_NOT_IN_SCOPE], evaluator="path")
+        host = row["host"]
+        is_ip = bool(row.get("is_ip"))
         lk = row.get("lookup")
         lookup = (lk or blank_lookup()) if self.scope.get("lookup") else None
-        sig = None
-        if not self.host_specific(host):
-            l2 = lookup or {}
-            sig = (bool(row.get("is_ip")), tuple(l2.get("categories") or ()), tuple(l2.get("security_alerts") or ()), l2.get("application"),
-                   bool(l2.get("error")))
-            hit = self._shared.get(sig)
-            if hit is not None:
-                rep, res = hit
-                out = dict(res)
-                out["headline"] = res["headline"].replace(rep, host)
-                return out
+        ident = _identity_raw(row)
+        src = row.get("source_ip") or None
+        l2 = lookup or {}
+        sig = (is_ip, bool(row.get("private")), self._fingerprint(host, is_ip), tuple(l2.get("categories") or ()), tuple(l2.get("security_alerts") or ()),
+               l2.get("application"), bool(l2.get("error")), p or "tcp", port, path_whatif.describe(path_whatif.normalize_identity(ident)),
+               self._source_fp(src))
+        hit = self._shared.get(sig)
+        if hit is not None:
+            rep, res = hit
+            out = dict(res)
+            out["headline"] = res["headline"].replace(rep, host)
+            return out
         try:
             res = path_analyzer.analyze(self.client, host, self.network, self.platform, scope=self.scope, snapshot=self.snapshot,
-                                        cancel=self.cancel, lookup=lookup, packs=self.packs)
+                                        cancel=self.cancel, lookup=lookup, packs=self.packs, protocol=p, port=port, identity=ident,
+                                        context={"source_ip": src} if src else None)
         except path_analyzer.Stopped:
             raise Stopped(STOPPED_REASON)
         self.traced += 1
@@ -760,8 +1108,7 @@ class PathEvaluator:
         out = summarize_analysis(res)
         if lk and lk.get("error"):
             out["notes"] = list(out["notes"]) + [str(lk["error"])]
-        if sig is not None:
-            self._shared[sig] = (host, out)
+        self._shared[sig] = (host, out)
         return out
 
 
@@ -809,7 +1156,11 @@ def _ref(rule: str) -> str:
 
 def recommend(row: Dict[str, Any]) -> Tuple[str, str, str]:
     """(meets 'yes'/'no'/'', recommended area, recommendation) for one row
-    view (expected, result, area, rule, categories, ...)."""
+    view (expected, result, area, rule, categories, ...). The area is the
+    module that decided the row where one did: the Cloud Firewall for
+    traffic it decides (an IP destination group), URL filtering for web
+    traffic (a custom URL category), ZPA for traffic ZPA carries (its
+    segment and access policy)."""
     expected = row.get("expected") or ""
     res = row.get("result") or ""
     if not expected or res in ("", "not tested", "unverified"):
@@ -820,6 +1171,8 @@ def recommend(row: Dict[str, Any]) -> Tuple[str, str, str]:
     port = row.get("port")
     non_web = (row.get("protocol") in ("UDP", "ICMP")) or (isinstance(port, int) and port not in WEB_PORTS)
     rule, area = row.get("rule") or "", row.get("area") or ""
+    seg = row.get("segment") or ""
+    group = "an IP destination group" if is_ip else "an IP destination group of type FQDN"
     if expected == "BLOCK":
         if res == "blocked":
             return "yes", "", f"Already blocked by {AREA_LABELS.get(area, area)} rule {_ref(rule)}."
@@ -830,6 +1183,10 @@ def recommend(row: Dict[str, Any]) -> Tuple[str, str, str]:
                                                   "block it on the internal firewall.")
             return "no", "Client Connector", (f"Client Connector sends it direct ({_ref(rule)}), so ZIA never sees it. Remove it from the bypass, or block "
                                               "it upstream if the bypass must stay.")
+        if area == "ZPA":
+            return "no", "ZPA", (f"ZPA carries it through application segment '{seg}' and access rule {_ref(rule)} allows it, so ZIA never sees it. "
+                                 "Deny it with a ZPA access rule for that segment above that rule, or take it out of the segment so ZIA's policy "
+                                 "applies.")
         if res in ("isolated", "caution"):
             return "no", "URL", f"{res.capitalize()}, not blocked, by {_ref(rule)}. Change that rule's action to Block, or add a Block rule above it."
         threat = next((c for c in alerts + cats if category_kind(c, alerts) == "threat"), None)
@@ -837,14 +1194,21 @@ def recommend(row: Dict[str, Any]) -> Tuple[str, str, str]:
             return "no", "ATP", (f"ZIA classifies it as a threat ({threat}). Turn on the matching Advanced Threat Protection setting, which blocks it for "
                                  "every user without a list, or add it to the ATP denylist.")
         if row.get("blockable_by"):
-            return "no", "URL", (f"Rule {_ref(row['blockable_by'].split('; ')[0])} would block it but applies only to some users, locations or "
+            first = row["blockable_by"].split("; ")[0]
+            if area == "Firewall":
+                return "no", "Firewall", (f"Cloud Firewall rule {_ref(first)} could block it but depends on a condition this tool cannot evaluate (a time "
+                                          "window, a user, a location ...). Check that rule's criteria cover this traffic.")
+            return "no", "URL", (f"Rule {_ref(first)} would block it but applies only to some users, locations or "
                                  "request methods. Check that rule's criteria cover everyone who should be blocked.")
+        broad = f" Do not block the category {cats[0]}: it would block legitimate sites too." if cats else ""
+        if area == "Firewall":
+            return "no", "Firewall", (f"The Cloud Firewall decides this traffic (it is not web): {_ref(rule)} allows it. Add the destination to {group} "
+                                      "used by a Cloud Firewall Block rule above that rule." + broad)
         low = next((c for c in cats if category_kind(c) == "low_collateral"), None)
         if low:
             return "no", "URL", f"Block the category {low} in a URL filtering rule above {_ref(rule)}: few legitimate sites fall in it."
         if row.get("application"):
             return "no", "Cloud App", f"ZIA identifies it as {row['application']}: block that application in a Cloud App Control rule."
-        broad = f" Do not block the category {cats[0]}: it would block legitimate sites too." if cats else ""
         if is_ip:
             return "no", "Firewall", ("Add the address to an IP destination group used by a Cloud Firewall Block rule: that covers every port and "
                                       "protocol, not just web." + broad)
@@ -855,11 +1219,21 @@ def recommend(row: Dict[str, Any]) -> Tuple[str, str, str]:
     # expected ALLOW
     if res in ("allowed", "bypassed"):
         return "yes", "", ("Reaches the destination, but Client Connector sends it direct, so it is not inspected." if res == "bypassed"
-                           else "Allowed.")
+                           else "Reaches the application through ZPA." if area == "ZPA" else "Allowed.")
+    if area == "ZPA":
+        return "no", "ZPA", (f"ZPA carries it through application segment '{seg}' and denies it ({_ref(rule)}). Add or reorder a ZPA access rule "
+                             "for that segment that allows the users who need it.")
     threat = next((c for c in alerts if category_kind(c, alerts) == "threat"), None)
-    if threat and res == "blocked" and area not in ("URL", "Cloud App"):
-        return "no", "ATP", (f"ZIA classifies it as a threat ({threat}). Ask the security team first; if it must work, add it to the ATP security "
+    if area == "ATP" or (threat and res == "blocked" and area not in ("URL", "Cloud App")):
+        why = f"ZIA classifies it as a threat ({threat})" if threat else f"Advanced Threat Protection blocks it ({_ref(rule)})"
+        return "no", "ATP", (f"{why}. Ask the security team first; if it must work, add it to the ATP security "
                              "exceptions rather than turning the protection off for everyone.")
+    if area == "Firewall":
+        return "no", "Firewall", (f"Blocked by Cloud Firewall rule {_ref(rule)}. Add the destination to {group} used by an Allow rule above that "
+                                  "rule, for the port and protocol it needs.")
+    if area == "DNS":
+        return "no", "DNS", (f"DNS Control rule {_ref(rule)} blocks its lookup. Add the host to a custom URL category used by an Allow DNS Control "
+                             "rule above that rule.")
     if area == "Cloud App":
         return "no", "Cloud App", (f"Blocked by Cloud App Control rule {_ref(rule)}. Add an Allow rule above it for this application (and the users "
                                    "who need it), rather than changing the rule for everyone.")
@@ -884,10 +1258,12 @@ def category_advice(expected: str, cat: str, kind: str) -> str:
 
 COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("row", "Row"), ("line", "Input line"), ("input", "Input"), ("target", "Destination"), ("port", "Port"), ("protocol", "Protocol"),
-    ("source_ip", "Source IP"), ("location", "Location"), ("dest_country", "Destination country"), ("user", "User"), ("label", "Label"),
+    ("source_ip", "Source IP"), ("location", "Location"), ("dest_country", "Destination country"), ("user", "User"), ("group", "Group"),
+    ("department", "Department"), ("label", "Label"),
     ("category", "Category"), ("security_alert", "Security alert"), ("application", "Cloud app"), ("category_source", "Category source"),
     ("result", "Result"), ("blockable_by", "Allowed but blockable by"), ("area", "Deciding area"), ("rule", "Deciding rule"),
-    ("action", "Action"), ("stops_at", "Stops at"), ("inspection", "Inspection"), ("expected", "Expected"), ("meets", "Meets expectation"),
+    ("action", "Action"), ("stops_at", "Stops at"), ("segment", "ZPA segment"), ("inspection", "Inspection"), ("expected", "Expected"),
+    ("meets", "Meets expectation"),
     ("recommended_area", "Recommended area"), ("recommendation", "Recommendation"), ("notes", "Notes"),
 )
 
@@ -930,15 +1306,16 @@ class Run:
                              "private": bool(p.is_ip[i]) and path_analyzer._is_private(ipaddress.ip_address(target)),
                              "port": e.get("port", ""), "protocol": e.get("protocol", ""), "source_ip": e.get("source_ip", ""),
                              "location": e.get("location", ""), "dest_country": e.get("dest_country", ""), "user": e.get("user", ""),
+                             "group": e.get("group", ""), "department": e.get("department", ""),
                              "label": e.get("label", ""), "expected": e.get("expected", ""), "category_source": source}
         if ev is None:
             r.update(result="not tested", category="; ".join(override or ()), security_alert="", application="", blockable_by="", area="",
-                     rule="", action="", stops_at="", inspection="")
+                     rule="", action="", stops_at="", inspection="", segment="")
             notes.append(self.summary.get("not_tested_why") or "not tested")
         else:
             r.update(result=ev["result"], category="; ".join(ev["categories"]), security_alert="; ".join(ev["security_alerts"]),
                      application=ev.get("application") or "", blockable_by="; ".join(ev.get("blockable_by") or []), area=ev["area"],
-                     rule=ev["rule"], action=ev["action"], stops_at=ev["stops_at"], inspection=ev["inspection"])
+                     rule=ev["rule"], action=ev["action"], stops_at=ev["stops_at"], inspection=ev["inspection"], segment=ev.get("segment") or "")
             notes += [n for n in ev.get("notes") or [] if n not in notes]
         r["notes"] = " | ".join(notes)
         meets, area, rec = recommend(r)
@@ -959,20 +1336,30 @@ def _row_context(p: ParsedList, i: int, lk: Optional[Dict[str, Any]]) -> Dict[st
     ip = bool(p.is_ip[i])
     return {"target": host, "host": host, "is_ip": ip, "private": ip and path_analyzer._is_private(ipaddress.ip_address(host)),
             "port": e.get("port"), "protocol": e.get("protocol"), "source_ip": e.get("source_ip"), "location": e.get("location"),
-            "dest_country": e.get("dest_country"), "user": e.get("user"), "lookup": lk}
+            "dest_country": e.get("dest_country"), "user": e.get("user"), "group": e.get("group"), "department": e.get("department"), "lookup": lk}
+
+
+def _row_key(host: str, e: Dict[str, Any]) -> Tuple[Any, ...]:
+    """Rows with the same key get the same answer: the destination and every
+    column the evaluation uses."""
+    return (host, e.get("category"), e.get("port"), e.get("protocol"), e.get("source_ip"), e.get("user"), e.get("group"), e.get("department"),
+            e.get("location"))
 
 
 def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "off", platform: str = "windows",
         snapshot: Optional[Dict[str, Any]] = None, tenant_label: str = "", lookup: bool = True,
         max_lookup_requests: int = DEFAULT_LOOKUP_REQUESTS, log: LogFn = None, cancel: Any = None,
-        sleep: Callable[[float], None] = time.sleep, evaluators: Optional[Sequence[Callable[..., Any]]] = None) -> Run:
+        sleep: Callable[[float], None] = time.sleep, evaluators: Optional[Sequence[Callable[..., Any]]] = None,
+        zpa: Optional[Dict[str, Any]] = None) -> Run:
     """Test every row. Reads only what `scope` (data_flow.path_scope) puts
     in scope, once; the URL lookup only when it is in scope and `lookup`.
-    Stop ends it between rows: the rows tested are kept, the rest are
-    marked not tested. Nothing is written."""
+    `zpa` is ZPA in scope (see PathEvaluator: a kept read, an SDK client
+    to read it with, or why it cannot be read); None when ZPA is not
+    ticked. Stop ends it between rows: the rows tested are kept, the rest
+    are marked not tested. Nothing is written."""
     from data_flow import NOTHING_IN_SCOPE, stop_on
     say = log or (lambda m: None)
-    if not scope or not scope.get("read"):
+    if not scope or not (scope.get("read") or zpa):
         raise ValueError(NOTHING_IN_SCOPE)
     rn = Run(parsed, tenant_label=tenant_label, network=network, platform=platform)
     p = parsed
@@ -980,7 +1367,7 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
     rn.summary.update(lookup_in_scope=bool(scope.get("lookup")))
     stopped: Optional[str] = None
     lookup_state: Dict[str, Any] = {}
-    evs = [f(client=client, scope=scope, network=network, platform=platform, snapshot=snapshot, log=say, cancel=cancel)
+    evs = [f(client=client, scope=scope, network=network, platform=platform, snapshot=snapshot, log=say, cancel=cancel, zpa=zpa)
            for f in (evaluators if evaluators is not None else EVALUATORS)]
     say(f"Testing {n:,} row(s) from {p.lines:,} line(s)" + (f"; {p.skipped_count:,} line(s) skipped" if p.skipped_count else "") + ".")
     done = 0
@@ -1013,7 +1400,7 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
                     lk: Optional[Dict[str, Any]] = {"categories": list(override), "security_alerts": [], "application": None, "error": None}
                 else:
                     lk = rn.lookups.get(host) if want else (blank_lookup("ZIA's URL lookup was turned off for this run") if scope.get("lookup") else None)
-                key = (host, override)
+                key = _row_key(host, e)
                 idx = cache.get(key)
                 if idx is None:
                     ctx = _row_context(p, i, lk)
@@ -1033,10 +1420,14 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
         stopped = str(e)
         say(f"STOPPED — you clicked Stop after {done:,} of {n:,} row(s); the rest were not tested. Nothing is ever written by this view.")
     rn.summary["not_tested_why"] = "not tested: you clicked Stop" if stopped else "not tested"
-    fresh = None
+    fresh = zfresh = None
     for ev in evs:
         fresh = fresh or getattr(ev, "fresh", None)
+        zfresh = zfresh or getattr(ev, "zpa_fresh", None)
+    zstate = next((getattr(ev, "zpa_state") for ev in evs if hasattr(ev, "zpa_state")), "not_in_scope" if not zpa else "")
+    znote = next((getattr(ev, "zpa_note") for ev in evs if getattr(ev, "zpa_note", None)), None)
     rn.summary.update(stopped=stopped, lookup=lookup_state, snapshot_for_cache=None if stopped else fresh,
+                      zpa_for_cache=None if stopped else zfresh, zpa={"state": zstate, "note": znote},
                       traced=sum(getattr(ev, "traced", 0) for ev in evs),
                       evaluators=[{"key": getattr(ev, "key", ""), "label": getattr(ev, "label", "")} for ev in evs])
     _summarize(rn, scope)
@@ -1057,6 +1448,7 @@ def _summarize(rn: Run, scope: Dict[str, Any]) -> None:
     by_area: Dict[Tuple[str, str], Dict[str, Any]] = {}
     cat_adv: Dict[Tuple[str, str], Dict[str, Any]] = {}
     lists: Dict[Tuple[str, str], Dict[str, None]] = {}
+    segments: Dict[Tuple[str, str], Dict[str, None]] = {}
     expected_rows = meets = misses = 0
     preview_unmet: List[Dict[str, Any]] = []
     preview_flag: List[Dict[str, Any]] = []
@@ -1090,6 +1482,8 @@ def _summarize(rn: Run, scope: Dict[str, Any]) -> None:
                 if len(a["examples"]) < 5:
                     a["examples"].append(r["target"])
                 lists.setdefault((r["recommended_area"], r["expected"]), {})[r["target"]] = None
+                if r["recommended_area"] == "ZPA" and r["segment"]:
+                    segments.setdefault((r["recommended_area"], r["expected"]), {})[r["segment"]] = None
                 alerts = r["security_alert"].split("; ") if r["security_alert"] else []
                 for c in (r["category"].split("; ") if r["category"] else [""]):
                     kind = category_kind(c, alerts)
@@ -1103,6 +1497,10 @@ def _summarize(rn: Run, scope: Dict[str, Any]) -> None:
         elif flag and len(preview_flag) < PREVIEW_ROWS:
             preview_flag.append(r)
     preview = (preview_unmet + preview_flag)[:PREVIEW_ROWS]
+    for (a, e), segs in segments.items():
+        for b in by_area.values():
+            if (b["area"], b["expected"]) == (a, e):
+                b["segments"] = list(segs)[:20]
     s = rn.summary
     s.update(
         rows=len(rn.p), lines=rn.p.lines, skipped=rn.p.skipped, skipped_count=rn.p.skipped_count, columns=rn.p.columns,
@@ -1114,10 +1512,38 @@ def _summarize(rn: Run, scope: Dict[str, Any]) -> None:
             "by_area": sorted(by_area.values(), key=lambda a: -a["count"]),
             "categories": sorted(cat_adv.values(), key=lambda a: -a["count"])[:25]},
         lists=[{"area": a, "area_label": AREA_LABELS.get(a, a), "purpose": "block" if e == "BLOCK" else "allow", "count": len(v),
-                "where": AREA_PASTE.get(a, "")} for (a, e), v in sorted(lists.items())],
+                "where": AREA_PASTE.get(a, ""), "note": _segment_note(list(segments.get((a, e), {})))} for (a, e), v in sorted(lists.items())],
         preview=preview, preview_total=len(preview), scope={"summary": scope.get("summary"), "key": scope.get("key")},
-        assumptions=list(ASSUMPTIONS), network=rn.network, platform=rn.platform, tenant_label=rn.tenant_label)
+        assumptions=_assumptions(rn, scope), network=rn.network, platform=rn.platform, tenant_label=rn.tenant_label)
     rn._lists = {k: list(v) for k, v in lists.items()}
+
+
+def _segment_note(segs: List[str]) -> str:
+    """ZPA's paste list is a note, not a list ZIA takes: the segments to change."""
+    if not segs:
+        return ""
+    return ("Change these ZPA application segments or their access rules (in ZPA, not in ZIA): " + ", ".join(segs[:10])
+            + (f" and {len(segs) - 10} more" if len(segs) > 10 else "") + ".")
+
+
+def _assumptions(rn: Run, scope: Dict[str, Any]) -> List[str]:
+    """The fixed assumptions plus what was not in scope for this run."""
+    from data_flow import PATH_SECTIONS
+    out = list(ASSUMPTIONS)
+    nis = scope.get("not_in_scope") or {}
+    parts = [PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in nis]
+    if parts:
+        out.append("Only what is in scope on the Scope page was read; these parts are not in scope and are not assessed for any row: "
+                   + ", ".join(parts) + ".")
+    z = rn.summary.get("zpa") or {}
+    if z.get("state") == "not_in_scope":
+        out.append("ZPA is not in scope on the Scope page, so whether ZPA carries a row was not assessed.")
+    elif z.get("note"):
+        out.append(str(z["note"]))
+    else:
+        import zpa_path
+        out.append(zpa_path.ASSUMPTIONS[0])
+    return out
 
 
 def area_list(rn: Run, area: str, purpose: str) -> List[str]:

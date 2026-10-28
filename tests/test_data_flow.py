@@ -211,3 +211,38 @@ def test_data_flow_endpoint_names_a_tracer_failure(monkeypatch):
     r = c.post("/api/report/data-flow", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret",
                                               **df.full_path_scope_request()})
     assert r.status_code == 500 and "KeyError" in r.json()["detail"] and "server.log" in r.json()["detail"]
+
+
+def test_the_encrypted_count_holds_only_paths_an_ssl_rule_leaves_encrypted():
+    """ASVS V1.4.4 · CWE-684: 'reach ZIA, left encrypted' counts only paths whose SSL hop leaves them encrypted; SSL not in scope is never counted."""
+    # Arrange
+    full = df.path_scope(["dlp", "zcc", "zia_extras"], {"web_dlp": "zscaler", "ssl_inspection": "zscaler", "cloud_app_control": "zscaler"})
+    no_ssl = df.path_scope(["zcc"], {})   # Client Connector only: SSL inspection is not read
+    # Act
+    with_ssl = df.generate_data_flow_report(_client(), platform="windows", scope=full)
+    without = df.generate_data_flow_report(_client(), platform="windows", scope=no_ssl)
+    # Assert
+    blind = [t for t in with_ssl["traces"] if t["reaches_zscaler"] and not t["conditional"] and t["outcome"] != "blocked"
+             and any(h["key"] == "ssl" and h["status"] == "blind" for h in t["hops"])]
+    assert with_ssl["summary"]["blind"] == len(blind) > 0
+    assert {h["status"] for t in without["traces"] for h in t["hops"] if h["key"] == "ssl"} == {"out_of_scope", "not_reached"}
+    assert without["summary"]["blind"] == 0, "SSL not in scope was counted as left encrypted"
+    assert "Configuration only: no traffic was observed." in df.to_markdown(without)
+
+
+def test_the_page_and_its_help_card_claim_only_what_the_tracer_reads():
+    """ASVS V1.1.2 · CWE-1059: the Data Flow Map's summary, stats and help card say configuration, for any user, and never 'the exact path a transaction takes'."""
+    # Arrange
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    read = lambda *p: open(os.path.join(root, *p), encoding="utf-8").read()  # noqa: E731
+    html, ex, idx = read("static", "report_dataflow.html"), read("static", "explain.js"), read("static", "index.html")
+    card = ex[ex.index("  X.dataflow = {"):]
+    card = card[:card.index("\n  };")]
+    # Assert
+    for text in (html, card, idx, read("docs", "OVERVIEW.md"), df.__doc__):
+        assert "exact path a" not in text
+    hero = html[html.index("<header"):html.index("</header>")]
+    assert "for any user" in hero and "observes no traffic" in hero and "not tested" in hero
+    assert "inspected &amp; enforced" not in html and "a DLP rule can block" in html
+    assert "does not observe traffic" in card and "Bypass inventory lists every bypass" in card
