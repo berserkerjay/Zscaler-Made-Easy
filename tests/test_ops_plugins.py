@@ -139,3 +139,131 @@ def test_the_plugins_endpoint_serves_the_catalog(demo_plugin, monkeypatch, tmp_p
     import dlp_api_server as srv
     r = TestClient(srv.app).get("/api/operations/plugins")
     assert r.status_code == 200 and r.json()["plugins"][0]["type"] == "demo_build"
+
+
+# ── Every registered plugin type reaches the Bulk changes page ─────────
+# Table-driven over the real catalog (read at collection time, before any
+# test swaps PLUGINS), so a new builder type that ships no script, a script
+# that does not register its type, or a type ?build= cannot open fails CI.
+
+def _real_catalog():
+    ao.load_plugins()
+    return [dict(p) for p in ao.plugin_catalog()]
+
+
+CATALOG = _real_catalog()
+assert len(CATALOG) >= 13, CATALOG   # the plugins were really loaded
+SCRIPTS = sorted({p["script"] for p in CATALOG})
+
+# Runs one plugin script in node's vm with a stand-in page and prints the
+# types it registers (and whether each has render and spec functions).
+VM_DRIVER = r"""
+const fs = require('fs'), vm = require('vm');
+const [file] = process.argv.slice(2);
+const defs = {};
+const el = () => null;
+const ctx = { console, URLSearchParams, Event: class { constructor(t) { this.type = t; } }, setTimeout: () => 0, clearTimeout: () => {},
+  document: { querySelector: el, querySelectorAll: () => [], getElementById: el, createElement: () => ({ setAttribute() {}, appendChild() {} }), addEventListener() {} },
+  location: { search: '' }, addEventListener() {} };
+ctx.window = ctx;
+ctx.OPS_PLUGINS = { defs: {}, register(d) { defs[d.type] = { render: typeof d.render, spec: typeof d.spec }; } };
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(file, 'utf8'), ctx, { filename: file });
+console.log(JSON.stringify(defs));
+"""
+
+
+@pytest.fixture(scope="module")
+def registered(tmp_path_factory):
+    import os
+    import shutil
+    import subprocess
+    import json
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("needs node")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    drv = tmp_path_factory.mktemp("ops-vm") / "drive.js"
+    drv.write_text(VM_DRIVER, encoding="utf-8")
+    out = {}
+    for script in SCRIPTS:
+        r = subprocess.run([node, str(drv), os.path.join(root, "static", script)], capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, (script, r.stderr[-1500:])
+        out[script] = json.loads(r.stdout.strip().splitlines()[-1])
+    return out
+
+
+@pytest.mark.parametrize("plugin", CATALOG, ids=[p["type"] for p in CATALOG])
+def test_every_plugin_script_is_served_as_javascript(plugin):
+    """ASVS V14.4.1 · CWE-1173: each registered type's script is a static/ops_*.js the app serves as JavaScript."""
+    import re
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    assert re.fullmatch(r"ops_[a-z0-9_]{1,40}\.js", plugin["script"]), plugin
+    r = TestClient(srv.app).get(f"/static/{plugin['script']}")
+    assert r.status_code == 200, plugin
+    assert "javascript" in r.headers.get("content-type", ""), r.headers.get("content-type")
+    assert "OPS_PLUGINS.register" in r.text
+
+
+@pytest.mark.parametrize("plugin", CATALOG, ids=[p["type"] for p in CATALOG])
+def test_every_plugin_type_registers_its_form_on_the_page(registered, plugin):
+    """ASVS V1.14.6 · CWE-1059: each registered type is registered in window.OPS_PLUGINS by its own script, with render and spec."""
+    defs = registered[plugin["script"]]
+    assert plugin["type"] in defs, (plugin["script"], sorted(defs))
+    assert defs[plugin["type"]] == {"render": "function", "spec": "function"}, defs[plugin["type"]]
+
+
+def test_no_plugin_script_registers_a_type_the_server_does_not_know(registered):
+    """ASVS V1.14.6 · CWE-1059: a form registered in the page always has a server-side operation type behind it."""
+    known = {p["type"] for p in CATALOG}
+    extra = {s: sorted(set(d) - known) for s, d in registered.items() if set(d) - known}
+    assert not extra, extra
+
+
+# ?build=<type> opens that builder in a real browser, for every type (the
+# CDP prelude and server harness of tests/test_findings_reflow.py).
+def _build_driver():
+    from test_findings_reflow import CDP_PRELUDE
+    return CDP_PRELUDE + r"""
+const [queriesJson] = args;
+const out = {};
+for (const q of JSON.parse(queriesJson)) {
+  await send('Page.navigate', { url: base + '/report/operations' + q });
+  await until(() => ev(`document.readyState === 'complete' && !document.getElementById('opBuildKinds').hidden`), q + ' builders');
+  await until(() => ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`), 'layout');
+  out[q] = await ev(`(document.querySelector('input[name="opKind"]:checked') || {}).value || ''`);
+}
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+@pytest.fixture(scope="module")
+def build_picks(tmp_path_factory):
+    import json
+    from test_findings_reflow import run_in_browser
+    queries = [f"?build={p['type']}" for p in CATALOG] + ["?build=no_such_builder", "?build=rule_state%27%5D", ""]
+    return run_in_browser(tmp_path_factory.mktemp("ops-build"), _build_driver(), json.dumps(queries))
+
+
+@pytest.mark.parametrize("plugin", CATALOG, ids=[p["type"] for p in CATALOG])
+def test_build_parameter_opens_each_builder(build_picks, plugin):
+    """WCAG 2.2 SC 3.2.2 · ASVS V5.1.3: /report/operations?build=<type> opens that builder's form, for every registered type."""
+    assert build_picks[f"?build={plugin['type']}"] == plugin["type"]
+
+
+@pytest.mark.parametrize("query", ["?build=no_such_builder", "?build=rule_state%27%5D", ""])
+def test_unknown_or_hostile_build_parameter_keeps_the_default(build_picks, query):
+    """ASVS V5.1.3 · CWE-20: an unknown or malformed ?build= value picks nothing new; the page keeps its default operation."""
+    assert build_picks[query] == "rule_state"
+
+
+def test_a_form_message_never_gets_the_sign_in_hint():
+    """WCAG 2.2 SC 3.3.1 · 3.3.3: "Give the app profile a name" is a form message; only a tenant error gets the sign-in hint (the word profile matched)."""
+    import os
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    html = open(os.path.join(root, "static", "report_operations.html"), encoding="utf-8").read()
+    assert re.search(r"function fail\(where, title, msg, formOnly\)\s*\{[^}]*const hint = !formOnly &&", html)
+    assert "fail($('opPlan'), 'Nothing to preview yet', e.message, true)" in html

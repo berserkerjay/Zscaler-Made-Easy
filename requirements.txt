@@ -8,7 +8,7 @@ mcp[cli]>=1.2.0
 python-docx>=1.0.0
 pyjwt[crypto]>=2.15.0  # 2.15.0 fixes CVE-2026-101918 (nested-payload RecursionError)
 # Transitive pins raised for the image scan (Trivy HIGH):
-msgpack>=1.2.1
+msgpack>=1.2.3  # 1.2.3 fixes CVE-2026-114613 (GHSA-j586-36cw-2gc2)
 setuptools>=78.1.1
 # Windows-only dependencies that mcp and typer declare behind markers. Listed here so
 # the universal lock (make lock) pins them by hash; without them a Windows

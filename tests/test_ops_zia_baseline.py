@@ -390,6 +390,102 @@ def test_write_mode_off_writes_nothing():
     assert t.writes == []
 
 
+# ---------------------------------------------------------------------------
+# The typed phrase on every apply that creates or enables rules or changes ATP
+# (admin_ops._finish confirm_always), whatever the count of changes
+# ---------------------------------------------------------------------------
+
+def _execute(t, spec, p, confirm_text):
+    return ao.execute(t, spec, plan_hash=p["plan_hash"], scope=FULL, writes_enabled=True, assessor="Jane Doe",
+                      confirm_text=confirm_text, tenant_label="acme (zscalertwo)")
+
+
+@pytest.mark.parametrize("spec, phrase", [
+    ({"type": "zia_baseline", "tier": "strict", "areas": ["ftc"]}, "APPLY 4 CHANGES"),                     # creates rules (4: under the count rule's 10)
+    ({"type": "zia_baseline", "tier": "permissive", "areas": ["atp"]}, "APPLY 2 CHANGES"),                  # changes ATP, live at activation
+    ({"type": "ssl_certificate_move", "rules": [3], "certificate": 52}, "APPLY 1 CHANGE"),                 # boundary: one change
+])
+def test_a_risky_plan_asks_for_the_typed_phrase_whatever_the_count(spec, phrase):
+    """ASVS V11.1.1 · V1.4.1 · CWE-841 · CWE-1188: creating rules, changing ATP or moving certificates needs the typed phrase even under 10 changes."""
+    p = plan(Tenant(), spec)
+    assert p["counts"]["change"] <= ao.CONFIRM_ABOVE and p["confirm_phrase"] == phrase
+
+
+@pytest.mark.parametrize("typed", ["", "APPLY 3 CHANGES", "apply 4 change"])
+def test_a_baseline_that_creates_rules_is_not_written_without_the_exact_phrase(typed):
+    """ASVS V11.1.1 · CWE-841 · CWE-352: a missing or wrong phrase writes nothing (fail closed), even for 4 changes."""
+    t = Tenant()
+    spec = {"type": "zia_baseline", "tier": "strict", "areas": ["ftc"]}
+    p = plan(t, spec)
+    res = _execute(t, spec, p, typed)
+    assert res["status"] == "refused" and "APPLY 4 CHANGES" in res["message"] and t.writes == []
+
+
+def test_the_phrase_is_compared_without_case_and_then_the_baseline_is_written():
+    """ASVS V11.1.1 · CWE-841: the typed phrase is accepted in any case and the baseline is then applied."""
+    t = Tenant()
+    spec = {"type": "zia_baseline", "tier": "strict", "areas": ["ftc"]}
+    p = plan(t, spec)
+    res = _execute(t, spec, p, "apply 4 changes")
+    assert res["status"] == "applied" and t.writes
+
+
+def test_atp_is_not_changed_without_the_phrase():
+    """ASVS V11.1.1 · CWE-841 · CWE-1188: an ATP change (no disabled state, live at activation) is refused without the phrase."""
+    t = Tenant()
+    spec = {"type": "zia_baseline", "tier": "permissive", "areas": ["atp"]}
+    before = dict(t.zia.atp_policy.settings)
+    res = _execute(t, spec, plan(t, spec), "")
+    assert res["status"] == "refused" and t.zia.atp_policy.settings == before and t.writes == []
+
+
+def test_a_rerun_that_turns_rules_on_asks_for_the_phrase():
+    """ASVS V11.1.1 · CWE-841: a re-run with "Create the rules enabled" switches existing rules on, so it needs the phrase."""
+    t = Tenant()
+    spec = {"type": "zia_baseline", "tier": "balanced", "areas": ["url", "ftc"]}
+    apply(t, spec)
+    p = plan(t, dict(spec, enable_rules=True))
+    assert {u["after"] for u in p["items"] if u["status"] == "change"} == {"ENABLED"}
+    assert p["confirm_phrase"] == f"APPLY {p['counts']['change']} CHANGES"
+
+
+def test_a_small_field_update_keeps_the_count_rule():
+    """ASVS V11.1.1 · CWE-841: updating a field of an existing rule (no create, no enable, no ATP) under 10 changes needs no phrase."""
+    t = Tenant()
+    spec = {"type": "zia_baseline", "tier": "balanced", "areas": ["url", "ftc"]}
+    apply(t, spec)
+    next(r for r in t.zia.url_filtering.rows if r["name"] == "BL-URL-Legal-Liability")["url_categories"] = ["GAMBLING"]
+    p = plan(t, spec)
+    assert p["counts"]["change"] == 1 and p["confirm_phrase"] == ""
+    assert _execute(t, spec, p, "")["status"] == "applied"
+
+
+def test_undo_that_puts_atp_back_asks_for_the_phrase():
+    """ASVS V11.1.1 · CWE-841: the Undo of an ATP change changes ATP again, so it needs the phrase too."""
+    t = Tenant()
+    spec = {"type": "zia_baseline", "tier": "permissive", "areas": ["atp"]}
+    res = apply(t, spec)
+    u = plan(t, res["inverse"])
+    assert u["confirm_phrase"] == "APPLY 2 CHANGES"
+    assert _execute(t, res["inverse"], u, "")["status"] == "refused"
+
+
+def test_a_certificate_move_is_not_written_without_the_phrase():
+    """ASVS V11.1.1 · CWE-841: moving one Inspect rule to another certificate is refused without the phrase; nothing is written."""
+    t = Tenant()
+    spec = {"type": "ssl_certificate_move", "rules": [3], "certificate": 52}
+    res = _execute(t, spec, plan(t, spec), "")
+    assert res["status"] == "refused" and t.writes == []
+    assert t.zia.ssl_inspection_rules._find(3)["action"].get("ssl_interception_cert", {}).get("id") != 52
+
+
+def test_nothing_to_change_asks_for_no_phrase():
+    """ASVS V11.1.1 · CWE-841: a plan with no change (boundary: 0) has no phrase to type."""
+    t = Tenant()
+    p = plan(t, {"type": "ssl_certificate_move", "rules": [3], "certificate": 666})
+    assert p["counts"]["change"] == 0 and p["confirm_phrase"] == ""
+
+
 def test_atp_is_changed_only_when_picked_and_undo_puts_it_back():
     """ASVS V1.4.1 · V11.1.1 · CWE-1188: ATP settings change only when their area is picked; Undo restores the values the baseline changed."""
     t = Tenant()

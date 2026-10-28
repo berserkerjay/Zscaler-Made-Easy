@@ -13,7 +13,7 @@
 .gd-progress .bar { height: 100%; background: var(--pass, #10b981); border-radius: 999px; transition: width 300ms ease; }
 
 .gd-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2, 8px); }
-.gd-step { display: grid; grid-template-columns: 2.2rem 1fr; gap: var(--sp-3, 12px); padding: var(--sp-3, 12px) var(--sp-4, 16px); border-radius: var(--r-md, 10px);
+.gd-step { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: var(--sp-3, 12px); padding: var(--sp-3, 12px) var(--sp-4, 16px); border-radius: var(--r-md, 10px);
   background: var(--well, rgba(148,163,184,0.06)); border: 1px solid var(--border, #334155); }
 .gd-step.is-ready { border-color: var(--accent, #3b82f6); }
 .gd-step.is-done { border-color: var(--pass, #10b981); }
@@ -75,7 +75,7 @@ body.gd-guided .gd-advanced { display: none !important; }
 .gd-help-sheet ul { padding-left: 1.1rem; }
 .gd-dim { color: var(--dim, #94a3b8); font-size: 0.8rem; }
 @media (prefers-reduced-motion: reduce) { .gd-progress .bar, .gd-switch .knob, .gd-switch .track { transition: none; } }
-@media (max-width: 760px) { .gd-step { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .gd-step { grid-template-columns: minmax(0, 1fr); } }
 
 /* Data-governance journey card on the assessment results */
 .gd-journey { margin: 0 0 1rem; }
@@ -92,10 +92,13 @@ body.gd-guided .gd-advanced { display: none !important; }
 .gd-prof-title { max-width: 60ch; }
 .gd-prof-controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .gd-prof-controls select { min-width: 260px; max-width: 100%; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--border, #334155); background: var(--card-solid, #0f172a); color: var(--text, #e2e8f0); font-size: 0.88rem; }
+/* On a phone the profile picker takes the line: its longest option never widens the page. */
+@media (max-width: 760px) { .gd-prof-controls, .gd-prof-controls select { min-width: 0; width: 100%; } }
 .gd-prof-more { margin-top: 0.7rem; }
 .gd-prof-more summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--accent, #3b82f6); }
-.gd-prof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.7rem 1rem; margin-top: 0.7rem; }
+.gd-prof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 0.7rem 1rem; margin-top: 0.7rem; }
 .gd-prof-grid label { display: grid; gap: 0.25rem; font-size: 0.82rem; font-weight: 600; color: var(--text, #e2e8f0); }
+.gd-profiles code { overflow-wrap: anywhere; }   /* a setting or file name breaks in a narrow column */
 .gd-prof-grid input[type=text], .gd-prof-grid input:not([type]), .gd-prof-grid select, .gd-prof-grid textarea { width: 100%; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--border, #334155); background: var(--card-solid, #0f172a); color: var(--text, #e2e8f0); font-size: 0.88rem; font-weight: 400; font-family: inherit; }
 .gd-prof-wide { grid-column: 1 / -1; }
 .gd-prof-packs { display: grid; gap: 0.25rem; font-size: 0.82rem; }

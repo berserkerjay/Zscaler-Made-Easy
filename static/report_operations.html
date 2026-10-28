@@ -190,8 +190,10 @@
         }
       } finally { clearInterval(tick); S.busy = false; S.job = null; }
     }
-    function fail(where, title, msg) {
-      const hint = /credential|sign in|token|401|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open this page from there, or choose a saved tenant profile in the bar above.' : '';
+    // The sign-in hint is for a tenant that could not be reached, never for
+    // a form that is not filled in yet ("Give the app profile a name").
+    function fail(where, title, msg, formOnly) {
+      const hint = !formOnly && /credential|sign in|token|401|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open this page from there, or choose a saved tenant profile in the bar above.' : '';
       where.innerHTML = `<div class="bp-card risk" role="alert"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
     }
 
@@ -228,6 +230,12 @@
         }
       });
       box.hidden = !list.length;
+      // ?build=<type> (a finding's or another page's link) picks that
+      // builder once, for every registered type: it only selects the form.
+      // A ?fix= hand-off picks its own operation, so it wins.
+      const q = new URLSearchParams(location.search), want = q.get('build') || '';
+      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && box.querySelector(`input[name="opKind"][value="${want}"]`);
+      if (pick && !pick.checked) { pick.checked = true; onKind(pick); }
     })();
 
     // ── Step 2: read and pick ──
@@ -435,7 +443,7 @@
     }
     $('opPreview').addEventListener('click', () => {
       let spec;
-      try { spec = buildSpec(); } catch (e) { fail($('opPlan'), 'Nothing to preview yet', e.message); say(e.message); return; }
+      try { spec = buildSpec(); } catch (e) { fail($('opPlan'), 'Nothing to preview yet', e.message, true); say(e.message); return; }
       preview('/api/operations/preview/start', body({ operation: spec }), null);
     });
 

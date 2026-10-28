@@ -32,13 +32,18 @@ zia_baseline
     the preview shows each field before and after). Rules are created
     DISABLED unless the operator ticks "Create the rules enabled"; the ATP
     settings are changed only when that area is picked explicitly (they
-    have no disabled state).
+    have no disabled state). Every apply that creates a rule, turns one on
+    or changes ATP needs the typed phrase, whatever the number of changes
+    (admin_ops._finish `confirm_always`): ATP is live as soon as ZIA
+    activates, which the app does right after the writes.
 
 ssl_certificate_move
     Lists the SSL inspection rules with the intermediate certificate each
     uses (zia.intermediate_certificates.list_ready_to_use, GET
     /intermediateCaCertificate/readyToUse) and moves the picked Inspect
-    (DECRYPT) rules to another ready-to-use certificate.
+    (DECRYPT) rules to another ready-to-use certificate. Every move needs
+    the typed phrase: inspected sites show certificate errors until devices
+    trust the new certificate's root.
 
 Verified against zscaler-sdk-python 1.11.3: services url_filtering,
 cloud_firewall_rules, ssl_inspection_rules, sandbox_rules,
@@ -1076,6 +1081,21 @@ def _match(rows: List[Dict[str, Any]], name: str, rule_type: str = "") -> Option
     return None
 
 
+def _typed_every_time(items: List[Dict[str, Any]], groups: List[Dict[str, Any]], *, always: bool = False) -> str:
+    """The phrase every apply must type, whatever the count of changes
+    (admin_ops._finish `confirm_always`), or "" to keep the count rule.
+    Asked when the plan creates a rule, turns one on (state ENABLED) or
+    changes Advanced Threat Protection settings: ATP has no disabled state,
+    so its change is live as soon as ZIA activates, which the app does right
+    after the writes. `always` asks for it for any change (a certificate
+    move: inspected sites break until devices trust the new root)."""
+    changes = sum(1 for u in items if u.get("status") == "change")
+    risky = always or any(g["handler"] in ("zb_create", "zb_atp")
+                          or (g["handler"] == "zb_update" and str((g["target"].get("fields") or {}).get("state") or "").upper() == "ENABLED")
+                          for g in groups)
+    return f"APPLY {changes} CHANGE{'' if changes == 1 else 'S'}" if risky and changes else ""
+
+
 def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     n = normalize(spec)
     if n.get("action") == "revert":
@@ -1201,7 +1221,7 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
             "title": f"ZIA baseline ({tier_label}{', ' + ', '.join(OVERLAYS[o]['label'] for o in n['overlays']) if n['overlays'] else ''}): "
                      f"{created} new, {len(groups) - created} updated",
             "warnings": warnings, "notes": notes, "review": rev["rules"], "atp_review": rev["atp"] if "atp" in areas else [],
-            "atp_controls": rev["atp_controls"], "areas": areas}
+            "atp_controls": rev["atp_controls"], "areas": areas, "confirm_always": _typed_every_time(items, groups)}
 
 
 def _plan_revert(zia, n: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
@@ -1292,7 +1312,8 @@ def _plan_revert(zia, n: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> 
     if not items:
         warnings.append("Nothing to undo.")
     return {"type": TYPE, "product": "zia", "spec": n, "items": items, "groups": groups, "title": "Undo a ZIA baseline", "warnings": warnings,
-            "notes": ["Only what the baseline did and nobody changed since is reversed; everything else is left as it is."]}
+            "notes": ["Only what the baseline did and nobody changed since is reversed; everything else is left as it is."],
+            "confirm_always": _typed_every_time(items, groups)}
 
 
 # ---------------------------------------------------------------------------
@@ -1606,7 +1627,8 @@ def _plan_cert(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel)
     n = len(groups)
     return {"type": CERT_TYPE, "product": "zia", "spec": {"type": CERT_TYPE, "moves": norm}, "items": items, "groups": groups,
             "title": f"Move {n} SSL inspection rule{'s' if n != 1 else ''} to another certificate", "warnings": warnings,
-            "notes": ["Before activating, make sure devices trust the new certificate's root, or inspected sites show certificate errors."]}
+            "notes": ["Before activating, make sure devices trust the new certificate's root, or inspected sites show certificate errors."],
+            "confirm_always": _typed_every_time(items, groups, always=True)}
 
 
 def _h_cert(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
