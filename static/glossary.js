@@ -89,6 +89,11 @@
     'smart isolation': { term: 'smart isolation', def: 'Smart isolation lets Zscaler spot sites that look risky. It opens them in isolation by itself, so they cannot reach your computer.' },
     'browser access': { term: 'Browser Access', def: 'Browser Access lets people open a work web app from any browser. They do not need the Zscaler app on that computer.' },
     'privileged remote access': { term: 'Privileged Remote Access', def: 'Privileged Remote Access lets admins reach a server through a web page. Nobody needs a VPN, and the server stays hidden.' },
+    'zdx': { term: 'ZDX', def: 'ZDX stands for Zscaler Digital Experience. It checks how fast people reach the apps they use.' },
+    'probe': { term: 'probe', def: 'A probe is a small test the Zscaler app runs on each computer, again and again. ZDX uses the results to show what is slow.' },
+    'web probe': { term: 'Web probe', def: 'A Web probe opens one web page every few minutes. It shows if the page loads and how long it takes.' },
+    'cloudpath probe': { term: 'CloudPath probe', def: 'A CloudPath probe follows the road from a computer to an app. It shows which stop on the way is slow.' },
+    'predefined app': { term: 'predefined app', def: 'A predefined app is one Zscaler already knows, like Microsoft 365 or Zoom. Zscaler sets up its tests for you.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

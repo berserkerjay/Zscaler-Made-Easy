@@ -213,9 +213,10 @@ def _minutes(seconds: float) -> str:
     return f"{m} minute" + ("" if m == 1 else "s")
 
 
-def fatal_reason(message: Optional[str]) -> Optional[str]:
+def fatal_reason(message: Optional[str], product: str = "") -> Optional[str]:
     """The plain-language reason a refusal stops the whole run, or None
-    when it is about this one object only."""
+    when it is about this one object only. `product` "zdx" words the
+    permission refusal for ZDX (the default is ZIA's DLP policy)."""
     m = (message or "").lower()
     if not m:
         return None
@@ -229,6 +230,9 @@ def fatal_reason(message: Optional[str]) -> Optional[str]:
                 "Run this again after that: what was already written is kept and only the rest is created.")
     if "unauthorized" in m or "token refresh attempts exhausted" in m or "401" in m.split():
         return "The tenant no longer accepts the credentials (the sign-in expired or the client secret changed). Reconnect, then run this again."
+    if ("forbidden" in m or "not authorized" in m or "insufficient" in m and "permission" in m) and product == "zdx":
+        return ("The API client is not allowed to change ZDX configuration in this tenant. In ZIdentity, give it a role with ZDX "
+                "configuration write access, then run this again.")
     if "forbidden" in m or "not authorized" in m or "insufficient" in m and "permission" in m:
         return ("The API client is not allowed to change DLP policy in this tenant. Give it the DLP policy write permission in ZIA "
                 "administration, then run this again.")
@@ -599,7 +603,7 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
             # this client, and every later write would cost the same again.
             _stop(fatal_reason(outcome.error) or FORBIDDEN_STOP_REASON, _log)
     if not outcome.ok:
-        reason = fatal_reason(outcome.error)
+        reason = fatal_reason(outcome.error, "zdx" if str(kind).startswith("zdx_") else "")
         if reason:
             _stop(reason, _log)
     return outcome
@@ -822,6 +826,17 @@ def _audited(action: str) -> Callable[[Callable[..., Outcome]], Callable[..., Ou
 # activation, so its writes get no activate-and-retry on a 403.
 ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules"}
 ADMIN_KINDS = ("url_category", "zpa_segment")
+# ZDX probe setup (ops_zdx): for these kinds the first argument is the ZDX
+# configuration API (ops_zdx.ZdxApi), not client.zia. ZDX has no activation,
+# so a 403 gets no activate-and-retry.
+ZDX_KINDS = ("zdx_app", "zdx_probe", "zdx_collection")
+
+
+def _zdx_write(api, method: str, *args: Any, op: str, kind: str, name: str, log: Optional[Callable[[str], None]] = None) -> Outcome:
+    fn = getattr(api, method, None)
+    if not callable(fn):
+        return Outcome(False, error="the ZDX configuration API is not available on this sign-in")
+    return call(fn, *args, op=op, kind=kind, name=name, log=log)
 
 
 def _admin_rule_service(zia, channel: Optional[str]):
@@ -858,6 +873,12 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
         return call(zia.url_categories.add_url_category, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "zpa_segment":
         return _zpa_write(zia, "add_segment", op="create", name=name, log=log, kw=payload)
+    if kind == "zdx_app":
+        return _zdx_write(zia, "zdx_create_app", payload, op="create", kind=kind, name=name, log=log)
+    if kind == "zdx_probe":
+        return _zdx_write(zia, "zdx_create_probe", parent_id, payload, op="create", kind=kind, name=name, log=log)
+    if kind == "zdx_collection":
+        return _zdx_write(zia, "zdx_create_collection", payload, op="create", kind=kind, name=name, log=log)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -888,6 +909,10 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(zia.url_categories.update_url_category, oid, action, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "zpa_segment":
         return _zpa_write(zia, "update_segment", oid, op="update", name=name, log=log, kw=payload)
+    if kind == "zdx_app":   # ZDX changes an app's or probe's state only (action: activate | deactivate)
+        return _zdx_write(zia, "zdx_set_app_state", oid, action, op="update", kind=kind, name=name, log=log)
+    if kind == "zdx_probe":
+        return _zdx_write(zia, "zdx_set_probe_state", parent_id, oid, action, op="update", kind=kind, name=name, log=log)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -906,6 +931,10 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         return call(zia.url_categories.delete_category, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "zpa_segment":
         return _zpa_write(zia, "delete_segment", oid, op="delete", name=name, log=log)
+    if kind == "zdx_app":
+        return _zdx_write(zia, "zdx_delete_app", oid, op="delete", kind=kind, name=name, log=log)
+    if kind == "zdx_probe":
+        return _zdx_write(zia, "zdx_delete_probe", item.get("parent_id"), oid, op="delete", kind=kind, name=name, log=log)
     if kind != "policy":
         return Outcome(False, error=f"unknown object kind '{kind}'")
     if channel == pc.ENDPOINT and item.get("parent_id") is not None:

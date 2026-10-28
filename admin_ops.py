@@ -703,9 +703,10 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     prepared["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     prepared["writes"] = len(prepared["groups"])
     prepared["plan_hash"] = plan_hash(prepared)
+    product = str(prepared.get("product") or "zpa").upper()   # a plugin's product (ZPA, ZDX, ...) saves each change at once
     prepared["notes"] = list(prepared.get("notes") or []) + (
         ["ZIA keeps every change pending until it is activated: the app activates once, after the last write, as a policy pack deploy does."]
-        if prepared["needs_activation"] else ["ZPA applies each change as it is saved; there is no activation step."])
+        if prepared["needs_activation"] else [f"{product} applies each change as it is saved; there is no activation step."])
     return prepared
 
 
