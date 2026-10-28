@@ -304,7 +304,7 @@ Azure AWS Teams Zoom ChatGPT Copilot Firefox Safari Opera Internet Explorer Mobi
 Firewall Browser Isolation Private Access Remote Privileged Evaluate All Rules Made Easy Simple Find Review Scope
 Symantec Broadcom Forcepoint Netskope Skyhigh Purview Ansible SDK Ctrl Cmd Enter Esc Tab Shift Letter Git Jira
 Data Security Architect Portfolio Framework Inline Web Endpoint Email Advanced Settings Secure Design CISA I Shadow
-Heal Accept English""".split())
+Heal Accept English Guard""".split())   # Guard: the product name AI Guard
 _LABEL_TAGS = "h1|h2|h3|h4|h5|h6|button|th|title|legend|summary"
 _START_TAG = r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*"
 

@@ -39,7 +39,10 @@ WRITE_CALL = re.compile(r"\.(add_dict|add_dlp_engine|add_rule|add_sub_rule|updat
                         r"delete_dict|delete_dlp_engine|delete_rule|raw_request|"
                         # Bulk changes (admin_ops): URL categories, ZPA application segments, cloud app sanction.
                         r"add_url_category|update_url_category|add_urls_to_category|delete_urls_from_category|delete_category|"
-                        r"add_segment|update_segment|delete_segment|bulk_update)\(|\bclient\.(post|put|patch|delete)\(")
+                        r"add_segment|update_segment|delete_segment|bulk_update|"
+                        # AI Guard builders (ops_aiguard): AI Guard policies, ZIA proxies, destination groups, prompt capture.
+                        r"add_policy|update_policy|delete_policy|add_proxy|update_proxy|delete_proxy|update_url_and_app_settings|"
+                        r"add_ip_destination_group|update_ip_destination_group|delete_ip_destination_group)\(|\bclient\.(post|put|patch|delete)\(")
 # The only files allowed to name an SDK write method, and why.
 ALLOWED = {
     "pack_ops.py": "the shared execution path itself",

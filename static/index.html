@@ -1083,6 +1083,10 @@
             <input type="checkbox" class="scope-cb" value="insights" style="width:auto;cursor:pointer;">
             ZIA Insights (traffic data) <span style="color:var(--dim);font-size:0.75rem;">(Traffic insights page — needs Z-Insights API access)</span>
           </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Zscaler AI Guard: whether it is licensed and reachable, and the Bulk changes builders that route GenAI apps through it and build its detection policy. Needs a OneAPI API client with AI Guard access. Not part of the assessment's checks.">
+            <input type="checkbox" class="scope-cb" value="aiguard" style="width:auto;cursor:pointer;">
+            AI Guard <span style="color:var(--dim);font-size:0.75rem;">(Bulk changes builders — needs AI Guard API access)</span>
+          </label>
         </div>
         <div class="helper">Pick any combination of Zscaler scopes. Automation checks validate IaC/SDK compatibility with <a href="https://github.com/zscaler" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/zscaler</a>.</div>
       </div>
@@ -3370,7 +3374,7 @@ function renderChecks(checks, filter) {
     const plainHtml = pl ? `<dl class="check-plain">
         <dt>What we found</dt><dd>${escapeHtml(pl.found || '')}</dd>
         ${st !== 'PASS' && pl.means ? `<dt>What it means for the business</dt><dd>${escapeHtml(pl.means)}</dd>` : ''}
-        ${st !== 'PASS' && pl.do ? `<dt>What to do</dt><dd>${escapeHtml(pl.do)}</dd>` : ''}
+        ${st !== 'PASS' && pl.do ? `<dt>What to do</dt><dd>${escapeHtml(pl.do)}${c.tool && /^[a-z_]{1,40}$/.test(String(c.tool.build || '')) ? ` <a class="check-tool" href="/report/operations?build=${encodeURIComponent(c.tool.build)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(c.tool.why || '')}">${escapeHtml(c.tool.label || 'Open the builder')} (opens in a new tab)</a>` : ''}</dd>` : ''}
         <dt>${st === 'PASS' ? 'What this gives the business' : 'Once fixed'}</dt><dd>${escapeHtml(pl.outcome || '')}</dd>
       </dl>` : '';
     list.innerHTML += `<div class="check-item" data-class="${st}"><span class="check-status status-${st}"${stTitle}>${stLabel}</span><div class="check-body">${remediateBtn}<span class="check-id">[${escapeHtml(c.id)}]</span> <span class="check-label">${escapeHtml(c.label)}</span>${plainHtml}<details class="check-raw"><summary>Technical detail</summary><div class="check-detail">${escapeHtml(c.detail || '')}</div></details></div></div>`;

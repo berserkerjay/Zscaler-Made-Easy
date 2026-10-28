@@ -705,7 +705,7 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     prepared["plan_hash"] = plan_hash(prepared)
     prepared["notes"] = list(prepared.get("notes") or []) + (
         ["ZIA keeps every change pending until it is activated: the app activates once, after the last write, as a policy pack deploy does."]
-        if prepared["needs_activation"] else ["ZPA applies each change as it is saved; there is no activation step."])
+        if prepared["needs_activation"] else [prepared.get("apply_note") or "ZPA applies each change as it is saved; there is no activation step."])
     return prepared
 
 
