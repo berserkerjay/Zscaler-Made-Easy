@@ -38,6 +38,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tupl
 from bypass_report import _fetch_url_category_lookup, _rules_to_list
 from zcc_profiles import read_profiles, read_app_profiles
 from zcc_evaluation import flatten_profile, _v, _truthy
+from zia_path_modules import SECTIONS as _ZIA_MODULE_SECTIONS, unevaluated as _unevaluated
 from ssl_flow import (TRAFFIC_CLASSES, _fetch_app_catalogue, _fetch_rules, _matches, _names, _scope, _sort_key,
                       _upper, normalize_dlp_rule, normalize_ssl_rule)
 
@@ -67,6 +68,10 @@ UPLOAD_VERBS = ("UPLOAD", "SHARE", "SEND", "ATTACHMENT_SEND", "POST", "EDIT", "C
 PATH_SECTIONS: Dict[str, Tuple[str, Tuple[str, ...], Optional[str]]] = {
     "zcc": ("Client Connector app and forwarding profiles", ("zcc",), None),
     "pac": ("PAC files", ("zcc",), None),
+    # Advanced Threat Protection, Cloud Firewall, DNS Control and Sandbox
+    # (zia_path_modules.SECTIONS): read by the Path analyzer when ZIA
+    # platform is ticked; they are ZIA platform controls, not DLP channels.
+    **_ZIA_MODULE_SECTIONS,
     "cac": ("Cloud App Control rules", ("dlp", "zia_extras"), "cloud_app_control"),
     "url": ("URL filtering rules", ("dlp", "zia_extras"), None),
     "ssl": ("SSL inspection rules", ("dlp", "zia_extras"), "ssl_inspection"),
@@ -458,6 +463,9 @@ def _norm_generic(r: Dict[str, Any]) -> Dict[str, Any]:
         "request_methods": _upper(_names(r.get("requestMethods") or r.get("request_methods") or [])),
         "scope": _scope(r), "scoped": bool(_scope(r)),
         "protocols": _upper(_names(r.get("protocols") or [])),
+        # Conditions the Path analyzer cannot evaluate (time window, device
+        # trust, risk score, ...), shown there as "unknown" criteria.
+        "conditions": _unevaluated(r),
     }
 
 
@@ -491,8 +499,8 @@ def read_zia(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = No
         _stop_point(cancel)
         return _fetch_rules(client, endpoint, diagnostics, label)
 
-    z["ssl"] = sorted((normalize_ssl_rule(r) for r in rules("ssl", "/zia/sslInspectionRules", "SSL inspection rules")), key=_sort_key)
-    z["dlp"] = [normalize_dlp_rule(r) for r in rules("dlp", "/zia/webDlpRules", "Web DLP rules")]
+    z["ssl"] = sorted((dict(normalize_ssl_rule(r), conditions=_unevaluated(r)) for r in rules("ssl", "/zia/sslInspectionRules", "SSL inspection rules")), key=_sort_key)
+    z["dlp"] = [dict(normalize_dlp_rule(r), conditions=_unevaluated(r)) for r in rules("dlp", "/zia/webDlpRules", "Web DLP rules")]
     z["url"] = [_norm_generic(r) for r in rules("url", "/zia/urlFilteringRules", "URL filtering rules")]
     z["cac"] = [_norm_generic(r) for r in rules("cac", "/zia/cloudApplicationRules", "Cloud App Control rules")]
     z["ftc"] = [_norm_generic(r) for r in rules("ftc", "/zia/fileTypeRules", "File Type Control rules")]

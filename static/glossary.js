@@ -113,6 +113,13 @@
     'api role': { term: 'API role', def: 'An API role is the set of things an API client may do. An admin picks it. It can let the app look, change things, or do nothing.' },
     'licence': { term: 'licence', def: 'A licence is a part of Zscaler your company pays for. If a part is not on the list, its rules will not work.' },
     'readiness check': { term: 'readiness check', def: 'The readiness check looks at what this app may do, right after you sign in. It greys out what will not work and says what to ask for.' },
+    'advanced threat protection': { term: 'Advanced Threat Protection', def: 'Advanced Threat Protection blocks sites known to be bad, like fake login pages. It also has lists of sites to always block or always let through.' },
+    'cloud firewall': { term: 'Cloud Firewall', def: 'The Cloud Firewall checks all traffic, not just the web. Its rules allow or block by port, address and app.' },
+    'dns control': { term: 'DNS Control', def: 'Before a computer visits a site, it asks for the address of the name. DNS Control can block or change that answer.' },
+    'sandbox': { term: 'Sandbox', def: 'The Sandbox runs a new file on a Zscaler computer to see what it does. A bad file is stopped before it reaches you.' },
+    'port': { term: 'port', def: 'A port is a number that says which service traffic is for. Web pages use 443, and a remote desktop uses 3389.' },
+    'quic': { term: 'QUIC', def: 'QUIC is a fast way to load web pages that uses UDP on port 443. Zscaler cannot look inside it, so many companies block it.' },
+    'conditional': { term: 'conditional', def: 'A conditional result could change with things this app cannot check, like the time of day or who the user is.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

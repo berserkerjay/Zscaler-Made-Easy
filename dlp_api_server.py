@@ -9288,6 +9288,10 @@ class PathAnalyzerRequest(MigrateRequest):
     scopes: List[str] = []
     channels: Dict[str, Any] = {}
     from_page: bool = False
+    # The traffic to trace (zia_path_modules.traffic_context): "tcp" or
+    # "udp" and a port; empty means the URL's scheme decides (else TCP/443).
+    protocol: str = ""
+    port: Optional[int] = None
 
 
 class FlowScenarioRequest(MigrateRequest):
@@ -9493,7 +9497,8 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
     if scope.get("source"):
         _log(f"In scope, from {scope['source']}: {scope['summary']}")
     try:
-        out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel)
+        out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel,
+                                    protocol=req.protocol or None, port=req.port)
     except path_analyzer.Stopped as e:
         return {"stopped": str(e), "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
     if cancel is not None and cancel.is_set():
@@ -9538,7 +9543,8 @@ def _kept_path_read(report_id: str, scope: Dict[str, Any], creds: Dict[str, str]
 async def _path_analysis_inputs(req: PathAnalyzerRequest):
     import path_analyzer
     try:
-        path_analyzer.parse_destination(req.destination)
+        import zia_path_modules
+        zia_path_modules.traffic_context(path_analyzer.parse_destination(req.destination), req.protocol[:8], req.port)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     scope = _path_scope(req)   # before signing in: nothing in scope reads nothing

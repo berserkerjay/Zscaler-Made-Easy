@@ -178,6 +178,14 @@ what you get, what to do next.
   browser session reached in one run: the file is read in the browser and
   only host names and request counts are sent; the results table sorts,
   filters, opens any host's full analysis and exports as CSV or JSON.
+  The trace walks every ZIA module in the order the cloud applies them
+  (Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App
+  Control and URL filtering, Sandbox, File Type Control and DLP, with SSL
+  inspection deciding what later modules see), each with its deciding
+  rule and order, the rules that also match later, and every criterion as
+  match, no match or unknown; the result says definite or conditional. A
+  protocol and port (UDP/443 is QUIC, TCP/22 is SSH) trace traffic that is
+  not web (`zia_path_modules.py`, `static/path_modules.js`).
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the
