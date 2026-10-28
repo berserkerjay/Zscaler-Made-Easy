@@ -12,7 +12,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Data</span> flow map <span class="sf-live" id="dfLive" hidden><i></i>live</span></h1>
-      <p>How ZIA processes a policy, from the user's device to incident management, and the exact path a transaction takes to each destination: Client Connector app profile and forwarding profile, PAC, then the data security controls in ZIA's request order — Cloud App Control, URL filtering, SSL inspection, File Type Control, Web DLP — and what happens after a match, with the endpoint, SaaS and email channels beside it, and where each policy pack is weak along the way.</p>
+      <p>The path the tenant's configuration gives web traffic from a managed device to each traffic class (or a destination you type), for any user, on each network: Client Connector app profile and forwarding profile, the PAC file, then Cloud App Control, URL filtering, SSL inspection, File Type Control and Web DLP in ZIA's request order, and which DLP rules name an incident receiver. It reads configuration and observes no traffic; Endpoint, SaaS and Email DLP rules are counted beside it, not tested, and each policy pack's rules are matched by name. Zscaler's full order of enforcement is shown on top as a reference.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Report actions">
@@ -75,9 +75,9 @@
         <div class="df-stats" style="margin-top:1rem;">
           <div class="df-stat"><div class="n">${s.traces}</div><div class="l">paths traced</div></div>
           <div class="df-stat ${s.bypassed ? 'bad' : ''}"><div class="n">${s.bypassed}</div><div class="l">never reach Zscaler</div></div>
-          <div class="df-stat ${s.blind ? 'bad' : ''}"><div class="n">${s.blind}</div><div class="l">reach ZIA encrypted</div></div>
-          <div class="df-stat"><div class="n">${s.enforced}</div><div class="l">inspected &amp; enforced</div></div>
-          <div class="df-stat"><div class="n">${s.monitored}</div><div class="l">inspected, monitor only</div></div>
+          <div class="df-stat ${s.blind ? 'bad' : ''}"><div class="n">${s.blind}</div><div class="l">reach ZIA, left encrypted</div></div>
+          <div class="df-stat"><div class="n">${s.enforced}</div><div class="l">decrypted, a DLP rule can block</div></div>
+          <div class="df-stat"><div class="n">${s.monitored}</div><div class="l">decrypted, DLP monitors only</div></div>
           <div class="df-stat ${s.high ? 'bad' : ''}"><div class="n">${s.high}</div><div class="l">high-severity weak points</div></div>
         </div>
         <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>`;

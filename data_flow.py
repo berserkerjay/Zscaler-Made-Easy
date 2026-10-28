@@ -1,21 +1,30 @@
-"""Data Flow Map: the exact path a transaction takes through the tenant.
+"""Data Flow Map: the path the tenant's configuration gives web traffic.
 
 For a destination (a cloud application, a URL category or a hostname) and
 a device context (platform, on or off a trusted network), the tracer walks
-every hop the tenant's configuration puts in the way and says what
-happens at each one, using the same objects the portal uses:
+the data security hops of the tenant's configuration, for any user (rules
+scoped to users, groups or locations make a hop conditional, never
+decide it), and says what happens at each one, using the same objects the
+portal uses:
 
   device ─ Client Connector app profile (bypasses, Endpoint DLP, cert)
          ─ forwarding profile for that network (tunnel / PAC / none)
-         ─ PAC file (DIRECT statements)
-         ─ ZIA SSL inspection (decrypt / leave encrypted / block)
-         ─ URL filtering (allow / block / caution / isolate)
+         ─ PAC file (evaluated by pac_eval, never run)
          ─ Cloud App Control (per-action controls for the app)
+         ─ URL filtering (allow / block / caution / isolate)
+         ─ ZIA SSL inspection (decrypt / leave encrypted / block)
          ─ File Type Control (upload of bulk formats)
-         ─ Inline Web DLP (which rules see the content, monitor or enforce)
+         ─ Inline Web DLP (which rules are configured to see the content,
+           monitor or enforce)
+         ─ Logs & incidents (which rules name an incident receiver or an
+           ICAP server; delivery is not verified)
 
-and, beside it, the channels that do not ride the tunnel: Endpoint DLP on
-the device, SaaS Security API at rest, Outbound Email DLP.
+and, beside it, an inventory of the channels that do not ride the tunnel
+(rules counted, nothing tested): Endpoint DLP on the device, SaaS
+Security API at rest, Outbound Email DLP. Browser Control, Malware
+Protection, Advanced Threat Protection, the Cloud Firewall and DNS Control
+are not read here (the Path analyzer reads the ZIA modules). It is the
+configuration's answer: no transaction is observed.
 
 Every hop carries the rule that decided it and, when it weakens the
 policy set, a weak point with a severity and a fix. Policy packs are
@@ -1249,7 +1258,10 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
     summary = {
         "destinations": len(dests), "traces": len(traces),
         "bypassed": sum(1 for t in traces if not t["reaches_zscaler"]),
-        "blind": sum(1 for t in traces if not t["conditional"] and t["reaches_zscaler"] and not t["decrypted"] and t["outcome"] not in ("blocked",)),
+        # Left encrypted: an SSL rule (or no rule) passes it through. SSL
+        # inspection not in scope, unread or conditional is not counted.
+        "blind": sum(1 for t in traces if not t["conditional"] and t["reaches_zscaler"] and t["outcome"] not in ("blocked",)
+                     and any(h["key"] == "ssl" and h["status"] == "blind" for h in t["hops"])),
         "enforced": sum(1 for t in traces if t["outcome"] == "enforce"),
         "monitored": sum(1 for t in traces if t["outcome"] == "monitor"),
         "high": sum(1 for t in traces for w in t["weak_points"] if w["severity"] == "high"),
@@ -1294,7 +1306,8 @@ def to_markdown(report: Dict[str, Any], label: str = "") -> str:
     s = report["summary"]
     lines = [f"# Data Flow Map{' — ' + label if label else ''}", "",
              f"{s['traces']} paths traced ({s['destinations']} destinations × {len(report['networks'])} network contexts, {report['platform']}). "
-             f"Bypassed before Zscaler: {s['bypassed']}. Encrypted/blind: {s['blind']}. Enforced: {s['enforced']}. Monitored: {s['monitored']}. High-severity weak points: {s['high']}.", ""]
+             f"Never reach Zscaler: {s['bypassed']}. Reach ZIA, left encrypted: {s['blind']}. Decrypted, a DLP rule can block: {s['enforced']}. "
+             f"Decrypted, DLP monitors only: {s['monitored']}. High-severity weak points: {s['high']}. Configuration only: no traffic was observed.", ""]
     for t in report["traces"]:
         net = next(n["label"] for n in NETWORKS if n["key"] == t["network"])
         lines.append(f"## {t['destination']['label']} · {net} → {t['outcome']}")
