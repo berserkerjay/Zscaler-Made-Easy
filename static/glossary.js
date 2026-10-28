@@ -103,6 +103,10 @@
     'predefined app': { term: 'predefined app', def: 'A predefined app is one Zscaler already knows, like Microsoft 365 or Zoom. Zscaler sets up its tests for you.' },
     'provisioning key': { term: 'provisioning key', def: 'A provisioning key is a one-time code. A new App Connector uses it to join its connector group. Keep it secret.' },
     'prefix': { term: 'prefix', def: 'A prefix is a short tag at the start of a name, like pov1. The builder puts it on all it makes, so it can find them again.' },
+    'access token': { term: 'access token', def: 'An access token is a short pass Zscaler gives this app when it signs in. It lists what the app may use. The app shows what it says, but never keeps it.' },
+    'api role': { term: 'API role', def: 'An API role is the set of things an API client may do. An admin picks it. It can let the app look, change things, or do nothing.' },
+    'licence': { term: 'licence', def: 'A licence is a part of Zscaler your company pays for. If a part is not on the list, its rules will not work.' },
+    'readiness check': { term: 'readiness check', def: 'The readiness check looks at what this app may do, right after you sign in. It greys out what will not work and says what to ask for.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

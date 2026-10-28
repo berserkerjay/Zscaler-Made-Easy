@@ -345,6 +345,8 @@ ROUTES: List[Route] = [
     Route("/api/self-heal/tenant/heal", {"ids": ["x"], "confirm": "x"}, partial=None),   # a write: refused before sign-in only
     Route("/api/audit-timeline/start", {"include_zia": True}, partial=AUTOMATION, out=AUTOMATION_OUT),
     Route("/api/zcc/fleet/start", partial=ZCC, out=ZCC_OUT),
+    Route("/api/readiness/start", partial=ZCC, out=ZCC_OUT),
+    Route("/api/readiness/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/objects/start", {"family": "rules"}),
     Route("/api/operations/objects", {"family": "rules"}),
     Route("/api/operations/preview/start", RULE_STATE_WEB),

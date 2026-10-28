@@ -431,6 +431,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/report/findings-csv"): "report",
     ("POST", "/api/zcc/fleet/start"): "reads",
     ("POST", "/api/zcc/install"): "builds an install command; with app_profile_id it reads that profile's policy token (scope-gated)",
+    ("POST", "/api/readiness/start"): "reads (the API role, licences and one call per product in scope)",
     ("POST", "/api/report/bypass"): "reads",
     ("POST", "/api/report/data-flow"): "reads",
     ("POST", "/api/path-analyzer/batch/start"): "reads",

@@ -26,7 +26,7 @@ QA_FILES = (
     "test_write_safety_gates.py", "test_export_integrity.py", "test_export_injection.py",
     "test_extension_security.py", "test_auth_session.py", "test_xss_sinks.py",
     "test_xss_render_sites.py", "test_files_paths.py", "test_secret_canaries.py",
-    "test_supply_chain_qa.py", "test_outbound_ssrf.py", "test_dos_limits.py", "test_findings_reflow.py", "test_report_reflow.py", "test_ops_plugins.py", "test_ops_zcc.py", "test_ops_zdx.py", "test_ops_zpa.py", "test_ops_aiguard.py",
+    "test_supply_chain_qa.py", "test_outbound_ssrf.py", "test_dos_limits.py", "test_findings_reflow.py", "test_report_reflow.py", "test_ops_plugins.py", "test_ops_zcc.py", "test_ops_zdx.py", "test_ops_zpa.py", "test_ops_aiguard.py", "test_readiness.py",
 )
 
 STANDARDS = [

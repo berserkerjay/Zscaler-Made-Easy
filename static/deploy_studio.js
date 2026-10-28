@@ -1113,11 +1113,11 @@ function _dzRenderApprove() {
   const writeOff = DZ.write && !DZ.write.enabled;
   document.getElementById('dzFoot').innerHTML = `
     ${_dzGatesHtml(R, { step: 3 })}
-    <div class="dz-summary">${writeOff ? 'The server is read-only: enable write mode to deploy.' : (DZ.consent ? 'Ready when you are.' : 'Tick the box to enable deployment.')}</div>
+    <div class="dz-summary" id="dzRdNote">${_dzReadinessBlocks('deploy_packs') ? _dzE(window.dlpReadiness.blockedNote('deploy_packs')) : writeOff ? 'The server is read-only: enable write mode to deploy.' : (DZ.consent ? 'Ready when you are.' : 'Tick the box to enable deployment.')}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn" onclick="DZ.step=2;_dzRender()">← Back</button>
       ${writeOff && DZ.write.can_toggle ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(true)">Enable write mode</button>` : ''}
-      <button type="button" class="dz-btn primary" ${DZ.consent && R.status !== 'blocked' && !writeOff ? '' : 'disabled'} onclick="_dzApply()">Deploy to tenant</button>
+      <button type="button" class="dz-btn primary" ${_dzReadinessBlocks('deploy_packs') ? 'disabled aria-describedby="dzRdNote" ' : ''}${DZ.consent && R.status !== 'blocked' && !writeOff ? '' : 'disabled'} onclick="_dzApply()">Deploy to tenant</button>
     </div>`;
 }
 
@@ -1131,7 +1131,11 @@ function _dzRateText(f) {
   return `Rate-limit check: ${f.title}\n${f.verdict}${when}\n\nAPI plan:\n${(f.plan || []).map(l => `  • ${l}`).join('\n')}\n\n${(f.success || {}).text || ''}`;
 }
 
+// The readiness check (static/readiness.js) says the API client's role cannot make this change.
+function _dzReadinessBlocks(key) { return !!(window.dlpReadiness && window.dlpReadiness.isBlocked(key)); }
+
 async function _dzApply() {
+  if (window.dlpReadiness && !window.dlpReadiness.allowWrite('deploy_packs')) return;
   const f = (DZ.report || {}).rate_forecast;
   if (f && !window.confirm(`${_dzRateText(f)}\n\n${f.severity === 'ok' ? 'Deploy now?' : 'Deploy anyway?'} Click OK to deploy, or Cancel to stop.`)) return;
   DZ.step = 4; DZ.busy = true; DZ.result = null; DZ.error = ''; DZ.job = null;
@@ -1590,6 +1594,7 @@ function _dzRemovalLeftovers() {
 
 async function _dzRemovalApply() {
   const R = DZ.removal; if (!R) return;
+  if (window.dlpReadiness && !window.dlpReadiness.allowWrite('remove_packs')) return;
   const remove = (R.plan.items || []).filter(i => i.status === 'remove');
   // Second confirmation (the consent checkbox was the first): a final,
   // explicit yes naming the rules and the tenant before anything is deleted.
