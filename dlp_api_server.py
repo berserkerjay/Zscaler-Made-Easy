@@ -7294,6 +7294,14 @@ async def assess_stream(req: AssessRequest):
                           "status": str(r.status), "detail": str(r.detail)[:500]}
                 if isinstance(getattr(r, "data", None), dict) and r.data.get("required_control"):
                     result["required_control"] = r.data["required_control"]
+                if str(check_id).startswith("AI."):
+                    try:   # a GenAI finding AI Guard addresses links to its Bulk changes builder
+                        import zscaler_genai_checks
+                        link = zscaler_genai_checks.tool_link(check_id, result["status"])
+                        if link:
+                            result["tool"] = link
+                    except Exception:  # noqa: BLE001 — a link never breaks a result
+                        pass
                 try:
                     import plain_english
                     plain_english.enrich(result)      # what we found / what it means / what to do / outcome

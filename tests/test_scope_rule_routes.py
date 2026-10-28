@@ -36,7 +36,7 @@ import dlp_api_server as srv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CREDS = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "customer_id": "7210000000000"}
-ALL_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights"]
+ALL_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard"]
 ALL_CHANNELS = {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "genai_security", "shadow_it",
                                        "endpoint_scan", "ssl_inspection", "cloud_app_control", "device_control",
                                        "workflow_automation")}
@@ -95,7 +95,7 @@ class _Svc:
         return True
 
 
-SDK_NAMESPACES = ("zia", "zpa", "zcc", "zdx", "zins", "zwa", "zidentity", "ztw")
+SDK_NAMESPACES = ("zia", "zpa", "zcc", "zdx", "zins", "zwa", "zidentity", "ztw", "aiguard")
 
 
 class FakeSdk:
@@ -214,6 +214,8 @@ ZIA = page(["zia_extras"])                                   # ZIA platform only
 ZPA = page(["zpa"])
 ZCC = page(["zcc"])
 INSIGHTS = page(["insights"])
+AIG_ZIA = page(["zia_extras", "aiguard"])                    # AI Guard routing: ZIA platform and AI Guard
+AIGUARD = page(["aiguard"])                                  # AI Guard only
 AUTOMATION = page(["automation"])
 ZDX = page(["zdx"])
 
@@ -222,7 +224,7 @@ OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules",
              "/endPointDlpRules", "/emailDlpRules", "/casbDlpRules", "zwa.")
 NOT_ZIA_PLATFORM = ("firewall", "/locations", "networkService", "networkApplication", "ipDestinationGroups", "auditlog")
 NOT_DECLARED = ("sslInspectionRules", "ssl_inspection_rules", "cloudApplicationRules", "cloudappcontrol.")
-OTHER_PRODUCTS = ("zpa.", "zcc.", "/zcc/", "zins.", "zdx.", "zidentity.")
+OTHER_PRODUCTS = ("zpa.", "zcc.", "/zcc/", "zins.", "zdx.", "zidentity.", "aiguard.")
 WEB_OUT = OTHER_DLP + NOT_ZIA_PLATFORM + NOT_DECLARED + OTHER_PRODUCTS
 ZIA_OUT = ("dlp_web_rules", "/webDlpRules", "dlp_dictionary", "dlp_engine", "/dlpEngines", "/dlpDictionaries") + OTHER_DLP + NOT_DECLARED \
     + OTHER_PRODUCTS + ("auditlog",)
@@ -231,6 +233,8 @@ ZCC_OUT = ("zia.", "zpa.", "zins.", "zwa.") + tuple(f"/zia/{x}" for x in ("webDl
                                                                          "firewallFilteringRules", "cloudApplicationRules", "urlCategories"))
 INSIGHTS_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zwa.")
 ZDX_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "zidentity.")
+AIG_ZIA_OUT = tuple(x for x in ZIA_OUT if x != "aiguard.")   # ZIA platform and AI Guard both ticked
+AIGUARD_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -282,6 +286,8 @@ ZCC_BUILD = {"operation": {"type": "zcc_profile_build", "platform": "windows", "
                            "app": {"template": "best_practice", "name": "QA app"}}}
 ZDX_SETUP = {"operation": {"type": "zdx_probes", "predefined": [{"provider": "MICROSOFT_LOGIN"}],
                            "custom": [{"name": "Intranet", "url": "https://intranet.example.com/"}]}}
+AIG_ROUTING = {"operation": {"type": "aiguard_routing", "apps": ["chatgpt"], "cert": {"mode": "existing", "id": "11"}}}
+AIG_POLICY = {"operation": {"type": "aiguard_detection_policy", "profile": "HIPAA"}}
 
 ROUTES: List[Route] = [
     # Job starts and their waited-for twins
@@ -347,6 +353,10 @@ ROUTES: List[Route] = [
     Route("/api/operations/preview", ZDX_SETUP, partial=ZDX, out=ZDX_OUT),
     Route("/api/operations/preview/start", {"operation": {"type": "zdx_probe_state", "targets": [{"app": "1", "to": "off"}]}},
           partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/preview", AIG_ROUTING, partial=AIG_ZIA, out=AIG_ZIA_OUT),
+    Route("/api/operations/preview/start", AIG_POLICY, partial=AIGUARD, out=AIGUARD_OUT),
+    Route("/api/operations/objects", {"family": "aiguard_routing_setup"}, partial=AIG_ZIA, out=AIG_ZIA_OUT),
+    Route("/api/operations/objects/start", {"family": "aiguard_policy_setup"}, partial=AIGUARD, out=AIGUARD_OUT),
     Route("/api/operations/op-qa-1/undo/preview/start", setup=_recorded_operation),
     Route("/api/operations/op-qa-1/undo/preview", setup=_recorded_operation),
     # Client Connector profiles: plugin types on the same engine (ops_zcc), and the install command builder's token read
@@ -433,6 +443,9 @@ EXPLICIT_PICKS = [
     ("/api/operations/objects", {"family": "zdx_apps"}, ZPA),
     ("/api/operations/preview", {"operation": {"type": "zpa_connector_group", "prefix": "pov1"}}, WEB),
     ("/api/operations/objects", {"family": "zpa_objects"}, ZIA),
+    ("/api/operations/preview", AIG_ROUTING, page(["zia_extras"])),
+    ("/api/operations/preview", AIG_POLICY, page(["zia_extras"])),
+    ("/api/operations/objects", {"family": "aiguard_routing_setup"}, AIGUARD),
     ("/api/self-heal/tenant/scan", {"pack_ids": ["zbp_enterprise_baseline"], "include_who": True}, WEB),
     ("/api/audit-timeline/start", {"include_zia": True}, WEB),
     ("/api/device-posture/start", {}, ZCC),

@@ -285,6 +285,26 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in cannot read Z-Insights. Shows customer traffic data, so it is off unless ticked.",
     },
 
+    "aiguard": {
+        "label": "AI Guard",
+        "description": "Zscaler AI Guard: whether it is licensed and reachable, and the Bulk changes builders that route GenAI apps through it and turn a compliance profile into an AI Guard detection policy. Not part of the assessment's checks.",
+        "service": "AI Guard (OneAPI) and ZIA",
+        "permissions_read": [
+            "AI Guard: detection policies, policy match rules and LLM providers (read)",
+            "ZIA: proxies and proxy gateways, root certificates, forwarding control (read; ZIA platform ticked)",
+        ],
+        "permissions_write": [
+            "Only with write mode on and a confirmed Bulk changes plan: AI Guard detection policies and policy match rules; ZIA root certificates, proxies, IP destination groups, forwarding, SSL inspection, Cloud Firewall, URL filtering and Cloud App Control rules, and the URL and Cloud App Control settings (prompt capture)",
+        ],
+        "endpoints_used": [
+            "/aiguard/v1/detections/policies", "/aiguard/v1/detections/policy-match-rules", "/aiguard/v1/llm-providers",
+            "/zia/api/v1/proxies", "/zia/api/v1/proxyGateways", "/zia/api/v1/rootCertificates (assumed path)", "/zia/api/v1/forwardingRules",
+        ],
+        "license_required": "An AI Guard subscription linked to the ZIA tenant (Zscaler Support links them); GenAI prompt capture in ZIA needs the Gen AI Security subscription.",
+        "customer_id_needed": False,
+        "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in has no AI Guard. The proxy gateway cannot be created through the API; the builder says how to make it in the ZIA portal.",
+    },
+
     "compliance": {
         "label": "Compliance",
         "description": "Maps assessment results to NIST 800-53/171, SOC 2, GDPR, HIPAA, PCI-DSS, ISO 27001, CIS frameworks.",

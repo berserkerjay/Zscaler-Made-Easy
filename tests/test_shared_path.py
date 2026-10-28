@@ -49,7 +49,11 @@ WRITE_CALL = re.compile(r"\.(add_dict|add_dlp_engine|add_rule|add_sub_rule|updat
                         r"delete_provisioning_key|add_group|update_group|delete_group|add_segment_pra|update_segment_pra|delete_segment_pra|"
                         r"add_profile|update_profile|delete_profile|add_console|update_console|delete_console|add_access_rule|"
                         r"update_access_rule|add_timeout_rule|update_timeout_rule|add_app_protection_rule|update_app_protection_rule|"
-                        r"add_isolation_rule|update_isolation_rule)\(|\bclient\.(post|put|patch|delete)\(")
+                        r"add_isolation_rule|update_isolation_rule|"
+
+                        # AI Guard builders (ops_aiguard): AI Guard policies, ZIA proxies, destination groups, prompt capture.
+                        r"add_policy|update_policy|delete_policy|add_proxy|update_proxy|delete_proxy|update_url_and_app_settings|"
+                        r"add_ip_destination_group|update_ip_destination_group|delete_ip_destination_group)\(|\bclient\.(post|put|patch|delete)\(")
 # The only files allowed to name an SDK write method, and why.
 ALLOWED = {
     "pack_ops.py": "the shared execution path itself",

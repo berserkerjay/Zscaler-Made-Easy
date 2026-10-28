@@ -838,6 +838,27 @@ def _zdx_write(api, method: str, *args: Any, op: str, kind: str, name: str, log:
         return Outcome(False, error="the ZDX configuration API is not available on this sign-in")
     return call(fn, *args, op=op, kind=kind, name=name, log=log)
 
+ADMIN_KINDS = ("url_category", "zpa_segment")
+# AI Guard (ops_aiguard): the ZIA objects that proxy-chain GenAI apps to AI
+# Guard, and the AI Guard detection policy objects. For an AI Guard kind the
+# first argument is the AI Guard service root (client.aiguard), not
+# client.zia: AI Guard has no activation, so no activate-and-retry on a 403.
+# zscaler-sdk-python 1.11.3 has no root-certificate service: that kind goes
+# through the raw request (POST/DELETE /rootCertificates, an assumed path).
+AIGUARD_KINDS = ("aiguard_policy", "aiguard_rule")
+AIGUARD_ZIA_KINDS = ("root_certificate", "zia_proxy", "ip_destination_group", "forwarding_rule", "url_app_settings")
+ROOT_CERTS_PATH = "/rootCertificates"
+
+
+def _aiguard_write(aig, kind: str, verb: str, *args: Any, op: str, name: str, log: Optional[Callable[[str], None]] = None,
+                   kw: Optional[Dict[str, Any]] = None) -> Outcome:
+    """An AI Guard detection policy or policy match rule write: the same
+    call() (retries, rate-limit handling, run control), without the ZIA
+    client, so a 403 is not answered by a ZIA activation (AI Guard has none)."""
+    svc = aig.policies if kind == "aiguard_policy" else aig.policy_match_rules
+    method = getattr(svc, f"{verb}_{'policy' if kind == 'aiguard_policy' else 'rule'}")
+    return call(method, *args, op=op, kind=kind, name=name, log=log, kw=kw)
+
 
 def _admin_rule_service(zia, channel: Optional[str]):
     svc = getattr(zia, ADMIN_RULE_SERVICES[channel], None)
@@ -903,6 +924,21 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
         return call(zia.dlp_engine.add_dlp_engine, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "app_group":
         return call(pc.add_app_group, zia, payload, op="create", kind=kind, name=name, log=log, zia=zia)
+    if kind == "root_certificate":
+        return call(pc.raw_request, zia, "POST", ROOT_CERTS_PATH, payload, op="create", kind=kind, name=name, log=log, zia=zia)
+    if kind == "zia_proxy":
+        return call(zia.proxies.add_proxy, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "ip_destination_group":
+        return call(zia.cloud_firewall.add_ip_destination_group, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "forwarding_rule":
+        return call(zia.forwarding_control.add_rule, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind in AIGUARD_KINDS:
+        return _aiguard_write(zia, kind, "add", op="create", name=name, log=log, kw=payload)
+    if kind == "policy" and channel in ADMIN_RULE_SERVICES:
+        svc, err = _admin_rule_service(zia, channel)
+        if err:
+            return Outcome(False, error=err)
+        return call(svc.add_rule, op="create", kind=kind, name=name, channel=channel, log=log, kw=payload, zia=zia)
     if kind == "policy":
         if parent_id is not None:
             return call(pc.add_sub_rule, zia, parent_id, payload, op="create", kind=kind, name=name, channel=channel, log=log, zia=zia)
@@ -936,6 +972,14 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(zia.dlp_engine.update_dlp_engine, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "app_group":
         return call(pc.update_app_group, zia, oid, payload, op="update", kind=kind, name=name, log=log, zia=zia)
+    if kind == "ip_destination_group":
+        return call(zia.cloud_firewall.update_ip_destination_group, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "forwarding_rule":
+        return call(zia.forwarding_control.update_rule, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "url_app_settings":
+        return call(zia.url_filtering.update_url_and_app_settings, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind in AIGUARD_KINDS:
+        return _aiguard_write(zia, kind, "update", oid, op="update", name=name, log=log, kw=payload)
     if kind == "policy" and channel in ADMIN_RULE_SERVICES:
         svc, err = _admin_rule_service(zia, channel)
         if err:
@@ -981,6 +1025,21 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         return _zdx_write(zia, "zdx_delete_probe", item.get("parent_id"), oid, op="delete", kind=kind, name=name, log=log)
     if kind in ZPA_KINDS:
         return _zpa_kind_write(zia, kind, "delete", oid, name=name, log=log)
+    if kind == "root_certificate":
+        return call(pc.raw_request, zia, "DELETE", f"{ROOT_CERTS_PATH}/{oid}", op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "zia_proxy":
+        return call(zia.proxies.delete_proxy, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "ip_destination_group":
+        return call(zia.cloud_firewall.delete_ip_destination_group, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "forwarding_rule":
+        return call(zia.forwarding_control.delete_rule, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind in AIGUARD_KINDS:
+        return _aiguard_write(zia, kind, "delete", oid, op="delete", name=name, log=log)
+    if kind == "policy" and channel in ADMIN_RULE_SERVICES:
+        svc, err = _admin_rule_service(zia, channel)
+        if err:
+            return Outcome(False, error=err)
+        return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if kind != "policy":
         return Outcome(False, error=f"unknown object kind '{kind}'")
     if channel == pc.ENDPOINT and item.get("parent_id") is not None:

@@ -407,6 +407,26 @@ what you get, what to do next.
   dependency order (policies, segments, server groups, segment groups,
   connector groups), keeping and naming anything still used by an object
   that is not being deleted; it needs `DELETE <PREFIX>` typed.
+  Under **Build new**, two AI Guard builders run through the same preview,
+  gates, read-back and Undo (they need AI Guard ticked on the Scope page and
+  a OneAPI API client). *AI Guard routing for GenAI apps* (ZIA platform
+  too) sends the apps you pick (ChatGPT, Microsoft 365 Copilot, Claude,
+  Gemini and others) through AI Guard by proxy chaining: it reuses or
+  uploads the AI Guard root certificate, reuses an AI Guard proxy or
+  creates one, adds a destination group of the apps' domains, blocks QUIC,
+  puts an SSL Inspect rule for the apps at the top of SSL inspection (only
+  when SSL/TLS Inspection is marked Zscaler), turns on GenAI prompt capture
+  when the Gen AI Security subscription is there, adds the forwarding rule,
+  and allows the apps in ZIA above any Block, Caution or Isolate rule. The
+  proxy gateway cannot be created through the API: the preview says how to
+  make it in the ZIA portal and adds the forwarding rule once it exists.
+  *AI Guard detection policy* turns a compliance profile (HIPAA, HITRUST,
+  PCI, GDPR, CJIS, FERPA, SOX or general) into an AI Guard detection policy
+  and a match rule for the apps' LLM providers, Monitor (detect only) by
+  default. The read-only readiness check behind both (`ai_guard.readiness`:
+  licensed and reachable, existing proxy and gateway, the portal step) is
+  shown in each form, and GenAI findings that AI Guard addresses link to
+  the builder.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in
