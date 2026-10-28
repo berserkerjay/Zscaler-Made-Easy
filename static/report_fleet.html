@@ -98,6 +98,25 @@
         </section>
       </div>
       <div id="zfOut"></div>
+      <section class="zf-sec" id="zfInstall" aria-labelledby="zfInstallH">
+        <h2 id="zfInstallH">Install command builder</h2>
+        <p class="zf-dim">Builds the Client Connector install command (MSI or EXE on Windows, the installer app on macOS) and a script to run next to the installer. Pick an app profile from the fleet read to fill in its policy token. Tokens and passwords show as ******** until you click Reveal; nothing is logged or saved.</p>
+        <div class="zf-row">
+          <label>Platform <select id="zfInstPlat" aria-label="Platform"><option value="windows">Windows</option><option value="macos">macOS</option></select></label>
+          <label>Installer <select id="zfInstType" aria-label="Installer type"></select></label>
+          <label>Installer file <input type="search" id="zfInstName" maxlength="200" aria-label="Installer file name" placeholder="Zscaler-windows-installer-x64.msi"></label>
+          <label>App profile <select id="zfInstProfile" aria-label="App profile whose policy token to use"><option value="">None (no policy token)</option></select></label>
+        </div>
+        <div id="zfInstOpts" class="zf-row" role="group" aria-label="Installer options"></div>
+        <div class="zf-row">
+          <button type="button" class="rp-btn primary" id="zfInstBuild">Build the command</button>
+          <button type="button" class="rp-btn" id="zfInstReveal" aria-pressed="false">Reveal secrets</button>
+          <button type="button" class="rp-btn" id="zfInstCopy" disabled aria-disabled="true">Copy the command</button>
+          <button type="button" class="rp-btn" id="zfInstSave" disabled aria-disabled="true">Download the script</button>
+        </div>
+        <div class="zf-status" id="zfInstStatus" role="status" aria-live="polite"></div>
+        <pre class="zf-pre" id="zfInstCmd" aria-label="Install command" tabindex="0" hidden></pre>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>

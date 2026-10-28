@@ -222,6 +222,10 @@ what you get, what to do next.
   Excel workbook (devices, versions, operating systems, stale devices; with
   a counts-only option). Without device permission it says so and shows
   the configuration only. Read-only; Stop ends the read at once.
+  Its **Install command builder** writes the MSI, EXE or macOS install
+  command and a .bat or .command script for a chosen app profile (its
+  policy token is read only when ZCC is in scope); tokens and passwords
+  show as ******** unless you click Reveal, and none is logged or saved.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
   decides, whether the traffic is decrypted, and whether inline DLP can
   see it. Where: opened from Traffic flow & gaps.
@@ -358,6 +362,21 @@ what you get, what to do next.
   records the change with an Undo that is itself previewed. Cloud
   application sanction is not offered: the SDK cannot read an
   application's current state.
+  Under **Build new** the same page builds Client Connector profiles
+  (needs ZCC ticked): pick Windows or macOS, a forwarding profile (best
+  practice: tunnel on every network type, the listening-proxy redirect,
+  Z-Tunnel 2.0, IPv6 dropped, latency-based ZEN selection, no system PAC,
+  ZPA on VPN-trusted networks and ZPA latency-based selection; the portal
+  default; or an existing one) and an app profile (best practice for
+  Windows or macOS, or the portal default), untick any setting, and
+  preview: every setting is an item with its value, the portal default
+  and what it does. Applying creates the forwarding profile first and the
+  app profile linked to it, both disabled; if the app profile is refused
+  the new forwarding profile is deleted again; every setting is read back.
+  Undo (and **Delete a Client Connector profile**) needs the profile's
+  typed name and is refused while the profile is in use (an enabled app
+  profile, or a forwarding profile an app profile links to).
+  Tamper-protection passwords are never set from here.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in

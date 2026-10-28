@@ -280,6 +280,10 @@ def _b(**extra) -> Dict[str, Any]:
 
 
 OPERATION = {"type": "rule_state", "value": "DISABLED", "targets": [{"policy": "url_filtering", "id": 101}]}
+ZCC_SCOPE = {"scopes": ["zcc"], "channels": {}, "from_page": True}
+ZCC_BUILD = {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
+             "app": {"template": "best_practice", "name": "QA app"}}
+ZCC_DELETE = {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}
 
 WRITE_CASES: List[WriteCase] = [
     ("deploy", "POST", "/api/dlp-packs/apply",
@@ -310,6 +314,12 @@ WRITE_CASES: List[WriteCase] = [
      lambda w: ("/api/operations/apply", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
     ("bulk-apply-job", "POST", "/api/operations/apply/start",
      lambda w: ("/api/operations/apply/start", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
+    ("bulk-apply-zcc-build", "POST", "/api/operations/apply",
+     lambda w: ("/api/operations/apply", dict(_b(**ZCC_SCOPE), operation=ZCC_BUILD, plan_hash=HASH, confirm=True, confirm_text="CREATE QA APP")),
+     BOOL),
+    ("bulk-apply-zcc-delete", "POST", "/api/operations/apply/start",
+     lambda w: ("/api/operations/apply/start", dict(_b(**ZCC_SCOPE), operation=ZCC_DELETE, plan_hash=HASH, confirm=True, confirm_text="QA")),
+     BOOL),
     ("self-heal", "POST", "/api/self-heal/tenant/heal",
      lambda w: ("/api/self-heal/tenant/heal", dict(_b(**SCOPE), ids=[_heal_proposal(w)], confirm=PHRASE)), PHRASE),
     ("remediation", "POST", "/api/remediation/execute",
@@ -416,6 +426,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/report/docx"): "report",
     ("POST", "/api/report/findings-csv"): "report",
     ("POST", "/api/zcc/fleet/start"): "reads",
+    ("POST", "/api/zcc/install"): "builds an install command; with app_profile_id it reads that profile's policy token (scope-gated)",
     ("POST", "/api/report/bypass"): "reads",
     ("POST", "/api/report/data-flow"): "reads",
     ("POST", "/api/path-analyzer/batch/start"): "reads",

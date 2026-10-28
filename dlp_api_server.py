@@ -7678,6 +7678,60 @@ async def zcc_fleet_export(job_id: str, what: str = "plan", counts_only: bool = 
     return Response(content=text, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={name}"})
 
 
+class ZccInstallRequest(ScopedTenantCredsRequest):
+    """The Client Connector install command builder (ops_zcc.install_commands):
+    platform, installer type, the installer's options and, to fill in the
+    policy token, the app profile's id (app_profile_id) (read only when ZCC is in scope).
+    Tokens and passwords come back masked unless `reveal` is true."""
+    platform: str = "windows"
+    installer: str = ""
+    installer_name: str = ""
+    values: Dict[str, Optional[Any]] = {}
+    app_profile_id: str = ""
+    reveal: bool = False
+
+
+@app.get("/api/zcc/install/catalog")
+async def zcc_install_catalog():
+    """The installer options the install command builder offers (no tenant call)."""
+    import ops_zcc
+    return ops_zcc.install_catalog()
+
+
+@app.post("/api/zcc/install")
+async def zcc_install(req: ZccInstallRequest):
+    """MSI, EXE or macOS install command and a .bat / .command script. With
+    app_profile_id, the app profile's policy token is read (SDK
+    zcc.application_profiles.get_application_profile), only when ZCC is in
+    scope (400 before sign-in otherwise). Secrets are masked unless reveal is
+    true; nothing here is logged or stored (the audit line drops token and
+    password keys)."""
+    import ops_zcc
+    values = {k: v for k, v in (req.values or {}).items() if isinstance(k, str) and len(k) <= 40}
+    token_note = ""
+    if req.app_profile_id:
+        _require_in_scope(req, "zcc", "Reading the app profile's policy token")   # user rule 1: nothing read out of scope
+        creds = _tenant_creds(req)
+        if creds.get("auth_method") == tenant_auth.LEGACY:
+            raise HTTPException(status_code=400, detail="The classic ZIA API sign-in has no Client Connector API; sign in with a OneAPI API client.")
+        sdk = await asyncio.to_thread(_build_sdk_client, creds)
+        try:
+            token, why = await asyncio.to_thread(ops_zcc.policy_token, sdk, req.app_profile_id)
+        finally:
+            _close_quietly(sdk)
+        if token:
+            values["policyToken"] = token
+        else:
+            token_note = why or ""
+    try:
+        out = ops_zcc.install_commands(req.platform, req.installer, values, installer_name=req.installer_name, reveal=req.reveal)
+    except ops_zcc.BuilderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if token_note:
+        out["warnings"].insert(0, token_note)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/report/view")
 async def report_view_page():
     """Standalone tab that mirrors a tool dialog (see static/report_view.html)."""

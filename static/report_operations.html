@@ -77,7 +77,8 @@
     const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
     const MAX_RULES = 100;
     const STATUS = { change: ['Will change', 'st-block'], noop: ['Already as asked', ''], excluded: ['Excluded', 'st-warn'], applied: ['Applied', 'st-ok'],
-      conflict: ['Conflict, left as it is', 'st-warn'], failed: ['Failed', 'st-fail'], skipped: ['Not attempted', 'st-warn'] };
+      conflict: ['Conflict, left as it is', 'st-warn'], failed: ['Failed', 'st-fail'], skipped: ['Not attempted', 'st-warn'],
+      rolled_back: ['Created, then deleted again', 'st-warn'] };
     const FAMILY = { rule_state: 'rules', reorder: 'rules', url_categories: 'url_categories', zpa_domains: 'zpa_segments' };
     const S = { kind: 'rule_state', objects: {}, selected: new Set(), filter: '', policyFilter: '', order: null, orderPolicy: '', orderType: '',
       urlPick: new Set(), domPick: new Set(), assessor: '', preview: null, previewJob: null, spec: null, undoOf: null, write: null, busy: false, job: null, stopAsked: false, startToken: null };
