@@ -212,6 +212,15 @@ what you get, what to do next.
   into a custom URL category or IP group, and CSV and Excel downloads.
   Fix selected opens Bulk changes with the picked destinations filled in
   as a URL category change; it writes nothing on its own.
+  The PAC file is evaluated for the destination (`pac_eval.py`: parsed
+  and interpreted, never run; anything outside the PAC subset says
+  "could not evaluate safely"), and each answer is classified DIRECT,
+  Zscaler or another proxy. **What-if**: optionally give a user, group,
+  department and location (looked up in ZIA only with ZIA platform in
+  scope, 20 names at most per search); rules scoped to them apply and
+  rules for others are skipped. Every result lists what the policy action
+  also depends on: each scoped condition that would change it, with the
+  rule and the action it would give (`path_whatif.py`).
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the

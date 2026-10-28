@@ -129,6 +129,10 @@
     'ip group': { term: 'IP group', def: 'An IP group is a list of addresses you make in Zscaler. A firewall rule can name the group to block or allow them all.' },
     'allowed but blockable': { term: 'allowed but blockable', def: 'Allowed but blockable means a site gets through today. A rule could block it, but that rule is only for some people or places.' },
     'threat category': { term: 'threat category', def: 'A threat category is a group of sites Zscaler knows are bad, like phishing or malware. Threat protection blocks them for everyone.' },
+    'what-if': { term: 'what-if', def: 'A what-if asks what would happen for one person. You type a user, a group, a team or a place, and the app checks the rules for them.' },
+    'department': { term: 'department', def: 'A department is a team in your company, like Sales or Finance. A rule can name a department to act only on its people.' },
+    'time window': { term: 'time window', def: 'A time window is a set of days and hours, like work hours. A rule with one only acts at those times.' },
+    'device trust level': { term: 'device trust level', def: 'The device trust level says how much Zscaler trusts a computer: low, medium or high. A rule can act only on some levels.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

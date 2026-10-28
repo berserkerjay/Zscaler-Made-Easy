@@ -471,6 +471,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/path-analyzer/start"): "reads",
     ("POST", "/api/path-analyzer"): "reads",
     ("POST", "/api/path-analyzer/full/start"): "reads",
+    ("POST", "/api/path-analyzer/identities"): "reads (one page of names)",
     ("POST", "/api/report/data-flow/{report_id}/trace"): "reads",
     ("POST", "/api/report/ssl-flow"): "reads",
     ("POST", "/api/ssl-coverage/start"): "reads",
