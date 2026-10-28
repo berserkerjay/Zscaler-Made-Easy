@@ -8682,7 +8682,7 @@ def _bulk_zpa_inputs(req: BulkTestRequest, creds: Dict[str, Any]) -> Tuple[bool,
         problem = "ZPA was not read: the classic ZIA API sign-in reaches ZIA only, so whether ZPA carries each row is unknown."
     elif not validate_customer_id(creds.get("customer_id") or ""):
         problem = "ZPA was not read: the ZPA customer ID is missing (Connect to the tenant → Customer ID), so whether ZPA carries each row is unknown."
-    return True, problem, (_path_full_kept(req.zpa_report_id, "pathzpa", creds) if not problem else None)
+    return True, problem, (_path_kept(req.zpa_report_id, "pathzpa", creds) if not problem else None)
 
 
 def _run_bulk_test(client, req: BulkTestRequest, parsed, snapshot, label: str, log, cancel, scope: Dict[str, Any],
@@ -8738,7 +8738,7 @@ async def bulk_test_start(req: BulkTestRequest, request: Request):
     scope = data_flow.path_scope(sc, ch)
     scope["source"] = src
     if not scope["read"] and "zpa" not in sc:
-        raise HTTPException(status_code=400, detail=PATH_FULL_NOTHING)
+        raise HTTPException(status_code=400, detail=PATH_NOTHING)
     creds = _tenant_creds(req)
     zpa_on, zpa_problem, zpa_kept = _bulk_zpa_inputs(req, creds)
     if not scope["read"] and zpa_problem:
