@@ -276,6 +276,8 @@ class Route:
 
 DEST = {"destination": "example.com"}
 RULE_STATE_WEB = {"operation": {"type": "rule_state", "targets": [{"policy": "web_dlp", "id": 1, "to": "DISABLED"}]}}
+ZCC_BUILD = {"operation": {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
+                           "app": {"template": "best_practice", "name": "QA app"}}}
 
 ROUTES: List[Route] = [
     # Job starts and their waited-for twins
@@ -339,6 +341,12 @@ ROUTES: List[Route] = [
     Route("/api/operations/preview", RULE_STATE_WEB),
     Route("/api/operations/op-qa-1/undo/preview/start", setup=_recorded_operation),
     Route("/api/operations/op-qa-1/undo/preview", setup=_recorded_operation),
+    # Client Connector profiles: plugin types on the same engine (ops_zcc), and the install command builder's token read
+    Route("/api/operations/objects", {"family": "zcc_profiles"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview/start", ZCC_BUILD, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}},
+          partial=ZCC, out=ZCC_OUT),
+    Route("/api/zcc/install", {"app_profile_id": "21"}, partial=ZCC, out=ZCC_OUT),
     Route("/api/digests/run", setup=_profile_from, nothing=200,
           why="by design: the loop reads saved profiles, and one with nothing in scope is reported 'not read' in the digest"),
 ]

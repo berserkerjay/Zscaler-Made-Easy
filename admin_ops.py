@@ -696,7 +696,8 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     if counts["change"] == 0 and not prepared["blockers"]:
         prepared["warnings"].append("Nothing to change: every item is already as asked or excluded.")
     prepared["status"] = "blocked" if prepared["blockers"] else ("nothing_to_do" if counts["change"] == 0 else "ready")
-    prepared["confirm_phrase"] = confirm_phrase(counts["change"])
+    # A plugin may name its own typed confirmation (upper case: it is compared case-insensitively), e.g. the name of a profile it deletes.
+    prepared["confirm_phrase"] = str(prepared.get("confirm_phrase") or "").strip().upper() or confirm_phrase(counts["change"])
     prepared["needs_activation"] = prepared.get("product") == "zia"
     prepared["kind"] = KIND
     prepared["tenant_label"] = tenant_label
@@ -705,7 +706,8 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     prepared["plan_hash"] = plan_hash(prepared)
     prepared["notes"] = list(prepared.get("notes") or []) + (
         ["ZIA keeps every change pending until it is activated: the app activates once, after the last write, as a policy pack deploy does."]
-        if prepared["needs_activation"] else ["ZPA applies each change as it is saved; there is no activation step."])
+        if prepared["needs_activation"] else ["ZPA applies each change as it is saved; there is no activation step."]
+        if prepared.get("product") == "zpa" else [])
     return prepared
 
 
