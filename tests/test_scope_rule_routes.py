@@ -268,6 +268,16 @@ def _opened_snapshot(sel: Dict[str, Any]) -> Dict[str, Any]:
     return dict(CREDS, snapshot_id=st.id, **sel)
 
 
+def _pov_for(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A saved tenant profile with a POV: Prove it and the Insights counts record on it."""
+    import pov
+    import tenant_profiles
+    pid = tenant_profiles.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": CREDS["client_id"]},
+                                 client_secret=CREDS["client_secret"], remember_secret=True)["id"]
+    pov.create(pid, None, {"customer": "Acme", "vertical": "general"}, by="qa")
+    return dict(CREDS, profile_id=pid, **sel)
+
+
 class Route:
     """One tenant-reading route: its body, the partial selection that puts
     only part of what it reads in scope and what that selection leaves out,
@@ -341,6 +351,9 @@ ROUTES: List[Route] = [
     # Insights, ZPA, device posture, browser security, SSL coverage
     Route("/api/insights/start", partial=INSIGHTS, out=INSIGHTS_OUT),
     Route("/api/insights", partial=INSIGHTS, out=INSIGHTS_OUT),
+    # The POV planner's Prove it (the Path analyzer) and Insights counts
+    Route("/api/pov/prove/start", {"test_id": "url-block"}, setup=_pov_for),
+    Route("/api/pov/insights/start", partial=INSIGHTS, out=INSIGHTS_OUT, setup=_pov_for),
     Route("/api/zpa/analysis/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/zpa/diagnose", {"destination": "app.example.com", "port": "443"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/device-posture/start", partial=ZPA, out=ZPA_OUT),

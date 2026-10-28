@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POV planner — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  /* Tabs: the same pattern as ZPA analysis (/report/zpa). */
+  .zp-tabs { display: flex; gap: 0.4rem; margin: 0 0 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 0.6rem; }
+  .zp-tabs [role="tab"] { min-height: 34px; padding: 0.3rem 0.9rem; border-radius: var(--r-md); border: 1px solid var(--border); background: transparent; color: var(--dim); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+  .zp-tabs [role="tab"][aria-selected="true"] { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+  .zp-tabs [role="tab"]:focus-visible, .pv-page :is(input, select, textarea, button, summary, a):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .pv-lead { margin: 0 0 1rem; font-size: 0.92rem; }
+  .pv-status { font-size: 0.86rem; color: var(--dim); min-height: 1.3em; margin: 0 0 0.6rem; }
+  .pv-status.bad { color: var(--fail); }
+  .pv-empty { color: var(--dim); font-size: 0.9rem; padding: 0.6rem 0; }
+  .pv-sec { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); padding: 0.8rem 0.9rem; margin: 0 0 1rem; min-width: 0; }
+  .pv-sec h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+  .pv-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 0.6rem 1rem; }
+  .pv-form label, .pv-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: var(--dim); min-width: 0; }
+  .pv-page input[type=text], .pv-page input[type=date], .pv-page select, .pv-page textarea { font: inherit; font-size: 0.88rem; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.35rem 0.5rem; min-height: 34px; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  .pv-page textarea { min-height: 4.5rem; resize: vertical; width: 100%; }
+  .pv-checks { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; border: 0; padding: 0; margin: 0; }
+  .pv-checks legend { font-size: 0.82rem; color: var(--dim); margin-bottom: 0.3rem; padding: 0; }
+  .pv-checks label { flex-direction: row; align-items: center; gap: 0.35rem; color: var(--text); font-size: 0.86rem; }
+  .pv-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.6rem 0 0; }
+  .pv-list { list-style: none; margin: 0; padding: 0; }
+  .pv-list > li { border-bottom: 1px solid var(--border); padding: 0.5rem 0; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .pv-list > li > .grow { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
+  .pv-meta { color: var(--dim); font-size: 0.78rem; }
+  .pv-chip { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: var(--r-pill); border: 1px solid var(--border); color: var(--dim); }
+  .pv-chip.pass, .pv-chip.met, .pv-chip.agrees { color: var(--pass); border-color: var(--pass); background: color-mix(in srgb, var(--pass) 12%, transparent); }
+  .pv-chip.fail, .pv-chip.not_met, .pv-chip.disagrees { color: var(--fail); border-color: var(--fail); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+  .pv-chip.skipped { color: var(--warn); border-color: var(--warn); }
+  .pv-test { border: 1px solid var(--border); border-radius: var(--r-md); margin: 0 0 0.5rem; background: var(--well); }
+  .pv-test > summary { cursor: pointer; padding: 0.55rem 0.7rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; min-height: 24px; }
+  .pv-test > summary .t { font-weight: 600; flex: 1 1 12rem; min-width: 0; }
+  .pv-test-body { padding: 0 0.8rem 0.8rem; font-size: 0.88rem; }
+  .pv-test-body ol { margin: 0.3rem 0 0.5rem 1.2rem; padding: 0; }
+  .pv-evidence { margin: 0.4rem 0 0; padding: 0; list-style: none; }
+  .pv-evidence li { padding: 0.35rem 0; border-top: 1px solid var(--border); display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: baseline; overflow-wrap: anywhere; }
+  .pv-evidence li .grow { flex: 1 1 14rem; min-width: 0; }
+  .pv-counts { font-size: 0.82rem; margin: 0.3rem 0; }
+  .pv-link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .pv-kit li { align-items: flex-start; }
+  .pv-ext { overflow-wrap: anywhere; }
+  .pv-live { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.5rem 0.7rem; margin: 0.5rem 0; font-size: 0.84rem; }
+  .pv-live pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 10rem; overflow: auto; margin: 0.3rem 0 0; font-size: 0.76rem; color: var(--dim); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  @media (prefers-reduced-motion: reduce) { .zp-tabs [role="tab"] { transition: none; } }
+</style>
+</head>
+<body class="report-page pv-page">
+  <a class="skip-link" href="#main-content">Skip to the POV planner</a>
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">POV</span> planner</h1>
+      <p>Plan and run a customer proof of value (POV) for one tenant: the intake, the customer's success criteria, a runbook of tests for each product with pass or fail, notes and evidence, a test kit, the timeline and follow-ups, and a Word or PDF report built from what actually ran. Pick the tenant profile, then start on the Plan tab. It is kept on this computer with the tenant profile and never changes the tenant.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl"><span class="lbl">Tenant profile</span><select id="pvProfile" aria-label="Tenant profile the POV belongs to"></select></label>
+      <button type="button" class="rp-btn" id="pvReload">↻ Reload</button>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <p class="pv-status" id="pvStatus">Loading…</p>
+      <div class="zp-tabs" role="tablist" aria-label="POV planner views">
+        <button type="button" role="tab" id="tab-plan" aria-controls="panel-plan" aria-selected="true" tabindex="0">Plan</button>
+        <button type="button" role="tab" id="tab-runbook" aria-controls="panel-runbook" aria-selected="false" tabindex="-1">Runbook</button>
+        <button type="button" role="tab" id="tab-kit" aria-controls="panel-kit" aria-selected="false" tabindex="-1">Test kit</button>
+        <button type="button" role="tab" id="tab-notes" aria-controls="panel-notes" aria-selected="false" tabindex="-1">Notes and follow-ups</button>
+        <button type="button" role="tab" id="tab-report" aria-controls="panel-report" aria-selected="false" tabindex="-1">Report</button>
+      </div>
+      <section role="tabpanel" id="panel-plan" aria-labelledby="tab-plan" tabindex="0"><div id="pvPlan"></div></section>
+      <section role="tabpanel" id="panel-runbook" aria-labelledby="tab-runbook" tabindex="0" hidden><div id="pvRunbook"></div></section>
+      <section role="tabpanel" id="panel-kit" aria-labelledby="tab-kit" tabindex="0" hidden><div id="pvKit"></div></section>
+      <section role="tabpanel" id="panel-notes" aria-labelledby="tab-notes" tabindex="0" hidden><div id="pvNotes"></div></section>
+      <section role="tabpanel" id="panel-report" aria-labelledby="tab-report" tabindex="0" hidden><div id="pvReport"></div></section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/pov.js"></script>
+</body>
+</html>

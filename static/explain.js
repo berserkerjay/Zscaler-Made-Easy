@@ -418,6 +418,15 @@
     next: 'Work down the list: open the object, fix it on the page its card links to, then tick the to-do. Add new ones from any object card in Find anything (Ctrl+J).',
   };
 
+  X.pov = {
+    group: 'Start', name: 'POV planner', href: '/report/pov',
+    what: 'Plans and runs a customer proof of value (POV) for one tenant profile: the intake (customer, internal domain, a short prefix, a vertical preset and the products in scope), the customer\'s success criteria, a runbook of tests per product with pass or fail, notes and evidence, a test kit, the timeline, notes and follow-ups.',
+    why: 'A POV is won on proof the customer agreed in advance. Criteria linked to tests, evidence on each test and a report built from what actually ran turn a week of testing into a decision the customer can sign off.',
+    when: 'At the kickoff call to fill in the intake and agree the criteria, during the POV to run and record each test, and at the close to hand over the report.',
+    get: 'Per test: the steps, the expected result, Prove it (the Path analyzer\'s verdict for the test\'s destination, read-only) and Insights counts; synthetic DLP files per vertical, the EICAR test file and AMTSO links, a unique PDF for Cloud Sandbox; a Word or PDF customer report; export, import and templates.',
+    next: 'Start the POV on the Plan tab, download the test kit, run the tests on the Runbook tab, then download the customer report. Changes to the tenant go through Deploy policy packs or Bulk changes, whose records the report lists.',
+  };
+
   // Which entry a page belongs to, by its path (and ?tool= on the results tab).
   function keyFor(loc) {
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
@@ -425,7 +434,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
 
@@ -474,7 +483,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

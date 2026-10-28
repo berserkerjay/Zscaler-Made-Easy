@@ -612,6 +612,11 @@
                 title="Every function of this app explained in plain English: what it is, why the customer cares, when to use it, what you get. Opens in a new tab.">
           <span aria-hidden="true">❓</span> What does everything do?
         </button>
+        <button class="btn btn-ghost" onclick="openPovTab()"
+                aria-label="Open POV planner: plan and run a customer proof of value with an intake, success criteria, a test runbook per product, a test kit and a Word or PDF report (opens in a new tab)"
+                title="Plan a customer proof of value for a saved tenant profile: intake, success criteria, a runbook of tests per product with pass or fail, notes and evidence, Prove it with the Path analyzer, a synthetic test kit, the timeline and follow-ups, and a report built from what actually ran. Never changes the tenant. Opens in a new tab.">
+          <span aria-hidden="true">🧪</span> POV planner
+        </button>
       </div>
       <div class="tool-group" role="group" aria-label="Find the gaps" data-sb-id="find-gaps">
         <div class="tool-group-l">Find the gaps</div>
@@ -5389,6 +5394,12 @@ function openPostureTab() {
 function openFindAnything() {
   // Find anything (static/find_anything.js): the same dialog Ctrl+J and / open.
   if (window.DLP_FIND) window.DLP_FIND.open();
+}
+function openPovTab() {
+  // The POV is local (the tenant profile's folder); the tab reads this page's
+  // sign-in through window.opener only for Prove it and the Insights counts.
+  const w = window.open('/report/pov', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openTodoTab() {
   // Workspace notes are local: the tab reads them from this server, never the tenant.
