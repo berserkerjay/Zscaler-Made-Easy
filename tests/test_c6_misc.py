@@ -1032,3 +1032,61 @@ def test_vertical_other_shows_everything_and_a_chosen_pack_wins():
 
     assert (other["frameworks"], other["packs"], other["scoped"]) == (["HIPAA", "CIS"], ["a", "b"], False)
     assert (chosen["packs"], chosen["packs_from"]) == (["b"], "profile")
+
+
+# ── corpus_engines: the validators against published reference values ──
+
+@pytest.mark.parametrize("fn,value,ok", [
+    ("luhn_ok", "4111 1111 1111 1111", True), ("luhn_ok", "4111 1111 1111 1112", False), ("luhn_ok", "046454286", False),
+    ("npi_ok", "1234567893", True), ("npi_ok", "1234567890", False),                           # CMS NPI check-digit example
+    ("aba_ok", "011000015", True), ("aba_ok", "011000016", False), ("aba_ok", "001000015", False),
+    ("iban_ok", "GB82 WEST 1234 5698 7654 32", True), ("iban_ok", "GB82 WEST 1234 5698 7654 33", False), ("iban_ok", "GB82", False),
+    ("mbi_ok", "1EG4-TE5-MK73", True), ("mbi_ok", "1EG4-TE5-MK7S", False),                    # CMS specimen MBI
+    ("_mod11", "943 476 5919", True), ("_mod11", "943 476 5918", False),                       # NHS example number
+    ("_tfn", "123 456 782", True), ("_tfn", "123 456 783", False),
+    ("_sin_ok", "046 454 286", True), ("_sin_ok", "046 454 287", False), ("_sin_ok", "4111111111111111", False),
+    ("ssn_ok", "078-05-1120", False), ("ssn_ok", "666-12-1234", False), ("ssn_ok", "987-65-4321", False),
+])
+def test_corpus_validator_oracle(fn, value, ok):
+    """ASVS V5.1.3 · CWE-1023 · CWE-697: each local detector's check digit agrees with the published reference value."""
+    import corpus_engines as ce
+
+    assert getattr(ce, fn)(value) is ok
+
+
+def test_corpus_canadian_sin_detector_finds_a_valid_sin():
+    """ASVS V5.1.3 · CWE-1023 · CWE-697: the Canadian SIN detector counts a nine-digit Luhn-valid SIN (it never could: the card minimum applied)."""
+    import corpus_engines as ce
+    det = next(d for d in ce.DETECTORS if d["key"] == "canada_sin")
+
+    n, samples = ce.run_detector(det, "SIN 046 454 286 on file; 046 454 287 is a typo.")
+
+    assert (n, samples) == (1, ["••• ••• 286"])
+
+
+@pytest.mark.parametrize("group,ok", [(49, False), (50, True), (65, True), (66, False), (69, False), (70, True), (88, True), (89, False),
+                                      (90, True), (92, True), (93, False), (94, True), (99, True)])
+def test_corpus_itin_group_boundaries(group, ok):
+    """ASVS V5.1.3 · CWE-1023 · CWE-697: an ITIN's group digits are 50-65, 70-88, 90-92 or 94-99 (IRS), boundaries included."""
+    import corpus_engines as ce
+
+    assert ce.itin_ok(f"900-{group:02d}-0000") is ok
+
+
+@pytest.mark.parametrize("key", ["credit_card", "mbi", "iban", "aba"])
+def test_corpus_synthetic_samples_are_detected(key):
+    """ASVS V5.1.3 · CWE-1023: every published test value the POV kit ships is counted by its own detector."""
+    import corpus_engines as ce
+
+    assert all(ce.sample_detected(key, ce.sample(key, i)) for i in range(len(ce.SAMPLES[key])))
+
+
+def test_corpus_reserved_ssns_are_not_counted_and_generated_samples_are_injected():
+    """ASVS V5.1.3 · CWE-330: the reserved 987-65-432x SSNs are not counted by the strict detector; generated samples use the injected RNG."""
+    import random
+    import corpus_engines as ce
+
+    assert not any(ce.sample_detected("ssn", ce.sample("ssn", i)) for i in range(10))
+    assert ce.sample("phone", rng=random.Random(1)) == ce.sample("phone", rng=random.Random(1)) and ce.sample("phone", rng=random.Random(1)).startswith("(555) 555-01")
+    with pytest.raises(KeyError):
+        ce.sample("nope")
