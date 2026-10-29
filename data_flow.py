@@ -1031,7 +1031,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # 9. File Type Control
         if ends not in ("ssl", "url", "cac"):
             ftc = [(r, _generic_matches(r, dest)) for r in sorted(zia["ftc"], key=_policy_order) if r["enabled"] and proto_ok(r)
-                   and (not operation or r["operation"] in (operation, "", "ANY"))
+                   and (not operation or r["operation"] in (operation, "", "ANY") or (r["operation"] == "UPLOAD_DOWNLOAD" and operation in ("UPLOAD", "DOWNLOAD")))
                    and (not file_types or not r["file_types"] or "ANY" in r["file_types"] or bool(file_types & set(r["file_types"])))]
             ftc = [(r, m) for r, m in ftc if m]
             if "ftc" in nis:

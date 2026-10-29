@@ -81,13 +81,19 @@ FORWARD = {
     "PROXYCHAIN": ("proxy", "proxy-chained to another proxy: it never reaches ZIA"),
     "DROP": ("drop", "dropped by the connector"),
 }
+
+
+def _forward(method: str) -> Tuple[str, str]:
+    """(where it goes, words) for a forward method. One this tool does not
+    know (INVALID, or a newer value) is "unknown", never assumed to be ZIA."""
+    return FORWARD.get(method) or ("unknown", f"forwarded by method {method or 'not set'}, which this tool does not recognise, so where it goes is unknown")
 UNEVALUATED = (("destCountries", "destination country"), ("destIpCategories", "destination IP category"),
                ("resCategories", "URL category"), ("nwServices", "network service"), ("nwServiceGroups", "network service group"),
                ("nwApplications", "network application"), ("nwApplicationGroups", "network application group"),
                ("appServiceGroups", "app service group"), ("locations", "location"), ("locationGroups", "location group"),
                ("timeWindows", "time window"), ("devices", "device"), ("deviceGroups", "device group"),
                ("departments", "department"), ("groups", "group"), ("users", "user"), ("destIpv6Groups", "destination IPv6 group"),
-               ("srcIpv6Groups", "source IPv6 group"))
+               ("srcIpv6Groups", "source IPv6 group"), ("destWorkloadGroups", "destination workload group"))
 
 ASSUMPTIONS = [
     "Workload traffic: forwarded by a Cloud or Branch Connector, not by Client Connector, so Client Connector profiles, PAC files and ZPA bypass settings do not apply.",
@@ -277,7 +283,10 @@ def _refs(v: Any) -> List[Dict[str, str]]:
     out = []
     for x in v or []:
         if isinstance(x, dict):
-            out.append({"id": as_str(x.get("id") or x.get("externalId") or x.get("external_id")), "name": as_str(x.get("name"))})
+            # ZTW's own id first; ZPA's ids (externalId on a segment, zpaId on
+            # a segment group: ztw/models/forwarding_rules.py) kept beside it.
+            ids = [as_str(x.get(k)) for k in ("id", "externalId", "external_id", "zpaId", "zpa_id") if as_str(x.get(k))]
+            out.append({"id": ids[0] if ids else "", "name": as_str(x.get("name")), "ids": ids})
         elif x not in (None, ""):
             out.append({"id": as_str(x), "name": as_str(x)})
     return out
@@ -297,7 +306,7 @@ def _ip_in(ip: str, entries: List[str]) -> Optional[bool]:
             if "-" in e:
                 a, b = (ipaddress.ip_address(x.strip()) for x in e.split("-", 1))
                 seen = True
-                if a.version == addr.version and a <= addr <= b:
+                if a.version == b.version == addr.version and a <= addr <= b:
                     return True
                 continue
             net = ipaddress.ip_network(e, strict=False)
@@ -347,6 +356,7 @@ def normalize_rule(r: Dict[str, Any], index: int) -> Dict[str, Any]:
            "state": as_str(get(r, "state")).upper() or "ENABLED", "forward_method": as_str(get(r, "forwardMethod")).upper() or "ZIA",
            "src_ips": [as_str(x) for x in get(r, "srcIps") or []], "dest_addresses": [as_str(x) for x in get(r, "destAddresses") or []],
            "src_ip_groups": _refs(get(r, "srcIpGroups")), "dest_ip_groups": _refs(get(r, "destIpGroups")),
+           "src_group_exclusion": get(r, "sourceIpGroupExclusion") is True,
            "src_workload_groups": _refs(get(r, "srcWorkloadGroups")), "ec_groups": _refs(get(r, "ecGroups")),
            "zpa_segments": _refs(get(r, "zpaAppSegments")) + _refs(get(r, "zpaApplicationSegments")),
            "zpa_segment_groups": _refs(get(r, "zpaApplicationSegmentGroups")),
@@ -379,18 +389,30 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
     crit: List[Dict[str, str]] = []
     src_groups = {as_str(get(g, "id")): g for g in snap.get("ip_source_groups") or [] if isinstance(g, dict)}
     dst_groups = {as_str(get(g, "id")): g for g in snap.get("ip_destination_groups") or [] if isinstance(g, dict)}
-    if r["src_ips"] or r["src_ip_groups"]:
-        entries = list(r["src_ips"])
-        missing = []
-        for ref in r["src_ip_groups"]:
+    def source(ips: List[str], refs: List[Dict[str, str]]) -> Tuple[Optional[bool], bool]:
+        entries, missing = list(ips), False
+        for ref in refs:
             g = src_groups.get(ref["id"])
             if g is None:
-                missing.append(ref)
+                missing = True
             else:
                 entries += [as_str(x) for x in get(g, "ipAddresses") or []]
-        hit = _ip_in(w["ip"], entries) if w["ip"] else None
-        state = "match" if hit else ("unknown" if hit is None or (missing and not hit) else "nomatch")
-        crit.append({"name": "Source IP " + ", ".join(r["src_ips"][:3] + [f"group “{x['name'] or x['id']}”" for x in r["src_ip_groups"][:3]]), "state": state})
+        return (_ip_in(w["ip"], entries) if w["ip"] else None), missing
+
+    group_words = [f"group “{x['name'] or x['id']}”" for x in r["src_ip_groups"][:3]]
+    if r["src_group_exclusion"] and r["src_ip_groups"]:
+        # sourceIpGroupExclusion: the rule is for sources outside these
+        # groups (assumed from the field's name; the SDK documents no more).
+        if r["src_ips"]:
+            hit, _ = source(r["src_ips"], [])
+            crit.append({"name": "Source IP " + ", ".join(r["src_ips"][:3]), "state": "match" if hit else "unknown" if hit is None else "nomatch"})
+        hit, missing = source([], r["src_ip_groups"])
+        state = "nomatch" if hit else ("unknown" if hit is None or missing else "match")
+        crit.append({"name": "Source IP not in " + ", ".join(group_words), "state": state})
+    elif r["src_ips"] or r["src_ip_groups"]:
+        hit, missing = source(r["src_ips"], r["src_ip_groups"])
+        state = "match" if hit else ("unknown" if hit is None or missing else "nomatch")
+        crit.append({"name": "Source IP " + ", ".join(r["src_ips"][:3] + group_words), "state": state})
     if r["src_workload_groups"]:
         want = {(_lc(x["id"]), _lc(x["name"])) for x in r["src_workload_groups"]}
         rel = [g for g in groups if (_lc(g["id"]), _lc(g["name"])) in want or _lc(g["name"]) in {n for _, n in want if n} or (g["id"] and _lc(g["id"]) in {i for i, _ in want})]
@@ -430,8 +452,9 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
         elif zpa_seg is None:
             state = "nomatch"
         else:
-            names = {_lc(x["name"]) for x in r["zpa_segments"]} | {_lc(x["id"]) for x in r["zpa_segments"]}
-            gnames = {_lc(x["name"]) for x in r["zpa_segment_groups"]} | {_lc(x["id"]) for x in r["zpa_segment_groups"]}
+            names = {_lc(x["name"]) for x in r["zpa_segments"]} | {_lc(i) for x in r["zpa_segments"] for i in x.get("ids") or [x["id"]]}
+            gnames = {_lc(x["name"]) for x in r["zpa_segment_groups"]} | {_lc(i) for x in r["zpa_segment_groups"] for i in x.get("ids") or [x["id"]]}
+            names.discard(""), gnames.discard("")
             every = any(re.match(r"^zpa edge app segment$", x["name"] or "", re.I) for x in r["zpa_segments"])
             state = "match" if (every or _lc(zpa_seg["name"]) in names or _lc(zpa_seg["id"]) in names
                                 or _lc(zpa_seg.get("segment_group_name")) in gnames or _lc(zpa_seg.get("segment_group_id")) in gnames) else "nomatch"
@@ -503,7 +526,7 @@ def evaluate(snap: Dict[str, Any], w: Dict[str, Any], d: Dict[str, Any], zpa_seg
         elif status == "matched":
             decided = (r, row)
             break
-    go_of = lambda r: FORWARD.get(r["forward_method"], ("zia", f"forward method {r['forward_method']}"))[0]  # noqa: E731
+    go_of = lambda r: _forward(r["forward_method"])[0]  # noqa: E731
     go = go_of(decided[0]) if decided else "zia"
     possible = sorted({go_of(r) for r, _ in cond} | {go})
     could = [{"name": r["name"], "order": r["order"], "action": r["forward_method"],
@@ -512,7 +535,7 @@ def evaluate(snap: Dict[str, Any], w: Dict[str, Any], d: Dict[str, Any], zpa_seg
                 + ", ".join(x["name"] for x in c["criteria"])[:240] for c in could]
     if decided:
         r, row = decided
-        words = FORWARD.get(r["forward_method"], ("zia", f"forward method {r['forward_method']}"))[1]
+        words = _forward(r["forward_method"])[1]
         via = f" through gateway “{r['proxy_gateway'] or r['zpa_gateway']}”" if (r["proxy_gateway"] or r["zpa_gateway"]) else ""
         note = f"Rule “{r['name']}” (order {r['order']}) decides: {words}{via}."
         notes = [note, ec_note] + ([f"WAN selection: {r['wan_selection']}."] if r["wan_selection"] and r["wan_selection"].upper() not in ("NONE", "INVALID") else [])
@@ -521,13 +544,17 @@ def evaluate(snap: Dict[str, Any], w: Dict[str, Any], d: Dict[str, Any], zpa_seg
     else:
         note = "No forwarding rule matches, so the connector forwards the traffic to ZIA (assumed default)."
         notes, crit, rule_ref = [note, ec_note], [], None
-    verdict = "conditional" if len(possible) > 1 else {"drop": "dropped", "direct": "bypassed", "local": "bypassed", "proxy": "bypassed"}.get(go, "forwarded")
+    verdict = "conditional" if len(possible) > 1 else {"drop": "dropped", "direct": "bypassed", "local": "bypassed", "proxy": "bypassed",
+                                                       "unknown": "unknown"}.get(go, "forwarded")
     mods.append(zpa_path.module_hop("Connector forwarding", verdict, rule_ref, [], crit, notes, key="connector_forwarding", could_override=could))
-    status = {"dropped": "blocked", "bypassed": "bypass", "conditional": "conditional"}.get(verdict, "pass")
+    status = {"dropped": "blocked", "bypassed": "bypass", "conditional": "conditional", "unknown": "unknown"}.get(verdict, "pass")
     hops.append(zpa_path.flow_hop("connector", "Connector forwarding", status, note, {"name": rule_ref["name"], "order": rule_ref["order"], "action": decided[0]["forward_method"]} if decided else None))
     impacts = []
     if len(possible) > 1:
         impacts.append({"hop": "connector", "label": "Connector forwarding", "status": "conditional", "rule": None, "severity": "medium",
                         "detail": "An earlier forwarding rule depends on criteria not given or not evaluated: " + "; ".join(overlaps[:3]), "fix": None})
+    elif go == "unknown":
+        impacts.append({"hop": "connector", "label": "Connector forwarding", "status": "unknown", "rule": rule_ref["name"] if rule_ref else None,
+                        "severity": "medium", "detail": note, "fix": None})
     return {"go": go if len(possible) == 1 else "conditional", "possible": possible, "rule": rule_ref, "method": decided[0]["forward_method"] if decided else "ZIA",
             "groups": groups, "connector_group": ec, "modules": mods, "hops": hops, "headline": note, "impacts": impacts, "walked": walked[:60]}

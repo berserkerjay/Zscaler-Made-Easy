@@ -1437,6 +1437,7 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
                 say("ZIA's URL lookup is not in scope (no ZIA policy section is), so it was not asked.")
             say(f"Tracing {n:,} row(s) against the tenant read…")
             cache: Dict[Tuple[Any, ...], int] = {}
+            same: Dict[Tuple[Any, ...], int] = {}
             for i in range(n):
                 if i % STOP_EVERY == 0 and _stopped(cancel):
                     raise Stopped(STOPPED_REASON)
@@ -1456,8 +1457,7 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
                         a = ev.evaluate(ctx)
                         if a is not None:
                             answers.append((getattr(ev, "precedence", 100), a))
-                    rn.evals.append(combine(answers))
-                    idx = len(rn.evals) - 1
+                    idx = _keep_eval(rn.evals, same, combine(answers))
                     cache[key] = idx
                 rn.eval_of[i] = idx
                 done = i + 1
@@ -1487,6 +1487,26 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
     if not stopped:
         say(f"Done: {n:,} row(s) tested with {rn.summary['traced']:,} trace(s).")
     return rn
+
+
+def _keep_eval(evals: List[Dict[str, Any]], same: Dict[Tuple[Any, ...], int], res: Dict[str, Any]) -> int:
+    """The index of `res` in `evals`, kept once however many rows give the
+    same answer: a 250,000-row list of a few hundred answers holds a few
+    hundred dicts, not one per row. The headline is not kept: it names the
+    destination of one row, and a row is shown from its own columns (Run.row)."""
+    res = {k: v for k, v in res.items() if k != "headline"}
+    try:
+        sig = tuple(sorted((k, tuple(v) if isinstance(v, list) else v) for k, v in res.items()))
+        hash(sig)
+    except TypeError:   # an evaluator's value that cannot be compared: kept on its own
+        sig = None
+    idx = same.get(sig) if sig is not None else None
+    if idx is None:
+        evals.append(res)
+        idx = len(evals) - 1
+        if sig is not None:
+            same[sig] = idx
+    return idx
 
 
 def _top(counter: Dict[Any, int], k: int = 15) -> List[Tuple[Any, int]]:
