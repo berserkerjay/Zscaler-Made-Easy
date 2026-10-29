@@ -466,3 +466,230 @@ def test_the_bypass_report_reads_nothing_out_of_scope():
     assert rep["sections"]["ssl_bypass_rules"]["not_in_scope"] == "no"
     with pytest.raises(ValueError):
         br.generate_bypass_report(c, {"read": []})
+
+
+# ═══ ssl_flow: what is decrypted, and the counts ════════════════════════
+@pytest.mark.parametrize("rid, order", [("abc", 1), (None, "first"), (True, ""), (3, float("inf"))])
+def test_tenant_ids_and_orders_that_are_not_numbers_never_stop_the_report(rid, order):
+    """ASVS V5.1.3 · CWE-20 · CWE-755 · WSTG-INPV-01: a rule id or order sent as text, a bool or an infinity is sorted last, never a crash."""
+    ssl = [{"id": rid, "name": "Odd", "order": order, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["FILE_HOST"]},
+           {"id": 7, "name": "Decrypt all", "order": 2, "action": {"type": "DECRYPT"}}]
+    dlp = [{"id": rid, "name": "D", "order": order, "action": "BLOCK"}]
+
+    rep = sf.analyse(ssl, dlp)
+
+    assert [r["name"] for r in rep["ssl_rules"]][-1] in ("Odd", "Decrypt all")
+    assert rep["summary"]["ssl_rules"] == 2
+
+
+def test_gap_severities_add_up_to_the_gap_total():
+    """ASVS V11.1.1 · CWE-682 · WSTG-BUSL-01: high + medium + low + info == gaps, and class decisions add up to the classes."""
+    ssl = [{"id": 1, "name": "Privacy", "order": 1, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["FINANCE"]},
+           {"id": 2, "name": "No AI", "order": 2, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["AI_ML_APPS"]},
+           {"id": 3, "name": "Decrypt off", "order": 3, "state": "DISABLED", "action": {"type": "DECRYPT"}, "urlCategories": ["AI_ML_APPS"]}]
+
+    s = sf.analyse(ssl, [])["summary"]
+
+    assert s["info"] >= 1 and s["high"] + s["medium"] + s["low"] + s["info"] == s["gaps"]
+    assert s["inspected"] + s["not_inspected"] + s["blocked"] + s["unknown"] == s["classes"] == len(sf.TRAFFIC_CLASSES)
+
+
+# ═══ ssl_coverage: the protocol mapping and the percentages ════════════
+# Oracle: Z-Insights WEB_TRAFFIC.protocols name → bucket (assumed: the SDK does not document the names).
+@pytest.mark.parametrize("name, bucket, known", [
+    ("HTTPS", "ssl_inspected", True), ("https", "ssl_inspected", True), ("SSL", "ssl_not_inspected", True),
+    ("Tunnel SSL", "ssl_not_inspected", True), ("tunnel-ssl", "ssl_not_inspected", True), ("HTTP", "http", True),
+    ("HTTP Proxy", "http", True), ("TUNNEL", "other", True), ("FTP over HTTP", "other", True), ("NATIVE_FTP", "other", True),
+    ("QUIC", "other", False), ("HTTP2", "other", False), ("ＨＴＴＰＳ", "other", False), ("", "other", False), (None, "other", False),
+    ("HTTPS‮", "other", False),
+])
+def test_protocol_names_follow_the_oracle_and_unknown_ones_are_never_guessed(name, bucket, known):
+    """ASVS V11.1.1 · CWE-1287 · WSTG-BUSL-01: each known protocol name lands in its bucket; an unknown one is 'other, not recognised', never SSL or HTTP."""
+    assert sc.bucket_of(name) == (bucket, known)
+
+
+def test_an_unrecognised_protocol_is_listed_and_kept_out_of_every_percentage():
+    """ASVS V11.1.1 · CWE-682 · WSTG-BUSL-01: unrecognised volume is listed by name, totalled apart, and in no inspected share."""
+    rows = [{"name": "HTTPS", "total": 60}, {"name": "SSL", "total": 20}, {"name": "HTTP", "total": 20}, {"name": "QUIC", "total": 900},
+            {"name": "TUNNEL", "total": 100}]
+
+    sp = sc.protocol_split(rows)
+
+    assert sp["unrecognised"] == [{"name": "QUIC", "total": 900.0}] and sp["unrecognised_total"] == 900.0
+    assert sp["other_total"] == 1000.0 and sp["ssl_pct"] == 75.0 and sp["total_pct"] == 80.0
+    assert sp["total_pct_if_other_not_inspected"] == 7.3
+    assert sum(sp["buckets"].values()) == sum(r["total"] for r in rows)
+
+
+@pytest.mark.parametrize("bad", [True, False, "x", None, float("nan"), float("inf"), -5, [1]])
+def test_a_total_that_is_not_a_volume_is_skipped(bad):
+    """ASVS V5.1.3 · CWE-20 · CWE-1287 · WSTG-INPV-01: a boolean, text, NaN, infinity or negative total adds nothing to any bucket."""
+    sp = sc.protocol_split([{"name": "HTTPS", "total": bad}, {"name": "SSL", "total": 10}])
+
+    assert sp["buckets"]["ssl_inspected"] == 0 and sp["ssl_pct"] == 0.0 and len(sp["by_name"]) == 1
+
+
+def test_inspected_shares_stay_between_0_and_100_over_a_generated_corpus():
+    """ASVS V11.1.1 · CWE-682 · CWE-190 · WSTG-BUSL-01: 500 seeded protocol tables give every share in 0..100 or None, and buckets that sum to the rows."""
+    import random
+    rnd = random.Random(42)
+    names = list(sc.PROTOCOL_BUCKETS) + ["QUIC", "WEIRD", ""]
+    for _ in range(500):
+        rows = [{"name": rnd.choice(names), "total": rnd.choice([0, 1, rnd.randint(0, 10 ** 12)])} for _ in range(rnd.randint(0, 8))]
+        sp = sc.protocol_split(rows)
+        for k in ("ssl_pct", "http_pct", "total_pct", "total_pct_if_other_not_inspected"):
+            assert sp[k] is None or 0.0 <= sp[k] <= 100.0, (k, rows)
+        assert sum(sp["buckets"].values()) == sum(float(r["total"]) for r in rows)
+
+
+def test_nothing_to_divide_is_none_never_a_made_up_percentage():
+    """ASVS V11.1.1 · CWE-369 · WSTG-BUSL-01: no SSL or HTTP traffic gives None shares, not 0% or 100%."""
+    sp = sc.protocol_split([{"name": "TUNNEL", "total": 5}])
+
+    assert sp["ssl_pct"] is None and sp["total_pct"] is None and sp["http_pct"] is None
+
+
+def test_cause_counts_add_up_by_risk_and_kind():
+    """ASVS V11.1.1 · CWE-682 · WSTG-BUSL-01: causes by risk and by kind each sum to the causes, and covered + blind classes to the known ones."""
+    ssl = [{"id": 1, "name": "No AI", "order": 1, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["AI_ML_APPS"]},
+           {"id": 2, "name": "Banks", "order": 2, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["FINANCE"]},
+           {"id": 3, "name": "Default", "order": 9, "defaultRule": True, "action": {"type": "DO_NOT_DECRYPT"}}]
+    cc = {"app_profiles": [{"name": "P", "bypass": {"domains": ["dropbox.com", "intranet.corp"], "vpn_gateways": ["vpn.example"]}}],
+          "forwarding_profiles": [{"id": 1, "name": "F", "actions": {"off": {"mode_kind": "none"}}}], "pac_files": []}
+
+    rep = sc.analyse(ssl, cc=cc)
+
+    s = rep["summary"]
+    assert sum(s["by_risk"].values()) == s["causes"] == sum(s["by_kind"].values()) == len(rep["causes"])
+    assert s["classes_covered"] + s["classes_not_inspected"] == s["classes_total"]
+    assert s["class_coverage_pct"] is None or 0 <= s["class_coverage_pct"] <= 100
+
+
+def test_the_history_file_is_owner_only_and_names_no_login(tmp_path, monkeypatch):
+    """ASVS V8.3.4 · A01:2021 · CWE-276 · CWE-732 · WSTG-CONF-09: the run history is written 0600, atomically, and keyed by a record label."""
+    p = str(tmp_path / "h" / "ssl_coverage_history.json")
+    rep = {"summary": {"causes": 2, "by_risk": {"high": 1}, "class_coverage_pct": 50.0}, "plan": {"steps": [1]}}
+
+    hist = sc.record("acme.zscalerthree.net", rep, path=p)
+
+    assert len(hist) == 1 and hist[0]["causes"] == 2
+    if os.name == "posix":
+        assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+    assert [f for f in os.listdir(os.path.dirname(p)) if f.endswith(".tmp")] == []
+    assert sc.load_history("acme.zscalerthree.net", path=p) == hist
+
+
+def test_a_damaged_history_file_is_no_history():
+    """ASVS V5.1.3 · CWE-502 · CWE-20 · WSTG-INPV-01: a history file that is not the expected JSON reads as empty, never a crash."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "h.json")
+        for body in ("{", "[]", '{"tenants": []}', '{"tenants": {"t": "x"}}', '{"tenants": {"t": [1, {"at": "x"}]}}'):
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(body)
+
+            out = sc.load_history("t", path=p)
+
+            assert out in ([], [{"at": "x"}])
+
+
+class _Zins:
+    """client.zins stand-in: each query returns the SDK's (entries, response, error) tuple."""
+
+    def __init__(self, protocols=None, fail=None):
+        outer = self
+        self.calls = []
+        self.fail = fail or {}
+
+        def answer(name, entries):
+            outer.calls.append(name)
+            if name in outer.fail:
+                return None, None, RuntimeError(outer.fail[name])
+            return entries, None, None
+
+        class WT:
+            def get_protocols(self, **kw):
+                outer.calls.append(("protocols", kw))
+                return answer("protocols", protocols or [{"name": "HTTPS", "total": 3}, {"name": "SSL", "total": 1}])
+
+            def get_no_grouping(self, **kw):
+                return answer("no_grouping", [{"name": "all", "total": 9, "trend": {"trend_start_time": NOW_MS - DAY_MS, "trend_values": [4, 5]}}])
+
+        class SI:
+            def get_apps(self, **kw):
+                return answer("apps", [{"application": "Dropbox", "data_consumed": 10}])
+
+        self.web_traffic, self.shadow_it = WT(), SI()
+
+
+def test_the_volume_read_is_paced_between_queries_never_before_the_first():
+    """ASVS V11.1.4 · A04:2021 · CWE-770 · WSTG-BUSL-05: four Insights queries are separated by three pauses of PACE_SECONDS, the first is asked at once."""
+    waits = []
+
+    out = sc.read_volume(_Zins(), "7d", log=lambda m: None, now_ms=NOW_MS, sleep=waits.append)
+
+    assert out["queries"] == 4 and waits == [insights.PACE_SECONDS] * 3
+    assert out["status"] == "ok" and out["protocols"]["BYTES"]["ssl_pct"] == 75.0
+    assert out["window"]["end_ms"] == NOW_MS and out["daily"] == [{"day_ms": NOW_MS - DAY_MS, "total": 4.0}, {"day_ms": NOW_MS, "total": 5.0}]
+
+
+def test_one_failing_volume_query_is_partial_and_scrubbed():
+    """ASVS V7.4.1 · CWE-209 · CWE-532 · WSTG-ERRH-01: a failed query is said (scrubbed), the others are kept, and the read is partial."""
+    z = _Zins(fail={"apps": "boom token=SECRETVALUE"})
+
+    out = sc.read_volume(z, "30d", log=lambda m: None, now_ms=NOW_MS, pace=0, scrub=lambda s: s.replace("SECRETVALUE", "[x]"))
+
+    assert out["status"] == "partial" and out["apps"] == [] and out["protocols"]["TRANSACTIONS"]
+    assert "SECRETVALUE" not in str(out) and any("Shadow IT" in e for e in out["errors"])
+
+
+# ═══ insights: windows, queries, errors, the rate limit ════════════════
+@pytest.mark.parametrize("start, end, ok", [
+    (NOW_MS - insights.MIN_WINDOW_MS, NOW_MS, True),
+    (NOW_MS - insights.MIN_WINDOW_MS + 1, NOW_MS, False),
+    (NOW_MS - insights.MAX_WINDOW_DAYS * DAY_MS, NOW_MS, True),
+    (NOW_MS - insights.MAX_WINDOW_DAYS * DAY_MS - 1, NOW_MS, False),
+    (NOW_MS - insights.MAX_LOOKBACK_DAYS * DAY_MS, NOW_MS - insights.MAX_LOOKBACK_DAYS * DAY_MS + DAY_MS, True),
+    (NOW_MS - insights.MAX_LOOKBACK_DAYS * DAY_MS - 1, NOW_MS - 100 * DAY_MS, False),
+    (NOW_MS - DAY_MS, NOW_MS + insights.FUTURE_SKEW_MS, True),
+    (NOW_MS - DAY_MS, NOW_MS + insights.FUTURE_SKEW_MS + 1, False),
+    (float("inf"), NOW_MS, False), (NOW_MS - DAY_MS, float("-inf"), False), (float("nan"), NOW_MS, False),
+    ("1700000000000", NOW_MS, False), (True, NOW_MS, False), (NOW_MS - DAY_MS + 0.5, NOW_MS, False), (0, NOW_MS, False),
+])
+def test_time_windows_follow_their_boundaries(start, end, ok):
+    """ASVS V5.1.4 · CWE-20 · CWE-1284 · WSTG-INPV-01: each window boundary is accepted or refused exactly, and a non-number is a WindowError, never a crash."""
+    if ok:
+        assert insights.validate_window(start, end, NOW_MS) == (int(start), int(end))
+    else:
+        with pytest.raises(insights.WindowError):
+            insights.validate_window(start, end, NOW_MS)
+
+
+def test_query_inputs_are_typed_values_never_query_text():
+    """ASVS V5.3.4 · A03:2021 · CWE-943 · WSTG-INPV-05: a traffic unit carrying GraphQL is refused before anything is asked; asked values are ints and enums."""
+    z = _Zins()
+    with pytest.raises(insights.WindowError):
+        insights.read(z, NOW_MS - DAY_MS, NOW_MS, traffic_unit='BYTES) { __schema { types { name } } } #', pace=0, now_ms=NOW_MS)
+    assert z.calls == []
+
+
+def test_a_rate_limited_section_says_to_wait_and_try_again():
+    """ASVS V11.1.4 · CWE-770 · WSTG-BUSL-05: a 429 or a rate-limit message gets a plain hint; other errors do not."""
+    assert "rate limit" in insights._hint({"error": "HTTP 429 Too Many Requests", "classification": None})
+    assert "rate limit" in insights._hint({"error": "x", "classification": "TOO_MANY_REQUESTS"})
+    assert insights._hint({"error": "HTTP 500 server error", "classification": None}) is None
+
+
+def test_insights_read_uses_the_injected_clock():
+    """ASVS V5.1.4 · CWE-20 · WSTG-INPV-01: read() checks the window against the clock it is given, so a window valid then is read."""
+    class Z:
+        def __getattr__(self, name):
+            return self
+
+        def __call__(self, **kw):
+            return [], None, None
+    z = Z()
+
+    out = insights.read(z, NOW_MS - DAY_MS, NOW_MS, pace=0, now_ms=NOW_MS)
+
+    assert out["window"] == {"start_ms": NOW_MS - DAY_MS, "end_ms": NOW_MS, "days": 1.0} and out["queries"] == 9

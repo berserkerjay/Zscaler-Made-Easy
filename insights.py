@@ -31,6 +31,7 @@ classic ZIA API sign-in for it.
 """
 from __future__ import annotations
 
+import re
 import time
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
@@ -101,7 +102,7 @@ def validate_window(start_ms: Any, end_ms: Any, now_ms: Optional[int] = None) ->
         s, e = int(start_ms), int(end_ms)
         if s != start_ms or e != end_ms:
             raise TypeError
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):   # OverflowError: an infinity
         raise WindowError("The time window must be two times in epoch milliseconds.")
     if s <= 0 or e <= 0:
         raise WindowError("The time window must be two times in epoch milliseconds.")
@@ -309,12 +310,16 @@ def _hint(sec: Dict[str, Any]) -> Optional[str]:
         return "The API client's role may not include Insights: grant Z-Insights read access in ZIdentity and run again."
     if cls in ("BAD_REQUEST", "VALIDATION_ERROR"):
         return "Insights refused the question (often a time window it does not accept): try a shorter or more recent window."
+    err = str(sec.get("error") or "").lower()
+    if cls in ("TOO_MANY_REQUESTS", "RATE_LIMITED", "THROTTLED") or re.search(r"\b429\b|rate.?limit|too many requests", err):
+        return "Insights is limiting how fast it is asked (rate limit): wait a minute and run it again; this page already asks one query at a time."
     return None
 
 
 def read(client: Any, start_ms: int, end_ms: int, *, traffic_unit: str = "TRANSACTIONS", include_users: bool = True,
          log: Optional[Callable[[str], None]] = None, cancel: Any = None, scrub: Optional[Callable[[str], str]] = None,
-         pace: Optional[float] = None, sleep: Optional[Callable[[float], Any]] = None) -> Dict[str, Any]:
+         pace: Optional[float] = None, sleep: Optional[Callable[[float], Any]] = None,
+         now_ms: Optional[int] = None) -> Dict[str, Any]:
     """Ask Insights for every section of the Traffic insights page.
     `client` is a OneAPI SDK client (its `.zins`) or the ZInsService
     itself. Queries run one at a time, `pace` seconds apart; `cancel` (a
@@ -325,7 +330,7 @@ def read(client: Any, start_ms: int, end_ms: int, *, traffic_unit: str = "TRANSA
     from data_flow import stop_requested
     _log = log or (lambda m: None)
     _scrub = scrub or (lambda s: s)
-    s, e = validate_window(start_ms, end_ms)
+    s, e = validate_window(start_ms, end_ms, now_ms)
     unit = str(traffic_unit or "TRANSACTIONS").upper()
     if unit not in TRAFFIC_UNITS:
         raise WindowError("Traffic unit must be transactions or bytes.")

@@ -478,7 +478,7 @@ def protocol_split(rows: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
     unrecognised: Dict[str, float] = {}
     by_name: List[Dict[str, Any]] = []
     for r in rows or []:
-        if not isinstance(r, Mapping):
+        if not isinstance(r, Mapping) or isinstance(r.get("total"), bool):   # True is not a count of 1
             continue
         try:
             total = float(r.get("total"))
@@ -495,6 +495,8 @@ def protocol_split(rows: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
     ssl_total = b["ssl_inspected"] + b["ssl_not_inspected"]
     inspected = b["ssl_inspected"] + b["http"]
     return {"buckets": b, "ssl_total": ssl_total, "http_total": b["http"], "other_total": b["other"],
+            # The part of other_total this table does not know: listed in `unrecognised`, never in a bucket of its own guessing.
+            "unrecognised_total": sum(unrecognised.values()),
             "ssl_pct": _pct(b["ssl_inspected"], ssl_total),
             "http_pct": 100.0 if b["http"] else None,
             "total_pct": _pct(inspected, ssl_total + b["http"]),
@@ -563,7 +565,8 @@ def attach_app_volume(causes: List[Dict[str, Any]], apps: List[Mapping[str, Any]
 
 
 def read_volume(zins: Any, window_key: str, *, log: Callable[[str], None], cancel: Any = None,
-                scrub: Optional[Callable[[str], str]] = None, pace: Optional[float] = None) -> Dict[str, Any]:
+                scrub: Optional[Callable[[str], str]] = None, pace: Optional[float] = None,
+                now_ms: Optional[int] = None, sleep: Optional[Callable[[float], Any]] = None) -> Dict[str, Any]:
     """Ask Z-Insights, one query at a time and paced: protocols in
     transactions and in bytes, all web traffic per day (bytes), and Shadow
     IT applications. Stop raises Stopped. One failing query never fails
@@ -571,7 +574,7 @@ def read_volume(zins: Any, window_key: str, *, log: Callable[[str], None], cance
     import insights
     from data_flow import stop_requested
     _scrub = scrub or (lambda s: s)
-    win = insights.window(window_key)
+    win = insights.window(window_key, now_ms=now_ms)
     s, e = win["start_ms"], win["end_ms"]
     gap = insights.PACE_SECONDS if pace is None else max(0.0, float(pace))
     asked = {"n": 0}
@@ -581,7 +584,7 @@ def read_volume(zins: Any, window_key: str, *, log: Callable[[str], None], cance
             raise Stopped(STOPPED_REASON)
         if asked["n"] and gap:
             w = getattr(cancel, "wait", None)
-            w(gap) if callable(w) else time.sleep(gap)
+            w(gap) if callable(w) else (sleep or time.sleep)(gap)
             if stop_requested(cancel):
                 raise Stopped(STOPPED_REASON)
         asked["n"] += 1
