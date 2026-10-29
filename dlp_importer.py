@@ -61,6 +61,11 @@ def _obj_to_dict(obj):
     return obj
 
 
+def _list(v: Any) -> list:
+    """`v` when it is a list, else an empty one (a pack field of the wrong type)."""
+    return v if isinstance(v, list) else []
+
+
 def _extract_id(response):
     if response and isinstance(response, tuple) and response[0] is not None:
         first = response[0]
@@ -96,11 +101,20 @@ def _resolve_configs(pack_dir: str) -> str:
 
 
 def _load_json(configs_dir: str, filename: str) -> List[Dict[str, Any]]:
+    """A pack file's list of definitions. A file that is not JSON, or not a
+    list of objects, is refused in words (ValueError), never read as
+    something else: an uploaded pack is untrusted."""
     path = os.path.join(configs_dir, filename)
     if not os.path.exists(path):
         return []
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, RecursionError) as e:   # JSONDecodeError and UnicodeDecodeError are ValueErrors
+        raise ValueError(f"{filename}: not valid JSON ({str(e)[:80]})") from None
+    if not isinstance(data, list) or not all(isinstance(x, dict) for x in data):
+        raise ValueError(f"{filename}: must be a JSON list of objects")
+    return data
 
 
 def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
@@ -115,10 +129,19 @@ def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
                 meta = json.load(f) or {}
         except Exception:
             meta = {}
+    if not isinstance(meta, dict):
+        meta = {}
     configs = _resolve_configs(pack_dir)
-    dicts = _load_json(configs, "dlp_dictionaries.json")
-    engines = _load_json(configs, "dlp_engines.json")
-    policies = _load_json(configs, "dlp_policies.json")
+    try:
+        dicts = _load_json(configs, "dlp_dictionaries.json")
+        engines = _load_json(configs, "dlp_engines.json")
+        policies = _load_json(configs, "dlp_policies.json")
+        app_groups = _load_json(configs, "endpoint_application_groups.json")
+    except (ValueError, OSError) as e:
+        # One broken pack must not take the pack list (and every page that
+        # lists packs) down with it: it is listed, counted empty, with the reason.
+        meta["error"] = str(e)[:200]
+        dicts, engines, policies, app_groups = [], [], [], []
     # Inferred defaults — pack.json values win for 'name'/'description'/etc,
     # but counts are always authoritative from the on-disk files.
     meta.setdefault("name", os.path.basename(pack_dir).replace("_", " ").title())
@@ -126,12 +149,12 @@ def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
     meta["dictionaries"] = len(dicts)
     meta["engines"] = len(engines)
     # Endpoint sub-rules are rules too (created under their parent).
-    meta["policies"] = len(policies) + sum(len(p.get("sub_rules") or []) for p in policies)
-    meta["app_groups"] = len(_load_json(configs, "endpoint_application_groups.json"))
+    meta["policies"] = len(policies) + sum(len(_list(p.get("sub_rules"))) for p in policies)
+    meta["app_groups"] = len(app_groups)
     channels: Dict[str, int] = {}
     for p in policies:
         ch = str(p.get("channel") or "web").strip().lower()
-        channels[ch] = channels.get(ch, 0) + 1 + len(p.get("sub_rules") or [])
+        channels[ch] = channels.get(ch, 0) + 1 + len(_list(p.get("sub_rules")))
     meta["channels"] = channels
     # How the whole pack measures against ZIA's rate limits (a fresh hour).
     import zia_rate
@@ -186,15 +209,22 @@ def discover_packs(root: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def load_pack_contents(pack_dir: str) -> Dict[str, Any]:
-    """Load all three config files from a pack and return summary."""
+    """Load all three config files from a pack and return summary. A pack
+    whose files cannot be read is summarised empty with the reason in
+    `error` (a summary page, nothing deploys from it)."""
     configs = _resolve_configs(pack_dir)
-    dicts = _load_json(configs, "dlp_dictionaries.json")
-    engines = _load_json(configs, "dlp_engines.json")
-    policies = _load_json(configs, "dlp_policies.json")
+    error = None
+    try:
+        dicts = _load_json(configs, "dlp_dictionaries.json")
+        engines = _load_json(configs, "dlp_engines.json")
+        policies = _load_json(configs, "dlp_policies.json")
+    except (ValueError, OSError) as e:
+        error, dicts, engines, policies = str(e)[:200], [], [], []
 
     clone_count = sum(1 for d in dicts if d.get("predefined_clone"))
     return {
         "pack_dir": pack_dir,
+        **({"error": error} if error else {}),
         "metadata": load_pack_metadata(pack_dir),
         "dictionaries": {
             "total": len(dicts),
@@ -202,10 +232,10 @@ def load_pack_contents(pack_dir: str) -> Dict[str, Any]:
             "clones": clone_count,
             "items": [
                 {
-                    "name": d["name"],
+                    "name": d.get("name"),
                     "type": "clone" if d.get("predefined_clone") else "custom",
-                    "patterns": len(d.get("patterns", [])),
-                    "phrases": len(d.get("phrases", [])),
+                    "patterns": len(_list(d.get("patterns"))),
+                    "phrases": len(_list(d.get("phrases"))),
                     "proximity": d.get("proximity", 0),
                 }
                 for d in dicts
@@ -213,13 +243,13 @@ def load_pack_contents(pack_dir: str) -> Dict[str, Any]:
         },
         "engines": {
             "total": len(engines),
-            "items": [{"name": e["name"]} for e in engines],
+            "items": [{"name": e.get("name")} for e in engines],
         },
         "policies": {
             "total": len(policies),
             "items": [
                 {
-                    "name": p["name"],
+                    "name": p.get("name"),
                     "action": p.get("action", "?"),
                     "severity": p.get("severity", "?"),
                     "engines": p.get("engines", []),
@@ -341,10 +371,97 @@ def engine_limit_problems(expr: str) -> List[str]:
     """Reasons an engine expression would be rejected: match counts must be
     under 1000."""
     out: List[str] = []
-    for n in _COUNT_RE.findall(expr or ""):
-        if int(n) > ENGINE_COUNT_MAX:
-            out.append(f"match count {n} is not accepted (engine counts must be under 1000)")
+    for n in _COUNT_RE.findall(str(expr or "")):
+        # Compared by length first: int() refuses a digit run past Python's
+        # 4300-digit limit, and a typed count must be an answer, not a crash.
+        if len(n.lstrip("0")) > len(str(ENGINE_COUNT_MAX)) or int(n) > ENGINE_COUNT_MAX:
+            out.append(f"match count {n[:12]}{'…' if len(n) > 12 else ''} is not accepted (engine counts must be under 1000)")
     return out
+
+
+# Every pattern is checked here before it can reach ZIA (a pack deploy, a
+# vendor migration): it must parse as a regular expression, and it must not
+# nest an unbounded repeat inside another with nothing fixed between the
+# iterations, `(a+)+` or `(\w+\s?)*`, the shape that backtracks
+# exponentially (ReDoS) wherever the pattern is later run, this app's corpus
+# test included. Python's parser stands in for ZIA's PCRE; the few
+# PCRE-only escapes are read as a single character first.
+_PCRE_ONLY_ESCAPES = re.compile(r"\\[hHvVRKX]")
+
+
+def _repeat_unbounded(hi: int) -> bool:
+    from re import _constants as C   # noqa: PLC0415 - the parser's own constants
+    return hi == C.MAXREPEAT or hi > 10
+
+
+def _has_unbounded(items) -> bool:
+    from re import _constants as C   # noqa: PLC0415
+    for op, av in items:
+        if op in (C.MAX_REPEAT, C.MIN_REPEAT) and (_repeat_unbounded(av[1]) or _has_unbounded(av[2])):
+            return True
+        if op == C.SUBPATTERN and _has_unbounded(av[-1]):
+            return True
+        if op == C.BRANCH and any(_has_unbounded(b) for b in av[1]):
+            return True
+    return False
+
+
+def _unwrap(items) -> list:
+    from re import _constants as C   # noqa: PLC0415
+    items = list(items)
+    while len(items) == 1 and items[0][0] == C.SUBPATTERN:
+        items = list(items[0][1][-1])
+    return items
+
+
+def _nested_repeat(items) -> bool:
+    """Whether a parsed pattern repeats, without bound, a body made only of
+    an unbounded repeat (and optional parts): the catastrophic shape."""
+    from re import _constants as C, _parser as P   # noqa: PLC0415
+    for op, av in items:
+        if op in (C.MAX_REPEAT, C.MIN_REPEAT):
+            _lo, hi, sub = av
+            if _repeat_unbounded(hi):
+                body = _unwrap(sub)
+                alts = [_unwrap(b) for b in body[0][1][1]] if len(body) == 1 and body[0][0] == C.BRANCH else [body]
+                for b in alts:
+                    inner = [it for it in b if _has_unbounded([it])]
+                    fixed = sum(P.SubPattern(P.State(), [it]).getwidth()[0] for it in b if not _has_unbounded([it]))
+                    if inner and fixed == 0:
+                        return True
+            if _nested_repeat(sub):
+                return True
+        elif op == C.SUBPATTERN and _nested_repeat(av[-1]):
+            return True
+        elif op == C.BRANCH and any(_nested_repeat(b) for b in av[1]):
+            return True
+        elif op in (C.ASSERT, C.ASSERT_NOT) and _nested_repeat(av[1]):
+            return True
+    return False
+
+
+def pattern_problems(pattern: Any) -> List[str]:
+    """Plain-language reasons a dictionary pattern must not be sent: empty,
+    longer than ZIA's 256 bytes, not a regular expression, or a nested
+    unbounded repeat (ReDoS). Lookaround and HTML-tag checks stay in
+    dictionary_limit_problems."""
+    if not isinstance(pattern, str) or not pattern:
+        return ["pattern must be non-empty text"]
+    if len(pattern.encode("utf-8")) > DICT_PATTERN_MAX_BYTES:
+        return []   # the length problem is reported by the caller; nothing longer is parsed
+    from re import _parser as P   # noqa: PLC0415
+    try:
+        tree = P.parse(_PCRE_ONLY_ESCAPES.sub(".", pattern))
+    except (re.error, RecursionError, OverflowError, ValueError) as e:
+        return [f"pattern is not a valid regular expression ({str(e)[:60]}): {pattern[:40]}"]
+    try:
+        nested = _nested_repeat(tree)
+    except RecursionError:
+        nested = True
+    if nested:
+        return [f"pattern nests an unbounded repeat inside another with nothing fixed between them, which backtracks "
+                f"catastrophically (ReDoS); put a fixed separator between the repeats or bound them: {pattern[:40]}"]
+    return []
 
 
 def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
@@ -354,12 +471,16 @@ def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
     if len(str(d.get("name") or "")) > DICT_NAME_MAX:
         out.append(f"name is {len(str(d.get('name')))} characters; ZIA allows {DICT_NAME_MAX}")
     pats = d.get("patterns") or []
+    phrases = d.get("phrases") or []
+    if not isinstance(pats, list) or not isinstance(phrases, list):
+        return out + ["patterns and phrases must each be a list"]
     if len(pats) > DICT_MAX_PATTERNS:
         out.append(f"{len(pats)} patterns; ZIA allows at most {DICT_MAX_PATTERNS} per dictionary")
     for p in pats:
         pat = p.get("pattern", "") if isinstance(p, dict) else (p[1] if isinstance(p, (list, tuple)) and len(p) > 1 else str(p))
         if len(str(pat).encode("utf-8")) > DICT_PATTERN_MAX_BYTES:
             out.append(f"pattern longer than {DICT_PATTERN_MAX_BYTES} bytes: {str(pat)[:40]}…")
+        out.extend(pattern_problems(pat))
         if _LOOKAROUND_RE.search(str(pat)):
             out.append(f"pattern uses lookaround, which ZIA's PCRE does not support: {str(pat)[:40]}…")
         m = _HTML_TAG_RE.search(str(pat))
@@ -370,7 +491,6 @@ def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
             escaped = "\\x3c" + m.group(0)[1:]
             out.append(f"pattern contains an HTML tag opening ({m.group(0)}), which the API edge rejects with 406 'Request Rejected'; "
                        f"write the '<' as \\x3c ({escaped}) — the same regex")
-    phrases = d.get("phrases") or []
     if len(phrases) > DICT_MAX_PHRASES:
         out.append(f"{len(phrases)} phrases; ZIA allows at most {DICT_MAX_PHRASES} per dictionary")
     for ph in phrases:
@@ -418,7 +538,7 @@ NAME_RULE = "only letters, digits, underscore, hyphen, dot, parentheses and spac
 
 def name_problems(name: str, kind: str = "engine") -> List[str]:
     """Plain-language reasons ZIA would refuse an object name."""
-    n = (name or "").strip()
+    n = str(name or "").strip()
     if not n:
         return [f"{kind} has no name"]
     if not NAME_ALLOWED_RE.match(n):
@@ -443,8 +563,8 @@ def fit_description(base: Optional[str], tag: str = "", limit: int = DICT_DESCRI
     """Join a description and a provenance tag within `limit` UTF-8 BYTES
     (ZIA and the provider measure bytes), shortening the description —
     never the tag — with an ASCII ellipsis."""
-    base = (base or "").strip()
-    tag = (tag or "").strip()
+    base = str(base or "").strip()
+    tag = str(tag or "").strip()
     if not tag:
         return base if _blen(base) <= limit else _cut_bytes(base, limit)
     room = limit - _blen(tag) - 1
@@ -526,6 +646,8 @@ def build_dict_kwargs(
         template_id = resolve_template(template_name, predefined_name_to_id) if template_name else None
         if not template_id:
             template_id = d.get("dict_template_id")
+            if template_id and not str(template_id).isdigit():
+                return None, f"Template id {str(template_id)[:20]!r} for '{template_name}' is not a number"
             if template_id and predefined_name_to_id and int(template_id) not in {int(v) for v in predefined_name_to_id.values() if str(v).isdigit()}:
                 return None, f"Template '{template_name or template_id}' is not a predefined dictionary in this tenant (id {template_id} came from another tenant)"
         if not template_id:
@@ -558,17 +680,24 @@ def build_dict_kwargs(
         if d.get(flag):
             kwargs[flag] = True
 
-    proximity = d.get("proximity") or 0
+    try:
+        proximity = int(d.get("proximity") or 0)
+    except (TypeError, ValueError):
+        return None, f"proximity is not a number: {d.get('proximity')!r}"
     if proximity > 0:
         kwargs["proximity"] = proximity
         kwargs["proximity_length_enabled"] = True
         if not is_clone:
             kwargs["proximity_enabled_for_custom_dictionary"] = True
 
-    if d.get("patterns"):
-        kwargs["patterns"] = [(p["action"], p["pattern"]) for p in d["patterns"]]
-    if d.get("phrases"):
-        kwargs["phrases"] = [(p["action"], p["phrase"]) for p in d["phrases"]]
+    for key in ("patterns", "phrases"):
+        items = d.get(key)
+        if not items:
+            continue
+        field = key[:-1]
+        if not isinstance(items, list) or not all(isinstance(p, dict) and isinstance(p.get("action"), str) and isinstance(p.get(field), str) for p in items):
+            return None, f"every entry in {key} must be an object with an action and a {field}"
+        kwargs[key] = [(p["action"], p[field]) for p in items]
     return kwargs, None
 
 
@@ -857,14 +986,15 @@ def build_policy_payload(
     """Translate one pack policy definition into `add_rule` kwargs. New
     rules are always inserted at order 1 (top of the policy), which is
     why the planner reports an order shift for existing rules."""
-    action = str(policy_def.get("action", "ALLOW") or "ALLOW")
     payload: Dict[str, Any] = {
         "name": policy_def["name"],
         "order": "1",
         # Every rule is created DISABLED and monitor-only, whatever the pack
         # says; a designed BLOCK / CONFIRM stays in the plan as the target.
+        # Monitor-only is ALLOW on a Web DLP rule: any other word the pack
+        # carries ("block ", "QUARANTINE", ...) is not sent (deny by default).
         "state": "DISABLED",
-        "action": "ALLOW" if action.upper() in ("BLOCK", "CONFIRM", "ICAP_RESPONSE") else action,
+        "action": "ALLOW",
         "dlp_engines": engine_ids,
         "protocols": policy_def.get("protocols", ["ANY_RULE"]),
         "rank": 0 if use_rank_0 else policy_def.get("rank", 7),
