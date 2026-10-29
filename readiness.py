@@ -841,8 +841,11 @@ def _feature(key: str, label: str, product: str, facts: Dict[str, Any], products
     out = {"key": key, "label": label, "kind": kind, "product": product, "status": "ok", "why": "", "steps": [], "notes": []}
     if extra:
         out.update(extra)
-    if p["access"] == "not_in_scope" and kind == "scope":
-        out.update(status="not_in_scope", why=f"{p['label']} is not in scope, so it was not checked.")
+    if p["access"] == "not_in_scope" and kind in ("scope", "write"):
+        # A builder for a product that is not in scope was not checked (and
+        # refuses to run until it is): never "Will work" on no evidence.
+        out.update(status="not_in_scope", why=f"{p['label']} is not in scope, so it was not checked." +
+                   (" Tick it on the Scope page to use this." if kind == "write" else ""))
         return out
     if p["access"] == "none":
         out.update(status="blocked", why=p["why"], steps=p["steps"] or _steps_product(product))
@@ -916,6 +919,9 @@ def evaluate(facts: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if spec.get("product") == "ZPA":
             f = _feature(key, spec["label"], "ZPA", facts, products, needs=[], optional=[], level=2, kind="write")
+            if "ZPA" in (facts.get("in_scope") or []) and not facts.get("customer_id_given") and f["status"] in ("ok", "unknown", "read_only"):
+                # as the zpa scope: every ZPA call names the customer ID, so nothing here can run without it
+                f.update(status="blocked", why="The ZPA customer ID is empty: every ZPA read and change needs it.", steps=_steps_customer_id())
             classes = ((facts.get("probes") or {}).get("ZPA") or {}).get("classes") or {}
             weak = [n for n, t in classes.items() if any(c.lower() in n.lower() for c in spec.get("zpa_classes", ())) and t != "FULL"]
             if weak and f["status"] in ("ok", "read_only"):

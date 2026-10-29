@@ -1077,12 +1077,15 @@ _NAMES = {"webDlpRules": "Inline Web DLP rules", "endPointDlpRules": "Endpoint D
 
 
 def friendly(path: str) -> str:
-    for suffix, name in _NAMES.items():
-        if path.endswith("/" + suffix):
-            return name
-    if "/webApplicationRules/" in path:
-        return f"Cloud App Control rules ({path.rsplit('/', 1)[-1].replace('_', ' ').lower()})"
-    return path.rsplit("/", 1)[-1]
+    name = next((n for suffix, n in _NAMES.items() if path.endswith("/" + suffix)), None)
+    if name is None and "/webApplicationRules/" in path:
+        name = f"Cloud App Control rules ({path.rsplit('/', 1)[-1].replace('_', ' ').lower()})"
+    if name is None:
+        name = path.rsplit("/", 1)[-1]
+    # ZDX has locations and departments too: never one name for two products' lists.
+    if path.startswith("/zdx/") and not name.startswith("ZDX"):
+        name = "ZDX " + name[:1].lower() + name[1:]
+    return name
 
 
 def _key(x: Any) -> str:
@@ -1129,8 +1132,11 @@ def compare(old: Dict[str, Dict[str, Any]], new: Dict[str, Dict[str, Any]], limi
         removed = [_name(om[k]) for k in om if k not in nm]
         changed = [_name(nm[k]) for k in nm if k in om and _stable(scrub(nm[k])) != _stable(scrub(om[k]))]
         what = friendly(path)
-        if (added or removed or changed) and (what, len(added), len(removed), len(changed)) not in seen_names:
-            seen_names.add((what, len(added), len(removed), len(changed)))
+        # One list the API serves on two paths (casbDlpRules and casbDlpRules/all)
+        # is counted once: same name, same objects. Anything else is its own row.
+        seen = (what, tuple(sorted(added)), tuple(sorted(removed)), tuple(sorted(changed)))
+        if (added or removed or changed) and seen not in seen_names:
+            seen_names.add(seen)
             rows.append({"path": path, "what": what, "added": added[:limit], "removed": removed[:limit], "changed": changed[:limit],
                          "counts": {"added": len(added), "removed": len(removed), "changed": len(changed)}})
             totals["added"] += len(added)

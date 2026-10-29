@@ -169,6 +169,7 @@ DEFAULT_VERTICAL = "general"
 CHECKS: Dict[str, str] = {
     "blocked": "The configuration blocks this destination.",
     "inspected": "Traffic reaches Zscaler and is decrypted, so threat and data controls can see it.",
+    "reachable": "The site works: traffic reaches Zscaler, is decrypted so the controls can see it, and is not blocked.",
     "dlp": "Traffic is decrypted and a DLP rule inspects uploads to it.",
     "exempt": "Traffic reaches Zscaler but is deliberately not decrypted (a privacy exemption).",
 }
@@ -212,7 +213,7 @@ RUNBOOK: List[Dict[str, Any]] = [
        "The Zscaler block page appears and names the URL filtering rule.", "www.pokerstars.com", "blocked"),
     _t("url-allowed", "url_filtering", "Business sites keep working",
        ["Browse to a few everyday business sites (news, the customer's own website, a supplier portal)."],
-       "Each site opens normally and the visit appears in the web logs.", "www.wikipedia.org", "inspected"),
+       "Each site opens normally and the visit appears in the web logs.", "www.wikipedia.org", "reachable"),
     _t("threat-eicar", "threat", "Known malware blocked (EICAR)",
        ["Through ZIA, open the EICAR links in the test kit: eicar.com.txt, the zip and the zip inside a zip.",
         "Note the policy each block page names."],
@@ -229,10 +230,10 @@ RUNBOOK: List[Dict[str, Any]] = [
        "www.dropbox.com", "inspected"),
     _t("apps-genai", "cloud_apps", "Generative AI: chat allowed, uploads controlled",
        ["Open a generative AI app (for example ChatGPT) and send a harmless prompt.", "Try to upload a document to it."],
-       "Chat works; the upload is blocked or cautioned as the Cloud App Control rule says.", "chatgpt.com", "inspected"),
+       "Chat works; the upload is blocked or cautioned as the Cloud App Control rule says.", "chatgpt.com", "reachable"),
     _t("apps-fileshare", "cloud_apps", "File sharing: view, but no upload",
        ["Open a personal file-sharing app and browse files.", "Try to upload a file."],
-       "Viewing works; the upload is blocked by the Cloud App Control rule.", "www.dropbox.com", "inspected"),
+       "Viewing works; the upload is blocked by the Cloud App Control rule.", "www.dropbox.com", "reachable"),
     _t("fw-nonweb", "firewall", "Non-web traffic to a blocked destination dropped",
        ["From a POV device, try a non-web connection the firewall policy blocks (for example SSH or RDP to an internet host)."],
        "The connection fails and the firewall log shows the rule that dropped it.", prove_note=_NO_PATH_FW),
@@ -1006,6 +1007,8 @@ def prove_evidence(test: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, An
         decrypted = bool(v.get("decrypted")) and bool(v.get("reaches_zscaler"))
         agrees = {"blocked": outcome == "blocked",
                   "inspected": outcome == "blocked" or (decrypted and outcome != "bypassed"),
+                  # a site that must keep working: a block is a failure, not proof of inspection
+                  "reachable": decrypted and outcome not in ("blocked", "bypassed"),
                   "dlp": outcome in ("enforce", "monitor"),
                   "exempt": outcome == "blind"}[check]
     verdict = {"destination": str(d.get("host") or d.get("input") or test.get("destination") or "")[:300],

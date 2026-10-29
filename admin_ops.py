@@ -188,6 +188,7 @@ READ_RATE_STOP = ("ZIA refused a read for its rate limit while the change was ru
                   "already applied is kept and listed; wait a few minutes, then preview again to finish (or Undo).")
 REORDER_BROKEN = "the policy's rule order changed while the operation ran, so the remaining moves were not sent"
 NOT_IN_SCOPE = "Not in scope on the Scope page, so it is not read or changed here."
+LAST_DOMAIN = "ZPA needs at least one domain in a segment, so the last one is not removed"
 
 
 class OperationError(ValueError):
@@ -274,13 +275,11 @@ def _rows(ret: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
 
 
 def _one(ret: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """One object of a get call, with the fields the SDK's model leaves out
+    taken from the raw answer (pack_export.one_row): the re-read a PUT is
+    built from must not drop them."""
     import pack_export
-    data, err = pc._nx(ret)
-    if err:
-        return None, str(err)[:300]
-    if data is None:
-        return None, "no answer"
-    return pack_export._plain(data), None
+    return pack_export.one_row(ret)
 
 
 def _service(zia, policy: str):
@@ -1303,6 +1302,14 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
                                    reason="not in the source segment, so there is nothing to move"))
             else:
                 items.append(_unit(k, gkey, "domain", ref, "domain_names", True, False, value=d))
+        # ZPA keeps at least one domain in a segment: a removal that would
+        # empty it is excluded here, in the preview, not first found while
+        # writing (where the move would already have half happened).
+        if not (have - set(removes[sid])) and not adds.get(sid):
+            for d in removes[sid]:
+                u = next(x for x in items if x["key"] == remove_keys[(sid, d)])
+                if u["status"] == "change":
+                    u.update(status="excluded", reason=LAST_DOMAIN)
     if clone is not None:
         s = by_id[clone["source"]]
         gkey = "seg:new:" + clone["name"].lower()
@@ -1353,6 +1360,22 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             partner = next((x for x in items if x["kind"] == "domain" and x["value"] == d and x["after"] is True and x["key"] != k), None)
             if u["status"] == "change" and partner is not None and partner["status"] == "excluded":
                 u.update(status="excluded", reason=f"not moved: {partner['reason']}")
+            # ...and an addition whose removal cannot happen is not made
+            # either: a move never quietly becomes a copy.
+            if u["status"] == "excluded" and u["reason"] == LAST_DOMAIN:
+                for x in items:
+                    if x["kind"] == "domain" and x["value"] == d and x["after"] is True and x["status"] == "change":
+                        x.update(status="excluded", reason=f"not moved: {LAST_DOMAIN}")
+    # A step that waits for an excluded step is excluded too, so nothing
+    # is planned that would only be skipped (or half done) while writing.
+    changed = True
+    while changed:
+        changed = False
+        state = {x["key"]: x["status"] for x in items}
+        for x in items:
+            if x["status"] == "change" and any(state.get(dk) == "excluded" for dk in x["depends_on"]):
+                x.update(status="excluded", reason="not done: a step it waits for is excluded")
+                changed = True
     # The writes: one per segment (its additions and removals together), the
     # clone, the deletions; ordered so every step comes after the steps it
     # waits for.
@@ -1634,7 +1657,7 @@ def _h_zpa_update(run: _Run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> 
     body = segment_body(fresh)
     body["domain_names"] = [d for d in have if d not in rm] + [d for d in add if d not in have]
     if not body["domain_names"]:
-        run.mark(ok, "excluded", "ZPA needs at least one domain in a segment, so the last one is not removed")
+        run.mark(ok, "excluded", LAST_DOMAIN)
         return
     out = ops.update(run.zpa, "zpa_segment", t["id"], body, name=str(fresh.get("name") or t["name"]), log=run.log)
     if run.outcome(ok, out, "update"):
@@ -1660,6 +1683,10 @@ def _h_zpa_create(run: _Run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> 
         run.mark(units, "conflict", "the segment to clone is gone since the preview; nothing was created")
         return
     doms = [u["value"] for u in units if u["kind"] == "domain"]
+    if not doms:
+        # ZPA keeps at least one domain in a segment: no empty clone is made.
+        run.mark(units, "skipped", "not created: none of its domains could be put in it")
+        return
     body = segment_body(src)
     body.update(name=t["name"], domain_names=doms,
                 description=f"Clone of {pc._field(src, 'name')} by {run.assessor or 'the assessor'} with Bulk changes"[:255])

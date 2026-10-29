@@ -79,6 +79,9 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
         if r.get("status") == "created" and r.get("id") is not None and r.get("kind") in UNDOABLE_KINDS:
             created.append(entry)
         elif r.get("status") in ("restored", "modified", "reused"):
+            if r.get("kind") == "tweak":
+                # what Undo needs to put an existing dictionary's confidence back
+                entry.update({k: r.get(k) for k in ("dictionary", "field", "before", "after")})
             other.append(entry)
     if not created:
         return None

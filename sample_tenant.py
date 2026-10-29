@@ -127,7 +127,7 @@ WEB_DLP_RULES = [
      "fileTypes": [], "severity": "RULE_SEVERITY_MEDIUM", "zscalerIncidentReceiver": True, "withoutContentInspection": False, "matchOnly": False},
     {"id": 103, "order": 3, "rank": 7, "name": "Shipping documents to file shares", "description": "Manifests uploaded to file sharing sites.",
      "state": "ENABLED", "action": "ALLOW", "protocols": ["HTTPS_RULE", "HTTP_RULE"], "dlpEngines": [_ref(71, "Larkspur Shipping Documents")],
-     "urlCategories": ["FILE_HOST", "ONLINE_STORAGE"], "fileTypes": [], "severity": "RULE_SEVERITY_LOW", "zscalerIncidentReceiver": False,
+     "urlCategories": [{"id": "FILE_HOST"}, {"id": "ONLINE_STORAGE"}], "fileTypes": [], "severity": "RULE_SEVERITY_LOW", "zscalerIncidentReceiver": False,
      "withoutContentInspection": False, "matchOnly": False},
     {"id": 104, "order": 4, "rank": 7, "name": "Health data - block (draft)", "description": "Draft rule, never switched on.",
      "state": "DISABLED", "action": "BLOCK", "protocols": ["ANY_RULE"], "dlpEngines": [_ref(61, "HIPAA")], "fileTypes": [],
@@ -190,7 +190,8 @@ SSL_RULES = [
     {"id": 702, "order": 2, "rank": 7, "name": "Do not decrypt webmail", "state": "ENABLED",
      "action": {"type": "DO_NOT_DECRYPT", "doNotDecryptSubActions": {"bypassOtherPolicies": True}}, "urlCategories": ["WEB_MAIL"]},
     {"id": 703, "order": 3, "rank": 7, "name": "Decrypt everything else", "state": "ENABLED", "defaultRule": True,
-     "action": {"type": "DECRYPT", "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minTLSVersion": "SERVER_TLS_1_2"}},
+     "action": {"type": "DECRYPT", "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2",
+                                                     "minServerTLSVersion": "SERVER_TLS_1_2"}},
      "urlCategories": ["ANY"]},
 ]
 FIREWALL_RULES = [
@@ -390,7 +391,7 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/tenancyRestrictionProfile": [], f"{ZIA}/greTunnels": [], f"{ZIA}/staticIP": [], f"{ZIA}/vpnCredentials": [],
         f"{ZIA}/status": {"status": "ACTIVE"},
         f"{ZIA}/cyberThreatProtection/advancedThreatSettings": {"riskTolerance": 40, "cmdCtlServerBlocked": True, "malwareSitesBlocked": True,
-                                                                "phishingSiteBlocked": True, "suspectAdwareSpywareSitesBlocked": True},
+                                                                "knownPhishingSitesBlocked": True, "suspectAdwareSpywareSitesBlocked": True},
         f"{ZIA}/cyberThreatProtection/malwareSettings": {"virusBlocked": True, "unwantedApplicationsBlocked": True, "trojanBlocked": True,
                                                          "wormBlocked": True, "ransomwareBlocked": True, "spywareBlocked": True},
         # Client Connector (first candidate of each short endpoint, see dlp_assessment_full_auto._ZCC_MAP)

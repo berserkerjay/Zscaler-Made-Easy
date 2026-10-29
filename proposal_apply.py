@@ -45,8 +45,13 @@ def _list(svc) -> Tuple[List[Any], Optional[str]]:
     lister = getattr(svc, "list_all_rules", None) or getattr(svc, "list_rules", None)
     if lister is None:
         return [], "the service cannot list rules"
+    import pack_export
     try:
-        data, err = pc._nx(lister())
+        # Plain rows with every field the SDK's model leaves out (an email
+        # rule's zscalerIncidentReceiver and rank, for one) and references as
+        # ZIA answered them: the update below sends the rule back whole (a PUT
+        # replaces it), so a field missing here would be cleared in the tenant.
+        data, err = pack_export._rows(lister())
     except Exception as e:  # noqa: BLE001
         return [], str(e)
     return list(data or []), (str(err) if err else None)
