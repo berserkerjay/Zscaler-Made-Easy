@@ -915,17 +915,18 @@ def test_each_recipe_method_goes_to_the_matching_call(monkeypatch, method, verb,
         assert c.calls[0][1] == "/zia/demo/42" and c.calls[0][2] == {"text": "id 42: x"}
 
 
-def test_a_recipe_with_a_client_patch_uses_it(monkeypatch):
-    """ASVS V1.14.6 · CWE-440: a client that has patch() gets the PATCH itself."""
+def test_a_description_fix_reads_the_rule_and_puts_it_back_whole(monkeypatch):
+    """ASVS V1.14.6 · CWE-440 · CWE-665: RULE-DESC reads the rule and PUTs it whole with only the description changed (a PUT replaces the rule; a description-only body would wipe it), even when the client has patch()."""
     _writes_on(monkeypatch)
 
     class P(_RawClient):
         def patch(self, ep, body=None):
             self.calls.append(("PATCH", ep, body))
             return ({}, 200)
-    c = P()
+    rule = {"id": 7, "name": "Keep me", "order": 3, "action": "BLOCK", "description": "old"}
+    c = P(current=rule)
     assert remediation.execute(c, "RULE-DESC", {"rule_type": "webDlpRules", "rule_id": "7", "description": "d"}, dry_run=False)["status"] == "completed"
-    assert c.calls == [("PATCH", "/zia/webDlpRules/7", {"description": "d"})]
+    assert c.calls == [("GET", "/zia/webDlpRules/7", None), ("PUT", "/zia/webDlpRules/7", dict(rule, description="d"))]
 
 
 @pytest.mark.parametrize("field,value,msg", [("order", 0, "≥"), ("order", 1000, "≤"), ("action", "PERMIT", "one of"), ("order", "ten", "number")])
@@ -976,3 +977,25 @@ def test_the_excel_export_never_holds_a_formula():
         sheets = [z.read(n).decode("utf-8") for n in z.namelist() if n.startswith("xl/worksheets/")]
     assert sheets and not any("<f>" in s or "<f " in s for s in sheets)
     assert change_queue.rows(change_queue.list_requests())[0]["title"].startswith("=HYPERLINK")
+
+
+@pytest.mark.parametrize("mod_name", ["proposals", "change_queue"])
+def test_the_store_lock_is_reentrant_in_one_thread(mod_name, tmp_path, monkeypatch):
+    """CWE-833 · ASVS V1.11.3: a nested _locked() in the same thread never waits on its own file lock (a deadlock froze the whole server)."""
+    import importlib
+    import threading as _t
+    mod = importlib.import_module(mod_name)
+    monkeypatch.setattr(mod, "store_path", lambda: str(tmp_path / "store.json"))
+    done = []
+
+    def nested():
+        with mod._locked():
+            with mod._locked():
+                with mod._locked():
+                    done.append(True)
+    th = _t.Thread(target=nested, daemon=True)
+    th.start()
+    th.join(5)
+    assert done == [True] and not th.is_alive()
+    with mod._locked():   # released afterwards: the next caller gets it at once
+        pass
