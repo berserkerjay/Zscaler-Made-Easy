@@ -263,3 +263,86 @@ def test_url_tools_unknown_picks_are_capped_in_the_note():
 
     note = next(n for n in res["notes"] if n.startswith("Not custom"))
     assert len(note) < 2000 and "and 81 more" in note
+
+
+# ── console_index: the kept index stays with its own tenant ──────────
+
+@pytest.fixture
+def ci(monkeypatch):
+    import console_index
+    import types
+    now = {"t": 1_000_000.0}
+    monkeypatch.setattr(console_index, "_clock", lambda: now["t"], raising=False)
+    monkeypatch.setattr(console_index, "time", types.SimpleNamespace(time=lambda: now["t"]))
+    console_index.cache_clear()
+    yield console_index, now
+    console_index.cache_clear()
+
+
+def test_console_index_profile_named_server_never_sees_typed_sign_in(ci):
+    """ASVS V4.2.1 · A01:2021 · CWE-639 · WSTG-ATHZ-04: a profile whose id is 'server' does not share the typed sign-ins' bucket."""
+    m, _ = ci
+    m.cache_put(m.cache_key("", ["web"]), {"tenant_label": "other (production)", "objects": [{"name": "X"}]})
+
+    assert m.cache_latest("server") is None and m.cache_get(m.cache_key("server", ["web"])) is None
+
+
+def test_console_index_cached_without_a_tenant_is_refused(ci):
+    """ASVS V4.1.5 · A01:2021 · CWE-668 · WSTG-ATHZ-04: without a profile or a named tenant, no kept index answers (it may be another tenant's)."""
+    m, _ = ci
+    m.cache_put(m.cache_key("", ["web"]), {"tenant_label": "alpha (production)", "objects": []})
+
+    assert m.cache_latest("") is None
+
+
+def test_console_index_cached_answers_only_for_the_named_tenant(ci):
+    """ASVS V4.2.1 · CWE-639 · WSTG-ATHZ-04: typed sign-ins of two tenants: each tenant gets its own index, never the other's."""
+    m, now = ci
+    m.cache_put(m.cache_key("", ["web"]), {"tenant_label": "alpha (production)", "objects": [{"name": "A"}]})
+    now["t"] += 1
+    m.cache_put(m.cache_key("", ["web", "email"]), {"tenant_label": "beta (production)", "objects": [{"name": "B"}]})
+
+    a, b = m.cache_latest("", tenant_label="alpha (production)"), m.cache_latest("", tenant_label="beta (production)")
+    assert (a["objects"], b["objects"]) == ([{"name": "A"}], [{"name": "B"}])
+    assert m.cache_latest("", tenant_label="gamma (production)") is None
+
+
+def test_console_index_profile_and_tenant_must_both_match(ci):
+    """ASVS V4.2.1 · CWE-639: a profile's kept index read for another tenant (the profile was edited) does not answer."""
+    m, _ = ci
+    m.cache_put(m.cache_key("p1", ["web"]), {"tenant_label": "alpha (production)", "objects": []})
+
+    assert m.cache_latest("p1", tenant_label="beta (production)") is None and m.cache_latest("p1") is not None
+
+
+@pytest.mark.parametrize("age,kept", [(0, True), (30 * 60, True), (30 * 60 + 1, False)])
+def test_console_index_cache_expiry_boundary(ci, age, kept):
+    """ASVS V3.3.1 · CWE-613: a kept index answers for exactly 30 minutes (boundary), on an injected clock."""
+    m, now = ci
+    key = m.cache_key("p1", ["web"])
+    m.cache_put(key, {"tenant_label": "alpha (production)", "objects": []})
+    now["t"] += age
+
+    assert (m.cache_get(key) is not None) is kept and (m.cache_latest("p1") is not None) is kept
+
+
+def test_console_index_cache_is_bounded(ci):
+    """ASVS V5.1.4 · CWE-400 · CWE-770: at most 16 indexes are kept in memory, the oldest dropped first."""
+    m, now = ci
+    for i in range(20):
+        now["t"] += 1
+        m.cache_put(m.cache_key(f"p{i}", ["web"]), {"tenant_label": f"t{i}", "objects": []})
+
+    assert len(m._CACHE) == 16 and m.cache_latest("p0") is None and m.cache_latest("p19") is not None
+
+
+def test_console_index_never_holds_users_or_descriptions():
+    """ASVS V8.3.4 · A01:2021 · CWE-359: a ZIA rule's users, devices and description never reach the index."""
+    import console_index as m
+    raw = {"name": "R1", "order": 1, "state": "ENABLED", "action": "BLOCK", "users": [{"id": 1, "name": "alice@example.com"}],
+           "devices": [{"id": 2, "name": "laptop-alice"}], "description": "call alice on 555-0100", "locations": [{"id": 3, "name": "HQ"}]}
+
+    out = m.from_inventory({"rules": [], "engines": [], "dictionaries": {}}, zia={"rules": {"url_filtering": [raw]}, "categories": []}, now=0)
+
+    blob = json.dumps(out)
+    assert "alice" not in blob and "555-0100" not in blob and '"HQ"' in blob
