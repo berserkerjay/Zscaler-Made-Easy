@@ -243,7 +243,7 @@ body.flow-page .dz-flow-wrap { max-height: calc(100vh - 300px); min-height: 320p
 .df-node .dot.sev-high { fill: var(--fail); } .df-node .dot.sev-medium { fill: var(--warn); } .df-node .dot.sev-low, .df-node .dot.sev-info { fill: var(--dim); }
 .df-hint { color: var(--dim); font-size: 0.72rem; margin-top: 0.4rem; }
 .df-hops, .df-chans { display: grid; gap: 0.5rem; }
-.df-chans { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.df-chans { grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
 .df-hop, .df-chan, .df-pack { padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--r-md); background: var(--card-solid); font-size: 0.86rem; }
 .df-hop.st-ok, .df-chan.st-ok { border-left-color: var(--pass); } .df-hop.st-warn, .df-chan.st-warn { border-left-color: var(--warn); }
 .df-hop.st-fail, .df-chan.st-fail { border-left-color: var(--fail); } .df-hop.st-block { border-left-color: var(--accent); } .df-hop.st-dim, .df-chan.st-dim { border-left-color: var(--border-strong); }
@@ -393,7 +393,7 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .df-cat-h strong { font-size: 0.9rem; }
 
 /* Reference flow: how ZIA processes a policy (device → incident) */
-.df-steps { list-style: none; margin: 0.6rem 1.2rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.5rem; }
+.df-steps { list-style: none; margin: 0.6rem 1.2rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 0.5rem; }   /* min(): one column narrower than 280px at 320px, never past the edge */
 .df-step { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.55rem 0.7rem; background: var(--card); transition: box-shadow 0.2s, border-color 0.2s; }
 .df-step.sel { border-color: var(--accent); background: var(--accent-tint); }
 .df-step strong { font-size: 0.86rem; }

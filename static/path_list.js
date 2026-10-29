@@ -113,6 +113,17 @@
   // ── the job ─────────────────────────────────────────────────────────
   let running = false, job = null, startToken = null, stopAsked = false, last = null;
   const body = $('plBody');
+  // The live flow (FA.listFlow, static/flow_anim.js): rows streaming from the
+  // list to the step that decided them, from the tally every job poll carries.
+  let lf = null;
+  function flowStart() {
+    const wrap = $('plFlow'), host = $('plFlowHost');
+    if (lf) { lf.destroy(); lf = null; }
+    if (!wrap || !host || !window.FA || !FA.listFlow) return;
+    wrap.hidden = false;
+    try { lf = FA.listFlow(host); } catch (e) { wrap.hidden = true; lf = null; }
+  }
+  function flowUpdate(tally) { if (lf && tally) { try { lf.update(tally); } catch (e) { /* the picture is cosmetic; the table says it all */ } } }
   function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
   function liveHtml() {
     return `<div class="pa-live">
@@ -139,6 +150,7 @@
       const el = $('plElapsed'); if (el && snap.elapsed_seconds != null) el.textContent = mmss(snap.elapsed_seconds);
       const pz = $('plPause'); if (pz) { pz.hidden = !snap.paused_seconds; pz.textContent = snap.paused_seconds ? `Waiting for ZIA's rate limit: ${mmss(snap.paused_seconds)}` : ''; }
       const st = $('plStop'); if (st && snap.cancel_requested) { st.disabled = true; st.textContent = 'Stopping…'; }
+      flowUpdate(snap.progress);
       if (snap.status !== 'running') return Object.assign({}, snap, { logs });
     }
   }
@@ -166,6 +178,7 @@
     const btn = $('plRun');
     running = true; stopAsked = false; job = null; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Testing…';
     body.innerHTML = liveHtml();
+    flowStart();
     $('plStop').addEventListener('click', stop);
     say('Testing the list. Only what is in scope is read.');
     const t0 = Date.now();
@@ -185,8 +198,10 @@
         throw new Error(snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the test started.' : 'The test did not finish.'));
       }
       last = res;
+      flowUpdate(res.flow || snap.progress);
       render(res, snap.logs || []);
     } catch (e) {
+      if (lf && !lf.model().total) { lf.destroy(); lf = null; $('plFlow').hidden = true; }
       fail('The list could not be tested', e.message);
       say(`The list could not be tested: ${e.message}`);
     } finally {
