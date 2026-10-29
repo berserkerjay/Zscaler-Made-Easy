@@ -729,3 +729,306 @@ def test_discover_failed_sign_in_message_masks_the_secret(disc, tmp_path, monkey
         d.main()
 
     assert SECRET not in capsys.readouterr().out
+
+
+# ── zscaler_clouds: names and hosts against the installed SDK (1.11.3) ──
+
+ALL_CLOUDS = ["production", "zscaler", "zscalerone", "zscalertwo", "zscalerthree", "zscloud", "zscalerten", "zscalerbeta",
+              "zscalergov", "zscalergovus"]
+
+
+@pytest.mark.parametrize("cloud", ALL_CLOUDS)
+def test_clouds_token_url_is_the_sdks(cloud):
+    """ASVS V12.6.1 · A10:2021 · CWE-918 · SSDF PW.4.1: each cloud's token URL equals SDK 1.11.3 OAuth._get_auth_url for its environment."""
+    import types
+    from zscaler.oneapi_oauth_client import OAuth
+    import zscaler_clouds as zc
+    env = zc.environment(cloud) or "production"
+
+    assert zc.token_url("acme", cloud) == OAuth._get_auth_url(types.SimpleNamespace(), "acme", env)
+
+
+@pytest.mark.parametrize("cloud", ALL_CLOUDS)
+def test_clouds_api_base_is_the_sdks(cloud):
+    """ASVS V12.6.1 · CWE-918 · SSDF PW.4.1: each cloud's OneAPI gateway equals SDK 1.11.3 RequestExecutor._resolve_api_base_url."""
+    import types
+    from zscaler.request_executor import RequestExecutor
+    import zscaler_clouds as zc
+    fake = types.SimpleNamespace(cloud=zc.environment(cloud) or "production", BASE_URL=RequestExecutor.BASE_URL)
+
+    assert zc.api_base(cloud) == RequestExecutor._resolve_api_base_url(fake)
+
+
+@pytest.mark.parametrize("cloud,base", [("production", "https://zsapi.zscaler.net"), ("zscalertwo", "https://zsapi.zscalertwo.net"),
+                                        ("zscalerten", "https://zsapi.zscalerten.net"), ("zscloud", "https://zsapi.zscloud.net"),
+                                        ("zscalerbeta", "https://zsapi.zscalerbeta.net"), ("zscalergov", "https://zsapi.zscalergov.net"),
+                                        ("zscalergovus", "https://zsapi.zscalergov.us")])
+def test_clouds_classic_api_host_oracle(cloud, base):
+    """ASVS V12.6.1 · CWE-918: the classic ZIA API host per cloud (SDK zia/legacy.py builds zsapi.<cloud>.net; .us for govus)."""
+    import zscaler_clouds as zc
+
+    assert zc.legacy_api_base(cloud) == base
+
+
+@pytest.mark.parametrize("spelling,name", [("", "production"), ("Commercial", "production"), ("admin.zscalertwo.net", "zscalertwo"),
+                                           ("ZSCALERTEN", "zscalerten"), ("zscalergov.us", "zscalergovus"), ("fedramp", "zscalergov"),
+                                           ("zspreview", "zscalerbeta"), (" zscloud.net ", "zscloud")])
+def test_clouds_accepted_spellings(spelling, name):
+    """ASVS V5.1.3 · CWE-20: every accepted spelling (admin host, .net, case, aliases) names the right cloud."""
+    import zscaler_clouds as zc
+
+    assert zc.normalize(spelling) == name
+
+
+@pytest.mark.parametrize("bad", ["zscaler.com", "zscalergov.usa", "https://admin.zscaler.net", "zscalertwo.net/", "zscaler․net", "x" * 500])
+def test_clouds_unknown_spelling_is_refused_and_not_echoed_whole(bad):
+    """ASVS V5.1.3 · CWE-20 · CWE-117: an unknown cloud (scheme, slash, look-alike dot, huge) is refused with at most 60 characters of it."""
+    import zscaler_clouds as zc
+
+    with pytest.raises(ValueError) as e:
+        zc.normalize(bad)
+    assert "x" * 61 not in str(e.value)
+
+
+def test_clouds_government_clouds_are_exactly_the_fedramp_ones():
+    """ASVS V1.14.1 · CWE-20: only zscalergov and zscalergovus are government clouds."""
+    import zscaler_clouds as zc
+
+    assert {c for c in ALL_CLOUDS if zc.is_government(c)} == {"zscalergov", "zscalergovus"}
+
+
+@pytest.mark.parametrize("vanity", ["acme", "acme-corp", "a.b", "A1"])
+def test_clouds_vanity_accepts_dns_names(vanity):
+    """ASVS V5.1.3 · CWE-20: RFC 1123 vanity names are accepted."""
+    import zscaler_clouds as zc
+
+    assert zc.check_vanity(vanity) == vanity
+
+
+@pytest.mark.parametrize("vanity", ["", "-acme", "acme-", "a..b", "acme.", "bücher", "a" * 64, "a/b", "a\\b", "a b", "a:443", "a#"])
+def test_clouds_vanity_refuses_anything_but_a_dns_name(vanity):
+    """ASVS V5.1.3 · A10:2021 · CWE-918 · WSTG-INPV-19: a vanity that is not an ASCII DNS name (IDN, separators, long label) is refused."""
+    import zscaler_clouds as zc
+
+    with pytest.raises(ValueError):
+        zc.check_vanity(vanity)
+
+
+# ── engine_explain: every operator against an oracle table ───────────
+
+NAMES = {"1": "SSN", "2": "CC"}
+SUMMARY_ORACLE = [
+    ("D1.S > 0", "at least one SSN match"), ("D1.S > 1", "more than one SSN match"), ("D1.S > 2", "more than two SSN matches"),
+    ("D1.S >= 0", "any number of SSN matches, even none (always true)"), ("D1.S >= 1", "at least one SSN match"),
+    ("D1.S >= 3", "at least three SSN matches"), ("D1.S < 0", "fewer than zero SSN matches (never true)"),
+    ("D1.S < 1", "no SSN match"), ("D1.S < 4", "fewer than four SSN matches"), ("D1.S <= 0", "no SSN match"),
+    ("D1.S <= 1", "at most one SSN match"), ("D1.S <= 5", "at most five SSN matches"), ("D1.S = 0", "no SSN match"),
+    ("D1.S == 1", "exactly one SSN match"), ("D1.S = 12", "exactly 12 SSN matches"), ("D1.S != 0", "at least one SSN match"),
+    ("D1.S != 2", "a number of SSN matches other than two"), ("D1.U > 1", "more than one unique SSN match"),
+    ("D1.S", "at least one SSN match"), ("NOT D1.S > 0", "no SSN match"), ("NOT D1.S > 1", "not more than one SSN match"),
+    ("(D1.S + D2.S) > 1", "more than one match of SSN and CC combined"),
+    ("(D1.S + D2.S) >= 0", "any number of SSN and CC combined matches, even none (always true)"),
+    ("D1.S > 0 AND D2.S > 0", "at least one SSN match and at least one CC match"),
+    ("D1.S > 0 OR D2.S > 1", "at least one SSN match or more than one CC match"),
+    ("(D1.S > 0 OR D2.S > 0) AND D1.S < 9", "either at least one SSN match or at least one CC match and fewer than nine SSN matches"),
+    ("D9.S > 0", "at least one unknown dictionary 9 match"),
+]
+
+
+@pytest.mark.parametrize("expr,says", SUMMARY_ORACLE)
+def test_engine_explain_summary_oracle(expr, says):
+    """ASVS V5.1.3 · CWE-1023 · CWE-480: every comparison operator and Boolean join reads as ZIA evaluates it, the always- and never-true bounds included."""
+    import engine_explain as ee
+
+    assert ee.summary(expr, NAMES) == f"Fires when the content has {says}."
+
+
+@pytest.mark.parametrize("expr", ["D1.S >", "D1.S > -1", "5", "(D1.S > 0", "D1.S > 0 AND", "D1.S >> 1", "AND D1.S", "x" * 5000])
+def test_engine_explain_unparseable_gets_no_summary_but_ids_named(expr):
+    """ASVS V5.1.3 · CWE-20 · CWE-755: an expression it cannot read gets no summary (never a guess) and no exception."""
+    import engine_explain as ee
+
+    out = ee.explain(expr, NAMES)
+
+    assert out["summary"] == "" and out["parsed"] is False and out["expression"] == expr
+
+
+@pytest.mark.parametrize("op", [">", ">=", "<", "<=", "=", "==", "!="])
+def test_engine_explain_readable_keeps_every_operator(op):
+    """ASVS V5.1.3 · CWE-1023: the readable form names the dictionary and keeps the operator ('==' as '=')."""
+    import engine_explain as ee
+
+    assert ee.readable(f"((D1.S {op} 3))", NAMES) == f"SSN count {'=' if op == '==' else op} 3"
+
+
+# ── plain_english: every section reads its own outcome ───────────────
+
+def test_plain_english_section_5_reads_the_detection_outcome():
+    """ASVS V1.1.1 · CWE-1023 · CWE-670: section 5 (Endpoint DLP: rules, dictionaries, EDM) gets its own outcome, not the endpoint channel's."""
+    import plain_english as pe
+
+    assert pe.outcome_for("5.10", "5 — Endpoint DLP").startswith("Sensitive data is detected accurately")
+    assert pe.outcome_for("B.1", "Ch.B — Endpoint").startswith("Sensitive data cannot leave through USB")
+
+
+def test_plain_english_every_outcome_the_registry_can_reach_is_reached():
+    """ASVS V1.1.1 · CWE-561: no outcome meant for an assessment section is shadowed by an earlier, broader entry."""
+    import dlp_assessment_full_auto as engine
+    import plain_english as pe
+    reached = {pe.outcome_for(cid, sec) for cid, sec, _, _ in engine.REG}
+
+    meant = {text for keys, text in pe.OUTCOMES if any(k.endswith(".") and any(c.lower().startswith(k) for c, *_ in engine.REG) for k in keys)}
+
+    assert meant <= reached
+
+
+@pytest.mark.parametrize("status,start", [("PASS", "Label X is configured"), ("FAIL", "Label X: action required."),
+                                          ("REVIEW", "Label X needs a person"), ("ERROR", "Label X could not be checked"),
+                                          ("INFO", "Label X is not configured")])
+def test_plain_english_found_sentence_per_status(status, start):
+    """ASVS V7.4.1 · CWE-755: each status reads its own 'found' sentence."""
+    import plain_english as pe
+
+    out = pe.enrich({"id": "5.10", "section": "5 — Endpoint DLP", "label": "Label X", "status": status, "detail": "Seen. More."})
+
+    assert out["plain"]["found"].startswith(start) and set(out["plain"]) >= {"found", "means", "do", "outcome"}
+
+
+# ── corpus_engines: Sum terms, the older D(n) form, every operator ───
+
+@pytest.mark.parametrize("expr,want", [("(D(1) + D(2)) > 1", True), ("(D(1).S + D(2).S) > 1", True), ("(D1.S + D(2)) >= 2", True),
+                                       ("(D(1) + D(2) + D(3)) = 3", True), ("(D(1) + D(2)) > 2", False)])
+def test_corpus_sum_counts_every_dictionary_in_the_older_form(expr, want):
+    """ASVS V5.1.3 · CWE-1023 · CWE-682: a Sum in the D(n) form adds every dictionary's count, not only the first."""
+    import corpus_engines as ce
+
+    result, ids, _ = ce.evaluate_expression(expr, {1: 1, 2: 1, 3: 1})
+
+    assert result is want and set(ids) <= {1, 2, 3}
+
+
+def test_corpus_sum_synthetic_term_is_not_a_dictionary():
+    """ASVS V5.1.3 · CWE-1023: a Sum engine lists only its real dictionaries, never the internal stand-in term."""
+    import corpus_engines as ce
+
+    out = ce.engine_results([{"id": 5, "name": "E", "engineExpression": "(D1.S + D2.S) > 1"}], [], {1: 1, 2: 1}, {1: "A", 2: "B"})
+
+    assert out[0]["dictionaries"] == ["A", "B"] and out[0]["fires"] is True
+
+
+def test_corpus_sum_stand_in_never_collides_with_a_real_id():
+    """ASVS V5.1.3 · CWE-1023 · CWE-694: a real dictionary numbered like the Sum stand-in keeps its own count."""
+    import corpus_engines as ce
+
+    result, _, terms = ce.evaluate_expression("(D1.S + D2.S) > 1 AND D900000.S > 0", {1: 1, 2: 1, 900000: 0})
+
+    assert result is False and any(t.startswith("D900000.S > 0: 0") for t in terms)
+
+
+@pytest.mark.parametrize("op,count,n,want", [(">", 2, 1, True), (">", 1, 1, False), (">=", 1, 1, True), (">=", 0, 1, False),
+                                             ("<", 0, 1, True), ("<", 1, 1, False), ("<=", 1, 1, True), ("<=", 2, 1, False),
+                                             ("=", 1, 1, True), ("==", 2, 1, False), ("!=", 2, 1, True), ("!=", 1, 1, False),
+                                             (">", None, 1, None)])
+def test_corpus_operator_oracle(op, count, n, want):
+    """ASVS V5.1.3 · CWE-1023 · CWE-697: every comparison operator, boundaries and the unknown count, as ZIA evaluates D<id>.S terms."""
+    import corpus_engines as ce
+
+    assert ce.evaluate_expression(f"D1.S {op} {n}", {1: count})[0] is want
+
+
+@pytest.mark.parametrize("a,b,op,want", [(True, None, "AND", None), (False, None, "AND", False), (True, None, "OR", True),
+                                         (False, None, "OR", None)])
+def test_corpus_three_valued_logic(a, b, op, want):
+    """ASVS V5.1.3 · CWE-1023: an unknown term decides nothing it cannot decide (Kleene AND / OR)."""
+    import corpus_engines as ce
+    counts = {1: 1 if a else 0, 2: None}
+
+    assert ce.evaluate_expression(f"D1.S > 0 {op} D2.S > 0", counts)[0] is want
+
+
+# ── native_zscaler: a pack never keeps another tenant's dictionary id ──
+
+@pytest.mark.parametrize("expr,bad", [("D7.U > 1 AND D8.S > 0", "D7.U"), ("D(7) > 0", "D(7)"), ("(D(7).S > 1)", "D(7).S")])
+def test_native_engine_with_a_term_a_pack_cannot_name_is_left_out(expr, bad):
+    """ASVS V5.1.3 · A08:2021 · CWE-1023 · CWE-706: an engine term other than D<id>.S is not carried with the source tenant's id; the engine is named as left out."""
+    import native_zscaler as nz
+    warnings: List[str] = []
+
+    out = nz.convert_engine({"name": "E", "customDlpEngine": True, "engineExpression": expr}, {"7": "A", "8": "B"}, warnings)
+
+    assert out is None and bad in warnings[0]
+
+
+def test_native_engine_with_s_terms_converts_by_name():
+    """ASVS V5.1.3 · CWE-20: D<id>.S terms become D:<name>; nothing is left out."""
+    import native_zscaler as nz
+    warnings: List[str] = []
+
+    out = nz.convert_engine({"name": "E", "customDlpEngine": True, "engineExpression": "((D7.S > 1) AND (D8.S > 0))"}, {"7": "A", "8": "B"}, warnings)
+
+    assert out == {"name": "E", "expression": "((D:A > 1) AND (D:B > 0))"} and warnings == []
+
+
+# ── guidance: only a web address becomes a proposal ──────────────────
+
+@pytest.fixture
+def gd(monkeypatch, tmp_path):
+    import guidance
+    monkeypatch.setenv("DLP_CHECK_GUIDANCE_STATE", str(tmp_path / "guidance_state.json"))
+    monkeypatch.setenv("DLP_CHECK_CHECKS_CONFIG", str(tmp_path / "checks_config.json"))
+    monkeypatch.setenv("DLPCHECK_PROPOSALS_FILE", str(tmp_path / "proposals.json"))
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
+    guidance.save_state({"seen": {}, "sources": {}, "baselined_at": "2026-01-01T00:00:00+00:00"})
+    return guidance
+
+
+@pytest.mark.parametrize("url", ["javascript:alert(1)//ssl inspection", "data:text/html,ssl inspection", "//evil.example/ssl-inspection",
+                                 "https://user@evil.example/ssl inspection", "https:\\\\evil.example/ssl-inspection"])
+def test_guidance_non_web_article_url_never_becomes_a_proposal(gd, url):
+    """ASVS V5.1.5 · A03:2021 · CWE-79 · CWE-601 · WSTG-CLNT-04: an article whose URL is not an http(s) web address is recorded as no action, never a linked proposal."""
+    res = gd.evaluate([{"url": url, "title": "SSL inspection now supports TLS 1.3", "first_seen": 1_000}], now=2_000)
+
+    assert res["raised"] == [] and res["no_action"] == 1
+
+
+def test_guidance_web_article_still_becomes_a_proposal(gd):
+    """ASVS V5.1.5 · CWE-20: an https article on a mapped topic still becomes a proposal."""
+    res = gd.evaluate([{"url": "https://help.zscaler.com/zia/ssl-inspection", "title": "SSL inspection best practice", "first_seen": 1_000}], now=2_000)
+
+    assert [r["url"] for r in res["raised"]] == ["https://help.zscaler.com/zia/ssl-inspection"]
+
+
+def test_guidance_malformed_entry_fields_do_not_stop_the_run(gd):
+    """ASVS V7.4.1 · CWE-755 · CWE-20: an entry with a non-numeric first_seen, a non-string URL or no object at all is skipped or read, never a crash."""
+    entries = ["junk", {"url": 7}, {"url": "https://help.zscaler.com/zia/dlp-engine", "title": "DLP engine tips", "first_seen": "yesterday"}]
+
+    res = gd.evaluate(entries, now=2_000)
+
+    assert [r["url"] for r in res["raised"]] == ["https://help.zscaler.com/zia/dlp-engine"]
+
+
+# ── vertical: industry words, not substrings ─────────────────────────
+
+@pytest.mark.parametrize("given,industry", [
+    ("Healthcare", "Healthcare"), ("hospital network", "Healthcare"), ("Real estate", "Other"), ("FedEx logistics", "Other"),
+    ("Federal agency", "Federal"), ("US DoD contractor", "Federal"), ("Defence", "Federal"), ("Community bank", "Financial services"),
+    ("Statewide agency", "State & local government"), ("Local government", "State & local government"), ("fintech", "Technology"),
+    ("Software", "Technology"), ("University", "Education"), ("Auto manufacturing", "Manufacturing"), ("", ""), ("Farming", "Other"),
+    ("law enforcement (cjis)", "Law enforcement (CJIS)"),
+])
+def test_vertical_industry_oracle(given, industry):
+    """ASVS V5.1.3 · CWE-20 · CWE-185: a free-text industry maps by words ('real estate' is not a state, 'FedEx' not federal)."""
+    import vertical
+
+    assert vertical.normalize_industry(given) == industry
+
+
+def test_vertical_other_shows_everything_and_a_chosen_pack_wins():
+    """ASVS V5.1.3 · CWE-20: no or Other industry narrows nothing; packs chosen on the profile win over the industry's."""
+    import vertical
+
+    other = vertical.scope_for({"industry": "Farming"}, all_frameworks=["HIPAA", "CIS"], all_packs=["a", "b"])
+    chosen = vertical.scope_for({"industry": "Healthcare", "baseline_packs": ["b"]}, all_packs=["a", "b"])
+
+    assert (other["frameworks"], other["packs"], other["scoped"]) == (["HIPAA", "CIS"], ["a", "b"], False)
+    assert (chosen["packs"], chosen["packs_from"]) == (["b"], "profile")
