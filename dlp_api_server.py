@@ -815,6 +815,37 @@ class RemediationExecuteRequest(BaseModel):
     confirm: bool = False      # dry_run=false needs confirm=true, the assessor, a writer and write mode
     assessor: str = ""
     profile_id: str = ""
+    scopes: List[str] = []     # the Scope page selection (user rule 1): a live fix writes only a policy in scope
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+# The rule policy (admin_ops.POLICIES) each fix recipe writes in; "Add
+# description" writes in the policy of the rule type it names.
+_REMEDIATION_POLICY = {"FW-01": "firewall", "URL-01": "url_filtering", "SSL-01": "ssl_inspection", "DLP-01": "web_dlp"}
+_REMEDIATION_RULE_TYPE_POLICY = {"webDlpRules": "web_dlp", "urlFilteringRules": "url_filtering",
+                                 "firewallFilteringRules": "firewall", "sslInspectionRules": "ssl_inspection"}
+
+
+def _require_remediation_in_scope(req: "RemediationExecuteRequest") -> None:
+    """A live fix reads and writes one ZIA rule policy: it must be in scope on
+    the Scope page (the Bulk changes rule, admin_ops.scope_for), else 400
+    before sign-in. A recipe whose policy is not known is refused (deny by default)."""
+    import admin_ops
+    import remediation
+    rid = str((remediation.get_recipe(req.check_id) or {}).get("check_id") or "")
+    criteria = req.criteria if isinstance(req.criteria, dict) else {}
+    pol = _REMEDIATION_RULE_TYPE_POLICY.get(str(criteria.get("rule_type") or "")) if rid == "RULE-DESC" else _REMEDIATION_POLICY.get(rid)
+    if not pol:
+        raise HTTPException(status_code=400, detail="Applying a remediation: this fix's rule policy is not known, so it cannot be checked "
+                                                    "against the Scope page. Nothing was read or written.")
+    sc, ch, _source = _scope_selection(req)
+    scope = admin_ops.scope_for(sc, ch)
+    if pol not in scope["policies"]:
+        label = admin_ops.POLICIES[pol]["label"]
+        why = str((scope.get("not_in_scope") or {}).get(pol) or "")
+        raise HTTPException(status_code=400, detail=f"Applying a remediation is not in scope: {label} is not in scope on the Scope page. "
+                                                    + (f"{why} " if why else "") + "Nothing was read or written.")
 
 
 @app.get("/api/remediation/catalog")
@@ -850,6 +881,7 @@ async def remediation_execute(req: RemediationExecuteRequest):
         raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Applying a remediation")
+        _require_remediation_in_scope(req)
     client = await asyncio.to_thread(_build_client, req)
     result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)
     return result

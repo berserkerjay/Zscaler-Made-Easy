@@ -976,3 +976,94 @@ def test_the_excel_export_never_holds_a_formula():
         sheets = [z.read(n).decode("utf-8") for n in z.namelist() if n.startswith("xl/worksheets/")]
     assert sheets and not any("<f>" in s or "<f " in s for s in sheets)
     assert change_queue.rows(change_queue.list_requests())[0]["title"].startswith("=HYPERLINK")
+
+
+# ── C6-ADMIN-OPS-19: a live fix writes only a rule policy in scope ─────
+
+_FIX_BASE = {"vanity_domain": "acme", "client_id": "cid", "client_secret": "never-echoed", "dry_run": False, "confirm": True, "assessor": "Jane Doe"}
+_FIX_POLICY_SCOPE = {
+    "firewall": {"scopes": ["zia_extras"], "channels": {}, "from_page": True},
+    "url_filtering": {"scopes": ["zia_extras"], "channels": {}, "from_page": True},
+    "ssl_inspection": {"scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "ssl_inspection": "zscaler"}, "from_page": True},
+    "web_dlp": {"scopes": ["dlp"], "channels": {"web_dlp": "zscaler"}, "from_page": True},
+}
+_FIX_CASES = [("FW-01", {}, "firewall"), ("URL-01", {}, "url_filtering"), ("SSL-01", {}, "ssl_inspection"), ("DLP-01", {}, "web_dlp")] + [
+    ("RULE-DESC", {"rule_type": t, "rule_id": "7", "description": "d"}, p) for t, p in (
+        ("webDlpRules", "web_dlp"), ("urlFilteringRules", "url_filtering"), ("firewallFilteringRules", "firewall"), ("sslInspectionRules", "ssl_inspection"))]
+_NOTHING_TICKED = {"scopes": [], "channels": {}, "from_page": True}
+
+
+@pytest.fixture
+def fix_route(monkeypatch):
+    signed = []
+    monkeypatch.setattr(srv, "_build_client", lambda req: signed.append(1) or object())
+    monkeypatch.setattr(srv, "writes_enabled", lambda: True)
+    monkeypatch.setattr(remediation, "execute", lambda client, check_id, criteria, dry_run: {"status": "completed"})
+    return TestClient(srv.app), signed
+
+
+def test_every_recipe_has_a_known_rule_policy():
+    """ASVS V4.1.3 · CWE-863 · CISA SbD deny by default: every fix recipe in the catalogue maps to the rule policy its scope check uses (a new recipe without one fails here)."""
+    # Arrange
+    ids = {r["check_id"] for r in remediation.get_catalog()}
+    # Act
+    unmapped = sorted(ids - set(getattr(srv, "_REMEDIATION_POLICY", {})) - {"RULE-DESC"})
+    rule_types = next(f["options"] for r in remediation.get_catalog() if r["check_id"] == "RULE-DESC" for f in r["fields"] if f["key"] == "rule_type")
+    # Assert
+    assert unmapped == [] and {c[0] for c in _FIX_CASES} >= ids
+    assert set(rule_types) == set(getattr(srv, "_REMEDIATION_RULE_TYPE_POLICY", {}))
+
+
+@pytest.mark.parametrize("check_id,criteria,policy", _FIX_CASES, ids=[f"{c[0]}-{c[2]}" for c in _FIX_CASES])
+def test_a_live_fix_outside_the_scope_page_is_refused_before_sign_in(fix_route, check_id, criteria, policy):
+    """ASVS V4.1.3 · A01:2021 · CWE-863 · WSTG-ATHZ-02: a live remediation whose rule policy is not in scope on the Scope page is a 400 and never signs in."""
+    # Arrange
+    api, signed = fix_route
+    # Act
+    r = api.post("/api/remediation/execute", json=dict(_FIX_BASE, **_NOTHING_TICKED, check_id=check_id, criteria=criteria))
+    # Assert
+    assert r.status_code == 400 and "not in scope" in r.json()["detail"] and signed == [] and "never-echoed" not in r.text
+
+
+@pytest.mark.parametrize("check_id,criteria,policy", _FIX_CASES, ids=[f"{c[0]}-{c[2]}" for c in _FIX_CASES])
+def test_a_live_fix_in_scope_reaches_the_write(fix_route, check_id, criteria, policy):
+    """ASVS V4.1.3 · CWE-863 · WSTG-BUSL-01: with its rule policy in scope (and every write gate held) a live remediation signs in and runs."""
+    # Arrange
+    api, signed = fix_route
+    # Act
+    r = api.post("/api/remediation/execute", json=dict(_FIX_BASE, **_FIX_POLICY_SCOPE[policy], check_id=check_id, criteria=criteria))
+    # Assert
+    assert r.status_code == 200 and r.json()["status"] == "completed" and signed == [1], r.text
+
+
+def test_add_description_is_scoped_by_the_rule_type_it_names(fix_route):
+    """ASVS V4.1.3 · A01:2021 · CWE-863 · WSTG-ATHZ-02: "Add description" on a Web DLP rule with only ZIA platform ticked is refused (the channel decides, not the recipe)."""
+    # Arrange
+    api, signed = fix_route
+    crit = {"rule_type": "webDlpRules", "rule_id": "7", "description": "d"}
+    # Act
+    r = api.post("/api/remediation/execute", json=dict(_FIX_BASE, **_FIX_POLICY_SCOPE["firewall"], check_id="RULE-DESC", criteria=crit))
+    # Assert
+    assert r.status_code == 400 and "Inline Web DLP" in r.json()["detail"] and signed == []
+
+
+@pytest.mark.parametrize("rule_type", ["", "dlpEngines", "../admin", None])
+def test_add_description_on_an_unknown_rule_type_is_refused(fix_route, rule_type):
+    """ASVS V5.1.3 · CWE-863 · CISA SbD deny by default: an unknown rule type has no policy to check, so the live fix is a 400 before sign-in."""
+    # Arrange
+    api, signed = fix_route
+    crit = {"rule_type": rule_type, "rule_id": "7", "description": "d"}
+    # Act
+    r = api.post("/api/remediation/execute", json=dict(_FIX_BASE, **_FIX_POLICY_SCOPE["web_dlp"], check_id="RULE-DESC", criteria=crit))
+    # Assert
+    assert r.status_code == 400 and signed == []
+
+
+def test_a_dry_run_fix_needs_no_scope(fix_route):
+    """ASVS V1.14.6 · CWE-440 · WSTG-BUSL-01: a dry run (the plan only) is not gated by the Scope page (negative case: no change to previews)."""
+    # Arrange
+    api, signed = fix_route
+    # Act
+    r = api.post("/api/remediation/execute", json=dict(_FIX_BASE, **_NOTHING_TICKED, check_id="FW-01", criteria=GOOD_FW, dry_run=True, confirm=False))
+    # Assert
+    assert r.status_code == 200
