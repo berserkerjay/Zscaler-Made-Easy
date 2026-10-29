@@ -992,3 +992,38 @@ def test_read_problems_pass_through_the_given_scrub():
 
     assert secret not in str(rep) and secret not in str(poll)
     assert any("[redacted client_secret]" in e for e in rep["errors"]) and rep["read"]["incidents"] is False
+
+
+# ── C6-TRAFFIC-REPORTS-25: read problems never carry the sign-in's secret ──
+
+_DH_SECRET = "Sk-canary-d3tect10n-health-77"
+
+
+class _EchoingSearch:
+    """An incident search whose error echoes the secret it was signed in with (as some SDK errors do)."""
+
+    def dlp_incident_search(self, *a, **kw):
+        raise RuntimeError(f"401 Unauthorized: client_secret={_DH_SECRET} was rejected")
+
+
+@pytest.mark.parametrize("path", ["/api/detection-health", "/api/live-feed"])
+def test_a_read_problem_that_echoes_the_secret_is_masked(monkeypatch, path):
+    """ASVS V7.1.1 · A09:2021 · CWE-532 · WSTG-INFO-05: an SDK error that quotes the client secret reaches neither the report's read problems nor its log, on both routes."""
+    # Arrange
+    import dlp_analysis
+    import dlp_api_server as srv
+    from fastapi.testclient import TestClient
+    c = _dh_client([])
+    c.zwa = type("ZWA", (), {"dlp_incidents": _EchoingSearch()})()
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: c)
+    monkeypatch.setattr(srv, "_build_client", lambda req: object())
+    monkeypatch.setattr(dlp_analysis, "inspect", lambda *a, **k: [])
+    monkeypatch.setattr(srv, "_live_connector_context", lambda *a, **k: {})
+    body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": _DH_SECRET,
+            "scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}, "from_page": True}
+    # Act
+    r = TestClient(srv.app).post(path, json=body)
+    # Assert
+    assert r.status_code == 200, r.text[:300]
+    assert r.json()["errors"], "the failed incident read is reported"
+    assert _DH_SECRET not in r.text and _DH_SECRET[:12] not in r.text

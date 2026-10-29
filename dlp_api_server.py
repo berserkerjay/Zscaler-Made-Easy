@@ -1830,7 +1830,10 @@ async def detection_health_generate(req: DetectionHealthRequest):
     if sc["source"]:
         logs.append(f"In scope, from {sc['source']}: the DLP rules on {', '.join(sc['pack_channels'])}"
                     + ("" if sc["read_incidents"] else "; Workflow Automation is not marked as run on Zscaler, so its incidents are not read") + ".")
-    report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append,
+    # An SDK error that echoes the sign-in's secret never reaches the report or its log.
+    scrub = lambda text: tenant_auth.mask_secrets(str(text), creds)  # noqa: E731
+    report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None,
+                                                                       log=lambda m: logs.append(scrub(m)), scrub=scrub,
                                                                        channels=list(sc["pack_channels"]), read_incidents=bool(sc["read_incidents"])))
     import dlp_analysis
     raw = await asyncio.to_thread(_build_client, req)
@@ -1855,7 +1858,7 @@ async def detection_health_generate(req: DetectionHealthRequest):
         else:
             report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
     except Exception as e:  # noqa: BLE001
-        report["proposals"] = {"error": str(e)[:200]}
+        report["proposals"] = {"error": scrub(e)[:200]}
     rid = _remember_report("health", report, tenant_auth.record_label(creds))
     return _REPORTS[rid]
 
@@ -1980,7 +1983,9 @@ async def live_feed_poll(req: LiveFeedRequest):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)   # never the classic API's admin login (user rule 3)
-    poll = (await asyncio.to_thread(detection_health.poll_incidents, client, since)) if sc["read_incidents"] else {"incidents": [], "next_since": req.since, "errors": [DH_WA_ALTERNATIVE], "read_at": datetime.now(timezone.utc).isoformat()}
+    # An SDK error that echoes the sign-in's secret never reaches the feed.
+    poll = (await asyncio.to_thread(detection_health.poll_incidents, client, since,
+                                    scrub=lambda text: tenant_auth.mask_secrets(str(text), creds))) if sc["read_incidents"] else {"incidents": [], "next_since": req.since, "errors": [DH_WA_ALTERNATIVE], "read_at": datetime.now(timezone.utc).isoformat()}
     import tenant_fingerprint
     # The rule cache's key names no classic-API tenant by a vanity domain or
     # its admin login (an opaque fingerprint key), and keeps two classic
