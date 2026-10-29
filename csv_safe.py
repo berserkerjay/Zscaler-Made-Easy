@@ -20,6 +20,7 @@ from typing import Any, Iterable, Mapping
 
 _TRIGGERS = ("=", "+", "-", "@", "\t", "\r", "\n")
 _LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+_BIDI = re.compile("[\u202a-\u202e\u2066-\u2069]")
 _PLAIN_NUMBER = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
 
 
@@ -30,6 +31,9 @@ def safe_cell(value: Any) -> Any:
     # A lone surrogate (from a JSON \uD800 escape) cannot be written as
     # UTF-8: it would fail the whole download. Show U+FFFD instead.
     value = _LONE_SURROGATE.sub("\ufffd", value)
+    # An explicit bidirectional control (U+202E in a tenant name) as U+FFFD,
+    # as every export shows it (md_safe.no_bidi).
+    value = _BIDI.sub("\ufffd", value)
     if value[0] in _TRIGGERS and not _PLAIN_NUMBER.fullmatch(value):
         return "'" + value
     return value

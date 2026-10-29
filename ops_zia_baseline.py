@@ -485,6 +485,10 @@ def _fit_bytes(text: str, limit: int = DESC_MAX) -> str:
     t = " ".join(str(text or "").split())
     if len(t.encode("utf-8")) <= limit:
         return t
+    # Every character is at least one byte: nothing past `limit` characters
+    # can fit, so cut there first and the loop below stays bounded (an
+    # uploaded framework's title may be megabytes long).
+    t = t[:limit]
     while len((t + "…").encode("utf-8")) > limit:
         t = t[:-1]
     return t.rstrip() + "…"
@@ -1822,12 +1826,16 @@ def capture(client, areas: Sequence[str], *, name: str = "", tenant_label: str =
     return {"status": "ready", "framework": fw}
 
 
+_UNSAFE_TEXT = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
+_UNSAFE_NAME = re.compile("[<>\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
+
+
 def load_framework(fw: Any) -> Dict[str, Any]:
     """Check an uploaded framework (untrusted): its format, areas, sizes and
     every value; returns {name, rules}. Raises OperationError."""
     if not isinstance(fw, dict) or fw.get("format") != FRAMEWORK_FORMAT:
         raise ao.OperationError(f"Not a ZIA policy framework (expected format '{FRAMEWORK_FORMAT}').")
-    if fw.get("format_version") != FRAMEWORK_VERSION:
+    if type(fw.get("format_version")) is not int or fw.get("format_version") != FRAMEWORK_VERSION:
         raise ao.OperationError("This framework file is from a newer version of the app.")
     areas = fw.get("areas")
     if not isinstance(areas, dict) or not areas:
@@ -1842,8 +1850,14 @@ def load_framework(fw: Any) -> Dict[str, Any]:
         for i, r in enumerate(rows):
             if not isinstance(r, dict):
                 raise ao.OperationError("Each framework rule must be an object.")
-            name = " ".join(str(r.get("name") or "").split())[:MAX_NAME]
-            if not name or re.search(r"[<>\x00-\x1f]", name):
+            # Deny by default: a name and a title are text, the fields an
+            # object; a name carries no markup, control, bidirectional or
+            # invisible character (it becomes a rule name in the tenant).
+            if not isinstance(r.get("name"), str) or not isinstance(r.get("title", ""), (str, type(None))) \
+                    or not isinstance(r.get("fields", {}), (dict, type(None))):
+                raise ao.OperationError(f"Framework rule {i + 1} in {area}: name and title are text and fields an object.")
+            name = " ".join(r["name"].split())[:MAX_NAME]
+            if not name or _UNSAFE_NAME.search(name):
                 raise ao.OperationError(f"Framework rule {i + 1} in {area} has no usable name.")
             action = str(r.get("default") or "")
             if action not in _ACTIONS[area]:
@@ -1861,7 +1875,7 @@ def load_framework(fw: Any) -> Dict[str, Any]:
                 else:
                     raise ao.OperationError(f"{name}: the value of {k} is not a list of Zscaler names.")
             rules.append({"key": f"{area}.c{i + 1}", "area": area, "name": name, "suffix": name, "default": action, "fields": fields,
-                          "title": _fit_bytes(str(r.get("title") or name), 200), "sources": [], "locked": "", "action_locked": "",
+                          "title": _fit_bytes(_UNSAFE_TEXT.sub(" ", r.get("title") or name), 200), "sources": [], "locked": "", "action_locked": "",
                           "catch_all": area == "ssl" and not fields.get("url_categories"), "default_on": True, "risky": ""})
     return {"name": str(fw.get("name") or "Framework")[:120], "rules": rules}
 

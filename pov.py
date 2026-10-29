@@ -46,6 +46,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import math
 import os
 import random
 import re
@@ -447,7 +448,8 @@ def _clean_counts(c: Any) -> Dict[str, Any]:
             r = _obj(r, "a row")
             total = r.get("total")
             rows.append({"name": _clean(r.get("name"), 120, what="a name"),
-                         "total": total if isinstance(total, (int, float)) and not isinstance(total, bool) else None})
+                         "total": total if isinstance(total, (int, float)) and not isinstance(total, bool)
+                         and (isinstance(total, int) or math.isfinite(total)) else None})
         out["sections"][key] = {"title": _clean(sec.get("title"), 120, what="a title"), "status": _clean(sec.get("status"), 20, what="a status"),
                                 "rows": rows}
     return out
@@ -870,7 +872,7 @@ def parse_import(text: Any) -> Dict[str, Any]:
     if len(text.encode("utf-8", "surrogatepass")) > MAX_IMPORT_BYTES:
         raise PovError(f"the file is larger than {MAX_IMPORT_BYTES // 1024} KB, more than any exported POV", 413)
     try:
-        data = json.loads(text)
+        data = safe_files.strict_json_loads(text)   # NaN or Infinity kept would break every later read of the POV
     except (ValueError, RecursionError):
         raise PovError("the file is not JSON: export the POV again and import that file")
     if not isinstance(data, dict):

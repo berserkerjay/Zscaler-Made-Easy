@@ -8529,7 +8529,10 @@ def _batch_hosts(req: PathBatchRequest) -> Tuple[List[str], Dict[str, Dict[str, 
     skipped: List[str] = []
     if len(req.har_hosts) > path_analyzer.BATCH_MAX:
         raise HTTPException(status_code=400, detail=f"At most {path_analyzer.BATCH_MAX} hosts are analyzed per run; {len(req.har_hosts)} were sent.")
-    num = lambda v: max(0, min(int(v), 10 ** 12)) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0  # noqa: E731
+    # Each count and list is checked for its type (deny by default): a value of
+    # another type, NaN or Infinity counts as nothing, never a 500.
+    num = lambda v: max(0, min(int(v), 10 ** 12)) if (isinstance(v, int) or (isinstance(v, float) and abs(v) < float("inf"))) and not isinstance(v, bool) else 0  # noqa: E731
+    seq = lambda v: v if isinstance(v, list) else []  # noqa: E731
     for item in req.har_hosts:
         raw = item.get("host") if isinstance(item, dict) else item
         name = str(raw or "").strip()[:260]
@@ -8546,8 +8549,8 @@ def _batch_hosts(req: PathBatchRequest) -> Tuple[List[str], Dict[str, Dict[str, 
         hosts.append(h)
         it = item if isinstance(item, dict) else {}
         stats[h] = {"requests": num(it.get("requests")), "uploads": num(it.get("uploads")), "bytes_sent": num(it.get("bytes_sent")),
-                    "methods": [m for m in (it.get("methods") or []) if isinstance(m, str) and _HAR_METHOD.match(m)][:12],
-                    "schemes": [s for s in (it.get("schemes") or []) if s in ("http", "https", "ws", "wss")][:4]}
+                    "methods": [m for m in seq(it.get("methods")) if isinstance(m, str) and _HAR_METHOD.match(m)][:12],
+                    "schemes": [s for s in seq(it.get("schemes")) if isinstance(s, str) and s in ("http", "https", "ws", "wss")][:4]}
     if not hosts:
         raise HTTPException(status_code=400, detail="No hostname or IP address to analyze: the HAR file named none the analyzer can read.")
     return hosts, stats, skipped

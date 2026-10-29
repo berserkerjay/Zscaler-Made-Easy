@@ -19,10 +19,18 @@ stored and deflate members (what Client Connector bundles, Terraform and
 vendor exports use; deny by default), refuses encrypted ones, and reads in
 bounded steps, refusing anything past `limit` and any member whose data
 does not match its header (fail closed).
+
+Parsing uploads: strict_json_loads is json.loads as RFC 8259 defines JSON.
+Python's json module also reads NaN, Infinity and numbers too large for a
+double (as inf); kept and sent back, any of them makes every answer that
+carries it invalid JSON (a 500 on each request, and a stored file that no
+longer opens). An upload reader refuses them with a ValueError.
 """
 from __future__ import annotations
 
 import contextlib
+import json
+import math
 import os
 import tempfile
 import zipfile
@@ -37,6 +45,23 @@ _CHUNK = 1 << 20
 
 class ArchiveRefused(ValueError):
     """An archive member this app will not open; the message says why."""
+
+
+def _no_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not a JSON number")
+
+
+def _finite_float(text: str) -> float:
+    v = float(text)
+    if not math.isfinite(v):
+        raise ValueError("a number too large for JSON")
+    return v
+
+
+def strict_json_loads(text: Any) -> Any:
+    """json.loads that refuses NaN, Infinity, -Infinity and a number too
+    large for a double (ValueError), as JSON itself does."""
+    return json.loads(text, parse_constant=_no_constant, parse_float=_finite_float)
 
 
 def _opener(path: str, flags: int) -> int:

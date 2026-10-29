@@ -31,10 +31,26 @@ _BREAKS = re.compile(r"[\r\n\t\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u2028\u2029\u0085]+
 _SPECIAL = re.compile(r"([\\`\[\]|])")
 
 
+# Explicit bidirectional embeddings, overrides and isolates (U+202A-U+202E,
+# U+2066-U+2069). A tenant name holding U+202E (right-to-left override)
+# turns the rest of its line around in a viewer, so a sentence such as
+# "rule X allows uploads" reads as something else (CWE-451). Names never
+# need them (right-to-left scripts display by the implicit algorithm);
+# each becomes U+FFFD so the oddity stays visible. Zero-width joiners and
+# spaces are left alone: some scripts need them.
+BIDI_CONTROLS = re.compile("[\u202a-\u202e\u2066-\u2069]")
+
+
+def no_bidi(value: Any) -> str:
+    """The value with every explicit bidirectional control shown as U+FFFD."""
+    return BIDI_CONTROLS.sub("\ufffd", "" if value is None else str(value))
+
+
 def one_line(value: Any) -> str:
     """The value as a single line: line and paragraph breaks and other
-    control characters become one space."""
-    return _BREAKS.sub(" ", "" if value is None else str(value)).strip()
+    control characters become one space, and a bidirectional control
+    U+FFFD (no_bidi)."""
+    return no_bidi(_BREAKS.sub(" ", "" if value is None else str(value))).strip()
 
 
 def text(value: Any, limit: Optional[int] = None) -> str:

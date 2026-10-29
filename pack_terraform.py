@@ -255,6 +255,10 @@ def hcl_str(s: Any, *, interpolate: bool = False) -> str:
     interpolate=True, ${...} references are left live (engine expressions)."""
     s = _LONE_SURROGATE.sub("\ufffd", "" if s is None else str(s))
     s = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
+    # A bidirectional or invisible formatting character is written as its
+    # \uNNNN escape: the value Terraform reads is the same, but the file
+    # never shows text in another order than it runs (CVE-2021-42574).
+    s = _INVISIBLE.sub(lambda m: "\\u%04x" % ord(m.group()), s)
     if not interpolate:
         s = s.replace("${", "$${")
     s = s.replace("%{", "%%{")
@@ -263,6 +267,8 @@ def hcl_str(s: Any, *, interpolate: bool = False) -> str:
 
 # A lone surrogate cannot be written as UTF-8 (nor held by an HCL string).
 _LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+# Bidirectional embeddings, overrides and isolates, and invisible format characters.
+_INVISIBLE = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
 # Everything a reader (or the HCL scanner) could take as the end of a line.
 _LINE_BREAKS = re.compile(r"\r\n|[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]")
 
@@ -272,7 +278,7 @@ def hcl_comment(s: Any) -> str:
     the tenant or an uploaded pack with a line break in it would otherwise
     end the comment and put the rest of the name into the workspace as
     live HCL (a resource terraform apply would create)."""
-    return _LONE_SURROGATE.sub("\ufffd", _LINE_BREAKS.sub(" ", "" if s is None else str(s)))
+    return _INVISIBLE.sub("\ufffd", _LONE_SURROGATE.sub("\ufffd", _LINE_BREAKS.sub(" ", "" if s is None else str(s))))
 
 
 def hcl_list(items: Iterable[Any], *, raw: bool = False) -> str:

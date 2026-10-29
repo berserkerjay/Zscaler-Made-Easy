@@ -49,6 +49,8 @@ from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+import safe_files
+
 FORMAT = "zscaler-made-easy-snapshot"
 VERSION = 1
 MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024      # an opened file larger than this is refused unread
@@ -867,7 +869,10 @@ def parse_snapshot(raw: Any) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]
     if _nesting(text) > MAX_DEPTH:
         raise SnapshotInvalid(f"The snapshot is nested more than {MAX_DEPTH} levels deep; it was not opened.")
     try:
-        doc = json.loads(text)
+        # Strict JSON (RFC 8259): NaN, Infinity and a number too large for a
+        # double are refused here; opened, they would make every answer the
+        # app sends from this snapshot invalid JSON.
+        doc = safe_files.strict_json_loads(text)
     except (ValueError, RecursionError):
         raise SnapshotInvalid("The snapshot is not valid JSON; it was not opened.")
     if not isinstance(doc, dict) or doc.get("format") != FORMAT:

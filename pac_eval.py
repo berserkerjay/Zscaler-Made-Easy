@@ -41,6 +41,7 @@ listener) or another proxy.
 """
 from __future__ import annotations
 
+import bisect
 import hashlib
 import ipaddress
 import math
@@ -130,6 +131,15 @@ _UNSUPPORTED_WORDS = {"for", "while", "do", "switch", "case", "default", "try", 
 _ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "0": "\0", "'": "'", '"': '"', "\\": "\\", "\n": ""}
 
 
+def _hex(digits: str) -> float:
+    """A hexadecimal literal as JavaScript reads it: too large for a
+    double is Infinity, never an OverflowError."""
+    try:
+        return float(int(digits or "0", 16))
+    except OverflowError:
+        return float("inf")
+
+
 def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
     """(kind, value, position) tokens; kind is id, num, str or p. Linear:
     every character is looked at a bounded number of times."""
@@ -165,7 +175,7 @@ def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
                 j = i + 2
                 while j < n and src[j] in "0123456789abcdefABCDEF":
                     j += 1
-                toks.append(("num", float(int(src[i + 2:j] or "0", 16)), i))
+                toks.append(("num", _hex(src[i + 2:j]), i))
             else:
                 while j < n and (src[j].isdigit() or src[j] == "."):
                     j += 1
@@ -238,6 +248,7 @@ class _Parser:
         self.toks = _tokenize(src)
         self.i = 0
         self.depth = 0
+        self._newlines: Optional[List[int]] = None
 
     # helpers
     def peek(self, k: int = 0) -> Tuple[str, Any, int]:
@@ -263,7 +274,11 @@ class _Parser:
             raise Unsafe(f"unexpected {self._desc(t)} where '{v}' was expected (line {self.line(t[2])})")
 
     def line(self, pos: int) -> int:
-        return self.src.count("\n", 0, pos) + 1
+        # Every call records its line: a binary search over the newline
+        # offsets (found once) keeps the parse linear in the source size.
+        if self._newlines is None:
+            self._newlines = [m.start() for m in re.finditer("\n", self.src)]
+        return bisect.bisect_left(self._newlines, pos) + 1
 
     @staticmethod
     def _desc(t) -> str:
@@ -595,6 +610,8 @@ def compile_pac(source: str) -> Dict[str, Any]:
         res = e
     except RecursionError:
         res = Unsafe(f"nesting deeper than {MAX_DEPTH} levels")
+    except Exception as e:  # noqa: BLE001 — fail closed: a parse that breaks is a refusal, never a crash
+        res = Unsafe(f"an internal error ({type(e).__name__})")
     with _CACHE_LOCK:
         while len(_CACHE) >= _CACHE_MAX:
             _CACHE.pop(next(iter(_CACHE)))
@@ -651,7 +668,7 @@ def _to_num(v: Any) -> float:
         if not s:
             return 0.0
         try:
-            return float(int(s[2:], 16)) if s[:2].lower() == "0x" else float(s)
+            return _hex(s[2:]) if s[:2].lower() == "0x" else float(s)
         except ValueError:
             return float("nan")
     return float("nan")
