@@ -318,12 +318,13 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
         profiles = []
     for p in profiles:
         try:
-            digest["tenants"].append(_evaluate_tenant(p, build_client, days=days, log=_log))
+            t = _evaluate_tenant(p, build_client, days=days, log=_log)
         except Exception as e:  # noqa: BLE001  # one malformed profile must not stop the others or the digest
             pid = str(p.get("id") or "?")
-            digest["tenants"].append({"profile_id": pid, "name": p.get("name") or pid, "tenant": tenant_label(p, pid),
-                                      "detection_health": None, "proposals": None, "tenants": None, "drift": None, "skipped": [],
-                                      "errors": [f"profile: {type(e).__name__}: {str(e)[:200]}"]})
+            t = {"profile_id": pid, "name": p.get("name") or pid, "tenant": tenant_label(p, pid),
+                 "detection_health": None, "proposals": None, "tenants": None, "drift": None, "skipped": [],
+                 "errors": [f"profile: {type(e).__name__}: {str(e)[:200]}"]}
+        digest["tenants"].append(_without_profile_secrets(t, p))
 
     # Score-drop alerts (posture_plus): a journey score this run measured, or
     # the latest assessment score, lower than the one before by at least the
@@ -365,6 +366,27 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
     except Exception:  # noqa: BLE001
         pass
     return digest
+
+
+def _without_profile_secrets(t: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, Any]:
+    """The tenant's section with the profile's own secrets (client secret,
+    password, API key, in every encoding an echoed request shows) taken out
+    of its error texts: a sign-in or read error can echo the request, and
+    the digest is kept on disk, returned by the API and may be sent. Fail
+    closed: when the secrets cannot be looked up, no error detail is kept."""
+    errors = t.get("errors") or []
+    if not errors:
+        return t
+    try:
+        import tenant_profiles
+        full = tenant_profiles.get(str(profile.get("id") or ""), with_secret=True) or {}
+        secrets = [str(full.get(f) or "") for f in tenant_profiles.SECRET_FIELDS]
+        secrets = [x for x in secrets if x and x != tenant_profiles.KEYRING_MARK]
+    except Exception:  # noqa: BLE001
+        t["errors"] = ["an error was recorded, but its detail is withheld (the profile's secrets could not be checked)" for _ in errors]
+        return t
+    t["errors"] = [_scrub_secrets(str(e), secrets) for e in errors]
+    return t
 
 
 def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -> Dict[str, Any]:

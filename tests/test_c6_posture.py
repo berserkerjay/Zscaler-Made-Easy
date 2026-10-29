@@ -815,3 +815,18 @@ def test_odd_rule_shapes_are_read_defensively():
     res = sr.analyse({"url_filtering": [None, "x", _r(1, "not a number", urlCategories=None), _r(2, None, users=[{"name": "u"}, {}])],
                       "no_such_policy": [_r(3, 1)], "firewall": None})
     assert set(res["counts_by_policy"]) == {"url_filtering"} and res["counts_by_policy"]["url_filtering"]["rules"] == 2
+
+
+def test_a_sign_in_error_that_echoes_the_secret_never_reaches_the_digest(no_network):
+    """ASVS V7.1.1 · ASVS V8.3.4 · CWE-532 · CWE-209 · WSTG-ERRH-01: the profile's client secret, raw or URL-encoded, is redacted from tenant errors."""
+    secret = "S3cr3t+Value/42"
+    tp.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": "abc123456789", "baseline_packs": [],
+               "scopes": ["dlp"], "channels": {"saas_casb": "zscaler"}}, client_secret=secret, remember_secret=True)
+
+    def echoing(creds):
+        raise RuntimeError(f"401 for body client_secret={creds['client_secret']}&x=S3cr3t%2BValue%2F42")
+    d = ce.run_once(build_client=echoing, notify=False)
+    errs = d["tenants"][0]["errors"]
+    on_disk = json.dumps(ce.get_digest(d["id"])) + ce.to_markdown(d)
+    assert errs and errs[0].startswith("connect: 401") and "[redacted]" in errs[0]
+    assert secret not in on_disk and "S3cr3t%2BValue" not in on_disk and no_network == []
