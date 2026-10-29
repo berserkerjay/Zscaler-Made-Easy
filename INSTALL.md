@@ -1136,6 +1136,37 @@ shows the CA bundle in use, so you can check it took.
 
 ---
 
+## Install the browser extension (optional)
+
+The companion extension puts badges and a side panel on DLP objects and policy
+rules in the ZIA admin console, exports what you are looking at, and runs the
+Path analyzer for any site. It talks only to this app on your own computer.
+`docs/BROWSER_EXTENSION.md` has the full details.
+
+1. Start the app and open it once (for the container, the
+   `http://localhost:8001/?token=…` link the start or update script prints).
+2. Go to **Advanced settings → Browser extension → Download the extension**.
+   This saves `dlp-check-extension.zip`.
+3. Unzip it somewhere it can stay (for example your Documents folder). Chrome
+   and Edge load it from that folder every time, so do not delete it.
+4. Open `chrome://extensions` (Edge: `edge://extensions`) and turn on
+   **Developer mode** (top right).
+5. Click **Load unpacked** and choose the unzipped `dlp-check-extension` folder.
+6. Pin it (the puzzle-piece icon, then the pin).
+7. **Container or another port:** the extension expects the app at
+   `http://127.0.0.1:8000`. The container listens on port **8001**, so open the
+   extension's **Settings** and enter `http://127.0.0.1:8001`.
+8. Open the ZIA admin console: the badges appear on DLP pages and rules. If the
+   extension says it cannot reach the app, open the app's tab once (so the
+   browser holds its sign-in) and try again.
+
+**Updating it:** after you update the app, download the extension again,
+replace the old folder's contents with the new ones, and click the reload
+arrow on the extension's card in `chrome://extensions`.
+
+A managed work browser may block unpacked extensions; IT can allow it by policy
+(`ExtensionInstallAllowlist`).
+
 ## Starting, stopping, updating and removing it later
 
 | I want to… | Windows | Mac / Linux |
