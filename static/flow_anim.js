@@ -49,7 +49,8 @@
     if (status === 'warn' || status === 'blind' || status === 'monitor' || status === 'assumed' || status === 'unknown') return 'warn';
     return 'idle';
   }
-  const OUTCOME_TONE = { blocked: 'bad', bypassed: 'bad', blind: 'warn', monitor: 'warn', none: 'warn', unknown: 'warn', out_of_scope: 'warn', enforce: 'ok' };
+  const OUTCOME_TONE = { blocked: 'bad', bypassed: 'bad', blind: 'warn', monitor: 'warn', none: 'warn', unknown: 'warn', out_of_scope: 'warn', enforce: 'ok',
+    zpa_allowed: 'ok', zpa_denied: 'bad', zpa_conditional: 'warn' };
 
   function destText(d) {
     if (!d) return '';
@@ -91,7 +92,273 @@
     };
   }
 
-  // One term of an engine expression, as corpus_engines explains it:
+  // ── Traffic path: every step a Path analyzer result walks ─────────
+  // The device (or a workload) → Client Connector (or the Cloud or Branch
+  // Connector) → ZPA, which turns the traffic to the App Connectors and the
+  // private app when it carries it → the PAC file (evaluated, never run) →
+  // the Zero Trust Exchange → every ZIA module in order, SSL inspection
+  // where it decides what the later modules see → the destination. One
+  // node per step with its verdict, its deciding rule and the card it
+  // opens; `stop` is the step that decides, marked (block, drop, isolate,
+  // caution, bypass, or "not assessed"); a conditional step has a fork.
+  const TP_SHORT = { atp: 'Threat protection', firewall: 'Cloud Firewall', dns: 'DNS Control', cac: 'Cloud App Control', url: 'URL filtering',
+    ssl: 'SSL inspection', sandbox: 'Sandbox', ftc: 'File Type Control', dlp: 'Web DLP' };
+  const TP_WORD = {
+    allow: 'allows it', block: 'blocks it', caution: 'shows a caution page', isolate: 'isolates it', redirect: 'redirects it', inspect: 'inspects it',
+    decrypt: 'decrypts it', no_decrypt: 'leaves it encrypted', none: 'no rule applies', blind: 'cannot see it', skipped: 'skipped',
+    conditional: 'depends on conditions', unknown: 'unknown', not_applicable: 'not applicable', not_reached: 'not reached', out_of_scope: 'not in scope',
+    matched: 'matches', not_matched: 'no match', intercepted: 'intercepts it', bypassed: 'bypasses', forwarded: 'forwards it', dropped: 'drops it', carried: 'carries it',
+  };
+  const TP_NET = { off: 'off network', on: 'trusted network', vpn: 'VPN' };
+  const TP_HOP = { pass: 'allow', warn: 'conditional', bypass: 'bypassed', blocked: 'block', unknown: 'unknown', out_of_scope: 'out_of_scope', na: 'not_applicable',
+    not_reached: 'not_reached', conditional: 'conditional', none: 'none', error: 'unknown' };
+  // The marker where the traffic stops, and its words.
+  const TP_MARK = { block: '■', drop: '✕', isolate: '▣', caution: '!', bypass: '↷', unknown: '?' };
+  const TP_MARK_WORD = { block: 'blocked', drop: 'dropped', isolate: 'isolated', caution: 'caution', bypass: 'bypassed', unknown: 'not assessed' };
+  function tpTone(v) {
+    if (v === 'block' || v === 'dropped') return 'stop';
+    if (['isolate', 'caution', 'redirect', 'conditional', 'unknown', 'no_decrypt', 'blind', 'bypassed'].indexOf(v) >= 0) return 'warn';
+    if (['allow', 'inspect', 'decrypt', 'matched', 'forwarded', 'intercepted', 'carried'].indexOf(v) >= 0) return 'pass';
+    if (v === 'not_reached') return 'after';
+    if (v === 'not_applicable' || v === 'out_of_scope' || v === 'skipped') return 'na';
+    return 'idle';
+  }
+  function tpNode(key, label, verdict, extra) {
+    const x = extra || {};
+    const word = x.word || TP_WORD[verdict] || String(verdict || '').replace(/_/g, ' ');
+    return { key, label, verdict: verdict || 'unknown', tone: x.tone || tpTone(verdict), word, rule: x.rule || '', sub: clip(x.sub || x.rule || word, 32),
+      note: clip(x.note || '', 280), anchor: x.anchor || null, mark: x.mark || null, fork: x.fork || null, lane: x.lane || 'main' };
+  }
+  const tpRule = m => (m && m.rule && m.rule.name) || '';
+  const tpNote = m => (m ? String(m.detail || (m.notes || [])[0] || '') : '');
+  // "TCP/443 (HTTPS (web))": what the ZIA modules traced, else the port.
+  function tpTraffic(res, z) {
+    if (z && z.traffic && z.traffic.label) return String(z.traffic.label);
+    const vt = res.verdict && res.verdict.traffic;
+    if (vt && vt.label) return String(vt.label);
+    const d = res.destination || {};
+    const port = d.port || (d.scheme === 'http' ? 80 : 443);
+    return `${String(d.protocol || 'tcp').toUpperCase()}/${port}`;
+  }
+  const TP_REFERENCE = [
+    ['device', 'Device', 'the user starts it'], ['zcc', 'Client Connector', 'app and forwarding profile'], ['zpa', 'ZPA', 'private apps turn here'],
+    ['pac', 'PAC file', 'evaluated, never run'], ['zte', 'Zero Trust Exchange', 'ZIA receives it'], ['atp', 'Threat protection', 'threat categories'],
+    ['firewall', 'Cloud Firewall', 'every port and protocol'], ['dns', 'DNS Control', 'the name lookup'], ['cac', 'Cloud App Control', 'the cloud app'],
+    ['url', 'URL filtering', 'the URL category'], ['ssl', 'SSL inspection', 'decides what is seen'], ['sandbox', 'Sandbox', 'unknown files'],
+    ['ftc', 'File Type Control', 'the file type'], ['dlp', 'Web DLP', 'the content'], ['dest', 'Destination', 'the internet'],
+  ];
+  function tpReference() {
+    const nodes = TP_REFERENCE.map(r => tpNode(r[0], r[1], 'none', { sub: r[2], word: r[2], tone: 'idle' }));
+    return { mode: 'reference', nodes, stop: -1, dest: '', traffic: 'Any traffic', identity: '', source: 'device', verdict: { tone: '', outcome: '', text: '' },
+      summary: ['The reference path, idling: no destination analyzed yet. Traffic leaves the device through Client Connector; ZPA takes private applications to the App Connectors; the PAC file (evaluated, never run) and the forwarding profile send the rest to the Zero Trust Exchange, where every ZIA module applies in order: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control, URL filtering, SSL inspection (which decides what the later modules see), Sandbox, File Type Control and Web DLP, then the destination.'] };
+  }
+
+  // Path analyzer result → {mode, nodes, stop, traffic, identity, verdict, summary}.
+  function trafficPathModel(res) {
+    if (!res || !(res.trace || res.modules || res.zia_modules)) return tpReference();
+    const mods = Array.isArray(res.modules) ? res.modules.filter(m => m && typeof m === 'object') : [];
+    const z = res.zia_modules && Array.isArray(res.zia_modules.modules) ? res.zia_modules : null;
+    const t = res.trace || {}, v = res.verdict || {};
+    const hops = Array.isArray(t.hops) ? t.hops.filter(Boolean) : [];
+    const mod = k => mods.filter(m => m.key === k)[0] || null;
+    const hop = k => hops.filter(h => h.key === k)[0] || null;
+    const workload = res.source === 'workload';
+    const outcome = String(v.outcome || t.outcome || '');
+    const ziaApplies = res.zia_applies !== false;
+    const zm = mods.filter(m => m.key === 'zpa' || String(m.key || '').indexOf('zpa_') === 0);
+    // ZPA carries it only when the result is ZPA's own (a zpa_* outcome).
+    const zpaCarries = /^zpa_/.test(outcome) && zm.length > 0;
+    const nodes = [];
+    // 1. Where it starts.
+    if (workload) {
+      const wg = mod('workload_groups');
+      nodes.push(tpNode('workload', 'Workload', 'allow', { tone: 'pass', word: 'starts it', anchor: { module: 'workload_groups', hop: 'workload' },
+        sub: !wg ? 'source' : wg.verdict === 'matched' ? 'in a workload group' : wg.verdict === 'not_matched' ? 'in no workload group' : 'group unknown', note: tpNote(wg) }));
+    } else {
+      nodes.push(tpNode('device', 'Device', 'allow', { tone: 'pass', word: 'starts it', anchor: { id: 'paHeadline' }, sub: [res.platform || t.platform, TP_NET[res.network || t.network] || ''].filter(Boolean).join(' · '),
+        note: 'The user\'s device starts the transaction.' }));
+    }
+    // 2. What forwards it.
+    if (workload) {
+      const cf = mod('connector_forwarding'), vv = cf ? cf.verdict : 'unknown';
+      nodes.push(tpNode('connector', 'Cloud or Branch Connector', vv, { rule: tpRule(cf), note: (cf && (cf.notes || [])[0]) || tpNote(cf), anchor: { module: 'connector_forwarding', hop: 'connector' },
+        mark: vv === 'dropped' ? 'drop' : vv === 'bypassed' ? 'bypass' : null, fork: vv === 'conditional' ? { text: 'an earlier rule may send it elsewhere' } : null }));
+    } else {
+      const zh = hop('zcc'), fh = hop('forwarding'), st = [zh && zh.status, fh && fh.status];
+      let vv, weak = false;
+      if (st.indexOf('bypass') >= 0) vv = 'bypassed';
+      else if (st.indexOf('blocked') >= 0) vv = 'block';
+      else if (!zh && !fh) vv = zpaCarries ? 'intercepted' : 'out_of_scope';
+      else if (st.every(s => !s || s === 'out_of_scope')) vv = 'out_of_scope';
+      else if (st.indexOf('unknown') >= 0) vv = 'unknown';
+      else if (st.indexOf('conditional') >= 0) vv = 'conditional';
+      else { vv = 'intercepted'; weak = st.indexOf('warn') >= 0; }
+      const by = (fh && fh.decided_by && fh.decided_by.name) || (zh && zh.decided_by && zh.decided_by.name) || '';
+      nodes.push(tpNode('zcc', 'Client Connector', vv, { rule: by, sub: !zh && !fh && zpaCarries ? 'sends it to ZPA' : '', anchor: { hop: 'zcc' },
+        tone: weak ? 'warn' : undefined, word: weak ? 'intercepts it, with a weak point' : undefined,
+        note: [zh && zh.detail, fh && fh.detail].filter(Boolean).join(' ') || (vv === 'out_of_scope' ? 'Client Connector is not in scope on the Scope page; reaching Zscaler is assumed.' : ''),
+        mark: vv === 'bypassed' ? 'bypass' : vv === 'block' ? 'block' : null, fork: vv === 'conditional' ? { text: 'depends on the device' } : null }));
+    }
+    // Where it goes after that: ZPA, ZIA, nowhere (sent direct or dropped
+    // by the connector), or a part not assessed (not in scope).
+    const connVerdict = workload ? nodes[1].verdict : '';
+    let route = 'zia';
+    if (zpaCarries) route = 'zpa';
+    else if (ziaApplies) route = 'zia';
+    else if (workload && (connVerdict === 'bypassed' || connVerdict === 'dropped')) route = 'none';
+    else if (workload && !zm.length && hop('zpa_segment')) route = 'zpa_unassessed';
+    else route = 'zia_unassessed';
+    // 3. ZPA: first for a device; for a workload when the connector sends it there.
+    if (zm.length || !workload || route === 'zpa_unassessed') {
+      const seg = mod('zpa_segment'), acc = mod('zpa_access'), whole = mod('zpa');
+      const cond = zm.some(m => m.verdict === 'conditional');
+      const x = { anchor: { module: acc && acc.verdict !== 'not_reached' && (zpaCarries || cond) ? 'zpa_access' : seg ? 'zpa_segment' : 'zpa', hop: 'zpa_segment' } };
+      let vv;
+      if (!zm.length) {
+        vv = 'out_of_scope';
+        x.note = 'ZPA is not in scope on the Scope page, so whether ZPA carries this destination was not assessed.';
+        if (route === 'zpa_unassessed') { x.mark = 'unknown'; x.note = String(v.headline || x.note); }
+      } else if (whole) {
+        vv = whole.verdict; x.note = tpNote(whole);
+        if (route === 'zpa_unassessed') x.mark = 'unknown';
+      } else if (zpaCarries) {
+        x.note = String(v.headline || tpNote(acc));
+        if (outcome === 'zpa_denied') { vv = 'block'; x.mark = 'block'; x.rule = tpRule(acc) || 'default deny'; }
+        else if (outcome === 'out_of_scope' || outcome === 'not_read') { vv = 'unknown'; x.mark = 'unknown'; }
+        else {
+          vv = cond ? 'conditional' : 'carried'; x.rule = tpRule(acc); x.word = cond ? 'carries it; access depends on conditions' : 'carries it';
+          if (cond) x.fork = { text: 'access may be denied' };
+        }
+        x.sub = x.rule || tpRule(seg);
+      } else if (cond) {
+        vv = 'conditional'; x.fork = { text: 'may carry it to the app' }; x.word = 'may carry it'; x.sub = tpRule(seg);
+        x.note = zm.filter(m => m.verdict === 'conditional').map(tpNote).filter(Boolean).join(' ');
+      } else {
+        const none = !seg || seg.verdict === 'not_matched';
+        vv = none ? 'not_matched' : 'bypassed'; x.tone = 'idle';
+        x.word = none ? 'does not carry it: no segment matches' : 'does not carry it: it goes outside ZPA';
+        x.sub = none ? 'no segment matches' : 'goes outside ZPA';
+        x.note = zm.map(tpNote).filter(Boolean).slice(0, 2).join(' ');
+      }
+      nodes.push(tpNode('zpa', 'ZPA', vv, x));
+    }
+    const dest = destText(res.destination) || destText(t.destination);
+    if (route === 'zpa') {
+      // ZPA carries it: the traffic turns to the App Connectors and the app.
+      const conn = mod('zpa_connectors'), zp = nodes[nodes.length - 1];
+      if (!zp.mark) {
+        if (!zp.fork) zp.fork = { text: 'ZIA path not taken', ghost: true };
+        if (conn) nodes.push(tpNode('zpa_connectors', 'App Connectors', conn.verdict, { lane: 'zpa', anchor: { module: 'zpa_connectors', hop: 'zpa_connectors' },
+          sub: conn.verdict === 'block' ? 'none connected' : conn.verdict === 'allow' ? 'connected' : 'unknown', word: conn.verdict === 'block' ? 'none is connected' : conn.verdict === 'allow' ? 'connected' : 'unknown',
+          note: (conn.notes || []).join(' '), mark: conn.verdict === 'block' ? 'block' : null }));
+      }
+      nodes.push(tpNode('dest', 'Private app', 'allow', { lane: 'zpa', sub: dest, word: 'reached through ZPA', note: 'ZPA carries the traffic to the application: ZIA does not apply.' }));
+    } else if (route === 'none' || route === 'zpa_unassessed') {
+      nodes.push(tpNode('dest', 'Destination', 'allow', { sub: dest, word: 'reached', note: String(v.headline || '') }));
+    } else {
+      // 4. The PAC file (a device's browser traffic).
+      if (!workload) {
+        const pm = mod('pac'), ph = hop('pac');
+        const vv = pm ? pm.verdict : ph ? (TP_HOP[ph.status] || 'unknown') : 'not_applicable';
+        nodes.push(tpNode('pac', 'PAC file', vv, { rule: tpRule(pm), anchor: { module: 'pac', hop: 'pac' }, note: (ph && ph.detail) || tpNote(pm) || 'No PAC file is on this path.',
+          word: vv === 'forwarded' ? 'sends it to Zscaler' : vv === 'bypassed' ? 'returns DIRECT: around Zscaler' : vv === 'not_applicable' ? 'not used' : undefined,
+          mark: vv === 'bypassed' ? 'bypass' : null, fork: vv === 'conditional' ? { text: 'may go direct' } : null }));
+      }
+      // 5. The Zero Trust Exchange and every ZIA module in order.
+      if (route === 'zia_unassessed') {
+        nodes.push(tpNode('zte', 'Zero Trust Exchange', 'out_of_scope', { sub: 'ZIA not assessed', word: 'receives it; ZIA policy is not assessed', note: String(v.headline || ''), mark: 'unknown' }));
+      } else if (!z) {
+        // A result without the module list (older, or a sample): the
+        // trace's own ZIA hops, in their order.
+        nodes.push(tpNode('zte', 'Zero Trust Exchange', 'forwarded', { sub: 'ZIA receives it', word: 'receives it' }));
+        hops.filter(h => TP_SHORT[h.key]).forEach(h => {
+          const vv = TP_HOP[h.status] || 'unknown';
+          nodes.push(tpNode(h.key, TP_SHORT[h.key], vv, { rule: (h.decided_by && h.decided_by.name) || '', note: h.detail || '', anchor: { hop: h.key },
+            mark: vv === 'block' ? 'block' : null, fork: vv === 'conditional' ? { text: 'depends on conditions' } : null }));
+        });
+      } else {
+        nodes.push(tpNode('zte', 'Zero Trust Exchange', 'forwarded', { sub: 'ZIA receives it', word: 'receives it', anchor: { id: 'pmZiaH' },
+          note: 'ZIA\'s modules apply in order; SSL inspection decides what the later ones can see.' }));
+        const list = z.modules.filter(m => m && typeof m === 'object').slice();
+        if (z.modifier && typeof z.modifier === 'object') {
+          let at = -1;
+          list.forEach((m, i) => { if (at < 0 && ['sandbox', 'ftc', 'dlp'].indexOf(m.key) >= 0) at = i; });
+          list.splice(at < 0 ? list.length : at, 0, Object.assign({}, z.modifier, { key: z.modifier.key || 'ssl' }));
+        }
+        list.forEach(m => {
+          const vv = m.verdict, definite = m.certainty !== 'conditional';
+          let mark = null, fork = null;
+          if (z.stops_at && m.key === z.stops_at) mark = 'block';
+          else if ((vv === 'isolate' || vv === 'caution') && definite) mark = vv;
+          if (!mark && (!definite || vv === 'conditional')) fork = { text: vv === 'block' ? 'may block' : vv === 'isolate' ? 'may isolate' : vv === 'caution' ? 'may caution' : 'depends on conditions' };
+          nodes.push(tpNode(m.key, TP_SHORT[m.key] || m.module || m.key, vv, { rule: tpRule(m), note: tpNote(m), anchor: { module: m.key, hop: m.key }, mark, fork,
+            tone: fork && vv === 'block' ? 'warn' : undefined, word: fork && vv === 'block' ? 'may block it' : undefined }));
+        });
+      }
+      nodes.push(tpNode('dest', 'Destination', 'allow', { sub: dest, word: 'reached', note: String(v.headline || '') }));
+    }
+    // Where it stops; nothing after it is reached (bypassed traffic still
+    // reaches the destination, around Zscaler; a part not assessed leaves
+    // the end open).
+    let stop = -1;
+    nodes.forEach((n, i) => { if (stop < 0 && n.mark) stop = i; });
+    const last = nodes[nodes.length - 1];
+    if (stop >= 0) {
+      const m = nodes[stop].mark;
+      for (let i = stop + 1; i < nodes.length - 1; i++) Object.assign(nodes[i], { tone: 'after', word: 'not reached', sub: 'not reached', rule: '', fork: null });
+      if (m === 'bypass') Object.assign(last, { tone: 'warn', word: 'reached around Zscaler, not inspected' });
+      else if (m === 'unknown') Object.assign(last, { tone: 'warn', word: 'not established' });
+      else Object.assign(last, { tone: 'after', word: 'never reached' });
+    } else if (v.certainty === 'conditional' || nodes.some(n => n.fork && !n.fork.ghost)) {
+      Object.assign(last, { tone: 'warn', word: 'reached, unless a condition changes it' });
+    }
+    const traffic = tpTraffic(res, z);
+    const w = res.whatif;
+    const identity = w && w.identity_label ? String(w.identity_label) : '';
+    const from = workload ? 'a workload' : `a device (${[res.platform || t.platform, TP_NET[res.network || t.network] || ''].filter(Boolean).join(', ')})`;
+    const summary = [`${traffic} from ${from} to ${dest || 'the destination'}${identity ? `, evaluated for ${identity} (what-if)` : ', for any user'}.`];
+    nodes.forEach((n, i) => summary.push(`${i + 1}. ${n.label}: ${n.word}${n.rule ? ` (rule ${n.rule})` : ''}${i === stop ? `; ${TP_MARK_WORD[n.mark]} here` : ''}${n.fork && n.word.indexOf(n.fork.text) < 0 ? `; ${n.fork.text}` : ''}.${n.note ? ' ' + n.note : ''}`));
+    if (v.headline) summary.push(`Verdict: ${v.headline}`);
+    // What-if: the identity evaluated and the conditions the action still depends on.
+    const deps = (w && Array.isArray(w.depends_on) ? w.depends_on : []).filter(d => d && typeof d === 'object');
+    const depends = deps.slice(0, 5).map(d => `${d.section || d.module || 'A rule'}: rule ${(d.rule && d.rule.name) || 'unnamed'} would give ${d.action || d.verdict || 'another action'}${d.otherwise ? `, otherwise ${d.otherwise}` : ''}`);
+    if (depends.length) summary.push(`Policy action also depends on: ${depends.join('; ')}${deps.length > 5 ? `; and ${deps.length - 5} more` : ''}.`);
+    const whatif = { identity, depends, more: Math.max(0, deps.length - 5), counts: (w && w.counts) || null, empty: (w && w.empty_reason) || '' };
+    return { mode: 'result', nodes, stop, dest, traffic, identity, whatif, source: workload ? 'workload' : 'device',
+      verdict: { tone: OUTCOME_TONE[outcome] || (stop >= 0 ? 'bad' : 'warn'), outcome, text: [v.headline, v.summary].filter(Boolean).join(' ') || outcome }, summary };
+  }
+
+  // ── Test a list: where every row was decided ─────────────────────
+  // The job's tally (bulk_test: {done, total, phase, results: {result: n},
+  // at: {area: {result: n}}}) → one box per deciding place with its count.
+  const LF_AREAS = [['client_connector', 'Client Connector'], ['zpa', 'ZPA'], ['atp', 'Threat protection'], ['firewall', 'Cloud Firewall'],
+    ['dns', 'DNS Control'], ['cloud_app', 'Cloud App Control'], ['url', 'URL filtering']];
+  const LF_DECIDING = ['blocked', 'bypassed', 'isolated', 'caution'];
+  const LF_RESULTS = ['blocked', 'allowed', 'bypassed', 'isolated', 'caution', 'unverified'];
+  function listFlowModel(p) {
+    const at = (p && p.at && typeof p.at === 'object') ? p.at : {};
+    const num = x => (typeof x === 'number' && isFinite(x) && x > 0 ? Math.floor(x) : 0);
+    const cnt = (a, r) => num((at[a] || {})[r]);
+    const words = (a, rs) => rs.filter(r => cnt(a, r)).map(r => `${cnt(a, r)} ${r}`).join(', ');
+    const boxes = LF_AREAS.map(([key, label]) => {
+      const rs = key === 'zpa' ? LF_RESULTS : LF_DECIDING;
+      const n = rs.reduce((s, r) => s + cnt(key, r), 0);
+      return { key, label, n, kinds: rs.filter(r => cnt(key, r)), word: words(key, rs) || (key === 'zpa' ? 'none carried' : 'none decided here') };
+    });
+    let allowed = 0, unverified = 0;
+    Object.keys(at).forEach(a => {
+      if (a === 'zpa') return;
+      allowed += cnt(a, 'allowed');
+      unverified += cnt(a, 'unverified');
+      if (LF_AREAS.every(x => x[0] !== a)) unverified += LF_DECIDING.reduce((s, r) => s + cnt(a, r), 0);
+    });
+    boxes.push({ key: 'dest', label: 'Destination', n: allowed, word: `${allowed} allowed`, end: true });
+    boxes.push({ key: 'unverified', label: 'Unverified', n: unverified, word: `${unverified} unverified`, end: true });
+    const r = (p && p.results) || {};
+    const totals = { zpa: boxes[1].n };
+    LF_RESULTS.forEach(k => { totals[k] = num(r[k]); });
+    return { boxes, totals, done: num(p && p.done), total: num(p && p.total), phase: String((p && p.phase) || '') };
+  }
   //   "D63.S > 1: 3 → true", "Sum(D1.S + D2.S) > 6: 7 → true",
   //   "D9.S > 0: unknown (not simulated)".
   const TERM_RE = /^\s*(?:Sum\(([^)]*)\)|D(\d+)\.S)\s*(>=|<=|!=|==|>|<|=)\s*(\d+)\s*:\s*(.*)$/;
@@ -777,6 +1044,343 @@
     return { play, step() { if (i >= n - 1) reset(); return stepOnce(); }, reset, destroy() { gen++; clock.destroy(); host.innerHTML = ''; } };
   }
 
+  // ── Traffic path player ──────────────────────────────────────────
+  // model: trafficPathModel(). Packets travel the path node by node, each
+  // box lights up with its verdict as a packet lands, and they stop at the
+  // marked step. opts: loop (keep packets flowing once the path is drawn:
+  // the live view), stepper (Back, Next, Restart and a speed: the replay),
+  // onSelect(node) when a box is clicked or Enter is pressed on it. The
+  // picture lays itself out for the width it has (one column on a phone),
+  // so the page never scrolls sideways. Motion follows prefers-reduced-
+  // motion (the final picture, with Play motion to start it anyway) and
+  // stops while the tab is hidden; the steps are listed in words under it.
+  let tpSeq = 0;
+  function trafficPath(host, model, opts) {
+    const o = opts || {};
+    const id = 'tp' + (++tpSeq);
+    const n = model.nodes.length, end = model.stop >= 0 ? model.stop : n - 1;
+    const ref = model.mode === 'reference';
+    const chips = [`<span class="tp-chip"><span class="k">Traffic</span> ${E(model.traffic)}</span>`];
+    if (model.identity) chips.push(`<span class="tp-chip"><span class="k">What-if</span> ${E(model.identity)}</span>`);
+    if (model.dest) chips.push(`<span class="tp-chip"><span class="k">To</span> ${E(model.dest)}</span>`);
+    host.innerHTML = `<div class="tp-head">${chips.join('')}<span class="sep"></span>
+        ${o.stepper ? '<button type="button" class="rp-btn tp-back">Back</button>' : ''}
+        <button type="button" class="rp-btn tp-play" aria-controls="${id}-stage">Pause motion</button>
+        ${o.stepper ? `<button type="button" class="rp-btn tp-next">Next</button><button type="button" class="rp-btn tp-restart">Restart</button>
+        <label class="df-ctl tp-speed"><span class="lbl">Speed</span><select class="tp-speed-sel" aria-label="Animation speed"><option value="0.5">Slow</option><option value="1" selected>Normal</option><option value="2">Fast</option></select></label>` : ''}
+      </div>
+      <div class="tp-stage" id="${id}-stage"></div>
+      <p class="df-hint tp-note" id="${id}-note" aria-live="polite"></p>
+      <details class="tp-alt"${o.openSteps ? ' open' : ''}><summary>${ref ? 'The reference path in words' : `The path in words (${n} steps)`}</summary>
+        <ol class="tp-steps" id="${id}-steps">${model.summary.slice(1, n + 1).length === n ? model.summary.slice(1, n + 1).map(s => `<li>${E(s.replace(/^\d+\.\s*/, ''))}</li>`).join('') : model.nodes.map(x => `<li>${E(x.label)}: ${E(x.word)}</li>`).join('')}</ol>
+        ${model.summary.length ? `<p class="df-hint">${E(ref ? model.summary[0] : [model.summary[0]].concat(model.summary.slice(n + 1)).join(' '))}</p>` : ''}
+      </details>`;
+    const stageEl = host.querySelector('.tp-stage'), noteEl = host.querySelector('.tp-note'), stepsEl = host.querySelector('.tp-steps');
+    const btn = host.querySelector('.tp-play');
+    const clock = animator();
+    let svg = null, boxes = [], edges = [], lens = [], tags = [], forks = [], dotsG = null, per = 0;
+    let pos = ref ? end : 0, playing = false, chosen = null, speed = 1, gen = 0, frames = 0, packets = [], acc = 0, lastT = 0, streamOff = null, ro = null, dead = false;
+    const want = () => (chosen != null ? chosen : !reduced());
+    const dur = ms => ms / speed;
+    function tick() { frames++; host.setAttribute('data-tp-frames', String(frames)); }
+
+    // Layout: as many boxes a row as fit, rows snaking; one column on a phone.
+    function build() {
+      const avail = Math.max(260, Math.min(1200, Math.floor(stageEl.clientWidth || host.clientWidth || 1000)));
+      const M = 18, GAP = 34, BH = 46, ROWH = BH + 48, TOP = 16;
+      let p = Math.max(1, Math.floor((avail - 2 * M + GAP) / (150 + GAP)));
+      p = Math.min(p, n);
+      if (svg && p === per) return;
+      per = p;
+      const W = per === 1 ? avail : Math.max(avail, 2 * M + per * 150 + (per - 1) * GAP);
+      const bw = per === 1 ? Math.min(W - 2 * M, 320) : Math.floor((W - 2 * M - (per - 1) * GAP) / per);
+      const rows = Math.ceil(n / per);
+      stageEl.innerHTML = '';
+      svg = newSvg(stageEl, W, rows * ROWH + TOP, ref ? 'The reference path, idling' : `The path of ${model.traffic} to ${model.dest || 'the destination'}`);
+      svg.setAttribute('role', 'group'); svg.setAttribute('class', 'fa-svg tp-svg'); svg.setAttribute('aria-describedby', id + '-steps');
+      svg.removeAttribute('tabindex');
+      const at = model.nodes.map((x, i) => {
+        const r = Math.floor(i / per), c = i % per, col = r % 2 ? per - 1 - c : c;
+        return { x: M + col * (bw + GAP), y: TOP + r * ROWH, w: bw, h: BH, r, col };
+      });
+      const edgesG = svgEl('g', { class: 'tp-edges' }, svg);
+      edges = []; lens = [];
+      for (let i = 0; i < n - 1; i++) {
+        const a = at[i], b = at[i + 1], ya = a.y + BH / 2, yb = b.y + BH / 2;
+        let d;
+        if (per === 1) d = `M${a.x + 24} ${a.y + BH} L${b.x + 24} ${b.y}`;
+        else if (a.r === b.r) d = a.r % 2 === 0 ? `M${a.x + bw} ${ya} L${b.x} ${yb}` : `M${a.x} ${ya} L${b.x + bw} ${yb}`;
+        else if (a.col === per - 1) d = `M${a.x + bw} ${ya} H${a.x + bw + 12} V${yb} H${b.x + bw}`;
+        else d = `M${a.x} ${ya} H${a.x - 12} V${yb} H${b.x}`;
+        const e = svgEl('path', { d, class: 'fa-edge' }, edgesG);
+        edges.push(e);
+        lens.push(e.getTotalLength ? e.getTotalLength() : 1);
+      }
+      forks = []; tags = [];
+      boxes = model.nodes.map((x, i) => {
+        const p0 = at[i];
+        const b = box(svg, p0.x, p0.y, bw, BH, x.label, x.sub);
+        if (x.fork) {
+          const fx = p0.x + bw - 28, f = svgEl('g', { class: 'tp-fork' + (x.fork.ghost ? ' ghost' : '') }, svg);
+          svgEl('path', { d: `M${fx} ${p0.y + BH} q2 10 12 14`, class: 'tp-fork-l' }, f);
+          const ft = svgEl('text', { x: p0.x + bw, y: p0.y + BH + 27, 'text-anchor': 'end', class: 'tp-fork-t' }, f);
+          ft.textContent = clip(x.fork.text, Math.floor((bw - 4) / 5.6));
+          forks[i] = f;
+        }
+        if (x.mark) {
+          const g = svgEl('g', { class: 'tp-tag mk-' + x.mark }, svg);
+          const tt = svgEl('text', { x: p0.x + bw - 2, y: p0.y - 4, 'text-anchor': 'end' }, g);
+          tt.textContent = `${TP_MARK[x.mark]} ${TP_MARK_WORD[x.mark]}`;
+          tags[i] = g;
+        }
+        if (o.onSelect && !ref) {
+          b.g.setAttribute('tabindex', '0'); b.g.setAttribute('role', 'button');
+          b.g.setAttribute('aria-label', `${i + 1}. ${x.label}: ${x.word}${x.rule ? `, rule ${x.rule}` : ''}${x.mark && i === model.stop ? `, ${TP_MARK_WORD[x.mark]} here` : ''}. Opens its card.`);
+          b.g.addEventListener('click', () => o.onSelect(x, i));
+          b.g.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); o.onSelect(x, i); } });
+        }
+        if (x.lane === 'zpa') b.g.classList.add('tp-zpa');
+        return b;
+      });
+      dotsG = svgEl('g', { class: 'tp-dots' }, svg);
+      packets = [];
+      paint();
+    }
+    // The picture for `pos`: what has been reached shows its verdict.
+    function paint() {
+      boxes.forEach((b, i) => {
+        const x = model.nodes[i];
+        const shown = ref || i <= pos || (pos >= end && i > end);
+        b.set(['tp-box', ref ? 'idle' : shown ? x.tone : 'pend', i === pos && !ref && playing && pos < end ? 'on' : ''].filter(Boolean).join(' '));
+        if (x.lane === 'zpa') b.g.classList.add('tp-zpa');
+        if (tags[i]) tags[i].setAttribute('display', pos >= i ? 'inline' : 'none');
+        if (forks[i]) forks[i].setAttribute('display', ref || pos >= i ? 'inline' : 'none');
+      });
+      edges.forEach((e, i) => e.setAttribute('class', 'fa-edge' + (ref ? '' : i < pos ? ' lit' : (pos >= end && i >= end && model.stop >= 0 && model.nodes[model.stop].mark !== 'unknown') ? ' dead' : '')));
+      Array.prototype.forEach.call(stepsEl.children, (li, i) => li.classList.toggle('cur', !ref && i === pos));
+    }
+    function say(i) {
+      const x = model.nodes[i];
+      noteEl.textContent = `Step ${i + 1} of ${n}: ${x.label}, ${x.word}${x.rule ? ` (rule ${x.rule})` : ''}.${i === model.stop ? ` ${TP_MARK_WORD[x.mark][0].toUpperCase()}${TP_MARK_WORD[x.mark].slice(1)} here.` : ''}${x.note ? ' ' + x.note : ''}`;
+    }
+    function setBtn() { btn.textContent = playing ? 'Pause motion' : 'Play motion'; }
+    const CALM = 'Motion is off because your system asks for reduced motion: the picture shows where the traffic goes and where it stops. Play motion starts it anyway.';
+    // One dot along edge i; resolves when it lands.
+    function flyEdge(i, ms, cls) {
+      return new Promise(done => {
+        const e = edges[i];
+        if (!want() || !e || !e.getTotalLength) { done(); return; }
+        const dot = svgEl('circle', { r: 5, class: 'fa-dot tp-pkt' + (cls ? ' ' + cls : '') }, dotsG);
+        let t0 = null;
+        const stop = clock.add(now => {
+          tick();
+          if (t0 === null) t0 = now;
+          const k = Math.min(1, (now - t0) / ms), q = e.getPointAtLength(lens[i] * k);
+          dot.setAttribute('cx', q.x); dot.setAttribute('cy', q.y);
+          if (k >= 1) { stop(); dot.remove(); done(); }
+        });
+      });
+    }
+    // A pause on the animation clock (so it stops while the tab is hidden).
+    function clockWait(ms) {
+      return new Promise(done => {
+        if (!want()) { done(); return; }
+        let t0 = null;
+        const off = clock.add(now => { tick(); if (t0 === null) t0 = now; if (now - t0 >= ms) { off(); done(); } });
+      });
+    }
+    // The live stream once the path is drawn: a packet every 1.5 s runs
+    // to the stop and pops there with the stop's tone.
+    function streamTick(now) {
+      tick();
+      const dt = lastT ? Math.min(50, now - lastT) : 16; lastT = now;
+      acc += dt * speed;
+      if (acc >= 1500 && packets.length < 8 && end > 0) {
+        acc = 0;
+        packets.push({ seg: 0, k: 0, el: svgEl('circle', { r: 4.5, class: 'fa-dot tp-pkt' + (model.stop >= 0 ? ' mk-' + model.nodes[model.stop].mark : '') }, dotsG) });
+      }
+      packets = packets.filter(pk => {
+        pk.k += dt * speed / 520;
+        while (pk.k >= 1 && pk.seg < end) { pk.k -= 1; pk.seg++; }
+        if (pk.seg >= end) { pk.el.setAttribute('class', pk.el.getAttribute('class') + ' pop'); setTimeout(() => pk.el.remove(), 420); return false; }
+        const q = edges[pk.seg].getPointAtLength(lens[pk.seg] * pk.k);
+        pk.el.setAttribute('cx', q.x.toFixed(1)); pk.el.setAttribute('cy', q.y.toFixed(1));
+        return true;
+      });
+    }
+    function startStream() { if (streamOff || dead || !want() || !o.loop) return; lastT = 0; acc = 1500; streamOff = clock.add(streamTick); }
+    function halt() {
+      gen++; playing = false;
+      if (streamOff) { streamOff(); streamOff = null; }
+      clock.clear();
+      if (dotsG) dotsG.innerHTML = '';
+      packets = [];
+    }
+    function finished() {
+      playing = !!(o.loop && want());
+      paint(); setBtn();
+      if (!ref) say(end);
+      if (o.onDone) o.onDone();
+      startStream();
+    }
+    async function play() {
+      if (dead) return;
+      halt(); playing = true; setBtn();
+      if (pos >= end && !o.loop) pos = 0;
+      const my = gen;
+      paint();
+      if (!want()) { pos = end; finished(); return; }
+      while (my === gen && pos < end) {
+        await flyEdge(pos, dur(560));
+        if (my !== gen) return;
+        pos++; paint();
+        if (o.onStep) o.onStep(model.nodes[pos], pos);
+        if (pos < end) await clockWait(dur(140));
+      }
+      if (my === gen) finished();
+    }
+    function pause() { halt(); paint(); setBtn(); }
+    function step(dir) {
+      halt();
+      const was = pos;
+      pos = Math.max(0, Math.min(end, pos + dir));
+      paint(); setBtn(); say(pos);
+      if (dir > 0 && pos > was) flyEdge(was, dur(420));
+    }
+    btn.addEventListener('click', () => { if (playing) { chosen = false; pause(); } else { chosen = true; play(); } });
+    if (o.stepper) {
+      host.querySelector('.tp-back').addEventListener('click', () => step(-1));
+      host.querySelector('.tp-next').addEventListener('click', () => step(1));
+      host.querySelector('.tp-restart').addEventListener('click', () => { halt(); pos = 0; paint(); play(); });
+      host.querySelector('.tp-speed-sel').addEventListener('change', ev => { speed = Number(ev.target.value) || 1; });
+    }
+    build();
+    if (root.ResizeObserver) {
+      let w = stageEl.clientWidth;
+      ro = new root.ResizeObserver(() => { if (Math.abs(stageEl.clientWidth - w) < 8) return; w = stageEl.clientWidth; const keep = playing; halt(); build(); if (keep) play(); });
+      ro.observe(stageEl);
+    }
+    if (ref) { playing = want(); setBtn(); paint(); if (playing) { acc = 1500; startStream(); } }
+    else if (want()) play();
+    else { pos = end; paint(); setBtn(); say(end); noteEl.textContent = CALM + ' ' + noteEl.textContent; }
+    if (ref && !want()) noteEl.textContent = CALM;
+    return {
+      play() { chosen = true; play(); }, pause() { chosen = false; pause(); }, step, playing: () => playing, frames: () => frames, pos: () => pos,
+      destroy() { dead = true; halt(); clock.destroy(); if (ro) ro.disconnect(); host.innerHTML = ''; host.removeAttribute('data-tp-frames'); },
+    };
+  }
+
+  // ── Test a list: rows streaming to the step that decides them ────
+  // update(tally) with the job's tally (listFlowModel): each box's count
+  // climbs to its new value and a few packets fly from the list to every
+  // box that gained rows. Reduced motion: the counts change at once.
+  function listFlow(host) {
+    host.innerHTML = `<div class="tp-head lf-head"><span class="tp-chip lf-tot" aria-hidden="true"></span><span class="sep"></span><button type="button" class="rp-btn lf-play">Pause motion</button></div>
+      <div class="tp-stage lf-stage"></div>
+      <ul class="lf-alt df-hint" aria-label="Where the rows were decided"></ul>`;
+    const stageEl = host.querySelector('.lf-stage'), alt = host.querySelector('.lf-alt'), tot = host.querySelector('.lf-tot'), btn = host.querySelector('.lf-play');
+    const clock = animator();
+    let chosen = null, frames = 0, svg = null, src = null, B = {}, P = {}, model = listFlowModel(null), shown = {}, dotsG = null, wide = null;
+    const want = () => (chosen != null ? chosen : !reduced());
+    model.boxes.forEach(b => { shown[b.key] = 0; });
+    function vcurve(a, b) {
+      const x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, m = (y1 + y2) / 2;
+      return svgEl('path', { d: `M${x1} ${y1} C${x1} ${m} ${x2} ${m} ${x2} ${y2}`, class: 'fa-edge' }, svg.querySelector('.lf-edges'));
+    }
+    function build() {
+      const avail = Math.max(260, Math.min(1100, Math.floor(stageEl.clientWidth || host.clientWidth || 1000)));
+      const isWide = avail >= 620;
+      if (svg && isWide === wide) return;
+      wide = isWide;
+      stageEl.innerHTML = '';
+      const list = model.boxes.filter(b => !b.end), ends = model.boxes.filter(b => b.end);
+      let W, H;
+      const pos = {};
+      if (wide) {
+        W = avail; H = list.length * 54 + 16;
+        const cx = Math.round(W / 2 - 95);
+        list.forEach((b, i) => { pos[b.key] = { x: cx, y: 8 + i * 54, w: 190, h: 44 }; });
+        ends.forEach((b, i) => { pos[b.key] = { x: W - 18 - 170, y: Math.round(H / 2 - 70 + i * 96), w: 170, h: 44 }; });
+        pos.src = { x: 18, y: Math.round(H / 2 - 22), w: 150, h: 44 };
+      } else {
+        W = avail;
+        const bw = Math.floor((W - 36 - 12) / 2), all = list.concat(ends);
+        H = 70 + Math.ceil(all.length / 2) * 54 + 8;
+        pos.src = { x: 18, y: 8, w: W - 36, h: 44 };
+        all.forEach((b, i) => { pos[b.key] = { x: 18 + (i % 2) * (bw + 12), y: 70 + Math.floor(i / 2) * 54, w: bw, h: 44 }; });
+      }
+      svg = newSvg(stageEl, W, H, 'The tested list, each row flowing to the step that decided it');
+      svg.setAttribute('role', 'img'); svg.setAttribute('class', 'fa-svg tp-svg'); svg.removeAttribute('tabindex');
+      svgEl('g', { class: 'lf-edges' }, svg);
+      src = box(svg, pos.src.x, pos.src.y, pos.src.w, pos.src.h, 'Your list', '');
+      P = {}; B = {};
+      model.boxes.forEach(b => {
+        P[b.key] = wide ? curve(svg.querySelector('.lf-edges'), pos.src, pos[b.key]) : vcurve(pos.src, pos[b.key]);
+        B[b.key] = box(svg, pos[b.key].x, pos[b.key].y, pos[b.key].w, pos[b.key].h, b.label, '');
+      });
+      dotsG = svgEl('g', { class: 'tp-dots' }, svg);
+      draw();
+    }
+    const TONE = { client_connector: 'warn', zpa: 'pass', dest: 'pass', unverified: 'warn' };
+    function draw() {
+      model.boxes.forEach(b => {
+        const v = Math.round(shown[b.key] || 0);
+        B[b.key].sub(b.key === 'dest' ? `${v} allowed` : b.key === 'unverified' ? `${v} unverified` : !v ? b.word : b.kinds.length === 1 ? `${v} ${b.kinds[0]}` : `${v} rows: ${b.word}`);
+        B[b.key].set(v ? (TONE[b.key] || 'stop') : '');
+        P[b.key].setAttribute('class', 'fa-edge' + (v ? ' lit' : ''));
+      });
+      const t = model.totals;
+      src.sub(model.total ? `${model.done.toLocaleString()} of ${model.total.toLocaleString()} rows` : 'waiting for rows');
+      tot.textContent = `${t.blocked} blocked · ${t.allowed} allowed · ${t.bypassed} bypassed · ${t.zpa} ZPA`;
+    }
+    function words() {
+      alt.innerHTML = `<li>${E(model.total ? `${model.done} of ${model.total} row(s) tested${model.phase === 'lookup' ? ' (looking up categories first)' : ''}.` : 'No row tested yet.')}</li>`
+        + model.boxes.map(b => `<li>${E(b.label)}: ${E(b.key === 'dest' || b.key === 'unverified' ? b.word : `${b.n} row(s)${b.n ? `: ${b.word}` : ''}`)}</li>`).join('');
+    }
+    let tween = null;
+    function update(p) {
+      if (!p) return;
+      const prev = {};
+      model.boxes.forEach(b => { prev[b.key] = b.n; });
+      model = listFlowModel(p);
+      words();
+      const from = Object.assign({}, shown), to = {};
+      model.boxes.forEach(b => { to[b.key] = b.n; });
+      if (!want() || root.document.hidden) { Object.assign(shown, to); draw(); return; }
+      model.boxes.forEach(b => {
+        const gain = b.n - (prev[b.key] || 0);
+        for (let k = 0; k < Math.min(gain, 5); k++) setTimeout(() => sendDot(b.key), k * 110);
+      });
+      if (tween) tween();
+      let t0 = null;
+      tween = clock.add(now => {
+        frames++; host.setAttribute('data-lf-frames', String(frames));
+        if (t0 === null) t0 = now;
+        const k = Math.min(1, (now - t0) / 900);
+        Object.keys(to).forEach(key => { shown[key] = from[key] + (to[key] - from[key]) * k; });
+        draw();
+        if (k >= 1 && tween) { tween(); tween = null; }
+      });
+    }
+    function sendDot(key) {
+      const e = P[key];
+      if (!e || !e.getTotalLength || !want()) return;
+      const L = e.getTotalLength(), dot = svgEl('circle', { r: 4, class: 'fa-dot small' + (key === 'dest' || key === 'zpa' ? '' : key === 'unverified' || key === 'client_connector' ? ' warn' : ' bad') }, dotsG);
+      let t0 = null;
+      const off = clock.add(now => {
+        frames++; host.setAttribute('data-lf-frames', String(frames));
+        if (t0 === null) t0 = now;
+        const k = Math.min(1, (now - t0) / 700), q = e.getPointAtLength(L * k);
+        dot.setAttribute('cx', q.x); dot.setAttribute('cy', q.y);
+        if (k >= 1) { off(); dot.remove(); }
+      });
+    }
+    function setBtn() { btn.textContent = want() ? 'Pause motion' : 'Play motion'; }
+    btn.addEventListener('click', () => { chosen = !want(); if (!want()) { clock.clear(); tween = null; if (dotsG) dotsG.innerHTML = ''; model.boxes.forEach(b => { shown[b.key] = b.n; }); draw(); } setBtn(); });
+    build(); words(); setBtn();
+    return { update, frames: () => frames, model: () => model, destroy() { clock.destroy(); host.innerHTML = ''; } };
+  }
+
   // ── Samples (labelled as such wherever they are shown) ───────────
   const SAMPLE = {
     path: {
@@ -796,6 +1400,33 @@
           { name: 'PHI – Block', action: 'BLOCK', enforcing: true, engines: ['PHI ENGINE'] }] },
       ] },
       verdict: { outcome: 'conditional', headline: 'Reference configuration for drive.google.com; no transaction observed.', summary: 'Three Web DLP rules see the content; whether they act depends on what is in it.' },
+    },
+    // A Path analyzer result in the module shape (ZPA, PAC, ZIA modules, what-if).
+    traffic: {
+      source: 'device', network: 'off', platform: 'windows', zia_applies: true,
+      destination: { input: 'files.example/upload', host: 'files.example', scheme: 'https', port: null },
+      trace: { hops: [
+        { key: 'zpa_segment', label: 'ZPA app segment', status: 'na', detail: 'No enabled ZPA application segment covers files.example:443/TCP, so ZPA does not carry it.' },
+        { key: 'zcc', label: 'Client Connector app profile', status: 'pass', decided_by: { name: 'Default app profile' }, detail: 'No bypass for this host.' },
+        { key: 'forwarding', label: 'Forwarding profile', status: 'pass', decided_by: { name: 'Remote workers' }, detail: 'Off network: Z-Tunnel 2.0.' },
+        { key: 'pac', label: 'PAC file', status: 'pass', decided_by: { name: 'corp.pac' }, detail: 'PAC \'corp.pac\' sends files.example to Zscaler.' }] },
+      modules: [
+        { key: 'zpa_segment', module: 'ZPA application segment', verdict: 'not_matched', rule: null, overlaps: [], could_override: [], criteria: [], notes: ['No enabled ZPA application segment covers files.example:443/TCP, so ZPA does not carry it.'], detail: '' },
+        { key: 'pac', module: 'PAC file', verdict: 'forwarded', rule: { name: 'corp.pac', order: null }, overlaps: [], could_override: [], criteria: [], notes: ['Evaluated, never run.'], detail: '' }],
+      zia_modules: {
+        traffic: { label: 'TCP/443 (HTTPS (web))', web: true }, stops_at: 'url', certainty: 'conditional', reasons: ['Cloud App Control: the deciding rule has a condition that cannot be evaluated.'],
+        modifier: { key: 'ssl', module: 'SSL inspection', verdict: 'decrypt', certainty: 'definite', rule: { name: 'Decrypt all', order: 1 }, criteria: [], notes: [], detail: 'Decrypted: the later modules see the content.' },
+        modules: [
+          { key: 'atp', module: 'Advanced Threat Protection', verdict: 'allow', certainty: 'definite', rule: null, criteria: [], notes: [], detail: 'No threat category or denylist entry matches.' },
+          { key: 'firewall', module: 'Cloud Firewall', verdict: 'allow', certainty: 'definite', rule: { name: 'Allow web', order: 3 }, criteria: [], notes: [], detail: '' },
+          { key: 'dns', module: 'DNS Control', verdict: 'allow', certainty: 'definite', rule: { name: 'Allow lookups', order: 2 }, criteria: [], notes: [], detail: '' },
+          { key: 'cac', module: 'Cloud App Control', verdict: 'block', certainty: 'conditional', rule: { name: 'Block uploads for interns', order: 1 }, criteria: [{ name: 'Group', state: 'unknown' }], notes: [], detail: 'Blocks uploads when the user is in the group Interns.' },
+          { key: 'url', module: 'URL filtering', verdict: 'block', certainty: 'definite', rule: { name: 'Block file sharing', order: 4 }, criteria: [{ name: 'URL category', state: 'match' }], notes: [], detail: 'The category File Sharing is blocked.' },
+          { key: 'sandbox', module: 'Sandbox', verdict: 'not_reached', certainty: 'definite', rule: null, criteria: [], notes: [], detail: 'Not reached: URL filtering ends the transaction first.' },
+          { key: 'ftc', module: 'File Type Control', verdict: 'not_reached', certainty: 'definite', rule: null, criteria: [], notes: [], detail: 'Not reached.' },
+          { key: 'dlp', module: 'Inline Web DLP', verdict: 'not_reached', certainty: 'definite', rule: null, criteria: [], notes: [], detail: 'Not reached.' }] },
+      verdict: { outcome: 'blocked', certainty: 'conditional', headline: 'Blocked by URL filtering rule \'Block file sharing\'.', summary: 'Reference configuration; no transaction observed.' },
+      whatif: { identity: { group: [{ name: 'Interns' }] }, identity_label: 'group Interns', depends_on: [] },
     },
     corpus: {
       corpus_length: 4210,
@@ -832,7 +1463,7 @@
 
   const FA = {
     pathModel, parseTerm, corpusModel, pathDrillModel, deployModel, liveModel, drillSummary, hopTone,
-    ARCH, SAMPLE, hopPlayer, drill, graph, live, steps, E,
+    trafficPathModel, listFlowModel, ARCH, SAMPLE, hopPlayer, drill, graph, live, steps, trafficPath, listFlow, E,
   };
   root.FA = FA;
   if (typeof module !== 'undefined' && module.exports) module.exports = FA;

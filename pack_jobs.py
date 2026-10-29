@@ -73,6 +73,9 @@ class Job:
     # far longer than any run takes, from one that is working.
     thread: Optional[threading.Thread] = None
     last_log_at: float = field(default_factory=time.time)
+    # What the run inside reports as it goes (progress()): counts only, for
+    # a page's live picture; every snapshot carries the latest.
+    progress: Optional[Dict[str, Any]] = None
     # Set when self_heal ended the job as stuck (abandon): its status stays
     # failed even if the thread finishes later.
     abandoned: Optional[str] = None
@@ -107,6 +110,17 @@ def note(**fields: Any) -> bool:
         return False
     with job.lock:
         job.audit.update({k: v for k, v in fields.items() if v is not None})
+    return True
+
+
+def progress(data: Dict[str, Any]) -> bool:
+    """Set the current job's progress (a small dict of counts the page
+    draws while the job runs). False when this thread runs no job."""
+    job = current()
+    if job is None:
+        return False
+    with job.lock:
+        job.progress = dict(data)
     return True
 
 
@@ -322,6 +336,8 @@ def snapshot(job: Job, since: int = 0) -> Dict[str, Any]:
             "job_id": job.id, "kind": job.kind, "label": job.label, "status": job.status,
             "elapsed_seconds": job.elapsed(), "logs": lines, "next": len(job.logs), "cancel_requested": job.cancel.is_set(),
         }
+        if job.progress is not None:
+            out["progress"] = dict(job.progress)
         rate_key, running = job.rate_key, job.status == RUNNING
     if running and rate_key is not None:
         # Paused for ZIA's rate limit: how long until it sends again, so the

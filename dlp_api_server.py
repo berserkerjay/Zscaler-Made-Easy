@@ -8693,7 +8693,8 @@ def _run_bulk_test(client, req: BulkTestRequest, parsed, snapshot, label: str, l
     if scope.get("source"):
         log(f"In scope, from {scope['source']}: {scope['summary']}" + (" ZPA." if zpa else ""))
     rn = bulk_test.run(client, parsed, scope=scope, network=req.network, platform=req.platform, snapshot=snapshot, tenant_label=label,
-                       lookup=req.lookup, max_lookup_requests=req.max_lookup_requests, log=log, cancel=cancel, zpa=zpa)
+                       lookup=req.lookup, max_lookup_requests=req.max_lookup_requests, log=log, cancel=cancel, zpa=zpa,
+                       progress=pack_jobs.progress)
     s = rn.summary
     cache = s.pop("snapshot_for_cache", None)
     zcache = s.pop("zpa_for_cache", None)

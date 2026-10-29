@@ -1346,17 +1346,44 @@ def _row_key(host: str, e: Dict[str, Any]) -> Tuple[Any, ...]:
             e.get("location"))
 
 
+# Where each row was decided, for the page's live flow (static/flow_anim.js
+# listFlowModel): counts only, never a destination, user or rule name.
+_FLOW_AREA = {v: k for k, v in AREA_KEYS.items()}
+FLOW_EVERY = 40   # a tally at most about this many times a run, plus the last
+
+
+def _flow_tally(total: int) -> Dict[str, Any]:
+    return {"done": 0, "total": total, "phase": "trace", "results": {}, "at": {}}
+
+
+def _flow_add(tally: Dict[str, Any], r: Dict[str, Any]) -> None:
+    """Count one row's answer: its result, and the area that decided it."""
+    res = r.get("result") if r.get("result") in RESULTS else "unverified"
+    tally["results"][res] = tally["results"].get(res, 0) + 1
+    at = tally["at"].setdefault(_FLOW_AREA.get(r.get("area") or "", "none"), {})
+    at[res] = at.get(res, 0) + 1
+
+
+def _flow_copy(tally: Dict[str, Any], **kw: Any) -> Dict[str, Any]:
+    out = {"done": tally["done"], "total": tally["total"], "phase": tally["phase"], "results": dict(tally["results"]),
+           "at": {k: dict(v) for k, v in tally["at"].items()}}
+    out.update(kw)
+    return out
+
+
 def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "off", platform: str = "windows",
         snapshot: Optional[Dict[str, Any]] = None, tenant_label: str = "", lookup: bool = True,
         max_lookup_requests: int = DEFAULT_LOOKUP_REQUESTS, log: LogFn = None, cancel: Any = None,
         sleep: Callable[[float], None] = time.sleep, evaluators: Optional[Sequence[Callable[..., Any]]] = None,
-        zpa: Optional[Dict[str, Any]] = None) -> Run:
+        zpa: Optional[Dict[str, Any]] = None, progress: Optional[Callable[[Dict[str, Any]], None]] = None) -> Run:
     """Test every row. Reads only what `scope` (data_flow.path_scope) puts
     in scope, once; the URL lookup only when it is in scope and `lookup`.
     `zpa` is ZPA in scope (see PathEvaluator: a kept read, an SDK client
     to read it with, or why it cannot be read); None when ZPA is not
     ticked. Stop ends it between rows: the rows tested are kept, the rest
-    are marked not tested. Nothing is written."""
+    are marked not tested. Nothing is written. `progress` (optional) gets
+    the running tally of where rows were decided (counts only) as rows are
+    traced; the last one is also the summary's `flow`."""
     from data_flow import NOTHING_IN_SCOPE, stop_on
     say = log or (lambda m: None)
     if not scope or not (scope.get("read") or zpa):
@@ -1371,6 +1398,9 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
            for f in (evaluators if evaluators is not None else EVALUATORS)]
     say(f"Testing {n:,} row(s) from {p.lines:,} line(s)" + (f"; {p.skipped_count:,} line(s) skipped" if p.skipped_count else "") + ".")
     done = 0
+    tally = _flow_tally(n)
+    every = max(1, -(-n // FLOW_EVERY))   # ceil: at most FLOW_EVERY tallies while tracing
+    tell = progress or (lambda t: None)
     try:
         with stop_on(client, cancel):
             for ev in evs:
@@ -1380,6 +1410,7 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
             if _stopped(cancel):
                 raise Stopped(STOPPED_REASON)
             want = scope.get("lookup") and lookup
+            tell(_flow_copy(tally, phase="lookup" if want else "trace"))
             if want:
                 keys = [p.targets[i] for i in range(n) if not p.entries[p.entry_of[i]].get("category")]
                 if keys:
@@ -1414,12 +1445,18 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
                     cache[key] = idx
                 rn.eval_of[i] = idx
                 done = i + 1
+                tally["done"] = done
+                _flow_add(tally, rn.evals[idx])
+                if done % every == 0 and done < n:
+                    tell(_flow_copy(tally))
                 if done % 10_000 == 0:
                     say(f"Traced {done:,} of {n:,} row(s).")
     except Stopped as e:
         stopped = str(e)
         say(f"STOPPED — you clicked Stop after {done:,} of {n:,} row(s); the rest were not tested. Nothing is ever written by this view.")
     rn.summary["not_tested_why"] = "not tested: you clicked Stop" if stopped else "not tested"
+    rn.summary["flow"] = _flow_copy(tally, phase="stopped" if stopped else "done")
+    tell(rn.summary["flow"])
     fresh = zfresh = None
     for ev in evs:
         fresh = fresh or getattr(ev, "fresh", None)

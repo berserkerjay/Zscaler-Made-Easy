@@ -72,3 +72,45 @@
 #scenarioDetails { overflow-wrap: anywhere; }
 #scenarioDetails details { margin: .6rem 0; }
 @media (max-width: 700px) { #scenarioWorkspace .df-ctl { width: 100%; } #scenarioWorkspace .df-ctl input, #scenarioWorkspace .df-ctl select { max-width: none; width: 100%; } }
+
+/* Traffic path (FA.trafficPath) and Test a list (FA.listFlow): laid out
+   for the width they get, so they never scroll the page sideways. */
+.tp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; margin: 0 0 0.4rem; }
+.tp-head .sep { flex: 1 1 0; }
+.tp-chip { display: inline-flex; gap: 0.3rem; align-items: baseline; max-width: 100%; padding: 0.15rem 0.55rem; border: 1px solid var(--border); border-radius: 999px; font-size: 0.78rem; color: var(--text); overflow-wrap: anywhere; }
+.tp-chip .k { color: var(--dim); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; overflow-wrap: normal; }
+.tp-speed select { min-height: 34px; }
+.tp-stage { min-width: 0; margin: 0.2rem 0 0.3rem; }
+.fa-svg.tp-svg { min-width: 0; }
+.tp-note { min-height: 1.2rem; margin: 0.2rem 0; }
+.tp-alt { margin: 0.2rem 0 0; font-size: 0.82rem; }
+.tp-alt summary { cursor: pointer; color: var(--dim); }
+.tp-steps { margin: 0.3rem 0 0; padding-left: 1.4rem; color: var(--dim); overflow-wrap: anywhere; }
+.tp-steps li { margin: 0.12rem 0; }
+.tp-steps li.cur { color: var(--text); font-weight: 600; }
+.fa-box.pend rect { stroke-dasharray: 3 3; }
+.fa-box.pend { opacity: 0.55; }
+.fa-box.na { opacity: 0.5; }
+.fa-box.na rect { stroke-dasharray: 2 3; }
+.fa-box.tp-zpa rect { fill: color-mix(in srgb, var(--pass) 8%, var(--card-solid)); }
+.fa-box[role="button"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.fa-box[role="button"]:hover rect { stroke-width: 3; }
+.tp-fork-l { fill: none; stroke: var(--warn); stroke-width: 1.6; stroke-dasharray: 4 3; }
+.tp-fork-t { fill: var(--warn); font-size: 10px; font-weight: 600; }
+.tp-fork.ghost .tp-fork-l { stroke: var(--dim); }
+.tp-fork.ghost .tp-fork-t { fill: var(--dim); font-weight: 400; }
+.tp-tag text { font-size: 10.5px; font-weight: 700; fill: var(--fail); }
+.tp-tag.mk-isolate text, .tp-tag.mk-caution text, .tp-tag.mk-bypass text, .tp-tag.mk-unknown text { fill: var(--warn); }
+.tp-pkt.mk-block, .tp-pkt.mk-drop { fill: var(--fail); }
+.tp-pkt.mk-isolate, .tp-pkt.mk-caution, .tp-pkt.mk-bypass, .tp-pkt.mk-unknown { fill: var(--warn); }
+.tp-pkt.pop { opacity: 0; r: 11; transition: opacity 0.4s, r 0.4s; }
+.lf-alt { margin: 0.3rem 0 0; padding-left: 1.2rem; }
+.pa-flow { margin: 0.6rem 0 1rem; padding: 0.8rem 1rem; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); min-width: 0; }
+.pa-flow > h2 { margin-top: 0; }
+.pa-flow-views { display: inline-flex; gap: 0.3rem; flex-wrap: wrap; margin: 0 0 0.5rem; }
+.pa-flow-views button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .tp-pkt.pop { transition: none; }
+}
+.fa-ctl .df-ctl { max-width: 100%; min-width: 0; }
+.fa-ctl .df-ctl select { max-width: 100%; }

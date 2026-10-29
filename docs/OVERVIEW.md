@@ -259,8 +259,22 @@ what you get, what to do next.
   certificate body or the people in the configuration, and says that the
   standalone Zscaler Enterprise Browser has no API. Read-only; Stop ends
   the read at once.
+- **Live motion on the Path analyzer** — under the verdict, packets travel
+  the analyzed path (device or workload, Client Connector or the
+  connector, ZPA turning to the App Connectors and the app when it carries
+  it, the PAC file, the Zero Trust Exchange, every ZIA module, the
+  destination), each step lit with its verdict and deciding rule, stopping
+  with a block, drop, isolate, caution or bypass marker where it is
+  decided and a dashed fork at a conditional step; a step opens its card.
+  The reference path idles before any result; Test a list streams its rows
+  to the step that decided them, the counts climbing from the job poll's
+  tally (counts only). One engine (`static/flow_anim.js`: trafficPathModel,
+  trafficPath, listFlowModel, listFlow), no tenant reads, reduced motion
+  honoured, paused while the tab is hidden, every step also in words.
 - **Flow animator** — the flows the app analyses, animated from your own
-  results: the last Path analyzer result hop by hop; inside DLP, the
+  results: the last Path analyzer result replayed step by step (ZPA, PAC
+  file, ZIA modules and the what-if; back, next, play, pause and speed) or
+  hop by hop; inside DLP, the
   dictionary match counts, each engine term against its threshold and the
   rules that act, with an engine that does not fire named as a near miss
   ("3 found, needs more than 4") or as having nothing to match; a policy

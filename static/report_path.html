@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/flow_anim.css">
 </head>
 <body class="report-page pa-page">
   <div class="rp-page">
@@ -85,6 +86,11 @@
           <p class="df-hint" id="paSourceHow">ZPA is checked first when ZPA is ticked on the Scope page. For a workload, tick Cloud &amp; Branch Connector: its forwarding rules decide whether the traffic goes to ZIA, ZPA, direct or is dropped.</p>
           <p class="df-hint pa-har-how" id="paHarHow"><strong>Or import a HAR file</strong> (browser developer tools, Network tab, Save all as HAR) to analyze every host a user's session reached. The file is read in this browser and never uploaded: cookies, headers, URL paths and bodies stay here; only the host names, request counts, methods and upload sizes are sent. Up to 100 MB and 200 hosts per run (hosts that sent data first). To test a list of destinations, use the Test a list tab.</p>
         </div>
+        <section class="pa-flow" id="paFlowRefSec" aria-labelledby="paFlowRefH">
+          <h2 class="df-h" id="paFlowRefH">The path, live</h2>
+          <p class="df-hint">The reference path every analysis follows, idling. After you click Analyze, packets travel your destination's real path and stop where it is decided.</p>
+          <div id="paFlowRef"></div>
+        </section>
       </div>
       </section>
       <section role="tabpanel" id="panel-list" aria-labelledby="tab-list" tabindex="0" hidden>
@@ -107,6 +113,11 @@
             <button type="button" class="rp-btn primary" id="plRun">Test the list</button>
           </div>
         </div>
+        <section class="pa-flow" id="plFlow" aria-labelledby="plFlowH" hidden>
+          <h2 class="df-h" id="plFlowH">Where each row is decided, live</h2>
+          <p class="df-hint">Each row flows from your list to the step that decides it; the counts climb as the test runs. Counts only: no destination is drawn.</p>
+          <div id="plFlowHost"></div>
+        </section>
         <div id="plBody"></div>
       </section>
       <!-- /Test a list -->
@@ -122,6 +133,7 @@
   <script src="/static/har_parse.js"></script>
   <script src="/static/path_modules.js"></script><!-- every module on the path, one hop shape -->
   <script src="/static/path_whatif.js"></script><!-- what-if lookups and "Policy action also depends on" -->
+  <script src="/static/flow_anim.js"></script><!-- the live path and the list flow (one motion engine) -->
   <script src="/static/path_list.js"></script>
   <script>
   (function () {
@@ -138,6 +150,11 @@
     let lastReport = '';   // report_id of the last tenant read, reused for the next destination
     const kept = { zpa: '', ztw: '' };   // the ZPA and connector reads, reused the same way
     let fresh = false, running = false, job = null;
+    // The live path (FA.trafficPath) and its second view, the hop-by-hop
+    // DLP chain (FA.hopPlayer): one at a time, stopped before the body is
+    // replaced so no animation keeps running on a detached picture.
+    let flow = null, hops = null;
+    function stopFlow() { if (flow) flow.destroy(); if (hops) hops.destroy(); flow = null; hops = null; }
     // The start request signs in first, so it has no job id for a while; a
     // Stop pressed then is sent with this start's token (X-Start-Token) and
     // the job begins stopped, reading nothing.
@@ -167,6 +184,8 @@
     // is shown before any destination is analyzed, so the page always
     // represents the framework every result is measured against.
     renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'), DF_PATH_ENFORCEMENT);
+    // Before any result the reference path idles (no tenant read).
+    try { if (window.FA) flow = FA.trafficPath(document.getElementById('paFlowRef'), FA.trafficPathModel(null), { loop: true }); } catch (e) { document.getElementById('paFlowRefSec').hidden = true; }
 
     // Credentials: the assessment tab that opened this page holds them;
     // otherwise a saved tenant profile, or what the server has in its
@@ -293,6 +312,7 @@
       const net = document.getElementById('paNet').value, plat = document.getElementById('paPlat').value;
       const btn = document.getElementById('paRun');
       running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Analyzing…';
+      stopFlow();
       body.innerHTML = liveHtml(dest);
       document.getElementById('paStop').addEventListener('click', stop);
       say(`Analyzing ${dest}.`);
@@ -327,6 +347,7 @@
     function fail(title, msg) {
       if (/You clicked Stop/.test(msg)) { title = 'Stopped'; msg = msg.replace(/^Stopped:\s*/, ''); }
       const hint = /credential|sign in|token|401|403|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open the Path analyzer from there, or choose a saved tenant profile in the bar above.' : '';
+      stopFlow();
       body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
     }
     function setFresh(on) { fresh = on; const b = document.getElementById('paFresh'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.classList.toggle('primary', on); }
@@ -365,6 +386,50 @@
         </section>`;
     }
 
+    // A step of the live path opens its card: the module card, else the
+    // hop in "The path, hop by hop", else the section it belongs to.
+    function openCard(node) {
+      const a = node.anchor || {}, esc = s => (window.CSS && CSS.escape ? CSS.escape(String(s)) : String(s).replace(/[^a-z0-9_-]/gi, ''));
+      let el = null;
+      if (a.module) el = body.querySelector(`.pm-hop[data-module="${esc(a.module)}"]`);
+      if (!el && a.hop) el = body.querySelector(`.df-hop[data-hop="${esc(a.hop)}"]`);
+      if (!el && a.id) el = document.getElementById(a.id);
+      if (!el) { say(`${node.label}: ${node.word}. This step has no card of its own.`); return; }
+      const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ block: 'center', behavior: calm ? 'auto' : 'smooth' });
+      el.classList.add('sel'); setTimeout(() => el.classList.remove('sel'), 1600);
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+      try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+      say(`${node.label}: ${node.word}${node.rule ? `, rule ${node.rule}` : ''}.`);
+    }
+    function showFlow(res) {
+      stopFlow();
+      const host = document.getElementById('paFlowHost');
+      if (!host || !window.FA) return;
+      try { flow = FA.trafficPath(host, FA.trafficPathModel(res), { loop: true, onSelect: openCard }); } catch (e) { document.getElementById('paFlowSec').hidden = true; return; }
+      const views = Array.from(document.querySelectorAll('[data-flow-view]')), hv = document.getElementById('paHopView');
+      const pm = FA.pathModel(res);
+      let wasPlaying = false;
+      if (!pm) views[1].hidden = true;
+      views.forEach(b => b.addEventListener('click', () => {
+        const hopsOn = b.dataset.flowView === 'hops';
+        views.forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+        host.hidden = hopsOn; hv.hidden = !hopsOn;
+        if (hopsOn) {
+          if (flow && !host.dataset.away) { wasPlaying = flow.playing(); host.dataset.away = '1'; if (wasPlaying) flow.pause(); }
+          if (!hops && pm) {
+            const log = document.getElementById('paHopLog');
+            hops = FA.hopPlayer(document.getElementById('paHopHost'), pm, {
+              onReset() { log.innerHTML = ''; },
+              onHop(h) { const li = document.createElement('li'); li.textContent = `${h.label}: ${h.sub}${h.note ? ' (' + h.note + ')' : ''}`; log.appendChild(li); },
+            });
+            document.getElementById('paHopPlay').addEventListener('click', () => hops && hops.play());
+            document.getElementById('paHopStep').addEventListener('click', () => hops && hops.step());
+          }
+        } else if (flow && host.dataset.away) { delete host.dataset.away; if (wasPlaying) flow.play(); }
+      }));
+    }
+
     function render(res, logs) {
       const v = res.verdict, t = res.trace, d = res.destination, lk = res.lookup || {};
       const [olab, ocls] = DF_OUTCOME[v.outcome] || [v.outcome, 'dim'];
@@ -389,6 +454,7 @@
       const notInScope = v.not_in_scope || [];
       const fact = (k, b, yes, no) => (outOf(k) ? '<span class="v">not in scope</span>' : yesno(b, yes, no));
       meta.textContent = `${res.tenant_label || ''} · ${res.fresh_read ? 'tenant read just now' : 'tenant read reused'} · ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
+      stopFlow();
       body.innerHTML = `
         ${connectorInventoryHtml(t.connector_inventory)}
         <section class="pa-verdict st-${ocls}" aria-labelledby="paHeadline">
@@ -410,6 +476,20 @@
             <span class="df-prof"><span class="k">Linked forwarding profile</span><span class="v">${outOf('forwarding') ? 'not in scope' : `${E(fwdProf)}${E(fwdMode)}`}</span></span>`}
           </div>
           ${res.scope && res.scope.summary ? `<div class="df-hint pa-scope">${E(res.scope.summary)}</div>` : ''}
+        </section>
+        <section class="pa-flow" id="paFlowSec" aria-labelledby="paFlowH">
+          <h2 class="df-h" id="paFlowH">The path, live</h2>
+          <p class="df-hint">Packets travel this destination's path step by step and stop where it is decided. Click a step, or press Enter on it, to open its card below.</p>
+          <div class="pa-flow-views" role="group" aria-label="Picture">
+            <button type="button" class="rp-btn" data-flow-view="path" aria-pressed="true">Every step</button>
+            <button type="button" class="rp-btn" data-flow-view="hops" aria-pressed="false">Hop by hop to Web DLP</button>
+          </div>
+          <div id="paFlowHost"></div>
+          <div id="paHopView" hidden>
+            <div class="fa-ctl"><button type="button" class="rp-btn" id="paHopPlay">Play</button><button type="button" class="rp-btn" id="paHopStep">Step</button></div>
+            <div class="fa-stage" id="paHopHost"></div>
+            <ol class="fa-log" id="paHopLog" aria-label="Hops reached so far"></ol>
+          </div>
         </section>
         ${res.whatif ? PathWhatIf.section(res.whatif) : ''}
         ${PathModules.section(res)}
@@ -434,6 +514,7 @@
         <ul class="pa-assume">${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>
         <details class="pa-details"><summary>What was read (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
       PathWhatIf.wire(body);
+      showFlow(res);
       body.querySelectorAll('.df-node').forEach(n => {
         const go = () => { const el = body.querySelector(`.df-hop[data-hop="${n.dataset.hop}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('sel'); setTimeout(() => el.classList.remove('sel'), 1600); } };
         n.addEventListener('click', go);
@@ -475,6 +556,7 @@
     }
     function renderHarIntro() {
       const p = har.parsed, ups = p.hosts.filter(h => h.uploads).length;
+      stopFlow();
       body.innerHTML = `<section class="pa-har" aria-labelledby="paHarH">
         <h2 class="df-h" id="paHarH">HAR file: ${E(har.name)}</h2>
         <div class="pa-facts"><span class="df-prof"><span class="k">Requests</span><span class="v">${p.entries}</span></span>
@@ -494,6 +576,7 @@
       const net = document.getElementById('paNet').value, plat = document.getElementById('paPlat').value;
       const btn = document.getElementById('paRun');
       running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true;
+      stopFlow();
       body.innerHTML = liveHtml(`${p.hosts.length} host(s) from ${har.name}`);
       document.getElementById('paStop').addEventListener('click', stop);
       say(`Analyzing ${p.hosts.length} host(s) from the HAR file.`);
@@ -546,6 +629,7 @@
       const outcomes = Array.from(new Set(res.rows.map(r => r.outcome))).sort();
       const counts = Object.entries(res.counts || {}).map(([k, n]) => `<span class="df-prof"><span class="k">${E(k)}</span><span class="v">${n}</span></span>`).join('');
       meta.textContent = `${res.tenant_label || ''} · ${res.fresh_read ? 'tenant read just now' : 'tenant read reused'} · ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
+      stopFlow();
       body.innerHTML = `<section class="pa-har" aria-labelledby="paHarH">
         <h2 class="df-h" id="paHarH">HAR file: ${E(har.name)} · ${res.rows.length} host(s) analyzed</h2>
         ${res.stopped ? `<div class="bp-card risk"><div class="t">Stopped</div><div>${E(res.stopped)}</div></div>` : ''}
