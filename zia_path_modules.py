@@ -50,6 +50,7 @@ zia/cloud_firewall_dns.py, zia/sandbox_rules.py). Read-only.
 """
 from __future__ import annotations
 
+import functools
 import ipaddress
 import re
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -177,6 +178,7 @@ _ANY = {"ANY", "ALL", "ANY_RULE", "NONE", ""}
 
 
 # ── Small helpers ────────────────────────────────────────────────────
+@functools.lru_cache(maxsize=512)
 def _snake(camel: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", camel).lower()
 
@@ -399,29 +401,38 @@ def _norm_entry(entry: str) -> Tuple[str, str]:
     return host.split(":")[0].rstrip("."), ("/" + path if path else "")
 
 
+def _parse_entry(entry: str) -> Optional[Tuple[Any, ...]]:
+    """An IP, CIDR or a-b range entry parsed once (a 5,000-rule tenant names
+    the same groups again and again): ("range", first, last), ("net",
+    network) or None when it is not an address entry. No address entry is
+    longer than 100 characters, so a longer string is none and never cached."""
+    return None if len(entry) > 100 else _parse_cached(entry)
+
+
+@functools.lru_cache(maxsize=16384)
+def _parse_cached(entry: str) -> Optional[Tuple[Any, ...]]:
+    try:
+        if "-" in entry:
+            a, b = (ipaddress.ip_address(x.strip()) for x in entry.split("-", 1))
+            return ("range", a, b)
+        return ("net", ipaddress.ip_network(entry, strict=False))
+    except ValueError:
+        return None
+
+
 def _ip_rel(ip: Any, entry: str) -> bool:
     """Whether `ip` is in an IP, CIDR or a-b range entry. An address of the
     other family is never in it (ipaddress refuses to compare the two)."""
-    e = str(entry or "").strip()
-    try:
-        if "-" in e:
-            a, b = (ipaddress.ip_address(x.strip()) for x in e.split("-", 1))
-            return a.version == b.version == ip.version and a <= ip <= b
-        return ip in ipaddress.ip_network(e, strict=False)
-    except ValueError:
+    e = _parse_entry(str(entry or "").strip())
+    if e is None:
         return False
+    if e[0] == "range":
+        return e[1].version == e[2].version == ip.version and e[1] <= ip <= e[2]
+    return ip in e[1]
 
 
 def _is_ip_entry(entry: str) -> bool:
-    e = str(entry or "").strip()
-    try:
-        if "-" in e:
-            [ipaddress.ip_address(x.strip()) for x in e.split("-", 1)]
-        else:
-            ipaddress.ip_network(e, strict=False)
-        return True
-    except ValueError:
-        return False
+    return _parse_entry(str(entry or "").strip()) is not None
 
 
 def url_hit(entries: Iterable[Any], dest: Dict[str, Any], visible: Optional[bool]) -> Tuple[str, Optional[str]]:
@@ -651,9 +662,18 @@ def _crit_source(rule: Dict[str, Any], groups: Optional[Dict[str, Dict[str, Any]
     return _crit("Source IP", "no_match", f"The source {src} is not in {what}.")
 
 
+def _index(fw: Dict[str, Any], part: str) -> Dict[str, Dict[str, Any]]:
+    """{id: object} of one firewall list, built once per evaluation (kept in
+    `fw`), not once per rule."""
+    key = "_by_id_" + part
+    if key not in fw:
+        fw[key] = {str(x.get("id")): x for x in fw.get(part) or [] if isinstance(x, dict)}
+    return fw[key]
+
+
 def _services(rule: Dict[str, Any], fw: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
-    by_id = {str(s.get("id")): s for s in fw.get("network_services") or []}
-    groups = {str(g.get("id")): g for g in fw.get("network_service_groups") or []}
+    by_id = _index(fw, "network_services")
+    groups = _index(fw, "network_service_groups")
     out, unresolved = [], []
     for s in _list(_f(rule, "nwServices")):
         out.append(by_id.get(_id(s) or "") or (s if isinstance(s, dict) else {"name": str(s)}))
@@ -705,7 +725,7 @@ def _crit_services(rule: Dict[str, Any], ctx: Dict[str, Any], fw: Dict[str, Any]
 
 def _crit_network_apps(rule: Dict[str, Any], ctx: Dict[str, Any], fw: Dict[str, Any]) -> Optional[Dict[str, str]]:
     apps = _names(_f(rule, "nwApplications"))
-    groups = {str(g.get("id")): g for g in fw.get("network_app_groups") or []}
+    groups = _index(fw, "network_app_groups")
     unresolved = []
     for g in _list(_f(rule, "nwApplicationGroups")):
         full = groups.get(_id(g) or "")

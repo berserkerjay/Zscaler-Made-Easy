@@ -1292,7 +1292,8 @@ def load_packs() -> List[Dict[str, Any]]:
         out = []
         for p in discover_packs():
             try:
-                pols = json.load(open(f"{p['dir']}/configs/dlp_policies.json", encoding="utf-8"))
+                with open(f"{p['dir']}/configs/dlp_policies.json", encoding="utf-8") as fh:
+                    pols = json.load(fh)
             except Exception:  # noqa: BLE001
                 pols = []
             out.append({"id": p["id"], "name": p.get("name") or p["id"], "policies": [{"name": x.get("name"), "channel": x.get("channel", "web")} for x in pols]})

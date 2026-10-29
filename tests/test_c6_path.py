@@ -1955,3 +1955,48 @@ def test_a_url_lookup_answer_of_the_wrong_shape_is_read_defensively(cats, alerts
     for got in (single, batch):
         assert (got["categories"], got["security_alerts"], got["application"]) == want
     assert (listed["categories"], listed["security_alerts"]) == want[:2]
+
+
+# ── C6-PATH-18: 5,000 firewall rules on service and destination groups ─
+def test_5000_firewall_rules_on_shared_groups_analyze_in_under_two_seconds():
+    """ASVS V1.11.3 · CWE-400 · CWE-1176 · CWE-407: 5,000 firewall rules on 500 service groups (2,000 services) and 500 destination groups take under 2 s."""
+    # Arrange
+    svcs = [{"id": i, "name": f"S{i}", "destTcpPorts": [{"start": 1000 + i}]} for i in range(2000)]
+    groups = [{"id": 10000 + g, "name": f"G{g}", "services": [{"id": (g * 10 + k) % 2000} for k in range(10)]} for g in range(500)]
+    dgroups = [{"id": 20000 + g, "name": f"D{g}", "addresses": [f"10.{g % 250}.{k}.0/24" for k in range(20)]} for g in range(500)]
+    rules = [fw_rule(i, i + 1, "ALLOW", nwServiceGroups=[{"id": 10000 + i % 500}], destIpGroups=[{"id": 20000 + i % 500}],
+                     users=[{"id": 1, "name": "u"}]) for i in range(5000)] + [DEFAULT_FW]
+    tenant = Tenant({"/zia/firewallFilteringRules": rules, "/zia/networkServices": svcs, "/zia/networkServiceGroups": groups,
+                     "/zia/ipDestinationGroups": dgroups})
+    # Act
+    t0 = time.perf_counter()
+    res = pa.analyze(tenant, "10.1.2.3", scope=FULL, protocol="tcp", port=1005)
+    took = time.perf_counter() - t0
+    # Assert
+    assert took < 2.0, took
+    assert mod(res, "firewall")["considered"] == 5001
+
+
+def test_an_address_entry_longer_than_any_address_is_none_and_not_cached():
+    """ASVS V1.11.3 · CWE-400 · CWE-770: a tenant string longer than any address is no address entry and is not kept in the parse cache."""
+    before = zpm._parse_cached.cache_info().currsize
+    assert zpm._is_ip_entry("1" * 5000) is False and zpm._parse_cached.cache_info().currsize == before
+    assert zpm._is_ip_entry("2001:db8::1-2001:db8::ffff") is True
+
+
+def test_the_pack_library_is_read_with_every_file_closed(tmp_path, monkeypatch):
+    """ASVS V1.11.3 · CWE-775 · CWE-404: reading the policy packs closes every file it opens (no ResourceWarning); a pack that is not JSON has no rules."""
+    import gc
+    import warnings
+    import dlp_importer
+    good, bad = tmp_path / "good", tmp_path / "bad"
+    for d, text in ((good, '[{"name": "R1", "channel": "web"}]'), (bad, "not json")):
+        (d / "configs").mkdir(parents=True)
+        (d / "configs" / "dlp_policies.json").write_text(text, encoding="utf-8")
+    monkeypatch.setattr(dlp_importer, "discover_packs", lambda: [{"id": "good", "dir": str(good)}, {"id": "bad", "dir": str(bad)}])
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always", ResourceWarning)
+        packs = df.load_packs()
+        gc.collect()
+    assert [p["policies"] for p in packs] == [[{"name": "R1", "channel": "web"}], []]
+    assert not [w for w in seen if issubclass(w.category, ResourceWarning)]
