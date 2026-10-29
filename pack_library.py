@@ -118,6 +118,14 @@ def _unescape(s: str) -> str:
         c = s[i]
         if c == "\\" and i + 1 < len(s):
             n = s[i + 1]
+            # HCL's \uNNNN and \UNNNNNNNN (pack_terraform writes invisible
+            # and bidirectional characters that way).
+            width = {"u": 4, "U": 8}.get(n, 0)
+            digits = s[i + 2:i + 2 + width]
+            if width and len(digits) == width and all(x in "0123456789abcdefABCDEF" for x in digits) and int(digits, 16) <= 0x10FFFF:
+                out.append(chr(int(digits, 16)))
+                i += 2 + width
+                continue
             out.append({"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\"}.get(n, "\\" + n))
             i += 2
             continue
@@ -688,7 +696,7 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
         if not low.endswith(".json"):
             continue   # README, tfvars examples and the like
         try:
-            obj = json.loads(data.decode("utf-8-sig"))
+            obj = safe_files.strict_json_loads(data.decode("utf-8-sig"))   # NaN / Infinity: refused, never kept in the pack
         except Exception as e:  # noqa: BLE001
             raise ValueError(f"{base}: not valid JSON ({e})") from e
         sources.append(path)

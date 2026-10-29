@@ -359,13 +359,19 @@ def incident_action(inc: Dict[str, Any], rules_by_name: Dict[str, str]) -> str:
     return "monitor" if all(a in MONITOR_ACTIONS for a in found) else "enforced"
 
 
+_LIVE_COUNTERS = ("seen", "enforced", "monitor", "unknown_action", "open", "real", "not_real")
+
+
 def live_stats(prev: Optional[Dict[str, Any]], batch: List[Dict[str, Any]], rules_by_name: Dict[str, str]) -> Dict[str, Any]:
     """Roll a poll's incidents into the running session tally: seen,
     enforced (blocked/confirmed) vs monitor-only vs unknown (by the
     matched rule's configured action, not a guess), and the FP/TP split
     among the ones already closed. `prev` is the tally returned by the
     previous call, or None to start one."""
-    t = dict(prev) if prev else {"seen": 0, "enforced": 0, "monitor": 0, "unknown_action": 0, "open": 0, "real": 0, "not_real": 0}
+    # `prev` comes back from the browser: only the known counters, each a
+    # whole number (anything else counts from zero), never a KeyError.
+    t = {k: (v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 10 ** 12 else 0)
+         for k, v in ((k, (prev or {}).get(k) if isinstance(prev, dict) else None) for k in _LIVE_COUNTERS)}
     for i in batch:
         t["seen"] += 1
         t[{"enforced": "enforced", "monitor": "monitor", "unknown": "unknown_action"}[incident_action(i, rules_by_name)]] += 1

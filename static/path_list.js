@@ -20,6 +20,17 @@
   const RESULT_CLS = { blocked: '', allowed: 'mute', bypassed: 'bad', isolated: 'warn', caution: 'warn', allowed_but_blockable: 'warn', unverified: 'warn', not_tested: 'mute' };
   const AREA_KEY = { 'ATP': 'atp', 'Firewall': 'firewall', 'URL': 'url', 'DNS': 'dns', 'Client Connector': 'client_connector', 'Cloud App': 'cloud_app', 'ZPA': 'zpa' };
   const FIX_AREAS = ['URL', 'DNS', 'Cloud App'];
+  // A list file as text: UTF-16 when it starts with a UTF-16 byte order
+  // mark (Excel's "Unicode Text" saves lists that way), UTF-8 otherwise; the
+  // mark itself is dropped. Blob.text() reads every file as UTF-8, which
+  // turned a UTF-16 file's header into replacement characters (its columns,
+  // the expected result among them, were lost) and every non-ASCII letter.
+  function decodeList(buf) {
+    const b = new Uint8Array(buf);
+    const enc = b[0] === 0xFF && b[1] === 0xFE ? 'utf-16le' : b[0] === 0xFE && b[1] === 0xFF ? 'utf-16be' : 'utf-8';
+    return new TextDecoder(enc).decode(b);
+  }
+  window.PathListDecode = decodeList;
   const live = $('liveRegion');
   const say = t => { if (!live) return; live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
   if (!$('panel-list') || !$('panel-one')) return;
@@ -95,7 +106,7 @@
     const info = $('plFileInfo');
     if (!f) { info.textContent = ''; return; }
     if (f.size > MAX_BYTES) { info.textContent = `${f.name} is larger than 8 MB: split it into smaller files.`; e.target.value = ''; return; }
-    try { fileText = await f.text(); fileName = f.name; info.textContent = `${f.name}: ${fileText.split(/\r?\n/).filter(Boolean).length.toLocaleString()} line(s) read. The pasted text is ignored while a file is chosen.`; }
+    try { fileText = decodeList(await f.arrayBuffer()); fileName = f.name; info.textContent = `${f.name}: ${fileText.split(/\r?\n/).filter(Boolean).length.toLocaleString()} line(s) read. The pasted text is ignored while a file is chosen.`; }
     catch (err) { info.textContent = `${f.name} could not be read.`; }
   });
 

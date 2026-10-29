@@ -34,6 +34,7 @@ from typing import Any, Iterable, List, Optional, Sequence
 from xml.sax.saxutils import escape as _xml_escape
 
 import csv_safe
+import md_safe
 
 MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -64,8 +65,10 @@ _REL_APP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/
 
 
 def clean_text(value: Any) -> str:
-    """Text XML can carry: characters it cannot are removed."""
-    return _BAD_XML.sub("", str(value))
+    """Text XML can carry: characters it cannot are removed, and an explicit
+    bidirectional control (a right-to-left override in a tenant name, which
+    would turn the text after it around) is shown as U+FFFD (md_safe.no_bidi)."""
+    return md_safe.no_bidi(_BAD_XML.sub("", str(value)))
 
 
 def clean_tree(value: Any) -> Any:
