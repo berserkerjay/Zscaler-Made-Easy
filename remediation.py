@@ -112,7 +112,8 @@ REMEDIATIONS: List[Dict[str, Any]] = [
              "hint": "Business justification for auditors."},
             {"key": "action",            "label": "Action",
              "type": "enum",             "required": True,
-             "options": ["BLOCK", "ALLOW", "CAUTION", "ISOLATE"],
+             # ISOLATE is not offered: it needs a Cloud Browser Isolation profile this form cannot pick.
+             "options": ["BLOCK", "ALLOW", "CAUTION"],
              "default": "BLOCK"},
             {"key": "url_categories",    "label": "URL categories (comma-separated IDs)",
              "type": "csv",              "required": True,
@@ -132,6 +133,7 @@ REMEDIATIONS: List[Dict[str, Any]] = [
             "description":   "{description}",
             "action":        "{action}",
             "urlCategories": "{url_categories:csv}",
+            "protocols":     ["ANY_RULE"],   # the SDK's add_rule names protocols as required
             "state":         "{state}",
             "order":         "{order:int}",
             "rank":          "{rank:int}",
@@ -148,7 +150,7 @@ REMEDIATIONS: List[Dict[str, Any]] = [
         "fields": [
             {"key": "rule_type",  "label": "Rule type",
              "type": "enum",       "required": True,
-             "options": ["webDlpRules", "urlFilteringRules", "firewallRules", "sslInspectionRules"],
+             "options": ["webDlpRules", "urlFilteringRules", "firewallFilteringRules", "sslInspectionRules"],
              "hint": "Which endpoint the rule lives on."},
             {"key": "rule_id",    "label": "Rule ID",
              "type": "text",       "required": True,
@@ -158,7 +160,11 @@ REMEDIATIONS: List[Dict[str, Any]] = [
              "hint": "Document business justification, owner, and review date."},
         ],
         "endpoint":      "/zia/{rule_type}/{rule_id}",
-        "method":        "PATCH",
+        # ZIA updates a rule with PUT, which replaces the whole rule: the
+        # rule is read first and sent back whole with only its description
+        # changed ("merge"), never as a body that holds the description alone.
+        "method":        "PUT",
+        "merge":         True,
         "body_template": {"description": "{description}"},
         "success_msg":   "Description updated. The rule should PASS this check on the next assessment run.",
     },
@@ -218,9 +224,10 @@ REMEDIATIONS: List[Dict[str, Any]] = [
              "hint": "What data class + user population this rule protects."},
             {"key": "action",      "label": "Action",
              "type": "enum",       "required": True,
-             "options": ["ALLOW", "BLOCK", "ALERT", "ISOLATE", "CONFIRM"],
-             "default": "ALERT",
-             "hint": "ALERT during initial rollout so you gather signal; move to BLOCK after validation."},
+             # The Web DLP actions ZIA takes (pack_channels.CHANNELS["web"]): ALLOW is monitor only.
+             "options": ["ALLOW", "BLOCK", "CONFIRM"],
+             "default": "ALLOW",
+             "hint": "ALLOW (monitor only) during initial rollout so you gather signal; move to BLOCK after validation."},
             {"key": "state",       "label": "Rule state",
              "type": "enum",       "required": True,
              "options": ["ENABLED", "DISABLED"], "default": "ENABLED"},
@@ -239,7 +246,7 @@ REMEDIATIONS: List[Dict[str, Any]] = [
             "order":       "{order:int}",
             "rank":        "{rank:int}",
         },
-        "success_msg": "Inline Web DLP rule created. Attach DLP engines + scope (users/groups/locations) in the admin portal before moving the action from ALERT to BLOCK.",
+        "success_msg": "Inline Web DLP rule created. Attach DLP engines + scope (users/groups/locations) in the admin portal before moving the action from ALLOW (monitor) to BLOCK.",
     },
 ]
 
@@ -386,6 +393,12 @@ def plan(check_id: str, criteria: Dict[str, Any]) -> Dict[str, Any]:
     recipe = get_recipe(check_id)
     if not recipe:
         return {"ok": False, "errors": [f"No remediation recipe registered for check '{check_id}'."]}
+    # An optional field left out takes its default (the form fills it in; an
+    # API caller may not), so a recipe never renders a missing value.
+    criteria = dict(criteria or {})
+    for f in recipe.get("fields", []):
+        if criteria.get(f["key"]) in (None, "") and "default" in f:
+            criteria[f["key"]] = f["default"]
     errors = _validate_criteria(recipe, criteria)
     if errors:
         return {"ok": False, "errors": errors, "recipe_label": recipe["label"]}
@@ -423,6 +436,18 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
     method = p["method"].upper()
     endpoint = p["endpoint"]
     body = p["body"]
+    if get_recipe(check_id).get("merge"):
+        # Read-modify-write: the object as the tenant has it now, with only
+        # the recipe's fields changed (a PUT replaces the whole object).
+        try:
+            cur, code = client.get(endpoint)
+        except Exception as e:
+            return {"status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}", **p}
+        if code != 200 or not isinstance(cur, dict) or not cur or "error" in cur:
+            return {"status": "failed", "http_status": code, **p,
+                    "error": f"The object could not be read before the change (HTTP {code}), so nothing was sent."}
+        body = dict(cur)
+        body.update(p["body"])
 
     try:
         if method == "POST":

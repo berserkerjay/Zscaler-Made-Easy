@@ -196,11 +196,43 @@ def _rows(ret: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     out = []
     for item in data or []:
         row = _plain(item)
-        for k, v in raw_by_id.get(str(row.get("id")), {}).items():
-            if row.get(k) in (None, "", [], {}) or (v not in (None, "", [], {}) and (k in _REF_FIELDS or _junk_refs(row.get(k)))):
-                row[k] = v
+        _backfill(row, raw_by_id.get(str(row.get("id")), {}))
         out.append(row)
     return out, None
+
+
+def _backfill(row: Dict[str, Any], raw: Dict[str, Any]) -> Dict[str, Any]:
+    """`row` (an SDK model as a plain dict) with every field its model left
+    out, or whose references it emptied, taken from the raw answer `raw`
+    (already plain). In place; returns `row`."""
+    for k, v in (raw or {}).items():
+        if row.get(k) in (None, "", [], {}) or (v not in (None, "", [], {}) and (k in _REF_FIELDS or _junk_refs(row.get(k)))):
+            row[k] = v
+    return row
+
+
+def one_row(ret: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """One object of a get call as a plain snake_case dict, as _rows does for
+    a list: the SDK's model, with every field the model leaves out (SDK
+    1.11.3's sandbox rule model drops cbiProfile, for one) taken from the raw
+    answer. A write built from the object (a PUT replaces it) then keeps
+    them, and a read-back sees what the tenant holds."""
+    data, err = _nx(ret)
+    if err:
+        return None, str(err)[:300]
+    if data is None:
+        return None, "no answer"
+    row = _plain(data)
+    resp = ret[1] if isinstance(ret, tuple) and len(ret) >= 3 else None
+    getter = getattr(resp, "get_body", None)
+    if callable(getter):
+        try:
+            raw = getter()
+        except Exception:  # noqa: BLE001 - the model alone still answers
+            raw = None
+        if isinstance(raw, dict) and (row.get("id") is None or raw.get("id") is None or str(raw.get("id")) == str(row.get("id"))):
+            _backfill(row, _plain(raw))
+    return row, None
 
 
 def _list_rules(zia, channel: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:

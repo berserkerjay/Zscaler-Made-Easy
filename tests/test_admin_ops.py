@@ -784,7 +784,9 @@ def test_zpa_move_between_segments_that_share_ports_removes_first_and_keeps_the_
 
 
 def test_zpa_move_without_shared_ports_adds_first():
-    t = Tenant()
+    # s3 keeps a second domain: moving its only one is excluded (ZPA keeps one domain per segment).
+    segs = [dict(s, domain_names=s["domain_names"] + ["bastion.corp.example"]) if s["id"] == "s3" else s for s in SEGMENTS]
+    t = Tenant(segments=segs)
     p = preview(t, {"type": "zpa_domains", "action": "move", "source": "s3", "target": "s1", "domains": ["jump.corp.example"]})
     assert [g["target"]["id"] for g in p["groups"]] == ["s1", "s3"]
 

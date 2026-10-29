@@ -2504,7 +2504,10 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
             if not out.ok:
                 record(item, "failed", outcome=out)
             else:
-                record(item, "modified", outcome=out, id=t["id"])
+                # What Undo puts back: the dictionary's confidence before the
+                # tweak, while it still holds the value the tweak set.
+                record(item, "modified", outcome=out, id=t["id"], dictionary=t["name"], field="confidence_threshold",
+                       before=t.get("current"), after=item["definition"]["target_confidence"])
 
     counts: Dict[str, int] = {}
     for r in results:
@@ -2739,6 +2742,53 @@ def verify_pack(client, pack: Dict[str, Any]) -> Dict[str, Any]:
     return v
 
 
+def _undo_tweaks(client, record: Dict[str, Any], log: LogFn = None) -> List[Dict[str, Any]]:
+    """Put back the confidence of each existing tenant dictionary the
+    deployment's confidence tweaks changed (`record["other"]`, kind tweak):
+    read it again, and only while it still holds the value the tweak set
+    (a value someone changed since is theirs and is left alone). Returns
+    one result per tweak (restored / skipped / failed / gone)."""
+    _log = log or (lambda m: None)
+    out: List[Dict[str, Any]] = []
+    tweaks = [t for t in record.get("other") or []
+              if t.get("kind") == "tweak" and t.get("status") == "modified" and t.get("id") is not None and t.get("after")]
+    if not tweaks:
+        return out
+    # Read again right before the write, the same listing the deploy read the dictionary from.
+    try:
+        rows, err = _nx(client.zia.dlp_dictionary.list_dicts())
+    except Exception as e:  # noqa: BLE001
+        rows, err = None, str(e)
+    for t in tweaks:
+        res = {"kind": "tweak", "name": t.get("name"), "id": t.get("id"), "channel": None}
+        if err or rows is None:
+            out.append(dict(res, status="failed", error=f"could not read the dictionaries again: {str(err or 'no answer')[:160]}"))
+            continue
+        cur = next((d for d in rows if str(_field(d, "id")) == str(t["id"])), None)
+        if cur is None:
+            out.append(dict(res, status="gone", reason="the dictionary is no longer in the tenant"))
+            continue
+        now = _field(cur, "confidence_threshold", "confidenceThreshold")
+        before = t.get("before") or None
+        if now == before:
+            out.append(dict(res, status="gone", reason="already back at its earlier confidence"))
+            continue
+        if now != t["after"]:
+            out.append(dict(res, status="skipped", reason=f"its confidence was changed to {now} since the deployment; left as it is"))
+            continue
+        body = dictionary_update_body(cur, confidence_threshold=before)
+        if before is None:
+            body.pop("confidence_threshold", None)   # it had none: the PUT (a replace) leaves it unset again
+        result = ops.update(client.zia, "dictionary", t["id"], body, log=_log)
+        words = f"confidence back to {before}" if before else "confidence back to unset"
+        if result.ok:
+            _log(f"[tweak] {t.get('dictionary') or t.get('name')}: {words}")
+            out.append(dict(res, status="restored", reason=words))
+        else:
+            out.append(dict(res, status="failed", error=result.as_error()))
+    return out
+
+
 def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = None, log: LogFn = None,
          settle_seconds: float = 45.0) -> Dict[str, Any]:
     """Delete what a recorded deployment created, through the same executor
@@ -2751,8 +2801,16 @@ def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = Non
     gone. Returns the undo shape (undone / partial / nothing / failed /
     blocked) older callers and the deployment store expect."""
     import pack_removal
+    if writes_enabled is True:
+        tweaks = _undo_tweaks(client, record, log)
+    else:
+        tweaks = []
     out = pack_removal.remove_deployment(client, record, plan_hash="", writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
-    results = list(out.get("results") or [])
+    if any(t["status"] == "restored" for t in tweaks) and not (out.get("activation") or {}).get("activated") and out.get("status") not in ("blocked", "stale"):
+        _log = log or (lambda m: None)
+        _log("Activating the restored dictionary settings…")
+        out["activation"] = ops.activate_once(client.zia, _log)
+    results = list(out.get("results") or []) + tweaks
     for it in out.get("kept") or []:
         results.append({"kind": it["kind"], "name": it["name"], "id": it.get("id"), "channel": it.get("channel"), "status": "skipped",
                         "reason": f"{it.get('keep') or 'kept'}; left alone"})
@@ -2762,10 +2820,11 @@ def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = Non
     counts: Dict[str, int] = {}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+    deleted_or_restored = counts.get("deleted", 0) + counts.get("restored", 0)
     if out.get("status") in ("blocked", "stale"):
         return {**out, "status": "blocked" if out.get("status") == "blocked" else "failed", "results": results, "summary": counts}
     complete = not counts.get("failed") and not counts.get("skipped") and not counts.get("still_present")
-    deleted = counts.get("deleted", 0)
+    deleted = deleted_or_restored
     if complete and deleted:
         status = "undone"
     elif deleted:
