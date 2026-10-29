@@ -79,7 +79,7 @@
   .dz-btn.quiet { background: transparent; border-color: transparent; color: var(--accent); }
 
   /* Pack cards */
-  .dz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--sp-3); }
+  .dz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: var(--sp-3); }
   .dz-pack {
     position: relative; border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-4);
     background: var(--card); cursor: pointer; transition: border-color 200ms var(--ease), background 200ms var(--ease);
@@ -310,11 +310,11 @@
   .dz-write .t { font-weight: 700; color: var(--text); }
   .dz-write .d { font-size: 0.8rem; color: var(--dim); margin-top: 0.15rem; }
   /* Terraform hand-off */
-  .tf-packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.5rem; }
+  .tf-packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 0.5rem; }
   .tf-pack { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 0.85rem; }
   .tf-pack.on { border-color: var(--accent); background: var(--accent-tint); }
   .tf-pack .d, .tf-sum .d, .tf-mode .d, .tf-actions .d { color: var(--dim); font-size: 0.8rem; }
-  .tf-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.6rem; }
+  .tf-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 0.6rem; }
   .tf-mode { padding: 0.7rem 0.85rem; border: 1px solid var(--border); border-radius: 12px; }
   .tf-mode.on { border-color: var(--accent); background: var(--accent-tint); }
   .tf-mode .t { font-weight: 700; margin-bottom: 0.25rem; }

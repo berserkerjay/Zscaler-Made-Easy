@@ -87,12 +87,18 @@
   const FIELD_LABELS = { org: 'Organization name', assessor: 'Assessor name', vd: 'Vanity domain', cid: 'Client ID', csec: 'Client secret', zuser: 'Admin username', zpass: 'Admin password', zkey: 'API key' };
   function missingFields() {
     const v = id => (($(id) || {}).value || '').trim();
+    // The sample tenant or an opened snapshot (offline_tenant.js): the server
+    // reads it, never the form, so only the report details are needed (the
+    // same rule as missingSignInFields on the page).
+    if (window.zmeOffline && typeof window.zmeOffline.active === 'function' && window.zmeOffline.active()) return ['org', 'assessor'].filter(id => !v(id));
     const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
     const remembered = typeof profileHasSecret === 'function' && profileHasSecret();
     const need = ['org', 'assessor'].concat(legacy ? ['zuser', 'zpass', 'zkey'] : ['vd', 'cid', 'csec']);
     return need.filter(id => !v(id) && !(remembered && (id === 'csec' || id === 'zpass' || id === 'zkey')));
   }
   function signedIn() {
+    // The sample tenant or a snapshot needs no sign-in: nothing is read from a live tenant.
+    if (window.zmeOffline && typeof window.zmeOffline.active === 'function' && window.zmeOffline.active()) return true;
     const c = window.GD && GD.conn;
     if (!c || !c.ok) return false;
     // The guide's own key: for the classic sign-in a hash of cloud and login, never the login itself.
