@@ -35,7 +35,9 @@ _NATIVE_RULE_KEYS = {"dlpEngines", "urlCategories", "cloudApplications", "fileTy
 
 _SCOPE_FIELDS = ("locations", "locationGroups", "groups", "departments", "users", "excludedGroups", "excludedDepartments", "excludedUsers",
                  "timeWindows", "workloadGroups")
-_TERM_RE = re.compile(r"D(\d+)\.S")
+_TERM_RE = re.compile(r"D(\d+)\.S\b")
+# A dictionary id the rewrite does not name: another suffix (D7.U) or the older D(7) form.
+_OTHER_TERM_RE = re.compile(r"\bD\(\s*\d+\s*\)(?:\.[A-Za-z]+)?|\bD\d+\.(?!S\b)[A-Za-z]+")
 # The only custom match type ZIA accepts a proximity window on.
 PROXIMITY_MATCH_TYPE = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
 _EMAIL_ACTIONS = {"ALLOW", "BLOCK", "CUSTOMHEADERINSERTION", "CUSTOM_HEADER_INSERTION"}
@@ -155,6 +157,14 @@ def convert_engine(e: Dict[str, Any], id_to_name: Dict[str, str], warnings: List
             return f"D:UNKNOWN_DICTIONARY_{did}"
         return f"D:{n}"
     out_expr = _TERM_RE.sub(sub, expr)
+    left = sorted(set(_OTHER_TERM_RE.findall(expr)))
+    if left:
+        # A term the pack form cannot name (D7.U, the older D(7)) would keep
+        # the source tenant's dictionary id, which is another dictionary, or
+        # none, in the tenant the pack is deployed to: left out, said so.
+        warnings.append(f"engine '{name}' was left out: its expression uses {', '.join(left)}, which a pack cannot carry by name "
+                        "(only D<id>.S terms are); recreate it in the target tenant")
+        return None
     if unresolved:
         warnings.append(f"engine '{name}' references dictionary id(s) {', '.join(sorted(set(unresolved)))} that are not in the upload; "
                         "add the dlpDictionaries export (predefined dictionaries included) so the ids can be named")
