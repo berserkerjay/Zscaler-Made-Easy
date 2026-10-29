@@ -180,6 +180,22 @@ def types() -> Tuple[str, ...]:
     return TYPES + tuple(sorted(PLUGINS))
 
 
+def product_of(spec_or_family: Any) -> str:
+    """The product an operation type or a family (the classic ZPA types, a
+    plugin type, a plugin family) reads and changes: "zpa", "zcc", "zdx" or
+    "zia" (the default for the ZIA rule and URL category types)."""
+    load_plugins()
+    t = spec_or_family if isinstance(spec_or_family, str) else str((spec_or_family or {}).get("type") or "") if isinstance(spec_or_family, dict) else ""
+    if t in ("zpa_segments", "zpa_domains"):
+        return "zpa"
+    if t in PLUGINS:
+        return str(PLUGINS[t].get("product") or "zia")
+    for p in PLUGINS.values():
+        if p.get("family") == t:
+            return str(p.get("product") or "zia")
+    return "zia"
+
+
 def plugin_catalog() -> List[Dict[str, Any]]:
     """What the page needs to offer the plugin types: no callables."""
     load_plugins()

@@ -5209,12 +5209,19 @@ async def report_operations_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
-class OperationObjectsRequest(ScopedTenantCredsRequest):
+class OperationCredsRequest(ScopedTenantCredsRequest):
+    """Tenant credentials of a bulk change, with the ZPA customer ID the
+    page sends (a ZPA type or family is refused before sign-in without it,
+    _ops_zpa_gate); blank falls back to the saved profile's."""
+    customer_id: str = ""
+
+
+class OperationObjectsRequest(OperationCredsRequest):
     """Body of the object picker: what to list (rules, url_categories or zpa_segments)."""
     family: str = "rules"
 
 
-class OperationRequest(ScopedTenantCredsRequest):
+class OperationRequest(OperationCredsRequest):
     """Body of a bulk change: the operation (admin_ops spec) and, to apply
     it, the previewed plan_hash, confirm=true and, above ten changes, the
     typed phrase. `undo_of` names the operation an Undo reverses."""
@@ -5241,6 +5248,25 @@ def _ops_scope(req: Any, what: Any) -> Dict[str, Any]:
     except admin_ops.OperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return scope
+
+
+OPS_ZPA_NEEDS_ONEAPI = ("ZPA bulk changes need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+                        "Sign in with an API client that has a ZPA role, then run it again. Nothing was read.")
+OPS_ZPA_NEEDS_CUSTOMER_ID = ("ZPA bulk changes need the ZPA customer ID (Connect to the tenant → Customer ID, or the saved profile): "
+                             "every ZPA API path carries it. Nothing was read.")
+
+
+def _ops_zpa_gate(what: Any, creds: Dict[str, str]) -> None:
+    """A ZPA bulk change, builder type or family needs a OneAPI sign-in and
+    the ZPA customer ID: 400 before any sign-in otherwise (a client without
+    the customer ID would call /customers/None/...)."""
+    import admin_ops
+    if admin_ops.product_of(what) != "zpa":
+        return
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=OPS_ZPA_NEEDS_ONEAPI)
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail=OPS_ZPA_NEEDS_CUSTOMER_ID)
 
 
 def _ops_assessor(req: Any) -> str:
@@ -5341,6 +5367,7 @@ async def operations_objects_start(req: OperationObjectsRequest, request: Reques
     import pack_jobs
     scope = _ops_scope(req, req.family)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.family, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("ops_objects", lambda log, cancel: _keyed(client, _run_ops_objects, client, req.family, scope, label, log, cancel),
@@ -5353,6 +5380,7 @@ async def operations_objects(req: OperationObjectsRequest):
     """The same list, waited for (for scripts)."""
     scope = _ops_scope(req, req.family)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.family, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(_keyed, client, _run_ops_objects, client, req.family, scope, tenant_auth.record_label(creds), None, None)
     if out.get("status") == "refused":
@@ -5367,6 +5395,7 @@ async def operations_preview_start(req: OperationRequest, request: Request):
     import pack_jobs
     scope = _ops_scope(req, req.operation)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.operation, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("ops_preview", lambda log, cancel: _keyed(client, _run_ops_preview, client, req, scope, label, log, cancel),
@@ -5379,6 +5408,7 @@ async def operations_preview(req: OperationRequest):
     """The same preview, waited for (for scripts)."""
     scope = _ops_scope(req, req.operation)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.operation, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds), None, None)
     if out.get("status") == "refused":
@@ -5396,6 +5426,7 @@ async def operations_apply_start(req: OperationRequest, request: Request):
     import pack_jobs
     scope, by = _ops_apply_gate(req)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.operation, creds)
     if req.undo_of:
         import deployments
         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
@@ -5412,6 +5443,7 @@ async def operations_apply(req: OperationRequest, request: Request):
     since the preview or the plan is blocked."""
     scope, by = _ops_apply_gate(req)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.operation, creds)
     if req.undo_of:
         import deployments
         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
@@ -5469,7 +5501,7 @@ async def operations_get(op_id: str):
     return {k: v for k, v in rec.items() if k not in ("tenant_key", "tenant_fp")}
 
 
-async def _ops_undo_inputs(op_id: str, req: ScopedTenantCredsRequest):
+async def _ops_undo_inputs(op_id: str, req: OperationCredsRequest):
     import deployments
     rec = deployments.get_operation(op_id)
     if not rec:
@@ -5481,12 +5513,13 @@ async def _ops_undo_inputs(op_id: str, req: ScopedTenantCredsRequest):
     body = OperationRequest(**{**req.model_dump(), "operation": rec["inverse"], "undo_of": op_id})
     scope = _ops_scope(body, body.operation)
     creds = _tenant_creds(body)
+    _ops_zpa_gate(body.operation, creds)
     _require_same_tenant(rec, creds)
     return body, scope, creds
 
 
 @app.post("/api/operations/{op_id}/undo/preview/start")
-async def operations_undo_preview_start(op_id: str, req: ScopedTenantCredsRequest, request: Request):
+async def operations_undo_preview_start(op_id: str, req: OperationCredsRequest, request: Request):
     """Undo builds the inverse of what the operation applied and previews it
     like any other operation (its own plan_hash and confirmation); it is
     applied through /api/operations/apply with undo_of. Read-only."""
@@ -5500,7 +5533,7 @@ async def operations_undo_preview_start(op_id: str, req: ScopedTenantCredsReques
 
 
 @app.post("/api/operations/{op_id}/undo/preview")
-async def operations_undo_preview(op_id: str, req: ScopedTenantCredsRequest):
+async def operations_undo_preview(op_id: str, req: OperationCredsRequest):
     """The same Undo preview, waited for (for scripts)."""
     body, scope, creds = await _ops_undo_inputs(op_id, req)
     client = await asyncio.to_thread(_build_sdk_client, creds)

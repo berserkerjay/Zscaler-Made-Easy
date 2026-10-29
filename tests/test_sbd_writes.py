@@ -54,7 +54,8 @@ import sso  # noqa: E402
 import zpa_reader  # noqa: E402
 from zpa_fake import CANARY_KEY, Client as ZpaClient  # noqa: E402
 
-CREDS = {"cloud": "zscalerten", "vanity_domain": "acme", "client_id": "cid-123", "client_secret": "not-a-real-secret"}
+CREDS = {"cloud": "zscalerten", "vanity_domain": "acme", "client_id": "cid-123", "client_secret": "not-a-real-secret",
+         "customer_id": "7210000000000"}   # a ZPA bulk change needs it before sign-in (C6-ZPA-05)
 ASSESSOR = "Jane Doe"
 WRITER = {"sub": "w-1", "email": "writer@example.com", "groups": ["dlp-writers"]}
 WRITER_2 = {"sub": "w-2", "email": "second@example.com", "groups": ["dlp-writers"]}
