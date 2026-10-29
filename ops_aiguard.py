@@ -36,8 +36,7 @@ from __future__ import annotations
 
 import json
 import re
-import threading
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import admin_ops as ao
 import ai_guard as ag

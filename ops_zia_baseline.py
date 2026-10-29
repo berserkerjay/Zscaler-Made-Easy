@@ -1295,7 +1295,7 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
             if lowered:
                 warnings.append("Advanced Threat Protection: the baseline turns off what this tenant blocks today: " + "; ".join(lowered)
                                 + ". Pick the setting on in the review to keep it.")
-    nspec ={k: v for k, v in n.items() if v not in (None, "", [], {})}
+    nspec = {k: v for k, v in n.items() if v not in (None, "", [], {})}
     nspec["type"] = TYPE
     if n.get("areas"):
         nspec["areas"] = n["areas"]
