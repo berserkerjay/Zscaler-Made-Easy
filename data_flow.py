@@ -404,7 +404,7 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                         vpn += vals
                     elif re.search(r"process", kl):
                         processes += vals
-                    elif re.search(r"bypassapp|appbypass|applicationbypass|predefinedbypass|custombypass", kl):
+                    elif re.search(r"bypassapp|bypasscustomapp|appbypass|applicationbypass|predefinedbypass|custombypass", kl):
                         apps += vals
                     elif re.search(r"ipexclu|excludeip|bypassip|ipbypass|destinationexclu|nonzscaler", kl):
                         ips += vals
@@ -416,8 +416,11 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                     "forwarding_profile": _v(p, "forwardingProfileId", "forwardingProfileName", "forwardingProfile") or _v(linked_policy, "id", "name"),
                     "pac_url": p.get("pacUrl") or p.get("customPacUrl") or p.get("pac_url"),
                     "strict_enforcement": _truthy(_v(p, "strictEnforcement", "strictMode")),
-                    "endpoint_dlp": _truthy(_v(p, "installEndpointDlp", "endpointDlpEnabled", "zdpEnabled")),
-                    "ssl_cert": _truthy(_v(p, "sslCertInstall", "installSslCert", "sslCertificateEnabled")),
+                    # The API's names first (zscaler-sdk-python zcc/models/webpolicy.py: policyExtension's
+                    # enableZdpService; the platform policy's install_ssl_certs, installCerts on macOS,
+                    # Linux and Android, as the engine's check 3.3 reads it), then older exports'.
+                    "endpoint_dlp": _truthy(_v(p, "enableZdpService", "installEndpointDlp", "endpointDlpEnabled", "zdpEnabled")),
+                    "ssl_cert": _truthy(_v(p, "install_ssl_certs", "installCerts", "sslCertInstall", "installSslCert", "sslCertificateEnabled")),
                     "bypass": {"domains": domains, "apps": apps, "processes": processes, "ips": ips, "vpn_gateways": vpn},
                     "groups": _names(p.get("groups") or p.get("groupNames") or []),
                     "users": _names(p.get("users") or p.get("userNames") or []),
