@@ -86,6 +86,13 @@ SCOPE_FIELDS = [
     ("time_windows", "time windows"), ("timeWindows", "time windows"),
     ("workload_groups", "workload groups"), ("workloadGroups", "workload groups"),
     ("zpa_app_segments", "ZPA app segments"), ("zpaAppSegments", "ZPA app segments"),
+    # URL filtering and Web DLP rules (zscaler-sdk-python 1.11.3 models):
+    # a user risk score condition, and Web DLP's exclusions (everyone in
+    # scope except these users, groups or departments).
+    ("user_risk_score_levels", "user risk score levels"), ("userRiskScoreLevels", "user risk score levels"),
+    ("excluded_users", "excluded users"), ("excludedUsers", "excluded users"),
+    ("excluded_groups", "excluded groups"), ("excludedGroups", "excluded groups"),
+    ("excluded_departments", "excluded departments"), ("excludedDepartments", "excluded departments"),
 ]
 TARGET_FIELDS = [
     ("url_categories", "urlCategories"), ("cloud_applications", "cloudApplications"),
@@ -136,6 +143,10 @@ def _scope(r: Dict[str, Any]) -> List[str]:
         v = r.get(field)
         if isinstance(v, list) and v:
             seen[label] = max(seen.get(label, 0), len(v))
+    # A URL filtering rule that enforces its validity period applies only
+    # within it (enforceTimeValidity, validityStartTime, validityEndTime).
+    if _bool(_f(r, "enforce_time_validity", "enforceTimeValidity", default=False)):
+        seen["validity period"] = 1
     return [f"{label}: {n}" for label, n in seen.items()]
 
 

@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import os
+import math
 import re
 import tempfile
 import threading
@@ -483,7 +484,7 @@ def protocol_split(rows: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
             total = float(r.get("total"))
         except (TypeError, ValueError):
             continue
-        if total != total or total < 0:
+        if not math.isfinite(total) or total < 0:   # NaN, an infinity or a negative count is not a volume
             continue
         bucket, known = bucket_of(r.get("name"))
         b[bucket] += total

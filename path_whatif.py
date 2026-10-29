@@ -49,10 +49,18 @@ DIMENSIONS: List[Tuple[str, str, Tuple[str, ...]]] = [
     ("source_ip_groups", "source IP group", ("source_ip_groups", "sourceIpGroups", "srcIpGroups")),
     ("workload_groups", "workload group", ("workload_groups", "workloadGroups")),
     ("zpa_app_segments", "ZPA app segment", ("zpa_app_segments", "zpaAppSegments")),
+    ("user_risk", "user risk score level", ("user_risk_score_levels", "userRiskScoreLevels")),
+    # Web DLP exclusions: the rule does not apply to these (negated).
+    ("excluded_users", "excluded user", ("excluded_users", "excludedUsers")),
+    ("excluded_groups", "excluded group", ("excluded_groups", "excludedGroups")),
+    ("excluded_departments", "excluded department", ("excluded_departments", "excludedDepartments")),
+    # A URL filtering rule's validity period (enforceTimeValidity): never given.
+    ("validity", "validity period", ()),
 ]
 LABEL = {k: label for k, label, _ in DIMENSIONS}
 WHO = ("users", "groups", "departments")
 WHERE = ("locations", "location_groups")
+EXCLUDED = {"excluded_users": "users", "excluded_groups": "groups", "excluded_departments": "departments"}
 MAX_ITEMS = 100
 MAX_NAME = 200
 MAX_GROUPS = 20
@@ -84,6 +92,10 @@ def scope_items(r: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
                         items.append({"id": None, "name": _clip(x)})
         if items:
             out[key] = items[:MAX_ITEMS]
+    import zia_path_modules
+    window = zia_path_modules.validity(r)
+    if window:
+        out["validity"] = [{"id": None, "name": _clip(window)}]
     return out
 
 
@@ -179,11 +191,13 @@ def rule_criteria(rule: Dict[str, Any], ident: Optional[Dict[str, Any]]) -> Tupl
         if key not in items:
             continue
         names = [i["name"] for i in items[key] if i.get("name")]
-        vals = _values(ident or {}, key)
+        vals = _values(ident or {}, EXCLUDED.get(key, key))
         if vals is None:
             state = "unknown"
         else:
-            state = "match" if any(_same(i, v, key == "users") for i in items[key] for v in vals) else "nomatch"
+            hit = any(_same(i, v, EXCLUDED.get(key, key) == "users") for i in items[key] for v in vals)
+            # An exclusion is met when the identity is NOT in it.
+            state = ("nomatch" if hit else "match") if key in EXCLUDED else ("match" if hit else "nomatch")
         crit.append({"dim": key, "name": f"{label}: " + ", ".join(names[:5]) + (f" (+{len(names) - 5})" if len(names) > 5 else ""),
                      "values": names[:MAX_ITEMS], "state": state})
 
@@ -195,7 +209,8 @@ def rule_criteria(rule: Dict[str, Any], ident: Optional[Dict[str, Any]]) -> Tupl
             return True
         return None if "unknown" in sts else False
 
-    parts = [any_of(WHO), any_of(WHERE)] + [None for c in crit if c["dim"] not in WHO + WHERE]
+    one = {"match": True, "nomatch": False}
+    parts = [any_of(WHO), any_of(WHERE)] + [one.get(c["state"]) for c in crit if c["dim"] not in WHO + WHERE]
     if False in parts:
         return False, crit
     if None in parts:

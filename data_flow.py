@@ -41,6 +41,7 @@ import md_safe
 import pac_eval
 import contextlib
 import fnmatch
+import ipaddress
 import json
 import re
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
@@ -48,6 +49,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tupl
 from bypass_report import _fetch_url_category_lookup, _rules_to_list
 from zcc_profiles import read_profiles, read_app_profiles
 from zcc_evaluation import flatten_profile, _v, _truthy
+import zia_path_modules as _zpm
 from zia_path_modules import SECTIONS as _ZIA_MODULE_SECTIONS, unevaluated as _unevaluated
 from path_whatif import scope_items
 from ssl_flow import (TRAFFIC_CLASSES, _fetch_app_catalogue, _fetch_rules, _matches, _names, _scope, _sort_key,
@@ -562,9 +564,10 @@ def _unread_why(unread: Dict[str, str], key: str, label: str) -> str:
 
 
 # ── Destination resolution ────────────────────────────────────────────
-def resolve_destination(dest: str, zia: Dict[str, Any]) -> Dict[str, Any]:
+def resolve_destination(dest: str, zia: Dict[str, Any], path: Optional[str] = None) -> Dict[str, Any]:
     """A cloud app name, a URL category id/name, a traffic class key or a
-    hostname → {label, kind, categories, applications, app_classes, host}."""
+    hostname (or IP address; `path`, the URL path when one was typed) →
+    {label, kind, categories, applications, app_classes, host}."""
     d = (dest or "").strip()
     du = d.upper().replace(" ", "_")
     for k in TRAFFIC_CLASSES:
@@ -581,13 +584,22 @@ def resolve_destination(dest: str, zia: Dict[str, Any]) -> Dict[str, Any]:
     for cls, apps in (zia.get("catalogue") or {}).items():
         if du in apps:
             return {"label": d, "kind": "application", "categories": [], "applications": [du], "app_classes": [cls], "host": "", "class": ""}
-    if "." in d:
-        host = _hostname_of(d)
+    try:   # an IP address (IPv6 has no dot): the host itself
+        literal: Optional[str] = str(ipaddress.ip_address(d.strip("[]")))
+    except ValueError:
+        literal = None
+    if "." in d or literal:
+        host = literal or _hostname_of(d)
+        # ZIA's URL list semantics (zia_path_modules.url_hit): "example.com"
+        # is that host only, ".example.com" the domain and its subdomains;
+        # an entry with a path places only that path (`path`, when given).
+        where = {"host": host, "path": path or "/"}
         matched_cats = []
         for key, c in cats.items():
             if not isinstance(c, dict):
                 continue
-            if _domain_hit(list(c.get("urls") or []) + list(c.get("db_categorized_urls") or c.get("dbCategorizedUrls") or []), host):
+            entries = list(c.get("urls") or []) + list(c.get("db_categorized_urls") or c.get("dbCategorizedUrls") or [])
+            if _zpm.url_hit(entries, where, bool(path and path != "/"))[0] == "match":
                 matched_cats.append(str(c.get("id") or key).upper())
         return {"label": host, "kind": "host", "categories": sorted(set(matched_cats)), "applications": [], "app_classes": [], "host": host, "class": ""}
     return {"label": d, "kind": "unknown", "categories": [du] if du else [], "applications": [du] if du else [], "app_classes": [], "host": "", "class": ""}
@@ -706,6 +718,12 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         raise ValueError("This tracer models inline web traffic; separate-channel inventory is not a tested Endpoint, SaaS or Email path.")
     operation = str(context.get("operation") or "").upper()
     request_method = str(context.get("request_method") or "").upper()
+    # Plain HTTP (the Path analyzer's TCP/80 or http:// traffic) carries no
+    # TLS: SSL inspection does not apply and every control sees the content.
+    # Without it the trace is for HTTPS, as the Data Flow Map draws it.
+    plaintext = bool(context.get("plaintext"))
+    web_protocol = "HTTP_RULE" if plaintext else "HTTPS_RULE"
+    proto_ok = lambda r: _zpm.protocol_applies(r.get("protocols") or [], web_protocol)  # noqa: E731
     # A filename extension is not a ZIA file-category classification. Do
     # not silently treat `pdf` versus FTCATEGORY_* as a proven non-match.
     file_types = {str(x).upper() for x in (context.get("file_types") or []) if str(x).upper().startswith("FTCATEGORY_")}
@@ -818,7 +836,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         pacs = [f for f in zcc.get("pac_files", []) if pac_url and f.get("url") == pac_url]
         # Evaluated by pac_eval (parsed and interpreted, never run); a PAC
         # it cannot evaluate safely is unverified, not "no DIRECT clause".
-        pev = pac_eval.path_hop(pacs, host, dest.get("url") or (f"https://{host}/" if host else ""))
+        pev = pac_eval.path_hop(pacs, host, dest.get("pac_url") or dest.get("url") or (f"https://{host}/" if host else ""))
         if pev is not None:
             pacs = []
             if pev["status"] == "bypass":
@@ -862,7 +880,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # The SSL decision is known from the rules before it is applied:
         # it decides what the app and URL controls can see (domain only
         # until decryption) and whether content inspection is possible.
-        matching = [(r, _matches(r, klass, cats, apps)) for r in sorted(zia["ssl"], key=_sort_key) if r["enabled"]]
+        matching = [(r, _matches(r, klass, cats, apps)) for r in sorted(zia["ssl"], key=_sort_key) if r["enabled"]] if not plaintext else []
         matching = [(r, h) for r, h in matching if h]
         decided = next((r for r, h in matching if not r["scoped"]), None)
         exceptions = []
@@ -871,10 +889,16 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 break
             if r["scoped"]:
                 exceptions.append(r)
-        ssl_conditional = bool(exceptions)
-        decrypted = decided is not None and decided["decision"] == "inspected" and not ssl_conditional
-        ssl_out = "ssl" in nis
+        # A scoped rule ahead of the deciding one makes the decision depend
+        # on who the user is only when it decides differently (no matching
+        # rule leaves the traffic encrypted).
+        everyone = decided["decision"] if decided else "not_inspected"
+        ssl_conditional = any(e["decision"] != everyone for e in exceptions)
+        decrypted = plaintext or (decided is not None and decided["decision"] == "inspected" and not ssl_conditional)
+        ssl_out = "ssl" in nis and not plaintext
         ssl_unknown = decided is not None and decided["decision"] == "unknown"
+        if plaintext:
+            unread.pop("ssl", None)   # no TLS: the SSL rules decide nothing here
 
         # 5. Cloud App Control: evaluated with URL Filtering before SSL
         # inspection; when a rule matches the application, URL Filtering
@@ -933,7 +957,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             hops.append(_hop("url", "URL filtering", "out_of_scope", None,
                              nis["url"] + " Whether URL filtering blocks or cautions this destination is not assessed.", None, why="not in scope"))
         else:
-            url_rules = sorted([r for r in zia["url"] if r["enabled"]], key=_policy_order)
+            url_rules = sorted([r for r in zia["url"] if r["enabled"] and proto_ok(r)], key=_policy_order)
             matching_url = [(r, m) for r in url_rules for m in [_generic_matches(r, dest)] if m
                             and (not request_method or not r["request_methods"] or request_method in r["request_methods"] or "ANY" in r["request_methods"])]
             unresolved = lambda r: r["scoped"] or (bool(r["request_methods"]) and "ANY" not in r["request_methods"] and not request_method)
@@ -943,6 +967,9 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 if not unresolved(r):
                     break
                 scoped_before.append(r)
+            # Only a rule that would act differently makes the result depend on it.
+            everyone_action = (hit[0]["action"] or "ALLOW") if hit else "ALLOW"
+            scoped_before = [r for r in scoped_before if (r["action"] or "ALLOW") != everyone_action]
             if scoped_before:
                 hops.append(_hop("url", "URL filtering", "conditional", None,
                                  "Higher-precedence URL rules depend on an unverified identity or request method. No later global rule is treated as a confirmed decision.",
@@ -966,7 +993,11 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
 
         # 7. SSL inspection
         if ends not in ("url", "cac"):
-            if ssl_out:
+            if plaintext:
+                hops.append(_hop("ssl", "SSL inspection", "na", None,
+                                 "Not applicable: plain HTTP carries no TLS, so there is nothing to decrypt; every later control sees the full URL and the content.",
+                                 None, why="plain HTTP"))
+            elif ssl_out:
                 hops.append(_hop("ssl", "SSL inspection", "out_of_scope", None,
                                  nis["ssl"] + " Whether this traffic is decrypted, and so whether DLP can see its content, is not assessed.", None, why="not in scope"))
             elif ssl_conditional:
@@ -999,7 +1030,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
 
         # 9. File Type Control
         if ends not in ("ssl", "url", "cac"):
-            ftc = [(r, _generic_matches(r, dest)) for r in sorted(zia["ftc"], key=_policy_order) if r["enabled"]
+            ftc = [(r, _generic_matches(r, dest)) for r in sorted(zia["ftc"], key=_policy_order) if r["enabled"] and proto_ok(r)
                    and (not operation or r["operation"] in (operation, "", "ANY"))
                    and (not file_types or not r["file_types"] or "ANY" in r["file_types"] or bool(file_types & set(r["file_types"])))]
             ftc = [(r, m) for r, m in ftc if m]
@@ -1037,7 +1068,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         covering: List[Dict[str, Any]] = []
         if ends not in ("ssl", "url", "cac", "ftc"):
             for r in zia["dlp"]:
-                if not r["enabled"]:
+                if not r["enabled"] or not proto_ok(r):
                     continue
                 if r["catch_all"] or (set(r["url_categories"]) & set(cats)) or (set(r["cloud_applications"]) & set(apps)):
                     covering.append(r)
@@ -1086,7 +1117,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                                  _weak("low", "Monitor only", "Once tuned, move the high-confidence rules to BLOCK.") if not enforcing else (_weak("medium", "Rules run without content inspection", "Clear the without-content-inspection flag on at least one rule with an engine.") if not content else None),
                                  content_inspection_possible=bool(content),
                                  rules=[{"id": r["id"], "name": r["name"], "order": r.get("order"), "action": r["action"], "enforcing": r["enforcing"], "engines": r.get("engines") or [],
-                                         "scope": r.get("scope") or [], "without_content_inspection": r.get("without_content_inspection", False),
+                                         "scope": r.get("scope") or [], "scope_items": r.get("scope_items") or {}, "without_content_inspection": r.get("without_content_inspection", False),
                                          "incident_receiver": bool(r.get("incident_receiver")), "icap_server": r.get("icap_server"), "notification_template": r.get("notification_template")} for r in covering]))
 
         # 13. After the match: logs, the incident receiver and Workflow Automation
@@ -1201,7 +1232,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                "blind" if not decrypted else next((h["status"] for h in hops if h["key"] == "dlp"), "none"))
     return {"destination": dest, "network": network, "platform": platform, "hops": hops, "channels": channels, "packs": pack_rows,
             "weak_points": weak_points, "outcome": outcome, "reaches_zscaler": reaches_zscaler, "decrypted": decrypted,
-            "not_in_scope": nis, "conditional": conditional,
+            "not_in_scope": nis, "conditional": conditional, "plaintext": plaintext,
             "policy_conditional": any(h["status"] == "conditional" and h["key"] != "incident" for h in hops),
             "tested_channel": "web", "evidence_mode": "configuration", "content_inspected": False,
             "content_inspection_possible": bool(decrypted and not ends and any(h.get("content_inspection_possible") for h in hops)),
@@ -1227,6 +1258,27 @@ def load_packs() -> List[Dict[str, Any]]:
         return out
     except Exception:  # noqa: BLE001
         return []
+
+
+VISIBILITY = ("blocked", "unverified", "bypassed", "blind", "enforce", "monitor", "decrypted")
+
+
+def visibility(t: Dict[str, Any]) -> str:
+    """The one visibility class of a traced path, in the order the Data
+    Flow Map's page decides it (static/data_flow.js _dfVisibility):
+    blocked, unverified (routing or inspection evidence unavailable, out of
+    scope or conditional), bypassed, blind (reaches ZIA encrypted),
+    enforce, monitor, else decrypted (no DLP decision either way)."""
+    if t.get("outcome") == "blocked":
+        return "blocked"
+    if t.get("conditional") or t.get("policy_conditional") or any(
+            h.get("key") == "ssl" and h.get("status") in ("unknown", "out_of_scope", "conditional") for h in t.get("hops") or []):
+        return "unverified"
+    if not t.get("reaches_zscaler"):
+        return "bypassed"
+    if not t.get("decrypted"):
+        return "blind"
+    return {"enforce": "enforce", "monitor": "monitor"}.get(t.get("outcome"), "decrypted")
 
 
 def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = None, platform: str = "windows", *,
@@ -1255,15 +1307,19 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
                 failed.append({"section": f"trace {rd.get('label') or d} ({net['key']})", "error_type": type(e).__name__, "error": str(e)[:200]})
     if not traces and failed:
         raise RuntimeError(f"no path could be traced: {failed[0]['error_type']}: {failed[0]['error']}")
+    # Every path in exactly one visibility class (the page's own classes,
+    # static/data_flow.js _dfVisibility), so the counts add up to `traces`.
+    vis = [visibility(t) for t in traces]
     summary = {
         "destinations": len(dests), "traces": len(traces),
-        "bypassed": sum(1 for t in traces if not t["reaches_zscaler"]),
+        "bypassed": vis.count("bypassed"),
         # Left encrypted: an SSL rule (or no rule) passes it through. SSL
-        # inspection not in scope, unread or conditional is not counted.
-        "blind": sum(1 for t in traces if not t["conditional"] and t["reaches_zscaler"] and t["outcome"] not in ("blocked",)
-                     and any(h["key"] == "ssl" and h["status"] == "blind" for h in t["hops"])),
-        "enforced": sum(1 for t in traces if t["outcome"] == "enforce"),
-        "monitored": sum(1 for t in traces if t["outcome"] == "monitor"),
+        # inspection not in scope, unread or conditional, and a path whose
+        # policy depends on who the user is, are "unverified" instead.
+        "blind": vis.count("blind"),
+        "enforced": vis.count("enforce"),
+        "monitored": vis.count("monitor"),
+        "blocked": vis.count("blocked"), "unverified": vis.count("unverified"), "decrypted_other": vis.count("decrypted"),
         "high": sum(1 for t in traces for w in t["weak_points"] if w["severity"] == "high"),
         "app_profiles": len(zcc["app_profiles"]), "forwarding_profiles": len(zcc["forwarding_profiles"]),
         "trusted_networks": len(zcc["trusted_networks"]), "pac_files": len(zcc["pac_files"]),

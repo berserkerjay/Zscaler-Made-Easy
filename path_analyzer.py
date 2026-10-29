@@ -47,8 +47,11 @@ _PRIVATE_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12"
 def _is_private(ip) -> bool:
     """RFC 1918, loopback and link-local only: an address a user reaches
     without leaving the site. (Python's is_private also flags the
-    documentation ranges such as 203.0.113.0/24, which are routed.)"""
-    return ip is not None and any(ip in n for n in _PRIVATE_NETS)
+    documentation ranges such as 203.0.113.0/24, which are routed.) An
+    IPv4-mapped IPv6 address (::ffff:10.0.0.1) is its IPv4 address."""
+    if ip is not None and getattr(ip, "ipv4_mapped", None) is not None:
+        ip = ip.ipv4_mapped
+    return ip is not None and any(ip.version == n.version and ip in n for n in _PRIVATE_NETS)
 
 
 STOPPED_REASON = ("You clicked Stop before the analysis finished, so it was abandoned: nothing more was read from the tenant and no partial result is shown. "
@@ -60,6 +63,14 @@ class Stopped(RuntimeError):
 
 
 _HOST_RE = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
+_USERINFO = re.compile(r"^((?:[a-z][a-z0-9+.-]*://)?)[^/?#@]*@", re.I)
+
+
+def _shown(raw: str) -> str:
+    """What the user typed, as the result and its messages repeat it: any
+    user name and password in the URL (https://user:pass@host/) left out.
+    They are never needed to place a destination."""
+    return _USERINFO.sub(r"\1", raw)
 
 
 def parse_destination(text: str) -> Dict[str, Any]:
@@ -69,25 +80,56 @@ def parse_destination(text: str) -> Dict[str, Any]:
     raw = (text or "").strip()
     if not raw:
         raise ValueError("Enter a URL, a hostname or an IP address.")
-    s = raw if re.match(r"^[a-z][a-z0-9+.-]*://", raw, re.I) else "https://" + raw
+    try:   # a bare IPv6 address (2001:db8::1) is a host, not host:port
+        if raw.count(":") >= 2 and "[" not in raw and "/" not in raw:
+            raw = str(ipaddress.ip_address(raw))
+            raw_in = f"[{raw}]"
+        else:
+            raw_in = raw
+    except ValueError:
+        raw_in = raw
+    s = raw_in if re.match(r"^[a-z][a-z0-9+.-]*://", raw_in, re.I) else "https://" + raw_in
     try:
         u = urlsplit(s)
         host = (u.hostname or "").lower().strip(".")
         port = u.port
     except ValueError as e:
-        raise ValueError(f"'{raw}' is not a URL, hostname or IP address ({e}).")
+        raise ValueError(f"'{_shown(raw)}' is not a URL, hostname or IP address ({e}).")
     if not host:
-        raise ValueError(f"'{raw}' is not a URL, hostname or IP address.")
+        raise ValueError(f"'{_shown(raw)}' is not a URL, hostname or IP address.")
+    if port == 0:
+        raise ValueError("The port must be a whole number from 1 to 65535.")
     ip = None
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        pass
+        try:
+            host = zia_path_modules.ascii_host(host)   # an internationalised name, as ZIA holds it (punycode)
+        except ValueError:
+            pass
     if ip is None and not _HOST_RE.match(host):
-        raise ValueError(f"'{raw}' is not a URL, hostname or IP address. Examples: https://drive.google.com/file/d/…, dropbox.com, 203.0.113.10.")
+        raise ValueError(f"'{_shown(raw)}' is not a URL, hostname or IP address. Examples: https://drive.google.com/file/d/…, dropbox.com, 203.0.113.10.")
     kind = "ip" if ip is not None else ("url" if (u.path and u.path != "/") or u.query else "host")
-    return {"input": raw, "host": host, "is_ip": ip is not None, "private": _is_private(ip),
+    return {"input": _shown(raw), "host": host, "is_ip": ip is not None, "private": _is_private(ip),
             "scheme": (u.scheme or "https").lower(), "port": port, "path": u.path or "/", "query": u.query or "", "kind": kind}
+
+
+def _url_host(host: str) -> str:
+    return f"[{host}]" if ":" in host else host
+
+
+def pac_url(d: Dict[str, Any], traffic: Dict[str, Any]) -> str:
+    """The URL a browser hands the PAC file's FindProxyForURL for this
+    destination: plain HTTP keeps its path and query; HTTPS (and anything
+    else) is cut to scheme, host and port, as Chrome and Firefox strip
+    https:// URLs before they call the PAC file (browser behaviour,
+    assumed for traffic that is not web). A default port is left out."""
+    plain = bool(traffic.get("web")) and traffic.get("encrypted") is False
+    scheme = "http" if plain else "https"
+    port = traffic.get("port")
+    shown = f":{port}" if port and port != (80 if plain else 443) else ""
+    tail = (d.get("path") or "/") + (f"?{d['query']}" if d.get("query") else "") if plain else "/"
+    return f"{scheme}://{_url_host(d['host'])}{shown}{tail}"
 
 
 def lookup_categories(client, host: str) -> Dict[str, Any]:
@@ -233,7 +275,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     else:
         _log("ZIA says: " + (", ".join(lk["categories"]) if lk["categories"] else "no category") + (f"; application {lk['application']}" if lk["application"] else "")
               + (f"; security alert: {', '.join(lk['security_alerts'])}" if lk["security_alerts"] else "") + ".")
-    rd = resolve_destination(d["host"], zia)
+    rd = resolve_destination(d["host"], zia, d["path"])
     rd["kind"] = "ip" if d["is_ip"] else "host"
     rd["label"] = d["host"]
     rd["host"] = d["host"]
@@ -244,7 +286,10 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
             if lk["application"] in apps and cls not in rd["app_classes"]:
                 rd["app_classes"].append(cls)
     rd["lookup"] = lk
-    rd["url"] = f"{d['scheme']}://{d['host']}{':' + str(d['port']) if d['port'] else ''}{d['path']}{'?' + d['query'] if d['query'] else ''}"
+    rd["url"] = f"{d['scheme']}://{_url_host(d['host'])}{':' + str(d['port']) if d['port'] else ''}{d['path']}{'?' + d['query'] if d['query'] else ''}"
+    rd["pac_url"] = pac_url(d, traffic)
+    if traffic["web"] and traffic["encrypted"] is False:
+        context = dict(context or {}, plaintext=True)   # plain HTTP: no TLS on this path
     # What-if (path_whatif): rules scoped to the identity given apply, the
     # others are skipped; the PAC file is evaluated by pac_eval, never run.
     import path_whatif
@@ -305,6 +350,7 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
     outcome = t["outcome"]
     host = d["host"]
     rule = lambda h: (h.get("decided_by") or {}).get("name")  # noqa: E731
+    seen = "unencrypted (plain HTTP)" if t.get("plaintext") else "decrypted"
     if t.get("conditional"):
         headline = f"Unable to verify how the device reaches {host}."
         summary = "The app profile or its linked forwarding settings could not be verified. Downstream policy results apply only if this traffic reaches ZIA; they do not establish that the device is protected."
@@ -321,7 +367,7 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
     elif outcome == "enforce":
         dlp = next((h for h in hops if h["key"] == "dlp"), None)
         n = len((dlp or {}).get("rules") or [])
-        headline = f"Reaches {host} decrypted; {n} DLP rule(s) are configured to inspect content and can block a qualifying match."
+        headline = f"Reaches {host} {seen}; {n} DLP rule(s) are configured to inspect content and can block a qualifying match."
         summary = (dlp or {}).get("detail", "")
     elif outcome == "unknown":
         unread = [h["label"] for h in hops if h["status"] == "unknown" and h["key"] != "incident"]
@@ -340,10 +386,10 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
     elif outcome == "monitor":
         dlp = next((h for h in hops if h["key"] == "dlp"), None)
         n = len((dlp or {}).get("rules") or [])
-        headline = f"Reaches {host} decrypted; {n} DLP rule(s) are configured to monitor qualifying content."
+        headline = f"Reaches {host} {seen}; {n} DLP rule(s) are configured to monitor qualifying content."
         summary = (dlp or {}).get("detail", "") + " Nothing is stopped: a match is logged and, where configured, forwarded as an incident."
     else:
-        headline = f"Reaches {host} decrypted; no DLP rule covers this traffic."
+        headline = f"Reaches {host} {seen}; no DLP rule covers this traffic."
         summary = "Uploads and posts go through with nothing inspecting the content."
     impacts: List[Dict[str, Any]] = []
     if lk.get("security_alerts"):
