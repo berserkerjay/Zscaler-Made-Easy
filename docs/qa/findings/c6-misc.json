@@ -1,0 +1,521 @@
+{
+ "area": "misc",
+ "title": "MCP server, URL tools, console index, workspace notes, Beacon, endpoint discovery, clouds, engine and finding explanations, corpus engines, native import, guidance, vertical, Secure by Design",
+ "files": [
+  "guidance.py",
+  "engine_explain.py",
+  "plain_english.py",
+  "vertical.py",
+  "scenario_flow.py",
+  "corpus_engines.py",
+  "url_tools.py",
+  "console_index.py",
+  "workspace_notes.py",
+  "beacon.py",
+  "discover_endpoints.py",
+  "native_zscaler.py",
+  "dlp_mcp_server.py",
+  "secure_by_design.py",
+  "zscaler_clouds.py"
+ ],
+ "standards": [
+  "OWASP ASVS 4.0.3 L2",
+  "OWASP Top 10 2021",
+  "CWE",
+  "OWASP WSTG",
+  "CISA Secure by Design",
+  "NIST SSDF PW.4.1 / PW.8.2"
+ ],
+ "coverage": {
+  "before": 83.0,
+  "after": 89.5,
+  "measure": "line+branch, the 15 files, their own tests plus tests/test_c6_misc.py"
+ },
+ "checks": [
+  {
+   "id": "C6-MISC-CHK-MCP-WRITE",
+   "what": "The MCP server exposes four read tools only; none takes a secret, a confirmation or a write switch",
+   "standard": "ASVS V1.4.1 · CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-MCP-SECRET",
+   "what": "No secret in any MCP tool result, the failed sign-in and raised checks included",
+   "standard": "ASVS V7.1.1 · CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-MCP-INPUT",
+   "what": "MCP tool arguments validated (cloud, vanity, caps, control characters)",
+   "standard": "ASVS V5.1.3 · CWE-20",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-MCP-BIND",
+   "what": "MCP HTTP transport loopback by default; beyond it only on purpose",
+   "standard": "ASVS V14.1.3 · CWE-306",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-URL-PARSE",
+   "what": "URL, domain, IP, range, IDN and IPv6 classification against an oracle table",
+   "standard": "ASVS V5.1.3 · CWE-20",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-URL-ANALYZER",
+   "what": "Custom URL category analyzer verdicts, 429 pacing, Stop, cap, IDN matching",
+   "standard": "ASVS V5.1.3 · CWE-770",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-URL-XLSX",
+   "what": "Formula-looking tenant URLs are text in the workbooks",
+   "standard": "ASVS V5.3.10 · CWE-1236",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-URL-SCOPE",
+   "what": "URLs export and analyzer read only what the Scope page ticks",
+   "standard": "ASVS V4.1.3 · CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-CI-TENANT",
+   "what": "Console index cache never answers for another tenant",
+   "standard": "ASVS V4.2.1 · CWE-668",
+   "result": "open"
+  },
+  {
+   "id": "C6-MISC-CHK-CI-PII",
+   "what": "Console index holds no user, device or description",
+   "standard": "ASVS V8.3.4 · CWE-359",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-WN-CAPS",
+   "what": "Workspace notes caps (text, tags, store bytes) at their boundaries",
+   "standard": "ASVS V5.1.4 · CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-WN-ESCAPE",
+   "what": "Tags refuse markup; links same-origin only; pages render notes through DOM text",
+   "standard": "ASVS V5.3.3 · CWE-79",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-WN-PERMS",
+   "what": "Notes store and lock owner-only",
+   "standard": "ASVS V8.3.1 · CWE-276",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-WN-ROBUST",
+   "what": "Damaged store and invisible characters",
+   "standard": "ASVS V7.4.1 · CWE-755",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-BEACON-SSRF",
+   "what": "Every Beacon fetch goes through the https host allowlist with checked redirects; the tenant watch is GET-only",
+   "standard": "ASVS V12.6.1 · CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-BEACON-SECRETS",
+   "what": "Beacon history keeps no token",
+   "standard": "ASVS V7.1.1 · CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-DISCOVER-SAFETY",
+   "what": "discover_endpoints: no values kept, owner-only output, no redirects, vanity checked, errors masked",
+   "standard": "ASVS V8.3.4 · CWE-532 · CWE-918",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-CLOUDS-SDK",
+   "what": "Token URL, OneAPI gateway and classic API host per cloud equal SDK 1.11.3's own builders",
+   "standard": "ASVS V12.6.1 · SSDF PW.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "C6-MISC-CHK-EXPLAIN-OPS",
+   "what": "engine_explain and plain_english against every operator and section",
+   "standard": "ASVS V5.1.3 · CWE-480",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-CORPUS-ORACLE",
+   "what": "Local detectors and engine evaluation against published reference values and every operator",
+   "standard": "ASVS V5.1.3 · CWE-697",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-NATIVE-PORTABLE",
+   "what": "Native export conversion never carries a tenant-specific id",
+   "standard": "ASVS V5.1.3 · CWE-706",
+   "result": "fixed"
+  },
+  {
+   "id": "C6-MISC-CHK-SBD-EVIDENCE",
+   "what": "Secure by Design page reports live evidence and no secret",
+   "standard": "ASVS V7.1.3 · CWE-778",
+   "result": "fixed"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-MISC-01",
+   "title": "Unknown cloud (tool argument or ZSCALER_CLOUD) silently signed in to the commercial cloud",
+   "severity": "medium",
+   "cwe": "CWE-636",
+   "asvs": "V14.1.3",
+   "status": "fixed",
+   "fix": "refused before sign-in with zscaler_clouds.normalize",
+   "test": "tests/test_c6_misc.py::test_mcp_unknown_cloud_in_the_environment_is_refused",
+   "commit": "0358111"
+  },
+  {
+   "id": "C6-MISC-02",
+   "title": "A check that raised put its message unmasked into the MCP result",
+   "severity": "medium",
+   "cwe": "CWE-209",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "tenant_auth.mask_secrets on every exception detail",
+   "test": "tests/test_c6_misc.py::test_mcp_check_exception_detail_masks_the_client_secret",
+   "commit": "0358111"
+  },
+  {
+   "id": "C6-MISC-03",
+   "title": "MCP tool arguments uncapped, control characters accepted, empty section ran every check, client not closed on failed sign-in",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "arguments capped at 200 characters, control characters refused, empty section refused, client closed in finally",
+   "test": "tests/test_c6_misc.py::test_mcp_empty_section_is_refused_not_every_check",
+   "commit": "0358111"
+  },
+  {
+   "id": "C6-MISC-04",
+   "title": "Unauthenticated MCP server bound beyond loopback with a warning only",
+   "severity": "medium",
+   "cwe": "CWE-306",
+   "asvs": "V14.1.3",
+   "status": "fixed",
+   "fix": "refused (exit 2) unless --allow-remote",
+   "test": "tests/test_c6_misc.py::test_mcp_http_bind_beyond_loopback_is_refused_by_default",
+   "commit": "abfbbd2"
+  },
+  {
+   "id": "C6-MISC-05",
+   "title": "url_tools.kind_of called hex-like domains (dead-beef.cc) IP ranges",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "both ends of a range must parse as IP addresses",
+   "test": "tests/test_c6_misc.py::test_url_tools_kind_of_oracle",
+   "commit": "76cbc2e"
+  },
+  {
+   "id": "C6-MISC-06",
+   "title": "URL lookup answer not matched when the host is internationalised (Unicode vs IDNA; lookup spelling assumed)",
+   "severity": "low",
+   "cwe": "CWE-176",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "match key encodes non-ASCII hosts to IDNA on both sides",
+   "test": "tests/test_c6_misc.py::test_url_tools_idn_answer_in_punycode_is_matched",
+   "commit": "76cbc2e"
+  },
+  {
+   "id": "C6-MISC-07",
+   "title": "Custom category analyzer counted the tenant's other custom categories as Zscaler's categorisation",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "CUSTOM_ ids are not Zscaler's categories",
+   "test": "tests/test_c6_misc.py::test_url_tools_another_custom_category_is_not_zscalers_categorisation",
+   "commit": "76cbc2e"
+  },
+  {
+   "id": "C6-MISC-08",
+   "title": "URLs export iterated a non-list tenant field character by character or crashed",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "_list() accepts lists only in collect and the lookup answer",
+   "test": "tests/test_c6_misc.py::test_url_tools_collect_survives_wrong_shapes_everywhere",
+   "commit": "76cbc2e"
+  },
+  {
+   "id": "C6-MISC-09",
+   "title": "Console index cache: typed sign-ins of every tenant shared one bucket named like a valid profile id, and the latest-index lookup could answer for another tenant",
+   "severity": "medium",
+   "cwe": "CWE-668",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "bucket name no profile can take; cache_latest matches the tenant label and denies without profile or tenant",
+   "test": "tests/test_c6_misc.py::test_console_index_cached_answers_only_for_the_named_tenant",
+   "commit": "ad0364c"
+  },
+  {
+   "id": "C6-MISC-10",
+   "title": "GET /api/console-index/cached does not say which tenant the page is signed in to, so for typed sign-ins it can no longer return an index (fail closed) and for an edited profile it cannot check the tenant",
+   "severity": "medium",
+   "cwe": "CWE-668",
+   "asvs": "V4.2.1",
+   "status": "open",
+   "fix": "server passes the signed-in tenant's label to console_index.cache_latest; Find anything sends its sign-in",
+   "test": "tests/test_c6_misc.py::test_console_index_cached_without_a_tenant_is_refused",
+   "commit": "",
+   "proposed_patch": "diff --git a/dlp_api_server.py b/dlp_api_server.py\nindex 0a374b7..4c44565 100755\n--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -5498,14 +5498,21 @@ def _console_zia(req: Any, zscope: Dict[str, Any]):\n \n \n @app.get(\"/api/console-index/cached\")\n-async def console_index_cached(profile_id: str = \"\"):\n+async def console_index_cached(profile_id: str = \"\", vanity_domain: str = \"\", cloud: str = \"\", auth_method: str = \"\"):\n     \"\"\"The last console index this server read for a tenant profile (or for\n     the server's own tenant), whatever scope it was read with, while it is\n-    kept (30 minutes). Never reads the tenant: Find anything searches it as\n-    you type, and only its Load tenant objects button reads (POST\n-    /api/console-index, with the Scope page's selection).\"\"\"\n+    kept (30 minutes), and only when it was read for the tenant the page\n+    is signed in to (typed sign-ins of every tenant share one bucket).\n+    Never reads the tenant: Find anything searches it as you type, and\n+    only its Load tenant objects button reads (POST /api/console-index,\n+    with the Scope page's selection).\"\"\"\n     import console_index as ci\n-    hit = ci.cache_latest(profile_id)\n+    import workspace_notes as wn\n+    try:\n+        label = _notes_tenant(\"\", profile_id, vanity_domain, cloud, auth_method)\n+    except wn.NotesError:\n+        label = None   # a profile that is gone keeps its own bucket; no sign-in at all answers nothing\n+    hit = ci.cache_latest(profile_id, tenant_label=label)\n     return {\"index\": hit, \"profile_id\": profile_id or \"\"}\n \n \ndiff --git a/static/find_anything.js b/static/find_anything.js\nindex 93941f7..6778f4e 100644\n--- a/static/find_anything.js\n+++ b/static/find_anything.js\n@@ -346,6 +346,16 @@\n   }\n   // Which tenant a note belongs to: the loaded index's, else the sign-in on\n   // the assessment page (no secret), else the server's own tenant.\n+  // The tenant the page is signed in to (never the kept index's own label).\n+  function signInRef() {\n+    const h = home();\n+    try {\n+      const b = (h && h.migrateCredBody()) || {};\n+      if (b.profile_id) return { profile_id: b.profile_id };\n+      if (b.vanity_domain || b.auth_method === 'legacy') return { vanity_domain: b.vanity_domain || '', cloud: b.cloud || '', auth_method: b.auth_method || '' };\n+    } catch (e) { /* below */ }\n+    return { profile_id: profileId() };\n+  }\n   function tenantRef() {\n     if (S.index && S.index.tenant_label) return { tenant: S.index.tenant_label };\n     const h = home();\n@@ -390,7 +400,7 @@\n     if (S.cachedAsked) return;\n     S.cachedAsked = true;\n     try {\n-      const d = await getJson('/api/console-index/cached?' + qs({ profile_id: profileId() }));\n+      const d = await getJson('/api/console-index/cached?' + qs(signInRef()));\n       if (d && d.index) { S.index = d.index; }\n     } catch (e) { /* no index kept */ }\n     noteIndex();\n",
+   "files": [
+    "dlp_api_server.py",
+    "static/find_anything.js"
+   ]
+  },
+  {
+   "id": "C6-MISC-11",
+   "title": "A damaged workspace notes store (bucket or note not an object, deep nesting) made every notes read raise",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "_read keeps only entries of the store's shape; RecursionError reads as empty",
+   "test": "tests/test_c6_misc.py::test_workspace_notes_damaged_store_reads_as_empty_not_a_crash",
+   "commit": "4438074"
+  },
+  {
+   "id": "C6-MISC-12",
+   "title": "Bidi overrides, C1 controls and line separators were kept in note text",
+   "severity": "low",
+   "cwe": "CWE-451",
+   "asvs": "V5.3.1",
+   "status": "fixed",
+   "fix": "_clean strips them",
+   "test": "tests/test_c6_misc.py::test_workspace_notes_bidi_and_c1_controls_are_stripped",
+   "commit": "4438074"
+  },
+  {
+   "id": "C6-MISC-13",
+   "title": "Beacon kept tenant-watch errors unredacted in beacon_state.json (a gateway page echoing the Authorization header)",
+   "severity": "low",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "tenant_auth.redact_tokens before cutting and keeping",
+   "test": "tests/test_c6_misc.py::test_beacon_failed_watch_keeps_its_reason_redacted",
+   "commit": "26da5b9"
+  },
+  {
+   "id": "C6-MISC-14",
+   "title": "Beacon history load raised on a state file nested past the parser; a non-numeric status raised",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "RecursionError is an empty history; status coerced",
+   "test": "tests/test_c6_misc.py::test_beacon_deeply_nested_state_file_is_an_empty_history",
+   "commit": "26da5b9"
+  },
+  {
+   "id": "C6-MISC-15",
+   "title": "discover_endpoints wrote the first item of every endpoint as values (a person's device on /zcc/devices) to a file anyone on the machine could read",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "field names and value types only, written owner-only",
+   "test": "tests/test_c6_misc.py::test_discover_keeps_field_names_and_types_never_values",
+   "commit": "6d71a8d"
+  },
+  {
+   "id": "C6-MISC-16",
+   "title": "discover_endpoints followed redirects on the token POST (307/308 repeats the secret) and the probes",
+   "severity": "low",
+   "cwe": "CWE-601",
+   "asvs": "V12.6.1",
+   "status": "fixed",
+   "fix": "allow_redirects=False; a token redirect is an error",
+   "test": "tests/test_c6_misc.py::test_discover_follows_no_redirect_with_the_token",
+   "commit": "6d71a8d"
+  },
+  {
+   "id": "C6-MISC-17",
+   "title": "discover_endpoints crashed on a config without a cloud and printed sign-in errors unmasked",
+   "severity": "low",
+   "cwe": "CWE-209",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "load_config checks the file in plain words; cloud defaults to production; errors masked",
+   "test": "tests/test_c6_misc.py::test_discover_failed_sign_in_message_masks_the_secret",
+   "commit": "6d71a8d"
+  },
+  {
+   "id": "C6-MISC-18",
+   "title": "engine_explain read D.S >= 0 (always true) as 'at least one match', < 0 (never true) as 'no match', and != garbled",
+   "severity": "low",
+   "cwe": "CWE-480",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "always-true and never-true bounds said as such; != reads 'other than n'",
+   "test": "tests/test_c6_misc.py::test_engine_explain_summary_oracle",
+   "commit": "44532ba"
+  },
+  {
+   "id": "C6-MISC-19",
+   "title": "plain_english gave section 5 (Endpoint DLP rules, dictionaries, EDM) the endpoint channel's outcome; its own entry was unreachable",
+   "severity": "low",
+   "cwe": "CWE-561",
+   "asvs": "V1.1.1",
+   "status": "fixed",
+   "fix": "the section-5 entry is matched before Ch.B's 'endpoint'",
+   "test": "tests/test_c6_misc.py::test_plain_english_section_5_reads_the_detection_outcome",
+   "commit": "c5f2042"
+  },
+  {
+   "id": "C6-MISC-20",
+   "title": "corpus_engines summed only the first dictionary of a Sum written in the D(n) form",
+   "severity": "low",
+   "cwe": "CWE-682",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "every id of the group is summed",
+   "test": "tests/test_c6_misc.py::test_corpus_sum_counts_every_dictionary_in_the_older_form",
+   "commit": "93c1825"
+  },
+  {
+   "id": "C6-MISC-21",
+   "title": "corpus_engines listed the Sum's stand-in term (D900000) as a dictionary and could collide with a real id",
+   "severity": "low",
+   "cwe": "CWE-694",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "stand-in numbered above every real id and not listed",
+   "test": "tests/test_c6_misc.py::test_corpus_sum_synthetic_term_is_not_a_dictionary",
+   "commit": "93c1825"
+  },
+  {
+   "id": "C6-MISC-22",
+   "title": "Canadian SIN detector could never match (luhn_ok's 12-digit card minimum)",
+   "severity": "low",
+   "cwe": "CWE-697",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "nine-digit Luhn check of its own",
+   "test": "tests/test_c6_misc.py::test_corpus_canadian_sin_detector_finds_a_valid_sin",
+   "commit": "93851bc"
+  },
+  {
+   "id": "C6-MISC-23",
+   "title": "itin_ok accepted ITIN groups the IRS does not issue (66-69, 89, 93)",
+   "severity": "low",
+   "cwe": "CWE-697",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "groups 50-65, 70-88, 90-92, 94-99 only",
+   "test": "tests/test_c6_misc.py::test_corpus_itin_group_boundaries",
+   "commit": "93851bc"
+  },
+  {
+   "id": "C6-MISC-24",
+   "title": "native_zscaler kept the source tenant's dictionary id in an engine whose term was D<id>.U or D(<id>), silently pointing at another dictionary in the target tenant",
+   "severity": "medium",
+   "cwe": "CWE-706",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "such an engine is left out with a warning",
+   "test": "tests/test_c6_misc.py::test_native_engine_with_a_term_a_pack_cannot_name_is_left_out",
+   "commit": "faff05e"
+  },
+  {
+   "id": "C6-MISC-25",
+   "title": "native_zscaler split a single string value (fileTypes \"PDF\") into characters and recursed into sub-rules without bound",
+   "severity": "low",
+   "cwe": "CWE-704",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "_as_list; sub-rules one level, deeper dropped with a warning",
+   "test": "tests/test_c6_misc.py::test_native_single_value_is_one_item_not_its_characters",
+   "commit": "42e764d"
+  },
+  {
+   "id": "C6-MISC-26",
+   "title": "guidance turned a library entry with a javascript:, data: or protocol-relative URL into a proposal that links to it",
+   "severity": "low",
+   "cwe": "CWE-79",
+   "asvs": "V5.1.5",
+   "status": "fixed",
+   "fix": "only http(s) URLs become proposals; others recorded as no action",
+   "test": "tests/test_c6_misc.py::test_guidance_non_web_article_url_never_becomes_a_proposal",
+   "commit": "934bd25"
+  },
+  {
+   "id": "C6-MISC-27",
+   "title": "guidance.evaluate stopped on a non-numeric first_seen or a non-object entry",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "such entries skipped or read defensively",
+   "test": "tests/test_c6_misc.py::test_guidance_malformed_entry_fields_do_not_stop_the_run",
+   "commit": "934bd25"
+  },
+  {
+   "id": "C6-MISC-28",
+   "title": "vertical.normalize_industry matched substrings: 'Real estate' read State & local, 'FedEx' Federal",
+   "severity": "info",
+   "cwe": "CWE-185",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "word-boundary patterns",
+   "test": "tests/test_c6_misc.py::test_vertical_industry_oracle",
+   "commit": "f2a34b2"
+  },
+  {
+   "id": "C6-MISC-29",
+   "title": "Secure by Design audit control read audit.log beside the app, so in the container (DLP_CHECK_AUDIT) it reported no writes",
+   "severity": "low",
+   "cwe": "CWE-778",
+   "asvs": "V7.1.3",
+   "status": "fixed",
+   "fix": "audit.path()",
+   "test": "tests/test_c6_misc.py::test_sbd_audit_evidence_follows_the_configured_audit_log",
+   "commit": "cd422c1"
+  },
+  {
+   "id": "C6-MISC-30",
+   "title": "scenario_flow input check let DEL and C1 control characters through",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "C0, DEL and C1 refused",
+   "test": "tests/test_c6_misc.py::test_scenario_input_with_control_characters_or_over_cap_is_refused",
+   "commit": "33b17db"
+  },
+  {
+   "id": "C6-MISC-31",
+   "title": "MCP get_health, the configuration check, raised on an unknown ZSCALER_AUTH_METHOD",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "reports status misconfigured with the reason",
+   "test": "tests/test_c6_misc.py::test_mcp_health_names_a_bad_auth_method_instead_of_failing",
+   "commit": "f3bf00b"
+  }
+ ],
+ "tests_added": 385,
+ "notes": [
+  "Zscaler API details: hosts and URL construction verified against zscaler-sdk-python 1.11.3 (oneapi_oauth_client._get_auth_url, request_executor._resolve_api_base_url, zia/legacy.py); how the URL lookup spells an internationalised host and whether ZIA engines accept D<id>.U terms are assumed, not documented in the SDK.",
+  "Pre-existing on integrate/w6 and outside this area: tests/test_regression_flows.py::test_rule_migration_post_applies_the_planned_order_through_every_gate fails the same with this branch's changes reverted (plan_hash required)."
+ ]
+}
