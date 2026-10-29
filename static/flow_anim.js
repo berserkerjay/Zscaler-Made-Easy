@@ -431,9 +431,10 @@
   }
   // Fly one dot along a path; resolves when it arrives (at once when
   // motion is reduced).
-  function fly(clock, svg, path, ms, cls) {
+  // `force` plays it even under reduced motion (the viewer pressed Play).
+  function fly(clock, svg, path, ms, cls, force) {
     return new Promise(done => {
-      if (reduced() || !path.getTotalLength) { done(); return; }
+      if ((reduced() && !force) || !path.getTotalLength) { done(); return; }
       const L = path.getTotalLength();
       const dot = svgEl('circle', { r: 5, class: 'fa-dot' + (cls ? ' ' + cls : '') }, svg);
       let t0 = null;
@@ -673,9 +674,15 @@
 
   // ── Live traffic lanes ───────────────────────────────────────────
   const LIVE_LABEL = { web: 'Inline web', endpoint: 'Endpoint', email: 'Email', saas: 'SaaS API', unknown: 'Unknown channel' };
-  function live(host) {
+  // opts.sink: {title, sub} of the last box (default Workflow Automation).
+  // setMotion(true | false | null): play the dots even under reduced
+  // motion, land each incident at once (paused), or follow the system.
+  function live(host, opts) {
+    const o = opts || {};
     host.innerHTML = '';
     const clock = animator();
+    let motion = null;
+    const go = (p, ms, cls) => (motion === false ? Promise.resolve() : fly(clock, svg, p, ms, cls, motion === true));
     const svg = newSvg(host, 1000, 465, 'Live DLP incidents moving through channel, dictionaries, engine, rule, action and Workflow Automation');
     const cap = {}, rule = {};
     LIVE_CHANNELS.forEach((c, i) => {
@@ -687,7 +694,7 @@
     const enf = box(svg, 760, 50, 105, 46, 'Configured enforce', '0', 'warn');
     const mon = box(svg, 760, 200, 105, 46, 'Configured monitor', '0', 'warn');
     const unk = box(svg, 760, 300, 105, 46, 'Action unknown', '0', 'warn');
-    const wa = box(svg, 895, 127, 100, 46, 'Workflow', 'Automation');
+    const wa = box(svg, 895, 127, 100, 46, (o.sink && o.sink.title) || 'Workflow', (o.sink && o.sink.sub) || 'Automation');
     const P = {};
     LIVE_CHANNELS.forEach(c => { P['c' + c] = curve(svg, cap[c], dic); P['r' + c] = curve(svg, eng, rule[c]); P['e' + c] = curve(svg, rule[c], enf); P['m' + c] = curve(svg, rule[c], mon); P['u' + c] = curve(svg, rule[c], unk); });
     P.de = curve(svg, dic, eng); P.ew = curve(svg, enf, wa); P.mw = curve(svg, mon, wa); P.uw = curve(svg, unk, wa);
@@ -707,21 +714,21 @@
           controls[i].set(control.status === 'not_applicable' ? 'after' : 'warn');
         });
         cap[c].set('on');
-        await fly(clock, svg, P['c' + c], 450, cls);
+        await go(P['c' + c], 450, cls);
         cap[c].set(''); n[c]++; cap[c].sub(`${n[c]} incident${n[c] === 1 ? '' : 's'}`);
         dic.sub(m.dicts[0] ? clip(`${m.dicts[0].name}: ${m.dicts[0].count}`, 22) : 'match counts');
-        await fly(clock, svg, P.de, 300, cls);
+        await go(P.de, 300, cls);
         eng.sub(clip(m.engine || 'verdict', 20));
-        await fly(clock, svg, P['r' + c], 350, cls);
+        await go(P['r' + c], 350, cls);
         rule[c].sub(clip(m.rule, 22)); rule[c].set(ok ? 'stop' : 'warn');
-        await fly(clock, svg, P[(ok ? 'e' : unknown ? 'u' : 'm') + c], 350, cls);
+        await go(P[(ok ? 'e' : unknown ? 'u' : 'm') + c], 350, cls);
         n[ok ? 'enforced' : unknown ? 'unknown_action' : 'monitor']++; (ok ? enf : unknown ? unk : mon).sub(String(n[ok ? 'enforced' : unknown ? 'unknown_action' : 'monitor']));
-        await fly(clock, svg, ok ? P.ew : unknown ? P.uw : P.mw, 300, cls);
+        await go(ok ? P.ew : unknown ? P.uw : P.mw, 300, cls);
         rule[c].set('');
       }).catch(() => {});
       return queue;
     }
-    return { push, counts: () => Object.assign({}, n), destroy() { clock.destroy(); host.innerHTML = ''; } };
+    return { push, counts: () => Object.assign({}, n), setMotion(v) { motion = v; }, idle: () => queue, destroy() { clock.destroy(); host.innerHTML = ''; } };
   }
 
   // ── Architecture flow steps ──────────────────────────────────────
@@ -834,6 +841,9 @@
     pathModel, parseTerm, corpusModel, pathDrillModel, deployModel, liveModel, drillSummary, hopTone,
     ARCH, SAMPLE, hopPlayer, drill, graph, live, steps, E,
   };
+  // The engine's parts, for the pages that draw their own pictures with it
+  // (static/flow_pages.js): one clock, one way to draw boxes and links.
+  Object.assign(FA, { animator, newSvg, box, curve, svgEl, fly, reduced, clip });
   root.FA = FA;
   if (typeof module !== 'undefined' && module.exports) module.exports = FA;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -140,7 +140,9 @@
     'framework file': { term: 'framework file', def: 'A framework file is a saved copy of web rules from one tenant. You can load it to build the same rules in another.' },
     'intermediate certificate': { term: 'intermediate certificate', def: 'Zscaler uses this certificate to open locked web traffic. Your computers must trust it, or sites show a warning.' },
     'trusted resolver': { term: 'Trusted Resolver', def: 'The Trusted Resolver is the Zscaler service that looks up web names. It keeps people off bad sites.' },
-  };
+    'packet': { term: 'packet', def: 'A packet is a small piece of traffic. The moving dots in a picture show packets on their way.' },
+    'zero trust exchange': { term: 'Zero Trust Exchange', def: 'The Zero Trust Exchange is the Zscaler cloud that all traffic should pass through. There it is checked before it goes on.' },
+    'incident receiver': { term: 'incident receiver', def: 'The incident receiver gets a copy of what a DLP rule caught. It puts it where Workflow Automation can see it.' },  };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;
 })();

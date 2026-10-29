@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/flow_anim.css">
 <style>
   .ti-coverage { padding: 0.75rem 0.9rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font-size: 0.86rem; margin-bottom: 1rem; }
   .ti-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 1rem; }
@@ -89,6 +90,8 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/flow_anim.js"></script>
+  <script src="/static/flow_pages.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -229,15 +232,40 @@
       body.innerHTML = `
         ${res.status === 'partial' ? '<div class="ti-err" role="note">Some sections could not be read in full; each one says why.</div>' : ''}
         ${res.status === 'error' ? '<div class="ti-err" role="note">No section could be read. The first section\'s error usually names the cause (often the API role).</div>' : ''}
+        <section class="ti-sec ti-flow" aria-labelledby="tiFlowH">
+          <h2 id="tiFlowH">Traffic flow</h2>
+          <p class="ti-note">The numbers below as moving streams: each stream is as wide as its share of the total, and packets travel along it at a rate that follows its number. The list under the picture says the same in words.</p>
+          <div class="fp-views" id="tiFlowViews" hidden><label for="tiFlowView">Show the flow of</label><select id="tiFlowView"></select></div>
+          <div id="tiFlow"></div>
+        </section>
         <div class="ti-grid" id="tiGrid">${secs.map(s => sectionHtml(s, res.traffic_unit)).join('')}</div>
         <h2 class="df-h">Not available from Insights</h2>
         <ul class="ti-unavail">${un}</ul>
         <details class="pa-details"><summary>What was asked (${(res.logs || []).length} lines)</summary><div class="pa-log">${E((res.logs || []).join('\n'))}</div></details>`;
+      drawFlow(res);
       if (res.report_id) {
         const csv = document.getElementById('expCsv'), js = document.getElementById('expJson');
         csv.href = `/api/insights/export/${encodeURIComponent(res.report_id)}?format=csv`; csv.hidden = false;
         js.href = `/api/insights/export/${encodeURIComponent(res.report_id)}?format=json`; js.hidden = false;
       }
+    }
+    // The traffic flow (static/flow_pages.js), drawn from this result only.
+    let flow = null, flowView = null, flowMotion = null;   // the viewer's view and Play / Pause choice survive a redraw
+    function drawFlow(res) {
+      if (flow) { flow.destroy(); flow = null; }
+      const host = document.getElementById('tiFlow'); if (!host) return;
+      try {
+        const m = FP.insightsFlowModel(res, flowView);
+        const wrap = document.getElementById('tiFlowViews'), sel = document.getElementById('tiFlowView');
+        wrap.hidden = m.views.length < 2;
+        sel.textContent = '';
+        m.views.forEach(v => { const o = document.createElement('option'); o.value = v.key; o.textContent = v.label; sel.appendChild(o); });
+        if (m.view) sel.value = m.view;
+        sel.onchange = () => { flowView = sel.value; drawFlow(res); const again = document.getElementById('tiFlowView'); if (again) again.focus(); say(`Showing the flow of ${sel.options[sel.selectedIndex].textContent.toLowerCase()}.`); };
+        if (!m.view) { const p = document.createElement('p'); p.className = 'ti-note'; p.textContent = m.summary[0]; host.appendChild(p); return; }
+        flow = FP.mountStream(host, FP.sankeySpec(m), { region: 'Traffic flow', summary: m.summary, motion: flowMotion, onMotion: v => { flowMotion = v; },
+          moving: 'Packets travel along each stream at a rate that follows its number; a stream is as wide as its share.' });
+      } catch (e) { host.textContent = 'This browser cannot draw the moving picture; the tables below have the same numbers.'; }
     }
     body.addEventListener('click', e => {
       const b = e.target.closest('th button[data-sec]'); if (!b || !last) return;

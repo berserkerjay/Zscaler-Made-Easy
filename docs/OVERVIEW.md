@@ -268,6 +268,15 @@ what you get, what to do next.
   as they land, enforced versus monitor-only per channel; and every flow
   of the Data Security Architect reference, with the steps people miss
   marked. Samples, labelled as such, until you have results. Read-only.
+  The same engine moves on four pages from the result each page already
+  has (`static/flow_pages.js`): ZPA analysis (users → ZPA cloud → App
+  Connector groups → app segments, links to down connectors stopped and to
+  outdated ones flickering; and each diagnosis walked rule by rule),
+  Traffic insights (Insights numbers as Sankey-style streams to allowed
+  and blocked), the Live DLP feed (each incident through channel, rule,
+  action and incident receiver) and the Bypass report (streams peeling off
+  where traffic skips the Zero Trust Exchange). Still under reduced motion
+  with a Play button, paused while the tab is hidden, said in words below.
 - **Browser extension (companion)** — a small Chrome and Edge extension
   for the app on your computer: its button or a right-click opens the Path
   analyzer with the site, a link or a selected hostname filled in, and the
