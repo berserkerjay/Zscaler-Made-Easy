@@ -15,7 +15,7 @@ Or standalone:
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     from docx import Document
@@ -572,6 +572,32 @@ def _xml_safe(obj):
     return obj
 
 
+def _now():
+    """The time the report is made, in UTC (a test injects its own)."""
+    return datetime.now(timezone.utc)
+
+
+def _text(value, default=""):
+    """A posted value as text: the report draws strings only (a number or
+    a list in the metadata made python-docx fail the whole report)."""
+    if value is None:
+        return default
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(v) for v in value if v is not None)
+    return str(value)
+
+
+def _row(r):
+    """A posted check as the fields the report reads, each text."""
+    out = dict(r)
+    for k in ("id", "label", "status", "detail"):
+        out[k] = _text(r.get(k))
+    for k in ("sec", "section"):
+        if k in r:
+            out[k] = _text(r.get(k))
+    return out
+
+
 def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None, template_path=None):
     """
     Generate a Word document report from assessment results.
@@ -604,6 +630,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     # Tenant text (rule names in a detail) may carry characters XML cannot:
     # python-docx refuses them, so clean the inputs once, here.
     results, cfg = xlsx_writer.clean_tree(list(results or [])), xlsx_writer.clean_tree(dict(cfg or {}))
+    results = [_row(r) for r in results if isinstance(r, dict)]
     results, dropped = channel_scope.visible(results)
     try:
         hidden = max(0, int((cfg or {}).get("hidden_checks") or 0)) + dropped
@@ -651,10 +678,10 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     meta_table = doc.add_table(rows=0, cols=2)
     meta_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     meta_data = [
-        ("Organization", cfg.get("org_name", "Unknown")),
-        ("Assessor", cfg.get("assessor", "Unknown")),
-        ("Cloud", cfg.get("cloud", "Unknown")),
-        ("Date", datetime.now().strftime("%B %d, %Y")),
+        ("Organization", _text(cfg.get("org_name"), "Unknown")),
+        ("Assessor", _text(cfg.get("assessor"), "Unknown")),
+        ("Cloud", _text(cfg.get("cloud"), "Unknown")),
+        ("Date", _now().strftime("%B %d, %Y")),
         ("Total Checks", str(len(results))),
         ("Assessed", (f"{cov['assessed']} of {cov['total']}"
                       + (f" ({cov['not_permitted']} not permitted)" if cov["not_permitted"] else "")) if cov else str(len(results))),
@@ -680,7 +707,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             counts["INFO"] += 1
 
     summary = doc.add_paragraph()
-    summary.add_run(f"The assessment of the Zscaler platform for {cfg.get('org_name', 'the organization')} "
+    summary.add_run(f"The assessment of the Zscaler platform for {_text(cfg.get('org_name'), 'the organization')} "
                     f"evaluated {len(results)} configuration checks across all deployed Zscaler services. ")
     summary.add_run(f"The overall maturity score is {overall_text} ({mat}). ").bold = True
     if cov:
@@ -726,7 +753,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                 p = pre.get(str(row.get("id")))
                 if p or row.get("prerequisite_of"):
                     cells[1].text = "Prerequisite: " + (str(p.get("note")) if p else "needed by a channel in scope")
-                    cells[2].text = " ".join(p.get("reasons") or []) if p else ""
+                    cells[2].text = " ".join(_text(x) for x in p.get("reasons")) if p and isinstance(p.get("reasons"), list) else _text((p or {}).get("reasons"))
                 else:
                     cells[1].text = "Ticked as Zscaler on the Scope page"
                     cells[2].text = str(row.get("note") or "")
@@ -1135,7 +1162,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         "No configuration changes were made during the assessment."
     )
     doc.add_paragraph(
-        f"Report generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        f"Report generated: {_now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
     )
     doc.add_paragraph(f"Engine version: 3.0 | Total checks: {len(results)}")
 
