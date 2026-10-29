@@ -25,7 +25,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import pack_channels as pc
 import pack_deploy as pd
 import pack_ops as ops
-from dlp_importer import _load_json, _resolve_configs, heal_predefined_names
+from dlp_importer import _resolve_configs, heal_predefined_names
 
 # The in-app deploy and the Terraform hand-off tag every object with
 # "[<assessor> baseline <id> ...]" or "[<assessor> pack <id> ...]" at the end
@@ -59,6 +59,11 @@ LEGACY_NAMES: Dict[str, set] = {
     "app_group": {"zbp-GenAI Applications"},
 }
 _DICT_ID_RE = re.compile(r"D(\d+)\.S")
+# An object that only shares a name with something a pack defines (no
+# provenance tag) may be the customer's own: a removal never deletes it on
+# a name alone (deny by default). The rule picker removes it when the
+# operator picks it by hand.
+NAME_ONLY_KEEP = "matched by name only (no Zscaler Made Easy tag): may be the customer's own, so it is kept; pick it in the rule picker if it is yours"
 
 UNDO_ORDER = pd.UNDO_ORDER   # ("policy", "app_group", "engine", "dictionary")
 
@@ -72,22 +77,14 @@ def _tagged(desc: Any, known: Optional[Iterable[str]] = None) -> bool:
 
 
 def _defs(pack: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """The pack's dictionaries, engines and rules, read as untrusted files
+    (pack_deploy.load_pack_file: PackFileError for a file that is not a pack)."""
     configs = _resolve_configs(pack["dir"])
     # The deploy renamed a dictionary named like a predefined display name; the removal must look for that name.
-    dicts, engines, _ = heal_predefined_names(_load_json(configs, "dlp_dictionaries.json"), _load_json(configs, "dlp_engines.json"))
-    policies = pc.expand_sub_rules(_load_json(configs, "dlp_policies.json"))
+    dicts, engines, _ = heal_predefined_names(pd.load_pack_file(configs, "dlp_dictionaries.json", pack.get("id")),
+                                              pd.load_pack_file(configs, "dlp_engines.json", pack.get("id")))
+    policies = pc.expand_sub_rules(pd.load_pack_file(configs, "dlp_policies.json", pack.get("id")))
     return dicts, engines, policies
-
-
-def _matched(desc: Any, name: str, pack_ids: Sequence[str], def_names: set) -> Optional[str]:
-    """How a tenant object maps to a pack: by its provenance tag, or by a
-    name the pack defines. Tag wins; a name-only match is flagged so the
-    operator sees it was not tool-tagged."""
-    if any(pd.has_mark(desc, pack_id=pid) for pid in pack_ids):
-        return "tag"
-    if name in def_names:
-        return "name"
-    return None
 
 
 def _is_custom_dictionary(d: Any, how: Optional[str] = None) -> bool:
@@ -167,6 +164,14 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     ever put in the tenant: any object carrying a Zscaler Made Easy provenance
     tag (whatever pack id or version wrote it) plus the names of every
     given pack and of the objects earlier pack versions shipped."""
+    try:
+        for p in packs:
+            _defs(p)
+            pd.load_pack_file(_resolve_configs(p["dir"]), "endpoint_application_groups.json", p.get("id"))
+    except pd.PackFileError as e:
+        # An untrusted pack file that is not a pack: refused before the tenant is read.
+        return {"status": "blocked", "found": False, "items": [], "summary": {}, "warnings": [], "plan_hash": "",
+                "blockers": [f"The pack cannot be used: {e}. Fix or re-upload it, then run the preview again."]}
     snap = _tenant(client, packs, tenant_cache, everything=everything)
     warnings: List[str] = []
     if not snap.get("reachable", True):
@@ -227,14 +232,16 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
                 "parent_id": r.get("parent_id"), "type": r.get("type"), "match": how,
                 "engine_ids": [str(x) for x in (r.get("engine_ids") or [])],
             })
-    remove_rule_ids = {str(i["id"]) for i in rule_items}
+            if how == "name":
+                rule_items[-1]["keep"] = NAME_ONLY_KEEP
+    remove_rule_ids = {str(i["id"]) for i in rule_items if not i.get("keep")}
 
     # ---- endpoint application groups ---------------------------------------
     group_items: List[Dict[str, Any]] = []
     groups = (snap.get("channels") or {}).get("app_groups") or {}
     def_groups: set = set()
     for p in packs:
-        for g in _load_json(_resolve_configs(p["dir"]), "endpoint_application_groups.json"):
+        for g in pd.load_pack_file(_resolve_configs(p["dir"]), "endpoint_application_groups.json", p.get("id")):
             if g.get("name"):
                 def_groups.add(g["name"])
     if everything:
@@ -243,6 +250,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         how = any_match(g.get("description"), name, def_groups)
         if how:
             group_items.append({"kind": "app_group", "channel": None, "id": g.get("id"), "name": name, "match": how})
+            if how == "name":
+                group_items[-1]["keep"] = NAME_ONLY_KEEP
 
     # ---- engines ------------------------------------------------------------
     engine_items: List[Dict[str, Any]] = []
@@ -261,7 +270,9 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
             continue
         eid = str(pd._field(e, "id"))
         keep_reason = None
-        if eid in engine_ids_used_by_survivors:
+        if how == "name":
+            keep_reason = NAME_ONLY_KEEP
+        elif eid in engine_ids_used_by_survivors:
             keep_reason = "still used by a rule outside this pack"
         item = {"kind": "engine", "channel": None, "id": pd._field(e, "id"), "name": name, "match": how,
                 "dict_ids": sorted(_engine_dict_ids(e))}
@@ -288,7 +299,9 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
             continue   # never touch a predefined dictionary
         did = str(pd._field(d, "id"))
         item = {"kind": "dictionary", "channel": None, "id": pd._field(d, "id"), "name": name, "match": how}
-        if did in dict_ids_used_by_survivors:
+        if how == "name":
+            item["keep"] = NAME_ONLY_KEEP
+        elif did in dict_ids_used_by_survivors:
             item["keep"] = "still used by an engine outside this pack"
         dict_items.append(item)
 
@@ -296,7 +309,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     for it in items:
         it["status"] = "keep" if it.get("keep") else "remove"
         if it.get("match") == "name":
-            warnings.append(f"{it['kind']} '{it['name']}' matched by name only (no Zscaler Made Easy tag); confirm it is yours before removing.")
+            warnings.append(f"{it['kind']} '{it['name']}' matched by name only (no Zscaler Made Easy tag), so it is kept: "
+                            "it may be the customer's own. If it is yours, pick it in the rule picker to remove it.")
 
     # Dependency links, so the flow diagram can draw dictionary -> engine ->
     # rule for the objects in the plan (a rule depends on its engines, an
@@ -346,7 +360,8 @@ def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Opt
         return {"status": "blocked", "found": False, "items": [], "summary": {},
                 "blockers": ["Could not read the tenant (no dictionaries, engines or rules listed). Check credentials and permissions."],
                 "warnings": snap.get("errors", []), "plan_hash": ""}
-    created = [c for c in (record.get("created") or []) if not c.get("undone")]
+    # The record is read back from a file: an entry that is not an object is skipped, never a crash.
+    created = [c for c in (record.get("created") or []) if isinstance(c, dict) and not c.get("undone")]
     warnings: List[str] = []
     web = [dict(r, channel=pc.WEB) for r in snap.get("rules", [])]
     others = [dict(r, channel=ch) for ch, rs in ((snap.get("channels") or {}).get("rules") or {}).items() for r in (rs or [])]
@@ -765,7 +780,8 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     and a refusal no later delete can get past stop the remaining deletes;
     the result's `stopped` says why."""
     return _execute(client, lambda c=client: plan_removal(c, packs, everything=everything),
-                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
+                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel,
+                    require_hash=True)
 
 
 def remove_selected(client, selected: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
@@ -773,14 +789,18 @@ def remove_selected(client, selected: Sequence[Dict[str, Any]], *, plan_hash: st
     """Execute a removal previewed by plan_removal_selected: the chosen
     rules, then the engines and dictionaries only they used."""
     return _execute(client, lambda c=client: plan_removal_selected(c, selected),
-                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
+                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel,
+                    require_hash=True)
 
 
 def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
-             cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+             cancel: Optional[threading.Event] = None, require_hash: bool = False) -> Dict[str, Any]:
     """Run one removal under pack_ops run control (see pack_deploy.apply),
     on the client's own tenant's ZIA rate limits. Every delete and the
-    run's summary go to the audit log (pack_ops.audited_run)."""
+    run's summary go to the audit log (pack_ops.audited_run).
+    `require_hash`: the removal deletes only the plan the operator
+    previewed, so an empty plan_hash is refused (a deployment's undo is
+    bound to its record instead, and may run without one)."""
     import zia_rate
     with ops.tenant_run(client) as mine:
         if not mine:
@@ -788,7 +808,8 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
             return ops.busy_result(plan_hash=plan_hash)
         with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("removal", client, plan_hash=plan_hash, cancel=cancel) as run:
             run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log,
-                                         settle_seconds=settle_seconds, cancel=cancel)
+                                         settle_seconds=settle_seconds, cancel=cancel,
+                                         require_hash=require_hash)
             return run["result"]
 
 
@@ -804,10 +825,14 @@ def _plan_with(planner, client: Any) -> Dict[str, Any]:
 
 
 def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
-                 cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+                 cancel: Optional[threading.Event] = None, require_hash: bool = False) -> Dict[str, Any]:
     _log = log or (lambda m: None)
-    if writes_enabled is False:
+    if writes_enabled is not True:
+        # Deny by default: only an explicit True (the server's write gate) deletes.
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to remove a deployment."], "results": []}
+    if require_hash and not plan_hash:
+        return {"status": "blocked", "results": [], "blockers": [
+            "A removal needs the plan_hash of the preview you approved. Run the preview, review it, then confirm."]}
     # Stop also ends the plan's tenant read: nothing more is read, nothing is deleted.
     try:
         plan = _plan_with(planner, pd.stop_reads(client, cancel))
