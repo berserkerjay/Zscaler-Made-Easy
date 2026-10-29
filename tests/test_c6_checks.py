@@ -33,6 +33,7 @@ import zscaler_genai_checks as genai  # noqa: E402
 import zscaler_rbac_checks as rbac  # noqa: E402
 import zscaler_zdx_checks as zdx  # noqa: E402
 import zscaler_zidentity_checks as zid  # noqa: E402
+import dlp_assessment_full_auto as engine_mod  # noqa: E402
 from dlp_assessment_full_auto import R  # noqa: E402
 
 REGISTRIES = {"PLATFORM_REG": full.PLATFORM_REG, "GENAI_REG": genai.GENAI_REG, "AUTOMATION_REG": auto.AUTOMATION_REG,
@@ -136,6 +137,38 @@ def test_a_guarded_check_unwraps_to_the_original_function():
     eps = beacon_scope.function_endpoints(_row("FW.1")[3])
     # Assert
     assert inspect.unwrap(_row("FW.1")[3]) is full.fw_1 and "/zia/firewallFilteringRules" in eps
+
+
+ENGINE_ROWS = list(engine_mod.REG)   # the engine's own checks and its spliced SaaS, Email and Client Connector rows
+
+
+@pytest.mark.parametrize("code", [401, 403])
+@pytest.mark.parametrize("row", ENGINE_ROWS, ids=[r[0] for r in ENGINE_ROWS])
+def test_an_engine_check_built_on_a_refused_read_is_not_permitted(row, code):
+    """ASVS V4.1.5 · A01:2021 · CWE-863 · WSTG-ATHZ-02: every engine registry check (spliced rows included) is "Not permitted" when its read is refused, never judged."""
+    # Arrange
+    fn = row[3]
+    # Act
+    r, cl = _run(fn, default=(DENIED_BODY, code))
+    # Assert
+    if cl.reads:
+        assert permissions.classify(_as_result(row, r)) == "not_permitted", (row[0], r.status, r.detail)
+        assert r.status not in (R.PASS, R.FAIL, R.WARN)
+
+
+def _is_guarded(fn):
+    return getattr(getattr(fn, "__code__", None), "co_qualname", "") == "permission_guarded.<locals>.check"
+
+
+def test_every_check_the_assessment_run_executes_reads_through_the_permission_guard():
+    """ASVS V4.1.5 · A01:2021 · CWE-863 · CISA SbD fail closed: every row assess_stream can run (all scopes) is permission-guarded, so a new check cannot pass on a 403."""
+    # Arrange
+    import dlp_api_server as srv
+    rows = srv._get_checks("", ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac"])
+    # Act
+    unguarded = [r[0] for r in rows if not _is_guarded(r[3])]
+    # Assert
+    assert rows and unguarded == []
 
 
 def test_the_unanswered_read_code_0_is_left_to_the_run_guard():

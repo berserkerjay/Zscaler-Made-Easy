@@ -11,7 +11,6 @@ Comprehensive checks across ALL Zscaler services:
 These extend the DLP checks in dlp_assessment_full_auto.py.
 Import and append to REG to run a full platform assessment.
 """
-import functools
 
 # Reuse the Result class and helpers from the main engine
 from dlp_assessment_full_auto import (R, _ls, _fv, _names, _enabled, _truthy, _cac_live, _cac_rules_all_types, _tenancy,
@@ -23,68 +22,10 @@ _ZPA_GUIDE = " Ref: https://help.zscaler.com/zscaler-deployments-operations/zpa-
 
 
 # ── A refused read is never judged ────────────────────────────────────
-# A check that reads an endpoint the API client's role may not read (HTTP
-# 401/403) sees an empty list, and would report "No firewall rules" or,
-# worse, "rule order valid" for a tenant it never saw. The run's client
-# (channel_scope.ScopedClient) turns unanswered reads (429, 5xx, timeouts)
-# into "Could not be checked" but passes 401/403 through, so every check of
-# these registries reads through _ReadLog: when any of its reads was
-# refused, a scored result (PASS / FAIL / REVIEW) becomes "Not permitted"
-# (INFO in the words permissions.is_denied recognises), outside the score.
-_REFUSED = (401, 403)
-
-
-class _ReadLog:
-    """The client one check reads through: each read is passed on unchanged
-    and every read the role was refused is noted (endpoint, HTTP code)."""
-
-    def __init__(self, cl):
-        self._cl = cl
-        self.refused = []
-
-    def get(self, ep, *a, **k):
-        res = self._cl.get(ep, *a, **k)
-        code = res[1] if isinstance(res, tuple) and len(res) >= 2 else None
-        if code in _REFUSED:
-            self.refused.append((str(ep).removeprefix("raw:").split("?", 1)[0], code))
-        return res
-
-    def __getattr__(self, name):
-        return getattr(self._cl, name)
-
-
-def _not_permitted(r, label, refused):
-    codes = "/".join(str(c) for c in sorted({c for _ep, c in refused}))
-    eps = ", ".join(sorted({ep for ep, _c in refused}))[:160]
-    why = (f"Not permitted: the API client's role was refused {len(refused)} read(s) (HTTP {codes} on {eps}). "
-           "Access denied — grant the role read access to this feature and run the assessment again.")
-    try:
-        import permissions
-        denied = permissions.is_denied(str(getattr(r, "detail", "")))
-    except Exception:  # noqa: BLE001
-        denied = False
-    if r.status in (R.PASS, R.FAIL, R.WARN):
-        return R(R.INFO, f"{label}: {why} A refused read is not judged as configured or not configured.", getattr(r, "data", None))
-    if denied:
-        return r
-    return R(r.status, f"{str(r.detail).rstrip()} {why}".strip(), getattr(r, "data", None))
-
-
-def permission_guarded(fn, label):
-    """`fn` run through _ReadLog: a result built on a refused read is "Not permitted"."""
-    @functools.wraps(fn)
-    def check(cl):
-        log = _ReadLog(cl)
-        r = fn(log)
-        if not log.refused or not hasattr(r, "status"):
-            return r
-        return _not_permitted(r, label, log.refused)
-    return check
-
-
-def guard_registry(reg):
-    """A check registry [(id, section, label, fn)] with every fn permission-guarded."""
-    return [(cid, sec, label, permission_guarded(fn, label)) for cid, sec, label, fn in reg]
+# The guard (_ReadLog, permission_guarded, guard_registry) lives in the engine,
+# whose own registry runs through it too; it is re-exported here for the
+# platform, GenAI, automation, ZDX, ZIdentity and RBAC registries.
+from dlp_assessment_full_auto import _REFUSED, _ReadLog, _not_permitted, permission_guarded, guard_registry  # noqa: E402,F401
 
 
 def _items(cl, path):
