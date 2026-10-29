@@ -47,6 +47,7 @@ STOPPED_REASON = pe.STOPPED_REASON
 LOCATION_PAGE_SIZE = 1000          # the SDK's documented maximum for GET /locations
 MAX_LOCATION_PAGES = 50
 MAX_SUBLOCATION_READS = 2000
+_LOCATION_ID = re.compile(r"[0-9]{1,20}")
 
 NOTHING_IN_SCOPE_LOCATIONS = ("Locations are ZIA platform configuration: on the Scope page tick ZIA platform, then export again. "
                               "Nothing was read.")
@@ -65,8 +66,12 @@ class Stopped(pe.Stopped):
 # ── Secrets and people ───────────────────────────────────────────────
 _SECRET_PARTS = ("password", "passcode", "passwd", "secret", "token", "nonce", "presharedkey", "credential", "rsapubkey",
                  "thumbprint", "privatekey", "apikey", "cookie")
-_SECRET_WORDS = {"otp", "psk", "pwd", "pin", "key"}
+# "pass" as a word of its own: zcc/models/manage_pass.py names the passwords
+# exitPass, logoutPass, uninstallPass, ziaDisablePass, zpaDisablePass ... (a
+# bypass is one word, so it stays).
+_SECRET_WORDS = {"otp", "psk", "pwd", "pin", "key", "pass", "passphrase"}
 _PEOPLE = {"users", "userids", "usernames", "loginname", "devices", "deviceids", "excludedusers", "auditor"}
+_PEOPLE_SUFFIXES = ("username", "loginname")   # zpaAuthUsername: a person's login
 
 
 def _words(key: Any) -> List[str]:
@@ -80,7 +85,8 @@ def is_secret(key: Any) -> bool:
 
 
 def _is_people(key: Any) -> bool:
-    return pe._canon(key) in _PEOPLE
+    c = pe._canon(key)
+    return c in _PEOPLE or c.endswith(_PEOPLE_SUFFIXES)
 
 
 def _label(key: Any) -> str:
@@ -192,7 +198,9 @@ def _items(data: Any) -> List[Dict[str, Any]]:
 def _read_list(client, endpoint: str, *, paged: bool = False, cancel: Any = None,
                params: Optional[Dict[str, Any]] = None) -> Tuple[Optional[List[Dict[str, Any]]], str]:
     """(items, '') or (None, why). Paged: page / pageSize until a short
-    page (a page that only repeats ids already read also ends it)."""
+    page (a page that only repeats ids already read also ends it). When
+    MAX_LOCATION_PAGES full pages still leave more, the items read come
+    back with why naming the cut, never as the whole list."""
     out: List[Dict[str, Any]] = []
     seen: set = set()
     for page in range(1, (MAX_LOCATION_PAGES if paged else 1) + 1):
@@ -219,7 +227,8 @@ def _read_list(client, endpoint: str, *, paged: bool = False, cancel: Any = None
         out += fresh
         if not paged or len(batch) < LOCATION_PAGE_SIZE:
             return out, ""
-    return out, ""
+    return out, (f"only the first {MAX_LOCATION_PAGES * LOCATION_PAGE_SIZE} were read ({MAX_LOCATION_PAGES} pages of "
+                 f"{LOCATION_PAGE_SIZE}); the tenant has more, and the rest are not in this file")
 
 
 def read_locations(client, scope: Dict[str, Any], *, log: Optional[Callable[[str], None]] = None, cancel: Any = None) -> Dict[str, Any]:
@@ -240,12 +249,20 @@ def read_locations(client, scope: Dict[str, Any], *, log: Optional[Callable[[str
                 say(f"The locations could not be read: {why}.")
                 return out
             out["locations"] = locs
-            say(f"Locations: {len(locs)} found.")
+            if why:
+                out["errors"]["locations (incomplete)"] = why
+            say(f"Locations: {len(locs)} found." + (f" Not all of them: {why}." if why else ""))
             parents = [x for x in locs if _num(x.get("childCount") if "childCount" in x else x.get("child_count")) > 0]
             if parents:
                 say(f"Reading the sub-locations of {len(parents)} location{'s' if len(parents) != 1 else ''}…")
             for p in parents[:MAX_SUBLOCATION_READS]:
-                subs, why = _read_list(client, f"/zia/locations/{p.get('id')}/sublocations", cancel=cancel)
+                pid = str(p.get("id") if p.get("id") is not None else "")
+                if not _LOCATION_ID.fullmatch(pid):
+                    # The id goes into the request path: a tenant answer with
+                    # anything but digits there ("1/../../adminUsers") is not sent.
+                    out["errors"][f"sub-locations of {p.get('name') or 'a location'}"] = "the location id is not a number, so they were not read"
+                    continue
+                subs, why = _read_list(client, f"/zia/locations/{pid}/sublocations", cancel=cancel)
                 if subs is None:
                     out["errors"][f"sub-locations of {p.get('name') or p.get('id')}"] = why
                     continue
@@ -261,6 +278,8 @@ def read_locations(client, scope: Dict[str, Any], *, log: Optional[Callable[[str
                 say(f"The location groups could not be read: {why}.")
             else:
                 out["groups"] = groups
+                if why:
+                    out["errors"]["location groups (incomplete)"] = why
                 say(f"Location groups: {len(groups)} found.")
             for key in scope.get("usage") or []:
                 label, _, endpoint, what = USAGE_POLICIES[key]
@@ -289,7 +308,7 @@ def read_locations(client, scope: Dict[str, Any], *, log: Optional[Callable[[str
 def _num(v: Any) -> int:
     try:
         return int(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 

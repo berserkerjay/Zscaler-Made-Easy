@@ -113,6 +113,19 @@ def _f(obj: Any, *keys: str, default: Any = None) -> Any:
     return pc._field(obj, *alts, default=default)
 
 
+LAST = 2 ** 31   # where a rule whose order is not a number sorts
+
+
+def _whole(v: Any, default: int) -> int:
+    """A number the tenant answered (an order, a proximity) as an int, or
+    `default` when it is not a whole number ("3a", a list): the answer is
+    untrusted, and one odd value must not end the export with a ValueError."""
+    try:
+        return int(v)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
 def _snake(key: str) -> str:
     return _CAMEL_RE.sub("_", str(key)).lower()
 
@@ -433,7 +446,7 @@ def read_tenant(client, channels: Iterable[str] = pc.DLP_CHANNELS, log: LogFn = 
         if err:
             _log(f"Reading the tenant: {pc.label(ch)} rules could not be listed: {err[:120]}")
         else:
-            snap["rules"][ch] = sorted(rules, key=lambda r: int(r.get("order") or 0))
+            snap["rules"][ch] = sorted(rules, key=lambda r: _whole(r.get("order") or 0, LAST))
             _log(f"Reading the tenant: {pc.label(ch)} rules: {len(rules)} found.")
         if done(ch, f"{pc.label(ch)} rules", err, rate):
             return snap
@@ -587,7 +600,7 @@ def _dictionary(d: Dict[str, Any], template_names: Dict[str, str],
     out: Dict[str, Any] = {"name": str(d.get("name") or "").strip(), "description": _strip_mark(d.get("description")),
                            "custom_phrase_match_type": d.get("custom_phrase_match_type") or "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"}
     patterns, phrases = _items(d.get("patterns"), "pattern"), _items(d.get("phrases"), "phrase")
-    prox = int(d.get("proximity") or 0)
+    prox = _whole(d.get("proximity") or 0, 0)
     if d.get("predefined_clone") or d.get("dict_template_id"):
         template = template_names.get(str(d.get("dict_template_id"))) if d.get("dict_template_id") is not None else None
         template = template or d.get("dict_template_name")
@@ -917,7 +930,7 @@ class _Builder:
             taken |= {"eun_enabled", "end_point_application_groups", "endpoint_application_groups"}
             subs = []
             # In the tenant's order: the pack keeps no order field, and sub-rules are recreated in list order.
-            for sr in sorted(r.get("sub_rules") or [], key=lambda x: int(_f(x, "order") or 0)):
+            for sr in sorted(r.get("sub_rules") or [], key=lambda x: _whole(_f(x, "order") or 0, LAST)):
                 c = self.rule(dict(_plain(sr), data_transfer_method=_f(sr, "data_transfer_method") or r.get("data_transfer_method")),
                               channel, sub_rule=True)
                 if c:
@@ -1235,6 +1248,11 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
     if framework is not None:
         pack["framework"] = framework
         pack["meta"]["counts"]["framework_rules"] = sum(framework["counts"].values())
+        # What the framework left out (the users, groups and locations its
+        # rules named, custom categories ...) is said in pack.json and the
+        # result too, as it is for a framework exported on its own.
+        pack["meta"]["not_exported"].extend(dict(x, part=FRAMEWORK) for x in framework["not_exported"])
+        pack["meta"]["counts"]["not_exported"] = len(pack["meta"]["not_exported"])
     c = pack["meta"]["counts"]
     _log(f"Pack built: {c['rules']} rule(s), {c['engines']} engine(s), {c['dictionaries']} dictionar{'y' if c['dictionaries'] == 1 else 'ies'}"
          f"; {c['not_exported']} item(s) could not be exported (listed in pack.json).")
@@ -1277,10 +1295,23 @@ def _has_dlp(pack: Dict[str, Any]) -> bool:
     return bool(pack.get("dictionaries") or pack.get("engines") or pack.get("policies")) or not pack.get("framework")
 
 
+# Names Windows keeps for devices, whatever the extension: a download or a
+# folder called con.zip / nul/ cannot be saved or unzipped there.
+_DEVICE_NAMES = frozenset({"con", "prn", "aux", "nul"} | {f"{p}{n}" for p in ("com", "lpt") for n in range(10)})
+
+
+def folder_name(pack: Dict[str, Any]) -> str:
+    """The folder (and download) name of an export: the pack's slug, safe
+    on every operating system ([a-z0-9_], at most 64 characters, never a
+    Windows device name), or exported_pack."""
+    from pack_library import pack_slug
+    slug = pack_slug(str((pack.get("meta") or {}).get("name") or "")) or "exported_pack"
+    return f"{slug}_pack" if slug in _DEVICE_NAMES else slug
+
+
 def zip_pack(pack: Dict[str, Any], folder: str = "") -> Tuple[str, bytes]:
     """(filename, zip bytes): one folder named after the pack."""
-    from pack_library import pack_slug
-    folder = folder or pack_slug(pack["meta"].get("name") or "") or "exported_pack"
+    folder = folder or folder_name(pack)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for path, text in pack_files(pack).items():
@@ -1310,8 +1341,7 @@ def terraform_files(pack: Dict[str, Any], assessor: str = "") -> Tuple[str, Dict
     `assessor`, the workspace's required var.assessor names who applies it."""
     import tempfile
     import pack_terraform
-    from pack_library import pack_slug
-    pack_id = pack_slug(pack["meta"].get("name") or "") or "exported_pack"
+    pack_id = folder_name(pack)
     with tempfile.TemporaryDirectory(prefix="dlpcheck-export-") as tmp:
         for path, text in pack_files(pack).items():
             full = os.path.join(tmp, path)
@@ -1343,9 +1373,8 @@ def zip_export(pack: Dict[str, Any], fmt: str = "json", assessor: str = "") -> T
       both       the pack in <pack>/ and the workspace in <pack>-terraform/.
     Part files list each exported part's own file in the zip
     ({part, format, path}), so each can be downloaded on its own."""
-    from pack_library import pack_slug
     fmt = normalize_format(fmt)
-    folder = pack_slug(pack["meta"].get("name") or "") or "exported_pack"
+    folder = folder_name(pack)
     fw_index = [{"part": FRAMEWORK, "format": "json", "path": f"{folder}/{FRAMEWORK_FILE}"}] if pack.get("framework") else []
     if fmt == "json" or not _has_dlp(pack):   # exactly the pack zip, as before (a framework alone is JSON whatever the format)
         name, data = zip_pack(pack)
