@@ -1505,3 +1505,53 @@ def test_icmp_and_any_rows_are_noted():
     rn = bt.run(Tenant(), bt.parse("destination,protocol\na.example,icmp\nb.example,any\n"), scope=FULL, lookup=False, sleep=lambda s: None)
     a, b = rn.row(0), rn.row(1)
     assert a["result"] == "unverified" and bt.ICMP_NOTE in a["notes"] and bt.ANY_NOTE in b["notes"]
+
+
+# ── C6-PATH-14: an app profile scoped to groups or users ───────────────
+def _profiles(*profiles):
+    base = {"active": True, "forwardingProfileId": 5, "strictEnforcement": True, "installEndpointDlp": True, "sslCertInstall": True, "os": "windows"}
+    return {"/zcc/webPolicies": [dict(base, **p) for p in profiles]}
+
+
+def test_a_platform_whose_only_app_profile_is_for_one_group_is_unverified_for_any_user():
+    """ASVS V4.1.3 · CWE-863 · CWE-754: the only app profile of a platform applies to one group; for any user how the device reaches ZIA is not verified."""
+    res = run("files.example", _profiles({"id": 1, "name": "Drivers", "ruleOrder": 1, "groups": [{"id": 32, "name": "Drivers"}]}))
+    zcc = hop(res, "zcc")
+    assert zcc["status"] == "conditional" and "applies to group Drivers" in zcc["detail"] and "no windows app profile" in zcc["detail"]
+    assert res["verdict"]["outcome"] == "unknown" and res["verdict"]["headline"].startswith("Unable to verify how the device reaches")
+
+
+def test_a_scoped_profile_ahead_that_bypasses_the_destination_makes_it_depend_on_the_user():
+    """ASVS V4.1.3 · CWE-863: a group's profile ahead of the everyone profile that bypasses this destination makes the path depend on the user."""
+    res = run("files.example", _profiles({"id": 1, "name": "Contractors", "ruleOrder": 1, "users": [{"id": 9, "name": "ada"}],
+                                          "hostnameBypassForIpv4": ["files.example"]},
+                                         {"id": 2, "name": "Corp", "ruleOrder": 2}))
+    zcc = hop(res, "zcc")
+    assert zcc["status"] == "conditional" and "everyone else gets 'Corp'" in zcc["detail"]
+    assert [c["name"] for c in zcc["candidate_rules"]] == ["Contractors", "Corp"] and df.visibility(res["trace"]) == "unverified"
+
+
+def test_a_scoped_profile_ahead_that_treats_the_destination_alike_changes_nothing():
+    """ASVS V4.1.3 · CWE-697: a scoped profile that forwards this destination as the everyone profile does leaves the answer definite."""
+    res = run("files.example", _profiles({"id": 1, "name": "Contractors", "ruleOrder": 1, "groups": [{"id": 32, "name": "Drivers"}],
+                                          "hostnameBypassForIpv4": ["other.example"]},
+                                         {"id": 2, "name": "Corp", "ruleOrder": 2}))
+    assert (hop(res, "zcc")["status"], hop(res, "zcc")["decided_by"]["name"]) == ("pass", "Corp") and res["verdict"]["outcome"] == "enforce"
+
+
+def test_a_scoped_profile_after_the_everyone_profile_never_decides():
+    """ASVS V4.1.3 · CWE-697: a scoped profile ordered after the everyone profile is shadowed; the everyone profile decides."""
+    res = run("files.example", _profiles({"id": 2, "name": "Corp", "ruleOrder": 1},
+                                         {"id": 1, "name": "Contractors", "ruleOrder": 2, "groups": [{"id": 32, "name": "Drivers"}],
+                                          "hostnameBypassForIpv4": ["files.example"]}))
+    assert (hop(res, "zcc")["status"], hop(res, "zcc")["decided_by"]["name"]) == ("pass", "Corp")
+
+
+def test_a_kept_read_from_before_profiles_carried_users_still_traces():
+    """Regression · ASVS V5.1.3 · CWE-1287: a kept Client Connector read whose app profiles have no users key traces as before."""
+    res = run("files.example")
+    snap = copy.deepcopy(res["snapshot_for_cache"])
+    for p in snap["client_connector"]["app_profiles"]:
+        p.pop("users", None)
+    again = pa.analyze(Tenant(), "files.example", scope=FULL, snapshot=snap)
+    assert again["verdict"]["outcome"] == res["verdict"]["outcome"] == "enforce"

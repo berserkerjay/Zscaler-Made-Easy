@@ -385,6 +385,7 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                     "ssl_cert": _truthy(_v(p, "sslCertInstall", "installSslCert", "sslCertificateEnabled")),
                     "bypass": {"domains": domains, "apps": apps, "processes": processes, "ips": ips, "vpn_gateways": vpn},
                     "groups": _names(p.get("groups") or p.get("groupNames") or []),
+                    "users": _names(p.get("users") or p.get("userNames") or []),
                 })
                 if keep_raw:
                     out["app_profiles"][-1]["raw"] = p
@@ -734,13 +735,41 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
 
     # 1. Client Connector app profile
     profiles = [p for p in zcc.get("app_profiles", []) if p.get("active", True) and (p["platform"] in (platform, "all", ""))]
-    prof = sorted(profiles, key=lambda p: (p.get("priority") is None, p.get("priority") or 0))[0] if profiles else None
+    ordered = sorted(profiles, key=lambda p: (p.get("priority") is None, p.get("priority") or 0))
+    # The first profile in order whose users and groups include the user
+    # applies; one with neither applies to everyone. For any user, a scoped
+    # profile ahead of the first unscoped one decides only for its own users
+    # and groups: the answer depends on who the user is, unless every one of
+    # them treats this destination as the unscoped one does.
+    scoped = lambda p: bool(p.get("groups") or p.get("users"))  # noqa: E731
+    everyone = next((p for p in ordered if not scoped(p)), None)
+    ahead = ordered[:ordered.index(everyone)] if everyone is not None else list(ordered)
+
+    def treats(p: Optional[Dict[str, Any]]) -> Tuple[Any, ...]:
+        if p is None:
+            return (None,)
+        hit_app = any(dest["label"].lower() in str(a).lower() or str(a).lower() in dest["label"].lower()
+                      for a in p["bypass"]["apps"]) if dest["kind"] in ("application", "unknown") else False
+        return (str(p.get("forwarding_profile")), bool(_domain_hit(p["bypass"]["domains"], host)) if host else False, hit_app,
+                p.get("pac_url"), bool(p.get("ssl_cert")))
+    by_user = [p for p in ahead if treats(p) != treats(everyone)]
+    # The hops below follow the unscoped profile (else the first scoped one).
+    prof = everyone if everyone is not None else (ordered[0] if ordered else None)
     zcc_out = "zcc" in nis
     if zcc_out:
         prof = None
         hops.append(_hop("zcc", "Client Connector app profile", "out_of_scope", None,
                          nis["zcc"] + " Whether the client bypasses this destination is not assessed; the hops below assume it reaches Zscaler.",
                          None, why="not in scope"))
+    elif by_user:
+        who = lambda p: _zpm._short([f"group {g}" for g in p.get("groups") or []] + [f"user {u}" for u in p.get("users") or []], 3)  # noqa: E731
+        hops.append(_hop("zcc", "Client Connector app profile", "conditional", None,
+                         "Which app profile applies depends on who the user is: "
+                         + "; ".join(f"'{p['name']}' applies to {who(p)}" for p in by_user[:3])
+                         + (f"; everyone else gets '{everyone['name']}'" if everyone else f"; a user outside them has no {platform} app profile")
+                         + ", and they treat this destination differently. Unable to verify how the device reaches it for any user.",
+                         None, why="app profile depends on the user", candidate_rules=[{"id": p["id"], "name": p["name"]} for p in by_user + ([everyone] if everyone else [])],
+                         missing_context=["identity / app profile assignment"]))
     elif not prof and (zcc.get("read_status", {}).get("app_profiles") == "unverified" or
                        any("/zcc/webPolicies" in e or "/zcc/appProfiles" in e for e in zcc.get("errors", []))):
         hops.append(_hop("zcc", "Client Connector app profile", "unknown", None,
@@ -1222,7 +1251,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     weak_points += [dict(c["weak_point"], hop=k, hop_label=c["label"]) for k, c in channels.items() if c.get("weak_point")]
     sev_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
     weak_points.sort(key=lambda w: sev_order.get(w["severity"], 9))
-    conditional = any(h["key"] in ("zcc", "forwarding") and h["status"] in ("unknown", "warn") and not h.get("decided_by") for h in hops)
+    conditional = any(h["key"] in ("zcc", "forwarding") and h["status"] in ("unknown", "warn", "conditional") and not h.get("decided_by") for h in hops)
     conditional = conditional or any(h["key"] == "forwarding" and h["status"] == "unknown" for h in hops)
     conditional = conditional or any(h["key"] == "pac" and h["status"] == "unknown" for h in hops)
     outcome = ("bypassed" if not reaches_zscaler else "unknown" if conditional else "blocked" if ends in ("ssl", "url", "cac", "ftc") else
