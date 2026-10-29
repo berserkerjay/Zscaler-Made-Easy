@@ -1019,6 +1019,8 @@ def test_a_read_problem_that_echoes_the_secret_is_masked(monkeypatch, path):
     monkeypatch.setattr(srv, "_build_client", lambda req: object())
     monkeypatch.setattr(dlp_analysis, "inspect", lambda *a, **k: [])
     monkeypatch.setattr(srv, "_live_connector_context", lambda *a, **k: {})
+    monkeypatch.setattr(srv, "_live_rules_cache", {})   # isolated: no rule actions kept for the next test's tenant
+    monkeypatch.setattr(srv, "_REPORTS", dict(srv._REPORTS))
     body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": _DH_SECRET,
             "scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}, "from_page": True}
     # Act
