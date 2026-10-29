@@ -176,7 +176,8 @@ def write_audit(event: str, **fields: Any) -> None:
 PENDING_STOP_SECONDS = 600.0
 MAX_PENDING_STOPS = 256
 _START_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
-_pending_stops: Dict[str, float] = {}     # start token -> when Stop was pressed
+_pending_stops: Dict[str, Tuple[float, Any]] = {}     # start token -> (when Stop was pressed, who pressed it)
+_ANY_ACTOR = object()   # a stop from inside the app (no request): not tied to a person
 _token_jobs: Dict[str, str] = {}          # start token -> the job it started
 
 STOPPED_BEFORE_START = ("Stop requested before the run started: the job begins stopped, "
@@ -190,17 +191,26 @@ def valid_start_token(token: Any) -> Optional[str]:
 
 
 def _prune_tokens(now: float) -> None:
-    for k in [k for k, at in _pending_stops.items() if now - at > PENDING_STOP_SECONDS]:
+    for k in [k for k, (at, _who) in _pending_stops.items() if now - at > PENDING_STOP_SECONDS]:
         del _pending_stops[k]
     if len(_token_jobs) > 4 * MAX_PENDING_STOPS:
         for k in [k for k, jid in _token_jobs.items() if jid not in _jobs]:
             del _token_jobs[k]
 
 
-def stop_before_start(token: Any) -> Dict[str, Any]:
+def _may_stop(job_actor: Optional[str], who: Any) -> bool:
+    """As the cancel route's owner rule: a job whose starter is known is
+    stopped only by that person; one whose starter is unknown by anyone."""
+    return who is _ANY_ACTOR or not job_actor or who == job_actor
+
+
+def stop_before_start(token: Any, actor: Any = _ANY_ACTOR) -> Dict[str, Any]:
     """Stop for a run whose start request has not answered yet. When its
     job already exists it is cancelled now; otherwise the stop waits for
-    the job, which then starts stopped. Returns what was done."""
+    the job, which then starts stopped. Returns what was done. `actor` is
+    who pressed Stop (the route passes it, None without per-user identity):
+    PermissionError when the job exists and someone else started it, and a
+    waiting stop is honoured only for a job its presser starts."""
     t = valid_start_token(token)
     if t is None:
         raise ValueError("start_token must be 8-64 letters, digits, '-' or '_'.")
@@ -210,10 +220,13 @@ def stop_before_start(token: Any) -> Dict[str, Any]:
         job_id = _token_jobs.get(t)
         if job_id is None:
             if t not in _pending_stops and len(_pending_stops) >= MAX_PENDING_STOPS:
-                oldest = min(_pending_stops, key=_pending_stops.get)
+                oldest = min(_pending_stops, key=lambda k: _pending_stops[k][0])
                 del _pending_stops[oldest]
-            _pending_stops[t] = now
+            _pending_stops[t] = (now, actor)
     if job_id is not None:
+        job = get(job_id)
+        if job is not None and not _may_stop(job.actor, actor):
+            raise PermissionError("This job was started by someone else; only the person who started it can stop it.")
         return {"job_id": job_id, "cancelled": cancel(job_id), "pending": False}
     return {"job_id": None, "cancelled": True, "pending": True}
 
@@ -236,7 +249,8 @@ def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None,
         if token is not None:
             _prune_tokens(time.time())
             _token_jobs[token] = job.id
-            if _pending_stops.pop(token, None) is not None:
+            pending = _pending_stops.pop(token, None)
+            if pending is not None and _may_stop(job.actor, pending[1]):   # someone else's Stop never stops this run
                 job.cancel.set()
                 job.log(STOPPED_BEFORE_START)
 

@@ -697,6 +697,71 @@ def test_a_stop_racing_its_start_is_honoured(monkeypatch, client):
     assert stop.json()["pending"] is True and job.cancel.is_set() and ran == [True]
 
 
+def _as_person(monkeypatch):
+    """Per-user identity as SSO provides it: the X-Test-Actor header names who asks."""
+    monkeypatch.setattr(srv, "_actor", lambda request: request.headers.get("X-Test-Actor") or None)
+
+
+def _held_job(token, actor):
+    gate = threading.Event()
+
+    def fn(log, cancel):
+        gate.wait(5)
+        return {"status": "done"}
+    return pack_jobs.start("path", fn, actor=actor, start_token=token), gate
+
+
+@pytest.mark.parametrize("who,status", [("mallory@example.com", 403), (None, 403), ("alice@example.com", 200)])
+def test_stop_before_start_of_an_existing_job_is_only_for_its_starter(monkeypatch, client, who, status):
+    """ASVS V4.2.1 · A01:2021 · CWE-639 · WSTG-ATHZ-04: with per-user identity, a start token held by someone else cannot stop alice's running job (403); alice can."""
+    # Arrange
+    _as_person(monkeypatch)
+    monkeypatch.setattr(pack_jobs, "_pending_stops", {})
+    monkeypatch.setattr(pack_jobs, "_token_jobs", {})
+    token = "c6-owner-token-0001"
+    job, gate = _held_job(token, "alice@example.com")
+    # Act
+    r = client.post("/api/dlp-packs/jobs/stop-before-start", json={"start_token": token}, headers={"X-Test-Actor": who} if who else {})
+    stopped = job.cancel.is_set()
+    gate.set()
+    # Assert
+    assert r.status_code == status and stopped is (status == 200)
+    if status == 403:
+        assert "someone else" in r.json()["detail"]
+
+
+def test_a_waiting_stop_from_someone_else_does_not_stop_the_job(monkeypatch, client):
+    """ASVS V4.2.1 · A01:2021 · CWE-639 · WSTG-ATHZ-04: a Stop mallory sends for alice's token before alice's start answers never makes alice's job begin stopped."""
+    # Arrange
+    _as_person(monkeypatch)
+    monkeypatch.setattr(pack_jobs, "_pending_stops", {})
+    monkeypatch.setattr(pack_jobs, "_token_jobs", {})
+    token = "c6-owner-token-0002"
+    # Act
+    stop = client.post("/api/dlp-packs/jobs/stop-before-start", json={"start_token": token}, headers={"X-Test-Actor": "mallory@example.com"})
+    job, gate = _held_job(token, "alice@example.com")
+    stopped = job.cancel.is_set()
+    gate.set()
+    # Assert
+    assert stop.status_code == 200 and stop.json()["pending"] is True and stopped is False
+
+
+def test_a_waiting_stop_from_the_starter_is_still_honoured(monkeypatch, client):
+    """ASVS V1.11.3 · CWE-367 · WSTG-BUSL-07: alice's own Stop, sent before her start answered, still makes her job begin stopped (the race fix is kept)."""
+    # Arrange
+    _as_person(monkeypatch)
+    monkeypatch.setattr(pack_jobs, "_pending_stops", {})
+    monkeypatch.setattr(pack_jobs, "_token_jobs", {})
+    token = "c6-owner-token-0003"
+    # Act
+    client.post("/api/dlp-packs/jobs/stop-before-start", json={"start_token": token}, headers={"X-Test-Actor": "alice@example.com"})
+    job, gate = _held_job(token, "alice@example.com")
+    stopped = job.cancel.is_set()
+    gate.set()
+    # Assert
+    assert stopped is True
+
+
 def test_the_in_memory_result_stores_are_capped():
     """ASVS V11.1.4 · A04:2021 · CWE-400 · CWE-770: the HAR batch, Test a list and plan stores keep a bounded number of runs."""
     # Assert

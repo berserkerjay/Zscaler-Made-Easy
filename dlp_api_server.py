@@ -3432,14 +3432,17 @@ class StopBeforeStartRequest(BaseModel):
 
 
 @app.post("/api/dlp-packs/jobs/stop-before-start")
-async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):
+async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest, request: Request):
     """Stop pressed while a start request (deploy, removal, export,
     Terraform hand-off, path analysis) is still signing in, so there is no
     job id yet. The job that start creates begins with its cancel set and
-    reads or writes nothing; one that already exists is cancelled now."""
+    reads or writes nothing; one that already exists is cancelled now.
+    As /cancel: only the person who started a job can stop it (403)."""
     import pack_jobs
     try:
-        return pack_jobs.stop_before_start(req.start_token)
+        return pack_jobs.stop_before_start(req.start_token, actor=_actor(request))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
