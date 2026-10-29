@@ -6,7 +6,11 @@
 //
 // WCAG 2.2: the pop-up opens on hover and on keyboard focus (1.4.13), a
 // long press or the ⓘ target opens it on touch (2.5.8: the target is 28px),
-// Esc closes it without moving focus, the pointer can move onto it without
+// Esc closes it without moving focus (and only it: the dialog or search
+// behind it stays open; with no pop-up shown Esc reaches them as before),
+// a text field inside an open dialog or a combobox does not open it on
+// focus (it would cover the dialog's buttons or the result list, 2.4.11):
+// there hover or the ⓘ opens it. The pointer can move onto it without
 // it closing, and it stays until Esc or until focus and hover leave. Each
 // control's aria-describedby points at the same words (1.3.1, 4.1.2). The
 // pop-up is placed beside the control, never over it, and inside the
@@ -30,7 +34,8 @@
   const EFFECTS = {
     local: 'Stays in this app. It does not touch your tenant.',
     read: 'Reads your tenant. It changes nothing there.',
-    write: 'Can change your tenant. It needs write mode, a named assessor and a typed confirmation first.',
+    write: 'Can change your tenant. It needs write mode, a writer, the named assessor and your confirmation first.',
+    confirm: 'Typing it lets the change go ahead. Cancel stops it.',
     download: 'Saves a file on this computer. It changes nothing in your tenant.',
     nav: 'Opens a page. It changes nothing by itself.',
   };
@@ -304,7 +309,8 @@
     clock.clear(leaveTimer);
     leaveTimer = clock.set(() => {
       if (hovering.control || hovering.tip) return;
-      if (current && current === document.activeElement && current.matches(':focus-visible')) return;
+      // Focus keeps it open, except in a dialog's text field (it opened on hover there, so it closes with hover).
+      if (current && current === document.activeElement && current.matches(':focus-visible') && !quietOnFocus(current)) return;
       hide();
     }, LEAVE_GRACE);
   }
@@ -364,9 +370,21 @@
     if (dismissed === el) dismissed = null;
     leaveSoon();
   }
+  // A text field in an open dialog or a combobox: focus lands there by
+  // itself when the dialog opens, and the pop-up would cover the dialog's
+  // buttons or the result list while the person types.
+  const TEXT_FIELD = 'textarea, [contenteditable="true"], [role="combobox"], input:not([type]), ' +
+    'input[type="text"], input[type="search"], input[type="password"], input[type="email"], input[type="url"], input[type="number"], input[type="tel"]';
+  function quietOnFocus(el) {
+    try {
+      if (!el.matches(TEXT_FIELD)) return false;
+      return el.matches('[role="combobox"]') || !!el.closest('dialog[open], [role="dialog"][aria-modal="true"], [role="alertdialog"]');
+    } catch (err) { return false; }
+  }
   function onFocus(ev) {
     const el = controlFrom(ev.target);
     if (!el || el !== ev.target) return;
+    if (quietOnFocus(el)) return;
     let visible = true;
     try { visible = el.matches(':focus-visible'); } catch (err) { visible = true; }
     if (visible) show(el);
@@ -382,9 +400,14 @@
   }
   function onKey(ev) {
     if (ev.key !== 'Escape' && ev.key !== 'Esc') return;
-    if (!tip || tip.hidden) return;
+    if (!tip || tip.hidden) return;   // no pop-up: Esc goes on to the dialog or search behind it
+    // The pop-up is open: this Esc is its own. A dialog's cancel, Find
+    // anything's close or a sheet's Esc must not also run (they are behind
+    // the pop-up, in the bubble phase or the dialog's default action).
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
     dismissed = current;
-    hide();   // focus stays where it is; other Esc handlers still run
+    hide();   // focus stays where it is
   }
   function onDown(ev) {
     clock.clear(pressTimer);

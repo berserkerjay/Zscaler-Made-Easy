@@ -8874,10 +8874,12 @@ async def report_live_page():
 
 # ── Path analyzer: HAR import (batch of hosts) ────────────────────────
 # The page parses the HAR file in the browser (static/har_parse.js): the
-# file never leaves it. Only the host names and their request counts are
-# sent here (`har_hosts`, which the audit log records by size only); the
-# tenant is read once and every host is traced against that read
-# (path_analyzer.analyze_batch). Read-only; Stop ends it between hosts.
+# file never leaves it. Only host names, request counts, HTTP methods,
+# schemes and upload amounts are sent here (`har_hosts`, which the audit
+# log records by size only); cookies, headers, URL paths and bodies stay
+# in the browser. The tenant is read once and every host is traced
+# against that read (path_analyzer.analyze_batch). Read-only; Stop ends
+# it between hosts.
 _PATH_BATCHES: Dict[str, Dict[str, Any]] = {}
 _PATH_BATCHES_MAX = 4
 _HAR_METHOD = re.compile(r"^[A-Z]{1,12}$")

@@ -146,13 +146,13 @@ window.HELP_CATALOG = {
    },
    "#dlpPhraseInput": {
     "what": "Takes the confirmation phrase shown above. Typing it proves you mean it.",
-    "input": "Required. Type the phrase exactly, in capitals with the underscores.",
-    "effect": "local"
+    "input": "Required. Type the phrase shown above exactly as shown.",
+    "effect": "confirm"
    },
    "#dlpPhraseGo": {
     "what": "Confirms the action with the phrase you typed.",
     "input": "Type the confirmation phrase in the box first.",
-    "effect": "local"
+    "effect": "confirm"
    },
    "#dlpPhraseCancel": {
     "what": "Closes this box and does nothing.",
@@ -4713,7 +4713,7 @@ window.HELP_CATALOG = {
     "effect": "download"
    },
    "#paHarBtn": {
-    "what": "Analyze every host a browser HAR file names. The file is read in this browser; only host names and request counts are sent.",
+    "what": "Analyze every host a browser HAR file names. The file is read in this browser. Only host names, request counts, HTTP methods, schemes and upload amounts are sent. Cookies, headers, URL paths and bodies stay in this browser.",
     "input": "Nothing to type. Click it and choose a .har or .json file, up to 100 MB. Up to 200 hosts per run.",
     "effect": "local"
    },
@@ -4873,7 +4873,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#paHarGo": {
-    "what": "Reads the tenant once and traces every host from the HAR file. Only host names and request counts are sent.",
+    "what": "Reads the tenant once and traces every host from the HAR file. Only host names, request counts, HTTP methods, schemes and upload amounts are sent. Cookies, headers, URL paths and bodies stay in this browser.",
     "input": "Nothing to type. Choose a HAR file first. Nothing is written to the tenant.",
     "effect": "read"
    },
@@ -5485,7 +5485,7 @@ window.HELP_CATALOG = {
    },
    "button[data-act=\"apply\"]": {
     "what": "Applies this approved request to the tenant. The plan is checked against the tenant first.",
-    "input": "Needs write mode on and writer rights. You type the confirmation phrase.",
+    "input": "Needs write mode on, writer rights and a named assessor. You type the confirmation phrase.",
     "effect": "write"
    },
    "button[data-act=\"withdraw\"]": {
@@ -5547,7 +5547,7 @@ window.HELP_CATALOG = {
    },
    "#shHealSel": {
     "what": "Heals every selected drift: puts each setting back to what you approved.",
-    "input": "Select drifts first. Needs write mode on. You type the confirmation phrase.",
+    "input": "Select drifts first. Needs write mode on, writer rights and a named assessor. You type the confirmation phrase.",
     "effect": "write"
    },
    "input.shSel": {
@@ -5557,7 +5557,7 @@ window.HELP_CATALOG = {
    },
    "button[data-act=\"heal\"]": {
     "what": "Puts this setting back to what you approved. It is read again first, and left alone if it moved again.",
-    "input": "Needs write mode on. You type the confirmation phrase.",
+    "input": "Needs write mode on, writer rights and a named assessor. You type the confirmation phrase.",
     "effect": "write"
    },
    "button[data-act=\"accept\"]": {
@@ -5567,7 +5567,7 @@ window.HELP_CATALOG = {
    },
    "button[data-act=\"undo\"]": {
     "what": "Undoes this heal: puts the setting back to the value it had before, then checks it.",
-    "input": "Needs write mode on. Nothing to type. You confirm in a dialog.",
+    "input": "Needs write mode on, writer rights and a named assessor. Nothing to type. You confirm in a dialog.",
     "effect": "write"
    },
    "#tenBody details > summary": {

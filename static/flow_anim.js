@@ -1426,7 +1426,6 @@
     incident: [7, 'Incident receiver configured', 'pass'],
   };
   const DF_ORDER = ['src', 'cc', 'x_cc', 'u_cc', 'pac', 'x_pac', 'u_pac', 'policy', 'b_policy', 'ssl', 'dlp', 'enc', 'b_ssl', 'u_ssl', 'o_enforce', 'o_monitor', 'o_other', 'o_block', 'incident'];
-  const SSL_UNVERIFIED = ['unknown', 'out_of_scope', 'conditional', 'not_reached', 'skipped', 'na'];
 
   // The route one trace takes, by the same tests the report's summary
   // uses: bypassed = !reaches_zscaler; left encrypted = !conditional,
@@ -1469,7 +1468,11 @@
     const s = report.summary, nets = {};
     (report.networks || []).forEach(n => { nets[n.key] = n.label || n.key; });
     const m = { kind: 'dataflow', cols: DF_COLS.slice(), nodes: [], links: [], routes: [], total: s.traces, unit: 'paths', summary: {}, counts: {}, mismatch: [] };
-    ['traces', 'bypassed', 'blind', 'enforced', 'monitored'].forEach(k => { m.summary[k] = s[k]; });
+    // Every visibility class the summary counts (data_flow.visibility); a stored
+    // report from before blocked / unverified / decrypted_other has only the first five.
+    const CLASSES = ['traces', 'bypassed', 'blind', 'enforced', 'monitored', 'blocked', 'unverified', 'decrypted_other'];
+    const checked = CLASSES.filter((k, i) => i < 5 || k in s);
+    checked.forEach(k => { m.summary[k] = s[k]; });
     const value = {}, items = {};
     report.traces.forEach((t, i) => {
       const route = dfRoute(t);
@@ -1495,13 +1498,14 @@
       unverified_route: n('u_cc') + n('u_pac'), blocked: n('b_policy') + n('b_ssl') + n('o_block'),
       blocked_policy: n('b_policy'), blocked_ssl: n('b_ssl'), blocked_ftc: n('o_block'), blind: n('enc'), unverified_ssl: n('u_ssl'),
       decrypted: n('dlp'), enforced: n('o_enforce'), monitored: n('o_monitor'), other: n('o_other'), incident: n('incident'),
+      unverified: n('u_cc') + n('u_pac') + n('u_ssl'), decrypted_other: n('o_other'),
     };
     // Every path ends in exactly one place, and the named streams are
     // the summary's own numbers.
     const terminal = ['x_cc', 'x_pac', 'u_cc', 'u_pac', 'b_policy', 'b_ssl', 'u_ssl', 'enc', 'o_block', 'o_enforce', 'o_monitor', 'o_other'];
     m.terminals = terminal.filter(k => value[k]).map(k => ({ key: k, label: DF_NODES[k][1], tone: DF_NODES[k][2], count: n(k), share: pctOf(n(k), s.traces) }));
-    [['traces', 'traces'], ['bypassed', 'bypassed'], ['blind', 'blind'], ['enforced', 'enforced'], ['monitored', 'monitored']].forEach(p => {
-      if (m.counts[p[1]] !== s[p[0]]) m.mismatch.push(`${p[0]}: picture ${m.counts[p[1]]}, summary ${s[p[0]]}`);
+    checked.forEach(k => {
+      if (m.counts[k] !== s[k]) m.mismatch.push(`${k}: picture ${m.counts[k]}, summary ${s[k]}`);
     });
     m.links.forEach(l => {
       const to = DF_NODES[l.to];

@@ -16,7 +16,7 @@
 .fa-svg { display: block; width: 100%; min-width: 760px; height: auto; }
 .fa-sub { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); margin: 0.8rem 0 0.2rem; }
 
-.fa-box rect { fill: var(--card-solid); stroke: var(--border-strong, var(--border)); stroke-width: 1.5; transition: stroke 0.25s, opacity 0.25s; }
+.fa-box rect { fill: var(--card-solid); stroke: var(--border-strong, var(--border)); stroke-width: 1.5; transition: stroke 0.25s, stroke-opacity 0.25s, opacity 0.25s; }
 .fa-box .fa-t { fill: var(--text); font-size: 12px; font-weight: 600; }
 .fa-box .fa-s { fill: var(--dim); font-size: 11px; }
 .fa-box.on rect { stroke: var(--accent); stroke-width: 2.5; }
@@ -25,7 +25,9 @@
 .fa-box.stop rect { stroke: var(--fail); stroke-width: 3; }
 .fa-box.plan rect { stroke: var(--accent); stroke-dasharray: 4 3; }
 .fa-box.idle rect { stroke-dasharray: 3 3; }
-.fa-box.after, .fa-box.dim { opacity: 0.38; }
+/* Not reached: only the outline fades (dotted); the words keep full contrast (WCAG 1.4.3: these boxes are focusable). */
+.fa-box.after rect { stroke-opacity: 0.45; stroke-dasharray: 1 3; }
+.fa-box.dim { opacity: 0.38; }
 .fa-box.gate rect { stroke-dasharray: 6 3; }
 .fa-box.gate .fa-s { fill: var(--warn); font-weight: 700; }
 .fa-box[tabindex] { cursor: pointer; }
@@ -128,8 +130,9 @@
 .tp-steps li { margin: 0.12rem 0; }
 .tp-steps li.cur { color: var(--text); font-weight: 600; }
 .fa-box.pend rect { stroke-dasharray: 3 3; }
-.fa-box.pend { opacity: 0.55; }
-.fa-box.na { opacity: 0.5; }
+/* Pending and not in scope: dashed, faded outlines; the text stays at full --text / --dim. */
+.fa-box.pend rect { stroke-opacity: 0.6; }
+.fa-box.na rect { stroke-opacity: 0.5; }
 .fa-box.na rect { stroke-dasharray: 2 3; }
 .fa-box.tp-zpa rect { fill: color-mix(in srgb, var(--pass) 8%, var(--card-solid)); }
 .fa-box[role="button"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }

@@ -213,7 +213,7 @@
   },
   {
    "id": "HAR-LEAK",
-   "what": "HAR: only host names and counts leave the browser; file name and contents do not (existing tests and code review)",
+   "what": "HAR: only host names, request counts, HTTP methods, schemes and upload amounts leave the browser; cookies, headers, URL paths and bodies, the file name and the rest of the contents do not (existing tests and code review)",
    "standard": "ASVS V8.3.1 / CWE-200",
    "result": "pass"
   },

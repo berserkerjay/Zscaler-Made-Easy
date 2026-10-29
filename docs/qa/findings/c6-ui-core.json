@@ -1,0 +1,145 @@
+{
+ "area": "UI core in a real browser (Playwright, headless Chromium): the assessment page, Simple mode, the guide, Deploy Studio, the shared dialogs (ui_auth.js) and the report pages, on the sample tenant and on a hostile copy whose every name is markup",
+ "title": "UI core QA (wave 6): the partial-scan card, values restored from web storage, blocked storage, the SSO sign-in link and browsers that refuse their own boxes",
+ "standards": [
+  "ASVS V5.3.3",
+  "ASVS V5.1.4",
+  "ASVS V5.1.5",
+  "ASVS V7.4.1",
+  "ASVS V8.2.2",
+  "ASVS V1.14.1",
+  "CWE-79",
+  "CWE-20",
+  "CWE-601",
+  "CWE-755",
+  "CWE-1041",
+  "OWASP A03:2021",
+  "OWASP A01:2021",
+  "WSTG-CLNT-01",
+  "WSTG-CLNT-04",
+  "WSTG-ERRH-01",
+  "WCAG 2.2 SC 1.4.3",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 2.1.2",
+  "WCAG 2.2 SC 2.4.3",
+  "WCAG 2.2 SC 3.3.1",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "notes": [
+  "This record was written after the fact by the wave 6 review: commit 65bac56 fixed these findings and added tests/test_c6_ui_core.py but wrote no record, so the score never counted them. Each finding below is taken from that commit and its tests."
+ ],
+ "files": [
+  "static/index.html",
+  "static/dashboard.js",
+  "static/guide.js",
+  "static/deploy_studio.js",
+  "static/ui_auth.js",
+  "tests/test_c6_ui_core.py",
+  "tests/xss_sink_allowlist.json"
+ ],
+ "checks": [
+  {"id": "C6-UI-CORE-C01", "what": "Every name of a hostile sample tenant is shown as text on each page, before and after a run", "standard": "ASVS V5.3.3, CWE-79", "result": "pass"},
+  {"id": "C6-UI-CORE-C02", "what": "Values read back from sessionStorage and localStorage (results, the last deployment, custom channels, deployment records) are coerced or escaped before they are drawn", "standard": "ASVS V5.3.3, CWE-79", "result": "fixed"},
+  {"id": "C6-UI-CORE-C03", "what": "Null, a string or an object where a list was stored raises no error on the page", "standard": "ASVS V5.1.4, CWE-20", "result": "fixed"},
+  {"id": "C6-UI-CORE-C04", "what": "No top-level function of the main page is declared twice across its scripts", "standard": "ASVS V1.14.1, CWE-1041", "result": "fixed"},
+  {"id": "C6-UI-CORE-C05", "what": "Save and Clear config work, or say so, when site storage is blocked; every web storage call is guarded", "standard": "ASVS V7.4.1, CWE-755", "result": "fixed"},
+  {"id": "C6-UI-CORE-C06", "what": "A canary secret typed, saved and run with is in no localStorage or sessionStorage value", "standard": "ASVS V8.2.2, CWE-922", "result": "pass"},
+  {"id": "C6-UI-CORE-C07", "what": "The SSO sign-in and sign-out links are only same-origin paths", "standard": "ASVS V5.1.5, CWE-601", "result": "fixed"},
+  {"id": "C6-UI-CORE-C08", "what": "A browser that refuses alert, confirm or prompt reads as no, and the app's dialog shows the text", "standard": "ASVS V7.4.1, CWE-755", "result": "fixed"},
+  {"id": "C6-UI-CORE-C09", "what": "Text contrast at 4.5:1 in both themes, an accessible name on every control, unique ids, one main heading, no sideways scroll at 320 px", "standard": "WCAG 2.2 SC 1.4.3, SC 4.1.2, SC 1.4.10", "result": "pass"},
+  {"id": "C6-UI-CORE-C10", "what": "Tab never leaves an open modal; Escape closes it and focus returns to its opener", "standard": "WCAG 2.2 SC 2.1.2, SC 2.4.3", "result": "pass"},
+  {"id": "C6-UI-CORE-C11", "what": "With the UI token gate on: a refused token is asked for again with the reason, the field is masked, the token lives only in an HttpOnly cookie, and three refusals stop the asking", "standard": "ASVS V2.2.1, V3.4.2, CWE-307", "result": "pass"}
+ ],
+ "findings": [
+  {
+   "id": "C6-UI-CORE-01",
+   "title": "A second renderPermissions() on the main page silently replaced the partial-scan one: after a run the card that says how many checks could not run never showed",
+   "severity": "low",
+   "cwe": "CWE-1041",
+   "asvs": "V1.14.1",
+   "wcag": "WCAG 2.2 SC 3.3.1",
+   "status": "fixed",
+   "fix": "static/index.html: the card's function is renamed renderPartialScan; a test fails when two main-page scripts declare one global function",
+   "test": "tests/test_c6_ui_core.py::test_the_partial_scan_card_shows_after_a_run_with_blocked_checks",
+   "commit": "65bac56"
+  },
+  {
+   "id": "C6-UI-CORE-02",
+   "title": "Results restored from sessionStorage were drawn into the tiles and section bars without being coerced to numbers (markup from stored state)",
+   "severity": "low",
+   "cwe": "CWE-79",
+   "asvs": "V5.3.3",
+   "status": "fixed",
+   "fix": "static/index.html: restored counts are coerced to numbers before they are drawn",
+   "test": "tests/test_c6_ui_core.py::test_restored_results_are_numbers_not_markup",
+   "commit": "65bac56"
+  },
+  {
+   "id": "C6-UI-CORE-03",
+   "title": "Custom channels read from localStorage kept their stored icon unescaped, and a null entry crashed the dashboard",
+   "severity": "low",
+   "cwe": "CWE-79",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "static/dashboard.js: a custom channel is rebuilt from {id: custom_*, name}; the icon is the fixed one and the name is escaped",
+   "test": "tests/test_c6_ui_core.py::test_custom_channels_from_storage_are_rebuilt_from_their_name",
+   "commit": "65bac56"
+  },
+  {
+   "id": "C6-UI-CORE-04",
+   "title": "The guide's Last deployment line printed a stored count as markup",
+   "severity": "low",
+   "cwe": "CWE-79",
+   "asvs": "V5.3.3",
+   "status": "fixed",
+   "fix": "static/guide.js: the last deployment's count is a number, never stored markup",
+   "test": "tests/test_c6_ui_core.py::test_the_last_deployment_from_storage_is_counted_not_parsed",
+   "commit": "65bac56"
+  },
+  {
+   "id": "C6-UI-CORE-05",
+   "title": "An unknown channel name in a stored deployment record was not escaped in Previous deployments, and a malformed channel list threw",
+   "severity": "low",
+   "cwe": "CWE-79",
+   "asvs": "V5.3.3",
+   "status": "fixed",
+   "fix": "static/deploy_studio.js: an unknown channel name is escaped; a malformed channel list is skipped",
+   "test": "tests/test_c6_ui_core.py::test_a_stored_deployment_record_shows_unknown_channels_as_text",
+   "commit": "65bac56"
+  },
+  {
+   "id": "C6-UI-CORE-06",
+   "title": "Save config threw when site storage was blocked, and Clear config left the fields filled",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "static/index.html: Save config reports blocked storage in words; Clear config still clears the fields",
+   "test": "tests/test_c6_ui_core.py::test_save_config_says_so_when_storage_is_blocked",
+   "commit": "65bac56"
+  },
+  {
+   "id": "C6-UI-CORE-07",
+   "title": "The SSO bar used the sign-in and sign-out addresses from the status answer as they came, so another site or a javascript: URL could become the link",
+   "severity": "low",
+   "cwe": "CWE-601",
+   "asvs": "V5.1.5",
+   "status": "fixed",
+   "fix": "static/ui_auth.js: only a same-origin path is used; anything else falls back to the fixed path (deny by default)",
+   "test": "tests/test_c6_ui_core.py::test_the_sso_sign_in_link_is_only_ever_a_path_on_this_origin",
+   "commit": "65bac56"
+  },
+  {
+   "id": "C6-UI-CORE-08",
+   "title": "A browser that refuses alert, confirm or prompt made the button that asked throw and stop working",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "static/ui_auth.js: a refused box reads as no (fail closed) and the app's own dialog shows its text",
+   "test": "tests/test_c6_ui_core.py::test_a_refused_confirm_or_prompt_reads_as_no_and_never_throws",
+   "commit": "65bac56"
+  }
+ ],
+ "tests_added": 27
+}
