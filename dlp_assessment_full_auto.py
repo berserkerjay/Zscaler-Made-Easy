@@ -353,6 +353,14 @@ def _never_connected(e: BaseException) -> bool:
     text = str(e).lower()
     return isinstance(e, requests.exceptions.ConnectTimeout) or "failed to establish a new connection" in text or \
         "name or service not known" in text or "nodename nor servname" in text or "connection refused" in text
+def _expires_in(d):
+    """The token lifetime in seconds from a token answer: a number or numeric
+    text; 3600 (the OneAPI default) when it is missing or unreadable."""
+    try:
+        v = float(d.get("expires_in", 3600))
+    except (TypeError, ValueError):
+        return 3600.0
+    return v if v == v and 60 < v < 86400 * 7 else 3600.0
 
 
 class Client:
@@ -434,7 +442,7 @@ class Client:
                     return s._auth_legacy()
                 url = _token_url(s.vd, s.cloud)
                 r = s.sess.post(url, data={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":"https://api.zscaler.com"}, headers={"Content-Type":"application/x-www-form-urlencoded"}, timeout=30)
-                r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+d.get("expires_in",3600)-60
+                r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+_expires_in(d)-60
                 s.sess.headers["Authorization"] = f"Bearer {s.token}"
                 return True
             except Exception as e: return (False, s._safe(str(e)))
@@ -832,7 +840,7 @@ def _enabled(r):
 def _names(v):
     """Ids and names of a list of references ({id, name} dicts or bare values), upper case."""
     out = []
-    for e in v or []:
+    for e in _lst(v):   # a lone reference given as text is one entry; a number or a bool is none
         if isinstance(e, dict):
             for k in ("id", "name", "val"):
                 if e.get(k) not in (None, ""): out.append(str(e[k]).upper())
@@ -847,12 +855,32 @@ def _set(v):
     return bool(v)
 
 def _g(cl, path, label):
+    """The records at `path` (objects only: a null, number or string in the
+    list is not a record), or the INFO result that says the read failed,
+    so a refused read is "not permitted" and never an empty tenant."""
     d,c = cl.get(path)
     if c not in (200,204):
         info = d if isinstance(d, dict) else {}
         return None, _explain(label, c, info.get("path") or _resolve_ep(path, getattr(cl, "customer_id", "")), info.get("tried"))
-    items = _ls(d)
+    items = [x for x in _ls(d) if isinstance(x, dict)]
     return items, None
+
+def _denied(r):
+    """True when a check result says the API client was refused (401/403)."""
+    import permissions
+    return permissions.is_denied(r.detail)
+
+def _s(v):
+    """A tenant field as text: "" for None, str() for a number or anything else."""
+    return "" if v is None else v if isinstance(v, str) else str(v)
+
+def _lst(v):
+    """A tenant list field: a list or tuple as is, a lone string as one entry, anything else as none."""
+    return list(v) if isinstance(v, (list, tuple)) else [v] if isinstance(v, str) and v else []
+
+def _on(r):
+    """An enabled rule by its state (a missing state is not enabled)."""
+    return _s(r.get("state")).upper()=="ENABLED"
 
 HR = ["chatgpt","openai","claude","gemini","copilot","dropbox","wetransfer","drive.google","onedrive","icloud","mega.nz","pastebin","github"]
 
@@ -989,7 +1017,7 @@ def c_1_8(cl):
     if e: return e
     if d and not any(k in p for p in d for k in ("strictEnforcement","strictMode")):
         return R(R.WARN,"Strict Enforcement is an install option (STRICTENFORCEMENT=1 for the MSI or EXE), not an app-profile setting; check the install command or MDM package, and 6.8 for the per-device state. Ref: https://help.zscaler.com/zscaler-client-connector/customizing-zscaler-client-connector-install-options-msi")
-    off=[p.get("name","?") for p in d if not (p.get("strictEnforcement") in _ON or p.get("strictMode") in _ON)]
+    off=[_s(p.get("name","?")) for p in d if not (p.get("strictEnforcement") in _ON or p.get("strictMode") in _ON)]
     return R(R.FAIL,f"Strict mode OFF on: {', '.join(off[:5])}") if off else R(R.PASS,"Strict Enforcement on all profiles.")
 
 def _pw(p, *keys):
@@ -1020,7 +1048,7 @@ def c_1_10(cl):
     """Check 1.10 (1 — CC Portal): Tamper passwords."""
     d,e=_app_profiles_flat(cl, active_only=True)
     if e: return e
-    m=[p.get("name","?") for p in d if not(_pw(p,"disablePassword","passwordToDisable") and _pw(p,"uninstallPassword","passwordToUninstall"))]
+    m=[_s(p.get("name","?")) for p in d if not(_pw(p,"disablePassword","passwordToDisable") and _pw(p,"uninstallPassword","passwordToUninstall"))]
     return R(R.FAIL,f"Missing tamper passwords: {', '.join(m[:5])}") if m else R(R.PASS,"Tamper passwords set.")
 def c_1_11(cl):
     """Check 1.11 (1 — CC Portal): Machine Tunnel."""
@@ -1033,11 +1061,9 @@ def c_1_12(cl):
 
     Telemetry is a company setting (getCompanyInfo enableGlobalZCCTelemetry,
     zscaler-sdk-python zcc/models/company_info.py), not an app-profile field."""
-    try:
-        from zcc_evaluation import _one
-        c=_one(cl,"/zcc/companyInfo")
-    except Exception:  # noqa: BLE001
-        c={}
+    items,e=_g(cl,"/zcc/companyInfo","Company settings (getCompanyInfo)")
+    if e: return e
+    c=items[0] if items else {}
     if not c: return R(R.INFO,"Company settings are not readable (getCompanyInfo), so Client Connector telemetry cannot be checked; see 1.27.")
     v=_fv(c,"enableGlobalZCCTelemetry")
     if v is None: return R(R.INFO,"The company settings do not report Client Connector telemetry (enableGlobalZCCTelemetry); check it in the Client Connector portal.")
@@ -1046,24 +1072,27 @@ def c_1_13(cl):
     """Check 1.13 (1 — CC Portal): Posture Profiles."""
     d,c=cl.get("/zcc/postureProfiles")
     if c==404: return R(R.INFO,"Posture profiles are not in the public Client Connector API; check them in the Client Connector portal.")
-    items=_ls(d) if c in(200,204) else []
+    if c not in(200,204): return _explain("Posture profiles",c,_resolve_ep("/zcc/postureProfiles"))
+    items=[x for x in _ls(d) if isinstance(x, dict)]
     return R(R.PASS,f"{len(items)} Posture Profile(s).") if items else R(R.WARN,"No Posture Profiles.")
 def c_1_14(cl):
     """Check 1.14 (1 — CC Portal): Posture-linked policies."""
-    d,c=cl.get("/zia/urlFilteringRules"); rules=_ls(d) if c in(200,204) else []
+    rules,e=_g(cl,"/zia/urlFilteringRules","URL Filtering rules")
+    if e: return e
     pr=[r for r in rules if r.get("devicePostureProfiles") or r.get("deviceTrustLevels")]
     return R(R.PASS,f"{len(pr)} posture-linked rule(s).") if pr else R(R.WARN,"No posture-linked access policies.")
 
 # === Section 2 ===
 def c_2_1(cl):
     """Check 2.1 (2 — Bypass Inventory): App Profile inventory."""
-    d,e=_g(cl,"/zcc/appProfiles","AP"); return e or R(R.PASS,f"{len(d)} profile(s): {', '.join(p.get('name','?') for p in d[:10])}")
+    d,e=_g(cl,"/zcc/appProfiles","AP"); return e or R(R.PASS,f"{len(d)} profile(s): {', '.join(_s(p.get('name','?')) for p in d[:10])}")
 def c_2_2(cl):
     """Check 2.2 (2 — Bypass Inventory): Forwarding listeners."""
     d,e=_g(cl,"/zcc/forwardingProfiles","FP"); return e or R(R.PASS,f"{len(d)} Forwarding Profile(s).")
 def c_2_3(cl):
     """Check 2.3 (2 — Bypass Inventory): PAC statements."""
-    d,c=cl.get("/zia/pacFiles"); p=_ls(d) if c in(200,204) else []
+    p,e=_g(cl,"/zia/pacFiles","PAC files")
+    if e: return e
     return R(R.WARN,f"{len(p)} PAC file(s) — review for DIRECT entries.") if p else R(R.PASS,"No PAC files.")
 def c_2_4(cl):
     """Check 2.4 (2 — Bypass Inventory): DNS handling."""
@@ -1104,7 +1133,7 @@ def c_2_8(cl):
     """Check 2.8 (2 — Bypass Inventory): Review cadence."""
     d,e=_g(cl,"/zcc/appProfiles","AP"); 
     if e: return e
-    h=[p for p in d if p.get("description") and any(k in p["description"].lower() for k in ["review","quarterly","cadence","owner"])]
+    h=[p for p in d if any(k in _s(p.get("description")).lower() for k in ["review","quarterly","cadence","owner"])]
     return R(R.PASS,f"{len(h)} profile(s) have review notes.") if h else R(R.WARN,"No bypass review cadence detected in descriptions.")
 
 # === Section 3 ===
@@ -1187,6 +1216,11 @@ _FAN_OUT = {
 
 def _cac_rules_all_types(cl):
     """Cloud App Control rules across every rule type (the API lists them per type)."""
+    return _cac_read(cl)[0] or []
+
+def _cac_read(cl):
+    """(Cloud App Control rules across every rule type, None), or (None, the
+    INFO that says they are not readable)."""
     zs = getattr(cl, "_zs", None)
     svc = getattr(getattr(zs, "zia", None), "cloudappcontrol", None) if zs else None
     out=[]
@@ -1198,8 +1232,8 @@ def _cac_rules_all_types(cl):
             if err or not rules: continue
             for r in rules:
                 d=_dictify(r); d.setdefault("type", t); out.append(d)
-        return out
-    d,c=cl.get("/zia/cloudApplicationRules"); return [_dictify(r) for r in (_ls(d) if c in(200,204) else [])]
+        return out, None
+    return _g(cl,"/zia/cloudApplicationRules","Cloud App Control rules")
 
 def _isolate_rules(cl):
     """Enabled rules that send traffic to Browser Isolation: URL Filtering
@@ -1207,18 +1241,20 @@ def _isolate_rules(cl):
     d,c=cl.get("/zia/urlFilteringRules"); url=[_dictify(r) for r in (_ls(d) if c in(200,204) else [])]
     def on(r): return str(r.get("state") or "ENABLED").upper()=="ENABLED"
     url_iso=[r for r in url if on(r) and str(r.get("action") or "").upper()=="ISOLATE"]
-    cac_iso=[r for r in _cac_rules_all_types(cl) if on(r) and any(str(a).upper().startswith("ISOLATE") for a in (r.get("actions") or []))]
+    cac_iso=[r for r in _cac_rules_all_types(cl) if on(r) and any(str(a).upper().startswith("ISOLATE") for a in _lst(r.get("actions")))]
     return url_iso, cac_iso
 
 def c_3_7(cl):
     """Browser Isolation: profiles exist AND policy actually routes traffic to them."""
     profiles, code = _cbi_profiles(cl)
     if not profiles:
-        if code in (403, 404):
+        if code not in (200, 204, 404):
+            return _explain("Browser Isolation profiles", code, _resolve_ep("/zia/browserIsolation/profiles"))
+        if code == 404:
             return R(R.INFO, "Browser Isolation (now Zscaler Zero Trust Browser) is not licensed or not enabled on this tenant (API returned no profiles). Without it, unsanctioned SaaS and AI tools can only be allowed or blocked; isolation is the middle ground that permits viewing while stopping upload, download and clipboard.")
         return R(R.WARN, "No Browser Isolation profiles configured. Best practice: create a profile with upload, download and clipboard disabled and route unsanctioned file-sharing, webmail and AI categories through it (URL Filtering action ISOLATE, or Cloud App Control ISOLATE_ actions). Ref: https://help.zscaler.com/zero-trust-browser/configuring-internet-and-saas-for-zero-trust-browser")
     url_iso, cac_iso = _isolate_rules(cl)
-    names = [r.get("name","?") for r in url_iso[:4]] + [f"{r.get('name','?')} (CAC {r.get('type','')})" for r in cac_iso[:4]]
+    names = [_s(r.get("name","?")) for r in url_iso[:4]] + [f"{r.get('name','?')} (CAC {r.get('type','')})" for r in cac_iso[:4]]
     if url_iso or cac_iso:
         return R(R.PASS, f"{len(profiles)} isolation profile(s) and {len(url_iso)} URL Filtering + {len(cac_iso)} Cloud App Control rule(s) enabled with an ISOLATE action: {', '.join(names)}. Isolation needs SSL inspection on the same traffic to apply upload/download controls.",
                  data={"profiles": len(profiles), "url_rules": len(url_iso), "cac_rules": len(cac_iso)})
@@ -1233,14 +1269,15 @@ def c_a17(cl):
     url_iso, cac_iso = _isolate_rules(cl)
     risky = {"FILE_SHARE","WEBMAIL","AI_ML","SOCIAL_NETWORKING","CONSUMER"}
     covered = sorted({str(r.get("type","")) for r in cac_iso if str(r.get("type","")) in risky})
-    url_cats = sorted({str(c) for r in url_iso for c in (r.get("urlCategories") or r.get("url_categories") or [])})
+    url_cats = sorted({str(c) for r in url_iso for c in _lst(r.get("urlCategories") or r.get("url_categories"))})
     if covered or url_cats:
         return R(R.PASS, f"Isolation covers Cloud App Control classes {', '.join(covered) or 'none'} and URL categories {', '.join(url_cats[:8]) or 'none'}. Missing risky classes: {', '.join(sorted(risky - set(covered))) or 'none'}.",
                  data={"cac_classes": covered, "url_categories": url_cats})
     return R(R.WARN, "No ISOLATE rule targets the risky channels (file sharing, webmail, AI, social, consumer apps). Isolation is most valuable exactly there: users keep access, data cannot leave.")
 def c_3_8(cl):
     """Check 3.8 (3 — App Profile): Isolation controls."""
-    d,c=cl.get("/zia/browserIsolation/profiles"); p=_ls(d) if c in(200,204) else []
+    p,e=_g(cl,"/zia/browserIsolation/profiles","Browser Isolation profiles")
+    if e: return e
     if not p: return R(R.WARN,"No isolation profiles.")
     ctrl=[x for x in p if x.get("uploadControl") or x.get("downloadControl") or x.get("clipboardControl") or x.get("settings")]
     return R(R.PASS,f"{len(ctrl)} profile(s) with content controls.") if ctrl else R(R.WARN,"Isolation without content controls.")
@@ -1309,7 +1346,8 @@ def _is_mac(x):
     return "mac" in o or "darwin" in o or str(_fv(x,"type") or "")=="4"
 def c_4_2(cl):
     """Check 4.2 (4 — SSL Policy): Cert deployment."""
-    d,c=cl.get("/zcc/devices"); devs=[x for x in (_ls(d) if c in(200,204) else []) if isinstance(x, dict)]
+    devs,e=_g(cl,"/zcc/devices","Devices")
+    if e: return e
     if not devs: return R(R.WARN,"No device data for cert check.")
     plat={}
     for dv in devs[:500]:
@@ -1364,7 +1402,7 @@ def c_4_6(cl):
     """Check 4.6 (4 — SSL Policy): Duplicate rules."""
     d,e=_g(cl,"/zia/sslInspectionRules","SSL");
     if e: return e
-    names=[r.get("name","") for r in d]; dupes=[n for n in set(names) if n and names.count(n)>1]
+    names=[_s(r.get("name")) for r in d]; dupes=sorted(n for n in set(names) if n and names.count(n)>1)
     return R(R.WARN,f"Duplicates: {', '.join(dupes[:5])}") if dupes else R(R.PASS,"No duplicate SSL rules.")
 def _cac_live(r):
     """Enabled custom Cloud App Control rules. Zscaler ships predefined
@@ -1373,7 +1411,8 @@ def _cac_live(r):
     return [x for x in r if isinstance(x, dict) and str(_fv(x,"state") or "").upper()=="ENABLED" and not _truthy(_fv(x,"predefined"))]
 def c_4_7(cl):
     """Check 4.7 (4 — SSL Policy): Cloud App Control."""
-    d,c=cl.get("/zia/cloudApplicationRules"); r=_ls(d) if c in(200,204) else []
+    r,e=_cac_read(cl)
+    if e: return e
     live=_cac_live(r)
     if live: return R(R.PASS,f"{len(live)} enabled Cloud App Control rule(s).")
     if r: return R(R.WARN,"Only Zscaler's predefined rules (disabled by default) or disabled rules exist, so no Cloud App Control rule is in force.")
@@ -1387,14 +1426,14 @@ def c_4_8(cl):
     return R(R.PASS,f"{len(cf)} enabled Prompt/Confirm rule(s).") if cf else R(R.WARN,"No enabled web DLP rule uses the Confirm action. Confirm lets the user justify the transaction or cancel it (a timeout cancels it), with the wording from a User Confirmation Notification template; it suits data that may leave for a business reason, while Block stays for data that must never leave. Ref: https://help.zscaler.com/zia/about-user-confirmation-notification-templates")
 def c_4_9(cl):
     """Check 4.9 (4 — SSL Policy): EUN templates."""
-    d,c=cl.get("/zia/dlpNotificationTemplates")
-    t=_ls(d) if c in(200,204) else []
+    t,e=_g(cl,"/zia/dlpNotificationTemplates","DLP notification templates")
+    if e: return e
     return R(R.PASS,f"{len(t)} notification template(s).") if t else R(R.WARN,"No notification templates.")
 def c_4_10(cl):
     """Check 4.10 (4 — SSL Policy): Handshake errors."""
     d,e=_g(cl,"/zia/sslInspectionRules","SSL"); 
     if e: return e
-    eh=[r for r in d if "error" in (r.get("name") or "").lower() or "handshake" in (r.get("name") or "").lower()]
+    eh=[r for r in d if "error" in _s(r.get("name")).lower() or "handshake" in _s(r.get("name")).lower()]
     return R(R.PASS,f"{len(eh)} error-handling rule(s).") if eh else R(R.WARN,"No handshake-error handling rules.")
 def c_4_11(cl):
     """Check 4.11 (4 — SSL Policy): SSL + device trust."""
@@ -1483,10 +1522,10 @@ def c_5_3(cl):
     """Check 5.3 (5 — Endpoint DLP): Web DLP rules."""
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
     if e: return e
-    a=[r for r in d if r.get("state","").upper()=="ENABLED"]
+    a=[r for r in d if _on(r)]
     if not a: return R(R.FAIL,"No active Web DLP rules.")
     acts={}
-    for r in a: k=r.get("action","?"); acts[k]=acts.get(k,0)+1
+    for r in a: k=_action(r) or "?"; acts[k]=acts.get(k,0)+1
     return R(R.PASS,f"{len(a)} active: {', '.join(f'{v}x{k}' for k,v in acts.items())}")
 def c_5_4(cl):
     """Check 5.4 (5 — Endpoint DLP): Scan allowlists."""
@@ -1521,7 +1560,8 @@ def c_5_6(cl):
     (4.5, 5.5). Enabled Block rules on data-loss destinations are reported
     as information: those transactions end before DLP, so no DLP incident
     or auditor notice fires for them."""
-    d,c=cl.get("/zia/urlFilteringRules"); r=[x for x in (_ls(d) if c in(200,204) else []) if isinstance(x, dict)]
+    r,e=_g(cl,"/zia/urlFilteringRules","URL Filtering rules")
+    if e: return e
     ref=" Ref: https://help.zscaler.com/zscaler-deployments-operations/zia-policy-leading-practices-guide"
     blk=[x for x in r if _enabled(x) and str(_fv(x,"action") or "").upper()=="BLOCK" and any(k in t for t in _names(_fv(x,"urlCategories")) for k in _DLP_DEST)]
     if blk:
@@ -1552,7 +1592,8 @@ def c_5_9(cl):
              data={"specific": len(spec), "any": len(anye), "no_inspection": len(noci)})
 def c_5_10(cl):
     """Check 5.10 (5 — Endpoint DLP): Dictionaries."""
-    d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
+    dicts,e=_g(cl,"/zia/dlpDictionaries","DLP dictionaries")
+    if e: return e
     if not dicts: return R(R.ERROR,"Cannot get dictionaries.")
     cust=[x for x in dicts if x.get("custom")]; po=[x for x in cust if x.get("phrases") and not x.get("patterns")]
     det=f"{len(dicts)} total, {len(cust)} custom."
@@ -1564,14 +1605,15 @@ def c_5_11(cl):
 # EXACT_DATA_MATCH, INDEXED_DATA_MATCH, MIP_TAG — terraform zia_dlp_dictionaries);
 # EDM carries exactDataMatchDetails and IDM idmProfileMatchAccuracy(Details).
 def _is_edm(x):
-    return str(x.get("dictionaryType") or "").upper()=="EXACT_DATA_MATCH" or bool(x.get("exactDataMatchDetails")) or "EDM" in (x.get("name") or "").upper()
+    return str(x.get("dictionaryType") or "").upper()=="EXACT_DATA_MATCH" or bool(x.get("exactDataMatchDetails")) or "EDM" in _s(x.get("name")).upper()
 def _is_idm(x):
     return (str(x.get("dictionaryType") or "").upper()=="INDEXED_DATA_MATCH" or bool(x.get("idmProfileMatchAccuracyDetails") or x.get("idmProfileMatchAccuracy") or x.get("idmProfile"))
-            or "IDM" in (x.get("name") or "").upper())
+            or "IDM" in _s(x.get("name")).upper())
 
 def c_5_12(cl):
     """Check 5.12 (5 — Endpoint DLP): Detection methods."""
-    d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
+    dicts,e=_g(cl,"/zia/dlpDictionaries","DLP dictionaries")
+    if e: return e
     m=[n for n,t in [("regex",any(x.get("patterns") for x in dicts)),("phrase",any(x.get("phrases") for x in dicts)),("EDM",any(_is_edm(x) for x in dicts)),("IDM",any(_is_idm(x) for x in dicts))] if t]
     return R(R.PASS,f"Methods: {', '.join(m)}.") if len(m)>=2 else R(R.WARN,f"Only {', '.join(m) or 'none'} — add more.")
 
@@ -1592,7 +1634,7 @@ def _ft_split(a):
     """(rules on any file type, rules with file types, rules set by category)."""
     anyft=[]; typed=[]; bycat=[]
     for r in a:
-        fts={_ft(t) for t in (_fv(r,"fileTypes") or [])}
+        fts={_ft(t) for t in _lst(_fv(r,"fileTypes"))}
         if fts and "ALL_OUTBOUND" not in fts: typed.append((r,fts))
         elif fts: anyft.append(r)
         elif _fv(r,"fileTypeCategories"): bycat.append(r)
@@ -1613,12 +1655,14 @@ def c_5_13(cl):
     return R(R.PASS,"Key types covered (PDF, Word, Excel, CSV)."+cat_note) if not miss else R(R.WARN,f"Missing: {', '.join(miss)}."+cat_note)
 def c_5_14(cl):
     """Check 5.14 (5 — Endpoint DLP): EDM."""
-    d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
+    dicts,e=_g(cl,"/zia/dlpDictionaries","DLP dictionaries")
+    if e: return e
     edm=[x for x in dicts if _is_edm(x)]
     return R(R.PASS,f"{len(edm)} EDM dict(s).") if edm else R(R.WARN,"No Exact Data Match dictionary. EDM matches your own records (customer, patient or employee data indexed with the Index Tool) instead of patterns, which cuts false positives on regulated data. Ref: https://help.zscaler.com/zia/about-exact-data-match")
 def c_5_15(cl):
     """Check 5.15 (5 — Endpoint DLP): IDM."""
-    d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
+    dicts,e=_g(cl,"/zia/dlpDictionaries","DLP dictionaries")
+    if e: return e
     idm=[x for x in dicts if _is_idm(x)]
     return R(R.PASS,f"{len(idm)} IDM profile(s).") if idm else R(R.WARN,"No Indexed Document Match dictionary. IDM fingerprints your sensitive documents and forms (indexed with the Index Tool) so copies and fragments are detected. Ref: https://help.zscaler.com/zia/about-indexed-document-match")
 def c_5_16(cl):
@@ -1648,7 +1692,9 @@ def _tenancy(cl, extra=""):
     """Tenancy restriction has two parts: Tenant Profiles, and enabled Cloud
     App Control rules that apply them (tenancyProfileIds —
     zscaler-sdk-python zia/models/cloudappcontrol.py)."""
-    rules=_cac_live(_cac_rules_all_types(cl))
+    rules,e=_cac_read(cl)
+    if e: return e
+    rules=_cac_live(rules)
     p,pc=cl.get("/zia/tenancyRestrictionProfile")
     profiles=[x for x in (_ls(p) if pc in(200,204) else []) if isinstance(x, dict)]
     used=[(r,_names(_fv(r,"tenancyProfileIds"))) for r in rules]
@@ -1675,6 +1721,7 @@ def c_5_19(cl):
     ocrEnabled flag is deprecated and no longer accepted by the API
     (terraform-provider-zia 2.9.0), so a leftover flag proves nothing."""
     g,gc=cl.get("/zia/webDlpGlobalOptions")
+    if gc in (401,403): return _explain("DLP Advanced Settings",gc,_resolve_ep("/zia/webDlpGlobalOptions"))
     if gc==200 and isinstance(g, dict) and "enableInlineDlpOcr" in g:
         on=lambda k: g.get(k) in (True,1,"1","true","True")
         off=[n for k,n in (("enableCasbOcr","SaaS Security API"),("enableEmailDlpOcr","Outbound Email DLP")) if k in g and not on(k)]
@@ -1710,6 +1757,9 @@ def c_5_20(cl):
     if on is False:
         return R(R.WARN, f"Evaluate All Rules is OFF: the tenant is in By Rule Order mode (seen at {via}). Only the first matching rule fires, so a monitor rule near the top silently shadows every block rule below it. With Evaluate All Rules the most restrictive matching action wins, which suits a layered DLP policy. {_EVAL_ALL_TAIL} {n_on}/{n_rules} web DLP rules enabled. Ref: https://help.zscaler.com/zia/configuring-dlp-advanced-settings ; https://help.zscaler.com/zia/configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled",
                  data={"evaluate_all": False, "found_via": via})
+    # The documented source of the mode is DLP Advanced Settings: a refusal there is "not permitted", not "not exposed".
+    _,gc=cl.get("/zia/webDlpGlobalOptions")
+    if gc in (401,403): return _explain("DLP Advanced Settings (Inline DLP Rule Evaluation)",gc,_resolve_ep("/zia/webDlpGlobalOptions"))
     feat = st.get("feature_available")
     feat_note = (" The capability flag says the feature is available on this tenant." if feat is True
                  else " The capability flag says the feature is not enabled on this tenant; the Zscaler account team enables it." if feat is False else "")
@@ -1732,12 +1782,14 @@ def c_5_21(cl):
     expressions name dictionaries by id, e.g. ((D63.S > 1)))."""
     import re as _re
     ref=" Ref: https://help.zscaler.com/zia/understanding-predefined-dlp-dictionaries"
-    d,c=cl.get("/zia/dlpDictionaries"); dicts=[x for x in (_ls(d) if c in(200,204) else []) if isinstance(x, dict)]
+    dicts,e=_g(cl,"/zia/dlpDictionaries","DLP dictionaries")
+    if e: return e
     ml={str(x.get("id")): str(x.get("name") or "?") for x in dicts if _is_ml_dict(x) and x.get("id") is not None}
     miss=R(R.WARN,"No DLP rule uses Zscaler's ML-based document dictionaries (for example Financial Statements, Legal Document, Medical Document). Add them to an engine used by an inline DLP rule to catch sensitive documents that have no fixed pattern."+ref)
     if not dicts: return R(R.INFO,"DLP dictionaries are not readable, so the use of ML-based dictionaries cannot be checked."+ref)
     if not ml: return miss
-    en,ec=cl.get("/zia/dlpEngines"); engines=[x for x in (_ls(en) if ec in(200,204) else []) if isinstance(x, dict)]
+    engines,e=_g(cl,"/zia/dlpEngines","DLP engines")
+    if e: return e
     if not engines: return R(R.INFO,f"The ML-based dictionaries exist ({', '.join(list(ml.values())[:3])}), but DLP engines are not readable, so their use in a rule cannot be checked."+ref)
     ml_eng={}
     for eg in engines:
@@ -1760,14 +1812,15 @@ def c_mc1(cl):
     return c_5_3(cl)
 def c_mc2(cl):
     """Check MC.2 (Multi-Channel): Endpoint DLP."""
-    d,c=cl.get("/zia/endPointDlpRules")
-    r=_ls(d) if c in(200,204) else []
+    r,e=_g(cl,"/zia/endPointDlpRules","Endpoint DLP rules")
+    if e: return e
     return R(R.PASS,f"{len(r)} endpoint DLP rule(s).") if r else R(R.WARN,"No endpoint DLP rules via API.")
 def c_mc3(cl):
     """Check MC.3 (Multi-Channel): CASB."""
     d,c=cl.get("/zia/casbDlpRules/all")
-    if c==404: return R(R.WARN,"CASB not licensed.")
-    r=_ls(d) if c in(200,204) else []
+    if c==404: return R(R.INFO,"SaaS Security API (CASB) DLP is not licensed or not enabled on this tenant (the API answered 404).")
+    if c not in(200,204): return _explain("SaaS Security API DLP rules",c,_resolve_ep("/zia/casbDlpRules/all"))
+    r=[x for x in _ls(d) if isinstance(x, dict)]
     return R(R.PASS,f"{len(r)} CASB rule(s).") if r else R(R.WARN,"No CASB rules.")
 def c_mc4(cl):
     """Check MC.4 (Multi-Channel): Email DLP."""
@@ -1809,8 +1862,12 @@ def c_mc11(cl):
     return R(R.WARN,"Zscaler DSPM (Data Security Posture Management) is a separate license and console; not assessed through the ZIA API.")
 def c_mc12(cl):
     """Check MC.12 (Multi-Channel): Executive summary."""
-    d1,_=cl.get("/zia/webDlpRules"); d2,_=cl.get("/zia/sslInspectionRules")
-    return R(R.PASS,f"Summary data: {len(_ls(d1))} DLP rules, {len(_ls(d2))} SSL rules.")
+    d1,e=_g(cl,"/zia/webDlpRules","Web DLP rules")
+    if e: return e
+    d2,e=_g(cl,"/zia/sslInspectionRules","SSL Inspection rules")
+    if e: return e
+    # A summary, not a control: it is reported, never counted as a pass.
+    return R(R.INFO,f"Summary data: {len(d1)} web DLP rule(s), {len(d2)} SSL Inspection rule(s).")
 
 # === Section 6 ===
 def c_6_1(cl):
@@ -1822,7 +1879,9 @@ def c_6_1(cl):
     minimums are kept in zcc_evaluation.ZCC_MIN_SUPPORTED and versions are
     compared as numbers. Ref: https://help.zscaler.com/product-usage-terms/supported-versions"""
     from zcc_evaluation import device_platform, zcc_unsupported, ZCC_MIN_SUPPORTED
-    d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
+    devs,e=_g(cl,"/zcc/devices","Devices")
+    if e: return e
+    if not devs: return R(R.INFO,"No device reports to Client Connector, so no Client Connector version can be checked.")
     def ver(x): return str(x.get("agentVersion") or x.get("zccVersion") or x.get("clientConnectorVersion") or x.get("zappVersion") or "")
     old=[x for x in devs[:500] if isinstance(x, dict) and zcc_unsupported(device_platform(x), ver(x))]
     by={}
@@ -1854,7 +1913,8 @@ def _zcc_state(v):
     return "unknown"
 def c_6_3(cl):
     """Check 6.3 (6 — Versions): Device hygiene."""
-    d,c=cl.get("/zcc/devices"); devs=[x for x in _ls(d) if isinstance(x,dict)] if c in(200,204) else []
+    devs,e=_g(cl,"/zcc/devices","Devices")
+    if e: return e
     states=[_zcc_state(x.get("state")) or _zcc_state(x.get("status")) for x in devs]
     orph=sum(1 for s in states if s in _ZCC_ORPHANED); unk=sum(1 for s in states if s=="unknown")
     note=f" {unk} device(s) report a state this app does not recognise." if unk else ""
@@ -1883,7 +1943,8 @@ def _is_win10(x):
 
 def c_6_7(cl):
     """Check 6.7 (6 — Versions): Win10 count."""
-    d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
+    devs,e=_g(cl,"/zcc/devices","Devices")
+    if e: return e
     w10=[x for x in devs if isinstance(x, dict) and _is_win10(x)]
     return R(R.WARN,f"{len(w10)} Windows 10 device(s). Microsoft ended Windows 10 support on 14 October 2025; only devices enrolled in Extended Security Updates still get security fixes, and Zscaler supports Client Connector on Windows 10 for a limited time only. Plan the move to Windows 11. Ref: https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro ; https://help.zscaler.com/product-usage-terms/supported-versions") if w10 else R(R.PASS,"No Win10.")
 
@@ -1905,8 +1966,8 @@ def c_7_3(cl):
 def _pilot(cl, kw, ch):
     d,e=_g(cl,"/zia/webDlpRules","DLP")
     if e: return e
-    a=[r for r in d if r.get("state","").upper()=="ENABLED"]
-    m=[r for r in a if kw.lower() in json.dumps(r).lower()]
+    a=[r for r in d if _on(r)]
+    m=[r for r in a if kw.lower() in json.dumps(r, default=str).lower()]
     if m: return R(R.PASS,f"{len(m)} rule(s) cover {ch}. Verify logs via Analytics.")
     if not a: return R(R.WARN,f"No active DLP rules to cover {ch}. Configure Web DLP rules first.")
     return R(R.WARN,f"No rules specifically target {ch} — may still be covered by generic rules.")
@@ -1970,7 +2031,9 @@ def c_8_5(cl):
     """Check 8.5 (8 — Pilot Tests): Inline Web DLP."""
     d,e=_g(cl,"/zia/webDlpRules","DLP");
     if e: return e
-    return R(R.PASS,f"{len([r for r in d if r.get('state','').upper()=='ENABLED'])} inline rules active.")
+    n=len([r for r in d if _on(r)])
+    if not n: return R(R.WARN,"No enabled inline web DLP rule, so there is nothing to pilot (see 5.3).")
+    return R(R.PASS,f"{n} inline rules active.")
 
 _IR_REF=" Ref: https://help.zscaler.com/zia/about-zscaler-incident-receiver"
 def _evidence(cl):
@@ -1986,11 +2049,17 @@ def _evidence(cl):
     fwd_web=[r for r in web if _truthy(_fv(r,"zscalerIncidentReceiver")) or _set(_fv(r,"icapServer"))]
     _,ep,_c=_ep_rules(cl)
     fwd_ep=[r for r in (ep or []) if _set(_fv(r,"receiver"))]
-    return {"icap": icap, "irs": irs, "fwd_web": fwd_web, "fwd_ep": fwd_ep, "readable": ic in (200,204) or rc in (200,204)}
+    return {"icap": icap, "irs": irs, "fwd_web": fwd_web, "fwd_ep": fwd_ep, "readable": ic in (200,204) or rc in (200,204), "code": ic}
+
+def _unreadable_evidence(ev):
+    """Neither the ICAP servers nor the Incident Receivers could be read: a
+    refusal says so (not permitted), anything else is an evidence gap."""
+    if ev.get("code") in (401,403): return _explain("ICAP servers and Incident Receivers",ev["code"],_resolve_ep("/zia/icapServers"))
+    return R(R.INFO,"ICAP servers and Incident Receivers are not readable; check evidence capture in the portal (Data Security > Common Resources)."+_IR_REF)
 
 def _evidence_result(cl):
     ev=_evidence(cl); n=len(ev["icap"])+len(ev["irs"])
-    if not ev["readable"]: return R(R.INFO,"ICAP servers and Incident Receivers are not readable; check evidence capture in the portal (Data Security > Common Resources)."+_IR_REF)
+    if not ev["readable"]: return _unreadable_evidence(ev)
     srv=f"{len(ev['icap'])} ICAP server(s) and {len(ev['irs'])} Incident Receiver(s)"
     if n and (ev["fwd_web"] or ev["fwd_ep"]):
         return R(R.PASS,f"{srv}; {len(ev['fwd_web'])} enabled web DLP rule(s) and {len(ev['fwd_ep'])} Endpoint DLP rule(s) send matched content to them.")
@@ -2042,13 +2111,15 @@ def c_9_3(cl):
     return c_4_1(cl)
 def c_9_4(cl):
     """Check 9.4 (9 — Troubleshooting): ZCC Diagnostics."""
-    d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
+    devs,e=_g(cl,"/zcc/devices","Devices")
+    if e: return e
     return R(R.PASS,f"{len(devs)} device(s) — diagnostics collectible.") if devs else R(R.WARN,"No devices.")
 
 # === Section 10 — macOS ===
 def c_10_1(cl):
     """Check 10.1 (10 — macOS): Full Disk Access."""
-    d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
+    devs,e=_g(cl,"/zcc/devices","Devices")
+    if e: return e
     macs=[x for x in devs if "mac" in str(x.get("osType") or x.get("platform") or "").lower()]
     if not macs: return R(R.PASS,"No macOS devices.")
     zdp=[x for x in macs if x.get("zdpInstalled") or x.get("endpointDlpInstalled")]
@@ -2058,11 +2129,16 @@ def c_10_2(cl):
     return c_4_2(cl)
 def c_10_3(cl):
     """Check 10.3 (10 — macOS): Platform versions."""
-    d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
-    return R(R.PASS,"macOS version prereqs met if ZCC reporting.") if any("mac" in str(x.get("osType","")).lower() for x in devs) else R(R.PASS,"No macOS.")
+    devs,e=_g(cl,"/zcc/devices","Devices")
+    if e: return e
+    return R(R.PASS,"macOS version prereqs met if ZCC reporting.") if any(_is_mac(x) for x in devs) else R(R.PASS,"No macOS.")
 def c_10_4(cl):
     """Check 10.4 (10 — macOS): Sys/Net Extensions."""
-    return R(R.PASS,"Sys/Net Extension approval inferred from macOS devices reporting to ZCC.")
+    devs,e=_g(cl,"/zcc/devices","Devices")
+    if e: return e
+    macs=[x for x in devs if _is_mac(x)]
+    if not macs: return R(R.PASS,"No macOS devices.")
+    return R(R.PASS,f"Sys/Net Extension approval inferred from {len(macs)} macOS device(s) reporting to ZCC.")
 
 # === Section 11 — Rollback ===
 def c_11_1(cl):
@@ -2085,7 +2161,8 @@ def c_12_2(cl):
     An ICAP server object has only id, name, url and status (SDK
     DLPICAPServer; terraform zia_dlp_icap_servers): secure ICAP shows in the
     URL scheme, icaps://. Zscaler Incident Receivers are Zscaler-managed."""
-    d,c=cl.get("/zia/icapServers"); s=[x for x in (_ls(d) if c in(200,204) else []) if isinstance(x, dict)]
+    s,e=_g(cl,"/zia/icapServers","ICAP servers")
+    if e: return e
     r_,rc=cl.get("/zia/incidentReceiverServers"); irs=[x for x in (_ls(r_) if rc in(200,204) else []) if isinstance(x, dict)]
     live=[x for x in s if str(_fv(x,"status") or "ENABLED").upper()!="DISABLED"]
     off=len(s)-len(live)
@@ -2102,6 +2179,7 @@ def c_12_3(cl):
 def _forwarding_result(cl):
     """Whether enabled DLP rules actually forward matched content (12.3, 12.12)."""
     ev=_evidence(cl); n=len(ev["icap"])+len(ev["irs"])
+    if not ev["readable"] and not (ev["fwd_web"] or ev["fwd_ep"]): return _unreadable_evidence(ev)
     if ev["fwd_web"] or ev["fwd_ep"]:
         names=[str(r.get("name","?")) for r in (ev["fwd_web"]+ev["fwd_ep"])[:4]]
         return R(R.PASS,f"{len(ev['fwd_web'])} enabled web DLP rule(s) and {len(ev['fwd_ep'])} Endpoint DLP rule(s) forward matched content to an ICAP server or Incident Receiver: {', '.join(names)}.")
@@ -2125,7 +2203,8 @@ def c_12_7(cl):
 # transactions, GenAI included, are in the web log. A feed that reports
 # no type (older exports) is read as a web feed.
 def _feeds(cl):
-    d,c=cl.get("/zia/nssFeeds"); return [f for f in (_ls(d) if c in(200,204) else []) if isinstance(f, dict)]
+    """(NSS feeds, None) or (None, the INFO that says they are not readable)."""
+    return _g(cl,"/zia/nssFeeds","NSS feeds")
 def _feed_type(f): return str(_fv(f,"nssLogType") or "").upper()
 def _feed_on(f): return str(_fv(f,"feedStatus") or "ENABLED").upper()=="ENABLED"
 def _web_feed(f, multi=True): return _feed_type(f) in (("", "WEBLOG", "MULTIFEEDLOG") if multi else ("", "WEBLOG"))
@@ -2135,7 +2214,9 @@ def _feed_types(fs):
     return ", ".join(f"{k} {v}" for k,v in t.items())
 def c_12_8(cl):
     """Check 12.8 (12 — Incident Mgmt): NSS/SIEM."""
-    f=_feeds(cl); on=[x for x in f if _feed_on(x)]
+    f,e=_feeds(cl)
+    if e: return e
+    on=[x for x in f if _feed_on(x)]
     if on: return R(R.PASS,f"{len(on)} enabled NSS feed(s) streaming ({_feed_types(on)}).")
     if f: return R(R.WARN,f"{len(f)} NSS feed(s), none enabled: nothing is streamed to the SIEM. Enable the web (and DLP) feed.")
     return R(R.WARN,"No NSS or Cloud NSS feed: transaction logs stay in ZIA and only incidents are visible outside it. Recommended, not required: a feed gives the full transaction baseline (normal business traffic and what no rule caught) for SIEM correlation and continuous evaluation; without it, Workflow Automation incidents and analyst verdicts are the near-real-time source. Best Practice: Configure a Cloud NSS feed (web + DLP logs) to your SIEM or a collector, with the DLP fields in the format string. Ref: https://help.zscaler.com/zia/about-cloud-nss-feeds")
@@ -2146,13 +2227,15 @@ def c_12_9(cl):
     Logs); firewall, DNS, tunnel, audit, CASB, Endpoint and Email DLP feeds
     have formats of their own. %s{dlprulename} only names Allow rules;
     %s{trig_dlprulename} names the rule that triggered, allowed or blocked."""
-    feeds=_feeds(cl); web=[f for f in feeds if _web_feed(f, multi=False)]
+    feeds,e=_feeds(cl)
+    if e: return e
+    web=[f for f in feeds if _web_feed(f, multi=False)]
     ref=" Ref: https://help.zscaler.com/zia/nss-feed-output-format-web-logs"
     if not feeds: return R(R.INFO,"No NSS feed to check (see 12.8; a feed is a recommendation, not a requirement).")
     if not web: return R(R.INFO,f"No web-log NSS feed ({_feed_types(feeds)}); the DLP fields are carried in the Web log feed."+ref)
     dlp_flds=["dlpeng","dlpdict","dlpmd5"]; short=[]; old=[]
     for f in web:
-        fmt=(f.get("formatString") or f.get("format") or f.get("feedOutputFormat") or _fv(f,"feedOutputFormat") or "").lower()
+        fmt=_s(f.get("formatString") or f.get("format") or f.get("feedOutputFormat") or _fv(f,"feedOutputFormat")).lower()
         miss=[x for x in dlp_flds if "{"+x+"}" not in fmt and x not in fmt]
         if "trig_dlprulename" not in fmt and "dlprulename" not in fmt: miss.append("trig_dlprulename")
         if miss: short.append(f"'{f.get('name','?')}' missing: {', '.join(miss)}")
@@ -2164,7 +2247,9 @@ def c_12_10(cl):
     """Check 12.10 (12 — Incident Mgmt): SIEM correlation."""
     return R(R.WARN,"SIEM correlation rules live outside Zscaler.")
 def _web_retention(cl, what):
-    f=_feeds(cl); on=[x for x in f if _feed_on(x)]; web=[x for x in on if _web_feed(x)]
+    f,e=_feeds(cl)
+    if e: return e
+    on=[x for x in f if _feed_on(x)]; web=[x for x in on if _web_feed(x)]
     if web: return R(R.PASS,f"{len(web)} enabled web-log NSS feed(s): {what} are kept in the SIEM beyond ZIA's six-month log window.")
     if on: return R(R.WARN,f"Enabled NSS feeds stream {_feed_types(on)}, but web and DLP transactions are not among them, so {what} stay in ZIA only for its six-month log window (180 days). Add a web-log feed. Ref: https://help.zscaler.com/zia/about-insights-logs")
     return None
@@ -2176,8 +2261,8 @@ def c_12_12(cl):
     return _forwarding_result(cl)
 def c_12_13(cl):
     """Check 12.13 (12 — Incident Mgmt): Admin role segregation."""
-    d,c=cl.get("/zia/adminRoles")
-    r=_ls(d) if c in(200,204) else []
+    r,e=_g(cl,"/zia/adminRoles","Admin roles")
+    if e: return e
     return R(R.PASS,f"{len(r)} admin roles.") if len(r)>=2 else R(R.WARN,f"Only {len(r)} role(s).")
 def c_12_14(cl):
     """Check 12.14 (12 — Incident Mgmt): C2C forwarding."""
@@ -2194,7 +2279,7 @@ def c_a3(cl):
     """Check A.3 (Ch.A — Inline Web): Rule verbs."""
     d,e=_g(cl,"/zia/webDlpRules","DLP");
     if e: return e
-    a=[r for r in d if r.get("state","").upper()=="ENABLED"]; dl=[r for r in a if r.get("dlpDownloadScanEnabled")]
+    a=[r for r in d if _on(r)]; dl=[r for r in a if r.get("dlpDownloadScanEnabled")]
     return R(R.INFO,f"{len(a)} enabled web DLP rule(s): {len(a)-len(dl)} inspect uploads only, {len(dl)} also inspect downloads (Inspect Downloads). Inspect Downloads needs URL Categories set to Any and at least one cloud app, and does not apply to EDM or IDM engines. Ref: https://help.zscaler.com/zia/configuring-dlp-policy-rules-content-inspection")
 def c_a4(cl):
     """Check A.4 (Ch.A — Inline Web): File type scope.
@@ -2219,7 +2304,7 @@ def c_a5(cl):
     """Check A.5 (Ch.A — Inline Web): URL scope."""
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
     if e: return e
-    a=[r for r in d if r.get("state","").upper()=="ENABLED"]
+    a=[r for r in d if _on(r)]
     us=[r for r in a if r.get("urlCategories") or r.get("cloudApplications")]
     return R(R.PASS,f"{len(us)}/{len(a)} scoped to URL cats.") if us else R(R.WARN,"No URL category scoping.")
 def c_a6(cl):
@@ -2366,8 +2451,11 @@ def targets_genai(r, ids):
     return any(n in ids for n in _names(_fv(r,"urlCategories")))
 
 def _cac_ai(cl):
-    """Enabled Cloud App Control rules of type AI & ML Applications (AI_ML)."""
-    return [r for r in _cac_live(_cac_rules_all_types(cl)) if str(_fv(r,"type") or "").upper()=="AI_ML"]
+    """(Enabled Cloud App Control rules of type AI & ML Applications (AI_ML), None),
+    or (None, the INFO that says the rules are not readable)."""
+    rules,e=_cac_read(cl)
+    if e: return None, e
+    return [r for r in _cac_live(rules) if str(_fv(r,"type") or "").upper()=="AI_ML"], None
 
 def c_e1(cl):
     """Check E.1 (Ch.E — GenAI): GenAI categories.
@@ -2376,8 +2464,12 @@ def c_e1(cl):
     nothing; they count once an enabled URL Filtering rule uses them or an
     enabled Cloud App Control rule of type AI & ML Applications exists."""
     ids=genai_category_ids(cl)
-    d,c=cl.get("/zia/urlFilteringRules"); url=[r for r in (_ls(d) if c in(200,204) else []) if isinstance(r, dict) and _enabled(r) and targets_genai(r, ids)]
-    cac=_cac_ai(cl)
+    d,ue=_g(cl,"/zia/urlFilteringRules","URL Filtering rules")
+    url=[r for r in (d or []) if _enabled(r) and targets_genai(r, ids)]
+    cac,ce=_cac_ai(cl); cac=cac or []
+    # Nothing governs GenAI only when both reads answered; a refused Cloud App
+    # Control read is "not permitted" (a 404 there means not available: no rule).
+    if not (url or cac) and (ue or (ce and _denied(ce))): return ue or ce
     if url or cac:
         return R(R.PASS,f"GenAI is governed: {len(url)} enabled URL Filtering rule(s) on the AI categories ({', '.join(str(r.get('name','?')) for r in url[:3]) or 'none'}) and {len(cac)} enabled AI & ML Applications Cloud App Control rule(s).")
     return R(R.WARN,"No enabled URL Filtering rule uses the Generative AI and ML Applications or General AI and ML Applications categories, and no enabled Cloud App Control rule of type AI & ML Applications exists. Every tenant has these predefined categories; they only protect once a rule uses them. Ref: https://help.zscaler.com/zia/about-url-categories")
@@ -2393,7 +2485,8 @@ def c_e2(cl):
     return R(R.WARN,"Decrypt rules exist, but there is no catch-all Inspect rule and no Decrypt rule on the AI categories, so GenAI prompts and uploads may not be decrypted (see 4.1)."+_SSL_GUIDE)
 def c_e3(cl):
     """Check E.3 (Ch.E — GenAI): CAC actions."""
-    ai=_cac_ai(cl)
+    ai,e=_cac_ai(cl)
+    if e: return e
     if ai:
         acts=sorted({str(a) for r in ai for a in (_fv(r,"actions") or [])})
         return R(R.PASS,f"{len(ai)} enabled AI & ML Applications Cloud App Control rule(s): {', '.join(str(r.get('name','?')) for r in ai[:3])}. Actions: {', '.join(acts[:6]) or 'none listed'}.")
@@ -2405,14 +2498,14 @@ def c_e5(cl):
     """Check E.5 (Ch.E — GenAI): Source code rule."""
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
     if e: return e
-    cr=[r for r in d if r.get("state","").upper()=="ENABLED" and any(k in (r.get("name") or "").lower() for k in ["source","code","exfil","github","repo"])]
-    return R(R.PASS,f"Code rules: {', '.join(r.get('name','?') for r in cr[:3])}") if cr else R(R.WARN,"No source-code rules by name.")
+    cr=[r for r in d if _on(r) and any(k in _s(r.get("name")).lower() for k in ["source","code","exfil","github","repo"])]
+    return R(R.PASS,f"Code rules: {', '.join(_s(r.get('name','?')) for r in cr[:3])}") if cr else R(R.WARN,"No source-code rules by name.")
 def c_e6(cl):
     """Check E.6 (Ch.E — GenAI): PII/PAN/PHI rule."""
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
     if e: return e
-    pr=[r for r in d if r.get("state","").upper()=="ENABLED" and any(k in (r.get("name") or "").lower() for k in ["pii","ssn","pan","phi","pci","hipaa","personal"])]
-    return R(R.PASS,f"PII rules: {', '.join(r.get('name','?') for r in pr[:3])}") if pr else R(R.WARN,"No PII-named rules.")
+    pr=[r for r in d if _on(r) and any(k in _s(r.get("name")).lower() for k in ["pii","ssn","pan","phi","pci","hipaa","personal"])]
+    return R(R.PASS,f"PII rules: {', '.join(_s(r.get('name','?')) for r in pr[:3])}") if pr else R(R.WARN,"No PII-named rules.")
 def c_e7(cl):
     """Check E.7 (Ch.E — GenAI): Prompt/Confirm EUN."""
     return c_4_8(cl)
@@ -2430,16 +2523,17 @@ def c_e11(cl):
     return c_5_10(cl)
 def c_e12(cl):
     """Check E.12 (Ch.E — GenAI): Adversarial patterns."""
-    d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
-    adv=[x for x in dicts if any(k in (x.get("name") or "").lower() for k in ["adversarial","injection","jailbreak","prompt inject"])]
-    return R(R.PASS,f"Adversarial dicts: {', '.join(x.get('name','?') for x in adv[:3])}") if adv else R(R.WARN,"No adversarial prompt patterns.")
+    dicts,e=_g(cl,"/zia/dlpDictionaries","DLP dictionaries")
+    if e: return e
+    adv=[x for x in dicts if any(k in _s(x.get("name")).lower() for k in ["adversarial","injection","jailbreak","prompt inject"])]
+    return R(R.PASS,f"Adversarial dicts: {', '.join(_s(x.get('name','?')) for x in adv[:3])}") if adv else R(R.WARN,"No adversarial prompt patterns.")
 def c_e13(cl):
     """Browser Isolation applied to GenAI apps."""
     profiles, code = _cbi_profiles(cl)
     if not profiles: return c_3_7(cl)
     url_iso, cac_iso = _isolate_rules(cl)
     ai_cac=[r for r in cac_iso if str(r.get("type",""))=="AI_ML"]
-    ai_url=[r for r in url_iso if any("AI" in str(c).upper() for c in (r.get("urlCategories") or r.get("url_categories") or []))]
+    ai_url=[r for r in url_iso if any("AI" in str(c).upper() for c in _lst(r.get("urlCategories") or r.get("url_categories")))]
     if ai_cac or ai_url:
         return R(R.PASS, f"{len(ai_cac)} Cloud App Control (AI_ML) and {len(ai_url)} URL Filtering rule(s) isolate GenAI traffic: users can use the tools, uploads and clipboard are controlled by the profile.")
     return R(R.WARN, f"{len(profiles)} isolation profile(s) exist but none is applied to GenAI (no AI_ML Cloud App Control rule or AI-category URL rule with ISOLATE). Best practice: isolate unsanctioned AI tools instead of blocking them outright.")
@@ -2546,12 +2640,14 @@ def pct_text(p):
 def compute(results):
     _map={"PASS":"pass","FAIL":"fail","REVIEW":"warn","INFO":"info","ERROR":"info"}
     secs={}
-    for r in results:
-        if isinstance(r,dict) and r.get("out_of_scope"): continue   # outside the selected scope: hidden, no section, no score (channel_scope)
-        s=r.get("sec") or r.get("section") or "Other"
+    for r in results or []:
+        if not isinstance(r,dict): continue                          # not a result (a saved file is untrusted): counts toward nothing
+        if r.get("out_of_scope"): continue   # outside the selected scope: hidden, no section, no score (channel_scope)
+        s=str(r.get("sec") or r.get("section") or "Other")
         if s not in secs: secs[s]={"total":0,"pass":0,"fail":0,"warn":0,"info":0}
         secs[s]["total"]+=1
-        secs[s][_map.get(r["status"],"info")]+=1
+        # A status that is not one of the five (missing, lower case, a number) is not a pass: informational.
+        secs[s][_map.get(r.get("status") if isinstance(r.get("status"),str) else "","info")]+=1
     for s in secs:
         scored=secs[s]["total"]-secs[s]["info"]  # INFO checks don't count against score
         secs[s]["scored"]=scored
@@ -2580,6 +2676,18 @@ def partial_banner(cov):
     return (f"PARTIAL COVERAGE: the score covers only what could be checked. {cov['not_permitted']} check(s) were refused to the API client "
             f"and {cov['errors']} could not be completed; they are left out of the score, so it may look better than the tenant is.")
 
+_CONTROL = __import__("re").compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+def _term(v, markup=True):
+    """Tenant text made inert for the terminal: control characters (escape
+    sequences, OSC hyperlinks) removed and, for Rich output, its markup
+    ([link=...], [bold]) escaped, so a rule name is printed, never obeyed."""
+    t=_CONTROL.sub("", _s(v))
+    if markup and HAS_RICH:
+        from rich.markup import escape
+        t=escape(t)
+    return t
+
 def report(results, cfg, con=None):
     import channel_scope
     original = list(results)
@@ -2589,30 +2697,30 @@ def report(results, cfg, con=None):
     if HAS_RICH and con:
         con.print("\n")
         o=overall if overall is not None else 0
-        con.print(Panel.fit(f"[bold]{cfg.get('org_name','')}[/] · {datetime.now().strftime('%Y-%m-%d')}\n[bold {'dim' if overall is None else 'green' if o>=75 else 'yellow' if o>=50 else 'red'}]{pct_text(overall)} — {mat}[/]\n[dim]{coverage_text(cov)} · zero manual[/]",border_style="cyan",title="[bold cyan]DLP ASSESSMENT[/]"))
+        con.print(Panel.fit(f"[bold]{_term(cfg.get('org_name',''))}[/] · {datetime.now().strftime('%Y-%m-%d')}\n[bold {'dim' if overall is None else 'green' if o>=75 else 'yellow' if o>=50 else 'red'}]{pct_text(overall)} — {mat}[/]\n[dim]{coverage_text(cov)} · zero manual[/]",border_style="cyan",title="[bold cyan]DLP ASSESSMENT[/]"))
         if banner: con.print(Panel.fit(f"[bold yellow]{banner}[/]",border_style="yellow"))
         t=Table(title="Scorecard",show_lines=True)
         t.add_column("Section",style="bold"); t.add_column("Score",justify="center"); t.add_column("P",style="green",justify="center"); t.add_column("F",style="red",justify="center"); t.add_column("R",style="yellow",justify="center")
         for s,d in secs.items():
             p=d["pct"]
             c="dim" if p is None else "green" if p>=75 else "yellow" if p>=50 else "red"
-            t.add_row(s,f"[{c}]{pct_text(p)}[/]",str(d["pass"]),str(d["fail"]),str(d["warn"]))
+            t.add_row(_term(s),f"[{c}]{pct_text(p)}[/]",str(d["pass"]),str(d["fail"]),str(d["warn"]))
         con.print(t)
         con.print("\n[bold cyan]FINDINGS[/]")
         cur=""
         for r in results:
-            if r["sec"]!=cur: cur=r["sec"]; con.print(f"\n[bold underline]{cur}[/]")
-            sc={"PASS":"green","FAIL":"red","REVIEW":"yellow","ERROR":"red"}.get(r["status"],"dim")
-            con.print(f"  [{sc}]{r['status']:>7}[/] [cyan]{r['id']:>5}[/] {r['label']}")
-            if r["detail"]: con.print(f"          [dim]{r['detail']}[/]")
+            if r.get("sec")!=cur: cur=r.get("sec"); con.print(f"\n[bold underline]{_term(cur)}[/]")
+            sc={"PASS":"green","FAIL":"red","REVIEW":"yellow","ERROR":"red"}.get(r.get("status"),"dim")
+            con.print(f"  [{sc}]{_term(r.get('status')):>7}[/] [cyan]{_term(r.get('id')):>5}[/] {_term(r.get('label'))}")
+            if r.get("detail"): con.print(f"          [dim]{_term(r['detail'])}[/]")
         fails=[r for r in results if r["status"]==R.FAIL]
         if fails:
             con.print(f"\n[bold red]CRITICAL ({len(fails)})[/]")
-            for r in fails: con.print(f"  [red]✗[/] {r['id']}: {r['label']} — {r['detail']}")
+            for r in fails: con.print(f"  [red]✗[/] {_term(r.get('id'))}: {_term(r.get('label'))} — {_term(r.get('detail'))}")
     else:
-        print(f"\n{'='*64}\n  {cfg.get('org_name','')} · {pct_text(overall)} {mat} · {coverage_text(cov)}\n{'='*64}")
+        print(f"\n{'='*64}\n  {_term(cfg.get('org_name',''),False)} · {pct_text(overall)} {mat} · {coverage_text(cov)}\n{'='*64}")
         if banner: print(f"  !! {banner}\n{'='*64}")
-        for r in results: print(f"  {r['status']:>7} {r['id']:>5} {r['label']}")
+        for r in results: print(f"  {_term(r.get('status'),False):>7} {_term(r.get('id'),False):>5} {_term(r.get('label'),False)}")
 
 def save(results, cfg, path):
     import channel_scope
@@ -2621,13 +2729,28 @@ def save(results, cfg, path):
     results, _ = channel_scope.visible(original)
     secs,overall=compute(results)
     rpt={"metadata":{"tool":"DLP Assessment Full Auto","version":"3.0","ts":datetime.now(timezone.utc).isoformat(),"org":cfg.get("org_name",""),"assessor":cfg.get("assessor",""),"cloud":cfg.get("cloud",""),"checks":len(results)},"score":overall,"maturity":maturity(overall),"coverage":cov,"hidden_checks":cov["hidden"],"hidden_note":cov["hidden_note"],"sections":secs,"checks":[{"id":r["id"],"sec":r["sec"],"label":r["label"],"status":r["status"],"detail":r["detail"]} for r in results],"critical":[r for r in results if r["status"]==R.FAIL],"review":[r for r in results if r["status"]==R.WARN]}
-    with open(path,"w") as f: json.dump(rpt,f,indent=2,default=str)
+    # The report describes the tenant's security posture: owner-only (0600), as every file the app keeps.
+    fd=os.open(path, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600)
+    try: os.fchmod(fd, 0o600)
+    except (AttributeError, OSError): pass   # Windows: no POSIX modes
+    with os.fdopen(fd,"w",encoding="utf-8") as f: json.dump(rpt,f,indent=2,default=str)
 
 class ConfigError(ValueError):
     """A tenant configuration file that cannot be used, with the reason."""
 
 
 REQUIRED_CONFIG_KEYS = ("client_id", "client_secret", "vanity_domain")
+# A tenant configuration is a handful of fields; anything larger is not one.
+CONFIG_MAX_BYTES = 64 * 1024
+
+
+def report_basename(org_name, ts):
+    """The default report file name for an organisation: letters, digits,
+    "-" and "_" only, so an organisation name can never name a path
+    ("../", "/", a drive) outside the working directory."""
+    import re as _re
+    org=_re.sub(r"[^A-Za-z0-9_-]+","_",_s(org_name)).strip("_")[:64]
+    return f"zscaler_{org}_{ts}" if org else f"zscaler_{ts}"
 
 
 def load_config_file(path: str) -> dict:
@@ -2638,11 +2761,18 @@ def load_config_file(path: str) -> dict:
     vanity_domain. `cloud` defaults to "production" when absent."""
     try:
         with open(path, encoding="utf-8") as f:
-            cfg = json.load(f)
+            raw = f.read(CONFIG_MAX_BYTES + 1)
+        if len(raw) > CONFIG_MAX_BYTES:
+            raise ConfigError(f"the configuration file {path} is larger than {CONFIG_MAX_BYTES // 1024} KB, so it is not a tenant configuration")
+        cfg = json.loads(raw)
     except FileNotFoundError:
         raise ConfigError(f"the configuration file {path} does not exist (copy tenant_config_sample.json and fill it in)")
     except OSError as e:
         raise ConfigError(f"the configuration file {path} could not be read: {e}")
+    except UnicodeDecodeError:
+        raise ConfigError(f"the configuration file {path} is not UTF-8 text")
+    except RecursionError:
+        raise ConfigError(f"the configuration file {path} is nested too deeply")
     except json.JSONDecodeError as e:
         raise ConfigError(f"the configuration file {path} is not valid JSON (line {e.lineno}, column {e.colno}: {e.msg})")
     if not isinstance(cfg, dict):
@@ -2716,7 +2846,7 @@ def main():
     (con.print(f"\n[bold]{len(check_reg)} automated checks ({args.scope} scope)...[/]\n") if con else print(f"\n  {len(check_reg)} checks ({args.scope} scope)...\n"))
     results=run_checks(cl, check_reg, con); report(results,cfg,con)
     ts=datetime.now().strftime('%Y%m%d_%H%M%S')
-    base_name=f"zscaler_{cfg.get('org_name','').replace(' ','_')}_{ts}"
+    base_name=report_basename(cfg.get('org_name',''), ts)
     json_out=args.output or f"{base_name}.json"
     try:
         save(results,cfg,json_out)
