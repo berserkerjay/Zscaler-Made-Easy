@@ -800,8 +800,11 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             return (None,)
         hit_app = any(dest["label"].lower() in str(a).lower() or str(a).lower() in dest["label"].lower()
                       for a in p["bypass"]["apps"]) if dest["kind"] in ("application", "unknown") else False
+        tl = p.get("tunnel") or {}
+        ip_side = tuple(any(_zpm._ip_rel(dest_ip, str(e).strip()) for e in lst or []) for lst in
+                        (p["bypass"].get("ips"), tl.get("exclude"), tl.get("include"))) if dest_ip is not None else ()
         return (str(p.get("forwarding_profile")), bool(_domain_hit(p["bypass"]["domains"], host)) if host else False, hit_app,
-                p.get("pac_url"), bool(p.get("ssl_cert")))
+                p.get("pac_url"), bool(p.get("ssl_cert")), ip_side, bool(tl.get("include")))
     by_user = [p for p in ahead if treats(p) != treats(everyone)]
     # The hops below follow the unscoped profile (else the first scoped one).
     prof = everyone if everyone is not None else (ordered[0] if ordered else None)

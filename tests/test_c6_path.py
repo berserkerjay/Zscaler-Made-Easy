@@ -2196,3 +2196,11 @@ def test_a_list_row_outside_the_packet_tunnel_is_answered_apart_from_one_inside(
     tenant = Tenant(_profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "packetTunnelExcludeList": "198.51.100.0/24"}))
     rn = bt.run(tenant, bt.parse("198.51.101.5\n198.51.100.5\n"), scope=FULL, lookup=False, sleep=lambda s: None)
     assert [rn.row(i)["result"] for i in range(2)] == ["allowed", "bypassed"]
+
+
+def test_a_scoped_profile_ahead_that_excludes_the_address_from_the_tunnel_makes_it_depend_on_the_user():
+    """ASVS V4.1.3 · CWE-863: a group's profile ahead of the everyone profile that keeps this address out of the tunnel makes the path depend on the user."""
+    res = run("10.1.2.3", _profiles({"id": 1, "name": "Contractors", "ruleOrder": 1, "groups": [{"id": 32, "name": "Drivers"}],
+                                     "packetTunnelExcludeList": "10.0.0.0/8"},
+                                    {"id": 2, "name": "Corp", "ruleOrder": 2}))
+    assert hop(res, "zcc")["status"] == "conditional" and res["verdict"]["outcome"] == "unknown"
