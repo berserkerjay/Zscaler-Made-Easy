@@ -830,3 +830,18 @@ def test_a_sign_in_error_that_echoes_the_secret_never_reaches_the_digest(no_netw
     on_disk = json.dumps(ce.get_digest(d["id"])) + ce.to_markdown(d)
     assert errs and errs[0].startswith("connect: 401") and "[redacted]" in errs[0]
     assert secret not in on_disk and "S3cr3t%2BValue" not in on_disk and no_network == []
+
+
+def test_a_record_that_names_no_tenant_is_not_shown_on_a_tenants_timeline():
+    """ASVS V4.2.1 · CWE-639 · CWE-200 · WSTG-ATHZ-04: with a tenant chosen, an unlabeled deployment or write is left out and counted, not shown."""
+    deps = [{"id": "d1", "at": "2026-10-20T09:00:00+00:00", "tenant_label": "acme", "by": "Jane", "packs": ["pci"], "created": []},
+            {"id": "d2", "at": "2026-10-20T09:05:00+00:00", "tenant_label": "", "by": "Sam", "packs": ["hipaa"], "created": [{"name": "Other's rule"}]}]
+    entries = [{"event": "object_write", "at": "2026-10-20T09:10:00+00:00", "tenant": None, "name": "Other's rule", "action": "create"},
+               {"event": "sso_login", "at": "2026-10-20T09:11:00+00:00", "actor": "me"}]
+    out = at.build(window_=at.window(30, now=datetime(2026, 10, 25, tzinfo=timezone.utc).timestamp()), zia=None, deployments=deps,
+                   audit_entries=entries, labels=["acme"], zia_requested=False)
+    assert [e.get("object_id") or e["action"] for e in out["events"]] == ["sso login", "d1"]
+    assert "Other's rule" not in json.dumps(out["events"]) and any("2 of Zscaler Made Easy's record(s) name no tenant" in n for n in out["notes"])
+    every = at.build(window_=at.window(30, now=datetime(2026, 10, 25, tzinfo=timezone.utc).timestamp()), zia=None, deployments=deps,
+                     audit_entries=entries, zia_requested=False)
+    assert every["summary"]["events"] == 4   # no tenant chosen: everything

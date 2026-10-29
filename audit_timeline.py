@@ -541,10 +541,20 @@ def read_zia_audit(client, start_ms: int, end_ms: int, *, log: LogFn = None, can
 # ── Zscaler Made Easy's own records ─────────────────────────────────────────────
 
 def _tenant_ok(value: Any, labels: Optional[Iterable[str]]) -> bool:
+    """With a tenant chosen (`labels`), only records that name it. A record
+    that names no tenant is left out (deny by default, as deployments.
+    list_all and self_heal match): it could be another customer's write."""
     if not labels:
         return True
     v = str(value or "")
-    return not v or v in set(labels)
+    return bool(v) and v in set(labels)
+
+
+def _unlabelled(deployments: List[Dict[str, Any]], entries: List[Dict[str, Any]]) -> int:
+    """How many tenant records name no tenant (left out when one is chosen)."""
+    n = sum(1 for r in deployments or [] if isinstance(r, dict) and not str(r.get("tenant_label") or ""))
+    return n + sum(1 for a in entries or [] if isinstance(a, dict) and str(a.get("event") or "") in ("object_write", "job_finished", "run_finished")
+                   and not str(a.get("tenant") or ""))
 
 
 def _ev(source: str, when: Optional[datetime], **fields: Any) -> Dict[str, Any]:
@@ -764,6 +774,9 @@ def build(*, window_: Dict[str, Any], zia: Optional[Dict[str, Any]], deployments
         notes.append(f"Only the newest {MAX_EVENTS} events are shown; {cut} older one(s) were left out. Choose a shorter window.")
     if labels:
         notes.append("Zscaler Made Easy's own records are shown for this tenant only (" + ", ".join(labels[:2]) + ").")
+        nolabel = _unlabelled(deployments, audit_entries)
+        if nolabel:
+            notes.append(f"{nolabel} of Zscaler Made Easy's record(s) name no tenant, so they are not shown here: they may belong to another tenant.")
     untimed = sum(1 for e in events if e.get("ts") is None)
     if untimed:
         notes.append(f"{untimed} event(s) have a time this page could not read; they are listed last with the time as written.")
