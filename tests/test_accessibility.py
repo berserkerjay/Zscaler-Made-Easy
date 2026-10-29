@@ -379,3 +379,303 @@ def test_the_find_dialog_results_region_is_keyboard_scrollable():
     assert ".fa-body:focus-visible{outline:2px solid var(--accent)" in js
     # The focus trap counts it, so Tab and Shift+Tab still cycle inside the dialog.
     assert "dlg.querySelectorAll('button, [href], input, textarea, select, [tabindex]:not([tabindex=\"-1\"])')" in js
+
+
+# ── Wave 6: WCAG 2.2 AA in a real browser, on the sample tenant ──────────
+# One headless Chrome (CDP) opens the sample tenant through the Connect
+# page, runs the assessment from the Scope page (tests/test_sample_tenant_browser.py
+# SETUP), then visits every page the app serves, in the dark and the light
+# theme with prefers-reduced-motion on, and measures each one:
+#   console errors and HTTP errors on load; an accessible name on every
+#   control (Chrome's own accessibility tree, SC 4.1.2); a keyboard walk
+#   (focus visible on every stop, SC 2.4.7; focus never stuck, SC 2.1.2);
+#   24px targets (SC 2.5.8, with the inline and spacing exceptions); text
+#   contrast against what is painted under it (SC 1.4.3); a live region on
+#   pages that run jobs (SC 4.1.3); no running animation under reduced
+#   motion (SC 2.3.3). The route list is read from the app, so a new page is
+#   measured too.
+
+from test_findings_reflow import CDP_PRELUDE, run_in_browser  # noqa: E402
+from test_sample_tenant_browser import EVENTS, sample_setup  # noqa: E402
+
+
+def _browser_routes():
+    paths = sorted({r.path for r in srv.app.routes if getattr(r, "methods", None) and "GET" in r.methods and "{" not in r.path
+                    and (r.path.startswith("/report/") or r.path in ("/", "/simple", "/help", "/permissions"))})
+    refs = ["/reference/" + p["slug"] for p in srv.REFERENCE_PAGES if os.path.exists(os.path.join(STATIC, "reference", p["slug"] + ".html"))]
+    assert len(paths) >= 35, paths
+    return paths + sorted(refs)
+
+
+BROWSER_ROUTES = _browser_routes()
+BROWSER_THEMES = ("dark", "light")
+# Pages that start a job or a read: their progress and result are announced.
+JOB_PAGES = {"/report/audit", "/report/browser", "/report/device-posture", "/report/digest", "/report/fleet", "/report/insights",
+             "/report/live", "/report/logs", "/report/operations", "/report/path", "/report/pov", "/report/shadow",
+             "/report/sslcoverage", "/report/zpa", "/report/exports", "/report/self-heal", "/report/posture", "/simple"}
+
+PAGE_AUDIT = r"""(() => {
+  // Inside a closed <details> only the summary is shown (Chrome still gives the hidden content a box).
+  const shut = e => { const d = e.closest('details:not([open])'); return !!d && !e.closest('summary'); };
+  const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !e.closest('[aria-hidden="true"],[inert]') && !shut(e); };
+  const desc = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + '.' + String(e.className.baseVal ?? e.className).trim().split(/\s+/).slice(0, 2).join('.') + ' "' + (e.getAttribute('aria-label') || e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30) + '"';
+  const out = {};
+  // SC 2.5.8: 24 by 24 CSS px, or inline in a sentence, or a 24px circle on it touches no other target.
+  const sel = 'button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=checkbox], [role=radio], [role=link]';
+  const els = [...document.querySelectorAll(sel)].filter(vis), rects = els.map(e => e.getBoundingClientRect());
+  out.small = [];
+  els.forEach((e, i) => {
+    const r = rects[i]; if (r.width >= 24 && r.height >= 24) return;
+    if (getComputedStyle(e).display === 'inline' && e.parentElement && e.parentElement.textContent.trim().length > e.textContent.trim().length + 20) return;
+    const lab = e.closest('label') || (e.id && document.querySelector('label[for="' + CSS.escape(e.id) + '"]'));
+    if (lab && lab.getBoundingClientRect().height >= 24 && lab.getBoundingClientRect().width >= 24) return;
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const clash = rects.some((o, j) => j !== i && !els[j].contains(e) && !e.contains(els[j]) && Math.max(o.left - cx, 0, cx - o.right) ** 2 + Math.max(o.top - cy, 0, cy - o.bottom) ** 2 < 144);
+    if (clash) out.small.push(desc(e) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+  });
+  // SC 1.4.3: the text colour against the colours painted under it (elementsFromPoint, alpha composited).
+  // rgb()/rgba(), and color(srgb r g b / a), which color-mix() computes to.
+  const rgba = s => { let m = s.match(/rgba?\(([^)]+)\)/); if (m) { const v = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return { r: v[0], g: v[1], b: v[2], a: v.length > 3 ? v[3] : 1 }; }
+    m = s.match(/color\(srgb\s+([^)]+)\)/); if (m) { const v = m[1].split(/[ \/]+/).filter(Boolean).map(Number); return { r: v[0] * 255, g: v[1] * 255, b: v[2] * 255, a: v.length > 3 ? v[3] : 1 }; }
+    return null; };
+  const opacity = e => { let o = 1; for (let n = e; n && n.nodeType === 1; n = n.parentElement) o *= parseFloat(getComputedStyle(n).opacity || '1'); return o; };
+  const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+  const lum = c => { const f = x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  out.contrast = [];
+  const texts = [...document.querySelectorAll('body *')].filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim()) && vis(e) && !e.closest('svg, option, [disabled], [aria-disabled="true"], .sr-only'));
+  for (const e of texts.slice(0, 1500)) {
+    const s = getComputedStyle(e); if (opacity(e) < 0.5) continue;   // faded out, or a dimmed inactive card (SC 1.4.3 exempts inactive components)
+    let fg = rgba(s.color); if (!fg || fg.a === 0) continue;
+    const r = e.getBoundingClientRect(); const x = Math.min(Math.max(r.left + 2, 0), innerWidth - 1), y = Math.min(Math.max(r.top + Math.min(r.height / 2, 10), 0), innerHeight - 1);
+    if (r.bottom < 0 || r.top > innerHeight) { e.scrollIntoView({ block: 'center' }); }
+    const r2 = e.getBoundingClientRect();
+    if (r2.bottom <= 0 || r2.right <= 0 || r2.top >= innerHeight || r2.left >= innerWidth) continue;   // off screen until focused (a skip link): measured by the focus walk
+    const px = Math.min(Math.max(r2.left + 2, 0), innerWidth - 1), py = Math.min(Math.max(r2.top + Math.min(r2.height / 2, 10), 0), innerHeight - 1);
+    const stack = document.elementsFromPoint(px, py); let i = stack.indexOf(e); if (i < 0) { const k = stack.findIndex(n => e.contains(n) || n.contains(e)); if (k < 0) continue; i = k; }
+    const layers = []; let image = false;
+    for (const n of stack.slice(i)) { const ns = getComputedStyle(n); if (ns.backgroundImage !== 'none' && !/^url\(/.test(ns.backgroundImage) && ns.backgroundImage.includes('gradient')) { image = true; break; } if (n.tagName === 'IMG' || n.tagName === 'VIDEO' || n.tagName === 'CANVAS') { image = true; break; } const c = rgba(ns.backgroundColor); if (c && c.a > 0) { layers.push(c); if (c.a >= 0.999) break; } }
+    if (image) continue;
+    let bg = { r: 255, g: 255, b: 255, a: 1 };
+    const root = rgba(getComputedStyle(document.documentElement).backgroundColor); if (root && root.a > 0) bg = over(root, bg);
+    for (const c of layers.reverse()) bg = over(c, bg);
+    fg = over(fg, bg);
+    const size = parseFloat(s.fontSize), bold = parseInt(s.fontWeight, 10) >= 700, large = size >= 24 || (bold && size >= 18.66);
+    const need = large ? 3 : 4.5, got = ratio(fg, bg);
+    const hex = c => '#' + [c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+    if (got + 0.02 < need) out.contrast.push(desc(e) + ' ' + got.toFixed(2) + ':1 (' + hex(fg) + ' on ' + hex(bg) + ' under ' + stack.slice(i, i + 4).map(n => n.tagName.toLowerCase() + (n.id ? '#' + n.id : '')).join('<') + ')');
+  }
+  window.scrollTo(0, 0);
+  out.contrast = [...new Set(out.contrast)].slice(0, 12);
+  // SC 4.1.2: a control never holds another focusable control (a card that is a button holding a button).
+  const FOC = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [tabindex]:not([tabindex="-1"])';
+  out.nested = [...document.querySelectorAll('button, a[href], [role=button], [role=link], [role=tab], [role=checkbox], [role=menuitem]')].filter(e => vis(e) && [...e.querySelectorAll(FOC)].some(vis)).map(desc).slice(0, 8);
+  // SC 2.1.1: a region that scrolls can be reached by the keyboard (it, or something in it, takes focus).
+  out.unreachable = [...document.querySelectorAll('body *')].filter(e => { if (!vis(e) || e.matches(FOC)) return false; const st = getComputedStyle(e);
+    const scrolls = (/(auto|scroll)/.test(st.overflowX) && e.scrollWidth > e.clientWidth + 1) || (/(auto|scroll)/.test(st.overflowY) && e.scrollHeight > e.clientHeight + 1);
+    return scrolls && ![...e.querySelectorAll(FOC)].some(vis); }).map(desc).slice(0, 8);
+  // SC 2.1.1: nothing only a mouse can click (an element with an onclick that takes no focus and holds no control).
+  out.clickOnly = [...document.querySelectorAll('body *')].filter(e => (e.hasAttribute('onclick') || typeof e.onclick === 'function') && vis(e) && e.textContent.trim() && !e.matches(FOC) && !e.closest(FOC)
+    && !e.querySelector(FOC) && !e.closest('svg') && getComputedStyle(e).pointerEvents !== 'none').map(desc).slice(0, 8);
+  // SC 4.1.3: a status or live region the page's progress and results go to.
+  out.live = document.querySelectorAll('[role=status],[role=alert],[role=log],[role=progressbar],[aria-live]').length;
+  // SC 2.3.3: nothing animates under prefers-reduced-motion.
+  out.motion = document.getAnimations().filter(a => a.playState === 'running' && (a.effect && a.effect.getComputedTiming().duration > 50)).map(a => (a.animationName || a.transitionProperty || 'animation') + ' on ' + desc(a.effect.target)).slice(0, 6);
+  out.title = document.title; out.lang = document.documentElement.lang;
+  out.h1 = document.querySelectorAll('h1').length;
+  return out;
+})()"""
+
+FOCUS_STEP = r"""new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done((() => {
+  const el = document.activeElement; if (!el || el === document.body || el === document.documentElement) return null;
+  const s = getComputedStyle(el), r = el.getBoundingClientRect();
+  let ring = (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || (s.boxShadow && s.boxShadow !== 'none');
+  if (!ring && el instanceof SVGElement) { const sh = el.querySelector('rect, path, circle'); ring = !!(sh && parseFloat(getComputedStyle(sh).strokeWidth) >= 2); }
+  const d = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + '.' + String(el.className.baseVal ?? el.className).trim().split(/\s+/).slice(0, 2).join('.') + ' "' + (el.getAttribute('aria-label') || el.textContent || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 30) + '"';
+  return { d, ring, k: d + '@' + Math.round(r.top + scrollY) + ',' + Math.round(r.left), hidden: r.width === 0 || r.height === 0 };
+})()))))"""
+
+A11Y_DRIVER = CDP_PRELUDE + "process.env.UI_DEADLINE_MS = process.env.UI_DEADLINE_MS || '1440000';\n" + EVENTS + "%SETUP%" + r"""
+const [routesJson, themesJson, auditJs, focusJs] = args;
+const INTERACTIVE = new Set(['button', 'link', 'checkbox', 'radio', 'textbox', 'combobox', 'listbox', 'menuitem', 'tab', 'switch', 'slider', 'spinbutton', 'searchbox', 'DisclosureTriangle', 'menuitemcheckbox', 'menuitemradio', 'option', 'treeitem']);
+const out = { run, setupErrors: seen.errors.splice(0), pages: {} };
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+await send('DOM.enable'); await send('Accessibility.enable');
+const key = async (k, code, vk, mods = 0) => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, modifiers: mods }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk, modifiers: mods }); };
+for (const theme of JSON.parse(themesJson)) {
+  await ev(`(localStorage.setItem('zassess_theme', ${JSON.stringify(theme)}), true)`);
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'prefers-color-scheme', value: theme }] });
+  for (const route of JSON.parse(routesJson)) {
+    seen.errors.splice(0);
+    await go(route); await settle(route);
+    const rec = out.pages[theme + ' ' + route] = await ev(auditJs);
+    rec.errors = seen.errors.splice(0);
+    trace(theme, route, 'audited');
+    // Chrome's accessibility tree: every control has a name (one query per interactive role).
+    const rootId = (await send('DOM.getDocument', { depth: 0 })).result.root.backendNodeId;
+    rec.unnamed = [];
+    for (const role of INTERACTIVE) {
+      const q = await send('Accessibility.queryAXTree', { backendNodeId: rootId, role });
+      for (const n of ((q.result || {}).nodes || [])) {
+        if (n.ignored || (n.name && String(n.name.value || '').trim())) continue;
+        const d = await send('DOM.describeNode', { backendNodeId: n.backendDOMNodeId });
+        const node = (d.result || {}).node || {};
+        rec.unnamed.push(role + ' <' + String(node.localName || '') + ' ' + (node.attributes || []).join(' ').slice(0, 80) + '>');
+      }
+    }
+    rec.unnamed = rec.unnamed.slice(0, 10);
+    if (theme === 'dark') {
+      // Keyboard only: Tab through the page.
+      await ev(`(document.activeElement && document.activeElement.blur && document.activeElement.blur(), window.scrollTo(0, 0), true)`);
+      const stops = []; const noRing = []; let prev = '', stuck = 0;
+      for (let i = 0; i < 250; i++) {
+        await key('Tab', 'Tab', 9);
+        const f = await ev(focusJs);   // read after the next frame, once the focus ring is drawn
+        if (!f) { if (stops.length) break; continue; }
+        if (f.k === prev) { if (++stuck >= 3) { rec.trap = f.d; break; } continue; }
+        stuck = 0; prev = f.k;
+        if (stops.includes(f.k)) break;
+        stops.push(f.k);
+        if (!f.ring && !f.hidden) noRing.push(f.d);
+      }
+      rec.stops = stops.length; rec.noRing = [...new Set(noRing)].slice(0, 10);
+    }
+  }
+}
+// Result states: each job page run on the sample, then measured again (and at 320 and 390 px).
+const [statesJson] = [args[4]];
+out.states = {};
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'prefers-color-scheme', value: 'dark' }] });
+await ev(`(localStorage.setItem('zassess_theme', 'dark'), true)`);
+for (const [name, route, act, ready] of JSON.parse(statesJson)) {
+  seen.errors.splice(0);
+  await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await go(route); await settle(route);
+  await ev(act);
+  const got = await until(() => ev(ready), name + ' result', 180000).catch(() => false);   // ZPA reads are paced
+  await settle(name, 4000);
+  const rec = out.states[name] = await ev(auditJs);
+  rec.ready = !!got; rec.errors = seen.errors.splice(0);
+  if (!got) rec.shown = await ev(`(document.querySelector('main') || document.body).innerText.slice(0, 600)`);
+  rec.reflow = {};
+  for (const width of [320, 390]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    await ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
+    rec.reflow[width] = await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+  }
+  trace('state', name, rec.ready);
+}
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+# Each job page with its result on screen: (name, route, the click, the sign the result is drawn).
+_SET = "(() => {{ const e = document.getElementById('{0}'); e.value = {1}; e.dispatchEvent(new Event('input', {{ bubbles: true }})); return true; }})()"
+RESULT_STATES = [
+    ("path-one", "/report/path", _SET.format("paDest", "'chat.openai.com'") + " && document.getElementById('paRun').click() === undefined",
+     "!!document.getElementById('paHeadline')"),
+    ("path-list", "/report/path#list", _SET.format("plText", "'destination,port,expected\\nchat.openai.com,,block\\nwww.dropbox.com,,allow'")
+     + " && document.getElementById('plRun').click() === undefined", "!!document.getElementById('plSummary')"),
+    ("shadow", "/report/shadow", "document.getElementById('shRun').click() === undefined", "/rule/i.test(document.querySelector('main').innerText.slice(-4000)) && !document.getElementById('shRun').disabled"),
+    ("zpa", "/report/zpa", "document.getElementById('zpRun').click() === undefined", "!document.getElementById('expCsv').hidden"),
+    ("ssl-coverage", "/report/sslcoverage", "document.getElementById('scRun').click() === undefined", "!!document.querySelector('#scBody table, main table')"),
+    ("device-posture", "/report/device-posture", "document.getElementById('dvRun').click() === undefined", "!document.getElementById('expXlsx').hidden"),
+    ("browser-security", "/report/browser", "document.getElementById('bwRun').click() === undefined", "!document.getElementById('expXlsx').hidden"),
+    ("fleet", "/report/fleet", "document.getElementById('zfRun').click() === undefined", "!!document.querySelector('main table')"),
+    ("operations-objects", "/report/operations", "document.getElementById('opRead').click() === undefined", "document.querySelectorAll('#opObjects input[type=checkbox]').length > 0"),
+]
+
+
+@pytest.fixture(scope="module")
+def wcag_pages(tmp_path_factory):
+    driver = A11Y_DRIVER.replace("%SETUP%", sample_setup())
+    return run_in_browser(tmp_path_factory.mktemp("wcag-pages"), driver, json.dumps(BROWSER_ROUTES), json.dumps(BROWSER_THEMES),
+                          PAGE_AUDIT, FOCUS_STEP, json.dumps(RESULT_STATES), timeout=1500)
+
+
+def _page(wcag_pages, theme, route):
+    return wcag_pages["pages"][f"{theme} {route}"]
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_every_page_loads_without_errors_on_the_sample(wcag_pages, route):
+    """WCAG 2.2 SC 4.1.2 · CWE-754: table over every page: it loads on the sample tenant with no script error, no console error and no HTTP error."""
+    assert wcag_pages["run"]["started"], wcag_pages["run"]
+    for theme in BROWSER_THEMES:
+        assert _page(wcag_pages, theme, route)["errors"] == [], (theme, route)
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_every_control_has_an_accessible_name(wcag_pages, route):
+    """WCAG 2.2 SC 4.1.2, 1.3.1 · table over every page: Chrome's accessibility tree gives every button, link, field and tab a name."""
+    assert _page(wcag_pages, "dark", route)["unnamed"] == []
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_keyboard_focus_is_visible_and_never_trapped(wcag_pages, route):
+    """WCAG 2.2 SC 2.1.1, 2.1.2, 2.4.7 · table over every page: Tab reaches the controls, every stop shows a focus ring, and focus is never stuck."""
+    rec = _page(wcag_pages, "dark", route)
+    assert rec["stops"] >= 1 and not rec.get("trap"), rec
+    assert rec["noRing"] == [], rec["noRing"]
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_every_target_is_at_least_24px(wcag_pages, route):
+    """WCAG 2.2 SC 2.5.8 · table over every page: each control is 24 by 24 CSS px, inline in a sentence, or spaced 24px from any other."""
+    assert _page(wcag_pages, "dark", route)["small"] == []
+
+
+@pytest.mark.parametrize("theme", BROWSER_THEMES)
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_text_contrast_meets_aa_in_both_themes(wcag_pages, route, theme):
+    """WCAG 2.2 SC 1.4.3 · table over every page and theme: each text is 4.5:1 (3:1 when large) against what is painted under it."""
+    assert _page(wcag_pages, theme, route)["contrast"] == []
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_pages_with_jobs_announce_progress_in_a_live_region(wcag_pages, route):
+    """WCAG 2.2 SC 4.1.3 · table over every page: a page that runs a job has a status or live region; every page has a title, a language and one h1."""
+    rec = _page(wcag_pages, "dark", route)
+    if route in JOB_PAGES:
+        assert rec["live"] >= 1, route
+    assert rec["title"].strip() and rec["lang"], (route, rec["title"], rec["lang"])
+    if not route.startswith("/reference/"):   # the app's own pages; a bundled reference document keeps its own outline
+        assert rec["h1"] >= 1, (route, rec["h1"])
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_nothing_animates_under_reduced_motion(wcag_pages, route):
+    """WCAG 2.2 SC 2.3.3, 2.2.2 · table over every page: with prefers-reduced-motion on, no animation or transition is running."""
+    for theme in BROWSER_THEMES:
+        assert _page(wcag_pages, theme, route)["motion"] == [], (theme, route)
+
+
+@pytest.mark.parametrize("state", [s[0] for s in RESULT_STATES])
+def test_every_result_renders_accessibly_and_reflows(wcag_pages, state):
+    """WCAG 2.2 SC 1.4.10, 1.4.3, 2.5.8, 4.1.3 · table over the job pages run on the sample: the result is drawn with no error, its text keeps AA contrast, its targets are 24px and it fits 320 and 390 px (the Path analyzer's channel cards were 9px too wide at 320)."""
+    rec = wcag_pages["states"][state]
+    assert rec["ready"], (state, rec.get("shown"))
+    assert rec["errors"] == [] and rec["contrast"] == [] and rec["small"] == [], rec
+    assert rec["reflow"] == {"320": 0, "390": 0}, rec["reflow"]
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_no_control_holds_another_control(wcag_pages, route):
+    """WCAG 2.2 SC 4.1.2 · table over every page: no button, link or tab holds another focusable control (the reference pages' technique cards were buttons holding a select button)."""
+    for theme in BROWSER_THEMES:
+        assert _page(wcag_pages, theme, route)["nested"] == [], (theme, route)
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_every_scrolling_region_is_reachable_by_keyboard(wcag_pages, route):
+    """WCAG 2.2 SC 2.1.1 · table over every page: a region that scrolls takes focus or holds something that does (the reference pages' timelines and figures did not)."""
+    for theme in BROWSER_THEMES:
+        assert _page(wcag_pages, theme, route)["unreachable"] == [], (theme, route)
+
+
+@pytest.mark.parametrize("route", BROWSER_ROUTES)
+def test_nothing_is_clickable_only_with_a_mouse(wcag_pages, route):
+    """WCAG 2.2 SC 2.1.1, 4.1.2 · table over every page: every element with a click handler takes focus and answers Enter and Space (the reference pages' channel toggles and stat cards were mouse-only)."""
+    for theme in BROWSER_THEMES:
+        assert _page(wcag_pages, theme, route)["clickOnly"] == [], (theme, route)

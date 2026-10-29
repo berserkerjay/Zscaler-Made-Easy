@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
 <style>
-  .cp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem; padding: 1rem; }
+  .cp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 0.75rem; padding: 1rem; }
   .cp-card { text-align: left; width: 100%; padding: 1rem; background: var(--well); border-radius: var(--r-md); border: 1px solid var(--border); color: var(--text); cursor: pointer; font: inherit; transition: border-color 0.15s, transform 0.15s; }
   .cp-card:hover, .cp-card:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
   .cp-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tint); }

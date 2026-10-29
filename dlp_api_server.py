@@ -5537,15 +5537,19 @@ class WorkspaceNoteRequest(BaseModel):
 
 
 def _notes_tenant(tenant: str = "", profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = "") -> str:
-    """The tenant label a note is kept under: the one given, else the saved
-    profile's, else the sign-in's (vanity domain and cloud), else this
+    """The tenant label a note is kept under: the one given, else the sample
+    tenant's or opened snapshot's (this browser's offline tenant), else the
+    saved profile's, else the sign-in's (vanity domain and cloud), else this
     server's configured tenant. Never reads the tenant."""
     import tenant_profiles
     import workspace_notes as wn
     if (tenant or "").strip():
         return wn.clean_tenant(tenant)
     creds: Dict[str, Any] = {}
-    if (profile_id or "").strip():
+    off = _offline_creds()   # the sample tenant or an opened snapshot: its notes are its own, never a profile's or the server's
+    if off:
+        creds = off
+    elif (profile_id or "").strip():
         p = tenant_profiles.get(profile_id.strip())
         if not p:
             raise wn.NotesError("that tenant profile no longer exists; pick another", 404)
@@ -6343,8 +6347,10 @@ async def serve_permissions_page(request: Request):
   .service {{ color: var(--dim); font-size: 0.85rem; font-weight: 400; }}
   .scope-key {{ color: var(--accent); font-size: 0.78rem; }}
   .desc {{ color: var(--dim); font-size: 0.9rem; margin-bottom: 0.7rem; }}
-  .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.6rem; }}
-  @media (max-width: 720px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+  .grid {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 0.6rem; }}
+  @media (max-width: 720px) {{ .grid {{ grid-template-columns: minmax(0, 1fr); }} }}
+  /* Reflow (WCAG 1.4.10): a long permission or endpoint path breaks inside its column at 320px. */
+  .perms code, .endpoint, .scope-key {{ overflow-wrap: anywhere; }}
   .perms {{ list-style: none; font-size: 0.85rem; }}
   .perms li {{ margin-bottom: 0.15rem; }}
   .perms code {{ background: rgba(59,130,246,0.08); padding: 0.1rem 0.4rem;
@@ -6741,6 +6747,10 @@ async def app_update_run(req: Optional[AppUpdateRequest] = None):
     target = _update_branch(req.branch if req else None)
     result = await asyncio.to_thread(app_update.update, _APP_DIR, branch=target)
     _LATEST.pop(target, None)
+    # The app's own code changed (or tried to): the audit log says who, which
+    # branch, from which build to which, and whether it worked.
+    _audit.record("app_update", actor=_security.current_actor(), branch=target, ok=bool(result.get("ok")),
+                  updated=bool(result.get("updated")), before=result.get("before"), after=result.get("after"))
     return result
 
 
@@ -8264,6 +8274,8 @@ REFERENCE_PAGES: List[Dict[str, str]] = [
      "blurb": "Zscaler's data-security reference architecture: every DLP channel's flow, dictionaries and engines, evidence to Workflow Automation, setup sequences, symptom walkbacks."},
 ]
 _REFERENCE_DIR = os.path.join(STATIC_DIR, "reference")
+# Served with every bundled reference document (static/reference/reference_a11y.js).
+_REFERENCE_A11Y = '<script src="/static/reference/reference_a11y.js"></script>\n'
 
 
 @app.get("/api/reference")
@@ -8298,7 +8310,7 @@ async def reference_embed_page(slug: str):
     # Capture script failures before any bundled script executes. The child
     # reports readiness only after its own content and controls initialize.
     bridge = (f'<meta name="dlp-reference-embed" content="{slug}">'
-              '<script src="/static/reference/reference_embed_child.js"></script>')
+              '<script src="/static/reference/reference_embed_child.js"></script>' + _REFERENCE_A11Y)
     charset = re.search(r"<meta\s+charset=[^>]+>", html, re.IGNORECASE)
     pos = charset.end() if charset else 0
     html = html[:pos] + bridge + html[pos:]
@@ -8324,7 +8336,9 @@ async def reference_page(slug: str):
         html = f.read()
     # Every tab can return to the assessment page: the shared theme script
     # adds a "Back to the assessment" button to a page that has no link home.
-    tag = '<script src="/static/report_theme.js"></script>\n'
+    # The accessibility layer (WCAG 2.2 AA) closes the gaps of the bundled
+    # documents: language, names, keyboard, targets, focus, reflow, contrast.
+    tag = '<script src="/static/report_theme.js"></script>\n' + _REFERENCE_A11Y
     pos = html.rfind("</body>")
     html = html[:pos] + tag + html[pos:] if pos >= 0 else html + tag
     return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})

@@ -87,7 +87,7 @@ body.theme-light .db-band span.now { color: #fff; }
 .db-radar .area { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 2; }
 .db-radar .pt { fill: var(--accent); }
 .db-radar text { font-size: 9px; fill: var(--dim); }
-.db-pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-4); }
+.db-pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: var(--sp-3); margin-top: var(--sp-4); }
 .db-pillar { padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); display: grid; gap: var(--sp-1); cursor: pointer; text-align: left; font: inherit; color: var(--text); transition: border-color 0.2s var(--ease, ease), background 0.2s var(--ease, ease); }
 .db-pillar:hover { border-color: var(--border-strong); background: var(--well); }
 .db-pillar-h { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }

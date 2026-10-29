@@ -557,7 +557,7 @@
     font-size: var(--fs-subhead);
     padding: 0 var(--sp-3);
   }
-  .hero-toolbar { max-width: 980px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .hero-toolbar { max-width: 980px; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
   .tool-group { display: grid; gap: var(--sp-1); padding: var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); text-align: left; }
   .auth-status { font-size: var(--fs-subhead); color: var(--dim); }
   .auth-status.ok { color: var(--pass); } .auth-status.bad { color: var(--fail); }
@@ -1048,7 +1048,7 @@
             🔍 Diagnose ZCC access
           </button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(220px, 100%), 1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="scope-cb" value="dlp" checked style="width:auto;cursor:pointer;">
             DLP assessment <span style="color:var(--dim);font-size:0.75rem;">(188 checks)</span>
@@ -1103,7 +1103,7 @@
 
       <div class="field full" id="complianceFwField">
         <label>Compliance frameworks <span style="color:var(--dim);font-size:0.7rem;font-weight:normal;">(optional — pick any to include in report)</span></label>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(220px, 100%), 1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="fw-cb" value="NIST_800_53" checked style="width:auto;cursor:pointer;"> 🇺🇸 NIST 800-53 r5
           </label>
@@ -1169,7 +1169,7 @@
         <button class="btn btn-ghost" onclick="exportChecks('all','json')" style="padding:0.5rem 0.9rem;font-size:0.8rem;">JSON</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;" id="frameworksList"></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr));gap:0.6rem;" id="frameworksList"></div>
   </div>
 
   <!-- Inline DLP rule migration: opens as a modal from the Evaluate All Rules button (not inline on the page). -->
@@ -3104,7 +3104,7 @@ function renderPermissions(data) {
   const scopes = (p.needed_for_full_scan || []).filter(s => s.blocked_checks);
   body.innerHTML = `
     <p style="font-size:0.88rem;margin-bottom:0.6rem;"><strong style="color:var(--warn);">${p.blocked} check${p.blocked === 1 ? '' : 's'} could not run</strong> because the API client's role does not include their feature. Every other check ran, so the score above covers what was reachable. ${E(p.note)}</p>
-    ${scopes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0.6rem;">${scopes.map(s => `<div style="padding:0.7rem 0.9rem;border:1px solid var(--border);border-radius:10px;background:var(--well);">
+    ${scopes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(260px, 100%), 1fr));gap:0.6rem;">${scopes.map(s => `<div style="padding:0.7rem 0.9rem;border:1px solid var(--border);border-radius:10px;background:var(--well);">
         <div style="font-weight:700;">${E(s.label)} <span style="color:var(--dim);font-weight:500;font-size:0.8rem;">${E(s.service)} · ${s.blocked_checks} blocked</span></div>
         <div style="font-size:0.78rem;color:var(--dim);margin-top:0.2rem;">Grant (read): ${E((s.permissions || []).join(', '))}</div>
         ${s.license ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;">${E(s.license)}</div>` : ''}

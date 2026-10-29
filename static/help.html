@@ -20,14 +20,16 @@
   .hp-card .g { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
   .hp-card .xp-dl { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 0.3rem 0.9rem; margin: 0.5rem 0 0.4rem; font-size: 0.9rem; line-height: 1.5; }
   .hp-card .xp-dl dt { font-weight: 600; color: var(--dim); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.15rem; }
-  .hp-card .xp-dl dd { margin: 0; }
+  .hp-card .xp-dl dd { margin: 0; overflow-wrap: anywhere; }
+  /* Reflow (WCAG 1.4.10): a long setting name (START_..._WRITES_ENABLED.bat) breaks instead of widening the page at 320px. */
+  dl.hp-gl dt, dl.hp-gl dd, .hp-first span { overflow-wrap: anywhere; }
   .hp-toc { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.4rem 0 0.8rem; }
   .hp-toc a { font-size: 0.8rem; color: var(--accent); border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.6rem; text-decoration: none; }
   .hp-toc a:hover, .hp-toc a:focus-visible { border-color: var(--accent); }
   dl.hp-gl dt { font-weight: 600; margin-top: 0.6rem; }
   dl.hp-gl dd { margin: 0.1rem 0 0; color: var(--dim); font-size: 0.9rem; line-height: 1.5; }
   .hp-dim { color: var(--dim); font-size: 0.9rem; }
-  @media (max-width: 600px) { .hp-card .xp-dl { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .hp-card .xp-dl { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body class="report-page df-page">
