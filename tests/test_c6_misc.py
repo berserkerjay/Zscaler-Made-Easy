@@ -346,3 +346,111 @@ def test_console_index_never_holds_users_or_descriptions():
 
     blob = json.dumps(out)
     assert "alice" not in blob and "555-0100" not in blob and '"HQ"' in blob
+
+
+# ── workspace_notes: caps, escaping, a damaged store ─────────────────
+
+@pytest.fixture
+def wn(monkeypatch, tmp_path):
+    import workspace_notes
+    monkeypatch.setenv("DLP_CHECK_WORKSPACE_NOTES", str(tmp_path / "n" / "workspace_notes.json"))
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
+    return workspace_notes
+
+
+def _store(wn, data):
+    p = wn.store_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(data if isinstance(data, str) else json.dumps(data))
+
+
+@pytest.mark.parametrize("data", [
+    {"tenants": {"acme": []}}, {"tenants": {"acme": {"notes": []}}}, {"tenants": {"acme": {"notes": {"x": "y"}}}},
+    {"tenants": {"acme": {"notes": {"x": {"tags": "abc", "todos": [1, None]}}}}}, "[" * 100000,
+], ids=["bucket-list", "notes-list", "note-string", "fields-wrong", "deep-nesting"])
+def test_workspace_notes_damaged_store_reads_as_empty_not_a_crash(wn, data):
+    """ASVS V7.4.1 · CWE-755 · CWE-20 · WSTG-ERRH-01: a store of the wrong shape (or nested past the parser) never breaks the notes pages."""
+    _store(wn, data)
+
+    listed, tenants = wn.list_notes(), wn.tenants()
+
+    assert all(isinstance(n.get("tags"), list) for n in listed) and isinstance(tenants, list)
+
+
+def test_workspace_notes_damaged_bucket_still_takes_a_new_note(wn):
+    """ASVS V7.4.1 · CWE-755: a tenant bucket that is not an object is replaced by the next note, not a 500."""
+    _store(wn, {"version": 1, "tenants": {"acme (production)": ["junk"]}})
+
+    note = wn.apply("acme (production)", "rule", "R1", "add_tag", by="tester", tag="pci")
+
+    assert note["tags"] == ["pci"]
+
+
+@pytest.mark.parametrize("bad", ["\u202e", "\u2066", "\u2069", "\x85", "\x9b", "\u2028"])
+def test_workspace_notes_bidi_and_c1_controls_are_stripped(wn, bad):
+    """ASVS V5.3.1 · A03:2021 · CWE-451 · CWE-116 · WSTG-INPV-01: bidi overrides, C1 controls and line separators never reach a stored to-do."""
+    note = wn.apply("acme (production)", "rule", "R1", "add_todo", by="tester", text=f"pay{bad}exe.txt")
+
+    assert note["todos"][0]["text"] == "payexe.txt"
+
+
+def test_workspace_notes_emoji_and_accents_are_kept(wn):
+    """ASVS V5.1.3 · CWE-176: ordinary Unicode text (accents, an emoji with a joiner) is kept as typed."""
+    text = "Revoir la règle 👩\u200d💻"
+
+    note = wn.apply("acme (production)", "rule", "R1", "add_comment", by="tester", text=text)
+
+    assert note["comments"][0]["text"] == text
+
+
+@pytest.mark.parametrize("tag", ["<script>", "a\"b", "x'y", "/lead", "_x", "a&b", "a\u200bb"])
+def test_workspace_notes_markup_tags_are_refused(wn, tag):
+    """ASVS V5.1.3 · A03:2021 · CWE-79 · WSTG-INPV-02: a tag with markup, quotes or a bidi override is refused."""
+    with pytest.raises(wn.NotesError):
+        wn.apply("acme (production)", "rule", "R1", "add_tag", by="tester", tag=tag)
+
+
+@pytest.mark.parametrize("href", ["//evil.example/x", "https://evil.example", "javascript:alert(1)", "/\\evil.example", "/a b"])
+def test_workspace_notes_off_site_link_is_refused(wn, href):
+    """ASVS V5.1.5 · A01:2021 · CWE-601 · WSTG-CLNT-04: a note's link must be a path in this app."""
+    with pytest.raises(wn.NotesError):
+        wn.apply("acme (production)", "page", "/x", "add_tag", by="tester", tag="t", href=href)
+
+
+@pytest.mark.parametrize("kind,limit", [("add_todo", 500), ("add_comment", 2000)])
+def test_workspace_notes_text_cap_boundary(wn, kind, limit):
+    """ASVS V5.1.4 · CWE-400 · WSTG-INPV-01: a to-do or comment exactly at its cap is kept; one more character is refused."""
+    wn.apply("acme (production)", "rule", "R1", kind, by="tester", text="x" * limit)
+
+    with pytest.raises(wn.NotesError, match="too long"):
+        wn.apply("acme (production)", "rule", "R1", kind, by="tester", text="x" * (limit + 1))
+
+
+def test_workspace_notes_store_full_refuses_growth(wn, monkeypatch):
+    """ASVS V5.1.4 · CWE-400 · CWE-770: once the store is at its byte cap a growing change is refused and nothing is written."""
+    monkeypatch.setattr(wn, "MAX_STORE_BYTES", 400)
+    wn.apply("acme (production)", "rule", "R1", "add_tag", by="tester", tag="a")
+    before = open(wn.store_path(), encoding="utf-8").read()
+
+    with pytest.raises(wn.NotesError) as e:
+        wn.apply("acme (production)", "rule", "R1", "add_comment", by="tester", text="y" * 300)
+
+    assert e.value.status == 413 and open(wn.store_path(), encoding="utf-8").read() == before
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permissions")
+def test_workspace_notes_store_and_lock_are_owner_only(wn):
+    """ASVS V8.3.1 · CWE-276 · CWE-732: the notes store and its lock file are 0600."""
+    wn.apply("acme (production)", "rule", "R1", "add_tag", by="tester", tag="a")
+
+    modes = {stat.S_IMODE(os.stat(p).st_mode) for p in (wn.store_path(), wn.store_path() + ".lock")}
+    assert modes == {0o600}
+
+
+def test_workspace_notes_pages_never_build_html_from_notes():
+    """ASVS V5.3.3 · A03:2021 · CWE-79 · WSTG-CLNT-03: the To-do page and Find anything render notes through DOM text, never innerHTML."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    srcs = [open(os.path.join(root, "static", f), encoding="utf-8").read() for f in ("report_todo.html", "find_anything.js")]
+
+    assert all("innerHTML" not in s and "insertAdjacentHTML" not in s and "document.write" not in s for s in srcs)
