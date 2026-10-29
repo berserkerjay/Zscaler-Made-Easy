@@ -2959,17 +2959,39 @@ def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = Non
     that id under the name it was given; an id that now carries another
     name is skipped and said so, an object already gone is reported as
     gone. Returns the undo shape (undone / partial / nothing / failed /
-    blocked) older callers and the deployment store expect."""
+    blocked) older callers and the deployment store expect.
+
+    One write run per tenant (pack_ops.tenant_run): the confidence tweaks
+    it puts back and the removal run under the same hold, so while another
+    run holds the tenant nothing is read or written (busy, audited)."""
+    with ops.tenant_run(client) as mine:
+        if not mine:
+            ops.audit_refusal("undo", client, reason=ops.BUSY_REASON)
+            return ops.busy_result(complete=False, activation_required=False)
+        return _undo_held(client, record, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+
+
+def _undo_held(client, record: Dict[str, Any], *, writes_enabled: Optional[bool], log: LogFn, settle_seconds: float) -> Dict[str, Any]:
+    """undo() while it holds the tenant's write-run lock."""
     import pack_removal
-    if writes_enabled is True:
-        tweaks = _undo_tweaks(client, record, log)
-    else:
-        tweaks = []
-    out = pack_removal.remove_deployment(client, record, plan_hash="", writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+    import zia_rate
+    tweaks: List[Dict[str, Any]] = []
+    if writes_enabled is True and any(t.get("kind") == "tweak" for t in record.get("other") or []):
+        # The tweak PUTs go out like every run's writes: the tenant's ZIA
+        # rate limits, run control (a fatal refusal stops the rest) and the audit log.
+        with zia_rate.using_client(client), ops.run_scope(None), ops.audited_run("undo", client) as run:
+            tweaks = _undo_tweaks(client, record, log)
+            tally: Dict[str, int] = {}
+            for t in tweaks:
+                tally[t["status"]] = tally.get(t["status"], 0) + 1
+            run["result"] = {"status": "tweaks_restored" if tally.get("restored") else "tweaks_unchanged", "summary": tally, "results": tweaks}
+    out = pack_removal.remove_deployment(client, record, plan_hash="", writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds,
+                                         tenant_held=True)
     if any(t["status"] == "restored" for t in tweaks) and not (out.get("activation") or {}).get("activated") and out.get("status") not in ("blocked", "stale"):
         _log = log or (lambda m: None)
         _log("Activating the restored dictionary settings…")
-        out["activation"] = ops.activate_once(client.zia, _log)
+        with zia_rate.using_client(client):
+            out["activation"] = ops.activate_once(client.zia, _log)
     results = list(out.get("results") or []) + tweaks
     for it in out.get("kept") or []:
         results.append({"kind": it["kind"], "name": it["name"], "id": it.get("id"), "channel": it.get("channel"), "status": "skipped",

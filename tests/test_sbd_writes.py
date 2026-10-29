@@ -33,6 +33,7 @@ test_write_safety_gates, the plugin tests' fakes): no tenant, no network.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 import sys
@@ -177,6 +178,8 @@ def test_a_key_from_a_synchronous_apply_is_bound_to_the_person_who_ran_it(live):
 
 import test_write_safety_gates as gates  # noqa: E402
 from test_write_safety_gates import world  # noqa: E402,F401  (the recording world: sinks stubbed, SSO writer list)
+
+_REAL_UNDO = __import__("pack_deploy").undo   # taken before the world fixture stubs it
 
 # (typed, accepted?) for the phrase "I UNDERSTAND". No NFKC: what str.upper()
 # or NFKC would fold into the phrase is refused.
@@ -328,14 +331,27 @@ def test_the_run_lock_is_per_tenant_and_released_after_the_run(monkeypatch):
         assert after is True
 
 
-@pytest.mark.parametrize("runner", ["deploy", "removal", "operation"])
+# A deployment whose confidence tweak raised one existing dictionary from
+# LOW to HIGH; the tenant still holds HIGH, so its Undo would PUT it back.
+TWEAK_RECORD = {"id": "dep-tweak", "created": [], "other": [
+    {"kind": "tweak", "status": "modified", "id": 55, "name": "QA Dict", "dictionary": "QA Dict", "field": "confidence_threshold",
+     "before": "CONFIDENCE_LEVEL_LOW", "after": "CONFIDENCE_LEVEL_HIGH"}]}
+
+
+def _tweaked_tenant():
+    from test_pack_deploy import FakeClient, Obj
+    return FakeClient(dicts=[Obj(id=55, name="QA Dict", custom=True, confidence_threshold="CONFIDENCE_LEVEL_HIGH")])
+
+
+@pytest.mark.parametrize("runner", ["deploy", "removal", "operation", "undo"])
 def test_every_write_run_refuses_while_another_run_holds_the_tenant(monkeypatch, runner):
-    """ASVS V11.1.6 · CWE-362 · A04:2021: a pack deploy, a removal and a bulk change each refuse to start (status blocked, busy, nothing read or written) while another write run holds the same tenant."""
+    """ASVS V11.1.6 · CWE-362 · A04:2021: a pack deploy, a removal, a bulk change and a deployment Undo each refuse to start (status blocked, busy, nothing read or written) while another write run holds the same tenant."""
     # Arrange
     import pack_deploy
     import pack_removal
     writes: List[str] = []
     client = gates.Recorder(writes)   # answers every attribute, so its tenant key is given through zia_rate.key_of
+    tweaked = _tweaked_tenant()       # the Undo's tenant: a dictionary its tweak would put back
     holder = SimpleNamespace(_zia_rate_key="tenant-acme")
     monkeypatch.setattr(pack_deploy, "preflight", lambda *a, **k: pytest.fail("read the tenant while busy"))
     monkeypatch.setattr(pack_removal, "_execute_run", lambda *a, **k: pytest.fail("ran while busy"))
@@ -344,14 +360,73 @@ def test_every_write_run_refuses_while_another_run_holds_the_tenant(monkeypatch,
     monkeypatch.setattr(zia_rate, "key_of", lambda c: "tenant-acme")
     call = {"deploy": lambda: pack_deploy.apply(client, [], plan_hash="h", writes_enabled=True),
             "removal": lambda: pack_removal.remove(client, [], plan_hash="h", writes_enabled=True),
-            "operation": lambda: ao.execute(client, BUILD, plan_hash="h", scope={}, writes_enabled=True, assessor=ASSESSOR)}[runner]
+            "operation": lambda: ao.execute(client, BUILD, plan_hash="h", scope={}, writes_enabled=True, assessor=ASSESSOR),
+            "undo": lambda: pack_deploy.undo(tweaked, copy.deepcopy(TWEAK_RECORD), writes_enabled=True, settle_seconds=0)}[runner]
     # Act
     with ops.tenant_run(holder) as got:
         assert got
         out = call()
     # Assert
     assert out["status"] == "blocked" and out.get("busy") is True, out
-    assert writes == []
+    assert writes == [] and tweaked.zia.dlp_dictionary.updated == []
+    assert not [r for r in out.get("results") or [] if r.get("status") == "restored"]
+
+
+def test_a_deployment_undo_on_a_busy_tenant_puts_nothing_and_is_audited(world, monkeypatch):
+    """ASVS V11.1.6 · V7.1.3 · CWE-362 · A04:2021: POST /api/deployments/{id}/undo while another run holds the tenant answers blocked, sends no dictionary PUT and leaves a run_refused audit entry."""
+    # Arrange
+    import audit
+    import deployments
+    import zia_rate
+    monkeypatch.setattr(__import__("pack_deploy"), "undo", _REAL_UNDO)   # the world stubs it; this test needs the real one
+    world.write_mode(True)
+    tenant = _tweaked_tenant()
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: tenant)
+    monkeypatch.setattr(zia_rate, "key_of", lambda c: "tenant-acme")
+    rec = deployments.from_apply({"results": [{"kind": "dictionary", "name": "QA Created", "id": 9001, "status": "created"},
+                                              {"kind": "tweak", "name": "QA Dict", "id": 55, "status": "modified", "dictionary": "QA Dict",
+                                               "field": "confidence_threshold", "before": "CONFIDENCE_LEVEL_LOW",
+                                               "after": "CONFIDENCE_LEVEL_HIGH"}]},
+                                 tenant_label=gates.tenant_auth.record_label(world.creds()), packs=[gates.PACK], options={}, by=ASSESSOR,
+                                 **srv._record_ids(world.creds()))
+    deployments.add(rec)
+    # Act
+    with ops.tenant_run(SimpleNamespace(_zia_rate_key="tenant-acme")) as got:
+        assert got
+        r = world.client(WRITER).post(f"/api/deployments/{rec['id']}/undo", json=gates._b(confirm=True))
+    # Assert
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "blocked" and out.get("busy") is True
+    assert tenant.zia.dlp_dictionary.updated == []
+    refused = [e for e in audit.tail(50) if e.get("event") == "run_refused" and e.get("run") == "undo"]
+    assert len(refused) == 1 and refused[0]["actor"] == WRITER["email"] and "not-a-real-secret" not in json.dumps(refused[0])
+    assert (deployments.get(rec["id"]) or {}).get("undo") is None   # nothing ran, so the record keeps no undo outcome
+
+
+def test_a_deployment_undo_restores_its_tweak_and_removes_under_one_hold(monkeypatch):
+    """ASVS V11.1.6 · CWE-667 · CWE-833: an Undo holds the tenant once for its tweak PUT and its removal (never deadlocks on its own lock) and releases it afterwards."""
+    # Arrange
+    import pack_deploy
+    import zia_rate
+    monkeypatch.setattr(zia_rate, "key_of", lambda c: "tenant-acme")
+    monkeypatch.setattr(ops, "activate_once", lambda zia, log=None: {"activated": True, "status": "ACTIVE"})
+    tenant = _tweaked_tenant()
+    held_during_put: List[bool] = []
+    real_update = tenant.zia.dlp_dictionary.update_dict
+
+    def update(id_, **kw):
+        with ops.tenant_run(SimpleNamespace(_zia_rate_key="tenant-acme")) as other:
+            held_during_put.append(not other)
+        return real_update(id_, **kw)
+    tenant.zia.dlp_dictionary.update_dict = update
+    # Act
+    out = pack_deploy.undo(tenant, copy.deepcopy(TWEAK_RECORD), writes_enabled=True, settle_seconds=0)
+    # Assert
+    assert [r["status"] for r in out["results"] if r["kind"] == "tweak"] == ["restored"], out
+    assert held_during_put == [True] and out.get("busy") is not True
+    with ops.tenant_run(SimpleNamespace(_zia_rate_key="tenant-acme")) as after:
+        assert after is True
 
 
 def test_a_refused_busy_run_is_on_the_audit_log_with_its_actor(monkeypatch, tmp_path):

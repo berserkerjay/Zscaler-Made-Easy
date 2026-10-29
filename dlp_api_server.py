@@ -4620,7 +4620,8 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: 
     logs: list = []
     result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.undo(client, rec, writes_enabled=True, log=logs.append))
     result["logs"] = logs
-    updated = deployments.mark_undo(dep_id, result.get("results") or [], complete=bool(result.get("complete")))
+    # A run refused as busy read and wrote nothing: the record keeps its last undo.
+    updated = rec if result.get("busy") else deployments.mark_undo(dep_id, result.get("results") or [], complete=bool(result.get("complete")))
     result["deployment"] = deployments.summary(updated) if updated else None
     return result
 
