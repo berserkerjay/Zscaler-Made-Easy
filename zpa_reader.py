@@ -38,6 +38,7 @@ Nothing here writes: only `list_*` methods are called (tests enforce it).
 """
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
@@ -128,7 +129,7 @@ def epoch_seconds(v: Any) -> Optional[float]:
         n = float(str(v).strip())
     except (TypeError, ValueError):
         return None
-    if n <= 0:
+    if not math.isfinite(n) or n <= 0:
         return None
     if n > 1e17:
         return n / 1e9
@@ -164,6 +165,13 @@ def _refs(v: Any) -> List[Dict[str, str]]:
     return out
 
 
+def _port(v: Any) -> Optional[int]:
+    """A port from a tenant string: ASCII digits, 0-65535; None otherwise
+    (int() would accept "²" or thousands of digits and then fail)."""
+    s = as_str(v)
+    return int(s) if re.fullmatch(r"[0-9]{1,5}", s) and int(s) <= 65535 else None
+
+
 def port_ranges(seg: Dict[str, Any], proto: str) -> Tuple[List[List[int]], Any]:
     """[[from, to], ...] of a segment for "tcp" / "udp", and the raw value.
     The legacy form is a flat list of from/to strings (["80", "80", "443",
@@ -173,13 +181,14 @@ def port_ranges(seg: Dict[str, Any], proto: str) -> Tuple[List[List[int]], Any]:
     out: List[List[int]] = []
     vals = [as_str(v) for v in legacy] if isinstance(legacy, list) else []
     for a, b in zip(vals[0::2], vals[1::2]):
-        if a.isdigit() and (b or a).isdigit():
-            lo, hi = int(a), int(b or a)
+        lo, hi = _port(a), _port(b or a)
+        if lo is not None and hi is not None:
             out.append([min(lo, hi), max(lo, hi)])
     for p in new if isinstance(new, list) else []:
-        if isinstance(p, dict) and as_str(p.get("from")).isdigit():
-            lo = int(as_str(p.get("from")))
-            hi = int(as_str(p.get("to"))) if as_str(p.get("to")).isdigit() else lo
+        lo = _port(p.get("from")) if isinstance(p, dict) else None
+        if lo is not None:
+            hi = _port(p.get("to"))
+            hi = lo if hi is None else hi
             r = [min(lo, hi), max(lo, hi)]
             if r not in out:
                 out.append(r)
@@ -434,14 +443,44 @@ class _Gate:
         self.calls += 1
 
 
+_SECRET_WORDS = re.compile(r"(?i)(bearer|basic|token|secret|password|provisioning_?key|api_?key)\S*\s*[:=]?\s*\S+")
+# A ZPA provisioning key's shape: "<n>|<cloud host>|<key>" (assumed from the
+# values ZPA shows; the SDK does not document it).
+_PROVISIONING_KEY = re.compile(r"\b\d{1,2}\|[^\s|\"']{3,}\|[^\s\"']{8,}")
+
+
 def _err_text(err: Any) -> str:
     s = re.sub(r"\s+", " ", str(err or "")).strip()
-    s = re.sub(r"(?i)(bearer|token|secret|password)\S*\s*[:=]?\s*\S+", r"\1 [hidden]", s)
+    s = _PROVISIONING_KEY.sub("[hidden]", s)
+    s = _SECRET_WORDS.sub(r"\1 [hidden]", s)
     return s[:200] or "the API answered an error"
 
 
+def _total_pages(resp: Any) -> Optional[int]:
+    """totalPages as the page's JSON states it; None when it does not say.
+    The SDK's own `_total_pages` defaults to 1 when the body omits it, so it
+    is used only for a response that has no body to look at."""
+    getter = getattr(resp, "get_body", None)
+    if callable(getter):
+        try:
+            body = getter()
+        except Exception:  # noqa: BLE001 — unknown, so the short-page rule decides
+            return None
+        if not isinstance(body, dict) or body.get("totalPages") in (None, ""):
+            return None
+        try:
+            return int(str(body["totalPages"]).strip())
+        except ValueError:
+            return None
+    total = getattr(resp, "_total_pages", None)
+    return total if isinstance(total, int) and not isinstance(total, bool) else None
+
+
 def list_all(call: Callable[[Dict[str, Any]], Any], gate: _Gate, max_pages: int = MAX_PAGES) -> Tuple[List[Dict[str, Any]], bool]:
-    """Every page of one list: (items, complete)."""
+    """Every page of one list: (items, complete). An empty page ends it;
+    otherwise the stated totalPages decides (a server that answers fewer
+    than PAGE_SIZE per page is still read to the end), and only when no
+    total is stated does a short page end it."""
     out: List[Dict[str, Any]] = []
     for page in range(1, max_pages + 1):
         gate.before()
@@ -450,10 +489,27 @@ def list_all(call: Callable[[Dict[str, Any]], Any], gate: _Gate, max_pages: int 
             raise ReadError(_err_text(err))
         items = raw_items(result, resp)
         out.extend(items)
-        total = getattr(resp, "_total_pages", None)
-        if len(items) < PAGE_SIZE or (isinstance(total, int) and page >= total):
+        total = _total_pages(resp)
+        if not items or (page >= total if total is not None else len(items) < PAGE_SIZE):
             return out, True
     return out, False
+
+
+def customer_id_problem(client: Any) -> Optional[str]:
+    """Why ZPA must not be called with this client, or None. An SDK client
+    whose configuration carries no valid customer ID would build every ZPA
+    path as /customers/None/...; the check is made before any ZPA call. A
+    client with no SDK configuration (offline snapshots, test fakes) is not
+    judged here: its own customer ID is fixed."""
+    cfg = getattr(client, "_config", None)
+    if not isinstance(cfg, dict) or not isinstance(cfg.get("client"), dict):
+        return None
+    cid = as_str(cfg["client"].get("customerId"))
+    if not cid:
+        return "The ZPA customer ID is missing (Connect to the tenant → Customer ID), so nothing was read from ZPA."
+    if len(cid) > 64 or not re.fullmatch(r"[A-Za-z0-9]+", cid):
+        return "The ZPA customer ID is not valid (letters and digits, at most 64), so nothing was read from ZPA."
+    return None
 
 
 def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optional[threading.Event] = None,
@@ -467,6 +523,9 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
     zpa = getattr(client, "zpa", None)
     if zpa is None:
         raise ReadError("This sign-in has no ZPA API (the classic ZIA API reaches ZIA only).")
+    problem = customer_id_problem(client)
+    if problem:
+        raise ReadError(problem)
     gate = _Gate(cancel, PACE_SECONDS if pace is None else pace)
     snap: Dict[str, Any] = {"read_at": time.time(), "collections": {}, "policies": {}, "scim_groups": {}}
     raw_lists: Dict[str, List[Dict[str, Any]]] = {}
