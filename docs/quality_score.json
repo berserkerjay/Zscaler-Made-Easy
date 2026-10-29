@@ -1,13 +1,21 @@
 {
   "schema_version": 1,
   "generated_by": "tools/quality_score.py",
-  "run": null,
+  "run": {
+    "commit": "c054f3df0793",
+    "date": "2026-10-29T17:05:01",
+    "passed": 21327,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 133,
+    "duration_s": 2130.3
+  },
   "overall": {
-    "score": null,
-    "raw": null,
-    "grade": "",
-    "label": "No score yet",
-    "meaning": "No full test run is recorded yet (docs/qa/test_run.json).",
+    "score": 100,
+    "raw": 100.0,
+    "grade": "A",
+    "label": "Strong",
+    "meaning": "Tests pass, no serious finding is open and the standards are well covered.",
     "cap": null
   },
   "areas": [
@@ -15,14 +23,24 @@
       "key": "regression",
       "name": "Regression",
       "weight": 25,
-      "score": null,
+      "score": 100.0,
       "subs": [
         {
           "key": "regression",
           "name": "Regression",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "findings",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 21327,
+            "failed": 0,
+            "skipped": 133,
+            "files": null
+          },
           "findings": {
             "score": 100.0,
             "open": 0,
@@ -49,14 +67,24 @@
       "key": "secure_by_design",
       "name": "Secure by design",
       "weight": 35,
-      "score": null,
+      "score": 100.0,
       "subs": [
         {
           "key": "write_paths",
           "name": "Write paths",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "findings",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 2477,
+            "failed": 0,
+            "skipped": 0,
+            "files": 14
+          },
           "findings": {
             "score": 100.0,
             "open": 0,
@@ -91,9 +119,19 @@
         {
           "key": "untrusted_input",
           "name": "Untrusted input",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "findings",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 2896,
+            "failed": 0,
+            "skipped": 0,
+            "files": 18
+          },
           "findings": {
             "score": 100.0,
             "open": 0,
@@ -130,9 +168,19 @@
         {
           "key": "auth_scope_secrets",
           "name": "Auth, scope and secrets",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "findings",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 4212,
+            "failed": 0,
+            "skipped": 0,
+            "files": 13
+          },
           "findings": {
             "score": 100.0,
             "open": 0,
@@ -167,9 +215,18 @@
         {
           "key": "supply_chain",
           "name": "Supply chain",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 284,
+            "failed": 0,
+            "skipped": 0,
+            "files": 7
+          },
           "findings": null,
           "coverage": {
             "score": 100.0,
@@ -197,14 +254,24 @@
       "key": "functionality",
       "name": "Functionality",
       "weight": 25,
-      "score": null,
+      "score": 100.0,
       "subs": [
         {
           "key": "traffic_analysis",
           "name": "Traffic analysis",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "findings",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 3680,
+            "failed": 0,
+            "skipped": 0,
+            "files": 23
+          },
           "findings": {
             "score": 100.0,
             "open": 0,
@@ -234,9 +301,19 @@
         {
           "key": "builders",
           "name": "Builders",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "findings",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 1723,
+            "failed": 0,
+            "skipped": 3,
+            "files": 26
+          },
           "findings": {
             "score": 100.0,
             "open": 1,
@@ -264,9 +341,19 @@
         {
           "key": "ui_a11y",
           "name": "UI and accessibility",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "findings",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 2081,
+            "failed": 0,
+            "skipped": 124,
+            "files": 19
+          },
           "findings": {
             "score": 100.0,
             "open": 0,
@@ -305,14 +392,24 @@
       "key": "motion",
       "name": "Motion",
       "weight": 15,
-      "score": null,
+      "score": 100.0,
       "subs": [
         {
           "key": "motion",
           "name": "Motion",
-          "score": null,
-          "based_on": [],
-          "tests": null,
+          "score": 100.0,
+          "based_on": [
+            "tests",
+            "findings",
+            "coverage"
+          ],
+          "tests": {
+            "score": 100.0,
+            "passed": 833,
+            "failed": 0,
+            "skipped": 1,
+            "files": 12
+          },
           "findings": {
             "score": 100.0,
             "open": 0,
@@ -10831,7 +10928,6 @@
     ]
   },
   "warnings": [
-    "No full test run is recorded (docs/qa/test_run.json), so there is no overall score yet.",
     "No findings record yet for: Supply chain. Their scores leave the findings part out."
   ]
 }
