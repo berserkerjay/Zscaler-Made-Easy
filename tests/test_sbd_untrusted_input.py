@@ -684,3 +684,62 @@ def test_terraform_writes_invisible_characters_as_escapes_and_reads_them_back(va
     assert not md_safe.BIDI_CONTROLS.search(quoted) and "\u200b" not in quoted and "\ufeff" not in quoted
     assert string_value(quoted) == value and pack_library._unescape(quoted[1:-1]) == value
     assert not md_safe.BIDI_CONTROLS.search(comment) and "\u200b" not in comment
+
+
+# ── One IDN encoder (UTS 46) for every module that places a host name ────
+
+_IDN_CASES = [("straße.example", "xn--strae-oqa.example"), ("faß.de", "xn--fa-hia.de"), ("σς.example", "xn--3xab.example"),
+              ("münchen.de", "xn--mnchen-3ya.de"), ("Example.COM.", "example.com")]
+
+
+@pytest.mark.parametrize("typed,expected", _IDN_CASES, ids=[c[1] for c in _IDN_CASES])
+def test_every_module_encodes_an_international_host_name_the_same_way(typed, expected):
+    """ASVS V5.1.3 · CWE-176 · CWE-180: the ZPA analysis, the ZPA builder's domain check, Bulk changes and the Path analyzer give one ASCII form for the same typed name (UTS 46, deviation characters ß and ς kept, not mapped to ss and σ)."""
+    # Arrange
+    import admin_ops
+    import ops_zpa
+    import path_analyzer
+    import zia_path_modules
+    import zpa_analysis
+    # Act
+    got = {
+        "zia_path_modules.ascii_host": zia_path_modules.ascii_host(typed),
+        "path_analyzer.parse_destination": path_analyzer.parse_destination(typed)["host"],
+        "zpa_analysis.parse_destination": zpa_analysis.parse_destination(typed)["host"],
+        "zpa_analysis._entry_key": zpa_analysis._entry_key(typed),
+        "ops_zpa.check_domain": ops_zpa.check_domain(typed, "Domain"),
+        "admin_ops._ascii_host": admin_ops._ascii_host(typed.lower().rstrip(".")),
+        "admin_ops.normalize_domain": admin_ops.normalize_domain(typed)[0],
+        "admin_ops.normalize_url": admin_ops.normalize_url(typed)[0],
+    }
+    # Assert
+    assert got == {k: expected for k in got}
+
+
+def test_a_zpa_segment_holding_the_uts46_form_matches_what_the_user_typed():
+    """ASVS V5.1.3 · CWE-180 · CWE-697: a segment that holds xn--strae-oqa.example (or the name in Unicode) matches the typed straße.example, and a wildcard keeps its "*." while the rest is encoded."""
+    # Arrange
+    import zpa_analysis
+    host = zpa_analysis.parse_destination("straße.example")["host"]
+    # Act
+    exact = zpa_analysis._domain_match("xn--strae-oqa.example", host, False)
+    unicode_entry = zpa_analysis._domain_match("Straße.example.", host, False)
+    wildcard = zpa_analysis._entry_key("*.straße.example")
+    # Assert
+    assert exact is not None and unicode_entry == exact
+    assert wildcard == "*.xn--strae-oqa.example"
+
+
+@pytest.mark.parametrize("bad", ["a‍b.example", "xn--zz.ß́́́.example" * 3, "\ud800.example"])
+def test_a_host_name_uts46_refuses_is_refused_in_words_in_every_module(bad):
+    """ASVS V5.1.3 · CWE-20 · CISA SbD fail closed: a name UTS 46 refuses is refused in words by the ZPA analysis, the ZPA builder and Bulk changes (never encoded another way, never an exception other than ValueError)."""
+    # Arrange
+    import admin_ops
+    import ops_zpa
+    import zpa_analysis
+    # Act / Assert
+    with pytest.raises(ValueError):
+        zpa_analysis.parse_destination(bad)
+    with pytest.raises(ValueError):
+        ops_zpa.check_domain(bad, "Domain")
+    assert admin_ops._ascii_host(bad) is None and admin_ops.normalize_domain(bad)[0] is None

@@ -43,6 +43,8 @@ import threading
 import time
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
+import zia_path_modules
+
 SEVERITIES = ("high", "medium", "low", "info")
 SEV_RANK = {s: i for i, s in enumerate(SEVERITIES)}
 TERMINAL_ACCESS = ("ALLOW", "DENY", "REQUIRE_APPROVAL")
@@ -666,19 +668,12 @@ def _t_unused(snap, ix):
     return out
 
 
-def _idna(host: str) -> str:
-    """A host name in its ASCII (punycode) form, as ZPA stores it; the text
-    unchanged when it is ASCII already or cannot be encoded."""
-    if host.isascii():
-        return host
-    try:
-        return host.encode("idna").decode("ascii")
-    except UnicodeError:
-        return host
-
-
 def _entry_key(d: str) -> str:
-    return _idna(d.strip().lower().rstrip("."))
+    """A segment's domain entry as a destination is compared with it: the
+    app's one IDN encoder (zia_path_modules.entry_host, UTS 46 as browsers
+    send it), lower case, no trailing dot, a leading "*." kept; an entry
+    the encoder refuses is kept as written."""
+    return zia_path_modules.entry_host(d)
 
 
 MAX_OVERLAP_FINDINGS = 200     # overlapping pairs listed; past it one finding says there are more
@@ -1086,22 +1081,16 @@ def parse_destination(dest: str, port: Any = None, protocol: str = "tcp") -> Dic
         if re.fullmatch(r"[0-9]{1,6}", p):
             host, inline_port = h, int(p)
     host = host.strip().lower().rstrip(".")
-    if not host.isascii():
+    if not host.isascii():   # an internationalised name, as segments hold it: the app's one encoder (UTS 46)
         try:
-            host = host.encode("idna").decode("ascii")
-        except UnicodeError:
+            host = zia_path_modules.ascii_host(host)
+        except ValueError:
             raise ValueError(f"\"{host[:80]}\" is not a hostname or IP address.")
     is_ip = False
     try:
         ipaddress.ip_address(host)
         is_ip = True
     except ValueError:
-        if not host.isascii():   # an internationalised name, as segments hold it (punycode)
-            import zia_path_modules
-            try:
-                host = zia_path_modules.ascii_host(host)
-            except ValueError:
-                pass
         if not re.match(r"^[a-z0-9_*]([a-z0-9_-]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?)*$", host):
             raise ValueError(f"\"{host[:80]}\" is not a hostname or IP address.")
     port_assumed = False
