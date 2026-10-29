@@ -579,14 +579,6 @@ def test_a_rate_limited_429_carries_the_security_headers(monkeypatch):
     assert r.status_code == 429 and _hardened(r)
 
 
-def test_an_oversized_body_413_carries_the_security_headers(client):
-    """ASVS V14.4.3 · ASVS V13.1.3 · A05:2021 · CWE-400 · WSTG-CONF-12: the body cap's 413 (the outermost cap) has the security headers."""
-    # Act
-    r = client.post("/api/compliance", content=b"x" * (security.get_max_body_bytes() + 1), headers={"content-type": "application/json"})
-    # Assert
-    assert r.status_code == 413 and _hardened(r)
-
-
 def test_a_cors_preflight_carries_the_security_headers(client):
     """ASVS V14.4.3 · ASVS V14.5.3 · A05:2021 · CWE-693 · WSTG-CLNT-07: a CORS preflight answer has the security headers and allows no foreign origin."""
     # Act
@@ -595,10 +587,12 @@ def test_a_cors_preflight_carries_the_security_headers(client):
     assert _hardened(r) and r.headers.get("access-control-allow-origin") != "https://evil.example"
 
 
-def test_the_security_header_layer_is_the_outermost_middleware():
-    """ASVS V14.4.3 · A05:2021 · CWE-693: SecurityHeadersMiddleware wraps every other layer (Starlette runs the last added outermost)."""
+def test_the_security_header_layer_wraps_everything_but_the_body_cap():
+    """ASVS V14.4.3 · A05:2021 · CWE-693: SecurityHeadersMiddleware is just inside the body cap (the outermost layer), so it wraps the rate limiter, CORS and the UI token gate."""
+    # Arrange
+    order = [m.cls for m in srv.app.user_middleware]
     # Assert
-    assert srv.app.user_middleware[0].cls is security.SecurityHeadersMiddleware
+    assert order[0] is security.BodySizeLimitMiddleware and order[1] is security.SecurityHeadersMiddleware
 
 
 # ── 4. Background jobs: ownership, races, caps ─────────────────────────

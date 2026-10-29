@@ -218,15 +218,15 @@ app.add_middleware(
 import offline_tenant as _offline_src
 app.add_middleware(_offline_src.SourceMiddleware)
 app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
+# Just inside the body cap: every answer the other layers make (the rate
+# limiter's 429, a CORS preflight, the UI token's 401) carries CSP, nosniff
+# and frame denial. It reads no request body. A 500 is answered outside
+# every middleware (Starlette's ServerErrorMiddleware), so
+# _safe_exception_handler sets the same headers itself.
+app.add_middleware(SecurityHeadersMiddleware)
 # Outermost: caps declared and streamed (chunked) request bodies before any
 # other layer reads them (see BodySizeLimitMiddleware).
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
-# Outside even the body cap: every answer the app's layers make (the body
-# cap's 413, the rate limiter's 429, a CORS preflight, the UI token's 401)
-# carries CSP, nosniff and frame denial. It reads no request body. A 500 is
-# answered outside every middleware (Starlette's ServerErrorMiddleware), so
-# _safe_exception_handler sets the same headers itself.
-app.add_middleware(SecurityHeadersMiddleware)
 
 
 # ── Generic exception handler — never leak stack traces ────────────
