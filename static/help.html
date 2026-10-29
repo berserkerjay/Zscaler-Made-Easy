@@ -29,6 +29,7 @@
   .hp-dim { color: var(--dim); font-size: 0.9rem; }
   @media (max-width: 600px) { .hp-card .xp-dl { grid-template-columns: 1fr; } }
 </style>
+<link rel="stylesheet" href="/static/hover_help.css">
 </head>
 <body class="report-page df-page">
   <div class="rp-page">
@@ -95,5 +96,7 @@
     if (location.hash) { const el = document.getElementById(location.hash.slice(1)); if (el) { el.setAttribute('tabindex', '-1'); el.focus(); el.scrollIntoView(); } }
   })();
   </script>
+<script src="/static/help_catalog.js"></script>
+<script src="/static/hover_help.js"></script>
 </body>
 </html>

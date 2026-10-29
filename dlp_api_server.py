@@ -414,6 +414,7 @@ GUI_ADDONS = [
     ("guide.css", "style"),
     ("reports.css", "style"),
     ("dashboard.css", "style"),
+    ("hover_help.css", "style"),
     ("icons.js", "script"),         # first: the symbol set every page and add-on draws its icons from
     ("ui_auth.js", "script"),       # the in-app unlock and notice dialogs the fetch wrapper and the guide use
     ("rate_gate.js", "script"),     # the rate-limit check every deploy and delete confirms with
@@ -430,7 +431,9 @@ GUI_ADDONS = [
     ("simple_entry.js", "script"),   # the "Try Simple mode" banner and the deep links from /simple
     ("posture_banner.js", "script"),  # the coverage line and the score-drop banner on the results (posture_plus)
     ("sidebar_order.js", "script"),  # drag / Alt+arrow reordering of the sidebar; dashboard.js starts it
-    ("dashboard.js", "script"),     # last: wraps showResults / renderChecks / resetForm
+    ("dashboard.js", "script"),     # wraps showResults / renderChecks / resetForm
+    ("help_catalog.js", "script"),  # the words of Help on hover, per page and control
+    ("hover_help.js", "script"),    # Help on hover: a pop-up for every control (watches for new ones)
 ]
 
 

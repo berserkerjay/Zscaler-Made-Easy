@@ -33,6 +33,7 @@
   .cp-ev .d { color: var(--dim); font-size: 0.74rem; margin-top: 0.2rem; line-height: 1.4; }
   .cp-empty { padding: 1.5rem; text-align: center; color: var(--dim); }
 </style>
+<link rel="stylesheet" href="/static/hover_help.css">
 </head>
 <body class="report-page df-page">
   <div class="rp-page">
@@ -144,5 +145,7 @@
     load(id).catch(e => fail('This view is no longer available', `${e.message}. Reports are kept in memory while the server runs; open it again from the assessment page.`));
   })();
   </script>
+<script src="/static/help_catalog.js"></script>
+<script src="/static/hover_help.js"></script>
 </body>
 </html>

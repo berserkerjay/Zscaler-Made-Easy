@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
 <link rel="stylesheet" href="/static/flow_anim.css">
+<link rel="stylesheet" href="/static/hover_help.css">
 </head>
 <body class="report-page">
   <div class="rp-page">
@@ -91,5 +92,7 @@
     load(id).catch(e => fail('This report is no longer available', `${e.message}. Reports are kept in memory while the server runs; generate it again from the assessment page.`));
   })();
   </script>
+<script src="/static/help_catalog.js"></script>
+<script src="/static/hover_help.js"></script>
 </body>
 </html>
