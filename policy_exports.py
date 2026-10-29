@@ -318,7 +318,7 @@ def _order_key(r: Rule) -> Tuple[int, int, str]:
     default = r.get("defaultRule") in (True, "true", "True")
     try:
         o = int(r.get("order"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         o = 10 ** 9
     return (1 if default else 0, o, str(r.get("id") or ""))
 
