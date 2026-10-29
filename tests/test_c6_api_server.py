@@ -211,6 +211,35 @@ def test_unexpected_fields_never_reach_a_sign_in_or_a_500(client, signins, route
     assert SECRET not in r.text and "Traceback" not in r.text
 
 
+def test_a_server_fault_names_no_server_folder(client, monkeypatch):
+    """ASVS V7.4.1 · A05:2021 · CWE-209 · WSTG-ERRH-01: a 5xx that quotes an OSError names the app, Python, temp and home folders by role, never by path."""
+    # Arrange
+    import report_docx
+    leak = os.path.join(srv._APP_DIR, "templates", "x.docx")
+
+    def fail(*a, **k):
+        raise FileNotFoundError(2, "No such file", leak)
+    monkeypatch.setattr(report_docx, "generate_report", fail)
+    # Act
+    r = client.post("/api/report/docx", json={"checks": [{"id": "DLP-01", "status": "FAIL"}]})
+    # Assert
+    assert r.status_code == 500 and srv._APP_DIR not in r.text and "<app folder>" in r.json()["detail"]
+    assert _hardened(r)
+
+
+def test_path_scrubbing_covers_each_folder_and_only_server_faults():
+    """ASVS V7.4.1 · CWE-209: each server folder (either slash) is replaced, nested details included; a 4xx detail is left as written."""
+    # Arrange
+    import sys
+    import tempfile
+    detail = {"a": [f"{srv._APP_DIR}/x", f"{sys.prefix}/lib", f"{tempfile.gettempdir()}/t", os.path.expanduser("~") + "/f"]}
+    # Act
+    out = srv._scrub_paths(detail)
+    # Assert
+    assert out == {"a": ["<app folder>/x", "<python>/lib", "<temp>/t", "~/f"]}
+    assert srv._scrub_paths(5) == 5
+
+
 # ── 2. Rule order: token / origin / host, then scope, then write gates ──
 
 API_ROUTES = [r for r in ROUTES if r.path.startswith("/api/") and r.path not in security._UI_AUTH_EXEMPT_PATHS

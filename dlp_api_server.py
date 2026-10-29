@@ -314,10 +314,38 @@ async def _validation_error_handler(request: Request, exc: _RequestValidationErr
     return JSONResponse({"detail": errors}, status_code=422)
 
 
+def _server_paths() -> List[Tuple[str, str]]:
+    """(folder, how an error names it), longest first: the app folder, the
+    Python install, the temporary folder and the home folder."""
+    pairs = [(_APP_DIR, "<app folder>"), (sys.prefix, "<python>"), (getattr(sys, "base_prefix", sys.prefix), "<python>"),
+             (tempfile.gettempdir(), "<temp>"), (os.path.expanduser("~"), "~")]
+    out = []
+    for folder, name in pairs:
+        if folder and len(folder) > 1:
+            out.extend([(folder, name), (folder.replace("\\", "/"), name)])
+    return sorted(set(out), key=lambda p: -len(p[0]))
+
+
+def _scrub_paths(value: Any) -> Any:
+    """`value` with every server folder named by its role, not its path: a
+    5xx detail quoting an exception (an OSError, an ImportError) must not
+    tell the caller where the app, Python or the user's files live."""
+    if isinstance(value, str):
+        for folder, name in _server_paths():
+            value = value.replace(folder, name)
+        return value
+    if isinstance(value, dict):
+        return {k: _scrub_paths(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_paths(v) for v in value]
+    return value
+
+
 @app.exception_handler(_StarletteHTTPException)
 async def _bounded_http_exception_handler(request: Request, exc: _StarletteHTTPException):
-    """Every HTTPException, its detail's strings bounded (headers such as Retry-After kept)."""
-    detail = _bounded(exc.detail)
+    """Every HTTPException, its detail's strings bounded (headers such as
+    Retry-After kept); a server fault's (5xx) detail names no server folder."""
+    detail = _bounded(_scrub_paths(exc.detail) if exc.status_code >= 500 else exc.detail)
     if detail != exc.detail:
         exc = _StarletteHTTPException(status_code=exc.status_code, detail=detail, headers=exc.headers)
     return await _default_http_exception_handler(request, exc)
