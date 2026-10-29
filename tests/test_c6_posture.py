@@ -880,3 +880,27 @@ def test_odd_queue_and_drift_shapes_are_ignored():
     q = pp.queued_fixes([{"status": "pending", "kind": "fix_recipe", "payload": "x"}], ["a"])
     assert q["counted"] == [] and q["not_counted"][0]["check_id"] == ""
     assert pp.tenant_alerts({"drift": "x"}, [], cfg={"score_drop_points": 5, "notify_score_drop": False}) == []
+
+
+_ODD = [None, 0, "", "x", {}, {"a": None}, 1e308, True, [None], [{}]]
+_LIST_FIELDS = {
+    "normalize_zia_rule": ["actions", "urlCategories", "applications"], "normalize_browser_control": ["blockedChromeVersions", "smartIsolationUsers", "bypassApplications"],
+    "normalize_supported": ["versions", "olderVersions"], "normalize_cbi_profile": ["regions", "regionIds", "certificates", "certificateIds"],
+    "normalize_pra_console": ["praPortals"],
+}
+
+
+@pytest.mark.parametrize("fn, field", [(f, k) for f, ks in _LIST_FIELDS.items() for k in ks])
+def test_a_list_field_that_is_not_a_list_is_read_as_empty(fn, field):
+    """ASVS V5.1.4 · CWE-20 · CWE-843 · WSTG-INPV-01: a number, a string, true or an object where the API sends a list never raises."""
+    f = getattr(bs, fn)
+    for v in _ODD:
+        out = f({field: v}, "url_filtering") if fn == "normalize_zia_rule" else f({field: v})
+        assert isinstance(out, dict)
+
+
+@pytest.mark.parametrize("v", _ODD)
+def test_a_rule_whose_sub_rules_are_not_a_list_is_still_analysed(v):
+    """ASVS V5.1.4 · CWE-20 · CWE-843 · WSTG-INPV-01: subRules that came back as a number or true never stops the shadow analysis."""
+    res = sr.analyse({"url_filtering": [_r(1, 1, urlCategories=["A"], subRules=v), _r(2, 2, urlCategories=["A"])]})
+    assert res["counts_by_policy"]["url_filtering"]["rules"] == 2

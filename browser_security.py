@@ -179,9 +179,15 @@ def _upper(v: Any) -> str:
     return as_str(v).upper()
 
 
+def _list(v: Any) -> List[Any]:
+    """A list field of the API's JSON as a list: one that came back as a
+    number, a string or an object (untrusted tenant data) is empty."""
+    return list(v) if isinstance(v, (list, tuple)) else []
+
+
 def _names(v: Any) -> List[str]:
     out = []
-    for x in v or []:
+    for x in _list(v):
         if isinstance(x, dict):
             n = as_str(get(x, "name") or get(x, "id"))
         else:
@@ -262,7 +268,7 @@ def normalize_zia_rule(r: Dict[str, Any], policy: str, rtype: str = "") -> Dict[
     action = get(r, "action")
     if isinstance(action, dict):
         action = get(action, "type") or get(action, "name")
-    acts = [_upper(a) for a in (get(r, "actions") or []) if as_str(a)]
+    acts = [_upper(a) for a in _list(get(r, "actions")) if as_str(a)]
     if as_str(action):
         acts.insert(0, _upper(action))
     prof = _ref(get(r, "cbiProfile"))
@@ -286,20 +292,20 @@ def normalize_browser_control(d: Dict[str, Any]) -> Dict[str, Any]:
     pid = as_str(get(d, "smartIsolationProfileId"))
     if pid and pid != "0" and not prof:
         prof = {"id": pid, "name": ""}
-    blocked = {b: [as_str(v) for v in (get(d, f) or []) if as_str(v)] for b, f in BLOCKED_FIELDS.items()}
+    blocked = {b: [as_str(v) for v in _list(get(d, f)) if as_str(v)] for b, f in BLOCKED_FIELDS.items()}
     return {"allow_all_browsers": as_bool(get(d, "allowAllBrowsers")), "bypass_all_browsers": as_bool(get(d, "bypassAllBrowsers")),
             "enable_warnings": as_bool(get(d, "enableWarnings")), "smart_isolation": as_bool(get(d, "enableSmartBrowserIsolation")),
             "smart_isolation_profile": prof,
-            "smart_isolation_users": len(get(d, "smartIsolationUsers") or []), "smart_isolation_groups": len(get(d, "smartIsolationGroups") or []),
+            "smart_isolation_users": len(_list(get(d, "smartIsolationUsers"))), "smart_isolation_groups": len(_list(get(d, "smartIsolationGroups"))),
             "plugin_check_frequency": as_str(get(d, "pluginCheckFrequency")),
-            "bypass_applications": [as_str(x) for x in (get(d, "bypassApplications") or []) if as_str(x)][:50],
-            "bypass_plugins": [as_str(x) for x in (get(d, "bypassPlugins") or []) if as_str(x)][:50],
+            "bypass_applications": [as_str(x) for x in _list(get(d, "bypassApplications")) if as_str(x)][:50],
+            "bypass_plugins": [as_str(x) for x in _list(get(d, "bypassPlugins")) if as_str(x)][:50],
             "blocked": blocked}
 
 
 def normalize_supported(x: Dict[str, Any]) -> Dict[str, Any]:
-    return {"browser": _upper(get(x, "browserType")), "versions": [as_str(v) for v in (get(x, "versions") or []) if as_str(v)],
-            "older": [as_str(v) for v in (get(x, "olderVersions") or []) if as_str(v)]}
+    return {"browser": _upper(get(x, "browserType")), "versions": [as_str(v) for v in _list(get(x, "versions")) if as_str(v)],
+            "older": [as_str(v) for v in _list(get(x, "olderVersions")) if as_str(v)]}
 
 
 def read_zia(client: Any, log: Callable[[str], None], cancel: Optional[threading.Event], read_cac: bool = False) -> Dict[str, Any]:
@@ -432,13 +438,13 @@ def normalize_cbi_profile(p: Dict[str, Any]) -> Dict[str, Any]:
     dl = get(sc, "deepLink") or {}
     fz = get(ux, "forwardToZia")
     fz_on = as_bool(get(fz, "enabled")) if isinstance(fz, dict) else as_bool(fz)
-    regions = _names(get(p, "regions")) or [as_str(x) for x in (get(p, "regionIds") or [])]
+    regions = _names(get(p, "regions")) or [as_str(x) for x in _list(get(p, "regionIds"))]
     certs = _names(get(p, "certificates"))
     banner = get(p, "banner")
     return {
         "id": as_str(get(p, "id")), "name": as_str(get(p, "name")) or as_str(get(p, "id")), "url": as_str(get(p, "cbiUrl")),
         "is_default": bool(as_bool(get(p, "isDefault"))),
-        "regions": regions[:20], "certificates": certs[:20], "certificate_count": len(get(p, "certificateIds") or certs),
+        "regions": regions[:20], "certificates": certs[:20], "certificate_count": len(_list(get(p, "certificateIds")) or certs),
         "banner": as_str(get(banner, "name")) if isinstance(banner, dict) else "",
         "controls_read": bool(sc) or bool(ux),
         "copy_paste": as_str(get(sc, "copyPaste")).lower() or None,
@@ -449,7 +455,7 @@ def normalize_cbi_profile(p: Dict[str, Any]) -> Dict[str, Any]:
         "restrict_keystrokes": _onoff(get(sc, "restrictKeystrokes")), "camera_and_mic": _onoff(get(sc, "cameraAndMic")),
         "document_viewer": _onoff(get(sc, "documentViewer")), "flattened_pdf": _onoff(get(sc, "flattenedPdf")),
         "local_render": _onoff(get(sc, "localRender")),
-        "deep_link": {"enabled": as_bool(get(dl, "enabled")), "applications": len(get(dl, "applications") or [])},
+        "deep_link": {"enabled": as_bool(get(dl, "enabled")), "applications": len(_list(get(dl, "applications")))},
         "session_persistence": _onoff(get(ux, "sessionPersistence")), "browser_in_browser": _onoff(get(ux, "browserInBrowser")),
         "forward_to_zia": fz_on, "persist_isolation_bar": _onoff(get(ux, "persistIsolationBar")),
         "translate": _onoff(get(ux, "translate")), "zgpu": _onoff(get(ux, "zgpu")),
@@ -490,7 +496,7 @@ def normalize_browser_protection(p: Dict[str, Any], active_ids: Iterable[str] = 
 
 def normalize_ba_segment(s: Dict[str, Any]) -> Dict[str, Any]:
     n = zr.normalize_segment(s)
-    apps = [x for x in (get(s, "clientlessApps") or []) if isinstance(x, dict)]
+    apps = [x for x in _list(get(s, "clientlessApps")) if isinstance(x, dict)]
     return {"id": n["id"], "name": n["name"], "enabled": n["enabled"], "segment_group_id": n["segment_group_id"],
             "browser_access": n["flags"]["browser_access"], "pra": n["flags"]["pra"],
             "ba_apps": len(apps), "ba_http": sum(1 for a in apps if _upper(get(a, "applicationProtocol")) == "HTTP")}
@@ -508,7 +514,7 @@ def normalize_pra_console(c: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": as_bool(get(c, "enabled")) is not False,
             "segment_id": as_str(get(app, "appId")) if isinstance(app, dict) else "",
             "application": as_str(get(app, "name")) if isinstance(app, dict) else "",
-            "portal_ids": [as_str(get(x, "id")) for x in (get(c, "praPortals") or []) if isinstance(x, dict) and as_str(get(x, "id"))]}
+            "portal_ids": [as_str(get(x, "id")) for x in _list(get(c, "praPortals")) if isinstance(x, dict) and as_str(get(x, "id"))]}
 
 
 def normalize_user_portal(p: Dict[str, Any]) -> Dict[str, Any]:

@@ -310,11 +310,16 @@ def normalize(policy: str, raw: Dict[str, Any]) -> Dict[str, Any]:
                 "default_rule": _bool(_f(raw, "default_rule", "defaultRule", default=False)), "hidden_criteria": False}
     known, unknown = _criteria(policy, raw)
     rule = {"policy": policy, "id": raw.get("id"), "name": n["name"], "order": n.get("order"), "state": n["state"], "enabled": n["enabled"],
-            "criteria": known, "unknown": unknown, "sub_rules": [_parent_id(x) for x in (_f(raw, "sub_rules", "subRules", default=[]) or [])]}
+            "criteria": known, "unknown": unknown, "sub_rules": [_parent_id(x) for x in _as_list(_f(raw, "sub_rules", "subRules", default=[]))]}
     rule.update(base)
     rule.setdefault("parent_rule", None)
     rule["sig"] = _signature(rule)
     return rule
+
+
+def _as_list(v: Any) -> List[Any]:
+    """A list field of a raw rule; anything else (untrusted tenant JSON) is empty."""
+    return list(v) if isinstance(v, (list, tuple)) else []
 
 
 def _parent_id(v: Any) -> Optional[str]:
