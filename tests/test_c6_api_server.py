@@ -322,6 +322,101 @@ def test_posture_check_rows_with_odd_sections_are_not_a_500(client, path, value)
     assert r.status_code == 200, r.text[:200]
 
 
+@pytest.mark.parametrize("body", [{"rules": [{"id": 1, "name": "a"}], "order": [[1]]},
+                                  {"rules": [{"id": 1, "name": "a"}], "order": [{"a": 1}]},
+                                  {"rules": [{"id": 1, "name": ["a"]}], "order": [1]}],
+                         ids=["list-token", "object-token", "list-name"])
+def test_a_reorder_token_or_rule_name_that_cannot_be_a_key_is_a_400(client, body):
+    """ASVS V5.1.4 · A04:2021 · CWE-20 · WSTG-INPV-01: an order token that is not an id or a name, or a rule named by a list, is a 400 (unhashable TypeError, 500)."""
+    # Act
+    r = client.post("/api/migrate/reorder", json=body)
+    # Assert
+    assert r.status_code == 400, r.text[:200]
+
+
+def test_reorder_places_named_rules_first_and_keeps_the_rest():
+    """ASVS V5.1.3 · CWE-20: oracle: rules named in `order` (by id or name, once each) come first in that order; unknown tokens are listed; the rest keep their order."""
+    import asyncio
+    # Arrange
+    rules = [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}, {"id": 3, "name": "c"}]
+    # Act
+    out = asyncio.run(srv.migrate_reorder(srv.ReorderRequest(rules=rules, order=["c", 1, 1, "zz"])))
+    # Assert
+    assert [r["id"] for r in out["proposed_rules"]] == [3, 1, 2] and [r["_proposed_order"] for r in out["proposed_rules"]] == [1, 2, 3]
+    assert out["count"] == 3 and out["missing_tokens"] == [1, "zz"]
+
+
+CATALOG = {None: 348, "dlp": 206, "zia": 37, "zpa": 15, "zcc": 26, "genai": 20, "automation": 19, "zdx": 8, "zidentity": 5, "rbac": 12}
+
+
+def test_the_check_catalog_scopes_add_up_to_the_registries(client):
+    """ASVS V1.14.1 · CWE-1059: oracle: each scope of /api/checks lists exactly its registry, and no scope lists everything."""
+    # Arrange
+    regs = {"dlp": srv.REG, "genai": srv.GENAI_REG, "automation": srv.AUTOMATION_REG, "zdx": srv.ZDX_REG, "zidentity": srv.ZID_REG, "rbac": srv.RBAC_REG}
+    for scope in CATALOG:
+        # Act
+        got = client.get("/api/checks", params={"scope": scope} if scope else {}).json()
+        # Assert
+        if scope in regs:
+            assert {c["id"] for c in got} == {c[0] for c in regs[scope]}
+        if scope in ("zia", "zpa", "zcc"):
+            assert {c["id"] for c in got} == {c[0] for c in srv.PLATFORM_REG if c[1].startswith(scope.upper())}
+    everything = client.get("/api/checks").json()
+    assert len(everything) == sum(len(r) for r in (srv.REG, srv.PLATFORM_REG, srv.GENAI_REG, srv.AUTOMATION_REG, srv.ZDX_REG, srv.ZID_REG, srv.RBAC_REG))
+
+
+@pytest.mark.parametrize("scope", sorted(s for s in CATALOG if s))
+@pytest.mark.parametrize("fmt", ["csv", "json", "markdown"])
+def test_the_check_catalog_exports_in_every_format_and_scope(client, scope, fmt):
+    """ASVS V5.3.1 · A03:2021 · CWE-1236 · WSTG-INPV-01: every scope exports as CSV, JSON and Markdown with an attachment name that is a plain token."""
+    # Act
+    r = client.get("/api/checks/export", params={"format": fmt, "scope": scope})
+    # Assert
+    assert r.status_code == 200 and r.content
+    cd = r.headers.get("content-disposition", "")
+    assert not cd or re.fullmatch(r'attachment; filename="?[A-Za-z0-9._-]+"?', cd), cd
+
+
+@pytest.mark.parametrize("detail,legacy,cause", [
+    ("HTTP 429 Too Many Requests", False, "rate"), ("Resource Access Blocked", False, "block"),
+    ("401 Unauthorized", True, "password"), ("403 Forbidden", True, "role"),
+    ("ProxyError: tunnel connection failed", True, "classic ZIA API"), ("invalid_client", False, "client"),
+    ("SSL: CERTIFICATE_VERIFY_FAILED", False, "TLS"), ("Max retries exceeded: name resolution", False, "reach"),
+    ("bad vanity domain", False, "vanity"), ("403 Forbidden", False, "403"), ("something odd", False, "")])
+def test_connection_errors_are_explained_by_their_cause(detail, legacy, cause):
+    """ASVS V7.4.1 · CWE-209 · WSTG-ERRH-01: oracle: each sign-in failure maps to a plain cause and fix for the sign-in in use; the raw text is at most 300 characters."""
+    # Act
+    out = srv._explain_connection_error(detail + " " + "x" * 400, "legacy" if legacy else "oneapi")
+    # Assert
+    assert out["cause"] and out["fix"] and len(out["raw"]) <= 300
+    assert cause.lower() in (out["cause"] + " " + out["fix"]).lower()
+
+
+def test_local_settings_fill_only_what_the_environment_lacks(monkeypatch, tmp_path):
+    """ASVS V14.1.3 · CWE-15 · SSDF PO.5.1: local_settings.env fills unset KEY=VALUE pairs (quotes stripped, comments and junk skipped); a value already set wins."""
+    # Arrange
+    (tmp_path / "local_settings.env").write_text("# note\nC6_A=\"one\"\nC6_B='two'\njunk line\n=nokey\nC6_SET=file\n", encoding="utf-8")
+    monkeypatch.setattr(srv, "_APP_DIR", str(tmp_path))
+    monkeypatch.setenv("C6_SET", "env")
+    for k in ("C6_A", "C6_B"):
+        monkeypatch.delenv(k, raising=False)
+    # Act
+    srv._load_local_settings()
+    # Assert
+    assert (os.environ["C6_A"], os.environ["C6_B"], os.environ["C6_SET"]) == ("one", "two", "env")
+    for k in ("C6_A", "C6_B"):
+        monkeypatch.delenv(k)
+
+
+def test_an_unreadable_local_settings_file_is_ignored(monkeypatch, tmp_path):
+    """ASVS V14.1.3 · CWE-755: a local_settings.env that cannot be read (a folder by that name) is skipped, never a crash at start."""
+    # Arrange
+    (tmp_path / "local_settings.env").mkdir()
+    monkeypatch.setattr(srv, "_APP_DIR", str(tmp_path))
+    # Act / Assert
+    srv._load_local_settings()
+
+
 def test_har_host_counts_are_bounded_and_odd_fields_dropped():
     """ASVS V5.1.3 · CWE-20 · CWE-400: counts are whole numbers in 0..10**12, methods and schemes keep only known short values, duplicates and URLs are skipped."""
     # Arrange

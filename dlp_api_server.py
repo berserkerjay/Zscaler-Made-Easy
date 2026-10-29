@@ -7554,6 +7554,9 @@ async def migrate_reorder(req: ReorderRequest):
     """Re-order an in-memory rule list by an explicit ID/name sequence the user picked in the GUI."""
     if not req.rules or not req.order:
         raise HTTPException(status_code=400, detail="rules and order are required.")
+    _rule_text_fields(req.rules, "rules")   # a name is a lookup key: text only
+    if not all(isinstance(t, (str, int)) and not isinstance(t, bool) for t in req.order):
+        raise HTTPException(status_code=400, detail="`order` must list rule ids or names (text or numbers).")
     by_id = {str(r.get("id")): r for r in req.rules if r.get("id") is not None}
     by_name = {r.get("name"): r for r in req.rules if r.get("name")}
     out, missing = [], []
