@@ -1,0 +1,221 @@
+{
+ "area": "tooltips",
+ "title": "Help on hover: a pop-up for every control on every page (what it does, what input it expects, whether it reads or changes the tenant), with its catalogue and coverage tests",
+ "files": [
+  "static/hover_help.js",
+  "static/hover_help.css",
+  "static/help_catalog.js",
+  "browser_extension/hover_help.js",
+  "browser_extension/hover_help.css",
+  "browser_extension/help_catalog.js",
+  "browser_extension/popup.html",
+  "browser_extension/options.html",
+  "browser_extension/panel.html",
+  "static/*.html (script tags only)",
+  "dlp_api_server.py (GUI_ADDONS only)",
+  "static/explain.js (one glossary entry)",
+  "docs/OVERVIEW.md",
+  "tests/test_c6_tooltips.py",
+  "tests/test_gui_addons.py"
+ ],
+ "standards": [
+  "WCAG 2.2 SC 1.4.13",
+  "WCAG 2.2 SC 1.3.1",
+  "WCAG 2.2 SC 4.1.2",
+  "WCAG 2.2 SC 2.5.8",
+  "WCAG 2.2 SC 1.4.3",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 2.3.3",
+  "ASVS V5.3.3",
+  "ASVS V5.1.3",
+  "ASVS V1.14.1",
+  "CWE-79",
+  "CWE-20",
+  "OWASP A03:2021",
+  "WSTG-CLNT-01",
+  "NIST SSDF PW.8",
+  "SLSA v1.0"
+ ],
+ "coverage": {
+  "before": 0.0,
+  "after": 0.981,
+  "after_functions": 0.97,
+  "how": "V8 block coverage of static/hover_help.js across the browser tests (the file is new; 0 before). The catalogue is data: 1,236 entries, every one matched or checked for orphans."
+ },
+ "checks": [
+  {
+   "id": "C6-TOOLTIPS-C01",
+   "what": "Every visible control on all 35 pages, toured on the sample tenant (tabs, folded sections, dialogs, Analyze / Read / Preview, the Build new forms, stored reports), has an entry with non-empty what and input",
+   "standard": "WCAG 2.2 SC 3.3.2",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C02",
+   "what": "Focus on every such control opens the pop-up with its entry's words, beside the control, inside the viewport; aria-describedby carries the same words; no native title remains",
+   "standard": "WCAG 2.2 SC 1.4.13, SC 4.1.2",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C03",
+   "what": "Real mouse hover opens it; it is hoverable; leaving both closes it; Tab focus opens it and it persists; Esc closes it without moving focus",
+   "standard": "WCAG 2.2 SC 1.4.13",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C04",
+   "what": "Touch: a long press opens it; the info target is 28x28 px, labelled, beside the control",
+   "standard": "WCAG 2.2 SC 2.5.8",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C05",
+   "what": "Contrast of every line of the pop-up, dark and light theme, at least 4.5:1",
+   "standard": "WCAG 2.2 SC 1.4.3",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C06",
+   "what": "At 320 px on every page, every pop-up stays inside the viewport and adds no sideways scroll",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C07",
+   "what": "Reduced motion: no transition; normal: a 120 ms fade",
+   "standard": "WCAG 2.2 SC 2.3.3",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C08",
+   "what": "Hostile catalogue text and a hostile native title render as text and never run; the engine has no HTML sink; the repo's sink scanner passes",
+   "standard": "ASVS V5.3.3, CWE-79",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C09",
+   "what": "No orphan catalogue keys: every id, class and attribute value a key uses exists in that page's sources",
+   "standard": "ASVS V1.14.1",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C10",
+   "what": "A new control without help fails CI with its page and selector named",
+   "standard": "NIST SSDF PW.8",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C11",
+   "what": "The extension's popup, options and side panel load local, byte-identical copies; their controls all have entries; the catalogue holds no remote address or credential-shaped text",
+   "standard": "OpenSSF Scorecard, SLSA v1.0",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C12",
+   "what": "Write controls say they need write mode; the pop-up adds the four gates line",
+   "standard": "ASVS V4.1.3, CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C13",
+   "what": "Plain words: average sentence length and Flesch-Kincaid grade of the catalogue bounded; long sentences only where the page's own wording is reused",
+   "standard": "WCAG 2.2 SC 3.1.5 (applied as guidance)",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-TOOLTIPS-01",
+   "title": "No control explained what it does or what input it expects on hover or focus (the owner's request)",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "Shared Help on hover engine and a catalogue entry for every control on every page and the extension",
+   "test": "tests/test_c6_tooltips.py::test_every_visible_control_has_help",
+   "commit": "d6c4018"
+  },
+  {
+   "id": "C6-TOOLTIPS-02",
+   "title": "Native title tooltips (about 150 controls) did not open on keyboard focus or touch and could not be dismissed with Esc",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "Titles converted into catalogue entries word for word; the engine removes the native title so one pop-up shows",
+   "test": "tests/test_c6_tooltips.py::test_a_converted_title_keeps_its_words",
+   "commit": "d6c4018"
+  },
+  {
+   "id": "C6-TOOLTIPS-03",
+   "title": "A field inside a label with a title (Client Connector installer options on /report/fleet) would show two tooltips at once",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "The engine also converts the title of the label around a control",
+   "test": "tests/test_c6_tooltips.py::test_every_control_opens_its_help_on_focus",
+   "commit": "d6c4018"
+  },
+  {
+   "id": "C6-TOOLTIPS-04",
+   "title": "/help scrolls sideways at 320 px: the .xp-dl grid's 1fr column takes its longest word's width (362 px page)",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "open",
+   "fix": "minmax(0, 1fr) column and overflow-wrap on dt/dd at phone width (checked in the browser: 320 px page)",
+   "test": "tests/test_c6_tooltips.py::test_the_help_stays_inside_320px_and_never_scrolls_sideways",
+   "commit": "",
+   "proposed_patch": "--- a/static/help.html\n+++ b/static/help.html\n@@ -29,3 +29,3 @@\n   .hp-dim { color: var(--dim); font-size: 0.9rem; }\n-  @media (max-width: 600px) { .hp-card .xp-dl { grid-template-columns: 1fr; } }\n+  @media (max-width: 600px) { .hp-card .xp-dl { grid-template-columns: minmax(0, 1fr); } .hp-card .xp-dl dt, .hp-card .xp-dl dd { min-width: 0; overflow-wrap: anywhere; } }\n </style>\n"
+  },
+  {
+   "id": "C6-TOOLTIPS-05",
+   "title": "/report/fleet scrolls sideways at 320 px: installer option labels are inline-flex rows that never wrap (343 px page)",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "open",
+   "fix": "Let the labels wrap and shrink (checked in the browser: 320 px page)",
+   "test": "tests/test_c6_tooltips.py::test_the_help_stays_inside_320px_and_never_scrolls_sideways",
+   "commit": "",
+   "proposed_patch": "--- a/static/report_fleet.html\n+++ b/static/report_fleet.html\n@@ -45,3 +45,3 @@\n   .zf-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0; }\n-  .zf-row label { display: inline-flex; gap: 0.35rem; align-items: center; font-size: 0.86rem; }\n+  .zf-row label { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; font-size: 0.86rem; min-width: 0; max-width: 100%; }\n   .zf-row select, .zf-row input[type=search] { min-height: 34px; padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.84rem; max-width: 100%; }\n"
+  },
+  {
+   "id": "C6-TOOLTIPS-06",
+   "title": "The shared browser-test harness (test_findings_reflow.run_in_browser) leaves the in-app updater and restart live: a test that clicks Update now runs git against the developer's checkout (seen in this QA: a crawl switched the clone to main and stashed local edits)",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "asvs": "V14.1.1",
+   "status": "open",
+   "fix": "Neutralise app_update.update and schedule_restart in the harness as tests/test_c6_tooltips.py does",
+   "test": "tests/test_c6_tooltips.py::test_the_tour_left_no_script_errors",
+   "commit": "",
+   "proposed_patch": "--- a/tests/test_findings_reflow.py\n+++ b/tests/test_findings_reflow.py\n@@ -197,2 +197,5 @@\n     mp.setattr(srv, \"_latest_remote_commit\", lambda branch=\"main\": None)\n+    import app_update   # a toured \"Update now\" or \"Restart\" must never touch this checkout or process\n+    mp.setattr(app_update, \"update\", lambda *a, **k: {\"ok\": False, \"message\": \"disabled in tests\"})\n+    mp.setattr(app_update, \"schedule_restart\", lambda *a, **k: {\"ok\": False, \"message\": \"disabled in tests\"})\n     server = uvicorn.Server(uvicorn.Config(srv.app, host=\"127.0.0.1\", port=0, lifespan=\"off\", log_level=\"warning\", access_log=False))\n"
+  },
+  {
+   "id": "C6-TOOLTIPS-07",
+   "title": "Some controls have no stable hook of their own (offline_tenant.js snapshot buttons, find_anything.js card buttons, pov.js intake fields and report buttons, flow_pages.js walk buttons, panel.js detail buttons, zcc_fleet.js details) so their entries use structural selectors or one entry per family",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V1.14.1",
+   "status": "accepted",
+   "fix": "Entries exist and pass; adding ids would edit files owned by other areas. Suggested hooks are in this record's checks",
+   "test": "tests/test_c6_tooltips.py::test_every_catalogue_key_names_a_real_control",
+   "commit": "d6c4018"
+  },
+  {
+   "id": "C6-TOOLTIPS-08",
+   "title": "docs/SECURITY_TESTING.md must be regenerated for the new test file (tools/security_test_matrix.py --check fails until it is)",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "open",
+   "fix": "Run python tools/security_test_matrix.py (this area may not edit that file)",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "",
+   "proposed_patch": "diff --git a/docs/SECURITY_TESTING.md b/docs/SECURITY_TESTING.md\nindex 7f21cc2..2dd5256 100644\n--- a/docs/SECURITY_TESTING.md\n+++ b/docs/SECURITY_TESTING.md\n@@ -3,7 +3,7 @@\n Generated by `python tools/security_test_matrix.py` from the tests' own docstrings; CI fails when it is stale\n or when a test in a QA file names no standard. Each test's docstring starts with the controls it checks.\n \n-1230 tests carry a mapping. Standards: OWASP ASVS 4.0.3 Level 2, OWASP Top 10 2021, CWE, OWASP WSTG,\n+1266 tests carry a mapping. Standards: OWASP ASVS 4.0.3 Level 2, OWASP Top 10 2021, CWE, OWASP WSTG,\n WCAG 2.2 AA, SLSA v1.0, OpenSSF Scorecard and NIST SP 800-218 (SSDF). Fixes follow CISA Secure by Design:\n secure defaults, deny by default, fail closed, least privilege.\n \n@@ -15,7 +15,7 @@ secure defaults, deny by default, fail closed, least privilege.\n | V1.1.2 | 30 | `test_bulk_test.py`, `test_data_flow.py`, `test_ops_zcc.py`, `test_path_zia_modules.py` |\n | V1.4.1 | 79 | `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_qa6_builders_lifecycle.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_write_safety_gates.py` |\n | V1.4.4 | 75 | `test_bulk_test.py`, `test_data_flow.py`, `test_flow_motion_models.py`, `test_ops_zpa.py`, `test_path_live_motion.py`, `test_path_zpa_workloads.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_readiness.py`, `test_scope_rule_routes.py` |\n-| V1.14.1 | 17 | `test_auth_session.py`, `test_offline_tenant.py`, `test_ops_zpa.py`, `test_sbd_offline_least_privilege.py`, `test_standalone.py`, `test_xss_sinks.py` |\n+| V1.14.1 | 23 | `test_auth_session.py`, `test_c6_tooltips.py`, `test_offline_tenant.py`, `test_ops_zpa.py`, `test_sbd_offline_least_privilege.py`, `test_standalone.py`, `test_xss_sinks.py` |\n | V1.14.5 | 3 | `test_path_zpa_workloads.py` |\n | V1.14.6 | 3 | `test_ops_plugins.py`, `test_readiness.py` |\n | V2.10.2 | 1 | `test_standalone.py` |\n@@ -29,20 +29,20 @@ secure defaults, deny by default, fail closed, least privilege.\n | V3.5.2 | 1 | `test_auth_session.py` |\n | V3.5.3 | 1 | `test_sbd_offline_least_privilege.py` |\n | V4.1.1 | 17 | `test_auth_session.py`, `test_bulk_test.py`, `test_offline_tenant.py`, `test_ops_plugins.py`, `test_quality_score.py`, `test_sbd_offline_least_privilege.py`, `test_standalone.py` |\n-| V4.1.3 | 128 | `test_auth_session.py`, `test_bulk_test.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_flows.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n+| V4.1.3 | 129 | `test_auth_session.py`, `test_bulk_test.py`, `test_c6_tooltips.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_flows.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n | V4.1.5 | 7 | `test_auth_session.py`, `test_extension_security.py`, `test_path_whatif.py`, `test_readiness.py`, `test_scope_rule_routes.py` |\n | V4.2.1 | 22 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_regression_flows.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py` |\n | V4.2.2 | 9 | `test_auth_session.py`, `test_extension_security.py`, `test_ops_zdx.py`, `test_write_safety_gates.py` |\n | V4.3.1 | 1 | `test_pov.py` |\n | V5.1.1 | 2 | `test_offline_tenant.py`, `test_ops_zcc.py` |\n-| V5.1.3 | 110 | `test_api_contracts.py`, `test_bulk_test.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_sbd_writes.py`, `test_standalone.py` |\n+| V5.1.3 | 113 | `test_api_contracts.py`, `test_bulk_test.py`, `test_c6_tooltips.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_sbd_writes.py`, `test_standalone.py` |\n | V5.1.4 | 55 | `test_api_contracts.py`, `test_bulk_test.py`, `test_export_integrity.py`, `test_offline_tenant.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_migration.py`, `test_sbd_untrusted_input.py`, `test_standalone.py`, `test_zcc_device_state.py` |\n | V5.1.5 | 2 | `test_export_injection.py`, `test_sbd_canary_renderers.py` |\n | V5.2.4 | 16 | `test_pac_eval.py`, `test_qa_func_path.py`, `test_standalone.py` |\n | V5.2.5 | 3 | `test_pac_eval.py` |\n | V5.2.6 | 7 | `test_outbound_ssrf.py` |\n | V5.3.1 | 37 | `test_api_contracts.py`, `test_export_injection.py`, `test_export_integrity.py`, `test_quality_score.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py` |\n-| V5.3.3 | 24 | `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_ops_zdx.py`, `test_path_live_motion.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_canary_renderers.py`, `test_xss_render_sites.py`, `test_xss_sinks.py` |\n+| V5.3.3 | 28 | `test_c6_tooltips.py`, `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_ops_zdx.py`, `test_path_live_motion.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_canary_renderers.py`, `test_xss_render_sites.py`, `test_xss_sinks.py` |\n | V5.3.4 | 2 | `test_bulk_test.py` |\n | V5.3.8 | 4 | `test_app_update.py`, `test_ops_zcc.py`, `test_supply_chain_qa.py` |\n | V5.3.10 | 1 | `test_ops_zpa.py` |\n@@ -53,7 +53,7 @@ secure defaults, deny by default, fail closed, least privilege.\n | V7.1.1 | 34 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_ops_zcc.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_secret_canaries.py` |\n | V7.1.2 | 2 | `test_dos_limits.py`, `test_pov.py` |\n | V7.1.3 | 7 | `test_auth_session.py`, `test_dos_limits.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_sbd_writes.py` |\n-| V7.4.1 | 38 | `test_api_contracts.py`, `test_auth_session.py`, `test_dos_limits.py`, `test_entrypoints.py`, `test_files_paths.py`, `test_ops_aiguard.py`, `test_ops_zdx.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_secret_canaries.py` |\n+| V7.4.1 | 39 | `test_api_contracts.py`, `test_auth_session.py`, `test_c6_tooltips.py`, `test_dos_limits.py`, `test_entrypoints.py`, `test_files_paths.py`, `test_ops_aiguard.py`, `test_ops_zdx.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_secret_canaries.py` |\n | V8.1.1 | 2 | `test_scope_rule_routes.py` |\n | V8.1.2 | 1 | `test_files_paths.py` |\n | V8.2.2 | 2 | `test_extension_security.py`, `test_secret_canaries.py` |\n@@ -78,9 +78,11 @@ secure defaults, deny by default, fail closed, least privilege.\n | V12.6.1 | 7 | `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_untrusted_input.py` |\n | V14.1.1 | 8 | `test_posture_plus.py`, `test_sbd_canary_renderers.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n | V14.1.3 | 3 | `test_sbd_offline_least_privilege.py`, `test_standalone.py` |\n+| V14.2 | 1 | `test_c6_tooltips.py` |\n | V14.2.1 | 1 | `test_standalone.py` |\n | V14.2.3 | 1 | `test_flow_motion_models.py` |\n | V14.3.3 | 4 | `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zia_baseline.py` |\n+| V14.4 | 2 | `test_c6_tooltips.py` |\n | V14.4.1 | 5 | `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_quality_score.py` |\n | V14.4.3 | 2 | `test_extension_security.py`, `test_path_zpa_workloads.py` |\n | V14.5.1 | 5 | `test_extension_security.py`, `test_path_zpa_workloads.py` |\n@@ -92,12 +94,12 @@ secure defaults, deny by default, fail closed, least privilege.\n | Control | Tests | Files |\n |---|---|---|\n | CWE-15 | 2 | `test_standalone.py` |\n-| CWE-20 | 117 | `test_api_contracts.py`, `test_bulk_test.py`, `test_export_injection.py`, `test_export_integrity.py`, `test_extension_security.py`, `test_flow_motion_models.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_migration.py`, `test_sbd_untrusted_input.py`, `test_sbd_writes.py`, `test_standalone.py`, `test_zcc_device_state.py` |\n+| CWE-20 | 120 | `test_api_contracts.py`, `test_bulk_test.py`, `test_c6_tooltips.py`, `test_export_injection.py`, `test_export_integrity.py`, `test_extension_security.py`, `test_flow_motion_models.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_migration.py`, `test_sbd_untrusted_input.py`, `test_sbd_writes.py`, `test_standalone.py`, `test_zcc_device_state.py` |\n | CWE-22 | 15 | `test_auth_session.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py`, `test_standalone.py` |\n | CWE-59 | 4 | `test_files_paths.py`, `test_product_name.py`, `test_quality_score.py` |\n | CWE-74 | 6 | `test_export_injection.py`, `test_sbd_untrusted_input.py` |\n | CWE-78 | 4 | `test_app_update.py`, `test_ops_zcc.py`, `test_supply_chain_qa.py` |\n-| CWE-79 | 32 | `test_export_injection.py`, `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_ops_zdx.py`, `test_path_live_motion.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_canary_renderers.py`, `test_xss_render_sites.py`, `test_xss_sinks.py` |\n+| CWE-79 | 36 | `test_c6_tooltips.py`, `test_export_injection.py`, `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_ops_zdx.py`, `test_path_live_motion.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_canary_renderers.py`, `test_xss_render_sites.py`, `test_xss_sinks.py` |\n | CWE-88 | 3 | `test_ops_zcc.py`, `test_outbound_ssrf.py`, `test_standalone.py` |\n | CWE-94 | 19 | `test_export_injection.py`, `test_export_integrity.py`, `test_pac_eval.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n | CWE-95 | 11 | `test_pac_eval.py` |\n@@ -111,7 +113,7 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-183 | 1 | `test_auth_session.py` |\n | CWE-185 | 2 | `test_extension_security.py` |\n | CWE-190 | 1 | `test_sbd_untrusted_input.py` |\n-| CWE-200 | 38 | `test_auth_session.py`, `test_bulk_test.py`, `test_export_injection.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_secret_canaries.py` |\n+| CWE-200 | 39 | `test_auth_session.py`, `test_bulk_test.py`, `test_c6_tooltips.py`, `test_export_injection.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_secret_canaries.py` |\n | CWE-201 | 3 | `test_ops_zia_baseline.py`, `test_scope_rule_routes.py` |\n | CWE-208 | 1 | `test_auth_session.py` |\n | CWE-209 | 20 | `test_api_contracts.py`, `test_entrypoints.py`, `test_ops_aiguard.py`, `test_ops_zdx.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_quality_score.py`, `test_readiness.py`, `test_secret_canaries.py` |\n@@ -193,18 +195,18 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-697 | 8 | `test_auth_session.py`, `test_qa_func_path.py` |\n | CWE-732 | 7 | `test_files_paths.py`, `test_offline_tenant.py`, `test_posture_plus.py`, `test_pov.py`, `test_sbd_offline_least_privilege.py`, `test_secret_canaries.py` |\n | CWE-754 | 21 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_zcc_device_state.py` |\n-| CWE-755 | 18 | `test_api_contracts.py`, `test_auth_session.py`, `test_files_paths.py`, `test_flow_motion_browser.py`, `test_ops_zdx.py`, `test_path_zia_modules.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_untrusted_input.py` |\n+| CWE-755 | 19 | `test_api_contracts.py`, `test_auth_session.py`, `test_c6_tooltips.py`, `test_files_paths.py`, `test_flow_motion_browser.py`, `test_ops_zdx.py`, `test_path_zia_modules.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_untrusted_input.py` |\n | CWE-770 | 34 | `test_assess_stream.py`, `test_bulk_test.py`, `test_dos_limits.py`, `test_offline_tenant.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_standalone.py`, `test_suite_stability.py`, `test_tenant_pacing.py` |\n | CWE-776 | 2 | `test_files_paths.py`, `test_quality_score.py` |\n | CWE-778 | 8 | `test_auth_session.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_pov.py`, `test_sbd_writes.py` |\n | CWE-779 | 1 | `test_dos_limits.py` |\n | CWE-798 | 4 | `test_auth_session.py`, `test_secret_canaries.py`, `test_standalone.py` |\n-| CWE-829 | 3 | `test_extension_security.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n+| CWE-829 | 4 | `test_c6_tooltips.py`, `test_extension_security.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n | CWE-833 | 1 | `test_sbd_writes.py` |\n | CWE-837 | 2 | `test_sbd_writes.py` |\n | CWE-838 | 1 | `test_sbd_untrusted_input.py` |\n | CWE-840 | 4 | `test_sbd_writes.py` |\n-| CWE-841 | 87 | `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_qa6_builders_lifecycle.py`, `test_sbd_writes.py`, `test_write_safety_gates.py` |\n+| CWE-841 | 88 | `test_c6_tooltips.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_qa6_builders_lifecycle.py`, `test_sbd_writes.py`, `test_write_safety_gates.py` |\n | CWE-843 | 5 | `test_api_contracts.py`, `test_sbd_untrusted_input.py` |\n | CWE-862 | 19 | `test_auth_session.py`, `test_bulk_test.py`, `test_ops_zcc.py`, `test_ops_zia_baseline.py`, `test_quality_score.py`, `test_regression_flows.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n | CWE-863 | 50 | `test_bulk_test.py`, `test_extension_security.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n@@ -215,11 +217,11 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-1004 | 3 | `test_auth_session.py`, `test_offline_tenant.py` |\n | CWE-1007 | 1 | `test_sbd_untrusted_input.py` |\n | CWE-1023 | 1 | `test_offline_tenant.py` |\n-| CWE-1059 | 18 | `test_bulk_test.py`, `test_data_flow.py`, `test_ops_plugins.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_xss_sinks.py` |\n+| CWE-1059 | 19 | `test_bulk_test.py`, `test_c6_tooltips.py`, `test_data_flow.py`, `test_ops_plugins.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_xss_sinks.py` |\n | CWE-1068 | 6 | `test_openapi_regression.py` |\n | CWE-1088 | 6 | `test_outbound_ssrf.py` |\n | CWE-1104 | 2 | `test_path_zpa_workloads.py`, `test_readiness.py` |\n-| CWE-1164 | 1 | `test_sbd_canary_renderers.py` |\n+| CWE-1164 | 2 | `test_c6_tooltips.py`, `test_sbd_canary_renderers.py` |\n | CWE-1173 | 1 | `test_ops_plugins.py` |\n | CWE-1188 | 40 | `test_auth_session.py`, `test_ops_aiguard.py`, `test_ops_zcc.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_quality_score.py`, `test_sbd_writes.py`, `test_standalone.py`, `test_write_safety_gates.py` |\n | CWE-1236 | 11 | `test_bulk_test.py`, `test_export_integrity.py`, `test_ops_zpa.py`, `test_sbd_canary_renderers.py` |\n@@ -263,7 +265,7 @@ secure defaults, deny by default, fail closed, least privilege.\n | WSTG-BUSL-04 | 1 | `test_suite_stability.py` |\n | WSTG-BUSL-07 | 5 | `test_dos_limits.py` |\n | WSTG-BUSL-09 | 28 | `test_dos_limits.py`, `test_files_paths.py`, `test_pac_eval.py`, `test_pov.py`, `test_sbd_untrusted_input.py`, `test_xss_render_sites.py` |\n-| WSTG-CLNT-01 | 2 | `test_path_live_motion.py`, `test_sbd_canary_renderers.py` |\n+| WSTG-CLNT-01 | 5 | `test_c6_tooltips.py`, `test_path_live_motion.py`, `test_sbd_canary_renderers.py` |\n | WSTG-CLNT-04 | 1 | `test_sbd_canary_renderers.py` |\n | WSTG-CLNT-07 | 3 | `test_auth_session.py`, `test_extension_security.py`, `test_write_safety_gates.py` |\n | WSTG-CLNT-10 | 1 | `test_auth_session.py` |\n@@ -292,24 +294,27 @@ secure defaults, deny by default, fail closed, least privilege.\n | Control | Tests | Files |\n |---|---|---|\n | SC 1.1.1 | 27 | `test_flow_motion_browser.py`, `test_flow_motion_models.py`, `test_flow_pages.py`, `test_path_live_motion.py`, `test_path_live_motion_browser.py`, `test_quality_score.py` |\n-| SC 1.3.1 | 17 | `test_accessibility.py`, `test_bulk_test.py`, `test_flow_pages.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_path_live_motion_browser.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py` |\n+| SC 1.3.1 | 19 | `test_accessibility.py`, `test_bulk_test.py`, `test_c6_tooltips.py`, `test_flow_pages.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_path_live_motion_browser.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py` |\n | SC 1.3.2 | 3 | `test_flow_pages.py`, `test_path_live_motion.py` |\n | SC 1.4.1 | 3 | `test_flow_motion_models.py`, `test_flow_pages.py`, `test_path_live_motion.py` |\n-| SC 1.4.3 | 10 | `test_accessibility.py`, `test_quality_score.py` |\n-| SC 1.4.10 | 21 | `test_connect_reflow.py`, `test_findings_reflow.py`, `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_path_live_motion_browser.py`, `test_quality_score.py`, `test_readiness.py`, `test_report_reflow.py` |\n-| SC 2.1.1 | 13 | `test_accessibility.py`, `test_bulk_test.py`, `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_path_live_motion.py`, `test_path_live_motion_browser.py`, `test_path_zpa_workloads.py`, `test_pov.py` |\n+| SC 1.4.3 | 11 | `test_accessibility.py`, `test_c6_tooltips.py`, `test_quality_score.py` |\n+| SC 1.4.10 | 22 | `test_c6_tooltips.py`, `test_connect_reflow.py`, `test_findings_reflow.py`, `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_path_live_motion_browser.py`, `test_quality_score.py`, `test_readiness.py`, `test_report_reflow.py` |\n+| SC 1.4.13 | 12 | `test_c6_tooltips.py` |\n+| SC 2.1.1 | 14 | `test_accessibility.py`, `test_bulk_test.py`, `test_c6_tooltips.py`, `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_path_live_motion.py`, `test_path_live_motion_browser.py`, `test_path_zpa_workloads.py`, `test_pov.py` |\n | SC 2.2.2 | 22 | `test_flow_motion_browser.py`, `test_flow_motion_models.py`, `test_flow_pages.py`, `test_path_live_motion.py`, `test_path_live_motion_browser.py` |\n-| SC 2.3.3 | 11 | `test_accessibility.py`, `test_flow_motion_browser.py`, `test_flow_motion_models.py`, `test_flow_pages.py`, `test_path_live_motion.py`, `test_path_live_motion_browser.py` |\n+| SC 2.3.3 | 12 | `test_accessibility.py`, `test_c6_tooltips.py`, `test_flow_motion_browser.py`, `test_flow_motion_models.py`, `test_flow_pages.py`, `test_path_live_motion.py`, `test_path_live_motion_browser.py` |\n | SC 2.4.3 | 1 | `test_path_live_motion_browser.py` |\n | SC 2.4.4 | 3 | `test_flow_motion_models.py`, `test_ops_aiguard.py`, `test_pov.py` |\n | SC 2.4.6 | 1 | `test_quality_score.py` |\n-| SC 2.5.8 | 1 | `test_accessibility.py` |\n+| SC 2.5.1 | 1 | `test_c6_tooltips.py` |\n+| SC 2.5.8 | 2 | `test_accessibility.py`, `test_c6_tooltips.py` |\n+| SC 3.1.5 | 1 | `test_c6_tooltips.py` |\n | SC 3.2.2 | 1 | `test_ops_plugins.py` |\n | SC 3.2.3 | 1 | `test_pov.py` |\n | SC 3.2.4 | 10 | `test_accessibility.py`, `test_product_name.py`, `test_readiness.py` |\n | SC 3.3.1 | 1 | `test_ops_plugins.py` |\n-| SC 3.3.2 | 5 | `test_explain.py`, `test_ops_zcc.py`, `test_path_whatif.py`, `test_readiness.py` |\n-| SC 4.1.2 | 7 | `test_accessibility.py`, `test_bulk_test.py`, `test_ops_zcc.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py` |\n+| SC 3.3.2 | 9 | `test_c6_tooltips.py`, `test_explain.py`, `test_ops_zcc.py`, `test_path_whatif.py`, `test_readiness.py` |\n+| SC 4.1.2 | 12 | `test_accessibility.py`, `test_bulk_test.py`, `test_c6_tooltips.py`, `test_ops_zcc.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py` |\n | SC 4.1.3 | 4 | `test_flow_motion_browser.py`, `test_quality_score.py`, `test_readiness.py` |\n \n ## SLSA v1.0\n@@ -322,6 +327,7 @@ secure defaults, deny by default, fail closed, least privilege.\n | SLSA v1.0 Build L3 (pinned inputs) | 1 | `test_supply_chain_qa.py` |\n | SLSA v1.0 Source | 1 | `test_standalone.py` |\n | SLSA v1.0 Source (verified provenance) | 1 | `test_supply_chain_qa.py` |\n+| SLSA v1.0 build integrity | 1 | `test_c6_tooltips.py` |\n \n ## OpenSSF Scorecard\n \n@@ -348,12 +354,13 @@ secure defaults, deny by default, fail closed, least privilege.\n | PS.3.1 | 2 | `test_standalone.py` |\n | PS.3.2 | 3 | `test_standalone.py`, `test_supply_chain_qa.py` |\n | PW.1.1 | 2 | `test_bulk_test.py`, `test_readiness.py` |\n-| PW.4 | 1 | `test_secret_canaries.py` |\n+| PW.4 | 2 | `test_c6_tooltips.py`, `test_secret_canaries.py` |\n | PW.4.1 | 8 | `test_ops_zdx.py`, `test_path_zpa_workloads.py`, `test_readiness.py`, `test_sbom_licences.py`, `test_supply_chain_qa.py` |\n | PW.4.4 | 1 | `test_supply_chain_qa.py` |\n | PW.5.1 | 1 | `test_offline_tenant.py` |\n | PW.6.2 | 1 | `test_standalone.py` |\n | PW.7.2 | 1 | `test_supply_chain_qa.py` |\n+| PW.8 | 2 | `test_c6_tooltips.py` |\n | PW.8.2 | 56 | `test_entrypoints.py`, `test_openapi_regression.py`, `test_pov.py`, `test_quality_score.py`, `test_regression_flows.py`, `test_regression_migration.py`, `test_scope_rule_routes.py`, `test_security_test_matrix.py`, `test_standalone.py`, `test_suite_stability.py`, `test_zcc_fleet.py` |\n | PW.9.1 | 9 | `test_quality_score.py`, `test_standalone.py` |\n | RV.1.1 | 4 | `test_quality_score.py`, `test_supply_chain_qa.py` |\n"
+  }
+ ],
+ "tests_added": 320
+}
