@@ -845,3 +845,38 @@ def test_a_record_that_names_no_tenant_is_not_shown_on_a_tenants_timeline():
     every = at.build(window_=at.window(30, now=datetime(2026, 10, 25, tzinfo=timezone.utc).timestamp()), zia=None, deployments=deps,
                      audit_entries=entries, zia_requested=False)
     assert every["summary"]["events"] == 4   # no tenant chosen: everything
+
+
+@pytest.mark.parametrize("cc", [
+    {"gaps": [{"name": "Email", "checks_not_in_scope": "lots"}]}, {"gaps": "x"}, {"alternative": [None, 5, {"checks_not_in_scope": "1e400"}]},
+    {"gaps": [{"name": "Email", "checks_not_in_scope": -4}], "hidden": "many"},
+])
+def test_odd_channel_coverage_from_the_page_is_a_200_not_a_500(cc):
+    """ASVS V5.1.4 · CWE-20 · CWE-755 · WSTG-INPV-01: counts in the request that are not numbers are read as none, never a server error."""
+    from test_posture_plus import _client
+    r = _client().post("/api/posture/summary", json={"checks": [{"id": "a", "status": "PASS"}], "channel_coverage": cc})
+    assert r.status_code == 200 and r.json()["coverage"]["total"] == 1
+
+
+@pytest.mark.parametrize("content", ['{"score_drop_points": Infinity}', '["x"]', '{"score_drop_points": "7", "notify_score_drop": "true"}', "not json"])
+def test_a_damaged_settings_file_reads_as_the_defaults(content, tmp_path, monkeypatch):
+    """ASVS V5.1.4 · CWE-20 · CWE-755 · WSTG-ERRH-01: a hand-edited posture_settings.json never breaks the alerts or the settings page."""
+    p = tmp_path / "s.json"
+    p.write_text(content, encoding="utf-8")
+    monkeypatch.setenv("DLP_CHECK_POSTURE_SETTINGS", str(p))
+    s = pp.settings()
+    assert s["notify_score_drop"] is False and s["score_drop_points"] in (5, 7)
+
+
+def test_a_damaged_history_state_reads_as_not_run():
+    """ASVS V5.1.4 · CWE-20 · CWE-755 · WSTG-ERRH-01: a state that is not a code (a list, a number) never breaks the trend."""
+    d = pp.diff({"score": 80, "states": {"a": ["x"], "b": "P"}}, {"score": 70, "states": {"a": "F", "b": 3}})
+    assert [x["id"] for x in d["newly_failing"]] == ["a"] and d["newly_failing"][0]["from"] == "not run"
+    assert pp.trend([{"score": 80, "states": {"a": ["x"]}}, {"score": 70, "states": {"a": "F"}}])["runs"] == 2
+
+
+def test_odd_queue_and_drift_shapes_are_ignored():
+    """ASVS V5.1.4 · CWE-20 · WSTG-INPV-01: a change request whose payload is not an object, or a drift that is not one, is skipped."""
+    q = pp.queued_fixes([{"status": "pending", "kind": "fix_recipe", "payload": "x"}], ["a"])
+    assert q["counted"] == [] and q["not_counted"][0]["check_id"] == ""
+    assert pp.tenant_alerts({"drift": "x"}, [], cfg={"score_drop_points": 5, "notify_score_drop": False}) == []
