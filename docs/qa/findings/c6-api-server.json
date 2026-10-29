@@ -1,0 +1,370 @@
+{
+ "area": "api-server",
+ "title": "dlp_api_server.py: bad input, gate order, headers, jobs, downloads, credential chain, merge leftovers",
+ "files": [
+  "dlp_api_server.py"
+ ],
+ "standards": [
+  "ASVS V2.10.4",
+  "ASVS V4.1.1",
+  "ASVS V4.1.3",
+  "ASVS V4.2.1",
+  "ASVS V4.2.2",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V7.4.1",
+  "ASVS V11.1.4",
+  "ASVS V12.3.1",
+  "ASVS V14.2.1",
+  "ASVS V14.4.3",
+  "OWASP Top 10 2021 A01 A03 A04 A05 A07",
+  "WSTG-INPV-01",
+  "WSTG-ERRH-01",
+  "WSTG-ATHZ-02",
+  "WSTG-CONF-12",
+  "NIST SSDF PW.7.2",
+  "CISA Secure by Design"
+ ],
+ "coverage": {
+  "before": 87.6,
+  "after": 89.1,
+  "measure": "coverage.py line+branch, full suite, dlp_api_server.py",
+  "lines_before": 89.2,
+  "lines_after": 90.4,
+  "branches_before": 80.8,
+  "branches_after": 84.1
+ },
+ "checks": [
+  {
+   "id": "bad-input-every-route",
+   "what": "Malformed JSON, wrong types, NaN/Infinity, oversized, unexpected and nested fields on all 277 routes, with the sample tenant signed in (5 fuzz passes, 0 5xx at the end)",
+   "standard": "ASVS V5.1.4 · WSTG-INPV-01",
+   "result": "fixed"
+  },
+  {
+   "id": "no-echo-no-traceback",
+   "what": "Errors are JSON with a detail, bounded, no traceback, request body or secret",
+   "standard": "ASVS V7.4.1 · CWE-209",
+   "result": "pass"
+  },
+  {
+   "id": "server-paths-in-5xx",
+   "what": "5xx details name no server folder",
+   "standard": "ASVS V7.4.1 · CWE-209",
+   "result": "fixed"
+  },
+  {
+   "id": "ui-token-first",
+   "what": "Every /api route without the UI token is a 401 before any handler or sign-in",
+   "standard": "ASVS V4.1.1 · CWE-306",
+   "result": "pass"
+  },
+  {
+   "id": "origin-check",
+   "what": "Every POST with a foreign Origin is a 403 before scope or sign-in",
+   "standard": "ASVS V4.2.2 · CWE-352",
+   "result": "pass"
+  },
+  {
+   "id": "host-check",
+   "what": "With the token gate off, a non-loopback Host (DNS rebinding) is a 403",
+   "standard": "ASVS V14.5.3 · CWE-350",
+   "result": "pass"
+  },
+  {
+   "id": "scope-before-sign-in",
+   "what": "No POST route signs in with nothing in scope, except the documented exemptions",
+   "standard": "ASVS V4.1.3 · CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "write-gates-before-sign-in",
+   "what": "Every write route refuses before sign-in with write mode off, no confirmation or no assessor",
+   "standard": "ASVS V1.4.1 · CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "security-headers",
+   "what": "CSP, nosniff and X-Frame-Options DENY on every page and JSON answer, the 500, 429, 401 and preflight answers included",
+   "standard": "ASVS V14.4.3 · CWE-693",
+   "result": "fixed"
+  },
+  {
+   "id": "security-headers-413",
+   "what": "The body cap's 413 carries the hardening headers",
+   "standard": "ASVS V14.4.3 · CWE-693",
+   "result": "open"
+  },
+  {
+   "id": "job-ownership",
+   "what": "A job is stopped only by its starter (SSO); unknown starter stays stoppable",
+   "standard": "ASVS V4.2.1 · CWE-639",
+   "result": "fixed"
+  },
+  {
+   "id": "job-race",
+   "what": "A Stop sent before its start answered makes the job start cancelled",
+   "standard": "CWE-367",
+   "result": "pass"
+  },
+  {
+   "id": "job-caps",
+   "what": "Job, pending-stop, HAR batch, Test a list and plan stores are bounded",
+   "standard": "ASVS V11.1.4 · CWE-770",
+   "result": "pass"
+  },
+  {
+   "id": "stop-before-start-ownership",
+   "what": "stop-before-start honours the job's starter",
+   "standard": "ASVS V4.2.1 · CWE-639",
+   "result": "open"
+  },
+  {
+   "id": "download-names",
+   "what": "Every Content-Disposition name is a constant, stamp or sanitised part; traversal, quote, CR/LF and non-Latin-1 ids are 4xx on every download route",
+   "standard": "ASVS V12.3.1 · CWE-22 · CWE-113",
+   "result": "pass"
+  },
+  {
+   "id": "creds-chain-order",
+   "what": "Body, then profile, then environment, then tenant_config.json",
+   "standard": "ASVS V2.10.4",
+   "result": "pass"
+  },
+  {
+   "id": "creds-pairing",
+   "what": "A stored secret is only sent with its own tenant's identity",
+   "standard": "ASVS V2.10.4 · CWE-522",
+   "result": "fixed"
+  },
+  {
+   "id": "path-analyzer-handlers",
+   "what": "Single, start, batch, host, export and identities with IDN, IPv6, URLs, CIDR, odd ports and protocols",
+   "standard": "ASVS V5.1.3",
+   "result": "fixed"
+  },
+  {
+   "id": "path-analyzer-ipv6",
+   "what": "A bare IPv6 destination is analysed",
+   "standard": "ASVS V5.1.3",
+   "result": "open"
+  },
+  {
+   "id": "bulk-test-handlers",
+   "what": "Start, poll, export (csv/xlsx, rows filters), list, fix and fix hand-off with odd inputs",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "merge-leftovers-pyflakes",
+   "what": "pyflakes: no undefined or redefined names; symtable: every implicit global exists; UI-called /api paths all exist",
+   "standard": "ASVS V14.2.1 · SSDF PW.7.2",
+   "result": "pass"
+  },
+  {
+   "id": "merge-leftovers-duplicates",
+   "what": "No route registered twice, no top-level def or class defined twice, no unreachable statement, no unused helper",
+   "standard": "CWE-561 · SSDF PW.7.2",
+   "result": "pass"
+  },
+  {
+   "id": "file-permissions",
+   "what": "Report temp files are created by NamedTemporaryFile/mkstemp (0600) and removed after sending",
+   "standard": "CWE-276 · CWE-732",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-API-SERVER-01",
+   "title": "Non-JSON NaN/Infinity literals in a body reached handlers (int(NaN) in the HAR batch was a 500)",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "Every route decodes bodies as strict RFC 8259 JSON (_StrictJSONRoute); NaN/Infinity is a 422/400 before any handler",
+   "test": "tests/test_c6_api_server.py::test_nan_in_a_har_host_count_was_a_500",
+   "commit": "cb3d1b3"
+  },
+  {
+   "id": "C6-API-SERVER-02",
+   "title": "500, 429 and CORS preflight answers carried no CSP, nosniff or frame denial",
+   "severity": "low",
+   "cwe": "CWE-693",
+   "asvs": "V14.4.3",
+   "status": "fixed",
+   "fix": "SecurityHeadersMiddleware sits just inside the body cap (outside the rate limiter, CORS and the UI token gate); the unhandled-error 500 sets the same headers itself",
+   "test": "tests/test_c6_api_server.py::test_an_unhandled_error_500_carries_the_security_headers",
+   "commit": "cb3d1b3, d1fc71f"
+  },
+  {
+   "id": "C6-API-SERVER-03",
+   "title": "A saved profile's, the environment's or tenant_config.json's secret was paired with a typed vanity domain or client id of another tenant (the secret went to that tenant's sign-in host)",
+   "severity": "medium",
+   "cwe": "CWE-522",
+   "asvs": "V2.10.4",
+   "status": "fixed",
+   "fix": "_same_sign_in: a stored sign-in fills blanks only when no typed vanity domain, client id or username names another tenant; otherwise fail closed with the missing field",
+   "test": "tests/test_c6_api_server.py::test_a_profile_secret_is_never_sent_with_another_tenants_name",
+   "commit": "cb3d1b3"
+  },
+  {
+   "id": "C6-API-SERVER-04",
+   "title": "/api/live-feed trusted the page's running tally: a missing or non-numeric counter was a KeyError/TypeError 500, extra keys were echoed back",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "_live_tally keeps the known counters as bounded whole numbers and drops everything else",
+   "test": "tests/test_c6_api_server.py::test_a_live_feed_tally_of_the_wrong_shape_is_not_a_500",
+   "commit": "cb3d1b3"
+  },
+  {
+   "id": "C6-API-SERVER-05",
+   "title": "Under SSO, any signed-in person could stop another person's running deploy or removal by job id",
+   "severity": "low",
+   "cwe": "CWE-639",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "_require_job_owner: a job with a known starter is stopped only by that person (no change without SSO)",
+   "test": "tests/test_c6_api_server.py::test_a_job_cannot_be_stopped_by_someone_else",
+   "commit": "cb3d1b3"
+  },
+  {
+   "id": "C6-API-SERVER-06",
+   "title": "5xx details quoting an exception named absolute server folders (app, Python, temp, home)",
+   "severity": "low",
+   "cwe": "CWE-209",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "The HTTPException handler names each server folder by its role in every 5xx detail",
+   "test": "tests/test_c6_api_server.py::test_a_server_fault_names_no_server_folder",
+   "commit": "1d0fb2d"
+  },
+  {
+   "id": "C6-API-SERVER-07",
+   "title": "HAR batch: schemes/methods that are not lists were a TypeError 500, and methods \"GET\" was read as G, E, T",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "Only lists are read (at most 100 items); anything else names no method or scheme",
+   "test": "tests/test_c6_api_server.py::test_har_methods_and_schemes_that_are_not_lists_are_dropped",
+   "commit": "4e22979"
+  },
+  {
+   "id": "C6-API-SERVER-08",
+   "title": "/api/migrate/optimize, /upload and /post passed rule rows unchecked: a non-text name, state or action was an AttributeError 500",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "_rule_text_fields (shared with the hand-read routes' _rule_rows) refuses with a 400 naming the field before sign-in",
+   "test": "tests/test_c6_api_server.py::test_a_migration_rule_whose_text_field_is_not_text_is_a_400",
+   "commit": "75cfc85"
+  },
+  {
+   "id": "C6-API-SERVER-09",
+   "title": "Evaluate All optimiser exceptions of the wrong shape (pinned list, text position, numeric skip list) were 500s",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "_eval_all_exceptions checks audit_only_actions, pinned and skip_rule_ids (400)",
+   "test": "tests/test_c6_api_server.py::test_evaluate_all_exceptions_of_the_wrong_shape_are_a_400",
+   "commit": "75cfc85"
+  },
+  {
+   "id": "C6-API-SERVER-10",
+   "title": "/api/posture/analyze and /project: a check row's section or channel that was a list or object was an unhashable TypeError 500",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "_posture_checks reads sec, section and channel as bounded text and out_of_scope as a boolean",
+   "test": "tests/test_c6_api_server.py::test_posture_check_rows_with_odd_sections_are_not_a_500",
+   "commit": "75cfc85"
+  },
+  {
+   "id": "C6-API-SERVER-11",
+   "title": "/api/migrate/reorder: a list or object order token, or a rule named by a list, was an unhashable TypeError 500",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "Order tokens must be text or numbers and rule names text (400)",
+   "test": "tests/test_c6_api_server.py::test_a_reorder_token_or_rule_name_that_cannot_be_a_key_is_a_400",
+   "commit": "8f2dca7"
+  },
+  {
+   "id": "C6-API-SERVER-12",
+   "title": "path_analyzer.parse_destination rejects a bare IPv6 literal (2001:db8::1, ::1): one IPv6 row (bracketed or a v6 CIDR, which bulk_test expands to bare addresses) fails the whole Test a list job, a bare IPv6 HAR host is skipped and the single analyzer answers 400",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "open",
+   "fix": "Bracket a bare IPv6 literal before urlsplit in path_analyzer.parse_destination (outside dlp_api_server.py)",
+   "test": "proposed: tests/test_path_analyzer.py — parse_destination('2001:db8::1')['host'] == '2001:db8::1'; POST /api/bulk-test/start with '[2001:db8::1]:443' finishes done",
+   "commit": "",
+   "proposed_patch": "--- a/path_analyzer.py\n+++ b/path_analyzer.py\n@@ -69,7 +69,11 @@\n     raw = (text or \"\").strip()\n     if not raw:\n         raise ValueError(\"Enter a URL, a hostname or an IP address.\")\n-    s = raw if re.match(r\"^[a-z][a-z0-9+.-]*://\", raw, re.I) else \"https://\" + raw\n+    try:   # a bare IPv6 literal (2001:db8::1, ::1) is an address, not host:port\n+        raw_v6 = ipaddress.IPv6Address(raw.split(\"%\", 1)[0])\n+    except ValueError:\n+        raw_v6 = None\n+    s = raw if re.match(r\"^[a-z][a-z0-9+.-]*://\", raw, re.I) else \"https://\" + (f\"[{raw_v6.compressed}]\" if raw_v6 else raw)\n     try:\n         u = urlsplit(s)\n         host = (u.hostname or \"\").lower().strip(\".\")\n"
+  },
+  {
+   "id": "C6-API-SERVER-13",
+   "title": "POST /api/dlp-packs/jobs/stop-before-start cancels a job that already exists for the start token whoever started it (SSO: one person can stop another's run if they hold its start token)",
+   "severity": "low",
+   "cwe": "CWE-639",
+   "asvs": "V4.2.1",
+   "status": "open",
+   "fix": "pack_jobs.stop_before_start(token, actor) refuses (PermissionError -> 403) when the job's known starter is someone else; the route passes _actor(request)",
+   "test": "proposed: tests/test_run_control.py — a token whose job actor is alice, stopped as mallory, is a 403 and the job keeps running",
+   "commit": "",
+   "proposed_patch": "--- a/pack_jobs.py\n+++ b/pack_jobs.py\n@@ -153,10 +153,12 @@\n             del _token_jobs[k]\n \n \n-def stop_before_start(token: Any) -> Dict[str, Any]:\n+def stop_before_start(token: Any, actor: Optional[str] = None) -> Dict[str, Any]:\n     \"\"\"Stop for a run whose start request has not answered yet. When its\n     job already exists it is cancelled now; otherwise the stop waits for\n-    the job, which then starts stopped. Returns what was done.\"\"\"\n+    the job, which then starts stopped. Returns what was done.\n+    PermissionError when the job exists and was started by someone else\n+    (`actor` given and the job's actor known and different).\"\"\"\n     t = valid_start_token(token)\n     if t is None:\n         raise ValueError(\"start_token must be 8-64 letters, digits, '-' or '_'.\")\n@@ -170,6 +172,9 @@\n                 del _pending_stops[oldest]\n             _pending_stops[t] = now\n     if job_id is not None:\n+        job = get(job_id)\n+        if actor is not None and job is not None and job.actor and job.actor != actor:\n+            raise PermissionError(\"This job was started by someone else; only the person who started it can stop it.\")\n         return {\"job_id\": job_id, \"cancelled\": cancel(job_id), \"pending\": False}\n     return {\"job_id\": None, \"cancelled\": True, \"pending\": True}\n \n--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -3368,14 +3368,16 @@\n \n \n @app.post(\"/api/dlp-packs/jobs/stop-before-start\")\n-async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):\n+async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest, request: Request):\n     \"\"\"Stop pressed while a start request (deploy, removal, export,\n     Terraform hand-off, path analysis) is still signing in, so there is no\n     job id yet. The job that start creates begins with its cancel set and\n     reads or writes nothing; one that already exists is cancelled now.\"\"\"\n     import pack_jobs\n     try:\n-        return pack_jobs.stop_before_start(req.start_token)\n+        return pack_jobs.stop_before_start(req.start_token, actor=_actor(request))\n+    except PermissionError as e:\n+        raise HTTPException(status_code=403, detail=str(e))\n     except ValueError as e:\n         raise HTTPException(status_code=400, detail=str(e))\n \n"
+  },
+  {
+   "id": "C6-API-SERVER-14",
+   "title": "The body cap's 413 (security.BodySizeLimitMiddleware, the outermost layer by design) carries no CSP, nosniff or frame denial",
+   "severity": "info",
+   "cwe": "CWE-693",
+   "asvs": "V14.4.3",
+   "status": "open",
+   "fix": "BodySizeLimitMiddleware._too_large sets the hardening headers on its own refusal (security.py, outside dlp_api_server.py)",
+   "test": "proposed: tests/test_c6_api_server.py — a body one byte over the cap is a 413 with nosniff, X-Frame-Options DENY and CSP",
+   "commit": "",
+   "proposed_patch": "--- a/security.py\n+++ b/security.py\n@@ -520,7 +520,10 @@\n                           client=str(client[0]), bytes=size, limit=self.max_bytes)\n         except Exception:  # noqa: BLE001 — logging never blocks the refusal\n             pass\n-        return JSONResponse({\"detail\": f\"Request body too large (max {self.max_bytes} bytes).\"}, status_code=413)\n+        # Outside the headers layer too: the refusal carries the same hardening headers itself.\n+        return JSONResponse({\"detail\": f\"Request body too large (max {self.max_bytes} bytes).\"}, status_code=413,\n+                            headers={\"X-Content-Type-Options\": \"nosniff\", \"X-Frame-Options\": \"DENY\", \"Referrer-Policy\": \"no-referrer\",\n+                                     \"Content-Security-Policy\": CONTENT_SECURITY_POLICY, \"Cache-Control\": \"no-store\"})\n \n     async def __call__(self, scope, receive, send):\n         if scope.get(\"type\") != \"http\":\n"
+  },
+  {
+   "id": "C6-API-SERVER-15",
+   "title": "Local names shadow route functions (digests_list's `health`, flow_scenario's `import dlp_efficacy`); local scope only, behaviour correct",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V14.2.1",
+   "status": "accepted",
+   "fix": "Accepted: no rename (renaming risks the response code paths for no behaviour change)",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "C6-API-SERVER-16",
+   "title": "/api/checks and /api/checks/export with an unknown scope list the whole static catalog",
+   "severity": "info",
+   "cwe": "CWE-200",
+   "asvs": "V1.4.4",
+   "status": "accepted",
+   "fix": "Accepted: the catalog is static and public to the UI; no tenant is read",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "C6-API-SERVER-17",
+   "title": "/api/dlp-packs/journey, /baseline-status and /api/remediation/execute sign in without a Scope page selection",
+   "severity": "info",
+   "cwe": "CWE-863",
+   "asvs": "V4.1.3",
+   "status": "accepted",
+   "fix": "Accepted: documented exemptions in tests/test_scope_rule_routes.py EXEMPT (an operator-picked pack or check)",
+   "test": "",
+   "commit": ""
+  }
+ ],
+ "tests_added": 65
+}
