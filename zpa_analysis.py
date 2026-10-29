@@ -102,7 +102,7 @@ CATALOG: List[Dict[str, Any]] = [
      "checks": "The same domain or address in two enabled segments with overlapping ports on the same protocol: which segment, and so which access rule and server group, applies is ambiguous.",
      "needs": ["segments"]},
     {"id": "ZPA-AS-04", "title": "Over-broad domain or subnet", "severity": "high", "scope": "App segments",
-     "checks": "A domain entry of \"*\", a wildcard on a top-level domain (*.com), 0.0.0.0/0, or a subnet of /16 or wider (/8 or wider is high).",
+     "checks": "A domain entry of \"*\", a wildcard on a top-level domain (*.com), 0.0.0.0/0 or ::/0, an IPv4 subnet of /16 or wider (/8 or wider is high), or an IPv6 subnet of /48 or wider (/32 or wider is high).",
      "needs": ["segments"]},
     {"id": "ZPA-AS-05", "title": "Very wide port range", "severity": "medium", "scope": "App segments",
      "checks": "A TCP or UDP range of 1-65535 (medium), or one spanning more than 1,000 ports (low).",
@@ -751,8 +751,9 @@ def _t_broad(snap, ix):
                     net = ipaddress.ip_network(k, strict=False) if "/" in k else None
                 except ValueError:
                     net = None
-                if net is not None and net.version == 4 and net.prefixlen <= 16:
-                    sev = "high" if net.prefixlen <= 8 else "medium"
+                medium, high = (16, 8) if net is not None and net.version == 4 else (48, 32)
+                if net is not None and net.prefixlen <= medium:
+                    sev = "high" if net.prefixlen <= high else "medium"
                     txt = f"\"{d}\" covers {net.num_addresses:,} addresses"
             if sev:
                 why.append(txt)

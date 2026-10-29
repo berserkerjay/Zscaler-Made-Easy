@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import csv
 import io
+import ipaddress
 import re
 import secrets
 import threading
@@ -203,12 +204,28 @@ def _overlap(a: Sequence[Sequence[int]], b: Sequence[Sequence[int]]) -> bool:
     return any(max(x[0], y[0]) <= min(x[1], y[1]) for x in a for y in b)
 
 
+# The widest subnet the builder puts in a segment: anything wider is what the
+# analysis reports as over-broad at high severity (ZPA-AS-04), so it is refused.
+WIDEST_PREFIX = {4: 9, 6: 33}
+
+
 def check_domain(v: Any, what: str, *, wildcard_ok: bool = True) -> str:
-    d, why = ao.normalize_domain(v)
+    raw = str(v or "").strip()
+    if not raw.isascii():
+        try:   # an IDN in the punycode form ZPA stores ("*" passes through)
+            raw = raw.lower().encode("idna").decode("ascii")
+        except UnicodeError:
+            pass
+    d, why = ao.normalize_domain(raw)
     if why:
         raise _err(f"{what}: '{str(v)[:60]}' {why}.")
     if not wildcard_ok and (d.startswith("*.") or "/" in d):
         raise _err(f"{what}: enter one server name or IP address, not a wildcard or a range.")
+    if "/" in d:
+        net = ipaddress.ip_network(d, strict=False)
+        if net.prefixlen < WIDEST_PREFIX[net.version]:
+            raise _err(f"{what}: '{d}' covers {net.num_addresses:,} addresses, far more than one application; "
+                       f"give its own subnet (/{WIDEST_PREFIX[net.version]} or narrower).")
     return d
 
 

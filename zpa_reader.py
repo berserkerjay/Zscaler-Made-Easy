@@ -450,7 +450,7 @@ _PROVISIONING_KEY = re.compile(r"\b\d{1,2}\|[^\s|\"']{3,}\|[^\s\"']{8,}")
 
 
 def _err_text(err: Any) -> str:
-    s = re.sub(r"\s+", " ", str(err or "")).strip()
+    s = re.sub(r"\s+", " ", str(err or "")[:4000]).strip()
     s = _PROVISIONING_KEY.sub("[hidden]", s)
     s = _SECRET_WORDS.sub(r"\1 [hidden]", s)
     return s[:200] or "the API answered an error"

@@ -772,3 +772,315 @@ def test_update_payload_of_a_provisioning_key_keeps_its_group_and_drops_the_key(
     body = ops_zpa.update_payload("provisioning_key", ops_zpa._scrub(fresh), {"max_usage": "6"})
     assert body == {"name": "pov1-provisioning-key", "enabled": True, "max_usage": "6", "enrollment_cert_id": "7", "zcomponent_id": "9"}
     assert "zcomponentId" in _sdk_text("provisioning")
+
+
+# ── second pass: input validation of the builder ────────────────────────
+
+@pytest.mark.parametrize("entry", ["0.0.0.0/0", "::/0", "10.0.0.0/8", "2001:db8::/32"])
+def test_builder_refuses_a_subnet_its_own_analysis_calls_over_broad(entry):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: a CSV entry of 0.0.0.0/0, ::/0, a /8 or an IPv6 /32 is refused (deny by default), naming its size."""
+    with pytest.raises(ao.OperationError, match="addresses, far more than one application"):
+        ops_zpa.parse_csv(f"name,domains,tcp_ports\napp,{entry},443\n")
+
+
+@pytest.mark.parametrize("entry,want", [("10.0.0.0/9", "10.0.0.0/9"), ("2001:db8::/33", "2001:db8::/33"), ("10.1.2.3", "10.1.2.3"),
+                                        ("bücher.example", "xn--bcher-kva.example"), ("*.Bücher.example", "*.xn--bcher-kva.example")])
+def test_builder_accepts_narrow_subnets_and_idn_names(entry, want):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: a /9 or narrower subnet is accepted, and an IDN is stored in the punycode form ZPA uses."""
+    assert ops_zpa.check_domain(entry, "domain") == want
+
+
+@pytest.mark.parametrize("text,why", [
+    (b"name,domains", "must be text"),
+    ("x" * (ops_zpa.MAX_CSV_BYTES + 1), "larger than"),
+    ("name,domains\nа\x00,b.example", "NUL byte"),
+    ('name,domains\n"a,b.example', "could not be read"),
+    ("\n\n ,\n", "empty"),
+    ("app,where\na,b.example", "first line must name"),
+    ("name,domains,tcp_ports\n" + "".join(f"a{i},h{i}.example,443\n" for i in range(ops_zpa.MAX_CSV_ROWS + 1)), "at most 500"),
+    ("name,domains,tcp_ports\n!!!,b.example,443\n", "name is empty"),
+    ("name,domains,tcp_ports\na,b.example,443\nA,c.example,443\n", "used twice"),
+    ("name,domains,tcp_ports\na,,443\n", "no domain"),
+    ("name,domains,tcp_ports\na," + ";".join(f"h{i}.example" for i in range(51)) + ",443\n", "more than 50 domains"),
+    ("name,domains,tcp_ports\na,bad host!,443\n", "not a valid domain"),
+    ("name,domains,tcp_ports\na,b.example,99999\n", "within 1-65535"),
+    ("name,domains,tcp_ports\na,b.example,\n", "no TCP or UDP port"),
+])
+def test_csv_refusals_are_plain_and_whole_file(text, why):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: an uploaded CSV that is too big, binary, malformed or has a bad row is refused as a whole, in words."""
+    with pytest.raises(ao.OperationError, match=why):
+        ops_zpa.parse_csv(text)
+
+
+def test_csv_lists_at_most_ten_problems():
+    """ASVS V7.4.1 · CWE-400 · WSTG-ERRH-01: a CSV with many bad rows names the first ten and says there are more."""
+    with pytest.raises(ao.OperationError) as e:
+        ops_zpa.parse_csv("name,domains,tcp_ports\n" + "".join(f"a{i},,443\n" for i in range(30)))
+    assert str(e.value).count("line ") == 10 and str(e.value).endswith("; and more.")
+
+
+def test_csv_text_is_data_never_a_formula_or_a_control_character():
+    """ASVS V5.3.1 · CWE-1236 · WSTG-INPV-01: a description like =HYPERLINK(...) stays text, control characters become spaces, BOM is dropped."""
+    rows = ops_zpa.parse_csv("﻿Name,Domains,TCP ports,description\nWeb App,a.example b.example,443;8000-8100,\"=HYPERLINK(\"\"x\"\")\x07\"\n")
+    assert rows == [{"slug": "web-app", "domains": ["a.example", "b.example"], "tcp": [[443, 443], [8000, 8100]], "udp": [],
+                     "description": '=HYPERLINK("x")'}]
+
+
+@pytest.mark.parametrize("ports,err", [("0", "within"), ("70000", "within"), ("9-1", "within"), ("abc", "not a port"), ("1-2-3", "not a port"),
+                                        (",".join(str(p) for p in range(1, 23)), "at most 20")])
+def test_port_list_refusals(ports, err):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: ports outside 1-65535, reversed, malformed or more than 20 ranges are refused."""
+    with pytest.raises(ao.OperationError, match=err):
+        ops_zpa.parse_ports(ports, "TCP ports")
+
+
+def test_port_list_boundaries_and_duplicates():
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: 1 and 65535 are valid, duplicates count once, a list input works, empty is none."""
+    assert ops_zpa.parse_ports("65535, 1, 1, 80-81", "p") == [[1, 1], [80, 81], [65535, 65535]]
+    assert ops_zpa.parse_ports([443, "22"], "p") == [[22, 22], [443, 443]] and ops_zpa.parse_ports(None, "p") == []
+
+
+@pytest.mark.parametrize("prefix", ["", "a" * 21, "a b", "../x", "pov1;rm", "pöv", None])
+def test_prefix_refusals(prefix):
+    """ASVS V5.1.3 · CWE-22 · WSTG-INPV-01: the prefix is 1-20 ASCII letters, digits, '-' or '_' (no spaces, dots or slashes)."""
+    with pytest.raises(ao.OperationError, match="prefix"):
+        ops_zpa.check_prefix(prefix)
+
+
+@pytest.mark.parametrize("spec,why", [
+    ({"type": "zpa_connector_group", "prefix": "p", "mode": "other"}, "Create a new"),
+    ({"type": "zpa_connector_group", "prefix": "p", "location": "mars"}, "location"),
+    ({"type": "zpa_connector_group", "prefix": "p", "max_usage": 501}, "1 to 500"),
+    ({"type": "zpa_connector_group", "prefix": "p", "max_usage": "x"}, "1 to 500"),
+    ({"type": "zpa_connector_group", "prefix": "p", "mode": "existing", "connector_group_id": "abc"}, "pick it from the list"),
+    ({"type": "zpa_app_segments", "prefix": "p"}, "at least one application"),
+    ({"type": "zpa_app_segments", "prefix": "p", "wildcard": {"domain": "corp.example"}}, "at least one TCP or UDP port"),
+    ({"type": "zpa_app_segments", "prefix": "p", "wildcard": {"domain": "10.0.0.1", "tcp": "443"}}, "not an IP address"),
+    ({"type": "zpa_app_segments", "prefix": "p", "preset": {"vertical": "space", "domain": "corp.example"}}, "Pick the preset"),
+    ({"type": "zpa_app_segments", "prefix": "p", "csv": ["x"]}, "must be text"),
+    ({"type": "zpa_app_segments", "prefix": "p", "browser_access": {"domain": "*.corp.example", "certificate_id": "1"}}, "not a wildcard"),
+    ({"type": "zpa_app_segments", "prefix": "p", "browser_access": {"domain": "a.example", "port": "443,444", "certificate_id": "1"}}, "one port"),
+    ({"type": "zpa_app_segments", "prefix": "p", "wildcard": {"domain": "corp.example", "tcp": "443"},
+      "preset": {"vertical": "general", "domain": "corp.example"}, "csv": "name,domains,tcp_ports\nx,intranet.corp.example,80\n"}, "overlapping ports"),
+    ({"type": "zpa_policies", "prefix": "p"}, "at least one policy"),
+    ({"type": "zpa_policies", "prefix": "p", "access": True, "reauth_timeout": "5"}, "timeouts"),
+    ({"type": "zpa_prefix_delete", "prefix": "p"}, "Pick the objects"),
+    ({"type": "zpa_prefix_delete", "prefix": "p", "select": ["segment:abc"]}, "not one the builder deletes"),
+    ({"type": "zpa_prefix_delete", "prefix": "p", "select": "segment:1"}, "must be a list"),
+])
+def test_builder_specs_are_refused_in_words_before_any_read(spec, why):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: an invalid build is refused in plain words and the tenant is not read."""
+    c = Client()
+    with pytest.raises(ao.OperationError, match=why):
+        ao.plan(c, spec, scope=ZPA, tenant_label="acme")
+    assert c.tenant.reads == [] and c.tenant.writes == []
+
+
+@pytest.mark.parametrize("restore,why", [
+    ("x", "must be a list"),
+    ([{"kind": "inspection_profile", "id": "1", "before": {}, "after": {}}], "does not change"),
+    ([{"kind": "segment", "id": "1", "before": {"secret": "x"}, "after": {"secret": "y"}}], "malformed"),
+    ([{"kind": "segment", "id": "1", "before": {"enabled": True}, "after": {}}], "malformed"),
+    ([{"kind": "segment", "id": "1", "before": {"domains": ["a" * 300]}, "after": {"domains": []}}], "malformed"),
+    ([{"kind": "segment", "id": "1", "before": {"enabled": {"x": 1}}, "after": {"enabled": True}}], "malformed"),
+    ([{"kind": "segment", "id": "../1", "before": {"enabled": True}, "after": {"enabled": False}}], "pick it from the list"),
+])
+def test_undo_restore_entries_are_validated(restore, why):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: an Undo's restore entries are checked field by field; anything else is refused."""
+    with pytest.raises(ao.OperationError, match=why):
+        ops_zpa._check_restore(restore)
+
+
+# ── second pass: TOCTOU between preview and apply ───────────────────────
+
+def test_create_is_a_conflict_when_the_name_appears_after_the_preview():
+    """ASVS V11.1.6 · CWE-367 · WSTG-BUSL-07: an object made in ZPA since the preview is not created again: the item is a conflict."""
+    c = Client()
+    spec = {"type": "zpa_connector_group", "prefix": "pov1"}
+    p = ao.plan(c, spec, scope=ZPA, tenant_label="acme")
+    c.tenant.add("connector_group", {"name": "pov1-connector-group"})
+    r = ao.execute(c, spec, plan_hash=p["plan_hash"], scope=ZPA, writes_enabled=True, assessor=ASSESSOR, tenant_label="acme")
+    assert r["status"] == "plan_changed" and c.tenant.writes == []
+
+
+def test_update_is_a_conflict_when_the_object_changed_after_the_preview():
+    """ASVS V11.1.6 · CWE-367 · WSTG-BUSL-07: a value changed in ZPA between preview and apply is left as it is (conflict), never overwritten."""
+    c = Client()
+    _apply(c, {"type": "zpa_connector_group", "prefix": "pov1", "max_usage": 5})
+    spec = {"type": "zpa_connector_group", "prefix": "pov1", "max_usage": 9}
+    p = ao.plan(c, spec, scope=ZPA, tenant_label="acme")
+    c.tenant.by_name("provisioning_key", "pov1-provisioning-key")["maxUsage"] = "7"
+    n = len(c.tenant.writes)
+    r = ao.execute(c, spec, plan_hash=p["plan_hash"], scope=ZPA, writes_enabled=True, assessor=ASSESSOR, tenant_label="acme")
+    assert r["status"] == "plan_changed" and len(c.tenant.writes) == n
+    assert c.tenant.by_name("provisioning_key", "pov1-provisioning-key")["maxUsage"] == "7"
+
+
+class _Run:
+    """The engine's run as the handlers see it (admin_ops), for the window
+    between the engine's last re-read and one write."""
+
+    def __init__(self, c):
+        self.zpa, self.units, self.assessor, self.created, self.p = c.zpa, {}, ASSESSOR, [], {}
+        self.counts, self.halt, self.marked = {"failed": 0}, None, []
+        self.log = lambda m: None
+
+    def mark(self, units, status, reason, error=None):
+        self.marked.append((status, reason or error))
+
+    def outcome(self, units, out, verb):
+        self.marked.append(("applied" if out.ok else "failed", verb))
+        return out.ok
+
+
+def test_handler_create_re_reads_and_refuses_a_name_made_since():
+    """ASVS V11.1.6 · CWE-367 · WSTG-BUSL-07: right before a create the kind is listed again; a same-named object makes it a conflict."""
+    c = Client()
+    c.tenant.add("segment_group", {"name": "pov1-segment-group"})
+    run = _Run(c)
+    g = {"target": {"kind": "segment_group", "name": "pov1-segment-group", "prefix": "pov1", "desired": {"enabled": True}, "create": {}}}
+    ops_zpa._h_create(run, g, [{}])
+    assert run.marked[0][0] == "conflict" and c.tenant.writes == []
+
+
+def test_handler_update_re_reads_and_refuses_a_value_changed_since():
+    """ASVS V11.1.6 · CWE-367 · WSTG-BUSL-07: right before an update the object is read again; a managed value that moved makes it a conflict."""
+    c = Client()
+    row = c.tenant.add("segment_group", {"name": "pov1-segment-group", "enabled": False})
+    run = _Run(c)
+    g = {"target": {"kind": "segment_group", "id": row["id"], "name": row["name"], "prefix": "pov1", "desired": {"enabled": True},
+                    "before": {"enabled": True}}}
+    ops_zpa._h_update(run, g, [{}])
+    assert run.marked == [("conflict", "changed in ZPA since the preview; left as it is")] and c.tenant.writes == []
+
+
+def test_handler_delete_re_reads_name_and_prefix():
+    """ASVS V11.1.6 · CWE-367 · WSTG-BUSL-07: right before a delete the object is read again; renamed it is kept, gone it is a no-op."""
+    c = Client()
+    row = c.tenant.add("segment_group", {"name": "renamed"})
+    run = _Run(c)
+    ops_zpa._h_delete(run, {"target": {"kind": "segment_group", "id": row["id"], "name": "pov1-segment-group", "prefix": "pov1"}}, [{}])
+    ops_zpa._h_delete(run, {"target": {"kind": "segment_group", "id": "999", "name": "pov1-x", "prefix": "pov1"}}, [{}])
+    assert [m[0] for m in run.marked] == ["conflict", "noop"] and c.tenant.writes == []
+
+
+def test_delete_writes_nothing_when_the_tenant_moved_after_the_preview():
+    """ASVS V11.1.6 · CWE-367 · WSTG-BUSL-07: an object renamed or removed since the preview makes the delete plan_changed: nothing is deleted."""
+    c = Client()
+    _build(c, "pov1", "corp.example.com")
+    spec = {"type": "zpa_prefix_delete", "prefix": "pov1", "everything": True}
+    p = ao.plan(c, spec, scope=ZPA, tenant_label="acme")
+    c.tenant.by_name("rule:access", "pov1-access")["name"] = "renamed-by-admin"
+    sg = c.tenant.by_name("provisioning_key", "pov1-provisioning-key")
+    del c.tenant.rows["provisioning_key"][sg["id"]]
+    r = ao.execute(c, spec, plan_hash=p["plan_hash"], scope=ZPA, writes_enabled=True, assessor=ASSESSOR, tenant_label="acme",
+                   confirm_text=p.get("confirm_phrase") or "")
+    assert r["status"] == "plan_changed" and not [w for w in c.tenant.writes if w[0] == "delete"]
+    assert c.tenant.by_name("rule:access", "renamed-by-admin") is not None
+
+
+def test_delete_of_a_picked_object_without_the_prefix_is_refused():
+    """ASVS V4.1.3 · CWE-639 · WSTG-ATHZ-04: an object picked by id that does not carry the prefix is never deleted, and the preview says so."""
+    c = Client()
+    other = c.tenant.add("segment_group", {"name": "customer-group"})
+    p = ao.plan(c, {"type": "zpa_prefix_delete", "prefix": "pov1", "select": [f"segment_group:{other['id']}"]}, scope=ZPA, tenant_label="acme")
+    assert p["groups"] == [] and any("never deleted here" in w for w in p["warnings"])
+
+
+def test_prefix_delete_keeps_what_an_object_outside_the_delete_still_uses():
+    """ASVS V4.1.3 · CWE-284 · WSTG-BUSL-01: a segment group still used by a customer's own segment is kept and the user is named."""
+    c = Client()
+    _build(c, "pov1", "corp.example.com")
+    sg = c.tenant.by_name("segment_group", "pov1-segment-group")
+    c.tenant.add("segment", {"name": "customer-app", "segmentGroupId": sg["id"], "domainNames": ["x.example"]})
+    p = ao.plan(c, {"type": "zpa_prefix_delete", "prefix": "pov1", "everything": True}, scope=ZPA, tenant_label="acme")
+    item = next(i for i in p["items"] if i["object"]["name"] == "pov1-segment-group")
+    assert item["status"] == "excluded" and "customer-app" in item["reason"] and "not made with the prefix" in item["reason"]
+
+
+# ── second pass: the reader end to end ──────────────────────────────────
+
+class _ReaderZpa:
+    """A ZPA namespace for zpa_reader.read: segments in v1 shape, one list
+    that errors, one that raises, access rules with v2-shaped operands and
+    a SCIM_GROUP condition, and SCIM groups for that IdP."""
+
+    def __init__(self):
+        self.asked = []
+        z = self
+
+        class L:
+            def __init__(self, rows=None, err=None, boom=None):
+                self.rows, self.err, self.boom = rows or [], err, boom
+
+            def __call__(self, *a, query_params=None):
+                z.asked.append(a)
+                if self.boom:
+                    raise self.boom
+                return (None, None, self.err) if self.err else (list(self.rows), None, None)
+
+        seg = {"id": "s1", "name": "HR", "domainNames": ["hr.corp"], "tcpPortRanges": ["443", "443"], "enabled": True, "segmentGroupId": "g1"}
+        self.application_segment = type("S", (), {"list_segments": L([seg])})()
+        self.segment_groups = type("S", (), {"list_groups": L([{"id": "g1", "name": "G"}])})()
+        self.server_groups = type("S", (), {"list_groups": L(err="HTTP 403: Forbidden token=abc123")})()
+        self.app_connectors = type("S", (), {"list_connectors": L(boom=RuntimeError("boom secret=xyz"))})()
+        rule = {"id": "r1", "name": "Staff", "ruleOrder": "1", "action": "ALLOW", "operator": "AND", "conditions": [
+            {"operator": "OR", "operands": [{"objectType": "APP", "values": ["s1", "s2"]}]},
+            {"operator": "OR", "operands": [{"objectType": "SCIM_GROUP", "entryValues": [{"lhs": "idp1", "rhs": "grp9"}]}]}]}
+        self.policies = type("P", (), {"list_rules": L([rule])})()
+        self.scim_groups = type("G", (), {"list_scim_groups": L([{"id": "grp9", "name": "Staff group"}])})()
+
+
+def test_reader_expands_v2_operands_and_reads_only_the_scim_groups_rules_name():
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-13 (regression): v2 `values` / `entryValues` operands become v1 tokens; SCIM groups are read for that IdP only."""
+    z = _ReaderZpa()
+    snap = zr.read(type("C", (), {"zpa": z})(), pace=0)
+    ops = [o for c in snap["policies"]["access"][0]["conditions"] for o in c["operands"]]
+    assert [(o["type"], o["lhs"], o["rhs"]) for o in ops] == [("APP", "id", "s1"), ("APP", "id", "s2"), ("SCIM_GROUP", "idp1", "grp9")]
+    assert list(snap["scim_groups"]) == ["idp1"] and snap["scim_groups"]["idp1"]["groups"][0]["name"] == "Staff group"
+
+
+def test_reader_keeps_reading_after_one_list_fails_and_hides_secrets_in_the_reason():
+    """ASVS V7.4.1 · CWE-209 · WSTG-ERRH-01: a list that errors or raises is "not read" with a cleaned reason; the others are read; missing services say so."""
+    lines = []
+    snap = zr.read(type("C", (), {"zpa": _ReaderZpa()})(), log=lines.append, pace=0)
+    cols = snap["collections"]
+    assert cols["segments"]["read"] and not cols["server_groups"]["read"] and not cols["connectors"]["read"]
+    assert "abc123" not in json.dumps(snap) + "".join(lines) and "xyz" not in json.dumps(snap) + "".join(lines)
+    assert cols["idps"]["error"] == "not available in this SDK version" and snap["server_groups"] is None and snap["idps"] is None
+    out = za.analyze(snap)
+    assert {c["id"] for c in out["not_assessed"]} >= {"ZPA-SV-01", "ZPA-CG-01", "ZPA-AP-03"}
+
+
+def test_reader_never_calls_a_write_method():
+    """ASVS V1.4.1 · CWE-269 · WSTG-CONF-06: the read calls only list_* methods: every name it touches starts with list_."""
+    touched = []
+
+    class Spy:
+        def __getattr__(self, name):
+            touched.append(name)
+            return lambda *a, **k: ([], None, None)
+
+    class Z:
+        def __getattr__(self, svc):
+            return Spy()
+    zr.read(type("C", (), {"zpa": Z()})(), pace=0)
+    assert touched and all(n.startswith("list_") for n in touched)
+
+
+# ── third pass ──────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("entry,sev", [("2000::/3", "high"), ("2001:db8::/32", "high"), ("2001:db8:1::/48", "medium"),
+                                       ("2001:db8:1:2::/64", None), ("10.0.0.0/8", "high"), ("10.1.0.0/16", "medium"), ("10.1.2.0/24", None)])
+def test_over_broad_check_covers_ipv6_subnets(entry, sev):
+    """ASVS V4.1.3 · CWE-284 · WSTG-ATHZ-02: an IPv6 /32 or wider is high and /48 or wider medium, as IPv4 /8 and /16 are."""
+    snap = _snap([_seg("s1", "Net", [entry])])
+    got = [f["severity"] for f in za._t_broad(snap, za._Index(snap))]
+    assert got == ([sev] if sev else [])
+
+
+def test_error_text_of_a_huge_error_is_bounded():
+    """ASVS V11.1.4 · CWE-1333 · WSTG-BUSL-05: a megabyte-long SDK error is cut before the redaction patterns run."""
+    text = ("token " + "1|" + "a" * 50) * 20000
+    out = zr._err_text(text)
+    assert len(out) <= 200
