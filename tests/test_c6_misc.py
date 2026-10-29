@@ -156,3 +156,110 @@ def test_mcp_tools_take_no_write_or_secret_argument():
     params = {p for sc in schemas for p in (sc.get("properties") or {})}
     assert set(tools) == {"get_health", "list_checks", "run_assessment", "run_section"}
     assert not params & {"client_secret", "password", "api_key", "token", "confirm", "write", "apply", "assessor_confirm"}
+
+
+# ── url_tools: parsing, categorisation, IDN, the custom category analyzer ──
+
+KIND_ORACLE = [
+    ("10.0.0.1", "IP address or range"), ("10.0.0.0/8", "IP address or range"), ("2001:db8::/32", "IP address or range"),
+    ("10.0.0.1-10.0.0.9", "IP address or range"), ("10.0.0.1 - 10.0.0.9", "IP address or range"), ("::1-::5", "IP address or range"),
+    ("ad-fe.cc", "Domain"), ("dead-beef.cc", "Domain"), ("face-feed.de", "Domain"), ("cafe.de", "Domain"),
+    ("bücher.de", "Domain"), ("xn--bcher-kva.de", "Domain"), ("*.example.com", "Domain"), ("example.com/path", "URL"),
+    ("https://example.com/", "Domain"), ("https://example.com/a", "URL"), ("10.0.0.1-cafe.de", "Domain"),
+]
+
+
+@pytest.mark.parametrize("value,kind", KIND_ORACLE)
+def test_url_tools_kind_of_oracle(value, kind):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: kind_of names IPs, ranges, domains (IDN too) and URLs as the oracle table says."""
+    import url_tools as ut
+
+    assert ut.kind_of(value) == kind
+
+
+def test_url_tools_list_kind_wins_over_shape():
+    """ASVS V5.1.3 · CWE-20: a keyword or regex list entry keeps its list's kind whatever it looks like."""
+    import url_tools as ut
+
+    assert (ut.kind_of("10.0.0.1", "keyword"), ut.kind_of("a-b", "regex"), ut.kind_of("x", "ip")) == ("Keyword", "Regex", "IP address or range")
+
+
+@pytest.mark.parametrize("field", ["urls", "keywords", "ipRanges"])
+def test_url_tools_collect_ignores_a_non_list_field(field):
+    """ASVS V5.1.4 · CWE-20 · CWE-755: a category field that is a string (a damaged snapshot) yields no rows, never one row per character."""
+    import url_tools as ut
+    snap = {"categories": [{"id": "CUSTOM_01", "customCategory": True, "configuredName": "Mine", field: "abc.example"}]}
+
+    assert ut.collect(snap) == []
+
+
+def test_url_tools_collect_survives_wrong_shapes_everywhere():
+    """ASVS V5.1.4 · CWE-755 · WSTG-ERRH-01: wrong types in every source are skipped, not a crash."""
+    import url_tools as ut
+    snap = {"categories": "x", "url_rules": [{"urlCategories": 5}], "ssl_rules": {"a": 1}, "firewall_rules": [{"destAddresses": "1.2.3.4"}],
+            "ip_groups": None, "advanced": ["x"], "client_connector": {"app_profiles": ["p", {"bypass": "x"}], "pac_files": [3]}}
+
+    assert ut.collect(snap) == []
+
+
+def test_url_tools_idn_answer_in_punycode_is_matched():
+    """ASVS V5.1.3 · CWE-176 · WSTG-INPV-01: a URL sent in Unicode is found when the lookup answers it in IDNA form (assumed spelling)."""
+    import url_tools as ut
+
+    class C:
+        def post(self, ep, body):
+            return [{"url": "xn--bcher-kva.de", "urlClassifications": ["SHOPPING"]}], 200
+
+    found, missed, _ = ut.lookup_batches(C(), ["https://bücher.de"], pace=0, sleep=lambda s: None)
+
+    assert found == {"https://bücher.de": {"categories": ["SHOPPING"], "security_alerts": []}} and missed == {}
+
+
+def test_url_tools_match_key_keeps_ascii_and_path():
+    """ASVS V5.1.3 · CWE-176: the match key leaves an ASCII host alone and keeps the path."""
+    import url_tools as ut
+
+    assert (ut._match_key("HTTPS://Example.com/A/"), ut._match_key("bücher.de/x")) == ("example.com/a", "xn--bcher-kva.de/x")
+
+
+def test_url_tools_another_custom_category_is_not_zscalers_categorisation():
+    """ASVS V5.1.3 · CWE-20: a URL Zscaler leaves uncategorised but another custom category holds reads 'uncategorised', not 'redundant'."""
+    import url_tools as ut
+    custom = {"id": "CUSTOM_01", "superCategory": "BUSINESS_AND_ECONOMY"}
+
+    verdict, cats = ut.classify({"categories": ["CUSTOM_02"]}, custom, {"CUSTOM_02": "BUSINESS_AND_ECONOMY"})
+
+    assert (verdict, cats) == ("uncategorised", [])
+
+
+CLASSIFY_ORACLE = [
+    (None, "not_looked_up"), ({"categories": []}, "uncategorised"), ({"categories": ["MISCELLANEOUS_OR_UNKNOWN"]}, "uncategorised"),
+    ({"categories": ["CUSTOM_01"]}, "uncategorised"), ({"categories": ["FINANCE"]}, "redundant"),
+    ({"categories": ["GAMBLING"]}, "different"), ({"categories": ["NEW_ONE"]}, "categorised"),
+]
+
+
+@pytest.mark.parametrize("entry,verdict", CLASSIFY_ORACLE)
+def test_url_tools_classify_oracle(entry, verdict):
+    """ASVS V5.1.3 · CWE-20: every analyzer verdict from the oracle table (same super category, another one, unknown, none)."""
+    import url_tools as ut
+    supers = {"FINANCE": "BUSINESS_AND_ECONOMY", "GAMBLING": "GAMBLING"}
+
+    assert ut.classify(entry, {"id": "CUSTOM_01", "superCategory": "BUSINESS_AND_ECONOMY"}, supers)[0] == verdict
+
+
+def test_url_tools_unknown_picks_are_capped_in_the_note():
+    """ASVS V5.1.4 · CWE-400: hundreds of unknown or huge category names are echoed capped, not whole."""
+    import url_tools as ut
+
+    class C:
+        def get(self, ep, params=None):
+            return ([{"id": "CUSTOM_01", "customCategory": True, "configuredName": "Mine"}], 200) if ep.endswith("/lite") else ({"urls": []}, 200)
+
+        def post(self, ep, body):
+            return [], 200
+
+    res = ut.analyze_categories(C(), picked=["z" * 5000] + [f"n{i}" for i in range(100)], pace=0, sleep=lambda s: None)
+
+    note = next(n for n in res["notes"] if n.startswith("Not custom"))
+    assert len(note) < 2000 and "and 81 more" in note

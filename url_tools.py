@@ -138,11 +138,26 @@ def kind_of(value: str, list_kind: str = "") -> str:
         return "IP address or range"
     except ValueError:
         pass
-    if re.fullmatch(r"[0-9.:a-fA-F]+\s*-\s*[0-9.:a-fA-F]+", v):
-        return "IP address or range"
+    m = re.fullmatch(r"([0-9.:a-fA-F]+)\s*-\s*([0-9.:a-fA-F]+)", v)
+    if m and _is_ip(m.group(1)) and _is_ip(m.group(2)):
+        return "IP address or range"   # a range is two addresses; "dead-beef.cc" is a domain
     if list_kind == "ip":
         return "IP address or range"
     return "URL" if "/" in re.sub(r"^[a-z]+://", "", v, flags=re.I).rstrip("/") else "Domain"
+
+
+def _is_ip(v: str) -> bool:
+    try:
+        ipaddress.ip_address(v.strip())
+        return True
+    except ValueError:
+        return False
+
+
+def _list(v: Any) -> List[Any]:
+    """A tenant list field as a list: anything else (a string, a number, a
+    damaged snapshot's value) is no entries, never its characters."""
+    return v if isinstance(v, list) else []
 
 
 def norm(value: Any) -> str:
@@ -225,7 +240,7 @@ def _action(r: Dict[str, Any]) -> str:
     a = r.get("action")
     if isinstance(a, dict):
         a = a.get("type") or a.get("name")
-    return humanize(a or r.get("filteringAction") or ", ".join(str(x) for x in r.get("actions") or []))
+    return humanize(a or r.get("filteringAction") or ", ".join(str(x) for x in _list(r.get("actions"))))
 
 
 def _occ(value: Any, source: str, lst: str, category: str = "", rule: str = "", action: str = "", list_kind: str = "") -> Dict[str, Any]:
@@ -238,63 +253,67 @@ def collect(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
     url_rules, ssl_rules, firewall_rules, ip_groups, advanced,
     client_connector} as read_for_urls returns it."""
     out: List[Dict[str, Any]] = []
-    cats = [c for c in snap.get("categories") or [] if isinstance(c, dict) and _is_custom(c)]
+    cats = [c for c in _list(snap.get("categories")) if isinstance(c, dict) and _is_custom(c)]
     by_id = {str(c.get("id")): c for c in cats}
     entries: Dict[str, List[Tuple[str, str, str]]] = {}
     for c in cats:
         name = _cat_name(c)
         for field, lst, lk in CATEGORY_LISTS:
-            for v in c.get(field) or c.get(_SNAKE.get(field, field)) or []:
+            for v in _list(c.get(field) or c.get(_SNAKE.get(field, field))):
                 if str(v).strip():
                     out.append(_occ(v, "Custom URL category", lst, name, list_kind=lk))
                     entries.setdefault(str(c.get("id")), []).append((str(v), lst, lk))
-    groups = {str(g.get("id")): g for g in snap.get("ip_groups") or [] if isinstance(g, dict)}
+    groups = {str(g.get("id")): g for g in _list(snap.get("ip_groups")) if isinstance(g, dict)}
 
     def via_categories(rule: Dict[str, Any], source: str) -> None:
-        for ref in rule.get("urlCategories") or rule.get("url_categories") or []:
+        for ref in _list(rule.get("urlCategories") or rule.get("url_categories")):
             cid = str(ref.get("id") if isinstance(ref, dict) else ref)
             if cid in by_id:
                 for v, lst, lk in entries.get(cid, []):
                     out.append(_occ(v, source, lst, _cat_name(by_id[cid]), str(rule.get("name") or ""), _action(rule), lk))
 
     def via_groups(rule: Dict[str, Any], source: str) -> None:
-        for ref in rule.get("destIpGroups") or rule.get("dest_ip_groups") or []:
+        for ref in _list(rule.get("destIpGroups") or rule.get("dest_ip_groups")):
             gid = str(ref.get("id") if isinstance(ref, dict) else ref)
             g = groups.get(gid)
             if g:
-                for a in g.get("addresses") or []:
+                for a in _list(g.get("addresses")):
                     out.append(_occ(a, source, "Destination IP group", f"IP group: {g.get('name') or gid}", str(rule.get("name") or ""), _action(rule)))
 
-    for r in snap.get("url_rules") or []:
+    for r in _list(snap.get("url_rules")):
         if isinstance(r, dict):
             via_categories(r, "URL filtering rule")
-    for r in snap.get("ssl_rules") or []:
+    for r in _list(snap.get("ssl_rules")):
         if isinstance(r, dict):
             via_categories(r, "SSL inspection rule")
             via_groups(r, "SSL inspection rule")
-    for r in snap.get("firewall_rules") or []:
+    for r in _list(snap.get("firewall_rules")):
         if not isinstance(r, dict):
             continue
-        for a in r.get("destAddresses") or r.get("dest_addresses") or []:
+        for a in _list(r.get("destAddresses") or r.get("dest_addresses")):
             out.append(_occ(a, "Cloud Firewall rule", "Destination addresses", "", str(r.get("name") or ""), _action(r)))
         via_groups(r, "Cloud Firewall rule")
     if snap.get("firewall_rules") is not None:
         for g in groups.values():
-            for a in g.get("addresses") or []:
+            for a in _list(g.get("addresses")):
                 out.append(_occ(a, "IP destination group", humanize_type(g.get("type")), f"IP group: {g.get('name') or g.get('id')}"))
-    adv = snap.get("advanced") or {}
+    adv = snap.get("advanced") if isinstance(snap.get("advanced"), dict) else {}
     for field, lst in ADVANCED_URL_LISTS:
-        for v in adv.get(field) or []:
+        for v in _list(adv.get(field)):
             out.append(_occ(v, "Advanced settings", lst))
-    zcc = snap.get("client_connector") or {}
-    for p in zcc.get("app_profiles") or []:
-        b = p.get("bypass") or {}
-        for v in b.get("domains") or []:
+    zcc = snap.get("client_connector") if isinstance(snap.get("client_connector"), dict) else {}
+    for p in _list(zcc.get("app_profiles")):
+        if not isinstance(p, dict):
+            continue
+        b = p.get("bypass") if isinstance(p.get("bypass"), dict) else {}
+        for v in _list(b.get("domains")):
             out.append(_occ(v, "Client Connector app profile", "Domain bypass", "", str(p.get("name") or "")))
-        for v in b.get("ips") or []:
+        for v in _list(b.get("ips")):
             out.append(_occ(v, "Client Connector app profile", "IP bypass", "", str(p.get("name") or ""), list_kind="ip"))
-    for f in zcc.get("pac_files") or []:
-        for v in f.get("direct_hosts") or []:
+    for f in _list(zcc.get("pac_files")):
+        if not isinstance(f, dict):
+            continue
+        for v in _list(f.get("direct_hosts")):
             out.append(_occ(v, "PAC file", "Sent DIRECT", "", str(f.get("name") or "")))
     return [o for o in out if o["value"]]
 
@@ -477,18 +496,33 @@ def lookup_batches(client, urls: Sequence[str], *, pace: Optional[float] = None,
         by_url = {}
         for e in data:
             if isinstance(e, dict) and e.get("url") is not None:
-                by_url[norm(e.get("url"))] = e
+                by_url[_match_key(e.get("url"))] = e
         for i, u in enumerate(batch):
-            e = by_url.get(norm(_lookup_form(u)))
+            e = by_url.get(_match_key(_lookup_form(u)))
             if e is None and i < len(data) and isinstance(data[i], dict) and "url" not in data[i]:
                 e = data[i]
             if e is None:
                 missed[u] = "not in the lookup's answer"
                 continue
-            cats = e.get("urlClassifications") or e.get("url_classifications") or []
-            alerts = e.get("urlClassificationsWithSecurityAlert") or e.get("url_classifications_with_security_alert") or []
+            cats = _list(e.get("urlClassifications") or e.get("url_classifications"))
+            alerts = _list(e.get("urlClassificationsWithSecurityAlert") or e.get("url_classifications_with_security_alert"))
             found[u] = {"categories": sorted({str(c).upper() for c in cats if c}), "security_alerts": sorted({str(c).upper() for c in alerts if c})}
     return found, missed, stats
+
+
+def _match_key(u: Any) -> str:
+    """How a URL asked about is found in the lookup's answer: norm(), with
+    an internationalised host in its ASCII (IDNA) form, so a URL sent as
+    bücher.de is matched whether the answer spells it that way or as
+    xn--bcher-kva.de (how the lookup spells it is assumed, not documented)."""
+    v = norm(u)
+    host, sep, rest = v.partition("/")
+    if host and not host.isascii():
+        try:
+            host = ".".join(lbl.encode("idna").decode("ascii") if lbl and not lbl.isascii() else lbl for lbl in host.split("."))
+        except UnicodeError:
+            pass
+    return host + sep + rest
 
 
 def _lookup_form(u: str) -> str:
@@ -502,7 +536,9 @@ def classify(entry: Optional[Dict[str, Any]], custom: Dict[str, Any], supers: Di
     if entry is None:
         return "not_looked_up", []
     own = {str(custom.get("id") or "").upper()}
-    cats = [c for c in entry.get("categories") or [] if c not in own]
+    # Only Zscaler's own categories say how Zscaler places a URL: the
+    # tenant's other custom categories (CUSTOM_nn) are the tenant's choice.
+    cats = [c for c in _list(entry.get("categories")) if c not in own and not str(c).upper().startswith("CUSTOM_")]
     known = [c for c in cats if c not in UNKNOWN_CATS]
     if not known:
         return "uncategorised", cats
@@ -560,7 +596,9 @@ def analyze_categories(client, *, picked: Optional[Sequence[str]] = None, max_ur
                 chosen = [c for c in custom if str(c.get("id")).lower() in keys or _cat_name(c).lower() in keys]
                 unknown = sorted(w for w in want if w.lower() not in {str(c.get("id")).lower() for c in chosen} | {_cat_name(c).lower() for c in chosen})
                 if unknown:
-                    notes.append("Not custom categories of this tenant, so not analysed: " + ", ".join(unknown) + ".")
+                    shown = [u[:80] for u in unknown[:20]]
+                    more = f" and {len(unknown) - len(shown)} more" if len(unknown) > len(shown) else ""
+                    notes.append("Not custom categories of this tenant, so not analysed: " + ", ".join(shown) + more + ".")
             else:
                 chosen = custom
             details: List[Dict[str, Any]] = []
@@ -580,7 +618,7 @@ def analyze_categories(client, *, picked: Optional[Sequence[str]] = None, max_ur
             items: List[Tuple[Dict[str, Any], str, str]] = []
             for c in details:
                 for field, lst in (("urls", "URLs"), ("dbCategorizedUrls", "URLs retaining parent category")):
-                    for u in c.get(field) or c.get(_SNAKE.get(field, field)) or []:
+                    for u in _list(c.get(field) or c.get(_SNAKE.get(field, field))):
                         if str(u).strip():
                             items.append((c, lst, str(u).strip()))
             distinct: List[str] = []
