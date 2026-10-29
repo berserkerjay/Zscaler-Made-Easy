@@ -448,13 +448,13 @@ def blank_lookup(error: Optional[str] = None) -> Dict[str, Any]:
 
 
 def _answer(entry: Dict[str, Any]) -> Dict[str, Any]:
-    cats = entry.get("urlClassifications") or entry.get("url_classifications") or []
-    alerts = entry.get("urlClassificationsWithSecurityAlert") or entry.get("url_classifications_with_security_alert") or []
+    from path_analyzer import labels
     app = entry.get("application") or entry.get("app")
     if isinstance(app, dict):
         app = app.get("name") or app.get("id")
-    app = str(app).upper() if app and str(app).lower() not in ("none", "null") else None
-    return {"categories": sorted({str(c).upper() for c in cats if c})[:20], "security_alerts": sorted({str(c).upper() for c in alerts if c})[:20],
+    app = str(app).upper() if app and isinstance(app, (str, int)) and str(app).lower() not in ("none", "null") else None
+    return {"categories": labels(entry.get("urlClassifications") or entry.get("url_classifications"))[:20],
+            "security_alerts": labels(entry.get("urlClassificationsWithSecurityAlert") or entry.get("url_classifications_with_security_alert"))[:20],
             "application": app, "error": None}
 
 

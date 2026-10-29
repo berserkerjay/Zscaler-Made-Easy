@@ -132,6 +132,22 @@ def pac_url(d: Dict[str, Any], traffic: Dict[str, Any]) -> str:
     return f"{scheme}://{_url_host(d['host'])}{shown}{tail}"
 
 
+def labels(v: Any) -> List[str]:
+    """A list of category names from ZIA's lookup answer, upper case and
+    sorted: one string is one name; a value of another type (a number, an
+    object) is none, never a crash."""
+    items = [v] if isinstance(v, str) else v if isinstance(v, (list, tuple)) else []
+    return sorted({str(c).upper() for c in items if c and isinstance(c, (str, int))})
+
+
+def lookup_answer(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """One /urlLookup entry → {categories, security_alerts, application, error}."""
+    app = entry.get("application") or entry.get("app")
+    return {"categories": labels(entry.get("urlClassifications") or entry.get("url_classifications")),
+            "security_alerts": labels(entry.get("urlClassificationsWithSecurityAlert") or entry.get("url_classifications_with_security_alert")),
+            "application": str(app).upper() if app and isinstance(app, (str, int)) else None, "error": None}
+
+
 def lookup_categories(client, host: str) -> Dict[str, Any]:
     """Ask ZIA which categories `host` belongs to (POST /urlLookup). Returns
     {categories, security_alerts, application, error}; a lookup that
@@ -150,14 +166,7 @@ def lookup_categories(client, host: str) -> Dict[str, Any]:
         detail = data.get("error") if isinstance(data, dict) else ""
         out["error"] = f"URL lookup answered HTTP {status}" + (f": {str(detail)[:160]}" if detail else "")
         return out
-    entry = next((e for e in data if isinstance(e, dict)), {})
-    cats = entry.get("urlClassifications") or entry.get("url_classifications") or []
-    alerts = entry.get("urlClassificationsWithSecurityAlert") or entry.get("url_classifications_with_security_alert") or []
-    out["categories"] = sorted({str(c).upper() for c in cats if c})
-    out["security_alerts"] = sorted({str(c).upper() for c in alerts if c})
-    app = entry.get("application") or entry.get("app")
-    out["application"] = str(app).upper() if app else None
-    return out
+    return lookup_answer(next((e for e in data if isinstance(e, dict)), {}))
 
 
 def _snapshot_zia(snapshot: Dict[str, Any]) -> Dict[str, Any]:
@@ -548,11 +557,7 @@ def lookup_many(client, hosts: List[str], cancel: Any = None) -> Dict[str, Dict[
             if e is None:
                 out[h] = blank("the URL lookup returned no answer for this host")
                 continue
-            cats = e.get("urlClassifications") or e.get("url_classifications") or []
-            alerts = e.get("urlClassificationsWithSecurityAlert") or e.get("url_classifications_with_security_alert") or []
-            app = e.get("application") or e.get("app")
-            out[h] = {"categories": sorted({str(c).upper() for c in cats if c}), "security_alerts": sorted({str(c).upper() for c in alerts if c}),
-                      "application": str(app).upper() if app else None, "error": None}
+            out[h] = lookup_answer(e)
     return out
 
 

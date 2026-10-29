@@ -1929,3 +1929,29 @@ def test_system_proxy_data_that_is_not_an_object_is_ignored(proxy):
     acts = df.forwarding_actions({"forwardingProfileActions": [{"networkType": "OFF_TRUSTED_NETWORK", "actionType": "ENFORCE_PROXY",
                                                                 "systemProxyData": proxy, "customPac": "https://pac.example/p.pac"}]})
     assert acts["off"]["mode_label"] == "Enforce proxy (PAC)" and acts["off"]["pac_url"] == "https://pac.example/p.pac"
+
+
+# ── C6-PATH-17: a URL lookup answer of the wrong shape ─────────────────
+class OddLookup:
+    def __init__(self, cats, alerts=None, app=None):
+        self.cats, self.alerts, self.app = cats, alerts, app
+
+    def post(self, ep, body):
+        return [{"url": h, "urlClassifications": self.cats, "urlClassificationsWithSecurityAlert": self.alerts, "application": self.app}
+                for h in body], 200
+
+
+@pytest.mark.parametrize("cats,alerts,app,want", [
+    (5, None, None, ([], [], None)),                                  # a number is no list: never a TypeError
+    ("NEWS", "PHISHING", "gmail", (["NEWS"], ["PHISHING"], "GMAIL")),  # one string is one category, never its letters
+    ([{"x": 1}, "news", None], [], {"id": 1}, (["NEWS"], [], None)),  # an object inside the list is skipped
+])
+def test_a_url_lookup_answer_of_the_wrong_shape_is_read_defensively(cats, alerts, app, want):
+    """ASVS V5.1.3 · CWE-20 · CWE-1287 · CWE-755: every URL lookup parser (single, batch, list) reads categories of the wrong type as none, never crashes."""
+    c = OddLookup(cats, alerts, app)
+    single = pa.lookup_categories(c, "a.example")
+    batch = pa.lookup_many(c, ["a.example"])["a.example"]
+    listed = bt.lookup_all(c, ["a.example"], sleep=lambda s: None)[0]["a.example"]
+    for got in (single, batch):
+        assert (got["categories"], got["security_alerts"], got["application"]) == want
+    assert (listed["categories"], listed["security_alerts"]) == want[:2]
