@@ -272,7 +272,7 @@
    "cwe": "CWE-668",
    "asvs": "V4.2.1",
    "status": "fixed",
-   "fix": "GET /api/console-index/cached takes the page's sign-in (profile, or vanity domain and cloud; no secret) and passes its record label to cache_latest; a gone profile and a typed classic-API sign-in get nothing; Find anything sends signInRef(). Also ...::test_console_index_cached_follows_an_edited_profile",
+   "fix": "GET /api/console-index/cached takes the page's sign-in (profile, or vanity domain and cloud; no secret) and passes its label to cache_latest; a gone profile or typed classic-API sign-in gets nothing; Find anything sends signInRef()",
    "test": "tests/test_c6_misc.py::test_console_index_cached_answers_only_for_the_signed_in_tenant",
    "commit": "cc42393",
    "files": [

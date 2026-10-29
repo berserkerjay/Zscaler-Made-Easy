@@ -138,7 +138,7 @@
       "cwe": "CWE-863",
       "asvs": "V4.1.5",
       "status": "fixed",
-      "fix": "The permission guard moved into the engine (dlp_assessment_full_auto) and wraps REG after the SaaS, Email and Client Connector splices, so API, MCP and CLI runs all fail closed; the 11 engine checks named here already answered not permitted (assessment slice), 1.27/1.28 did not. Also tests/test_c6_checks.py::test_an_engine_check_built_on_a_refused_read_is_not_permitted",
+      "fix": "The permission guard moved into the engine and wraps REG after its splices, so API, MCP and CLI runs fail closed on a 401/403 read (the 11 named engine checks were already not permitted; 1.27/1.28 were not). Also ...::test_an_engine_check_built_on_a_refused_read_is_not_permitted",
       "test": "tests/test_c6_checks.py::test_every_check_the_assessment_run_executes_reads_through_the_permission_guard",
       "commit": "243a86f"
     },
