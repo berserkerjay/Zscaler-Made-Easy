@@ -720,7 +720,11 @@ def test_a_device_page_that_fails_half_way_shows_no_partial_figures(monkeypatch)
 ], ids=["oversized", "no-service-column", "malformed"])
 def test_the_service_status_file_is_parsed_defensively(text, needle):
     """ASVS V12.1.1 · A04:2021 · CWE-400 · WSTG-BUSL-09: an oversized, unrecognised or malformed service-status file is refused in words, never a crash."""
-    out = zf.parse_service_csv(text)
+    old = csv.field_size_limit(131072)   # the csv default; another module may raise it process-wide
+    try:
+        out = zf.parse_service_csv(text)
+    finally:
+        csv.field_size_limit(old)
     assert out["status"] == "unavailable" and needle in out["reason"]
 
 
