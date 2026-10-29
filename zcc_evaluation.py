@@ -14,6 +14,7 @@ change, and cites the guidance it applies. Read-only.
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -48,8 +49,18 @@ def _ref(key: str) -> str:
 
 
 # ── field access ───────────────────────────────────────────────────────
+_NON_ALNUM = re.compile(r"[^a-z0-9]")
+
+
+@functools.lru_cache(maxsize=8192)
+def _norm_text(k: str) -> str:
+    return _NON_ALNUM.sub("", k.lower())
+
+
 def _norm(k: Any) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(k).lower())
+    """A field name compared without case or punctuation. Cached: a large
+    fleet repeats the same few dozen names on every device record."""
+    return _norm_text(k if isinstance(k, str) else str(k))
 
 
 def _truthy(v: Any) -> bool:
@@ -90,8 +101,17 @@ def flatten_profile(p: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+class FieldIndex(dict):
+    """A record's fields keyed by their normalised name, built once so the
+    many _v lookups on one device of a large fleet do not rebuild it."""
+
+
+def field_index(d: Dict[str, Any]) -> FieldIndex:
+    return d if isinstance(d, FieldIndex) else FieldIndex((_norm(k), v) for k, v in d.items())
+
+
 def _v(d: Dict[str, Any], *names: str, default: Any = None) -> Any:
-    idx = {_norm(k): v for k, v in d.items()}
+    idx = field_index(d)
     for n in names:
         v = idx.get(_norm(n))
         if v is not None and v != "":
@@ -103,22 +123,40 @@ _PLAT = {"1": "iOS", "2": "Android", "3": "Windows", "4": "macOS", "5": "Linux",
          "mac": "macOS", "macos": "macOS", "linux": "Linux"}
 
 
+def code_text(v: Any) -> str:
+    """A state or type code as the API may send it, as plain lower-case
+    text: 3, "3", 3.0, "3.0" and " 3 " are all "3"; "DEVICE_TYPE_WINDOWS"
+    is "windows"."""
+    if v is None or isinstance(v, bool):
+        return "" if v is None else str(v).lower()
+    s = str(v).strip().lower()
+    m = re.fullmatch(r"(\d+)\.0*", s)
+    if m:
+        return str(int(m.group(1)))
+    return s.removeprefix("device_type_")
+
+
 def _plat(p: Dict[str, Any]) -> str:
     raw = _v(p, "device_type", "deviceType", "os", "platform", "osType", default="")
-    return _PLAT.get(str(raw).lower(), str(raw) or "?")
+    return _PLAT.get(code_text(raw), str(raw) or "?")
 
 
 def device_platform(d: Dict[str, Any]) -> str:
     """The platform of an enrolled device: the numeric device type (1 iOS,
     2 Android, 3 Windows, 4 macOS, 5 Linux — zscaler-sdk-python
-    utils.zcc_param_map), else the OS text."""
-    t = str(_v(d, "type", "device_type", "deviceType", default="") or "")
-    if t in ("1", "2", "3", "4", "5"):
+    utils.zcc_param_map, as a number, a string or DEVICE_TYPE_<OS>), else
+    the OS text."""
+    t = code_text(_v(d, "type", "device_type", "deviceType", default=""))
+    if t in _PLAT:
         return _PLAT[t]
     txt = str(_v(d, "osType", "platform", "os", "osVersion", default="") or "").lower()
-    for k, v in (("win", "Windows"), ("mac", "macOS"), ("darwin", "macOS"), ("linux", "Linux"), ("ios", "iOS"), ("iphone", "iOS"), ("ipad", "iOS"), ("android", "Android")):
+    # "darwin" holds "win": the Apple names are matched first, Windows only at a word start.
+    for k, v in (("darwin", "macOS"), ("mac", "macOS"), ("iphone", "iOS"), ("ipad", "iOS"), ("ios", "iOS"), ("android", "Android"),
+                 ("linux", "Linux")):
         if k in txt:
             return v
+    if re.search(r"\bwin", txt):
+        return "Windows"
     return "?"
 
 
@@ -131,8 +169,16 @@ ZCC_MIN_SUPPORTED = {"Windows": (4, 7), "macOS": (4, 5, 2), "Linux": (3, 7, 2), 
 ZCC_SUPPORTED_REF = "https://help.zscaler.com/product-usage-terms/supported-versions"
 
 
+VERSION_PARTS = 4
+
+
 def version_tuple(v: Any) -> Tuple[int, ...]:
-    return tuple(int(x) for x in re.findall(r"\d+", str(v or ""))[:4])
+    """A version as a tuple that compares semantically: up to four numeric
+    parts, padded with zeros (so 4.7 and 4.7.0 are equal and 4.10 is newer
+    than 4.9); () when there is no number. Each part keeps at most nine
+    digits, so a hostile string cannot exhaust int() (CWE-400)."""
+    parts = [int(x[:9]) for x in re.findall(r"\d+", str(v if v is not None else "")[:200])[:VERSION_PARTS]]
+    return tuple(parts + [0] * (VERSION_PARTS - len(parts))) if parts else ()
 
 
 def zcc_unsupported(platform: str, version: Any) -> bool:
