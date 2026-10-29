@@ -2086,3 +2086,39 @@ def test_the_list_route_answers_a_superscript_port_without_a_500():
         assert e.status_code == 400
     else:
         assert len(parsed) == 1
+
+
+# ── C6-PATH-21: a list entry written in Unicode (IDN) ──────────────────
+IDN_CAT = [{"id": "CUSTOM_01", "configuredName": "Books", "customCategory": True, "urls": [".bücher.example"], "dbCategorizedUrls": []}]
+
+
+def test_a_custom_category_entry_in_unicode_places_its_punycode_destination():
+    """ASVS V5.1.3 · CWE-176 · CWE-178 · CWE-863: a custom URL category entry typed in Unicode places the IDN destination (held as punycode): the Block rule applies."""
+    res = run("https://www.bücher.example/", {"/zia/urlCategories": IDN_CAT, "/zia/urlFilteringRules": [url_rule(1, 1, "BLOCK", ["CUSTOM_01"])]})
+    assert (res["verdict"]["outcome"], hop(res, "url")["status"]) == ("blocked", "blocked")
+
+
+def test_a_client_connector_bypass_in_unicode_bypasses_its_idn_destination():
+    """ASVS V5.1.3 · CWE-176 · CWE-178: a Client Connector bypass written in Unicode bypasses the IDN destination."""
+    res = run("münchen.example", _profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "hostnameBypassForIpv4": ["*.München.example", "münchen.example"]}))
+    assert hop(res, "zcc")["status"] == "bypass" and res["verdict"]["outcome"] == "bypassed"
+
+
+def test_a_connector_destination_in_unicode_matches_its_idn_destination():
+    """ASVS V5.1.3 · CWE-176 · CWE-178: a connector forwarding rule's Unicode destination matches the IDN destination."""
+    snap = connector([fwd(1, 1, "Books direct", "DIRECT", destAddresses=[".bücher.example"])])
+    assert wp.evaluate(snap, wl(ip="10.0.0.1"), zp.destination("www.bücher.example"))["go"] == "direct"
+
+
+def test_a_list_never_shares_an_answer_between_an_idn_row_in_a_unicode_entry_and_one_outside_it():
+    """ASVS V1.4.4 · CWE-176 · CWE-697: Test a list relates an IDN row to a Unicode list entry as the analyzer does, so its answer is not shared with an unrelated row."""
+    tenant = Tenant({"/zia/urlCategories": IDN_CAT, "/zia/urlFilteringRules": [url_rule(1, 1, "BLOCK", ["CUSTOM_01"])]})
+    rn = bt.run(tenant, bt.parse("other.example\nwww.bücher.example\n"), scope=FULL, lookup=False, sleep=lambda s: None)
+    assert [rn.row(i)["result"] for i in range(2)] == ["allowed", "blocked"]
+
+
+@pytest.mark.parametrize("raw,want", [("*.Bücher.example.", "*.xn--bcher-kva.example"), (".bücher.example", ".xn--bcher-kva.example"),
+                                      ("EXAMPLE.com.", "example.com"), ("a‍‍.example", "a‍‍.example"), ("", "")])
+def test_a_list_entry_host_is_normalised_and_never_raises(raw, want):
+    """ASVS V5.1.3 · CWE-176 · CWE-20: a list entry's host is lower case, punycode and keeps its wildcard; a name IDNA refuses is kept, never a crash."""
+    assert zpm.entry_host(raw) == want

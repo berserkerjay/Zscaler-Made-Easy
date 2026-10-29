@@ -252,7 +252,7 @@ def _domain_hit(patterns: Iterable[str], host: str) -> Optional[str]:
         pat = str(p or "").strip().lower()
         if not pat:
             continue
-        pat_host = _hostname_of(pat)
+        pat_host = _zpm.entry_host(_hostname_of(pat))   # an IDN entry in punycode, as the host is
         if fnmatch.fnmatch(host, pat_host) or host == pat_host.lstrip("*.") or host.endswith("." + pat_host.lstrip("*.")):
             return str(p)
     return None

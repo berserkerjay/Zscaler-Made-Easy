@@ -340,7 +340,7 @@ def _within(e: str, net: Any) -> bool:
 def _host_in(host: str, entries: List[str]) -> bool:
     h = host.lower().rstrip(".")
     for e in entries:
-        e = as_str(e).lower().rstrip(".")
+        e = zia_path_modules.entry_host(as_str(e))   # an IDN entry in punycode, as the destination is
         if not e:
             continue
         if e == h or (e.startswith("*.") and h.endswith(e[1:])) or (e.startswith(".") and (h.endswith(e) or h == e[1:])):

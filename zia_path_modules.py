@@ -252,6 +252,22 @@ def ascii_host(host: str) -> str:
         raise ValueError(f"'{h[:80]}' is not a valid internationalised host name") from e
 
 
+def entry_host(h: str) -> str:
+    """A host name from a tenant list (a URL category, a bypass, a
+    destination) as a destination is placed: lower case, no trailing dot
+    and an internationalised name in punycode, keeping a leading "*." or
+    "." (the domain and its subdomains). Never raises: a name IDNA refuses
+    is kept as written."""
+    h = str(h or "").strip().lower().rstrip(".")
+    if h.isascii():
+        return h
+    lead = "*." if h.startswith("*.") else "." if h.startswith(".") else ""
+    try:
+        return lead + ascii_host(h[len(lead):])
+    except ValueError:
+        return h
+
+
 def well_known(protocol: str, port: Optional[int]) -> Optional[Dict[str, Any]]:
     """The well-known service on protocol/port, or None."""
     if port is None:
@@ -398,7 +414,7 @@ def _norm_entry(entry: str) -> Tuple[str, str]:
     e = str(entry or "").strip().lower()
     e = re.sub(r"^[a-z][a-z0-9+.-]*://", "", e)
     host, _, path = e.partition("/")
-    return host.split(":")[0].rstrip("."), ("/" + path if path else "")
+    return entry_host(host.split(":")[0]), ("/" + path if path else "")
 
 
 def _parse_entry(entry: str) -> Optional[Tuple[Any, ...]]:

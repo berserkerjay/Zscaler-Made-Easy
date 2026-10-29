@@ -825,7 +825,8 @@ class _HostIndex:
         if any(ch in body for ch in "*?[]"):
             self.globs.append((h, raw))
             return
-        key = h.lstrip("*").lstrip(".")
+        from zia_path_modules import entry_host
+        key = entry_host(h.lstrip("*").lstrip("."))   # an IDN entry as rows hold it (punycode)
         if key:
             self.names.setdefault(key, []).append(raw)
 
