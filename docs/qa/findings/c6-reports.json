@@ -315,9 +315,10 @@
    "severity": "low",
    "cwe": "CWE-20",
    "asvs": "V5.1.3",
-   "status": "open",
-   "fix": "Accept the three optional keys in the validator (tools/quality_score.py, outside this slice)",
-   "proposed_patch": "--- a/tools/quality_score.py\n+++ b/tools/quality_score.py\n@@ -159,9 +159,10 @@\n CONTROL_CHARS = re.compile(r\"[\\x00-\\x1f\\x7f\\u202a-\\u202e\\u2066-\\u2069\\u2028\\u2029]\")\n MARKUP = re.compile(r\"<\\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;\")\n \n-ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False}\n+ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False,\n+             \"files\": False, \"coverage\": False}\n FINDING_KEYS = {\"id\": True, \"title\": True, \"severity\": True, \"status\": True, \"cwe\": False, \"asvs\": False, \"wcag\": False,\n-                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False}\n+                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False, \"proposed_patch\": False}\n CHECK_KEYS = {\"id\": True, \"what\": True, \"result\": True, \"standard\": False}\n RUN_KEYS = {\"passed\": True, \"failed\": True, \"skipped\": True, \"duration_s\": True, \"commit\": True, \"date\": True,\n             \"errors\": False, \"files\": False}\n"
+   "status": "fixed",
+   "fix": "Resolved at integration (bde03b1: files, coverage, notes, baseline, proposed_patch keys); completed here: multi-line patches, coverage context, finding files, commit lists",
+   "test": "tests/test_c6_open_low.py::test_the_wave_6_record_fields_are_accepted",
+   "commit": "bde03b1, 37a8f7c"
   }
  ],
  "tests_added": 149

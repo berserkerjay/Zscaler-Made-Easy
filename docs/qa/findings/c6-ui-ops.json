@@ -484,11 +484,10 @@
    "severity": "info",
    "cwe": "CWE-400",
    "asvs": "V12.1.1",
-   "status": "open",
-   "fix": "Use more_total and untracked in moreNote (static/report_path.html, not in this slice)",
-   "test": "tests/test_c6_ui_ops.py::test_the_list_of_hosts_left_out_is_capped",
-   "commit": "",
-   "proposed_patch": "--- a/static/report_path.html\n+++ b/static/report_path.html\n@@ -551,8 +551,9 @@\n     }\n     function moreNote(p) {\n       if (!p.capped) return '';\n-      return `<div class=\"pa-har-cap\" role=\"note\"><strong>${p.more.length} more host(s) not analyzed</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.\n-        <details><summary>Show the ${p.more.length} host(s) left out</summary><ul class=\"pa-har-more\">${p.more.map(m => `<li>${E(m.host)} <span class=\"df-by\">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details></div>`;\n+      const left = p.more_total != null ? p.more_total : p.more.length;\n+      return `<div class=\"pa-har-cap\" role=\"note\"><strong>${left} more host(s) not analyzed</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.${p.untracked ? ` ${p.untracked} more request(s) went to hosts past the ${HarParse.MAX_TRACKED} this page tracks.` : ''}\n+        <details><summary>Show ${left > p.more.length ? `the first ${p.more.length} of ` : 'the '}${left} host(s) left out</summary><ul class=\"pa-har-more\">${p.more.map(m => `<li>${E(m.host)} <span class=\"df-by\">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details></div>`;\n     }\n     function renderHarIntro() {\n       const p = har.parsed, ups = p.hosts.filter(h => h.uploads).length;\n"
+   "status": "fixed",
+   "fix": "HarParse.leftOut counts more_total and untracked requests; the Path analyzer note draws from it (escaped)",
+   "test": "tests/test_c6_open_low.py::test_the_har_note_counts_every_host_left_out_not_only_the_listed",
+   "commit": "37a8f7c"
   },
   {
    "id": "C6-UI-OPS-19",
@@ -496,11 +495,10 @@
    "severity": "info",
    "cwe": "CWE-1059",
    "asvs": "V1.14.1",
-   "status": "open",
-   "fix": "Remove the stale entries (shared file, not in this slice)",
+   "status": "fixed",
+   "fix": "The 50 stale entries are removed from tests/xss_sink_allowlist.json",
    "test": "tests/test_xss_sinks.py::test_allowlist_has_no_stale_entries",
-   "commit": "",
-   "proposed_patch": "--- a/tests/xss_sink_allowlist.json\n+++ b/tests/xss_sink_allowlist.json\n@@ -14,22 +14,6 @@\n   \"E(httpsOnly(s.url))\": [1, \"link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text\"],\n   \"E(httpsOnly(c.source.url))\": [1, \"link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text\"]\n  },\n- \"static/beacon.js\": {\n-  \"E(c.url)\": [1, \"link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text\"],\n-  \"E(ref.url)\": [1, \"link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text\"],\n-  \"E(p.url)\": [1, \"link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text\"]\n- },\n- \"static/bypass_report.js\": {\n-  \"s.total_bypass_items\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.ssl_bypass_rules\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"sec.total_rules\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"sec.count\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"p.status\": [1, \"HTTP status code of the probe (a number)\"],\n-  \"p.item_count\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"it.count\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"r.id\": [1, \"ZIA integer id or an app-made key, never a name\"],\n-  \"rule.id\": [1, \"ZIA integer id or an app-made key, never a name\"]\n- },\n  \"static/dashboard.js\": {\n   \"c.icon\": [1, \"CSS class or icon from the page's own status table\"],\n   \"last.journey.stage\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n@@ -151,27 +135,8 @@\n   \"s.counts.app_groups\": [1, \"number the server computes (count, percentage, score, stage, position)\"]\n  },\n  \"static/detection_health.js\": {\n-  \"r.incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"r.open\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"r.closed\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"r.not_real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"r.fp_rate_pct\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"cls\": [3, \"CSS class or icon from the page's own status table\"],\n-  \"g.incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"g.closed\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"g.not_real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.fp_share_pct\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.not_real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.open\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"h.incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"h.users\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"h.real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"h.not_real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"d.rules_enabled\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"d.rules_cloud\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"d.rules_icap\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.dest_min_incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.dest_fp_pct\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.fp_min_incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n@@ -181,12 +146,6 @@\n   \"st.promote_min_incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.promote_window_days\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.promote_fp_pct\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"data.dismiss_days\": [2, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"p.times_seen\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.open\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.approved\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.snoozed\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.dismissed\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"b.dataset.flow\": [1, \"a data attribute the page itself wrote (flow key)\"]\n  },\n  \"static/explain.js\": {\n@@ -517,19 +476,6 @@\n  },\n  \"static/zcc_fleet.js\": {\n   \"cls\": [1, \"CSS class or icon from the page's own status table\"],\n-  \"d.hours_since_seen\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"a.count\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.devices\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"p.devices\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"p.score\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"c.impact\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"d.differences\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"m.risky\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"m.differing\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"x.rank\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"x.devices\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"x.priority\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"res.devices_total\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"v.devices\": [1, \"number the server computes (count, percentage, score, stage, position)\"]\n  }\n }\n"
+   "commit": "37a8f7c"
   },
   {
    "id": "C6-UI-OPS-20",
@@ -508,11 +506,10 @@
    "severity": "info",
    "cwe": "CWE-1059",
    "asvs": "V1.14.1",
-   "status": "open",
-   "fix": "Remove the stale review entry (shared test, not in this slice)",
+   "status": "fixed",
+   "fix": "The review entry names pov.js's https-only expression that replaced l.url",
    "test": "tests/test_sbd_canary_renderers.py::test_the_url_sink_review_has_no_stale_entries",
-   "commit": "",
-   "proposed_patch": "--- a/tests/test_sbd_canary_renderers.py\n+++ b/tests/test_sbd_canary_renderers.py\n@@ -277,7 +277,6 @@\n     (\"static/find_anything.js\", \"target.href || ''\"): \"sent to /api/workspace/notes, which keeps only paths in this app (clean_href)\",\n     (\"static/path_list.js\", \"open\"): \"/report/operations?fix= with the id through encodeURIComponent\",\n     (\"static/posture_banner.js\", \"'/report/posture' + (hash || ''\"): \"a fixed page with the page's own fragment\",\n-    (\"static/pov.js\", \"l.url\"): \"the test kit's links: constants in pov.py (EICAR_LINKS and the other kit lists), never tenant data\",\n     (\"static/simple.js\", \"a.href\"): \"fixAction()'s app path for a finding's fix\",\n     (\"static/ui_auth.js\", \"ssoStatus.sso_login_url || '/api/auth/sso/login'\"): \"the server's fixed SSO path (/api/auth/sso/login)\",\n     (\"static/zcc_fleet.js\", \"url\"): \"URL.createObjectURL of the downloaded export\",\n"
+   "commit": "37a8f7c"
   },
   {
    "id": "C6-UI-OPS-21",
@@ -520,11 +517,10 @@
    "severity": "info",
    "cwe": "CWE-1059",
    "asvs": "V1.14.1",
-   "status": "open",
-   "fix": "After merging every wave-6 branch run: python tools/security_test_matrix.py (generated file, may not be edited by hand here)",
+   "status": "fixed",
+   "fix": "Resolved at integration: docs/SECURITY_TESTING.md was regenerated with python tools/security_test_matrix.py after the merges and is regenerated again on this branch",
    "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
-   "commit": "",
-   "proposed_patch": "Generated file: run `python tools/security_test_matrix.py` after the merge; a hand diff from this branch would conflict with the other branches' regenerated rows."
+   "commit": "9e0d276"
   }
  ],
  "tests_added": 79

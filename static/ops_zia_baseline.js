@@ -57,6 +57,8 @@
     let weakened = '';
     if (restrictive(r.def) && !on && r.default_on !== false) weakened = 'switched off';
     else if (restrictive(r.def) && !restrictive(action)) weakened = `${actLabel(r.def)} → ${actLabel(action)}`;
+    // As the server's review (ops_zia_baseline.review): isolation and a caution page both let the user in.
+    else if (String(r.def).startsWith('BLOCK') && (action === 'ISOLATE' || action === 'CAUTION')) weakened = `${actLabel(r.def)} → ${actLabel(action)}`;
     return { on, choice, action, weakened };
   }
 
@@ -209,6 +211,7 @@
     return { type: 'ssl_certificate_move', rules: [...z.picked].map(num), certificate: num(z.target) };
   }
 
-  window.OPS_PLUGINS.register({ type: 'zia_baseline', render: renderBaseline, spec: baselineSpec });
+  // effective: the form's own reading of a rule (on, action, weaker than the tier), kept beside the plugin for its parity test.
+  window.OPS_PLUGINS.register({ type: 'zia_baseline', render: renderBaseline, spec: baselineSpec, effective });
   window.OPS_PLUGINS.register({ type: 'ssl_certificate_move', render: renderCerts, spec: certSpec });
 })();

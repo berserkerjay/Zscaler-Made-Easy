@@ -1628,7 +1628,7 @@ def _resolve_pack_ids(pack_ids: List[str]) -> List[Dict[str, Any]]:
 
 class PackFromTenantRequest(TenantCredsRequest):
     """Rebuild a pack from the tenant's own Anchor/Signal dictionaries."""
-    name_filter: str = ""      # substring/regex the dictionary names must match ("" = every custom dictionary)
+    name_filter: str = ""      # literal, case-insensitive substring the dictionary names contain (^ starts with, $ ends with; never a regex; "" = every custom dictionary)
     prefix: str = "SRC-"       # engine name prefix
     threshold: int = 4         # Signal matches the engine needs (> N)
     html_threshold: int = 3
@@ -4595,13 +4595,17 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
                                                                apply_tweaks=req.apply_tweaks, verify=req.verify, writes_enabled=True,
                                                                log=logs.append, assessor=by))
     result["logs"] = logs
-    if result.get("status") == "applied" and result.get("summary", {}).get("created"):
+    # A partial deploy created objects too: record whatever was created (as
+    # Deploy Policy Packs does), or it could never be undone.
+    if result.get("status") not in ("plan_changed", "blocked", "stopped"):
         try:
             import deployments
             creds = _tenant_creds(req)
-            deployments.add(deployments.from_apply(result, tenant_label=tenant_auth.record_label(creds), packs=[pack["id"]],
-                                                   options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks}, channel_targets={},
-                                                   by=by, **_record_ids(creds)))
+            rec = deployments.from_apply(result, tenant_label=tenant_auth.record_label(creds), packs=[pack["id"]],
+                                         options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks}, channel_targets={},
+                                         by=by, **_record_ids(creds))
+            if rec:   # None when nothing was created
+                deployments.add(rec)
         except Exception as e:  # noqa: BLE001 — the deployment happened; only the record failed
             result.setdefault("warnings", []).append(f"The deployment was not recorded for undo: {e}")
     return result
@@ -6055,10 +6059,9 @@ def _beacon_scope(scopes: Any, channels: Any, profile_id: str = "", from_page: b
     Raises HTTPException 400 when nothing is in scope. Never reads a
     tenant."""
     import beacon_scope
-    import channel_scope
     src = []
     sc = beacon_scope.normalize_scopes(scopes)
-    ch = channels if channel_scope.normalize(channels) else {}
+    ch = _channel_declaration(channels)
     if sc or ch or from_page:
         src.append("the Scope page")
     elif profile_id:
@@ -6068,7 +6071,7 @@ def _beacon_scope(scopes: Any, channels: Any, profile_id: str = "", from_page: b
         except Exception:  # noqa: BLE001 — an unreadable profile store is no selection
             prof = {}
         sc = beacon_scope.normalize_scopes(prof.get("scopes"))
-        ch = prof.get("channels") if channel_scope.normalize(prof.get("channels")) else {}
+        ch = _channel_declaration(prof.get("channels"))
         if sc or ch:
             src.append(f"the saved profile {prof.get('name') or profile_id}")
     if not sc and not ch:
@@ -7607,6 +7610,9 @@ async def migrate_post(req: PostRequest):
     if not req.proposed_rules:
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
     _rule_text_fields(req.proposed_rules, "proposed_rules")
+    from rule_migrator import POST_MODES
+    if req.mode not in POST_MODES:   # refused before any gate or sign-in, never read as "update"
+        raise HTTPException(status_code=400, detail=f"mode must be one of {', '.join(POST_MODES)}. Nothing was read or written.")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Posting rules to the tenant")
         _require_migrate_plan_hash(req)
@@ -7712,6 +7718,8 @@ async def migrate_export(request: Request, format: str = "json"):
         from rule_migrator import generate_migration_plan, export_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    if format not in ("json", "csv"):   # any other value was an empty CSV file
+        raise HTTPException(status_code=400, detail="format must be json or csv.")
     data = await _json_object(request)
     rules = _rule_rows(data, "No rules provided in request body.")
     plan = generate_migration_plan(rules)
@@ -9940,16 +9948,21 @@ async def flow_scenario(req: FlowScenarioRequest, request: Request):
         watcher.cancel()
 
 
+def _channel_declaration(raw: Any) -> Dict[str, Any]:
+    """A channel declaration as sent: any non-empty object counts, even one
+    whose entries cannot be read (channel_scope.effective then makes every
+    channel a gap); never "nothing declared", which narrows nothing."""
+    return raw if isinstance(raw, dict) and raw else {}
+
+
 def _scope_selection(req: Any) -> Tuple[List[str], Dict[str, Any], str]:
     """The Scope page selection a tenant read honours: (scopes, channels,
     source). The page's selection (`scopes`, `channels`, `from_page`),
     else (only when the page sent nothing at all and does not know the
     Scope page's ticks) the saved profile's. The two are never mixed, so
     the profile cannot widen what the page chose. Never reads a tenant."""
-    import channel_scope
     sc = [str(x) for x in (getattr(req, "scopes", None) or [])]
-    raw = getattr(req, "channels", None)
-    ch = raw if channel_scope.normalize(raw) else {}
+    ch = _channel_declaration(getattr(req, "channels", None))
     source = ""
     pid = getattr(req, "profile_id", "") or ""
     if sc or ch or getattr(req, "from_page", False):
@@ -9961,7 +9974,7 @@ def _scope_selection(req: Any) -> Tuple[List[str], Dict[str, Any], str]:
         except Exception:  # noqa: BLE001 — an unreadable profile store is no selection
             prof = {}
         sc = [str(x) for x in (prof.get("scopes") or [])]
-        ch = prof.get("channels") if channel_scope.normalize(prof.get("channels")) else {}
+        ch = _channel_declaration(prof.get("channels"))
         if sc or ch:
             source = f"the saved profile {prof.get('name') or pid}"
     return sc, ch, source

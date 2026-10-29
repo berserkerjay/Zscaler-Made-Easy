@@ -149,8 +149,6 @@ def test_the_writer_and_reader_round_trip_names_text_and_order():
         assert by_name[p["name"]]["engines"] == p["engines"] and by_name[p["name"]]["channel"] == p["channel"]
 
 
-@pytest.mark.xfail(strict=True, reason="C6-EXPORTS-08 (open): pack_library.pack_from_terraform drops data-source references; "
-                                       "the proposed patch in docs/qa/findings/c6-exports.json fixes it")
 def test_the_reader_keeps_labels_notification_template_and_pinned_tenants():
     """ASVS V5.1.4 · CWE-20 · WSTG-BUSL-01: rule labels, the notification template and the SaaS / email tenants survive writer -> reader."""
     # Arrange

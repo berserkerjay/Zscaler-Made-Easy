@@ -235,11 +235,10 @@
    "severity": "low",
    "cwe": "CWE-20",
    "asvs": "V5.1.4",
-   "status": "open",
-   "fix": "read tenant_name data blocks, accept .tenant_id references, and map the labels / notification_template / *_tenants blocks back to names",
+   "status": "fixed",
+   "fix": "pack_from_terraform reads tenant_name data sources and .tenant_id references, and maps labels / notification_template / *_tenants blocks back to names",
    "test": "tests/test_c6_exports.py::test_the_reader_keeps_labels_notification_template_and_pinned_tenants",
-   "commit": "c134050",
-   "proposed_patch": "diff --git a/pack_library.py b/pack_library.py\nindex 144cc86..c8bca17 100644\n--- a/pack_library.py\n+++ b/pack_library.py\n@@ -454,7 +454,7 @@ def _ref_name(ref: Any, labels: Dict[Tuple[str, str], str]) -> Optional[str]:\n     if not isinstance(ref, Ref):\n         return None\n     # tostring(x.y.group_id) and friends: look through the wrapper.\n-    m = re.search(r\"(?<![A-Za-z0-9_.])(data\\.)?([a-z_]+)\\.([A-Za-z0-9_\\-]+)\\.(id|rule_id|group_id|name)(?![A-Za-z0-9_.])\", ref.text)\n+    m = re.search(r\"(?<![A-Za-z0-9_.])(data\\.)?([a-z_]+)\\.([A-Za-z0-9_\\-]+)\\.(id|rule_id|group_id|tenant_id|name)(?![A-Za-z0-9_.])\", ref.text)\n     if not m:\n         return None\n     return labels.get(((\"data.\" if m.group(1) else \"\") + m.group(2), m.group(3)))\n@@ -477,8 +477,9 @@ def pack_from_terraform(files: Dict[str, str]) -> Tuple[Dict[str, Any], List[str\n         for blk in _blocks(doc, \"data\"):\n             lab = blk.get(\"_labels\") or []\n             if len(lab) >= 2:\n-                if isinstance(blk.get(\"name\"), str):\n-                    labels[(\"data.\" + lab[0], lab[1])] = blk[\"name\"]\n+                looked_up = blk.get(\"name\") if isinstance(blk.get(\"name\"), str) else blk.get(\"tenant_name\")   # zia_casb_tenant: tenant_name\n+                if isinstance(looked_up, str):\n+                    labels[(\"data.\" + lab[0], lab[1])] = looked_up\n                 if lab[0] == \"zia_cloud_applications\":\n                     app_class_lookups[lab[1]] = [str(c) for c in (_plain(blk.get(\"app_class\")) or [])]\n         for blk in _blocks(doc, \"resource\"):\n@@ -564,6 +565,13 @@ def pack_from_terraform(files: Dict[str, str]) -> Tuple[Dict[str, Any], List[str\n                 if k == \"type\" and channel == pc.SAAS:\n                     p[\"saas_type\"] = _plain(v)\n                     continue\n+                if k in (\"labels\", \"notification_template\", \"cloud_app_tenants\", \"email_tenants\"):\n+                    # Blocks of data-source references (the generator looks each one up by name): the names travel.\n+                    named = _ref_list(v, labels, warnings, owner, k.replace(\"_\", \" \"))\n+                    if named:\n+                        key = \"tenants\" if k.endswith(\"tenants\") else k\n+                        p[key] = named[0] if k == \"notification_template\" else named\n+                        continue\n                 if isinstance(v, Ref):\n                     # cloud_applications built from data.zia_cloud_applications lookups -> app classes\n                     used = [lbl for lbl in app_class_lookups if f\"data.zia_cloud_applications.{lbl}.\" in v.text]\n"
+   "commit": "37a8f7c"
   },
   {
    "id": "C6-EXPORTS-09",
@@ -247,11 +246,10 @@
    "severity": "low",
    "cwe": "CWE-407",
    "asvs": "V11.1.4",
-   "status": "open",
-   "fix": "bisect on the sorted request times; outputs are identical (checked against the old code on randomised inputs)",
-   "test": "tests/test_c6_exports.py::test_a_10k_rule_export_is_complete_in_order_and_skips_the_rate_forecast",
-   "commit": "c134050",
-   "proposed_patch": "diff --git a/zia_rate.py b/zia_rate.py\nindex ebe6b82..ed69f67 100644\n--- a/zia_rate.py\n+++ b/zia_rate.py\n@@ -881,17 +881,20 @@ def _day_clock(t: float) -> str:\n def _simulate(rules: List[Tuple[int, float]], prior: List[float], start: float, n: int) -> List[float]:\n     \"\"\"When each of `n` requests goes out, starting at `start`, after the\n     `prior` ones, at the (count, window) `rules`.\"\"\"\n+    import bisect\n     sim = sorted(prior)\n     out: List[float] = []\n     t = start\n     for _ in range(n):\n         wait_s = 0.0\n         for lim, w in rules:\n-            inside = [x for x in sim if t - x < w]\n-            if len(inside) >= lim:\n-                wait_s = max(wait_s, inside[-lim] + w - t)\n+            # sim is kept sorted: the requests inside the window are a\n+            # suffix, found by bisection, not a scan (a 10k-rule pack).\n+            inside = len(sim) - bisect.bisect_right(sim, t - w)\n+            if inside >= lim:\n+                wait_s = max(wait_s, sim[len(sim) - lim] + w - t)\n         t += max(0.0, wait_s)\n-        sim.append(t)\n+        bisect.insort(sim, t)\n         out.append(t)\n     return out\n \n"
+   "status": "fixed",
+   "fix": "zia_rate._simulate bisects the sorted request times with the same window test: identical answers (seeded oracle), O(n log n)",
+   "test": "tests/test_c6_open_low.py::test_the_rate_forecast_looks_at_log_n_requests_per_step",
+   "commit": "37a8f7c"
   },
   {
    "id": "C6-EXPORTS-10",
@@ -259,11 +257,10 @@
    "severity": "low",
    "cwe": "CWE-223",
    "asvs": "V8.3.1",
-   "status": "open",
-   "fix": "name each rule beyond the cap in not_exported with the reason",
-   "test": "tests/test_c6_exports.py::test_a_framework_exported_with_rules_says_what_it_left_out",
-   "commit": "c134050",
-   "proposed_patch": "diff --git a/ops_zia_baseline.py b/ops_zia_baseline.py\nindex 0b63607..e42aaac 100644\n--- a/ops_zia_baseline.py\n+++ b/ops_zia_baseline.py\n@@ -1819,6 +1819,11 @@ def capture(client, areas: Sequence[str], *, name: str = \"\", tenant_label: str =\n             c = _capture_rule(area, r, len(out) + 1, fw[\"not_exported\"])\n             if c:\n                 out.append(c)\n+        if len(out) > MAX_FRAMEWORK_RULES:\n+            # A framework holds at most MAX_FRAMEWORK_RULES rules per area (load_framework refuses more): say which were cut.\n+            for c in out[MAX_FRAMEWORK_RULES:]:\n+                fw[\"not_exported\"].append({\"name\": c[\"name\"], \"area\": AREAS[area][\"label\"],\n+                                           \"reason\": f\"beyond the {MAX_FRAMEWORK_RULES} rules a framework holds per area; recreate it in the target tenant\"})\n         if out:\n             fw[\"areas\"][area] = out[:MAX_FRAMEWORK_RULES]\n         _log(f\"Reading the tenant: {AREAS[area]['label']}: {len(out)} rule(s) captured.\")\n"
+   "status": "fixed",
+   "fix": "ops_zia_baseline.capture names every rule past MAX_FRAMEWORK_RULES in not_exported with the reason",
+   "test": "tests/test_c6_open_low.py::test_a_framework_capture_names_each_rule_past_the_cap",
+   "commit": "37a8f7c"
   },
   {
    "id": "C6-EXPORTS-11",
@@ -315,11 +312,10 @@
    "severity": "info",
    "cwe": "CWE-1068",
    "asvs": "V1.14.1",
-   "status": "open",
-   "fix": "accept the template's optional keys in ROOT_KEYS and FINDING_KEYS (checked: this record then validates)",
-   "test": "tests/test_quality_score.py::test_the_committed_score_is_current",
-   "commit": "c134050",
-   "proposed_patch": "diff --git a/tools/quality_score.py b/tools/quality_score.py\nindex 5696a87..efd9643 100644\n--- a/tools/quality_score.py\n+++ b/tools/quality_score.py\n@@ -159,9 +159,10 @@ TEST_FILE = re.compile(r\"^tests/[A-Za-z0-9_/-]{1,150}\\.py$\")\n CONTROL_CHARS = re.compile(r\"[\\x00-\\x1f\\x7f\\u202a-\\u202e\\u2066-\\u2069\\u2028\\u2029]\")\n MARKUP = re.compile(r\"<\\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;\")\n \n-ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False}\n+ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False,\n+             \"files\": False, \"coverage\": False}\n FINDING_KEYS = {\"id\": True, \"title\": True, \"severity\": True, \"status\": True, \"cwe\": False, \"asvs\": False, \"wcag\": False,\n-                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False}\n+                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False, \"proposed_patch\": False}\n CHECK_KEYS = {\"id\": True, \"what\": True, \"result\": True, \"standard\": False}\n RUN_KEYS = {\"passed\": True, \"failed\": True, \"skipped\": True, \"duration_s\": True, \"commit\": True, \"date\": True,\n             \"errors\": False, \"files\": False}\n"
+   "status": "fixed",
+   "fix": "Resolved at integration (bde03b1: files, coverage, notes, baseline, proposed_patch keys); completed here: multi-line patches, coverage context, finding files, commit lists",
+   "test": "tests/test_c6_open_low.py::test_the_wave_6_record_fields_are_accepted",
+   "commit": "bde03b1, 37a8f7c"
   }
  ],
  "tests_added": 100

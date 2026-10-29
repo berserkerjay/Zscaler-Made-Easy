@@ -54,7 +54,26 @@
  ],
  "coverage": {
   "before": 88.0,
-  "after": 92.9
+  "after": 92.9,
+  "detail": {
+   "method": "coverage.py line+branch over the six files, the 32 test files that exercise them (+ the new test file after)",
+   "before": {
+    "bypass_report.py": 74,
+    "detection_health.py": 90,
+    "insights.py": 96,
+    "log_analyzer.py": 90,
+    "ssl_coverage.py": 89,
+    "ssl_flow.py": 97
+   },
+   "after": {
+    "bypass_report.py": 89,
+    "detection_health.py": 93,
+    "insights.py": 97,
+    "log_analyzer.py": 93,
+    "ssl_coverage.py": 92,
+    "ssl_flow.py": 97
+   }
+  }
  },
  "checks": [
   {
@@ -479,11 +498,10 @@
    "severity": "low",
    "cwe": "CWE-755",
    "asvs": "V7.4.1",
-   "status": "open",
-   "fix": "Refuse them as ArchiveRefused (re-raising ArchiveRefused itself first, since it is a ValueError); log_analyzer already catches them",
-   "test": "",
-   "commit": "",
-   "proposed_patch": "--- a/safe_files.py\n+++ b/safe_files.py\n@@ -133,7 +133,10 @@\n                 out += chunk\n                 if len(out) > limit:\n                     raise ArchiveRefused(f\"{name}: expands past its limit\")\n-    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError) as e:\n+    except ArchiveRefused:\n+        raise\n+    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError, ValueError, OSError) as e:\n+        # ValueError: a local header offset that lies (\"negative seek value\").\n         # A damaged member (a CRC that does not match, a size that lies) is refused, not a server error.\n         raise ArchiveRefused(f\"{name}: damaged or not what it claims ({str(e)[:80]})\") from None\n     return bytes(out)\n"
+   "status": "fixed",
+   "fix": "zip_member refuses ValueError and OSError from a lying member offset as ArchiveRefused (ArchiveRefused itself re-raised first)",
+   "test": "tests/test_c6_open_low.py::test_a_zip_member_whose_header_offset_lies_is_refused_as_an_archive_error",
+   "commit": "37a8f7c"
   },
   {
    "id": "C6-TRAFFIC-REPORTS-28",
@@ -535,31 +553,11 @@
    "severity": "info",
    "cwe": "CWE-1059",
    "asvs": "V1.14.6",
-   "status": "open",
-   "fix": "Integrator regenerates the document after merging: python tools/security_test_matrix.py (this agent may not edit it)",
+   "status": "fixed",
+   "fix": "Resolved at integration: docs/SECURITY_TESTING.md was regenerated with python tools/security_test_matrix.py after the merges and is regenerated again on this branch",
    "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
-   "commit": "",
-   "proposed_patch": "Regenerated, not hand-written: run `python tools/security_test_matrix.py` and commit docs/SECURITY_TESTING.md."
+   "commit": "9e0d276"
   }
  ],
- "tests_added": 158,
- "coverage_detail": {
-  "method": "coverage.py line+branch over the six files, the 32 test files that exercise them (+ the new test file after)",
-  "before": {
-   "bypass_report.py": 74,
-   "detection_health.py": 90,
-   "insights.py": 96,
-   "log_analyzer.py": 90,
-   "ssl_coverage.py": 89,
-   "ssl_flow.py": 97
-  },
-  "after": {
-   "bypass_report.py": 89,
-   "detection_health.py": 93,
-   "insights.py": 97,
-   "log_analyzer.py": 93,
-   "ssl_coverage.py": 92,
-   "ssl_flow.py": 97
-  }
- }
+ "tests_added": 158
 }

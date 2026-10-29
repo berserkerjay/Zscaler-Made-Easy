@@ -40,6 +40,7 @@ refusals of the last week. It is saved to DLP_CHECK_ZIA_RATE_STATE,
 merged with what other processes wrote."""
 from __future__ import annotations
 
+import bisect
 import contextlib
 import hashlib
 import json
@@ -940,11 +941,14 @@ def _simulate(rules: List[Tuple[int, float]], prior: List[float], start: float, 
     for _ in range(n):
         wait_s = 0.0
         for lim, w in rules:
-            inside = [x for x in sim if t - x < w]
-            if len(inside) >= lim:
-                wait_s = max(wait_s, inside[-lim] + w - t)
+            # sim stays sorted, so the requests inside the window (t - x < w)
+            # are a suffix, found by bisection with that same test, not by a
+            # scan of every request (quadratic: a 10k-rule pack took minutes).
+            first = bisect.bisect_left(sim, True, key=lambda x, t=t, w=w: t - x < w)
+            if len(sim) - first >= lim:
+                wait_s = max(wait_s, sim[len(sim) - lim] + w - t)
         t += max(0.0, wait_s)
-        sim.append(t)
+        bisect.insort(sim, t)
         out.append(t)
     return out
 

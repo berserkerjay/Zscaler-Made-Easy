@@ -193,9 +193,9 @@
    "cwe": "CWE-693",
    "asvs": "V14.4.3",
    "status": "fixed",
-   "fix": "SecurityHeadersMiddleware sits just inside the body cap (outside the rate limiter, CORS and the UI token gate); the unhandled-error 500 sets the same headers itself",
+   "fix": "SecurityHeadersMiddleware sits just inside the body cap (outside the rate limiter, CORS and the UI token gate); the unhandled-error 500 sets the same headers itself (commits cb3d1b3 and d1fc71f)",
    "test": "tests/test_c6_api_server.py::test_an_unhandled_error_500_carries_the_security_headers",
-   "commit": "cb3d1b3, d1fc71f"
+   "commit": "cb3d1b3"
   },
   {
    "id": "C6-API-SERVER-03",
@@ -302,11 +302,10 @@
    "severity": "low",
    "cwe": "CWE-20",
    "asvs": "V5.1.3",
-   "status": "open",
-   "fix": "Bracket a bare IPv6 literal before urlsplit in path_analyzer.parse_destination (outside dlp_api_server.py)",
-   "test": "proposed: tests/test_path_analyzer.py — parse_destination('2001:db8::1')['host'] == '2001:db8::1'; POST /api/bulk-test/start with '[2001:db8::1]:443' finishes done",
-   "commit": "",
-   "proposed_patch": "--- a/path_analyzer.py\n+++ b/path_analyzer.py\n@@ -69,7 +69,11 @@\n     raw = (text or \"\").strip()\n     if not raw:\n         raise ValueError(\"Enter a URL, a hostname or an IP address.\")\n-    s = raw if re.match(r\"^[a-z][a-z0-9+.-]*://\", raw, re.I) else \"https://\" + raw\n+    try:   # a bare IPv6 literal (2001:db8::1, ::1) is an address, not host:port\n+        raw_v6 = ipaddress.IPv6Address(raw.split(\"%\", 1)[0])\n+    except ValueError:\n+        raw_v6 = None\n+    s = raw if re.match(r\"^[a-z][a-z0-9+.-]*://\", raw, re.I) else \"https://\" + (f\"[{raw_v6.compressed}]\" if raw_v6 else raw)\n     try:\n         u = urlsplit(s)\n         host = (u.hostname or \"\").lower().strip(\".\")\n"
+   "status": "fixed",
+   "fix": "Resolved at integration (QA func-path, fea4d7d): parse_destination brackets a bare IPv6 literal; a v6 CIDR row of a list parses address by address",
+   "test": "tests/test_c6_open_low.py::test_every_address_of_an_ipv6_range_in_a_list_can_be_analysed",
+   "commit": "fea4d7d, 37a8f7c"
   },
   {
    "id": "C6-API-SERVER-13",
@@ -316,9 +315,10 @@
    "asvs": "V4.2.1",
    "status": "open",
    "fix": "pack_jobs.stop_before_start(token, actor) refuses (PermissionError -> 403) when the job's known starter is someone else; the route passes _actor(request)",
-   "test": "proposed: tests/test_run_control.py — a token whose job actor is alice, stopped as mallory, is a 403 and the job keeps running",
+   "test": "",
    "commit": "",
-   "proposed_patch": "--- a/pack_jobs.py\n+++ b/pack_jobs.py\n@@ -153,10 +153,12 @@\n             del _token_jobs[k]\n \n \n-def stop_before_start(token: Any) -> Dict[str, Any]:\n+def stop_before_start(token: Any, actor: Optional[str] = None) -> Dict[str, Any]:\n     \"\"\"Stop for a run whose start request has not answered yet. When its\n     job already exists it is cancelled now; otherwise the stop waits for\n-    the job, which then starts stopped. Returns what was done.\"\"\"\n+    the job, which then starts stopped. Returns what was done.\n+    PermissionError when the job exists and was started by someone else\n+    (`actor` given and the job's actor known and different).\"\"\"\n     t = valid_start_token(token)\n     if t is None:\n         raise ValueError(\"start_token must be 8-64 letters, digits, '-' or '_'.\")\n@@ -170,6 +172,9 @@\n                 del _pending_stops[oldest]\n             _pending_stops[t] = now\n     if job_id is not None:\n+        job = get(job_id)\n+        if actor is not None and job is not None and job.actor and job.actor != actor:\n+            raise PermissionError(\"This job was started by someone else; only the person who started it can stop it.\")\n         return {\"job_id\": job_id, \"cancelled\": cancel(job_id), \"pending\": False}\n     return {\"job_id\": None, \"cancelled\": True, \"pending\": True}\n \n--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -3368,14 +3368,16 @@\n \n \n @app.post(\"/api/dlp-packs/jobs/stop-before-start\")\n-async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):\n+async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest, request: Request):\n     \"\"\"Stop pressed while a start request (deploy, removal, export,\n     Terraform hand-off, path analysis) is still signing in, so there is no\n     job id yet. The job that start creates begins with its cancel set and\n     reads or writes nothing; one that already exists is cancelled now.\"\"\"\n     import pack_jobs\n     try:\n-        return pack_jobs.stop_before_start(req.start_token)\n+        return pack_jobs.stop_before_start(req.start_token, actor=_actor(request))\n+    except PermissionError as e:\n+        raise HTTPException(status_code=403, detail=str(e))\n     except ValueError as e:\n         raise HTTPException(status_code=400, detail=str(e))\n \n"
+   "proposed_patch": "--- a/pack_jobs.py\n+++ b/pack_jobs.py\n@@ -153,10 +153,12 @@\n             del _token_jobs[k]\n \n \n-def stop_before_start(token: Any) -> Dict[str, Any]:\n+def stop_before_start(token: Any, actor: Optional[str] = None) -> Dict[str, Any]:\n     \"\"\"Stop for a run whose start request has not answered yet. When its\n     job already exists it is cancelled now; otherwise the stop waits for\n-    the job, which then starts stopped. Returns what was done.\"\"\"\n+    the job, which then starts stopped. Returns what was done.\n+    PermissionError when the job exists and was started by someone else\n+    (`actor` given and the job's actor known and different).\"\"\"\n     t = valid_start_token(token)\n     if t is None:\n         raise ValueError(\"start_token must be 8-64 letters, digits, '-' or '_'.\")\n@@ -170,6 +172,9 @@\n                 del _pending_stops[oldest]\n             _pending_stops[t] = now\n     if job_id is not None:\n+        job = get(job_id)\n+        if actor is not None and job is not None and job.actor and job.actor != actor:\n+            raise PermissionError(\"This job was started by someone else; only the person who started it can stop it.\")\n         return {\"job_id\": job_id, \"cancelled\": cancel(job_id), \"pending\": False}\n     return {\"job_id\": None, \"cancelled\": True, \"pending\": True}\n \n--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -3368,14 +3368,16 @@\n \n \n @app.post(\"/api/dlp-packs/jobs/stop-before-start\")\n-async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):\n+async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest, request: Request):\n     \"\"\"Stop pressed while a start request (deploy, removal, export,\n     Terraform hand-off, path analysis) is still signing in, so there is no\n     job id yet. The job that start creates begins with its cancel set and\n     reads or writes nothing; one that already exists is cancelled now.\"\"\"\n     import pack_jobs\n     try:\n-        return pack_jobs.stop_before_start(req.start_token)\n+        return pack_jobs.stop_before_start(req.start_token, actor=_actor(request))\n+    except PermissionError as e:\n+        raise HTTPException(status_code=403, detail=str(e))\n     except ValueError as e:\n         raise HTTPException(status_code=400, detail=str(e))\n \n",
+   "reason": "Proposed test: tests/test_run_control.py — a token whose job actor is alice, stopped as mallory, is a 403 and the job keeps running"
   },
   {
    "id": "C6-API-SERVER-14",
@@ -326,11 +326,10 @@
    "severity": "info",
    "cwe": "CWE-693",
    "asvs": "V14.4.3",
-   "status": "open",
-   "fix": "BodySizeLimitMiddleware._too_large sets the hardening headers on its own refusal (security.py, outside dlp_api_server.py)",
-   "test": "proposed: tests/test_c6_api_server.py — a body one byte over the cap is a 413 with nosniff, X-Frame-Options DENY and CSP",
-   "commit": "",
-   "proposed_patch": "--- a/security.py\n+++ b/security.py\n@@ -520,7 +520,10 @@\n                           client=str(client[0]), bytes=size, limit=self.max_bytes)\n         except Exception:  # noqa: BLE001 — logging never blocks the refusal\n             pass\n-        return JSONResponse({\"detail\": f\"Request body too large (max {self.max_bytes} bytes).\"}, status_code=413)\n+        # Outside the headers layer too: the refusal carries the same hardening headers itself.\n+        return JSONResponse({\"detail\": f\"Request body too large (max {self.max_bytes} bytes).\"}, status_code=413,\n+                            headers={\"X-Content-Type-Options\": \"nosniff\", \"X-Frame-Options\": \"DENY\", \"Referrer-Policy\": \"no-referrer\",\n+                                     \"Content-Security-Policy\": CONTENT_SECURITY_POLICY, \"Cache-Control\": \"no-store\"})\n \n     async def __call__(self, scope, receive, send):\n         if scope.get(\"type\") != \"http\":\n"
+   "status": "fixed",
+   "fix": "security.refusal_headers(): the body cap's 413 and its 400 for a bad Content-Length carry nosniff, frame denial, CSP and no-store (one table with the headers middleware)",
+   "test": "tests/test_c6_open_low.py::test_the_body_cap_refusals_carry_the_hardening_headers",
+   "commit": "37a8f7c"
   },
   {
    "id": "C6-API-SERVER-15",

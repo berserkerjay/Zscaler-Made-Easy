@@ -224,7 +224,7 @@
   },
   {
    "id": "C6-ADMIN-OPS-08",
-   "title": "proposals.json was written through a fixed <store>.tmp opened with open() (follows a planted symlink, umask permissions until chmod, no cross-process lock)",
+   "title": "proposals.json was written through a fixed temporary file (the store's name plus .tmp) opened with open() (follows a planted symlink, umask permissions until chmod, no cross-process lock)",
    "severity": "low",
    "cwe": "CWE-59",
    "asvs": "V12.3.1",
@@ -383,11 +383,10 @@
    "severity": "info",
    "cwe": "CWE-538",
    "asvs": "V14.1.1",
-   "status": "open",
-   "fix": "Add proposals.json.lock to .gitignore beside proposals.json.tmp",
-   "test": "",
-   "commit": "",
-   "proposed_patch": "--- a/.gitignore\n+++ b/.gitignore\n@@ -56,6 +56,7 @@\n # Continuous evaluation: the per-tenant approval queue (local, never committed)\n proposals.json\n proposals.json.tmp\n+proposals.json.lock\n # The team change queue (change_queue.py): requests, its lock file and atomic-write temporaries\n change_requests.json\n change_requests.json.lock\n"
+   "status": "fixed",
+   "fix": "proposals.json.lock is git-ignored beside proposals.json.tmp; a table test covers every store's lock file",
+   "test": "tests/test_c6_open_low.py::test_every_store_lock_file_is_git_ignored",
+   "commit": "37a8f7c"
   }
  ],
  "tests_added": 165

@@ -315,11 +315,10 @@
    "severity": "low",
    "cwe": "CWE-843",
    "asvs": "V5.1.4",
-   "status": "open",
-   "fix": "Guard the three list reads with isinstance(list, tuple)",
-   "test": "tests/test_c6_posture.py::test_a_rule_whose_sub_rules_are_not_a_list_is_still_analysed (covers the in-area part; extend with dlpEngines=True after the patch)",
-   "commit": "",
-   "proposed_patch": "diff --git a/data_flow.py b/data_flow.py\nindex 9575862..4691f90 100644\n--- a/data_flow.py\n+++ b/data_flow.py\n@@ -453,7 +453,7 @@ def _norm_generic(r: Dict[str, Any]) -> Dict[str, Any]:\n     action = r.get(\"action\")\n     if isinstance(action, dict):\n         action = action.get(\"type\") or action.get(\"name\")\n-    actions = [str(a).upper() for a in (r.get(\"actions\") or [])]\n+    actions = [str(a).upper() for a in (r.get(\"actions\") if isinstance(r.get(\"actions\"), (list, tuple)) else [])]\n     state = str(r.get(\"state\") or \"ENABLED\").upper()\n     return {\n         \"id\": r.get(\"id\"), \"name\": r.get(\"name\") or f\"rule {r.get('id')}\", \"order\": r.get(\"order\"), \"rank\": r.get(\"rank\"),\ndiff --git a/ssl_flow.py b/ssl_flow.py\nindex ca86a6e..c6f0f3f 100644\n--- a/ssl_flow.py\n+++ b/ssl_flow.py\n@@ -111,7 +111,7 @@ def _f(r: Dict[str, Any], *names: str, default: Any = None) -> Any:\n \n def _names(items: Any) -> List[str]:\n     out: List[str] = []\n-    for x in items or []:\n+    for x in items if isinstance(items, (list, tuple)) else []:   # a non-list from the tenant: no names\n         if isinstance(x, dict):\n             v = x.get(\"name\") or x.get(\"id\") or x.get(\"url\")\n             if v is not None:\ndiff --git a/zpa_reader.py b/zpa_reader.py\nindex ca34efb..78c5195 100644\n--- a/zpa_reader.py\n+++ b/zpa_reader.py\n@@ -206,7 +206,7 @@ def normalize_segment(s: Dict[str, Any]) -> Dict[str, Any]:\n     return {\n         \"id\": as_str(get(s, \"id\")), \"name\": as_str(get(s, \"name\")) or as_str(get(s, \"id\")),\n         \"enabled\": as_bool(get(s, \"enabled\")) is not False,\n-        \"domains\": [as_str(d) for d in (get(s, \"domainNames\") or []) if as_str(d)],\n+        \"domains\": [as_str(d) for d in (get(s, \"domainNames\") if isinstance(get(s, \"domainNames\"), (list, tuple)) else []) if as_str(d)],\n         \"tcp\": tcp, \"udp\": udp, \"tcp_raw\": tcp_raw, \"udp_raw\": udp_raw,\n         \"segment_group_id\": as_str(get(s, \"segmentGroupId\")), \"segment_group_name\": as_str(get(s, \"segmentGroupName\")),\n         \"server_groups\": _refs(get(s, \"serverGroups\")),\n"
+   "status": "fixed",
+   "fix": "Fixed once with C6-PATH-26: data_flow actions through ssl_flow._names, zpa_reader._items for domainNames and every other ZPA list read",
+   "test": "tests/test_c6_open_low.py::test_a_list_field_of_the_wrong_type_never_stops_a_shared_normalizer",
+   "commit": "37a8f7c"
   }
  ],
  "tests_added": 243

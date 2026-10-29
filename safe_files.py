@@ -143,7 +143,11 @@ def zip_member(z: zipfile.ZipFile, info: zipfile.ZipInfo, limit: int) -> bytes:
                 out += chunk
                 if len(out) > limit:
                     raise ArchiveRefused(f"{name}: expands past its limit")
-    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError) as e:
-        # A damaged member (a CRC that does not match, a size that lies) is refused, not a server error.
+    except ArchiveRefused:
+        raise   # a ValueError itself: its own words, not "damaged"
+    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError, ValueError, OSError) as e:
+        # A damaged member (a CRC that does not match, a size that lies, a
+        # header offset that points before the file: "negative seek value")
+        # is refused, not a server error.
         raise ArchiveRefused(f"{name}: damaged or not what it claims ({str(e)[:80]})") from None
     return bytes(out)
