@@ -57,8 +57,9 @@ def _sdk_call(method, *args, **kwargs) -> Tuple[Any, int]:
         data, response, error = result
 
         if error is not None:
-            logger.warning("SDK error on %s: %s", method.__name__, error)
-            return {"error": str(error)}, 0
+            msg = _scrub(error)
+            logger.warning("SDK error on %s: %s", _name(method), msg)
+            return {"error": msg}, 0
 
         if data is None:
             return [], 204
@@ -71,8 +72,23 @@ def _sdk_call(method, *args, **kwargs) -> Tuple[Any, int]:
             return data, 200
 
     except Exception as e:
-        logger.error("SDK call failed (%s): %s", method.__name__, e)
-        return {"error": str(e)}, 0
+        msg = _scrub(e)
+        logger.error("SDK call failed (%s): %s", _name(method), msg)
+        return {"error": msg}, 0
+
+
+def _name(method: Any) -> str:
+    """A callable's name for the log; a partial or a mock has none."""
+    return str(getattr(method, "__name__", None) or type(method).__name__)
+
+
+def _scrub(error: Any) -> str:
+    """An SDK error as text with every access token, JSON Web Token, Basic
+    credential and session id masked (tenant_auth.redact_tokens): an API
+    error page may echo the request's Authorization header, and this text is
+    logged and returned (CWE-532). SdkClient.get masks its own credentials too."""
+    import tenant_auth
+    return tenant_auth.redact_tokens(str(error))
 
 
 def _cloud_app_rules(zs) -> Tuple[Any, int]:
@@ -219,6 +235,13 @@ class SdkClient:
 
         Returns (data, status_code) to match the original Client interface.
         """
+        data, code = self._get(endpoint, params)
+        if isinstance(data, dict) and isinstance(data.get("error"), str):
+            import tenant_auth
+            data = dict(data, error=tenant_auth.mask_secrets(data["error"], self._creds))
+        return data, code
+
+    def _get(self, endpoint: str, params: Optional[dict] = None) -> Tuple[Any, int]:
         # Cache check
         cache_key = f"{endpoint}|{params or {}}"
         if cache_key in self._cache:
@@ -228,7 +251,7 @@ class SdkClient:
         if self._zs is None:
             a = self.auth()
             if a is not True:
-                return {"error": str(a)}, 0
+                return {"error": a[1] if isinstance(a, tuple) and len(a) == 2 else str(a)}, 0
 
         if endpoint in ("/zcc/appProfiles", "/zcc/webPolicies", "/zcc/forwardingProfiles", "/zcc/forwardingProfile"):
             from zcc_profiles import read_profiles
@@ -335,8 +358,14 @@ class SdkClient:
             try:
                 if hasattr(self._zs, "__exit__"):
                     self._zs.__exit__(None, None, None)
+                elif callable(getattr(type(self._zs), "close", None)):
+                    # The classic API (tenant_auth.LegacyZiaClient) has no
+                    # __exit__: close() ends its JSESSIONID session at ZIA
+                    # rather than leaving it signed in (CWE-613).
+                    self._zs.close()
             except Exception:
                 pass
+            self._zs = None
 
     def __enter__(self):
         return self

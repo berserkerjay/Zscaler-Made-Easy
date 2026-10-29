@@ -199,23 +199,80 @@ def _mask(value: str, keep: int = 3) -> str:
 
 # A bearer credential a request carries and an error page can echo back: the
 # OneAPI access token (a JWT, "Authorization: Bearer ..."), the classic API's
-# JSESSIONID session cookie. Neither is in `creds`, so they are found by shape.
+# JSESSIONID session cookie, an OAuth token field, HTTP Basic credentials.
+# None is in `creds`, so they are found by shape. A separator may arrive
+# URL-encoded (%20, %3A, %3D, %22, +) when the echo is of a URL.
+_SEP = r"(?:[\s:=\"']|%20|%3[aAdD]|%22|\+)+"
+# The start of a word: no letter before it. A digit may be (the '0' of an
+# escaped space, '%20Basic'), so this is not \b.
+_WORD = r"(?<![A-Za-z])"
 _TOKEN_ECHO = (
-    (re.compile(r"(?i)(\bbearer[\s:=\"']+)[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted token]"),
-    (re.compile(r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]*"), "[redacted token]"),
-    (re.compile(r"(?i)(\bJSESSIONID[\s:=\"']+)[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted session]"),
+    (re.compile(r"(?i)(" + _WORD + r"bearer" + _SEP + r")[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted token]"),
+    (re.compile(r"(?i)(" + _WORD + r"JSESSIONID" + _SEP + r")[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted session]"),
+    (re.compile(r"(?i)(" + _WORD + r"(?:access|refresh|id)_token[\"']?" + _SEP + r")[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted token]"),
 )
+_BASIC = re.compile(r"(?i)(" + _WORD + r"basic" + _SEP + r")([A-Za-z0-9+/_-]{6,}={0,2})")
+# A JSON Web Token: found in each run of token characters separately (see
+# _redact_jwt_run), never by one regex over the whole text, which takes time
+# quadratic in a long run such as "-eyJ-eyJ-eyJ..." (CWE-1333).
+_JWT_RUN = re.compile(r"[A-Za-z0-9_.-]+")
+_JWT_START = re.compile(r"(?<!\w)eyJ")   # a word boundary before it, as \b
+
+
+def _redact_basic(m: "re.Match[str]") -> str:
+    """HTTP Basic credentials (base64 of 'id:secret'); an English word after
+    "basic" ("basic settings") is not base64 of a pair and stays."""
+    import base64
+    import binascii
+    raw = m.group(2)
+    try:
+        decoded = base64.b64decode(raw.replace("-", "+").replace("_", "/") + "=" * (-len(raw) % 4), validate=True)
+    except (binascii.Error, ValueError):
+        return m.group(0)
+    return m.group(1) + "[redacted credentials]" if b":" in decoded else m.group(0)
+
+
+def _redact_jwt_run(m: "re.Match[str]") -> str:
+    """One run of token characters with every JSON Web Token in it replaced:
+    'eyJ' at a word boundary, at least 6 more characters, a dot, at least 6
+    characters, a dot, and the signature (any length). Within one
+    dot-separated part only its first such start can match (every later one
+    reaches the same part end and the same parts after it, with less before
+    it), so each part is looked at once: linear in the run's length."""
+    run = m.group(0)
+    if "eyJ" not in run:
+        return run
+    # The character before the run (a non-token one) can still be a word
+    # character ('é'): then the run's first 'eyJ' is not at a word boundary.
+    glued = m.start() > 0 and bool(re.match(r"\w", m.string[m.start() - 1]))
+    parts = run.split(".")
+    out: List[str] = []
+    i = 0
+    while i < len(parts):
+        p = parts[i]
+        s = _JWT_START.search(p)
+        if s and i == 0 and s.start() == 0 and glued:
+            s = _JWT_START.search(p, 1)
+        if s and len(p) - s.start() >= 9 and i + 2 < len(parts) and len(parts[i + 1]) >= 6:
+            out.append(p[:s.start()] + "[redacted token]")
+            i += 3
+            continue
+        out.append(p)
+        i += 1
+    return ".".join(out)
 
 
 def redact_tokens(text: str) -> str:
-    """`text` with every bearer access token, JSON Web Token and classic
-    session id replaced by a fixed marker: an API error page (a gateway,
-    a proxy) may echo the request's Authorization header or cookie, and that
-    text then reaches a job log, a result, an export or a POV file."""
+    """`text` with every bearer access token, JSON Web Token, OAuth token
+    field, HTTP Basic credential and classic session id replaced by a fixed
+    marker: an API error page (a gateway, a proxy) may echo the request's
+    Authorization header or cookie, and that text then reaches a job log, a
+    result, an export or a POV file."""
     out = str(text or "")
     for rx, repl in _TOKEN_ECHO:
         out = rx.sub(repl, out)
-    return out
+    out = _BASIC.sub(_redact_basic, out)
+    return _JWT_RUN.sub(_redact_jwt_run, out)
 
 
 def mask_secrets(text: str, creds: Dict[str, Any]) -> str:
@@ -225,29 +282,93 @@ def mask_secrets(text: str, creds: Dict[str, Any]) -> str:
     partial masking (_mask) is only for identifiers such as client_id.
     A secret echoed back in an error is masked in the forms a request
     carries it too: as typed, form/URL-encoded (the OAuth token request is
-    a form post) and JSON-escaped (the classic sign-in is a JSON body)."""
-    out = str(text or "")
+    a form post), JSON-escaped (the classic sign-in is a JSON body),
+    base64 (alone, or as HTTP Basic '<id>:<secret>'), and any piece of
+    SECRET_FRAGMENT or more characters of it (an echo cut short). Bearer
+    tokens, JSON Web Tokens and session ids are masked by shape
+    (redact_tokens)."""
+    # Tokens first, while their shape is whole (a secret masked inside one
+    # would leave the rest of it unrecognised).
+    out = redact_tokens(str(text or ""))
+    c = creds or {}
+    # HTTP Basic: base64 of '<id>:<secret>' (OAuth client_secret_basic, a
+    # classic admin login), which contains neither value as typed.
+    for ident, k in (("client_id", "client_secret"), ("username", "password")):
+        v, who = str(c.get(k) or ""), str(c.get(ident) or "")
+        if v:
+            for form in sorted(_base64_forms(f"{who}:{v}"), key=len, reverse=True):
+                out = out.replace(form, f"[redacted {k}]")
     for k in SECRET_KEYS:
-        v = str((creds or {}).get(k) or "")
+        v = str(c.get(k) or "")
         if not v:
             continue
-        for form in sorted(secret_forms(v), key=len, reverse=True):
+        forms = sorted(secret_forms(v), key=len, reverse=True)
+        # A piece of base64 also starts every other base64 text that begins
+        # with the same bytes: only whole base64 forms are masked.
+        b64 = _base64_forms(v)
+        for form in forms:
             if form in out:
                 out = out.replace(form, f"[redacted {k}]")
+        out = _mask_fragments(out, [f for f in forms if f not in b64], f"[redacted {k}]")
     return redact_tokens(out)
+
+
+# A piece of a secret this long or longer is masked too: an error that cuts
+# the echoed request short ("...secret=S3cr3t-Val…") or starts in the middle
+# of it still shows no part of the secret worth having.
+SECRET_FRAGMENT = 8
+
+
+def _mask_fragments(text: str, forms: List[str], marker: str) -> str:
+    """`text` with every run of SECRET_FRAGMENT or more characters that is
+    part of one of `forms` replaced by `marker` (one marker per run)."""
+    hit = bytearray(len(text))
+    n = SECRET_FRAGMENT
+    for form in forms:
+        if len(form) <= n:
+            continue
+        for w in {form[j:j + n] for j in range(len(form) - n + 1)}:
+            at = text.find(w)
+            while at != -1:
+                hit[at:at + n] = b"\x01" * n
+                at = text.find(w, at + 1)
+    if not any(hit):
+        return text
+    out, i = [], 0
+    while i < len(text):
+        if hit[i]:
+            while i < len(text) and hit[i]:
+                i += 1
+            out.append(marker)
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def _base64_forms(value: str) -> set:
+    """`value` base64-encoded (standard and URL-safe, padded and not)."""
+    import base64
+    raw = value.encode("utf-8", "surrogatepass")
+    std = base64.b64encode(raw).decode("ascii")
+    url = base64.urlsafe_b64encode(raw).decode("ascii")
+    return {f for f in (std, url, std.rstrip("="), url.rstrip("=")) if f}
 
 
 def secret_forms(value: str) -> set:
     """`value` as typed and in the encodings a request may carry it in
-    (URL path/query, form body, JSON string), each of which an error that
-    echoes the request can show."""
+    (URL path/query with every character escaped or only the reserved ones,
+    form body, JSON string, base64), each of which an error that echoes the
+    request can show."""
     from urllib.parse import quote, quote_plus
     import json as _json
     v = str(value or "")
     if not v:
         return set()
-    forms = {v, quote(v, safe=""), quote_plus(v, safe=""), _json.dumps(v)[1:-1], _json.dumps(v, ensure_ascii=False)[1:-1]}
+    every = "".join(f"%{b:02X}" for b in v.encode("utf-8", "surrogatepass"))   # a client that escapes every byte
+    forms = {v, quote(v, safe=""), quote_plus(v, safe=""), every, _json.dumps(v)[1:-1], _json.dumps(v, ensure_ascii=False)[1:-1]}
     forms |= {re.sub(r"%[0-9A-F]{2}", lambda m: m.group(0).lower(), f) for f in forms}   # %2b as well as %2B
+    forms |= _base64_forms(v)
     return {f for f in forms if f}
 
 
@@ -464,14 +585,22 @@ def _legacy_wait(seconds: float) -> None:
 
 
 def _retry_after_seconds(headers: Any) -> int:
-    """ZIA's Retry-After ('3300 seconds', '0 seconds' or '12'), at least 1."""
+    """ZIA's Retry-After ('3300 seconds', '0 seconds' or '12'), at least 1
+    and at most RETRY_AFTER_CAP: the header is the server's text, and a
+    number too large for a float (inf) would raise instead of waiting."""
     raw = ""
     try:
-        raw = str((headers or {}).get("Retry-After") or "")
+        raw = str((headers or {}).get("Retry-After") or "")[:64]
     except Exception:  # noqa: BLE001
         raw = ""
     m = re.search(r"\d+(?:\.\d+)?", raw)
-    return max(1, int(float(m.group(0)))) if m else 2
+    if not m:
+        return 2
+    secs = float(m.group(0))
+    return max(1, int(min(secs, RETRY_AFTER_CAP))) if secs == secs else 2
+
+
+RETRY_AFTER_CAP = 7 * 24 * 3600   # longer than any limit ZIA has: still RetryTooLong, never an OverflowError
 
 
 def install_legacy_send(helper: Any, *, max_retries: int = 2, max_retry_seconds: int = 30) -> Any:

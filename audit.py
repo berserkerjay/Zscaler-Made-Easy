@@ -10,9 +10,12 @@ login and any vanity domain sent with it are dropped too, user rule 3). Write-mo
 through the same log. Nothing here is ever sent anywhere; the file is
 evidence for the operator and the customer.
 
-The log is capped by size: past DLP_CHECK_AUDIT_MAX_MB (default 20) the
-oldest half is rolled to audit.log.1. A line that cannot be written is
-reported on stderr (logger.error), never silently dropped."""
+The log is append-only and capped by size: past DLP_CHECK_AUDIT_MAX_MB
+(default 20, at most 1024; anything but a positive number is the default)
+the log is rolled to audit.log.1, so at most two files of that size are
+kept. It is written owner-only (0600, tightened again on every line) and
+never through a symbolic link planted at its name. A line that cannot be
+written is reported on stderr (logger.error), never silently dropped."""
 from __future__ import annotations
 
 import json
@@ -39,6 +42,10 @@ _VANITY_KEY = re.compile(r"^vanity_?domain$", re.I)
 _CONTENT_KEY = re.compile(r"^(content|corpus|export|text|samples?|evidence|raw|payload|har_hosts)$", re.I)
 _MAX_VALUE = 200
 _MAX_KEYS = 40
+_MAX_KEY = 64          # a key name is the caller's text too: a megabyte-long one is not written whole (CWE-779)
+FILE_MODE = 0o600
+DEFAULT_MAX_MB = 20.0
+MAX_MAX_MB = 1024.0
 logger = logging.getLogger("dlp_check.audit")
 
 
@@ -100,19 +107,26 @@ def redact(value: Any, depth: int = 0, secrets: tuple = ()) -> Any:
             if i >= _MAX_KEYS:
                 out["…"] = f"{len(value) - _MAX_KEYS} more keys"
                 break
+            name = _key_name(k, secrets)
             if _SECRET_KEY.search(str(k)) or _IDENTITY_KEY.search(str(k)) or (classic and _VANITY_KEY.search(str(k))):
-                out[str(k)] = "[redacted]"
+                out[name] = "[redacted]"
             elif _CONTENT_KEY.match(str(k)):
-                out[str(k)] = _omitted(v)
+                out[name] = _omitted(v)
             else:
-                out[str(k)] = redact(v, depth + 1, secrets)
+                out[name] = redact(v, depth + 1, secrets)
         return out
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [redact(v, depth + 1, secrets) for v in value[:20]] + (["…"] if len(value) > 20 else [])
     if isinstance(value, str):
         value = _mask_values(value, secrets)
         return value if len(value) <= _MAX_VALUE else value[:_MAX_VALUE] + "…"
     return value
+
+
+def _key_name(k: Any, secrets: tuple) -> str:
+    """A body key as the log writes it: secrets masked, at most _MAX_KEY characters."""
+    name = _mask_values(str(k), secrets)
+    return name if len(name) <= _MAX_KEY else name[:_MAX_KEY] + "…"
 
 
 def _is_classic(d: Dict[str, Any]) -> bool:
@@ -165,8 +179,15 @@ def record(event: str, **fields: Any) -> Optional[str]:
     try:
         with _LOCK:
             _rotate_if_needed(p)
-            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            # Append-only, never through a link planted at the log's name
+            # (CWE-59), and owner-only even when the file was made wider.
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), FILE_MODE)
             with os.fdopen(fd, "a", encoding="utf-8") as f:
+                if hasattr(os, "fchmod"):
+                    try:
+                        os.fchmod(f.fileno(), FILE_MODE)
+                    except OSError:
+                        pass
                 f.write(line)
         return p
     except OSError as e:
@@ -174,11 +195,23 @@ def record(event: str, **fields: Any) -> Optional[str]:
         return None
 
 
-def _rotate_if_needed(p: str) -> None:
+def max_bytes() -> int:
+    """The size past which the log is rolled to audit.log.1:
+    DLP_CHECK_AUDIT_MAX_MB, default 20. A value that is not a positive
+    finite number is the default (0 would roll, and so lose, the history on
+    every line; 'inf' would raise); at most MAX_MAX_MB."""
+    import math
     try:
-        limit = int(float(os.environ.get("DLP_CHECK_AUDIT_MAX_MB", "20") or 20) * 1024 * 1024)
+        mb = float(os.environ.get("DLP_CHECK_AUDIT_MAX_MB", "") or DEFAULT_MAX_MB)
     except ValueError:
-        limit = 20 * 1024 * 1024
+        mb = DEFAULT_MAX_MB
+    if not math.isfinite(mb) or mb <= 0:
+        mb = DEFAULT_MAX_MB
+    return max(1, int(min(mb, MAX_MAX_MB) * 1024 * 1024))
+
+
+def _rotate_if_needed(p: str) -> None:
+    limit = max_bytes()
     try:
         if os.path.getsize(p) < limit:
             return
@@ -191,8 +224,15 @@ def _rotate_if_needed(p: str) -> None:
 
 
 def tail(n: int = 200) -> list:
-    """The last n entries (for the operator; never exposed without the UI token)."""
+    """The last n entries (for the operator; never exposed without the UI
+    token). n of 0 or less is none, never the whole log."""
     p = path()
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return []
+    if n <= 0:
+        return []
     try:
         with open(p, "r", encoding="utf-8") as f:
             lines = f.readlines()[-n:]

@@ -1,0 +1,565 @@
+{
+ "area": "auth",
+ "title": "Cloud-6 QA: sign-in (OneAPI, classic, SSO), secret masking, remembered secrets, audit log, owner-only files, ZIA rate pacing",
+ "files": [
+  "zia_rate.py",
+  "sdk_client.py",
+  "tenant_auth.py",
+  "tenant_profiles.py",
+  "tenant_fingerprint.py",
+  "sso.py",
+  "security.py",
+  "audit.py",
+  "safe_files.py"
+ ],
+ "standards": [
+  "ASVS V2.9.1",
+  "ASVS V2.10.4",
+  "ASVS V3.3.1",
+  "ASVS V3.4.1",
+  "ASVS V3.5.3",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.5.3",
+  "ASVS V7.1.1",
+  "ASVS V7.3.3",
+  "ASVS V7.4.1",
+  "ASVS V8.3.8",
+  "ASVS V9.2.1",
+  "ASVS V11.1.4",
+  "ASVS V12.1.2",
+  "ASVS V12.3.1",
+  "OWASP Top 10 2021 A02",
+  "OWASP Top 10 2021 A04",
+  "OWASP Top 10 2021 A07",
+  "OWASP Top 10 2021 A09",
+  "CISA Secure by Design",
+  "NIST SP 800-218 SSDF"
+ ],
+ "coverage": {
+  "before": 79.0,
+  "after": 89.0,
+  "note": "line+branch over the nine files, measured with coverage --branch on the same test subset (auth, SSO, secret canaries, rate, profiles, fingerprint, Secure-by-Design and regression tests) before and after; after adds tests/test_c6_auth.py",
+  "full_suite_after": 94.0
+ },
+ "checks": [
+  {
+   "id": "ui-token-constant-time",
+   "what": "UI token compared with secrets.compare_digest on bytes; non-ASCII is a 401",
+   "standard": "ASVS V2.9.1 · CWE-208",
+   "result": "pass"
+  },
+  {
+   "id": "cookie-flags",
+   "what": "UI cookie HttpOnly, SameSite=Strict, Secure over HTTPS, 12 h; SSO session and login cookies HttpOnly, Lax, Secure over HTTPS, login cookie path-scoped (existing tests rechecked)",
+   "standard": "ASVS V3.4.1-V3.4.3 · CWE-614 · CWE-1004",
+   "result": "pass"
+  },
+  {
+   "id": "oidc-state-nonce-pkce",
+   "what": "State single-use and bound to the browser, nonce checked (constant time), PKCE S256",
+   "standard": "ASVS V3.5.3 · CWE-352",
+   "result": "pass"
+  },
+  {
+   "id": "oidc-id-token-validation",
+   "what": "Issuer, audience/azp, expiry, iat, algorithm allow-list pinned to the JWK, no 'none' or HS*",
+   "standard": "ASVS V3.5.3 · CWE-347 · CWE-613",
+   "result": "fixed"
+  },
+  {
+   "id": "oidc-discovery",
+   "what": "Discovery issuer must match, endpoints https or loopback; issuer prefix bypass closed",
+   "standard": "ASVS V9.2.1 · CWE-319 · CWE-346",
+   "result": "fixed"
+  },
+  {
+   "id": "oidc-pending-bounded",
+   "what": "Pending sign-ins from the open login route bounded and locked",
+   "standard": "ASVS V11.1.4 · CWE-770",
+   "result": "fixed"
+  },
+  {
+   "id": "email-verified",
+   "what": "An unverified email never grants writer rights",
+   "standard": "ASVS V4.1.3 · CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "writer-group-mapping",
+   "what": "ZSCALER_SSO_WRITERS by group or verified email, case-insensitive (existing tests rechecked)",
+   "standard": "ASVS V4.1.3 · CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "remembered-secrets-at-rest",
+   "what": "Credential store by default; plaintext only with DLP_CHECK_SECRET_STORE=file in an owner-only file",
+   "standard": "ASVS V2.10.4 · CWE-312",
+   "result": "pass"
+  },
+  {
+   "id": "remembered-secrets-deleted",
+   "what": "Forgetting or deleting removes the secret from the store and the file (and last-good copy)",
+   "standard": "ASVS V8.3.8 · CWE-459",
+   "result": "fixed"
+  },
+  {
+   "id": "rate-holds-survive-restart",
+   "what": "A hold is saved and still held after a restart",
+   "standard": "ASVS V11.1.4 · CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "rate-no-negative-sleep",
+   "what": "Every pacing sleep is positive, through holds and full buckets",
+   "standard": "CWE-682",
+   "result": "pass"
+  },
+  {
+   "id": "rate-injected-clock",
+   "what": "Pacing, holds and messages use the injected _now/_sleep",
+   "standard": "CWE-682",
+   "result": "fixed"
+  },
+  {
+   "id": "rate-damaged-state",
+   "what": "A damaged state file costs only its bad entries; clock set back waits one window",
+   "standard": "ASVS V5.1.3 · CWE-20",
+   "result": "fixed"
+  },
+  {
+   "id": "mask-secrets-shapes",
+   "what": "Typed, URL, every-byte %, JSON, base64, Basic pair, partial (8+), bearer, URL-encoded bearer, JWT, OAuth token fields, JSESSIONID",
+   "standard": "ASVS V7.1.1 · CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "mask-secrets-redos",
+   "what": "Token redaction linear on hostile input",
+   "standard": "CWE-1333",
+   "result": "fixed"
+  },
+  {
+   "id": "audit-append-only",
+   "what": "O_APPEND; earlier lines never rewritten",
+   "standard": "ASVS V7.3.3 · CWE-779",
+   "result": "pass"
+  },
+  {
+   "id": "audit-rotated-bounded",
+   "what": "Rolled at MAX_MB (bounded 1..1024 MB, bad values default), two files at most",
+   "standard": "ASVS V7.3.3 · CWE-400",
+   "result": "fixed"
+  },
+  {
+   "id": "audit-owner-only-no-link",
+   "what": "0600 tightened per line, O_NOFOLLOW",
+   "standard": "ASVS V7.3.3 · CWE-59 · CWE-732",
+   "result": "fixed"
+  },
+  {
+   "id": "safe-files-atomic-symlink",
+   "what": "write_private_atomic: unguessable mkstemp temp, os.replace replaces a planted link, 0600",
+   "standard": "ASVS V12.3.1 · CWE-59 · CWE-367",
+   "result": "pass"
+  },
+  {
+   "id": "safe-files-private-open-symlink",
+   "what": "private_open never follows a link at the name",
+   "standard": "ASVS V12.3.1 · CWE-59",
+   "result": "fixed"
+  },
+  {
+   "id": "safe-files-zip",
+   "what": "Only stored/deflate members, encrypted refused, declared and actual size bounded, damaged member refused",
+   "standard": "ASVS V12.1.2 · CWE-409",
+   "result": "pass"
+  },
+  {
+   "id": "sdk-errors-masked",
+   "what": "SDK errors token- and secret-masked in results and logs",
+   "standard": "ASVS V7.1.1 · CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "sdk-verified",
+   "what": "Verified against zscaler 1.11.3: LegacyZIAClientHelper.deauthenticate (zia/legacy.py:420), oneapi_client.Client.__exit__, OneAPI token request posts client_secret as a form field (oneapi_oauth_client.py:298) so HTTP Basic masking is defence in depth",
+   "standard": "NIST SSDF PW.4",
+   "result": "pass"
+  },
+  {
+   "id": "vanity-ssrf",
+   "what": "A vanity domain that is not a DNS name never reaches the SDK sign-in",
+   "standard": "ASVS V5.1.3 · CWE-918",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-AUTH-01",
+   "title": "Redacting a JSON Web Token took quadratic time: an echoed error with a long '-eyJ-eyJ…' run (80 KB: 2 s, 200 KB: 12 s) held the job thread",
+   "severity": "medium",
+   "cwe": "CWE-1333",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Find JWTs per run of token characters, each dot-separated part once (linear), with the old pattern as the test oracle",
+   "test": "tests/test_c6_auth.py::test_jwt_redaction_takes_linear_time_on_a_hostile_run",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-02",
+   "title": "mask_secrets missed a secret echoed base64-encoded, as HTTP Basic '<id>:<secret>', or percent-encoded byte by byte",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "secret_forms adds base64 and every-byte percent forms; mask_secrets masks Basic pairs of client_id/client_secret and username/password",
+   "test": "tests/test_c6_auth.py::test_mask_secrets_masks_basic_credentials_built_from_the_sign_in",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-03",
+   "title": "mask_secrets left a partial secret visible when an echo was cut short ('…secret=S3cr3t-Val…')",
+   "severity": "low",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "Any run of 8+ characters of a secret's typed, URL or JSON form is masked (base64 only whole)",
+   "test": "tests/test_c6_auth.py::test_mask_secrets_masks_a_partial_secret_from_a_cut_short_echo",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-04",
+   "title": "redact_tokens missed a URL-encoded bearer (Bearer%20…), OAuth access/refresh/id_token fields and HTTP Basic credentials",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "URL-encoded separators, token-field and Basic patterns (Basic only when it decodes to an 'id:secret' pair)",
+   "test": "tests/test_c6_auth.py::test_redact_tokens_masks_encoded_bearers_oauth_token_fields_and_basic_credentials",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-05",
+   "title": "A Retry-After header too large for a float raised OverflowError in the classic API's 429 handling",
+   "severity": "low",
+   "cwe": "CWE-190",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "Retry-After capped at a week (still RetryTooLong), NaN is the default",
+   "test": "tests/test_c6_auth.py::test_a_retry_after_header_is_a_bounded_number_never_an_overflow",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-06",
+   "title": "SSO took the ID token's algorithm from its own header, not pinned to the published key's (PS256 accepted for an RS256 key; 'none'/HS256 refused only by library accident)",
+   "severity": "medium",
+   "cwe": "CWE-347",
+   "asvs": "V3.5.3",
+   "status": "fixed",
+   "fix": "Allow-list of public-key algorithms, which must equal the JWK's alg; kty and use checked",
+   "test": "tests/test_c6_auth.py::test_an_id_token_algorithm_other_than_its_keys_is_refused",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-07",
+   "title": "SSO accepted an ID token with no expiry (or no iat or sub): a sign-in token valid for ever",
+   "severity": "medium",
+   "cwe": "CWE-613",
+   "asvs": "V3.5.3",
+   "status": "fixed",
+   "fix": "exp, iat, iss, aud, sub required (OIDC Core 3.1.3.7), 60 s leeway, plain-language errors",
+   "test": "tests/test_c6_auth.py::test_an_id_token_without_a_required_claim_is_refused",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-08",
+   "title": "The https requirement for ZSCALER_SSO_ISSUER was bypassed by http://localhost.attacker.example (prefix test)",
+   "severity": "low",
+   "cwe": "CWE-319",
+   "asvs": "V9.2.1",
+   "status": "fixed",
+   "fix": "secure_url compares the parsed host to loopback names exactly",
+   "test": "tests/test_c6_auth.py::test_a_plain_http_issuer_that_only_starts_like_loopback_is_refused",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-09",
+   "title": "Pending SSO sign-ins grew without bound from the unauthenticated login route, and were swept without a lock",
+   "severity": "medium",
+   "cwe": "CWE-770",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "MAX_PENDING_LOGINS (oldest dropped) under _PENDING_LOCK",
+   "test": "tests/test_c6_auth.py::test_pending_sign_ins_from_the_open_login_route_are_bounded",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-10",
+   "title": "ZSCALER_SSO_IDLE_MINUTES=inf raised OverflowError on every signed-in request",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Non-finite is the default; bounded to 1 min..12 h",
+   "test": "tests/test_c6_auth.py::test_the_idle_timeout_setting_is_a_bounded_number",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-11",
+   "title": "SSO did not check azp for a multi-audience ID token, the discovery document's issuer, or plain-http endpoints in it",
+   "severity": "low",
+   "cwe": "CWE-346",
+   "asvs": "V3.5.3",
+   "status": "fixed",
+   "fix": "azp must be this client when several audiences or azp present; discovery issuer must match; endpoints https or loopback",
+   "test": "tests/test_c6_auth.py::test_an_id_token_for_several_audiences_needs_this_server_as_its_authorized_party",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-12",
+   "title": "DLP_CHECK_AUDIT_MAX_MB=inf made audit.record raise (an audited request then failed); 0 or less rolled, so lost, the log on every line",
+   "severity": "low",
+   "cwe": "CWE-779",
+   "asvs": "V7.3.3",
+   "status": "fixed",
+   "fix": "audit.max_bytes: positive finite, default 20, at most 1024 MB",
+   "test": "tests/test_c6_auth.py::test_an_audit_size_setting_that_is_not_a_positive_number_keeps_every_line",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-13",
+   "title": "The audit log followed a symbolic link planted at its name and never tightened a log made wider than 0600",
+   "severity": "medium",
+   "cwe": "CWE-59",
+   "asvs": "V7.3.3",
+   "status": "fixed",
+   "fix": "O_NOFOLLOW on open, fchmod 0600 on every line",
+   "test": "tests/test_c6_auth.py::test_the_audit_log_is_never_written_through_a_planted_link",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-14",
+   "title": "Audit lines wrote request-body key names whole (a megabyte key per request) and unmasked",
+   "severity": "low",
+   "cwe": "CWE-779",
+   "asvs": "V7.1.2",
+   "status": "fixed",
+   "fix": "Key names masked like values and cut at 64 characters",
+   "test": "tests/test_c6_auth.py::test_a_huge_body_key_is_cut_short_and_a_secret_in_a_key_is_masked",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-15",
+   "title": "audit.tail(0) or a negative count returned the whole log",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "n of 0 or less, or not a number, is no entries",
+   "test": "tests/test_c6_auth.py::test_audit_tail_of_zero_or_less_is_none_never_the_whole_log",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-16",
+   "title": "safe_files.private_open wrote through a symbolic link planted at the file's name",
+   "severity": "medium",
+   "cwe": "CWE-59",
+   "asvs": "V12.3.1",
+   "status": "fixed",
+   "fix": "O_NOFOLLOW on every private_open",
+   "test": "tests/test_c6_auth.py::test_private_open_never_writes_through_a_planted_link",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-17",
+   "title": "strict_json_loads raised RecursionError, not the documented ValueError, for deeply nested JSON",
+   "severity": "low",
+   "cwe": "CWE-674",
+   "asvs": "V5.5.3",
+   "status": "fixed",
+   "fix": "RecursionError re-raised as ValueError",
+   "test": "tests/test_c6_auth.py::test_strict_json_nested_too_deep_is_a_value_error",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-18",
+   "title": "A remembered secret stayed in the OS credential store after it was forgotten or its profile deleted, when the profile file no longer held the store marker (moved to the file opt-in)",
+   "severity": "medium",
+   "cwe": "CWE-459",
+   "asvs": "V8.3.8",
+   "status": "fixed",
+   "fix": "_forget_secret always deletes from the store (overwrites with nothing when refused); a file-kept secret deletes the store's older copy",
+   "test": "tests/test_c6_auth.py::test_deleting_a_profile_kept_in_the_file_also_clears_its_credential_store_entry",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-19",
+   "title": "A profile store that was valid JSON of another shape (a list, profiles not a dict) crashed every profile call",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "_read checks the shape; a foreign shape reads as empty",
+   "test": "tests/test_c6_auth.py::test_a_damaged_profile_store_reads_as_empty_never_a_crash",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-20",
+   "title": "tenant_profiles.upsert used the request's profile id unchecked ('../../x', 5000 characters) as a store and credential-store key",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "An id that is neither stored nor a valid profile id is slugified",
+   "test": "tests/test_c6_auth.py::test_a_profile_id_from_the_request_is_one_this_app_makes",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-21",
+   "title": "A damaged rate-state file (a non-number, a list) made every paced request, preflight and hold raise",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "_clean_tenant keeps only finite numbers and known buckets; bad entries are dropped",
+   "test": "tests/test_c6_auth.py::test_a_damaged_rate_state_file_costs_only_its_bad_entries",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-22",
+   "title": "After the clock was set back, a paced write waited as long as the clock had moved (a day), not one window",
+   "severity": "low",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "Requests counted in the future are rebased to now in _delay",
+   "test": "tests/test_c6_auth.py::test_a_clock_set_back_never_makes_a_write_wait_as_long_as_the_jump",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-23",
+   "title": "zia_rate.hold accepted an infinite hold from a reset header (writes held for ever, Infinity in the state file)",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "hold_seconds: finite, 0..a week",
+   "test": "tests/test_c6_auth.py::test_a_hold_is_bounded_whatever_zia_answered",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-24",
+   "title": "The rate wait message read the wall clock (datetime.now) instead of the injected clock",
+   "severity": "info",
+   "cwe": "CWE-682",
+   "asvs": "V7.1.3",
+   "status": "fixed",
+   "fix": "datetime.fromtimestamp(_now() + wait)",
+   "test": "tests/test_c6_auth.py::test_the_wait_message_tells_the_time_by_the_injected_clock",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-25",
+   "title": "Non-finite x-ratelimit headers raised OverflowError in note_headers",
+   "severity": "low",
+   "cwe": "CWE-190",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "_header_num returns None for NaN/inf",
+   "test": "tests/test_c6_auth.py::test_a_non_finite_rate_limit_header_is_ignored",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-26",
+   "title": "SdkClient.close() never ended the classic API's JSESSIONID session (the wrapper has no __exit__)",
+   "severity": "low",
+   "cwe": "CWE-613",
+   "asvs": "V3.3.1",
+   "status": "fixed",
+   "fix": "close() calls LegacyZiaClient.close (deauthenticate)",
+   "test": "tests/test_c6_auth.py::test_closing_a_classic_api_client_ends_its_session",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-27",
+   "title": "SdkClient logged and returned SDK error text unmasked (an echoed Bearer token or the client secret)",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "_sdk_call redacts tokens; get() masks the client's own secrets in every error",
+   "test": "tests/test_c6_auth.py::test_an_sdk_error_that_echoes_a_token_is_returned_and_logged_masked",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-28",
+   "title": "_sdk_call raised AttributeError for a callable without __name__; get() after a failed sign-in said \"(False, '...')\"",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Name looked up safely; the reason itself is returned",
+   "test": "tests/test_c6_auth.py::test_an_sdk_call_without_a_name_that_raises_is_an_error_result_not_a_crash",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-29",
+   "title": "security.scrub_dict kept 6 characters and the length of each secret, and skipped dicts inside lists",
+   "severity": "low",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "Secret values become '[redacted]'; lists are walked",
+   "test": "tests/test_c6_auth.py::test_scrub_dict_keeps_no_character_or_length_of_a_secret",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-30",
+   "title": "A failed write of ui_token.txt left its temporary file, holding the token, behind",
+   "severity": "low",
+   "cwe": "CWE-459",
+   "asvs": "V8.3.6",
+   "status": "fixed",
+   "fix": "The temporary file is removed on any failure",
+   "test": "tests/test_c6_auth.py::test_a_token_file_that_cannot_be_moved_into_place_leaves_no_copy",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-31",
+   "title": "The API rate limiter used the wall clock: setting it back refused every /api call (429) for as long as the jump",
+   "severity": "low",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "Monotonic clock, no negative refill, last rebased on refusal",
+   "test": "tests/test_c6_auth.py::test_the_api_rate_limiter_survives_a_clock_that_goes_back",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-32",
+   "title": "tenant_fingerprint.same_tenant raised TypeError for a record whose tenant_fp has a non-ASCII character",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "compare_digest on bytes",
+   "test": "tests/test_c6_auth.py::test_a_record_with_a_non_ascii_fingerprint_is_another_tenant_not_a_crash",
+   "commit": "580e3de"
+  },
+  {
+   "id": "C6-AUTH-33",
+   "title": "docs/SECURITY_TESTING.md is stale once tests/test_c6_auth.py is added (tests/test_security_test_matrix.py::test_the_standards_document_is_current fails); this agent may not edit the document or its generator",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.1.2",
+   "status": "open",
+   "fix": "Integrator runs: python tools/security_test_matrix.py (the diff below is its output on this branch)",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "580e3de",
+   "proposed_patch": "diff --git a/docs/SECURITY_TESTING.md b/docs/SECURITY_TESTING.md\nindex 7f21cc2..cb406b4 100644\n--- a/docs/SECURITY_TESTING.md\n+++ b/docs/SECURITY_TESTING.md\n@@ -3,7 +3,7 @@\n Generated by `python tools/security_test_matrix.py` from the tests' own docstrings; CI fails when it is stale\n or when a test in a QA file names no standard. Each test's docstring starts with the controls it checks.\n \n-1230 tests carry a mapping. Standards: OWASP ASVS 4.0.3 Level 2, OWASP Top 10 2021, CWE, OWASP WSTG,\n+1319 tests carry a mapping. Standards: OWASP ASVS 4.0.3 Level 2, OWASP Top 10 2021, CWE, OWASP WSTG,\n WCAG 2.2 AA, SLSA v1.0, OpenSSF Scorecard and NIST SP 800-218 (SSDF). Fixes follow CISA Secure by Design:\n secure defaults, deny by default, fail closed, least privilege.\n \n@@ -18,26 +18,29 @@ secure defaults, deny by default, fail closed, least privilege.\n | V1.14.1 | 17 | `test_auth_session.py`, `test_offline_tenant.py`, `test_ops_zpa.py`, `test_sbd_offline_least_privilege.py`, `test_standalone.py`, `test_xss_sinks.py` |\n | V1.14.5 | 3 | `test_path_zpa_workloads.py` |\n | V1.14.6 | 3 | `test_ops_plugins.py`, `test_readiness.py` |\n+| V2.4.1 | 1 | `test_c6_auth.py` |\n+| V2.9.1 | 1 | `test_c6_auth.py` |\n | V2.10.2 | 1 | `test_standalone.py` |\n-| V2.10.4 | 11 | `test_outbound_ssrf.py`, `test_pov.py`, `test_secret_canaries.py` |\n+| V2.10.4 | 15 | `test_c6_auth.py`, `test_outbound_ssrf.py`, `test_pov.py`, `test_secret_canaries.py` |\n | V3.1.1 | 2 | `test_secret_canaries.py` |\n | V3.2.1 | 1 | `test_auth_session.py` |\n-| V3.3.1 | 4 | `test_auth_session.py`, `test_ops_zpa.py`, `test_secret_canaries.py`, `test_standalone.py` |\n+| V3.3.1 | 5 | `test_auth_session.py`, `test_c6_auth.py`, `test_ops_zpa.py`, `test_secret_canaries.py`, `test_standalone.py` |\n+| V3.3.2 | 1 | `test_c6_auth.py` |\n | V3.4.1 | 3 | `test_auth_session.py`, `test_sbd_offline_least_privilege.py` |\n | V3.4.2 | 1 | `test_offline_tenant.py` |\n | V3.4.3 | 1 | `test_offline_tenant.py` |\n | V3.5.2 | 1 | `test_auth_session.py` |\n-| V3.5.3 | 1 | `test_sbd_offline_least_privilege.py` |\n-| V4.1.1 | 17 | `test_auth_session.py`, `test_bulk_test.py`, `test_offline_tenant.py`, `test_ops_plugins.py`, `test_quality_score.py`, `test_sbd_offline_least_privilege.py`, `test_standalone.py` |\n-| V4.1.3 | 128 | `test_auth_session.py`, `test_bulk_test.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_flows.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n+| V3.5.3 | 9 | `test_c6_auth.py`, `test_sbd_offline_least_privilege.py` |\n+| V4.1.1 | 18 | `test_auth_session.py`, `test_bulk_test.py`, `test_c6_auth.py`, `test_offline_tenant.py`, `test_ops_plugins.py`, `test_quality_score.py`, `test_sbd_offline_least_privilege.py`, `test_standalone.py` |\n+| V4.1.3 | 129 | `test_auth_session.py`, `test_bulk_test.py`, `test_c6_auth.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_flows.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n | V4.1.5 | 7 | `test_auth_session.py`, `test_extension_security.py`, `test_path_whatif.py`, `test_readiness.py`, `test_scope_rule_routes.py` |\n | V4.2.1 | 22 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_regression_flows.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py` |\n | V4.2.2 | 9 | `test_auth_session.py`, `test_extension_security.py`, `test_ops_zdx.py`, `test_write_safety_gates.py` |\n | V4.3.1 | 1 | `test_pov.py` |\n | V5.1.1 | 2 | `test_offline_tenant.py`, `test_ops_zcc.py` |\n-| V5.1.3 | 110 | `test_api_contracts.py`, `test_bulk_test.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_sbd_writes.py`, `test_standalone.py` |\n-| V5.1.4 | 55 | `test_api_contracts.py`, `test_bulk_test.py`, `test_export_integrity.py`, `test_offline_tenant.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_migration.py`, `test_sbd_untrusted_input.py`, `test_standalone.py`, `test_zcc_device_state.py` |\n-| V5.1.5 | 2 | `test_export_injection.py`, `test_sbd_canary_renderers.py` |\n+| V5.1.3 | 118 | `test_api_contracts.py`, `test_bulk_test.py`, `test_c6_auth.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_sbd_writes.py`, `test_standalone.py` |\n+| V5.1.4 | 59 | `test_api_contracts.py`, `test_bulk_test.py`, `test_c6_auth.py`, `test_export_integrity.py`, `test_offline_tenant.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_migration.py`, `test_sbd_untrusted_input.py`, `test_standalone.py`, `test_zcc_device_state.py` |\n+| V5.1.5 | 3 | `test_c6_auth.py`, `test_export_injection.py`, `test_sbd_canary_renderers.py` |\n | V5.2.4 | 16 | `test_pac_eval.py`, `test_qa_func_path.py`, `test_standalone.py` |\n | V5.2.5 | 3 | `test_pac_eval.py` |\n | V5.2.6 | 7 | `test_outbound_ssrf.py` |\n@@ -47,32 +50,37 @@ secure defaults, deny by default, fail closed, least privilege.\n | V5.3.8 | 4 | `test_app_update.py`, `test_ops_zcc.py`, `test_supply_chain_qa.py` |\n | V5.3.10 | 1 | `test_ops_zpa.py` |\n | V5.5.2 | 3 | `test_files_paths.py`, `test_quality_score.py` |\n+| V5.5.3 | 2 | `test_c6_auth.py` |\n | V6.1.1 | 2 | `test_offline_tenant.py`, `test_secret_canaries.py` |\n | V6.2.1 | 1 | `test_auth_session.py` |\n-| V6.4.1 | 1 | `test_secret_canaries.py` |\n-| V7.1.1 | 34 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_ops_zcc.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_secret_canaries.py` |\n-| V7.1.2 | 2 | `test_dos_limits.py`, `test_pov.py` |\n-| V7.1.3 | 7 | `test_auth_session.py`, `test_dos_limits.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_sbd_writes.py` |\n-| V7.4.1 | 38 | `test_api_contracts.py`, `test_auth_session.py`, `test_dos_limits.py`, `test_entrypoints.py`, `test_files_paths.py`, `test_ops_aiguard.py`, `test_ops_zdx.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_secret_canaries.py` |\n+| V6.4.1 | 3 | `test_c6_auth.py`, `test_secret_canaries.py` |\n+| V7.1.1 | 44 | `test_bulk_test.py`, `test_c6_auth.py`, `test_offline_tenant.py`, `test_ops_zcc.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_secret_canaries.py` |\n+| V7.1.2 | 3 | `test_c6_auth.py`, `test_dos_limits.py`, `test_pov.py` |\n+| V7.1.3 | 8 | `test_auth_session.py`, `test_c6_auth.py`, `test_dos_limits.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_sbd_writes.py` |\n+| V7.3.1 | 1 | `test_c6_auth.py` |\n+| V7.3.3 | 3 | `test_c6_auth.py` |\n+| V7.3.4 | 1 | `test_c6_auth.py` |\n+| V7.4.1 | 44 | `test_api_contracts.py`, `test_auth_session.py`, `test_c6_auth.py`, `test_dos_limits.py`, `test_entrypoints.py`, `test_files_paths.py`, `test_ops_aiguard.py`, `test_ops_zdx.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_secret_canaries.py` |\n | V8.1.1 | 2 | `test_scope_rule_routes.py` |\n | V8.1.2 | 1 | `test_files_paths.py` |\n | V8.2.2 | 2 | `test_extension_security.py`, `test_secret_canaries.py` |\n | V8.3.1 | 7 | `test_auth_session.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_secret_canaries.py` |\n | V8.3.2 | 2 | `test_offline_tenant.py`, `test_pov.py` |\n-| V8.3.4 | 34 | `test_flow_pages.py`, `test_offline_tenant.py`, `test_ops_zcc.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_readiness.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_secret_canaries.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n-| V8.3.8 | 2 | `test_secret_canaries.py` |\n-| V9.2.1 | 3 | `test_outbound_ssrf.py` |\n+| V8.3.4 | 37 | `test_c6_auth.py`, `test_flow_pages.py`, `test_offline_tenant.py`, `test_ops_zcc.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_readiness.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_secret_canaries.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n+| V8.3.6 | 2 | `test_c6_auth.py` |\n+| V8.3.8 | 9 | `test_c6_auth.py`, `test_secret_canaries.py` |\n+| V9.2.1 | 6 | `test_c6_auth.py`, `test_outbound_ssrf.py` |\n | V9.2.2 | 1 | `test_outbound_ssrf.py` |\n | V10.3.2 | 3 | `test_standalone.py`, `test_supply_chain_qa.py` |\n | V11.1.1 | 75 | `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_qa6_builders_lifecycle.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_write_safety_gates.py` |\n | V11.1.2 | 1 | `test_pov.py` |\n-| V11.1.4 | 58 | `test_assess_stream.py`, `test_bulk_test.py`, `test_dos_limits.py`, `test_ops_zdx.py`, `test_path_zia_modules.py`, `test_readiness.py`, `test_tenant_pacing.py` |\n+| V11.1.4 | 64 | `test_assess_stream.py`, `test_bulk_test.py`, `test_c6_auth.py`, `test_dos_limits.py`, `test_ops_zdx.py`, `test_path_zia_modules.py`, `test_readiness.py`, `test_tenant_pacing.py` |\n | V11.1.5 | 2 | `test_bulk_test.py` |\n | V11.1.6 | 11 | `test_qa6_builders_lifecycle.py`, `test_sbd_writes.py`, `test_suite_stability.py` |\n-| V12.1.1 | 27 | `test_bulk_test.py`, `test_dos_limits.py`, `test_offline_tenant.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_untrusted_input.py` |\n-| V12.1.2 | 11 | `test_dos_limits.py`, `test_files_paths.py` |\n+| V12.1.1 | 30 | `test_bulk_test.py`, `test_c6_auth.py`, `test_dos_limits.py`, `test_offline_tenant.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_untrusted_input.py` |\n+| V12.1.2 | 16 | `test_c6_auth.py`, `test_dos_limits.py`, `test_files_paths.py` |\n | V12.1.3 | 3 | `test_dos_limits.py`, `test_files_paths.py` |\n-| V12.3.1 | 13 | `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_quality_score.py`, `test_standalone.py` |\n+| V12.3.1 | 19 | `test_c6_auth.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_quality_score.py`, `test_standalone.py` |\n | V12.4.1 | 6 | `test_files_paths.py`, `test_pov.py`, `test_standalone.py` |\n | V12.5.1 | 1 | `test_auth_session.py` |\n | V12.6.1 | 7 | `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_untrusted_input.py` |\n@@ -92,9 +100,9 @@ secure defaults, deny by default, fail closed, least privilege.\n | Control | Tests | Files |\n |---|---|---|\n | CWE-15 | 2 | `test_standalone.py` |\n-| CWE-20 | 117 | `test_api_contracts.py`, `test_bulk_test.py`, `test_export_injection.py`, `test_export_integrity.py`, `test_extension_security.py`, `test_flow_motion_models.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_migration.py`, `test_sbd_untrusted_input.py`, `test_sbd_writes.py`, `test_standalone.py`, `test_zcc_device_state.py` |\n-| CWE-22 | 15 | `test_auth_session.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py`, `test_standalone.py` |\n-| CWE-59 | 4 | `test_files_paths.py`, `test_product_name.py`, `test_quality_score.py` |\n+| CWE-20 | 137 | `test_api_contracts.py`, `test_bulk_test.py`, `test_c6_auth.py`, `test_export_injection.py`, `test_export_integrity.py`, `test_extension_security.py`, `test_flow_motion_models.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_regression_migration.py`, `test_sbd_untrusted_input.py`, `test_sbd_writes.py`, `test_standalone.py`, `test_zcc_device_state.py` |\n+| CWE-22 | 19 | `test_auth_session.py`, `test_c6_auth.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py`, `test_standalone.py` |\n+| CWE-59 | 8 | `test_c6_auth.py`, `test_files_paths.py`, `test_product_name.py`, `test_quality_score.py` |\n | CWE-74 | 6 | `test_export_injection.py`, `test_sbd_untrusted_input.py` |\n | CWE-78 | 4 | `test_app_update.py`, `test_ops_zcc.py`, `test_supply_chain_qa.py` |\n | CWE-79 | 32 | `test_export_injection.py`, `test_flow_motion_browser.py`, `test_flow_pages.py`, `test_ops_zdx.py`, `test_path_live_motion.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_canary_renderers.py`, `test_xss_render_sites.py`, `test_xss_sinks.py` |\n@@ -110,11 +118,11 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-178 | 1 | `test_write_safety_gates.py` |\n | CWE-183 | 1 | `test_auth_session.py` |\n | CWE-185 | 2 | `test_extension_security.py` |\n-| CWE-190 | 1 | `test_sbd_untrusted_input.py` |\n-| CWE-200 | 38 | `test_auth_session.py`, `test_bulk_test.py`, `test_export_injection.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_secret_canaries.py` |\n+| CWE-190 | 3 | `test_c6_auth.py`, `test_sbd_untrusted_input.py` |\n+| CWE-200 | 44 | `test_auth_session.py`, `test_bulk_test.py`, `test_c6_auth.py`, `test_export_injection.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_pac_eval.py`, `test_path_live_motion.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_secret_canaries.py` |\n | CWE-201 | 3 | `test_ops_zia_baseline.py`, `test_scope_rule_routes.py` |\n-| CWE-208 | 1 | `test_auth_session.py` |\n-| CWE-209 | 20 | `test_api_contracts.py`, `test_entrypoints.py`, `test_ops_aiguard.py`, `test_ops_zdx.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_quality_score.py`, `test_readiness.py`, `test_secret_canaries.py` |\n+| CWE-208 | 2 | `test_auth_session.py`, `test_c6_auth.py` |\n+| CWE-209 | 22 | `test_api_contracts.py`, `test_c6_auth.py`, `test_entrypoints.py`, `test_ops_aiguard.py`, `test_ops_zdx.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_quality_score.py`, `test_readiness.py`, `test_secret_canaries.py` |\n | CWE-221 | 5 | `test_qa6_builders_lifecycle.py` |\n | CWE-223 | 1 | `test_auth_session.py` |\n | CWE-226 | 1 | `test_secret_canaries.py` |\n@@ -124,38 +132,39 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-259 | 1 | `test_secret_canaries.py` |\n | CWE-269 | 3 | `test_auth_session.py`, `test_extension_security.py`, `test_write_safety_gates.py` |\n | CWE-272 | 31 | `test_bulk_test.py`, `test_ops_aiguard.py`, `test_ops_zcc.py`, `test_ops_zia_baseline.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_readiness.py`, `test_scope_rule_routes.py` |\n-| CWE-276 | 7 | `test_files_paths.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_secret_canaries.py`, `test_standalone.py`, `test_write_safety_gates.py` |\n-| CWE-284 | 44 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_ops_zdx.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_sbd_offline_least_privilege.py`, `test_write_safety_gates.py` |\n+| CWE-276 | 10 | `test_c6_auth.py`, `test_files_paths.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_secret_canaries.py`, `test_standalone.py`, `test_write_safety_gates.py` |\n+| CWE-284 | 45 | `test_bulk_test.py`, `test_c6_auth.py`, `test_offline_tenant.py`, `test_ops_zdx.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_sbd_offline_least_privilege.py`, `test_write_safety_gates.py` |\n | CWE-285 | 7 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_path_zia_modules.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py` |\n-| CWE-287 | 3 | `test_auth_session.py`, `test_path_zpa_workloads.py`, `test_sbd_writes.py` |\n+| CWE-287 | 4 | `test_auth_session.py`, `test_c6_auth.py`, `test_path_zpa_workloads.py`, `test_sbd_writes.py` |\n | CWE-290 | 1 | `test_auth_session.py` |\n | CWE-295 | 3 | `test_outbound_ssrf.py` |\n | CWE-306 | 10 | `test_auth_session.py`, `test_quality_score.py`, `test_standalone.py` |\n-| CWE-312 | 17 | `test_offline_tenant.py`, `test_ops_zcc.py`, `test_ops_zpa.py`, `test_pov.py`, `test_sbd_writes.py`, `test_secret_canaries.py`, `test_standalone.py` |\n-| CWE-319 | 1 | `test_outbound_ssrf.py` |\n+| CWE-312 | 22 | `test_c6_auth.py`, `test_offline_tenant.py`, `test_ops_zcc.py`, `test_ops_zpa.py`, `test_pov.py`, `test_sbd_writes.py`, `test_secret_canaries.py`, `test_standalone.py` |\n+| CWE-319 | 4 | `test_c6_auth.py`, `test_outbound_ssrf.py` |\n+| CWE-327 | 1 | `test_c6_auth.py` |\n | CWE-330 | 2 | `test_pov.py` |\n-| CWE-345 | 9 | `test_pov.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n-| CWE-346 | 12 | `test_auth_session.py`, `test_extension_security.py`, `test_write_safety_gates.py` |\n-| CWE-347 | 1 | `test_sbd_offline_least_privilege.py` |\n+| CWE-345 | 13 | `test_c6_auth.py`, `test_pov.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n+| CWE-346 | 13 | `test_auth_session.py`, `test_c6_auth.py`, `test_extension_security.py`, `test_write_safety_gates.py` |\n+| CWE-347 | 3 | `test_c6_auth.py`, `test_sbd_offline_least_privilege.py` |\n | CWE-350 | 5 | `test_auth_session.py`, `test_path_zpa_workloads.py` |\n | CWE-352 | 7 | `test_auth_session.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_pov.py`, `test_write_safety_gates.py` |\n-| CWE-354 | 4 | `test_ops_zcc.py`, `test_standalone.py` |\n-| CWE-359 | 7 | `test_flow_pages.py`, `test_path_whatif.py`, `test_pov.py`, `test_readiness.py` |\n+| CWE-354 | 5 | `test_c6_auth.py`, `test_ops_zcc.py`, `test_standalone.py` |\n+| CWE-359 | 8 | `test_c6_auth.py`, `test_flow_pages.py`, `test_path_whatif.py`, `test_pov.py`, `test_readiness.py` |\n | CWE-362 | 6 | `test_ops_zpa.py`, `test_pov.py`, `test_sbd_writes.py` |\n-| CWE-367 | 18 | `test_ops_aiguard.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_qa6_builders_lifecycle.py`, `test_sbd_writes.py`, `test_suite_stability.py` |\n+| CWE-367 | 20 | `test_c6_auth.py`, `test_ops_aiguard.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_qa6_builders_lifecycle.py`, `test_sbd_writes.py`, `test_suite_stability.py` |\n | CWE-369 | 1 | `test_flow_motion_models.py` |\n | CWE-379 | 2 | `test_sbd_offline_least_privilege.py`, `test_standalone.py` |\n | CWE-384 | 2 | `test_auth_session.py` |\n-| CWE-400 | 46 | `test_bulk_test.py`, `test_dos_limits.py`, `test_files_paths.py`, `test_flow_motion_browser.py`, `test_offline_tenant.py`, `test_ops_zdx.py`, `test_ops_zpa.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_standalone.py` |\n+| CWE-400 | 59 | `test_bulk_test.py`, `test_c6_auth.py`, `test_dos_limits.py`, `test_files_paths.py`, `test_flow_motion_browser.py`, `test_offline_tenant.py`, `test_ops_zdx.py`, `test_ops_zpa.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_standalone.py` |\n | CWE-405 | 3 | `test_api_contracts.py` |\n | CWE-407 | 17 | `test_dos_limits.py`, `test_pac_eval.py`, `test_sbd_untrusted_input.py` |\n-| CWE-409 | 11 | `test_dos_limits.py`, `test_files_paths.py` |\n+| CWE-409 | 15 | `test_c6_auth.py`, `test_dos_limits.py`, `test_files_paths.py` |\n | CWE-436 | 2 | `test_extension_security.py`, `test_outbound_ssrf.py` |\n | CWE-440 | 33 | `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_regression_flows.py`, `test_regression_migration.py` |\n | CWE-441 | 7 | `test_offline_tenant.py`, `test_sbd_offline_least_privilege.py`, `test_write_safety_gates.py` |\n | CWE-451 | 5 | `test_offline_tenant.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py` |\n | CWE-454 | 2 | `test_suite_stability.py` |\n-| CWE-459 | 8 | `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_secret_canaries.py`, `test_suite_stability.py`, `test_zcc_fleet.py` |\n+| CWE-459 | 16 | `test_c6_auth.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_secret_canaries.py`, `test_suite_stability.py`, `test_zcc_fleet.py` |\n | CWE-460 | 3 | `test_ops_zcc.py`, `test_ops_zdx.py`, `test_sbd_writes.py` |\n | CWE-472 | 2 | `test_offline_tenant.py`, `test_sbd_untrusted_input.py` |\n | CWE-494 | 5 | `test_sbom_licences.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n@@ -163,7 +172,7 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-506 | 1 | `test_pov.py` |\n | CWE-522 | 4 | `test_outbound_ssrf.py`, `test_supply_chain_qa.py` |\n | CWE-524 | 4 | `test_auth_session.py`, `test_scope_rule_routes.py` |\n-| CWE-532 | 32 | `test_bulk_test.py`, `test_ops_zcc.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_secret_canaries.py` |\n+| CWE-532 | 47 | `test_bulk_test.py`, `test_c6_auth.py`, `test_ops_zcc.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_secret_canaries.py` |\n | CWE-538 | 7 | `test_secret_canaries.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n | CWE-540 | 1 | `test_secret_canaries.py` |\n | CWE-552 | 4 | `test_auth_session.py`, `test_standalone.py` |\n@@ -171,7 +180,7 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-601 | 3 | `test_export_injection.py`, `test_outbound_ssrf.py`, `test_sbd_canary_renderers.py` |\n | CWE-605 | 1 | `test_standalone.py` |\n | CWE-611 | 3 | `test_files_paths.py`, `test_quality_score.py` |\n-| CWE-613 | 2 | `test_auth_session.py`, `test_ops_zpa.py` |\n+| CWE-613 | 5 | `test_auth_session.py`, `test_c6_auth.py`, `test_ops_zpa.py` |\n | CWE-614 | 3 | `test_auth_session.py`, `test_sbd_offline_least_privilege.py` |\n | CWE-636 | 5 | `test_offline_tenant.py`, `test_path_zpa_workloads.py`, `test_quality_score.py`, `test_sbd_untrusted_input.py`, `test_xss_render_sites.py` |\n | CWE-639 | 23 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_zcc.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py` |\n@@ -183,22 +192,22 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-668 | 1 | `test_suite_stability.py` |\n | CWE-670 | 20 | `test_bulk_test.py`, `test_path_zia_modules.py`, `test_qa_func_path.py` |\n | CWE-672 | 3 | `test_ops_zcc.py`, `test_ops_zia_baseline.py` |\n-| CWE-674 | 25 | `test_api_contracts.py`, `test_dos_limits.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_standalone.py` |\n+| CWE-674 | 26 | `test_api_contracts.py`, `test_c6_auth.py`, `test_dos_limits.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_pov.py`, `test_quality_score.py`, `test_readiness.py`, `test_standalone.py` |\n | CWE-681 | 2 | `test_readiness.py`, `test_sbd_untrusted_input.py` |\n-| CWE-682 | 15 | `test_bulk_test.py`, `test_flow_motion_models.py`, `test_qa_func_path.py` |\n+| CWE-682 | 19 | `test_bulk_test.py`, `test_c6_auth.py`, `test_flow_motion_models.py`, `test_qa_func_path.py` |\n | CWE-684 | 30 | `test_data_flow.py`, `test_flow_motion_models.py`, `test_path_live_motion.py`, `test_qa_func_path.py` |\n | CWE-693 | 6 | `test_bulk_test.py`, `test_ops_zia_baseline.py`, `test_path_zia_modules.py` |\n | CWE-694 | 8 | `test_ops_zcc.py`, `test_quality_score.py`, `test_sbd_writes.py` |\n | CWE-696 | 1 | `test_ops_zia_baseline.py` |\n | CWE-697 | 8 | `test_auth_session.py`, `test_qa_func_path.py` |\n-| CWE-732 | 7 | `test_files_paths.py`, `test_offline_tenant.py`, `test_posture_plus.py`, `test_pov.py`, `test_sbd_offline_least_privilege.py`, `test_secret_canaries.py` |\n+| CWE-732 | 10 | `test_c6_auth.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_posture_plus.py`, `test_pov.py`, `test_sbd_offline_least_privilege.py`, `test_secret_canaries.py` |\n | CWE-754 | 21 | `test_bulk_test.py`, `test_offline_tenant.py`, `test_path_zpa_workloads.py`, `test_pov.py`, `test_qa6_verdicts_reports.py`, `test_readiness.py`, `test_sbd_writes.py`, `test_zcc_device_state.py` |\n-| CWE-755 | 18 | `test_api_contracts.py`, `test_auth_session.py`, `test_files_paths.py`, `test_flow_motion_browser.py`, `test_ops_zdx.py`, `test_path_zia_modules.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_untrusted_input.py` |\n-| CWE-770 | 34 | `test_assess_stream.py`, `test_bulk_test.py`, `test_dos_limits.py`, `test_offline_tenant.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_standalone.py`, `test_suite_stability.py`, `test_tenant_pacing.py` |\n+| CWE-755 | 25 | `test_api_contracts.py`, `test_auth_session.py`, `test_c6_auth.py`, `test_files_paths.py`, `test_flow_motion_browser.py`, `test_ops_zdx.py`, `test_path_zia_modules.py`, `test_pov.py`, `test_quality_score.py`, `test_sbd_untrusted_input.py` |\n+| CWE-770 | 36 | `test_assess_stream.py`, `test_bulk_test.py`, `test_c6_auth.py`, `test_dos_limits.py`, `test_offline_tenant.py`, `test_pac_eval.py`, `test_path_whatif.py`, `test_quality_score.py`, `test_readiness.py`, `test_sbd_untrusted_input.py`, `test_standalone.py`, `test_suite_stability.py`, `test_tenant_pacing.py` |\n | CWE-776 | 2 | `test_files_paths.py`, `test_quality_score.py` |\n | CWE-778 | 8 | `test_auth_session.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_pov.py`, `test_sbd_writes.py` |\n-| CWE-779 | 1 | `test_dos_limits.py` |\n-| CWE-798 | 4 | `test_auth_session.py`, `test_secret_canaries.py`, `test_standalone.py` |\n+| CWE-779 | 4 | `test_c6_auth.py`, `test_dos_limits.py` |\n+| CWE-798 | 5 | `test_auth_session.py`, `test_c6_auth.py`, `test_secret_canaries.py`, `test_standalone.py` |\n | CWE-829 | 3 | `test_extension_security.py`, `test_standalone.py`, `test_supply_chain_qa.py` |\n | CWE-833 | 1 | `test_sbd_writes.py` |\n | CWE-837 | 2 | `test_sbd_writes.py` |\n@@ -207,9 +216,9 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-841 | 87 | `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_qa6_builders_lifecycle.py`, `test_sbd_writes.py`, `test_write_safety_gates.py` |\n | CWE-843 | 5 | `test_api_contracts.py`, `test_sbd_untrusted_input.py` |\n | CWE-862 | 19 | `test_auth_session.py`, `test_bulk_test.py`, `test_ops_zcc.py`, `test_ops_zia_baseline.py`, `test_quality_score.py`, `test_regression_flows.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n-| CWE-863 | 50 | `test_bulk_test.py`, `test_extension_security.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n+| CWE-863 | 51 | `test_bulk_test.py`, `test_c6_auth.py`, `test_extension_security.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zpa_workloads.py`, `test_qa6_verdicts_reports.py`, `test_qa_func_path.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py`, `test_write_safety_gates.py` |\n | CWE-915 | 2 | `test_pac_eval.py`, `test_pov.py` |\n-| CWE-918 | 14 | `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_sbd_untrusted_input.py` |\n+| CWE-918 | 16 | `test_c6_auth.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_sbd_untrusted_input.py` |\n | CWE-922 | 2 | `test_extension_security.py`, `test_secret_canaries.py` |\n | CWE-942 | 3 | `test_auth_session.py`, `test_extension_security.py` |\n | CWE-1004 | 3 | `test_auth_session.py`, `test_offline_tenant.py` |\n@@ -230,7 +239,7 @@ secure defaults, deny by default, fail closed, least privilege.\n | CWE-1321 | 3 | `test_extension_security.py`, `test_pac_eval.py` |\n | CWE-1325 | 1 | `test_suite_stability.py` |\n | CWE-1327 | 3 | `test_standalone.py` |\n-| CWE-1333 | 16 | `test_dos_limits.py`, `test_pac_eval.py`, `test_sbd_untrusted_input.py`, `test_standalone.py` |\n+| CWE-1333 | 17 | `test_c6_auth.py`, `test_dos_limits.py`, `test_pac_eval.py`, `test_sbd_untrusted_input.py`, `test_standalone.py` |\n | CWE-1357 | 5 | `test_ops_zdx.py`, `test_quality_score.py` |\n | CWE-1385 | 1 | `test_auth_session.py` |\n | CWE-1391 | 1 | `test_standalone.py` |\n@@ -254,38 +263,46 @@ secure defaults, deny by default, fail closed, least privilege.\n | Control | Tests | Files |\n |---|---|---|\n | WSTG-ATHN-03 | 1 | `test_auth_session.py` |\n-| WSTG-ATHN-04 | 2 | `test_auth_session.py` |\n-| WSTG-ATHZ-01 | 9 | `test_auth_session.py`, `test_extension_security.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_standalone.py` |\n-| WSTG-ATHZ-02 | 31 | `test_auth_session.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_readiness.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py` |\n+| WSTG-ATHN-04 | 7 | `test_auth_session.py`, `test_c6_auth.py` |\n+| WSTG-ATHN-06 | 6 | `test_c6_auth.py` |\n+| WSTG-ATHZ-01 | 15 | `test_auth_session.py`, `test_c6_auth.py`, `test_extension_security.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_standalone.py` |\n+| WSTG-ATHZ-02 | 33 | `test_auth_session.py`, `test_c6_auth.py`, `test_extension_security.py`, `test_offline_tenant.py`, `test_ops_aiguard.py`, `test_ops_plugins.py`, `test_ops_zcc.py`, `test_ops_zdx.py`, `test_ops_zia_baseline.py`, `test_ops_zpa.py`, `test_path_whatif.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_readiness.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_writes.py`, `test_scope_rule_routes.py` |\n | WSTG-ATHZ-03 | 1 | `test_auth_session.py` |\n | WSTG-ATHZ-04 | 5 | `test_ops_zpa.py`, `test_pov.py`, `test_scope_rule_routes.py` |\n | WSTG-BUSL-01 | 1 | `test_offline_tenant.py` |\n | WSTG-BUSL-04 | 1 | `test_suite_stability.py` |\n-| WSTG-BUSL-07 | 5 | `test_dos_limits.py` |\n-| WSTG-BUSL-09 | 28 | `test_dos_limits.py`, `test_files_paths.py`, `test_pac_eval.py`, `test_pov.py`, `test_sbd_untrusted_input.py`, `test_xss_render_sites.py` |\n+| WSTG-BUSL-05 | 7 | `test_c6_auth.py` |\n+| WSTG-BUSL-07 | 8 | `test_c6_auth.py`, `test_dos_limits.py` |\n+| WSTG-BUSL-09 | 33 | `test_c6_auth.py`, `test_dos_limits.py`, `test_files_paths.py`, `test_pac_eval.py`, `test_pov.py`, `test_sbd_untrusted_input.py`, `test_xss_render_sites.py` |\n | WSTG-CLNT-01 | 2 | `test_path_live_motion.py`, `test_sbd_canary_renderers.py` |\n | WSTG-CLNT-04 | 1 | `test_sbd_canary_renderers.py` |\n | WSTG-CLNT-07 | 3 | `test_auth_session.py`, `test_extension_security.py`, `test_write_safety_gates.py` |\n | WSTG-CLNT-10 | 1 | `test_auth_session.py` |\n | WSTG-CLNT-11 | 5 | `test_extension_security.py` |\n | WSTG-CLNT-12 | 1 | `test_extension_security.py` |\n+| WSTG-CONF-02 | 4 | `test_c6_auth.py` |\n+| WSTG-CONF-04 | 3 | `test_c6_auth.py` |\n | WSTG-CONF-06 | 4 | `test_extension_security.py` |\n-| WSTG-CONF-09 | 3 | `test_files_paths.py` |\n+| WSTG-CONF-09 | 6 | `test_c6_auth.py`, `test_files_paths.py` |\n | WSTG-CONF-12 | 1 | `test_extension_security.py` |\n-| WSTG-ERRH-01 | 25 | `test_api_contracts.py`, `test_auth_session.py`, `test_dos_limits.py`, `test_files_paths.py`, `test_secret_canaries.py` |\n-| WSTG-INFO-05 | 3 | `test_ops_zpa.py`, `test_readiness.py`, `test_secret_canaries.py` |\n-| WSTG-INPV-01 | 7 | `test_offline_tenant.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py` |\n+| WSTG-CRYP-03 | 3 | `test_c6_auth.py` |\n+| WSTG-ERRH-01 | 33 | `test_api_contracts.py`, `test_auth_session.py`, `test_c6_auth.py`, `test_dos_limits.py`, `test_files_paths.py`, `test_secret_canaries.py` |\n+| WSTG-INFO-05 | 15 | `test_c6_auth.py`, `test_ops_zpa.py`, `test_readiness.py`, `test_secret_canaries.py` |\n+| WSTG-INPV-01 | 19 | `test_c6_auth.py`, `test_offline_tenant.py`, `test_path_zia_modules.py`, `test_path_zpa_workloads.py`, `test_pov.py` |\n | WSTG-INPV-02 | 4 | `test_flow_motion_browser.py`, `test_readiness.py`, `test_xss_render_sites.py`, `test_xss_sinks.py` |\n | WSTG-INPV-07 | 2 | `test_files_paths.py` |\n | WSTG-INPV-11 | 9 | `test_export_injection.py`, `test_export_integrity.py`, `test_pac_eval.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py` |\n-| WSTG-INPV-12 | 1 | `test_sbd_untrusted_input.py` |\n-| WSTG-INPV-13 | 5 | `test_offline_tenant.py`, `test_readiness.py`, `test_sbd_untrusted_input.py` |\n+| WSTG-INPV-12 | 2 | `test_c6_auth.py`, `test_sbd_untrusted_input.py` |\n+| WSTG-INPV-13 | 7 | `test_c6_auth.py`, `test_offline_tenant.py`, `test_readiness.py`, `test_sbd_untrusted_input.py` |\n | WSTG-INPV-15 | 1 | `test_api_contracts.py` |\n | WSTG-INPV-17 | 3 | `test_auth_session.py` |\n-| WSTG-INPV-19 | 6 | `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_untrusted_input.py` |\n+| WSTG-INPV-19 | 7 | `test_c6_auth.py`, `test_outbound_ssrf.py`, `test_pac_eval.py`, `test_sbd_offline_least_privilege.py`, `test_sbd_untrusted_input.py` |\n | WSTG-SESS-02 | 4 | `test_auth_session.py`, `test_offline_tenant.py`, `test_sbd_offline_least_privilege.py` |\n | WSTG-SESS-04 | 1 | `test_secret_canaries.py` |\n | WSTG-SESS-05 | 5 | `test_auth_session.py`, `test_extension_security.py` |\n+| WSTG-SESS-06 | 1 | `test_c6_auth.py` |\n+| WSTG-SESS-07 | 3 | `test_c6_auth.py` |\n+| WSTG-SESS-10 | 2 | `test_c6_auth.py` |\n \n ## WCAG 2.2\n \n"
+  }
+ ],
+ "tests_added": 194
+}
