@@ -19,6 +19,7 @@ by tenant. Every decision is recorded in audit.log.
 from __future__ import annotations
 
 import md_safe
+import contextlib
 import hashlib
 import json
 import os
@@ -30,6 +31,12 @@ STORE_FILE = "proposals.json"
 DISMISS_DAYS = 30
 SNOOZE_DAYS_DEFAULT = 14
 _LOCK = threading.RLock()
+MAX_SNOOZE_DAYS = 365
+
+try:  # POSIX
+    import fcntl  # type: ignore
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None  # type: ignore
 
 # Gates: "approve" is one click; "approve_double" also needs the confirm
 # phrase, because the change makes the tenant stricter for users.
@@ -75,17 +82,53 @@ def _read() -> Dict[str, Any]:
     return {"version": 1, "tenants": {}}
 
 
+@contextlib.contextmanager
+def _locked():
+    """This process's lock, then an exclusive lock on <store>.lock, so a
+    read-modify-write never interleaves with another server process."""
+    with _LOCK:
+        p = store_path()
+        fd = None
+        if fcntl is not None:
+            try:
+                fd = os.open(p + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            except OSError:   # a read-only folder: the thread lock still holds
+                if fd is not None:
+                    os.close(fd)
+                fd = None
+        try:
+            yield
+        finally:
+            if fd is not None:
+                with contextlib.suppress(OSError):
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                os.close(fd)
+
+
 def _write(data: Dict[str, Any]) -> None:
+    """Owner-only from the first byte and atomic: <store>.tmp (git-ignored)
+    created afresh (O_EXCL, O_NOFOLLOW, 0600: a stale file or a planted
+    link is removed first and never followed), flushed, then renamed over
+    the store. Callers hold _locked(), so one writer uses the name at a time."""
     p = store_path()
     tmp = p + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=1)
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(tmp)   # a crash's leftover, or a link: the link itself goes, never its target
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), 0o600)
     try:
-        os.chmod(tmp, 0o600)
-    except OSError:
-        pass
-    _keep_last_good(p)
-    os.replace(tmp, p)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=1)
+            f.flush()
+            os.fsync(f.fileno())
+        with contextlib.suppress(OSError):
+            os.chmod(tmp, 0o600)
+        _keep_last_good(p)
+        os.replace(tmp, p)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def _keep_last_good(path: str) -> None:
@@ -216,7 +259,7 @@ def merge(tenant: str, fresh: List[Dict[str, Any]], *, source: str = "detection_
     tk = tenant_key(tenant)
     now = _now()
     stats = {"new": 0, "updated": 0, "resolved": 0, "kept": 0}
-    with _LOCK:
+    with _locked():
         data = _read()
         q = data["tenants"].setdefault(tk, {"proposals": {}, "updated_at": now})
         store = q["proposals"]
@@ -254,7 +297,7 @@ def rekey(old: str, new: str) -> int:
     ok, nk = tenant_key(old), tenant_key(new)
     if not old or ok == nk:
         return 0
-    with _LOCK:
+    with _locked():
         data = _read()
         q = data["tenants"].pop(ok, None)
         if not q:
@@ -308,18 +351,39 @@ def summary(tenant: str) -> Dict[str, int]:
     return c
 
 
+# Decisions a proposal's status does not allow (an approval is never replayed:
+# an applied change is rolled back first, then it can be approved again).
+_DECISION_REFUSED = {
+    ("*", "applied"): "this change is applied: roll it back from the queue first (an applied change is not decided again)",
+    ("approve", "approved"): "this proposal is already approved",
+    ("approve", "resolved"): "this proposal is resolved (the evaluation no longer raises it), so there is nothing to approve",
+}
+
+
 def decide(tenant: str, pid: str, decision: str, *, by: str = "", note: str = "", days: int = SNOOZE_DAYS_DEFAULT, confirm: str = "") -> Dict[str, Any]:
     """approve | dismiss | snooze | reopen. Raises ValueError with a
     message the GUI can show."""
     decision = (decision or "").lower()
     if decision not in ("approve", "dismiss", "snooze", "reopen"):
         raise ValueError("decision must be approve, dismiss, snooze or reopen")
-    with _LOCK:
+    if decision == "snooze":
+        try:
+            days = int(days or SNOOZE_DAYS_DEFAULT)
+        except (TypeError, ValueError):
+            raise ValueError("snooze days must be a whole number") from None
+        days = min(MAX_SNOOZE_DAYS, max(1, days))
+    with _locked():
         data = _read()
         q = data["tenants"].get(tenant_key(tenant)) or {}
         p = (q.get("proposals") or {}).get(pid)
         if not p:
             raise ValueError("proposal not found (the queue may have been refreshed; reload)")
+        st = p.get("status")
+        if st in ("dismissed", "snoozed") and not _active(p):
+            st = "open"   # an expired dismissal or snooze is open again (list_queue shows it so)
+        why = _DECISION_REFUSED.get((decision, st)) or (_DECISION_REFUSED.get(("*", st)))
+        if why:
+            raise ValueError(why)
         if decision == "approve" and p.get("gate") == "approve_double" and not __import__("security").typed_phrase_matches(confirm, CONFIRM_PHRASE):
             raise ValueError(f'this change makes the tenant stricter for users: type "{CONFIRM_PHRASE}" to approve it')
         now = _now()
@@ -331,7 +395,7 @@ def decide(tenant: str, pid: str, decision: str, *, by: str = "", note: str = ""
             p["status"] = "dismissed"
         elif decision == "snooze":
             p["status"] = "snoozed"
-            p["snoozed_until"] = (datetime.now(timezone.utc) + timedelta(days=max(1, int(days or SNOOZE_DAYS_DEFAULT)))).isoformat(timespec="seconds")
+            p["snoozed_until"] = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds")
         else:
             p["status"] = "open"; p.pop("snoozed_until", None)
         q["updated_at"] = now
@@ -355,7 +419,7 @@ def get(tenant: str, pid: str) -> Optional[Dict[str, Any]]:
 
 def set_status(tenant: str, pid: str, status: str, **fields: Any) -> Optional[Dict[str, Any]]:
     """Phase 3 hook: mark a proposal applied / failed / rolled back."""
-    with _LOCK:
+    with _locked():
         data = _read()
         q = data["tenants"].get(tenant_key(tenant)) or {}
         p = (q.get("proposals") or {}).get(pid)

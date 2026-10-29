@@ -1,0 +1,394 @@
+{
+ "area": "admin-ops",
+ "title": "Bulk changes engine, plugin registry, change queue (four-eyes), proposals and fix recipes",
+ "files": [
+  "admin_ops.py",
+  "remediation.py",
+  "proposals.py",
+  "change_queue.py"
+ ],
+ "standards": [
+  "ASVS V1.14.6",
+  "ASVS V2.8.1",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.1",
+  "ASVS V7.4.1",
+  "ASVS V11.1.1",
+  "ASVS V11.1.4",
+  "ASVS V11.1.6",
+  "ASVS V12.3.1",
+  "ASVS V14.2.4",
+  "OWASP Top 10 2021 A01/A03/A04/A08",
+  "CISA Secure by Design"
+ ],
+ "coverage": {
+  "before": 86.0,
+  "after": 89.0,
+  "per_file": {
+   "admin_ops.py": [
+    87,
+    88
+   ],
+   "change_queue.py": [
+    84,
+    91
+   ],
+   "proposals.py": [
+    93,
+    92
+   ],
+   "remediation.py": [
+    71,
+    95
+   ]
+  },
+  "method": "coverage --branch, line+branch, the test files that import these modules"
+ },
+ "checks": [
+  {
+   "id": "plan-execute-verify-inverse",
+   "what": "Plan, plan hash, execute (re-plan, re-read, write), verify, inverse for rule state, reorder, URL categories, ZPA domains",
+   "standard": "ASVS V1.14.6",
+   "result": "pass"
+  },
+  {
+   "id": "sanction",
+   "what": "Cloud app sanction is refused with its reason (no read of the before state)",
+   "standard": "ASVS V1.14.6",
+   "result": "pass"
+  },
+  {
+   "id": "plugin-registry",
+   "what": "Names, scripts, families, products and handlers a plugin registers",
+   "standard": "ASVS V14.2.4",
+   "result": "fixed"
+  },
+  {
+   "id": "confirm-phrase",
+   "what": "confirm_phrase / confirm_always / APPLY N CHANGES cannot be bypassed; derived from the server's re-plan",
+   "standard": "ASVS V2.8.1",
+   "result": "pass"
+  },
+  {
+   "id": "concurrent-edits",
+   "what": "Conflict guard on rule state, URLs, ZPA domains, rule order; second person's apply is plan_changed",
+   "standard": "CWE-367",
+   "result": "pass"
+  },
+  {
+   "id": "four-eyes",
+   "what": "Proposer cannot approve; local identities are not a second person; NFKC/casefold",
+   "standard": "ASVS V4.1.3",
+   "result": "fixed"
+  },
+  {
+   "id": "approval-binding-replay",
+   "what": "Approval bound to plan_hash and payload; no replay of approval or finish",
+   "standard": "ASVS V11.1.1",
+   "result": "fixed"
+  },
+  {
+   "id": "remediation-gates",
+   "what": "Every one-click fix: writer, confirm, assessor, write mode, all before sign-in; dry run default",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "remediation-defaults",
+   "what": "Recipes create rules disabled; PATCH never becomes a partial PUT",
+   "standard": "CISA SbD secure defaults",
+   "result": "fixed"
+  },
+  {
+   "id": "input-validation",
+   "what": "Spec shapes, caps, URLs, IDN, IPv6, names, criteria types",
+   "standard": "ASVS V5.1.3",
+   "result": "fixed"
+  },
+  {
+   "id": "output-escaping",
+   "what": "Queue Markdown and Excel exports keep hostile text inert, no formulas",
+   "standard": "ASVS V5.3.1",
+   "result": "pass"
+  },
+  {
+   "id": "file-permissions",
+   "what": "change_requests.json, its lock and proposals.json are 0600; atomic, no symlink follow",
+   "standard": "CWE-276",
+   "result": "fixed"
+  },
+  {
+   "id": "error-handling",
+   "what": "Malformed input is a plain 400 / error status, never a 500 or traceback",
+   "standard": "ASVS V7.4.1",
+   "result": "fixed"
+  },
+  {
+   "id": "secrets",
+   "what": "No client secret in endpoint answers on refusal paths",
+   "standard": "CWE-200",
+   "result": "pass"
+  },
+  {
+   "id": "remediation-scope",
+   "what": "Live fix recipes honour the Scope page",
+   "standard": "CWE-863",
+   "result": "open"
+  },
+  {
+   "id": "standards-doc",
+   "what": "docs/SECURITY_TESTING.md is generated from test docstrings; the new tests make it stale until tools/security_test_matrix.py is re-run (not editable in this slice)",
+   "standard": "SSDF PW.4.1",
+   "result": "open"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-ADMIN-OPS-01",
+   "title": "Fix recipes created their rule ENABLED by default (FW-01: BLOCK_DROP at order 1, live on apply)",
+   "severity": "medium",
+   "cwe": "CWE-1188",
+   "asvs": "V1.14.6",
+   "status": "fixed",
+   "fix": "Every recipe's state field defaults to DISABLED; plan() fills defaults server-side",
+   "test": "tests/test_c6_admin_ops.py::test_every_recipe_creates_its_rule_disabled_by_default",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-02",
+   "title": "RULE-DESC (PATCH) fell back to a PUT of the description alone on the raw client, which has no patch(): the PUT would replace the whole rule",
+   "severity": "medium",
+   "cwe": "CWE-440",
+   "asvs": "V1.14.6",
+   "status": "fixed",
+   "fix": "Read the rule, merge the changed fields, PUT it back whole; send nothing if the read fails (assumed: ZIA has no PATCH)",
+   "test": "tests/test_c6_admin_ops.py::test_a_patch_recipe_without_client_patch_sends_the_whole_rule",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-03",
+   "title": "Four-eyes bypass without SSO: a request filed as 'local, no UI token' could be approved as 'local UI token' (same person, UI gate toggled)",
+   "severity": "medium",
+   "cwe": "CWE-654",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "A local identity, the app itself or 'unknown' is never accepted as the approver while four-eyes is on",
+   "test": "tests/test_c6_admin_ops.py::test_a_local_identity_never_counts_as_the_second_person",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-04",
+   "title": "Four-eyes compared people with lower() only: full-width / compatibility spellings of the requester's name passed",
+   "severity": "low",
+   "cwe": "CWE-176",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "Compare NFKC-normalised, case-folded identities",
+   "test": "tests/test_c6_admin_ops.py::test_the_requester_cannot_approve_their_own_request_in_any_spelling",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-05",
+   "title": "Approval not bound to what was approved, and a finished request could be finished again (re-marked failed/applied)",
+   "severity": "low",
+   "cwe": "CWE-345",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Store approved_digest (kind, tenant, plan_hash, payload) and check it in begin_apply; finish_apply only ends a claimed approved request",
+   "test": "tests/test_c6_admin_ops.py::test_an_approval_does_not_carry_over_to_a_changed_request",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-06",
+   "title": "Queue steps (decide, comment, withdraw, apply) accepted an empty actor",
+   "severity": "low",
+   "cwe": "CWE-287",
+   "asvs": "V7.1.3",
+   "status": "fixed",
+   "fix": "Every step needs a named actor (401)",
+   "test": "tests/test_c6_admin_ops.py::test_an_unnamed_caller_cannot_decide_comment_withdraw_or_apply",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-07",
+   "title": "Proposals: an applied, approved or resolved proposal could be approved again, so an applied change could be applied a second time",
+   "severity": "medium",
+   "cwe": "CWE-841",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Status-based refusals: an applied change is rolled back first; approved/resolved are not re-approved",
+   "test": "tests/test_c6_admin_ops.py::test_an_applied_proposal_cannot_be_approved_again",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-08",
+   "title": "proposals.json was written through a fixed <store>.tmp opened with open() (follows a planted symlink, umask permissions until chmod, no cross-process lock)",
+   "severity": "low",
+   "cwe": "CWE-59",
+   "asvs": "V12.3.1",
+   "status": "fixed",
+   "fix": "<store>.tmp (git-ignored) created afresh with O_CREAT|O_EXCL|O_NOFOLLOW at 0600 after removing any leftover or link, fsync, atomic replace, under flock on <store>.lock",
+   "test": "tests/test_c6_admin_ops.py::test_the_store_write_never_follows_a_planted_temp_symlink",
+   "commit": "97ff5e2, 1cdb72c"
+  },
+  {
+   "id": "C6-ADMIN-OPS-09",
+   "title": "Snooze days were unbounded: a huge value raised OverflowError (500)",
+   "severity": "low",
+   "cwe": "CWE-190",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "Clamp to 1..365 and refuse non-numbers in plain words",
+   "test": "tests/test_c6_admin_ops.py::test_snooze_days_are_clamped_not_a_crash",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-10",
+   "title": "A wrongly shaped operation (targets / order / deltas not a list of objects) crashed plan() with TypeError / AttributeError: a 500 on /api/operations/preview",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "_list_field() validates shape; require_scope tolerates a non-list",
+   "test": "tests/test_c6_admin_ops.py::test_a_malformed_operation_is_an_operation_error",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-11",
+   "title": "Undo (revert) specs skipped MAX_URLS / MAX_DOMAINS, and invalid entries were uncapped (one excluded item each)",
+   "severity": "low",
+   "cwe": "CWE-400",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "Caps on revert totals, deltas and deletes, and on raw entries",
+   "test": "tests/test_c6_admin_ops.py::test_an_undo_spec_is_capped_like_any_operation",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-12",
+   "title": "Custom URLs accepted control characters in the path; IDN hosts were refused instead of sent as punycode",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "Refuse C0/C1 control characters; encode IDN hosts with the idna codec (assumed: ZIA and ZPA store punycode)",
+   "test": "tests/test_c6_admin_ops.py::test_normalize_url_refuses_control_characters_and_bad_hosts",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-13",
+   "title": "Fix recipe: an omitted optional number (rank) crashed plan() with TypeError (500)",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Field defaults are filled before validation; a missing integer is a validation error",
+   "test": "tests/test_c6_admin_ops.py::test_an_optional_number_left_out_gets_its_default_not_a_crash",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-14",
+   "title": "Fix recipe: dicts, lists, booleans and fractions were copied into the API body as given; free text without max_length was uncapped",
+   "severity": "low",
+   "cwe": "CWE-915",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Single values only, bool is not a number, MAX_TEXT default cap",
+   "test": "tests/test_c6_admin_ops.py::test_structured_or_boolean_values_never_reach_the_body",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-15",
+   "title": "Plugin registry accepted non-callable hooks, bad handler or product names, type == family, and let a later registration replace a type's planner or a family's scope gate",
+   "severity": "low",
+   "cwe": "CWE-284",
+   "asvs": "V1.14.6",
+   "status": "fixed",
+   "fix": "register() validates every hook and name and refuses a takeover",
+   "test": "tests/test_c6_admin_ops.py::test_a_second_plugin_cannot_take_over_a_registered_type_or_family",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-16",
+   "title": "A plan whose write group named an unknown handler raised KeyError in the middle of a run (after earlier writes)",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "_finish refuses the plan before anything is written",
+   "test": "tests/test_c6_admin_ops.py::test_a_plan_naming_an_unknown_write_handler_is_refused_before_any_write",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-17",
+   "title": "Names of created URL categories and cloned ZPA segments accepted control characters and were silently cut at 255; super_category was free text",
+   "severity": "low",
+   "cwe": "CWE-117",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "_object_name() and a ZIA super-category pattern (SDK 1.11.3 example BUSINESS_AND_ECONOMY)",
+   "test": "tests/test_c6_admin_ops.py::test_a_new_category_name_with_control_characters_or_too_long_is_refused",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-18",
+   "title": "Fix recipe: the URL category id list was unchecked",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Up to 256 plain ids",
+   "test": "tests/test_c6_admin_ops.py::test_a_recipe_id_list_takes_ids_only",
+   "commit": "97ff5e2"
+  },
+  {
+   "id": "C6-ADMIN-OPS-19",
+   "title": "/api/remediation/execute has no Scope check: a live fix writes (and, for RULE-DESC, now reads the rule) whatever the Scope page ticks",
+   "severity": "low",
+   "cwe": "CWE-863",
+   "asvs": "V4.1.3",
+   "status": "open",
+   "fix": "Proposed: require the recipe's scope (DLP + Inline Web DLP for Web DLP rules, else ZIA platform) before sign-in; the page must then send its selection",
+   "test": "",
+   "commit": "",
+   "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -703,6 +703,19 @@\n     confirm: bool = False      # dry_run=false needs confirm=true, the assessor, a writer and write mode\n     assessor: str = \"\"\n     profile_id: str = \"\"\n+    scopes: List[str] = []        # the Scope page selection (user rule 1)\n+    channels: Dict[str, Any] = {}\n+    from_page: bool = False\n+\n+\n+def _remediation_scope(check_id: str, criteria: Dict[str, Any]) -> Tuple[str, str]:\n+    \"\"\"(scope, channel) a fix recipe writes in: Inline Web DLP rules need DLP\n+    with Inline Web DLP marked Zscaler; the other ZIA rules need ZIA platform.\"\"\"\n+    import remediation\n+    rid = (remediation.get_recipe(check_id) or {}).get(\"check_id\")\n+    if rid == \"DLP-01\" or (rid == \"RULE-DESC\" and str((criteria or {}).get(\"rule_type\")) == \"webDlpRules\"):\n+        return \"dlp\", \"web_dlp\"\n+    return \"zia_extras\", \"\"\n \n \n @app.get(\"/api/remediation/catalog\")\n@@ -738,6 +751,8 @@\n         raise HTTPException(status_code=500, detail=f\"remediation unavailable: {e}\")\n     if not req.dry_run:\n         _require_tenant_write(req, confirmed=req.confirm, what=\"Applying a remediation\")\n+        scope, channel = _remediation_scope(req.check_id, req.criteria)\n+        _require_in_scope(req, scope, \"Applying a remediation\", channel)\n     client = await asyncio.to_thread(_build_client, req)\n     result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)\n     return result\n"
+  },
+  {
+   "id": "C6-ADMIN-OPS-20",
+   "title": "An Undo spec can name any custom category / segment to delete when it gives its exact current URL / domain list",
+   "severity": "info",
+   "cwe": "CWE-639",
+   "asvs": "V4.2.1",
+   "status": "accepted",
+   "fix": "Needs all four write gates and shows in the preview; the category or segment must match exactly and not be used by a rule in scope",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "C6-ADMIN-OPS-21",
+   "title": "approved_digest is an unkeyed hash: it binds an approval to its plan against code paths, not against someone who can rewrite change_requests.json",
+   "severity": "info",
+   "cwe": "CWE-345",
+   "asvs": "V11.1.1",
+   "status": "accepted",
+   "fix": "The store is owner-only (0600); a keyed MAC would need a server secret and is out of this slice",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "C6-ADMIN-OPS-22",
+   "title": "proposals.json.lock (new, empty) is not git-ignored",
+   "severity": "info",
+   "cwe": "CWE-538",
+   "asvs": "V14.1.1",
+   "status": "open",
+   "fix": "Add proposals.json.lock to .gitignore beside proposals.json.tmp",
+   "test": "",
+   "commit": "",
+   "proposed_patch": "--- a/.gitignore\n+++ b/.gitignore\n@@ -56,6 +56,7 @@\n # Continuous evaluation: the per-tenant approval queue (local, never committed)\n proposals.json\n proposals.json.tmp\n+proposals.json.lock\n # The team change queue (change_queue.py): requests, its lock file and atomic-write temporaries\n change_requests.json\n change_requests.json.lock\n"
+  }
+ ],
+ "tests_added": 165
+}

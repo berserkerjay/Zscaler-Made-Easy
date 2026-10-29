@@ -122,13 +122,36 @@ def register(type_name: str, *, family: str, product: str, label: str, hint: str
     `inverse(result)` is the operation that undoes it. `script` names the
     page's form for it under static/ (ops_<name>.js)."""
     for n in (type_name, family):
-        if not _PLUGIN_NAME.match(n) or n in TYPES or n in ("rules", "url_categories", "zpa_segments"):
+        if not isinstance(n, str) or not _PLUGIN_NAME.match(n) or n in TYPES or n in ("rules", "url_categories", "zpa_segments"):
             raise ValueError(f"invalid or reserved operation name: {n!r}")
+    # A type and a family share require_scope's namespace: one name, one meaning.
+    if type_name == family or type_name in PLUGIN_FAMILIES or family in PLUGINS:
+        raise ValueError(f"operation type and family names must differ from every other: {type_name!r} / {family!r}")
+    if not isinstance(product, str) or not _PLUGIN_NAME.match(product):
+        raise ValueError(f"invalid plugin product: {product!r}")
     if script and not re.fullmatch(r"ops_[a-z0-9_]{1,40}\.js", script):
         raise ValueError(f"invalid plugin script name: {script!r}")
-    for h in handlers:
+    for what, fn in (("in_scope", in_scope), ("plan", plan), ("read_objects", read_objects)):
+        if not callable(fn):
+            raise ValueError(f"plugin {type_name!r}: {what} must be callable")
+    for what, fn in (("verify", verify), ("inverse", inverse)):
+        if fn is not None and not callable(fn):
+            raise ValueError(f"plugin {type_name!r}: {what} must be callable or None")
+    if not isinstance(handlers, dict) or not handlers:
+        raise ValueError(f"plugin {type_name!r}: handlers must name at least one write handler")
+    for h, fn in handlers.items():
+        if not isinstance(h, str) or not _PLUGIN_NAME.match(h) or not callable(fn):
+            raise ValueError(f"invalid plugin handler: {h!r}")
         if h in HANDLERS or (h in PLUGIN_HANDLERS and PLUGIN_HANDLERS[h] is not handlers[h]):
             raise ValueError(f"handler name already taken: {h!r}")
+    # A second registration may not swap the scope gate or planner of a type
+    # or family another module registered (deny by default: same callables only).
+    old = PLUGINS.get(type_name)
+    if old is not None and (old["plan"] is not plan or old["in_scope"] is not in_scope):
+        raise ValueError(f"operation type already registered: {type_name!r}")
+    fam = PLUGIN_FAMILIES.get(family)
+    if fam is not None and (fam["in_scope"] is not in_scope or fam["read_objects"] is not read_objects):
+        raise ValueError(f"operation family already registered with another scope check or reader: {family!r}")
     PLUGINS[type_name] = {"type": type_name, "family": family, "product": product, "label": label, "hint": hint, "group": group,
                           "script": script, "in_scope": in_scope, "plan": plan, "verify": verify, "inverse": inverse}
     PLUGIN_FAMILIES[family] = {"in_scope": in_scope, "read_objects": read_objects}
@@ -244,7 +267,8 @@ def require_scope(spec_or_family: Any, scope: Dict[str, Any]) -> None:
         if not scope["policies"]:
             raise OperationError("No rule policy is in scope: on the Scope page tick DLP or ZIA platform and mark the channels you run on Zscaler.")
         if isinstance(spec_or_family, dict):
-            pols = {str(x.get("policy")) for x in spec_or_family.get("targets") or [] if isinstance(x, dict)}
+            targets = spec_or_family.get("targets")
+            pols = {str(x.get("policy")) for x in (targets if isinstance(targets, list) else []) if isinstance(x, dict)}
             if spec_or_family.get("policy"):
                 pols.add(str(spec_or_family["policy"]))
             out = sorted(p for p in pols if p not in scope["policies"])
@@ -397,6 +421,43 @@ def get_segment(zpa, sid: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]
 # Field helpers
 # ---------------------------------------------------------------------------
 
+def _list_field(spec: Dict[str, Any], key: str, *, objects: bool = False, cap: Optional[int] = None) -> List[Any]:
+    """spec[key] as a list ([] when absent): a page or script that sends
+    another shape gets a plain refusal (400), never a crash. `objects`:
+    every entry must be an object; `cap`: at most that many entries."""
+    v = spec.get(key)
+    if v in (None, ""):
+        return []
+    if not isinstance(v, list):
+        raise OperationError(f"'{key}' must be a list.")
+    if objects and not all(isinstance(x, dict) for x in v):
+        raise OperationError(f"Every entry of '{key}' must be an object.")
+    if cap is not None and len(v) > cap:
+        raise OperationError(f"At most {cap} entries in '{key}' per operation; this one has {len(v)}. Split it.")
+    return v
+
+
+def _raw_entries(raw: Any) -> List[Any]:
+    """The non-blank entries of a URL or domain list (a list, or text split on spaces and commas)."""
+    vals = raw if isinstance(raw, list) else re.split(r"[\s,]+", str(raw or ""))
+    return [v for v in vals if str(v).strip()]
+
+
+_SUPER_CATEGORY = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
+
+
+def _object_name(raw: Any, what: str) -> str:
+    """A name for an object this operation creates: trimmed, at most 255
+    characters, no control characters (it is shown in the portal, the
+    audit log and every export)."""
+    name = str(raw or "").strip()
+    if _has_control(name):
+        raise OperationError(f"The {what} name contains a control character.")
+    if len(name) > 255:
+        raise OperationError(f"The {what} name is longer than 255 characters.")
+    return name
+
+
 def _truthy(v: Any) -> bool:
     return v is True or str(v).strip().lower() in ("true", "1", "yes")
 
@@ -535,6 +596,22 @@ def minimal_moves(current: Sequence[str], desired: Sequence[str], locked: Iterab
 _LABEL_RE = re.compile(r"^(?!-)[a-z0-9_-]{1,63}(?<!-)$")
 
 
+def _ascii_host(host: str) -> Optional[str]:
+    """An internationalised host name in its ASCII (punycode) form, as the
+    API stores it (assumed for ZIA and ZPA: the SDK passes names through);
+    None when it cannot be encoded."""
+    if host.isascii():
+        return host
+    try:
+        return host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return None
+
+
+def _has_control(s: str) -> bool:
+    return any(ord(c) < 32 or 127 <= ord(c) < 160 for c in s)
+
+
 def _host_ok(host: str) -> bool:
     try:
         ipaddress.ip_address(host)
@@ -555,6 +632,8 @@ def normalize_url(raw: Any) -> Tuple[Optional[str], Optional[str]]:
         return None, "empty"
     if any(c.isspace() for c in s):
         return None, "contains a space"
+    if _has_control(s):
+        return None, "contains a control character"
     s = re.sub(r"^[a-z][a-z0-9+.-]*://", "", s, flags=re.I)
     if len(s) > URL_MAX_LEN:
         return None, f"longer than {URL_MAX_LEN} characters"
@@ -568,8 +647,8 @@ def normalize_url(raw: Any) -> Tuple[Optional[str], Optional[str]]:
         host, _, port = host.rpartition(":")
         if not port.isdigit() or not 0 < int(port) < 65536:
             return None, "has an invalid port"
-    host = host.lower().rstrip(".")
-    if not _host_ok(host):
+    host = _ascii_host(host.lower().rstrip("."))
+    if not host or not _host_ok(host):
         return None, "is not a valid host name or IP address"
     return f"{lead}{host}{':' + port if port else ''}{sep}{rest}", None
 
@@ -580,16 +659,19 @@ def normalize_domain(raw: Any) -> Tuple[Optional[str], Optional[str]]:
     s = str(raw or "").strip().lower().rstrip(".")
     if not s:
         return None, "empty"
+    if _has_control(s) or any(c.isspace() for c in s):
+        return None, "contains a space or a control character"
     if "/" in s:
         try:
             ipaddress.ip_network(s, strict=False)
             return s, None
         except ValueError:
             return None, "is not a valid domain, IP address or CIDR range"
-    body = s[2:] if s.startswith("*.") else s
-    if "*" in body or not _host_ok(body):
+    wild = "*." if s.startswith("*.") else ""
+    body = _ascii_host(s[len(wild):])
+    if not body or "*" in body or not _host_ok(body):
         return None, "is not a valid domain (FQDN, *.domain, IP address or CIDR range)"
-    return s, None
+    return wild + body, None
 
 
 def _ranges(row: Dict[str, Any], proto: str) -> List[Tuple[int, int]]:
@@ -685,6 +767,11 @@ def confirm_phrase(changes: int) -> str:
 
 
 def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, Any]:
+    # Every write must go through a known handler: a plan naming another is
+    # refused here, before anything is written (not a crash halfway through).
+    unknown = sorted({str(g.get("handler")) for g in prepared["groups"] if g.get("handler") not in HANDLERS and g.get("handler") not in PLUGIN_HANDLERS})
+    if unknown:
+        raise OperationError(f"This operation names a write step the app does not have ({', '.join(unknown[:5])}), so nothing was planned.")
     items = prepared["items"]
     n = lambda s: sum(1 for u in items if u["status"] == s)  # noqa: E731
     counts = {"change": n("change"), "noop": n("noop"), "excluded": n("excluded"), "total": len(items)}
@@ -756,7 +843,7 @@ def _norm_state(v: Any) -> str:
 
 
 def _plan_rule_state(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
-    targets = [t for t in spec.get("targets") or [] if isinstance(t, dict)]
+    targets = [t for t in _list_field(spec, "targets") if isinstance(t, dict)]
     if not targets:
         raise OperationError("Pick at least one rule.")
     if len(targets) > MAX_TARGETS:
@@ -830,7 +917,7 @@ def _plan_reorder(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     rtype = str(spec.get("rule_type") or "").upper()
     if pol == "cloud_app_control" and not rtype:
         raise OperationError("Cloud App Control rules are ordered per application type: name the rule_type.")
-    desired_movable = [_rid(x) for x in spec.get("order") or []]
+    desired_movable = [_rid(x) for x in _list_field(spec, "order")]
     if not desired_movable:
         raise OperationError("Give the desired order (the rule ids, top first).")
     say(f"Reading the {_label(pol)} rules{' (' + rtype + ')' if rtype else ''}…")
@@ -984,7 +1071,7 @@ def _plan_urls(zia, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) ->
     deletes: List[Dict[str, Any]] = []
     move_pairs = False
     if action == "revert":
-        for d in spec.get("deltas") or []:
+        for d in _list_field(spec, "deltas", objects=True, cap=MAX_URLS):
             c = cat(d.get("category"), "")
             a, bad_a = _clean_urls(d.get("add") or [])
             r, bad_r = _clean_urls(d.get("remove") or [])
@@ -992,11 +1079,15 @@ def _plan_urls(zia, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) ->
             cid = _rid(pc._field(c, "id"))
             adds.setdefault(cid, []).extend(a)
             removes.setdefault(cid, []).extend(r)
-        for d in spec.get("delete_categories") or []:
-            deletes.append({"id": d.get("id"), "name": d.get("name"), "urls": [str(u) for u in d.get("urls") or []]})
+        for d in _list_field(spec, "delete_categories", objects=True, cap=MAX_TARGETS):
+            deletes.append({"id": d.get("id"), "name": d.get("name"), "urls": [str(u) for u in _list_field(d, "urls")]})
+        if sum(len(v) for v in adds.values()) + sum(len(v) for v in removes.values()) > MAX_URLS:
+            raise OperationError(f"At most {MAX_URLS} URLs per operation. Split it.")
         nspec.update(deltas=[{"category": k, "add": adds.get(k, []), "remove": removes.get(k, [])} for k in sorted(set(adds) | set(removes))],
                      delete_categories=deletes)
     else:
+        if len(_raw_entries(spec.get("urls"))) > MAX_URLS:
+            raise OperationError(f"At most {MAX_URLS} URLs per operation; this one lists {len(_raw_entries(spec.get('urls')))}. Split it.")
         urls, bad = _clean_urls(spec.get("urls") or [])
         excluded += bad
         if not urls and not bad:
@@ -1011,10 +1102,13 @@ def _plan_urls(zia, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) ->
         if action in ("add", "move", "copy"):
             new = spec.get("create_target") if isinstance(spec.get("create_target"), dict) else None
             if new and str(new.get("name") or "").strip():
-                name = str(new["name"]).strip()[:255]
+                name = _object_name(new["name"], "new category's")
                 if name.lower() in by_name:
                     blockers.append(f"A URL category named '{name}' already exists: pick it as the target instead of creating it.")
-                create = {"name": name, "super_category": str(new.get("super_category") or "USER_DEFINED").upper()}
+                sup = str(new.get("super_category") or "USER_DEFINED").strip().upper()
+                if not _SUPER_CATEGORY.match(sup):
+                    raise OperationError("The super category must be a ZIA super category name such as USER_DEFINED.")
+                create = {"name": name, "super_category": sup}
                 nspec["create_target"] = create
             else:
                 tgt = cat(spec.get("target"), "target")
@@ -1212,7 +1306,7 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     deletes: List[Dict[str, Any]] = []
     excluded: List[Tuple[str, str]] = []
     if action == "revert":
-        for d in spec.get("deltas") or []:
+        for d in _list_field(spec, "deltas", objects=True, cap=MAX_DOMAINS):
             s = seg(d.get("segment"), "")
             a, ba = _clean_domains(d.get("add") or [])
             r, br = _clean_domains(d.get("remove") or [])
@@ -1220,11 +1314,15 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             sid = _rid(pc._field(s, "id"))
             adds.setdefault(sid, []).extend(a)
             removes.setdefault(sid, []).extend(r)
-        for d in spec.get("delete_segments") or []:
-            deletes.append({"id": d.get("id"), "name": d.get("name"), "domains": [str(x).lower() for x in d.get("domains") or []]})
+        for d in _list_field(spec, "delete_segments", objects=True, cap=MAX_TARGETS):
+            deletes.append({"id": d.get("id"), "name": d.get("name"), "domains": [str(x).lower() for x in _list_field(d, "domains")]})
+        if sum(len(v) for v in adds.values()) + sum(len(v) for v in removes.values()) > MAX_DOMAINS:
+            raise OperationError(f"At most {MAX_DOMAINS} domains per operation. Split it.")
         nspec.update(deltas=[{"segment": k, "add": adds.get(k, []), "remove": removes.get(k, [])} for k in sorted(set(adds) | set(removes))],
                      delete_segments=deletes)
     else:
+        if len(_raw_entries(spec.get("domains"))) > MAX_DOMAINS:
+            raise OperationError(f"At most {MAX_DOMAINS} domains per operation; this one lists {len(_raw_entries(spec.get('domains')))}.")
         doms, bad = _clean_domains(spec.get("domains") or [])
         excluded += bad
         if not doms and not bad:
@@ -1235,7 +1333,7 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
         sid = _rid(pc._field(src, "id"))
         nspec.update(source=sid, domains=doms)
         if action == "clone":
-            name = str(spec.get("name") or "").strip()[:255]
+            name = _object_name(spec.get("name"), "new segment's")
             if not name:
                 raise OperationError("Name the new segment.")
             if name.lower() in names:
