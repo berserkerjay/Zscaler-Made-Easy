@@ -1558,3 +1558,15 @@ def test_isolating_a_category_the_tier_blocks_is_flagged_weaker(key, choice, wea
     """ASVS V1.4.1 · CWE-1188: Isolate in place of the tier's Block lets users view the site, so it is flagged as weaker; Block in place of Isolate is not."""
     row = {r["key"]: r for r in zb.review({"tier": "strict", "rules": {key: {"action": choice}}})["rules"]}[key]
     assert row["weakened"] == weaker
+
+
+def test_saved_undo_records_still_load_after_a_json_round_trip():
+    """ASVS V1.4.1 · CWE-502 · CWE-20: the Undo specs saved with a change record (JSON on disk) for a baseline with ATP, a certificate move and an AI Guard routing still pass the stricter Undo checks and plan."""
+    t = zt.Tenant()
+    saved = [json.loads(json.dumps(zb_apply(t, {"tier": "strict", "areas": ["ssl", "atp"]})["inverse"])),
+             json.loads(json.dumps(zb_apply(t, {"type": zb.CERT_TYPE, "rules": [3], "certificate": 52})["inverse"]))]
+    for spec in saved:
+        assert zb_plan(t, spec)["status"] == "ready", spec["type"]
+    f = at.Fake(proxy=True, gateway=True)
+    inv = json.loads(json.dumps(aig_apply(f, at.ROUTE)["inverse"]))
+    assert aig_preview(f, inv)["status"] == "ready"
