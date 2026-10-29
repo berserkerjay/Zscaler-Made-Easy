@@ -851,8 +851,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             notes.append("Zscaler root certificate not pushed by this profile (decryption fails unless deployed by MDM)")
         public = [e for e in ip_entries if not _non_public(e)]
         if public and dest_ip is None and host:
-            ip_entries = public
-            notes.append(f"{len(ip_entries)} IP bypass entr{'y' if len(ip_entries) == 1 else 'ies'} ({_zpm._short(ip_entries, 3)}) apply if {host} resolves into them; "
+            notes.append(f"{len(public)} IP bypass entr{'y' if len(public) == 1 else 'ies'} ({_zpm._short(public, 3)}) apply if {host} resolves into them; "
                          "it is not resolved and is assumed to resolve outside them")
         if hit_domain or hit_app or hit_ip:
             reaches_zscaler = False
@@ -925,7 +924,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 outside = None
                 if label == "Z-Tunnel 2.0" and dest_ip is not None:
                     ex = next((e for e in tl.get("exclude") or [] if _zpm._ip_rel(dest_ip, e)), None)
-                    inc = [e for e in tl.get("include") or [] if (_zpm._parse_entry(e) or (None, None))[0] and _family(e) == dest_ip.version]
+                    inc = [e for e in tl.get("include") or [] if _family(e) == dest_ip.version]
                     if ex:
                         outside = f"the app profile '{prof['name']}' excludes {ex} from the packet tunnel"
                     elif inc and not any(_zpm._ip_rel(dest_ip, e) for e in inc):
