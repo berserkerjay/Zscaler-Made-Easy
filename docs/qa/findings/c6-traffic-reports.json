@@ -528,6 +528,18 @@
    "fix": "math.isfinite check",
    "test": "tests/test_c6_traffic_reports.py::test_bad_threshold_overrides_fall_back_to_the_default_with_a_note",
    "commit": "85860d8"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-32",
+   "title": "docs/SECURITY_TESTING.md is stale once this branch's 66 mapped tests land (test_security_test_matrix::test_the_standards_document_is_current)",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.6",
+   "status": "open",
+   "fix": "Integrator regenerates the document after merging: python tools/security_test_matrix.py (this agent may not edit it)",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "",
+   "proposed_patch": "Regenerated, not hand-written: run `python tools/security_test_matrix.py` and commit docs/SECURITY_TESTING.md."
   }
  ],
  "tests_added": 158,
