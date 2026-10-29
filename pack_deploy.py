@@ -194,7 +194,9 @@ def has_mark(desc: Any, *, pack_id: Optional[str] = None, kind: Optional[str] = 
             return True
         if not pm and m and m.group("by") != DEFAULT_BY and _counts(m, None):
             return False      # the description ends in another pack's tag
-        return any(f"{mk} {pack_id}" in d for mk in legacy)
+        # The legacy tag names the pack id whole: "[DLP-Check pack pci" is not
+        # a tag of pack "pci" when it reads "[DLP-Check pack pci_extended v1]".
+        return any(re.search(re.escape(f"{mk} {pack_id}") + r"(?=[\s\]]|$)", d) for mk in legacy)
     if m and (kind is None or m.group("kind") == kind) and _counts(m, None):
         return True
     return any(mk in d for mk in legacy)
@@ -357,19 +359,128 @@ def _norm_expr(expr: str) -> str:
 # Pack loading + merging
 # ---------------------------------------------------------------------------
 
+class PackFileError(ValueError):
+    """A pack file on disk that is not a pack: too large, not JSON, or not
+    a list of objects. The plan is refused with this plain message."""
+
+
+PACK_FILE_MAX_BYTES = 8 * 1024 * 1024     # the library's upload cap (pack_library.MAX_UPLOAD_BYTES)
+PACK_JSON_MAX_DEPTH = 32                   # a pack object needs about 5 levels
+
+
+def _depth_ok(value: Any, limit: int) -> bool:
+    stack = [(value, 1)]
+    while stack:
+        v, d = stack.pop()
+        if d > limit:
+            return False
+        if isinstance(v, dict):
+            stack.extend((x, d + 1) for x in v.values())
+        elif isinstance(v, list):
+            stack.extend((x, d + 1) for x in v)
+    return True
+
+
+def load_pack_file(configs: str, filename: str, pack_id: Any = "") -> List[Dict[str, Any]]:
+    """One pack config file as a list of objects, read as untrusted input:
+    size and nesting capped, JSON only, every entry an object with a text
+    name when it has one. A missing file is an empty list. PackFileError
+    otherwise (never a crash halfway through a plan or a deploy)."""
+    import os
+    path = os.path.join(configs, filename)
+    if not os.path.exists(path):
+        return []
+    where = f"pack '{pack_id}': {filename}"
+    try:
+        if os.path.getsize(path) > PACK_FILE_MAX_BYTES:
+            raise PackFileError(f"{where} is larger than {PACK_FILE_MAX_BYTES // (1024 * 1024)} MB")
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except PackFileError:
+        raise
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError) as e:
+        raise PackFileError(f"{where} is not readable JSON ({type(e).__name__})") from None
+    if data is None:
+        return []
+    if not isinstance(data, list) or not all(isinstance(x, dict) for x in data):
+        raise PackFileError(f"{where} must be a list of objects")
+    if not _depth_ok(data, PACK_JSON_MAX_DEPTH):
+        raise PackFileError(f"{where} is nested more than {PACK_JSON_MAX_DEPTH} levels deep")
+    schema = _PACK_FIELDS.get(filename, {"name": _TEXT})
+    for x in data:
+        _check_fields(x, schema, where)
+        subs = x.get("sub_rules")
+        if subs is not None:
+            if not (isinstance(subs, list) and all(isinstance(s, dict) for s in subs)):
+                raise PackFileError(f"{where}: sub_rules must be a list of objects")
+            for s in subs:
+                _check_fields(s, schema, where)
+    return data
+
+
+# The type of every field the planner reads, per pack file. A field that is
+# absent or null is fine; any other type is refused (a pack edited by hand
+# or converted from elsewhere must not crash a plan halfway through).
+_TEXT = (str,)
+_INT = "int"           # an integer, or a string of digits ("0")
+_TEXTS = "texts"       # a list of strings
+_ITEMS = "items"       # a list of objects whose values are text (patterns, phrases)
+_IDS = "ids"           # a list of strings or integers (application ids)
+_POLICY_FIELDS = {"name": _TEXT, "engines": _TEXTS, "protocols": _TEXTS, "rank": _INT, "order": _INT, "action": (str, dict),
+                  "state": _TEXT, "channel": _TEXT, "severity": _TEXT, "description": _TEXT, "parent_rule": _TEXT,
+                  "endpoint_application_groups": _TEXTS, "target_action": (str, dict)}
+_PACK_FIELDS: Dict[str, Dict[str, Any]] = {
+    "dlp_dictionaries.json": {"name": _TEXT, "patterns": _ITEMS, "phrases": _ITEMS, "proximity": _INT, "description": _TEXT,
+                              "confidence_threshold": _TEXT, "custom_phrase_match_type": _TEXT, "dict_template_name": _TEXT,
+                              "predefined_clone": (bool,)},
+    "dlp_engines.json": {"name": _TEXT, "expression": _TEXT, "engine_expression": _TEXT, "description": _TEXT},
+    "dlp_policies.json": _POLICY_FIELDS,
+    "endpoint_application_groups.json": {"name": _TEXT, "description": _TEXT, "resources": _IDS},
+}
+
+
+def _check_fields(obj: Dict[str, Any], schema: Dict[str, Any], where: str) -> None:
+    for key, kind in schema.items():
+        if key not in obj:
+            continue
+        v = obj[key]
+        if v is None and kind not in (_TEXTS, _ITEMS, _IDS):
+            continue      # a null text or number reads as unset; a null list is refused below
+        if kind == _INT:
+            ok = (isinstance(v, int) and not isinstance(v, bool)) or (isinstance(v, str) and v.strip().isdigit())
+        elif kind == _TEXTS:
+            ok = isinstance(v, list) and all(isinstance(s, str) for s in v)
+        elif kind == _ITEMS:
+            ok = isinstance(v, list) and all(isinstance(s, dict) and all(isinstance(t, str) or t is None for t in s.values()) for s in v)
+        elif kind == _IDS:
+            ok = isinstance(v, list) and all(isinstance(s, (str, int)) and not isinstance(s, bool) for s in v)
+        else:
+            ok = isinstance(v, kind)
+        if not ok:
+            raise PackFileError(f"{where}: '{key}' of '{str(obj.get('name'))[:80]}' has the wrong type ({type(v).__name__})")
+
+
 def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict[str, Sequence[str]]] = None) -> List[Dict[str, Any]]:
     """Load every selected pack. `packs` items need `id` and `dir`.
     `channel_targets` (pack id → DLP channels) narrows or extends the
-    pack's rules per channel; see pack_channels.apply_channel_targets."""
+    pack's rules per channel; see pack_channels.apply_channel_targets.
+    A pack file that is not a pack raises PackFileError (load_pack_file)."""
     sources = []
     for p in packs:
         configs = _resolve_configs(p["dir"])
-        meta = load_pack_metadata(p["dir"])
+        files = {fn: load_pack_file(configs, fn, p.get("id")) for fn in
+                 ("dlp_dictionaries.json", "dlp_engines.json", "dlp_policies.json", "endpoint_application_groups.json")}
+        try:
+            meta = load_pack_metadata(p["dir"])
+        except Exception as e:  # noqa: BLE001 — the files above were checked; anything else is still a refused pack
+            raise PackFileError(f"pack '{p.get('id')}': its files could not be read ({type(e).__name__})") from None
+        if not isinstance(meta, dict):
+            meta = {}
         # Like ship_monitor for rules: a dictionary named like one of ZIA's
         # predefined display names is renamed here, once, so the plan, the
         # deploy, a removal, the journey and Terraform all see the same name.
-        dictionaries, engines, renamed = heal_predefined_names(_load_json(configs, "dlp_dictionaries.json"), _load_json(configs, "dlp_engines.json"))
-        policies = pc.ship_monitor(pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")))
+        dictionaries, engines, renamed = heal_predefined_names(files["dlp_dictionaries.json"], files["dlp_engines.json"])
+        policies = pc.ship_monitor(pc.expand_sub_rules(files["dlp_policies.json"]))
         targets = (channel_targets or {}).get(p["id"])
         baseline = baseline_meta(meta, p["id"])
         policies, note = pc.apply_channel_targets(
@@ -382,7 +493,7 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
             "dictionaries": dictionaries,
             "engines": engines,
             "policies": policies,
-            "app_groups": _load_json(configs, "endpoint_application_groups.json"),
+            "app_groups": files["endpoint_application_groups.json"],
             "tweaks": meta.get("confidence_tweaks"),
             "baseline": baseline,
             "version": str(meta.get("version") or ""),
@@ -1475,15 +1586,28 @@ def _rate_detail(f: Dict[str, Any]) -> str:
 
 
 def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence[Dict[str, Any]], tenant: Dict[str, Any]) -> str:
+    """Binds an approval to the plan the user saw: what each item will do
+    and with what content (a pack file edited since the preflight changes
+    it), and which objects the tenant held (an object replaced, renamed or
+    moved since then changes it, not only a change in the counts)."""
+    def content(i: Dict[str, Any]) -> str:
+        d = i.get("definition")
+        return hashlib.sha256(_canonical(d if isinstance(d, (dict, list)) else str(d)).encode("utf-8")).hexdigest()
+
+    def ids(objs: Dict[str, Any]) -> List[List[str]]:
+        return sorted([str(n), str(_field(o, "id"))] for n, o in objs.items())
+
     core = {
         "packs": sorted(pack_ids),
         "options": options,
-        "items": sorted((i["kind"], i["name"], i["status"]) for i in items),
+        "items": sorted((i["kind"], i["name"], i["status"], content(i), str((i.get("tenant") or {}).get("current"))
+                         if i["kind"] == "tweak" else "") for i in items),
         "tenant": {
-            "dictionaries": len(tenant["dictionaries"]),
-            "engines": len(tenant["engines"]),
-            "rules": len(tenant["rules"]),
-            "channel_rules": {ch: len(rs) for ch, rs in tenant["channels"]["rules"].items()},
+            "dictionaries": ids(tenant["dictionaries"]),
+            "engines": ids(tenant["engines"]),
+            "rules": sorted([str(r.get("id")), str(r.get("name")), int(r.get("order") or 0)] for r in tenant["rules"]),
+            "channel_rules": {ch: sorted([str(r.get("id")), str(r.get("name"))] for r in rs)
+                              for ch, rs in tenant["channels"]["rules"].items()},
             "casb_tenants": sorted(t["name"] for t in (tenant["channels"].get("casb_tenants") or [])),
         },
     }
@@ -1686,7 +1810,12 @@ def preflight_plan(
                 "impacts": [], "summary": {}, "packs": [], "plan_hash": "", "tenant": {"reachable": False}}
 
     targets_norm = {pid: pc.normalize_targets(t) for pid, t in (channel_targets or {}).items() if pc.normalize_targets(t) is not None}
-    sources = load_sources(packs, targets_norm)
+    try:
+        sources = load_sources(packs, targets_norm)
+    except PackFileError as e:
+        # An untrusted pack file that is not a pack: refused before the tenant is read.
+        return {"status": "blocked", "blockers": [f"The pack cannot be used: {e}. Fix or re-upload it, then run the preflight again."],
+                "items": [], "warnings": [], "impacts": [], "summary": {}, "packs": [], "plan_hash": "", "tenant": {"reachable": False}}
     merged = merge_sources(sources)
     need = pc.needs(i["definition"] for i in merged["policy"].values())
     if read_scope is not None:
@@ -2204,7 +2333,8 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                        restore_drift=restore_drift, channel_targets=channel_targets, log=_log, cancel=cancel)
     if report.get("status") == "stopped":
         return {"status": "stopped", "stopped": report["stopped"], "results": [], "report": public_report(report)}
-    if writes_enabled is False:
+    if writes_enabled is not True:
+        # Deny by default: only an explicit True (the server's write gate) writes.
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs where the page "
                                                   "offers it; otherwise " + __import__("security").write_enable_hint() + ". Then deploy."],
                 "report": public_report(report), "results": []}

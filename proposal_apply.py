@@ -115,10 +115,14 @@ def preview(client, tenant: str, pid: str, *, direction: str = "apply") -> Dict[
             continue
         now = current_value(rule, field)
         if direction == "apply":
-            want = norm(c.get("to"))
+            # A missing target is never normalised into a value ("" for action or state) and written.
+            want = norm(c.get("to")) if c.get("to") is not None else None
             expected = norm(c.get("from")) if c.get("from") is not None else None
             row.update({"current": now, "to": want, "expected": expected})
-            if now == want:
+            if want is None:
+                row.update({"ok": False, "why": "the proposal names no value to set"})
+                ok = False
+            elif now == want:
                 row.update({"ok": True, "noop": True, "why": f"{field} is already {want}"})
             elif expected is not None and now != expected:
                 row.update({"ok": False, "why": f"{field} is {now} in the tenant, not {expected} as when the proposal was raised; refresh FP/TP Detection Ratio and decide again"})
@@ -127,7 +131,8 @@ def preview(client, tenant: str, pid: str, *, direction: str = "apply") -> Dict[
                 row.update({"ok": True})
         else:
             before = ((p.get("applied") or {}).get("before") or {}).get(str(row["rule_id"])) if p.get("applied") else None
-            want = norm(before) if before is not None else norm((p.get("rollback") or {}).get("to"))
+            raw = before if before is not None else (p.get("rollback") or {}).get("to")
+            want = norm(raw) if raw is not None else None
             row.update({"current": now, "to": want})
             if want is None:
                 row.update({"ok": False, "why": "no recorded value to roll back to"})
@@ -158,13 +163,16 @@ def _set_field(client, channel: str, rule: Any, field: str, value: Any) -> Tuple
 
 def _execute(client, tenant: str, pid: str, *, direction: str, writes_enabled: Optional[bool], by: str, log=None) -> Dict[str, Any]:
     # The change's writes draw on the client's own tenant's ZIA rate limits.
+    import pack_ops as ops
     import zia_rate
-    with zia_rate.using_client(client):
+    # Each rule write's audit entry (pack_ops object_write) names the run and the tenant.
+    with zia_rate.using_client(client), ops.audit_scope(run=f"proposal_{direction}", tenant=proposals.tenant_key(tenant)):
         return _execute_keyed(client, tenant, pid, direction=direction, writes_enabled=writes_enabled, by=by, log=log)
 
 
 def _execute_keyed(client, tenant: str, pid: str, *, direction: str, writes_enabled: Optional[bool], by: str, log=None) -> Dict[str, Any]:
-    if writes_enabled is False:
+    if writes_enabled is not True:
+        # Deny by default: only an explicit True (the server's write gate) writes.
         raise PermissionError("write mode is off: enable it in Deploy Policy Packs or start the server with writes enabled")
     pv = preview(client, tenant, pid, direction=direction)
     p = proposals.get(tenant, pid) or {}
@@ -189,6 +197,12 @@ def _execute_keyed(client, tenant: str, pid: str, *, direction: str, writes_enab
         rule, err = read_rule(client, s["channel"], rule_id=s["rule_id"], name=s["name"])
         if err:
             row.update({"result": "failed", "why": err}); failed = True; results.append(row); continue
+        if current_value(rule, field) != s["current"] or str(pc._field(rule, "id")) != str(s["rule_id"]):
+            # Changed between the preview and this write (or another rule now
+            # carries the name): never overwrite what someone else just set.
+            row.update({"result": "failed", "why": f"{field} is now {current_value(rule, field)} in the tenant, not {s['current']} as "
+                                                   "previewed a moment ago; nothing was changed. Preview again."})
+            failed = True; results.append(row); continue
         before[str(s["rule_id"])] = current_value(rule, field)
         if log:
             log(f"{direction}: {pc.label(s['channel'])} rule '{s['name']}' {field} {row['current']} → {row['to']}")
