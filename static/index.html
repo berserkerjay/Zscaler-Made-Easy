@@ -3318,7 +3318,8 @@ async function openComplianceTab(fwKey) {
   function goToSsoLogin(url) {
     // A full navigation, not a fetch: this is an OpenID Connect redirect
     // to the identity provider, not an API call.
-    window.location.href = url || '/api/auth/sso/login';
+    // Only a path on this origin (never another site, //host or javascript:).
+    window.location.href = (typeof url === 'string' && /^\/(?![\/\\])[^\s\\]*$/.test(url)) ? url : '/api/auth/sso/login';
   }
   // The token is asked for in the app's own dialog (ui_auth.js, loaded as an
   // add-on before this runs at DOMContentLoaded); where that is missing the
@@ -3337,16 +3338,27 @@ async function openComplianceTab(fwKey) {
   // action (Authenticate) asks again through window.__dlpAskAgain().
   let declinedAt = 0;
   const DECLINE_QUIET_MS = 30000;
+  const UNLOCK_TRIES = 3;
+  const WRONG_TOKEN = 'That token was not accepted. Copy it again from ui_token.txt next to the app (or the window that runs the app), exactly as it is.';
   window.__dlpAskAgain = () => { declinedAt = 0; };
   async function unlock(message) {
     if (asking) return asking;
     if (Date.now() - declinedAt < DECLINE_QUIET_MS) return false;
     asking = (async () => {
-      const t = await askForToken(message);
-      if (t === null || t === undefined || !String(t).trim()) { declinedAt = Date.now(); return false; }
-      const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: String(t).trim() }) });
-      if (!r.ok) { try { setStatus('That token was not accepted. Read ui_token.txt again and retry.', 'error'); } catch (e) {} }
-      return r.ok;
+      // A token the server refuses is asked for again with the reason (a
+      // mistyped or stale paste), at most three times; then quiet, as a cancel.
+      let msg = message;
+      for (let attempt = 0; attempt < UNLOCK_TRIES; attempt++) {
+        const t = await askForToken(msg);
+        if (t === null || t === undefined || !String(t).trim()) { declinedAt = Date.now(); return false; }
+        const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: String(t).trim() }) });
+        if (r.ok) return true;
+        if (r.status !== 401) break;
+        msg = WRONG_TOKEN;
+      }
+      declinedAt = Date.now();
+      try { setStatus('That token was not accepted. Read ui_token.txt again and retry.', 'error'); } catch (e) {}
+      return false;
     })();
     try { return await asking; } catch (e) { return false; } finally { asking = null; }
   }

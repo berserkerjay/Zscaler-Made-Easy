@@ -161,6 +161,10 @@
   // a backslash trick or a javascript: URL (deny by default, fall back to the fixed path).
   const safeHref = (u, fallback) => (typeof u === 'string' && /^\/(?![\/\\])[^\s\\]*$/.test(u) && u.length <= 512) ? u : fallback;
   function ssoBar(status) {
+    if (status && typeof status === 'object') {
+      status.sso_login_url = safeHref(status.sso_login_url, '/api/auth/sso/login');
+      status.logout_url = safeHref(status.logout_url, '/api/auth/logout');
+    }
     ssoStatus = status;
     if (!status || !status.sso || !document.body || window.top !== window) return;
     let bar = document.getElementById('dlpSsoBar');
@@ -178,11 +182,11 @@
       bar.innerHTML = `<span>Signed in as <strong>${esc(status.user || 'you')}</strong>${status.may_write === false ? ' (read and preview only)' : ''}</span>`
         + `<button type="button" id="dlpSignOut" style="${btn}">Sign out</button>`;
       bar.querySelector('#dlpSignOut').addEventListener('click', async () => {
-        try { await fetch(safeHref(status.logout_url, '/api/auth/logout'), { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+        try { await fetch(status.logout_url || '/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
         window.location.href = '/';
       });
     } else {
-      bar.innerHTML = `<span>Not signed in</span><a href="${esc(safeHref(status.sso_login_url, '/api/auth/sso/login'))}" style="${btn}text-decoration:none;">Sign in</a>`;
+      bar.innerHTML = `<span>Not signed in</span><a href="${esc(status.sso_login_url || '/api/auth/sso/login')}" style="${btn}text-decoration:none;">Sign in</a>`;
     }
   }
   function loadSsoStatus() {
@@ -192,7 +196,7 @@
 
   // Under SSO there is no token to paste: send the person to sign in instead.
   async function unlockOrSignIn(message) {
-    if (ssoStatus && ssoStatus.sso) { window.location.href = safeHref(ssoStatus.sso_login_url, '/api/auth/sso/login'); return null; }
+    if (ssoStatus && ssoStatus.sso) { window.location.href = ssoStatus.sso_login_url || '/api/auth/sso/login'; return null; }
     return unlock(message);
   }
 

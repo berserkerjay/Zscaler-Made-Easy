@@ -252,28 +252,26 @@ async function grab(key, promise) { try { out[key] = await promise; } catch (e) 
 """
 
 
-@pytest.fixture(scope="module")
-def ui(tmp_path_factory):
-    """The app on the hostile sample tenant, driven once by DRIVER; its JSON."""
+def _serve_and_drive(tmp_dir, driver, args, env, patches=()):
+    """Serve the real app on an ephemeral loopback port with `env` and
+    `patches` (obj, name, value), run the Playwright `driver` against it and
+    return its JSON. Isolated: temporary stores and token folder."""
     node = shutil.which("node")
     if not node or not _playwright_ok(node):
         pytest.skip("needs node and Playwright")
     import uvicorn
     import dlp_api_server as srv
-    import offline_tenant
-    import sample_tenant
-    d = tmp_path_factory.mktemp("c6-ui-core")
     mp = pytest.MonkeyPatch()
     for key, name in (("DLP_CHECK_PROFILES", "profiles.json"), ("DLP_CHECK_AUDIT", "audit.log"), ("DLP_CHECK_DEPLOYMENTS", "deployments.json"),
                       ("DLP_CHECK_UI_TOKEN_DIR", ""), ("DLP_CHECK_ZIA_RATE_STATE", "rate.json")):
-        mp.setenv(key, str(d / name) if name else str(d))
-    (d / "profiles.json").write_text("{}")
-    mp.setenv("ZSCALER_UI_AUTH", "0")
+        mp.setenv(key, str(tmp_dir / name) if name else str(tmp_dir))
+    (tmp_dir / "profiles.json").write_text("{}")
     mp.setenv("ENABLE_WRITE_ACTIONS", "")
+    for k, v in env.items():
+        mp.setenv(k, v)
     mp.setattr(srv, "_latest_remote_commit", lambda branch="main": None)
-    real = sample_tenant.responses
-    mp.setattr(sample_tenant, "responses", lambda: _hostile(real()))
-    offline_tenant.sample_store(reset=True)
+    for obj, name, value in patches:
+        mp.setattr(obj, name, value)
     server = uvicorn.Server(uvicorn.Config(srv.app, host="127.0.0.1", port=0, lifespan="off", log_level="warning", access_log=False))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -283,17 +281,87 @@ def ui(tmp_path_factory):
             time.sleep(0.02)   # bounded wait for the socket, not a fixed delay
         assert server.started, "the app did not start"
         port = server.servers[0].sockets[0].getsockname()[1]
-        (d / "drive.js").write_text(DRIVER, encoding="utf-8")
+        (tmp_dir / "drive.js").write_text(driver, encoding="utf-8")
         chrome = os.environ.get("CHROME_BIN", "")
-        r = subprocess.run([node, str(d / "drive.js"), f"http://127.0.0.1:{port}", chrome if chrome and os.path.exists(chrome) else "",
-                            json.dumps(MY_PAGES), PAYLOAD, CANARY], capture_output=True, text=True, timeout=900, cwd=str(d))
+        r = subprocess.run([node, str(tmp_dir / "drive.js"), f"http://127.0.0.1:{port}", chrome if chrome and os.path.exists(chrome) else "", *args],
+                           capture_output=True, text=True, timeout=900, cwd=str(tmp_dir))
     finally:
         server.should_exit = True
         thread.join(timeout=10)
         mp.undo()
-        offline_tenant.sample_store(reset=True)
     assert r.returncode == 0, r.stderr[-3000:]
     return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+@pytest.fixture(scope="module")
+def ui(tmp_path_factory):
+    """The app on the hostile sample tenant, driven once by DRIVER; its JSON."""
+    import offline_tenant
+    import sample_tenant
+    real = sample_tenant.responses
+    try:
+        # The hostile copy is built when the sample is first opened (by the driver).
+        offline_tenant._OPEN.pop(offline_tenant.SAMPLE, None)
+        return _serve_and_drive(tmp_path_factory.mktemp("c6-ui-core"), DRIVER, [json.dumps(MY_PAGES), PAYLOAD, CANARY],
+                                {"ZSCALER_UI_AUTH": "0"}, [(sample_tenant, "responses", lambda: _hostile(real()))])
+    finally:
+        offline_tenant._OPEN.pop(offline_tenant.SAMPLE, None)
+
+
+TOKEN = "tok-c6-ui-core-0123456789abcdef"
+LOCKED_DRIVER = r"""
+const { chromium } = require('playwright');
+const [base, chrome, token] = process.argv.slice(2);
+const out = {};
+(async () => {
+  const b = await chromium.launch(chrome ? { executablePath: chrome } : {});
+  for (const path of ['/report/todo', '/']) {
+    const ctx = await b.newContext();
+    await ctx.route(u => !u.toString().startsWith(base), r => r.abort());
+    const pg = await ctx.newPage(); const r = { native: [], errs: [] };
+    out[path] = r;
+    pg.on('dialog', d => { r.native.push(d.type()); d.dismiss().catch(() => {}); }); pg.on('pageerror', e => r.errs.push(e.message));
+    try {
+    await pg.goto(base + path);
+    const ask = () => pg.waitForSelector('dialog.dlp-dlg[open] #dlpUnlockToken', { timeout: 10000 });
+    await ask();
+    r.field = await pg.evaluate(() => { const i = document.getElementById('dlpUnlockToken'); return { type: i.type, ac: i.autocomplete, focused: document.activeElement === i }; });
+    await pg.fill('dialog.dlp-dlg[open] #dlpUnlockToken', 'not-the-token'); await pg.click('dialog.dlp-dlg[open] #dlpUnlockGo');
+    await ask();
+    r.again = await pg.evaluate(() => document.querySelector('dialog.dlp-dlg[open]').textContent.replace(/\s+/g, ' '));
+    await pg.fill('dialog.dlp-dlg[open] #dlpUnlockToken', token); await pg.click('dialog.dlp-dlg[open] #dlpUnlockGo');
+    await pg.waitForFunction(() => !document.querySelector('dialog.dlp-dlg'));
+    r.health = await pg.evaluate(async () => (await fetch('/api/health')).status);
+    r.tokenInPage = await pg.evaluate(t => document.documentElement.outerHTML.includes(t) || [...document.querySelectorAll('input')].some(i => (i.value || '').includes(t)) || location.href.includes(t) || document.cookie.includes(t), token);
+    r.tokenInStorage = await pg.evaluate(t => { for (const s of [localStorage, sessionStorage]) for (let i = 0; i < s.length; i++) if ((s.getItem(s.key(i)) || '').includes(t)) return true; return false; }, token);
+    r.cookies = (await ctx.cookies()).filter(c => c.value === token).map(c => ({ httpOnly: c.httpOnly, sameSite: c.sameSite }));
+    } catch (e) { r.__error = String(e && e.message || e).slice(0, 300); }
+    await ctx.close();
+  }
+  // Three refused tokens, then quiet: the page does not keep asking.
+  {
+    const ctx = await b.newContext(); await ctx.route(u => !u.toString().startsWith(base), r => r.abort());
+    const pg = await ctx.newPage(); let asked = 0;
+    out.capped = {};
+    try {
+    await pg.goto(base + '/report/todo');
+    for (let i = 0; i < 3; i++) { await pg.waitForSelector('dialog.dlp-dlg[open] #dlpUnlockToken', { timeout: 10000 }); asked++; await pg.fill('dialog.dlp-dlg[open] #dlpUnlockToken', 'wrong-' + i); await pg.click('dialog.dlp-dlg[open] #dlpUnlockGo'); await pg.waitForFunction(n => document.querySelectorAll('dialog.dlp-dlg').length === 0 || !document.querySelector('dialog.dlp-dlg[open] #dlpUnlockToken') || document.getElementById('dlpUnlockToken').value === '', null, { timeout: 5000 }); }
+    out.capped = { asked, status: await pg.evaluate(async () => (await fetch('/api/health')).status), openAfter: await pg.evaluate(() => document.querySelectorAll('dialog.dlp-dlg[open]').length) };
+    } catch (e) { out.capped = { asked, __error: String(e && e.message || e).slice(0, 300) }; }
+    await ctx.close();
+  }
+  console.log(JSON.stringify(out));
+  await b.close();
+})().catch(e => { console.error(e && e.stack || e); process.exit(1); });
+"""
+
+
+@pytest.fixture(scope="module")
+def locked(tmp_path_factory):
+    """The app with its UI token gate on and a known token, driven by LOCKED_DRIVER."""
+    import security
+    return _serve_and_drive(tmp_path_factory.mktemp("c6-ui-locked"), LOCKED_DRIVER, [TOKEN], {"ZSCALER_UI_AUTH": "1"},
+                            [(security, "_ui_token", TOKEN)])
 
 
 # ── Injection (CWE-79) ──────────────────────────────────────────────
@@ -485,3 +553,35 @@ def test_no_page_scrolls_sideways_at_320px_in_either_theme(ui, path):
 def test_each_page_shows_exactly_one_main_heading(ui, path):
     """WCAG 2.2 SC 1.3.1 · SC 2.4.6: one visible h1 per page."""
     assert _a11y(ui, f"dark 1280 {path}")["h1"] == 1
+
+
+# ── UI token (ASVS V3, V2.10) ───────────────────────────────────────
+
+@pytest.mark.parametrize("path", ["/report/todo", "/"])
+def test_a_refused_token_is_asked_for_again_with_the_reason(locked, path):
+    """ASVS V2.2.1 · V7.4.1 · CWE-755 · WSTG-ATHN-01 · WCAG 2.2 SC 3.3.1: a mistyped token re-opens the unlock dialog saying it was not accepted."""
+    r = locked[path]
+    assert "not accepted" in r.get("again", ""), r.get("__error")
+    assert r["health"] == 200, "the right token on the second try unlocks the page"
+    assert r["native"] == [] and r["errs"] == []
+
+
+@pytest.mark.parametrize("path", ["/report/todo", "/"])
+def test_the_unlock_field_is_a_password_field_with_focus(locked, path):
+    """ASVS V2.1.11 (n/a) · V8.2.1 · CWE-549 · WCAG 2.2 SC 2.4.3: the token is typed into a masked, non-autocompleted field that has focus."""
+    assert locked[path].get("field") == {"type": "password", "ac": "off", "focused": True}
+
+
+@pytest.mark.parametrize("path", ["/report/todo", "/"])
+def test_the_token_never_stays_in_the_page_storage_or_script_cookies(locked, path):
+    """ASVS V3.4.2 · V3.4.3 · V8.2.2 · CWE-1004 · CWE-922 · WSTG-SESS-02: after unlocking, the token is only in an HttpOnly SameSite=Strict cookie."""
+    r = locked[path]
+    assert r.get("tokenInPage") is False and r["tokenInStorage"] is False
+    assert r["cookies"] == [{"httpOnly": True, "sameSite": "Strict"}]
+
+
+def test_unlock_stops_asking_after_three_refused_tokens(locked):
+    """ASVS V2.2.1 · CWE-307 · CWE-400: three refused tokens, then the page stops asking (quiet period) instead of looping."""
+    c = locked["capped"]
+    assert c["asked"] == 3, c
+    assert c["status"] == 401 and c["openAfter"] == 0

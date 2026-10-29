@@ -508,6 +508,9 @@
   "r.other_targets": [1, "number the server computes (count, percentage, score, stage, position)"],
   "s.inspected": [1, "number the server computes (count, percentage, score, stage, position)"]
  },
+ "static/ui_auth.js": {
+  "esc(status.sso_login_url || '/api/auth/sso/login')": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"]
+ },
  "static/update_beacon.js": {
   "esc(st.details || '/report/beacon')": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"]
  },
