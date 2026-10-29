@@ -121,6 +121,14 @@ print(sum(1 for _ in re.finditer(pattern, content, re.IGNORECASE)))
 """
 
 
+# How long one worker may take. The standalone edition (a frozen build, see
+# standalone_main.py) answers the worker call with its whole program, whose
+# start-up is slower than a bare interpreter's, so that start-up is allowed on
+# top; RLIMIT_CPU still bounds the regex itself, and the deadline the whole run.
+_WORKER_SECONDS = 0.75
+_FROZEN_STARTUP_SECONDS = 2.0
+
+
 def _safe_regex_count(pattern: str, corpus: str, deadline: float) -> Optional[int]:
     """Tenant regex runs in a bounded disposable process, never on the API GIL.
 
@@ -133,7 +141,8 @@ def _safe_regex_count(pattern: str, corpus: str, deadline: float) -> Optional[in
     try:
         result = subprocess.run([sys.executable, "-I", "-c", _REGEX_WORKER],
                                 input=json.dumps([pattern, corpus]), capture_output=True,
-                                text=True, timeout=min(0.75, remaining), check=False)
+                                text=True, timeout=min(_WORKER_SECONDS + (_FROZEN_STARTUP_SECONDS if getattr(sys, "frozen", False) else 0.0), remaining),
+                                check=False)
     except (subprocess.TimeoutExpired, OSError, ValueError):
         return None
     if result.returncode != 0:

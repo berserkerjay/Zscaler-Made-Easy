@@ -497,7 +497,8 @@ def test_the_connection_check_only_signs_in_and_reads_nothing(monkeypatch):
     assert r.status_code == 200, r.text
     body = r.json()
     assert built == ["acme"] and touched == [] and closed == [1]
-    assert set(body) == {"ok", "tenant_label", "auth_method", "problems"} and body["ok"] is True
+    assert set(body) == {"ok", "tenant_label", "auth_method", "problems", "access"} and body["ok"] is True
+    assert set(body["access"]) <= {"ok", "why", "products", "products_listed", "scopes", "expires_at", "issued_at", "source"}   # what the token says, never the token
     for key in ("dictionaries", "engines", "web_rules", "endpoint_rules", "saas_rules", "email_rules"):
         assert key not in body
     page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "guide.js"), encoding="utf-8").read()

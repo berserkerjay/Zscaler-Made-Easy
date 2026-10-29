@@ -40,7 +40,7 @@ TOOLBAR = {
     "openReferenceTab('genai-security-framework')": "refgenai", "openReferenceTab('framework-machine')": "refmachine",
     "openReferenceTab('data-security-architect')": "dsarchitect",
     "openPostureTab()": "posture",
-    "openFindAnything()": "find", "openTodoTab()": "todo",
+    "openFindAnything()": "find", "openTodoTab()": "todo", "openPovTab()": "pov",
 }
 
 

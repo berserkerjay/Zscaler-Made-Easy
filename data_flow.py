@@ -1,21 +1,30 @@
-"""Data Flow Map: the exact path a transaction takes through the tenant.
+"""Data Flow Map: the path the tenant's configuration gives web traffic.
 
 For a destination (a cloud application, a URL category or a hostname) and
 a device context (platform, on or off a trusted network), the tracer walks
-every hop the tenant's configuration puts in the way and says what
-happens at each one, using the same objects the portal uses:
+the data security hops of the tenant's configuration, for any user (rules
+scoped to users, groups or locations make a hop conditional, never
+decide it), and says what happens at each one, using the same objects the
+portal uses:
 
   device ─ Client Connector app profile (bypasses, Endpoint DLP, cert)
          ─ forwarding profile for that network (tunnel / PAC / none)
-         ─ PAC file (DIRECT statements)
-         ─ ZIA SSL inspection (decrypt / leave encrypted / block)
-         ─ URL filtering (allow / block / caution / isolate)
+         ─ PAC file (evaluated by pac_eval, never run)
          ─ Cloud App Control (per-action controls for the app)
+         ─ URL filtering (allow / block / caution / isolate)
+         ─ ZIA SSL inspection (decrypt / leave encrypted / block)
          ─ File Type Control (upload of bulk formats)
-         ─ Inline Web DLP (which rules see the content, monitor or enforce)
+         ─ Inline Web DLP (which rules are configured to see the content,
+           monitor or enforce)
+         ─ Logs & incidents (which rules name an incident receiver or an
+           ICAP server; delivery is not verified)
 
-and, beside it, the channels that do not ride the tunnel: Endpoint DLP on
-the device, SaaS Security API at rest, Outbound Email DLP.
+and, beside it, an inventory of the channels that do not ride the tunnel
+(rules counted, nothing tested): Endpoint DLP on the device, SaaS
+Security API at rest, Outbound Email DLP. Browser Control, Malware
+Protection, Advanced Threat Protection, the Cloud Firewall and DNS Control
+are not read here (the Path analyzer reads the ZIA modules). It is the
+configuration's answer: no transaction is observed.
 
 Every hop carries the rule that decided it and, when it weakens the
 policy set, a weak point with a severity and a fix. Policy packs are
@@ -29,6 +38,7 @@ and the raw value is kept next to every interpretation.
 from __future__ import annotations
 
 import md_safe
+import pac_eval
 import contextlib
 import fnmatch
 import json
@@ -38,6 +48,8 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tupl
 from bypass_report import _fetch_url_category_lookup, _rules_to_list
 from zcc_profiles import read_profiles, read_app_profiles
 from zcc_evaluation import flatten_profile, _v, _truthy
+from zia_path_modules import SECTIONS as _ZIA_MODULE_SECTIONS, unevaluated as _unevaluated
+from path_whatif import scope_items
 from ssl_flow import (TRAFFIC_CLASSES, _fetch_app_catalogue, _fetch_rules, _matches, _names, _scope, _sort_key,
                       _upper, normalize_dlp_rule, normalize_ssl_rule)
 
@@ -67,6 +79,10 @@ UPLOAD_VERBS = ("UPLOAD", "SHARE", "SEND", "ATTACHMENT_SEND", "POST", "EDIT", "C
 PATH_SECTIONS: Dict[str, Tuple[str, Tuple[str, ...], Optional[str]]] = {
     "zcc": ("Client Connector app and forwarding profiles", ("zcc",), None),
     "pac": ("PAC files", ("zcc",), None),
+    # Advanced Threat Protection, Cloud Firewall, DNS Control and Sandbox
+    # (zia_path_modules.SECTIONS): read by the Path analyzer when ZIA
+    # platform is ticked; they are ZIA platform controls, not DLP channels.
+    **_ZIA_MODULE_SECTIONS,
     "cac": ("Cloud App Control rules", ("dlp", "zia_extras"), "cloud_app_control"),
     "url": ("URL filtering rules", ("dlp", "zia_extras"), None),
     "ssl": ("SSL inspection rules", ("dlp", "zia_extras"), "ssl_inspection"),
@@ -79,10 +95,11 @@ PATH_SECTIONS: Dict[str, Tuple[str, Tuple[str, ...], Optional[str]]] = {
 # The ZIA policy sections that place the destination: the URL categories
 # list and ZIA's URL lookup are read only when one of them is in scope.
 _PLACING = ("cac", "url", "ssl", "ftc", "dlp")
-SCOPE_KEYS = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights")
+SCOPE_KEYS = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard", "ztw")
 SCOPE_LABELS = {"dlp": "DLP", "zia_extras": "ZIA platform", "zpa": "ZPA", "zcc": "ZCC", "genai": "GenAI & prompts",
                 "automation": "Automation readiness", "zdx": "ZDX", "zidentity": "ZIdentity", "rbac": "RBAC",
-                "insights": "ZIA Insights (traffic data)"}
+                "insights": "ZIA Insights (traffic data)", "aiguard": "AI Guard",
+                "ztw": "Cloud & Branch Connector"}
 NOTHING_IN_SCOPE = ("Nothing the Path analyzer reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "
                     "and mark the channels you run on Zscaler, then analyze again.")
 MAP_NOTHING_IN_SCOPE = ("Nothing the Data Flow Map reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "
@@ -413,7 +430,8 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                 if isinstance(f, dict):
                     content = str(_v(f, "pacContent", "content", "pacScript", default=""))
                     out["pac_files"].append({"id": f.get("id"), "name": f.get("name"), "url": _v(f, "pacUrl", "pacUrlObfuscated", "url"),
-                                             "direct_hosts": _pac_direct_hosts(content), "has_content": bool(content)})
+                                             "direct_hosts": _pac_direct_hosts(content), "has_content": bool(content),
+                                             "source": content[:pac_eval.MAX_SOURCE + 1]})
         except ReadStopped:
             raise
         except Exception as e:  # noqa: BLE001
@@ -421,20 +439,10 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
     return out
 
 
-_PAC_LINE = re.compile(r"(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet)\s*\(\s*\w+\s*,\s*[\"']([^\"']+)[\"']", re.I)
-
-
 def _pac_direct_hosts(content: str) -> List[str]:
-    """Hostname patterns a PAC file sends DIRECT (never to Zscaler)."""
-    out: List[str] = []
-    if not content:
-        return out
-    for block in re.split(r"\breturn\b", content):
-        pass
-    for m in re.finditer(r"if\s*\((?P<cond>[^{]*)\)\s*\{?\s*return\s+[\"']DIRECT[\"']", content, re.I | re.S):
-        for h in _PAC_LINE.finditer(m.group("cond")):
-            out.append(h.group(2))
-    return sorted(set(out))
+    """Hostname and network patterns a PAC file sends DIRECT (never to
+    Zscaler), read by pac_eval from its parse; never run."""
+    return pac_eval.direct_hosts(content)
 
 
 # ── ZIA readers ───────────────────────────────────────────────────────
@@ -456,8 +464,11 @@ def _norm_generic(r: Dict[str, Any]) -> Dict[str, Any]:
         "file_types": _upper(_names(r.get("fileTypes") or r.get("file_types") or [])),
         "operation": str(r.get("operation") or "").upper(),
         "request_methods": _upper(_names(r.get("requestMethods") or r.get("request_methods") or [])),
-        "scope": _scope(r), "scoped": bool(_scope(r)),
+        "scope": _scope(r), "scoped": bool(_scope(r)), "scope_items": scope_items(r),
         "protocols": _upper(_names(r.get("protocols") or [])),
+        # Conditions the Path analyzer cannot evaluate (time window, device
+        # trust, risk score, ...), shown there as "unknown" criteria.
+        "conditions": _unevaluated(r),
     }
 
 
@@ -491,8 +502,8 @@ def read_zia(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = No
         _stop_point(cancel)
         return _fetch_rules(client, endpoint, diagnostics, label)
 
-    z["ssl"] = sorted((normalize_ssl_rule(r) for r in rules("ssl", "/zia/sslInspectionRules", "SSL inspection rules")), key=_sort_key)
-    z["dlp"] = [normalize_dlp_rule(r) for r in rules("dlp", "/zia/webDlpRules", "Web DLP rules")]
+    z["ssl"] = sorted((dict(normalize_ssl_rule(r), conditions=_unevaluated(r)) for r in rules("ssl", "/zia/sslInspectionRules", "SSL inspection rules")), key=_sort_key)
+    z["dlp"] = [dict(normalize_dlp_rule(r), conditions=_unevaluated(r)) for r in rules("dlp", "/zia/webDlpRules", "Web DLP rules")]
     z["url"] = [_norm_generic(r) for r in rules("url", "/zia/urlFilteringRules", "URL filtering rules")]
     z["cac"] = [_norm_generic(r) for r in rules("cac", "/zia/cloudApplicationRules", "Cloud App Control rules")]
     z["ftc"] = [_norm_generic(r) for r in rules("ftc", "/zia/fileTypeRules", "File Type Control rules")]
@@ -665,7 +676,7 @@ def connector_references(zcc: Dict[str, Any]) -> Dict[str, Any]:
                      "forwarding_reference": ref, "status": "linked" if fwd else "unverified",
                      "networks": {k: {"mode": a.get("mode_label"), "kind": a.get("mode_kind"), "pac_url": a.get("pac_url")}
                                   for k, a in (fwd or {}).get("actions", {}).items()}})
-    return {"profiles": refs, "forwarding_profiles": zcc.get("forwarding_profiles", []), "pac_files": zcc.get("pac_files", []), "errors": zcc.get("errors", []), "read_status": zcc.get("read_status", {}),
+    return {"profiles": refs, "forwarding_profiles": zcc.get("forwarding_profiles", []), "pac_files": [{k: v for k, v in f.items() if k != "source"} for f in zcc.get("pac_files", [])], "errors": zcc.get("errors", []), "read_status": zcc.get("read_status", {}),
             "note": "Tenant configuration context. The incident feed does not establish which app profile or network a device used."}
 
 
@@ -805,6 +816,16 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         direct = []
         pac_url = (act.get("pac_url") if fwd else None) or (prof or {}).get("pac_url") or (fwd or {}).get("pac_url")
         pacs = [f for f in zcc.get("pac_files", []) if pac_url and f.get("url") == pac_url]
+        # Evaluated by pac_eval (parsed and interpreted, never run); a PAC
+        # it cannot evaluate safely is unverified, not "no DIRECT clause".
+        pev = pac_eval.path_hop(pacs, host, dest.get("url") or (f"https://{host}/" if host else ""))
+        if pev is not None:
+            pacs = []
+            if pev["status"] == "bypass":
+                reaches_zscaler = False; ends = "pac"
+            hops.append(_hop("pac", "PAC file", "unknown" if pev["status"] == "error" else pev["status"], pev["decided_by"], pev["detail"],
+                             pev.get("weak_point"), module_hop=pev["module_hop"], pac_outcomes=pev["evaluation"]["outcomes"],
+                             depends_on=pev["evaluation"]["depends_on"]))
         for f in pacs:
             hit = _domain_hit(f.get("direct_hosts") or [], host) if host else None
             if hit:
@@ -815,7 +836,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             hops.append(_hop("pac", "PAC file", "bypass", {"name": f.get("name"), "id": f.get("id")},
                              f"PAC '{f.get('name')}' returns DIRECT for {hit}: the browser connects without Zscaler.",
                              _weak("high", "PAC sends this destination DIRECT", "Remove the DIRECT clause or narrow it; Zscaler recommends returning the ZIA proxy for everything except RFC1918 and explicit local hosts.")))
-        else:
+        elif pev is None:
             verified = bool(pacs) and all(f.get("has_content") for f in pacs)
             hops.append(_hop("pac", "PAC file", "pass" if verified else "unknown", None,
                              (f"{len(pacs)} linked PAC file(s) read; no DIRECT pattern found for this destination" + (" (host-level check needs a hostname)." if not host else ".")) if verified else "The referenced PAC URL could not be linked to readable content. PAC routing is unverified.", None))
@@ -1237,7 +1258,10 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
     summary = {
         "destinations": len(dests), "traces": len(traces),
         "bypassed": sum(1 for t in traces if not t["reaches_zscaler"]),
-        "blind": sum(1 for t in traces if not t["conditional"] and t["reaches_zscaler"] and not t["decrypted"] and t["outcome"] not in ("blocked",)),
+        # Left encrypted: an SSL rule (or no rule) passes it through. SSL
+        # inspection not in scope, unread or conditional is not counted.
+        "blind": sum(1 for t in traces if not t["conditional"] and t["reaches_zscaler"] and t["outcome"] not in ("blocked",)
+                     and any(h["key"] == "ssl" and h["status"] == "blind" for h in t["hops"])),
         "enforced": sum(1 for t in traces if t["outcome"] == "enforce"),
         "monitored": sum(1 for t in traces if t["outcome"] == "monitor"),
         "high": sum(1 for t in traces for w in t["weak_points"] if w["severity"] == "high"),
@@ -1282,7 +1306,8 @@ def to_markdown(report: Dict[str, Any], label: str = "") -> str:
     s = report["summary"]
     lines = [f"# Data Flow Map{' — ' + label if label else ''}", "",
              f"{s['traces']} paths traced ({s['destinations']} destinations × {len(report['networks'])} network contexts, {report['platform']}). "
-             f"Bypassed before Zscaler: {s['bypassed']}. Encrypted/blind: {s['blind']}. Enforced: {s['enforced']}. Monitored: {s['monitored']}. High-severity weak points: {s['high']}.", ""]
+             f"Never reach Zscaler: {s['bypassed']}. Reach ZIA, left encrypted: {s['blind']}. Decrypted, a DLP rule can block: {s['enforced']}. "
+             f"Decrypted, DLP monitors only: {s['monitored']}. High-severity weak points: {s['high']}. Configuration only: no traffic was observed.", ""]
     for t in report["traces"]:
         net = next(n["label"] for n in NETWORKS if n["key"] == t["network"])
         lines.append(f"## {t['destination']['label']} · {net} → {t['outcome']}")

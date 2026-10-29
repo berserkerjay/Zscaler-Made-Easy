@@ -298,7 +298,8 @@ def test_simple_mode_never_writes_and_hands_changes_to_the_existing_flows():
     posts = re.findall(r"postJSON\('([^']+)'|postJSON\(`([^`]+)`|fetch\('([^']+)', \{ method: 'POST'|fetch\(url, \{ method: 'POST'", js)
     used = {p for t in posts for p in t if p}
     assert used <= {"/api/tenant/check", "/api/tenant-profiles", "/api/path-analyzer/start", "/api/dlp-packs/jobs/stop-before-start",
-                    "/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel", "/api/assess"}, used
+                    "/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel", "/api/assess",
+                    "/api/offline/sample", "/api/offline/leave"}, used   # the sample tenant: offline, never a tenant write
     # Deploying goes through Deploy policy packs; fixing through Review & remediate.
     assert "window.location.href = `/?simple=deploy&pack=${encodeURIComponent(st.pack)}`" in js
     assert "`/?simple=fix&check=${encodeURIComponent(f.id)}`" in js

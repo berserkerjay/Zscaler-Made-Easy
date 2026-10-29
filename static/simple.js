@@ -67,6 +67,8 @@
         freshSub: 'You need three things from Zscaler. We show you where to find them.',
         server: 'Use the details saved on this computer',
         serverSub: 'Pick this if someone set up this computer for you.',
+        sample: 'Try with a sample tenant',
+        sampleSub: 'A made-up company, so you can look around first. Nothing here is real. See [[sample tenant]] and [[tenant]].',
       },
       where: {
         q: 'Where is your Zscaler?',
@@ -114,12 +116,14 @@
         go: 'Sign in',
         busy: 'Signing in. Please wait.',
         legacy: 'This saved connection uses the older sign-in. Please use the expert view for it.',
+        sample: 'We will open the made-up company. Nothing you do there can touch a real [[tenant]].',
       },
       done: {
         q: 'You are connected!',
         ok: 'You are connected to {name}.',
         keyNote: 'We keep your secret key only while this page is open.',
         next: 'Next, check how safe your data is.',
+        sampleNote: 'This company is made up. Nothing here is real. To use your own, connect again.',
       },
     },
     check: {
@@ -386,6 +390,8 @@
     if (S.conn.kind === 'profile') return S.secret ? { profile_id: S.conn.id, client_secret: S.secret } : { profile_id: S.conn.id };
     return {};
   }
+  // A remembered sample connection holds only while the server still uses the sample for this browser.
+  if (S.conn && S.conn.kind === 'sample') getJSON('/api/offline/status').then(d => { if (!d || d.mode !== 'sample') setConn(null); }).catch(() => {});
   function connName() { return S.conn ? (S.conn.kind === 'server' ? (S.conn.name || COPY.conn.here) : S.conn.name) : ''; }
   function renderConn() {
     const el = $('smConn'); if (!el) return;
@@ -453,6 +459,7 @@
           ...(st.profiles || []).map(p => ({ value: `profile:${p.id}`, title: plain(CC.how.saved, { name: p.name || p.vanity_domain || p.id }), sub: rich(CC.how.savedSub) })),
           { value: 'new', title: CC.how.fresh, sub: rich(CC.how.freshSub) },
           { value: 'server', title: CC.how.server, sub: rich(CC.how.serverSub) },
+          { value: 'sample', title: CC.how.sample, sub: rich(CC.how.sampleSub) },
         ], false, st.how),
         check: st => { st.how = picked('smHow'); return st.how ? '' : COPY.ui.pickOne; },
         next: async st => { await lookupProfile(st); return true; } },
@@ -496,12 +503,21 @@
       { id: 'test', q: () => CC.test.q, nextLabel: CC.test.go,
         render: st => {
           if (st.profile && st.profile.auth_method === 'legacy') return `<p>${light('look')} ${E(CC.test.legacy)}</p>`;
+          if (st.how === 'sample') return `<p>${rich(CC.test.sample)}</p>${safeBox(COPY.ui.looksOnly)}<div id="smRun" role="status" aria-live="polite"></div>`;
           const name = st.how === 'new' ? (st.org || st.vd) : st.how === 'server' ? COPY.conn.here : st.profile.name;
           return `<p>${rich(CC.test.what, { name })}</p>${safeBox(COPY.ui.signInOnly)}<div id="smRun" role="status" aria-live="polite"></div>`;
         },
         check: st => (st.profile && st.profile.auth_method === 'legacy') ? CC.test.legacy : '',
         next: async st => {
           const run = $('smRun'); if (run) run.textContent = CC.test.busy;
+          if (st.how === 'sample') {
+            // The sample tenant (offline_tenant.py): the server answers every read from it, for this browser.
+            const d = await postJSON('/api/offline/sample', {});
+            setConn({ kind: 'sample', name: d.company || d.tenant_label || 'Sample', org: d.company || '', who: '' });
+            return true;
+          }
+          // Any real connection: leave the sample or a snapshot first.
+          await postJSON('/api/offline/leave', {});
           if (st.how === 'new') {
             const creds = { auth_method: 'oneapi', cloud: st.cloud, vanity_domain: st.vd, client_id: st.cid, client_secret: st.sec };
             const ok = await postJSON('/api/tenant/check', creds);
@@ -526,6 +542,7 @@
       { id: 'done', final: true, q: () => CC.done.q,
         render: st => `<p class="sm-row">${light('good')} <span>${rich(CC.done.ok, { name: connName() })}</span></p>
           ${S.conn && S.conn.kind === 'profile' && !S.conn.has_secret ? `<p>${rich(CC.done.keyNote)}</p>` : ''}
+          ${S.conn && S.conn.kind === 'sample' ? `<p>${rich(CC.done.sampleNote)}</p>` : ''}
           ${st.warning ? `<p class="sm-dim">${E(st.warning)}</p>` : ''}`,
         nextStep: () => ({ text: CC.done.next, tile: 'check' }) },
     ],

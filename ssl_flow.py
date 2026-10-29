@@ -23,6 +23,7 @@ import io
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from bypass_report import _fetch_url_category_lookup, _rules_to_list
+from path_whatif import scope_items
 
 # ── Traffic classes ───────────────────────────────────────────────────
 # url_categories: ZIA predefined URL category ids that carry the class.
@@ -176,6 +177,7 @@ def normalize_ssl_rule(r: Dict[str, Any]) -> Dict[str, Any]:
         "other_targets": other_targets,
         "scope": _scope(r),
         "scoped": bool(_scope(r)),
+        "scope_items": scope_items(r),
         "predefined": predefined,
         "default_rule": default_rule,
         # A rule with no explicit targets matches every destination —
@@ -210,6 +212,7 @@ def normalize_dlp_rule(r: Dict[str, Any]) -> Dict[str, Any]:
         "engines": engines,
         "without_content_inspection": _bool(_f(r, "without_content_inspection", "withoutContentInspection", default=False)),
         "scope": _scope(r),
+        "scope_items": scope_items(r),
         "parent_rule": _f(r, "parent_rule", "parentRule", default=None),
         "protocols": _upper(_names(_f(r, "protocols", default=[]))),
         # What happens after a match: the incident and notification path.

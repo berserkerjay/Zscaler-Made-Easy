@@ -280,6 +280,10 @@ def _b(**extra) -> Dict[str, Any]:
 
 
 OPERATION = {"type": "rule_state", "value": "DISABLED", "targets": [{"policy": "url_filtering", "id": 101}]}
+ZCC_SCOPE = {"scopes": ["zcc"], "channels": {}, "from_page": True}
+ZCC_BUILD = {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
+             "app": {"template": "best_practice", "name": "QA app"}}
+ZCC_DELETE = {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}
 
 WRITE_CASES: List[WriteCase] = [
     ("deploy", "POST", "/api/dlp-packs/apply",
@@ -310,6 +314,15 @@ WRITE_CASES: List[WriteCase] = [
      lambda w: ("/api/operations/apply", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
     ("bulk-apply-job", "POST", "/api/operations/apply/start",
      lambda w: ("/api/operations/apply/start", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
+    ("bulk-apply-zcc-build", "POST", "/api/operations/apply",
+     lambda w: ("/api/operations/apply", dict(_b(**ZCC_SCOPE), operation=ZCC_BUILD, plan_hash=HASH, confirm=True, confirm_text="CREATE QA APP")),
+     BOOL),
+    ("bulk-apply-zcc-delete", "POST", "/api/operations/apply/start",
+     lambda w: ("/api/operations/apply/start", dict(_b(**ZCC_SCOPE), operation=ZCC_DELETE, plan_hash=HASH, confirm=True, confirm_text="QA")),
+     BOOL),
+    ("bulk-apply-aiguard", "POST", "/api/operations/apply",
+     lambda w: ("/api/operations/apply", dict(_b(**dict(SCOPE, scopes=SCOPE["scopes"] + ["aiguard"])),
+                                              operation={"type": "aiguard_detection_policy", "profile": "HIPAA"}, plan_hash=HASH, confirm=True)), BOOL),
     ("self-heal", "POST", "/api/self-heal/tenant/heal",
      lambda w: ("/api/self-heal/tenant/heal", dict(_b(**SCOPE), ids=[_heal_proposal(w)], confirm=PHRASE)), PHRASE),
     ("remediation", "POST", "/api/remediation/execute",
@@ -326,6 +339,13 @@ WRITE_CASES: List[WriteCase] = [
 # Routes that never change a tenant (they may write the app's own files),
 # with why. A new state-changing route must be added to one of the tables.
 READ_ONLY: Dict[Tuple[str, str], str] = {
+    ("POST", "/api/offline/sample"): "uses the in-memory sample tenant in this browser (offline_tenant): no tenant is reached",
+    ("POST", "/api/offline/leave"): "back to the live tenant in this browser: clears a cookie",
+    ("POST", "/api/tenant-profiles/snapshots/open-file"): "opens an uploaded snapshot offline and read-only",
+    ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/open"): "opens a saved snapshot offline and read-only",
+    ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/delete"): "deletes a local snapshot file, never anything in a tenant",
+    ("POST", "/api/tenant-profiles/snapshots/save/start"): "a GET-only, scoped tenant read kept in a local file",
+    ("POST", "/api/tenant-profiles/snapshots/compare/start"): "a GET-only, scoped tenant read compared with a snapshot",
     ("POST", "/api/auth/unlock"): "session sign-in",
     ("POST", "/api/auth/logout"): "session sign-out",
     ("POST", "/api/remediation/plan"): "builds a plan, sends nothing",
@@ -381,6 +401,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/operations/preview"): "preview",
     ("POST", "/api/operations/{op_id}/undo/preview/start"): "preview",
     ("POST", "/api/operations/{op_id}/undo/preview"): "preview",
+    ("POST", "/api/operations/zpa/provisioning-key"): "reveals once a value held in this app's memory; reaches no tenant",
     ("POST", "/api/console-index"): "reads (extension allow-list)",
     ("POST", "/api/workspace/notes"): "local notes",
     ("DELETE", "/api/workspace/notes"): "local notes",
@@ -389,6 +410,17 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/beacon/scope"): "preview",
     ("POST", "/api/insights/start"): "reads",
     ("POST", "/api/insights"): "reads",
+    ("POST", "/api/pov/open"): "local POV",
+    ("POST", "/api/pov/create"): "local POV",
+    ("POST", "/api/pov/update"): "local POV",
+    ("POST", "/api/pov/delete"): "local POV",
+    ("POST", "/api/pov/export"): "local POV file",
+    ("POST", "/api/pov/import"): "local POV (uploaded file)",
+    ("POST", "/api/pov/report"): "report",
+    ("POST", "/api/pov/templates"): "local POV template",
+    ("DELETE", "/api/pov/templates/{template_id}"): "local POV template",
+    ("POST", "/api/pov/prove/start"): "reads",
+    ("POST", "/api/pov/insights/start"): "reads",
     ("POST", "/api/app/update"): "the app's own install (stubbed here)",
     ("POST", "/api/app/restart"): "the app's own process (stubbed here)",
     ("POST", "/api/compliance"): "report",
@@ -416,9 +448,13 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/report/docx"): "report",
     ("POST", "/api/report/findings-csv"): "report",
     ("POST", "/api/zcc/fleet/start"): "reads",
+    ("POST", "/api/zcc/install"): "builds an install command; with app_profile_id it reads that profile's policy token (scope-gated)",
+    ("POST", "/api/readiness/start"): "reads (the API role, licences and one call per product in scope)",
     ("POST", "/api/report/bypass"): "reads",
     ("POST", "/api/report/data-flow"): "reads",
     ("POST", "/api/path-analyzer/batch/start"): "reads",
+    ("POST", "/api/bulk-test/start"): "reads (Test a list)",
+    ("POST", "/api/bulk-test/{job_id}/fix"): "hand-off to Bulk changes (local), writes nothing",
     ("POST", "/api/audit-timeline/start"): "reads",
     ("POST", "/api/shadow-rules/start"): "reads",
     ("POST", "/api/shadow-rules"): "reads",
@@ -434,6 +470,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/flow/scenario"): "local scenario",
     ("POST", "/api/path-analyzer/start"): "reads",
     ("POST", "/api/path-analyzer"): "reads",
+    ("POST", "/api/path-analyzer/identities"): "reads (one page of names)",
     ("POST", "/api/report/data-flow/{report_id}/trace"): "reads",
     ("POST", "/api/report/ssl-flow"): "reads",
     ("POST", "/api/ssl-coverage/start"): "reads",

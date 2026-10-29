@@ -5,6 +5,31 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-28
+
+### Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition
+- **What you asked for.** Every capability two other public Zscaler tools have (one builds proof-of-value tenants, one predicts traffic decisions) that this app lacked, with the overlaps compressed into this app's own pages and UI.
+- **One engine for every builder.** Bulk changes (`/report/operations`) gained *Build new*: each builder is a plugin on the same engine (`admin_ops.register`), so it inherits the scope check before any read, the four write gates, the preview with a plan hash, the re-read before each write, read-back, Undo and the audit log. Nothing is created enabled unless you say so.
+  - **ZIA security baseline** (Strict, Balanced, Permissive or Healthcare zero trust, with HIPAA, HITRUST, NIST, PCI DSS, CJIS, SOX, FERPA or GDPR citations) across URL filtering, Cloud Firewall, SSL inspection, Sandbox, DNS Control, File Type Control, Cloud App Control and Advanced Threat Protection; and the **SSL certificate manager** that moves Inspect rules to another certificate.
+  - **ZPA builder**: App Connector group with a provisioning key shown once and never kept, segment groups, server groups, application segments (with browser access and PRA), and access, timeout, inspection and isolation policies, all under one prefix so a re-run updates in place and Undo removes them.
+  - **Client Connector profiles** (forwarding and app profile from best practice or the portal default) and an install command builder on the fleet page.
+  - **ZDX probe setup** (Microsoft 365 and other predefined apps, custom apps, Web and CloudPath probes).
+  - **AI Guard**: route GenAI apps through AI Guard by proxy chaining, and turn a compliance profile into an AI Guard detection policy (Monitor by default).
+- **Path analyzer, one answer for everything on the path.** ZPA is evaluated first (segment, bypass, client forwarding, access policy); then every ZIA module (Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control, URL filtering, SSL inspection, Sandbox, File Type Control, DLP) with its deciding rule, for web traffic or any protocol and port; the PAC file is evaluated without ever being run; an optional user, group, department and location what-if; traffic from a workload through Cloud & Branch Connector; and *Test a list* runs up to 250,000 destinations against what each was expected to do, with Fix selected handing off to Bulk changes.
+- **Readiness after sign-in** (in Required API access and on the Connect page): what the API client's role and licences allow per product, every scope or change that will not work greyed out with the steps to ask for. It reads only the role and the licences for what is in scope.
+- **Sample tenant and snapshots** (Connect page): a made-up company, Larkspur Freight, on which every page works with nothing real; save a read-only snapshot of a tenant beside its profile, open it offline, compare it with the live tenant.
+- **POV planner** (`/report/pov`): intake, success criteria, runbook, *Prove it* through the Path analyzer, Insights counts, and a Word or PDF report, kept with the tenant profile.
+- **ZIA policy framework export**: a new part of Export from tenant that captures URL, firewall, SSL, Sandbox, DNS and File Type Control rules to load into another tenant through the baseline builder.
+- **No-install edition**: a release workflow builds a single-folder app per platform, smoke-tests it, checksums it and signs SLSA build provenance; signing with your own certificates is optional.
+- **Fixes.**
+  - A saved tenant profile chosen without a cloud no longer falls back to the "production" cloud: every route now uses the profile's own cloud.
+  - The Data Flow Map no longer counts a path as "reaching ZIA encrypted" when SSL inspection was simply not in scope, and its text no longer claims more than it checks (it traces the configuration, not live transactions).
+  - Client Connector check 6.3 no longer fails when a device's state is a number; fleet health no longer counts removed devices as registered.
+  - The Connect page no longer scrolls sideways on a phone.
+  - The ZIA baseline and the SSL certificate move always ask for the typed confirmation when they create or enable rules or change Advanced Threat Protection (it takes effect at once).
+  - msgpack 1.2.3 (CVE-2026-114613); the SBOM and notices are regenerated.
+- **Verified.** Full suite 9,448 passed; every page (35) and sidebar button (49) in Chromium with no errors, external requests or writes, and no sideways scroll at 390 px.
+
 ## 2026-10-26
 
 ### Security and regression review: 15 checks, every finding fixed, mapped to standards

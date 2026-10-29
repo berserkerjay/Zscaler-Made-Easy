@@ -262,6 +262,33 @@ def raw_request(zia, method: str, path: str, body: Optional[Dict[str, Any]] = No
         return None, str(e)[:200]
 
 
+def raw_get(zia, path: str, *, via: str = "proxies") -> Tuple[Any, Optional[str]]:
+    """(payload, error) for a ZIA read the SDK has no method for (GET only),
+    through the request executor of the SDK service `via`, so the read is
+    paced and authenticated like the service's own."""
+    svc = getattr(zia, via, None)
+    ex = getattr(svc, "_request_executor", None)
+    if ex is None:
+        return None, "the installed zscaler-sdk-python exposes no request executor"
+    try:
+        req, err = ex.create_request("GET", f"{ZIA_BASE}{path}", {}, {}, params={})
+        if err:
+            return None, str(err)[:200]
+        resp, err = ex.execute(req)
+        if err:
+            return None, str(err)[:200]
+        data = resp.get_body() if hasattr(resp, "get_body") else resp
+        if isinstance(data, (bytes, str)):
+            import json as _json
+            try:
+                data = _json.loads(data) if data else []
+            except ValueError:
+                return None, "the answer was not JSON"
+        return data, None
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)[:200]
+
+
 def list_app_groups(zia) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
     """name -> {id, resources, description} of endpoint application groups."""
     data, err = raw_request(zia, "GET", APP_GROUPS_PATH)

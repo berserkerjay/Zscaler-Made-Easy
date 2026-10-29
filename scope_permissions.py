@@ -76,8 +76,10 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "IPSec VPN Credentials",
             "Static IPs",
             "Sandbox Reports",
+            "Sandbox Rules",
             "Security Policy Settings",
             "Advanced Threat Protection",
+            "Network Services and IP Groups",
             "Bandwidth Control",
             "Browser Control Settings",
             "Authentication Settings",
@@ -96,6 +98,11 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/users", "/zia/adminRoles",
             "/zia/browserIsolation/profiles", "/zia/browserControlSettings",
             "/zia/webApplicationRules",
+            # The Path analyzer's ZIA modules (zia_path_modules.READS).
+            "/zia/cyberThreatProtection/advancedThreatSettings", "/zia/cyberThreatProtection/securityExceptions",
+            "/zia/cyberThreatProtection/maliciousUrls", "/zia/security/advanced", "/zia/sandboxRules",
+            "/zia/networkServices", "/zia/networkServiceGroups", "/zia/networkApplicationGroups",
+            "/zia/ipDestinationGroups", "/zia/ipSourceGroups",
         ],
         "license_required": "Standard ZIA license.",
         "customer_id_needed": False,
@@ -283,6 +290,42 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         "license_required": "Standard ZIA license for web and firewall traffic; Shadow IT and SaaS security sections show data only where the tenant has Cloud App Control and CASB.",
         "customer_id_needed": False,
         "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in cannot read Z-Insights. Shows customer traffic data, so it is off unless ticked.",
+    },
+
+    "aiguard": {
+        "label": "AI Guard",
+        "description": "Zscaler AI Guard: whether it is licensed and reachable, and the Bulk changes builders that route GenAI apps through it and turn a compliance profile into an AI Guard detection policy. Not part of the assessment's checks.",
+        "service": "AI Guard (OneAPI) and ZIA",
+        "permissions_read": [
+            "AI Guard: detection policies, policy match rules and LLM providers (read)",
+            "ZIA: proxies and proxy gateways, root certificates, forwarding control (read; ZIA platform ticked)",
+        ],
+        "permissions_write": [
+            "Only with write mode on and a confirmed Bulk changes plan: AI Guard detection policies and policy match rules; ZIA root certificates, proxies, IP destination groups, forwarding, SSL inspection, Cloud Firewall, URL filtering and Cloud App Control rules, and the URL and Cloud App Control settings (prompt capture)",
+        ],
+        "endpoints_used": [
+            "/aiguard/v1/detections/policies", "/aiguard/v1/detections/policy-match-rules", "/aiguard/v1/llm-providers",
+            "/zia/api/v1/proxies", "/zia/api/v1/proxyGateways", "/zia/api/v1/rootCertificates (assumed path)", "/zia/api/v1/forwardingRules",
+        ],
+        "license_required": "An AI Guard subscription linked to the ZIA tenant (Zscaler Support links them); GenAI prompt capture in ZIA needs the Gen AI Security subscription.",
+        "customer_id_needed": False,
+        "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in has no AI Guard. The proxy gateway cannot be created through the API; the builder says how to make it in the ZIA portal.",
+    },
+    "ztw": {
+        "label": "Cloud & Branch Connector",
+        "description": "Path analyzer, traffic from a workload: the Cloud & Branch Connector traffic forwarding rules, workload groups, connector groups and IP source and destination groups, to say where a workload's traffic goes (ZIA, ZPA, direct, local switch, proxy chaining or drop). No assessment check reads them.",
+        "service": "Cloud & Branch Connector (ZTW)",
+        "permissions_read": [
+            "Cloud & Branch Connector (read) on the API client's role: forwarding control, workload groups, connector groups, IP groups",
+        ],
+        "permissions_write": [],
+        "endpoints_used": [
+            "/ztw/api/v1/ecRules/ecRdr", "/ztw/api/v1/workloadGroups", "/ztw/api/v1/ecgroup",
+            "/ztw/api/v1/ipSourceGroups", "/ztw/api/v1/ipDestinationGroups",
+        ],
+        "license_required": "Cloud Connector or Branch Connector subscription.",
+        "customer_id_needed": False,
+        "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in cannot read Cloud & Branch Connector. Off unless ticked.",
     },
 
     "compliance": {

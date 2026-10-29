@@ -17,6 +17,7 @@ local_settings.bat
 local_settings.env
 tenant_config.json
 tenant_profiles.json
+tenant_snapshots/
 deployments.json
 tenant_fingerprint.key
 ui_token.txt
@@ -34,6 +35,7 @@ proposals.json
 proposals.json.tmp
 workspace_notes.json
 workspace_notes.json.lock
+povs/
 digests/
 guidance_state.json
 guidance_state.json.tmp
