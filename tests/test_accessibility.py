@@ -679,3 +679,67 @@ def test_nothing_is_clickable_only_with_a_mouse(wcag_pages, route):
     """WCAG 2.2 SC 2.1.1, 4.1.2 · table over every page: every element with a click handler takes focus and answers Enter and Space (the reference pages' channel toggles and stat cards were mouse-only)."""
     for theme in BROWSER_THEMES:
         assert _page(wcag_pages, theme, route)["clickOnly"] == [], (theme, route)
+
+
+# ── Faded steps of the live path: the text keeps AA contrast ─────────────
+# The general audit above leaves SVG text out (and anything faded below 0.5),
+# so the path boxes for "not reached", "not in scope" and "pending" are
+# measured here: they are focusable buttons in the result view, so the
+# inactive-component exemption does not apply (WCAG 2.2 SC 1.4.3).
+
+FADED_TONES = ("after", "na", "pend")
+FADED_DRIVER = CDP_PRELUDE + r"""
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+await send('Page.navigate', { url: base + '/report/path' });
+await until(() => ev(`document.readyState === 'complete' && !!window.FA`), 'the path page', 30000);
+const out = {};
+for (const theme of ['dark', 'light']) {
+  out[theme] = await ev(`(() => {
+    document.body.classList.toggle('theme-light', ${JSON.stringify(theme)} === 'light');
+    const rgba = s => { let m = String(s).match(/rgba?\\(([^)]+)\\)/); if (m) { const v = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return { r: v[0], g: v[1], b: v[2], a: v.length > 3 ? v[3] : 1 }; }
+      m = String(s).match(/color\\(srgb\\s+([^)]+)\\)/); if (m) { const v = m[1].split(/[ \\/]+/).filter(Boolean).map(Number); return { r: v[0] * 255, g: v[1] * 255, b: v[2] * 255, a: v.length > 3 ? v[3] : 1 }; }
+      return null; };
+    const over = (f, b, a) => { const k = f.a * a; return { r: f.r * k + b.r * (1 - k), g: f.g * k + b.g * (1 - k), b: f.b * k + b.b * (1 - k), a: 1 }; };
+    const lum = c => { const f = x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    const own = n => parseFloat(getComputedStyle(n).opacity || '1') * parseFloat(getComputedStyle(n).fillOpacity || '1');
+    const host = document.createElement('div'); document.querySelector('main').appendChild(host);
+    const svg = window.FA.newSvg(host, 640, 60, 'contrast probe');
+    // The backdrop: the first painted background above the picture.
+    let back = { r: 255, g: 255, b: 255, a: 1 }; const layers = [];
+    for (let n = host; n; n = n.parentElement) { const c = rgba(getComputedStyle(n).backgroundColor); if (c && c.a > 0) { layers.push(c); if (c.a >= 0.999) break; } }
+    for (const c of layers.reverse()) back = over(c, back, 1);
+    const res = {};
+    ${JSON.stringify(%TONES%)}.concat(['pass']).forEach((tone, i) => {
+      const b = window.FA.box(svg, 10 + i * 150, 4, 140, 46, 'Cloud Firewall', 'not in scope', 'tp-box ' + tone);
+      b.g.setAttribute('role', 'button'); b.g.setAttribute('tabindex', '0');
+      let group = 1; for (let n = b.g; n && n !== host; n = n.parentElement) group *= parseFloat(getComputedStyle(n).opacity || '1');   // the picture's own fading
+      const rect = b.g.querySelector('rect');
+      const fill = over(rgba(getComputedStyle(rect).fill) || { r: 0, g: 0, b: 0, a: 0 }, back, own(rect));
+      res[tone] = {};
+      for (const t of [b.t1, b.t2]) {
+        const ink = over(rgba(getComputedStyle(t).fill), fill, own(t));
+        // The group's opacity blends text and box alike into the backdrop.
+        res[tone][t.getAttribute('class')] = Math.round(100 * ratio(over(ink, back, group), over(fill, back, group))) / 100;
+      }
+    });
+    host.remove();
+    return res; })()`);
+}
+fs.writeFileSync(path.join(dir, 'out.json'), JSON.stringify(out));
+console.log(JSON.stringify(out));
+ws.close(); p.kill(); process.exit(0);
+""".replace("%TONES%", json.dumps(list(FADED_TONES)))
+
+
+@pytest.fixture(scope="module")
+def faded_boxes(tmp_path_factory):
+    return run_in_browser(tmp_path_factory.mktemp("faded-boxes"), FADED_DRIVER, timeout=120)
+
+
+@pytest.mark.parametrize("theme", BROWSER_THEMES)
+@pytest.mark.parametrize("tone", FADED_TONES)
+def test_faded_path_steps_keep_their_text_at_aa_contrast(faded_boxes, theme, tone):
+    """WCAG 2.2 SC 1.4.3 (Contrast, Minimum) · SC 1.4.11: a path step drawn as not reached, not in scope or pending fades its shape only; its title and line stay at 4.5:1 or better."""
+    got = faded_boxes[theme][tone]
+    assert got["fa-t"] >= 4.5 and got["fa-s"] >= 4.5, (theme, tone, got, faded_boxes[theme]["pass"])

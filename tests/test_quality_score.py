@@ -78,8 +78,8 @@ def test_the_fixture_scores_as_documented():
     assert _sub(r, "traffic_analysis")["score"] == 99.2     # 0.4*100 + 0.4*(100-2) + 20
     assert _sub(r, "write_paths")["based_on"] == ["tests", "coverage"]   # no record: findings left out
     assert [a["score"] for a in r["areas"]] == [99.8, 98.7, 99.7, 100.0]
-    assert r["overall"]["raw"] == 99.4 and r["overall"]["score"] == 99
-    assert r["overall"]["grade"] == "A" and r["overall"]["cap"] is None
+    assert r["overall"]["raw"] == 99.4 and r["overall"]["score"] == 79      # the run has 10 failed tests: capped at C
+    assert r["overall"]["grade"] == "C" and r["overall"]["cap"]["kind"] == "tests" and r["overall"]["cap"]["applied"] is True
 
 
 def test_fixed_and_accepted_findings_are_recorded_and_not_penalised():
@@ -180,6 +180,119 @@ def test_a_record_with_no_area_still_counts_toward_the_cap():
     r = qs.compute([rec], _run(passed=100, failed=0, files={}), FULL)
     assert r["overall"]["score"] == 69 and r["findings"][0]["area"] == "other"
     assert any("new-check" in w for w in r["warnings"])
+
+
+# ── Failing tests cap the grade ───────────────────────────────────────
+
+def _failing_run(failed, errors):
+    """The fixture run with `failed` failures in every file (and `errors` errors), everything else passing."""
+    files = {k: {"passed": v["passed"] + v["failed"], "failed": failed, "skipped": v["skipped"]} for k, v in _run()["files"].items()}
+    return _run(passed=sum(v["passed"] for v in files.values()), failed=failed * len(files), errors=errors, files=files)
+
+
+@pytest.mark.parametrize("failed,errors", [(1, 0), (0, 1), (1, 1)])
+def test_any_failed_or_errored_test_caps_the_grade_at_c(failed, errors):
+    """SSDF PW.8.2 · SSDF RV.1.1 · CWE-1357: a run with a failed or errored test is never graded above C and never says 'Tests pass'."""
+    # Arrange
+    run = _failing_run(failed, errors)
+    n = run["failed"] + run["errors"]
+    # Act
+    r = qs.compute([], run, FULL)
+    o = r["overall"]
+    # Assert
+    assert o["raw"] >= 90 and o["score"] == qs.FAILED_TESTS_CAP == 79 and o["grade"] == "C", o
+    assert "Tests pass" not in o["meaning"] and o["meaning"].startswith(f"{n} test{'s' if n != 1 else ''} failed"), o["meaning"]
+    assert o["cap"]["kind"] == "tests" and o["cap"]["applied"] is True and str(n) in o["cap"]["reason"]
+
+
+def test_a_run_with_no_failure_keeps_its_grade():
+    """SSDF PW.8.2: boundary: zero failed and zero errored tests: no cap, grade A says the tests pass."""
+    r = qs.compute([], _failing_run(0, 0), FULL)
+    assert r["overall"]["grade"] == "A" and r["overall"]["cap"] is None and r["overall"]["meaning"].startswith("Tests pass")
+
+
+def test_an_open_high_and_failing_tests_keep_the_lower_cap_and_say_both():
+    """SSDF RV.1.2 · CWE-1357: an open high (69) is lower than the failing-tests cap (79): 69 holds and the words still count the failures."""
+    r = qs.compute(_records("open_high"), _failing_run(1, 0), FULL)
+    o = r["overall"]
+    assert o["score"] == 69 and o["cap"]["severity"] == "high" and o["meaning"].startswith("8 tests failed")
+
+
+# ── Every test file belongs to an area; no glob is dead ─────────────
+
+TESTS_DIR = os.path.join(ROOT, "tests")
+
+
+def _test_files():
+    return sorted(n for n in os.listdir(TESTS_DIR) if n.startswith("test_") and n.endswith(".py"))
+
+
+def _area_globs():
+    return [(s["key"], g) for a in qs.AREAS for s in a["subs"] for g in s["tests"] if g != "*"]
+
+
+def test_every_test_file_is_in_an_area_or_listed_as_regression_only():
+    """SSDF PW.8.2 · CWE-1357: each tests/test_*.py counts toward its area's tests part, or is named as counted by Regression (the whole suite) only."""
+    import fnmatch
+    pats = [g for _, g in _area_globs()] + list(qs.REGRESSION_ONLY)
+    loose = [n for n in _test_files() if not any(fnmatch.fnmatchcase(n, g) for g in pats)]
+    assert not loose, f"add these to an area's tests in tools/quality_score.py, or to REGRESSION_ONLY: {loose}"
+
+
+@pytest.mark.parametrize("sub,pattern", _area_globs() + [("regression-only", g) for g in qs.REGRESSION_ONLY])
+def test_no_area_glob_is_dead(sub, pattern):
+    """SSDF PW.8.2 · CWE-1164: every test glob of the score matches at least one file (a dead glob silently drops an area's tests)."""
+    import fnmatch
+    if pattern == "test_glass*.py" and not os.path.exists(os.path.join(ROOT, "static", "glass.css")):
+        pytest.skip("the Liquid Glass layer is on its own branch: this glob goes live when it merges")
+    assert any(fnmatch.fnmatchcase(n, pattern) for n in _test_files()), (sub, pattern)
+
+
+def test_a_regression_only_file_is_not_also_in_an_area():
+    """SSDF PW.8.2: the regression-only list holds only files no area counts (no stale entry hides a mapped file)."""
+    import fnmatch
+    both = [g for g in qs.REGRESSION_ONLY if any(fnmatch.fnmatchcase(n, g) and any(fnmatch.fnmatchcase(n, a) for _, a in _area_globs())
+                                                  for n in _test_files())]
+    assert not both, both
+
+
+@pytest.mark.parametrize("name,sub", [("test_sbd_writes.py", "write_paths"), ("test_c6_admin_ops.py", "write_paths"),
+                                      ("test_sbd_untrusted_input.py", "untrusted_input"), ("test_c6_auth.py", "auth_scope_secrets"),
+                                      ("test_qa_func_path.py", "traffic_analysis"), ("test_qa6_builders_lifecycle.py", "builders"),
+                                      ("test_c6_ui_core.py", "ui_a11y"), ("test_path_live_motion.py", "motion"),
+                                      ("test_flow_motion_models.py", "motion")])
+def test_wave_6_test_files_count_toward_their_area(name, sub):
+    """SSDF PW.8.2 · CWE-1357: a failure in a Wave 6 QA file lowers the area it tests, not only the whole-suite Regression score."""
+    files = {f"tests/{name}": {"passed": 0, "failed": 3, "skipped": 0}}
+    r = qs.compute([], _run(passed=0, failed=3, files=files), FULL)
+    assert _sub(r, sub)["tests"] == {"score": 0.0, "passed": 0, "failed": 3, "skipped": 0, "files": 1}, name
+
+
+# ── A mapped record that does not exist is said ─────────────────────
+
+def test_a_mapped_slug_without_a_record_file_is_warned():
+    """SSDF PO.3.2 · CWE-1357: a sub-area whose formula names a record that is not there says which one (c6-ui-core had none)."""
+    recs = [qs.validate_record(_record(_finding("UI-01", "low", "fixed", reason="")), "ui")]
+    r = qs.compute(recs, _run(), FULL)
+    warn = [w for w in r["warnings"] if "c6-ui-core" in w]
+    assert warn and "c6-ui-ops" in warn[0] and "c6-tooltips" in warn[0], r["warnings"]
+
+
+def test_every_record_the_formula_names_exists_in_the_repository():
+    """SSDF PO.3.2: boundary: on the real records, no sub-area that has records misses one of its named records."""
+    recs, errors = qs.load_findings()
+    assert errors == []
+    r = qs.compute(recs, None, FULL)
+    assert not [w for w in r["warnings"] if w.startswith("Named findings record")], r["warnings"]
+
+
+def test_the_overview_says_the_tests_part_needs_a_recorded_run():
+    """SSDF PO.3.2 · CWE-1059: docs/OVERVIEW.md says the score's tests part needs docs/qa/test_run.json (and how to write it) and names every cap."""
+    text = open(os.path.join(ROOT, "docs", "OVERVIEW.md"), encoding="utf-8").read()
+    para = " ".join(text.split("- **Quality and security score**", 1)[1].split("\n- **", 1)[0].split())
+    for needle in ("docs/qa/test_run.json", "--from-junit", "No score yet", f"at {qs.CAPS['critical']}", f"at {qs.CAPS['high']}",
+                   f"at {qs.FAILED_TESTS_CAP}"):
+        assert needle in para, needle
 
 
 # ── Hostile findings files ───────────────────────────────────────────
@@ -328,7 +441,7 @@ def test_record_text_is_inert_in_the_markdown():
 def test_the_markdown_documents_the_formula_the_run_and_every_finding():
     """SSDF PW.8.2 · SSDF PO.3.2: the report names the formula, the weights, the caps, the date and commit and each finding with its CWE/ASVS and status."""
     md = qs.render_md(qs.compute(_records("full"), _run(), FULL))
-    for needle in ("**Overall: 99 / 100, grade A (Strong).**", "commit `0123456789ab`", "2026-10-29T12:00:00",
+    for needle in ("**Overall: 79 / 100, grade C (Fair).** 10 tests failed in the recorded run.", "commit `0123456789ab`", "2026-10-29T12:00:00",
                    "| critical | 9.0-10.0 | 40 | 39 |", "| high | 7.0-8.9 | 20 | 69 |", "## How the score is computed",
                    "| SBD-INPUT-02 | Fixture: a name breaks the export | high | CWE-116 | V5.3.1 | fixed |",
                    "| SBD-AUTH-01 | Fixture: the token is long-lived by design | low | CWE-613 | V3.3.1 | accepted |"):
@@ -414,7 +527,7 @@ def test_the_route_serves_the_score(client, tmp_path):
     (tmp_path / "quality_score.json").write_text(qs.render_json(result), encoding="utf-8")
     r = client.get("/api/quality-score")
     assert r.status_code == 200
-    assert r.json()["available"] is True and r.json()["overall"]["score"] == 99
+    assert r.json()["available"] is True and r.json()["overall"]["score"] == result["overall"]["score"] == 79
 
 
 @pytest.mark.parametrize("content", [None, "{not json", "[]", '{"schema_version": 2}', "x" * (srv._QUALITY_SCORE_MAX_BYTES + 1)])

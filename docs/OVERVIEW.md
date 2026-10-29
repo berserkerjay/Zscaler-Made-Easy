@@ -221,7 +221,9 @@ what you get, what to do next.
   of scope says "not in scope"), writes nothing, and Stop ends the read
   at once. **Import a HAR file** there to analyze every host a browser
   session reached in one run: the file is read in the browser and only
-  host names and request counts are sent; the results table sorts,
+  host names, request counts, HTTP methods, schemes and upload amounts
+  are sent (cookies, headers, URL paths and bodies stay in the browser);
+  the results table sorts,
   filters, opens any host's full analysis and exports as CSV or JSON.
   **Test a list** (a tab on the same page) does it for a whole list: a
   CSV or pasted list of IP addresses, CIDR blocks (up to a /16 per row),
@@ -655,9 +657,13 @@ what you get, what to do next.
 - **Quality and security score** — this app's own score from 0 to 100 on
   Advanced settings: tests passed in the last full run, open QA findings
   weighted by CVSS severity (an open critical caps it at 39, an open high
-  at 69) and standards coverage, per area. Built by tools/quality_score.py
-  into docs/QUALITY_SCORE.md and docs/quality_score.json; read-only at
-  GET /api/quality-score.
+  at 69, and any failed test at 79, grade C at best) and standards
+  coverage, per area. Built by tools/quality_score.py into
+  docs/QUALITY_SCORE.md and docs/quality_score.json; read-only at
+  GET /api/quality-score. The tests part needs a recorded full run,
+  docs/qa/test_run.json (written by `python tools/quality_score.py
+  --from-junit <pytest JUnit XML>`); until one is recorded the page says
+  "No score yet" and shows the findings and the standards coverage only.
 - **Best practices benchmark and frameworks** — the grade, the DLP
   programme stages and the framework coverage. Where: the Dashboard.
 - **Zscaler updates** — a check of PyPI and help.zscaler.com for SDK and

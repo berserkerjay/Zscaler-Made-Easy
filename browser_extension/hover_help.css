@@ -25,7 +25,7 @@ body.theme-light .hh-tip {
 .hh-tip .hh-input { color: var(--hh-muted); }
 .hh-tip .hh-effect { font-size: 0.75rem; }
 .hh-tip .hh-read { color: var(--hh-read); }
-.hh-tip .hh-write { color: var(--hh-write); font-weight: 600; }
+.hh-tip .hh-write, .hh-tip .hh-confirm { color: var(--hh-write); font-weight: 600; }
 .hh-tip .hh-local, .hh-tip .hh-download, .hh-tip .hh-nav { color: var(--hh-local); }
 .hh-tip .hh-now { border-top: 1px solid var(--hh-line); padding-top: 0.3rem; }
 

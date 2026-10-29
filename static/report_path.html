@@ -35,7 +35,7 @@
       <button type="button" class="rp-btn primary" id="paRun">Analyze</button>
       <button type="button" class="rp-btn" id="paFresh" title="Read the tenant again before analyzing (otherwise the last read is reused)" aria-pressed="false">↻ Fresh read</button>
       <a class="rp-btn" id="expJson" hidden download="path-analysis.json">JSON</a>
-      <button type="button" class="rp-btn" id="paHarBtn" aria-describedby="paHarHow" title="Analyze every host a browser HAR file names. The file is read in this browser; only host names and request counts are sent.">📂 Import a HAR file</button>
+      <button type="button" class="rp-btn" id="paHarBtn" aria-describedby="paHarHow" title="Analyze every host a browser HAR file names. The file is read in this browser. Only host names, request counts, HTTP methods, schemes and upload amounts are sent. Cookies, headers, URL paths and bodies stay in this browser.">📂 Import a HAR file</button>
       <input type="file" id="paHar" accept=".har,.json,application/json" hidden aria-label="HAR file to import">
     </nav>
     <div class="rp-bar pa-workload" id="paWorkload" role="group" aria-labelledby="paWorkloadL" hidden>
@@ -85,7 +85,7 @@
           </ol>
           <div class="df-hint">Nothing is written to the tenant. This is a configuration prediction, not an observed transaction or payload scan. Identity-scoped rules remain conditional unless you give the identity; the assumptions are listed under every result.</div>
           <p class="df-hint" id="paSourceHow">ZPA is checked first when ZPA is ticked on the Scope page. For a workload, tick Cloud &amp; Branch Connector: its forwarding rules decide whether the traffic goes to ZIA, ZPA, direct or is dropped.</p>
-          <p class="df-hint pa-har-how" id="paHarHow"><strong>Or import a HAR file</strong> (browser developer tools, Network tab, Save all as HAR) to analyze every host a user's session reached. The file is read in this browser and never uploaded: cookies, headers, URL paths and bodies stay here; only the host names, request counts, methods and upload sizes are sent. Up to 100 MB and 200 hosts per run (hosts that sent data first). To test a list of destinations, use the Test a list tab.</p>
+          <p class="df-hint pa-har-how" id="paHarHow"><strong>Or import a HAR file</strong> (browser developer tools, Network tab, Save all as HAR) to analyze every host a user's session reached. The file is read in this browser and never uploaded: only host names, request counts, HTTP methods, schemes and upload amounts are sent; cookies, headers, URL paths and bodies stay in this browser. Up to 100 MB and 200 hosts per run (hosts that sent data first). To test a list of destinations, use the Test a list tab.</p>
         </div>
         <section class="pa-flow" id="paFlowRefSec" aria-labelledby="paFlowRefH">
           <h2 class="df-h" id="paFlowRefH">The path, live</h2>
@@ -568,7 +568,7 @@
           <span class="df-prof"><span class="k">Hosts that sent data</span><span class="v">${ups}</span></span>
           ${p.skipped ? `<span class="df-prof"><span class="k">Entries without a web URL</span><span class="v">${p.skipped}</span></span>` : ''}</div>
         ${moreNote(p)}
-        <p class="df-hint">Analyzing sends ${p.hosts.length} host name(s) with their request counts to this app, which reads the tenant once (only what is in scope on the Scope page) and traces each host. Nothing else from the file leaves this browser, and nothing is written to the tenant.</p>
+        <p class="df-hint">Analyzing sends the host names of these ${p.hosts.length} host(s), with their request counts, HTTP methods, schemes and upload amounts, to this app, which reads the tenant once (only what is in scope on the Scope page) and traces each host. Cookies, headers, URL paths and bodies stay in this browser, and nothing is written to the tenant.</p>
         <p><button type="button" class="rp-btn primary" id="paHarGo">Analyze ${p.hosts.length} host(s)</button></p>
       </section>`;
       document.getElementById('paHarGo').addEventListener('click', runHar);

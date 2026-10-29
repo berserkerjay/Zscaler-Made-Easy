@@ -48,16 +48,17 @@ def dataflow(request):
 
 @needs_node
 def test_data_flow_streams_are_the_summary_numbers(dataflow):
-    """CWE-684 · ASVS V1.4.4: bypassed, left encrypted, enforce and monitor streams equal report.summary exactly."""
+    """CWE-684 · ASVS V1.4.4: every visibility class (bypassed, blind, enforced, monitored, blocked, unverified, decrypted_other) streams report.summary's own number."""
     # Arrange
     rep, m = dataflow
     s = rep["summary"]
+    keys = ("traces", "bypassed", "blind", "enforced", "monitored", "blocked", "unverified", "decrypted_other")
     # Act
     c = m["counts"]
     # Assert
     assert m["mismatch"] == []
-    assert (c["traces"], c["bypassed"], c["blind"], c["enforced"], c["monitored"]) == (s["traces"], s["bypassed"], s["blind"], s["enforced"], s["monitored"])
-    assert m["total"] == s["traces"] and m["summary"] == {k: s[k] for k in ("traces", "bypassed", "blind", "enforced", "monitored")}
+    assert tuple(c[k] for k in keys) == tuple(s[k] for k in keys)
+    assert m["total"] == s["traces"] and m["summary"] == {k: s[k] for k in keys}
 
 
 @needs_node
@@ -126,7 +127,18 @@ ROUTES = [
     ("enforce with a receiver", _trace(outcome="enforce", hops=[("ssl", "pass"), ("dlp", "enforce"), ("incident", "conditional")]), ["src", "cc", "pac", "policy", "ssl", "dlp", "o_enforce", "incident"]),
     ("monitor, logs only", _trace(outcome="monitor", hops=[("ssl", "pass"), ("dlp", "monitor"), ("incident", "warn")]), ["src", "cc", "pac", "policy", "ssl", "dlp", "o_monitor"]),
     ("no DLP rule", _trace(outcome="none", hops=[("ssl", "pass"), ("dlp", "none")]), ["src", "cc", "pac", "policy", "ssl", "dlp", "o_other"]),
+    # The precedence the summary uses (data_flow.visibility): unverified before bypassed, blocked before decrypted.
+    ("conditional bypass", _trace(conditional=True, reaches_zscaler=False, decrypted=False, outcome="bypassed", hops=[("zcc", "bypass")]),
+     ["src", "cc", "u_cc"]),
+    ("policy depends on the user", _trace(policy_conditional=True, outcome="monitor", hops=[("ssl", "pass"), ("dlp", "monitor")]),
+     ["src", "cc", "pac", "policy", "ssl", "u_ssl"]),
+    ("blocked, never decrypted", _trace(outcome="blocked", decrypted=False, hops=[("url", "pass"), ("ssl", "blind")]),
+     ["src", "cc", "pac", "policy", "ssl", "b_ssl"]),
 ]
+# The visibility class each end node stands for (data_flow.VISIBILITY).
+END_CLASS = {"x_cc": "bypassed", "x_pac": "bypassed", "u_cc": "unverified", "u_pac": "unverified", "u_ssl": "unverified",
+             "b_policy": "blocked", "b_ssl": "blocked", "o_block": "blocked", "enc": "blind",
+             "o_enforce": "enforce", "o_monitor": "monitor", "o_other": "decrypted"}
 
 
 @needs_node
@@ -134,6 +146,34 @@ ROUTES = [
 def test_each_trace_takes_the_route_its_hops_describe(name, trace, route):
     """CWE-684: bypasses leave at the hop that bypasses (with a marker), blocks where they block, the rest split at SSL."""
     assert _run("return FA.dfRoute(D.t);", t=trace) == route
+
+
+@pytest.mark.parametrize("name,trace,route", ROUTES, ids=[r[0] for r in ROUTES])
+def test_each_route_ends_in_the_class_the_summary_counts_it_in(name, trace, route):
+    """CWE-684 · CWE-682: the end node of every route is the trace's own class in data_flow.visibility, so picture and summary agree."""
+    import data_flow
+    end = [k for k in route if k in END_CLASS][-1]
+    assert END_CLASS[end] == data_flow.visibility(trace), (name, end)
+
+
+@needs_node
+@pytest.mark.parametrize("key,trace", [("blocked", ROUTES[4][1]), ("unverified", ROUTES[2][1]), ("decrypted_other", ROUTES[11][1])])
+def test_a_summary_that_disagrees_on_any_class_is_said(key, trace):
+    """CWE-684 · CISA Secure by Design (fail visibly): a blocked, unverified or decrypted_other count the picture does not match is named."""
+    s = {"traces": 1, "bypassed": 0, "blind": 0, "enforced": 0, "monitored": 0, "blocked": 0, "unverified": 0, "decrypted_other": 0}
+    s[key] = 7
+    m = _run("return FA.dataFlowModel(D.rep);", rep={"summary": s, "networks": [], "traces": [trace]})
+    assert m["mismatch"] == [f"{key}: picture 1, summary 7"], m["mismatch"]
+
+
+def test_flow_anim_declares_no_unused_constant():
+    """ASVS V1.14.1 · CWE-1164 (Irrelevant Code): every top-level constant of the motion engine is used (SSL_UNVERIFIED was left behind)."""
+    import re
+    src = open(os.path.join(ROOT, "static", "flow_anim.js"), encoding="utf-8").read()
+    names = re.findall(r"^  const ([A-Z][A-Z0-9_]+)\s*=", src, re.M)
+    assert len(names) > 10
+    dead = [n for n in names if len(re.findall(r"\b%s\b" % n, src)) < 2]
+    assert not dead, dead
 
 
 @needs_node

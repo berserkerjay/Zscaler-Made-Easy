@@ -129,7 +129,7 @@
         e.preventDefault();
         const t = dlg.querySelector('#dlpPhraseInput').value.trim();
         if (!t) { dlg.querySelector('#dlpPhraseErr').textContent = `Type ${expected || 'the phrase'} first.`; return; }
-        if (expected && t !== expected) { dlg.querySelector('#dlpPhraseErr').textContent = `That is not ${expected}. Type it exactly, in capitals with the underscores.`; return; }
+        if (expected && t !== expected) { dlg.querySelector('#dlpPhraseErr').textContent = `That is not ${expected}. Type it exactly as shown above.`; return; }
         done(t);
       });
     });

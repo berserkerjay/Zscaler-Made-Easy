@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
 EXT = ROOT / "browser_extension"
 CATALOG = STATIC / "help_catalog.js"
-EFFECTS = {"local", "read", "write", "download", "nav"}
+EFFECTS = {"local", "read", "write", "download", "nav", "confirm"}
 EXT_PAGES = {"ext:popup": "popup.html", "ext:options": "options.html", "ext:panel": "panel.html"}
 
 # Every page the app serves to a person, with the file behind it.
@@ -914,3 +914,157 @@ def test_the_engine_is_exercised_by_these_tests(a11y):
     """NIST SSDF PW.8 · ISTQB coverage: the browser tests run at least 85% of hover_help.js's code and 90% of its functions (V8 block coverage)."""
     c = a11y["coverage"]
     assert c["bytes"] >= 0.85 and c["functions"] >= 0.90, c
+
+
+# ── Review fixes: the write line, the phrase field, Esc and focus in dialogs ──
+
+def _effect_lines() -> dict:
+    """EFFECTS from hover_help.js, as data (each line is one quoted string)."""
+    js = _read(STATIC / "hover_help.js")
+    block = re.search(r"const EFFECTS = \{(.*?)\};", js, re.S).group(1)
+    return dict(re.findall(r"(\w+):\s*'([^']*)'", block))
+
+
+def test_the_write_line_names_all_four_gates():
+    """ASVS V4.1.3 · CWE-841 · WCAG 2.2 SC 3.3.2: the line every write control gets names write mode, a writer, the named assessor and the confirmation."""
+    line = _effect_lines()["write"].lower()
+    for gate in ("write mode", "writer", "assessor", "confirm"):
+        assert gate in line, (gate, line)
+
+
+def test_no_write_entry_says_nothing_to_type_and_gets_a_typed_line():
+    """ASVS V4.1.3 · CWE-841 · WCAG 2.2 SC 3.3.2: the shared write line never promises a typed phrase that an entry (a yes in a dialog) says is not there."""
+    line = _effect_lines()["write"].lower()
+    clash = [(p, s) for p, s, e in _entries() if e["effect"] == "write" and "nothing to type" in e["input"].lower() and "typ" in line]
+    assert not clash, clash
+
+
+@pytest.mark.parametrize("page,sel", [("/report/self-heal", "#shHealSel"), ("/report/self-heal", 'button[data-act="heal"]'),
+                                      ("/report/self-heal", 'button[data-act="undo"]'), ("/report/queue", 'button[data-act="apply"]')])
+def test_the_heal_undo_and_queue_apply_help_names_the_writer_and_the_assessor(page, sel):
+    """ASVS V4.1.3 · CWE-841 · WCAG 2.2 SC 3.3.2: these writes also refuse without a writer and a named assessor, so their help says so."""
+    e = CAT["pages"][page][sel]
+    text = (e["what"] + " " + e["input"]).lower()
+    assert e["effect"] == "write" and "write mode" in text and "writer" in text and "assessor" in text, e
+
+
+@pytest.mark.parametrize("sel", ["#dlpPhraseInput", "#dlpPhraseGo"])
+def test_the_confirmation_phrase_help_says_type_it_as_shown(sel):
+    """WCAG 2.2 SC 3.3.2 · SC 3.3.4 · CWE-1021: the phrase help never asks for underscores (I UNDERSTAND has a space) and never calls the consent step tenant-free."""
+    e = CAT["pages"]["*"][sel]
+    line = _effect_lines().get(e["effect"], "")
+    text = " ".join((e["what"], e["input"], line))
+    assert "underscore" not in text.lower() and "does not touch your tenant" not in text.lower(), text
+    if sel == "#dlpPhraseInput":
+        assert "Type the phrase shown above exactly as shown" in e["input"], e
+
+
+def test_the_phrase_dialog_error_never_asks_for_underscores():
+    """WCAG 2.2 SC 3.3.1 · SC 3.3.3: a mistyped phrase is told to type it as shown, not 'with the underscores' (the queue and self-heal phrase has a space)."""
+    js = _read(STATIC / "ui_auth.js")
+    assert "underscore" not in js.lower()
+    assert "Type it exactly as shown above" in js
+
+
+DIALOG_JS = r"""
+const frames = n => ev(`new Promise(r => { let k = ${n}; const f = () => (--k <= 0 ? r(true) : requestAnimationFrame(f)); requestAnimationFrame(f); })`);
+const wait = ms => ev(`new Promise(r => setTimeout(() => r(true), ${ms}))`);
+const tipState = `(() => { const t = window.HoverHelp.tip(); return !!t && !t.hidden; })()`;
+const mouse = (x, y) => send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+const key = async k => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: 27 }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k, windowsVirtualKeyCode: 27 }); };
+const centre = sel => ev(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+const out = {};
+async function load() {
+  await send('Page.navigate', { url: base + '/report/path' });
+  await until(() => ev(`document.readyState === 'complete' && !!window.HoverHelp && !!window.dlpDialog && !!window.DLP_FIND`), 'the page', 30000);
+  await frames(2); await mouse(2, 890);
+}
+// The shared typed-confirmation dialog (ui_auth.js), opened as a write would open it.
+await load();
+await ev(`(window.__res = 'open', window.dlpDialog.phrase({ title: 'Apply this approved request?', body: 'It changes the tenant.', phrase: 'I UNDERSTAND', okLabel: 'Apply' }).then(v => { window.__res = v; }), 1)`);
+await until(() => ev(`(document.activeElement || {}).id === 'dlpPhraseInput'`), 'focus in the phrase field');
+await wait(600);
+out.phrase = { autoOpen: await ev(tipState) };
+let c = await centre('#dlpPhraseInput');
+await mouse(c.x, c.y);
+out.phrase.hoverOpens = !!(await until(() => ev(tipState), 'hover pop-up', 5000).catch(() => false));
+await key('Escape');
+await frames(2);
+out.phrase.tipClosed = !(await ev(tipState));
+out.phrase.dialogOpen = await ev(`!!document.querySelector('dialog.dlp-dlg[open]')`);
+out.phrase.result = await ev(`window.__res`);
+out.phrase.focus = await ev(`(document.activeElement || {}).id || ''`);
+await key('Escape');
+out.phrase.secondEscCancels = !!(await until(() => ev(`window.__res === null && !document.querySelector('dialog.dlp-dlg[open]')`), 'cancel', 5000).catch(() => false));
+// Find anything (find_anything.js): a combobox in an aria-modal dialog.
+await load();
+await ev(`window.DLP_FIND.open(), 1`);
+await until(() => ev(`(document.activeElement || {}).id === 'faInput'`), 'focus in Find anything');
+await wait(600);
+out.find = { autoOpen: await ev(tipState) };
+c = await centre('#faInput');
+await mouse(c.x, c.y);
+out.find.hoverOpens = !!(await until(() => ev(tipState), 'hover pop-up', 5000).catch(() => false));
+await key('Escape');
+await frames(2);
+out.find.tipClosed = !(await ev(tipState));
+out.find.dialogOpen = await ev(`window.DLP_FIND.isOpen()`);
+out.find.focus = await ev(`(document.activeElement || {}).id || ''`);
+await key('Escape');
+out.find.secondEscCancels = !!(await until(() => ev(`!window.DLP_FIND.isOpen()`), 'close', 5000).catch(() => false));
+// A button in a dialog still opens its help on keyboard focus (only text fields wait for hover).
+await load();
+await ev(`(window.dlpDialog.phrase({ title: 'Confirm', body: 'Body', phrase: 'I UNDERSTAND' }), 1)`);
+await until(() => ev(`(document.activeElement || {}).id === 'dlpPhraseInput'`), 'focus in the phrase field');
+c = await centre('#dlpPhraseInput');
+await mouse(c.x, c.y);
+const hovered = !!(await until(() => ev(tipState), 'hover pop-up', 5000).catch(() => false));
+await mouse(2, 890);
+out.leave = { hovered, closes: !!(await until(async () => !(await ev(tipState)), 'closed', 5000).catch(() => false)) };
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+out.buttonFocus = { el: await ev(`(document.activeElement || {}).id || ''`), opens: !!(await until(() => ev(tipState), 'focus pop-up', 5000).catch(() => false)) };
+fs.writeFileSync(path.join(dir, 'hh-out.json'), JSON.stringify(out));
+console.log(JSON.stringify({ file: path.join(dir, 'hh-out.json') }));
+ws.close(); p.kill(); process.exit(0);
+"""
+
+
+@pytest.fixture(scope="module")
+def dialogs(tmp_path_factory):
+    if not _chrome() or not shutil.which("node"):
+        pytest.skip("needs node and Chrome/Chromium")
+    return _run(tmp_path_factory.mktemp("hh-dialogs"), DIALOG_JS, timeout=300)
+
+
+@pytest.mark.parametrize("which", ["phrase", "find"])
+def test_focus_in_a_dialog_text_field_does_not_open_the_help_over_it(dialogs, which):
+    """WCAG 2.2 SC 1.4.13 · SC 2.4.11 (Focus Not Obscured): the phrase field and Find anything open with no pop-up over the dialog; hover still opens it."""
+    d = dialogs[which]
+    assert d["autoOpen"] is False and d["hoverOpens"] is True, d
+
+
+@pytest.mark.parametrize("which", ["phrase", "find"])
+def test_esc_closes_only_the_help_and_keeps_the_dialog(dialogs, which):
+    """WCAG 2.2 SC 1.4.13 (dismissible) · SC 2.1.2 · CWE-1021: with the pop-up shown, Esc closes the pop-up only: the dialog stays open, unanswered, with focus in its field."""
+    d = dialogs[which]
+    assert d["tipClosed"] and d["dialogOpen"], d
+    assert d["focus"] == ("dlpPhraseInput" if which == "phrase" else "faInput"), d
+    if which == "phrase":
+        assert d["result"] == "open", d
+
+
+@pytest.mark.parametrize("which", ["phrase", "find"])
+def test_esc_without_the_help_still_closes_the_dialog(dialogs, which):
+    """WCAG 2.2 SC 2.1.2 (No Keyboard Trap): boundary: once no pop-up is shown, Esc reaches the dialog and cancels it (the phrase dialog answers null)."""
+    assert dialogs[which]["secondEscCancels"], dialogs[which]
+
+
+def test_a_button_in_a_dialog_still_opens_its_help_on_focus(dialogs):
+    """WCAG 2.2 SC 1.4.13 · SC 2.1.1: only text fields in a dialog wait for hover; Tab to the dialog's button opens its help."""
+    assert dialogs["buttonFocus"] == {"el": "dlpPhraseCancel", "opens": True}, dialogs["buttonFocus"]
+
+
+def test_a_hover_opened_help_in_a_dialog_field_closes_when_hover_leaves(dialogs):
+    """WCAG 2.2 SC 1.4.13 · SC 2.4.11: in a dialog's text field the pop-up follows hover, so it does not stay over the buttons while the person types."""
+    assert dialogs["leave"] == {"hovered": True, "closes": True}, dialogs["leave"]

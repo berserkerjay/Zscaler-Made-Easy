@@ -21,8 +21,9 @@ weighted 40 / 40 / 20; a part with no input is left out and the weights of the
 others re-normalised (the output names the parts each score is based on). An
 area is the mean of its sub-areas; the overall score is the weighted mean of
 the areas. Any open critical finding caps the overall score at 39, any open
-high at 69, and the output says which findings caused it. There is no score
-without a recorded test run. The constants below are the whole formula;
+high at 69, and any failed or errored test in the recorded run at 79 (grade C
+at best, and the grade's words start with how many failed); the output says
+what caused the cap. There is no score without a recorded test run. The constants below are the whole formula;
 docs/QUALITY_SCORE.md prints them.
 
 Fail closed: a findings file or test run that breaks the schema stops the
@@ -64,6 +65,7 @@ CHECK_RESULTS = ("pass", "fixed", "open", "accepted")
 CVSS_BANDS = {"critical": "9.0-10.0", "high": "7.0-8.9", "medium": "4.0-6.9", "low": "0.1-3.9", "info": "0.0"}
 PENALTY = {"critical": 40, "high": 20, "medium": 8, "low": 2, "info": 0}
 CAPS = {"critical": 39, "high": 69}          # hard rule: an open finding of this severity caps the overall score
+FAILED_TESTS_CAP = 79                        # hard rule: any failed or errored test in the recorded run: grade C at best
 PART_WEIGHTS = {"tests": 0.4, "findings": 0.4, "coverage": 0.2}
 GRADES = (   # (lowest score, grade, label, plain-language meaning)
     (90, "A", "Strong", "Tests pass, no serious finding is open and the standards are well covered."),
@@ -85,19 +87,23 @@ AREAS: Tuple[Dict[str, Any], ...] = (
     {"key": "secure_by_design", "name": "Secure by design", "weight": 35, "subs": (
         {"key": "write_paths", "name": "Write paths", "slugs": ("sbd-writes", "c6-admin-ops", "c6-deploy", "c6-packs", "c6-migrate", "c6-update-heal"),
          "tests": ("test_write_safety_gates.py", "test_pack_deploy.py", "test_pack_removal.py", "test_remediation.py",
-                   "test_admin_ops.py", "test_proposal_apply.py", "test_channel_targets_undo.py", "test_team_queue.py"),
+                   "test_admin_ops.py", "test_proposal_apply.py", "test_channel_targets_undo.py", "test_team_queue.py",
+                   "test_sbd_writes.py", "test_c6_admin_ops.py", "test_c6_deploy.py", "test_c6_packs.py", "test_c6_migrate.py",
+                   "test_c6_update_heal.py"),
          "controls": ("ASVS V4.1.3", "ASVS V4.1.5", "ASVS V4.2.2", "ASVS V7.1.3", "ASVS V11.1.1",
                       "CWE-284", "CWE-352", "CWE-862", "CWE-863")},
         {"key": "untrusted_input", "name": "Untrusted input", "slugs": ("sbd-input", "c6-exports", "c6-reports", "c6-traffic-reports", "c6-misc"),
          "tests": ("test_api_contracts.py", "test_dos_limits.py", "test_xss_*.py", "test_files_paths.py", "test_outbound_ssrf.py",
                    "test_export_injection.py", "test_csv_injection.py", "test_har_import.py", "test_log_analyzer.py",
-                   "test_pack_library.py", "test_quality_score.py"),
+                   "test_pack_library.py", "test_quality_score.py", "test_sbd_untrusted_input.py", "test_sbd_canary_renderers.py",
+                   "test_c6_exports.py", "test_c6_reports.py", "test_c6_traffic_reports.py", "test_c6_misc.py"),
          "controls": ("ASVS V5.1.3", "ASVS V5.1.4", "ASVS V5.2.4", "ASVS V5.3.3", "ASVS V12.1.1", "ASVS V12.3.1",
                       "CWE-20", "CWE-22", "CWE-79", "CWE-400", "CWE-611", "CWE-918", "CWE-1333")},
         {"key": "auth_scope_secrets", "name": "Auth, scope and secrets", "slugs": ("sbd-auth", "c6-auth", "c6-api-server", "c6-scope-offline"),
          "tests": ("test_auth_session.py", "test_scope_rule_routes.py", "test_secret_canaries.py", "test_ui_auth.py", "test_sso.py",
                    "test_extension_security.py", "test_tools_read_only_in_scope.py", "test_no_implicit_reads.py",
-                   "test_report_scope_reads.py"),
+                   "test_report_scope_reads.py", "test_sbd_offline_least_privilege.py", "test_c6_auth.py", "test_c6_api_server.py",
+                   "test_c6_scope_offline.py"),
          "controls": ("ASVS V3.4.1", "ASVS V3.4.3", "ASVS V4.1.1", "ASVS V4.2.1", "ASVS V6.4.1", "ASVS V7.1.1", "ASVS V8.3.4",
                       "CWE-200", "CWE-306", "CWE-532", "CWE-639", "CWE-798")},
         {"key": "supply_chain", "name": "Supply chain", "slugs": ("sbd-supply", "supply-chain"),
@@ -110,16 +116,19 @@ AREAS: Tuple[Dict[str, Any], ...] = (
     {"key": "functionality", "name": "Functionality", "weight": 25, "subs": (
         {"key": "traffic_analysis", "name": "Traffic analysis", "slugs": ("func-path", "c6-path", "c6-zpa", "c6-posture", "c6-checks", "c6-assessment"),
          "tests": ("test_path_*.py", "test_pac_eval.py", "test_data_flow.py", "test_ssl_flow.py", "test_ssl_coverage.py",
-                   "test_insights.py", "test_bulk_test.py", "test_zpa_*.py", "test_shared_path.py", "test_bypass*.py"),
+                   "test_insights.py", "test_bulk_test.py", "test_zpa_*.py", "test_shared_path.py", "test_qa_func_path.py",
+                   "test_c6_path.py", "test_c6_zpa.py", "test_c6_posture.py", "test_c6_checks.py", "test_c6_assessment.py"),
          "controls": ("ASVS V11.1.1", "ASVS V11.1.4", "CWE-670", "CWE-682", "CWE-754")},
         {"key": "builders", "name": "Builders", "slugs": ("func-builders", "c6-zia-baseline-aiguard", "c6-zcc-zdx"),
          "tests": ("test_ops_*.py", "test_pack_*.py", "test_pov.py", "test_readiness.py", "test_offline_tenant.py",
-                   "test_vendor_migrate.py", "test_policy_exports.py"),
+                   "test_vendor_migrate.py", "test_policy_exports.py", "test_qa6_*.py", "test_c6_zia_baseline_aiguard.py",
+                   "test_c6_zcc_zdx.py"),
          "controls": ("ASVS V4.1.3", "ASVS V5.1.3", "ASVS V11.1.4", "CWE-20", "CWE-841", "CWE-1188")},
-        {"key": "ui_a11y", "name": "UI and accessibility", "slugs": ("ui", "c6-ui-core", "c6-ui-ops", "c6-tooltips"),
+        {"key": "ui_a11y", "name": "UI and accessibility", "slugs": ("ui", "c6-ui-core", "c6-ui-ops", "c6-tooltips", "review-ui"),
          "tests": ("test_accessibility.py", "test_*reflow*.py", "test_page_layout.py", "test_polish.py", "test_icons.py",
                    "test_explain.py", "test_safety_banner.py", "test_static_js_parses.py", "test_simple_mode.py",
-                   "test_navigation.py", "test_sidebar_*.py"),
+                   "test_navigation.py", "test_sidebar_*.py", "test_c6_ui_core.py", "test_c6_ui_ops.py", "test_c6_tooltips.py",
+                   "test_glass*.py"),
          "controls": ("WCAG SC 1.1.1", "WCAG SC 1.3.1", "WCAG SC 1.4.3", "WCAG SC 1.4.10", "WCAG SC 1.4.11", "WCAG SC 2.1.1",
                       "WCAG SC 2.4.7", "WCAG SC 2.5.8", "WCAG SC 3.3.2", "WCAG SC 4.1.2", "WCAG SC 4.1.3")},
     )},
@@ -128,6 +137,45 @@ AREAS: Tuple[Dict[str, Any], ...] = (
          "tests": ("test_flow_*.py", "test_*motion*.py"),
          "controls": ("WCAG SC 1.1.1", "WCAG SC 2.1.1", "WCAG SC 2.2.2", "WCAG SC 2.3.3", "WCAG SC 1.4.10", "CWE-79")},
     )},
+)
+
+# Test files no sub-area above counts: the Regression sub-area (the whole
+# suite) is their only part in the score. The Wave 6 regression journeys and
+# the cross-area follow-up (test_c6_open_low.py, which pins fixes in every
+# area) are here on purpose; the rest are the older suites that check the app
+# as a whole. tests/test_quality_score.py fails when a tests/test_*.py file is
+# neither in a sub-area's tests nor here, or when a glob here or above
+# matches no file.
+REGRESSION_ONLY: Tuple[str, ...] = (
+    "test_regression_*.py", "test_openapi_regression.py", "test_c6_open_low.py",
+    "test_api_paths.py", "test_app_update.py", "test_assess_stream.py", "test_assessor_attribution.py",
+    "test_assessor_attribution_r2.py", "test_assessor_not_tool.py", "test_assessor_required.py", "test_audit_timeline.py",
+    "test_banking_baseline.py", "test_baselines.py", "test_beacon.py", "test_beacon_scope.py", "test_benchmarks.py",
+    "test_best_practice_review.py", "test_bp_crawler.py", "test_browser_extension.py", "test_browser_security.py",
+    "test_channel_scope.py", "test_ci_smoke_contract.py", "test_classic_api_run_gate.py", "test_classic_fingerprint.py",
+    "test_classic_profile_isolation_r2.py", "test_clouds.py", "test_compliance_tab.py", "test_console_index.py",
+    "test_container_parity.py", "test_continuous_eval.py", "test_continuous_eval_scope_reads.py",
+    "test_continuous_eval_unread_and_classic.py", "test_control_channels.py", "test_corpus_engines.py",
+    "test_dashboard.py", "test_deploy_clarity.py", "test_detection_health.py", "test_device_posture.py",
+    "test_dsa_reference_player.py", "test_endpoint_baseline.py", "test_engine_explain.py", "test_engine_pruning.py",
+    "test_entrypoints.py", "test_export_filter_keeps_focus.py", "test_export_integrity.py", "test_exports_excel_pdf.py",
+    "test_find_anything.py", "test_findings.py", "test_gui_addons.py", "test_guidance.py", "test_hardening.py",
+    "test_help_center.py", "test_install_guide.py", "test_job_audit.py", "test_legacy_api.py",
+    "test_legacy_send_rate_stop.py", "test_monitoring_clarity.py", "test_native_install_contracts.py",
+    "test_native_tls_proxy.py", "test_native_zscaler.py", "test_offline_network_guard.py", "test_page_stop_is_final.py",
+    "test_pause_countdown.py", "test_pdf_writer.py", "test_permissions.py", "test_plain_english.py",
+    "test_posture_checks.py", "test_posture_plus.py", "test_product_name.py", "test_profile_integration.py",
+    "test_proposals.py", "test_rate_forecast.py", "test_reference.py", "test_reference_embeds.py",
+    "test_release_docs_export_and_assessor.py", "test_reports.py", "test_required_dlp_ci_triggers.py",
+    "test_required_dlp_controls.py", "test_required_dlp_review_regressions.py", "test_rules_labels_scope_stop.py",
+    "test_run_control.py", "test_saas_email_checks.py", "test_sample_tenant_browser.py",
+    "test_scope_integration_regression.py", "test_scope_prerequisites.py", "test_scoring.py", "test_secure_by_design.py",
+    "test_secure_defaults.py", "test_security_hardening_review.py", "test_security_test_matrix.py", "test_self_heal.py",
+    "test_shadow_rules.py", "test_standalone.py", "test_static_round2_fixes.py", "test_suite_stability.py",
+    "test_template_aliases.py", "test_tenant_pacing.py", "test_tenant_profiles.py", "test_tenant_read_stops.py",
+    "test_terraform_job.py", "test_upstream_check.py", "test_url_tools.py", "test_vertical.py", "test_workspace_notes.py",
+    "test_xlsx_writer.py", "test_zcc_device_state.py", "test_zcc_evaluation.py", "test_zcc_fleet.py",
+    "test_zcc_fleet_xlsx.py", "test_zcc_paths.py", "test_zia_contract.py",
 )
 
 # How docs/SECURITY_TESTING.md's standards name a control here.
@@ -502,11 +550,15 @@ def _sub_area_of(slug: str) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-def grade(score: Optional[int]) -> Dict[str, str]:
+def grade(score: Optional[int], failed: int = 0) -> Dict[str, str]:
+    """The grade of a score. `failed` (failed + errored tests of the run)
+    leads the words, so a run with failures never reads "Tests pass"."""
     if score is None:
         return {"grade": "", "label": "No score yet", "meaning": "No full test run is recorded yet (docs/qa/test_run.json)."}
     for lo, g, label, meaning in GRADES:
         if score >= lo:
+            if failed > 0:
+                meaning = f"{failed} test{'s' if failed != 1 else ''} failed in the recorded run. " + meaning.replace("Tests pass, no", "No")
             return {"grade": g, "label": label, "meaning": meaning}
     raise AssertionError("unreachable")
 
@@ -569,8 +621,15 @@ def compute(records: List[Dict[str, Any]], run: Optional[Dict[str, Any]], covera
             n = len(hit)
             why = (f"{n} {sev} finding{'s are' if n > 1 else ' is'} open ({', '.join(hit[:8])}{', …' if n > 8 else ''}); "
                    f"any open {sev} finding caps the overall score at {limit}.")
-            cap = {"severity": sev, "limit": limit, "findings": hit, "reason": why, "applied": False}
+            cap = {"kind": "findings", "severity": sev, "limit": limit, "findings": hit, "reason": why, "applied": False}
             break
+    failed = 0 if run is None else run["failed"] + run["errors"]
+    if cap is None and failed > 0:
+        # The finding caps (39, 69) are lower: when one holds it stays, and the
+        # grade's words still say how many tests failed.
+        cap = {"kind": "tests", "severity": "", "limit": FAILED_TESTS_CAP, "findings": [], "applied": False,
+               "reason": (f"{failed} test{'s' if failed != 1 else ''} failed or errored in the recorded run; any failed test "
+                          f"caps the overall score at {FAILED_TESTS_CAP} (grade C at best).")}
     score: Optional[int] = None
     if run is not None:
         score = int(math.floor(raw + 0.5))
@@ -583,6 +642,13 @@ def compute(records: List[Dict[str, Any]], run: Optional[Dict[str, Any]], covera
     no_record = [s["name"] for a in AREAS for s in a["subs"] if not any(_matches_slug(r["slug"], s["slugs"]) for r in records)]
     if no_record:
         warnings.append(f"No findings record yet for: {', '.join(no_record)}. Their scores leave the findings part out.")
+    # A sub-area with records can still miss one it names (a QA slice that
+    # never wrote its record): its fixes and open findings would go uncounted.
+    missing = [p for a in AREAS for s in a["subs"] if s["name"] not in no_record for p in s["slugs"]
+               if not p.endswith("*") and not any(r["slug"] == p for r in records)]
+    if missing:
+        warnings.append(f"Named findings record{'s' if len(missing) > 1 else ''} with no file in docs/qa/findings: "
+                        f"{', '.join(missing)}. Their findings are not counted.")
     unknown = sorted({f["slug"] for f in findings if f["area"] == "other"} | {r["slug"] for r in records if _sub_area_of(r["slug"])[0] is None})
     if unknown:
         warnings.append(f"Records with no area in the formula: {', '.join(unknown)}. Their open findings still count toward the cap.")
@@ -592,7 +658,7 @@ def compute(records: List[Dict[str, Any]], run: Optional[Dict[str, Any]], covera
     sev_rank = {s: i for i, s in enumerate(SEVERITIES)}
     st_rank = {"open": 0, "accepted": 1, "fixed": 2}
     findings.sort(key=lambda f: (st_rank[f["status"]], sev_rank[f["severity"]], _key(f["id"])))
-    g = grade(score)
+    g = grade(score, failed)
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_by": "tools/quality_score.py",
@@ -606,7 +672,7 @@ def compute(records: List[Dict[str, Any]], run: Optional[Dict[str, Any]], covera
                      "checks": len(r["checks"]), "findings": len(r["findings"]), "tests_added": r["tests_added"]} for r in records],
         "standards": standards_summary(coverage),
         "formula": {"part_weights": PART_WEIGHTS, "area_weights": {a["key"]: a["weight"] for a in AREAS},
-                    "penalty": PENALTY, "cvss_bands": CVSS_BANDS, "caps": CAPS,
+                    "penalty": PENALTY, "cvss_bands": CVSS_BANDS, "caps": CAPS, "failed_tests_cap": FAILED_TESTS_CAP,
                     "grades": [{"min": lo, "grade": gr, "label": la} for lo, gr, la, _ in GRADES]},
         "warnings": warnings,
     }
@@ -714,9 +780,10 @@ def render_md(r: Dict[str, Any]) -> str:
     out += ["", "| Score | Grade | Meaning |", "|---|---|---|"]
     for lo, g, label, meaning in GRADES:
         out.append(f"| {lo} or more | {g} ({label}) | {meaning} |")
-    out += ["", "Hard rule: any open critical finding caps the overall score at 39 and any open high finding at 69, whatever the "
-            "other parts say; the score line names the findings that caused it. There is no overall score without a recorded "
-            "full test run.", ""]
+    out += ["", f"Hard rule: any open critical finding caps the overall score at {CAPS['critical']} and any open high finding at "
+            f"{CAPS['high']}, and any failed or errored test in the recorded run caps it at {FAILED_TESTS_CAP} (grade C at best), "
+            "whatever the other parts say; the score line names what caused it. There is no overall score without a recorded "
+            "full test run (`docs/qa/test_run.json`, written by `python tools/quality_score.py --from-junit`).", ""]
     return "\n".join(out)
 
 
