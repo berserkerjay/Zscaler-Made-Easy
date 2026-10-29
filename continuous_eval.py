@@ -865,11 +865,22 @@ def notification_settings() -> Dict[str, Any]:
     host = urlparse(webhook).hostname if webhook else None
     return {"mode": (env.get("DLP_CHECK_NOTIFY") or "noteworthy").strip().lower(),
             "email": {"configured": bool(env.get("DLP_CHECK_SMTP_HOST") and env.get("DLP_CHECK_DIGEST_TO")), "host": env.get("DLP_CHECK_SMTP_HOST") or None,
-                      "port": int(env.get("DLP_CHECK_SMTP_PORT") or 587), "to": env.get("DLP_CHECK_DIGEST_TO") or None, "from": env.get("DLP_CHECK_DIGEST_FROM") or env.get("DLP_CHECK_SMTP_USER") or None,
+                      "port": _smtp_port(env.get("DLP_CHECK_SMTP_PORT")), "to": env.get("DLP_CHECK_DIGEST_TO") or None, "from": env.get("DLP_CHECK_DIGEST_FROM") or env.get("DLP_CHECK_SMTP_USER") or None,
                       "tls": env.get("DLP_CHECK_SMTP_TLS", "1") not in ("0", "false", "no")},
             "webhook": {"configured": bool(webhook and webhook.startswith("https://")), "host": host,
                         "kind": "teams" if host and ("webhook.office.com" in host or "logic.azure.com" in host or "powerautomate" in host) else ("slack" if host and "hooks.slack.com" in host else ("generic" if host else None))},
             "interval_hours": interval_hours(warn=False)}   # logged once, when the server decides the timer
+
+
+def _smtp_port(raw: Any) -> int:
+    """DLP_CHECK_SMTP_PORT as a TCP port; unset, not a number or out of
+    range is 587 (submission), so a typo never ends a run that has
+    already read the tenants before its digest is written."""
+    try:
+        port = int(str(raw or "").strip() or 587)
+    except ValueError:
+        return 587
+    return port if 1 <= port <= 65535 else 587
 
 
 def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:

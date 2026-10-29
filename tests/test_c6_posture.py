@@ -576,3 +576,242 @@ def test_the_csv_export_neutralises_formulas_from_the_tenant():
     rows = at.parse_csv("Time,Admin,Action,Resource\n2026-10-20 10:00:00,=HYPERLINK(\"x\"),Update,+cmd\n")["rows"]
     text = at.to_csv(at.zia_events(rows, [], []))
     assert "\n=HYPERLINK" not in text and ",=HYPERLINK" not in text and ",+cmd" not in text
+
+
+# ══ 6. Error paths and the rest of each module's branches ════════════
+@pytest.mark.parametrize("raw, port", [("", 587), (None, 587), ("2525", 2525), ("smtp", 587), ("0", 587), ("70000", 587), (" 465 ", 465)])
+def test_a_bad_smtp_port_never_ends_the_run(raw, port, monkeypatch):
+    """ASVS V5.1.4 · CWE-20 · CWE-755 · WSTG-ERRH-01: DLP_CHECK_SMTP_PORT that is not a port falls back to 587 instead of raising."""
+    if raw is None:
+        monkeypatch.delenv("DLP_CHECK_SMTP_PORT", raising=False)
+    else:
+        monkeypatch.setenv("DLP_CHECK_SMTP_PORT", raw)
+    assert ce.notification_settings()["email"]["port"] == port
+
+
+def test_a_run_with_a_bad_smtp_port_still_writes_its_digest(monkeypatch, no_network):
+    """ASVS V7.4.1 · CWE-755 · WSTG-ERRH-01: the loop finishes and records its digest when the mail port is a typo."""
+    monkeypatch.setenv("DLP_CHECK_SMTP_PORT", "smtp")
+    monkeypatch.setenv("DLP_CHECK_NOTIFY", "always")
+    d = ce.run_once(build_client=None, notify=True)
+    assert ce.get_digest(d["id"]) is not None and d["notified"][0]["channel"] == "none" and no_network == []
+
+
+class _Resp:
+    def __init__(self, status, text=""):
+        self.status_code, self.text = status, text
+
+
+@pytest.mark.parametrize("status, text, sent, why", [
+    (200, "ok", True, None), (302, "", False, "redirect"), (500, "boom at /webhookb2/SECRETPATH123", False, "[redacted]"),
+])
+def test_a_webhook_answer_is_recorded_without_its_url_secret(status, text, sent, why, monkeypatch):
+    """ASVS V8.3.4 · CWE-532 · CWE-918 · WSTG-INPV-19: a redirect is not followed and a failure never records the webhook's path."""
+    posted = []
+    monkeypatch.setattr("requests.post", lambda url, json=None, timeout=0, allow_redirects=True: posted.append(allow_redirects) or _Resp(status, text))
+    r = ce._send_webhook("s", "b", "https://example.webhook.office.com/webhookb2/SECRETPATH123")
+    assert r["sent"] is sent and posted == [False] and "SECRETPATH123" not in json.dumps(r)
+    if why:
+        assert why in r["why"]
+
+
+def test_a_webhook_that_raises_is_recorded_without_its_url(monkeypatch):
+    """ASVS V7.4.1 · CWE-209 · CWE-532 · WSTG-ERRH-01: the connection error names no part of the webhook URL."""
+    def boom(url, **k):
+        raise OSError(f"Max retries exceeded with url: {url}")
+    monkeypatch.setattr("requests.post", boom)
+    r = ce._send_webhook("s", "b", "https://hooks.slack.com/services/T000/B000/XXXXSECRET")
+    assert r["sent"] is False and "XXXXSECRET" not in r["why"] and "T000" not in r["why"]
+    assert ce._send_webhook("s", "b", "http://hooks.slack.com/x")["why"].startswith("the webhook must be")
+
+
+def test_the_mode_never_sends_even_a_noteworthy_digest(monkeypatch):
+    """ASVS V14.2.1 · CWE-1188 · WSTG-CONF-02: DLP_CHECK_NOTIFY=never sends nothing whatever the digest holds."""
+    monkeypatch.setenv("DLP_CHECK_NOTIFY", "never")
+    monkeypatch.setenv("DLP_CHECK_DIGEST_WEBHOOK", "https://example.webhook.office.com/webhookb2/abc")
+    monkeypatch.setattr(ce, "_send_webhook", lambda *a: (_ for _ in ()).throw(AssertionError("sent")))
+    out = ce.send_notifications({"noteworthy": True, "tenants": [], "summary": {}})
+    assert out[0]["sent"] is False and "never" in out[0]["why"]
+
+
+def test_the_command_line_runs_once_and_says_what_it_did(monkeypatch, capsys):
+    """ASVS V7.1.1 · CWE-755 · WSTG-ERRH-01: --once --no-notify runs without sending and exits 0; a run already in progress exits 2."""
+    calls = []
+    monkeypatch.setattr(ce, "run_once", lambda **k: calls.append(k) or {"id": "x", "noteworthy": False, "path": "p", "notified": [], "errors": [], "tenants": []})
+    assert ce.main(["--once", "--no-notify"]) == 0 and calls[0]["notify"] is False
+    assert "digest x: quiet" in capsys.readouterr().out
+
+    def busy(**k):
+        raise ce.LoopRunInProgress("busy")
+    monkeypatch.setattr(ce, "run_once", busy)
+    assert ce.main([]) == 2
+
+
+def test_a_second_run_while_one_holds_the_lock_reads_nothing():
+    """ASVS V11.1.6 · CWE-367 · CWE-362 · WSTG-BUSL-07: the loop lock refuses a concurrent run before anything is read."""
+    with ce.run_lock():
+        with pytest.raises(ce.LoopRunInProgress):
+            ce.run_once(build_client=_no_tenant, notify=False)
+
+
+def test_digest_ids_are_validated_before_they_name_a_file():
+    """ASVS V12.3.1 · CWE-22 · WSTG-ATHZ-01: a digest id that is not a timestamp never reaches the file system."""
+    for bad in ("../../etc/passwd", "20260101-000000.json", "", "2026010-000000", None):
+        assert ce.get_digest(bad) is None
+
+
+class _AuditClient:
+    """ZIA's audit log report: one POST to create it, GETs for status and the CSV."""
+
+    def __init__(self, create=200, states=("COMPLETE",), status_code=200, download=(200, "Time,Admin,Action\n2026-10-20 10:00:00,a,Update\n")):
+        self.create, self.states, self.status_code, self.download = create, list(states), status_code, download
+        self.sent = []
+
+    def post(self, ep, body):
+        self.sent.append(("POST", ep, body))
+        return ({"message": "busy"} if self.create != 200 else {}), self.create
+
+    def get(self, ep):
+        self.sent.append(("GET", ep))
+        if ep == at.DOWNLOAD_EP:
+            return self.download[1], self.download[0]
+        st = self.states.pop(0) if len(self.states) > 1 else self.states[0]
+        return {"status": st, "progressItemsComplete": 3}, self.status_code
+
+
+class _NoWait:
+    def __init__(self, stop_after=None):
+        self.n, self.stop_after = 0, stop_after
+
+    def is_set(self):
+        return self.stop_after is not None and self.n >= self.stop_after
+
+    def wait(self, s):
+        self.n += 1
+        return self.is_set()
+
+
+def test_the_audit_report_is_created_polled_and_downloaded_with_one_post():
+    """ASVS V1.14.1 · CWE-841 · WSTG-BUSL-01: one POST that creates the report, status GETs, one download; nothing else is sent."""
+    c = _AuditClient(states=("EXECUTING", "COMPLETE"))
+    out = at.read_zia_audit(c, 1, 2, cancel=_NoWait())
+    assert out["status"] == "read" and len(out["csv"]["rows"]) == 1
+    assert [x[0] for x in c.sent] == ["POST", "GET", "GET", "GET"] and c.sent[0][2] == {"startTime": 1, "endTime": 2}
+
+
+@pytest.mark.parametrize("client, words", [
+    (_AuditClient(create=403), "View Activity Log"), (_AuditClient(create=409), "already preparing"),
+    (_AuditClient(status_code=500), "did not answer the report's status"), (_AuditClient(states=("FAILED",)), "ended the audit log report as FAILED"),
+    (_AuditClient(download=(404, "gone")), "did not hand over"),
+])
+def test_every_audit_report_failure_is_said_in_words(client, words):
+    """ASVS V7.4.1 · CWE-755 · WSTG-ERRH-01: a refused, failed or missing report is a plain sentence, never an exception."""
+    out = at.read_zia_audit(client, 1, 2, cancel=_NoWait())
+    assert out["status"] == "failed" and words in out["error"]
+
+
+def test_a_report_that_never_finishes_times_out_and_stop_ends_the_wait():
+    """ASVS V11.1.7 · CWE-400 · WSTG-BUSL-07: a report stuck in progress ends at the timeout, and Stop raises before more is asked."""
+    out = at.read_zia_audit(_AuditClient(states=("EXECUTING",)), 1, 2, cancel=_NoWait(), timeout=-1)
+    assert out["status"] == "failed" and "had not finished" in out["error"]
+    c = _AuditClient(states=("EXECUTING",))
+    with pytest.raises(at.Stopped):
+        at.read_zia_audit(c, 1, 2, cancel=_NoWait(stop_after=2))
+    assert [x[0] for x in c.sent].count("POST") == 1
+
+
+def test_secret_values_in_audit_rows_are_redacted_in_json_and_text():
+    """ASVS V8.3.4 · CWE-532 · CWE-200 · WSTG-INFO-05: a password in a pre or post value, or a secret-named column, never reaches the timeline."""
+    v = at.parse_value('{"name": "x", "nested": {"apiKey": "AKIA-SECRET"}, "list": [{"password": "hunter2"}]}')
+    assert "AKIA-SECRET" not in json.dumps(v) and "hunter2" not in json.dumps(v)
+    assert "hunter2" not in at.parse_value('{"password": "hunter2", broken')
+    row = at.parse_csv("Time,Action,Admin,Client Secret\n2026-10-20 10:00:00,Update,a,s3cr3t\n")["rows"][0]
+    assert row["raw"]["Client Secret"] == "[redacted]"
+
+
+def test_huge_and_deep_audit_values_are_capped():
+    """ASVS V5.1.4 · CWE-400 · CWE-674 · WSTG-INPV-01: a deep or huge value is cut, never recursed without bound."""
+    deep = {}
+    cur = deep
+    for _ in range(50):
+        cur["a"] = {}
+        cur = cur["a"]
+    assert "…" in json.dumps(at.redact(deep), ensure_ascii=False)
+    assert len(at.flatten(deep)) <= 1
+    assert len(at.parse_value("x" * (at.MAX_VALUE + 10))) == at.MAX_VALUE + 1
+    assert at.parse_time("1" * 200) is None
+
+
+def test_redaction_of_quoted_pairs_runs_in_linear_time():
+    """ASVS V5.1.5 · CWE-1333 · WSTG-INPV-01: a long cell of quotes and keyword fragments is redacted quickly (no catastrophic backtracking)."""
+    import time as _t
+    text = ('"secret' * 20000) + '": "v"'
+    t0 = _t.perf_counter()
+    at.redact_text(text)
+    assert _t.perf_counter() - t0 < 1.0
+
+
+def test_browser_reads_say_what_could_not_be_read():
+    """ASVS V7.4.1 · CWE-755 · WSTG-ERRH-01: a failed ZIA list is 'not read' with a reason; a partial Cloud App Control read is incomplete."""
+    from test_browser_security import FakeTenant
+    fail = {"zia.cloud_browser_isolation.list_isolation_profiles": "HTTP 500 boom", "zia.secure_browsing.get_browser_control_settings": "HTTP 500",
+            "zia.secure_browsing.get_supported_browser_versions": "HTTP 500", "zia.url_filtering.list_rules": "HTTP 500",
+            "zia.cloudappcontrol.list_rules": None}
+    t = FakeTenant(fail={k: v for k, v in fail.items() if v})
+    snap = bs.read_zia(t, lambda m: None, None, read_cac=True)
+    secs = snap["sections"]
+    assert not secs["zia_profiles"]["read"] and not secs["browser_control"]["read"] and not secs["url_filtering"]["read"]
+    assert snap["profiles"] is None and snap["browser_control"] is None and snap["supported"] is None
+
+
+def test_no_zia_or_zpa_api_reads_nothing_and_says_so():
+    """ASVS V1.14.1 · CWE-754 · WSTG-ERRH-01: a sign-in without the ZIA or ZPA API marks every section unread with the reason."""
+    class Bare:
+        zia = None
+        zpa = None
+    z = bs.read_zia(Bare(), lambda m: None, None, read_cac=True)
+    p = bs.read_zpa(Bare(), lambda m: None, None)
+    assert all(not s["read"] and "no ZIA API" in s["error"] for s in z["sections"].values())
+    assert all(not s["read"] and "no ZPA API" in s["error"] for s in p["sections"].values())
+
+
+@pytest.mark.parametrize("scopes, zia, zpa, cac", [
+    (["zia_extras", "zpa"], True, True, False), (["zpa"], False, True, False), ([], False, False, False), ("zia_extras", False, False, False),
+])
+def test_browser_scope_reads_only_what_is_ticked(scopes, zia, zpa, cac):
+    """ASVS V4.1.3 · CWE-284 · WSTG-ATHZ-02: only the ticked products are read; without a channel declaration no Cloud App Control rule is."""
+    s = bs.scope_for(scopes, None)
+    assert (s["zia"], s["zpa"], s["cac"], s["read"]) == (zia, zpa, cac, zia or zpa)
+
+
+def test_shadow_scope_and_the_web_dlp_mode_read():
+    """ASVS V4.1.3 · CWE-284 · WSTG-ATHZ-02: Cloud Firewall is read only with ZIA platform, and an unreadable DLP mode is 'unknown'."""
+    assert "firewall" in sr.scope_for(["zia_extras"], {})["read"] and "firewall" not in sr.scope_for(["dlp"], {})["read"]
+
+    class C:
+        def __init__(self, ans):
+            self.ans = ans
+
+        def get(self, ep):
+            if isinstance(self.ans, Exception):
+                raise self.ans
+            return self.ans
+    assert sr.read_web_dlp_mode(C(({"enableEvaluateAllDlpRules": True}, 200)))[0] == sr.MODE_EVAL_ALL
+    assert sr.read_web_dlp_mode(C(({"enable_evaluate_all_dlp_rules": "false"}, 200)))[0] == sr.MODE_RULE_ORDER
+    assert sr.read_web_dlp_mode(C(({}, 200)))[0] == sr.MODE_UNKNOWN
+    assert sr.read_web_dlp_mode(C(({}, 403)))[0] == sr.MODE_UNKNOWN
+    assert sr.read_web_dlp_mode(C(RuntimeError("x")))[0] == sr.MODE_UNKNOWN
+
+
+def test_the_shadow_csv_neutralises_tenant_formulas():
+    """ASVS V5.3.7 · CWE-1236 · WSTG-INPV-01: a rule named =cmd is written as text in the CSV export."""
+    rules = [_r(1, 1, urlCategories=["A"]), dict(_r(2, 2, urlCategories=["A"]), name="=cmd|' /C calc'!A0")]
+    text = sr.to_csv(sr.analyse({"url_filtering": rules}))
+    assert ",=cmd" not in text and "'=cmd" in text
+
+
+def test_odd_rule_shapes_are_read_defensively():
+    """ASVS V5.1.4 · CWE-20 · WSTG-INPV-01: non-dict rules, None lists, unknown policies and odd orders never raise."""
+    res = sr.analyse({"url_filtering": [None, "x", _r(1, "not a number", urlCategories=None), _r(2, None, users=[{"name": "u"}, {}])],
+                      "no_such_policy": [_r(3, 1)], "firewall": None})
+    assert set(res["counts_by_policy"]) == {"url_filtering"} and res["counts_by_policy"]["url_filtering"]["rules"] == 2
