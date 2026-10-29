@@ -334,7 +334,7 @@ def read_subscriptions(zia: Any) -> Tuple[Optional[bool], List[str], Optional[st
         d = s if isinstance(s, dict) else _plain(s)
         if d.get("subscribed") is False or re.search(r"EXPIRED|CANCEL", str(d.get("status") or ""), re.I):
             continue
-        ids.append(str(d.get("id") or d.get("sku") or ""))
+        ids.append(" ".join(str(d[k]) for k in ("id", "sku") if d.get(k)))   # a numeric id with the SKU beside it is still recognised
     return any(GENAI_SKU.search(i) for i in ids), ids, None
 
 
@@ -487,8 +487,11 @@ def readiness(client: Any, *, zia: bool = True, aiguard: bool = True, log: LogFn
                   f"{len(certs)} proxy-chaining root certificate(s): {', '.join(c['name'] for c in certs[:3])}." if certs
                   else "No proxy-chaining root certificate: ZIA cannot trust AI Guard's inspection yet.",
                   "" if certs else "Download the Proxy Chain certificate from the AI Guard portal and upload it in the AI Guard routing builder.")
+        # A list that could not be read is a warning, never a pass: readiness
+        # does not say ready on what it could not see (fail closed).
         if perr:
-            check("zia.proxy", "AI Guard proxy in ZIA", "info", f"The proxies could not be read: {perr}")
+            check("zia.proxy", "AI Guard proxy in ZIA", "warn", f"The proxies could not be read, so it is not known whether one points at "
+                  f"AI Guard: {perr}", "Check that the API client's role can read Proxies and Gateways, then check again.")
         else:
             check("zia.proxy", "AI Guard proxy in ZIA", "pass" if aig else "warn",
                   ("Found: " + ", ".join(f"{p['name']} ({p['address']}:{p['port']})" for p in zs["proxies"])) if aig
@@ -496,7 +499,8 @@ def readiness(client: Any, *, zia: bool = True, aiguard: bool = True, log: LogFn
                   "" if aig else "The AI Guard routing builder creates it (it needs the root certificate).")
         with_gw = [p for p in zs["proxies"] if p["gateway"]]
         if gerr:
-            check("zia.gateway", "AI Guard proxy gateway in ZIA", "info", f"The proxy gateways could not be read: {gerr}")
+            check("zia.gateway", "AI Guard proxy gateway in ZIA", "warn", f"The proxy gateways could not be read: {gerr}",
+                  "Check that the API client's role can read Proxies and Gateways, then check again.")
         elif with_gw:
             g = next(x for x in zs["gateways"] if x["name"] == with_gw[0]["gateway"])
             ok = g["fail_closed"] is not False
@@ -507,7 +511,10 @@ def readiness(client: Any, *, zia: bool = True, aiguard: bool = True, log: LogFn
             check("zia.gateway", "AI Guard proxy gateway in ZIA", "fail",
                   "No proxy gateway uses an AI Guard proxy. The API cannot create proxy gateways: this is a ZIA portal step.",
                   " ".join(GATEWAY_STEPS))
-        if not ferr:
+        if ferr:
+            check("zia.forwarding", "Forwarding rule to AI Guard", "warn", f"The forwarding rules could not be read: {ferr}",
+                  "Check that the API client's role can read Forwarding Control, then check again.")
+        else:
             check("zia.forwarding", "Forwarding rule to AI Guard", "pass" if zs["forwarding_rules"] else "warn",
                   f"{len(zs['forwarding_rules'])} proxy-chaining rule(s) send traffic to AI Guard." if zs["forwarding_rules"]
                   else "No forwarding rule sends GenAI apps to AI Guard, so AI Guard sees no traffic.",
@@ -520,6 +527,7 @@ def readiness(client: Any, *, zia: bool = True, aiguard: bool = True, log: LogFn
         check("zia.proxy", "AI Guard proxy in ZIA", "not_read", "This client has no ZIA service.")
     else:
         check("zia.proxy", "AI Guard proxy in ZIA", "not_read", "Not in scope: ZIA platform is not ticked on the Scope page, so ZIA was not read.")
-    ready = all(c["status"] in ("pass", "info") for c in checks if c["id"] in ("aiguard.api", "zia.root_ca", "zia.proxy", "zia.gateway", "zia.forwarding"))
+    required = ("aiguard.api", "zia.root_ca", "zia.proxy", "zia.gateway", "zia.forwarding")
+    ready = {c["id"] for c in checks} >= set(required) and all(c["status"] in ("pass", "info") for c in checks if c["id"] in required)
     return {"ready": ready, "checks": checks, "aiguard": ag, "zia": zs, "gateway_steps": list(GATEWAY_STEPS), "portal_steps": list(PORTAL_STEPS),
             "builder": BUILDER_PAGE, "verified": list(VERIFIED), "assumed": list(ASSUMED)}

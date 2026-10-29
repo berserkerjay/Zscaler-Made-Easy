@@ -521,11 +521,11 @@ def test_an_ai_guard_plan_that_turns_enforcement_on_needs_the_typed_phrase(aig, 
     assert refused["status"] == "refused" and not [w for w in f.t.writes if w[1] in ("add", "update", "delete")]
 
 
-def test_a_monitor_only_ai_guard_policy_keeps_the_count_rule(aig):
-    """ASVS V11.1.1 · CWE-1188: positive control: the detection policy in its default monitor mode (detect only) is not asked for a phrase below the count."""
+def test_a_monitor_only_ai_guard_policy_still_asks_for_its_phrase(aig):
+    """ASVS V11.1.1 · CWE-1188 · CWE-841: the detection policy in its default monitor mode (detect only) is still live once saved, so it asks for its typed phrase whatever the count."""
     f = aig.Fake()
     p = aig.preview(f, aig.POLICY)
-    assert p["spec"].get("mode", "monitor") == "monitor" and p["confirm_phrase"] == ""
+    assert p["spec"].get("mode", "monitor") == "monitor" and p["confirm_phrase"].startswith("APPLY ")
 
 
 # ---------------------------------------------------------------------------
@@ -707,7 +707,7 @@ def _aiguard_policy_default():
     import test_ops_aiguard as t_aig
     spec = {k: v for k, v in t_aig.POLICY.items() if k != "mode"}
     p = t_aig.preview(t_aig.Fake(), spec)
-    return p["status"] == "ready" and "Monitor" in p["title"] and p["confirm_phrase"] == ""
+    return p["status"] == "ready" and "Monitor" in p["title"]
 
 
 # How each type that creates or changes enforcement keeps it off unless the
