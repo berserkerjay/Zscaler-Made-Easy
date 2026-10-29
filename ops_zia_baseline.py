@@ -945,15 +945,26 @@ def read_area(zia, area: str, *, types: Sequence[str] = (), cancel=None) -> Tupl
 
 
 def get_one(zia, area: str, rid: Any, rule_type: str = "") -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    pol = AREAS[area]["policy"]
-    if pol:
-        row, err = ao.get_rule(zia, pol, rid, rule_type)
-        return (_deep_snake(row) if row else None), err
+    """One rule, read fresh, with every field the tenant sent: a field the
+    SDK model leaves out (SDK 1.11.3's sandbox model has no cbiProfile) is
+    taken from the raw answer, as the list reads do (pack_export._rows), so
+    the update body written back from it keeps it and read-back sees it."""
     try:
-        row, err = ao._one(_svc(zia, area).get_rule(rid))
-        return (_deep_snake(row) if row else None), err
+        svc = _svc(zia, area)
+        ret = svc.get_rule(rule_type, rid) if area == "cac" else svc.get_rule(rid)
+        row, err = ao._one(ret)
     except Exception as e:  # noqa: BLE001
         return None, f"{type(e).__name__}: {str(e)[:200]}"
+    if not row:
+        return None, err
+    import pack_export
+    row = _deep_snake(row)
+    for k, v in _deep_snake(pack_export._plain(_raw_body(ret) or {})).items():
+        if row.get(k) in (None, "", [], {}) and v not in (None, "", [], {}):
+            row[k] = v
+    if area == "cac":
+        row["rule_type"] = str(row.get("type") or rule_type)
+    return row, err
 
 
 def _raw_body(ret: Any) -> Optional[Dict[str, Any]]:

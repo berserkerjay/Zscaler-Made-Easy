@@ -1475,3 +1475,41 @@ def test_the_atp_write_skips_a_switch_changed_since_the_preview():
     res = zb_apply(t, {"tier": "strict", "areas": ["atp"]}, prepared=p)
     item = next(u for u in res["items"] if u["field"] == "crypto_mining_blocked")
     assert item["status"] == "conflict" and ("atp_policy", "update_atp_settings", None) not in t.writes
+
+
+def _model_drops(svc, field):
+    """get_rule as SDK 1.11.3 answers for a model without `field` (the sandbox model has no cbiProfile): the
+    parsed row lacks it, the raw body (response.get_body) still has it."""
+    real = svc.get_rule
+
+    def get(*a):
+        row, _r, err = real(*a)
+        if row is None:
+            return row, _r, err
+        raw = {at._camel(k): v for k, v in row.items()}
+        return {k: v for k, v in row.items() if k != field}, at.Resp(raw), err
+    svc.get_rule = get
+
+
+def test_a_sandbox_update_keeps_the_isolation_profile_the_sdk_model_drops():
+    """ASVS V1.4.1 · CWE-665 · CWE-1188: a Sandbox rule re-read for an update keeps its Cloud Browser Isolation profile from the raw answer, so the PUT written back does not strip it."""
+    # Arrange
+    t = zt.Tenant()
+    zb_apply(t, {"tier": "strict", "areas": ["sandbox"]})
+    _model_drops(t.zia.sandbox_rules, "cbi_profile")
+    p = zb_plan(t, {"tier": "balanced", "areas": ["sandbox"]})          # the description names the tier: an update
+    # Act
+    res = zb_apply(t, {"tier": "balanced", "areas": ["sandbox"]}, prepared=p)
+    # Assert
+    rule = next(r for r in rows_of(t, "sandbox") if r["name"] == "BL-SB-Office-PDF")
+    assert res["status"] == "applied" and "Balanced" in rule["description"]
+    assert (rule.get("cbi_profile") or rule.get("cbiProfile") or {}).get("id") == "p1"
+    assert not res["verification"]["mismatched"]
+
+
+def test_read_back_of_a_created_sandbox_rule_sees_the_profile_the_model_drops():
+    """ASVS V1.4.1 · V7.1.3 · CWE-754: the read-back of a new Quarantine-and-isolate rule is not a false mismatch when the SDK model leaves its profile out."""
+    t = zt.Tenant()
+    _model_drops(t.zia.sandbox_rules, "cbi_profile")
+    res = zb_apply(t, {"tier": "strict", "areas": ["sandbox"]})
+    assert res["verification"]["mismatched"] == [] and res["verification"]["confirmed"] == res["verification"]["checked"] == 3
