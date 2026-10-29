@@ -66,11 +66,16 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 100.0,
-            "open": 0,
-            "fixed": 13,
-            "accepted": 0,
+            "score": 98.0,
+            "open": 1,
+            "fixed": 126,
+            "accepted": 8,
             "records": [
+              "c6-admin-ops",
+              "c6-deploy",
+              "c6-migrate",
+              "c6-packs",
+              "c6-update-heal",
               "sbd-writes"
             ]
           },
@@ -97,11 +102,15 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 100.0,
-            "open": 0,
-            "fixed": 11,
-            "accepted": 0,
+            "score": 74.0,
+            "open": 4,
+            "fixed": 99,
+            "accepted": 3,
             "records": [
+              "c6-exports",
+              "c6-misc",
+              "c6-reports",
+              "c6-traffic-reports",
               "sbd-input"
             ]
           },
@@ -132,11 +141,14 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 100.0,
-            "open": 0,
-            "fixed": 8,
-            "accepted": 0,
+            "score": 90.0,
+            "open": 2,
+            "fixed": 70,
+            "accepted": 6,
             "records": [
+              "c6-api-server",
+              "c6-auth",
+              "c6-scope-offline",
               "sbd-auth"
             ]
           },
@@ -201,11 +213,16 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 100.0,
-            "open": 0,
-            "fixed": 22,
-            "accepted": 0,
+            "score": 54.0,
+            "open": 5,
+            "fixed": 114,
+            "accepted": 3,
             "records": [
+              "c6-assessment",
+              "c6-checks",
+              "c6-path",
+              "c6-posture",
+              "c6-zpa",
               "func-path"
             ]
           },
@@ -228,11 +245,13 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 100.0,
-            "open": 1,
-            "fixed": 11,
+            "score": 90.0,
+            "open": 3,
+            "fixed": 46,
             "accepted": 0,
             "records": [
+              "c6-zcc-zdx",
+              "c6-zia-baseline-aiguard",
               "func-builders"
             ]
           },
@@ -258,9 +277,11 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 18,
-            "accepted": 1,
+            "fixed": 46,
+            "accepted": 2,
             "records": [
+              "c6-tooltips",
+              "c6-ui-ops",
               "ui"
             ]
           },
@@ -373,8 +394,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-17",
@@ -389,8 +410,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-04",
@@ -405,8 +426,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-MISC-10",
@@ -421,8 +442,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-SCOPE-OFFLINE-15",
@@ -437,8 +458,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-25",
@@ -453,8 +474,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-26",
@@ -469,8 +490,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-04",
@@ -485,8 +506,8 @@
       "commit": "e120140",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZPA-05",
@@ -501,8 +522,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ADMIN-OPS-19",
@@ -517,8 +538,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-API-SERVER-13",
@@ -533,8 +554,8 @@
       "commit": "",
       "reason": "Proposed test: tests/test_run_control.py — a token whose job actor is alice, stopped as mallory, is a 403 and the job keeps running",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-REPORTS-16",
@@ -549,8 +570,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-20",
@@ -565,8 +586,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZPA-17",
@@ -581,8 +602,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "FUNC-BUILDERS-12",
@@ -613,8 +634,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-21",
@@ -629,8 +650,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-API-SERVER-15",
@@ -645,8 +666,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-16",
@@ -661,8 +682,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-17",
@@ -677,8 +698,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-CHECKS-22",
@@ -693,8 +714,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-DEPLOY-18",
@@ -709,8 +730,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-23",
@@ -725,8 +746,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-24",
@@ -741,8 +762,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-SCOPE-OFFLINE-18",
@@ -757,8 +778,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-19",
@@ -773,8 +794,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-20",
@@ -789,8 +810,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-TOOLTIPS-07",
@@ -805,8 +826,8 @@
       "commit": "d6c4018",
       "reason": "",
       "slug": "c6-tooltips",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-28",
@@ -821,8 +842,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-29",
@@ -837,8 +858,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-30",
@@ -853,8 +874,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-UPDATE-HEAL-19",
@@ -869,8 +890,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-20",
@@ -885,8 +906,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-21",
@@ -901,8 +922,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ZPA-18",
@@ -917,8 +938,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-19",
@@ -933,8 +954,8 @@
       "commit": "",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "UI-18",
@@ -965,8 +986,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-01",
@@ -981,8 +1002,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-DEPLOY-01",
@@ -997,8 +1018,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-01",
@@ -1013,8 +1034,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PATH-24",
@@ -1029,8 +1050,8 @@
       "commit": "0ab2229",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-25",
@@ -1045,8 +1066,8 @@
       "commit": "af9a6d7",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-01",
@@ -1061,8 +1082,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "FUNC-BUILDERS-03",
@@ -1157,8 +1178,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-02",
@@ -1173,8 +1194,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-03",
@@ -1189,8 +1210,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-07",
@@ -1205,8 +1226,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-API-SERVER-03",
@@ -1221,8 +1242,8 @@
       "commit": "cb3d1b3",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-ASSESSMENT-02",
@@ -1237,8 +1258,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-03",
@@ -1253,8 +1274,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-04",
@@ -1269,8 +1290,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-05",
@@ -1285,8 +1306,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-06",
@@ -1301,8 +1322,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-AUTH-01",
@@ -1317,8 +1338,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-02",
@@ -1333,8 +1354,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-04",
@@ -1349,8 +1370,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-06",
@@ -1365,8 +1386,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-07",
@@ -1381,8 +1402,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-09",
@@ -1397,8 +1418,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-13",
@@ -1413,8 +1434,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-16",
@@ -1429,8 +1450,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-18",
@@ -1445,8 +1466,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-27",
@@ -1461,8 +1482,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-CHECKS-03",
@@ -1477,8 +1498,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-05",
@@ -1493,8 +1514,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-06",
@@ -1509,8 +1530,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-07",
@@ -1525,8 +1546,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-09",
@@ -1541,8 +1562,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-11",
@@ -1557,8 +1578,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-14",
@@ -1573,8 +1594,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-DEPLOY-02",
@@ -1589,8 +1610,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-03",
@@ -1605,8 +1626,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-05",
@@ -1621,8 +1642,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-06",
@@ -1637,8 +1658,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-07",
@@ -1653,8 +1674,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-08",
@@ -1669,8 +1690,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-10",
@@ -1685,8 +1706,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-12",
@@ -1701,8 +1722,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-13",
@@ -1717,8 +1738,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-EXPORTS-01",
@@ -1733,8 +1754,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MIGRATE-02",
@@ -1749,8 +1770,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-03",
@@ -1765,8 +1786,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-04",
@@ -1781,8 +1802,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-05",
@@ -1797,8 +1818,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-06",
@@ -1813,8 +1834,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-07",
@@ -1829,8 +1850,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-08",
@@ -1845,8 +1866,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-09",
@@ -1861,8 +1882,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-10",
@@ -1877,8 +1898,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MISC-01",
@@ -1893,8 +1914,8 @@
       "commit": "0358111",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-02",
@@ -1909,8 +1930,8 @@
       "commit": "0358111",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-04",
@@ -1925,8 +1946,8 @@
       "commit": "abfbbd2",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-09",
@@ -1941,8 +1962,8 @@
       "commit": "ad0364c",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-15",
@@ -1957,8 +1978,8 @@
       "commit": "6d71a8d",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-24",
@@ -1973,8 +1994,8 @@
       "commit": "faff05e",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-PACKS-01",
@@ -1989,8 +2010,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-03",
@@ -2005,8 +2026,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-08",
@@ -2021,8 +2042,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-10",
@@ -2037,8 +2058,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-13",
@@ -2053,8 +2074,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-17",
@@ -2069,8 +2090,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-18",
@@ -2085,8 +2106,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-20",
@@ -2101,8 +2122,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PATH-01",
@@ -2117,8 +2138,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-02",
@@ -2133,8 +2154,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-07",
@@ -2149,8 +2170,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-08",
@@ -2165,8 +2186,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-09",
@@ -2181,8 +2202,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-10",
@@ -2197,8 +2218,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-13",
@@ -2213,8 +2234,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-14",
@@ -2229,8 +2250,8 @@
       "commit": "adb74b1",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-16",
@@ -2245,8 +2266,8 @@
       "commit": "06b7d27",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-18",
@@ -2261,8 +2282,8 @@
       "commit": "392497a",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-20",
@@ -2277,8 +2298,8 @@
       "commit": "0132b2e",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-21",
@@ -2293,8 +2314,8 @@
       "commit": "0aa4b33",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-22",
@@ -2309,8 +2330,8 @@
       "commit": "6916f3b",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-23",
@@ -2325,8 +2346,8 @@
       "commit": "e351849",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-01",
@@ -2341,8 +2362,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-02",
@@ -2357,8 +2378,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-04",
@@ -2373,8 +2394,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-07",
@@ -2389,8 +2410,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-08",
@@ -2405,8 +2426,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-11",
@@ -2421,8 +2442,8 @@
       "commit": "b4521c3",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-13",
@@ -2437,8 +2458,8 @@
       "commit": "fce7b58",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-REPORTS-06",
@@ -2453,8 +2474,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-08",
@@ -2469,8 +2490,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-10",
@@ -2485,8 +2506,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-12",
@@ -2501,8 +2522,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-SCOPE-OFFLINE-01",
@@ -2517,8 +2538,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-02",
@@ -2533,8 +2554,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-03",
@@ -2549,8 +2570,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-01",
@@ -2565,8 +2586,8 @@
       "commit": "83d4c6f",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-03",
@@ -2581,8 +2602,8 @@
       "commit": "7089135",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-05",
@@ -2597,8 +2618,8 @@
       "commit": "7089135",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-06",
@@ -2613,8 +2634,8 @@
       "commit": "7089135",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-07",
@@ -2629,8 +2650,8 @@
       "commit": "7089135",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-09",
@@ -2645,8 +2666,8 @@
       "commit": "82c072d",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-11",
@@ -2661,8 +2682,8 @@
       "commit": "82c072d, 402ada5",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-24",
@@ -2677,8 +2698,8 @@
       "commit": "bad67ff",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-UI-OPS-03",
@@ -2693,8 +2714,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UPDATE-HEAL-01",
@@ -2709,8 +2730,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-04",
@@ -2725,8 +2746,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-05",
@@ -2741,8 +2762,8 @@
       "commit": "0d13448",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-08",
@@ -2757,8 +2778,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-09",
@@ -2773,8 +2794,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-12",
@@ -2789,8 +2810,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-13",
@@ -2805,8 +2826,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ZCC-ZDX-01",
@@ -2821,8 +2842,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-01",
@@ -2837,8 +2858,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-02",
@@ -2853,8 +2874,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-03",
@@ -2869,8 +2890,8 @@
       "commit": "e120140",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZPA-02",
@@ -2885,8 +2906,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-03",
@@ -2901,8 +2922,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-04",
@@ -2917,8 +2938,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-06",
@@ -2933,8 +2954,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-07",
@@ -2949,8 +2970,8 @@
       "commit": "227b108",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "FUNC-BUILDERS-01",
@@ -3477,8 +3498,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-05",
@@ -3493,8 +3514,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-06",
@@ -3509,8 +3530,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-08",
@@ -3525,8 +3546,8 @@
       "commit": "97ff5e2, 1cdb72c",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-09",
@@ -3541,8 +3562,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-10",
@@ -3557,8 +3578,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-11",
@@ -3573,8 +3594,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-12",
@@ -3589,8 +3610,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-13",
@@ -3605,8 +3626,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-14",
@@ -3621,8 +3642,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-15",
@@ -3637,8 +3658,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-16",
@@ -3653,8 +3674,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-17",
@@ -3669,8 +3690,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-18",
@@ -3685,8 +3706,8 @@
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-API-SERVER-01",
@@ -3701,8 +3722,8 @@
       "commit": "cb3d1b3",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-02",
@@ -3717,8 +3738,8 @@
       "commit": "cb3d1b3",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-04",
@@ -3733,8 +3754,8 @@
       "commit": "cb3d1b3",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-05",
@@ -3749,8 +3770,8 @@
       "commit": "cb3d1b3",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-06",
@@ -3765,8 +3786,8 @@
       "commit": "1d0fb2d",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-07",
@@ -3781,8 +3802,8 @@
       "commit": "4e22979",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-08",
@@ -3797,8 +3818,8 @@
       "commit": "75cfc85",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-09",
@@ -3813,8 +3834,8 @@
       "commit": "75cfc85",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-10",
@@ -3829,8 +3850,8 @@
       "commit": "75cfc85",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-11",
@@ -3845,8 +3866,8 @@
       "commit": "8f2dca7",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-API-SERVER-12",
@@ -3861,8 +3882,8 @@
       "commit": "fea4d7d, 37a8f7c",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-ASSESSMENT-07",
@@ -3877,8 +3898,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-08",
@@ -3893,8 +3914,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-09",
@@ -3909,8 +3930,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-10",
@@ -3925,8 +3946,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-11",
@@ -3941,8 +3962,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-12",
@@ -3957,8 +3978,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-13",
@@ -3973,8 +3994,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-14",
@@ -3989,8 +4010,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-15",
@@ -4005,8 +4026,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-AUTH-03",
@@ -4021,8 +4042,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-05",
@@ -4037,8 +4058,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-08",
@@ -4053,8 +4074,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-10",
@@ -4069,8 +4090,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-11",
@@ -4085,8 +4106,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-12",
@@ -4101,8 +4122,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-14",
@@ -4117,8 +4138,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-15",
@@ -4133,8 +4154,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-17",
@@ -4149,8 +4170,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-19",
@@ -4165,8 +4186,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-20",
@@ -4181,8 +4202,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-21",
@@ -4197,8 +4218,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-22",
@@ -4213,8 +4234,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-23",
@@ -4229,8 +4250,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-25",
@@ -4245,8 +4266,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-26",
@@ -4261,8 +4282,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-28",
@@ -4277,8 +4298,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-29",
@@ -4293,8 +4314,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-30",
@@ -4309,8 +4330,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-31",
@@ -4325,8 +4346,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-32",
@@ -4341,8 +4362,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-CHECKS-08",
@@ -4357,8 +4378,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-10",
@@ -4373,8 +4394,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-12",
@@ -4389,8 +4410,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-13",
@@ -4405,8 +4426,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-15",
@@ -4421,8 +4442,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-16",
@@ -4437,8 +4458,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-17",
@@ -4453,8 +4474,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-18",
@@ -4469,8 +4490,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-19",
@@ -4485,8 +4506,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-20",
@@ -4501,8 +4522,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-CHECKS-23",
@@ -4517,8 +4538,8 @@
       "commit": "bde03b1, 37a8f7c",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-DEPLOY-04",
@@ -4533,8 +4554,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-09",
@@ -4549,8 +4570,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-11",
@@ -4565,8 +4586,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-14",
@@ -4581,8 +4602,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-15",
@@ -4597,8 +4618,8 @@
       "commit": "172f6c6",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-16",
@@ -4613,8 +4634,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-EXPORTS-02",
@@ -4629,8 +4650,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-03",
@@ -4645,8 +4666,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-04",
@@ -4661,8 +4682,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-05",
@@ -4677,8 +4698,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-06",
@@ -4693,8 +4714,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-07",
@@ -4709,8 +4730,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-08",
@@ -4725,8 +4746,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-09",
@@ -4741,8 +4762,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-10",
@@ -4757,8 +4778,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-11",
@@ -4773,8 +4794,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-12",
@@ -4789,8 +4810,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MIGRATE-11",
@@ -4805,8 +4826,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-12",
@@ -4821,8 +4842,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-13",
@@ -4837,8 +4858,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-14",
@@ -4853,8 +4874,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-15",
@@ -4869,8 +4890,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-16",
@@ -4885,8 +4906,8 @@
       "commit": "ee001d0",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-17",
@@ -4901,8 +4922,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-18",
@@ -4917,8 +4938,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-19",
@@ -4933,8 +4954,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-20",
@@ -4949,8 +4970,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-21",
@@ -4965,8 +4986,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-22",
@@ -4981,8 +5002,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-23",
@@ -4997,8 +5018,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-24",
@@ -5013,8 +5034,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-25",
@@ -5029,8 +5050,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-26",
@@ -5045,8 +5066,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-27",
@@ -5061,8 +5082,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-28",
@@ -5077,8 +5098,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-31",
@@ -5093,8 +5114,8 @@
       "commit": "8f2dca7",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-32",
@@ -5109,8 +5130,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-33",
@@ -5125,8 +5146,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MISC-03",
@@ -5141,8 +5162,8 @@
       "commit": "0358111",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-05",
@@ -5157,8 +5178,8 @@
       "commit": "76cbc2e",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-06",
@@ -5173,8 +5194,8 @@
       "commit": "76cbc2e",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-07",
@@ -5189,8 +5210,8 @@
       "commit": "76cbc2e",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-08",
@@ -5205,8 +5226,8 @@
       "commit": "76cbc2e",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-11",
@@ -5221,8 +5242,8 @@
       "commit": "4438074",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-12",
@@ -5237,8 +5258,8 @@
       "commit": "4438074",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-13",
@@ -5253,8 +5274,8 @@
       "commit": "26da5b9",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-14",
@@ -5269,8 +5290,8 @@
       "commit": "26da5b9",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-16",
@@ -5285,8 +5306,8 @@
       "commit": "6d71a8d",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-17",
@@ -5301,8 +5322,8 @@
       "commit": "6d71a8d",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-18",
@@ -5317,8 +5338,8 @@
       "commit": "44532ba",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-19",
@@ -5333,8 +5354,8 @@
       "commit": "c5f2042",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-20",
@@ -5349,8 +5370,8 @@
       "commit": "93c1825",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-21",
@@ -5365,8 +5386,8 @@
       "commit": "93c1825",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-22",
@@ -5381,8 +5402,8 @@
       "commit": "93851bc",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-23",
@@ -5397,8 +5418,8 @@
       "commit": "93851bc",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-25",
@@ -5413,8 +5434,8 @@
       "commit": "42e764d",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-26",
@@ -5429,8 +5450,8 @@
       "commit": "934bd25",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-27",
@@ -5445,8 +5466,8 @@
       "commit": "934bd25",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-29",
@@ -5461,8 +5482,8 @@
       "commit": "cd422c1",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-30",
@@ -5477,8 +5498,8 @@
       "commit": "33b17db",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MISC-31",
@@ -5493,8 +5514,8 @@
       "commit": "f3bf00b",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-PACKS-02",
@@ -5509,8 +5530,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-04",
@@ -5525,8 +5546,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-05",
@@ -5541,8 +5562,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-06",
@@ -5557,8 +5578,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-07",
@@ -5573,8 +5594,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-09",
@@ -5589,8 +5610,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-11",
@@ -5605,8 +5626,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-12",
@@ -5621,8 +5642,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-14",
@@ -5637,8 +5658,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-15",
@@ -5653,8 +5674,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-16",
@@ -5669,8 +5690,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-19",
@@ -5685,8 +5706,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-21",
@@ -5701,8 +5722,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-22",
@@ -5717,8 +5738,8 @@
       "commit": "c7c71ab",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-25",
@@ -5733,8 +5754,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PACKS-26",
@@ -5749,8 +5770,8 @@
       "commit": "bde03b1, 37a8f7c",
       "reason": "",
       "slug": "c6-packs",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-PATH-03",
@@ -5765,8 +5786,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-04",
@@ -5781,8 +5802,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-05",
@@ -5797,8 +5818,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-06",
@@ -5813,8 +5834,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-11",
@@ -5829,8 +5850,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-12",
@@ -5845,8 +5866,8 @@
       "commit": "accd0a2",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-15",
@@ -5861,8 +5882,8 @@
       "commit": "099aa89",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-17",
@@ -5877,8 +5898,8 @@
       "commit": "758ea02",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-PATH-26",
@@ -5893,8 +5914,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-03",
@@ -5909,8 +5930,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-05",
@@ -5925,8 +5946,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-06",
@@ -5941,8 +5962,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-09",
@@ -5957,8 +5978,8 @@
       "commit": "266c6b6",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-10",
@@ -5973,8 +5994,8 @@
       "commit": "9534b72",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-12",
@@ -5989,8 +6010,8 @@
       "commit": "e1dd387",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-14",
@@ -6005,8 +6026,8 @@
       "commit": "8b471c7",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-POSTURE-15",
@@ -6021,8 +6042,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-posture",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-REPORTS-01",
@@ -6037,8 +6058,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-02",
@@ -6053,8 +6074,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-03",
@@ -6069,8 +6090,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-04",
@@ -6085,8 +6106,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-05",
@@ -6101,8 +6122,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-07",
@@ -6117,8 +6138,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-11",
@@ -6133,8 +6154,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-13",
@@ -6149,8 +6170,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-14",
@@ -6165,8 +6186,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-15",
@@ -6181,8 +6202,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-REPORTS-17",
@@ -6197,8 +6218,8 @@
       "commit": "bde03b1, 37a8f7c",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-SCOPE-OFFLINE-04",
@@ -6213,8 +6234,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-05",
@@ -6229,8 +6250,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-06",
@@ -6245,8 +6266,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-07",
@@ -6261,8 +6282,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-08",
@@ -6277,8 +6298,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-09",
@@ -6293,8 +6314,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-10",
@@ -6309,8 +6330,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-11",
@@ -6325,8 +6346,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-12",
@@ -6341,8 +6362,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-16",
@@ -6357,8 +6378,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-17",
@@ -6373,8 +6394,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-TOOLTIPS-01",
@@ -6389,8 +6410,8 @@
       "commit": "d6c4018",
       "reason": "",
       "slug": "c6-tooltips",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-TOOLTIPS-02",
@@ -6405,8 +6426,8 @@
       "commit": "d6c4018",
       "reason": "",
       "slug": "c6-tooltips",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-TOOLTIPS-04",
@@ -6421,8 +6442,8 @@
       "commit": "40f879c",
       "reason": "",
       "slug": "c6-tooltips",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-TOOLTIPS-05",
@@ -6437,8 +6458,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-tooltips",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-TOOLTIPS-06",
@@ -6453,8 +6474,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-tooltips",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-02",
@@ -6469,8 +6490,8 @@
       "commit": "83d4c6f",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-04",
@@ -6485,8 +6506,8 @@
       "commit": "7089135",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-08",
@@ -6501,8 +6522,8 @@
       "commit": "7089135",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-10",
@@ -6517,8 +6538,8 @@
       "commit": "82c072d",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-12",
@@ -6533,8 +6554,8 @@
       "commit": "cf475b0",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-13",
@@ -6549,8 +6570,8 @@
       "commit": "596cc69",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-15",
@@ -6565,8 +6586,8 @@
       "commit": "596cc69",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-16",
@@ -6581,8 +6602,8 @@
       "commit": "596cc69",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-18",
@@ -6597,8 +6618,8 @@
       "commit": "98090c0",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-19",
@@ -6613,8 +6634,8 @@
       "commit": "98090c0",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-20",
@@ -6629,8 +6650,8 @@
       "commit": "98090c0",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-21",
@@ -6645,8 +6666,8 @@
       "commit": "77c5595",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-22",
@@ -6661,8 +6682,8 @@
       "commit": "58cee80",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-23",
@@ -6677,8 +6698,8 @@
       "commit": "1c17785",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-27",
@@ -6693,8 +6714,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-31",
@@ -6709,8 +6730,8 @@
       "commit": "85860d8",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-UI-OPS-01",
@@ -6725,8 +6746,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-02",
@@ -6741,8 +6762,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-04",
@@ -6757,8 +6778,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-05",
@@ -6773,8 +6794,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-06",
@@ -6789,8 +6810,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-07",
@@ -6805,8 +6826,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-08",
@@ -6821,8 +6842,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-09",
@@ -6837,8 +6858,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-11",
@@ -6853,8 +6874,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-12",
@@ -6869,8 +6890,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-13",
@@ -6885,8 +6906,8 @@
       "commit": "4fdfb63",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-14",
@@ -6901,8 +6922,8 @@
       "commit": "4fdfb63",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-16",
@@ -6917,8 +6938,8 @@
       "commit": "0e7274a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UPDATE-HEAL-02",
@@ -6933,8 +6954,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-03",
@@ -6949,8 +6970,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-06",
@@ -6965,8 +6986,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-07",
@@ -6981,8 +7002,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-10",
@@ -6997,8 +7018,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-11",
@@ -7013,8 +7034,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-14",
@@ -7029,8 +7050,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-15",
@@ -7045,8 +7066,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-16",
@@ -7061,8 +7082,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-18",
@@ -7077,8 +7098,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ZCC-ZDX-02",
@@ -7093,8 +7114,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-03",
@@ -7109,8 +7130,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-04",
@@ -7125,8 +7146,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-05",
@@ -7141,8 +7162,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-06",
@@ -7157,8 +7178,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-07",
@@ -7173,8 +7194,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-08",
@@ -7189,8 +7210,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-09",
@@ -7205,8 +7226,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-10",
@@ -7221,8 +7242,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-05",
@@ -7237,8 +7258,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-06",
@@ -7253,8 +7274,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-07",
@@ -7269,8 +7290,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-08",
@@ -7285,8 +7306,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-09",
@@ -7301,8 +7322,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-10",
@@ -7317,8 +7338,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-11",
@@ -7333,8 +7354,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-12",
@@ -7349,8 +7370,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-14",
@@ -7365,8 +7386,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-15",
@@ -7381,8 +7402,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-16",
@@ -7397,8 +7418,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-17",
@@ -7413,8 +7434,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-18",
@@ -7429,8 +7450,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-21",
@@ -7445,8 +7466,8 @@
       "commit": "55250e1",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-22",
@@ -7461,8 +7482,8 @@
       "commit": "55250e1",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-23",
@@ -7477,8 +7498,8 @@
       "commit": "dcda228",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-24",
@@ -7493,8 +7514,8 @@
       "commit": "ddd28e6",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZPA-08",
@@ -7509,8 +7530,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-09",
@@ -7525,8 +7546,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-10",
@@ -7541,8 +7562,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-11",
@@ -7557,8 +7578,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-12",
@@ -7573,8 +7594,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-13",
@@ -7589,8 +7610,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-14",
@@ -7605,8 +7626,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ZPA-15",
@@ -7621,8 +7642,8 @@
       "commit": "227b108",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "FUNC-BUILDERS-04",
@@ -8373,8 +8394,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-admin-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-API-SERVER-14",
@@ -8389,8 +8410,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-api-server",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-ASSESSMENT-16",
@@ -8405,8 +8426,8 @@
       "commit": "2a14105",
       "reason": "",
       "slug": "c6-assessment",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-AUTH-24",
@@ -8421,8 +8442,8 @@
       "commit": "580e3de",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-AUTH-33",
@@ -8437,8 +8458,8 @@
       "commit": "9e0d276",
       "reason": "",
       "slug": "c6-auth",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-CHECKS-21",
@@ -8453,8 +8474,8 @@
       "commit": "a4c1ae7",
       "reason": "",
       "slug": "c6-checks",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-DEPLOY-17",
@@ -8469,8 +8490,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-DEPLOY-19",
@@ -8485,8 +8506,8 @@
       "commit": "9e0d276",
       "reason": "",
       "slug": "c6-deploy",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-EXPORTS-13",
@@ -8501,8 +8522,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-14",
@@ -8517,8 +8538,8 @@
       "commit": "c134050",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-EXPORTS-15",
@@ -8533,8 +8554,8 @@
       "commit": "bde03b1, 37a8f7c",
       "reason": "",
       "slug": "c6-exports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-MIGRATE-29",
@@ -8549,8 +8570,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MIGRATE-30",
@@ -8565,8 +8586,8 @@
       "commit": "016cf21",
       "reason": "",
       "slug": "c6-migrate",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-MISC-28",
@@ -8581,8 +8602,8 @@
       "commit": "f2a34b2",
       "reason": "",
       "slug": "c6-misc",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-PATH-19",
@@ -8597,8 +8618,8 @@
       "commit": "392497a",
       "reason": "",
       "slug": "c6-path",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-REPORTS-09",
@@ -8613,8 +8634,8 @@
       "commit": "9da0da8",
       "reason": "",
       "slug": "c6-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-SCOPE-OFFLINE-13",
@@ -8629,8 +8650,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-SCOPE-OFFLINE-14",
@@ -8645,8 +8666,8 @@
       "commit": "9634455",
       "reason": "",
       "slug": "c6-scope-offline",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-TOOLTIPS-03",
@@ -8661,8 +8682,8 @@
       "commit": "d6c4018",
       "reason": "",
       "slug": "c6-tooltips",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-TOOLTIPS-08",
@@ -8677,8 +8698,8 @@
       "commit": "9e0d276",
       "reason": "",
       "slug": "c6-tooltips",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-14",
@@ -8693,8 +8714,8 @@
       "commit": "596cc69",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-17",
@@ -8709,8 +8730,8 @@
       "commit": "596cc69",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-TRAFFIC-REPORTS-32",
@@ -8725,8 +8746,8 @@
       "commit": "9e0d276",
       "reason": "",
       "slug": "c6-traffic-reports",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
     },
     {
       "id": "C6-UI-OPS-10",
@@ -8741,8 +8762,8 @@
       "commit": "de7653a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-15",
@@ -8757,8 +8778,8 @@
       "commit": "4fdfb63",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-17",
@@ -8773,8 +8794,8 @@
       "commit": "0e7274a",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-18",
@@ -8789,8 +8810,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-19",
@@ -8805,8 +8826,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-20",
@@ -8821,8 +8842,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UI-OPS-21",
@@ -8837,8 +8858,8 @@
       "commit": "9e0d276",
       "reason": "",
       "slug": "c6-ui-ops",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "C6-UPDATE-HEAL-17",
@@ -8853,8 +8874,8 @@
       "commit": "15e5653",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-UPDATE-HEAL-22",
@@ -8869,8 +8890,8 @@
       "commit": "9e0d276",
       "reason": "",
       "slug": "c6-update-heal",
-      "area": "other",
-      "sub_area": "other"
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ZCC-ZDX-11",
@@ -8885,8 +8906,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZCC-ZDX-12",
@@ -8901,8 +8922,8 @@
       "commit": "6cfbb28",
       "reason": "",
       "slug": "c6-zcc-zdx",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-13",
@@ -8917,8 +8938,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-19",
@@ -8933,8 +8954,8 @@
       "commit": "1d3b0ba",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZIA-BASELINE-AIGUARD-25",
@@ -8949,8 +8970,8 @@
       "commit": "37a8f7c",
       "reason": "",
       "slug": "c6-zia-baseline-aiguard",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ZPA-16",
@@ -8965,8 +8986,8 @@
       "commit": "1e16a03",
       "reason": "",
       "slug": "c6-zpa",
-      "area": "other",
-      "sub_area": "other"
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "REGRESSION-04",
@@ -10175,7 +10196,6 @@
   },
   "warnings": [
     "No full test run is recorded (docs/qa/test_run.json), so there is no overall score yet.",
-    "No findings record yet for: Supply chain. Their scores leave the findings part out.",
-    "Records with no area in the formula: c6-admin-ops, c6-api-server, c6-assessment, c6-auth, c6-checks, c6-deploy, c6-exports, c6-migrate, c6-misc, c6-packs, c6-path, c6-posture, c6-reports, c6-scope-offline, c6-tooltips, c6-traffic-reports, c6-ui-ops, c6-update-heal, c6-zcc-zdx, c6-zia-baseline-aiguard, c6-zpa. Their open findings still count toward the cap."
+    "No findings record yet for: Supply chain. Their scores leave the findings part out."
   ]
 }

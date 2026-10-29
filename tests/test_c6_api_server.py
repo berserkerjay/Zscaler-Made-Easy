@@ -20,7 +20,6 @@ import socket
 import symtable
 import threading
 import time
-import types
 import builtins
 
 import pytest
@@ -567,9 +566,7 @@ def test_an_unhandled_error_500_carries_the_security_headers(client, monkeypatch
 def test_a_rate_limited_429_carries_the_security_headers(monkeypatch):
     """ASVS V14.4.3 · ASVS V11.1.4 · A05:2021 · CWE-693 · WSTG-CONF-12: the rate limiter's 429 (outside the UI token layer) has the security headers; the clock is fixed so the 61st call is the first refused."""
     # Arrange
-    fixed = types.SimpleNamespace(**{k: getattr(time, k) for k in dir(time) if not k.startswith("_")})
-    fixed.time = lambda: 1_000_000.0
-    monkeypatch.setattr(security, "time", fixed)
+    monkeypatch.setattr(security, "_monotonic", lambda: 1_000_000.0)   # the limiter's own clock
     c = TestClient(srv.app, client=("10.66.0.61", 50000), raise_server_exceptions=False)
     # Act
     codes = [c.get("/api/c6-no-such-route").status_code for _ in range(61)]

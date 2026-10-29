@@ -706,7 +706,8 @@ def test_a_rule_is_found_by_name_when_its_id_is_unknown():
     """ASVS V5.1.3 · A04:2021 · CWE-20 · WSTG-INPV-01: lookup by id first, then by exact name."""
     rule, err = pa.read_rule(_proposal_client(), "web", rule_id=999, name="Old-Monitor")
 
-    assert err is None and rule.id == 7003
+    import pack_channels
+    assert err is None and str(pack_channels._field(rule, "id")) == "7003"
 
 
 def test_the_update_body_drops_read_only_and_private_fields_of_a_plain_object():

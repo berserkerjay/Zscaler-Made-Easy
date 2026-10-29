@@ -817,9 +817,12 @@ def test_a_badge_for_a_finding_with_no_text_still_has_a_label():
 
 
 def test_every_style_token_the_extension_uses_is_defined():
-    """WCAG 2.2 SC 1.4.11 · ASVS V14.1.1: each var(--x) in the extension's pages is defined in tokens.css (an undefined one dropped the field border)."""
+    """WCAG 2.2 SC 1.4.11 · ASVS V14.1.1: each var(--x) in the extension's pages is defined in one of its stylesheets (an undefined one dropped the field border)."""
     # Arrange
-    defined = set(re.findall(r"(--[a-z0-9-]+)\s*:", _read("browser_extension", "tokens.css")))
+    defined = set()
+    for name in os.listdir(EXT):
+        if name.endswith(".css"):
+            defined |= set(re.findall(r"(--[a-z0-9-]+)\s*:", _read("browser_extension", name)))
     used = set()
     for name in os.listdir(EXT):
         if name.endswith((".css", ".html")):
