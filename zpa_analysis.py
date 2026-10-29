@@ -1074,6 +1074,12 @@ def parse_destination(dest: str, port: Any = None, protocol: str = "tcp") -> Dic
         ipaddress.ip_address(host)
         is_ip = True
     except ValueError:
+        if not host.isascii():   # an internationalised name, as segments hold it (punycode)
+            import zia_path_modules
+            try:
+                host = zia_path_modules.ascii_host(host)
+            except ValueError:
+                pass
         if not re.match(r"^[a-z0-9_*]([a-z0-9_-]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?)*$", host):
             raise ValueError(f"\"{host[:80]}\" is not a hostname or IP address.")
     port_assumed = False
@@ -1419,9 +1425,14 @@ def diagnose(snap: Dict[str, Any], user: Optional[Dict[str, Any]], destination: 
         other[ptype] = {"label": label, "read": True, "rule": ({"name": r["name"], "action": r["action"], "order": r.get("order")} if r else None),
                         "conditional": [{"name": x["name"], "action": x["action"], "depends_on": x["depends_on"]} for x in cond[:3]]}
 
-    # The verdict
+    # The verdict. An earlier rule that depends on a fact not given makes
+    # the answer depend on the user only when it would decide differently
+    # (allow versus deny; REQUIRE_APPROVAL allows, as zpa_path reads it).
     rule_name = decided["name"] if decided else ""
     reach = serve["reachable"]
+    effect = lambda a: "deny" if str(a).upper() == "DENY" else "allow"  # noqa: E731
+    final = effect(decided["action"]) if decided else "deny"
+    differ = [w for w in conditional_before if effect(w["action"]) != final]
     if seg_obj.get("bypass_type") == "ALWAYS":
         outcome, headline = "bypassed", f"Bypassed: \"{seg_obj['name']}\" matches {dest_txt} but its bypass is ALWAYS, so the traffic never goes through ZPA."
     elif decided and decided["action"] == "DENY":
@@ -1434,15 +1445,15 @@ def diagnose(snap: Dict[str, Any], user: Optional[Dict[str, Any]], destination: 
         else:
             outcome = "allowed"
             headline = f"{word[0].upper() + word[1:]} by access rule \"{rule_name}\": app segment \"{seg_obj['name']}\" matches {dest_txt}, served by {serve['short']}."
-    elif conditional_before:
+    elif differ:
         outcome = "conditional"
-        first = conditional_before[0]
+        first = differ[0]
         headline = f"Depends on the user: \"{first['name']}\" ({first['action']}) decides if the user meets its conditions on {_and_list(first['depends_on'])}; otherwise " + \
-                   ("a later rule or the default deny decides." if len(conditional_before) > 1 else "ZPA denies by default.")
+                   ("a later rule or the default deny decides." if len(differ) > 1 else "ZPA denies by default.")
     else:
         outcome, headline = "denied", f"Denied by default: app segment \"{seg_obj['name']}\" matches {dest_txt}, but no access rule allows it for this user."
-    if decided and conditional_before and outcome in ("allowed", "denied", "unreachable"):
-        first = conditional_before[0]
+    if decided and differ and outcome in ("allowed", "denied", "unreachable"):
+        first = differ[0]
         headline = headline[:-1] + f", unless the user meets the conditions of the earlier rule \"{first['name']}\" ({first['action']}) on {_and_list(first['depends_on'])}."
     summary = _summary(outcome, seg_obj, decided, walked, serve)
     return {"destination": d, "user": u, "assumptions": assumptions, "segment": sm, "access": access, "serving": serve,

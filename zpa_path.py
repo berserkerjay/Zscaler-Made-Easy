@@ -452,7 +452,15 @@ def _verdict(out: Dict[str, Any], seg: Dict[str, Any], dest_txt: str, bt: str, f
             head = (f"Depends on device posture: when posture passes {' or '.join(words[e] for e in sorted(p['ends']))}; "
                     f"when it fails {' or '.join(words[e] for e in sorted(fl['ends']))}.")
         else:
-            head = f"Depends on who the user is or on facts not given: ZPA may {'carry or not carry' if 'outside' in ends else 'allow or deny'} {dest_txt}."
+            # Name what it depends on: the VPN for an On-Net bypass, and each
+            # earlier rule with the facts it needs that were not given.
+            deps = []
+            if any(m.get("key") == "zpa_bypass" and m.get("verdict") == "conditional" for m in out.get("modules") or []):
+                deps.append("whether the VPN counts as a trusted network (the segment's On-Net bypass)")
+            for c in list(f.get("conditional") or []) + list(a.get("conditional") or []):
+                deps.append(f"rule “{c['name']}” ({c['action']}), which needs {zpa_analysis._and_list(c.get('depends_on') or []) or 'a fact not given'}")
+            head = (f"Depends on {'; '.join(deps[:3])}" if deps else "Depends on who the user is or on facts not given") + \
+                f": ZPA may {'carry or not carry' if 'outside' in ends else 'allow or deny'} {dest_txt}."
         out.update(outcome="zpa_conditional", headline=head,
                    summary=f"Application segment “{name}” matches. " + ("If ZPA carries it, ZIA does not apply; the ZIA path below is what happens otherwise."
                                                                       if "outside" in ends else "Either way ZPA carries it, so ZIA does not apply."))

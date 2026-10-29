@@ -229,6 +229,8 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
     if proto:
         if proto.lower() in _PROTOCOLS:
             e["protocol"] = _PROTOCOLS[proto.lower()]
+            if proto.lower() in _SCHEME_PROTO_PORTS:   # "http" is TCP/80, "https" TCP/443, unless a port is given
+                e["_proto_port"] = _SCHEME_PROTO_PORTS[proto.lower()]
         else:
             notes.append(f"protocol '{proto[:20]}' ignored: use TCP, UDP, ICMP or any")
     src = raw.get("source_ip", "")
@@ -295,6 +297,7 @@ def _ip_range(text: str) -> Optional[Tuple[int, int, int]]:
 
 
 _SCHEME_PORTS = {"http": 80, "ftp": 21}
+_SCHEME_PROTO_PORTS = {"http": 80, "https": 443}
 
 
 def _destination(text: str) -> Tuple[str, str, Optional[str], Optional[int]]:
@@ -388,6 +391,9 @@ def parse(text: str) -> ParsedList:
         except ValueError as ex:
             out.skip(line_no, dest, str(ex).split(". Examples")[0][:160])
             continue
+        proto_port = e.pop("_proto_port", None)
+        if proto_port and "port" not in e:
+            e["port"] = proto_port
         idx = len(out.entries)
         if rng is not None:
             lo, hi, ver = rng
@@ -801,6 +807,7 @@ class _HostIndex:
         h = re.sub(r"^[a-z][a-z0-9+.-]*://", "", low).split("/", 1)[0]
         if h.count(":") == 1:
             h = h.split(":", 1)[0]
+        h = h.rstrip(".")   # "example.com." is example.com, as ZIA's lists read it
         body = h[2:] if h.startswith("*.") else h
         if any(ch in body for ch in "*?[]"):
             self.globs.append((h, raw))
@@ -999,18 +1006,25 @@ class PathEvaluator:
         return any(h.get("key") == "pac" and ("pac_outcomes" in h or h.get("status") in ("unknown", "out_of_scope"))
                    for h in (res.get("trace") or {}).get("hops") or [])
 
-    def _fingerprint(self, host: str, is_ip: bool) -> Tuple[Any, ...]:
+    def _fingerprint(self, host: str, is_ip: bool, protocol: Optional[str] = None, port: Optional[int] = None) -> Tuple[Any, ...]:
         """How `host` relates to the tenant's destination lists, and what
-        each PAC file answers for it (pac_eval: evaluated, never run)."""
+        each PAC file answers for it (pac_eval: evaluated, never run) for
+        the URL the browser would hand it on this row's protocol and port
+        (path_analyzer.pac_url, as the single-destination analyzer)."""
         import pac_eval
+        import path_analyzer
+        import zia_path_modules
         if self._index is None:
             self._index = self._build_index()
         dest, _src, names, pacs = self._index
         ip = ipaddress.ip_address(host) if is_ip else None
         named = host.upper() in names or host.upper().replace(" ", "_") in names
         pac: List[Any] = []
+        if pacs:
+            d = path_analyzer.parse_destination(host)
+            url = path_analyzer.pac_url(d, zia_path_modules.traffic_context(d, protocol, port))
         for src in pacs:
-            ev = pac_eval.evaluate(src, f"https://{host}/", host, dns="none" if pac_eval._is_ipv4(host) else "assume_public")
+            ev = pac_eval.evaluate(src, url, host, dns="none" if pac_eval._is_ipv4(host) else "assume_public")
             pac.append((ev.get("status"), ev.get("error"), tuple((o.get("kind"), o.get("result"), o.get("fallback_direct")) for o in ev.get("outcomes") or []),
                         tuple(ev.get("depends_on") or ()), tuple(ev.get("assumptions") or ())))
         return (dest.match(host, ip), host if named else None, tuple(pac))
@@ -1088,7 +1102,9 @@ class PathEvaluator:
         ident = _identity_raw(row)
         src = row.get("source_ip") or None
         l2 = lookup or {}
-        sig = (is_ip, bool(row.get("private")), self._fingerprint(host, is_ip), tuple(l2.get("categories") or ()), tuple(l2.get("security_alerts") or ()),
+        # The address family matters too: an IPv4 address is never in an IPv6
+        # group, while an IPv6 one depends on the group's members.
+        sig = (ipaddress.ip_address(host).version if is_ip else None, bool(row.get("private")), self._fingerprint(host, is_ip, p, port), tuple(l2.get("categories") or ()), tuple(l2.get("security_alerts") or ()),
                l2.get("application"), bool(l2.get("error")), p or "tcp", port, path_whatif.describe(path_whatif.normalize_identity(ident)),
                self._source_fp(src))
         hit = self._shared.get(sig)

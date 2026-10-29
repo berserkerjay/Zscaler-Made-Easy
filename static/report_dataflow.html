@@ -78,6 +78,9 @@
           <div class="df-stat ${s.blind ? 'bad' : ''}"><div class="n">${s.blind}</div><div class="l">reach ZIA, left encrypted</div></div>
           <div class="df-stat"><div class="n">${s.enforced}</div><div class="l">decrypted, a DLP rule can block</div></div>
           <div class="df-stat"><div class="n">${s.monitored}</div><div class="l">decrypted, DLP monitors only</div></div>
+          ${s.decrypted_other != null ? `<div class="df-stat"><div class="n">${E(s.decrypted_other)}</div><div class="l">decrypted, no DLP decision</div></div>
+          <div class="df-stat"><div class="n">${E(s.blocked)}</div><div class="l">blocked before inspection</div></div>
+          <div class="df-stat"><div class="n">${E(s.unverified)}</div><div class="l">unverified (depends on scope, identity or an unread rule)</div></div>` : ''}
           <div class="df-stat ${s.high ? 'bad' : ''}"><div class="n">${s.high}</div><div class="l">high-severity weak points</div></div>
         </div>
         <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>`;
