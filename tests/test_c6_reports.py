@@ -611,3 +611,165 @@ def test_pdf_a_very_long_footer_is_cut_once_to_fit_its_line():
     texts, _, _ = _pdf(doc.to_bytes())
     foot = next(t for t in texts if t.startswith("xxx"))
     assert time.perf_counter() - t0 < 1.0 and foot.endswith("…") and pdf_writer.text_width(foot, 8) <= doc.content_width
+
+
+# ── Coverage: branches the suites above did not reach ───────────────────
+
+def _inventory_snapshot():
+    import pack_channels as pc
+    ch = pc.DLP_CHANNELS[0]
+    return ch, {"dictionaries": [{"id": 1, "name": "=PCI", "custom": True, "patterns": [{"pattern": "\\d{16}", "action": "PATTERN_COUNT_TYPE_ALL"}],
+                                  "phrases": [["ALL", "card"]]},
+                                 {"id": 2, "name": "Clone", "predefined_clone": True, "dict_template_id": 1}, {"id": 3, "name": "P"}, "junk"],
+                "engines": [{"id": 10, "name": "E1", "engine_expression": "((D1.S > 1) AND (D99.S > 0))"}, {"id": 11, "predefined_engine_name": "PCI"}],
+                "rules": {ch: [{"id": 5, "order": "2", "name": "+R", "dlp_engines": [{"id": 10, "name": "E1"}], "users": [{"id": 1, "name": "alice@corp.example"}],
+                                "severity": "RULE_SEVERITY_HIGH", "parent_rule": {"name": "Parent"}},
+                               {"id": 6, "order": "x", "name": "R2", "dlp_engines": [{"id": 99}]}, "bad"]},
+                "errors": {ch: "read failed", "other": "x"}}
+
+
+def test_inventory_workbook_names_objects_and_usage_but_never_people():
+    """ASVS V8.3.1 · CWE-359 · CWE-1236 · CWE-200: the DLP inventory lists dictionaries, engines and rules with who-uses-what, counts the people in scope and never names them."""
+    ch, snap = _inventory_snapshot()
+    sheets = _xlsx(report_exports.inventory_workbook(snap, tenant_label="acme", channels=[ch]))
+    every = " ".join(str(c[2]) for cells in sheets.values() for c in cells)
+    assert "alice@corp.example" not in every and "users: 1" in every
+    assert "'=PCI" in every and "dictionary 99 (not listed)" in every and not any(c[3] for cells in sheets.values() for c in cells)
+
+
+def test_inventory_file_name_is_a_safe_header_value():
+    """ASVS V12.3.1 · CWE-22 · CWE-113: the inventory's file name keeps letters, digits, - and _ only."""
+    assert re.fullmatch(r"dlp_inventory_acme_x_\d{8}\.xlsx", report_exports.inventory_filename("acme/../x"))
+
+
+@pytest.mark.parametrize("as_is,label,section,fragment", [
+    ("SSL inspection disabled", "SSL inspection", "", "Encrypted-traffic inspection"),
+    ("no dlp engine", "Web DLP", "", "Data can leave"),
+    ("not configured", "Cloud firewall", "", "Non-web traffic"),
+    ("disabled", "Sandbox", "", "Zero-day"),
+    ("disabled", "Audit log", "", "audit-log access"),
+    ("disabled", "Other control", "", "baseline Zscaler control"),
+    ("rule applied globally", "x", "", "globally-scoped"),
+    ("no description", "x", "", "orphaned"),
+    ("bypass list present", "x", "", "blind spot"),
+    ("alert only rules", "x", "", "alert-only"),
+    ("please verify", "x", "", "auto-validated"),
+    ("agent is fail-open", "x", "", "Fail-open"),
+    ("tamper protection off", "x", "", "uninstall"),
+    ("stale devices", "x", "", "Stale device"),
+    ("fine", "x", "", "deviates"),
+])
+def test_docx_why_it_matters_oracle(as_is, label, section, fragment):
+    """ASVS V1.1.1 · CWE-1059: oracle table: each configuration signal gets its business-impact sentence."""
+    assert fragment in report_docx._generate_why_it_matters("id", label, as_is, "", section)
+
+
+@pytest.mark.parametrize("as_is,bp,start", [("not configured", "Turn it on. Then more", "Configure L. Align with Zscaler best practice: Turn it on."),
+                                            ("not configured", "", "Configure L. Follow"), ("rule applied globally", "", "Tighten scope on L."),
+                                            ("please review", "Check. x", "Review L against: Check."), ("please review", "", "Review L with"),
+                                            ("partial rollout", "", "Complete the rollout of L."), ("fine", "Do X. y", "Validate L against"),
+                                            ("fine", "", "Manually verify L")])
+def test_docx_recommendation_oracle(as_is, bp, start):
+    """ASVS V1.1.1 · CWE-1059: oracle table: the recommended next step follows the configuration signal and the best practice."""
+    assert report_docx._generate_recommendation("id", "L", as_is, bp).startswith(start)
+
+
+@pytest.mark.parametrize("detail,out", [("", ("", "")), ("Rule off. Best practice - turn it on. Ref: x", ("Rule off.", "turn it on.")),
+                                        ("Only state", ("Only state", ""))])
+def test_docx_detail_is_split_into_state_and_best_practice(detail, out):
+    """ASVS V5.1.3 · CWE-20: boundary: an empty detail, one with 'Best practice' and a Ref note, and one without."""
+    assert report_docx._parse_detail_for_bp(detail) == out
+
+
+def test_docx_a_check_matching_no_section_gets_the_generic_guidance():
+    """ASVS V1.1.1 · CWE-1059: negative: a check no keyword matches gets the generic best practice and remediation."""
+    assert "zscaler-deployments-operations" in report_docx._resolve_best_practice("zz", "", "q")
+    assert report_docx._resolve_remediation("zz", "", "q") == (report_docx._resolve_remediation("zz", "", "q")[0], "")
+
+
+def test_docx_review_items_get_the_five_column_table(tmp_path):
+    """ASVS V1.1.1 · CWE-1059 · WCAG 2.2 SC 1.3.1: needs-review checks are reported with best practice, why it matters and remediation."""
+    rows = [dict(ROW, id="R1", status="REVIEW", detail="Some rules are alert only. Best Practice: block after tuning."),
+            dict(ROW, id="R2", status="REVIEW", label="ZPA segments", detail="please verify", section="ZPA")]
+    text = _docx(_report_file(tmp_path, rows, {"hidden_checks": "x"}))
+    assert "Remediation Steps" in text and "block after tuning." in text and "Admin portal: " in text
+
+
+@pytest.mark.parametrize("change,fragment", [
+    ({"timeline": {"kickoff": "2030-02-01", "end": "2030-01-01"}}, "ends before it starts"),
+    ({"timeline": {"kickoff": "2030-02-30"}}, "not a real date"),
+    ({"timeline": {"kickoff": "01/02/2030"}}, "YYYY-MM-DD"),
+    ({"timeline": "x"}, "must be an object"),
+    ({"notes": "x"}, "must be a list"),
+    ({"notes": [{"text": "x"}] * (pov.MAX_NOTES + 1)}, "too many"),
+    ({"criteria": [{"text": "c", "status": "won"}]}, "pending, met or not met"),
+    ({"tests": {"url-block": {"status": "maybe"}}}, "not run, pass, fail or skipped"),
+    ({"tests": {"url-block": {"evidence": [{"kind": "malware"}]}}}, "evidence must be"),
+    ({"follow_ups": [{"text": "f", "due": "soon"}]}, "YYYY-MM-DD"),
+    ({"notes": [{"text": ["list"]}]}, "must be text"),
+    ({"status": "done"}, "planning, testing"),
+    ({"tenant": {}}, "cannot be edited"),
+])
+def test_pov_every_edit_is_validated_in_words(app, change, fragment):
+    """ASVS V5.1.3 · ASVS V5.1.4 · CWE-20 · WSTG-INPV-01: every part of an edit is checked; a bad one is refused in words and nothing is saved."""
+    pid = _profile()
+    p = _start(app, pid)
+    r = app.post("/api/pov/update", json={"profile_id": pid, "rev": p["rev"], "changes": change})
+    assert r.status_code == 400 and fragment in r.json()["detail"]
+    assert pov.require(pid)[1]["rev"] == p["rev"]
+
+
+def test_pov_a_valid_full_edit_is_kept_sorted_and_attributed(app):
+    """ASVS V5.1.3 · CWE-20: a full edit (timeline, follow-ups, criteria linked to tests) is kept: check-ins sorted, unknown test links dropped."""
+    pid = _profile()
+    p = _start(app, pid)
+    p2 = pov.update(pid, None, p["rev"], {"timeline": {"kickoff": "2030-01-01", "end": "2030-02-01", "checkins": [{"date": "2030-01-20"}, {"date": "2030-01-10", "label": "One"}]},
+                                          "follow_ups": [{"text": "send report", "due": "2030-02-02", "owner": "Ann", "done": False}, {"text": ""}],
+                                          "criteria": [{"text": "blocks", "tests": ["url-block", "nope", "url-block"]}, {"text": ""}]}, by="ann")
+    assert [c["date"] for c in p2["timeline"]["checkins"]] == ["2030-01-10", "2030-01-20"]
+    assert p2["criteria"][0]["tests"] == ["url-block"] and len(p2["follow_ups"]) == 1 and p2["timeline"]["checkins"][1]["label"] == "Check-in"
+
+
+def test_pov_the_report_lists_criteria_counts_follow_ups_and_changes():
+    """ASVS V1.1.1 · CWE-1059: the report document carries every section from a full model (criteria, tests, counts, changes, follow-ups)."""
+    p = {"intake": {"customer": "Acme", "vertical": "general", "products": ["url_filtering"]}, "tenant": {"label": "acme"}, "status": "testing",
+         "criteria": [{"text": "c", "status": "met", "tests": ["url-block", "url-allowed"]}],
+         "tests": {"url-block": {"status": "pass", "notes": "n", "evidence": [{"kind": "prove", "at": "2030-01-01", "imported": True,
+                                                                               "verdict": {"destination": "d", "headline": "h", "agrees": False}}]}},
+         "follow_ups": [{"text": "f", "due": "2030-01-01", "owner": "Ann"}, {"text": "done", "done": True}],
+         "insights": [{"at": "2030-01-02", "counts": {"window": "7 days", "sections": {"web_action": {"title": "Web", "rows": [{"name": "Blocked", "total": 1200}, {"name": "x"}]}}}}]}
+    doc = pov.report_document(pov.report_model(p, [{"at": "2030-01-03", "kind": "Bulk change", "what": "w", "detail": "d", "by": "b"}]))
+    heads = [s["heading"] for s in doc["sections"]]
+    every = json.dumps(doc)
+    assert heads == ["Success criteria", "Tests that ran", "Traffic counts", "Changes made to the tenant during the POV", "Open follow-ups"]
+    assert "Blocked: 1,200" in every and "url-allowed" not in every and "Business sites keep working: not run" in every
+    assert "does not give the expected result" in every and "imported" in every and "f (due 2030-01-01), Ann" in every
+
+
+def test_pov_the_empty_report_says_nothing_ran():
+    """ASVS V1.1.1 · CWE-1059: boundary: a POV with nothing recorded says so in each section rather than leaving it blank."""
+    doc = pov.report_document(pov.report_model({"intake": {"products": ["url_filtering"]}}, []))
+    every = json.dumps(doc)
+    assert "No success criteria were recorded." in every and "No test has a result yet." in every and "No change was made" in every
+    assert doc["title"] == "Proof of value: customer"
+
+
+def test_csv_writer_rows_and_markdown_cells_are_neutralised():
+    """ASVS V5.3.10 · CWE-1236 · CWE-74: writerows and the dict writer neutralise each row; a Markdown cell is one line with pipes escaped."""
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    w.writerows([["=a", 1], ["@b", None]])
+    d = csv_safe.dict_writer(io.StringIO(), ["a"])
+    assert list(csv.reader(io.StringIO(buf.getvalue()))) == [["'=a", "1"], ["'@b", ""]] and w.dialect is not None and d.fieldnames == ["a"]
+    assert csv_safe.md_cell("a | b\r\nc") == "a \\| b c" and csv_safe.md_cell(None) == ""
+
+
+@pytest.mark.parametrize("value,out", [("a`b", "``a`b``"), ("`x`", "`` `x` ``"), ("", "``"), ("x" * 10, "`xxxx…`")])
+def test_md_code_spans_hold_any_backticks(value, out):
+    """ASVS V5.3.1 · CWE-74: an inline code span's fence is longer than any backtick run inside; a limit cuts with an ellipsis."""
+    assert md_safe.code(value, 5 if len(value) == 10 else None) == out
+
+
+def test_md_a_code_cell_escapes_pipes():
+    """ASVS V5.3.1 · CWE-74: a code span in a table cell has its pipes escaped (GFM splits a row on them)."""
+    assert md_safe.cell_code("a|b") == "`a\\|b`" and md_safe.text("x" * 10, 4) == "xxx…"
