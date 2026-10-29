@@ -222,7 +222,7 @@ def _hostile_cases():
         "duplicate key": '{"area": "a", "area": "b", "title": "t", "findings": []}',
         "NaN": '{"area": "a", "title": "t", "findings": [], "tests_added": NaN}',
         "too many findings": _record(*[_finding(f"SBD-INPUT-{i}") for i in range(qs.MAX_FINDINGS + 1)]),
-        "title too long": dict(GOOD, title="t" * 201),
+        "title too long": dict(GOOD, title="t" * 301),
         "not json": "{area: a}",
     }
 

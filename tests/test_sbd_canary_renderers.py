@@ -269,6 +269,9 @@ _URL_SINK = re.compile(
     r"""|(?:\blocation(?:\.href)?\s*=(?!=)\s*(?P<e>[^;\n]+))""")
 _SAFE_URL = re.compile(r"""^(['"])[^'"]*\1$|^`[^`$]*`$|^URL\.createObjectURL\(|^`/[^`]*\$\{encodeURIComponent\(|^'/[^']*'\s*\+\s*encodeURIComponent\(""")
 URL_SINK_REVIEWED = {
+    ("static/data_flow.js", "`#dfRow-${it.i}`"): "an in-page anchor to a table row; it.i is the row's numeric index",
+    ("static/flow_anim.js", "{ x: 18, y: 8, w: W - 36, h: 44 }"): "pos.src is the source box's position in the picture, not a URL",
+    ("static/flow_anim.js", "{ x: 18, y: Math.round(H / 2 - 22), w: 150, h: 44 }"): "pos.src is the source box's position in the picture, not a URL",
     ("static/advanced.js", "u.pathname + u.search"): "the page's own link with the assessor added through URLSearchParams",
     ("static/find_anything.js", "x.href || ''"): "x is a static/explain.js catalogue entry (app paths only)",
     ("static/find_anything.js", "x.href"): "x is a static/explain.js catalogue entry (app paths only)",

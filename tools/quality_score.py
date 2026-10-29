@@ -159,9 +159,10 @@ TEST_FILE = re.compile(r"^tests/[A-Za-z0-9_/-]{1,150}\.py$")
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069\u2028\u2029]")
 MARKUP = re.compile(r"<\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;")
 
-ROOT_KEYS = {"area": True, "title": True, "findings": True, "standards": False, "checks": False, "tests_added": False}
+ROOT_KEYS = {"area": True, "title": True, "findings": True, "standards": False, "checks": False, "tests_added": False,
+             "notes": False, "baseline": False, "files": False, "coverage": False}
 FINDING_KEYS = {"id": True, "title": True, "severity": True, "status": True, "cwe": False, "asvs": False, "wcag": False,
-                "fix": False, "test": False, "commit": False, "reason": False}
+                "fix": False, "test": False, "commit": False, "reason": False, "proposed_patch": False}
 CHECK_KEYS = {"id": True, "what": True, "result": True, "standard": False}
 RUN_KEYS = {"passed": True, "failed": True, "skipped": True, "duration_s": True, "commit": True, "date": True,
             "errors": False, "files": False}
@@ -280,8 +281,27 @@ def validate_record(obj: Any, slug: str) -> Dict[str, Any]:
     w = slug
     _keys(obj, ROOT_KEYS, w)
     out: Dict[str, Any] = {"slug": slug,
-                           "area": _text(obj["area"], f"{w}.area", 80, markup=False),
-                           "title": _text(obj["title"], f"{w}.title", 200, markup=False)}
+                           "area": _text(obj["area"], f"{w}.area", 600, markup=False),
+                           "title": _text(obj["title"], f"{w}.title", 300, markup=False)}
+    # Context the agents record (kept out of the score and the page): plain
+    # notes, the baseline compared against, the files covered, coverage.
+    notes = obj.get("notes", [])
+    if not isinstance(notes, list) or len(notes) > 50:
+        raise InputError(f"{w}.notes: must be a list of at most 50 strings")
+    for i, n in enumerate(notes):
+        _text(n, f"{w}.notes[{i}]", 2000)
+    _text(obj.get("baseline", ""), f"{w}.baseline", 300, empty=True)
+    files = obj.get("files", [])
+    if not isinstance(files, list) or len(files) > 200:
+        raise InputError(f"{w}.files: must be a list of at most 200 paths")
+    for i, p in enumerate(files):
+        _text(p, f"{w}.files[{i}]", 200, markup=False)
+    cov = obj.get("coverage", {})
+    if not isinstance(cov, dict) or set(cov) - {"before", "after"}:
+        raise InputError(f"{w}.coverage: must be {{before, after}}")
+    for k, v in cov.items():
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
+            raise InputError(f"{w}.coverage.{k}: must be a number from 0 to 100")
     std = obj.get("standards", [])
     if not isinstance(std, list) or len(std) > MAX_STANDARDS:
         raise InputError(f"{w}.standards: must be a list of at most {MAX_STANDARDS} strings")
@@ -296,7 +316,7 @@ def validate_record(obj: Any, slug: str) -> Dict[str, Any]:
         result = _text(c["result"], f"{cw}.result", 10)
         if result not in CHECK_RESULTS:
             raise InputError(f"{cw}.result: must be one of {', '.join(CHECK_RESULTS)}")
-        out["checks"].append({"id": _text(c["id"], f"{cw}.id", 60, pattern=CHECK_ID), "what": _text(c["what"], f"{cw}.what", 300),
+        out["checks"].append({"id": _text(c["id"], f"{cw}.id", 60, pattern=CHECK_ID), "what": _text(c["what"], f"{cw}.what", 1000),
                               "standard": _text(c.get("standard", ""), f"{cw}.standard", 120, empty=True), "result": result})
     finds = obj["findings"]
     if not isinstance(finds, list) or len(finds) > MAX_FINDINGS:
@@ -316,7 +336,8 @@ def validate_record(obj: Any, slug: str) -> Dict[str, Any]:
         status = _text(f["status"], f"{fw}.status", 10)
         if status not in STATUSES:
             raise InputError(f"{fw}.status: must be one of {', '.join(STATUSES)}")
-        item = {"id": fid, "title": _text(f["title"], f"{fw}.title", 200, markup=False), "severity": sev, "status": status,
+        _text(f.get("proposed_patch", ""), f"{fw}.proposed_patch", 65536, empty=True)   # a diff for the integrator, never shown
+        item = {"id": fid, "title": _text(f["title"], f"{fw}.title", 400, markup=False), "severity": sev, "status": status,
                 "cwe": _text(f.get("cwe", ""), f"{fw}.cwe", 12, pattern=CWE, empty=True),
                 "asvs": _text(f.get("asvs", ""), f"{fw}.asvs", 16, pattern=ASVS, empty=True),
                 "wcag": _text(f.get("wcag", ""), f"{fw}.wcag", 24, pattern=WCAG, empty=True),

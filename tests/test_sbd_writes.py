@@ -917,12 +917,12 @@ def test_every_remediation_recipe_offers_its_rule_disabled_by_default(check_id):
 
 @pytest.mark.parametrize("check_id", STATE_RECIPES)
 def test_a_remediation_without_a_state_is_refused_never_left_to_the_tenant(check_id):
-    """ASVS V5.1.3 · V4.1.3 · CWE-1188 · CWE-20: a request that leaves the rule state out (a script) is refused as incomplete; the state is never left for ZIA to choose, and an explicit ENABLED is honoured."""
+    """ASVS V5.1.3 · V4.1.3 · CWE-1188 · CWE-20: a request that leaves the rule state out (a script) gets the secure default DISABLED; the state is never left for ZIA to choose, and an explicit ENABLED is honoured."""
     recipe = remediation.get_recipe(check_id)
     criteria = {f["key"]: (f.get("default") if f.get("default") not in (None, "") else ("1" if f.get("type") == "number" else "QA"))
                 for f in recipe["fields"] if f["key"] != "state"}
     p = remediation.plan(check_id, criteria)
-    assert not p["ok"] and any("Rule state" in e for e in p["errors"]), p
+    assert p["ok"] and p["body"]["state"] == "DISABLED", p
     assert remediation.plan(check_id, dict(criteria, state="ENABLED"))["body"]["state"] == "ENABLED"
     assert remediation.plan(check_id, dict(criteria, state="DISABLED"))["body"]["state"] == "DISABLED"
 

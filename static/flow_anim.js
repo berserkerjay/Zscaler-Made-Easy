@@ -1435,24 +1435,30 @@
   function dfRoute(t) {
     const hop = k => (t.hops || []).filter(h => h.key === k)[0] || {};
     const firstOf = (keys, st) => keys.filter(k => st.indexOf(hop(k).status) >= 0)[0];
+    // The same one class per path as the summary (data_flow.visibility,
+    // static/data_flow.js _dfVisibility): blocked, unverified, bypassed,
+    // blind (still encrypted), then the DLP outcome.
     const r = ['src', 'cc'];
-    if (!t.reaches_zscaler) {
-      if (firstOf(['zcc', 'forwarding', 'pac'], ['bypass']) === 'pac') return r.concat(['pac', 'x_pac']);
-      return r.concat(['x_cc']);
+    const ssl = hop('ssl').status;
+    if (t.outcome === 'blocked') {
+      r.push('pac', 'policy');
+      const blockedAt = firstOf(['cac', 'url', 'ssl', 'ftc'], ['blocked']);
+      if (blockedAt === 'cac' || blockedAt === 'url') return r.concat(['b_policy']);
+      r.push('ssl');
+      if (blockedAt === 'ssl' || !t.decrypted) return r.concat(['b_ssl']);
+      return r.concat(['dlp', 'o_block']);
     }
     if (t.conditional) {
       return firstOf(['zcc', 'forwarding'], ['unknown', 'warn']) || hop('pac').status !== 'unknown' ? r.concat(['u_cc']) : r.concat(['pac', 'u_pac']);
     }
-    r.push('pac', 'policy');
-    const blockedAt = t.outcome === 'blocked' ? firstOf(['cac', 'url', 'ssl', 'ftc'], ['blocked']) : null;
-    if (blockedAt === 'cac' || blockedAt === 'url') return r.concat(['b_policy']);
-    r.push('ssl');
-    const ssl = hop('ssl').status;
-    if (blockedAt === 'ssl') return r.concat(['b_ssl']);
-    if (ssl === 'blind' && t.outcome !== 'blocked') return r.concat(['enc']);
-    if (!t.decrypted || SSL_UNVERIFIED.indexOf(ssl) >= 0) return r.concat([t.outcome === 'blocked' ? 'b_ssl' : 'u_ssl']);
+    if (t.policy_conditional || ['unknown', 'out_of_scope', 'conditional'].indexOf(ssl) >= 0) return r.concat(['pac', 'policy', 'ssl', 'u_ssl']);
+    if (!t.reaches_zscaler) {
+      if (firstOf(['zcc', 'forwarding', 'pac'], ['bypass']) === 'pac') return r.concat(['pac', 'x_pac']);
+      return r.concat(['x_cc']);
+    }
+    r.push('pac', 'policy', 'ssl');
+    if (!t.decrypted) return r.concat(['enc']);
     r.push('dlp');
-    if (t.outcome === 'blocked') return r.concat(['o_block']);
     r.push(t.outcome === 'enforce' ? 'o_enforce' : t.outcome === 'monitor' ? 'o_monitor' : 'o_other');
     if (hop('incident').status === 'conditional') r.push('incident');
     return r;

@@ -169,7 +169,10 @@ def test_rule_migration_post_applies_the_planned_order_through_every_gate(raw_te
     c = TestClient(srv.app)
     rules = c.post("/api/migrate/fetch", json=_migrate_body()).json()["rules"]
     planned = c.post("/api/migrate/plan", json={"rules": rules}).json()["proposed_order"]
-    r = c.post("/api/migrate/post", json=_migrate_body(proposed_rules=planned, dry_run=False, mode="update", confirm=True))
+    dry = c.post("/api/migrate/post", json=_migrate_body(proposed_rules=planned, dry_run=True, mode="update"))
+    assert dry.status_code == 200, dry.text
+    r = c.post("/api/migrate/post", json=_migrate_body(proposed_rules=planned, dry_run=False, mode="update", confirm=True,
+                                                         plan_hash=dry.json()["plan_hash"]))
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["status"] == "completed" and out["succeeded_count"] == 3 and out["failed_count"] == 0
