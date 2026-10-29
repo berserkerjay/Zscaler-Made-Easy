@@ -1379,6 +1379,40 @@ def test_the_scope_check_refuses_areas_that_are_not_ticked(spec, refused):
     assert zb._in_scope(zt.WEB_ONLY) is None and zb._in_scope(zt.NOTHING, spec)
 
 
+@pytest.mark.parametrize("spec,refused", [
+    ({"type": zb.TYPE, "areas": ["firewall"]}, True), ({"type": zb.TYPE, "areas": ["url", "atp"]}, True), ({"type": zb.TYPE, "areas": ["url"]}, False),
+    ({"type": zb.TYPE}, False), ({"type": zb.TYPE, "action": "revert", "steps": [{"op": "restore_atp", "fields": {}}]}, True),
+])
+def test_the_engine_scope_check_before_sign_in_passes_the_spec_to_the_baseline(spec, refused):
+    """ASVS V4.1.3 · A01:2021 · CWE-863 · WSTG-ATHZ-02: admin_ops.require_scope (the routes' check before sign-in) refuses a baseline area or Undo step that is not ticked."""
+    # Arrange
+    scope = zt.WEB_ONLY
+    # Act
+    try:
+        ao.require_scope(spec, scope)
+        why = None
+    except ao.OperationError as e:
+        why = str(e)
+    # Assert
+    assert bool(why) is refused and (not why or "Nothing was read" in why)
+
+
+def test_a_preview_naming_an_unticked_baseline_area_is_refused_before_sign_in(monkeypatch):
+    """ASVS V4.1.3 · A01:2021 · CWE-863 · WSTG-ATHZ-02 · CISA SbD deny by default: POST /api/operations/preview with a Cloud Firewall baseline and only web DLP ticked is a 400 and never signs in."""
+    # Arrange
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    signed_in = []
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: signed_in.append(1))
+    body = {"scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "ssl_inspection": "alternative", "cloud_app_control": "alternative"},
+            "from_page": True, "client_id": "cid", "client_secret": "s3cret-value", "vanity_domain": "acme", "cloud": "zscalertwo",
+            "operation": {"type": zb.TYPE, "tier": "strict", "areas": ["firewall"]}}
+    # Act
+    r = TestClient(srv.app).post("/api/operations/preview", json=body)
+    # Assert
+    assert r.status_code == 400 and "Cloud Firewall" in r.json()["detail"] and signed_in == [] and "s3cret" not in r.text
+
+
 def test_a_subscription_with_a_numeric_id_and_a_gen_ai_sku_counts():
     """ASVS V1.4.1 · CWE-1188: a subscription read as a numeric id beside the Gen AI SKU is still recognised."""
     z = at.Svc(organization_information=at.Svc(get_subscriptions=lambda: (None, at.Resp([{"id": 7, "sku": "ZS_DP_GEN_AI", "status": "ACTIVE"}]), None)))

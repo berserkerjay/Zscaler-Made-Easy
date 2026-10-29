@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import inspect
 import json
 import os
 import re
@@ -282,11 +283,26 @@ def require_scope(spec_or_family: Any, scope: Dict[str, Any]) -> None:
             raise OperationError(scope["not_in_scope"]["zpa_segments"])
     elif t in PLUGINS or t in PLUGIN_FAMILIES:
         reg = PLUGINS.get(t) or PLUGIN_FAMILIES[t]
-        why = reg["in_scope"](scope)
+        why = _plugin_in_scope(reg["in_scope"], scope, spec_or_family)
         if why:
             raise OperationError(str(why))
     else:
         raise OperationError(f"Unknown operation '{t}'. Use one of: {', '.join(types())}.")
+
+
+def _plugin_in_scope(fn: Callable[..., Optional[str]], scope: Dict[str, Any], spec: Any) -> Optional[str]:
+    """A plugin's scope check. One that takes the spec too (the ZIA
+    baseline: the areas it names, or its Undo touches) is given it, so what
+    is not ticked is refused here, before sign-in (deny by default)."""
+    if isinstance(spec, dict):
+        try:
+            params = [p for p in inspect.signature(fn).parameters.values()
+                      if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL)]
+        except (TypeError, ValueError):
+            params = []
+        if len(params) >= 2 or any(p.kind == p.VAR_POSITIONAL for p in params):
+            return fn(scope, spec)
+    return fn(scope)
 
 
 # ---------------------------------------------------------------------------
