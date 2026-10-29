@@ -35,10 +35,28 @@ RUNNING, DONE, FAILED, CANCELLED = "running", "done", "failed", "cancelled"
 KEEP_SECONDS = 3600.0     # finished jobs stay this long
 MAX_FINISHED_JOBS = 200   # and at most this many of them (the oldest go first): each can hold a result and a file
 MAX_LOG_LINES = 5000      # a runaway log is cut at the top, never grows unbounded
+MAX_LOG_LINE_CHARS = 4000  # and so is one line (an error quoting a whole answer body)
 
 JobFn = Callable[[Callable[[str], None], threading.Event], Dict[str, Any]]
 
 logger = logging.getLogger("dlp_check.jobs")
+
+# A secret written as `key: value` / `key=value` / `"key": "value"` (an error
+# repeating a request body or a form post) is masked in every job log line,
+# beside the token shapes tenant_auth.redact_tokens masks.
+_SECRET_PAIR = re.compile(
+    r"""(?i)(["']?\b(?:client[_-]?secret|password|passwd|api[_-]?key|private[_-]?key|provisioning[_-]?key|secret)["']?\s*[:=]\s*)"""
+    r"""("(?:[^"\\\n]|\\.)*"|'[^'\n]*'|[^\s,;&}\]]+)""")
+
+
+def redact_line(line: Any) -> str:
+    """One job log line with tokens and secret `key: value` pairs masked,
+    cut to MAX_LOG_LINE_CHARS."""
+    import tenant_auth
+    text = str(line)
+    if len(text) > MAX_LOG_LINE_CHARS:
+        text = text[:MAX_LOG_LINE_CHARS] + " [cut]"
+    return _SECRET_PAIR.sub(r"\1[redacted]", tenant_auth.redact_tokens(text))
 
 
 @dataclass
@@ -79,17 +97,25 @@ class Job:
     # Set when self_heal ended the job as stuck (abandon): its status stays
     # failed even if the thread finishes later.
     abandoned: Optional[str] = None
+    # How many lines were cut from the top of `logs` (MAX_LOG_LINES): a
+    # poller's `since` counts every line ever written, so it keeps getting
+    # the new ones after the log has been cut.
+    dropped: int = 0
+    # Set by whichever ending comes first (the run's own, or abandon): only
+    # that one writes `job_finished` and publishes the final status.
+    ending: bool = False
 
     def log(self, line: str) -> None:
-        # The last line of defence for every job's log: an access token or
-        # session id an error repeated is masked by shape (tenant_auth.redact_tokens).
-        import tenant_auth
-        line = tenant_auth.redact_tokens(str(line))
+        # The last line of defence for every job's log: an access token,
+        # session id or secret an error repeated is masked (redact_line).
+        line = redact_line(line)
         with self.lock:
             self.last_log_at = time.time()
             self.logs.append(line)
             if len(self.logs) > MAX_LOG_LINES:
-                del self.logs[: len(self.logs) - MAX_LOG_LINES]
+                cut = len(self.logs) - MAX_LOG_LINES
+                del self.logs[:cut]
+                self.dropped += cut
 
     def elapsed(self) -> float:
         return round((self.finished or time.time()) - self.started, 1)
@@ -233,7 +259,10 @@ def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None,
             job.log(f"The run stopped with an error: {job.error}")
         finally:
             _here.job = None
-            if job.abandoned:
+            with job.lock:
+                first = not job.ending
+                job.ending = True
+            if not first:
                 # self_heal already ended it as stuck (abandon) and wrote its
                 # job_finished entry: the late ending is logged and audited
                 # apart, and the status the page saw stays failed.
@@ -258,8 +287,9 @@ def abandon(job: Job, reason: str) -> bool:
     again. Its Stop is set too, so a thread that is still alive sends
     nothing more. False when the job is not running."""
     with job.lock:
-        if job.status != RUNNING:
+        if job.status != RUNNING or job.ending:
             return False
+        job.ending = True
         job.abandoned = reason
         job.error = reason
     job.cancel.set()
@@ -336,10 +366,10 @@ def snapshot(job: Job, since: int = 0) -> Dict[str, Any]:
     index `since` on and the index to ask for next; the result (or the
     error) once the job has finished."""
     with job.lock:
-        lines = job.logs[max(0, since):]
+        lines = job.logs[max(0, int(since or 0) - job.dropped):]
         out: Dict[str, Any] = {
             "job_id": job.id, "kind": job.kind, "label": job.label, "status": job.status,
-            "elapsed_seconds": job.elapsed(), "logs": lines, "next": len(job.logs), "cancel_requested": job.cancel.is_set(),
+            "elapsed_seconds": job.elapsed(), "logs": lines, "next": job.dropped + len(job.logs), "cancel_requested": job.cancel.is_set(),
         }
         if job.progress is not None:
             out["progress"] = dict(job.progress)
@@ -371,12 +401,14 @@ def prune(now: Optional[float] = None) -> int:
     ones beyond MAX_FINISHED_JOBS, so a burst of starts cannot pile up
     results and files in memory for an hour. Running jobs are never
     dropped. Returns how many were dropped."""
-    now = now or time.time()
+    now = time.time() if now is None else now
     with _registry_lock:
-        old = [k for k, j in _jobs.items() if j.finished and now - j.finished > KEEP_SECONDS]
+        # `finished` is set a moment before the final status (the audit entry
+        # is written in between): a job is only dropped once it has ended.
+        old = [k for k, j in _jobs.items() if j.finished and j.status != RUNNING and now - j.finished > KEEP_SECONDS]
         for k in old:
             del _jobs[k]
-        done = sorted((j.finished, k) for k, j in _jobs.items() if j.finished)
+        done = sorted((j.finished, k) for k, j in _jobs.items() if j.finished and j.status != RUNNING)
         extra = [k for _, k in done[:max(0, len(done) - MAX_FINISHED_JOBS)]]
         for k in extra:
             del _jobs[k]

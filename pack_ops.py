@@ -69,8 +69,10 @@ TIER_LABELS = ("rules", "engines", "dictionaries")
 # Refusals that time clears. ZIA answers a rate limit with 429, a busy
 # tenant with 502/503/504 or a timeout; these are retried with backoff.
 TRANSIENT_STATUSES = {429, 502, 503, 504}
-TRANSIENT_WORDS = ("rate limit", "too many requests", "429", "502", "503", "504", "timeout", "timed out",
+TRANSIENT_WORDS = ("rate limit", "too many requests", "timeout", "timed out",
                    "temporarily", "try again", "service unavailable", "gateway")
+# The statuses as whole numbers only: an id such as 15030 in a refusal is not a 503.
+_TRANSIENT_CODE_RE = re.compile(r"(?<![0-9.])(?:429|502|503|504)(?![0-9])")
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = 1.0
 # A 403 on a write (ZIA answering "Resource Access Blocked" or "Forbidden"
@@ -116,6 +118,14 @@ FORBIDDEN_STOP_REASON = (
 # then tries the same write again. Up to RATE_WINDOWS such waits; still refused after that, the run
 # stops. Nothing is activated, and no other write goes out meanwhile.
 RATE_WINDOWS = 3
+# ZIA's reset timer (Retry-After / x-ratelimit-reset) is trusted up to this
+# many seconds; a larger, infinite or non-numeric value is ignored and the
+# app's own count of the window decides the wait instead.
+MAX_RESET_SECONDS = 3600.0
+# Outside a run (one change made from a page, inside its HTTP request) a 429
+# is retried after ZIA's reset timer when that is this short; a longer one is
+# reported at once with the wait, rather than holding the request.
+INLINE_RESET_MAX_SECONDS = 60.0
 _RATE_WORDS = ("resource access blocked", "rate limit", "too many requests", "ratelimit")
 
 
@@ -139,14 +149,17 @@ def _reset_seconds(ret: Any) -> Optional[float]:
             headers = None
     if not headers:
         return None
-    low = {str(k).lower(): v for k, v in dict(headers).items()}
+    try:
+        low = {str(k).lower(): v for k, v in dict(headers).items()}
+    except (TypeError, ValueError):   # headers in a shape that is not a mapping: no timer
+        return None
     for k in ("x-ratelimit-reset", "retry-after"):
         try:
             v = float(str(low.get(k, "")).split(",")[0].strip())
-            if v > 0:
-                return v
         except ValueError:
             continue
+        if 0 < v <= MAX_RESET_SECONDS:   # NaN, infinity and an absurd wait are not a timer
+            return v
     return None
 
 
@@ -429,7 +442,7 @@ def is_transient(message: Optional[str], http_status: Optional[int] = None) -> b
     if http_status in TRANSIENT_STATUSES:
         return True
     m = (message or "").lower()
-    return any(w in m for w in TRANSIENT_WORDS)
+    return any(w in m for w in TRANSIENT_WORDS) or bool(_TRANSIENT_CODE_RE.search(m))
 
 
 def normalize(ret: Any) -> Outcome:
@@ -481,7 +494,8 @@ CREATE_UNSURE = ("not sent again: the create may have been applied although the 
 
 
 def _maybe_applied(op: str, out: "Outcome") -> bool:
-    return op == "create" and not out.ok and out.transient and not is_rate_refusal(out)
+    # "write" is call()'s default and is sent as a POST: treated as a create.
+    return op in ("create", "write") and not out.ok and out.transient and not is_rate_refusal(out)
 
 
 def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", name: str = "", channel: Optional[str] = None,
@@ -540,7 +554,9 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
                 except zia_rate.Cancelled:
                     raise
                 except Exception as e:  # noqa: BLE001 — one object never stops the run
-                    msg = f"{type(e).__name__}: {e}"[:300]
+                    import tenant_auth
+                    # An exception may quote the request (its Authorization header): redacted like an error answer.
+                    msg = tenant_auth.redact_tokens(f"{type(e).__name__}: {str(e)[:2000]}")[:300]
                     out = Outcome(False, error=msg, transient=is_transient(msg))
         except zia_rate.Cancelled:
             out = None
@@ -582,6 +598,13 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
                 break   # waited out below, for the limit's whole window
             unsure = _maybe_applied(op, out)
             wait = BACKOFF_SECONDS * attempt
+            if is_rate_refusal(out) and out.reset_seconds:
+                # ZIA said when the limit has room again: no try before that.
+                if out.reset_seconds > INLINE_RESET_MAX_SECONDS:
+                    _log(f"[{kind or op}] {name}: ZIA refused it for its rate ('{out.error}') and accepts requests again in "
+                         f"{_human_secs(out.reset_seconds)}; not tried again now. Run this again after that.")
+                    break
+                wait = max(wait, out.reset_seconds)
             _log(f"[{kind or op}] {name}: ZIA answered '{out.error}' (attempt {attempt} of {max_attempts}); waiting {wait:.0f}s and "
                  + ("checking by name whether it was created" if unsure else "trying again"))
             logger.info("retry", extra={"op": op, "kind": kind, "name": name, "channel": channel, "attempt": attempt, "error": out.error})
@@ -1093,8 +1116,15 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
 @_audited("delete")
 def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = None) -> Outcome:
     """Delete one object described by {kind, id, channel, parent_id, type}."""
-    kind, channel, oid = item["kind"], item.get("channel"), item["id"]
+    kind, channel, oid = item.get("kind"), item.get("channel"), item.get("id")
     name = str(item.get("name") or "")
+    if oid is None or oid == "":
+        return Outcome(False, error=f"[{kind}] {name}: no id to delete; nothing was sent")
+    if kind in ("app_group", "root_certificate") or (kind == "policy" and channel == pc.ENDPOINT and item.get("parent_id") is not None):
+        # These deletes are a raw path: an id that is not a ZIA id (a number)
+        # would change the path the DELETE is sent to.
+        if pc.path_id(oid) is None or (kind == "policy" and pc.path_id(item.get("parent_id")) is None):
+            return Outcome(False, error=f"[{kind}] {name}: '{str(oid)[:40]}' is not a ZIA id (a number); nothing was sent")
     if kind == "dictionary":
         return call(zia.dlp_dictionary.delete_dict, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "engine":
@@ -1130,11 +1160,8 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if kind != "policy":
         return Outcome(False, error=f"unknown object kind '{kind}'")
-    if channel in ADMIN_RULE_SERVICES:
-        svc, err = _admin_rule_service(zia, channel)
-        if err:
-            return Outcome(False, error=err)
-        return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
+    if channel not in pc.CHANNELS:
+        return Outcome(False, error=f"unknown channel '{str(channel)[:40]}' for rule '{name}'; nothing was sent")
     if channel == pc.ENDPOINT and item.get("parent_id") is not None:
         return call(pc.raw_request, zia, "DELETE", f"/endPointDlpRules/{item['parent_id']}/subRule/{oid}", op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if channel == pc.CLOUD_APP:
