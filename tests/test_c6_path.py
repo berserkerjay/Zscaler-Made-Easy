@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 import ipaddress
+import sys
 import threading
 import time
 import tracemalloc
@@ -37,6 +38,9 @@ from test_path_zpa_workloads import ConnectorTenant, fwd, wl, ztw_data, ztw_snap
 from test_qa_func_path import DEFAULT_FW, FULL, Tenant, fw_rule, hop, mod, run, url_rule
 
 FTC_ZIP = "FTCATEGORY_ZIP"
+# CPU seconds one operation may take (as tests/test_dos_limits.py measures
+# it); a tracer such as coverage slows Python about threefold.
+BUDGET = 2.0 * (3 if sys.gettrace() else 1)
 FTC_EXE = "FTCATEGORY_WINDOWS_EXECUTABLES"
 
 
@@ -928,13 +932,13 @@ def big_tenant(n=5000):
 def test_one_analysis_of_a_tenant_with_5000_rules_takes_under_two_seconds():
     """ASVS V1.11.3 · CWE-400 · CWE-1176: one analysis against a 5,000-rule tenant (every section) finishes in under 2 s, read included."""
     tenant = Tenant(big_tenant())
-    t0 = time.perf_counter()
+    t0 = time.process_time()
     res = pa.analyze(tenant, "news.example", scope=FULL)
-    first = time.perf_counter() - t0
-    t0 = time.perf_counter()
+    first = time.process_time() - t0
+    t0 = time.process_time()
     pa.analyze(tenant, "203.0.113.5", scope=FULL, protocol="tcp", port=443, snapshot=res["snapshot_for_cache"])
-    again = time.perf_counter() - t0
-    assert first < 2.0 and again < 2.0, (first, again)
+    again = time.process_time() - t0
+    assert first < BUDGET and again < BUDGET, (first, again)
 
 
 def test_the_list_parser_caps_rows_at_exactly_max_rows(monkeypatch):
@@ -1969,11 +1973,11 @@ def test_5000_firewall_rules_on_shared_groups_analyze_in_under_two_seconds():
     tenant = Tenant({"/zia/firewallFilteringRules": rules, "/zia/networkServices": svcs, "/zia/networkServiceGroups": groups,
                      "/zia/ipDestinationGroups": dgroups})
     # Act
-    t0 = time.perf_counter()
+    t0 = time.process_time()
     res = pa.analyze(tenant, "10.1.2.3", scope=FULL, protocol="tcp", port=1005)
-    took = time.perf_counter() - t0
+    took = time.process_time() - t0
     # Assert
-    assert took < 2.0, took
+    assert took < BUDGET, took
     assert mod(res, "firewall")["considered"] == 5001
 
 
@@ -2014,11 +2018,11 @@ def test_5000_connector_rules_on_shared_groups_evaluate_in_under_two_seconds():
         {"tagType": "ATTR", "tagContainer": {"operator": "AND", "tags": [{"key": "Env", "value": "prod"}]}}]}} for i in range(300)]]
     snap = ztw_snap(data)
     # Act
-    t0 = time.perf_counter()
+    t0 = time.process_time()
     ev = wp.evaluate(snap, wl(ip="192.168.1.1", tags="Env=dev"), zp.destination("198.51.100.5", "443"))
-    took = time.perf_counter() - t0
+    took = time.process_time() - t0
     # Assert
-    assert took < 2.0 and ev["go"] == "zia" and len(ev["walked"]) == 60, took
+    assert took < BUDGET and ev["go"] == "zia" and len(ev["walked"]) == 60, took
 
 
 # ── C6-PATH-19: list rows against thousands of address entries ─────────
@@ -2046,10 +2050,10 @@ def test_a_list_against_a_5000_network_group_costs_little_per_row():
     tenant = Tenant({"/zia/firewallFilteringRules": [fw_rule(1, 1, "BLOCK_DROP", destIpGroups=[{"id": 1, "name": "Big"}]), DEFAULT_FW],
                      "/zia/ipDestinationGroups": dg})
     parsed = bt.parse("destination\n10.5.0.0/18\n172.16.0.0/30\n")
-    t0 = time.perf_counter()
+    t0 = time.process_time()
     rn = bt.run(tenant, parsed, scope=FULL, lookup=False, sleep=lambda s: None)
-    took = time.perf_counter() - t0
-    assert took < 2.0, took
+    took = time.process_time() - t0
+    assert took < BUDGET, took
     assert (rn.row(0)["result"], rn.row(len(parsed) - 1)["result"]) == ("allowed", "blocked")
 
 
