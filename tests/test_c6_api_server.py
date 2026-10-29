@@ -240,6 +240,59 @@ def test_path_scrubbing_covers_each_folder_and_only_server_faults():
     assert srv._scrub_paths(5) == 5
 
 
+def test_a_har_batch_over_the_cap_is_refused_before_sign_in(client, signins):
+    """ASVS V5.1.3 · A04:2021 · CWE-770 · WSTG-BUSL-05: one host more than path_analyzer.BATCH_MAX is a 400 naming the cap (boundary); nothing is signed in to."""
+    import path_analyzer
+    # Act
+    over = client.post("/api/path-analyzer/batch/start", json={**LIVE, **SCOPE, "har_hosts": ["a.example.com"] * (path_analyzer.BATCH_MAX + 1)})
+    # Assert
+    assert over.status_code == 400 and str(path_analyzer.BATCH_MAX) in over.json()["detail"] and signins == []
+
+
+def test_a_har_batch_at_the_cap_reaches_the_scope_check(client, signins):
+    """ASVS V5.1.3 · CWE-770: exactly BATCH_MAX hosts pass the cap (boundary); with nothing in scope the request is then refused before sign-in."""
+    import path_analyzer
+    # Act
+    r = client.post("/api/path-analyzer/batch/start", json={**LIVE, "scopes": [], "channels": {}, "from_page": True,
+                                                            "har_hosts": ["a.example.com"] * path_analyzer.BATCH_MAX})
+    # Assert
+    assert r.status_code == 400 and str(path_analyzer.BATCH_MAX) not in r.json()["detail"] and signins == []
+
+
+def test_har_entries_that_name_no_host_are_a_plain_400(client, signins):
+    """ASVS V5.1.4 · CWE-20 · WSTG-INPV-01: entries whose host is missing, a list, an object, a number, a URL or text are skipped; none left is a 400, never a 500."""
+    # Act
+    r = client.post("/api/path-analyzer/batch/start", json={**LIVE, **SCOPE, "har_hosts": [
+        None, 5, "", "not a host!", "https://a.example/path", {"host": ["x"]}, {"host": {"a": 1}}, {"nohost": 1}]})
+    # Assert
+    assert r.status_code == 400 and "No hostname" in r.json()["detail"] and signins == []
+
+
+@pytest.mark.parametrize("odd", [{"methods": {"a": 1}, "schemes": 5}, {"methods": 7, "schemes": True}, {"methods": "GET", "schemes": "https"}],
+                         ids=["object-and-number", "number-and-bool", "strings"])
+def test_har_methods_and_schemes_that_are_not_lists_are_dropped(odd):
+    """ASVS V5.1.4 · A04:2021 · CWE-20 · WSTG-INPV-01: methods / schemes that are not lists are read as none (a number was a TypeError, 500; "GET" became G, E, T)."""
+    # Arrange
+    req = srv.PathBatchRequest(har_hosts=[{"host": "a.example.com", **odd}])
+    # Act
+    _hosts, stats, _skipped = srv._batch_hosts(req)
+    # Assert
+    assert stats["a.example.com"]["methods"] == [] and stats["a.example.com"]["schemes"] == []
+
+
+def test_har_host_counts_are_bounded_and_odd_fields_dropped():
+    """ASVS V5.1.3 · CWE-20 · CWE-400: counts are whole numbers in 0..10**12, methods and schemes keep only known short values, duplicates and URLs are skipped."""
+    # Arrange
+    req = srv.PathBatchRequest(har_hosts=[{"host": "A.example.com", "requests": 10 ** 30, "uploads": -5, "bytes_sent": True,
+                                           "methods": ["GET", "x" * 50, 5, None, "post"], "schemes": ["https", "ftp", None]},
+                                          "a.example.com", "https://b.example/x"])
+    # Act
+    hosts, stats, skipped = srv._batch_hosts(req)
+    # Assert
+    assert hosts == ["a.example.com"] and skipped == ["https://b.example/x"]
+    assert stats["a.example.com"] == {"requests": 10 ** 12, "uploads": 0, "bytes_sent": 0, "methods": ["GET"], "schemes": ["https"]}
+
+
 # ── 2. Rule order: token / origin / host, then scope, then write gates ──
 
 API_ROUTES = [r for r in ROUTES if r.path.startswith("/api/") and r.path not in security._UI_AUTH_EXEMPT_PATHS

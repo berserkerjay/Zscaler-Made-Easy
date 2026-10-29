@@ -8636,9 +8636,10 @@ def _batch_hosts(req: PathBatchRequest) -> Tuple[List[str], Dict[str, Dict[str, 
         h = d["host"]
         hosts.append(h)
         it = item if isinstance(item, dict) else {}
+        listed = lambda v: v[:100] if isinstance(v, list) else []  # noqa: E731 — anything else names no method or scheme
         stats[h] = {"requests": num(it.get("requests")), "uploads": num(it.get("uploads")), "bytes_sent": num(it.get("bytes_sent")),
-                    "methods": [m for m in (it.get("methods") or []) if isinstance(m, str) and _HAR_METHOD.match(m)][:12],
-                    "schemes": [s for s in (it.get("schemes") or []) if s in ("http", "https", "ws", "wss")][:4]}
+                    "methods": [m for m in listed(it.get("methods")) if isinstance(m, str) and _HAR_METHOD.match(m)][:12],
+                    "schemes": [s for s in listed(it.get("schemes")) if isinstance(s, str) and s in ("http", "https", "ws", "wss")][:4]}
     if not hosts:
         raise HTTPException(status_code=400, detail="No hostname or IP address to analyze: the HAR file named none the analyzer can read.")
     return hosts, stats, skipped
