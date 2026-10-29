@@ -95,6 +95,8 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -323,7 +325,5 @@
     tenantChoices().then(loadTenant);
   })();
   </script>
-<script src="/static/help_catalog.js"></script>
-<script src="/static/hover_help.js"></script>
 </body>
 </html>

@@ -49,6 +49,8 @@
     function announce() {}
   </script>
   <script src="/static/deploy_studio.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const body = document.getElementById('rpBody');
@@ -157,7 +159,5 @@
     setInterval(() => { document.getElementById('flLive').hidden = !(window.opener && !window.opener.closed); }, 2000);
   })();
   </script>
-<script src="/static/help_catalog.js"></script>
-<script src="/static/hover_help.js"></script>
 </body>
 </html>

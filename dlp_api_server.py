@@ -430,10 +430,10 @@ GUI_ADDONS = [
     ("tool_tabs.js", "script"),
     ("simple_entry.js", "script"),   # the "Try Simple mode" banner and the deep links from /simple
     ("posture_banner.js", "script"),  # the coverage line and the score-drop banner on the results (posture_plus)
-    ("sidebar_order.js", "script"),  # drag / Alt+arrow reordering of the sidebar; dashboard.js starts it
-    ("dashboard.js", "script"),     # wraps showResults / renderChecks / resetForm
     ("help_catalog.js", "script"),  # the words of Help on hover, per page and control
     ("hover_help.js", "script"),    # Help on hover: a pop-up for every control (watches for new ones)
+    ("sidebar_order.js", "script"),  # drag / Alt+arrow reordering of the sidebar; dashboard.js starts it
+    ("dashboard.js", "script"),     # last: wraps showResults / renderChecks / resetForm
 ]
 
 

@@ -180,7 +180,7 @@
     const mine = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
     const others = mine.filter(id => !/^hh-[dn]-/.test(id));
     const old = mine.find(id => /^hh-n-/.test(id));
-    if (old && note) { const s = document.getElementById(old); if (s) s.remove(); }
+    if (old) { const s = document.getElementById(old); if (s) s.remove(); }   // its own Note line, rebuilt below if still needed
     const id = descFor(el, item, note);
     el.setAttribute('aria-describedby', others.concat(id).join(' '));
     el.setAttribute('data-hh', item.sel);

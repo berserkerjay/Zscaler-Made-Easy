@@ -44,6 +44,8 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/flow_anim.js"></script>
   <script src="/static/ssl_flow.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const q = new URLSearchParams(location.search);
@@ -92,7 +94,5 @@
     load(id).catch(e => fail('This report is no longer available', `${e.message}. Reports are kept in memory while the server runs; generate it again from the assessment page.`));
   })();
   </script>
-<script src="/static/help_catalog.js"></script>
-<script src="/static/hover_help.js"></script>
 </body>
 </html>

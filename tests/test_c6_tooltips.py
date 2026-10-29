@@ -217,7 +217,7 @@ def test_gui_addons_inject_the_hover_help_into_the_home_page():
     names = [n for n, _ in srv.GUI_ADDONS]
     assert ("hover_help.css", "style") in srv.GUI_ADDONS
     assert names.index("help_catalog.js") + 1 == names.index("hover_help.js")
-    assert names.index("sidebar_order.js") + 1 == names.index("dashboard.js"), "the existing order is kept"
+    assert names.index("sidebar_order.js") + 1 == names.index("dashboard.js") == len(names) - 1, "the existing order is kept: dashboard.js last"
 
 
 @pytest.mark.parametrize("name,key", sorted((v, k) for k, v in EXT_PAGES.items()))
@@ -689,9 +689,12 @@ out.reduced = await ev(`(() => { window.HoverHelp.show(document.querySelector(${
 const CONTRAST = `(() => { const lum = c => { const v = c.match(/[\\d.]+/g).slice(0, 3).map(Number).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
   const H = window.HoverHelp; H.show(document.querySelector(${JSON.stringify(sel)})); const t = H.tip(); const bg = lum(getComputedStyle(t).backgroundColor);
   return Math.min(...[t, ...t.querySelectorAll('p, strong')].map(n => { const f = lum(getComputedStyle(n).color); return (Math.max(f, bg) + 0.05) / (Math.min(f, bg) + 0.05); })); })()`;
+await ev(`document.body.classList.remove('theme-light'), 1`);
+out.themes = [await ev(`getComputedStyle((window.HoverHelp.show(document.querySelector(${JSON.stringify(sel)})), window.HoverHelp.tip())).backgroundColor`)];
 out.contrastDark = await ev(CONTRAST);
 await ev(`document.body.classList.add('theme-light'), 1`);
 out.contrastLight = await ev(CONTRAST);
+out.themes.push(await ev(`getComputedStyle(window.HoverHelp.tip()).backgroundColor`));
 
 // Touch: the ⓘ target is at least 24px and opens it; a long press opens it too.
 await open(page, 390, false);
@@ -788,6 +791,7 @@ def test_reduced_motion_shows_the_help_without_animation(a11y):
 def test_the_help_text_has_enough_contrast(a11y, theme):
     """WCAG 2.2 SC 1.4.3 (Contrast, Minimum): every line of the pop-up is at least 4.5:1 in dark and light mode."""
     assert a11y[theme] >= 4.5, a11y[theme]
+    assert a11y["themes"][0] != a11y["themes"][1], "the pop-up follows the page theme"
 
 
 def test_touch_info_target_is_at_least_24px_and_opens_the_help(a11y):

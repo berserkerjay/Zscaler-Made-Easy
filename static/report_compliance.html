@@ -65,6 +65,8 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -145,7 +147,5 @@
     load(id).catch(e => fail('This view is no longer available', `${e.message}. Reports are kept in memory while the server runs; open it again from the assessment page.`));
   })();
   </script>
-<script src="/static/help_catalog.js"></script>
-<script src="/static/hover_help.js"></script>
 </body>
 </html>
