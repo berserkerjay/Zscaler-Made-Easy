@@ -8,6 +8,7 @@ folded away: the operator can always widen it.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 INDUSTRIES = ["Healthcare", "Federal", "State & local government", "Law enforcement (CJIS)", "Financial services",
@@ -55,23 +56,23 @@ def normalize_industry(industry: Any) -> str:
         if i.lower() == s.lower():
             return i
     low = s.lower()
-    if "health" in low or "hipaa" in low or "hospital" in low:
-        return "Healthcare"
-    if "cjis" in low or "police" in low or "law enforcement" in low:
-        return "Law enforcement (CJIS)"
-    if "fed" in low or "dod" in low or "defense" in low:
-        return "Federal"
-    if "bank" in low or "financ" in low or "insurance" in low or "payment" in low:
-        return "Financial services"
-    if "state" in low or "local" in low or "municipal" in low or "county" in low:
-        return "State & local government"
-    if "educat" in low or "school" in low or "universit" in low:
-        return "Education"
-    if "manufact" in low:
-        return "Manufacturing"
-    if "tech" in low or "software" in low or "saas" in low:
-        return "Technology"
+    # Words, not substrings: "real estate" is not a state, "fedex" is not federal.
+    for industry, rx in _GUESS:
+        if rx.search(low):
+            return industry
     return "Other" if s else ""
+
+
+_GUESS = [(i, re.compile(rx)) for i, rx in (
+    ("Healthcare", r"health|hipaa|hospital"),
+    ("Law enforcement (CJIS)", r"cjis|police|law enforcement"),
+    ("Federal", r"\bfed(eral)?\b|\bdod\b|defen[cs]e"),
+    ("Financial services", r"bank|financ|insurance|payment"),
+    ("State & local government", r"\bstate|\blocal\b|municipal|county"),
+    ("Education", r"educat|school|universit"),
+    ("Manufacturing", r"manufact"),
+    ("Technology", r"tech|software|saas"),
+)]
 
 
 def scope_for(profile: Optional[Dict[str, Any]], *, all_frameworks: Optional[List[str]] = None,

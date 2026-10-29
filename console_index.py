@@ -453,30 +453,48 @@ def shadow_by_channel(findings: Iterable[Dict[str, Any]]) -> Dict[Any, List[Dict
 
 CACHE_SECONDS = 30 * 60
 _CACHE: Dict[str, Dict[str, Any]] = {}
+# Sign-ins that are not a saved profile (typed credentials, the server's own
+# tenant) share one bucket. Its name cannot be a profile id
+# (tenant_profiles ids start with a letter or a digit), so a profile named
+# "server" never shares it.
+_NO_PROFILE = "_server"
+_clock = time.time   # injected in tests
+
+
+def _bucket(profile_id: Any) -> str:
+    from urllib.parse import quote
+    return quote(str(profile_id), safe="") if profile_id else _NO_PROFILE
 
 
 def cache_key(profile_id: str, channels: Iterable[str]) -> str:
-    return f"{profile_id or 'server'}|{','.join(sorted(channels or []))}"
+    return f"{_bucket(profile_id)}|{','.join(sorted(channels or []))}"
 
 
 def cache_put(key: str, index: Dict[str, Any]) -> None:
-    _CACHE[key] = {"at": time.time(), "index": index}
+    _CACHE[key] = {"at": _clock(), "index": index}
     for k in sorted(_CACHE, key=lambda k: _CACHE[k]["at"])[:-16]:   # bounded
         _CACHE.pop(k, None)
 
 
 def cache_get(key: str) -> Optional[Dict[str, Any]]:
     hit = _CACHE.get(key)
-    if not hit or time.time() - hit["at"] > CACHE_SECONDS:
+    if not hit or _clock() - hit["at"] > CACHE_SECONDS:
         return None
     return dict(hit["index"], cached_at=int(hit["at"]))
 
 
-def cache_latest(profile_id: str) -> Optional[Dict[str, Any]]:
+def cache_latest(profile_id: str, tenant_label: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """The newest index still kept for a profile (any scope it was read
-    with), or None. Reads nothing."""
-    prefix = f"{profile_id or 'server'}|"
-    keys = [k for k in _CACHE if k.startswith(prefix) and time.time() - _CACHE[k]["at"] <= CACHE_SECONDS]
+    with), or None. Reads nothing. With `tenant_label`, only an index of
+    that tenant answers. Without a profile the bucket is shared by every
+    typed sign-in, so an index is returned only for a named tenant: never
+    one read for another tenant (deny by default)."""
+    if not profile_id and not tenant_label:
+        return None
+    prefix = f"{_bucket(profile_id)}|"
+    now = _clock()
+    keys = [k for k in _CACHE if k.startswith(prefix) and now - _CACHE[k]["at"] <= CACHE_SECONDS
+            and (tenant_label is None or (_CACHE[k]["index"] or {}).get("tenant_label") == tenant_label)]
     return cache_get(max(keys, key=lambda k: _CACHE[k]["at"])) if keys else None
 
 

@@ -88,6 +88,7 @@ TOPICS: List[Dict[str, Any]] = [
 ]
 _NEW_CAPABILITY = re.compile(r"now supports?|new (feature|capability|integration|application)|adds? support|introduc|generally available|is now available|support for", re.I)
 _COMPILED = [(t, re.compile(t["keywords"], re.I)) for t in TOPICS]
+_WEB_URL = re.compile(r"^https?://[^\s\\/?#@]+(?:[/?#][^\s\\]*)?$", re.I)
 
 
 # ── Registry lookups ─────────────────────────────────────────────────
@@ -236,10 +237,20 @@ def evaluate(entries: Sequence[Dict[str, Any]], *, now: Optional[float] = None) 
         no_action = 0
         baselined = 0
         for e in entries:
-            url = e.get("url")
-            if not url or url in seen:
+            if not isinstance(e, dict):
                 continue
-            first_seen = float(e.get("first_seen") or 0) or None
+            url = e.get("url")
+            if not url or not isinstance(url, str) or url in seen:
+                continue
+            if not _WEB_URL.match(url) or len(url) > 2000:
+                # A proposal links to its article: only a web address becomes one.
+                seen[url[:2000]] = {"at": _now(), "action": "none", "why": "not a web address"}
+                no_action += 1
+                continue
+            try:
+                first_seen = float(e.get("first_seen") or 0) or None
+            except (TypeError, ValueError):
+                first_seen = None
             if first_run and (first_seen is None or now - first_seen > BASELINE_DAYS * 86400):
                 seen[url] = {"at": _now(), "action": "baseline"}
                 baselined += 1
