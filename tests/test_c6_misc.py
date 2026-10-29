@@ -1150,3 +1150,55 @@ def test_native_dictionary_proximity_is_made_deployable(dct, kept, warn):
     out = nz.convert_dictionary(dict(dct, name="D", custom=True, dictionaryType="PATTERNS_AND_PHRASES"), warnings)
 
     assert out.get("proximity") == kept and (warn in " ".join(warnings) if warn else warnings == [])
+
+
+# ── secure_by_design: the evidence it reports is the evidence there is ──
+
+class _AppWithMiddleware:
+    """An app stub carrying the middleware names the live server has."""
+    def __init__(self, *names):
+        self.user_middleware = [type("M", (), {"cls": type(n, (), {})})() for n in names]
+
+
+def test_sbd_audit_evidence_follows_the_configured_audit_log(monkeypatch, tmp_path):
+    """ASVS V7.1.3 · A09:2021 · CWE-778 · CWE-1059: the audit control reads the log DLP_CHECK_AUDIT points at (the container's /data), not a file beside the app."""
+    import secure_by_design as sbd
+    log = tmp_path / "audit.log"
+    log.write_text('{"event": "x"}\n' * 3, encoding="utf-8")
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+
+    audit = next(c for c in sbd.evaluate(_AppWithMiddleware("AuditMiddleware"))["checks"] if c["id"] == "audit")
+
+    assert audit["status"] == "pass" and f"{log.stat().st_size:,} bytes" in audit["evidence"]
+
+
+def test_sbd_missing_middleware_fails_and_is_named(monkeypatch):
+    """ASVS V14.1.1 · CWE-1188 · WSTG-CONF-02: a server without the security middleware fails that control and names what is missing."""
+    import secure_by_design as sbd
+
+    checks = {c["id"]: c for c in sbd.evaluate(_AppWithMiddleware("SecurityHeadersMiddleware"))["checks"]}
+
+    assert checks["middleware"]["status"] == "fail" and "OriginCheckMiddleware" in checks["middleware"]["evidence"]
+    assert checks["audit"]["status"] == "fail"
+
+
+def test_sbd_score_counts_pass_warn_fail_and_skips_not_applicable():
+    """ASVS V1.1.1 · CWE-1059: the score is the share of scored controls (pass 1, warn 0.5, fail 0); n/a is shown, not scored."""
+    import secure_by_design as sbd
+
+    d = sbd.evaluate(None)
+
+    scored = [c for c in d["checks"] if c["status"] != "n/a"]
+    want = round(100 * sum({"pass": 1, "warn": 0.5, "fail": 0}[c["status"]] for c in scored) / len(scored))
+    assert d["score"] == want and d["counts"]["n/a"] >= 1 and all(c["status"] in ("pass", "warn", "fail", "n/a") for c in d["checks"])
+
+
+def test_sbd_evidence_never_carries_a_secret(monkeypatch):
+    """ASVS V8.3.4 · CWE-200 · CWE-532: the Secure by Design page never echoes the UI token or an SSO secret it reads from the environment."""
+    import secure_by_design as sbd
+    monkeypatch.setenv("ZSCALER_UI_TOKEN", "ui-token-not-real-123456")
+    monkeypatch.setenv("ZSCALER_SSO_CLIENT_SECRET", "sso-secret-not-real-654321")
+
+    blob = json.dumps(sbd.evaluate(None))
+
+    assert "ui-token-not-real" not in blob and "sso-secret-not-real" not in blob
