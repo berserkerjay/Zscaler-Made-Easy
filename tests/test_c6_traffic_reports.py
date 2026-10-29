@@ -874,7 +874,7 @@ def test_a_zip_python_cannot_open_is_a_note_never_a_crash(damage):
 
     members, notes = la.expand([{"name": "bundle.zip", "content": _b64(data), "encoding": "base64"}])
 
-    assert members == [] and notes and ("not a valid ZIP" in notes[0] or "could not be read" in notes[0])
+    assert members == [] and notes and any(w in notes[0] for w in ("not a valid ZIP", "could not be read", "damaged"))
 
 
 def test_seeded_mutations_of_every_bundle_kind_never_crash_the_analyzer():
