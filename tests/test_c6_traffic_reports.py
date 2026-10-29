@@ -415,6 +415,17 @@ def test_an_unreadable_section_is_could_not_be_read_not_zero_bypasses(endpoint, 
     assert any(d["section"] == section and "403" in d["error"] for d in rep["diagnostics"])
 
 
+def test_an_endpoint_the_tenant_does_not_have_is_empty_not_an_error():
+    """ASVS V7.4.1 · CWE-754 · WSTG-ERRH-01: a 404 (the API is not on this tenant) is no rules of that kind, with its status kept (boundary of the case above)."""
+    c = _Get({"/zia/firewallFilteringRules": ({"error": "not found"}, 404)})
+
+    rep = br.generate_bypass_report(c)
+
+    sec = rep["sections"]["firewall_allow"]
+    assert sec["count"] == 0 and sec["http_status"] == 404 and "status" not in sec
+    assert not [d for d in rep["diagnostics"] if d["section"] == "firewall_allow"]
+
+
 def test_no_client_connector_endpoint_answering_is_a_diagnostic():
     """ASVS V7.4.1 · CWE-754 · WSTG-ERRH-01: when no ZCC endpoint answers 200 the ZCC section is unverified and says why."""
     c = _Get({ep: ({}, 401) for ep in ("/zcc/webPolicies", "/zcc/forwardingProfiles", "/zcc/trustedNetworks", "/zcc/webAppService")})

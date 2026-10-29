@@ -201,11 +201,12 @@ def _fetch_url_category_lookup(client) -> Dict[str, Dict[str, Any]]:
 # ── Section fetchers ─────────────────────────────────────────────────
 
 def _read_list(client, endpoint: str) -> tuple:
-    """(items, status) of a list endpoint. A status other than 200 (or 204,
-    nothing there) raises: an unreadable rule list is "could not be read",
-    never "no bypass" (the section's diagnostic says why)."""
+    """(items, status) of a list endpoint. 204 is nothing there and 404 an
+    endpoint this tenant does not have (http_status says which); any other
+    status raises: an unreadable rule list (401, 403, 5xx) is "could not be
+    read", never "no bypass" (the section's diagnostic says why)."""
     data, code = client.get(endpoint)
-    if code == 204:
+    if code in (204, 404):
         return [], code
     if code != 200:
         err = data.get("error") or data.get("message") if isinstance(data, dict) else ""
@@ -236,6 +237,8 @@ def _fetch_ssl_exemptions(client) -> Dict[str, Any]:
     for ep, label in candidates:
         data, code = client.get(ep)
         out["endpoints_probed"].append({"endpoint": ep, "status": code})
+        if code == 404:
+            continue
         if code != 200:
             raise RuntimeError(f"HTTP {code} from {ep}; the SSL exemption settings could not be read")
         if not isinstance(data, (dict, list)):
