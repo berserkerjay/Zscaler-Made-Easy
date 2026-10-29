@@ -1,0 +1,48 @@
+/* Help on hover (hover_help.js): the pop-up and the touch ⓘ target.
+   The colours are the opposite of the page so the pop-up stands out; both
+   pairs pass WCAG 2.2 contrast (dark page: #0f172a on #f8fafc is 17.9:1;
+   light page: #f8fafc on #111827 is 16.9:1; the effect lines too). */
+.hh-tip {
+  --hh-bg: #f8fafc; --hh-fg: #0f172a; --hh-muted: #334155; --hh-line: #94a3b8;
+  --hh-read: #1e3a8a; --hh-write: #7f1d1d; --hh-local: #14532d;
+  position: fixed; inset: auto; margin: 0; z-index: 2147483000;
+  box-sizing: border-box; max-width: 340px; overflow: auto;
+  padding: 0.55rem 0.7rem; border: 1px solid var(--hh-line); border-radius: 8px;
+  background: var(--hh-bg); color: var(--hh-fg);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  font: 400 0.8rem/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  text-align: left; white-space: normal; overflow-wrap: anywhere; pointer-events: auto;
+  opacity: 1; transition: opacity 120ms ease-out;
+}
+body.theme-light .hh-tip {
+  --hh-bg: #111827; --hh-fg: #f8fafc; --hh-muted: #e2e8f0; --hh-line: #475569;
+  --hh-read: #bfdbfe; --hh-write: #fecaca; --hh-local: #bbf7d0;
+}
+.hh-tip[hidden] { display: none; }
+.hh-tip p { margin: 0 0 0.3rem; color: inherit; }
+.hh-tip p:last-child { margin-bottom: 0; }
+.hh-tip .hh-what { font-weight: 600; }
+.hh-tip .hh-input { color: var(--hh-muted); }
+.hh-tip .hh-effect { font-size: 0.75rem; }
+.hh-tip .hh-read { color: var(--hh-read); }
+.hh-tip .hh-write { color: var(--hh-write); font-weight: 600; }
+.hh-tip .hh-local, .hh-tip .hh-download, .hh-tip .hh-nav { color: var(--hh-local); }
+.hh-tip .hh-now { border-top: 1px solid var(--hh-line); padding-top: 0.3rem; }
+
+/* WCAG 2.5.8: at least 24 by 24 CSS pixels (28 here). */
+.hh-info {
+  position: fixed; inset: auto; margin: 0; z-index: 2147483001;
+  box-sizing: border-box; width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #475569; border-radius: 50%; background: #f8fafc; color: #0f172a;
+  font: 700 16px/1 system-ui, sans-serif; cursor: pointer;
+}
+.hh-info[hidden] { display: none; }
+.hh-info:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hh-tip, .hh-info { transition: none !important; animation: none !important; }
+}
+@media (forced-colors: active) {
+  .hh-tip { border: 2px solid CanvasText; background: Canvas; color: CanvasText; }
+}

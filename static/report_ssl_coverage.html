@@ -47,6 +47,7 @@
   .sc-unavail { margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; }
   @media (max-width: 600px) { .sc-dl { grid-template-columns: 1fr; } .sc-tile .n { font-size: 1.5rem; } }
 </style>
+<link rel="stylesheet" href="/static/hover_help.css">
 </head>
 <body class="report-page sc-page">
   <div class="rp-page">
@@ -90,6 +91,8 @@
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
   <script src="/static/flow_anim.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
