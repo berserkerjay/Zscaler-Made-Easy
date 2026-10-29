@@ -1,0 +1,446 @@
+{
+  "area": "packs",
+  "title": "Policy-pack execution path: channels, shared write path, jobs, pack library",
+  "files": [
+    "pack_channels.py",
+    "pack_ops.py",
+    "pack_jobs.py",
+    "pack_library.py"
+  ],
+  "standards": [
+    "ASVS V1.4.4",
+    "ASVS V5.1.1",
+    "ASVS V5.1.3",
+    "ASVS V5.1.4",
+    "ASVS V7.1.1",
+    "ASVS V7.1.4",
+    "ASVS V7.4.1",
+    "ASVS V11.1.1",
+    "ASVS V11.1.4",
+    "ASVS V11.1.6",
+    "ASVS V12.1.1",
+    "ASVS V12.3.1",
+    "ASVS V12.3.4",
+    "OWASP Top 10 2021 A01/A03/A04/A05/A09",
+    "WSTG-INPV-01",
+    "WSTG-INPV-11",
+    "WSTG-BUSL-05",
+    "WSTG-BUSL-07",
+    "WSTG-BUSL-08",
+    "WSTG-BUSL-09",
+    "WSTG-ERRH-01",
+    "WSTG-ATHZ-01",
+    "CISA Secure by Design"
+  ],
+  "coverage": {
+    "before": 87.0,
+    "after": 91.0
+  },
+  "checks": [
+    {
+      "id": "SDK-SIG",
+      "what": "Every kind's create/update/delete binds to the SDK 1.11.3 method signature (autospec)",
+      "standard": "ASVS V5.1.1",
+      "result": "pass"
+    },
+    {
+      "id": "SDK-MODEL",
+      "what": "Every rule payload key is a field of the SDK model for that rule type",
+      "standard": "ASVS V5.1.1",
+      "result": "fixed"
+    },
+    {
+      "id": "CH-TABLE",
+      "what": "SaaS rule types equal the SDK's; monitor vs enforcing actions per channel (oracle)",
+      "standard": "ASVS V1.4.4",
+      "result": "fixed"
+    },
+    {
+      "id": "RETRY-BACKOFF",
+      "what": "Transient refusals back off linearly up to MAX_ATTEMPTS",
+      "standard": "ASVS V11.1.4",
+      "result": "pass"
+    },
+    {
+      "id": "RETRY-429",
+      "what": "A 429 is honoured (reset timer bounded; outside a run waits or reports)",
+      "standard": "ASVS V11.1.4",
+      "result": "fixed"
+    },
+    {
+      "id": "POST-ONCE",
+      "what": "A POST is never resent blindly after a timeout",
+      "standard": "ASVS V11.1.1",
+      "result": "fixed"
+    },
+    {
+      "id": "ZIA-ONLY-403",
+      "what": "403 wait-and-retry only for ZIA (ZPA, AI Guard, outside a run: once)",
+      "standard": "ASVS V11.1.4",
+      "result": "pass"
+    },
+    {
+      "id": "JOB-CANCEL",
+      "what": "Cancel and stop-before-start race-free; ending claimed once",
+      "standard": "ASVS V11.1.6",
+      "result": "fixed"
+    },
+    {
+      "id": "JOB-CAP",
+      "what": "Finished job store and pending stops capped",
+      "standard": "ASVS V11.1.4",
+      "result": "pass"
+    },
+    {
+      "id": "JOB-LOG",
+      "what": "Logs bounded per line and in total, cursor survives the cut, secrets masked",
+      "standard": "ASVS V7.1.1",
+      "result": "fixed"
+    },
+    {
+      "id": "JOB-TOKEN",
+      "what": "Start tokens validated (8-64 safe characters)",
+      "standard": "ASVS V5.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "LIB-SIZE",
+      "what": "Upload size cap, ZIP member caps, NaN/Infinity refused",
+      "standard": "ASVS V12.1.1",
+      "result": "pass"
+    },
+    {
+      "id": "LIB-SHAPE",
+      "what": "Type confusion and nesting in uploads refused in words",
+      "standard": "ASVS V5.1.4",
+      "result": "fixed"
+    },
+    {
+      "id": "LIB-TRAVERSAL",
+      "what": "Pack ids, ZIP member names and delete targets cannot leave the library; symlinks not followed",
+      "standard": "ASVS V12.3.1",
+      "result": "pass"
+    },
+    {
+      "id": "LIB-PERMS",
+      "what": "Saved packs are 0700/0600",
+      "standard": "ASVS V12.3.4",
+      "result": "pass"
+    },
+    {
+      "id": "LIB-REDOS",
+      "what": "HCL reader and provenance strip linear on hostile input",
+      "standard": "ASVS V11.1.4",
+      "result": "fixed"
+    },
+    {
+      "id": "PATH-INJECTION",
+      "what": "Ids in raw request paths are whole numbers",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "SECRETS",
+      "what": "Exception and raw-request errors token-redacted",
+      "standard": "ASVS V7.1.1",
+      "result": "fixed"
+    },
+    {
+      "id": "REGRESSION",
+      "what": "Bundle round-trip, older endpoint_application_groups key, escapes and provenance strip unchanged",
+      "standard": "ASVS V5.1.4",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "C6-PACKS-01",
+      "title": "Exponential ReDoS in the Terraform string token: an unterminated \"$${$${... pins a worker thread",
+      "severity": "medium",
+      "cwe": "CWE-1333",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "String token reduced to the equivalent unambiguous (\\\\.|[^\"\\\\])*; the $${ / %%{ alternatives were subsumed and ambiguous",
+      "test": "tests/test_c6_packs.py::test_an_unterminated_terraform_string_of_escapes_is_read_in_linear_time",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-02",
+      "title": "Quadratic provenance strip on a Terraform description with long runs of spaces or brackets",
+      "severity": "low",
+      "cwe": "CWE-1333",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "Only the last 400 characters (where the tag lives) are searched",
+      "test": "tests/test_c6_packs.py::test_a_long_run_of_spaces_in_a_terraform_description_is_read_in_linear_time",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-03",
+      "title": "Pack upload with a field of the wrong JSON type crashed validation (HTTP 500 on preview; ~1,500 fuzz-found inputs)",
+      "severity": "medium",
+      "cwe": "CWE-755",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Shape check of every dictionary, engine, rule, sub-rule and app group in assemble_pack; refused in words",
+      "test": "tests/test_c6_packs.py::test_an_entry_of_the_wrong_type_is_refused_in_words",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-04",
+      "title": "Uploaded JSON nesting was not capped",
+      "severity": "low",
+      "cwe": "CWE-674",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "MAX_JSON_DEPTH = 32, walked without recursion",
+      "test": "tests/test_c6_packs.py::test_json_nested_too_deep_is_refused",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-05",
+      "title": "Non-text upload content was passed to bytes(), which allocates an integer's worth of memory",
+      "severity": "low",
+      "cwe": "CWE-400",
+      "asvs": "V12.1.1",
+      "status": "fixed",
+      "fix": "Content must be text; base64 decoded with validate=True",
+      "test": "tests/test_c6_packs.py::test_non_text_file_content_is_refused_without_allocating",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-06",
+      "title": "Terraform proximity / dict_template_id of the wrong type raised TypeError",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "_tf_int() refuses anything but a whole number, in words",
+      "test": "tests/test_c6_packs.py::test_a_terraform_proximity_that_is_not_a_number_is_refused_in_words",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-07",
+      "title": "A malformed Zscaler API export crashed native conversion with TypeError",
+      "severity": "low",
+      "cwe": "CWE-755",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "convert_parts wrapped at the pack_library boundary: refused in words",
+      "test": "tests/test_c6_packs.py::test_a_malformed_native_export_is_refused_in_words",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-08",
+      "title": "Job log cursor stalled once the log reached MAX_LOG_LINES: every later line (Stop, the result) was lost to the poller",
+      "severity": "medium",
+      "cwe": "CWE-682",
+      "asvs": "V7.1.4",
+      "status": "fixed",
+      "fix": "Job.dropped counts lines cut from the top; `next` and `since` count every line ever written",
+      "test": "tests/test_c6_packs.py::test_a_poller_keeps_receiving_lines_after_the_log_is_cut",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-09",
+      "title": "One job log line was unbounded",
+      "severity": "low",
+      "cwe": "CWE-400",
+      "asvs": "V7.1.4",
+      "status": "fixed",
+      "fix": "MAX_LOG_LINE_CHARS = 4000",
+      "test": "tests/test_c6_packs.py::test_one_job_log_line_is_capped",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-10",
+      "title": "Secrets written as key=value / \"key\": \"value\" were not masked in job logs (only token shapes were)",
+      "severity": "medium",
+      "cwe": "CWE-532",
+      "asvs": "V7.1.1",
+      "status": "fixed",
+      "fix": "redact_line masks client secret, password, API key, private key and provisioning key pairs",
+      "test": "tests/test_c6_packs.py::test_a_secret_in_a_job_log_line_is_masked",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-11",
+      "title": "Race between a job's own ending and self-heal's abandon: two job_finished entries and a status flipping FAILED -> DONE",
+      "severity": "low",
+      "cwe": "CWE-362",
+      "asvs": "V11.1.6",
+      "status": "fixed",
+      "fix": "The first ending claims Job.ending under the job lock; the other is audited apart",
+      "test": "tests/test_c6_packs.py::test_an_abandon_racing_the_runs_own_ending_writes_one_job_finished",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-12",
+      "title": "prune() could drop a job whose finish time was set but whose final status was not yet published",
+      "severity": "low",
+      "cwe": "CWE-367",
+      "asvs": "V11.1.6",
+      "status": "fixed",
+      "fix": "Only jobs with a final status are pruned",
+      "test": "tests/test_c6_packs.py::test_prune_never_drops_a_job_that_has_not_published_its_ending",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-13",
+      "title": "Retry-After / x-ratelimit-reset of inf or 1e12 became an unbounded hold of the whole run",
+      "severity": "medium",
+      "cwe": "CWE-835",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "A reset timer is trusted only when finite and at most 3600 s",
+      "test": "tests/test_c6_packs.py::test_zias_reset_timer_is_trusted_only_when_finite_and_bounded",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-14",
+      "title": "Outside a run a 429 was retried after 1 s, ignoring ZIA's reset timer",
+      "severity": "low",
+      "cwe": "CWE-400",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "Short reset honoured (wait = max(backoff, reset)); a long one reported at once",
+      "test": "tests/test_c6_packs.py::test_outside_a_run_a_429_waits_for_zias_reset_timer",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-15",
+      "title": "An id such as 15030 in a refusal was read as a 503 and retried",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "Status codes matched as whole numbers only",
+      "test": "tests/test_c6_packs.py::test_a_number_containing_a_status_code_is_not_transient",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-16",
+      "title": "call()'s default op 'write' (a POST) was resent blindly after a timeout",
+      "severity": "low",
+      "cwe": "CWE-841",
+      "asvs": "V11.1.1",
+      "status": "fixed",
+      "fix": "'write' is treated as a create: resent only after a read by name shows it absent",
+      "test": "tests/test_c6_packs.py::test_a_default_write_that_timed_out_is_not_resent",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-17",
+      "title": "SDK exception text (which may echo the Authorization header) reached outcomes, results and records unredacted",
+      "severity": "medium",
+      "cwe": "CWE-532",
+      "asvs": "V7.1.1",
+      "status": "fixed",
+      "fix": "tenant_auth.redact_tokens on the exception text in call()",
+      "test": "tests/test_c6_packs.py::test_an_exception_quoting_a_bearer_token_is_redacted",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-18",
+      "title": "Ids from plans and records were put into raw request paths unchecked ('1/../../status' changes the endpoint of a DELETE/PUT/POST)",
+      "severity": "medium",
+      "cwe": "CWE-22",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "pc.path_id(): only a whole number goes into a raw path; otherwise nothing is sent",
+      "test": "tests/test_c6_packs.py::test_a_raw_path_delete_with_an_id_that_is_not_a_number_sends_nothing",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-19",
+      "title": "delete() with an unknown channel or no id raised KeyError (no audit entry, a 500 in the caller)",
+      "severity": "low",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "Plain failed Outcome, still audited",
+      "test": "tests/test_c6_packs.py::test_a_delete_with_an_unknown_channel_is_refused_in_words",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-20",
+      "title": "is_enforcing() failed open: an unknown or lower-case action (\"block\", \"QUARANTINE\") was shipped as written instead of monitor-only",
+      "severity": "medium",
+      "cwe": "CWE-1188",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Deny by default: only the channel's monitor actions monitor; web payload guarded too",
+      "test": "tests/test_c6_packs.py::test_a_rule_with_an_unknown_action_is_created_monitor_only",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-21",
+      "title": "SaaS Security API rule payload carried notification_template, not a field of the SDK 1.11.3 CasbdDlpRules model",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.1",
+      "status": "fixed",
+      "fix": "Not sent (nor resolved) for SaaS rules",
+      "test": "tests/test_c6_packs.py::test_a_saas_rule_payload_carries_no_notification_template",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-22",
+      "title": "raw_request / raw_get returned executor errors unredacted",
+      "severity": "low",
+      "cwe": "CWE-532",
+      "asvs": "V7.1.1",
+      "status": "fixed",
+      "fix": "_raw_error() redacts tokens and bounds the text",
+      "test": "tests/test_c6_packs.py::test_a_raw_request_error_is_redacted",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-23",
+      "title": "Endpoint application group body sends 'resources' and 'channel'; the SDK 1.11.3 model names end_point_applications (raw request; wire field assumed from a live tenant, not verifiable here)",
+      "severity": "info",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.1",
+      "status": "accepted",
+      "fix": "Left as is: changing the wire format without a tenant could break a working deploy; verify on a lab tenant",
+      "test": "tests/test_c6_packs.py::test_application_groups_are_read_from_either_list_shape",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-24",
+      "title": "Running jobs are not capped (only finished ones: MAX_FINISHED_JOBS); write runs are one per tenant (tenant_run)",
+      "severity": "info",
+      "cwe": "CWE-770",
+      "asvs": "V11.1.4",
+      "status": "accepted",
+      "fix": "Single-user local tool; write runs serialised per tenant",
+      "test": "tests/test_c6_packs.py::test_the_finished_job_store_is_capped",
+      "commit": "c7c71ab"
+    },
+    {
+      "id": "C6-PACKS-25",
+      "title": "dlp_importer.build_policy_payload keeps an unknown web action (defence in depth; its only caller, pack_channels.build_payload, now forces monitor)",
+      "severity": "low",
+      "cwe": "CWE-1188",
+      "asvs": "V1.4.4",
+      "status": "open",
+      "fix": "Always send ALLOW from build_policy_payload",
+      "test": "tests/test_c6_packs.py::test_a_rule_with_an_unknown_action_is_created_monitor_only",
+      "commit": "c7c71ab",
+      "proposed_patch": "--- a/dlp_importer.py\n+++ b/dlp_importer.py\n@@ -863,7 +863,8 @@ def build_policy_payload(\n         # Every rule is created DISABLED and monitor-only, whatever the pack\n         # says; a designed BLOCK / CONFIRM stays in the plan as the target.\n         \"state\": \"DISABLED\",\n-        \"action\": \"ALLOW\" if action.upper() in (\"BLOCK\", \"CONFIRM\", \"ICAP_RESPONSE\") else action,\n+        # Deny by default: only ALLOW monitors, any other action ships as ALLOW.\n+        \"action\": \"ALLOW\",\n         \"dlp_engines\": engine_ids,\n         \"protocols\": policy_def.get(\"protocols\", [\"ANY_RULE\"]),\n         \"rank\": 0 if use_rank_0 else policy_def.get(\"rank\", 7),\n"
+    },
+    {
+      "id": "C6-PACKS-26",
+      "title": "tools/quality_score.py rejects the wave-6 findings format: unknown keys 'files', 'coverage' and 'proposed_patch'",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V14.2.1",
+      "status": "open",
+      "fix": "Accept the three optional keys the wave-6 record format defines",
+      "test": "tests/test_quality_score.py::test_the_committed_score_is_current",
+      "commit": "c7c71ab",
+      "proposed_patch": "--- a/tools/quality_score.py\n+++ b/tools/quality_score.py\n@@ -159,9 +159,10 @@\n MARKUP = re.compile(r\"<\\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;\")\n \n-ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False}\n+ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False,\n+             \"files\": False, \"coverage\": False}\n FINDING_KEYS = {\"id\": True, \"title\": True, \"severity\": True, \"status\": True, \"cwe\": False, \"asvs\": False, \"wcag\": False,\n-                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False}\n+                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False, \"proposed_patch\": False}\n CHECK_KEYS = {\"id\": True, \"what\": True, \"result\": True, \"standard\": False}\n"
+    }
+  ],
+  "tests_added": 362
+}
