@@ -72,10 +72,11 @@ WRITE_PERMISSIONS: Dict[str, Dict[str, str]] = {
 }
 
 # Assessment section prefix -> scope key of scope_permissions.
+# Every RBAC section ("RBAC — ZIA", "RBAC — ZCC", ...) runs under the Scope
+# page's rbac checkbox (zscaler_rbac_checks.RBAC_REG), whatever product it reads.
 _SECTION_SCOPE = [
     ("ZIA —", "zia_extras"), ("ZCC —", "zcc"), ("ZPA —", "zpa"), ("GenAI", "genai"), ("Automation", "automation"),
-    ("ZDX", "zdx"), ("ZIdentity", "zidentity"), ("RBAC — ZIA", "zia_extras"), ("RBAC — ZCC", "zcc"), ("RBAC — ZPA", "zpa"),
-    ("RBAC", "zidentity"),
+    ("ZDX", "zdx"), ("ZIdentity", "zidentity"), ("RBAC", "rbac"),
 ]
 
 
