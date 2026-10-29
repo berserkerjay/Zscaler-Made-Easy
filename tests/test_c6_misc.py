@@ -454,3 +454,120 @@ def test_workspace_notes_pages_never_build_html_from_notes():
     srcs = [open(os.path.join(root, "static", f), encoding="utf-8").read() for f in ("report_todo.html", "find_anything.js")]
 
     assert all("innerHTML" not in s and "insertAdjacentHTML" not in s and "document.write" not in s for s in srcs)
+
+
+# ── beacon: the outbound fetches and what the history keeps ──────────
+
+TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlLW5vdC1yZWFs"
+
+
+def test_beacon_every_watched_page_is_on_the_fetch_allowlist():
+    """ASVS V12.6.1 · A10:2021 · CWE-918 · WSTG-INPV-19: every help-center page Beacon fetches passes the allowlist (https, Zscaler hosts)."""
+    import zscaler_update_check as zu
+    urls = [s["url"] for s in zu.SOURCES if s.get("type") == "html_hash"]
+
+    refused = {u: why for u in urls for _, why in [zu._allowed_url(u)] if why}
+
+    assert urls and refused == {}
+
+
+@pytest.mark.parametrize("url", ["http://help.zscaler.com/x", "https://127.0.0.1/", "https://help.zscaler.com.evil.example/",
+                                 "https://user@help.zscaler.com/", "https://127.0.0.1\\@help.zscaler.com/"])
+def test_beacon_default_fetch_refuses_off_allowlist_urls_without_a_request(url, monkeypatch):
+    """ASVS V12.6.1 · A10:2021 · CWE-918 · WSTG-INPV-19: Beacon's fetch refuses http, IPs, look-alike hosts and userinfo before any request."""
+    import requests
+    import upstream_check
+    monkeypatch.setattr(requests, "get", lambda *a, **k: pytest.fail("a request was sent"))
+
+    text, err = upstream_check.default_fetch(url)
+
+    assert text is None and err
+
+
+def test_beacon_probe_error_from_the_client_has_tokens_redacted():
+    """ASVS V7.1.1 · A09:2021 · CWE-532 · WSTG-ERRH-01: an exception echoing the Authorization header is kept with the token masked."""
+    import beacon
+
+    class C:
+        def get(self, ep, p=None):
+            raise RuntimeError(f"gateway said: Authorization: Bearer {TOKEN}")
+
+    row = beacon.probe_endpoint(C(), "/zia/webDlpRules")
+
+    assert TOKEN not in json.dumps(row) and "[redacted token]" in row["error"]
+
+
+def test_beacon_probe_error_answer_has_tokens_redacted():
+    """ASVS V7.1.1 · CWE-532: an error answer echoing a JWT is kept masked in the probe row."""
+    import beacon
+
+    class C:
+        def get(self, ep, p=None):
+            return {"error": f"invalid token {TOKEN}"}, 401
+
+    row = beacon.probe_endpoint(C(), "/zia/webDlpRules")
+
+    assert row["status"] == "error" and TOKEN not in row["error"]
+
+
+def test_beacon_probe_with_a_non_numeric_status_is_an_error_row():
+    """ASVS V7.4.1 · CWE-755 · CWE-704: a client answering a non-numeric status gives an error row, not an exception."""
+    import beacon
+
+    class C:
+        def get(self, ep, p=None):
+            return {"error": "odd"}, "n/a"
+
+    assert beacon.probe_endpoint(C(), "/zia/x")["http"] == 0
+
+
+def test_beacon_failed_watch_keeps_its_reason_redacted(tmp_path):
+    """ASVS V7.1.1 · CWE-532: a tenant watch that raises keeps its reason with the token masked, in the saved history too."""
+    import beacon
+
+    def probe(client, endpoints, **kw):
+        raise RuntimeError(f"Bearer {TOKEN}")
+    path = str(tmp_path / "beacon_state.json")
+
+    snap = beacon.run(online=False, tenant_client=object(), tenant_label="acme (production)", upstream=lambda **k: {}, path=path,
+                      probe=probe, tenant_scope={"endpoints": {"/zia/x": ["m.py"]}, "scopes": ["dlp"], "channels": [], "not_in_scope": [],
+                                                 "unmapped": [], "summary": "DLP"})
+
+    assert TOKEN not in json.dumps(snap) and TOKEN not in open(path, encoding="utf-8").read()
+
+
+def test_beacon_deeply_nested_state_file_is_an_empty_history(tmp_path):
+    """ASVS V5.5.3 · CWE-674 · CWE-755: a state file nested past the parser's limit is an empty history, not a crash."""
+    import beacon
+    p = tmp_path / "beacon_state.json"
+    p.write_text("[" * 100000, encoding="utf-8")
+
+    assert beacon.load_history(str(p)) == []
+
+
+@pytest.mark.parametrize("method", ["POST", "put", "DELETE", "patch", ""])
+def test_beacon_tenant_probe_refuses_every_method_but_get(method):
+    """ASVS V4.1.3 · A01:2021 · CWE-841 · CWE-749: the tenant watch refuses any method but GET before the client is touched."""
+    import beacon
+
+    class C:
+        def __getattr__(self, n):
+            pytest.fail("the client was touched")
+
+    with pytest.raises(ValueError):
+        beacon.probe_tenant(C(), {"/zia/x": ["m.py"]}, method=method)
+
+
+def test_beacon_read_only_client_cannot_write():
+    """ASVS V4.1.3 · CWE-841: the client the watch gets has no post, put, patch, delete or raw request."""
+    import beacon
+
+    class C:
+        def post(self, *a):
+            pytest.fail("a write")
+
+    ro = beacon.ReadOnlyClient(C())
+
+    for name in ("post", "put", "patch", "delete", "request", "_client_post"):
+        with pytest.raises(PermissionError):
+            getattr(ro, name)
