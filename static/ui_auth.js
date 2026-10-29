@@ -23,6 +23,7 @@
     .dlp-dlg .dlp-dlg-tone { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent, #0a84ff); flex: none; }
     .dlp-dlg.ok .dlp-dlg-tone { background: var(--pass, #30d158); } .dlp-dlg.bad .dlp-dlg-tone { background: var(--fail, #ff453a); }
     .dlp-dlg p { margin: var(--sp-1, 4px) 0; line-height: 1.5; font-size: var(--fs-callout, 0.875rem); }
+    .dlp-dlg p.dlp-dlg-pre { white-space: pre-line; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
     .dlp-dlg .dlp-dlg-fix { margin-top: var(--sp-3, 12px); padding: var(--sp-2, 8px) var(--sp-3, 12px); border-left: 3px solid var(--accent, #0a84ff); background: var(--well, #2c2c2e); border-radius: var(--r-sm, 6px); }
     .dlp-dlg details { margin-top: var(--sp-3, 12px); font-size: var(--fs-subhead, 0.8125rem); } .dlp-dlg details summary { cursor: pointer; color: var(--dim, #98989f); }
     .dlp-dlg code { display: block; white-space: pre-wrap; word-break: break-word; margin-top: var(--sp-2, 8px); padding: var(--sp-2, 8px) var(--sp-3, 12px); border-radius: var(--r-sm, 6px);
@@ -91,11 +92,11 @@
     });
   }
 
-  function notice({ title, body, fix, detail, tone, okLabel } = {}) {
+  function notice({ title, body, fix, detail, tone, okLabel, pre } = {}) {
     if (!supported()) { try { window.alert(`${title || ''}\n\n${body || ''}${fix ? '\n' + fix : ''}`); } catch (e) {} return Promise.resolve(); }
     return open(`
       <h2 id="dlpDlgTitle"><span class="dlp-dlg-tone" aria-hidden="true"></span>${esc(title || 'Notice')}</h2>
-      ${body ? `<p>${esc(body)}</p>` : ''}
+      ${body ? `<p${pre ? ' class="dlp-dlg-pre"' : ''}>${esc(body)}</p>` : ''}
       ${fix ? `<div class="dlp-dlg-fix"><strong>What to do:</strong> ${esc(fix)}</div>` : ''}
       ${detail ? `<details><summary>Technical detail</summary><code>${esc(detail)}</code></details>` : ''}
       <div class="dlp-dlg-actions"><button type="button" class="primary" id="dlpNoticeOk">${esc(okLabel || 'OK')}</button></div>`,
@@ -155,6 +156,10 @@
   // control, or "Sign in" once the session has ended. Without SSO nothing
   // is shown and the UI token works as before.
   let ssoStatus = null;
+  // A sign-in or sign-out address from the server is used only as a path on
+  // this origin ("/..."): never another site, a protocol-relative "//host",
+  // a backslash trick or a javascript: URL (deny by default, fall back to the fixed path).
+  const safeHref = (u, fallback) => (typeof u === 'string' && /^\/(?![\/\\])[^\s\\]*$/.test(u) && u.length <= 512) ? u : fallback;
   function ssoBar(status) {
     ssoStatus = status;
     if (!status || !status.sso || !document.body || window.top !== window) return;
@@ -173,11 +178,11 @@
       bar.innerHTML = `<span>Signed in as <strong>${esc(status.user || 'you')}</strong>${status.may_write === false ? ' (read and preview only)' : ''}</span>`
         + `<button type="button" id="dlpSignOut" style="${btn}">Sign out</button>`;
       bar.querySelector('#dlpSignOut').addEventListener('click', async () => {
-        try { await fetch(status.logout_url || '/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+        try { await fetch(safeHref(status.logout_url, '/api/auth/logout'), { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
         window.location.href = '/';
       });
     } else {
-      bar.innerHTML = `<span>Not signed in</span><a href="${esc(status.sso_login_url || '/api/auth/sso/login')}" style="${btn}text-decoration:none;">Sign in</a>`;
+      bar.innerHTML = `<span>Not signed in</span><a href="${esc(safeHref(status.sso_login_url, '/api/auth/sso/login'))}" style="${btn}text-decoration:none;">Sign in</a>`;
     }
   }
   function loadSsoStatus() {
@@ -187,10 +192,36 @@
 
   // Under SSO there is no token to paste: send the person to sign in instead.
   async function unlockOrSignIn(message) {
-    if (ssoStatus && ssoStatus.sso) { window.location.href = ssoStatus.sso_login_url || '/api/auth/sso/login'; return null; }
+    if (ssoStatus && ssoStatus.sso) { window.location.href = safeHref(ssoStatus.sso_login_url, '/api/auth/sso/login'); return null; }
     return unlock(message);
   }
 
   window.dlpDialog = { unlock, notice, phrase, ask };
   window.__dlpUnlockDialog = unlockOrSignIn;
+
+  // Many pages still call the browser's own alert(), confirm() and prompt().
+  // An embedded browser can refuse them by throwing ("not supported"), which
+  // killed the button that asked (nothing happened, nothing said). Each is
+  // wrapped once: the browser's box is still used when it works; when it is
+  // refused, the message is shown in the app's own dialog instead, and a
+  // question nobody could answer reads as "no" (confirm -> false, prompt ->
+  // null), so nothing is changed without an answer. Never an exception.
+  ['alert', 'confirm', 'prompt'].forEach(name => {
+    const orig = window[name];
+    if (typeof orig !== 'function' || orig.__dlpGuarded) return;
+    const guarded = function (message, ...rest) {
+      try { return orig.call(window, message, ...rest); }
+      catch (e) {
+        if (supported()) {
+          const text = String(message == null ? '' : message);
+          if (name === 'alert') notice({ title: 'Notice', body: text, pre: true });
+          else notice({ title: 'This browser could not ask', tone: 'bad', pre: true,
+                        body: text, fix: 'Nothing was done: this browser refused its own question box. Open the app in Chrome or Edge to answer it.' });
+        }
+        return name === 'confirm' ? false : name === 'prompt' ? null : undefined;
+      }
+    };
+    guarded.__dlpGuarded = true;
+    try { window[name] = guarded; } catch (e) { /* a locked-down window: leave the browser's own */ }
+  });
 })();

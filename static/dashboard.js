@@ -246,7 +246,12 @@
   function saveChannelState(state) { try { localStorage.setItem(CHANNELS_KEY, JSON.stringify(state)); } catch (e) { /* private mode: the session still works, just doesn't persist */ } }
   let channelState = loadChannelState();     // { [id]: { choice: 'zscaler'|'alternative', note: '' } }
   let scopeView = null, channelsExtra = [];   // custom channels added with "+ Add Channel"
-  try { channelsExtra = JSON.parse(localStorage.getItem(CHANNELS_KEY + '_extra') || '[]'); } catch (e) { channelsExtra = []; }
+  // Custom channels come back from storage as data: only a list of {id, name}
+  // strings is kept, and the rest of each entry is rebuilt here (the icon is
+  // always the fixed one, never stored markup).
+  const extraFrom = raw => (Array.isArray(raw) ? raw : []).filter(c => c && typeof c.id === 'string' && /^custom_[A-Za-z0-9_.:-]{1,80}$/.test(c.id) && typeof c.name === 'string' && c.name.trim())
+    .slice(0, 50).map(c => ({ id: c.id, name: c.name.trim().slice(0, 120), risk: 'medium', category: 'Custom', icon: '🧩', what: 'Added by you; tracked the same way as the built-in channels.' }));
+  try { channelsExtra = extraFrom(JSON.parse(localStorage.getItem(CHANNELS_KEY + '_extra') || '[]')); } catch (e) { channelsExtra = []; }
   function allChannels() { return CHANNELS.concat(channelsExtra); }
   function saveExtra() { try { localStorage.setItem(CHANNELS_KEY + '_extra', JSON.stringify(channelsExtra)); } catch (e) { /* ignore */ } }
 
@@ -334,7 +339,7 @@
     const addressed = st.choice === 'zscaler' || st.choice === 'alternative';
     return `<div class="db-ch-row ${addressed ? '' : 'gap'}" data-id="${E(c.id)}">
       <label class="db-ch-check"><input type="checkbox" ${addressed ? 'checked' : ''} aria-label="Mark ${E(c.name)} addressed"></label>
-      <span class="db-ch-ico" aria-hidden="true">${c.icon}</span>
+      <span class="db-ch-ico" aria-hidden="true">${E(c.icon)}</span>
       <div class="db-ch-body">
         <div class="db-ch-h"><strong>${E(c.name)}</strong><span class="db-chip risk-${RISK_CLS[c.risk] || 'dim'}">${E(RISK_LABEL[c.risk] || c.risk)}</span><span class="db-ch-cat">${E(c.category)}</span></div>
         <p>${E(c.what)}</p>

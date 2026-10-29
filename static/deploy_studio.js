@@ -1675,7 +1675,8 @@ function _dzDeploymentsHtml() {
   const writeOn = !!(DZ.write && DZ.write.enabled);
   const fmt = iso => { try { return new Date(iso).toLocaleString(); } catch (e) { return iso || ''; } };
   const kinds = k => Object.entries(k || {}).map(([kind, n]) => _dzN(n, ...(DZ_KIND_PLURAL[kind] || [kind]))).join(', ');
-  const chans = ct => Object.entries(ct || {}).map(([pid, chs]) => `${_dzE(pid)}: ${(chs || []).map(c => DZ_DLP_LABEL[c] || c).join(', ') || 'as packed'}`).join(' · ');
+  // A deployment record is stored data: an unknown channel name is shown escaped, never as markup.
+  const chans = ct => Object.entries(ct || {}).map(([pid, chs]) => `${_dzE(pid)}: ${_dzE((Array.isArray(chs) ? chs : []).map(c => DZ_DLP_LABEL[c] || c).join(', ') || 'as packed')}`).join(' · ');
   const list = rows.slice(0, 12).map(d => {
     const done = d.remaining === 0 && d.created > 0;
     const busy = DZ.undoBusy === d.id;

@@ -2726,12 +2726,14 @@ function saveConfig() {
     scopes: getSelectedScopes(),
     frameworks: getSelectedFrameworks(),
   };
-  localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+  // Storage can be blocked (private window, site data off, an embedded browser): say so instead of failing silently.
+  try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }
+  catch (e) { setStatus('Config not saved: this browser blocks site storage. Nothing else is affected.', 'error'); return; }
   setStatus('Config saved (secret not stored)', 'success');
 }
 
 function clearConfig() {
-  localStorage.removeItem(LS_KEY);
+  try { localStorage.removeItem(LS_KEY); } catch (e) { /* storage blocked: nothing saved to clear; the fields are still cleared */ }
   ['org','assessor','vd','cid','csec','custid'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('cloud').value = 'production';
   setSelectedScopes(['dlp','zia_extras','zcc','genai']);
@@ -3044,7 +3046,7 @@ function showResults(data) {
   }
 
   renderChecks(checks, 'all');
-  renderPermissions(data);
+  renderPartialScan(data);
   loadBenchmarks(data);
   loadCompliance(data);
   expandResultSections();
@@ -3077,11 +3079,31 @@ function rememberResults(data) {
   try { sessionStorage.setItem(RESULTS_KEY, JSON.stringify(data)); } catch (e) { /* too large or private mode: the page still works, the result is just not kept */ }
 }
 function forgetResults() { try { sessionStorage.removeItem(RESULTS_KEY); } catch (e) {} }
+// Stored results are read back as data, not trusted: every number the
+// summary, the tiles and the section bars print is coerced to a finite
+// number (or null, "not measured") before anything is drawn from it.
+function _restoredNumbers(data) {
+  const num = v => (v === null || v === undefined || v === '') ? null : (Number.isFinite(Number(v)) ? Number(v) : null);
+  const secs = data.sections && typeof data.sections === 'object' && !Array.isArray(data.sections) ? data.sections : {};
+  const clean = {};
+  for (const [k, d] of Object.entries(secs)) {
+    if (!d || typeof d !== 'object') continue;
+    const o = Object.assign({}, d);
+    for (const f of ['pct', 'pass', 'fail', 'warn', 'info', 'total', 'scored', 'error', 'not_permitted']) if (f in o) o[f] = num(o[f]);
+    clean[k] = o;
+  }
+  data.sections = clean;
+  if ('score' in data) data.score = num(data.score);
+  if (data.permissions && typeof data.permissions === 'object') data.permissions.blocked = num(data.permissions.blocked) || 0;
+  else delete data.permissions;
+  return data;
+}
 function restoreResults() {
   if (reportData) return false;
   let data = null;
   try { const raw = sessionStorage.getItem(RESULTS_KEY); data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
   if (!data || !Array.isArray(data.checks) || !data.checks.length) return false;
+  _restoredNumbers(data);
   data.__restored = true;
   reportData = data;
   if (window.GD) GD.lastReport = data;
@@ -3094,7 +3116,9 @@ function restoreResults() {
 document.addEventListener('DOMContentLoaded', () => { try { restoreResults(); } catch (e) { console.warn('restore', e); } });
 
 // ── Partial scan card: what the API client could not run ────────────
-function renderPermissions(data) {
+// (Its own name: the Required API access dialog has renderPermissions further
+// down, and a second function of the same name silently replaced this one.)
+function renderPartialScan(data) {
   const card = document.getElementById('permissionsCard');
   const body = document.getElementById('permissionsBody');
   if (!card || !body) return;
