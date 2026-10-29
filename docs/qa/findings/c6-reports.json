@@ -1,0 +1,324 @@
+{
+ "area": "reports",
+ "title": "Report writers and the POV planner: Word, PDF, Excel, CSV and Markdown exports, POV revision, import, Prove it, files and secrets",
+ "files": [
+  "pov.py",
+  "report_docx.py",
+  "report_exports.py",
+  "pdf_writer.py",
+  "xlsx_writer.py",
+  "csv_safe.py",
+  "md_safe.py"
+ ],
+ "standards": [
+  "ASVS V4.1.3",
+  "ASVS V4.2.1",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.1",
+  "ASVS V5.3.10",
+  "ASVS V7.4.1",
+  "ASVS V8.3.4",
+  "ASVS V11.1.2",
+  "ASVS V11.1.4",
+  "OWASP A03:2021",
+  "OWASP A04:2021",
+  "CWE-20",
+  "CWE-74",
+  "CWE-312",
+  "CWE-345",
+  "CWE-362",
+  "CWE-407",
+  "CWE-451",
+  "CWE-755",
+  "CWE-1236",
+  "CWE-1333",
+  "WSTG-INPV-01",
+  "WSTG-BUSL-01",
+  "WCAG 2.2 SC 1.4.10"
+ ],
+ "coverage": {
+  "before": 80.3,
+  "after": 90.9
+ },
+ "checks": [
+  {
+   "id": "docx-wellformed",
+   "what": "Every Word output is opened: each XML part parsed, text read back; markup, XML-unsafe characters and bidi controls are inert",
+   "standard": "ASVS V5.3.1 · CWE-91",
+   "result": "fixed"
+  },
+  {
+   "id": "pdf-wellformed",
+   "what": "Every PDF output is walked: xref offsets, stream lengths, ASCII content, balanced and correctly escaped string literals, document info",
+   "standard": "ASVS V5.3.1 · CWE-74",
+   "result": "fixed"
+  },
+  {
+   "id": "xlsx-wellformed",
+   "what": "Every workbook is unzipped and each part parsed; no cell is a formula; formula-looking text quoted; Excel cell cap respected",
+   "standard": "ASVS V5.3.10 · CWE-1236",
+   "result": "fixed"
+  },
+  {
+   "id": "csv-formula",
+   "what": "Oracle table of formula triggers and plain numbers; written CSV parses back neutralised, header included",
+   "standard": "ASVS V5.3.10 · CWE-1236",
+   "result": "pass"
+  },
+  {
+   "id": "md-injection",
+   "what": "Leading block markers, links, images, HTML and pipes in values stay inert; block-marker check is linear",
+   "standard": "ASVS V5.3.1 · CWE-74 · CWE-1333",
+   "result": "fixed"
+  },
+  {
+   "id": "unicode",
+   "what": "CJK and RTL text round-trips in Word and Excel and shows as visible '?' in PDF; lone surrogates and controls never fail an export",
+   "standard": "ASVS V5.1.1 · CWE-176",
+   "result": "pass"
+  },
+  {
+   "id": "long-text",
+   "what": "Long tokens wrap within margins; long headings and footers stay on the page",
+   "standard": "ASVS V5.1.3 · CWE-20",
+   "result": "fixed"
+  },
+  {
+   "id": "large-reports",
+   "what": "Large workbooks, plan PDFs (page breaks, repeated headers) and the check cap",
+   "standard": "ASVS V11.1.4 · CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "pov-revision",
+   "what": "Stale, boolean, string and float revisions are refused with 409 and nothing is saved",
+   "standard": "ASVS V11.1.2 · CWE-362",
+   "result": "pass"
+  },
+  {
+   "id": "pov-import",
+   "what": "Untrusted import: size, depth, format, tenant, start time, verdict and counts provenance",
+   "standard": "ASVS V5.1.4 · CWE-345",
+   "result": "fixed"
+  },
+  {
+   "id": "pov-prove",
+   "what": "Prove it replaces its last verdict, keeps notes, bumps the revision; a page cannot forge a verdict or a note author",
+   "standard": "ASVS V4.1.3 · CWE-345",
+   "result": "fixed"
+  },
+  {
+   "id": "pov-perms",
+   "what": "POV folder 0700; POV, lock and templates files 0600",
+   "standard": "ASVS V8.3.4 · CWE-732",
+   "result": "pass"
+  },
+  {
+   "id": "pov-tenant",
+   "what": "POV opens, imports and reports only for its own tenant (409 otherwise)",
+   "standard": "ASVS V4.2.1 · CWE-639",
+   "result": "pass"
+  },
+  {
+   "id": "pov-secrets",
+   "what": "A pasted secret is absent from the view, export, PDF and Word report; system evidence masked",
+   "standard": "ASVS V8.3.4 · CWE-312",
+   "result": "fixed"
+  },
+  {
+   "id": "error-handling",
+   "what": "Odd posted types never give a 500 from the report writers",
+   "standard": "ASVS V7.4.1 · CWE-755",
+   "result": "fixed"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-REPORTS-01",
+   "title": "An Excel cell holding formula-looking text at the length cap was 32,768 characters (and astral text over Excel's UTF-16 limit), so Excel reported the workbook damaged",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Cap after the formula quote and count UTF-16 units",
+   "test": "tests/test_c6_reports.py::test_xlsx_a_formula_looking_cell_at_the_cap_stays_within_excels_limit",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-02",
+   "title": "A PDF heading taller than a page was drawn below the page edge (text lost)",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Break a heading across pages line by line",
+   "test": "tests/test_c6_reports.py::test_pdf_a_heading_taller_than_a_page_goes_on_over_the_next_pages",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-03",
+   "title": "A PDF table with no columns crashed the export (ValueError)",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Skip a table with no columns",
+   "test": "tests/test_c6_reports.py::test_pdf_a_table_without_columns_draws_nothing_instead_of_failing",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-04",
+   "title": "PDF document title, author and subject kept bidi overrides and control characters (title spoofing in the reader's window bar)",
+   "severity": "low",
+   "cwe": "CWE-451",
+   "asvs": "V5.3.1",
+   "status": "fixed",
+   "fix": "Drop controls and show bidi controls as U+FFFD in the document information",
+   "test": "tests/test_c6_reports.py::test_pdf_the_document_title_shows_no_bidi_override_or_control",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-05",
+   "title": "The PDF footer was shortened one character at a time with a full width sum each step: quadratic per page for a long title",
+   "severity": "low",
+   "cwe": "CWE-407",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "Cut the footer in one linear pass",
+   "test": "tests/test_c6_reports.py::test_pdf_a_very_long_footer_is_cut_once_to_fit_its_line",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-06",
+   "title": "Markdown exports: a tenant value starting with '# ', '- ', '1. ' or '---' became a heading, list item or rule (also inside a '- {name}' bullet)",
+   "severity": "medium",
+   "cwe": "CWE-74",
+   "asvs": "V5.3.1",
+   "status": "fixed",
+   "fix": "md_safe.text escapes a leading block marker",
+   "test": "tests/test_c6_reports.py::test_md_a_value_can_never_start_a_heading_list_or_rule",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-07",
+   "title": "md_safe.url accepted a link target holding '|', which splits a Markdown table row",
+   "severity": "low",
+   "cwe": "CWE-74",
+   "asvs": "V5.3.1",
+   "status": "fixed",
+   "fix": "Refuse '|' in a link target; show it as text",
+   "test": "tests/test_c6_reports.py::test_md_a_link_target_with_a_pipe_is_never_a_link",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-08",
+   "title": "Word report: posted metadata that is not text (a number, list or object), a check without status or a null detail made /api/report/docx fail with a 500",
+   "severity": "medium",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Normalise every posted check field and metadata value to text",
+   "test": "tests/test_c6_reports.py::test_docx_metadata_that_is_not_text_still_gives_a_report",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-09",
+   "title": "Word report: the 'Report generated ... UTC' line used local time",
+   "severity": "info",
+   "cwe": "CWE-682",
+   "asvs": "V7.3.4",
+   "status": "fixed",
+   "fix": "Use UTC from an injectable clock",
+   "test": "tests/test_c6_reports.py::test_docx_the_report_time_is_utc",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-10",
+   "title": "POV: a page could set or change who wrote a note and when by re-sending a stored note id with another author",
+   "severity": "medium",
+   "cwe": "CWE-345",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "Note author and time are set by the app: kept when unchanged, the editor's when edited",
+   "test": "tests/test_c6_reports.py::test_pov_a_page_cannot_forge_who_wrote_a_kept_note",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-11",
+   "title": "POV: a page note reusing a Prove it verdict's id produced duplicate evidence ids",
+   "severity": "low",
+   "cwe": "CWE-694",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "A note that reuses another item's id gets its own id",
+   "test": "tests/test_c6_reports.py::test_pov_a_note_reusing_a_verdicts_id_gets_an_id_of_its_own",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-12",
+   "title": "POV import: created_at was any text, so a file could set a future start and hide every change made during the POV from the customer report",
+   "severity": "medium",
+   "cwe": "CWE-345",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "An imported start must be a real past time; stored in UTC",
+   "test": "tests/test_c6_reports.py::test_pov_an_import_cannot_move_its_start_to_hide_the_changes_made",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-13",
+   "title": "POV: Prove it verdicts and Insights counts were stored without masking the sign-in secrets (notes and edits were masked)",
+   "severity": "low",
+   "cwe": "CWE-312",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "Mask system evidence and counts before they are kept",
+   "test": "tests/test_c6_reports.py::test_pov_a_secret_in_a_prove_it_verdict_is_masked_before_it_is_kept",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-14",
+   "title": "POV import: Insights counts from a file were shown in the report as if this app had read them (verdicts were already marked imported)",
+   "severity": "low",
+   "cwe": "CWE-345",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "Mark imported counts and say so in the report",
+   "test": "tests/test_c6_reports.py::test_pov_imported_insights_counts_are_marked_as_imported_in_the_report",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-15",
+   "title": "POV: a templates.json entry with an unknown vertical or odd criteria raised KeyError (500) when a POV started from it",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Validate a stored template before a POV starts from it",
+   "test": "tests/test_c6_reports.py::test_pov_a_tampered_template_still_starts_a_valid_pov",
+   "commit": "9da0da8"
+  },
+  {
+   "id": "C6-REPORTS-16",
+   "title": "/api/report/docx returns the exception type and text to the browser on a failed build",
+   "severity": "low",
+   "cwe": "CWE-209",
+   "asvs": "V7.4.1",
+   "status": "open",
+   "fix": "Return a plain message; the traceback stays in the server log (dlp_api_server.py, outside this slice)",
+   "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -8000,10 +8000,11 @@\n     except Exception as e:\n         if tmp_path:\n             _unlink_quietly(tmp_path)   # a failed report leaves no copy of the assessment behind\n-        # Surface the real error to the browser instead of a generic 500\n+        # The traceback stays in the server log; the browser gets plain words\n+        # (an exception's text can quote the posted report, CWE-209).\n         tb = _tb.format_exc()\n         print(f\"\\n=== Word generation failed ===\\n{tb}===\\n\", flush=True)\n-        raise HTTPException(status_code=500, detail=f\"Word generation error: {type(e).__name__}: {str(e)[:300]}\")\n+        raise HTTPException(status_code=500, detail=\"The Word report could not be built; the server log says why.\")\n \n     org = re.sub(r\"[^A-Za-z0-9_-]+\", \"_\", str(cfg.get(\"org\", \"report\"))).strip(\"_\")[:60] or \"report\"\n     # The temp file holds the whole assessment: remove it once it has been sent.\n"
+  },
+  {
+   "id": "C6-REPORTS-17",
+   "title": "tools/quality_score.py refuses the files, coverage and proposed_patch keys that the wave-6 findings schema asks for",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "open",
+   "fix": "Accept the three optional keys in the validator (tools/quality_score.py, outside this slice)",
+   "proposed_patch": "--- a/tools/quality_score.py\n+++ b/tools/quality_score.py\n@@ -159,9 +159,10 @@\n CONTROL_CHARS = re.compile(r\"[\\x00-\\x1f\\x7f\\u202a-\\u202e\\u2066-\\u2069\\u2028\\u2029]\")\n MARKUP = re.compile(r\"<\\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;\")\n \n-ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False}\n+ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False,\n+             \"files\": False, \"coverage\": False}\n FINDING_KEYS = {\"id\": True, \"title\": True, \"severity\": True, \"status\": True, \"cwe\": False, \"asvs\": False, \"wcag\": False,\n-                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False}\n+                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False, \"proposed_patch\": False}\n CHECK_KEYS = {\"id\": True, \"what\": True, \"result\": True, \"standard\": False}\n RUN_KEYS = {\"passed\": True, \"failed\": True, \"skipped\": True, \"duration_s\": True, \"commit\": True, \"date\": True,\n             \"errors\": False, \"files\": False}\n"
+  }
+ ],
+ "tests_added": 149
+}
