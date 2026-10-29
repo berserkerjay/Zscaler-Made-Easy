@@ -1513,3 +1513,30 @@ def test_read_back_of_a_created_sandbox_rule_sees_the_profile_the_model_drops():
     _model_drops(t.zia.sandbox_rules, "cbi_profile")
     res = zb_apply(t, {"tier": "strict", "areas": ["sandbox"]})
     assert res["verification"]["mismatched"] == [] and res["verification"]["confirmed"] == res["verification"]["checked"] == 3
+
+
+@pytest.mark.parametrize("thr", ["1.2.3", ".", "1e999", "9" * 400, None, "0.8", 0.8])
+def test_a_tenant_threshold_that_is_not_a_number_is_compared_without_a_crash(thr):
+    """ASVS V5.1.3 · V7.4.1 · CWE-20 · CWE-755: a detection policy threshold from the tenant that is not a number (1.2.3, a dot, an overflow) is compared as no threshold, never raising."""
+    sig = oa.canon([{"detector": "pii", "enabled": True, "configuration": {"threshold": thr}}], "input_detector_policies")
+    assert sig[0]["threshold"] in (None, 0.8) or isinstance(sig[0]["threshold"], float)
+
+
+def test_a_policy_with_a_malformed_threshold_in_the_tenant_is_planned_as_an_update():
+    """ASVS V7.4.1 · CWE-755: an existing AI Guard policy whose threshold is malformed is planned (as an update), not a failed job."""
+    f = at.Fake()
+    aig_apply(f, at.POLICY, at.AIG_ONLY)
+    f.stores["aig_policies"].rows[0]["inputDetectorPolicies"][0]["configuration"]["threshold"] = "1.2.3"
+    assert at.by_key(aig_preview(f, at.POLICY, at.AIG_ONLY))["policy"]["status"] == "change"
+
+
+def test_a_captured_framework_always_loads_again():
+    """ASVS V5.1.3 · CWE-20 · CWE-1287: rules whose tenant name or values a framework file cannot carry (<, >, a value that is not a Zscaler name) are left out with the reason, so the captured file loads."""
+    t = zt.Tenant(url=[{"id": 1, "name": "Block <Games>", "order": 1, "action": "BLOCK", "url_categories": ["GAMBLING"]},
+                       {"id": 2, "name": "Odd Values", "order": 2, "action": "BLOCK", "url_categories": ["GAMBLING", {"id": 5}]},
+                       {"id": 3, "name": "Fine", "order": 3, "action": "BLOCK", "url_categories": ["GAMBLING", "CUSTOM_07"]}, zt.URL_DEFAULT])
+    fw = zb.capture(t, ["url"], tenant_label="src")["framework"]
+    got = zb.load_framework(json.loads(json.dumps(fw)))
+    assert [r["name"] for r in got["rules"]] == ["Fine"]
+    reasons = " ".join(x["reason"] for x in fw["not_exported"])
+    assert "characters a framework file does not carry" in reasons and "cannot be carried in a framework file" in reasons

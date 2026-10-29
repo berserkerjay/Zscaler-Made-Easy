@@ -111,10 +111,13 @@ def _det_sig(v: Any) -> List[Dict[str, Any]]:
         ents = sorted(f"{ag.get(e, 'entity_type')}:{ag.get(e, 'action')}" for e in (ag.get(c, "entities") or [])
                       if isinstance(e, dict) and str(ag.get(e, "action") or "").upper() != "DISABLE")
         thr = ag.get(c, "threshold")
+        try:   # a tenant string such as "1.2.3" is not a number: compared as no threshold, never a crash
+            thr = round(float(thr), 3) if isinstance(thr, (int, float)) or re.fullmatch(r"[0-9]+(\.[0-9]+)?", str(thr or "")) else None
+        except (TypeError, ValueError, OverflowError):
+            thr = None
         out.append({"detector": str(ag.get(d, "detector")), "enabled": bool(ag.get(d, "enabled")), "severity": str(ag.get(d, "severity")),
                     "action": str(ag.get(c, "action")), "default_action": str(ag.get(c, "default_action")),
-                    "threshold": round(float(thr), 3) if isinstance(thr, (int, float)) or re.fullmatch(r"[0-9.]+", str(thr or "")) else None,
-                    "entities": ents})
+                    "threshold": thr, "entities": ents})
     return sorted(out, key=lambda x: x["detector"])
 
 

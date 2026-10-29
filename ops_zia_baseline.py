@@ -1822,6 +1822,10 @@ _ACTIONS = {
 def _capture_rule(area: str, r: Dict[str, Any], n: int, skipped: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     import pack_export
     name = str(r.get("name") or "")
+    if not _name_ok(" ".join(name.split())[:MAX_NAME]):
+        skipped.append({"name": name[:MAX_NAME], "area": AREAS[area]["label"],
+                        "reason": "its name is empty or has characters a framework file does not carry (<, > or control characters)"})
+        return None
     if area == "ssl":
         a = r.get("action") or {}
         action = str(a.get("type") or "")
@@ -1846,6 +1850,12 @@ def _capture_rule(area: str, r: Dict[str, Any], n: int, skipped: List[Dict[str, 
         v = r.get(k)
         if v not in (None, "", []):
             fields[k] = v
+    bad = [k for k, v in fields.items() if not _field_ok(k, [c for c in v if not str(c).upper().startswith("CUSTOM_")]
+                                                        if k == "url_categories" and isinstance(v, list) else v)]
+    if bad:   # leaving one match field out would widen the rule: the rule is left out
+        skipped.append({"name": name, "area": AREAS[area]["label"], "field": ", ".join(bad),
+                        "reason": f"its {', '.join(bad)} cannot be carried in a framework file (not a list of Zscaler names); the rule is not captured"})
+        return None
     if "url_categories" in fields:
         custom = [c for c in fields["url_categories"] if str(c).upper().startswith("CUSTOM_")]
         if custom:
@@ -1924,6 +1934,22 @@ def capture(client, areas: Sequence[str], *, name: str = "", tenant_label: str =
     return {"status": "ready", "framework": fw}
 
 
+def _name_ok(name: str) -> bool:
+    return bool(name) and not re.search(r"[<>\x00-\x1f]", name)
+
+
+def _field_ok(k: str, v: Any) -> bool:
+    """A framework field's value as load_framework accepts it: a list of
+    Zscaler names, one name, a TLS version or true/false."""
+    if k in _BOOL_FIELDS:
+        return isinstance(v, bool)
+    if k == "min_tls":
+        return isinstance(v, str) and re.fullmatch(r"TLS_1_[0-3]", v) is not None
+    if k in _LIST_FIELDS:
+        return isinstance(v, list) and len(v) <= 500 and all(isinstance(x, str) and _ENUM_RE.fullmatch(x) for x in v)
+    return isinstance(v, str) and _ENUM_RE.fullmatch(v) is not None
+
+
 def load_framework(fw: Any) -> Dict[str, Any]:
     """Check an uploaded framework (untrusted): its format, areas, sizes and
     every value; returns {name, rules}. Raises OperationError."""
@@ -1947,7 +1973,7 @@ def load_framework(fw: Any) -> Dict[str, Any]:
             if not isinstance(r, dict):
                 raise ao.OperationError("Each framework rule must be an object.")
             name = " ".join(str(r.get("name") or "").split())[:MAX_NAME]
-            if not name or re.search(r"[<>\x00-\x1f]", name):
+            if not _name_ok(name):
                 raise ao.OperationError(f"Framework rule {i + 1} in {area} has no usable name.")
             action = str(r.get("default") or "")
             if action not in _ACTIONS[area]:
@@ -1962,15 +1988,7 @@ def load_framework(fw: Any) -> Dict[str, Any]:
             for k, v in raw.items():
                 if k not in allowed:
                     continue
-                if k in _BOOL_FIELDS:
-                    ok = isinstance(v, bool)
-                elif k == "min_tls":
-                    ok = isinstance(v, str) and re.fullmatch(r"TLS_1_[0-3]", v) is not None
-                elif k in _LIST_FIELDS:
-                    ok = isinstance(v, list) and len(v) <= 500 and all(isinstance(x, str) and _ENUM_RE.fullmatch(x) for x in v)
-                else:
-                    ok = isinstance(v, str) and _ENUM_RE.fullmatch(v) is not None
-                if not ok:
+                if not _field_ok(k, v):
                     raise ao.OperationError(f"{name}: the value of {k} is not "
                                             + ("true or false." if k in _BOOL_FIELDS else "a list of Zscaler names." if k in _LIST_FIELDS
                                                else "a Zscaler name."))
