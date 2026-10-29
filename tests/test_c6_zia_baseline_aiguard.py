@@ -1550,3 +1550,11 @@ def test_ssl_inspect_is_kept_above_an_ssl_block_rule_too(action, want):
     next(r for r in f.stores["ssl"].rows if r["name"] == "AIG-Inspect")["order"] = 5
     f.stores["ssl"].rows.append({"id": 78, "name": "Theirs", "order": 2, "state": "ENABLED", "action": {"type": action}})
     assert at.by_key(aig_preview(f, at.ROUTE))["ssl"]["status"] == want
+
+
+@pytest.mark.parametrize("key,choice,weaker", [("url.legal", "ISOLATE", "Block → Isolate"), ("url.legal", "ALLOW", "Block → Allow"),
+                                               ("url.misc", "BLOCK", ""), ("url.legal", "BLOCK", "")])
+def test_isolating_a_category_the_tier_blocks_is_flagged_weaker(key, choice, weaker):
+    """ASVS V1.4.1 · CWE-1188: Isolate in place of the tier's Block lets users view the site, so it is flagged as weaker; Block in place of Isolate is not."""
+    row = {r["key"]: r for r in zb.review({"tier": "strict", "rules": {key: {"action": choice}}})["rules"]}[key]
+    assert row["weakened"] == weaker

@@ -769,6 +769,8 @@ def review(spec: Dict[str, Any]) -> Dict[str, Any]:
             weakened = "switched off"
         elif _is_restrictive(default) and not _is_restrictive(action):
             weakened = f"{_act_label(default)} → {_act_label(action)}"
+        elif str(default).startswith("BLOCK") and action in ("ISOLATE", "CAUTION"):
+            weakened = f"{_act_label(default)} → {_act_label(action)}"   # isolation and a caution page both let the user in
         domains = list(meta["domain"])
         if area == "ftc" and r["fields"].get("operation") == "DOWNLOAD":
             domains = ["malware_threat"]
