@@ -402,11 +402,10 @@
    "severity": "info",
    "cwe": "CWE-1188",
    "asvs": "V1.4.1",
-   "status": "open",
-   "fix": "add the same Block -> Isolate/Caution check to effective() (patch below)",
-   "test": "tests/test_c6_zia_baseline_aiguard.py::test_isolating_a_category_the_tier_blocks_is_flagged_weaker",
-   "commit": "ddd28e6",
-   "proposed_patch": "--- a/static/ops_zia_baseline.js\t2026-10-29 03:56:14.207356745 +0000\n+++ b/static/ops_zia_baseline.js\t2026-10-29 03:56:14.222334386 +0000\n@@ -57,6 +57,7 @@\n     let weakened = '';\n     if (restrictive(r.def) && !on && r.default_on !== false) weakened = 'switched off';\n     else if (restrictive(r.def) && !restrictive(action)) weakened = `${actLabel(r.def)} → ${actLabel(action)}`;\n+    else if (String(r.def).startsWith('BLOCK') && (action === 'ISOLATE' || action === 'CAUTION')) weakened = `${actLabel(r.def)} → ${actLabel(action)}`;\n     return { on, choice, action, weakened };\n   }\n \n"
+   "status": "fixed",
+   "fix": "effective() flags Block to Isolate or Caution as weaker, as the server's review does; a parity test compares every rule and choice",
+   "test": "tests/test_c6_open_low.py::test_the_baseline_form_flags_weaker_choices_exactly_as_the_server_review",
+   "commit": "37a8f7c"
   }
  ],
  "tests_added": 443

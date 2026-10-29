@@ -502,11 +502,10 @@
       "severity": "low",
       "cwe": "CWE-1287",
       "asvs": "V5.1.3",
-      "status": "open",
-      "fix": "Treat one string as one item and anything else that is not a list as none; an id that is not a number sorts as 0",
-      "test": "tests/test_c6_path.py::test_fuzz_hostile_module_rules_never_crash_the_analyzer",
-      "commit": "",
-      "proposed_patch": "diff --git a/ssl_flow.py b/ssl_flow.py\nindex ca86a6e..690a573 100644\n--- a/ssl_flow.py\n+++ b/ssl_flow.py\n@@ -111,7 +111,9 @@ def _f(r: Dict[str, Any], *names: str, default: Any = None) -> Any:\n \n def _names(items: Any) -> List[str]:\n     out: List[str] = []\n-    for x in items or []:\n+    # A tenant list of the wrong type: one string is one item; anything else\n+    # that is not a list (a number, true) is no item, never a crash.\n+    for x in ([items] if isinstance(items, str) else items if isinstance(items, (list, tuple)) else []):\n         if isinstance(x, dict):\n             v = x.get(\"name\") or x.get(\"id\") or x.get(\"url\")\n             if v is not None:\n@@ -290,7 +292,11 @@ def _sort_key(rule: Dict[str, Any]) -> Tuple[int, int, int]:\n     except (TypeError, ValueError):\n         o = 10 ** 6\n     # The default rule is always evaluated last whatever its order says.\n-    return (1 if rule.get(\"default_rule\") else 0, o, int(rule.get(\"id\") or 0))\n+    try:\n+        rid = int(rule.get(\"id\") or 0)\n+    except (TypeError, ValueError):\n+        rid = 0\n+    return (1 if rule.get(\"default_rule\") else 0, o, rid)\n \n \n # ── Tenant reads ─────────────────────────────────────────────────────\n"
+      "status": "fixed",
+      "fix": "ssl_flow._names / _sort_key were fixed at integration; the same guard now covers data_flow._norm_generic actions and every zpa_reader list read (zpa_reader._items)",
+      "test": "tests/test_c6_open_low.py::test_a_list_field_of_the_wrong_type_never_stops_a_shared_normalizer",
+      "commit": "37a8f7c"
     }
   ],
   "tests_added": 173

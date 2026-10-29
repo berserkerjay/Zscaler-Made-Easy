@@ -483,23 +483,21 @@
       "severity": "low",
       "cwe": "CWE-755",
       "asvs": "V7.4.1",
-      "status": "open",
-      "fix": "Proposed: skip non-scalar tokens into missing_tokens; compare names as text",
-      "test": "(server route not owned; verified by probe)",
-      "commit": "",
-      "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -7399,12 +7399,15 @@\n     if not req.rules or not req.order:\n         raise HTTPException(status_code=400, detail=\"rules and order are required.\")\n     by_id = {str(r.get(\"id\")): r for r in req.rules if r.get(\"id\") is not None}\n-    by_name = {r.get(\"name\"): r for r in req.rules if r.get(\"name\")}\n+    by_name = {str(r.get(\"name\")): r for r in req.rules if r.get(\"name\")}\n     out, missing = [], []\n     seen = set()\n     for token in req.order:\n+        if not isinstance(token, (str, int)) or isinstance(token, bool):\n+            missing.append(token)   # an object or list is not a rule id or name (it was a TypeError 500)\n+            continue\n         key = str(token)\n-        rule = by_id.get(key) or by_name.get(token)\n+        rule = by_id.get(key) or by_name.get(key)\n         if rule and id(rule) not in seen:\n             out.append(rule)\n             seen.add(id(rule))\n"
+      "status": "fixed",
+      "fix": "Resolved at integration (API server QA, 8f2dca7): an order token that is not text or a number, or a rule name that is not text, is a 400",
+      "test": "tests/test_c6_api_server.py::test_a_reorder_token_or_rule_name_that_cannot_be_a_key_is_a_400",
+      "commit": "8f2dca7"
     },
     {
       "id": "C6-MIGRATE-32",
-      "title": "POST /api/migrate/export?format=<other> answers 200 with an empty text/csv file (outside owned files)",
+      "title": "POST /api/migrate/export with a format other than json or csv answered 200 with an empty text/csv file",
       "severity": "low",
       "cwe": "CWE-754",
       "asvs": "V7.4.1",
-      "status": "open",
-      "fix": "Proposed: 400 unless format is json or csv",
-      "test": "(server route not owned; verified by probe)",
-      "commit": "",
-      "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -7454,6 +7454,8 @@\n         from rule_migrator import generate_migration_plan, export_rules\n     except Exception as e:\n         raise HTTPException(status_code=500, detail=f\"rule_migrator not available: {e}\")\n+    if format not in (\"json\", \"csv\"):\n+        raise HTTPException(status_code=400, detail=\"format must be json or csv\")\n     data = await _json_object(request)\n     rules = _rule_rows(data, \"No rules provided in request body.\")\n     plan = generate_migration_plan(rules)\n"
+      "status": "fixed",
+      "fix": "The route refuses any format but json and csv with a 400 before reading the body",
+      "test": "tests/test_c6_open_low.py::test_a_migration_export_in_an_unknown_format_is_a_400",
+      "commit": "37a8f7c"
     },
     {
       "id": "C6-MIGRATE-33",
@@ -507,11 +505,10 @@
       "severity": "low",
       "cwe": "CWE-841",
       "asvs": "V4.1.5",
-      "status": "open",
-      "fix": "Proposed: refuse an unknown mode in the route before any gate or sign-in",
-      "test": "tests/test_c6_migrate.py::test_an_unknown_post_mode_is_refused_without_writing",
-      "commit": "",
-      "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -7355,6 +7355,9 @@\n         raise HTTPException(status_code=500, detail=f\"rule_migrator not available: {e}\")\n     if not req.proposed_rules:\n         raise HTTPException(status_code=400, detail=\"No proposed_rules provided.\")\n+    from rule_migrator import POST_MODES\n+    if req.mode not in POST_MODES:   # refused before any gate or sign-in, never read as \"update\"\n+        raise HTTPException(status_code=400, detail=f\"mode must be one of {', '.join(POST_MODES)}\")\n     if not req.dry_run:\n         _require_tenant_write(req, confirmed=req.confirm, what=\"Posting rules to the tenant\")\n     _require_in_scope(req, \"dlp\", MIGRATE_WHAT, \"web_dlp\")   # user rule 1: nothing read out of scope\n"
+      "status": "fixed",
+      "fix": "The route refuses a mode outside rule_migrator.POST_MODES with a 400 before the write gates and before sign-in",
+      "test": "tests/test_c6_open_low.py::test_an_unknown_post_mode_is_refused_by_the_route_before_any_gate_or_sign_in",
+      "commit": "37a8f7c"
     }
   ],
   "tests_added": 242

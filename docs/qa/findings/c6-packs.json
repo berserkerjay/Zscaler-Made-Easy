@@ -423,11 +423,10 @@
       "severity": "low",
       "cwe": "CWE-1188",
       "asvs": "V1.4.4",
-      "status": "open",
-      "fix": "Always send ALLOW from build_policy_payload",
-      "test": "tests/test_c6_packs.py::test_a_rule_with_an_unknown_action_is_created_monitor_only",
-      "commit": "c7c71ab",
-      "proposed_patch": "--- a/dlp_importer.py\n+++ b/dlp_importer.py\n@@ -863,7 +863,8 @@ def build_policy_payload(\n         # Every rule is created DISABLED and monitor-only, whatever the pack\n         # says; a designed BLOCK / CONFIRM stays in the plan as the target.\n         \"state\": \"DISABLED\",\n-        \"action\": \"ALLOW\" if action.upper() in (\"BLOCK\", \"CONFIRM\", \"ICAP_RESPONSE\") else action,\n+        # Deny by default: only ALLOW monitors, any other action ships as ALLOW.\n+        \"action\": \"ALLOW\",\n         \"dlp_engines\": engine_ids,\n         \"protocols\": policy_def.get(\"protocols\", [\"ANY_RULE\"]),\n         \"rank\": 0 if use_rank_0 else policy_def.get(\"rank\", 7),\n"
+      "status": "fixed",
+      "fix": "Resolved at integration (migration QA, 016cf21): build_policy_payload always sends ALLOW, whatever action the pack names",
+      "test": "tests/test_c6_migrate.py::test_every_pack_web_rule_is_created_disabled_and_monitor_only",
+      "commit": "016cf21"
     },
     {
       "id": "C6-PACKS-26",
@@ -435,11 +434,10 @@
       "severity": "low",
       "cwe": "CWE-20",
       "asvs": "V14.2.1",
-      "status": "open",
-      "fix": "Accept the three optional keys the wave-6 record format defines",
-      "test": "tests/test_quality_score.py::test_the_committed_score_is_current",
-      "commit": "c7c71ab",
-      "proposed_patch": "--- a/tools/quality_score.py\n+++ b/tools/quality_score.py\n@@ -159,9 +159,10 @@\n MARKUP = re.compile(r\"<\\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;\")\n \n-ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False}\n+ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False,\n+             \"files\": False, \"coverage\": False}\n FINDING_KEYS = {\"id\": True, \"title\": True, \"severity\": True, \"status\": True, \"cwe\": False, \"asvs\": False, \"wcag\": False,\n-                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False}\n+                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False, \"proposed_patch\": False}\n CHECK_KEYS = {\"id\": True, \"what\": True, \"result\": True, \"standard\": False}\n"
+      "status": "fixed",
+      "fix": "Resolved at integration (bde03b1: files, coverage, notes, baseline, proposed_patch keys); completed here: multi-line patches, coverage context, finding files, commit lists",
+      "test": "tests/test_c6_open_low.py::test_the_wave_6_record_fields_are_accepted",
+      "commit": "bde03b1, 37a8f7c"
     }
   ],
   "tests_added": 362
