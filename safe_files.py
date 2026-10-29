@@ -6,7 +6,8 @@ uploaded packs and their Terraform) may hold tenant or customer data, so a
 file is created owner-only (0600) and a folder the app creates is 0700,
 whatever the process umask says.
 
-  private_open(path, mode)          open() for writing, the file 0600
+  private_open(path, mode)          open() for writing, the file 0600,
+                                    never through a link at `path`
   private_makedirs(path)            os.makedirs, every folder it creates 0700
   write_private_atomic(path, text)  a unique 0600 temporary file beside
                                     `path`, flushed, then moved over it
@@ -60,12 +61,21 @@ def _finite_float(text: str) -> float:
 
 def strict_json_loads(text: Any) -> Any:
     """json.loads that refuses NaN, Infinity, -Infinity and a number too
-    large for a double (ValueError), as JSON itself does."""
-    return json.loads(text, parse_constant=_no_constant, parse_float=_finite_float)
+    large for a double (ValueError), as JSON itself does. Nesting too deep
+    for the parser is a ValueError too, not a RecursionError (CWE-674)."""
+    try:
+        return json.loads(text, parse_constant=_no_constant, parse_float=_finite_float)
+    except RecursionError:
+        raise ValueError("JSON nested too deeply") from None
+
+
+# Never write through a symbolic link planted at the name (CWE-59): the
+# file the app means is replaced or created, not the link's target.
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
 def _opener(path: str, flags: int) -> int:
-    fd = os.open(path, flags, FILE_MODE)
+    fd = os.open(path, flags | _NOFOLLOW, FILE_MODE)
     with contextlib.suppress(OSError):   # a file that already existed keeps no wider mode
         os.chmod(fd if os.chmod in os.supports_fd else path, FILE_MODE)
     return fd

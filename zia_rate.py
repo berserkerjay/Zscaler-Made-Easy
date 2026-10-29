@@ -49,7 +49,7 @@ import tempfile
 import threading
 import time
 from collections import Counter, deque
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Tuple
 
 DEFAULTS = {"write": "1/s,400/h", "delete": "1/s,400/h", "endpoint_rules": "10/m,40/h",
@@ -288,17 +288,51 @@ def _windows(sent: Dict[str, Any], t: float) -> Dict[str, int]:
             "writes_1h": sum(1 for x in w if t - x < HOUR), "reads_5m": sum(1 for x in r if t - x < 300)}
 
 
+def _num(v: Any) -> Optional[float]:
+    """A finite number from the state file, else None: the file is read back
+    as it is on disk, and a damaged one ('abc', null, NaN, Infinity, a list)
+    must cost only its own bad entries, never every paced request (CWE-20)."""
+    if isinstance(v, bool):
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return f if f == f and f not in (float("inf"), float("-inf")) else None
+
+
+def _clean_tenant(d: Dict[str, Any]) -> Dict[str, Any]:
+    """A file tenant's record with every value this module reads checked:
+    timestamps and holds finite numbers, refusals dicts with a finite `at`
+    and a known bucket, ZIA's counts dicts with a finite `at`."""
+    sent_in = d.get("sent")
+    sent = {k: [x for x in (_num(t) for t in ts) if x is not None]
+            for k, ts in (sent_in.items() if isinstance(sent_in, dict) else ()) if k in DEFAULTS and isinstance(ts, list)}
+    refused = []
+    for r in d.get("refused") if isinstance(d.get("refused"), list) else []:
+        if isinstance(r, dict) and _num(r.get("at")) is not None and r.get("bucket") in DEFAULTS:
+            refused.append(dict(r, at=_num(r.get("at"))))
+    server_in = d.get("server")
+    server = {k: dict(v, at=_num(v.get("at"))) for k, v in (server_in.items() if isinstance(server_in, dict) else ())
+              if k in DEFAULTS and isinstance(v, dict) and _num(v.get("at")) is not None}
+    out = {"sent": sent, "hold_until": _num(d.get("hold_until")) or 0.0, "refused": refused, "server": server}
+    if _num(d.get("read_hold_until")):
+        out["read_hold_until"] = _num(d.get("read_hold_until"))
+    return out
+
+
 def _tenants_from(data: Dict[str, Any], now: float) -> Dict[str, Dict[str, Any]]:
     """The file's tenants as plain dicts; a file written before tenants were
     told apart (version 1) becomes tenant "". Its hold is kept only while it
     runs: version 1 set one after any refusal (a short 429 too) and never
     cleared it, so it says neither what ZIA answered nor when."""
     if "tenants" in data:
-        return {str(k): v for k, v in (data.get("tenants") or {}).items() if isinstance(v, dict)}
-    sent = {k: [float(t) for t in ts] for k, ts in (data.get("sent") or {}).items() if k in DEFAULTS}
-    hold = float(data.get("hold_until") or 0)
-    refused = [r for r in (data.get("refused") or []) if isinstance(r, dict)]
-    return {"": {"sent": sent, "hold_until": hold if hold > now else 0.0, "refused": refused, "server": data.get("server") or {}}}
+        tenants = data.get("tenants")
+        return {str(k): _clean_tenant(v) for k, v in (tenants.items() if isinstance(tenants, dict) else ()) if isinstance(v, dict)}
+    old = _clean_tenant(data)
+    hold = old["hold_until"]
+    old.pop("read_hold_until", None)
+    return {"": dict(old, hold_until=hold if hold > now else 0.0)}
 
 
 def _merge_into(t: _Tenant, d: Dict[str, Any], now: float) -> None:
@@ -528,6 +562,13 @@ def _delay(t: _Tenant, bucket: str, now: float) -> Tuple[float, Optional[Tuple[i
     """Seconds until the next request of `bucket` fits every limit, and the
     limit that sets it (None when it fits now). Called with _lock held."""
     sent = t.sent[bucket]
+    if sent and sent[-1] > now:
+        # Requests counted "after" now: the clock was set back since. They
+        # are taken as sent now, so the wait is one window at most, never
+        # as long as the clock moved.
+        moved = [min(x, now) for x in sent]
+        sent.clear()
+        sent.extend(moved)
     longest = _longest(bucket)   # kept for the forecast even when pacing is off
     while sent and now - sent[0] >= longest:
         sent.popleft()
@@ -583,7 +624,7 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
         else:
             if log and d >= 5 and binding and not told_wait:
                 told_wait = stoppable   # a wait slept in steps is announced once
-                at = (datetime.now() + timedelta(seconds=d)).strftime("%H:%M")
+                at = datetime.fromtimestamp(now + d).strftime("%H:%M")   # the injected clock (_now), not the wall clock
                 n, w = binding
                 log(f"{what + ': ' if what else ''}ZIA allows {n} {_WORDS[bucket]}{'s' if n != 1 else ''} {_PER.get(w, f'per {w:.0f}s')}; "
                     f"waiting {_human(d)} (next at {at}).")
@@ -619,6 +660,20 @@ def full_reset(bucket: str, key: Optional[str] = None) -> float:
         return (inside[0] + longest - now) if inside else longest
 
 
+MAX_HOLD_SECONDS = float(HISTORY_SECONDS)
+
+
+def hold_seconds(seconds: Any) -> float:
+    """`seconds` as a hold may last: 0 for a negative, non-number or NaN,
+    at most MAX_HOLD_SECONDS (a week). The value often comes from ZIA's
+    answer (a reset header): an absurd one ('1e999', inf) is a week, never a
+    hold for ever, and overlong_holds can still lift it."""
+    v = _num(seconds)
+    if v is None and seconds == float("inf"):
+        v = MAX_HOLD_SECONDS
+    return 0.0 if v is None or v <= 0 else min(v, MAX_HOLD_SECONDS)
+
+
 def hold(seconds: float, key: Optional[str] = None, *, reads: bool = False) -> float:
     """Send nothing more, in any write bucket of this tenant, for `seconds`;
     with `reads` (ZIA refused a read) no read either, from any job or
@@ -627,7 +682,7 @@ def hold(seconds: float, key: Optional[str] = None, *, reads: bool = False) -> f
     with _lock:
         _load()
         t = _t(key)
-        end = _now() + max(0.0, seconds)
+        end = _now() + hold_seconds(seconds)
         t.hold[0] = max(t.hold[0], end)
         if reads:
             t.read_hold[0] = max(t.read_hold[0], end)
@@ -711,10 +766,8 @@ def _is_rate_answer(status: Optional[int], text: str) -> bool:
 
 
 def _header_num(low: Dict[str, Any], k: str) -> Optional[float]:
-    try:
-        return float(str(low.get(k, "")).split(",")[0].split(";")[0].strip())
-    except ValueError:
-        return None
+    """A number from an answer's header, or None (not a number, NaN or infinite)."""
+    return _num(str(low.get(k, "")).split(",")[0].split(";")[0].strip()[:32])
 
 
 def note_refusal(bucket: str, message: str, *, key: Optional[str] = None, reset: Optional[float] = None,

@@ -409,16 +409,24 @@ def mask_secret(value: Optional[str], keep: int = 3) -> str:
 
 
 def scrub_dict(d: dict, secret_keys: Iterable[str] = ("client_secret", "secret", "password", "token", "api_key")) -> dict:
-    """Return a copy of d with secret values masked. Use before logging."""
+    """Return a copy of d with secret values replaced by '[redacted]'. Use
+    before logging. No character and no length of a secret is kept
+    (mask_secret's partial form is for identifiers such as a client id),
+    and dicts inside lists are scrubbed too."""
     secret_keys = {k.lower() for k in secret_keys}
+
+    def one(v):
+        if isinstance(v, dict):
+            return scrub_dict(v, secret_keys)
+        if isinstance(v, (list, tuple)):
+            return [one(x) for x in v]
+        return v
     out = {}
     for k, v in (d or {}).items():
-        if isinstance(v, dict):
-            out[k] = scrub_dict(v, secret_keys)
-        elif k.lower() in secret_keys:
-            out[k] = mask_secret(v)
+        if str(k).lower() in secret_keys:
+            out[k] = "[redacted]" if v not in (None, "") else v
         else:
-            out[k] = v
+            out[k] = one(v)
     return out
 
 
@@ -582,6 +590,9 @@ class BodySizeLimitMiddleware:
                 await self._too_large(scope, seen)(scope, receive, send)
 
 
+_monotonic = time.monotonic   # the rate limiter's clock (tests replace it)
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     Tiny in-process token-bucket per client IP. Defends against runaway
@@ -600,11 +611,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
         ip = request.client.host if request.client else "unknown"
-        now = time.time()
+        now = _monotonic()
         tokens, last = self.buckets.get(ip, (float(self.burst), now))
-        # Refill
-        tokens = min(self.burst, tokens + (now - last) * self.rps)
+        # Refill. A monotonic clock, and never a negative refill: with the wall
+        # clock, setting it back a day refused every call for a day (429).
+        tokens = min(self.burst, tokens + max(0.0, now - last) * self.rps)
         if tokens < 1:
+            self.buckets[ip] = (tokens, now)   # a "last" ahead of the clock is moved back to it
             return JSONResponse(
                 {"detail": "Rate limit exceeded. Slow down."},
                 status_code=429,
@@ -678,6 +691,7 @@ def write_ui_token_file(app_dir: str) -> Optional[str]:
     if not ui_auth_enabled():
         return None
     path = os.path.join(app_dir, UI_TOKEN_FILE)
+    tmp = None
     try:
         import tempfile
         fd, tmp = tempfile.mkstemp(prefix=".ui_token_", dir=app_dir)
@@ -688,9 +702,16 @@ def write_ui_token_file(app_dir: str) -> Optional[str]:
         except OSError:
             pass
         os.replace(tmp, path)
+        tmp = None
         return path
     except OSError:
         return None
+    finally:
+        if tmp is not None:   # a failed write leaves no copy of the token behind (CWE-459)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
 
 def _token_from_request(request: Request) -> Optional[str]:
