@@ -316,7 +316,11 @@ def get_health() -> dict:
     Does NOT make API calls to Zscaler.
     """
     import tenant_auth
-    env = tenant_auth.from_env()
+    try:
+        env = tenant_auth.from_env()
+    except ValueError as e:   # an unknown ZSCALER_AUTH_METHOD: say so instead of failing the health check
+        return {"status": "misconfigured", "engine_loaded": True, "total_checks": len(REG), "version": "3.0",
+                "credentials_configured": False, "error": str(e), "missing_environment_variables": [], "sdk": "zscaler-sdk-python"}
     missing = [tenant_auth.ENV[k] for k in tenant_auth.missing(env)]
     return {
         "status": "ok",

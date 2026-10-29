@@ -1489,3 +1489,12 @@ def test_discover_main_sorts_working_forbidden_and_missing(disc, tmp_path, monke
     assert [w["path"] for w in summary["working"]] == ["/zia/ok"] and summary["forbidden"] == ["no"]
     assert summary["not_found"] == ["gone"] and summary["errors"] == ["odd"]
     assert sent[0]["url"] == "https://acme.zidentitygov.net/oauth2/v1/token" and all(s["url"].startswith("https://api.zscalergov.net/v1/") for s in sent[1:])
+
+
+def test_mcp_health_names_a_bad_auth_method_instead_of_failing(mcp, monkeypatch):
+    """ASVS V7.4.1 · CWE-755 · WSTG-ERRH-01: get_health, the configuration check, reports an unknown ZSCALER_AUTH_METHOD rather than raising."""
+    monkeypatch.setenv("ZSCALER_AUTH_METHOD", "kerberos")
+
+    h = _tool(mcp, "get_health")()
+
+    assert h["status"] == "misconfigured" and "Unknown sign-in method" in h["error"] and SECRET not in json.dumps(h)
