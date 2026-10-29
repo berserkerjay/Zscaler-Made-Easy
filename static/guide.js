@@ -275,6 +275,9 @@ function _gdContainerUpdateHelp() {
 async function _gdUpdateApp() {
   if (GD.about && GD.about.in_container) { _gdContainerUpdateHelp(); return; }
   if (GD.about && GD.about.is_git_checkout === false) { _gdUpdateHelp(); return; }
+  // The update changes this app's own code (and may switch its branch): say what happens and ask first (WCAG 3.3.4).
+  const want = _gdUpdBranch() || 'its branch';
+  if (!window.confirm(`Update Zscaler Made Easy now to the latest ${want} from GitHub? The app pulls the code, keeps any local edits in git stash, installs the locked requirements and then asks you to restart it. Nothing in the tenant changes.`)) return;
   const btn = document.getElementById('gdUpdateBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   const lines = [];
   const show = (extra = '') => _gdUpdateBox(`<div class="gd-upd-steps">${lines.map(l => `<div class="gd-upd-line ${l.ok === false ? (l.soft ? 'soft' : 'warn') : l.ok ? 'ok' : ''}">${l.ok === false ? (l.soft ? '⚠' : '✗') : l.ok ? '✓' : '…'} ${_gdE(l.name)}${l.detail ? ` <span class="dim">— ${_gdE(l.detail)}</span>` : ''}</div>`).join('')}${extra}</div>`);

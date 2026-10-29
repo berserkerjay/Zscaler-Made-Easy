@@ -6674,6 +6674,10 @@ async def app_update_run(req: Optional[AppUpdateRequest] = None):
     target = _update_branch(req.branch if req else None)
     result = await asyncio.to_thread(app_update.update, _APP_DIR, branch=target)
     _LATEST.pop(target, None)
+    # The app's own code changed (or tried to): the audit log says who, which
+    # branch, from which build to which, and whether it worked.
+    _audit.record("app_update", actor=_security.current_actor(), branch=target, ok=bool(result.get("ok")),
+                  updated=bool(result.get("updated")), before=result.get("before"), after=result.get("after"))
     return result
 
 
