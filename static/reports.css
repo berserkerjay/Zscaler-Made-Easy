@@ -2,6 +2,8 @@
    bypass dialog. The tabs load /app.css first (the assessment page's own
    stylesheet), so every token, font, theme and button below is the app's;
    this file only adds the report layout and components. */
+/* The glass effect: one shared material for every page that loads this file (see glass.css). */
+@import url("/static/glass.css");
 .rp-page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 3.5rem; position: relative; z-index: 1; animation: fadeInUp 0.6s var(--ease, ease); }
 .rp-hero { text-align: center; margin-bottom: 1.4rem; padding: 0.5rem 0 0; }
 .rp-hero h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 0.5rem; }
@@ -710,3 +712,6 @@ summary { min-height: 24px; }
 .pa-wi-results .rp-btn { width: 100%; text-align: left; justify-content: flex-start; }
 .pa-whatif-out .df-table td { vertical-align: top; }
 .pa-whatif-out .df-table td > div + div { margin-top: 0.25rem; }
+/* Advanced settings: the Glass effect switch (static/glass.js keeps it in step with the page). */
+.adv-switch { display: inline-flex; align-items: center; gap: 0.6rem; min-height: var(--ctl-md); margin: 0.2rem 0; font-weight: 600; cursor: pointer; }
+.adv-switch input { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--accent); cursor: pointer; }

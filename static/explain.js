@@ -534,6 +534,7 @@
     ['Score-drop alert', 'A note on the results and in the digest when the score fell by at least the threshold you set (5 points by default) since the previous run, with the checks that started failing. It is sent by e-mail or webhook only if notifications are already set up and you turned that on.'],
     ['Trusted network', 'A network the customer defined in the Forwarding Profile (office, VPN) where Client Connector may behave differently on purpose, for example not tunnelling at all.'],
     ['Help on hover', 'Point at any button, field or link, or move to it with the Tab key, and a small box says what it does, what to type or pick, and whether it reads or changes the tenant. Press Esc to close it. On a touch screen, press and hold, or tap the small ⓘ next to it.'],
+    ['Glass effect', 'The look of the bars, cards, dialogs and buttons: see-through like frosted glass over a soft background, with a light edge and a soft shadow. Text keeps its contrast in both themes. It is on by default; turn it off for solid surfaces in Advanced settings (Appearance), a choice kept in this browser only. Surfaces are solid anyway when the system asks for less transparency, more contrast or forced colours, and when printing.'],
   ];
   window.DLP_TROUBLE = [
     ['"Could not connect" under step 1', 'tells you the cause and the fix. Nine times out of ten it is a pasted secret that was not the real secret, or a machine behind TLS inspection.'],

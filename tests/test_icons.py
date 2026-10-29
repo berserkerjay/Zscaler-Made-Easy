@@ -28,7 +28,10 @@ def test_the_symbol_set_is_served_bundled_and_loaded_first():
     paths = set(re.findall(r"^\s+'([a-z0-9-]+)': 'M", body, re.M))
     assert names and names <= paths, sorted(names - paths)
     html = c.get("/").text
-    srcs = re.findall(r'<script src="/static/([a-z_]+\.js)\?v=\d+"></script>', html)
+    # The add-on scripts at the end of the body: the symbol set first. (The head holds only glass.js, which draws no icon.)
+    head, body = html[:html.find("</head>")], html[html.find("</head>"):]
+    assert re.findall(r'<script src="/static/([a-z_]+\.js)\?v=\d+"></script>', head) == ["glass.js"]
+    srcs = re.findall(r'<script src="/static/([a-z_]+\.js)\?v=\d+"></script>', body)
     assert srcs[0] == "icons.js", srcs
     for page in ("/report/digest", "/report/advanced", "/report/compliance", "/help", "/report/logs"):
         assert '<script src="/static/icons.js"></script>' in c.get(page).text, page

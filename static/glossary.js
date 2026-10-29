@@ -148,6 +148,7 @@
     'incident receiver': { term: 'incident receiver', def: 'The incident receiver gets a copy of what a DLP rule caught. It puts it where Workflow Automation can see it.' },
     'quality score': { term: 'quality score', def: 'The quality score shows how well this app itself is tested. It goes from 0 to 100. Open problems pull it down.' },
     'severity': { term: 'severity', def: 'Severity says how bad a problem is. It goes from info and low up to medium, high and critical.' },
+    'glass effect': { term: 'glass effect', def: 'The glass effect makes bars, cards and buttons see-through, like frosted glass. You can turn it off in Advanced settings.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

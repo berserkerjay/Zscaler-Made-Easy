@@ -1,0 +1,162 @@
+{
+ "area": "UI and accessibility: the glass effect (static/glass.css, static/glass.js) on every page styled by the app's stylesheet, its solid fallbacks and the Advanced settings switch",
+ "title": "Glass effect checked for WCAG 2.2 AA contrast against the worst case behind each surface, every solid fallback, reflow, focus, motion and blur cost, statically and in Chrome on the sample tenant",
+ "standards": [
+  "WCAG 2.2 SC 1.4.3",
+  "WCAG 2.2 SC 1.4.11",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 2.4.7",
+  "WCAG 2.2 SC 2.4.11",
+  "WCAG 2.2 SC 2.3.3",
+  "WCAG 2.2 SC 2.2.2",
+  "WCAG 2.2 SC 2.1.1",
+  "WCAG 2.2 SC 4.1.2",
+  "WCAG 2.2 SC 1.4.13",
+  "ASVS V14.4",
+  "CWE-248",
+  "CWE-684"
+ ],
+ "checks": [
+  {
+   "id": "GLASS-C01",
+   "what": "Text tokens on each glass tier against the worst case behind it, computed from glass.css and the theme tokens: floating chrome over pure white and black (lowest 4.74:1 dark, 4.81:1 light), chrome in the flow over the page wash (5.62 / 5.63), panels (5.02 / 5.58), capsule buttons (5.00 / 5.50), tables (5.49 / 5.65); white on a primary capsule over any parent 5.29 / 5.61; text straight on the wash 5.80 / 5.00",
+   "standard": "WCAG 2.2 SC 1.4.3",
+   "result": "pass"
+  },
+  {
+   "id": "GLASS-C02",
+   "what": "Focus ring (--accent-hover) against every glass tier: lowest 6.19:1 dark, 6.96:1 light; keyboard focus on glass buttons draws a solid 3px outline",
+   "standard": "WCAG 2.2 SC 1.4.11",
+   "result": "pass"
+  },
+  {
+   "id": "GLASS-C03",
+   "what": "Text on every glass surface of every page (35 routes, both themes, sample tenant) measured in Chrome against the worst case behind its glass, with and without sheen and lens",
+   "standard": "WCAG 2.2 SC 1.4.3",
+   "result": "fixed"
+  },
+  {
+   "id": "GLASS-C04",
+   "what": "prefers-reduced-transparency (emulated, every page), prefers-contrast: more, forced-colors: active and print: no blur, no sheen, no wash, every glass surface opaque; @supports not (backdrop-filter) fallback defined",
+   "standard": "WCAG 2.2 SC 1.4.3",
+   "result": "pass"
+  },
+  {
+   "id": "GLASS-C05",
+   "what": "No horizontal scroll at 320 and 390 px on every page with the glass on",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "pass"
+  },
+  {
+   "id": "GLASS-C06",
+   "what": "Pointer-follow lens moves per animation frame and is never set under prefers-reduced-motion; the material has no animation, transition or shimmer",
+   "standard": "WCAG 2.2 SC 2.3.3",
+   "result": "pass"
+  },
+  {
+   "id": "GLASS-C07",
+   "what": "Glass effect switch in Advanced settings: labelled role=switch, keyboard (Space) toggles, choice kept per browser in localStorage (wrapped in try/catch, default on), applied on <html> before first paint, survives reload, reaches every page and other tabs",
+   "standard": "WCAG 2.2 SC 4.1.2",
+   "result": "pass"
+  },
+  {
+   "id": "GLASS-C08",
+   "what": "Blur cost: at most 16 blurred layers per page (measured 6 to 8), none taller than the window, no table blurred or see-through, no fixed element inside a blurred one; scroll frame time median 16.7 ms with the glass on and off on /help (25k px), /report/advanced, /report/operations and /report/path",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "fixed"
+  },
+  {
+   "id": "GLASS-C09",
+   "what": "The existing a11y page audit measures glass: a glass surface's gradient is composited as its sheen instead of being skipped as an image, the page wash's peaks are composited under the body's content, and a box-shadow counts as a focus ring only when it differs from the control's resting shadow",
+   "standard": "WCAG 2.2 SC 2.4.7",
+   "result": "fixed"
+  }
+ ],
+ "findings": [
+  {
+   "id": "GLASS-01",
+   "title": "Dark theme: secondary and semantic text on glass panels and capsule buttons fell to 3.9:1 against the brightest point of the page wash once the sheen (6% white) and the pointer lens (8% white) were added",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "static/glass.css: dark sheen 2% and lens 4%; a hovered capsule turns more opaque instead of lighter",
+   "test": "tests/test_glass.py::test_text_on_each_glass_tier_meets_aa_against_the_worst_backdrop",
+   "commit": "7d22b21"
+  },
+  {
+   "id": "GLASS-02",
+   "title": "Accent text on --accent-tint (the hero badge, a selected tab) dropped to 4.37 to 4.42:1 over translucent glass in the dark theme, because the tint is itself see-through",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "static/glass.css: with the glass on, --accent-tint is mixed into the opaque card (14% dark, 12% light), as the status chips are",
+   "test": "tests/test_glass.py::test_accent_text_on_its_tint_is_independent_of_the_glass",
+   "commit": "7d22b21"
+  },
+  {
+   "id": "GLASS-03",
+   "title": "The sticky details panel of the Deploy flow page (an rp-card) was panel-tier glass: with content able to pass behind a sticky surface, its text fell to 2.1:1 in the worst case",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "static/glass.css: .rp-card.fl-side uses the floating tier (95% / 90% opaque)",
+   "test": "tests/test_glass_browser.py::test_text_on_glass_meets_aa_against_the_worst_backdrop",
+   "commit": "7d22b21"
+  },
+  {
+   "id": "GLASS-04",
+   "title": "A backdrop-filter on the sidebar made it the containing block of the sidebar's fixed drag-and-drop marker (sidebar_order.js), so the marker would be placed against the scrolled sidebar instead of the window",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 2.1.1",
+   "status": "fixed",
+   "fix": "static/glass.css: the sidebar keeps the floating tint but no blur (only the still wash is behind it)",
+   "test": "tests/test_glass_browser.py::test_blur_stays_on_a_few_chrome_layers",
+   "commit": "e0f902f"
+  },
+  {
+   "id": "GLASS-05",
+   "title": "The existing page audit skipped every text whose background stack contained a gradient and counted any box-shadow as a focus ring, so glass surfaces (sheen gradient, resting rim and shadow) would have passed contrast and focus checks without being measured",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 2.4.7",
+   "status": "fixed",
+   "fix": "tests/test_accessibility.py PAGE_AUDIT and FOCUS_STEP measure the sheen and the wash and compare a shadow with the control's resting shadow",
+   "test": "tests/test_accessibility.py::test_keyboard_focus_is_visible_and_never_trapped",
+   "commit": "7d22b21"
+  },
+  {
+   "id": "GLASS-06",
+   "title": "Two browser contrast checks read color(srgb r g b / a), the form color-mix() computes to, as 0..255 values, so any color-mix() surface measured as near black (1.01:1 and 1.17:1 false failures, and false passes in the dark theme)",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "tests/test_quality_score.py and tests/test_c6_tooltips.py scale color(srgb) channels to 0..255 before the luminance",
+   "test": "tests/test_quality_score.py::test_the_section_reads_and_reflows_at_390px",
+   "commit": "0adf79f"
+  },
+  {
+   "id": "GLASS-07",
+   "title": "The page audit sampled the colour under a text at its element's top-left corner; on a capsule button the rounded corner is outside the button, so white button text was measured against the bar behind it (1.00:1 false failure)",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "tests/test_accessibility.py samples at the text's own line box (a Range over its text node)",
+   "test": "tests/test_accessibility.py::test_text_contrast_meets_aa_in_both_themes",
+   "commit": "0adf79f"
+  }
+ ],
+ "tests_added": 308
+}
