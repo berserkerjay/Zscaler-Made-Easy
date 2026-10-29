@@ -1044,6 +1044,343 @@
     return { play, step() { if (i >= n - 1) reset(); return stepOnce(); }, reset, destroy() { gen++; clock.destroy(); host.innerHTML = ''; } };
   }
 
+  // ── Traffic path player ──────────────────────────────────────────
+  // model: trafficPathModel(). Packets travel the path node by node, each
+  // box lights up with its verdict as a packet lands, and they stop at the
+  // marked step. opts: loop (keep packets flowing once the path is drawn:
+  // the live view), stepper (Back, Next, Restart and a speed: the replay),
+  // onSelect(node) when a box is clicked or Enter is pressed on it. The
+  // picture lays itself out for the width it has (one column on a phone),
+  // so the page never scrolls sideways. Motion follows prefers-reduced-
+  // motion (the final picture, with Play motion to start it anyway) and
+  // stops while the tab is hidden; the steps are listed in words under it.
+  let tpSeq = 0;
+  function trafficPath(host, model, opts) {
+    const o = opts || {};
+    const id = 'tp' + (++tpSeq);
+    const n = model.nodes.length, end = model.stop >= 0 ? model.stop : n - 1;
+    const ref = model.mode === 'reference';
+    const chips = [`<span class="tp-chip"><span class="k">Traffic</span> ${E(model.traffic)}</span>`];
+    if (model.identity) chips.push(`<span class="tp-chip"><span class="k">What-if</span> ${E(model.identity)}</span>`);
+    if (model.dest) chips.push(`<span class="tp-chip"><span class="k">To</span> ${E(model.dest)}</span>`);
+    host.innerHTML = `<div class="tp-head">${chips.join('')}<span class="sep"></span>
+        ${o.stepper ? '<button type="button" class="rp-btn tp-back">Back</button>' : ''}
+        <button type="button" class="rp-btn tp-play" aria-controls="${id}-stage">Pause motion</button>
+        ${o.stepper ? `<button type="button" class="rp-btn tp-next">Next</button><button type="button" class="rp-btn tp-restart">Restart</button>
+        <label class="df-ctl tp-speed"><span class="lbl">Speed</span><select class="tp-speed-sel" aria-label="Animation speed"><option value="0.5">Slow</option><option value="1" selected>Normal</option><option value="2">Fast</option></select></label>` : ''}
+      </div>
+      <div class="tp-stage" id="${id}-stage"></div>
+      <p class="df-hint tp-note" id="${id}-note" aria-live="polite"></p>
+      <details class="tp-alt"${o.openSteps ? ' open' : ''}><summary>${ref ? 'The reference path in words' : `The path in words (${n} steps)`}</summary>
+        <ol class="tp-steps" id="${id}-steps">${model.summary.slice(1, n + 1).length === n ? model.summary.slice(1, n + 1).map(s => `<li>${E(s.replace(/^\d+\.\s*/, ''))}</li>`).join('') : model.nodes.map(x => `<li>${E(x.label)}: ${E(x.word)}</li>`).join('')}</ol>
+        ${model.summary.length ? `<p class="df-hint">${E(ref ? model.summary[0] : [model.summary[0]].concat(model.summary.slice(n + 1)).join(' '))}</p>` : ''}
+      </details>`;
+    const stageEl = host.querySelector('.tp-stage'), noteEl = host.querySelector('.tp-note'), stepsEl = host.querySelector('.tp-steps');
+    const btn = host.querySelector('.tp-play');
+    const clock = animator();
+    let svg = null, boxes = [], edges = [], lens = [], tags = [], forks = [], dotsG = null, per = 0;
+    let pos = ref ? end : 0, playing = false, chosen = null, speed = 1, gen = 0, frames = 0, packets = [], acc = 0, lastT = 0, streamOff = null, ro = null, dead = false;
+    const want = () => (chosen != null ? chosen : !reduced());
+    const dur = ms => ms / speed;
+    function tick() { frames++; host.setAttribute('data-tp-frames', String(frames)); }
+
+    // Layout: as many boxes a row as fit, rows snaking; one column on a phone.
+    function build() {
+      const avail = Math.max(260, Math.min(1200, Math.floor(stageEl.clientWidth || host.clientWidth || 1000)));
+      const M = 18, GAP = 34, BH = 46, ROWH = BH + 48, TOP = 16;
+      let p = Math.max(1, Math.floor((avail - 2 * M + GAP) / (150 + GAP)));
+      p = Math.min(p, n);
+      if (svg && p === per) return;
+      per = p;
+      const W = per === 1 ? avail : Math.max(avail, 2 * M + per * 150 + (per - 1) * GAP);
+      const bw = per === 1 ? Math.min(W - 2 * M, 320) : Math.floor((W - 2 * M - (per - 1) * GAP) / per);
+      const rows = Math.ceil(n / per);
+      stageEl.innerHTML = '';
+      svg = newSvg(stageEl, W, rows * ROWH + TOP, ref ? 'The reference path, idling' : `The path of ${model.traffic} to ${model.dest || 'the destination'}`);
+      svg.setAttribute('role', 'group'); svg.setAttribute('class', 'fa-svg tp-svg'); svg.setAttribute('aria-describedby', id + '-steps');
+      svg.removeAttribute('tabindex');
+      const at = model.nodes.map((x, i) => {
+        const r = Math.floor(i / per), c = i % per, col = r % 2 ? per - 1 - c : c;
+        return { x: M + col * (bw + GAP), y: TOP + r * ROWH, w: bw, h: BH, r, col };
+      });
+      const edgesG = svgEl('g', { class: 'tp-edges' }, svg);
+      edges = []; lens = [];
+      for (let i = 0; i < n - 1; i++) {
+        const a = at[i], b = at[i + 1], ya = a.y + BH / 2, yb = b.y + BH / 2;
+        let d;
+        if (per === 1) d = `M${a.x + 24} ${a.y + BH} L${b.x + 24} ${b.y}`;
+        else if (a.r === b.r) d = a.r % 2 === 0 ? `M${a.x + bw} ${ya} L${b.x} ${yb}` : `M${a.x} ${ya} L${b.x + bw} ${yb}`;
+        else if (a.col === per - 1) d = `M${a.x + bw} ${ya} H${a.x + bw + 12} V${yb} H${b.x + bw}`;
+        else d = `M${a.x} ${ya} H${a.x - 12} V${yb} H${b.x}`;
+        const e = svgEl('path', { d, class: 'fa-edge' }, edgesG);
+        edges.push(e);
+        lens.push(e.getTotalLength ? e.getTotalLength() : 1);
+      }
+      forks = []; tags = [];
+      boxes = model.nodes.map((x, i) => {
+        const p0 = at[i];
+        const b = box(svg, p0.x, p0.y, bw, BH, x.label, x.sub);
+        if (x.fork) {
+          const fx = p0.x + bw - 28, f = svgEl('g', { class: 'tp-fork' + (x.fork.ghost ? ' ghost' : '') }, svg);
+          svgEl('path', { d: `M${fx} ${p0.y + BH} q2 10 12 14`, class: 'tp-fork-l' }, f);
+          const ft = svgEl('text', { x: p0.x + bw, y: p0.y + BH + 27, 'text-anchor': 'end', class: 'tp-fork-t' }, f);
+          ft.textContent = clip(x.fork.text, Math.floor((bw - 4) / 5.6));
+          forks[i] = f;
+        }
+        if (x.mark) {
+          const g = svgEl('g', { class: 'tp-tag mk-' + x.mark }, svg);
+          const tt = svgEl('text', { x: p0.x + bw - 2, y: p0.y - 4, 'text-anchor': 'end' }, g);
+          tt.textContent = `${TP_MARK[x.mark]} ${TP_MARK_WORD[x.mark]}`;
+          tags[i] = g;
+        }
+        if (o.onSelect && !ref) {
+          b.g.setAttribute('tabindex', '0'); b.g.setAttribute('role', 'button');
+          b.g.setAttribute('aria-label', `${i + 1}. ${x.label}: ${x.word}${x.rule ? `, rule ${x.rule}` : ''}${x.mark && i === model.stop ? `, ${TP_MARK_WORD[x.mark]} here` : ''}. Opens its card.`);
+          b.g.addEventListener('click', () => o.onSelect(x, i));
+          b.g.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); o.onSelect(x, i); } });
+        }
+        if (x.lane === 'zpa') b.g.classList.add('tp-zpa');
+        return b;
+      });
+      dotsG = svgEl('g', { class: 'tp-dots' }, svg);
+      packets = [];
+      paint();
+    }
+    // The picture for `pos`: what has been reached shows its verdict.
+    function paint() {
+      boxes.forEach((b, i) => {
+        const x = model.nodes[i];
+        const shown = ref || i <= pos || (pos >= end && i > end);
+        b.set(['tp-box', ref ? 'idle' : shown ? x.tone : 'pend', i === pos && !ref && playing && pos < end ? 'on' : ''].filter(Boolean).join(' '));
+        if (x.lane === 'zpa') b.g.classList.add('tp-zpa');
+        if (tags[i]) tags[i].setAttribute('display', pos >= i ? 'inline' : 'none');
+        if (forks[i]) forks[i].setAttribute('display', ref || pos >= i ? 'inline' : 'none');
+      });
+      edges.forEach((e, i) => e.setAttribute('class', 'fa-edge' + (ref ? '' : i < pos ? ' lit' : (pos >= end && i >= end && model.stop >= 0 && model.nodes[model.stop].mark !== 'unknown') ? ' dead' : '')));
+      Array.prototype.forEach.call(stepsEl.children, (li, i) => li.classList.toggle('cur', !ref && i === pos));
+    }
+    function say(i) {
+      const x = model.nodes[i];
+      noteEl.textContent = `Step ${i + 1} of ${n}: ${x.label}, ${x.word}${x.rule ? ` (rule ${x.rule})` : ''}.${i === model.stop ? ` ${TP_MARK_WORD[x.mark][0].toUpperCase()}${TP_MARK_WORD[x.mark].slice(1)} here.` : ''}${x.note ? ' ' + x.note : ''}`;
+    }
+    function setBtn() { btn.textContent = playing ? 'Pause motion' : 'Play motion'; }
+    const CALM = 'Motion is off because your system asks for reduced motion: the picture shows where the traffic goes and where it stops. Play motion starts it anyway.';
+    // One dot along edge i; resolves when it lands.
+    function flyEdge(i, ms, cls) {
+      return new Promise(done => {
+        const e = edges[i];
+        if (!want() || !e || !e.getTotalLength) { done(); return; }
+        const dot = svgEl('circle', { r: 5, class: 'fa-dot tp-pkt' + (cls ? ' ' + cls : '') }, dotsG);
+        let t0 = null;
+        const stop = clock.add(now => {
+          tick();
+          if (t0 === null) t0 = now;
+          const k = Math.min(1, (now - t0) / ms), q = e.getPointAtLength(lens[i] * k);
+          dot.setAttribute('cx', q.x); dot.setAttribute('cy', q.y);
+          if (k >= 1) { stop(); dot.remove(); done(); }
+        });
+      });
+    }
+    // A pause on the animation clock (so it stops while the tab is hidden).
+    function clockWait(ms) {
+      return new Promise(done => {
+        if (!want()) { done(); return; }
+        let t0 = null;
+        const off = clock.add(now => { tick(); if (t0 === null) t0 = now; if (now - t0 >= ms) { off(); done(); } });
+      });
+    }
+    // The live stream once the path is drawn: a packet every 1.5 s runs
+    // to the stop and pops there with the stop's tone.
+    function streamTick(now) {
+      tick();
+      const dt = lastT ? Math.min(50, now - lastT) : 16; lastT = now;
+      acc += dt * speed;
+      if (acc >= 1500 && packets.length < 8 && end > 0) {
+        acc = 0;
+        packets.push({ seg: 0, k: 0, el: svgEl('circle', { r: 4.5, class: 'fa-dot tp-pkt' + (model.stop >= 0 ? ' mk-' + model.nodes[model.stop].mark : '') }, dotsG) });
+      }
+      packets = packets.filter(pk => {
+        pk.k += dt * speed / 520;
+        while (pk.k >= 1 && pk.seg < end) { pk.k -= 1; pk.seg++; }
+        if (pk.seg >= end) { pk.el.setAttribute('class', pk.el.getAttribute('class') + ' pop'); setTimeout(() => pk.el.remove(), 420); return false; }
+        const q = edges[pk.seg].getPointAtLength(lens[pk.seg] * pk.k);
+        pk.el.setAttribute('cx', q.x.toFixed(1)); pk.el.setAttribute('cy', q.y.toFixed(1));
+        return true;
+      });
+    }
+    function startStream() { if (streamOff || dead || !want() || !o.loop) return; lastT = 0; acc = 1500; streamOff = clock.add(streamTick); }
+    function halt() {
+      gen++; playing = false;
+      if (streamOff) { streamOff(); streamOff = null; }
+      clock.clear();
+      if (dotsG) dotsG.innerHTML = '';
+      packets = [];
+    }
+    function finished() {
+      playing = !!(o.loop && want());
+      paint(); setBtn();
+      if (!ref) say(end);
+      if (o.onDone) o.onDone();
+      startStream();
+    }
+    async function play() {
+      if (dead) return;
+      halt(); playing = true; setBtn();
+      if (pos >= end && !o.loop) pos = 0;
+      const my = gen;
+      paint();
+      if (!want()) { pos = end; finished(); return; }
+      while (my === gen && pos < end) {
+        await flyEdge(pos, dur(560));
+        if (my !== gen) return;
+        pos++; paint();
+        if (o.onStep) o.onStep(model.nodes[pos], pos);
+        if (pos < end) await clockWait(dur(140));
+      }
+      if (my === gen) finished();
+    }
+    function pause() { halt(); paint(); setBtn(); }
+    function step(dir) {
+      halt();
+      const was = pos;
+      pos = Math.max(0, Math.min(end, pos + dir));
+      paint(); setBtn(); say(pos);
+      if (dir > 0 && pos > was) flyEdge(was, dur(420));
+    }
+    btn.addEventListener('click', () => { if (playing) { chosen = false; pause(); } else { chosen = true; play(); } });
+    if (o.stepper) {
+      host.querySelector('.tp-back').addEventListener('click', () => step(-1));
+      host.querySelector('.tp-next').addEventListener('click', () => step(1));
+      host.querySelector('.tp-restart').addEventListener('click', () => { halt(); pos = 0; paint(); play(); });
+      host.querySelector('.tp-speed-sel').addEventListener('change', ev => { speed = Number(ev.target.value) || 1; });
+    }
+    build();
+    if (root.ResizeObserver) {
+      let w = stageEl.clientWidth;
+      ro = new root.ResizeObserver(() => { if (Math.abs(stageEl.clientWidth - w) < 8) return; w = stageEl.clientWidth; const keep = playing; halt(); build(); if (keep) play(); });
+      ro.observe(stageEl);
+    }
+    if (ref) { playing = want(); setBtn(); paint(); if (playing) { acc = 1500; startStream(); } }
+    else if (want()) play();
+    else { pos = end; paint(); setBtn(); say(end); noteEl.textContent = CALM + ' ' + noteEl.textContent; }
+    if (ref && !want()) noteEl.textContent = CALM;
+    return {
+      play() { chosen = true; play(); }, pause() { chosen = false; pause(); }, step, playing: () => playing, frames: () => frames, pos: () => pos,
+      destroy() { dead = true; halt(); clock.destroy(); if (ro) ro.disconnect(); host.innerHTML = ''; host.removeAttribute('data-tp-frames'); },
+    };
+  }
+
+  // ── Test a list: rows streaming to the step that decides them ────
+  // update(tally) with the job's tally (listFlowModel): each box's count
+  // climbs to its new value and a few packets fly from the list to every
+  // box that gained rows. Reduced motion: the counts change at once.
+  function listFlow(host) {
+    host.innerHTML = `<div class="tp-head lf-head"><span class="tp-chip lf-tot" aria-hidden="true"></span><span class="sep"></span><button type="button" class="rp-btn lf-play">Pause motion</button></div>
+      <div class="tp-stage lf-stage"></div>
+      <ul class="lf-alt df-hint" aria-label="Where the rows were decided"></ul>`;
+    const stageEl = host.querySelector('.lf-stage'), alt = host.querySelector('.lf-alt'), tot = host.querySelector('.lf-tot'), btn = host.querySelector('.lf-play');
+    const clock = animator();
+    let chosen = null, frames = 0, svg = null, src = null, B = {}, P = {}, model = listFlowModel(null), shown = {}, dotsG = null, wide = null;
+    const want = () => (chosen != null ? chosen : !reduced());
+    model.boxes.forEach(b => { shown[b.key] = 0; });
+    function vcurve(a, b) {
+      const x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, m = (y1 + y2) / 2;
+      return svgEl('path', { d: `M${x1} ${y1} C${x1} ${m} ${x2} ${m} ${x2} ${y2}`, class: 'fa-edge' }, svg.querySelector('.lf-edges'));
+    }
+    function build() {
+      const avail = Math.max(260, Math.min(1100, Math.floor(stageEl.clientWidth || host.clientWidth || 1000)));
+      const isWide = avail >= 620;
+      if (svg && isWide === wide) return;
+      wide = isWide;
+      stageEl.innerHTML = '';
+      const list = model.boxes.filter(b => !b.end), ends = model.boxes.filter(b => b.end);
+      let W, H;
+      const pos = {};
+      if (wide) {
+        W = avail; H = list.length * 54 + 16;
+        const cx = Math.round(W / 2 - 95);
+        list.forEach((b, i) => { pos[b.key] = { x: cx, y: 8 + i * 54, w: 190, h: 44 }; });
+        ends.forEach((b, i) => { pos[b.key] = { x: W - 18 - 170, y: Math.round(H / 2 - 70 + i * 96), w: 170, h: 44 }; });
+        pos.src = { x: 18, y: Math.round(H / 2 - 22), w: 150, h: 44 };
+      } else {
+        W = avail;
+        const bw = Math.floor((W - 36 - 12) / 2), all = list.concat(ends);
+        H = 70 + Math.ceil(all.length / 2) * 54 + 8;
+        pos.src = { x: 18, y: 8, w: W - 36, h: 44 };
+        all.forEach((b, i) => { pos[b.key] = { x: 18 + (i % 2) * (bw + 12), y: 70 + Math.floor(i / 2) * 54, w: bw, h: 44 }; });
+      }
+      svg = newSvg(stageEl, W, H, 'The tested list, each row flowing to the step that decided it');
+      svg.setAttribute('role', 'img'); svg.setAttribute('class', 'fa-svg tp-svg'); svg.removeAttribute('tabindex');
+      svgEl('g', { class: 'lf-edges' }, svg);
+      src = box(svg, pos.src.x, pos.src.y, pos.src.w, pos.src.h, 'Your list', '');
+      P = {}; B = {};
+      model.boxes.forEach(b => {
+        P[b.key] = wide ? curve(svg.querySelector('.lf-edges'), pos.src, pos[b.key]) : vcurve(pos.src, pos[b.key]);
+        B[b.key] = box(svg, pos[b.key].x, pos[b.key].y, pos[b.key].w, pos[b.key].h, b.label, '');
+      });
+      dotsG = svgEl('g', { class: 'tp-dots' }, svg);
+      draw();
+    }
+    const TONE = { client_connector: 'warn', zpa: 'pass', dest: 'pass', unverified: 'warn' };
+    function draw() {
+      model.boxes.forEach(b => {
+        const v = Math.round(shown[b.key] || 0);
+        B[b.key].sub(b.key === 'dest' ? `${v} allowed` : b.key === 'unverified' ? `${v} unverified` : !v ? b.word : b.kinds.length === 1 ? `${v} ${b.kinds[0]}` : `${v} rows: ${b.word}`);
+        B[b.key].set(v ? (TONE[b.key] || 'stop') : '');
+        P[b.key].setAttribute('class', 'fa-edge' + (v ? ' lit' : ''));
+      });
+      const t = model.totals;
+      src.sub(model.total ? `${model.done.toLocaleString()} of ${model.total.toLocaleString()} rows` : 'waiting for rows');
+      tot.textContent = `${t.blocked} blocked · ${t.allowed} allowed · ${t.bypassed} bypassed · ${t.zpa} ZPA`;
+    }
+    function words() {
+      alt.innerHTML = `<li>${E(model.total ? `${model.done} of ${model.total} row(s) tested${model.phase === 'lookup' ? ' (looking up categories first)' : ''}.` : 'No row tested yet.')}</li>`
+        + model.boxes.map(b => `<li>${E(b.label)}: ${E(b.key === 'dest' || b.key === 'unverified' ? b.word : `${b.n} row(s)${b.n ? `: ${b.word}` : ''}`)}</li>`).join('');
+    }
+    let tween = null;
+    function update(p) {
+      if (!p) return;
+      const prev = {};
+      model.boxes.forEach(b => { prev[b.key] = b.n; });
+      model = listFlowModel(p);
+      words();
+      const from = Object.assign({}, shown), to = {};
+      model.boxes.forEach(b => { to[b.key] = b.n; });
+      if (!want() || root.document.hidden) { Object.assign(shown, to); draw(); return; }
+      model.boxes.forEach(b => {
+        const gain = b.n - (prev[b.key] || 0);
+        for (let k = 0; k < Math.min(gain, 5); k++) setTimeout(() => sendDot(b.key), k * 110);
+      });
+      if (tween) tween();
+      let t0 = null;
+      tween = clock.add(now => {
+        frames++; host.setAttribute('data-lf-frames', String(frames));
+        if (t0 === null) t0 = now;
+        const k = Math.min(1, (now - t0) / 900);
+        Object.keys(to).forEach(key => { shown[key] = from[key] + (to[key] - from[key]) * k; });
+        draw();
+        if (k >= 1 && tween) { tween(); tween = null; }
+      });
+    }
+    function sendDot(key) {
+      const e = P[key];
+      if (!e || !e.getTotalLength || !want()) return;
+      const L = e.getTotalLength(), dot = svgEl('circle', { r: 4, class: 'fa-dot small' + (key === 'dest' || key === 'zpa' ? '' : key === 'unverified' || key === 'client_connector' ? ' warn' : ' bad') }, dotsG);
+      let t0 = null;
+      const off = clock.add(now => {
+        frames++; host.setAttribute('data-lf-frames', String(frames));
+        if (t0 === null) t0 = now;
+        const k = Math.min(1, (now - t0) / 700), q = e.getPointAtLength(L * k);
+        dot.setAttribute('cx', q.x); dot.setAttribute('cy', q.y);
+        if (k >= 1) { off(); dot.remove(); }
+      });
+    }
+    function setBtn() { btn.textContent = want() ? 'Pause motion' : 'Play motion'; }
+    btn.addEventListener('click', () => { chosen = !want(); if (!want()) { clock.clear(); tween = null; if (dotsG) dotsG.innerHTML = ''; model.boxes.forEach(b => { shown[b.key] = b.n; }); draw(); } setBtn(); });
+    build(); words(); setBtn();
+    return { update, frames: () => frames, model: () => model, destroy() { clock.destroy(); host.innerHTML = ''; } };
+  }
+
   // ── Traffic motion: Data Flow Map, SSL flow, SSL coverage ────────
   // Three more pictures, each drawn from the result its page already
   // shows. The numbers they carry are the page's own (report.summary,
@@ -1522,342 +1859,6 @@
     (lines || []).forEach(t => { const li = root.document.createElement('li'); li.textContent = t; ul.appendChild(li); });
     host.appendChild(ul);
     return ul;
-
-  // ── Traffic path player ──────────────────────────────────────────
-  // model: trafficPathModel(). Packets travel the path node by node, each
-  // box lights up with its verdict as a packet lands, and they stop at the
-  // marked step. opts: loop (keep packets flowing once the path is drawn:
-  // the live view), stepper (Back, Next, Restart and a speed: the replay),
-  // onSelect(node) when a box is clicked or Enter is pressed on it. The
-  // picture lays itself out for the width it has (one column on a phone),
-  // so the page never scrolls sideways. Motion follows prefers-reduced-
-  // motion (the final picture, with Play motion to start it anyway) and
-  // stops while the tab is hidden; the steps are listed in words under it.
-  let tpSeq = 0;
-  function trafficPath(host, model, opts) {
-    const o = opts || {};
-    const id = 'tp' + (++tpSeq);
-    const n = model.nodes.length, end = model.stop >= 0 ? model.stop : n - 1;
-    const ref = model.mode === 'reference';
-    const chips = [`<span class="tp-chip"><span class="k">Traffic</span> ${E(model.traffic)}</span>`];
-    if (model.identity) chips.push(`<span class="tp-chip"><span class="k">What-if</span> ${E(model.identity)}</span>`);
-    if (model.dest) chips.push(`<span class="tp-chip"><span class="k">To</span> ${E(model.dest)}</span>`);
-    host.innerHTML = `<div class="tp-head">${chips.join('')}<span class="sep"></span>
-        ${o.stepper ? '<button type="button" class="rp-btn tp-back">Back</button>' : ''}
-        <button type="button" class="rp-btn tp-play" aria-controls="${id}-stage">Pause motion</button>
-        ${o.stepper ? `<button type="button" class="rp-btn tp-next">Next</button><button type="button" class="rp-btn tp-restart">Restart</button>
-        <label class="df-ctl tp-speed"><span class="lbl">Speed</span><select class="tp-speed-sel" aria-label="Animation speed"><option value="0.5">Slow</option><option value="1" selected>Normal</option><option value="2">Fast</option></select></label>` : ''}
-      </div>
-      <div class="tp-stage" id="${id}-stage"></div>
-      <p class="df-hint tp-note" id="${id}-note" aria-live="polite"></p>
-      <details class="tp-alt"${o.openSteps ? ' open' : ''}><summary>${ref ? 'The reference path in words' : `The path in words (${n} steps)`}</summary>
-        <ol class="tp-steps" id="${id}-steps">${model.summary.slice(1, n + 1).length === n ? model.summary.slice(1, n + 1).map(s => `<li>${E(s.replace(/^\d+\.\s*/, ''))}</li>`).join('') : model.nodes.map(x => `<li>${E(x.label)}: ${E(x.word)}</li>`).join('')}</ol>
-        ${model.summary.length ? `<p class="df-hint">${E(ref ? model.summary[0] : [model.summary[0]].concat(model.summary.slice(n + 1)).join(' '))}</p>` : ''}
-      </details>`;
-    const stageEl = host.querySelector('.tp-stage'), noteEl = host.querySelector('.tp-note'), stepsEl = host.querySelector('.tp-steps');
-    const btn = host.querySelector('.tp-play');
-    const clock = animator();
-    let svg = null, boxes = [], edges = [], lens = [], tags = [], forks = [], dotsG = null, per = 0;
-    let pos = ref ? end : 0, playing = false, chosen = null, speed = 1, gen = 0, frames = 0, packets = [], acc = 0, lastT = 0, streamOff = null, ro = null, dead = false;
-    const want = () => (chosen != null ? chosen : !reduced());
-    const dur = ms => ms / speed;
-    function tick() { frames++; host.setAttribute('data-tp-frames', String(frames)); }
-
-    // Layout: as many boxes a row as fit, rows snaking; one column on a phone.
-    function build() {
-      const avail = Math.max(260, Math.min(1200, Math.floor(stageEl.clientWidth || host.clientWidth || 1000)));
-      const M = 18, GAP = 34, BH = 46, ROWH = BH + 48, TOP = 16;
-      let p = Math.max(1, Math.floor((avail - 2 * M + GAP) / (150 + GAP)));
-      p = Math.min(p, n);
-      if (svg && p === per) return;
-      per = p;
-      const W = per === 1 ? avail : Math.max(avail, 2 * M + per * 150 + (per - 1) * GAP);
-      const bw = per === 1 ? Math.min(W - 2 * M, 320) : Math.floor((W - 2 * M - (per - 1) * GAP) / per);
-      const rows = Math.ceil(n / per);
-      stageEl.innerHTML = '';
-      svg = newSvg(stageEl, W, rows * ROWH + TOP, ref ? 'The reference path, idling' : `The path of ${model.traffic} to ${model.dest || 'the destination'}`);
-      svg.setAttribute('role', 'group'); svg.setAttribute('class', 'fa-svg tp-svg'); svg.setAttribute('aria-describedby', id + '-steps');
-      svg.removeAttribute('tabindex');
-      const at = model.nodes.map((x, i) => {
-        const r = Math.floor(i / per), c = i % per, col = r % 2 ? per - 1 - c : c;
-        return { x: M + col * (bw + GAP), y: TOP + r * ROWH, w: bw, h: BH, r, col };
-      });
-      const edgesG = svgEl('g', { class: 'tp-edges' }, svg);
-      edges = []; lens = [];
-      for (let i = 0; i < n - 1; i++) {
-        const a = at[i], b = at[i + 1], ya = a.y + BH / 2, yb = b.y + BH / 2;
-        let d;
-        if (per === 1) d = `M${a.x + 24} ${a.y + BH} L${b.x + 24} ${b.y}`;
-        else if (a.r === b.r) d = a.r % 2 === 0 ? `M${a.x + bw} ${ya} L${b.x} ${yb}` : `M${a.x} ${ya} L${b.x + bw} ${yb}`;
-        else if (a.col === per - 1) d = `M${a.x + bw} ${ya} H${a.x + bw + 12} V${yb} H${b.x + bw}`;
-        else d = `M${a.x} ${ya} H${a.x - 12} V${yb} H${b.x}`;
-        const e = svgEl('path', { d, class: 'fa-edge' }, edgesG);
-        edges.push(e);
-        lens.push(e.getTotalLength ? e.getTotalLength() : 1);
-      }
-      forks = []; tags = [];
-      boxes = model.nodes.map((x, i) => {
-        const p0 = at[i];
-        const b = box(svg, p0.x, p0.y, bw, BH, x.label, x.sub);
-        if (x.fork) {
-          const fx = p0.x + bw - 28, f = svgEl('g', { class: 'tp-fork' + (x.fork.ghost ? ' ghost' : '') }, svg);
-          svgEl('path', { d: `M${fx} ${p0.y + BH} q2 10 12 14`, class: 'tp-fork-l' }, f);
-          const ft = svgEl('text', { x: p0.x + bw, y: p0.y + BH + 27, 'text-anchor': 'end', class: 'tp-fork-t' }, f);
-          ft.textContent = clip(x.fork.text, Math.floor((bw - 4) / 5.6));
-          forks[i] = f;
-        }
-        if (x.mark) {
-          const g = svgEl('g', { class: 'tp-tag mk-' + x.mark }, svg);
-          const tt = svgEl('text', { x: p0.x + bw - 2, y: p0.y - 4, 'text-anchor': 'end' }, g);
-          tt.textContent = `${TP_MARK[x.mark]} ${TP_MARK_WORD[x.mark]}`;
-          tags[i] = g;
-        }
-        if (o.onSelect && !ref) {
-          b.g.setAttribute('tabindex', '0'); b.g.setAttribute('role', 'button');
-          b.g.setAttribute('aria-label', `${i + 1}. ${x.label}: ${x.word}${x.rule ? `, rule ${x.rule}` : ''}${x.mark && i === model.stop ? `, ${TP_MARK_WORD[x.mark]} here` : ''}. Opens its card.`);
-          b.g.addEventListener('click', () => o.onSelect(x, i));
-          b.g.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); o.onSelect(x, i); } });
-        }
-        if (x.lane === 'zpa') b.g.classList.add('tp-zpa');
-        return b;
-      });
-      dotsG = svgEl('g', { class: 'tp-dots' }, svg);
-      packets = [];
-      paint();
-    }
-    // The picture for `pos`: what has been reached shows its verdict.
-    function paint() {
-      boxes.forEach((b, i) => {
-        const x = model.nodes[i];
-        const shown = ref || i <= pos || (pos >= end && i > end);
-        b.set(['tp-box', ref ? 'idle' : shown ? x.tone : 'pend', i === pos && !ref && playing && pos < end ? 'on' : ''].filter(Boolean).join(' '));
-        if (x.lane === 'zpa') b.g.classList.add('tp-zpa');
-        if (tags[i]) tags[i].setAttribute('display', pos >= i ? 'inline' : 'none');
-        if (forks[i]) forks[i].setAttribute('display', ref || pos >= i ? 'inline' : 'none');
-      });
-      edges.forEach((e, i) => e.setAttribute('class', 'fa-edge' + (ref ? '' : i < pos ? ' lit' : (pos >= end && i >= end && model.stop >= 0 && model.nodes[model.stop].mark !== 'unknown') ? ' dead' : '')));
-      Array.prototype.forEach.call(stepsEl.children, (li, i) => li.classList.toggle('cur', !ref && i === pos));
-    }
-    function say(i) {
-      const x = model.nodes[i];
-      noteEl.textContent = `Step ${i + 1} of ${n}: ${x.label}, ${x.word}${x.rule ? ` (rule ${x.rule})` : ''}.${i === model.stop ? ` ${TP_MARK_WORD[x.mark][0].toUpperCase()}${TP_MARK_WORD[x.mark].slice(1)} here.` : ''}${x.note ? ' ' + x.note : ''}`;
-    }
-    function setBtn() { btn.textContent = playing ? 'Pause motion' : 'Play motion'; }
-    const CALM = 'Motion is off because your system asks for reduced motion: the picture shows where the traffic goes and where it stops. Play motion starts it anyway.';
-    // One dot along edge i; resolves when it lands.
-    function flyEdge(i, ms, cls) {
-      return new Promise(done => {
-        const e = edges[i];
-        if (!want() || !e || !e.getTotalLength) { done(); return; }
-        const dot = svgEl('circle', { r: 5, class: 'fa-dot tp-pkt' + (cls ? ' ' + cls : '') }, dotsG);
-        let t0 = null;
-        const stop = clock.add(now => {
-          tick();
-          if (t0 === null) t0 = now;
-          const k = Math.min(1, (now - t0) / ms), q = e.getPointAtLength(lens[i] * k);
-          dot.setAttribute('cx', q.x); dot.setAttribute('cy', q.y);
-          if (k >= 1) { stop(); dot.remove(); done(); }
-        });
-      });
-    }
-    // A pause on the animation clock (so it stops while the tab is hidden).
-    function clockWait(ms) {
-      return new Promise(done => {
-        if (!want()) { done(); return; }
-        let t0 = null;
-        const off = clock.add(now => { tick(); if (t0 === null) t0 = now; if (now - t0 >= ms) { off(); done(); } });
-      });
-    }
-    // The live stream once the path is drawn: a packet every 1.5 s runs
-    // to the stop and pops there with the stop's tone.
-    function streamTick(now) {
-      tick();
-      const dt = lastT ? Math.min(50, now - lastT) : 16; lastT = now;
-      acc += dt * speed;
-      if (acc >= 1500 && packets.length < 8 && end > 0) {
-        acc = 0;
-        packets.push({ seg: 0, k: 0, el: svgEl('circle', { r: 4.5, class: 'fa-dot tp-pkt' + (model.stop >= 0 ? ' mk-' + model.nodes[model.stop].mark : '') }, dotsG) });
-      }
-      packets = packets.filter(pk => {
-        pk.k += dt * speed / 520;
-        while (pk.k >= 1 && pk.seg < end) { pk.k -= 1; pk.seg++; }
-        if (pk.seg >= end) { pk.el.setAttribute('class', pk.el.getAttribute('class') + ' pop'); setTimeout(() => pk.el.remove(), 420); return false; }
-        const q = edges[pk.seg].getPointAtLength(lens[pk.seg] * pk.k);
-        pk.el.setAttribute('cx', q.x.toFixed(1)); pk.el.setAttribute('cy', q.y.toFixed(1));
-        return true;
-      });
-    }
-    function startStream() { if (streamOff || dead || !want() || !o.loop) return; lastT = 0; acc = 1500; streamOff = clock.add(streamTick); }
-    function halt() {
-      gen++; playing = false;
-      if (streamOff) { streamOff(); streamOff = null; }
-      clock.clear();
-      if (dotsG) dotsG.innerHTML = '';
-      packets = [];
-    }
-    function finished() {
-      playing = !!(o.loop && want());
-      paint(); setBtn();
-      if (!ref) say(end);
-      if (o.onDone) o.onDone();
-      startStream();
-    }
-    async function play() {
-      if (dead) return;
-      halt(); playing = true; setBtn();
-      if (pos >= end && !o.loop) pos = 0;
-      const my = gen;
-      paint();
-      if (!want()) { pos = end; finished(); return; }
-      while (my === gen && pos < end) {
-        await flyEdge(pos, dur(560));
-        if (my !== gen) return;
-        pos++; paint();
-        if (o.onStep) o.onStep(model.nodes[pos], pos);
-        if (pos < end) await clockWait(dur(140));
-      }
-      if (my === gen) finished();
-    }
-    function pause() { halt(); paint(); setBtn(); }
-    function step(dir) {
-      halt();
-      const was = pos;
-      pos = Math.max(0, Math.min(end, pos + dir));
-      paint(); setBtn(); say(pos);
-      if (dir > 0 && pos > was) flyEdge(was, dur(420));
-    }
-    btn.addEventListener('click', () => { if (playing) { chosen = false; pause(); } else { chosen = true; play(); } });
-    if (o.stepper) {
-      host.querySelector('.tp-back').addEventListener('click', () => step(-1));
-      host.querySelector('.tp-next').addEventListener('click', () => step(1));
-      host.querySelector('.tp-restart').addEventListener('click', () => { halt(); pos = 0; paint(); play(); });
-      host.querySelector('.tp-speed-sel').addEventListener('change', ev => { speed = Number(ev.target.value) || 1; });
-    }
-    build();
-    if (root.ResizeObserver) {
-      let w = stageEl.clientWidth;
-      ro = new root.ResizeObserver(() => { if (Math.abs(stageEl.clientWidth - w) < 8) return; w = stageEl.clientWidth; const keep = playing; halt(); build(); if (keep) play(); });
-      ro.observe(stageEl);
-    }
-    if (ref) { playing = want(); setBtn(); paint(); if (playing) { acc = 1500; startStream(); } }
-    else if (want()) play();
-    else { pos = end; paint(); setBtn(); say(end); noteEl.textContent = CALM + ' ' + noteEl.textContent; }
-    if (ref && !want()) noteEl.textContent = CALM;
-    return {
-      play() { chosen = true; play(); }, pause() { chosen = false; pause(); }, step, playing: () => playing, frames: () => frames, pos: () => pos,
-      destroy() { dead = true; halt(); clock.destroy(); if (ro) ro.disconnect(); host.innerHTML = ''; host.removeAttribute('data-tp-frames'); },
-    };
-  }
-
-  // ── Test a list: rows streaming to the step that decides them ────
-  // update(tally) with the job's tally (listFlowModel): each box's count
-  // climbs to its new value and a few packets fly from the list to every
-  // box that gained rows. Reduced motion: the counts change at once.
-  function listFlow(host) {
-    host.innerHTML = `<div class="tp-head lf-head"><span class="tp-chip lf-tot" aria-hidden="true"></span><span class="sep"></span><button type="button" class="rp-btn lf-play">Pause motion</button></div>
-      <div class="tp-stage lf-stage"></div>
-      <ul class="lf-alt df-hint" aria-label="Where the rows were decided"></ul>`;
-    const stageEl = host.querySelector('.lf-stage'), alt = host.querySelector('.lf-alt'), tot = host.querySelector('.lf-tot'), btn = host.querySelector('.lf-play');
-    const clock = animator();
-    let chosen = null, frames = 0, svg = null, src = null, B = {}, P = {}, model = listFlowModel(null), shown = {}, dotsG = null, wide = null;
-    const want = () => (chosen != null ? chosen : !reduced());
-    model.boxes.forEach(b => { shown[b.key] = 0; });
-    function vcurve(a, b) {
-      const x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, m = (y1 + y2) / 2;
-      return svgEl('path', { d: `M${x1} ${y1} C${x1} ${m} ${x2} ${m} ${x2} ${y2}`, class: 'fa-edge' }, svg.querySelector('.lf-edges'));
-    }
-    function build() {
-      const avail = Math.max(260, Math.min(1100, Math.floor(stageEl.clientWidth || host.clientWidth || 1000)));
-      const isWide = avail >= 620;
-      if (svg && isWide === wide) return;
-      wide = isWide;
-      stageEl.innerHTML = '';
-      const list = model.boxes.filter(b => !b.end), ends = model.boxes.filter(b => b.end);
-      let W, H;
-      const pos = {};
-      if (wide) {
-        W = avail; H = list.length * 54 + 16;
-        const cx = Math.round(W / 2 - 95);
-        list.forEach((b, i) => { pos[b.key] = { x: cx, y: 8 + i * 54, w: 190, h: 44 }; });
-        ends.forEach((b, i) => { pos[b.key] = { x: W - 18 - 170, y: Math.round(H / 2 - 70 + i * 96), w: 170, h: 44 }; });
-        pos.src = { x: 18, y: Math.round(H / 2 - 22), w: 150, h: 44 };
-      } else {
-        W = avail;
-        const bw = Math.floor((W - 36 - 12) / 2), all = list.concat(ends);
-        H = 70 + Math.ceil(all.length / 2) * 54 + 8;
-        pos.src = { x: 18, y: 8, w: W - 36, h: 44 };
-        all.forEach((b, i) => { pos[b.key] = { x: 18 + (i % 2) * (bw + 12), y: 70 + Math.floor(i / 2) * 54, w: bw, h: 44 }; });
-      }
-      svg = newSvg(stageEl, W, H, 'The tested list, each row flowing to the step that decided it');
-      svg.setAttribute('role', 'img'); svg.setAttribute('class', 'fa-svg tp-svg'); svg.removeAttribute('tabindex');
-      svgEl('g', { class: 'lf-edges' }, svg);
-      src = box(svg, pos.src.x, pos.src.y, pos.src.w, pos.src.h, 'Your list', '');
-      P = {}; B = {};
-      model.boxes.forEach(b => {
-        P[b.key] = wide ? curve(svg.querySelector('.lf-edges'), pos.src, pos[b.key]) : vcurve(pos.src, pos[b.key]);
-        B[b.key] = box(svg, pos[b.key].x, pos[b.key].y, pos[b.key].w, pos[b.key].h, b.label, '');
-      });
-      dotsG = svgEl('g', { class: 'tp-dots' }, svg);
-      draw();
-    }
-    const TONE = { client_connector: 'warn', zpa: 'pass', dest: 'pass', unverified: 'warn' };
-    function draw() {
-      model.boxes.forEach(b => {
-        const v = Math.round(shown[b.key] || 0);
-        B[b.key].sub(b.key === 'dest' ? `${v} allowed` : b.key === 'unverified' ? `${v} unverified` : !v ? b.word : b.kinds.length === 1 ? `${v} ${b.kinds[0]}` : `${v} rows: ${b.word}`);
-        B[b.key].set(v ? (TONE[b.key] || 'stop') : '');
-        P[b.key].setAttribute('class', 'fa-edge' + (v ? ' lit' : ''));
-      });
-      const t = model.totals;
-      src.sub(model.total ? `${model.done.toLocaleString()} of ${model.total.toLocaleString()} rows` : 'waiting for rows');
-      tot.textContent = `${t.blocked} blocked · ${t.allowed} allowed · ${t.bypassed} bypassed · ${t.zpa} ZPA`;
-    }
-    function words() {
-      alt.innerHTML = `<li>${E(model.total ? `${model.done} of ${model.total} row(s) tested${model.phase === 'lookup' ? ' (looking up categories first)' : ''}.` : 'No row tested yet.')}</li>`
-        + model.boxes.map(b => `<li>${E(b.label)}: ${E(b.key === 'dest' || b.key === 'unverified' ? b.word : `${b.n} row(s)${b.n ? `: ${b.word}` : ''}`)}</li>`).join('');
-    }
-    let tween = null;
-    function update(p) {
-      if (!p) return;
-      const prev = {};
-      model.boxes.forEach(b => { prev[b.key] = b.n; });
-      model = listFlowModel(p);
-      words();
-      const from = Object.assign({}, shown), to = {};
-      model.boxes.forEach(b => { to[b.key] = b.n; });
-      if (!want() || root.document.hidden) { Object.assign(shown, to); draw(); return; }
-      model.boxes.forEach(b => {
-        const gain = b.n - (prev[b.key] || 0);
-        for (let k = 0; k < Math.min(gain, 5); k++) setTimeout(() => sendDot(b.key), k * 110);
-      });
-      if (tween) tween();
-      let t0 = null;
-      tween = clock.add(now => {
-        frames++; host.setAttribute('data-lf-frames', String(frames));
-        if (t0 === null) t0 = now;
-        const k = Math.min(1, (now - t0) / 900);
-        Object.keys(to).forEach(key => { shown[key] = from[key] + (to[key] - from[key]) * k; });
-        draw();
-        if (k >= 1 && tween) { tween(); tween = null; }
-      });
-    }
-    function sendDot(key) {
-      const e = P[key];
-      if (!e || !e.getTotalLength || !want()) return;
-      const L = e.getTotalLength(), dot = svgEl('circle', { r: 4, class: 'fa-dot small' + (key === 'dest' || key === 'zpa' ? '' : key === 'unverified' || key === 'client_connector' ? ' warn' : ' bad') }, dotsG);
-      let t0 = null;
-      const off = clock.add(now => {
-        frames++; host.setAttribute('data-lf-frames', String(frames));
-        if (t0 === null) t0 = now;
-        const k = Math.min(1, (now - t0) / 700), q = e.getPointAtLength(L * k);
-        dot.setAttribute('cx', q.x); dot.setAttribute('cy', q.y);
-        if (k >= 1) { off(); dot.remove(); }
-      });
-    }
-    function setBtn() { btn.textContent = want() ? 'Pause motion' : 'Play motion'; }
-    btn.addEventListener('click', () => { chosen = !want(); if (!want()) { clock.clear(); tween = null; if (dotsG) dotsG.innerHTML = ''; model.boxes.forEach(b => { shown[b.key] = b.n; }); draw(); } setBtn(); });
-    build(); words(); setBtn();
-    return { update, frames: () => frames, model: () => model, destroy() { clock.destroy(); host.innerHTML = ''; } };
   }
 
   // ── Samples (labelled as such wherever they are shown) ───────────
