@@ -1,80 +1,531 @@
 {
-  "area": "ui-ops",
-  "title": "Bulk changes and its Build new forms, the POV, fleet, Beacon, bypass, detection health and Path analyzer scripts, the browser, posture, shadow and flow pages, and the browser extension: typed confirmation, keyboard and focus, escaping, plain errors, reflow, HAR caps, extension CSP",
-  "files": [
-    "static/report_operations.html", "static/ops_aiguard.js", "static/ops_zcc.js", "static/ops_zdx.js", "static/ops_zia_baseline.js", "static/ops_zpa.js",
-    "static/pov.js", "static/report_pov.html", "static/zcc_fleet.js", "static/report_fleet.html", "static/beacon.js", "static/bypass_report.js",
-    "static/eval_all.js", "static/detection_health.js", "static/har_parse.js", "static/path_list.js", "static/path_whatif.js", "static/path_modules.js",
-    "static/report_browser.html", "static/report_device_posture.html", "static/report_shadow.html", "static/report_flow.html", "static/deploy_flow.html",
-    "browser_extension/"
-  ],
-  "standards": ["ASVS V1.11.3", "ASVS V5.1.3", "ASVS V5.3.3", "ASVS V7.4.1", "ASVS V12.1.1", "ASVS V14.4.3", "OWASP Top 10 2021 A03", "OWASP Top 10 2021 A04",
-    "OWASP Top 10 2021 A05", "CWE-79", "CWE-20", "CWE-400", "CWE-209", "CWE-841", "CWE-1289", "CWE-1021", "WSTG-INPV-02", "WSTG-BUSL-06", "WSTG-ERRH-01",
-    "WSTG-CONF-12", "WCAG 2.2 SC 1.4.10", "WCAG 2.2 SC 1.4.11", "WCAG 2.2 SC 2.1.1", "WCAG 2.2 SC 2.4.3", "WCAG 2.2 SC 3.3.2", "WCAG 2.2 SC 3.3.7"],
-  "coverage": {
-    "before": 24.8,
-    "after": 49.2,
-    "method": "V8 precise block coverage in headless Chromium (CDP Profiler), mean line coverage over the 15 owned scripts and 9 owned pages; before = every owned page loaded (what the existing browser tests exercise), after = plus the tests/test_c6_ui_ops.py driver. Build new forms: ops_aiguard 12.3->87.7, ops_zcc 9.2->98.3, ops_zdx 6.1->98.9, ops_zia_baseline 7.5->89.5, ops_zpa 12.8->94.7; report_operations 19.2->69.1; bypass_report 1.8->78.4; detection_health 5.2->39.2. Block (branch) coverage mean 22.8->44.1. har_parse.js and path_modules.js are also run under node by tests/test_har_import.py and tests/test_path_zia_modules.py, which this browser measure does not count."
+ "area": "ui-ops",
+ "title": "Bulk changes and its Build new forms, the POV, fleet, Beacon, bypass, detection health and Path analyzer scripts, the browser, posture, shadow and flow pages, and the browser extension: typed confirmation, keyboard and focus, escaping, plain errors, reflow, HAR caps, extension CSP",
+ "files": [
+  "static/report_operations.html",
+  "static/ops_aiguard.js",
+  "static/ops_zcc.js",
+  "static/ops_zdx.js",
+  "static/ops_zia_baseline.js",
+  "static/ops_zpa.js",
+  "static/pov.js",
+  "static/report_pov.html",
+  "static/zcc_fleet.js",
+  "static/report_fleet.html",
+  "static/beacon.js",
+  "static/bypass_report.js",
+  "static/eval_all.js",
+  "static/detection_health.js",
+  "static/har_parse.js",
+  "static/path_list.js",
+  "static/path_whatif.js",
+  "static/path_modules.js",
+  "static/report_browser.html",
+  "static/report_device_posture.html",
+  "static/report_shadow.html",
+  "static/report_flow.html",
+  "static/deploy_flow.html",
+  "browser_extension/"
+ ],
+ "standards": [
+  "ASVS V1.11.3",
+  "ASVS V5.1.3",
+  "ASVS V5.3.3",
+  "ASVS V7.4.1",
+  "ASVS V12.1.1",
+  "ASVS V14.4.3",
+  "OWASP Top 10 2021 A03",
+  "OWASP Top 10 2021 A04",
+  "OWASP Top 10 2021 A05",
+  "CWE-79",
+  "CWE-20",
+  "CWE-400",
+  "CWE-209",
+  "CWE-841",
+  "CWE-1289",
+  "CWE-1021",
+  "WSTG-INPV-02",
+  "WSTG-BUSL-06",
+  "WSTG-ERRH-01",
+  "WSTG-CONF-12",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 1.4.11",
+  "WCAG 2.2 SC 2.1.1",
+  "WCAG 2.2 SC 2.4.3",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 3.3.7"
+ ],
+ "coverage": {
+  "before": 24.8,
+  "after": 49.2,
+  "method": "V8 precise block coverage in headless Chromium (CDP Profiler), mean line coverage over the 15 owned scripts and 9 owned pages; before = every owned page loaded (what the existing browser tests exercise), after = plus the tests/test_c6_ui_ops.py driver. Build new forms: ops_aiguard 12.3->87.7, ops_zcc 9.2->98.3, ops_zdx 6.1->98.9, ops_zia_baseline 7.5->89.5, ops_zpa 12.8->94.7; report_operations 19.2->69.1; bypass_report 1.8->78.4; detection_health 5.2->39.2. Block (branch) coverage mean 22.8->44.1. har_parse.js and path_modules.js are also run under node by tests/test_har_import.py and tests/test_path_zia_modules.py, which this browser measure does not count."
+ },
+ "checks": [
+  {
+   "id": "OPS-CONFIRM-1",
+   "what": "Bulk changes: the typed phrase is shown and Apply stays disabled until it matches (case-insensitive, look-alikes refused, as the server compares)",
+   "standard": "ASVS V1.11.3 / CWE-841 / WSTG-BUSL-06",
+   "result": "fixed"
   },
-  "checks": [
-    {"id": "OPS-CONFIRM-1", "what": "Bulk changes: the typed phrase is shown and Apply stays disabled until it matches (case-insensitive, look-alikes refused, as the server compares)", "standard": "ASVS V1.11.3 / CWE-841 / WSTG-BUSL-06", "result": "fixed"},
-    {"id": "OPS-CONFIRM-2", "what": "Bulk changes: Apply also waits for write mode, a ready plan, the assessor's name and the review box; undoing any gate disarms it", "standard": "ASVS V1.11.3 / CWE-841", "result": "fixed"},
-    {"id": "OPS-CONFIRM-3", "what": "Bulk changes: page and server phrase comparison agree on an oracle table (14 cases incl. NFC, long s, full-width, dotless i)", "standard": "CWE-1289 / WSTG-INPV-01", "result": "fixed"},
-    {"id": "OPS-FOCUS-1", "what": "Typed phrase, review box and cursor survive a window focus (write-mode re-check)", "standard": "WCAG 2.2 SC 3.3.7 / SC 2.4.3", "result": "fixed"},
-    {"id": "OPS-FOCUS-2", "what": "Focus after Apply (the outcome) and after Undo (the Undo plan)", "standard": "WCAG 2.2 SC 2.4.3", "result": "fixed"},
-    {"id": "OPS-KBD", "what": "Apply form operable by keyboard alone (Tab order, Space on the box, Enter on Apply)", "standard": "WCAG 2.2 SC 2.1.1", "result": "pass"},
-    {"id": "OPS-UNDO", "what": "Undo previews first, is marked Undo, starts disarmed and sends undo_of", "standard": "ASVS V1.11.3", "result": "pass"},
-    {"id": "OPS-VALUES", "what": "Form values reach the API as typed (unicode, markup) and the applied spec is the previewed one", "standard": "ASVS V5.1.3 / CWE-367", "result": "pass"},
-    {"id": "OPS-ESCAPE", "what": "Tenant names, labels, warnings in the pick list and preview are text", "standard": "ASVS V5.3.3 / CWE-79", "result": "pass"},
-    {"id": "OPS-LOADER", "what": "Builder scripts load once each; a plugin entry with a bad type or script name is ignored", "standard": "ASVS V14.2.1 / CWE-829", "result": "fixed"},
-    {"id": "FORMS-ALL", "what": "Every Build new form (ZIA baseline, SSL certificates, ZPA x4, ZCC x2, ZDX x3, AI Guard x2) rendered from crafted data: markup as text, no javascript: links, each validation message, the spec sent", "standard": "ASVS V5.1.3 / V5.3.3 / CWE-79 / CWE-20", "result": "pass"},
-    {"id": "FORMS-ZPA-MAX", "what": "ZPA enrollment count goes to the server as typed (0 and 501 refused there, never a silent 5)", "standard": "ASVS V5.1.3 / CWE-20", "result": "fixed"},
-    {"id": "FORMS-ZPA-KEY", "what": "One-time provisioning key shown in a read-only field as a value; a refusal reads as words", "standard": "ASVS V8.3.1 / CWE-200 / CWE-209", "result": "fixed"},
-    {"id": "ERR-TEXT", "what": "No owned page shows '[object Object]' for a FastAPI list or object detail", "standard": "ASVS V7.4.1 / CWE-209", "result": "fixed"},
-    {"id": "BYPASS-XSS", "what": "Bypass report escapes rule ids and counts", "standard": "ASVS V5.3.3 / CWE-79", "result": "fixed"},
-    {"id": "BYPASS-CAP", "what": "Bypass report draws at most 500 rows and 6 references per row", "standard": "CWE-400", "result": "fixed"},
-    {"id": "FLEET-REFLOW", "what": "Client Connector fleet page fits 320px", "standard": "WCAG 2.2 SC 1.4.10", "result": "fixed"},
-    {"id": "FLEET-STALE", "what": "Install command builder withdraws Copy/Download after the form changes", "standard": "ASVS V1.11.3 / CWE-367", "result": "fixed"},
-    {"id": "FLEET-SECRETS", "what": "Install builder secrets are password fields and masked by the server unless revealed; nothing stored", "standard": "ASVS V8.3.1", "result": "pass"},
-    {"id": "HEALTH-CONFIRM", "what": "Detection health stricter-for-users approval: phrase is a visible label, Approve disabled until exact", "standard": "ASVS V1.11.3 / WCAG 2.2 SC 3.3.2", "result": "fixed"},
-    {"id": "HTML-NUMBERS", "what": "Server numbers interpolated into HTML (fleet, detection health, bypass) are escaped", "standard": "ASVS V5.3.3 / CWE-79", "result": "fixed"},
-    {"id": "LINKS", "what": "Beacon and POV links built from data are https only", "standard": "ASVS V5.3.3 / WSTG-CLNT-04", "result": "fixed"},
-    {"id": "URL-ENCODE", "what": "Path analyzer list download/show URLs encode their query values", "standard": "CWE-74", "result": "fixed"},
-    {"id": "HAR-SIZE", "what": "HAR file over 100 MB, empty, invalid JSON, no log, no entries refused in words (existing tests)", "standard": "ASVS V12.1.1 / CWE-400", "result": "pass"},
-    {"id": "HAR-CAPS", "what": "HAR: distinct hosts tracked capped at 20000, hosts listed as left out capped at 1000 with a total, body sizes capped so sums stay finite", "standard": "CWE-400 / CWE-190", "result": "fixed"},
-    {"id": "HAR-LEAK", "what": "HAR: only host names and counts leave the browser; file name and contents do not (existing tests and code review)", "standard": "ASVS V8.3.1 / CWE-200", "result": "pass"},
-    {"id": "HAR-PAGE", "what": "Path analyzer page shows the total of hosts left out (more_total) rather than the capped list length", "standard": "WCAG 2.2 SC 1.3.1", "result": "open"},
-    {"id": "EXT-SENDER", "what": "Extension background accepts names/focus only from console tabs and index-updated only from its own pages; content script only from the extension", "standard": "ASVS V4.1.3 / CWE-346", "result": "pass"},
-    {"id": "EXT-PERMS", "what": "Extension permissions: activeTab, contextMenus, scripting, sidePanel, storage; host permissions loopback only; console origins optional", "standard": "ASVS V14.2.6 / least privilege", "result": "pass"},
-    {"id": "EXT-ADDR", "what": "Extension app address accepted only on the origins its CSP and host_permissions allow", "standard": "ASVS V14.4.3 / CWE-284", "result": "fixed"},
-    {"id": "EXT-CSP", "what": "Extension pages CSP: default-src 'self', form-action 'none'; no inline style", "standard": "ASVS V14.4.3 / CWE-1021", "result": "fixed"},
-    {"id": "EXT-BADGE", "what": "Badge text set as textContent in a closed shadow root; a finding without text still labels", "standard": "ASVS V5.3.3 / CWE-79", "result": "fixed"},
-    {"id": "EXT-TOKENS", "what": "Every style token the extension uses is defined (options field border)", "standard": "WCAG 2.2 SC 1.4.11", "result": "fixed"},
-    {"id": "EXT-STORAGE", "what": "Extension keeps the index in session storage (cleared on browser close), the app address in sync storage, no credential", "standard": "ASVS V8.2.2", "result": "pass"},
-    {"id": "EXT-KBD-REFLOW", "what": "Popup, side panel and options load under the CSP, fit 320px and are reachable by Tab", "standard": "WCAG 2.2 SC 1.4.10 / SC 2.1.1", "result": "pass"},
-    {"id": "REFLOW-ALL", "what": "All owned pages at 320px on the sample tenant, every Build new form read and previewed at 320px: no sideways scroll, no console error", "standard": "WCAG 2.2 SC 1.4.10", "result": "pass"},
-    {"id": "SAMPLE-WALK", "what": "Bulk changes end to end on the sample tenant: read, pick, preview, apply, read back, history, Undo preview", "standard": "ASVS V1.11.3", "result": "pass"}
-  ],
-  "findings": [
-    {"id": "C6-UI-OPS-01", "title": "Bulk changes Apply was enabled before the typed phrase, the review box or the assessor were given, and the page's phrase check (toUpperCase) accepted look-alikes the server refuses", "severity": "low", "cwe": "CWE-841", "asvs": "V1.11.3", "status": "fixed", "fix": "Apply is disabled until every gate is met; phraseMatches mirrors security.typed_phrase_matches; the phrase is shown in bold", "test": "tests/test_c6_ui_ops.py::test_apply_stays_disabled_without_the_phrase", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-02", "title": "A window focus redrew the Bulk changes apply form, erasing the typed phrase, the review tick and the keyboard focus", "severity": "low", "cwe": "CWE-1188", "asvs": "V1.11.3", "status": "fixed", "fix": "Redraw only when write mode changed; a redraw of the same plan keeps the phrase, the box and the focus", "test": "tests/test_c6_ui_ops.py::test_a_window_focus_keeps_the_phrase_the_box_and_the_cursor", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-03", "title": "Bypass report wrote tenant rule ids and counts into HTML unescaped (a crafted snapshot ran script)", "severity": "medium", "cwe": "CWE-79", "asvs": "V5.3.3", "status": "fixed", "fix": "Escape every id and count; also cap the aggregated lists at 500 rows and 6 references", "test": "tests/test_c6_ui_ops.py::test_the_bypass_report_escapes_rule_ids_and_counts", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-04", "title": "Bypass report drew every aggregated item (tens of thousands after category expansion) in one innerHTML write", "severity": "low", "cwe": "CWE-400", "asvs": "V11.1.4", "status": "fixed", "fix": "Draw the first 500 rows with 6 references each and say how many more the export has", "test": "tests/test_c6_ui_ops.py::test_the_bypass_report_caps_huge_lists", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-05", "title": "Client Connector fleet page scrolled sideways at 320px (install builder fields), failing the existing reflow test on this branch", "severity": "low", "cwe": "CWE-1021", "asvs": "V14.1.1", "status": "fixed", "fix": "Install builder labels wrap and inputs shrink to the line", "test": "tests/test_c6_ui_ops.py::test_the_fleet_page_reflows_at_320px", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-06", "title": "Error details from FastAPI (a 422 list or an object) showed as '[object Object]' on 11 owned pages", "severity": "low", "cwe": "CWE-209", "asvs": "V7.4.1", "status": "fixed", "fix": "A per-page errText helper words string, {cause} and list details", "test": "tests/test_c6_ui_ops.py::test_a_validation_error_reads_as_words", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-07", "title": "Extension accepted an https or [::1] app address that its CSP connect-src and host_permissions block, so the setting saved and never answered", "severity": "low", "cwe": "CWE-284", "asvs": "V14.4.3", "status": "fixed", "fix": "normalizeAppUrl accepts only http on 127.0.0.1 or localhost, the origins the manifest allows", "test": "tests/test_c6_ui_ops.py::test_every_accepted_app_address_is_one_the_manifest_lets_the_extension_reach", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-08", "title": "ZPA connector group form sent 5 when the enrollment count was typed as 0 (Number(x) || 5), hiding the user's value", "severity": "low", "cwe": "CWE-20", "asvs": "V5.1.3", "status": "fixed", "fix": "Send a whole number as typed and anything else as text, so the server refuses it in words; blank stays 5", "test": "tests/test_c6_ui_ops.py::test_the_zpa_enrollment_count_is_sent_as_typed", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-09", "title": "HAR parser kept every distinct host and listed every host over the cap, so a capture with hundreds of thousands of hosts filled memory and the DOM; a huge bodySize made the sums Infinity", "severity": "low", "cwe": "CWE-400", "asvs": "V12.1.1", "status": "fixed", "fix": "Track at most 20000 hosts (count the rest), list at most 1000 left out with more_total, cap a body at the file size", "test": "tests/test_c6_ui_ops.py::test_the_list_of_hosts_left_out_is_capped", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-10", "title": "Each builder script was added to Bulk changes once per type it serves (ops_zpa.js four times)", "severity": "info", "cwe": "CWE-1188", "asvs": "V14.2.1", "status": "fixed", "fix": "Load each script name once", "test": "tests/test_c6_ui_ops.py::test_each_builder_script_loads_once", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-11", "title": "Keyboard focus fell to the page after Apply and after Undo (their buttons are removed)", "severity": "low", "cwe": "CWE-1021", "asvs": "V14.1.1", "status": "fixed", "fix": "Focus the outcome card after Apply and the plan heading after Undo", "test": "tests/test_c6_ui_ops.py::test_focus_moves_to_the_outcome_after_apply", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-12", "title": "Beacon links from watched pages and the run history were linked whatever their scheme", "severity": "low", "cwe": "CWE-79", "asvs": "V5.3.3", "status": "fixed", "fix": "safeHref links only https addresses (also on the POV kit links)", "test": "tests/test_c6_ui_ops.py::test_beacon_links_only_https_addresses", "commit": "de7653a"},
-    {"id": "C6-UI-OPS-13", "title": "Detection health's stricter-for-users approval showed its phrase only as a placeholder and left Approve enabled", "severity": "low", "cwe": "CWE-841", "asvs": "V1.11.3", "status": "fixed", "fix": "The phrase is a visible label; Approve is disabled until the exact phrase is typed", "test": "tests/test_c6_ui_ops.py::test_a_stricter_approval_waits_for_the_exact_phrase", "commit": "4fdfb63"},
-    {"id": "C6-UI-OPS-14", "title": "Install command builder kept offering Copy and Download of the last command after the form changed", "severity": "low", "cwe": "CWE-367", "asvs": "V1.11.3", "status": "fixed", "fix": "A change to the form withdraws the command until it is built again", "test": "tests/test_c6_ui_ops.py::test_a_changed_install_form_withdraws_the_old_command", "commit": "4fdfb63"},
-    {"id": "C6-UI-OPS-15", "title": "A refused provisioning key showed '[object Object]'", "severity": "info", "cwe": "CWE-209", "asvs": "V7.4.1", "status": "fixed", "fix": "Word a string or {cause} detail, else the HTTP status", "test": "tests/test_c6_ui_ops.py::test_a_refused_provisioning_key_reads_as_words", "commit": "4fdfb63"},
-    {"id": "C6-UI-OPS-16", "title": "Extension pages' CSP had no default-src, so images, styles, frames and form targets were not restricted", "severity": "low", "cwe": "CWE-1021", "asvs": "V14.4.3", "status": "fixed", "fix": "default-src 'self' and form-action 'none'; the options page's inline style moved to options.css", "test": "tests/test_c6_ui_ops.py::test_the_extension_csp_denies_by_default", "commit": "0e7274a"},
-    {"id": "C6-UI-OPS-17", "title": "Extension options page used an undefined style token (--line), so the address field had no border", "severity": "info", "cwe": "CWE-1021", "asvs": "V14.1.1", "status": "fixed", "fix": "Use --border-strong", "test": "tests/test_c6_ui_ops.py::test_every_style_token_the_extension_uses_is_defined", "commit": "0e7274a"},
-    {"id": "C6-UI-OPS-18", "title": "Path analyzer's HAR note counts the hosts left out as more.length, which is now capped at 1000; it should show more_total and the untracked count", "severity": "info", "cwe": "CWE-400", "asvs": "V12.1.1", "status": "open", "fix": "Use more_total and untracked in moreNote (static/report_path.html, not in this slice)", "test": "tests/test_c6_ui_ops.py::test_the_list_of_hosts_left_out_is_capped", "commit": "",
-     "proposed_patch": "--- a/static/report_path.html\n+++ b/static/report_path.html\n@@ -551,8 +551,9 @@\n     }\n     function moreNote(p) {\n       if (!p.capped) return '';\n-      return `<div class=\"pa-har-cap\" role=\"note\"><strong>${p.more.length} more host(s) not analyzed</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.\n-        <details><summary>Show the ${p.more.length} host(s) left out</summary><ul class=\"pa-har-more\">${p.more.map(m => `<li>${E(m.host)} <span class=\"df-by\">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details></div>`;\n+      const left = p.more_total != null ? p.more_total : p.more.length;\n+      return `<div class=\"pa-har-cap\" role=\"note\"><strong>${left} more host(s) not analyzed</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.${p.untracked ? ` ${p.untracked} more request(s) went to hosts past the ${HarParse.MAX_TRACKED} this page tracks.` : ''}\n+        <details><summary>Show ${left > p.more.length ? `the first ${p.more.length} of ` : 'the '}${left} host(s) left out</summary><ul class=\"pa-har-more\">${p.more.map(m => `<li>${E(m.host)} <span class=\"df-by\">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details></div>`;\n     }\n     function renderHarIntro() {\n       const p = har.parsed, ups = p.hosts.filter(h => h.uploads).length;\n"}
-  ],
-  "tests_added": 79
+  {
+   "id": "OPS-CONFIRM-2",
+   "what": "Bulk changes: Apply also waits for write mode, a ready plan, the assessor's name and the review box; undoing any gate disarms it",
+   "standard": "ASVS V1.11.3 / CWE-841",
+   "result": "fixed"
+  },
+  {
+   "id": "OPS-CONFIRM-3",
+   "what": "Bulk changes: page and server phrase comparison agree on an oracle table (14 cases incl. NFC, long s, full-width, dotless i)",
+   "standard": "CWE-1289 / WSTG-INPV-01",
+   "result": "fixed"
+  },
+  {
+   "id": "OPS-FOCUS-1",
+   "what": "Typed phrase, review box and cursor survive a window focus (write-mode re-check)",
+   "standard": "WCAG 2.2 SC 3.3.7 / SC 2.4.3",
+   "result": "fixed"
+  },
+  {
+   "id": "OPS-FOCUS-2",
+   "what": "Focus after Apply (the outcome) and after Undo (the Undo plan)",
+   "standard": "WCAG 2.2 SC 2.4.3",
+   "result": "fixed"
+  },
+  {
+   "id": "OPS-KBD",
+   "what": "Apply form operable by keyboard alone (Tab order, Space on the box, Enter on Apply)",
+   "standard": "WCAG 2.2 SC 2.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "OPS-UNDO",
+   "what": "Undo previews first, is marked Undo, starts disarmed and sends undo_of",
+   "standard": "ASVS V1.11.3",
+   "result": "pass"
+  },
+  {
+   "id": "OPS-VALUES",
+   "what": "Form values reach the API as typed (unicode, markup) and the applied spec is the previewed one",
+   "standard": "ASVS V5.1.3 / CWE-367",
+   "result": "pass"
+  },
+  {
+   "id": "OPS-ESCAPE",
+   "what": "Tenant names, labels, warnings in the pick list and preview are text",
+   "standard": "ASVS V5.3.3 / CWE-79",
+   "result": "pass"
+  },
+  {
+   "id": "OPS-LOADER",
+   "what": "Builder scripts load once each; a plugin entry with a bad type or script name is ignored",
+   "standard": "ASVS V14.2.1 / CWE-829",
+   "result": "fixed"
+  },
+  {
+   "id": "FORMS-ALL",
+   "what": "Every Build new form (ZIA baseline, SSL certificates, ZPA x4, ZCC x2, ZDX x3, AI Guard x2) rendered from crafted data: markup as text, no javascript: links, each validation message, the spec sent",
+   "standard": "ASVS V5.1.3 / V5.3.3 / CWE-79 / CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "FORMS-ZPA-MAX",
+   "what": "ZPA enrollment count goes to the server as typed (0 and 501 refused there, never a silent 5)",
+   "standard": "ASVS V5.1.3 / CWE-20",
+   "result": "fixed"
+  },
+  {
+   "id": "FORMS-ZPA-KEY",
+   "what": "One-time provisioning key shown in a read-only field as a value; a refusal reads as words",
+   "standard": "ASVS V8.3.1 / CWE-200 / CWE-209",
+   "result": "fixed"
+  },
+  {
+   "id": "ERR-TEXT",
+   "what": "No owned page shows '[object Object]' for a FastAPI list or object detail",
+   "standard": "ASVS V7.4.1 / CWE-209",
+   "result": "fixed"
+  },
+  {
+   "id": "BYPASS-XSS",
+   "what": "Bypass report escapes rule ids and counts",
+   "standard": "ASVS V5.3.3 / CWE-79",
+   "result": "fixed"
+  },
+  {
+   "id": "BYPASS-CAP",
+   "what": "Bypass report draws at most 500 rows and 6 references per row",
+   "standard": "CWE-400",
+   "result": "fixed"
+  },
+  {
+   "id": "FLEET-REFLOW",
+   "what": "Client Connector fleet page fits 320px",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "fixed"
+  },
+  {
+   "id": "FLEET-STALE",
+   "what": "Install command builder withdraws Copy/Download after the form changes",
+   "standard": "ASVS V1.11.3 / CWE-367",
+   "result": "fixed"
+  },
+  {
+   "id": "FLEET-SECRETS",
+   "what": "Install builder secrets are password fields and masked by the server unless revealed; nothing stored",
+   "standard": "ASVS V8.3.1",
+   "result": "pass"
+  },
+  {
+   "id": "HEALTH-CONFIRM",
+   "what": "Detection health stricter-for-users approval: phrase is a visible label, Approve disabled until exact",
+   "standard": "ASVS V1.11.3 / WCAG 2.2 SC 3.3.2",
+   "result": "fixed"
+  },
+  {
+   "id": "HTML-NUMBERS",
+   "what": "Server numbers interpolated into HTML (fleet, detection health, bypass) are escaped",
+   "standard": "ASVS V5.3.3 / CWE-79",
+   "result": "fixed"
+  },
+  {
+   "id": "LINKS",
+   "what": "Beacon and POV links built from data are https only",
+   "standard": "ASVS V5.3.3 / WSTG-CLNT-04",
+   "result": "fixed"
+  },
+  {
+   "id": "URL-ENCODE",
+   "what": "Path analyzer list download/show URLs encode their query values",
+   "standard": "CWE-74",
+   "result": "fixed"
+  },
+  {
+   "id": "HAR-SIZE",
+   "what": "HAR file over 100 MB, empty, invalid JSON, no log, no entries refused in words (existing tests)",
+   "standard": "ASVS V12.1.1 / CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "HAR-CAPS",
+   "what": "HAR: distinct hosts tracked capped at 20000, hosts listed as left out capped at 1000 with a total, body sizes capped so sums stay finite",
+   "standard": "CWE-400 / CWE-190",
+   "result": "fixed"
+  },
+  {
+   "id": "HAR-LEAK",
+   "what": "HAR: only host names and counts leave the browser; file name and contents do not (existing tests and code review)",
+   "standard": "ASVS V8.3.1 / CWE-200",
+   "result": "pass"
+  },
+  {
+   "id": "HAR-PAGE",
+   "what": "Path analyzer page shows the total of hosts left out (more_total) rather than the capped list length",
+   "standard": "WCAG 2.2 SC 1.3.1",
+   "result": "open"
+  },
+  {
+   "id": "EXT-SENDER",
+   "what": "Extension background accepts names/focus only from console tabs and index-updated only from its own pages; content script only from the extension",
+   "standard": "ASVS V4.1.3 / CWE-346",
+   "result": "pass"
+  },
+  {
+   "id": "EXT-PERMS",
+   "what": "Extension permissions: activeTab, contextMenus, scripting, sidePanel, storage; host permissions loopback only; console origins optional",
+   "standard": "ASVS V14.2.6 / least privilege",
+   "result": "pass"
+  },
+  {
+   "id": "EXT-ADDR",
+   "what": "Extension app address accepted only on the origins its CSP and host_permissions allow",
+   "standard": "ASVS V14.4.3 / CWE-284",
+   "result": "fixed"
+  },
+  {
+   "id": "EXT-CSP",
+   "what": "Extension pages CSP: default-src 'self', form-action 'none'; no inline style",
+   "standard": "ASVS V14.4.3 / CWE-1021",
+   "result": "fixed"
+  },
+  {
+   "id": "EXT-BADGE",
+   "what": "Badge text set as textContent in a closed shadow root; a finding without text still labels",
+   "standard": "ASVS V5.3.3 / CWE-79",
+   "result": "fixed"
+  },
+  {
+   "id": "EXT-TOKENS",
+   "what": "Every style token the extension uses is defined (options field border)",
+   "standard": "WCAG 2.2 SC 1.4.11",
+   "result": "fixed"
+  },
+  {
+   "id": "EXT-STORAGE",
+   "what": "Extension keeps the index in session storage (cleared on browser close), the app address in sync storage, no credential",
+   "standard": "ASVS V8.2.2",
+   "result": "pass"
+  },
+  {
+   "id": "EXT-KBD-REFLOW",
+   "what": "Popup, side panel and options load under the CSP, fit 320px and are reachable by Tab",
+   "standard": "WCAG 2.2 SC 1.4.10 / SC 2.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "REFLOW-ALL",
+   "what": "All owned pages at 320px on the sample tenant, every Build new form read and previewed at 320px: no sideways scroll, no console error",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "pass"
+  },
+  {
+   "id": "SAMPLE-WALK",
+   "what": "Bulk changes end to end on the sample tenant: read, pick, preview, apply, read back, history, Undo preview",
+   "standard": "ASVS V1.11.3",
+   "result": "pass"
+  },
+  {
+   "id": "SHARED-LISTS",
+   "what": "Shared sink allow-lists and the standards document follow the escaping changes",
+   "standard": "ASVS V1.14.1",
+   "result": "open"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-UI-OPS-01",
+   "title": "Bulk changes Apply was enabled before the typed phrase, the review box or the assessor were given, and the page's phrase check (toUpperCase) accepted look-alikes the server refuses",
+   "severity": "low",
+   "cwe": "CWE-841",
+   "asvs": "V1.11.3",
+   "status": "fixed",
+   "fix": "Apply is disabled until every gate is met; phraseMatches mirrors security.typed_phrase_matches; the phrase is shown in bold",
+   "test": "tests/test_c6_ui_ops.py::test_apply_stays_disabled_without_the_phrase",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-02",
+   "title": "A window focus redrew the Bulk changes apply form, erasing the typed phrase, the review tick and the keyboard focus",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "asvs": "V1.11.3",
+   "status": "fixed",
+   "fix": "Redraw only when write mode changed; a redraw of the same plan keeps the phrase, the box and the focus",
+   "test": "tests/test_c6_ui_ops.py::test_a_window_focus_keeps_the_phrase_the_box_and_the_cursor",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-03",
+   "title": "Bypass report wrote tenant rule ids and counts into HTML unescaped (a crafted snapshot ran script)",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "asvs": "V5.3.3",
+   "status": "fixed",
+   "fix": "Escape every id and count; also cap the aggregated lists at 500 rows and 6 references",
+   "test": "tests/test_c6_ui_ops.py::test_the_bypass_report_escapes_rule_ids_and_counts",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-04",
+   "title": "Bypass report drew every aggregated item (tens of thousands after category expansion) in one innerHTML write",
+   "severity": "low",
+   "cwe": "CWE-400",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "Draw the first 500 rows with 6 references each and say how many more the export has",
+   "test": "tests/test_c6_ui_ops.py::test_the_bypass_report_caps_huge_lists",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-05",
+   "title": "Client Connector fleet page scrolled sideways at 320px (install builder fields), failing the existing reflow test on this branch",
+   "severity": "low",
+   "cwe": "CWE-1021",
+   "asvs": "V14.1.1",
+   "status": "fixed",
+   "fix": "Install builder labels wrap and inputs shrink to the line",
+   "test": "tests/test_c6_ui_ops.py::test_the_fleet_page_reflows_at_320px",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-06",
+   "title": "Error details from FastAPI (a 422 list or an object) showed as '[object Object]' on 11 owned pages",
+   "severity": "low",
+   "cwe": "CWE-209",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "A per-page errText helper words string, {cause} and list details",
+   "test": "tests/test_c6_ui_ops.py::test_a_validation_error_reads_as_words",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-07",
+   "title": "Extension accepted an https or [::1] app address that its CSP connect-src and host_permissions block, so the setting saved and never answered",
+   "severity": "low",
+   "cwe": "CWE-284",
+   "asvs": "V14.4.3",
+   "status": "fixed",
+   "fix": "normalizeAppUrl accepts only http on 127.0.0.1 or localhost, the origins the manifest allows",
+   "test": "tests/test_c6_ui_ops.py::test_every_accepted_app_address_is_one_the_manifest_lets_the_extension_reach",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-08",
+   "title": "ZPA connector group form sent 5 when the enrollment count was typed as 0 (Number(x) || 5), hiding the user's value",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Send a whole number as typed and anything else as text, so the server refuses it in words; blank stays 5",
+   "test": "tests/test_c6_ui_ops.py::test_the_zpa_enrollment_count_is_sent_as_typed",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-09",
+   "title": "HAR parser kept every distinct host and listed every host over the cap, so a capture with hundreds of thousands of hosts filled memory and the DOM; a huge bodySize made the sums Infinity",
+   "severity": "low",
+   "cwe": "CWE-400",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "Track at most 20000 hosts (count the rest), list at most 1000 left out with more_total, cap a body at the file size",
+   "test": "tests/test_c6_ui_ops.py::test_the_list_of_hosts_left_out_is_capped",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-10",
+   "title": "Each builder script was added to Bulk changes once per type it serves (ops_zpa.js four times)",
+   "severity": "info",
+   "cwe": "CWE-1188",
+   "asvs": "V14.2.1",
+   "status": "fixed",
+   "fix": "Load each script name once",
+   "test": "tests/test_c6_ui_ops.py::test_each_builder_script_loads_once",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-11",
+   "title": "Keyboard focus fell to the page after Apply and after Undo (their buttons are removed)",
+   "severity": "low",
+   "cwe": "CWE-1021",
+   "asvs": "V14.1.1",
+   "status": "fixed",
+   "fix": "Focus the outcome card after Apply and the plan heading after Undo",
+   "test": "tests/test_c6_ui_ops.py::test_focus_moves_to_the_outcome_after_apply",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-12",
+   "title": "Beacon links from watched pages and the run history were linked whatever their scheme",
+   "severity": "low",
+   "cwe": "CWE-79",
+   "asvs": "V5.3.3",
+   "status": "fixed",
+   "fix": "safeHref links only https addresses (also on the POV kit links)",
+   "test": "tests/test_c6_ui_ops.py::test_beacon_links_only_https_addresses",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-UI-OPS-13",
+   "title": "Detection health's stricter-for-users approval showed its phrase only as a placeholder and left Approve enabled",
+   "severity": "low",
+   "cwe": "CWE-841",
+   "asvs": "V1.11.3",
+   "status": "fixed",
+   "fix": "The phrase is a visible label; Approve is disabled until the exact phrase is typed",
+   "test": "tests/test_c6_ui_ops.py::test_a_stricter_approval_waits_for_the_exact_phrase",
+   "commit": "4fdfb63"
+  },
+  {
+   "id": "C6-UI-OPS-14",
+   "title": "Install command builder kept offering Copy and Download of the last command after the form changed",
+   "severity": "low",
+   "cwe": "CWE-367",
+   "asvs": "V1.11.3",
+   "status": "fixed",
+   "fix": "A change to the form withdraws the command until it is built again",
+   "test": "tests/test_c6_ui_ops.py::test_a_changed_install_form_withdraws_the_old_command",
+   "commit": "4fdfb63"
+  },
+  {
+   "id": "C6-UI-OPS-15",
+   "title": "A refused provisioning key showed '[object Object]'",
+   "severity": "info",
+   "cwe": "CWE-209",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Word a string or {cause} detail, else the HTTP status",
+   "test": "tests/test_c6_ui_ops.py::test_a_refused_provisioning_key_reads_as_words",
+   "commit": "4fdfb63"
+  },
+  {
+   "id": "C6-UI-OPS-16",
+   "title": "Extension pages' CSP had no default-src, so images, styles, frames and form targets were not restricted",
+   "severity": "low",
+   "cwe": "CWE-1021",
+   "asvs": "V14.4.3",
+   "status": "fixed",
+   "fix": "default-src 'self' and form-action 'none'; the options page's inline style moved to options.css",
+   "test": "tests/test_c6_ui_ops.py::test_the_extension_csp_denies_by_default",
+   "commit": "0e7274a"
+  },
+  {
+   "id": "C6-UI-OPS-17",
+   "title": "Extension options page used an undefined style token (--line), so the address field had no border",
+   "severity": "info",
+   "cwe": "CWE-1021",
+   "asvs": "V14.1.1",
+   "status": "fixed",
+   "fix": "Use --border-strong",
+   "test": "tests/test_c6_ui_ops.py::test_every_style_token_the_extension_uses_is_defined",
+   "commit": "0e7274a"
+  },
+  {
+   "id": "C6-UI-OPS-18",
+   "title": "Path analyzer's HAR note counts the hosts left out as more.length, which is now capped at 1000; it should show more_total and the untracked count",
+   "severity": "info",
+   "cwe": "CWE-400",
+   "asvs": "V12.1.1",
+   "status": "open",
+   "fix": "Use more_total and untracked in moreNote (static/report_path.html, not in this slice)",
+   "test": "tests/test_c6_ui_ops.py::test_the_list_of_hosts_left_out_is_capped",
+   "commit": "",
+   "proposed_patch": "--- a/static/report_path.html\n+++ b/static/report_path.html\n@@ -551,8 +551,9 @@\n     }\n     function moreNote(p) {\n       if (!p.capped) return '';\n-      return `<div class=\"pa-har-cap\" role=\"note\"><strong>${p.more.length} more host(s) not analyzed</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.\n-        <details><summary>Show the ${p.more.length} host(s) left out</summary><ul class=\"pa-har-more\">${p.more.map(m => `<li>${E(m.host)} <span class=\"df-by\">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details></div>`;\n+      const left = p.more_total != null ? p.more_total : p.more.length;\n+      return `<div class=\"pa-har-cap\" role=\"note\"><strong>${left} more host(s) not analyzed</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.${p.untracked ? ` ${p.untracked} more request(s) went to hosts past the ${HarParse.MAX_TRACKED} this page tracks.` : ''}\n+        <details><summary>Show ${left > p.more.length ? `the first ${p.more.length} of ` : 'the '}${left} host(s) left out</summary><ul class=\"pa-har-more\">${p.more.map(m => `<li>${E(m.host)} <span class=\"df-by\">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details></div>`;\n     }\n     function renderHarIntro() {\n       const p = har.parsed, ups = p.hosts.filter(h => h.uploads).length;\n"
+  },
+  {
+   "id": "C6-UI-OPS-19",
+   "title": "tests/xss_sink_allowlist.json lists 51 values in beacon.js, bypass_report.js, detection_health.js and zcc_fleet.js that this slice now escapes, so test_allowlist_has_no_stale_entries fails",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "open",
+   "fix": "Remove the stale entries (shared file, not in this slice)",
+   "test": "tests/test_xss_sinks.py::test_allowlist_has_no_stale_entries",
+   "commit": "",
+   "proposed_patch": "--- a/tests/xss_sink_allowlist.json\n+++ b/tests/xss_sink_allowlist.json\n@@ -14,22 +14,6 @@\n   \"E(httpsOnly(s.url))\": [1, \"link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text\"],\n   \"E(httpsOnly(c.source.url))\": [1, \"link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text\"]\n  },\n- \"static/beacon.js\": {\n-  \"E(c.url)\": [1, \"link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text\"],\n-  \"E(ref.url)\": [1, \"link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text\"],\n-  \"E(p.url)\": [1, \"link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text\"]\n- },\n- \"static/bypass_report.js\": {\n-  \"s.total_bypass_items\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.ssl_bypass_rules\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"sec.total_rules\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"sec.count\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"p.status\": [1, \"HTTP status code of the probe (a number)\"],\n-  \"p.item_count\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"it.count\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"r.id\": [1, \"ZIA integer id or an app-made key, never a name\"],\n-  \"rule.id\": [1, \"ZIA integer id or an app-made key, never a name\"]\n- },\n  \"static/dashboard.js\": {\n   \"c.icon\": [1, \"CSS class or icon from the page's own status table\"],\n   \"last.journey.stage\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n@@ -151,27 +135,8 @@\n   \"s.counts.app_groups\": [1, \"number the server computes (count, percentage, score, stage, position)\"]\n  },\n  \"static/detection_health.js\": {\n-  \"r.incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"r.open\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"r.closed\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"r.not_real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"r.fp_rate_pct\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"cls\": [3, \"CSS class or icon from the page's own status table\"],\n-  \"g.incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"g.closed\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"g.not_real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.fp_share_pct\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.not_real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.open\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"h.incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"h.users\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"h.real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"h.not_real\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"d.rules_enabled\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"d.rules_cloud\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"d.rules_icap\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.dest_min_incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.dest_fp_pct\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.fp_min_incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n@@ -181,12 +146,6 @@\n   \"st.promote_min_incidents\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.promote_window_days\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"st.promote_fp_pct\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"data.dismiss_days\": [2, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"p.times_seen\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.open\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.approved\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.snoozed\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"s.dismissed\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"b.dataset.flow\": [1, \"a data attribute the page itself wrote (flow key)\"]\n  },\n  \"static/explain.js\": {\n@@ -517,19 +476,6 @@\n  },\n  \"static/zcc_fleet.js\": {\n   \"cls\": [1, \"CSS class or icon from the page's own status table\"],\n-  \"d.hours_since_seen\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"a.count\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"u.devices\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"p.devices\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"p.score\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"c.impact\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"d.differences\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"m.risky\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"m.differing\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"x.rank\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"x.devices\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"x.priority\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n-  \"res.devices_total\": [1, \"number the server computes (count, percentage, score, stage, position)\"],\n   \"v.devices\": [1, \"number the server computes (count, percentage, score, stage, position)\"]\n  }\n }\n"
+  },
+  {
+   "id": "C6-UI-OPS-20",
+   "title": "The URL-sink review in tests/test_sbd_canary_renderers.py still lists pov.js l.url, which is now scheme-checked inline, so test_the_url_sink_review_has_no_stale_entries fails",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "open",
+   "fix": "Remove the stale review entry (shared test, not in this slice)",
+   "test": "tests/test_sbd_canary_renderers.py::test_the_url_sink_review_has_no_stale_entries",
+   "commit": "",
+   "proposed_patch": "--- a/tests/test_sbd_canary_renderers.py\n+++ b/tests/test_sbd_canary_renderers.py\n@@ -277,7 +277,6 @@\n     (\"static/find_anything.js\", \"target.href || ''\"): \"sent to /api/workspace/notes, which keeps only paths in this app (clean_href)\",\n     (\"static/path_list.js\", \"open\"): \"/report/operations?fix= with the id through encodeURIComponent\",\n     (\"static/posture_banner.js\", \"'/report/posture' + (hash || ''\"): \"a fixed page with the page's own fragment\",\n-    (\"static/pov.js\", \"l.url\"): \"the test kit's links: constants in pov.py (EICAR_LINKS and the other kit lists), never tenant data\",\n     (\"static/simple.js\", \"a.href\"): \"fixAction()'s app path for a finding's fix\",\n     (\"static/ui_auth.js\", \"ssoStatus.sso_login_url || '/api/auth/sso/login'\"): \"the server's fixed SSO path (/api/auth/sso/login)\",\n     (\"static/zcc_fleet.js\", \"url\"): \"URL.createObjectURL of the downloaded export\",\n"
+  },
+  {
+   "id": "C6-UI-OPS-21",
+   "title": "docs/SECURITY_TESTING.md needs regenerating for the new mapped tests (test_the_standards_document_is_current)",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "open",
+   "fix": "After merging every wave-6 branch run: python tools/security_test_matrix.py (generated file, may not be edited by hand here)",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "",
+   "proposed_patch": "Generated file: run `python tools/security_test_matrix.py` after the merge; a hand diff from this branch would conflict with the other branches' regenerated rows."
+  }
+ ],
+ "tests_added": 79
 }
