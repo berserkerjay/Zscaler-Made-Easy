@@ -11,8 +11,10 @@
 // control's aria-describedby points at the same words (1.3.1, 4.1.2). The
 // pop-up is placed beside the control, never over it, and inside the
 // viewport down to 320px. Every word is set with textContent, never HTML.
-// A native title on a described control is taken off (two tooltips would
-// stack) and kept as the pop-up's "Right now" line when it says more.
+// A native title on a described control (or on the label around it) is
+// taken off (two tooltips would stack) and kept as the pop-up's "Note" line
+// when it says more than the entry: a state ("Needs write mode") or the
+// words for one item of a list that shares an entry.
 (function () {
   'use strict';
   if (window.HoverHelp) return;
@@ -115,7 +117,7 @@
   // ── Descriptions for screen readers ─────────────────────────────────
   // One hidden description per catalogue entry (per open dialog, so a
   // modal's inert background never hides it), shared by every control the
-  // entry matches; a control with its own "Right now" line gets its own.
+  // entry matches; a control with its own "Note" line gets its own.
   let serial = 0;
   function descHost(el) {
     const dlg = el.closest('dialog');
@@ -135,7 +137,7 @@
     const e = item.e;
     const parts = [norm(e.what), 'Input: ' + norm(e.input)];
     if (EFFECTS[e.effect]) parts.push(EFFECTS[e.effect]);
-    if (note) parts.push('Right now: ' + note);
+    if (note) parts.push('Note: ' + note);
     return parts.join(' ');
   }
   function descFor(el, item, note) {
@@ -150,8 +152,16 @@
     span.textContent = sentence(item, note);
     return id;
   }
+  // The element whose native title describes the control: the control, or
+  // the <label> around it (a label's title would open a second tooltip too).
+  function titleHost(el) {
+    if (el.hasAttribute('title') || el.hasAttribute('data-hh-title')) return el;
+    const lab = el.closest('label');
+    if (lab && (lab.hasAttribute('title') || lab.hasAttribute('data-hh-title'))) return lab;
+    return Array.from(el.labels || []).find(l => l.hasAttribute('title') || l.hasAttribute('data-hh-title')) || el;
+  }
   function noteOf(el, item) {
-    const t = norm(el.getAttribute('data-hh-title'));
+    const t = norm(titleHost(el).getAttribute('data-hh-title'));
     if (!t) return '';
     const known = norm(item.e.what + ' ' + item.e.input).toLowerCase();
     return known.includes(t.toLowerCase()) ? '' : t;
@@ -161,9 +171,10 @@
     const item = entryFor(el);
     if (!item) return null;
     // A native title would open a second tooltip: keep its words, drop it.
-    if (el.hasAttribute('title')) {
-      el.setAttribute('data-hh-title', el.getAttribute('title'));
-      el.removeAttribute('title');
+    const host = titleHost(el);
+    if (host.hasAttribute('title')) {
+      host.setAttribute('data-hh-title', host.getAttribute('title'));
+      host.removeAttribute('title');
     }
     const note = noteOf(el, item);
     const mine = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
@@ -179,11 +190,10 @@
   function scan() {
     pending = false;
     controls(document).forEach(el => {
-      const sig = (el.getAttribute('data-hh-title') || '') + '|' + (el.getAttribute('title') || '');
-      if (el.__hhSig === sig && el.hasAttribute('data-hh')) return;
-      el.__hhSig = sig;
+      const sig = () => { const h = titleHost(el); return (h.getAttribute('data-hh-title') || '') + '|' + (h.getAttribute('title') || ''); };
+      if (el.__hhSig === sig() && el.hasAttribute('data-hh')) return;
       wire(el);
-      el.__hhSig = (el.getAttribute('data-hh-title') || '') + '|' + (el.getAttribute('title') || '');
+      el.__hhSig = sig();
     });
   }
   function soon() {
@@ -225,7 +235,7 @@
     if (EFFECTS[e.effect]) rows.push(make('p', 'hh-effect hh-' + e.effect, EFFECTS[e.effect]));
     if (note) {
       const n = make('p', 'hh-now');
-      n.append(make('strong', null, 'Right now: '), document.createTextNode(note));
+      n.append(make('strong', null, 'Note: '), document.createTextNode(note));
       rows.push(n);
     }
     tip.replaceChildren(...rows);
@@ -416,13 +426,14 @@
         page: pageKey(), control: describe(el), key: item ? item.sel : null,
         what: norm(e.what), input: norm(e.input), effect: e.effect || '',
         describedby: (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => /^hh-/.test(id)),
-        title: el.getAttribute('title') || '',
+        title: titleHost(el).getAttribute('data-hh-title') || '',
+        nativeTitle: titleHost(el).getAttribute('title') || '',
       };
     });
   }
 
   window.HoverHelp = {
-    CONTROL, EFFECTS, clock, pageKey, entryFor, isControl, isVisible, controls, describe, audit, show, hide, scan,
+    CONTROL, EFFECTS, clock, pageKey, entryFor, titleHost, isControl, isVisible, controls, describe, audit, show, hide, scan,
     reset() { compiled = null; scan(); },
     tip: () => tip, info: () => info, current: () => current,
   };

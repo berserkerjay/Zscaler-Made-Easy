@@ -532,6 +532,7 @@
     ['Coverage', 'The share of the assessment\'s checks that ran and got an answer. A check that was not permitted to the API client, was rate limited, timed out or failed is left out of the score; Improve my score lists each one with the reason and the fix.'],
     ['Score-drop alert', 'A note on the results and in the digest when the score fell by at least the threshold you set (5 points by default) since the previous run, with the checks that started failing. It is sent by e-mail or webhook only if notifications are already set up and you turned that on.'],
     ['Trusted network', 'A network the customer defined in the Forwarding Profile (office, VPN) where Client Connector may behave differently on purpose, for example not tunnelling at all.'],
+    ['Help on hover', 'Point at any button, field or link, or move to it with the Tab key, and a small box says what it does, what to type or pick, and whether it reads or changes the tenant. Press Esc to close it. On a touch screen, press and hold, or tap the small ⓘ next to it.'],
   ];
   window.DLP_TROUBLE = [
     ['"Could not connect" under step 1', 'tells you the cause and the fix. Nine times out of ten it is a pasted secret that was not the real secret, or a machine behind TLS inspection.'],

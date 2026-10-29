@@ -95,6 +95,18 @@ what you get, what to do next.
   it once, read-only and only what is in scope. An object opens as a card:
   what it uses, what uses it, its findings, the pages that act on it and
   its tags, to-dos and comments.
+- **Help on hover** (every page, and the browser extension's popup,
+  options and side panel) — point at any control, or Tab to it, and a
+  small box says what it does, what input it expects (format, allowed
+  values, an example, required or optional) and whether it reads or
+  changes the tenant; a control that changes the tenant says it needs
+  write mode. Esc closes it without moving focus, the pointer can move
+  onto it, and on touch a long press or the ⓘ beside the control opens
+  it. Screen readers get the same words through `aria-describedby`. The
+  words live in one catalogue (`static/help_catalog.js`), keyed per page
+  by selector; a native tooltip is converted into it, not kept beside
+  it, and a test fails, naming the page and the selector, when a control
+  has no entry.
 - **Simple mode** (`/simple`, first item in the sidebar) — the same app
   as seven big tasks for someone with little Zscaler knowledge: connect,
   check how safe the data is, fix the top three problems, protect
