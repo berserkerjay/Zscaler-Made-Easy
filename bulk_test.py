@@ -978,6 +978,8 @@ class PathEvaluator:
         dest: List[Any] = []
         for p in zcc.get("app_profiles") or []:
             dest += list(((p or {}).get("bypass") or {}).get("domains") or []) + list(((p or {}).get("bypass") or {}).get("ips") or [])
+            tl = (p or {}).get("tunnel") or {}
+            dest += list(tl.get("exclude") or []) + list(tl.get("include") or [])
         pacs: List[str] = []
         for f in zcc.get("pac_files") or []:
             dest += list((f or {}).get("direct_hosts") or [])

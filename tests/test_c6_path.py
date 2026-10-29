@@ -2160,3 +2160,39 @@ def test_a_list_row_in_an_ip_bypass_never_shares_the_answer_of_a_row_outside_it(
     tenant = Tenant(_profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "ipExclusions": ["198.51.100.0/24"]}))
     rn = bt.run(tenant, bt.parse("198.51.101.5\n198.51.100.5\n"), scope=FULL, lookup=False, sleep=lambda s: None)
     assert [rn.row(i)["result"] for i in range(2)] == ["allowed", "bypassed"]
+
+
+# ── C6-PATH-23: Z-Tunnel 2.0 packet tunnel inclusions and exclusions ───
+@pytest.mark.parametrize("prof,dest,status", [
+    ({"packetTunnelExcludeList": "10.0.0.0/8,192.168.0.0/16"}, "192.168.4.4", "bypass"),     # the SDK's comma-separated string
+    ({"packetTunnelExcludeList": ["10.0.0.0/8"]}, "10.1.2.3", "bypass"),                      # or a list
+    ({"packetTunnelExcludeList": "10.0.0.0/8"}, "11.0.0.1", "pass"),
+    ({"packetTunnelIncludeList": "0.0.0.0/0"}, "203.0.113.5", "pass"),
+    ({"packetTunnelIncludeList": "198.51.100.0/24"}, "203.0.113.5", "bypass"),                # outside the inclusions
+    ({"packetTunnelIncludeList": "198.51.100.0/24"}, "198.51.100.7", "pass"),
+    ({"packetTunnelExcludeListForIPv6": "2001:db8::/32"}, "2001:db8::1", "bypass"),
+    ({"packetTunnelIncludeList": "198.51.100.0/24"}, "2001:db8::1", "pass"),                  # no IPv6 inclusion list: not limited
+    ({"packetTunnelExcludeList": "10.0.0.0/8"}, "files.example", "pass"),                     # a host name is not resolved
+    ({"packetTunnelExcludeList": 7}, "10.1.2.3", "pass"),                                     # a list of the wrong type is none
+])
+def test_z_tunnel_2_packet_tunnel_lists_decide_whether_an_address_is_tunnelled(prof, dest, status):
+    """ASVS V4.1.3 · CWE-863 · CWE-697: with Z-Tunnel 2.0 an address in the app profile's packet tunnel exclusions, or outside its inclusions, is not tunnelled."""
+    res = run(dest, _profiles(dict({"id": 1, "name": "Corp", "ruleOrder": 1}, **prof)))
+    f = hop(res, "forwarding")
+    assert f["status"] == status and (status == "pass" or "packet tunnel" in f["detail"] or "tunnels only" in f["detail"])
+    assert res["trace"]["reaches_zscaler"] is (status == "pass")
+
+
+def test_packet_tunnel_lists_do_not_apply_to_another_forwarding_mode():
+    """ASVS V4.1.3 · CWE-697: the packet tunnel lists are Z-Tunnel 2.0's; with Z-Tunnel 1.0 they decide nothing."""
+    routes = dict(_profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "packetTunnelExcludeList": "10.0.0.0/8"}),
+                  **{"/zcc/forwardingProfiles": [{"id": 5, "name": "Fwd", "forwardingProfileActions": [
+                      {"networkType": "OFF_TRUSTED_NETWORK", "tunnelType": "ZSCALER_TUNNEL_1"}]}]})
+    assert hop(run("10.1.2.3", routes), "forwarding")["status"] == "pass"
+
+
+def test_a_list_row_outside_the_packet_tunnel_is_answered_apart_from_one_inside():
+    """ASVS V1.4.4 · CWE-697: Test a list relates rows to the packet tunnel lists, so a row outside the tunnel does not share a tunnelled row's answer."""
+    tenant = Tenant(_profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "packetTunnelExcludeList": "198.51.100.0/24"}))
+    rn = bt.run(tenant, bt.parse("198.51.101.5\n198.51.100.5\n"), scope=FULL, lookup=False, sleep=lambda s: None)
+    assert [rn.row(i)["result"] for i in range(2)] == ["allowed", "bypassed"]

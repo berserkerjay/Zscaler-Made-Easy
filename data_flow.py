@@ -232,6 +232,11 @@ _LOCAL_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", 
                                                  "100.64.0.0/10", "fc00::/7", "fe80::/10", "::1/128")]
 
 
+def _family(entry: str) -> Optional[int]:
+    p = _zpm._parse_entry(str(entry).strip())
+    return None if p is None else p[1].version
+
+
 def _non_public(entry: str) -> bool:
     """Whether an IP bypass entry lies wholly in private, loopback,
     link-local or shared address space, where a public host name never
@@ -416,6 +421,10 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                     "bypass": {"domains": domains, "apps": apps, "processes": processes, "ips": ips, "vpn_gateways": vpn},
                     "groups": _names(p.get("groups") or p.get("groupNames") or []),
                     "users": _names(p.get("users") or p.get("userNames") or []),
+                    # Z-Tunnel 2.0's IP lists (zscaler-sdk-python 1.11.3 zcc/web_policy.py:
+                    # packet_tunnel_exclude_list / _include_list, comma-separated CIDRs).
+                    "tunnel": {k: _cidrs(_v(p, f)) + _cidrs(_v(p, f + "ForIPv6"))
+                               for k, f in (("exclude", "packetTunnelExcludeList"), ("include", "packetTunnelIncludeList"))},
                 })
                 if keep_raw:
                     out["app_profiles"][-1]["raw"] = p
@@ -470,6 +479,12 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
         except Exception as e:  # noqa: BLE001
             out["errors"].append(f"/zia/pacFiles: {e}")
     return out
+
+
+def _cidrs(v: Any) -> List[str]:
+    """A comma-separated CIDR list (or a list) as entries; anything else is none."""
+    items = re.split(r"[,;\s]+", v) if isinstance(v, str) else v if isinstance(v, (list, tuple)) else []
+    return [str(x).strip() for x in items if isinstance(x, (str, int)) and str(x).strip()][:2000]
 
 
 def _pac_direct_hosts(content: str) -> List[str]:
@@ -763,6 +778,11 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         if supplied_type.startswith("FTCATEGORY_"):
             file_types.add(supplied_type)
 
+    try:
+        dest_ip: Any = ipaddress.ip_address(host)
+    except ValueError:
+        dest_ip = None
+
     # 1. Client Connector app profile
     profiles = [p for p in zcc.get("app_profiles", []) if p.get("active", True) and (p["platform"] in (platform, "all", ""))]
     ordered = sorted(profiles, key=lambda p: (_rule_order(p.get("priority")) is None, _rule_order(p.get("priority")) or 0))
@@ -817,10 +837,6 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # IP bypasses (destination exclusions): an address in one never
         # enters the tunnel. A host name is not resolved: it is assumed to
         # resolve outside them, and that assumption is said.
-        try:
-            dest_ip: Any = ipaddress.ip_address(host)
-        except ValueError:
-            dest_ip = None
         ip_entries = [str(x).strip() for x in b.get("ips") or [] if _zpm._is_ip_entry(str(x).strip())]
         hit_ip = next((e for e in ip_entries if _zpm._ip_rel(dest_ip, e)), None) if dest_ip is not None else None
         hit_domain = hit_domain or (_domain_hit([x for x in b.get("ips") or [] if not _zpm._is_ip_entry(str(x).strip())], host) if host and dest_ip is None else None)
@@ -899,8 +915,27 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                                  f"'{fwd['name']}': the forwarding mode for {net_label} is '{label}', which this tool does not recognise as tunnel, PAC or none. Downstream policy results are conditional on traffic reaching ZIA. Raw value kept for review.",
                                  None, mode=label, raw=act.get("raw"), why=f"mode '{label}' not recognised for {net_label.lower()}"))
             else:
-                hops.append(_hop("forwarding", "Forwarding profile", "pass", {"name": fwd["name"], "id": fwd["id"]},
-                                 f"'{fwd['name']}' sets '{label}' for {net_label}: all traffic is tunnelled to ZIA.", None, mode=label, raw=act.get("raw")))
+                # Z-Tunnel 2.0 tunnels by address: the app profile's packet
+                # tunnel exclusions leave it, and with an inclusion list of its
+                # address family only those addresses enter it.
+                tl = (prof or {}).get("tunnel") or {}
+                outside = None
+                if label == "Z-Tunnel 2.0" and dest_ip is not None:
+                    ex = next((e for e in tl.get("exclude") or [] if _zpm._ip_rel(dest_ip, e)), None)
+                    inc = [e for e in tl.get("include") or [] if (_zpm._parse_entry(e) or (None, None))[0] and _family(e) == dest_ip.version]
+                    if ex:
+                        outside = f"the app profile '{prof['name']}' excludes {ex} from the packet tunnel"
+                    elif inc and not any(_zpm._ip_rel(dest_ip, e) for e in inc):
+                        outside = f"the app profile '{prof['name']}' tunnels only {_zpm._short(inc, 3)}"
+                if outside:
+                    reaches_zscaler = False; ends = "forwarding"
+                    hops.append(_hop("forwarding", "Forwarding profile", "bypass", {"name": fwd["name"], "id": fwd["id"]},
+                                     f"'{fwd['name']}' sets '{label}' for {net_label}, but {outside}: traffic to {host} leaves the device directly and never reaches Zscaler.",
+                                     _weak("high", "Outside the packet tunnel", "Remove the address from the app profile's packet tunnel exclusions (or add it to its inclusions), or accept that only Endpoint DLP sees it."),
+                                     mode=label, raw=act.get("raw")))
+                else:
+                    hops.append(_hop("forwarding", "Forwarding profile", "pass", {"name": fwd["name"], "id": fwd["id"]},
+                                     f"'{fwd['name']}' sets '{label}' for {net_label}: all traffic is tunnelled to ZIA.", None, mode=label, raw=act.get("raw")))
 
     # 3. PAC file DIRECT statements
     if reaches_zscaler and "pac" in nis and not zcc_out and (mode_kind == "pac" or (prof and prof.get("pac_url")) or (fwd and fwd.get("pac_url"))):
