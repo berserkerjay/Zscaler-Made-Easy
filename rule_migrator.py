@@ -1350,7 +1350,38 @@ def _delete_answering_403(client, path: str, activations: List[Dict[str, Any]]) 
     return data, code
 
 
-def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
+PLAN_CHANGED = ("The Inline Web DLP rules changed in the tenant since the dry run (a rule was added, removed or edited), so nothing "
+                "was written. Run the dry run again, review it, and apply that.")
+
+
+def rules_plan_hash(rules: List[Dict[str, Any]], extra: Any = None) -> str:
+    """sha256 over the tenant's Web DLP rules as read (every field, sorted by
+    id) and what the run will send (`extra`): the dry run hands it out and
+    the live run recomputes it from a fresh read, so a rule added, removed
+    or edited in between (someone else's change) stops the run."""
+    import hashlib
+    import json as _json
+    rows = sorted((r for r in rules if isinstance(r, dict)), key=lambda r: str(r.get("id")))
+    blob = _json.dumps({"rules": rows, "extra": extra}, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _rules_read(client) -> Tuple[Optional[List[Dict[str, Any]]], Optional[int]]:
+    """The Web DLP rules, or (None, status) when the read failed: a failed
+    read never counts as an empty tenant for the plan hash."""
+    data, code = client.get("/zia/webDlpRules")
+    if code not in (200, 204):
+        return None, code
+    if isinstance(data, list):
+        return data, code
+    if isinstance(data, dict):
+        for k in ("list", "data", "items", "rules"):
+            if isinstance(data.get(k), list):
+                return data[k], code
+    return [], code
+
+
+def delete_all_rules(client, dry_run: bool = True, plan_hash: Optional[str] = None) -> Dict[str, Any]:
     """
     Delete every Inline Web DLP rule in the tenant. Used when the
     migration plan is to wipe + repost a fresh optimized set under
@@ -1361,8 +1392,12 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
       - Real delete requires dry_run=False AND env var
         ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND.
       - Always run Step 2 (Download) first to keep a backup.
+      - `plan_hash` (the dry run's): the live run deletes only when the
+        rules are still the ones the dry run listed (plan_changed
+        otherwise). The API route requires it for a live run.
     """
     rules = fetch_current_rules(client, "web_dlp")
+    current_hash = rules_plan_hash(rules)
     plan = [
         {"rule_id": r.get("id"), "rule_name": r.get("name", f"Rule {r.get('id')}"),
          "action": (r.get("action") or "?").upper(),
@@ -1381,6 +1416,7 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
                 "Set dry_run=false (and ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND) to actually delete."
             ),
             "warning": "This is destructive and cannot be undone via API — restore requires re-posting from your backup.",
+            "plan_hash": current_hash,
         }
 
     if not __import__("security").writes_enabled():
@@ -1389,6 +1425,9 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
             "would_delete_count": len(plan),
         }
+    if plan_hash is not None and plan_hash != current_hash:
+        return {"status": "plan_changed", "message": PLAN_CHANGED, "expected_hash": plan_hash, "current_hash": current_hash,
+                "would_delete_count": len(plan), "deleted_count": 0, "failed_count": 0, "deleted": [], "failed": []}
 
     deleted, failed = [], []
     activations_after_403: List[Dict[str, Any]] = []
@@ -1451,6 +1490,7 @@ def post_new_rule_order(
     proposed_rules: List[Dict[str, Any]],
     dry_run: bool = True,
     mode: str = "auto",
+    plan_hash: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Push the proposed rules back to Zscaler.
@@ -1461,7 +1501,11 @@ def post_new_rule_order(
       - "update" : always PUT (preserve ids — re-order existing rules in place)
 
     SAFETY: Requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var
-    AND dry_run=False to actually write. Default is dry-run.
+    AND dry_run=False to actually write. Default is dry-run. The dry run
+    reads the tenant's rules and returns `plan_hash` (rules_plan_hash over
+    them, the proposal and the mode); a live run given it writes only while
+    the tenant still holds those rules (plan_changed otherwise, and when
+    the rules cannot be read). The API route requires it for a live run.
     """
     plan = []
     for new_pos, r in enumerate(proposed_rules, 1):
@@ -1475,9 +1519,15 @@ def post_new_rule_order(
             "operation": action_op,
         })
 
+    current_hash: Optional[str] = None
+    if dry_run or plan_hash is not None:
+        rules, _code = _rules_read(client)
+        current_hash = rules_plan_hash(rules, {"proposed": proposed_rules, "mode": mode}) if rules is not None else None
+
     if dry_run:
         return {
             "status": "dry_run",
+            "plan_hash": current_hash,
             "mode": mode,
             "planned_updates": plan,
             "total": len(plan),
@@ -1494,6 +1544,11 @@ def post_new_rule_order(
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
             "planned_updates": plan,
         }
+    if plan_hash is not None and (current_hash is None or plan_hash != current_hash):
+        return {"status": "plan_changed", "mode": mode, "message": PLAN_CHANGED if current_hash else
+                "The Inline Web DLP rules could not be read again, so nothing was written. Run the dry run again.",
+                "expected_hash": plan_hash, "current_hash": current_hash, "planned_updates": plan,
+                "succeeded_count": 0, "failed_count": 0, "succeeded": [], "failed": []}
 
     succeeded, failed = [], []
     for new_pos, r in enumerate(proposed_rules, 1):

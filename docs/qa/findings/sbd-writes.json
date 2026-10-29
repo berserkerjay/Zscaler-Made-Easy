@@ -1,0 +1,270 @@
+{
+  "area": "Secure by Design: every path that changes a tenant",
+  "title": "Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope",
+  "standards": [
+    "ASVS V4.1.3",
+    "ASVS V4.2.1",
+    "ASVS V7.1.3",
+    "ASVS V8.3.4",
+    "ASVS V11.1.1",
+    "ASVS V11.1.6",
+    "OWASP Top 10 2021 A01",
+    "OWASP Top 10 2021 A04",
+    "OWASP Top 10 2021 A09",
+    "WSTG-ATHZ-02",
+    "CWE-176",
+    "CWE-285",
+    "CWE-362",
+    "CWE-367",
+    "CWE-639",
+    "CWE-837",
+    "CWE-840",
+    "CWE-841",
+    "CWE-1188",
+    "CISA Secure by Design"
+  ],
+  "checks": [
+    {
+      "id": "SBD-W-C01",
+      "what": "Four gates (write mode, writer, named assessor, confirmation) checked before the client is built, every write route and every operation type (build-client spies)",
+      "standard": "ASVS V4.1.3 · CWE-862",
+      "result": "pass"
+    },
+    {
+      "id": "SBD-W-C02",
+      "what": "Scope: an operation type, plan, apply or object picker whose product is not ticked is refused before sign-in and reads nothing (tripwire client)",
+      "standard": "ASVS V4.1.3 · CWE-863 · WSTG-ATHZ-02",
+      "result": "pass"
+    },
+    {
+      "id": "SBD-W-C03",
+      "what": "Plan hash: every plugin re-plans before writing; a moved tenant gives plan_changed and runs no handler",
+      "standard": "ASVS V11.1.6 · CWE-367",
+      "result": "pass"
+    },
+    {
+      "id": "SBD-W-C04",
+      "what": "Plan hash on the migration wizard's live delete-all and post",
+      "standard": "ASVS V11.1.6 · CWE-367",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C05",
+      "what": "Each object re-read right before its write: plugin handlers (existing per-plugin tests), deploy confidence tweaks, proposal rollback",
+      "standard": "ASVS V11.1.6 · CWE-367",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C06",
+      "what": "Typed confirmation: case-insensitive, never bypassed by empty, null or whitespace, never by a Unicode look-alike (decision: no NFKC; NFC only)",
+      "standard": "ASVS V11.1.1 · CWE-176",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C07",
+      "what": "Typed confirmation required where confirm_always / confirm_phrase say; a blank value never hides the other",
+      "standard": "ASVS V11.1.1 · CWE-841",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C08",
+      "what": "Disabled and monitor-only defaults for every operation type, remediation recipes and policy packs",
+      "standard": "ASVS V4.1.3 · CWE-1188",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C09",
+      "what": "Undo touches only what its recorded operation created or changed, only while it still holds the value set, applied once, with its own preview and confirmation",
+      "standard": "ASVS V11.1.1 · CWE-840",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C10",
+      "what": "Audit log: every write and refusal with actor, path, status, write mode; no secret",
+      "standard": "ASVS V7.1.3 · CWE-778 · CWE-532",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C11",
+      "what": "Concurrency: two applies of the same plan at once write once (per-tenant run lock)",
+      "standard": "ASVS V11.1.6 · CWE-362",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C12",
+      "what": "Partial failure: applied / failed / not attempted per item, counts, record and Undo carry only what was applied",
+      "standard": "ASVS V11.1.1 · CWE-754",
+      "result": "pass"
+    },
+    {
+      "id": "SBD-W-C13",
+      "what": "Retries: no duplicate create on a retried POST after a timeout or 5xx (shared path and raw client); check by name first",
+      "standard": "ASVS V11.1.1 · CWE-837",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C14",
+      "what": "ZPA provisioning key: canary through results, job snapshot and log, operation record and list, Undo preview, audit log, store files, server log; shown once, to its runner only",
+      "standard": "ASVS V8.3.4 · CWE-532 · CWE-639",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-W-C15",
+      "what": "Direct deployment undo route (/api/deployments/{id}/undo) has no preview plan hash",
+      "standard": "ASVS V11.1.6",
+      "result": "accepted"
+    },
+    {
+      "id": "SBD-W-C16",
+      "what": "A ZPA segment clone keeps its source segment's enabled state",
+      "standard": "ASVS V4.1.3 · CWE-1188",
+      "result": "accepted"
+    }
+  ],
+  "findings": [
+    {
+      "id": "SBD-WRITES-01",
+      "title": "Undo applied any operation under undo_of: it marked the recorded operation undone without applying its inverse, and an already undone operation was signed in to again",
+      "severity": "medium",
+      "cwe": "CWE-840",
+      "asvs": "V11.1.1",
+      "status": "fixed",
+      "fix": "_ops_apply_gate requires the recorded inverse exactly and refuses an operation already undone (409) before sign-in",
+      "test": "tests/test_sbd_writes.py::test_undo_of_refuses_an_operation_that_is_not_the_recorded_inverse",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-02",
+      "title": "Undo-only forms (url_categories / zpa_domains / zia_baseline revert, AI Guard undo, ZPA undo) were accepted as ordinary operations, so an apply could delete objects the app never created (a customer's ZPA segment was deleted)",
+      "severity": "medium",
+      "cwe": "CWE-285",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "admin_ops.is_undo_only: such a form is applied only with undo_of naming its recorded operation (409 otherwise, before sign-in)",
+      "test": "tests/test_sbd_writes.py::test_a_revert_cannot_delete_an_object_the_app_never_created",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-03",
+      "title": "Two applies of the same plan at once both passed the plan hash and the re-read and both sent the create",
+      "severity": "medium",
+      "cwe": "CWE-362",
+      "asvs": "V11.1.6",
+      "status": "fixed",
+      "fix": "pack_ops.tenant_run: one write run per tenant (deploy, removal, undo, bulk change, build); a second is refused busy with nothing read or written, audited, and a queued request stays approved",
+      "test": "tests/test_sbd_writes.py::test_two_applies_of_the_same_plan_at_once_send_one_create",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-04",
+      "title": "The shared write path re-sent a create answered by a timeout or 5xx, which may have been applied, for every object kind (duplicates)",
+      "severity": "medium",
+      "cwe": "CWE-837",
+      "asvs": "V11.1.1",
+      "status": "fixed",
+      "fix": "pack_ops.call resends a maybe-applied create only after a read by name shows it absent (name_check for pack kinds), else reports it not resent; a found object is reused",
+      "test": "tests/test_sbd_writes.py::test_a_create_that_timed_out_is_never_resent_without_a_check_by_name",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-05",
+      "title": "The raw HTTP client (remediation, migration wizard) re-sent a POST after a read timeout, a reset connection or a 502/504",
+      "severity": "medium",
+      "cwe": "CWE-837",
+      "asvs": "V11.1.1",
+      "status": "fixed",
+      "fix": "Client._write does not resend such a POST and says so; connection never made, 429/503 and idempotent PUT/DELETE retry as before",
+      "test": "tests/test_sbd_writes.py::test_the_raw_client_never_resends_a_post_that_may_have_been_applied",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-06",
+      "title": "The migration wizard's live delete-all and post had no plan hash: delete-all deleted rules added after its dry run, post overwrote rules edited since",
+      "severity": "medium",
+      "cwe": "CWE-367",
+      "asvs": "V11.1.6",
+      "status": "fixed",
+      "fix": "dry runs return a plan hash over the tenant's rules (and the proposal); live runs require it (400 before sign-in) and give plan_changed when the tenant moved; the page sends it",
+      "test": "tests/test_sbd_writes.py::test_delete_all_refuses_when_the_tenant_changed_since_its_dry_run",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-07",
+      "title": "Typed confirmations accepted Unicode look-alikes that str.upper() folds into the phrase (dotless i, long s) in the change queue apply, heal, stricter proposal approval and bulk-change phrases",
+      "severity": "low",
+      "cwe": "CWE-176",
+      "asvs": "V11.1.1",
+      "status": "fixed",
+      "fix": "security.typed_phrase_matches: case-insensitive per character, NFC only, deliberately no NFKC, blank never matches; used at all four sites",
+      "test": "tests/test_sbd_writes.py::test_every_typed_phrase_route_refuses_a_unicode_lookalike",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-08",
+      "title": "A provisioning key created through the synchronous apply route was stashed with no owner, so another writer holding the token could reveal it",
+      "severity": "low",
+      "cwe": "CWE-639",
+      "asvs": "V4.2.1",
+      "status": "fixed",
+      "fix": "ops_zpa._actor takes the run's actor from the audit scope (sync route) as well as the job",
+      "test": "tests/test_sbd_writes.py::test_a_key_from_a_synchronous_apply_is_bound_to_the_person_who_ran_it",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-09",
+      "title": "Remediation recipes pre-selected rule state ENABLED (a BLOCK_DROP firewall rule, a DECRYPT SSL rule, a BLOCK URL rule at order 1)",
+      "severity": "low",
+      "cwe": "CWE-1188",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "every recipe's state defaults to DISABLED; a missing state stays refused as required",
+      "test": "tests/test_sbd_writes.py::test_every_remediation_recipe_offers_its_rule_disabled_by_default",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-10",
+      "title": "AI Guard routing (ENABLED ZIA rules: SSL Inspect at the top, Allow above Block, forwarding) and a blocking detection policy applied without the typed phrase below ten changes, unlike the ZIA baseline",
+      "severity": "low",
+      "cwe": "CWE-841",
+      "asvs": "V11.1.1",
+      "status": "fixed",
+      "fix": "ops_aiguard asks its phrase every time a plan turns enforcement on; monitor-only keeps the count rule",
+      "test": "tests/test_sbd_writes.py::test_an_ai_guard_plan_that_turns_enforcement_on_needs_the_typed_phrase",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-11",
+      "title": "The pack deploy confidence tweak PUT the whole dictionary from the plan's snapshot, overwriting a change made while the run was writing",
+      "severity": "low",
+      "cwe": "CWE-367",
+      "asvs": "V11.1.6",
+      "status": "fixed",
+      "fix": "the dictionary is re-read right before the PUT; changed, gone or unreadable is skipped with the reason",
+      "test": "tests/test_sbd_writes.py::test_a_dictionary_tweak_never_overwrites_a_change_made_during_the_run",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-12",
+      "title": "A proposal rollback overwrote a value someone set after the apply; the apply's re-read before writing was not compared with the preview",
+      "severity": "low",
+      "cwe": "CWE-367",
+      "asvs": "V11.1.6",
+      "status": "fixed",
+      "fix": "rollback only while the rule holds the value the apply set; every write compares its re-read with the previewed value",
+      "test": "tests/test_sbd_writes.py::test_a_rollback_never_overwrites_a_value_someone_set_after_the_apply",
+      "commit": "972b17e"
+    },
+    {
+      "id": "SBD-WRITES-13",
+      "title": "A blank confirm_phrase from a plugin hid its confirm_always phrase, switching the typed confirmation off",
+      "severity": "info",
+      "cwe": "CWE-841",
+      "asvs": "V11.1.1",
+      "status": "fixed",
+      "fix": "admin_ops._finish takes the first non-blank of the two",
+      "test": "tests/test_sbd_writes.py::test_a_blank_own_phrase_never_hides_the_always_phrase",
+      "commit": "972b17e"
+    }
+  ],
+  "tests_added": 495
+}

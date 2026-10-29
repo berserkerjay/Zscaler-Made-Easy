@@ -2198,7 +2198,7 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
         raise HTTPException(status_code=404, detail="Change request not found.")
     if rec.get("status") != "approved":
         raise HTTPException(status_code=409, detail=f"Only an approved request can be applied; this one is {rec.get('status')}.")
-    if (req.confirm or "").strip().upper() != change_queue.CONFIRM_PHRASE:
+    if not _security.typed_phrase_matches(req.confirm, change_queue.CONFIRM_PHRASE):
         raise HTTPException(status_code=400, detail=f'Type "{change_queue.CONFIRM_PHRASE}" to confirm the apply.')
     if rec.get("kind") == "pack_deploy":
         _require_assessor(req)
@@ -2250,6 +2250,10 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
         except Exception as e:  # noqa: BLE001 — recorded, then reported by the job
             change_queue.finish_apply(rid, by=by, status="failed", result={"status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"})
             raise
+        if result.get("busy"):   # another run held the tenant: nothing was read or written, the request stays approved
+            log(str(result.get("message") or "Another run holds the tenant; nothing was written."))
+            result["change_request"] = change_queue.release(rid, by=by, reason=str(result.get("message") or "busy"))
+            return result
         status, note = _cq_outcome(kind, result)
         if status == "stale":
             log(change_queue.STALE_MESSAGE)
@@ -5151,10 +5155,22 @@ def _ops_apply_gate(req: OperationRequest) -> Tuple[Dict[str, Any], str]:
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     scope = _ops_scope(req, req.operation)
+    import admin_ops
+    if admin_ops.is_undo_only(req.operation) and not req.undo_of:
+        raise HTTPException(status_code=409, detail="This is the form of an Undo: it is applied only as the Undo of a recorded operation "
+                                                    "(Undo on that operation, then apply its preview). Nothing was written.")
     if req.undo_of:
         import deployments
-        if not deployments.get_operation(req.undo_of):
+        rec = deployments.get_operation(req.undo_of)
+        if not rec:
             raise HTTPException(status_code=404, detail="The operation to undo is not recorded.")
+        if rec.get("undone_by"):
+            raise HTTPException(status_code=409, detail=f"This operation was already undone (by {rec['undone_by']}).")
+        # An Undo applies exactly the inverse that was recorded and previewed, never
+        # another operation under its name (which would also mark this one undone).
+        if not rec.get("inverse") or admin_ops._canonical(rec["inverse"]) != admin_ops._canonical(req.operation):
+            raise HTTPException(status_code=409, detail="This is not the Undo recorded for that operation: preview its Undo again "
+                                                        "and apply that. Nothing was written.")
     return scope, by
 
 
@@ -7311,10 +7327,12 @@ async def migrate_enable(req: EnableRequest):
 # ── Step 4b: Delete All Existing Rules (gated) ───────────────────────
 class DeleteAllRequest(MigrateRequest):
     """Body for deleting every Web DLP rule (dry run by default; dry_run=false
-    needs confirm=true, the assessor, a writer and write mode)."""
+    needs confirm=true, the assessor, a writer, write mode and the dry
+    run's plan_hash)."""
     dry_run: bool = True
     confirm: bool = False
     assessor: str = ""
+    plan_hash: str = ""
 
 
 @app.post("/api/migrate/delete-all")
@@ -7326,9 +7344,17 @@ async def migrate_delete_all(req: DeleteAllRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Deleting every Inline Web DLP rule")
+        _require_migrate_plan_hash(req)
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(delete_all_rules, client, req.dry_run)
+    return await asyncio.to_thread(delete_all_rules, client, req.dry_run, None if req.dry_run else req.plan_hash)
+
+
+def _require_migrate_plan_hash(req: Any) -> None:
+    """A live migration write deletes or overwrites exactly what its dry run
+    showed: 400 before sign-in without the dry run's plan_hash."""
+    if not str(getattr(req, "plan_hash", "") or "").strip():
+        raise HTTPException(status_code=400, detail="plan_hash is required: run the dry run first and apply what it showed. Nothing was written.")
 
 
 # ── Step 5: Post New Rule Order ──────────────────────────────────
@@ -7337,8 +7363,9 @@ class PostRequest(MigrateRequest):
     proposed_rules: list[dict] = []
     dry_run: bool = True
     mode: str = "auto"  # "auto" | "create" | "update"
-    confirm: bool = False   # dry_run=false needs confirm=true, the assessor, a writer and write mode
+    confirm: bool = False   # dry_run=false needs confirm=true, the assessor, a writer, write mode and the dry run's plan_hash
     assessor: str = ""
+    plan_hash: str = ""
 
 
 @app.post("/api/migrate/post")
@@ -7357,9 +7384,11 @@ async def migrate_post(req: PostRequest):
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Posting rules to the tenant")
+        _require_migrate_plan_hash(req)
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
+    return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode,
+                                   None if req.dry_run else req.plan_hash)
 
 
 # ── Upload rules (from a JSON backup file) ───────────────────────────────
@@ -9430,7 +9459,7 @@ async def self_heal_tenant_heal(req: SelfHealHealRequest, request: Request):
     _security.require_writer()
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
-    if (req.confirm or "").strip().upper() != proposals.CONFIRM_PHRASE:
+    if not _security.typed_phrase_matches(req.confirm, proposals.CONFIRM_PHRASE):
         raise HTTPException(status_code=400, detail=f'Healing changes the tenant: type "{proposals.CONFIRM_PHRASE}" to confirm.')
     _require_write_assessor(req)
     ids = [str(x) for x in req.ids or [] if x][:50]

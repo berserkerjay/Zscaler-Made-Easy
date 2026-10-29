@@ -698,7 +698,8 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     prepared["status"] = "blocked" if prepared["blockers"] else ("nothing_to_do" if counts["change"] == 0 else "ready")
     # A plugin may name its own typed confirmation (a profile's name), or ask for its
     # phrase whatever the count (`confirm_always`, a delete); upper case, compared case-insensitively.
-    own = str(prepared.get("confirm_phrase") or prepared.get("confirm_always") or "").strip().upper()
+    # A blank value never hides the other one, nor switches the phrase off.
+    own = next((str(v).strip().upper() for v in (prepared.get("confirm_phrase"), prepared.get("confirm_always")) if str(v or "").strip()), "")
     prepared["confirm_phrase"] = own if own and counts["change"] else confirm_phrase(counts["change"])
     prepared["needs_activation"] = prepared.get("product") == "zia"
     prepared["kind"] = KIND
@@ -1813,10 +1814,22 @@ def inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
+def is_undo_only(spec: Any) -> bool:
+    """Is `spec` the form only an Undo uses (inverse()): a revert or undo
+    action, which deletes and restores objects by the ids a recorded run
+    gave? Such a spec is applied only as the Undo of that recorded
+    operation (undo_of, its inverse exactly), never as an ordinary
+    operation that could name objects this app never created."""
+    if not isinstance(spec, dict):
+        return False
+    return str(spec.get("action") or "").strip().lower() in ("revert", "undo") or spec.get("undo") is True
+
+
 def check_confirmation(prepared: Dict[str, Any], confirm_text: str) -> Optional[str]:
     """Why the typed confirmation does not match, or None."""
+    import security   # one rule for every typed phrase: case-insensitive, no look-alikes (no NFKC)
     phrase = prepared.get("confirm_phrase") or ""
-    if phrase and str(confirm_text or "").strip().upper() != phrase:
+    if phrase and not security.typed_phrase_matches(confirm_text, phrase):
         return f"This operation changes {prepared['counts']['change']} items: type {phrase} to confirm it."
     return None
 
@@ -1826,10 +1839,21 @@ def execute(client, spec: Dict[str, Any], *, plan_hash: str, scope: Dict[str, An
             cancel: Optional[threading.Event] = None, settle_seconds: float = 45.0) -> Dict[str, Any]:
     """Apply a previewed operation (see the module docstring). Returns
     {status, items (each with its run status), counts, activation,
-    verification, stopped, created, inverse, plan_hash, ...}."""
-    import zia_rate
+    verification, stopped, created, inverse, plan_hash, ...}. While another
+    write run holds the tenant (pack_ops.tenant_run) nothing is read or
+    written: status blocked, busy true."""
     if writes_enabled is not True:
         raise PermissionError("write mode is off: nothing was written")
+    with ops.tenant_run(client) as mine:
+        if not mine:
+            ops.audit_refusal("operation", client, plan_hash=plan_hash, reason=ops.BUSY_REASON)
+            return ops.busy_result(type=(spec or {}).get("type") if isinstance(spec, dict) else None, plan_hash=plan_hash)
+        return _execute_audited(client, spec, plan_hash=plan_hash, scope=scope, confirm_text=confirm_text, assessor=assessor,
+                                tenant_label=tenant_label, log=log, cancel=cancel, settle_seconds=settle_seconds)
+
+
+def _execute_audited(client, spec, *, plan_hash, scope, confirm_text, assessor, tenant_label, log, cancel, settle_seconds) -> Dict[str, Any]:
+    import zia_rate
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("operation", client, plan_hash=plan_hash, cancel=cancel) as box:
         box["result"] = _execute(client, spec, plan_hash=plan_hash, scope=scope, confirm_text=confirm_text, assessor=assessor,
                                  tenant_label=tenant_label, log=log, cancel=cancel, settle_seconds=settle_seconds)

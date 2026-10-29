@@ -330,9 +330,9 @@ WRITE_CASES: List[WriteCase] = [
     ("migrate-enable", "POST", "/api/migrate/enable",
      lambda w: ("/api/migrate/enable", dict(_b(**SCOPE), dry_run=False, confirm=True)), BOOL),
     ("migrate-delete-all", "POST", "/api/migrate/delete-all",
-     lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True)), BOOL),
+     lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH)), BOOL),
     ("migrate-post", "POST", "/api/migrate/post",
-     lambda w: ("/api/migrate/post", dict(_b(**SCOPE), dry_run=False, confirm=True, mode="update",
+     lambda w: ("/api/migrate/post", dict(_b(**SCOPE), dry_run=False, confirm=True, mode="update", plan_hash=HASH,
                                           proposed_rules=[{"id": 1, "name": "QA rule"}])), BOOL),
 ]
 

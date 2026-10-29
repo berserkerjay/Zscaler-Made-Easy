@@ -1096,6 +1096,27 @@ def _policy_drift(p: Dict[str, Any], channel: str, existing: Dict[str, Any],
 _CAMEL_RE = re.compile(r"(?<!^)(?=[A-Z])")
 
 
+def _changed_since_plan(zia, did: Any, planned: Any) -> Optional[str]:
+    """Re-read a dictionary right before a whole-object PUT built from the
+    plan's snapshot (a confidence tweak): why it must not be sent (it
+    changed since the plan, is gone, or cannot be read), or None. The same
+    listing as the plan, so the two reads compare like for like."""
+    try:
+        rows, err = _nx(zia.dlp_dictionary.list_dicts())
+    except Exception as e:  # noqa: BLE001 — a failed read is no proof it is unchanged
+        rows, err = None, str(e)
+    if err or rows is None:
+        return f"not sent: it could not be read again right before the change ({str(err)[:120]}); preview again"
+    fresh = next((d for d in rows if str(_field(d, "id")) == str(did)), None)
+    if fresh is None:
+        return "not sent: it is no longer in the tenant"
+    canon = lambda d: json.dumps(dictionary_update_body(d), sort_keys=True, default=str)  # noqa: E731
+    if canon(fresh) != canon(planned):
+        return ("not sent: it changed in the tenant since the plan was approved (someone edited it), so it is left as it is and "
+                "their change is kept; preview again")
+    return None
+
+
 def dictionary_update_body(existing: Any, **changes: Any) -> Dict[str, Any]:
     """The whole dictionary as the tenant has it, with `changes` applied,
     for PUT /dlpDictionaries/{id}. A PUT replaces the object, so a body with
@@ -2185,11 +2206,15 @@ def apply(
     limits, whichever thread runs it. Every write and the run's summary
     go to the audit log (pack_ops.audited_run)."""
     import zia_rate
-    with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
-        run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
-                               writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
-                               activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor, cancel=cancel)
-        return run["result"]
+    with ops.tenant_run(client) as mine:
+        if not mine:
+            ops.audit_refusal("deploy", client, plan_hash=plan_hash, reason=ops.BUSY_REASON)
+            return ops.busy_result(plan_hash=plan_hash)
+        with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
+            run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
+                                   writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
+                                   activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor, cancel=cancel)
+            return run["result"]
 
 
 def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,
@@ -2499,6 +2524,11 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 continue  # no-ops were already explained in the plan; nothing to report
             t = item["tenant"]
             existing = tenant["dictionaries"][t["name"]]
+            why = _changed_since_plan(zia, t["id"], existing)
+            if why:   # the PUT carries the whole dictionary as planned: never send it over someone else's change
+                _log(f"[dictionary] {t['name']}: {why}")
+                record(item, "skipped", reason=why)
+                continue
             out = ops.update(zia, "dictionary", t["id"],
                              dictionary_update_body(existing, confidence_threshold=item["definition"]["target_confidence"]), log=_log)
             if not out.ok:

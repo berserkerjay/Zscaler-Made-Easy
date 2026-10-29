@@ -320,7 +320,7 @@ def decide(tenant: str, pid: str, decision: str, *, by: str = "", note: str = ""
         p = (q.get("proposals") or {}).get(pid)
         if not p:
             raise ValueError("proposal not found (the queue may have been refreshed; reload)")
-        if decision == "approve" and p.get("gate") == "approve_double" and (confirm or "").strip().upper() != CONFIRM_PHRASE:
+        if decision == "approve" and p.get("gate") == "approve_double" and not __import__("security").typed_phrase_matches(confirm, CONFIRM_PHRASE):
             raise ValueError(f'this change makes the tenant stricter for users: type "{CONFIRM_PHRASE}" to approve it')
         now = _now()
         p.setdefault("history", []).append({"at": now, "decision": decision, "by": by, "note": note})

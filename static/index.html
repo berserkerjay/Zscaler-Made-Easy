@@ -2197,7 +2197,7 @@ async function step3bDeleteAll(dryRun) {
   // banner accurate when the user re-runs the preview.
   clearPendingAction('step3b');
   body.dry_run = dryRun;
-  if (!dryRun) tenantWriteBody(body);
+  if (!dryRun) { tenantWriteBody(body); body.plan_hash = window._step3bPlanHash || ''; }   // deletes only what the dry run listed
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
   try {
@@ -2205,6 +2205,7 @@ async function step3bDeleteAll(dryRun) {
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     if (r.status === 'dry_run') {
+      window._step3bPlanHash = r.plan_hash || '';
       const list = (r.would_delete || []).slice(0, 30).map(x => `<li><code style="color:var(--dim);">${escapeHtml(String(x.rule_id ?? ''))}</code> · ${escapeHtml(x.rule_name)} (${escapeHtml(String(x.action ?? ''))})</li>`).join('');
       el.innerHTML = `
         <div style="color:#dc2626;font-weight:600;">DRY-RUN: would delete ${r.would_delete_count} rule(s).</div>
@@ -2228,6 +2229,9 @@ async function step3bDeleteAll(dryRun) {
       } else {
         clearPendingAction('step3b');
       }
+    } else if (r.status === 'plan_changed') {
+      clearPendingAction('step3b');
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">The rules changed since the dry run: nothing was deleted.</div><div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>`;
     } else if (r.status === 'blocked') {
       el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>
         <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">
@@ -2503,6 +2507,7 @@ async function step5Post(dryRun) {
   body.dry_run = !!dryRun;
   if (!dryRun) tenantWriteBody(body);
   body.mode = document.getElementById('step5Mode').value || 'auto';
+  if (!dryRun) body.plan_hash = window._step5PlanHash || '';   // writes only while the tenant holds what the dry run read
   if (!dryRun) {
     if (!confirm(`This will write ${sourceRules.length} rule(s) live to the tenant in mode="${body.mode}".\n\nDry-run first if you haven't. Continue?`)) return;
     if (window.zdRateGate && !(await window.zdRateGate({ write: sourceRules.length, activate: 1 }, migrateCredBody(), `Write ${sourceRules.length} rule(s) to the tenant.`))) return;
@@ -2516,6 +2521,7 @@ async function step5Post(dryRun) {
     let summary = '';
     let activatePrompt = '';
     if (r.status === 'dry_run') {
+      window._step5PlanHash = r.plan_hash || '';
       const posts = (r.planned_updates || []).filter(x=>x.operation==='POST').length;
       const puts  = (r.planned_updates || []).filter(x=>x.operation==='PUT').length;
       summary = `<div style="margin-top:0.4rem;">Planned: <strong>${r.total}</strong> rule(s) (${posts} POST · ${puts} PUT)</div>`;
@@ -2529,6 +2535,9 @@ async function step5Post(dryRun) {
       summary = `<div style="margin-top:0.4rem;color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">✓ Succeeded: ${r.succeeded_count} · Failed: ${r.failed_count}</div>`;
       if (r.failed_count) summary += `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>`;
       clearPendingAction('step5');
+    } else if (r.status === 'plan_changed') {
+      clearPendingAction('step5');
+      summary = `<div style="margin-top:0.4rem;color:var(--warn);font-weight:600;">The rules changed since the dry run: nothing was written. Run the dry run again.</div>`;
     } else if (r.status === 'blocked') {
       summary = `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">Relaunch via <code>START_Zscaler_Made_Easy_WRITES_ENABLED.bat</code> to enable write actions.</div>`;
     }
