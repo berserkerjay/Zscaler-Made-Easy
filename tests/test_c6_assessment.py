@@ -92,6 +92,43 @@ def test_checks_that_used_to_pass_on_a_refused_read_now_do_not(cid):
     assert r.status == R.INFO and "HTTP 403" in r.detail
 
 
+ZCC_PROFILE_CHECKS = ["1.15", "1.16", "1.17", "1.18", "1.19", "1.20", "1.21", "1.22", "1.23"]
+ZCC_FORWARDING_CHECKS = ["1.24", "1.25", "1.26"]
+
+
+@pytest.mark.parametrize("cid", ZCC_PROFILE_CHECKS + ZCC_FORWARDING_CHECKS)
+def test_a_client_connector_check_with_nothing_returned_is_not_a_pass(cid):
+    """ASVS V7.4.1 · A04:2021 · CWE-755 · WSTG-BUSL-01: zero app or forwarding profiles is "could not be assessed" (INFO), never "all 0 profile(s)" PASS."""
+    # Arrange
+    cl = AllCode(200, [])
+    # Act
+    r = __import__("inspect").unwrap(_check(cid))(cl)
+    # Assert
+    assert r.status == R.INFO and "could not be assessed" in r.detail, (cid, r.status, r.detail)
+
+
+@pytest.mark.parametrize("cid, code", [("1.27", 403), ("1.28", 403), ("1.27", 401), ("1.28", 401)])
+def test_an_unreadable_company_or_privacy_read_names_its_status(cid, code):
+    """ASVS V7.4.1 · A04:2021 · CWE-755 · WSTG-ERRH-01: a refused companyInfo / privacyInfo read names its HTTP status, so the bare check is classed not permitted."""
+    # Arrange
+    cl = AllCode(code)
+    # Act
+    r = __import__("inspect").unwrap(_check(cid))(cl)
+    # Assert
+    assert r.status == R.INFO and f"HTTP {code}" in r.detail and _cls(r) == "not_permitted", r.detail
+
+
+def test_an_active_profile_is_still_assessed():
+    """ASVS V1.14.6 · CWE-440 · WSTG-BUSL-01: one active Windows profile with anti-tampering on is still judged (boundary: one profile)."""
+    # Arrange
+    cl = Fake({"/zcc/appProfiles": [{"name": "P", "device_type": 3, "active": True, "enableAntiTampering": True}],
+               "/zcc/companyInfo": {"enableAntiTampering": True}})
+    # Act
+    r = _check("1.15")(cl)
+    # Assert
+    assert r.status == R.PASS and "all 1 Windows profile" in r.detail
+
+
 def test_browser_isolation_403_is_not_permitted_not_unlicensed():
     """ASVS V7.4.1 · CWE-209 · WSTG-ERRH-01: 3.7 says a 403 is a refusal, a 404 is not licensed."""
     denied = A.c_3_7(Fake(codes={"/zia/browserIsolation/profiles": 403}))
