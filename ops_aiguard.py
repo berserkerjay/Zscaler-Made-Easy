@@ -81,6 +81,15 @@ _BOOKKEEPING = {"last_modified_time", "last_modified_by", "create_time_millis", 
                 "modified_time", "modified_by", "rule_type"}
 
 
+def is_builder_name(name: str) -> bool:
+    """Whether `name` is one this builder gives (names(prefix) for a valid
+    prefix): only those may be deleted or put back by an Undo."""
+    pre, mark, suffix = str(name).rpartition(MARK)
+    if not mark or (pre and not (pre.endswith("-") and _PREFIX.fullmatch(pre[:-1]))):
+        return False
+    return name in names(pre[:-1]).values()
+
+
 def names(prefix: str) -> Dict[str, str]:
     """Object names (ZIA allows 31 characters)."""
     def nm(suffix: str) -> str:
@@ -241,6 +250,15 @@ class _Plan:
     def status_of(self, key: str) -> Optional[str]:
         return next((u["status"] for u in self.p["items"] if u["key"] == key), None)
 
+    def done(self) -> Dict[str, Any]:
+        """The plan, asking for the typed phrase whatever the count of
+        changes (admin_ops._finish `confirm_always`): nothing this builder
+        writes is created disabled, so every change is live once saved (AI
+        Guard) or activated (ZIA, which the app does right after the writes)."""
+        n = sum(1 for u in self.p["items"] if u["status"] == "change")
+        self.p["confirm_always"] = f"APPLY {n} CHANGE{'' if n == 1 else 'S'}" if n else ""
+        return self.p
+
 
 def _bool(spec: Dict[str, Any], key: str, default: bool = True) -> bool:
     v = spec.get(key, default)
@@ -310,7 +328,7 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
             raise ao.OperationError("The AI Guard certificate must be one PEM certificate (-----BEGIN CERTIFICATE----- … -----END CERTIFICATE-----, "
                                     "at most 16 KB). Download it in the AI Guard portal: Tenant Settings > Integrations.")
     elif mode == "existing":
-        if not _ID.match(str(cert.get("id") or "")):
+        if isinstance(cert.get("id"), bool) or not _ID.fullmatch(str(cert.get("id") or "")):
             raise ao.OperationError("Pick the AI Guard root certificate already in ZIA.")
     elif mode:
         raise ao.OperationError("cert.mode must be 'existing' or 'upload'.")
@@ -546,7 +564,7 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
     if _bool(spec, "allow_in_zia"):
         _plan_allow(client, P, n, apps, parts, say, cancel)
     P.p["warnings"].append("Then, in the AI Guard portal: " + " ".join(s.replace("In the AI Guard portal, ", "") for s in ag.PORTAL_STEPS[:2]))
-    return P.p
+    return P.done()
 
 
 _STOP_WEB_USE = re.compile(r"^(DENY|BLOCK|CAUTION|ISOLATE)_AI_ML_WEB_USE$")
@@ -756,7 +774,7 @@ def _plan_policy(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cance
     if mode == "monitor":
         P.p["notes"].append("Monitor mode: AI Guard detects and logs; nothing is blocked. Preview again with Block once the detections look right.")
     P.p["warnings"].append("In the AI Guard portal, Tenant Settings > Security: turn on Store Prompts/Responses to see what was detected.")
-    return P.p
+    return P.done()
 
 
 # ── Undo ─────────────────────────────────────────────────────────────────
@@ -769,12 +787,13 @@ def _undo_steps(spec: Dict[str, Any], product: str) -> List[Dict[str, Any]]:
         if not isinstance(s, dict):
             raise ao.OperationError("Each Undo step must be an object.")
         kind, op, name = str(s.get("kind") or ""), str(s.get("op") or ""), str(s.get("name") or "")
-        if kind not in KINDS or not KINDS[kind]["ops"] or KINDS[kind]["product"] != product or op not in ("delete", "update"):
+        if kind not in KINDS or not KINDS[kind]["ops"] or KINDS[kind]["product"] != product or op not in ("delete", "update") \
+                or (op == "delete" and kind == "url_app_settings"):
             raise ao.OperationError("An Undo step names an object this builder does not change.")
-        if not _ID.match(str(s.get("id") or "")) or not name or len(name) > 128:
+        if isinstance(s.get("id"), bool) or not _ID.fullmatch(str(s.get("id") or "")) or not name or len(name) > 128:
             raise ao.OperationError("An Undo step needs the object's id and name.")
-        if op == "delete" and MARK not in name:
-            raise ao.OperationError(f"An Undo deletes only objects this builder created (their names carry {MARK}).")
+        if kind != "url_app_settings" and not is_builder_name(name):
+            raise ao.OperationError(f"An Undo deletes or puts back only objects this builder named (their names carry {MARK}).")
         if op == "update":
             setv, expect = s.get("set"), s.get("expect")
             if not isinstance(setv, dict) or not isinstance(expect, dict) or not setv:
@@ -813,6 +832,9 @@ def _plan_undo(client, spec: Dict[str, Any], type_name: str, product: str, say, 
         else:
             if fresh is None:
                 P.unit(key, s["kind"], s["name"], status="excluded", oid=s["id"], field=", ".join(s["set"]), reason=f"could not be read: {err}")
+            elif s["kind"] != "url_app_settings" and name_of(s["kind"], fresh) != s["name"]:
+                P.unit(key, s["kind"], s["name"], status="excluded", oid=s["id"], field=", ".join(s["set"]),
+                       reason=f"renamed since ({name_of(s['kind'], fresh)}): kept")
             elif _same(fresh, s["expect"]):
                 P.unit(key, s["kind"], s["name"], oid=s["id"], field=", ".join(s["set"]), before="as the change left it", after="put back",
                        step={"op": "update", "id": s["id"], "set": s["set"], "expect": s["expect"], "restore": s["expect"], "check": s["set"]})
@@ -821,7 +843,7 @@ def _plan_undo(client, spec: Dict[str, Any], type_name: str, product: str, say, 
             else:
                 P.unit(key, s["kind"], s["name"], status="excluded", oid=s["id"], field=", ".join(s["set"]),
                        reason="changed by someone else since: left as it is")
-    return P.p
+    return P.done()
 
 
 # ── the write ────────────────────────────────────────────────────────────
@@ -909,6 +931,9 @@ def _h_step(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
                              log=run.log)
             run.outcome(units, out, "delete")
         else:
+            if kind != "url_app_settings" and name_of(kind, fresh) != name:
+                run.mark(units, "conflict", f"renamed since the preview ({name_of(kind, fresh)}): left as it is")
+                return
             if not _same(fresh, expect):
                 run.mark(units, "conflict", f"changed in the tenant since the preview ({u['field']}); left as it is")
                 return
@@ -961,16 +986,24 @@ def _inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 # ── what the page picks from ─────────────────────────────────────────────
+def _readiness(client, cancel, **kw) -> Dict[str, Any]:
+    """ai_guard.readiness, its Stop raised as the engine's (a Stop, not a failed job)."""
+    try:
+        return ag.readiness(client, cancel=cancel, **kw)
+    except ag.Stopped as e:
+        raise ao.Stopped(str(e)) from None
+
+
 def _objects_routing(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     parts = _scope_parts(scope)
-    rd = ag.readiness(client, zia=True, aiguard=parts["aiguard"], log=say, cancel=cancel)
+    rd = _readiness(client, cancel, zia=True, aiguard=parts["aiguard"], log=say)
     return {"catalog": ag.catalog(), "readiness": rd, "certificates": rd["zia"]["certificates"], "proxies": rd["zia"]["proxies"],
             "gateways": rd["zia"]["gateways"], "genai_licensed": rd["zia"]["genai_licensed"], "names": names(""),
             "in_scope": {"ssl_inspection": parts["ssl"], "cloud_app_control": parts["cac"]}}
 
 
 def _objects_policy(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
-    rd = ag.readiness(client, zia=False, aiguard=True, log=say, cancel=cancel)
+    rd = _readiness(client, cancel, zia=False, aiguard=True, log=say)
     return {"catalog": ag.catalog(), "readiness": rd, "policies": rd["aiguard"]["policies"], "rules": rd["aiguard"]["rules"],
             "providers": rd["aiguard"]["providers"], "names": names("")}
 
