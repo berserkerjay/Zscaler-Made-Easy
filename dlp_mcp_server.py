@@ -334,7 +334,14 @@ def get_health() -> dict:
 
 # ── Entrypoint ───────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def main(argv: Optional[list] = None) -> int:
+    """Parse the command line and run the server. An HTTP transport bound
+    beyond loopback is refused unless --allow-remote says so on purpose:
+    the server has no authentication of its own and holds the tenant's
+    credentials (deny by default)."""
     parser = argparse.ArgumentParser(description="DLP Assessment MCP Server")
     parser.add_argument("--transport", default="streamable-http",
                         choices=["streamable-http", "stdio", "sse"],
@@ -344,10 +351,17 @@ if __name__ == "__main__":
     parser.add_argument("--host", default=os.environ.get("ZSCALER_MCP_BIND_HOST", "127.0.0.1"),
                         help="Bind address for HTTP transports (default: 127.0.0.1, loopback only). The server holds "
                              "tenant credentials and has no authentication of its own, so expose it beyond this "
-                             "machine only behind an authenticating proxy.")
-    args = parser.parse_args()
+                             "machine only behind an authenticating proxy, with --allow-remote.")
+    parser.add_argument("--allow-remote", action="store_true",
+                        help="Allow an HTTP transport to bind beyond loopback (put an authenticating proxy in front of it).")
+    args = parser.parse_args(argv)
 
-    if args.transport in ("streamable-http", "sse") and args.host not in ("127.0.0.1", "localhost", "::1"):
+    if args.transport in ("streamable-http", "sse") and args.host not in LOOPBACK:
+        if not args.allow_remote:
+            print(f"Refused: binding the MCP server to {args.host} would let anyone who can reach port {args.port} run "
+                  "assessments with this process's tenant credentials. Bind to 127.0.0.1, or put an authenticating proxy "
+                  "in front of it and pass --allow-remote.", file=sys.stderr)
+            return 2
         print(f"WARNING: MCP server bound to {args.host}: anyone who can reach port {args.port} can run assessments "
               "with this process's tenant credentials. Put an authenticating proxy in front of it.", file=sys.stderr)
     if args.transport == "stdio":
@@ -357,3 +371,8 @@ if __name__ == "__main__":
     else:  # mcp 1.x reads it from settings
         mcp.settings.host, mcp.settings.port = args.host, args.port
         mcp.run(transport=args.transport)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

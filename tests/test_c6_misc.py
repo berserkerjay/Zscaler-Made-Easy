@@ -1202,3 +1202,32 @@ def test_sbd_evidence_never_carries_a_secret(monkeypatch):
     blob = json.dumps(sbd.evaluate(None))
 
     assert "ui-token-not-real" not in blob and "sso-secret-not-real" not in blob
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "10.1.2.3", "::"])
+def test_mcp_http_bind_beyond_loopback_is_refused_by_default(mcp, monkeypatch, capsys, host):
+    """ASVS V14.1.3 · A05:2021 · CWE-306 · CWE-1188 · WSTG-CONF-02: the unauthenticated MCP server refuses to listen beyond loopback unless told on purpose."""
+    monkeypatch.setattr(mcp.mcp, "run", lambda **k: pytest.fail("the server started"))
+
+    code = mcp.main(["--host", host])
+
+    assert code == 2 and "Refused" in capsys.readouterr().err
+
+
+def test_mcp_http_bind_beyond_loopback_with_allow_remote_warns_and_runs(mcp, monkeypatch, capsys):
+    """ASVS V14.1.3 · CWE-1188: --allow-remote is the explicit opt-in; the server still warns."""
+    ran = []
+    monkeypatch.setattr(mcp.mcp, "run", lambda transport, host=None, port=None: ran.append((transport, host, port)))
+
+    code = mcp.main(["--host", "0.0.0.0", "--allow-remote", "--port", "9999"])
+
+    assert code == 0 and ran == [("streamable-http", "0.0.0.0", 9999)] and "WARNING" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argv", [[], ["--host", "localhost"], ["--host", "::1"], ["--transport", "stdio", "--host", "0.0.0.0"]])
+def test_mcp_loopback_and_stdio_start_without_a_flag(mcp, monkeypatch, argv):
+    """ASVS V14.1.3 · CWE-1188: the loopback default (and stdio, which binds nothing) starts as before."""
+    ran = []
+    monkeypatch.setattr(mcp.mcp, "run", lambda transport, host=None, port=None: ran.append((transport, host, port)))
+
+    assert mcp.main(argv) == 0 and len(ran) == 1
