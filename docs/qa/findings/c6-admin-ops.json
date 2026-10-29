@@ -350,7 +350,7 @@
    "cwe": "CWE-863",
    "asvs": "V4.1.3",
    "status": "fixed",
-   "fix": "A live /api/remediation/execute maps its recipe (RULE-DESC by rule_type) to an admin_ops policy and refuses one admin_ops.scope_for does not put in scope (400 before sign-in); unknown policy denied; dry runs unchanged; the page sends scopePageSelection(). The same check (_require_recipe_in_scope) runs when a fix recipe is filed in the change queue and when it is applied there (REVIEW-BACKEND-01)",
+   "fix": "A live fix maps its recipe (RULE-DESC by rule_type) to a rule policy and refuses one not in scope, 400 before sign-in; unknown policy denied; dry runs unchanged. The same check covers a fix filed in and applied from the change queue (REVIEW-BACKEND-01)",
    "test": "tests/test_c6_admin_ops.py::test_a_live_fix_outside_the_scope_page_is_refused_before_sign_in",
    "commit": "90f7b6c"
   },
