@@ -139,6 +139,39 @@ app = FastAPI(
     description="Full-auto assessment engine via OneAPI.",
 )
 
+
+# ── Request bodies are strict JSON (RFC 8259) ───────────────────────
+# Python's decoder also takes NaN, Infinity and -Infinity, which are not
+# JSON: a float field then held NaN and int(NaN) / int(inf) in a handler
+# was a ValueError / OverflowError (500). Every body, a request model's
+# or one a handler reads itself (_json_object), is decoded here; such a
+# literal is a decode error, so a 422 (json_invalid) or 400 before any
+# handler runs.
+from fastapi.routing import APIRoute as _APIRoute
+
+
+def _refuse_json_constant(name: str) -> Any:
+    raise json.JSONDecodeError(f"{name} is not valid JSON", name, 0)
+
+
+class _StrictJSONRequest(Request):
+    async def json(self) -> Any:
+        if not hasattr(self, "_json"):
+            self._json = json.loads(await self.body(), parse_constant=_refuse_json_constant)
+        return self._json
+
+
+class _StrictJSONRoute(_APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def strict_handler(request: Request):
+            return await handler(_StrictJSONRequest(request.scope, request.receive))
+        return strict_handler
+
+
+app.router.route_class = _StrictJSONRoute
+
 # Starlette runs the middleware added LAST as the outermost. The body-size
 # cap is added at the very end of this block (after CORS) so it wraps
 # everything: no other layer, the audit log included, buffers a body before
@@ -150,7 +183,6 @@ import security as _security
 import audit as _audit
 app.add_middleware(_audit.AuditMiddleware, writes_enabled=writes_enabled)   # innermost: sees the final status of every write call
 app.add_middleware(_security.UIAuthMiddleware)   # inside the headers layer: a 401 still carries the security headers
-app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # SSO (sso.py) is off by default; ZSCALER_SSO_ENABLED turns it on. Fail
@@ -189,6 +221,12 @@ app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
 # Outermost: caps declared and streamed (chunked) request bodies before any
 # other layer reads them (see BodySizeLimitMiddleware).
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
+# Outside even the body cap: every answer the app's layers make (the body
+# cap's 413, the rate limiter's 429, a CORS preflight, the UI token's 401)
+# carries CSP, nosniff and frame denial. It reads no request body. A 500 is
+# answered outside every middleware (Starlette's ServerErrorMiddleware), so
+# _safe_exception_handler sets the same headers itself.
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # ── Generic exception handler — never leak stack traces ────────────
@@ -196,9 +234,27 @@ _LOG_LINE_MAX = 2000      # characters of one traceback entry (or the message) w
 _LOG_TRACE_MAX = 32768    # characters of one whole traceback
 
 
+def _hardened(response: Response, request: Request) -> Response:
+    """`response` with the headers SecurityHeadersMiddleware sets, for an
+    answer made outside every middleware (an unhandled exception's 500)."""
+    h = response.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "no-referrer")
+    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), usb=()")
+    h.setdefault("Content-Security-Policy", _security.CONTENT_SECURITY_POLICY)
+    if request.url.path.startswith("/api/"):
+        h["Cache-Control"] = "no-store"
+    return response
+
+
 @app.exception_handler(Exception)
 async def _safe_exception_handler(request: Request, exc: Exception):
     """Catch-all so internal errors never expose tracebacks to the client."""
+    return _hardened(_internal_error(request, exc), request)
+
+
+def _internal_error(request: Request, exc: Exception) -> Response:
     if isinstance(exc, HTTPException):
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
     if is_debug():
@@ -1181,16 +1237,18 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     creds = _fill_from_profile(creds, getattr(req, "profile_id", ""))
     if not tenant_auth.complete(creds):
         env = tenant_auth.from_env()
-        if tenant_auth.complete(env):
-            creds = tenant_auth.merge(tenant_auth.without_identity(creds), env)
+        base = tenant_auth.without_identity(creds)
+        if tenant_auth.complete(env) and _same_sign_in(base, env):
+            creds = tenant_auth.merge(base, env)
     if not tenant_auth.complete(creds):
         cfg_path = os.path.join(_APP_DIR, "tenant_config.json")
         if os.path.exists(cfg_path):
             try:
                 with open(cfg_path, "r", encoding="utf-8") as f:
                     cfg = json.load(f) or {}
-                if tenant_auth.complete(cfg):
-                    creds = tenant_auth.merge(tenant_auth.without_identity(creds), cfg)
+                base = tenant_auth.without_identity(creds)
+                if isinstance(cfg, dict) and tenant_auth.complete(cfg) and _same_sign_in(base, cfg):
+                    creds = tenant_auth.merge(base, cfg)
             except Exception:
                 pass
     creds = tenant_auth.normalize(creds)
@@ -1323,7 +1381,28 @@ def _fill_from_profile(creds: Dict[str, str], profile_id: str) -> Dict[str, str]
         prof = None
     if not prof:
         return creds
-    return tenant_auth.merge(creds, tenant_profiles.creds_from(prof))
+    stored = tenant_profiles.creds_from(prof)
+    if not _same_sign_in(creds, stored):
+        return creds
+    return tenant_auth.merge(creds, stored)
+
+
+def _same_sign_in(typed: Dict[str, Any], stored: Dict[str, Any]) -> bool:
+    """Whether a stored sign-in (a profile, the environment, tenant_config.json)
+    may fill the blanks of `typed`: no typed vanity domain, client id or
+    admin username names another tenant than the stored one. A stored
+    secret is only ever sent with its own identity, to its own tenant's
+    sign-in host (the vanity domain decides the ZIdentity host); typing
+    another tenant's name leaves it unused (fail closed: the sign-in is
+    then incomplete and refused with the missing field)."""
+    t, s = tenant_auth.normalize(typed), tenant_auth.normalize(stored)
+    for key, fold in (("vanity_domain", True), ("client_id", False), ("username", True)):
+        a, b = t[key], s[key]
+        if fold:
+            a, b = a.casefold(), b.casefold()
+        if a and b and a != b:
+            return False
+    return True
 
 
 def _validate_creds(creds: Dict[str, str]) -> Dict[str, str]:
@@ -1773,6 +1852,19 @@ class LiveFeedRequest(TenantCredsRequest):
     from_page: bool = False
 
 
+_LIVE_TALLY_KEYS = ("seen", "enforced", "monitor", "unknown_action", "open", "real", "not_real")
+
+
+def _live_tally(stats: Any) -> Optional[Dict[str, int]]:
+    """The running tally the page sends back (untrusted): its counters as
+    whole numbers from 0 to 10**12 (anything else is 0), None to start a
+    new one. A missing or non-numeric counter was a KeyError / TypeError (500)."""
+    if not isinstance(stats, dict) or not stats:
+        return None
+    num = lambda v: max(0, min(v, 10 ** 12)) if isinstance(v, int) and not isinstance(v, bool) else 0  # noqa: E731
+    return {k: num(stats.get(k)) for k in _LIVE_TALLY_KEYS}
+
+
 @app.post("/api/live-feed")
 async def live_feed_poll(req: LiveFeedRequest):
     """Workflow Automation DLP incidents created since the last poll,
@@ -1814,7 +1906,7 @@ async def live_feed_poll(req: LiveFeedRequest):
     requested_scopes, requested_channels, _ = _scope_selection(req)
     raw = await asyncio.to_thread(_build_client, req)
     required_controls = await asyncio.to_thread(dlp_analysis.inspect, raw, requested_scopes, requested_channels)
-    stats = detection_health.live_stats(req.stats or None, poll["incidents"], rules_by_name)
+    stats = detection_health.live_stats(_live_tally(req.stats), poll["incidents"], rules_by_name)
     connector = await asyncio.to_thread(_live_connector_context, creds, sc["scopes"])
     return {"incidents": poll["incidents"], "next_since": poll["next_since"], "errors": poll["errors"], "stats": stats,
             "tenant_label": label, "read_at": poll["read_at"], "coverage_note": LIVE_FEED_COVERAGE_NOTE,
@@ -3273,7 +3365,17 @@ async def dlp_pack_job_cancel(job_id: str, request: Request):
         raise HTTPException(status_code=404, detail="No such job.")
     if _security.from_extension(request) and not (job.kind in _security.EXTENSION_JOB_KINDS and job.started_by == "extension"):
         raise HTTPException(status_code=403, detail="The browser extension may stop only the export it started. Stop this job in Zscaler Made Easy.")
+    _require_job_owner(job, request)
     return {"job_id": job.id, "cancelled": pack_jobs.cancel(job_id), "status": job.status}
+
+
+def _require_job_owner(job: Any, request: Request) -> None:
+    """403 when the job was started by someone else (SSO: each person is
+    their own actor; without SSO every request is the same local actor, so
+    nothing changes). A job whose starter is unknown stays stoppable."""
+    owner = getattr(job, "actor", None)
+    if owner and _actor(request) != owner:
+        raise HTTPException(status_code=403, detail="This job was started by someone else; only the person who started it can stop it.")
 
 
 def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, Any]:
