@@ -637,7 +637,8 @@ def z_device_fleet(cl):
     if not devs:
         return R(R.INFO, f"Devices: not readable (getDevices, HTTP {code}).")
     n = len(devs)
-    reg = [d for d in devs if str(_v(d, "registrationState", "state", default="")).lower() in ("registered", "1", "active", "") and not str(_v(d, "state", default="")).lower() in ("removed", "orphaned", "inactive")]
+    from dlp_assessment_full_auto import _ZCC_ORPHANED, _zcc_state
+    reg = [d for d in devs if _zcc_state(_v(d, "registrationState", "state", default="")) in ("registered", "active", "") and _zcc_state(_v(d, "state")) not in _ZCC_ORPHANED]
     strict_off = [d for d in reg if _falsy_set(_v(d, "strictEnforcement"))]
     tamper_off = [d for d in reg if _falsy_set(_v(d, "antiTamperingStatus"))]
     t1 = [d for d in reg if str(_v(d, "tunnelVersion", "zccTunnelVersion", default="")).strip() in ("1", "1.0", "ZSCALER_TUNNEL_1", "TUNNEL1")]

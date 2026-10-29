@@ -128,6 +128,7 @@
       }
       last = snap.result; lastJob = job;
       render(last, snap.logs || []);
+      instProfiles();
       ['zfExpPlan', 'zfExpSummary', 'zfExpXlsx'].forEach(id => setEnabled(id, true));
       setEnabled('zfExpDevices', !!(last.devices || []).length);
       say(`Fleet read. ${last.banner}`);
@@ -317,5 +318,72 @@
   $('zfExpSummary').addEventListener('click', () => exportCsv('summary'));
   $('zfExpXlsx').addEventListener('click', () => exportCsv('all', 'xlsx'));
   $('zfRun').addEventListener('click', run);
+
+  // ── Install command builder (POST /api/zcc/install): secrets masked unless revealed ──
+  let instCat = null, instOut = null, reveal = false;
+  async function instLoad() {
+    try { const r = await fetch('/api/zcc/install/catalog', { cache: 'no-store' }); if (r.ok) instCat = await r.json(); } catch (e) { instCat = null; }
+    instForm();
+  }
+  function instForm() {
+    const plat = $('zfInstPlat').value;
+    const types = (instCat && instCat.installer_types[plat]) || (plat === 'macos' ? ['app'] : ['msi', 'exe']);
+    $('zfInstType').innerHTML = types.map(t => `<option value="${E(t)}">${E(t === 'app' ? 'macOS app' : t.toUpperCase())}</option>`).join('');
+    const params = ((instCat && instCat.params) || []).filter(p => (plat === 'macos' ? p.mac : (p.msi || p.exe)) && p.key !== 'policyToken');
+    $('zfInstOpts').innerHTML = params.map(p => {
+      const id = `zfIo_${E(p.key)}`;
+      if (p.type === 'toggle' || p.type === 'toggle_on') return `<label title="${E(p.help)}"><input type="checkbox" id="${id}" data-k="${E(p.key)}"${p.type === 'toggle_on' ? ' checked' : ''}> ${E(p.label)}</label>`;
+      if (p.type === 'cloud') return `<label title="${E(p.help)}">${E(p.label)} <select id="${id}" data-k="${E(p.key)}"><option value="">Not set</option>${(instCat.clouds || []).map(c => `<option value="${E(c)}">${E(c)}</option>`).join('')}</select></label>`;
+      return `<label title="${E(p.help)}">${E(p.label)} <input type="${p.secret ? 'password' : 'search'}" id="${id}" data-k="${E(p.key)}" maxlength="256" autocomplete="off"></label>`;
+    }).join('');
+    instProfiles();
+  }
+  function instProfiles() {
+    const plat = $('zfInstPlat').value, sel = $('zfInstProfile');
+    const rows = ((last && last.profiles) || []).filter(p => p.id != null && String(p.platform || '').toLowerCase() === plat);
+    sel.innerHTML = '<option value="">None (no policy token)</option>' + rows.map(p => `<option value="${E(p.id)}">${E(p.name)}</option>`).join('');
+    if (!rows.length) sel.title = 'Read the fleet first to pick an app profile.';
+  }
+  async function instBuild() {
+    const values = {};
+    $('zfInstOpts').querySelectorAll('[data-k]').forEach(el => { values[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; });
+    const payload = Object.assign({}, $('zfInstProfile').value ? Object.assign({}, credBody(), scopeSelection()) : {},
+      { platform: $('zfInstPlat').value, installer: $('zfInstType').value, installer_name: $('zfInstName').value.trim(),
+        app_profile_id: $('zfInstProfile').value, values, reveal });
+    const st = $('zfInstStatus'); st.textContent = $('zfInstProfile').value ? 'Reading the app profile\'s policy token…' : 'Building…';
+    try {
+      const r = await fetch('/api/zcc/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      instOut = d;
+      const pre = $('zfInstCmd'); pre.hidden = false; pre.textContent = d.command;
+      const notes = [...(d.errors || []).map(x => `Fix: ${x}`), ...(d.warnings || [])];
+      st.textContent = (d.masked && d.masked.length ? `Masked: ${d.masked.join(', ')}. ` : d.revealed ? 'Secrets are shown: copy them only where they belong. ' : '') + (notes.join(' ') || 'Ready.');
+      st.classList.toggle('bad', !!(d.errors || []).length);
+      setEnabled('zfInstCopy', true); setEnabled('zfInstSave', true);
+      say(d.errors && d.errors.length ? `The command needs fixing: ${d.errors[0]}` : 'Install command built.');
+    } catch (e) { st.textContent = `The command could not be built: ${e.message}`; st.classList.add('bad'); say(st.textContent); }
+  }
+  $('zfInstPlat').addEventListener('change', instForm);
+  $('zfInstBuild').addEventListener('click', instBuild);
+  $('zfInstReveal').addEventListener('click', () => {
+    reveal = !reveal;
+    $('zfInstReveal').setAttribute('aria-pressed', reveal ? 'true' : 'false');
+    $('zfInstReveal').textContent = reveal ? 'Mask secrets' : 'Reveal secrets';
+    if (instOut) instBuild();
+  });
+  $('zfInstCopy').addEventListener('click', async () => {
+    if (!instOut) return;
+    try { await navigator.clipboard.writeText(instOut.command); say(instOut.masked && instOut.masked.length ? 'Copied, with the secrets masked.' : 'Copied.'); }
+    catch (e) { say('Copy is blocked in this browser: select the command and copy it.'); }
+  });
+  $('zfInstSave').addEventListener('click', () => {
+    if (!instOut) return;
+    const url = URL.createObjectURL(new Blob([instOut.script], { type: 'text/plain' }));
+    const a = document.createElement('a'); a.href = url; a.download = instOut.script_name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    say(instOut.masked && instOut.masked.length ? `Downloaded ${instOut.script_name}, with the secrets masked: reveal them first for a script that runs as is.` : `Downloaded ${instOut.script_name}.`);
+  });
+  instLoad();
   tenantChoices();
 })();

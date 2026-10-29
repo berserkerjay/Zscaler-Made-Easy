@@ -566,6 +566,7 @@ _UPLOAD_ROUTES = [
     ("/api/compliance/report", "compliance_mapping", "get_framework_summary", {"checks": [{"id": "1.1", "status": "PASS"}]}),
     ("/api/benchmarks", "benchmarks", "benchmark_report", {"checks": [{"id": "1.1", "status": "PASS"}]}),
     ("/api/benchmarks/export", "benchmarks", "benchmark_report", {"checks": [{"id": "1.1", "status": "PASS"}]}),
+    ("/api/pov/import", "pov", "import_pov", {"profile_id": "acme", "content": "{}"}),
 ]
 
 
