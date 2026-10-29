@@ -118,6 +118,10 @@ def assessment_checks(checks, declared, scopes):
     return selected, hidden, resolved
 
 
+# The first path segment of a read -> the scope that must be selected for it.
+_SERVICE_SCOPE = {"zcc": "zcc", "zpa": "zpa", "zdx": "zdx", "zidentity": "zidentity", "zid": "zidentity", "ziam": "zidentity"}
+
+
 class ScopedClient(channel_scope.ScopedClient):
     """The analysis footprint never implicitly enables another service."""
     def __init__(self, client, declared, scopes):
@@ -126,8 +130,10 @@ class ScopedClient(channel_scope.ScopedClient):
 
     def get(self, ep, *args, **kwargs):
         path = str(ep or "").removeprefix("raw:")
-        service = path.lstrip("/").split("/", 1)[0]
-        if service in {"zcc", "zpa", "zdx", "zidentity"} and service not in self._analysis_scopes:
+        # The short ZIdentity paths are /zid/... and the resolved ones /ziam/...:
+        # both belong to the ZIdentity scope.
+        service = _SERVICE_SCOPE.get(path.lstrip("/").split("/", 1)[0])
+        if service and service not in self._analysis_scopes:
             self.refused.append(path)
             rec = getattr(self._tl, "unanswered", None)
             if rec is not None:
