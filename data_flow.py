@@ -228,6 +228,40 @@ def stop_on(client: Any, cancel: Any) -> Iterator[None]:
 
 
 # ── Client Connector readers ──────────────────────────────────────────
+_LOCAL_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16",
+                                                 "100.64.0.0/10", "fc00::/7", "fe80::/10", "::1/128")]
+
+
+def _family(entry: str) -> Optional[int]:
+    p = _zpm._parse_entry(str(entry).strip())
+    return None if p is None else p[1].version
+
+
+def _non_public(entry: str) -> bool:
+    """Whether an IP bypass entry lies wholly in private, loopback,
+    link-local or shared address space, where a public host name never
+    resolves (the assumption pac_eval's "assume_public" states too)."""
+    try:
+        if "-" in entry:
+            ends = [ipaddress.ip_network(x.strip()) for x in entry.split("-", 1)]
+        else:
+            ends = [ipaddress.ip_network(entry, strict=False)]
+        return all(any(e.version == n.version and e.subnet_of(n) for n in _LOCAL_NETS) for e in ends)
+    except (ValueError, TypeError):
+        return False
+
+
+def _rule_order(v: Any) -> Optional[int]:
+    """An app profile's ruleOrder as a number ("1" and 1 alike); one that is
+    not a whole number has no order (it sorts last), never a TypeError."""
+    if isinstance(v, bool):
+        return None
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def _hostname_of(dest: str) -> str:
     d = (dest or "").strip().lower()
     d = re.sub(r"^[a-z]+://", "", d)
@@ -241,7 +275,7 @@ def _domain_hit(patterns: Iterable[str], host: str) -> Optional[str]:
         pat = str(p or "").strip().lower()
         if not pat:
             continue
-        pat_host = _hostname_of(pat)
+        pat_host = _zpm.entry_host(_hostname_of(pat))   # an IDN entry in punycode, as the host is
         if fnmatch.fnmatch(host, pat_host) or host == pat_host.lstrip("*.") or host.endswith("." + pat_host.lstrip("*.")):
             return str(p)
     return None
@@ -309,7 +343,8 @@ def forwarding_actions(profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                 label, kind = classify_mode(mode_raw)
                 if str(mode_raw) == "1" and _truthy(_v(entry, "enablePacketTunnel")):
                     label, kind = "Z-Tunnel 2.0", "tunnel"
-                proxy = _v(entry, "systemProxyData", default={}) or {}
+                proxy = _v(entry, "systemProxyData", default={})
+                proxy = proxy if isinstance(proxy, dict) else {}
                 out[classify_network(net_raw)] = {"mode_label": label, "mode_kind": kind,
                     "pac_url": _v(proxy, "pacURL") or _v(entry, "customPac"),
                     "raw": {k: v for k, v in entry.items() if re.sub(r"[^a-z0-9]", "", k.lower()) in
@@ -385,6 +420,11 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
                     "ssl_cert": _truthy(_v(p, "sslCertInstall", "installSslCert", "sslCertificateEnabled")),
                     "bypass": {"domains": domains, "apps": apps, "processes": processes, "ips": ips, "vpn_gateways": vpn},
                     "groups": _names(p.get("groups") or p.get("groupNames") or []),
+                    "users": _names(p.get("users") or p.get("userNames") or []),
+                    # Z-Tunnel 2.0's IP lists (zscaler-sdk-python 1.11.3 zcc/web_policy.py:
+                    # packet_tunnel_exclude_list / _include_list, comma-separated CIDRs).
+                    "tunnel": {k: _cidrs(_v(p, f)) + _cidrs(_v(p, f + "ForIPv6"))
+                               for k, f in (("exclude", "packetTunnelExcludeList"), ("include", "packetTunnelIncludeList"))},
                 })
                 if keep_raw:
                     out["app_profiles"][-1]["raw"] = p
@@ -439,6 +479,12 @@ def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, can
         except Exception as e:  # noqa: BLE001
             out["errors"].append(f"/zia/pacFiles: {e}")
     return out
+
+
+def _cidrs(v: Any) -> List[str]:
+    """A comma-separated CIDR list (or a list) as entries; anything else is none."""
+    items = re.split(r"[,;\s]+", v) if isinstance(v, str) else v if isinstance(v, (list, tuple)) else []
+    return [str(x).strip() for x in items if isinstance(x, (str, int)) and str(x).strip()][:2000]
 
 
 def _pac_direct_hosts(content: str) -> List[str]:
@@ -732,15 +778,51 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         if supplied_type.startswith("FTCATEGORY_"):
             file_types.add(supplied_type)
 
+    try:
+        dest_ip: Any = ipaddress.ip_address(host)
+    except ValueError:
+        dest_ip = None
+
     # 1. Client Connector app profile
     profiles = [p for p in zcc.get("app_profiles", []) if p.get("active", True) and (p["platform"] in (platform, "all", ""))]
-    prof = sorted(profiles, key=lambda p: (p.get("priority") is None, p.get("priority") or 0))[0] if profiles else None
+    ordered = sorted(profiles, key=lambda p: (_rule_order(p.get("priority")) is None, _rule_order(p.get("priority")) or 0))
+    # The first profile in order whose users and groups include the user
+    # applies; one with neither applies to everyone. For any user, a scoped
+    # profile ahead of the first unscoped one decides only for its own users
+    # and groups: the answer depends on who the user is, unless every one of
+    # them treats this destination as the unscoped one does.
+    scoped = lambda p: bool(p.get("groups") or p.get("users"))  # noqa: E731
+    everyone = next((p for p in ordered if not scoped(p)), None)
+    ahead = ordered[:ordered.index(everyone)] if everyone is not None else list(ordered)
+
+    def treats(p: Optional[Dict[str, Any]]) -> Tuple[Any, ...]:
+        if p is None:
+            return (None,)
+        hit_app = any(dest["label"].lower() in str(a).lower() or str(a).lower() in dest["label"].lower()
+                      for a in p["bypass"]["apps"]) if dest["kind"] in ("application", "unknown") else False
+        tl = p.get("tunnel") or {}
+        ip_side = tuple(any(_zpm._ip_rel(dest_ip, str(e).strip()) for e in lst or []) for lst in
+                        (p["bypass"].get("ips"), tl.get("exclude"), tl.get("include"))) if dest_ip is not None else ()
+        return (str(p.get("forwarding_profile")), bool(_domain_hit(p["bypass"]["domains"], host)) if host else False, hit_app,
+                p.get("pac_url"), bool(p.get("ssl_cert")), ip_side, bool(tl.get("include")))
+    by_user = [p for p in ahead if treats(p) != treats(everyone)]
+    # The hops below follow the unscoped profile (else the first scoped one).
+    prof = everyone if everyone is not None else (ordered[0] if ordered else None)
     zcc_out = "zcc" in nis
     if zcc_out:
         prof = None
         hops.append(_hop("zcc", "Client Connector app profile", "out_of_scope", None,
                          nis["zcc"] + " Whether the client bypasses this destination is not assessed; the hops below assume it reaches Zscaler.",
                          None, why="not in scope"))
+    elif by_user:
+        who = lambda p: _zpm._short([f"group {g}" for g in p.get("groups") or []] + [f"user {u}" for u in p.get("users") or []], 3)  # noqa: E731
+        hops.append(_hop("zcc", "Client Connector app profile", "conditional", None,
+                         "Which app profile applies depends on who the user is: "
+                         + "; ".join(f"'{p['name']}' applies to {who(p)}" for p in by_user[:3])
+                         + (f"; everyone else gets '{everyone['name']}'" if everyone else f"; a user outside them has no {platform} app profile")
+                         + ", and they treat this destination differently. Unable to verify how the device reaches it for any user.",
+                         None, why="app profile depends on the user", candidate_rules=[{"id": p["id"], "name": p["name"]} for p in by_user + ([everyone] if everyone else [])],
+                         missing_context=["identity / app profile assignment"]))
     elif not prof and (zcc.get("read_status", {}).get("app_profiles") == "unverified" or
                        any("/zcc/webPolicies" in e or "/zcc/appProfiles" in e for e in zcc.get("errors", []))):
         hops.append(_hop("zcc", "Client Connector app profile", "unknown", None,
@@ -755,17 +837,28 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     else:
         b = prof["bypass"]
         hit_domain = _domain_hit(b["domains"], host) if host else None
+        # IP bypasses (destination exclusions): an address in one never
+        # enters the tunnel. A host name is not resolved: it is assumed to
+        # resolve outside them, and that assumption is said.
+        ip_entries = [str(x).strip() for x in b.get("ips") or [] if _zpm._is_ip_entry(str(x).strip())]
+        hit_ip = next((e for e in ip_entries if _zpm._ip_rel(dest_ip, e)), None) if dest_ip is not None else None
+        hit_domain = hit_domain or (_domain_hit([x for x in b.get("ips") or [] if not _zpm._is_ip_entry(str(x).strip())], host) if host and dest_ip is None else None)
         hit_app = next((a for a in b["apps"] if dest["label"].lower() in str(a).lower() or str(a).lower() in dest["label"].lower()), None) if dest["kind"] in ("application", "unknown") else None
         notes = []
         if not prof["strict_enforcement"]:
             notes.append("strict enforcement off (a user can disable the client)")
         if not prof["ssl_cert"]:
             notes.append("Zscaler root certificate not pushed by this profile (decryption fails unless deployed by MDM)")
-        if hit_domain or hit_app:
+        public = [e for e in ip_entries if not _non_public(e)]
+        if public and dest_ip is None and host:
+            notes.append(f"{len(public)} IP bypass entr{'y' if len(public) == 1 else 'ies'} ({_zpm._short(public, 3)}) apply if {host} resolves into them; "
+                         "it is not resolved and is assumed to resolve outside them")
+        if hit_domain or hit_app or hit_ip:
             reaches_zscaler = False
             ends = "zcc"
+            what = f"domain {hit_domain}" if hit_domain else f"IP {hit_ip}" if hit_ip else f"application {hit_app}"
             hops.append(_hop("zcc", "Client Connector app profile", "bypass", {"name": prof["name"], "id": prof["id"]},
-                             f"'{prof['name']}' bypasses this destination ({'domain ' + hit_domain if hit_domain else 'application ' + str(hit_app)}): the traffic leaves the device directly and never reaches Zscaler.",
+                             f"'{prof['name']}' bypasses this destination ({what}): the traffic leaves the device directly and never reaches Zscaler.",
                              _weak("high", "Bypassed at the client", "Remove the bypass from the app profile, or accept that only Endpoint DLP can see this traffic and make sure it is enabled."),
                              profile=prof["name"], notes=notes))
         else:
@@ -824,8 +917,27 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                                  f"'{fwd['name']}': the forwarding mode for {net_label} is '{label}', which this tool does not recognise as tunnel, PAC or none. Downstream policy results are conditional on traffic reaching ZIA. Raw value kept for review.",
                                  None, mode=label, raw=act.get("raw"), why=f"mode '{label}' not recognised for {net_label.lower()}"))
             else:
-                hops.append(_hop("forwarding", "Forwarding profile", "pass", {"name": fwd["name"], "id": fwd["id"]},
-                                 f"'{fwd['name']}' sets '{label}' for {net_label}: all traffic is tunnelled to ZIA.", None, mode=label, raw=act.get("raw")))
+                # Z-Tunnel 2.0 tunnels by address: the app profile's packet
+                # tunnel exclusions leave it, and with an inclusion list of its
+                # address family only those addresses enter it.
+                tl = (prof or {}).get("tunnel") or {}
+                outside = None
+                if label == "Z-Tunnel 2.0" and dest_ip is not None:
+                    ex = next((e for e in tl.get("exclude") or [] if _zpm._ip_rel(dest_ip, e)), None)
+                    inc = [e for e in tl.get("include") or [] if _family(e) == dest_ip.version]
+                    if ex:
+                        outside = f"the app profile '{prof['name']}' excludes {ex} from the packet tunnel"
+                    elif inc and not any(_zpm._ip_rel(dest_ip, e) for e in inc):
+                        outside = f"the app profile '{prof['name']}' tunnels only {_zpm._short(inc, 3)}"
+                if outside:
+                    reaches_zscaler = False; ends = "forwarding"
+                    hops.append(_hop("forwarding", "Forwarding profile", "bypass", {"name": fwd["name"], "id": fwd["id"]},
+                                     f"'{fwd['name']}' sets '{label}' for {net_label}, but {outside}: traffic to {host} leaves the device directly and never reaches Zscaler.",
+                                     _weak("high", "Outside the packet tunnel", "Remove the address from the app profile's packet tunnel exclusions (or add it to its inclusions), or accept that only Endpoint DLP sees it."),
+                                     mode=label, raw=act.get("raw")))
+                else:
+                    hops.append(_hop("forwarding", "Forwarding profile", "pass", {"name": fwd["name"], "id": fwd["id"]},
+                                     f"'{fwd['name']}' sets '{label}' for {net_label}: all traffic is tunnelled to ZIA.", None, mode=label, raw=act.get("raw")))
 
     # 3. PAC file DIRECT statements
     if reaches_zscaler and "pac" in nis and not zcc_out and (mode_kind == "pac" or (prof and prof.get("pac_url")) or (fwd and fwd.get("pac_url"))):
@@ -1031,7 +1143,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # 9. File Type Control
         if ends not in ("ssl", "url", "cac"):
             ftc = [(r, _generic_matches(r, dest)) for r in sorted(zia["ftc"], key=_policy_order) if r["enabled"] and proto_ok(r)
-                   and (not operation or r["operation"] in (operation, "", "ANY"))
+                   and (not operation or r["operation"] in (operation, "", "ANY") or (r["operation"] == "UPLOAD_DOWNLOAD" and operation in ("UPLOAD", "DOWNLOAD")))
                    and (not file_types or not r["file_types"] or "ANY" in r["file_types"] or bool(file_types & set(r["file_types"])))]
             ftc = [(r, m) for r, m in ftc if m]
             if "ftc" in nis:
@@ -1222,7 +1334,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     weak_points += [dict(c["weak_point"], hop=k, hop_label=c["label"]) for k, c in channels.items() if c.get("weak_point")]
     sev_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
     weak_points.sort(key=lambda w: sev_order.get(w["severity"], 9))
-    conditional = any(h["key"] in ("zcc", "forwarding") and h["status"] in ("unknown", "warn") and not h.get("decided_by") for h in hops)
+    conditional = any(h["key"] in ("zcc", "forwarding") and h["status"] in ("unknown", "warn", "conditional") and not h.get("decided_by") for h in hops)
     conditional = conditional or any(h["key"] == "forwarding" and h["status"] == "unknown" for h in hops)
     conditional = conditional or any(h["key"] == "pac" and h["status"] == "unknown" for h in hops)
     outcome = ("bypassed" if not reaches_zscaler else "unknown" if conditional else "blocked" if ends in ("ssl", "url", "cac", "ftc") else
@@ -1251,7 +1363,8 @@ def load_packs() -> List[Dict[str, Any]]:
         out = []
         for p in discover_packs():
             try:
-                pols = json.load(open(f"{p['dir']}/configs/dlp_policies.json", encoding="utf-8"))
+                with open(f"{p['dir']}/configs/dlp_policies.json", encoding="utf-8") as fh:
+                    pols = json.load(fh)
             except Exception:  # noqa: BLE001
                 pols = []
             out.append({"id": p["id"], "name": p.get("name") or p["id"], "policies": [{"name": x.get("name"), "channel": x.get("channel", "web")} for x in pols]})

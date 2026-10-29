@@ -140,6 +140,9 @@ def _hex(digits: str) -> float:
         return float("inf")
 
 
+_DIGITS = frozenset("0123456789")   # JavaScript's decimal digits: "٣" or "²" is no digit there
+
+
 def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
     """(kind, value, position) tokens; kind is id, num, str or p. Linear:
     every character is looked at a bounded number of times."""
@@ -169,7 +172,7 @@ def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
             toks.append(("id", src[i:j], i))
             i = j
             continue
-        if c.isdigit() or (c == "." and i + 1 < n and src[i + 1].isdigit()):
+        if c in _DIGITS or (c == "." and i + 1 < n and src[i + 1] in _DIGITS):
             j = i
             if src.startswith(("0x", "0X"), i):
                 j = i + 2
@@ -177,7 +180,7 @@ def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
                     j += 1
                 toks.append(("num", _hex(src[i + 2:j]), i))
             else:
-                while j < n and (src[j].isdigit() or src[j] == "."):
+                while j < n and (src[j] in _DIGITS or src[j] == "."):
                     j += 1
                 try:
                     toks.append(("num", float(src[i:j]), i))
@@ -944,34 +947,35 @@ class _Interp:
             return obj.upper()
         if name == "trim":
             return obj.strip()
-        if name in ("indexOf", "lastIndexOf"):
-            needle = _to_str(a[0])
-            if name == "indexOf":
-                start = 0 if a[1] is UNDEF else max(0, int(_to_num(a[1]) if not math.isnan(_to_num(a[1])) else 0))
-                return float(obj.find(needle, start))
-            return float(obj.rfind(needle))
-        if name == "charAt":
-            i = _to_num(a[0]) if a[0] is not UNDEF else 0.0
-            i = 0 if math.isnan(i) else int(i)
-            return obj[i] if 0 <= i < len(obj) else ""
+        n = len(obj)
 
-        def clamp(v: Any, default: int) -> int:
+        def whole(v: Any, default: float) -> float:
+            # ECMAScript ToIntegerOrInfinity: NaN is 0, infinities stay, else truncated.
             if v is UNDEF:
                 return default
             x = _to_num(v)
-            if math.isnan(x):
-                return 0
-            return int(max(0, min(len(obj), x)))
+            return 0.0 if math.isnan(x) else x if math.isinf(x) else float(math.trunc(x))
+
+        def clamp(v: Any, default: float) -> int:
+            return int(max(0.0, min(float(n), whole(v, default))))
+        if name in ("indexOf", "lastIndexOf"):
+            needle = _to_str(a[0])
+            if name == "indexOf":
+                return float(obj.find(needle, clamp(a[1], 0.0)))
+            # lastIndexOf: a NaN (or missing) position searches the whole string.
+            pos = a[1] if a[1] is not UNDEF and not math.isnan(_to_num(a[1])) else UNDEF
+            return float(obj.rfind(needle, 0, clamp(pos, float(n)) + len(needle)))
+        if name == "charAt":
+            i = whole(a[0], 0.0)
+            return obj[int(i)] if 0 <= i < n else ""
         if name == "substring":
-            s, t = clamp(a[0], 0), clamp(a[1], len(obj))
+            s, t = clamp(a[0], 0.0), clamp(a[1], float(n))
             return obj[min(s, t):max(s, t)]
         if name == "substr":
-            x = _to_num(a[0]) if a[0] is not UNDEF else 0.0
-            x = 0 if math.isnan(x) else int(x)
-            if x < 0:
-                x = max(0, len(obj) + x)
-            ln = len(obj) - x if a[1] is UNDEF else max(0, int(_to_num(a[1]) if not math.isnan(_to_num(a[1])) else 0))
-            return obj[x:x + ln]
+            x = whole(a[0], 0.0)
+            x = max(0.0, n + x) if x < 0 else min(float(n), x)
+            ln = max(0.0, min(whole(a[1], float(n)), n - x))
+            return obj[int(x):int(x + ln)]
         raise Unsafe(f"the method '{name}'")
 
     # PAC helpers and helper functions
