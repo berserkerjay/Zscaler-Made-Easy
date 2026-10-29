@@ -52,7 +52,7 @@ distribution links in the SBOM.
 | mcp-types | 2.2.0 | MIT |
 | mdurl | 0.1.2 | MIT |
 | more-itertools | 11.1.0 | MIT |
-| msgpack | 1.2.2 | Apache-2.0 |
+| msgpack | 1.2.3 | Apache-2.0 |
 | opentelemetry-api | 1.45.1 | Apache-2.0 |
 | pycparser | 3.0 | BSD-3-Clause |
 | pydantic | 2.13.5 | MIT |

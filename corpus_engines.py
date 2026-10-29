@@ -251,6 +251,57 @@ def mask(v: str) -> str:
     return "".join("•" if ch.isalnum() else ch for ch in v[:-4]) + v[-4:]
 
 
+# ── Synthetic samples (never real data) ────────────────────────────────
+# Test values for the detectors above, for a corpus test or a DLP test
+# file: published card-network test numbers (Luhn valid, never real
+# accounts), the Social Security numbers the SSA reserved for examples
+# (987-65-4320 to 987-65-4329, never issued; area 9xx, so the strict `ssn`
+# validator above, like a strict DLP dictionary, does not count them), the
+# CMS specimen Medicare Beneficiary Identifier, the standard specimen IBANs,
+# a sandbox test routing number, e-mail addresses on example.com and phone
+# numbers in the 555-0100 to 555-0199 range set aside for fiction.
+SAMPLES: Dict[str, Tuple[str, ...]] = {
+    "credit_card": ("4111 1111 1111 1111", "4012 8888 8888 1881", "5555 5555 5555 4444", "5105 1051 0510 5100",
+                    "3782 822463 10005", "3714 496353 98431", "6011 1111 1111 1117", "6011 0009 9013 9424"),
+    "ssn": tuple(f"987-65-432{i}" for i in range(10)),
+    "mbi": ("1EG4TE5MK73",),
+    "iban": ("GB82 WEST 1234 5698 7654 32", "DE89 3704 0044 0532 0130 00"),
+    "aba": ("110000000",),
+}
+_SAMPLE_FIRST = ("Avery", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Jamie", "Quinn", "Rowan", "Skyler")
+_SAMPLE_LAST = ("Example", "Sample", "Testperson", "Specimen", "Demo")
+
+
+def sample(key: str, i: int = 0, rng: Any = None) -> str:
+    """The i-th synthetic value for a detector key (a fixed published or
+    reserved value), or a generated one for the keys with no registry
+    behind them (name, email, phone, date_of_birth). `rng` is a
+    random.Random (injected in tests)."""
+    if key in SAMPLES:
+        vals = SAMPLES[key]
+        return vals[i % len(vals)]
+    if key == "name":
+        return f"{_SAMPLE_FIRST[i % len(_SAMPLE_FIRST)]} {_SAMPLE_LAST[i % len(_SAMPLE_LAST)]}"
+    if key == "email":
+        return f"{_SAMPLE_FIRST[i % len(_SAMPLE_FIRST)].lower()}.{_SAMPLE_LAST[i % len(_SAMPLE_LAST)].lower()}@example.com"
+    import random
+    r = rng if rng is not None else random.SystemRandom()
+    if key == "phone":
+        return f"(555) 555-01{r.randint(0, 99):02d}"
+    if key == "date_of_birth":
+        return f"{r.randint(1950, 1999)}-{r.randint(1, 12):02d}-{r.randint(1, 28):02d}"
+    raise KeyError(key)
+
+
+def sample_detected(key: str, value: str) -> Optional[bool]:
+    """Whether this module's local detector for `key` counts `value`
+    (None when there is no detector of that key)."""
+    det = next((d for d in DETECTORS if d["key"] == key), None)
+    if det is None:
+        return None
+    return run_detector(det, value)[0] > 0
+
+
 def predefined_results(dicts: Iterable[Dict[str, Any]], corpus: str, is_custom: Callable[[Dict[str, Any]], bool]) -> List[Dict[str, Any]]:
     """One row per predefined dictionary: simulated (approximate hits) or not."""
     out: List[Dict[str, Any]] = []

@@ -449,9 +449,15 @@ NOTHING_PICKED = "No rule was picked: tick at least one rule (or pick \"all\" fo
 
 # What an export can carry, and in which formats.
 PARTS = ("dictionaries", "engines", "rules")
+# The ZIA policy framework (ops_zia_baseline.capture): the tenant's URL
+# filtering, Cloud Firewall, SSL inspection, Sandbox, DNS Control and File
+# Type Control rules as a portable file that the ZIA security baseline
+# (Bulk changes) applies to another tenant. JSON only, beside the pack.
+FRAMEWORK = "framework"
+FRAMEWORK_FILE = "zia_policy_framework.json"
 FORMATS = ("json", "terraform", "both")
-NO_PART = "Pick what to export: dictionaries, engines, rules, or any mix of them."
-NOTHING_IN_PARTS = "Nothing was picked: tick at least one dictionary, engine or rule to export."
+NO_PART = "Pick what to export: dictionaries, engines, rules, the ZIA policy framework, or any mix of them."
+NOTHING_IN_PARTS = "Nothing was picked: tick at least one dictionary, engine or rule, or the ZIA policy framework, to export."
 
 
 def normalize_parts(parts: Any) -> Tuple[str, ...]:
@@ -462,12 +468,12 @@ def normalize_parts(parts: Any) -> Tuple[str, ...]:
     if isinstance(parts, str):
         parts = [parts]
     got = {str(x).strip().lower() for x in parts if str(x).strip()}
-    bad = sorted(got - set(PARTS))
+    bad = sorted(got - set(PARTS) - {FRAMEWORK})
     if bad:
-        raise ValueError(f"unknown part(s) {', '.join(bad)} (use dictionaries, engines and/or rules)")
+        raise ValueError(f"unknown part(s) {', '.join(bad)} (use dictionaries, engines, rules and/or framework)")
     if not got:
         raise ValueError(NO_PART)
-    return tuple(x for x in PARTS if x in got)
+    return tuple(x for x in PARTS + (FRAMEWORK,) if x in got)
 
 
 def normalize_format(fmt: Any) -> str:
@@ -1111,16 +1117,42 @@ def _nothing_to_export(snap: Dict[str, Any], sel: Optional[Dict[str, Optional[se
 
 def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: str = "", log: LogFn = None,
                 cancel: Any = None, parts: Any = None, dictionaries: Any = None, engines: Any = None,
-                include_dependencies: bool = True) -> Dict[str, Any]:
+                include_dependencies: bool = True, framework_areas: Sequence[str] = ()) -> Dict[str, Any]:
     """Read the tenant and build the pack (see build_pack), with the pack
     library's own validation of the result. Read-only. Fails (status
     'error', no pack) when the dictionaries or engines could not be read,
     when ZIA kept refusing a read for its rate, or when no rule is left to
-    export; 'stopped' once `cancel` is set."""
+    export; 'stopped' once `cancel` is set. With the framework part, the
+    ZIA policy framework of `framework_areas` (the areas in scope) is
+    captured first and travels as pack["framework"]."""
     _log = log or (lambda m: None)
     stopped = {"status": "stopped", "stopped": "You clicked Stop."}
     sel = normalize_selection(selection)
     want_parts = normalize_parts(parts)
+    framework = None
+    if FRAMEWORK in want_parts:
+        import ops_zia_baseline
+        if not framework_areas:
+            return {"status": "error", "error": "The ZIA policy framework is not in scope on the Scope page: tick ZIA platform or DLP."}
+        cap = ops_zia_baseline.capture(client, framework_areas, name=name, tenant_label=tenant_label, log=_log, cancel=cancel)
+        if cap["status"] == "stopped" or _stopped(cancel):
+            return stopped
+        if cap["status"] != "ready":
+            return cap
+        framework = cap["framework"]
+        want_parts = tuple(p for p in want_parts if p != FRAMEWORK)
+        if not want_parts:
+            if not framework["areas"]:
+                return {"status": "error", "error": "Nothing to export: the tenant has no URL filtering, Cloud Firewall, SSL inspection, "
+                                                    "Sandbox, DNS Control or File Type Control rules of its own in scope.",
+                        "not_exported": framework["not_exported"], "warnings": []}
+            meta = {"name": framework["name"], "counts": {"rules": 0, "engines": 0, "dictionaries": 0, "clones": 0,
+                                                          "not_exported": len(framework["not_exported"]),
+                                                          "framework_rules": sum(framework["counts"].values())},
+                    "not_exported": framework["not_exported"], "referenced_only": {}}
+            pack = {"meta": meta, "dictionaries": [], "engines": [], "policies": [], "warnings": [], "framework": framework}
+            _log(f"ZIA policy framework captured: {meta['counts']['framework_rules']} rule(s).")
+            return {"status": "ready", "pack": pack, "validation": {"ok": True, "problems": [], "warnings": []}}
     dict_pick = normalize_object_pick(dictionaries, "dictionaries")
     engine_pick = normalize_object_pick(engines, "engines")
     if want_parts == ("rules",) and nothing_picked(sel):
@@ -1168,6 +1200,9 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
         pack = build_pack(snap, selection=sel, name=name, tenant_label=tenant_label, app_groups=groups or None, **opts)
     import pack_library
     validation = pack_library.validate_pack(pack)
+    if framework is not None:
+        pack["framework"] = framework
+        pack["meta"]["counts"]["framework_rules"] = sum(framework["counts"].values())
     c = pack["meta"]["counts"]
     _log(f"Pack built: {c['rules']} rule(s), {c['engines']} engine(s), {c['dictionaries']} dictionar{'y' if c['dictionaries'] == 1 else 'ies'}"
          f"; {c['not_exported']} item(s) could not be exported (listed in pack.json).")
@@ -1192,13 +1227,22 @@ def pack_files(pack: Dict[str, Any]) -> Dict[str, str]:
     # escape) cannot be written as UTF-8: keep it as the same JSON escape,
     # so the file is valid UTF-8 and reads back to the identical name.
     dump = lambda obj: _LONE_SURROGATE.sub(lambda m: "\\u%04x" % ord(m.group()), json.dumps(obj, indent=2, ensure_ascii=False)) + "\n"  # noqa: E731
-    files = {"pack.json": dump(pack["meta"]),
-             "configs/dlp_dictionaries.json": dump(pack["dictionaries"]),
-             "configs/dlp_engines.json": dump(pack["engines"]),
-             "configs/dlp_policies.json": dump(pack["policies"])}
+    files = {}
+    if _has_dlp(pack):
+        files = {"pack.json": dump(pack["meta"]),
+                 "configs/dlp_dictionaries.json": dump(pack["dictionaries"]),
+                 "configs/dlp_engines.json": dump(pack["engines"]),
+                 "configs/dlp_policies.json": dump(pack["policies"])}
     if pack.get("app_groups"):
         files["configs/endpoint_application_groups.json"] = dump(pack["app_groups"])
+    if pack.get("framework"):
+        files[FRAMEWORK_FILE] = dump(pack["framework"])
     return files
+
+
+def _has_dlp(pack: Dict[str, Any]) -> bool:
+    """A pack with DLP content (or no framework: an ordinary pack is always one)."""
+    return bool(pack.get("dictionaries") or pack.get("engines") or pack.get("policies")) or not pack.get("framework")
 
 
 def zip_pack(pack: Dict[str, Any], folder: str = "") -> Tuple[str, bytes]:
@@ -1270,15 +1314,19 @@ def zip_export(pack: Dict[str, Any], fmt: str = "json", assessor: str = "") -> T
     from pack_library import pack_slug
     fmt = normalize_format(fmt)
     folder = pack_slug(pack["meta"].get("name") or "") or "exported_pack"
-    if fmt == "json":   # exactly the pack zip, as before
+    fw_index = [{"part": FRAMEWORK, "format": "json", "path": f"{folder}/{FRAMEWORK_FILE}"}] if pack.get("framework") else []
+    if fmt == "json" or not _has_dlp(pack):   # exactly the pack zip, as before (a framework alone is JSON whatever the format)
         name, data = zip_pack(pack)
-        return name, data, [{"part": part, "format": "json", "path": f"{folder}/{PART_FILES['json'][part]}"} for part in PARTS if _has_part(pack, part)]
+        return name, data, [{"part": part, "format": "json", "path": f"{folder}/{PART_FILES['json'][part]}"} for part in PARTS if _has_part(pack, part)] + fw_index
     entries: Dict[str, str] = {}
     index: List[Dict[str, str]] = []
     if fmt in ("json", "both"):
         for path, text in pack_files(pack).items():
             entries[f"{folder}/{path}"] = text
         index += [{"part": part, "format": "json", "path": f"{folder}/{PART_FILES['json'][part]}"} for part in PARTS if _has_part(pack, part)]
+    if fmt == "terraform" and pack.get("framework"):
+        entries[f"{folder}/{FRAMEWORK_FILE}"] = pack_files(pack)[FRAMEWORK_FILE]
+    index += fw_index
     if fmt in ("terraform", "both"):
         _, tf = terraform_files(pack, assessor)
         for path, text in tf.items():

@@ -1146,6 +1146,62 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
 
 # ── CLI Usage ────────────────────────────────────────────────────────
 
+# ── POV customer report (pov.report_document) ───────────────────────
+
+def pov_report(rep):
+    """A POV customer report as .docx bytes, on the same template, styles
+    and header colours as the assessment report: title, summary, details,
+    then each section's paragraphs, table, bullets and sub-items."""
+    import io
+    rep = _xml_safe(rep or {})
+    template = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_template.docx")
+    if os.path.exists(template):
+        doc = Document(template)
+        for elem in list(doc.element.body):
+            if elem.tag.endswith('}p') or elem.tag.endswith('}tbl'):
+                doc.element.body.remove(elem)
+    else:
+        doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10)
+    doc.add_heading(rep.get("title") or "Proof of value", level=0)
+    if rep.get("summary"):
+        doc.add_paragraph(rep["summary"])
+    meta = doc.add_table(rows=0, cols=2)
+    meta.style = _safe_style(doc, ["Table Grid"])
+    for label, value in rep.get("details") or []:
+        row = meta.add_row()
+        row.cells[0].paragraphs[0].add_run(str(label)).bold = True
+        row.cells[1].text = str(value)
+    bullet = _safe_style(doc, ["List Bullet"]) if "List Bullet" in {s.name for s in doc.styles} else None
+    for sec in rep.get("sections") or []:
+        doc.add_heading(sec.get("heading") or "", level=1)
+        for p in sec.get("paragraphs") or []:
+            doc.add_paragraph(str(p))
+        t = sec.get("table")
+        if t:
+            table = doc.add_table(rows=1, cols=len(t["columns"]))
+            table.style = _safe_style(doc, ["Table Grid"])
+            for i, h in enumerate(t["columns"]):
+                table.rows[0].cells[i].text = str(h)
+            _style_header_row(table.rows[0], ZS_BLUE_HEX, ZS_WHITE)
+            for r in t["rows"]:
+                _add_styled_row(table, [(v, False, COLORS["PASS"] if v == "Pass" or v == "Met" else COLORS["FAIL"] if v in ("Fail", "Not met") else None)
+                                        for v in r])
+        for item in sec.get("items") or []:
+            doc.add_heading(str(item.get("title") or ""), level=2)
+            for b in item.get("bullets") or []:
+                doc.add_paragraph(str(b), style=bullet)
+        for b in sec.get("bullets") or []:
+            doc.add_paragraph(str(b), style=bullet)
+        if sec.get("note"):
+            doc.add_paragraph(str(sec["note"]))
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python report_docx.py <report.json> [output.docx]")
@@ -1164,3 +1220,4 @@ if __name__ == "__main__":
 
     generate_report(results, cfg, output)
     print(f"Report saved: {output}")
+

@@ -726,16 +726,19 @@ def _add_context_notes(findings: List[Dict[str, Any]]) -> None:
 
 
 # ── PAC analysis ─────────────────────────────────────────────────────
-_PAC_RETURN = re.compile(r"return\s*(['\"])(.*?)\1", re.I | re.S)
+# The PAC file is read by pac_eval, the app's one PAC implementation: it is
+# parsed and interpreted, never run. The findings below come from that
+# parse (its returns and the conditions that lead to DIRECT) and from
+# evaluating the PAC for a few common destinations.
 _PAC_MACROS = ("${GATEWAY}", "${SECONDARY_GATEWAY}", "${GATEWAY_FX}", "${SECONDARY_GATEWAY_FX}", "${GATEWAY_HOST}", "${SECONDARY_GATEWAY_HOST}",
                "${SRCIP}", "${COUNTRY}", "${ZAPP_LOCAL_PROXY}", "${SUBCLOUD}", "${ZSCALER_LOCAL_PROXY}", "${CLOUD}")
-_PAC_COND_FN = re.compile(r"\b(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet|isPlainHostName|isResolvable|dnsDomainLevels|myIpAddress|dnsResolve)\s*\(([^()]*)\)", re.I)
-_PAC_ISINNET = re.compile(r"isInNet\s*\(((?:[^()]|\([^()]*\))*)\)", re.I)
-_PAC_STR = re.compile(r"['\"]([^'\"]+)['\"]")
 _PRIVATE_NET = re.compile(r"^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|169\.254\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)")
 _RISKY_HOST = re.compile(r"(dropbox|box\.com|drive\.google|docs\.google|onedrive|sharepoint|1drv|slack|gmail|mail\.google|outlook|office365|office\.com|wetransfer|icloud|mega\.nz|github|gitlab|bitbucket|chatgpt|openai|anthropic|gemini|copilot|whatsapp|telegram|discord|teams\.microsoft|zoom)", re.I)
-_PAC_ZSCALER_HOST = re.compile(r"(?i)(?<![\w.-])([\w.-]+\.zscaler\w*\.net|[\w.-]+\.zscloud\.net)\b")
 _BROAD = re.compile(r"^\*?\.?(\*|\*\.\w{2,3}|\w{2,3})$")
+# Destinations every PAC is evaluated for: data channels, an ordinary
+# site, an intranet name and a private address.
+PAC_SAMPLES = ("https://drive.google.com/", "https://www.dropbox.com/", "https://mail.google.com/", "https://chatgpt.com/",
+               "https://www.example.com/", "http://intranet/", "https://10.1.2.3/")
 
 
 def analyze_pac(name: str, text: str) -> Dict[str, Any]:
@@ -756,17 +759,30 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                          "means": "A PAC with a syntax error is rejected by the browser and by Client Connector; the device then goes direct.",
                          "do": ["Open the file in an editor with bracket matching and fix the block that is not closed.",
                                 "Test in a browser: about:policies or the OS proxy settings show a PAC parse error."], "evidence": []})
-    returns = [(m.start(), m.group(2).strip()) for m in _PAC_RETURN.finditer(body)]
-    if not returns:
+    import pac_eval
+    info = pac_eval.inspect(body)
+    if not info["ok"]:
+        findings.append({"severity": "medium", "title": "The PAC could not be evaluated safely",
+                         "what": f"The app {info['error']}.",
+                         "means": "PAC files are read here without running them, and only the subset PAC files normally use is understood. This file uses something outside it, so its bypasses were not listed and its answers were not checked.",
+                         "do": ["Test the PAC in a browser (or Client Connector) and read its bypasses by hand.",
+                                "Prefer plain if / else with shExpMatch, dnsDomainIs and isInNet: they are easier to review and faster for the browser."], "evidence": []})
+    returns = [r for r in info["returns"]]
+    literal = [r.strip() for r in returns if r is not None]
+    if info["ok"] and not returns:
         findings.append({"severity": "critical", "title": "No return statement: the PAC decides nothing",
                          "what": "FindProxyForURL never returns a proxy string.",
                          "means": "Every request gets an undefined answer and the browser goes direct.",
                          "do": ["End the function with a final return, for example return \"PROXY ${GATEWAY}:80; PROXY ${SECONDARY_GATEWAY}:80; DIRECT\";"], "evidence": []})
     macros = [m for m in _PAC_MACROS if m in body]
-    proxies = [r for _, r in returns if "PROXY" in r.upper() or "HTTPS " in r.upper() or "SOCKS" in r.upper()]
-    hardcoded = sorted({h for r in proxies for h in _PAC_ZSCALER_HOST.findall(r)})
-    gateway_hosts = sorted({h for r in proxies for h in re.findall(r"(?i)PROXY\s+([^:;\s]+)", r)})
-    last_return = returns[-1][1] if returns else ""
+    entries = [e for r in literal for e in pac_eval.proxy_entries(r)]
+    hardcoded = sorted({e["host"] for e in entries if e["kind"] == "zscaler" and e["host"] and not e["host"].startswith("${") and e["host"] != "127.0.0.1"})
+    gateway_hosts = sorted({e["host"] for e in entries if e["host"]})
+    last_return = (returns[-1] or "").strip() if returns else ""
+    if returns and returns[-1] is None:
+        # The last answer is computed: what the PAC answers for an ordinary site.
+        ev = pac_eval.evaluate(body, "https://www.example.com/", "www.example.com", dns="assume_public")
+        last_return = ev["result"] or ""
     default_action = "direct" if last_return.upper().strip() == "DIRECT" else ("proxy" if last_return else "none")
 
     if hardcoded and not any(m in body for m in ("${GATEWAY}", "${GATEWAY_FX}", "${GATEWAY_HOST}")):
@@ -798,43 +814,18 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                              "means": "If that data centre has an incident, users lose internet (fail-closed) or go unprotected (fail-open) until the PAC is changed.",
                              "do": ["Add the secondary: PROXY ${GATEWAY}:80; PROXY ${SECONDARY_GATEWAY}:80"], "evidence": []})
 
-    # Bypass inventory: DIRECT returns and the conditions that lead to them.
+    # Bypass inventory: the conditions that lead to a DIRECT answer.
     bypasses: List[Dict[str, Any]] = []
-    lines = [ln[:MAX_LINE_CHARS] for ln in body.splitlines()]
-    for i, line in enumerate(lines):
-        if not re.search(r"return\s*['\"]\s*DIRECT\s*['\"]", line, re.I):
-            continue
-        window = "\n".join(lines[max(0, i - 4): i + 1])
-        for args in _PAC_ISINNET.findall(window):
-            strings = _PAC_STR.findall(args)
-            if not strings:
-                continue
-            net = strings[0]
-            risk = "public-range" if (re.match(r"^\d+\.\d+\.\d+\.\d+$", net) and not _PRIVATE_NET.match(net)) else "ok"
-            bypasses.append({"kind": "isInNet", "value": net, "line": i + 1, "risk": risk})
-        for fn, args in _PAC_COND_FN.findall(window):
-            fnl = fn.lower()
-            if fnl in ("isinnet", "myipaddress", "dnsresolve", "isresolvable", "dnsdomainlevels"):
-                continue
-            if fnl == "isplainhostname":
-                bypasses.append({"kind": "plain host names", "value": "single-label names (intranet)", "line": i + 1, "risk": "ok"})
-                continue
-            for s in _PAC_STR.findall(args):
-                risk = "ok"
-                if _RISKY_HOST.search(s):
-                    risk = "data-channel"
-                elif _BROAD.match(s):
-                    risk = "broad"
-                bypasses.append({"kind": fn, "value": s, "line": i + 1, "risk": risk})
-    seen = set()
-    uniq = []
-    for b in bypasses:
-        k = (b["kind"], b["value"])
-        if k in seen:
-            continue
-        seen.add(k)
-        uniq.append(b)
-    bypasses = uniq
+    for r in info["direct_rules"]:
+        fn, value, line = r["fn"], r["value"], r["line"]
+        if fn == "isPlainHostName":
+            bypasses.append({"kind": "plain host names", "value": "single-label names (intranet)", "line": line, "risk": "ok"})
+        elif fn == "isInNet":
+            risk = "public-range" if (re.match(r"^\d+\.\d+\.\d+\.\d+$", value) and not _PRIVATE_NET.match(value)) else "ok"
+            bypasses.append({"kind": "isInNet", "value": value[:200], "line": line, "risk": risk})
+        else:
+            risk = "data-channel" if _RISKY_HOST.search(value[:300]) else "broad" if _BROAD.match(value[:20]) else "ok"
+            bypasses.append({"kind": fn, "value": value[:200], "line": line, "risk": risk})
     risky = [b for b in bypasses if b["risk"] in ("data-channel", "broad", "public-range")]
     if risky:
         findings.append({"severity": "high", "title": f"{len(risky)} bypass{'es' if len(risky) != 1 else ''} send data channels or wide ranges around Zscaler",
@@ -843,36 +834,55 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                          "do": ["Ask why each one exists; most were added years ago for a problem that a Zscaler SSL exemption or a cloud-app policy now solves without a full bypass.",
                                 "Prefer narrower fixes: an SSL inspection exemption for a pinned app, a Cloud App Control rule, or a ZCC app-profile bypass limited to the exact host."],
                          "evidence": [f"line {b['line']}: {b['kind']}({b['value']}) [{b['risk']}]" for b in risky[:8]]})
-    if not any(b["kind"] == "plain host names" for b in bypasses) and not any(b["kind"] == "isInNet" and _PRIVATE_NET.match(b["value"]) for b in bypasses):
+    if info["ok"] and not any(b["kind"] == "plain host names" for b in bypasses) and not any(b["kind"] == "isInNet" and _PRIVATE_NET.match(b["value"]) for b in bypasses):
         findings.append({"severity": "low", "title": "No bypass for private addresses or plain host names",
                          "what": "The PAC does not send RFC 1918 ranges or single-label intranet names DIRECT.",
                          "means": "Intranet sites and printers would be sent to Zscaler, which cannot reach them, so they break. Zscaler's reference PAC starts with these bypasses.",
                          "do": ["Add near the top: if (isPlainHostName(host) || shExpMatch(host, \"*.local\") || isInNet(dnsResolve(host), \"10.0.0.0\", \"255.0.0.0\") || isInNet(dnsResolve(host), \"172.16.0.0\", \"255.240.0.0\") || isInNet(dnsResolve(host), \"192.168.0.0\", \"255.255.0.0\")) return \"DIRECT\";"], "evidence": []})
-    if re.search(r"isInNet\s*\(\s*host\s*,", body, re.I):
+    if info["isinnet_on_host"]:
         findings.append({"severity": "medium", "title": "isInNet(host, …) forces a DNS lookup on every request",
                          "what": "isInNet is called with the host name instead of an address.",
                          "means": "The browser resolves every host name before it can decide, which makes page loads slow and can leak intranet names to public DNS. Browsers differ in how they handle it.",
                          "do": ["Only call isInNet when the host is already an IP (test with a regex) or wrap it: isInNet(dnsResolve(host), ...) inside a check that the name is worth resolving.",
                                 "Zscaler's reference PAC uses this pattern."], "evidence": []})
-    if re.search(r"myIpAddress\s*\(", body, re.I):
+    if "myIpAddress" in info["calls"]:
         findings.append({"severity": "low", "title": "myIpAddress() is used",
                          "what": "The PAC decides based on the device's own IP address.",
                          "means": "With a VPN, Wi-Fi plus Ethernet, or virtual adapters the browser may return any of the adapters' addresses, so the rule behaves differently from device to device. Client Connector's trusted-network detection is the reliable way to detect 'in the office'.",
                          "do": ["Move location logic to the Forwarding Profile's trusted-network criteria and keep the PAC simple."], "evidence": []})
-    if re.search(r"isResolvable\s*\(", body, re.I):
+    if "isResolvable" in info["calls"]:
         findings.append({"severity": "low", "title": "isResolvable() adds a DNS lookup per request",
                          "what": "The PAC calls isResolvable.",
                          "means": "Each call waits for DNS; on a slow resolver every page waits with it.",
                          "do": ["Replace it with host-name pattern rules where possible."], "evidence": []})
-    ports = sorted({p for r in proxies for p in re.findall(r":(\d{2,5})\b", r)})
+    ports = sorted({e["port"] for e in entries if e["port"]})
     if any(p in ("9400", "9480", "9443") for p in ports):
         findings.append({"severity": "info", "title": "Z-Tunnel 1.0 / Client Connector local ports are referenced",
                          "what": f"Proxy ports in use: {', '.join(ports)}.",
                          "means": "Ports 9400 and 9480 are Client Connector's local listener (used by ZCC's own PAC); a browser PAC that points at them only works with Client Connector running.",
                          "do": ["Fine for the app profile's PAC; for a standalone browser PAC use the cloud gateways on 80 or 443."], "evidence": []})
 
+    # What the PAC answers for common destinations, evaluated (never run).
+    samples: List[Dict[str, Any]] = []
+    if info["ok"]:
+        for u in PAC_SAMPLES:
+            ev = pac_eval.evaluate(body, u, dns="assume_public")
+            if ev["status"] == "error":
+                samples = [{"url": u, "result": None, "kind": "error", "depends_on": [], "error": ev["error"]}]
+                break
+            samples.append({"url": u, "result": ev["result"] or " | ".join(o["result"] for o in ev["outcomes"]), "kind": ev["kind"],
+                            "depends_on": ev["depends_on"], "error": None})
+        leaks = [s for s in samples[:4] if s["kind"] in ("direct", "other_proxy")]
+        if leaks and not risky:
+            findings.append({"severity": "high", "title": "Data channels are answered without Zscaler",
+                             "what": "Evaluated, the PAC sends these services DIRECT or to another proxy: " + ", ".join(s["url"] for s in leaks) + ".",
+                             "means": "Uploads to them are never decrypted, URL-filtered or checked by DLP.",
+                             "do": ["Find the branch that answers this (the evaluation table below) and send these services to Zscaler."], "evidence": [f"{s['url']} → {s['result']}" for s in leaks[:4]]})
+
+    lines = body.count("\n") + 1
     summary = {"macros": macros, "gateways": gateway_hosts[:6], "hardcoded_gateways": hardcoded[:6], "default": default_action,
-               "returns": len(returns), "bypasses": bypasses[:200], "bypass_count": len(bypasses), "lines": len(lines)}
+               "returns": len(returns), "bypasses": bypasses[:200], "bypass_count": len(bypasses), "lines": lines,
+               "evaluation": {"ok": info["ok"], "error": info["error"], "samples": samples}}
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     findings.sort(key=lambda f: order.get(f["severity"], 9))
     return {"name": name, "kind": "pac", "summary": summary, "findings": findings}

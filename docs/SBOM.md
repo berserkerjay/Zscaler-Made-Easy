@@ -96,5 +96,8 @@ complete set. After re-locking, run `pip-audit -r requirements.lock --disable-pi
 and `make sbom`. CI audits every lock (`requirements.lock`, `requirements-dev.lock`
 and the CI tools' `requirements-ci.lock` and `requirements-pip.lock`) on Linux,
 and the first three again on Windows, where the Windows-only pins are resolved.
-The tools CI runs (pip, uv, pip-audit, cyclonedx-bom) are installed from those
-two hash-pinned locks too (`make lock-ci` re-pins them).
+The tools CI runs (pip, uv, pip-audit, cyclonedx-bom, and PyInstaller for the
+standalone builds) are installed from those two hash-pinned locks too
+(`make lock-ci` re-pins them). The standalone edition embeds the packages of
+`requirements.lock` and the CPython it was built with; each release build
+carries signed SLSA build provenance (`.github/workflows/release-standalone.yml`).

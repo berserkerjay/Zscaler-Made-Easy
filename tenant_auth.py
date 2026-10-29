@@ -160,6 +160,9 @@ def record_label(creds: Dict[str, Any]) -> str:
     vanity domain left in the form or profile included)."""
     c = normalize(creds)
     cloud = c["cloud"] or "production"
+    if c["client_id"].startswith("offline-") and c["vanity_domain"].endswith(".offline.invalid"):
+        import offline_tenant   # the sample tenant or a snapshot: named as such, never as a real tenant
+        return offline_tenant.label_for(c)
     if c["auth_method"] == LEGACY:
         return f"classic API ({cloud})"
     return f"{c['vanity_domain'] or '?'} ({cloud})"

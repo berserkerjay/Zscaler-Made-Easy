@@ -19,10 +19,10 @@
   };
   X.connect = {
     group: 'Start', name: 'Connect to the tenant (sign-in details, profiles, Authenticate)', href: '/',
-    what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer.',
-    why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does nothing else: it reads nothing from the tenant, because every read counts against the tenant\'s ZIA API rate limit. The tenant is read only when you run an assessment, and only for what you put in scope.',
-    when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history.',
-    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection). Signing in reads nothing, so a role that cannot read DLP shows up only when the assessment runs, as checks the client was not permitted to run.',
+    what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer. No tenant at hand? Try with a sample tenant (Larkspur Freight, made up: every page works on it and nothing is real), or open a snapshot: a tenant read saved beside its profile (only what was in scope, no credentials) that works offline and read-only.',
+    why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does not read the tenant\'s configuration, because every read counts against the tenant\'s ZIA API rate limit. Right after it, the readiness check reads only the API client\'s role and the licences, for what is in scope; the configuration is read only when you run an assessment.',
+    when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history. Save a snapshot before you change things, to compare with the live tenant later; use the sample tenant to learn or demo the app.',
+    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection). Then a readiness summary: per product whether the API client can read, change or not reach it, and every scope or change that will not work, greyed out with the steps to ask the admin for.',
     next: 'Open Scope assessment: mark the channels the customer owns, choose what to check and which frameworks to map to, name the organisation and assessor, and click Run assessment.',
   };
   X.results = {
@@ -35,10 +35,10 @@
   };
   X.dataflow = {
     group: 'Find the gaps', name: 'Traffic flow & gaps', href: '/report/dataflow',
-    what: 'A map of the exact path a user\'s transaction takes: Client Connector app and forwarding profile, PAC, SSL inspection, URL filtering, Cloud App Control, file type control and DLP, with every point where inspection is lost (bypasses, SSL blind spots).',
+    what: 'A map of the path the tenant\'s configuration gives a user\'s web traffic to each traffic class (or a destination you type), for any user: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and Web DLP, with the points on those paths where inspection is lost (bypasses, SSL blind spots). It reads configuration; it does not observe traffic.',
     why: 'DLP can only stop what it can see. A bypass or an un-decrypted app category is a hole the customer usually does not know they have.',
     when: 'After the assessment, when the customer asks "why did DLP not catch that upload?" or before deploying a policy pack.',
-    get: 'The path diagram per policy pack, visibility by cloud-app category, and a list of every bypass with the object that causes it.',
+    get: 'The path for each traffic class on each network with each policy pack\'s rules overlaid by name, visibility by cloud-app category, and the bypasses and blind spots on those paths with the object that causes each (the Bypass inventory lists every bypass in the tenant).',
     next: 'Close the SSL and bypass gaps first; DLP rules deployed behind a blind spot do nothing.',
   };
   X.zpa = {
@@ -59,11 +59,11 @@
   };
   X.path = {
     group: 'Find the gaps', name: 'Path analyzer', href: '/report/path',
-    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named. It reads only what is in scope on the Scope page; a part out of scope says Not in scope, never \"no rule\".',
-    why: 'When a customer asks "what happens if a user goes to this site?" the honest answer is in a dozen policies. This page reads them all and answers in one line, naming the rule or profile that decides it.',
+    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, every step the traffic takes and the rule that decides each one. ZPA comes first (application segment, bypass, client forwarding and access policy): a destination ZPA carries never reaches ZIA. Then Client Connector\'s app and forwarding profile and the PAC file, evaluated for the destination but never run (for traffic from a workload, the Cloud or Branch Connector forwarding rules instead), then every ZIA module, one by one: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control, URL filtering, SSL inspection, Sandbox, File Type Control and DLP. Each step shows its deciding rule and every condition as match, no match or unknown, and one verdict in plain words says whether the answer is definite or conditional. Pick a protocol and port to trace traffic that is not web, and a user, group, department or location for a what-if. It reads only what is in scope on the Scope page; a part out of scope says Not in scope, never \"no rule\". Test a list does the same for a whole list at once (a CSV of IP addresses, CIDR blocks, ranges, hosts and URLs, up to 250,000 rows), against what each row was expected to do.',
+    why: 'When a customer asks "what happens if a user goes to this site?" the honest answer is in a dozen policies across ZPA, Client Connector and ZIA. This page reads them all and answers in one line, naming the rule or profile that decides it, for one destination, one user or workload, or every destination on a threat feed or an allow list.',
     when: 'While troubleshooting a "Zscaler blocks my site" or "DLP did not catch it" ticket, before promising a control will apply, and when showing a customer where a destination is blind.',
-    get: 'The verdict (where the traffic stops or that it reaches the destination, whether it is decrypted and inspected), the objects that block or impact it with a fix each, the hop-by-hop path, the ZIA categories for the destination, and the assumptions, plus a JSON export.',
-    next: 'Fix the named rule, profile or exemption, click Fresh read, and analyze again to prove the change.',
+    get: 'The verdict (where the traffic stops or that it reaches the destination, whether it is decrypted and inspected), each step before ZIA and each ZIA module with its deciding rule and conditions, what the policy action also depends on (or, with a what-if, the rules for that identity), the objects that block or impact the traffic with a fix each, the hop-by-hop path, the ZIA categories for the destination, and the assumptions, plus a JSON export. For a list: counts of blocked, allowed, bypassed, isolated, cautioned and allowed-but-blockable rows, the top deciding rules and categories, where to fix each row that misses what was expected, lists to paste per area, and CSV and Excel downloads.',
+    next: 'Fix the named rule, profile or exemption, click Fresh read, and analyze again to prove the change. For a list, Fix selected opens Bulk changes with the destinations filled in, to preview and apply behind its write gates.',
   };
   X.live = {
     group: 'Find the gaps', name: 'Live DLP feed', href: '/report/live',
@@ -355,11 +355,11 @@
   };
   X.permissions = {
     group: 'Troubleshoot', name: 'Required API access', href: '/permissions',
-    what: 'The exact API roles and scopes the app needs per assessment scope, and what a configuration change needs on top.',
-    why: 'The customer admin will ask "what access does this tool need?" before creating the API client. This is the answer, and the least access that works.',
-    when: 'Before the engagement, when the API client is being created; and when a scope comes back partial.',
-    get: 'A per-scope list you can send to the customer as-is.',
-    next: 'Send it; then run Authenticate again once the client is updated.',
+    what: 'What this API client can do now, per product (ZIA, ZPA, Client Connector, ZDX, Z-Insights, AI Guard): can read, can change or no access, the licences and SKUs the tenant has, and what each gap blocks in this app. Below that, the minimum API roles each assessment scope needs and what a configuration change needs on top.',
+    why: 'The customer admin will ask "what access does this tool need?" before creating the API client, and a role that is a little too small fails quietly later. This answers both: the least access that works, and what is missing right now, with the steps to ask the admin for.',
+    when: 'Before the engagement, when the API client is being created; right after Authenticate, which runs the readiness check by itself; and whenever a scope comes back partial.',
+    get: 'A per-product table read from the access token (without checking its signature, for display only) and a few reads in scope, the licence list, every Scope page key and every change that will not work with the reason and plain steps, and the per-scope list you can send to the customer as-is.',
+    next: 'Send the steps to the customer admin; once they have added the access, click Authenticate again and reload this page to see the new answer.',
   };
   X.remediate = {
     group: 'Close the gaps', name: 'Review & remediate', href: '',
@@ -418,6 +418,15 @@
     next: 'Work down the list: open the object, fix it on the page its card links to, then tick the to-do. Add new ones from any object card in Find anything (Ctrl+J).',
   };
 
+  X.pov = {
+    group: 'Start', name: 'POV planner', href: '/report/pov',
+    what: 'Plans and runs a customer proof of value (POV) for one tenant profile: the intake (customer, internal domain, a short prefix, a vertical preset and the products in scope), the customer\'s success criteria, a runbook of tests per product with pass or fail, notes and evidence, a test kit, the timeline, notes and follow-ups.',
+    why: 'A POV is won on proof the customer agreed in advance. Criteria linked to tests, evidence on each test and a report built from what actually ran turn a week of testing into a decision the customer can sign off.',
+    when: 'At the kickoff call to fill in the intake and agree the criteria, during the POV to run and record each test, and at the close to hand over the report.',
+    get: 'Per test: the steps, the expected result, Prove it (the Path analyzer\'s verdict for the test\'s destination, read-only) and Insights counts; synthetic DLP files per vertical, the EICAR test file and AMTSO links, a unique PDF for Cloud Sandbox; a Word or PDF customer report; export, import and templates.',
+    next: 'Start the POV on the Plan tab, download the test kit, run the tests on the Runbook tab, then download the customer report. Changes to the tenant go through Deploy policy packs or Bulk changes, whose records the report lists.',
+  };
+
   // Which entry a page belongs to, by its path (and ?tool= on the results tab).
   function keyFor(loc) {
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
@@ -425,7 +434,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo' };
+      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
 
@@ -474,7 +483,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

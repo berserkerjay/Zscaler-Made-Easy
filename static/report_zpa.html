@@ -119,6 +119,7 @@
       <a class="rp-btn" id="expCsv" hidden>CSV</a>
       <a class="rp-btn" id="expJson" hidden>JSON</a>
       <a class="rp-btn" id="expXlsx" hidden>Excel</a>
+      <a class="rp-btn" id="zpBuild" href="/report/operations?build=zpa" target="_blank" rel="opener" title="Build an App Connector group, application segments and policy rules named with a prefix, or delete them, in Bulk changes: previewed, applied in write mode, reversible">Build ZPA objects</a>
     </nav>
     <main class="rp-card" id="zpMain">
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
@@ -747,6 +748,14 @@
     }
 
     $('zpRun').addEventListener('click', analyze);
+    // Bulk changes reads the sign-in and the Scope page from the assessment tab: open it from there when this tab has one.
+    $('zpBuild').addEventListener('click', e => {
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      if (!op || typeof op.migrateCredBody !== 'function') return;
+      e.preventDefault();
+      const w = op.open('/report/operations?build=zpa', '_blank');
+      if (!w) window.open('/report/operations?build=zpa', '_blank');
+    });
     $('zpForm').addEventListener('submit', diagnose);
     tenantChoices();
     const q = new URLSearchParams(location.search);

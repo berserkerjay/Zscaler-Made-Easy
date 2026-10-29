@@ -61,8 +61,24 @@ what you get, what to do next.
   the customer's cloud, vanity domain, API client ID and secret, or the
   classic ZIA API sign-in (admin username, password, API key); tenant
   profiles save those details and the run history per customer.
-  Authenticate only signs in (it reads nothing from the tenant) and
-  answers "Signed in" or a plain reason why not.
+  Authenticate only signs in (it reads none of the tenant's configuration)
+  and answers "Signed in" or a plain reason why not; right after it, the
+  readiness check (see Required API access) says what the API client can do.
+- **Sample tenant and snapshots** (on the Connect page, under the tenant
+  profiles, and in Simple mode's Connect task) — *Try with a sample tenant*
+  uses Larkspur Freight, a made-up company with DLP dictionaries,
+  engines and rules on every channel, URL filtering, SSL inspection,
+  Cloud Firewall, Cloud App Control, Client Connector profiles, ZPA
+  segments and policies and ZDX applications. Every page works on it, and
+  a banner on every page says "Sample tenant: nothing here is real"; its
+  changes stay in the app's memory. *Save a snapshot* reads the live
+  tenant (read-only, only what is in scope) into an owner-only file kept
+  beside the profile, with no credentials and no secret field values in
+  it; *Open* uses it offline and read-only, *Compare with the live tenant*
+  says what was added, removed or changed since. The sample and a
+  snapshot are served by clients with no network code, so they can never
+  reach a tenant; a snapshot file opened from disk is checked as
+  untrusted (size, nesting, format, every path).
 - **Assessment results** — the full results in their own tab: Summary
   (score and maturity), Scores by section, Best practices and
   benchmarks, Regulatory alignment, the Data governance journey, and
@@ -91,13 +107,41 @@ what you get, what to do next.
   their own write mode, preview and confirmation. "Switch to expert mode"
   goes back; the browser remembers the choice.
 
+- **POV planner** (`/report/pov`, `pov.py`) — one customer proof of value
+  per saved tenant profile, kept in the profile's folder (`povs/` beside
+  the profiles, owner-only, no secret) and bound to the profile's tenant (a
+  sign-in or an imported file naming another tenant is refused). The Plan
+  tab holds the intake (customer, internal domain, a short prefix made from
+  the name, a vertical preset: Healthcare, Financial services, General
+  enterprise or Education, and the products in scope), the customer's
+  success criteria linked to the tests that prove them, and the timeline.
+  The Runbook tab lists tests per product (URL filtering, threat, cloud
+  apps, firewall, DNS, DLP, SSL, ZPA, ZDX) with steps, the expected result,
+  pass or fail, notes and evidence; *Prove it* runs the Path analyzer on
+  the test's destination (read-only, only what is in scope) and records
+  whether the configuration gives the expected result, and *Read Insights
+  counts* records the Traffic insights counts (no user rows). The Test kit
+  tab serves synthetic DLP files per vertical (published test card numbers,
+  SSNs from the reserved block 987-65-4320 to 4329, specimen identifiers,
+  from `corpus_engines.sample`), the EICAR test file and links to the
+  EICAR and AMTSO test pages, and a harmless PDF that is new on every
+  download for Cloud Sandbox. The Report tab writes a Word or PDF customer
+  report from what actually ran (tests with a result, criteria, evidence,
+  the latest counts and the changes the app's deployment and bulk-change
+  records show for the tenant since the POV began), exports and imports
+  the POV (an untrusted file: size, JSON depth, format and every field
+  checked) and keeps templates (vertical, products, criteria; never the
+  customer). It never writes to the tenant. Simple mode links to it.
+
 ### Find the gaps
 
-- **Traffic flow & gaps** — the exact path a user's transaction takes
-  (Client Connector app and forwarding profile, PAC, SSL inspection, URL
-  filtering, Cloud App Control, file type control, DLP), with every point
-  where inspection is lost, visibility by cloud-app category, and the
-  path diagram per policy pack.
+- **Traffic flow & gaps** — the path the tenant's configuration gives a
+  user's web traffic to each traffic class, for any user (Client Connector
+  app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL
+  inspection, File Type Control, Web DLP), with the points on those paths
+  where inspection is lost, visibility by cloud-app category, and each
+  policy pack's rules overlaid by name. Configuration only: no traffic is
+  observed.
 - **ZPA analysis** — the ZPA configuration read once (only when ZPA is
   ticked on the Scope page, with the ZPA customer ID) and checked by the
   ZPA analysis templates: unreachable access rules, segments nobody
@@ -128,14 +172,66 @@ what you get, what to do next.
   with names instead of IDs, plus one plain sentence. Excel and JSON
   exports. Read-only; Stop ends the read at once.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
-  from the tenant as it is right now, the path a user's traffic takes to
-  it, one verdict in plain words, and every rule or profile that blocks
-  or impacts it, each with a fix. It reads only what is in scope on the
-  Scope page (a part out of scope says "not in scope"), and Stop ends the
-  read at once. **Import a HAR file** there to analyze every host a
-  browser session reached in one run: the file is read in the browser and
-  only host names and request counts are sent; the results table sorts,
+  from the tenant as it is right now, every step the traffic takes, the
+  rule that decides each one, one verdict in plain words (definite or
+  conditional), and every rule or profile that blocks or impacts it, each
+  with a fix. The steps are walked in the order they apply. **ZPA first**
+  (ZPA ticked): the most specific application segment (exact name,
+  longest wildcard, longest address range) with its port, the segment's
+  bypass setting (Never, On-Net, Always), the client forwarding policy
+  (Intercept, Intercept accessible, Bypass) and the access policy, with
+  device posture answered both passing and failing; a destination ZPA
+  carries is not traced through ZIA. Then Client Connector's app and
+  forwarding profile and the **PAC file**, evaluated for the destination
+  (`pac_eval.py`: parsed and interpreted, never run; anything outside the
+  PAC subset says "could not evaluate safely") and classified DIRECT,
+  Zscaler or another proxy. Then **every ZIA module**, one by one (the
+  page does not claim the cloud's enforcement order: Advanced Threat Protection, Cloud Firewall, DNS
+  Control, Cloud App Control and URL filtering, Sandbox, File Type Control
+  and DLP, with SSL inspection deciding what later modules see). Every
+  step has the same shape: its deciding rule and order, the other rules
+  that also match, the earlier rules that could decide instead, and every
+  criterion as match, no match or unknown (`zia_path_modules.py`,
+  `zpa_path.py`, drawn by `static/path_modules.js`). A protocol and port
+  (UDP/443 is QUIC, TCP/22 is SSH) trace traffic that is not web.
+  **Traffic from a workload** (Cloud & Branch Connector ticked) takes a
+  source IP, tags, workload group and connector group: the connector's
+  forwarding rules decide first (ZIA, ZPA, direct, local switch, proxy
+  chaining or drop), then ZIA or ZPA (`workload_path.py`). **What-if**:
+  optionally give a user, group, department and location (looked up in
+  ZIA only with ZIA platform in scope, 20 names at most per search);
+  rules scoped to them apply and rules for others are skipped, and every
+  result lists what the policy action also depends on: each scoped
+  condition that would change it, with the rule and the action it would
+  give (`path_whatif.py`). All of it is one request,
+  `POST /api/path-analyzer/start` (or `POST /api/path-analyzer` for
+  scripts). It reads only what is in scope on the Scope page (a part out
+  of scope says "not in scope"), writes nothing, and Stop ends the read
+  at once. **Import a HAR file** there to analyze every host a browser
+  session reached in one run: the file is read in the browser and only
+  host names and request counts are sent; the results table sorts,
   filters, opens any host's full analysis and exports as CSV or JSON.
+  **Test a list** (a tab on the same page) does it for a whole list: a
+  CSV or pasted list of IP addresses, CIDR blocks (up to a /16 per row),
+  ranges, hosts and URLs, up to 250,000 rows, with optional port,
+  protocol, source IP, location, country, category, user, group,
+  department, label and what each row is expected to do (block or
+  allow). Each row gets the answer the single-destination analyzer
+  gives: ZPA first when ticked, then every ZIA module for the row's
+  protocol and port, its identity and its source IP. The tenant (and
+  ZPA) is read once, ZIA's URL lookup is asked a hundred destinations per request,
+  paced for ZIA's rate limit (a quota that runs out labels the rest
+  "rerun later"), and a category in the file overrides the lookup. You
+  get counts (blocked, allowed, bypassed, isolated, caution, allowed but
+  blockable), the top deciding rules and categories, the rows to look
+  at, for each row that misses what was expected the area to fix it in,
+  from the module that decided the row (ATP, Cloud Firewall, URL
+  filtering, DNS Control, Client Connector, Cloud App Control, ZPA) with
+  advice per category, a list per area to paste (an IP destination group
+  for the Cloud Firewall, a custom URL category for URL filtering, the
+  segments to change for ZPA), and CSV and Excel downloads.
+  Fix selected opens Bulk changes with the picked destinations filled in
+  as a URL category change; it writes nothing on its own.
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the
@@ -222,6 +318,10 @@ what you get, what to do next.
   Excel workbook (devices, versions, operating systems, stale devices; with
   a counts-only option). Without device permission it says so and shows
   the configuration only. Read-only; Stop ends the read at once.
+  Its **Install command builder** writes the MSI, EXE or macOS install
+  command and a .bat or .command script for a chosen app profile (its
+  policy token is read only when ZCC is in scope); tokens and passwords
+  show as ******** unless you click Reveal, and none is logged or saved.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
   decides, whether the traffic is decrypted, and whether inline DLP can
   see it. Where: opened from Traffic flow & gaps.
@@ -282,7 +382,12 @@ what you get, what to do next.
   another tenant), a Terraform workspace for the zscaler/zia provider
   (built like the Terraform hand-off: rules DISABLED, the assessor named,
   what is not included looked up by name), or both; each part
-  (dictionaries, engines, rules) also downloads as its own file. Scope
+  (dictionaries, engines, rules) also downloads as its own file. A
+  fourth part, the **ZIA policy framework**, saves the URL filtering,
+  Cloud Firewall, SSL inspection, Sandbox, DNS Control and File Type
+  Control rules in scope (not the default or predefined ones) as
+  `zia_policy_framework.json`, which the ZIA security baseline in Bulk
+  changes applies to another tenant. Scope
   that only exists in the source tenant (users, groups, locations, ...)
   is left out and listed in the pack. Read-only; an empty pick is refused
   before any read, an hourly rate refusal fails the export, and Stop gives
@@ -358,6 +463,87 @@ what you get, what to do next.
   records the change with an Undo that is itself previewed. Cloud
   application sanction is not offered: the SDK cannot read an
   application's current state.
+  Under **Build new** the same page builds Client Connector profiles
+  (needs ZCC ticked): pick Windows or macOS, a forwarding profile (best
+  practice: tunnel on every network type, the listening-proxy redirect,
+  Z-Tunnel 2.0, IPv6 dropped, latency-based ZEN selection, no system PAC,
+  ZPA on VPN-trusted networks and ZPA latency-based selection; the portal
+  default; or an existing one) and an app profile (best practice for
+  Windows or macOS, or the portal default), untick any setting, and
+  preview: every setting is an item with its value, the portal default
+  and what it does. Applying creates the forwarding profile first and the
+  app profile linked to it, both disabled; if the app profile is refused
+  the new forwarding profile is deleted again; every setting is read back.
+  Undo (and **Delete a Client Connector profile**) needs the profile's
+  typed name and is refused while the profile is in use (an enabled app
+  profile, or a forwarding profile an app profile links to).
+  Tamper-protection passwords are never set from here.
+  Under *Build new* on the same page, **ZDX probe setup** (only when ZDX
+  is ticked on the Scope page, with a OneAPI API client) sets up Zscaler
+  Digital Experience apps and probes from a template (Best practice:
+  Microsoft 365 sign-in plus a custom app; Microsoft 365; or start
+  empty): predefined apps (Microsoft 365, Teams, SharePoint, OneDrive,
+  Zoom, Okta, Box, Salesforce, ServiceNow, Webex; some need the
+  customer's tenant prefix) and custom apps by URL, each with a Web probe
+  and by default a CloudPath probe, every 5 to 30 minutes, for all users.
+  Apps that already exist are skipped or get only what they lack; a
+  custom app whose setup fails half way is removed again. Two more types
+  turn any ZDX app or probe on or off, and delete custom apps (probes
+  first) and custom probes, each name typed to confirm. ZDX's own words
+  are shown when it refuses something (a refused host, a missing
+  permission). The ZDX configuration API is not in the Zscaler SDK, so
+  its paths are assumed and the page says so (`ops_zdx.py`).
+  Under **Build new** (also linked from the ZPA analysis page as *Build ZPA
+  objects*, ZPA ticked on the Scope page), the **ZPA builder** makes a
+  proof-of-value ZPA set-up through the same preview, gates, read-back and
+  Undo, every object named with a short prefix so a re-run updates in place:
+  an App Connector group (or an existing one) with a provisioning key that
+  is shown once and never kept, logged or exported; a segment group, a
+  server group and application segments from a `*.domain` wildcard, a
+  healthcare, finance, education or general preset, or a CSV of up to 500
+  rows (created disabled unless you ask), optionally Browser Access and
+  Privileged Remote Access consoles; access, timeout, inspection (Zscaler's
+  predefined OWASP controls) and isolation rules. *Delete ZPA objects by
+  prefix* reads ZPA again and deletes only objects carrying the prefix, in
+  dependency order (policies, segments, server groups, segment groups,
+  connector groups), keeping and naming anything still used by an object
+  that is not being deleted; it needs `DELETE <PREFIX>` typed.
+  Under **Build new**, two AI Guard builders run through the same preview,
+  gates, read-back and Undo (they need AI Guard ticked on the Scope page and
+  a OneAPI API client). *AI Guard routing for GenAI apps* (ZIA platform
+  too) sends the apps you pick (ChatGPT, Microsoft 365 Copilot, Claude,
+  Gemini and others) through AI Guard by proxy chaining: it reuses or
+  uploads the AI Guard root certificate, reuses an AI Guard proxy or
+  creates one, adds a destination group of the apps' domains, blocks QUIC,
+  puts an SSL Inspect rule for the apps at the top of SSL inspection (only
+  when SSL/TLS Inspection is marked Zscaler), turns on GenAI prompt capture
+  when the Gen AI Security subscription is there, adds the forwarding rule,
+  and allows the apps in ZIA above any Block, Caution or Isolate rule. The
+  proxy gateway cannot be created through the API: the preview says how to
+  make it in the ZIA portal and adds the forwarding rule once it exists.
+  *AI Guard detection policy* turns a compliance profile (HIPAA, HITRUST,
+  PCI, GDPR, CJIS, FERPA, SOX or general) into an AI Guard detection policy
+  and a match rule for the apps' LLM providers, Monitor (detect only) by
+  default. The read-only readiness check behind both (`ai_guard.readiness`:
+  licensed and reachable, existing proxy and gateway, the portal step) is
+  shown in each form, and GenAI findings that AI Guard addresses link to
+  the builder.
+  Two builders run on the same engine
+  (*Build new*, `ops_zia_baseline.py`): the **ZIA security baseline**
+  (URL filtering, Cloud Firewall, SSL inspection, Sandbox, DNS Control
+  with the Trusted Resolver, DoH inspection and geo-blocking, File Type
+  Control, Cloud App Control and, only when picked, the Advanced Threat
+  Protection settings) from a Strict, Balanced, Permissive or Healthcare
+  zero trust tier or a saved framework, with optional compliance overlays
+  (HIPAA, HITRUST, NIST 800-53 and 800-171, PCI DSS, CJIS, SOX, FERPA,
+  GDPR) that cite each control's source; every rule can be switched off
+  or set to Allow, Block or Isolate (or the whole baseline to allow all
+  or block all), weaker-than-tier choices are flagged, Allow-Web and
+  Allow-NTP are locked, names fit ZIA's 31 characters, what the tenant
+  lacks is dropped with a warning, the SSL catch-all goes last, rules
+  arrive disabled and re-runs update in place; and the **SSL certificate
+  manager**, which lists the intermediate certificate each SSL inspection
+  rule uses and moves picked Inspect rules to another ready-to-use one.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in
@@ -461,9 +647,20 @@ what you get, what to do next.
 - **Diagnose ZCC access** — probes every Client Connector API endpoint
   with the credentials you entered and shows which answer. Where: the
   Connect to the tenant card.
-- **Required API access** — the exact API roles and scopes the app needs
-  per assessment scope, to send to the customer's admin. Where: the
-  Connect to the tenant card (`/permissions`).
+- **Required API access** — what this API client can do now and the exact
+  API roles and scopes the app needs per assessment scope, to send to the
+  customer's admin. The live part comes from the readiness check that runs
+  right after Authenticate: per product (ZIA, ZPA, Client Connector, ZDX,
+  Z-Insights, AI Guard) whether the client can read, change or not reach
+  it, read from the OneAPI access token (decoded without checking its
+  signature, for display only; the token is never shown, logged or kept)
+  and a few reads for what is in scope (the ZIA licences and API role, the
+  Client Connector company switches and roles, the ZPA roles, one ZDX and
+  one Z-Insights call); the licences and SKUs; and every Scope page key and
+  every change of this app that will not work, with the plain steps to ask
+  the admin for. On the Start page the same check shows as a short summary,
+  greys out the scopes that will not work and stops a deploy or removal
+  the role cannot make. Where: the Connect to the tenant card (`/permissions`).
 
 ## The policy packs it ships with
 

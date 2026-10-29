@@ -287,8 +287,8 @@ def is_checkout(app_dir: str) -> bool:
     git is the only reliable test."""
     if os.path.exists(os.path.join(app_dir, ".git")):
         return True
-    if not shutil.which("git"):
-        return False
+    if in_standalone() or not shutil.which("git"):
+        return False   # the standalone bundle is never a checkout, whatever folder it was unpacked into
     try:
         cp = _git(app_dir, "rev-parse", "--is-inside-work-tree", timeout=15)
         return cp.returncode == 0 and _out(cp).lower() == "true"
@@ -331,8 +331,8 @@ def valid_branch(name: Any) -> str:
 
 
 def current_branch(app_dir: str) -> Optional[str]:
-    """The checked-out branch, or None (detached HEAD, not a checkout, no git)."""
-    if not shutil.which("git"):
+    """The checked-out branch, or None (detached HEAD, not a checkout, no git, the standalone edition)."""
+    if in_standalone() or not shutil.which("git"):
         return None
     try:
         cp = _git(app_dir, "rev-parse", "--abbrev-ref", "HEAD", timeout=15)
@@ -378,6 +378,17 @@ def in_container() -> bool:
     return os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1"
 
 
+STANDALONE_UPDATE_HELP = (
+    "This is the standalone edition, which cannot update itself. Download the new version from the repository's "
+    "Releases page, check its checksum and build attestation (INSTALL.md, \"Download and run\"), close this window and "
+    "start the new one. Saved data is kept: it lives in your per-user data folder, not in the app's folder.")
+
+
+def in_standalone() -> bool:
+    """True in the standalone edition (a PyInstaller build, standalone_main.py): no git, no pip, no start scripts."""
+    return bool(getattr(sys, "frozen", False))
+
+
 def status(app_dir: str, remote_sha: Optional[str] = None, branch: Optional[str] = None) -> Dict[str, Any]:
     """Where this install stands: current build, branch, whether GitHub
     is ahead on `branch` (the checked-out one by default), and whether
@@ -388,17 +399,18 @@ def status(app_dir: str, remote_sha: Optional[str] = None, branch: Optional[str]
                            "target_branch": target, "branches": branch_choices(app_dir),
                            "remote_commit": remote_sha, "update_available": None, "dirty_files": [],
                            "can_update": False, "reason": ""}
-    if in_container():
+    if in_container() or in_standalone():
         # The container has no git and a read-only filesystem: it is updated
         # from the computer that runs Docker (update_container.sh / .ps1),
-        # which rebuilds it. Say whether GitHub is ahead of the build.
-        out["in_container"] = True
+        # which rebuilds it. The standalone edition is replaced by a new
+        # download. Say whether GitHub is ahead of the build.
+        out["in_container" if in_container() else "standalone"] = True
         built = os.environ.get("DLP_CHECK_BUILD_COMMIT", "").strip()
         out["local_commit"] = built if built and built != "unknown" else None
         out["branch"] = os.environ.get("DLP_CHECK_BUILD_BRANCH", "").strip() or None
         if remote_sha and out["local_commit"]:
             out["update_available"] = not remote_sha.startswith(out["local_commit"]) and not out["local_commit"].startswith(remote_sha)
-        out["reason"] = CONTAINER_UPDATE_HELP
+        out["reason"] = CONTAINER_UPDATE_HELP if in_container() else STANDALONE_UPDATE_HELP
         return out
     if not out["git_available"]:
         out["reason"] = ("git is not installed or not on PATH. Install Git (Windows: https://git-scm.com/download/win; Mac: run  xcode-select --install  "
@@ -796,6 +808,11 @@ def schedule_restart(app_dir: str, delay: float = 0.8, dry_run: bool = False) ->
     """Spawn the relauncher detached from this process, then exit this
     process shortly after so the port is free for the new one. With
     dry_run the command is returned and nothing is spawned."""
+    if in_standalone():
+        # sys.executable is the standalone program itself, and there is no
+        # start script: the person closes the window and starts it again.
+        return {"scheduled": False, "command": [], "error": "the standalone edition cannot restart itself",
+                "hint": "Close this app's window and start ZscalerMadeEasy again."}
     cmd = restart_command(app_dir)
     if dry_run:
         return {"scheduled": False, "command": cmd}

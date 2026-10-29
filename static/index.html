@@ -370,6 +370,7 @@
   .field label { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-subhead); color: var(--text); margin-bottom: var(--sp-1); font-weight: 600; }
   .field label .required { color: var(--fail); font-size: var(--fs-caption); }
   .field .helper { font-size: var(--fs-footnote); color: var(--dim); margin-top: var(--sp-1); line-height: 1.4; }
+  .field .helper code { overflow-wrap: anywhere; }   /* the sample ZPA admin URL breaks on a phone, never widens the page */
   .field input, .field select {
     width: 100%;
     min-height: var(--ctl-md);
@@ -612,12 +613,17 @@
                 title="Every function of this app explained in plain English: what it is, why the customer cares, when to use it, what you get. Opens in a new tab.">
           <span aria-hidden="true">❓</span> What does everything do?
         </button>
+        <button class="btn btn-ghost" onclick="openPovTab()"
+                aria-label="Open POV planner: plan and run a customer proof of value with an intake, success criteria, a test runbook per product, a test kit and a Word or PDF report (opens in a new tab)"
+                title="Plan a customer proof of value for a saved tenant profile: intake, success criteria, a runbook of tests per product with pass or fail, notes and evidence, Prove it with the Path analyzer, a synthetic test kit, the timeline and follow-ups, and a report built from what actually ran. Never changes the tenant. Opens in a new tab.">
+          <span aria-hidden="true">🧪</span> POV planner
+        </button>
       </div>
       <div class="tool-group" role="group" aria-label="Find the gaps" data-sb-id="find-gaps">
         <div class="tool-group-l">Find the gaps</div>
         <button class="btn btn-ghost" onclick="openDataFlowTab()"
-                aria-label="Open Traffic flow and gaps: the exact path a transaction takes through Client Connector app and forwarding profiles, PAC, SSL, URL filtering, app control and DLP, visibility by cloud app category, and every bypass or blind spot, in one report (opens in a new tab)"
-                title="One report: the path each transaction takes (Client Connector app profile and forwarding profile by name, PAC, SSL, URL, Cloud App Control, File Type, DLP) with the diagram on top, visibility across every cloud app category, and where inspection is lost (bypasses and SSL blind spots). Opens in a new tab.">
+                aria-label="Open Traffic flow and gaps: the path the tenant's configuration gives web traffic through Client Connector app and forwarding profiles, PAC, app control, URL filtering, SSL and DLP, visibility by cloud app category, and the bypasses and blind spots on those paths, in one report (opens in a new tab)"
+                title="One report: the path the configuration gives each traffic class (Client Connector app profile and forwarding profile by name, PAC, Cloud App Control, URL, SSL, File Type, DLP) with the reference diagram on top, visibility across every cloud app category, and where inspection is lost on those paths (bypasses and SSL blind spots). Opens in a new tab.">
           <span aria-hidden="true">🗺️</span> Traffic flow &amp; gaps
         </button>
         <button class="btn btn-ghost" onclick="openZpaTab()"
@@ -1047,7 +1053,7 @@
             <input type="checkbox" class="scope-cb" value="dlp" checked style="width:auto;cursor:pointer;">
             DLP assessment <span style="color:var(--dim);font-size:0.75rem;">(188 checks)</span>
           </label>
-          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="ZIA platform checks, and what the Path analyzer reads beyond DLP: URL filtering, File Type Control, Advanced Threat Protection, Cloud Firewall (with its network services and IP groups), DNS Control and Sandbox rules.">
             <input type="checkbox" class="scope-cb" value="zia_extras" checked style="width:auto;cursor:pointer;">
             ZIA platform <span style="color:var(--dim);font-size:0.75rem;">(33 checks)</span>
           </label>
@@ -1082,6 +1088,14 @@
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Traffic insights: web, firewall, Shadow IT and SaaS security traffic numbers from ZIA Insights (Z-Insights API). Reads traffic data, not configuration; needs a OneAPI API client whose role includes Z-Insights read access. Not part of the assessment's checks.">
             <input type="checkbox" class="scope-cb" value="insights" style="width:auto;cursor:pointer;">
             ZIA Insights (traffic data) <span style="color:var(--dim);font-size:0.75rem;">(Traffic insights page — needs Z-Insights API access)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Zscaler AI Guard: whether it is licensed and reachable, and the Bulk changes builders that route GenAI apps through it and build its detection policy. Needs a OneAPI API client with AI Guard access. Not part of the assessment's checks.">
+            <input type="checkbox" class="scope-cb" value="aiguard" style="width:auto;cursor:pointer;">
+            AI Guard <span style="color:var(--dim);font-size:0.75rem;">(Bulk changes builders — needs AI Guard API access)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Cloud & Branch Connector: the traffic forwarding rules and workload groups, read only by the Path analyzer for traffic from a workload. Needs a OneAPI API client with a Cloud & Branch Connector role.">
+            <input type="checkbox" class="scope-cb" value="ztw" style="width:auto;cursor:pointer;">
+            Cloud &amp; Branch Connector <span style="color:var(--dim);font-size:0.75rem;">(Path analyzer, workload traffic)</span>
           </label>
         </div>
         <div class="helper">Pick any combination of Zscaler scopes. Automation checks validate IaC/SDK compatibility with <a href="https://github.com/zscaler" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/zscaler</a>.</div>
@@ -1757,6 +1771,8 @@ function profileHasSecret() { return !!(window.GD && GD.profile && GD.profileHas
 function missingSignInFields(b) {
   b = b || migrateCredBody();
   const missing = [];
+  // The sample tenant or a snapshot (offline_tenant.js): the server uses it, not the form.
+  if (window.zmeOffline && window.zmeOffline.active()) return missing;
   const blank = s => !s || !s.trim();
   if (b.auth_method === 'legacy') {
     if (blank(b.username)) missing.push(['zuser', 'Admin username']);
@@ -3370,7 +3386,7 @@ function renderChecks(checks, filter) {
     const plainHtml = pl ? `<dl class="check-plain">
         <dt>What we found</dt><dd>${escapeHtml(pl.found || '')}</dd>
         ${st !== 'PASS' && pl.means ? `<dt>What it means for the business</dt><dd>${escapeHtml(pl.means)}</dd>` : ''}
-        ${st !== 'PASS' && pl.do ? `<dt>What to do</dt><dd>${escapeHtml(pl.do)}</dd>` : ''}
+        ${st !== 'PASS' && pl.do ? `<dt>What to do</dt><dd>${escapeHtml(pl.do)}${c.tool && /^[a-z_]{1,40}$/.test(String(c.tool.build || '')) ? ` <a class="check-tool" href="/report/operations?build=${encodeURIComponent(c.tool.build)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(c.tool.why || '')}">${escapeHtml(c.tool.label || 'Open the builder')} (opens in a new tab)</a>` : ''}</dd>` : ''}
         <dt>${st === 'PASS' ? 'What this gives the business' : 'Once fixed'}</dt><dd>${escapeHtml(pl.outcome || '')}</dd>
       </dl>` : '';
     list.innerHTML += `<div class="check-item" data-class="${st}"><span class="check-status status-${st}"${stTitle}>${stLabel}</span><div class="check-body">${remediateBtn}<span class="check-id">[${escapeHtml(c.id)}]</span> <span class="check-label">${escapeHtml(c.label)}</span>${plainHtml}<details class="check-raw"><summary>Technical detail</summary><div class="check-detail">${escapeHtml(c.detail || '')}</div></details></div></div>`;
@@ -5383,6 +5399,12 @@ function openPostureTab() {
 function openFindAnything() {
   // Find anything (static/find_anything.js): the same dialog Ctrl+J and / open.
   if (window.DLP_FIND) window.DLP_FIND.open();
+}
+function openPovTab() {
+  // The POV is local (the tenant profile's folder); the tab reads this page's
+  // sign-in through window.opener only for Prove it and the Insights counts.
+  const w = window.open('/report/pov', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openTodoTab() {
   // Workspace notes are local: the tab reads them from this server, never the tenant.

@@ -23,7 +23,7 @@ dependencies = [
     "mcp[cli]>=1.2.0",
     "python-docx>=1.0.0",
     "pyjwt[crypto]>=2.15.0",
-    "msgpack>=1.2.1",
+    "msgpack>=1.2.3",
     "setuptools>=78.1.1",
     'pywin32>=311; sys_platform == "win32"',
     'colorama>=0.4.6; sys_platform == "win32"',
@@ -48,15 +48,15 @@ dlp-check-evaluate = "continuous_eval:main"
 
 [tool.setuptools]
 py-modules = [
-    "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "change_queue", "channel_scope", "compliance_mapping", "console_index", "csv_safe", "md_safe", "xlsx_writer", "policy_exports", "url_tools", "config_exports", "engine_explain", "audit_timeline", "admin_ops", "workspace_notes",
-    "continuous_eval", "corpus_engines", "safe_files", "posture_plus", "data_flow", "ssl_coverage", "deployments", "detection_health", "discover_endpoints",
-    "dlp_analysis", "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance", "insights", "device_posture",
-    "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_export", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth", "tenant_fingerprint",
+    "app_update", "audit", "beacon", "beacon_scope", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "change_queue", "channel_scope", "compliance_mapping", "console_index", "csv_safe", "md_safe", "xlsx_writer", "policy_exports", "url_tools", "config_exports", "engine_explain", "audit_timeline", "admin_ops", "ops_zcc", "ops_zdx", "ops_zpa", "workspace_notes", "ai_guard", "ops_aiguard", "pov", "bulk_test", "ops_zia_baseline",
+    "continuous_eval", "corpus_engines", "safe_files", "posture_plus", "data_flow", "ssl_coverage", "deployments", "detection_health", "discover_endpoints", "readiness", "zia_path_modules",
+    "dlp_analysis", "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance", "insights", "device_posture", "offline_tenant", "sample_tenant",
+    "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_export", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth", "tenant_fingerprint", "pac_eval", "path_whatif",
     "pack_removal", "pack_terraform", "permissions", "plain_english", "proposal_apply", "proposals", "remediation",
     "pdf_writer", "report_docx", "report_exports", "rule_migrator", "saas_email_checks", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security", "self_heal",
     "scenario_flow", "shadow_rules", "sso", "ssl_flow", "tenant_profiles", "upstream_check", "vendor_migrate", "vertical", "zcc_evaluation", "zia_rate", "zscaler_automation_checks", "zscaler_best_practices",
     "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check", "zcc_fleet",
-    "zscaler_zdx_checks", "zscaler_zidentity_checks", "zpa_analysis", "zpa_overview", "zpa_reader", "browser_security",
+    "zscaler_zdx_checks", "zscaler_zidentity_checks", "zpa_analysis", "zpa_overview", "zpa_reader", "browser_security", "standalone_main", "zpa_path", "workload_path",
 ]
 
 [tool.pytest.ini_options]

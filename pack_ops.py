@@ -213,9 +213,10 @@ def _minutes(seconds: float) -> str:
     return f"{m} minute" + ("" if m == 1 else "s")
 
 
-def fatal_reason(message: Optional[str]) -> Optional[str]:
+def fatal_reason(message: Optional[str], product: str = "") -> Optional[str]:
     """The plain-language reason a refusal stops the whole run, or None
-    when it is about this one object only."""
+    when it is about this one object only. `product` "zdx" words the
+    permission refusal for ZDX (the default is ZIA's DLP policy)."""
     m = (message or "").lower()
     if not m:
         return None
@@ -229,6 +230,9 @@ def fatal_reason(message: Optional[str]) -> Optional[str]:
                 "Run this again after that: what was already written is kept and only the rest is created.")
     if "unauthorized" in m or "token refresh attempts exhausted" in m or "401" in m.split():
         return "The tenant no longer accepts the credentials (the sign-in expired or the client secret changed). Reconnect, then run this again."
+    if ("forbidden" in m or "not authorized" in m or "insufficient" in m and "permission" in m) and product == "zdx":
+        return ("The API client is not allowed to change ZDX configuration in this tenant. In ZIdentity, give it a role with ZDX "
+                "configuration write access, then run this again.")
     if "forbidden" in m or "not authorized" in m or "insufficient" in m and "permission" in m:
         return ("The API client is not allowed to change DLP policy in this tenant. Give it the DLP policy write permission in ZIA "
                 "administration, then run this again.")
@@ -599,7 +603,7 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
             # this client, and every later write would cost the same again.
             _stop(fatal_reason(outcome.error) or FORBIDDEN_STOP_REASON, _log)
     if not outcome.ok:
-        reason = fatal_reason(outcome.error)
+        reason = fatal_reason(outcome.error, "zdx" if str(kind).startswith("zdx_") else "")
         if reason:
             _stop(reason, _log)
     return outcome
@@ -820,8 +824,44 @@ def _audited(action: str) -> Callable[[Callable[..., Outcome]], Callable[..., Ou
 # categories, and ZPA application segments. For a ZPA kind the first
 # argument is the ZPA service root (client.zpa), not client.zia: ZPA has no
 # activation, so its writes get no activate-and-retry on a 403.
-ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules"}
-ADMIN_KINDS = ("url_category", "zpa_segment")
+# The ZIA security baseline (ops_zia_baseline) adds Sandbox and DNS Control rules
+# (zscaler-sdk-python zia/sandbox_rules.py, zia/cloud_firewall_dns.py:
+# add_rule / update_rule / delete_rule) and the Advanced Threat Protection
+# settings (zia/atp_policy.py update_atp_settings, PUT
+# /cyberThreatProtection/advancedThreatSettings).
+ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules", "sandbox": "sandbox_rules", "dns": "cloud_firewall_dns"}
+ADMIN_KINDS = ("url_category", "zpa_segment", "atp_settings")  # and the ZPA builder kinds in ZPA_KINDS below
+# ZDX probe setup (ops_zdx): for these kinds the first argument is the ZDX
+# configuration API (ops_zdx.ZdxApi), not client.zia. ZDX has no activation,
+# so a 403 gets no activate-and-retry.
+ZDX_KINDS = ("zdx_app", "zdx_probe", "zdx_collection")
+
+
+def _zdx_write(api, method: str, *args: Any, op: str, kind: str, name: str, log: Optional[Callable[[str], None]] = None) -> Outcome:
+    fn = getattr(api, method, None)
+    if not callable(fn):
+        return Outcome(False, error="the ZDX configuration API is not available on this sign-in")
+    return call(fn, *args, op=op, kind=kind, name=name, log=log)
+
+# AI Guard (ops_aiguard): the ZIA objects that proxy-chain GenAI apps to AI
+# Guard, and the AI Guard detection policy objects. For an AI Guard kind the
+# first argument is the AI Guard service root (client.aiguard), not
+# client.zia: AI Guard has no activation, so no activate-and-retry on a 403.
+# zscaler-sdk-python 1.11.3 has no root-certificate service: that kind goes
+# through the raw request (POST/DELETE /rootCertificates, an assumed path).
+AIGUARD_KINDS = ("aiguard_policy", "aiguard_rule")
+AIGUARD_ZIA_KINDS = ("root_certificate", "zia_proxy", "ip_destination_group", "forwarding_rule", "url_app_settings")
+ROOT_CERTS_PATH = "/rootCertificates"
+
+
+def _aiguard_write(aig, kind: str, verb: str, *args: Any, op: str, name: str, log: Optional[Callable[[str], None]] = None,
+                   kw: Optional[Dict[str, Any]] = None) -> Outcome:
+    """An AI Guard detection policy or policy match rule write: the same
+    call() (retries, rate-limit handling, run control), without the ZIA
+    client, so a 403 is not answered by a ZIA activation (AI Guard has none)."""
+    svc = aig.policies if kind == "aiguard_policy" else aig.policy_match_rules
+    method = getattr(svc, f"{verb}_{'policy' if kind == 'aiguard_policy' else 'rule'}")
+    return call(method, *args, op=op, kind=kind, name=name, log=log, kw=kw)
 
 
 def _admin_rule_service(zia, channel: Optional[str]):
@@ -837,6 +877,44 @@ def _zpa_write(zpa, method: str, *args: Any, op: str, name: str, log: Optional[C
     return call(getattr(zpa.application_segment, method), *args, op=op, kind="zpa_segment", name=name, log=log, kw=kw)
 
 
+# The ZPA builder (ops_zpa) writes these further ZPA kinds through the same
+# create / update / delete: kind -> (service on client.zpa, create, update,
+# delete method). Verified against the installed SDK's zscaler/zpa services.
+# Provisioning keys take the key type ("connector") after the id; policy
+# rules are deleted by policy type and id. The first argument is client.zpa.
+ZPA_KINDS: Dict[str, Tuple[str, str, str, str]] = {
+    "zpa_connector_group": ("app_connector_groups", "add_connector_group", "update_connector_group", "delete_connector_group"),
+    "zpa_provisioning_key": ("provisioning", "add_provisioning_key", "update_provisioning_key", "delete_provisioning_key"),
+    "zpa_segment_group": ("segment_groups", "add_group", "update_group", "delete_group"),
+    "zpa_server_group": ("server_groups", "add_group", "update_group", "delete_group"),
+    "zpa_pra_segment": ("app_segments_pra", "add_segment_pra", "update_segment_pra", "delete_segment_pra"),
+    "zpa_inspection_profile": ("app_protection", "add_profile", "update_profile", "delete_profile"),
+    "zpa_pra_console": ("pra_console", "add_console", "update_console", "delete_console"),
+    "zpa_access_rule": ("policies", "add_access_rule", "update_access_rule", "delete_rule"),
+    "zpa_timeout_rule": ("policies", "add_timeout_rule", "update_timeout_rule", "delete_rule"),
+    "zpa_inspection_rule": ("policies", "add_app_protection_rule", "update_app_protection_rule", "delete_rule"),
+    "zpa_isolation_rule": ("policies", "add_isolation_rule", "update_isolation_rule", "delete_rule"),
+}
+ZPA_RULE_POLICY = {"zpa_access_rule": "access", "zpa_timeout_rule": "timeout", "zpa_inspection_rule": "inspection",
+                   "zpa_isolation_rule": "isolation"}
+
+
+def _zpa_kind_write(zpa, kind: str, op: str, oid: Any = None, payload: Optional[Dict[str, Any]] = None, *, name: str = "",
+                    log: Optional[Callable[[str], None]] = None) -> Outcome:
+    svc_name, c, u, d = ZPA_KINDS[kind]
+    svc = getattr(zpa, svc_name, None) if zpa is not None else None
+    if svc is None:
+        return Outcome(False, error=f"{svc_name} is not available in the installed zscaler-sdk-python")
+    key = ("connector",) if kind == "zpa_provisioning_key" else ()
+    if op == "create":
+        return call(getattr(svc, c), *key, op="create", kind=kind, name=name, log=log, kw=payload)
+    if op == "update":
+        return call(getattr(svc, u), oid, *key, op="update", kind=kind, name=name, log=log, kw=payload)
+    if kind in ZPA_RULE_POLICY:
+        return call(getattr(svc, d), ZPA_RULE_POLICY[kind], oid, op="delete", kind=kind, name=name, log=log)
+    return call(getattr(svc, d), oid, *key, op="delete", kind=kind, name=name, log=log)
+
+
 @_audited("create")
 def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = None, parent_id: Any = None,
            name: str = "", log: Optional[Callable[[str], None]] = None) -> Outcome:
@@ -850,6 +928,21 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
         return call(zia.dlp_engine.add_dlp_engine, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "app_group":
         return call(pc.add_app_group, zia, payload, op="create", kind=kind, name=name, log=log, zia=zia)
+    if kind == "root_certificate":
+        return call(pc.raw_request, zia, "POST", ROOT_CERTS_PATH, payload, op="create", kind=kind, name=name, log=log, zia=zia)
+    if kind == "zia_proxy":
+        return call(zia.proxies.add_proxy, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "ip_destination_group":
+        return call(zia.cloud_firewall.add_ip_destination_group, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "forwarding_rule":
+        return call(zia.forwarding_control.add_rule, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind in AIGUARD_KINDS:
+        return _aiguard_write(zia, kind, "add", op="create", name=name, log=log, kw=payload)
+    if kind == "policy" and channel in ADMIN_RULE_SERVICES:
+        svc, err = _admin_rule_service(zia, channel)
+        if err:
+            return Outcome(False, error=err)
+        return call(svc.add_rule, op="create", kind=kind, name=name, channel=channel, log=log, kw=payload, zia=zia)
     if kind == "policy":
         if parent_id is not None:
             return call(pc.add_sub_rule, zia, parent_id, payload, op="create", kind=kind, name=name, channel=channel, log=log, zia=zia)
@@ -858,6 +951,14 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
         return call(zia.url_categories.add_url_category, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "zpa_segment":
         return _zpa_write(zia, "add_segment", op="create", name=name, log=log, kw=payload)
+    if kind == "zdx_app":
+        return _zdx_write(zia, "zdx_create_app", payload, op="create", kind=kind, name=name, log=log)
+    if kind == "zdx_probe":
+        return _zdx_write(zia, "zdx_create_probe", parent_id, payload, op="create", kind=kind, name=name, log=log)
+    if kind == "zdx_collection":
+        return _zdx_write(zia, "zdx_create_collection", payload, op="create", kind=kind, name=name, log=log)
+    if kind in ZPA_KINDS:
+        return _zpa_kind_write(zia, kind, "create", payload=payload, name=name, log=log)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -875,6 +976,14 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(zia.dlp_engine.update_dlp_engine, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "app_group":
         return call(pc.update_app_group, zia, oid, payload, op="update", kind=kind, name=name, log=log, zia=zia)
+    if kind == "ip_destination_group":
+        return call(zia.cloud_firewall.update_ip_destination_group, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "forwarding_rule":
+        return call(zia.forwarding_control.update_rule, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "url_app_settings":
+        return call(zia.url_filtering.update_url_and_app_settings, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind in AIGUARD_KINDS:
+        return _aiguard_write(zia, kind, "update", oid, op="update", name=name, log=log, kw=payload)
     if kind == "policy" and channel in ADMIN_RULE_SERVICES:
         svc, err = _admin_rule_service(zia, channel)
         if err:
@@ -886,8 +995,19 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(pc.update_rule, zia, channel, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if kind == "url_category":
         return call(zia.url_categories.update_url_category, oid, action, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "atp_settings":
+        svc = getattr(zia, "atp_policy", None)
+        if svc is None:
+            return Outcome(False, error="atp_policy is not available in the installed zscaler-sdk-python")
+        return call(svc.update_atp_settings, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "zpa_segment":
         return _zpa_write(zia, "update_segment", oid, op="update", name=name, log=log, kw=payload)
+    if kind == "zdx_app":   # ZDX changes an app's or probe's state only (action: activate | deactivate)
+        return _zdx_write(zia, "zdx_set_app_state", oid, action, op="update", kind=kind, name=name, log=log)
+    if kind == "zdx_probe":
+        return _zdx_write(zia, "zdx_set_probe_state", parent_id, oid, action, op="update", kind=kind, name=name, log=log)
+    if kind in ZPA_KINDS:
+        return _zpa_kind_write(zia, kind, "update", oid, payload, name=name, log=log)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -905,9 +1025,37 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
     if kind == "url_category":
         return call(zia.url_categories.delete_category, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "zpa_segment":
-        return _zpa_write(zia, "delete_segment", oid, op="delete", name=name, log=log)
+        # force_delete: ZPA also drops the segment's mapping to its segment group (the builder's delete)
+        return _zpa_write(zia, "delete_segment", oid, op="delete", name=name, log=log,
+                          kw={"force_delete": True} if item.get("force_delete") else None)
+    if kind == "zdx_app":
+        return _zdx_write(zia, "zdx_delete_app", oid, op="delete", kind=kind, name=name, log=log)
+    if kind == "zdx_probe":
+        return _zdx_write(zia, "zdx_delete_probe", item.get("parent_id"), oid, op="delete", kind=kind, name=name, log=log)
+    if kind in ZPA_KINDS:
+        return _zpa_kind_write(zia, kind, "delete", oid, name=name, log=log)
+    if kind == "root_certificate":
+        return call(pc.raw_request, zia, "DELETE", f"{ROOT_CERTS_PATH}/{oid}", op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "zia_proxy":
+        return call(zia.proxies.delete_proxy, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "ip_destination_group":
+        return call(zia.cloud_firewall.delete_ip_destination_group, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "forwarding_rule":
+        return call(zia.forwarding_control.delete_rule, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind in AIGUARD_KINDS:
+        return _aiguard_write(zia, kind, "delete", oid, op="delete", name=name, log=log)
+    if kind == "policy" and channel in ADMIN_RULE_SERVICES:
+        svc, err = _admin_rule_service(zia, channel)
+        if err:
+            return Outcome(False, error=err)
+        return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if kind != "policy":
         return Outcome(False, error=f"unknown object kind '{kind}'")
+    if channel in ADMIN_RULE_SERVICES:
+        svc, err = _admin_rule_service(zia, channel)
+        if err:
+            return Outcome(False, error=err)
+        return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if channel == pc.ENDPOINT and item.get("parent_id") is not None:
         return call(pc.raw_request, zia, "DELETE", f"/endPointDlpRules/{item['parent_id']}/subRule/{oid}", op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if channel == pc.CLOUD_APP:

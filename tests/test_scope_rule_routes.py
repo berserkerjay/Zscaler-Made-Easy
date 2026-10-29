@@ -36,7 +36,7 @@ import dlp_api_server as srv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CREDS = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "customer_id": "7210000000000"}
-ALL_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights"]
+ALL_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard", "ztw"]
 ALL_CHANNELS = {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "genai_security", "shadow_it",
                                        "endpoint_scan", "ssl_inspection", "cloud_app_control", "device_control",
                                        "workflow_automation")}
@@ -95,7 +95,7 @@ class _Svc:
         return True
 
 
-SDK_NAMESPACES = ("zia", "zpa", "zcc", "zdx", "zins", "zwa", "zidentity", "ztw")
+SDK_NAMESPACES = ("zia", "zpa", "zcc", "zdx", "zins", "zwa", "zidentity", "ztw", "aiguard")
 
 
 class FakeSdk:
@@ -214,14 +214,18 @@ ZIA = page(["zia_extras"])                                   # ZIA platform only
 ZPA = page(["zpa"])
 ZCC = page(["zcc"])
 INSIGHTS = page(["insights"])
+AIG_ZIA = page(["zia_extras", "aiguard"])                    # AI Guard routing: ZIA platform and AI Guard
+AIGUARD = page(["aiguard"])                                  # AI Guard only
 AUTOMATION = page(["automation"])
+ZDX = page(["zdx"])
+ZTW = page(["ztw"])
 
 # What each partial selection leaves out: a read naming any of these is out of scope.
 OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules", "saas_security_api", "casb_tenant",
              "/endPointDlpRules", "/emailDlpRules", "/casbDlpRules", "zwa.")
 NOT_ZIA_PLATFORM = ("firewall", "/locations", "networkService", "networkApplication", "ipDestinationGroups", "auditlog")
 NOT_DECLARED = ("sslInspectionRules", "ssl_inspection_rules", "cloudApplicationRules", "cloudappcontrol.")
-OTHER_PRODUCTS = ("zpa.", "zcc.", "/zcc/", "zins.", "zdx.", "zidentity.")
+OTHER_PRODUCTS = ("zpa.", "zcc.", "/zcc/", "zins.", "zdx.", "zidentity.", "aiguard.")
 WEB_OUT = OTHER_DLP + NOT_ZIA_PLATFORM + NOT_DECLARED + OTHER_PRODUCTS
 ZIA_OUT = ("dlp_web_rules", "/webDlpRules", "dlp_dictionary", "dlp_engine", "/dlpEngines", "/dlpDictionaries") + OTHER_DLP + NOT_DECLARED \
     + OTHER_PRODUCTS + ("auditlog",)
@@ -229,6 +233,10 @@ ZPA_OUT = ("zia.", "/zia/", "zcc.", "/zcc/", "zins.", "zwa.")
 ZCC_OUT = ("zia.", "zpa.", "zins.", "zwa.") + tuple(f"/zia/{x}" for x in ("webDlpRules", "urlFilteringRules", "sslInspectionRules", "fileTypeRules",
                                                                          "firewallFilteringRules", "cloudApplicationRules", "urlCategories"))
 INSIGHTS_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zwa.")
+ZDX_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "zidentity.")
+AIG_ZIA_OUT = tuple(x for x in ZIA_OUT if x != "aiguard.")   # ZIA platform and AI Guard both ticked
+AIGUARD_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
+ZTW_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -254,6 +262,24 @@ def _recorded_operation(sel: Dict[str, Any]) -> Dict[str, Any]:
     return dict(CREDS, **sel)
 
 
+def _opened_snapshot(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A snapshot opened from a file, to compare with the live tenant (offline_tenant)."""
+    import offline_tenant
+    doc = offline_tenant.build_snapshot({"/zia/api/v1/webDlpRules": {"status": 200, "body": []}}, {"tenant_label": "acme (production)"})
+    st = offline_tenant.open_document(offline_tenant.dumps(doc))
+    return dict(CREDS, snapshot_id=st.id, **sel)
+
+
+def _pov_for(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A saved tenant profile with a POV: Prove it and the Insights counts record on it."""
+    import pov
+    import tenant_profiles
+    pid = tenant_profiles.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": CREDS["client_id"]},
+                                 client_secret=CREDS["client_secret"], remember_secret=True)["id"]
+    pov.create(pid, None, {"customer": "Acme", "vertical": "general"}, by="qa")
+    return dict(CREDS, profile_id=pid, **sel)
+
+
 class Route:
     """One tenant-reading route: its body, the partial selection that puts
     only part of what it reads in scope and what that selection leaves out,
@@ -276,6 +302,12 @@ class Route:
 
 DEST = {"destination": "example.com"}
 RULE_STATE_WEB = {"operation": {"type": "rule_state", "targets": [{"policy": "web_dlp", "id": 1, "to": "DISABLED"}]}}
+ZCC_BUILD = {"operation": {"type": "zcc_profile_build", "platform": "windows", "forwarding": {"template": "best_practice", "name": "QA fwd"},
+                           "app": {"template": "best_practice", "name": "QA app"}}}
+ZDX_SETUP = {"operation": {"type": "zdx_probes", "predefined": [{"provider": "MICROSOFT_LOGIN"}],
+                           "custom": [{"name": "Intranet", "url": "https://intranet.example.com/"}]}}
+AIG_ROUTING = {"operation": {"type": "aiguard_routing", "apps": ["chatgpt"], "cert": {"mode": "existing", "id": "11"}}}
+AIG_POLICY = {"operation": {"type": "aiguard_detection_policy", "profile": "HIPAA"}}
 
 ROUTES: List[Route] = [
     # Job starts and their waited-for twins
@@ -287,6 +319,12 @@ ROUTES: List[Route] = [
     Route("/api/path-analyzer/start", DEST),
     Route("/api/path-analyzer", DEST),
     Route("/api/path-analyzer/batch/start", {"har_hosts": ["example.com"]}),
+    Route("/api/path-analyzer/start", DEST, partial=ZPA, out=ZPA_OUT),
+    Route("/api/path-analyzer/start", dict(DEST, source="workload", workload={"ip": "10.0.0.5"}), partial=ZTW, out=ZTW_OUT),
+    Route("/api/path-analyzer", dict(DEST, source="workload", workload={"ip": "10.0.0.5"}), partial=ZTW, out=ZTW_OUT),
+    Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}),
+    Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
     Route("/api/report/data-flow"),
     Route("/api/report/ssl-flow"),
     Route("/api/report/bypass"),
@@ -321,6 +359,9 @@ ROUTES: List[Route] = [
     # Insights, ZPA, device posture, browser security, SSL coverage
     Route("/api/insights/start", partial=INSIGHTS, out=INSIGHTS_OUT),
     Route("/api/insights", partial=INSIGHTS, out=INSIGHTS_OUT),
+    # The POV planner's Prove it (the Path analyzer) and Insights counts
+    Route("/api/pov/prove/start", {"test_id": "url-block"}, setup=_pov_for),
+    Route("/api/pov/insights/start", partial=INSIGHTS, out=INSIGHTS_OUT, setup=_pov_for),
     Route("/api/zpa/analysis/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/zpa/diagnose", {"destination": "app.example.com", "port": "443"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/device-posture/start", partial=ZPA, out=ZPA_OUT),
@@ -333,12 +374,37 @@ ROUTES: List[Route] = [
     Route("/api/self-heal/tenant/heal", {"ids": ["x"], "confirm": "x"}, partial=None),   # a write: refused before sign-in only
     Route("/api/audit-timeline/start", {"include_zia": True}, partial=AUTOMATION, out=AUTOMATION_OUT),
     Route("/api/zcc/fleet/start", partial=ZCC, out=ZCC_OUT),
+    Route("/api/readiness/start", partial=ZCC, out=ZCC_OUT),
+    Route("/api/readiness/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/objects/start", {"family": "rules"}),
     Route("/api/operations/objects", {"family": "rules"}),
     Route("/api/operations/preview/start", RULE_STATE_WEB),
     Route("/api/operations/preview", RULE_STATE_WEB),
+    Route("/api/operations/objects/start", {"family": "zdx_apps"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/preview", ZDX_SETUP, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/preview/start", {"operation": {"type": "zdx_probe_state", "targets": [{"app": "1", "to": "off"}]}},
+          partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/preview", AIG_ROUTING, partial=AIG_ZIA, out=AIG_ZIA_OUT),
+    Route("/api/operations/preview/start", AIG_POLICY, partial=AIGUARD, out=AIGUARD_OUT),
+    Route("/api/operations/objects", {"family": "aiguard_routing_setup"}, partial=AIG_ZIA, out=AIG_ZIA_OUT),
+    Route("/api/operations/objects/start", {"family": "aiguard_policy_setup"}, partial=AIGUARD, out=AIGUARD_OUT),
     Route("/api/operations/op-qa-1/undo/preview/start", setup=_recorded_operation),
     Route("/api/operations/op-qa-1/undo/preview", setup=_recorded_operation),
+    # Client Connector profiles: plugin types on the same engine (ops_zcc), and the install command builder's token read
+    Route("/api/operations/objects", {"family": "zcc_profiles"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview/start", ZCC_BUILD, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zcc_profile_delete", "targets": [{"kind": "forwarding", "id": "1", "name": "QA"}]}},
+          partial=ZCC, out=ZCC_OUT),
+    Route("/api/zcc/install", {"app_profile_id": "21"}, partial=ZCC, out=ZCC_OUT),
+    # The ZPA builder (ops_zpa): plugin types and their pick lists on the same routes
+    Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/operations/preview/start", {"operation": {"type": "zpa_policies", "prefix": "pov1", "access": True}}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zpa_prefix_delete", "prefix": "pov1", "everything": True}}, partial=ZPA, out=ZPA_OUT),
+    # Snapshots (offline_tenant): saving one, and comparing one with the live tenant
+    Route("/api/tenant-profiles/snapshots/save/start"),
+    Route("/api/tenant-profiles/snapshots/save/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/tenant-profiles/snapshots/compare/start", setup=_opened_snapshot),
+    Route("/api/tenant-profiles/snapshots/compare/start", setup=_opened_snapshot, partial=ZCC, out=ZCC_OUT),
     Route("/api/digests/run", setup=_profile_from, nothing=200,
           why="by design: the loop reads saved profiles, and one with nothing in scope is reported 'not read' in the digest"),
 ]
@@ -409,6 +475,13 @@ EXPLICIT_PICKS = [
     ("/api/operations/preview", {"operation": {"type": "reorder", "policy": "ssl_inspection", "order": [1]}}, WEB),
     ("/api/operations/objects", {"family": "zpa_segments"}, WEB),
     ("/api/operations/objects", {"family": "url_categories"}, ZPA),
+    ("/api/operations/preview", ZDX_SETUP, WEB),
+    ("/api/operations/objects", {"family": "zdx_apps"}, ZPA),
+    ("/api/operations/preview", {"operation": {"type": "zpa_connector_group", "prefix": "pov1"}}, WEB),
+    ("/api/operations/objects", {"family": "zpa_objects"}, ZIA),
+    ("/api/operations/preview", AIG_ROUTING, page(["zia_extras"])),
+    ("/api/operations/preview", AIG_POLICY, page(["zia_extras"])),
+    ("/api/operations/objects", {"family": "aiguard_routing_setup"}, AIGUARD),
     ("/api/self-heal/tenant/scan", {"pack_ids": ["zbp_enterprise_baseline"], "include_who": True}, WEB),
     ("/api/audit-timeline/start", {"include_zia": True}, WEB),
     ("/api/device-posture/start", {}, ZCC),

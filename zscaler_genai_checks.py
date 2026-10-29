@@ -403,6 +403,34 @@ def ai_20(cl):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# AI GUARD: the findings the Bulk changes AI Guard builders address
+# ═══════════════════════════════════════════════════════════════════════
+
+AI_GUARD_ROUTING = "/report/operations?build=aiguard_routing"
+AI_GUARD_POLICY = "/report/operations?build=aiguard_detection_policy"
+# check id -> (builder link, what the builder does about it)
+AI_GUARD_LINKS = {
+    "AI.5": (AI_GUARD_ROUTING, "The AI Guard routing builder adds an SSL Inspect rule for the GenAI apps at the top of SSL inspection."),
+    "AI.6": (AI_GUARD_ROUTING, "The AI Guard routing builder adds an SSL Inspect rule for the GenAI apps above every Do Not Decrypt rule."),
+    "AI.7": (AI_GUARD_POLICY, "An AI Guard detection policy inspects every prompt and answer of the routed GenAI apps."),
+    "AI.10": (AI_GUARD_POLICY, "The AI Guard detection policy builder turns HIPAA, PCI, GDPR and other profiles into prompt inspection."),
+    "AI.13": (AI_GUARD_POLICY, "AI Guard detects prompt injection and jailbreak attempts; build its detection policy."),
+    "AI.15": (AI_GUARD_ROUTING, "The AI Guard routing builder sends Microsoft 365 Copilot through AI Guard, with the SSL rule above the one-click bypass."),
+}
+
+
+def tool_link(check_id, status):
+    """{href, label, why} of the AI Guard builder that addresses a GenAI
+    finding, or None (a pass, or a check AI Guard does not address)."""
+    hit = AI_GUARD_LINKS.get(str(check_id or ""))
+    if not hit or str(status or "").upper() in ("PASS", "INFO", "ERROR"):
+        return None
+    href, why = hit
+    label = "Build the AI Guard routing" if href == AI_GUARD_ROUTING else "Build an AI Guard detection policy"
+    return {"href": href, "build": href.split("build=", 1)[1], "label": label, "why": why}
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # GENAI REGISTRY
 # ═══════════════════════════════════════════════════════════════════════
 

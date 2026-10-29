@@ -5,7 +5,10 @@
 //     Zscaler tenant. The banner offers "Back to read-only", which turns
 //     write mode off through the same API Deploy Studio uses;
 //   - the UI token gate is off (/api/auth/status → required: false,
-//     i.e. ZSCALER_UI_AUTH=0): anyone who can reach the address can use it.
+//     i.e. ZSCALER_UI_AUTH=0): anyone who can reach the address can use it;
+//   - this browser uses the sample tenant or an offline snapshot
+//     (/api/offline/status → mode sample / snapshot): nothing on the page is
+//     the live tenant. The banner offers "Leave", which goes back to it.
 // The banner sits in the page flow (first child of <body>), so it pushes the
 // page down instead of covering it. It is refreshed on load, when write mode
 // changes in this tab (the "dlp:write-mode" event Deploy Studio fires), when
@@ -46,7 +49,7 @@ body.db-layout #dlpSafetyBanner { margin-left: var(--db-w, 264px); }
 }
 @media print { #dlpSafetyBanner { display: none !important; } }
 `;
-  const state = { write: null, auth: null, busy: false, lastEnabled: null };
+  const state = { write: null, auth: null, offline: null, busy: false, lastEnabled: null };
   let el = null;
 
   function node(tag, cls, text) {
@@ -90,7 +93,19 @@ body.db-layout #dlpSafetyBanner { margin-left: var(--db-w, 264px); }
     gt.appendChild(how);
     g.appendChild(gt);
 
-    el.appendChild(w); el.appendChild(g);
+    const o = node('div', 'sb-row sb-offline'); o.hidden = true;
+    o.appendChild(node('span', 'sb-ic', '!')).setAttribute('aria-hidden', 'true');
+    const ot = node('span', 'sb-text');
+    ot.appendChild(node('strong', 'sb-offline-head'));
+    ot.appendChild(document.createTextNode(' '));
+    ot.appendChild(node('span', 'sb-how sb-offline-how'));
+    o.appendChild(ot);
+    const leave = node('button', 'sb-btn sb-leave', 'Leave'); leave.type = 'button';
+    leave.addEventListener('click', leaveOffline);
+    o.appendChild(leave);
+    o.appendChild(node('span', 'sb-msg sb-offline-msg')).setAttribute('role', 'alert');
+
+    el.appendChild(o); el.appendChild(w); el.appendChild(g);
     document.body.insertBefore(el, document.body.firstChild);
     return el;
   }
@@ -101,6 +116,19 @@ body.db-layout #dlpSafetyBanner { margin-left: var(--db-w, 264px); }
     const writeOn = !!(w && w.enabled);
     const gateOff = !!(a && a.required === false);
     const wr = b.querySelector('.sb-write'), gr = b.querySelector('.sb-gate');
+    const off = state.offline, offOn = !!(off && (off.mode === 'sample' || off.mode === 'snapshot' || off.mode === 'gone'));
+    const or_ = b.querySelector('.sb-offline');
+    or_.hidden = !offOn;
+    if (offOn) {
+      const sample = off.mode === 'sample', gone = off.mode === 'gone';
+      or_.querySelector('.sb-offline-head').textContent = sample ? 'Sample tenant: nothing here is real.'
+        : gone ? 'The sample or snapshot this page used is closed.' : 'Offline snapshot: nothing here is live.';
+      or_.querySelector('.sb-offline-how').textContent = sample
+        ? `${off.company || 'A made-up company'} is invented. Changes stay in this app's memory and never reach a tenant.`
+        : gone ? 'Leave to use the live tenant, or open the sample or the snapshot again.'
+        : `${off.tenant_label || 'A saved tenant read'}${off.saved_at ? `, read ${String(off.saved_at).slice(0, 16).replace('T', ' ')} UTC` : ''}. Nothing is read from or sent to a tenant; it is read-only.`;
+      or_.querySelector('.sb-leave').textContent = sample ? 'Leave the sample' : gone ? 'Leave' : 'Close the snapshot';
+    }
     wr.hidden = !writeOn;
     gr.hidden = !gateOff;
     if (writeOn) {
@@ -108,7 +136,7 @@ body.db-layout #dlpSafetyBanner { margin-left: var(--db-w, 264px); }
         ? 'It was set at start (ENABLE_WRITE_ACTIONS), so it comes back on when the server restarts unless that setting is removed.'
         : 'It applies to every browser using this server until you switch back or the server restarts.';
     }
-    b.hidden = !(writeOn || gateOff);
+    b.hidden = !(writeOn || gateOff || offOn);
   }
 
   async function getJson(url) {
@@ -137,6 +165,8 @@ body.db-layout #dlpSafetyBanner { margin-left: var(--db-w, 264px); }
         state.write = w; state.lastEnabled = !!w.enabled;
         if (changed) tellOthers(w);   // e.g. another tab switched it: Deploy Studio re-reads its own copy
       }
+      const off = await getJson('/api/offline/status');
+      if (off) state.offline = off;
     }
     if (document.body) render();
   }
@@ -160,6 +190,30 @@ body.db-layout #dlpSafetyBanner { margin-left: var(--db-w, 264px); }
       state.busy = false; btn.disabled = false;
     }
   }
+
+  // Back to the live tenant in this browser, then reload: what the page
+  // shows came from the sample or the snapshot.
+  async function leaveOffline() {
+    if (state.busy) return;
+    const b = build();
+    const btn = b.querySelector('.sb-leave'), msg = b.querySelector('.sb-offline-msg');
+    state.busy = true; btn.disabled = true; msg.textContent = '';
+    try {
+      const r = await fetch('/api/offline/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      state.offline = { mode: 'live' };
+      render();
+      pingOtherTabs();
+      try { window.dispatchEvent(new CustomEvent('zme:offline', { detail: Object.assign({ from: 'banner' }, state.offline) })); } catch (e) { /* old browser */ }
+      location.reload();
+    } catch (e) {
+      msg.textContent = 'Could not leave: ' + String((e && e.message) || e);
+    } finally {
+      state.busy = false; btn.disabled = false;
+    }
+  }
+  // The Connect page opened or left the sample or a snapshot in this tab.
+  window.addEventListener('zme:offline', e => { if (e && e.detail && e.detail.from !== 'banner') refresh(); });
 
   // Deploy Studio (or anything else) changed write mode in this tab.
   window.addEventListener('dlp:write-mode', e => {
