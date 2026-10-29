@@ -1,0 +1,9 @@
+{"area": "Secure by design: untrusted input", "title": "Fixture: input checks", "standards": ["ASVS V5.1.3", "CWE-20"],
+ "checks": [{"id": "bodies", "what": "Bodies of the wrong shape are refused", "standard": "ASVS V5.1.3", "result": "fixed"},
+            {"id": "sizes", "what": "Huge values are refused", "standard": "CWE-400", "result": "open"}],
+ "findings": [
+   {"id": "SBD-INPUT-01", "title": "Fixture: an oversized upload is read whole", "severity": "medium", "cwe": "CWE-400", "asvs": "V12.1.1",
+    "status": "open", "fix": "", "reason": "Fixture reason: <img src=x onerror=alert(1)> | [link](javascript:alert(1))", "test": "", "commit": ""},
+   {"id": "SBD-INPUT-02", "title": "Fixture: a name breaks the export", "severity": "high", "cwe": "CWE-116", "asvs": "V5.3.1",
+    "status": "fixed", "fix": "Fixture fix", "test": "tests/test_example.py::test_other", "commit": "abc1235"}],
+ "tests_added": 4}

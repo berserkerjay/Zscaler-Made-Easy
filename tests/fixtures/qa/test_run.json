@@ -1,0 +1,14 @@
+{
+  "passed": 1990, "failed": 10, "errors": 0, "skipped": 5, "duration_s": 251.4,
+  "commit": "0123456789ab", "date": "2026-10-29T12:00:00",
+  "files": {
+    "tests/test_write_safety_gates.py": {"passed": 100, "failed": 0, "skipped": 0},
+    "tests/test_api_contracts.py": {"passed": 95, "failed": 5, "skipped": 0},
+    "tests/test_auth_session.py": {"passed": 50, "failed": 0, "skipped": 0},
+    "tests/test_supply_chain_qa.py": {"passed": 10, "failed": 0, "skipped": 0},
+    "tests/test_path_analyzer.py": {"passed": 40, "failed": 0, "skipped": 0},
+    "tests/test_ops_zcc.py": {"passed": 10, "failed": 0, "skipped": 0},
+    "tests/test_accessibility.py": {"passed": 30, "failed": 0, "skipped": 2},
+    "tests/test_flow_animator.py": {"passed": 20, "failed": 0, "skipped": 0}
+  }
+}

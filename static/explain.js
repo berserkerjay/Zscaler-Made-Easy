@@ -299,11 +299,19 @@
   };
   X.advanced = {
     group: 'Reference', name: 'Advanced settings', href: '/report/advanced',
-    what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (badges and a side panel on DLP objects, policy rules and the objects they use in the ZIA admin console, export to JSON or Terraform, and the Path analyzer for any site), and see how this server is configured (bind host, token gate, write mode, limits).',
+    what: 'Add your own policy packs (JSON, Terraform, native Zscaler API exports or a ZIP) to the library, transcribe native exports to Terraform, download the companion browser extension (badges and a side panel on DLP objects, policy rules and the objects they use in the ZIA admin console, export to JSON or Terraform, and the Path analyzer for any site), see how this server is configured (bind host, token gate, write mode, limits), and read this app\'s own quality and security score.',
     why: 'Customers and colleagues have their own designs; this puts them through the same preflight and deploy as the built-in packs.',
     when: 'When someone hands you a pack or an export from another tenant.',
     get: 'A validation preview (what it contains, what blocks it) before anything is added.',
     next: 'Add it; it then shows up in Deploy policy packs and the Terraform hand-off.',
+  };
+  X.qualityscore = {
+    group: 'Reference', name: 'Quality and security score', href: '/report/advanced#quality',
+    what: 'One score from 0 to 100 for this app itself (not your tenant): how many tests passed in the last full run, which security findings the QA checks recorded and which are still open, and how many controls of OWASP ASVS, WCAG 2.2, CWE, SLSA, OpenSSF Scorecard and NIST SSDF have a test. Sub-scores cover regression, secure by design, functionality and motion.',
+    why: 'Before you put a customer tenant in front of the app, you can see how well the app is tested and whether any serious problem is known and still open. An open critical or high finding caps the score, so a good number cannot hide one.',
+    when: 'Before an engagement, after updating the app, or when someone asks how the tool itself is tested and secured.',
+    get: 'The overall score and grade, a bar chart and a table per area, finding counts by severity and status, every open finding with its reason, the standards covered and the date and commit of the test run; the full report as QUALITY_SCORE.md.',
+    next: 'If a finding is open, read its reason and check whether it touches what you plan to do; update the app when a fix ships. Nothing here reads or changes a tenant.',
   };
   X.updates = {
     group: 'Reference', name: 'Zscaler updates', href: '/report/view?tool=updates',
@@ -484,7 +492,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
-    'digest', 'packs', 'flow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
+    'digest', 'packs', 'flow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],
@@ -517,6 +525,8 @@
     ['Z-Tunnel 1.0 / 2.0', 'The two ways Client Connector carries traffic. 2.0 (DTLS or TLS, needs outbound UDP or TCP 443) carries everything; 1.0 (HTTP CONNECT) carries only web ports. A firewall that blocks UDP 443 forces the fallback to 1.0.'],
     ['PAC file', 'A small script the browser or Client Connector runs for every request to decide: send it to Zscaler (PROXY) or straight out (DIRECT). Every DIRECT is a bypass that DLP never sees.'],
     ['Captive portal', 'The Wi-Fi sign-in page at hotels and airports. Until the user clicks through, nothing reaches Zscaler; Client Connector pauses so the page can load.'],
+    ['Quality and security score', 'A score from 0 to 100 for this app itself, not for a tenant, on Advanced settings: tests passed in the last full run (40%), open security findings weighted by CVSS severity (40%) and standards controls with a test (20%). Fixed findings are listed but not counted against it; any open critical finding caps it at 39 and any open high at 69. tools/quality_score.py builds it and docs/QUALITY_SCORE.md shows the working.'],
+    ['Finding severity (CVSS)', 'How serious a QA finding about this app is, in the CVSS v3.1 bands: critical (9.0 to 10.0), high (7.0 to 8.9), medium (4.0 to 6.9), low (0.1 to 3.9) and info. Each finding is open, fixed (with the test that proves it) or accepted (with the reason).'],
     ['Projected score', 'The score the assessment would give after the fixes you tick on Improve my score (and any fix recipe staged in the change queue), worked out with the same formula as the real score. Nothing is changed or read to get it; run the assessment again to make it real.'],
     ['Points gained', 'How much one fix raises the overall score: the score worked out again with that check configured, minus the score now. Every scoreable check weighs the same, so each fix adds about 100 divided by the number of scoreable checks.'],
     ['Coverage', 'The share of the assessment\'s checks that ran and got an answer. A check that was not permitted to the API client, was rate limited, timed out or failed is left out of the score; Improve my score lists each one with the reason and the fix.'],

@@ -1,0 +1,3 @@
+{"area": "Secure by design: write paths", "title": "Fixture: write checks",
+ "findings": [{"id": "SBD-WRITES-01", "title": "Fixture: a write skips the re-read", "severity": "high", "cwe": "CWE-367",
+               "status": "open", "reason": "Fixture: fix in review"}]}

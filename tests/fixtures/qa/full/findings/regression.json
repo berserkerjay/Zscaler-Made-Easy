@@ -1,0 +1,5 @@
+{"area": "Regression", "title": "Fixture: regression pass", "standards": ["SSDF PW.8.2"],
+ "checks": [{"id": "full-suite", "what": "The whole suite passes", "standard": "SSDF PW.8.2", "result": "pass"}],
+ "findings": [{"id": "REGRESSION-01", "title": "Fixture: a stale cache answered after a restart", "severity": "medium", "cwe": "CWE-524",
+               "asvs": "V8.1.1", "status": "fixed", "fix": "Fixture fix line", "test": "tests/test_example.py::test_fixture", "commit": "abc1234"}],
+ "tests_added": 3}

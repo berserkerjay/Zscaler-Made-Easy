@@ -6138,6 +6138,53 @@ async def secure_by_design_score():
         raise HTTPException(status_code=500, detail=f"Secure by Design check failed: {e}")
 
 
+_QUALITY_SCORE_JSON = os.path.join(_APP_DIR, "docs", "quality_score.json")
+_QUALITY_SCORE_MD = os.path.join(_APP_DIR, "docs", "QUALITY_SCORE.md")
+_QUALITY_SCORE_MAX_BYTES = 4 * 1024 * 1024
+
+
+def _quality_score_bytes(path: str) -> Optional[bytes]:
+    """A generated score file's bytes, or None when it is missing, not a
+    regular file (a link or a device is refused) or larger than the cap."""
+    import stat as _stat
+    try:
+        if not _stat.S_ISREG(os.lstat(path).st_mode):
+            return None
+        with open(path, "rb") as f:
+            raw = f.read(_QUALITY_SCORE_MAX_BYTES + 1)
+    except OSError:
+        return None
+    return raw if len(raw) <= _QUALITY_SCORE_MAX_BYTES else None
+
+
+@app.get("/api/quality-score")
+async def quality_score():
+    """This app's quality and security score (docs/quality_score.json, built
+    by tools/quality_score.py from the QA findings records, the last full
+    test run and the standards mapping). Read-only; reads no tenant. A
+    missing or unreadable file is {"available": false}, never an error."""
+    raw = _quality_score_bytes(_QUALITY_SCORE_JSON)
+    if raw is None:
+        return {"available": False, "reason": "No score yet: docs/quality_score.json is not there. Build it with python tools/quality_score.py."}
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        data = None
+    if not isinstance(data, dict) or data.get("schema_version") != 1:
+        return {"available": False, "reason": "No score yet: docs/quality_score.json could not be read. Rebuild it with python tools/quality_score.py."}
+    return {**data, "available": True}
+
+
+@app.get("/api/quality-score/report.md")
+async def quality_score_report():
+    """docs/QUALITY_SCORE.md as plain text (never rendered as HTML), read-only."""
+    raw = _quality_score_bytes(_QUALITY_SCORE_MD)
+    if raw is None:
+        raise HTTPException(status_code=404, detail="No score report yet: build it with python tools/quality_score.py.")
+    return Response(content=raw, media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": 'inline; filename="QUALITY_SCORE.md"', "Cache-Control": "no-store"})
+
+
 @app.get("/report/advanced")
 async def report_advanced_page():
     """Advanced settings tab (static/report_advanced.html): the policy pack

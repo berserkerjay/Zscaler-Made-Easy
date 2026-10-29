@@ -606,6 +606,12 @@ what you get, what to do next.
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with
   its Secure by Design score.
+- **Quality and security score** — this app's own score from 0 to 100 on
+  Advanced settings: tests passed in the last full run, open QA findings
+  weighted by CVSS severity (an open critical caps it at 39, an open high
+  at 69) and standards coverage, per area. Built by tools/quality_score.py
+  into docs/QUALITY_SCORE.md and docs/quality_score.json; read-only at
+  GET /api/quality-score.
 - **Best practices benchmark and frameworks** — the grade, the DLP
   programme stages and the framework coverage. Where: the Dashboard.
 - **Zscaler updates** — a check of PyPI and help.zscaler.com for SDK and
