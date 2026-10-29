@@ -286,8 +286,10 @@ def normalize(channels: Any) -> Dict[str, Dict[str, str]]:
         choice = str(v.get("choice") or "gap").strip().lower()
         if choice not in CHOICES:
             choice = "gap"
+        # A Scope-page channel always carries its own name: the report and the
+        # page name what was assessed, so a sent name never renames it.
         out[cid] = {"choice": choice, "note": str(v.get("note") or "").strip()[:200],
-                    "name": str(v.get("name") or CHANNELS.get(cid) or cid).strip()[:80]}
+                    "name": CHANNELS.get(cid) or str(v.get("name") or cid).strip()[:80]}
     return out
 
 
@@ -440,6 +442,10 @@ class ScopedClient:
         return res
 
     def __getattr__(self, name):
+        # Only called for a name the instance lacks. Before __init__ ran (copy,
+        # pickle) there is no _client: answer AttributeError, never recurse.
+        if name == "_client" or (name.startswith("__") and name.endswith("__")):
+            raise AttributeError(name)
         return getattr(self._client, name)
 
 

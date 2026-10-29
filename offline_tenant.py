@@ -46,7 +46,6 @@ import secrets
 import threading
 from collections import OrderedDict
 from datetime import datetime, timezone
-from http.cookies import SimpleCookie
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import safe_files
@@ -63,7 +62,7 @@ MAX_LIST_PAGES = 20                       # pages read per paginated list when s
 
 COOKIE = "zme_tenant_source"
 SAMPLE = "sample"
-SOURCE_RE = re.compile(r"^(sample|snap-[0-9a-f]{16}|file-[0-9a-f]{16})$")
+SOURCE_RE = re.compile(r"\A(sample|snap-[0-9a-f]{16}|file-[0-9a-f]{16})\Z")   # \Z: "$" would also take a trailing newline
 CLIENT_ID_PREFIX = "offline-"
 OFFLINE_DOMAIN = ".offline.invalid"       # RFC 6761: .invalid never resolves (defence in depth)
 OFFLINE_SECRET = "offline-no-secret"      # a fixed marker so the creds are "complete"; not a credential
@@ -91,7 +90,16 @@ _PASS_SUFFIX = re.compile(r"(?:^pass|(?<![A-Za-z])pass|[a-z0-9_]Pass)$")
 # provisioningKey (zscaler/zcc/models, zscaler/zia/models/cloud_nss.py,
 # zscaler/zpa/models/provisioning_keys.py). Only text is masked, so a
 # switch such as sendDefaultPolicyForInvalidPolicyToken (true/false) stays.
-_TOKEN_KEY = re.compile(r"token|provisioning_?key|enrollment_?key|config_?key", re.I)
+_TOKEN_KEY = re.compile(r"token|provision(ing)?_?key|enrollment_?key|config_?key", re.I)
+# One-time passwords and stored credentials under camelCase names: a Client
+# Connector device's deviceOtpArray (zscaler/zcc/models/devices.py), the OTPs
+# to exit, uninstall or turn off a service (exitOtp, uninstallOtp, zpaDisableOtp,
+# zcc/models/secrets_otp.py), a cloud-to-cloud incident receiver's credJson and
+# tempAuthCode (zia/models/cloud_to_cloud_ir.py), an API key's keyValue
+# (zid/models/api_client.py), an LLM provider's apiCredentials
+# (aiguard/models/llm_provider_credentials.py), an encrypted session key
+# (zpa/models/enrollment_certificates.py). Any value type is masked.
+_OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key", re.I)
 _VOLATILE = re.compile(r"(modified|lastseen|last_seen|lastsync|updated|creation|created)(time|at|date|_time|_at)?$|^(modifiedBy|lastModifiedBy)$", re.I)
 
 
@@ -175,7 +183,8 @@ def scrub(value: Any, depth: int = 0) -> Any:
         out = {}
         for k, v in value.items():
             key = str(k)
-            if _SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or (isinstance(v, str) and _TOKEN_KEY.search(key)):
+            if (_SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or _OTP_KEY.search(key)
+                    or (isinstance(v, str) and _TOKEN_KEY.search(key))):
                 out[key] = "(set)" if v not in (None, "", [], {}, False) else "(not set)"
             else:
                 out[key] = scrub(v, depth + 1)
@@ -260,8 +269,10 @@ class OfflineStore:
                     return status, _empty_page(body)
                 dt = params.get("deviceType")
                 items = _items(body)
-                if dt not in (None, "") and isinstance(body, list) and items and all(isinstance(x, dict) and "deviceType" in x for x in items):
-                    body = [x for x in items if str(x.get("deviceType")) == str(dt)]
+                # The platform is device_type on an app profile (zscaler/zcc/models/webpolicy.py), deviceType on older answers.
+                field = next((f for f in ("device_type", "deviceType") if items and all(isinstance(x, dict) and f in x for x in items)), None)
+                if dt not in (None, "") and isinstance(body, list) and field:
+                    body = [x for x in items if str(x.get(field)) == str(dt)]
                 return status, body
             item, _, _ = self._item(path)
             if item is not None:
@@ -291,7 +302,8 @@ class OfflineStore:
             entry = self._lookup(path)
             items = _items(entry["body"]) if entry else None
             if method == "POST" and items is not None:
-                obj = dict(body) if isinstance(body, dict) else {}
+                # A deep copy: the caller's payload must never alias the in-memory tenant.
+                obj = copy.deepcopy(body) if isinstance(body, dict) else {}
                 ids = [int(x.get("id")) for x in items if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
                 new_id = max(ids + [90000]) + 1
                 obj["id"] = str(new_id) if path.startswith("/zpa/") else new_id
@@ -301,7 +313,7 @@ class OfflineStore:
             item, coll, idx = self._item(path)
             if method in ("PUT", "PATCH") and item is not None:
                 new = dict(item)
-                new.update(body if isinstance(body, dict) else {})
+                new.update(copy.deepcopy(body) if isinstance(body, dict) else {})
                 new["id"] = item.get("id")
                 coll[idx] = new
                 self.writes += 1
@@ -733,16 +745,23 @@ def status() -> Dict[str, Any]:
 
 
 def source_from_cookie_header(header: str) -> Optional[str]:
+    """The offline tenant the browser's COOKIE names, else None. Read pair by
+    pair (RFC 6265 section 5.4: "; " separates them), not with SimpleCookie,
+    which drops every cookie once one value it cannot parse appears (another
+    localhost app's JSON or spaced value): that would silently put a browser
+    that chose the sample or a snapshot back on the live tenant."""
     if not header or COOKIE not in header:
         return None
-    try:
-        c = SimpleCookie()
-        c.load(header)
-    except Exception:  # noqa: BLE001 — an unreadable cookie header is no offline tenant
-        return None
-    morsel = c.get(COOKIE)
-    value = morsel.value if morsel is not None else ""
-    return value if SOURCE_RE.match(value or "") else None
+    for pair in str(header).split(";"):
+        name, sep, value = pair.partition("=")
+        if not sep or name.strip() != COOKIE:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        if SOURCE_RE.match(value):
+            return value
+    return None
 
 
 class SourceMiddleware:
@@ -782,6 +801,8 @@ def _clean_meta(meta: Any) -> Dict[str, Any]:
     channels = {}
     if isinstance(m.get("channels"), dict):
         for k, v in list(m["channels"].items())[:60]:
+            if isinstance(v, dict):   # channel_scope.normalize's {choice, note, name}: only the choice is kept
+                v = v.get("choice")
             if isinstance(k, str) and re.match(r"^[a-z0-9_]{1,40}$", k) and isinstance(v, str) and v in ("zscaler", "alternative", "gap", "none", ""):
                 channels[k] = v
     counts = {}
@@ -906,7 +927,8 @@ def open_document(raw: Any, source_id: Optional[str] = None) -> OfflineStore:
     """Open an untrusted snapshot (parse_snapshot) as a read-only offline
     tenant. A file opened from the browser gets a fresh random id."""
     responses, meta = parse_snapshot(raw)
-    sid = source_id if source_id and SOURCE_RE.match(source_id) else f"file-{secrets.token_hex(8)}"
+    # Never the sample's id: a snapshot registered as "sample" would replace it.
+    sid = source_id if source_id and source_id != SAMPLE and SOURCE_RE.match(source_id) else f"file-{secrets.token_hex(8)}"
     if not meta.get("tenant_label"):
         meta["tenant_label"] = "Offline snapshot"
     meta["tenant_label"] = f"Snapshot of {meta['tenant_label']}" if not meta["tenant_label"].startswith("Snapshot of ") else meta["tenant_label"]
@@ -1119,18 +1141,21 @@ def compare(old: Dict[str, Dict[str, Any]], new: Dict[str, Dict[str, Any]], limi
     rows, totals = [], {"added": 0, "removed": 0, "changed": 0}
     seen_names = set()
     for path in sorted(set(old) & set(new)):
-        ob, nb = old[path].get("body"), new[path].get("body")
+        # Both sides scrubbed first: the live answer is not, and an object with
+        # no id or name is keyed and named by its own JSON (_key).
+        ob, nb = scrub(old[path].get("body")), scrub(new[path].get("body"))
         oi, ni = _items(ob), _items(nb)
         if oi is None or ni is None:
-            if _stable(scrub(ob)) != _stable(scrub(nb)):
-                rows.append({"path": path, "what": friendly(path), "added": [], "removed": [], "changed": ["(settings)"]})
+            if _stable(ob) != _stable(nb):
+                rows.append({"path": path, "what": friendly(path), "added": [], "removed": [], "changed": ["(settings)"],
+                             "counts": {"added": 0, "removed": 0, "changed": 1}})
                 totals["changed"] += 1
             continue
         om = {_key(x): x for x in oi}
         nm = {_key(x): x for x in ni}
         added = [_name(nm[k]) for k in nm if k not in om]
         removed = [_name(om[k]) for k in om if k not in nm]
-        changed = [_name(nm[k]) for k in nm if k in om and _stable(scrub(nm[k])) != _stable(scrub(om[k]))]
+        changed = [_name(nm[k]) for k in nm if k in om and _stable(nm[k]) != _stable(om[k])]
         what = friendly(path)
         # One list the API serves on two paths (casbDlpRules and casbDlpRules/all)
         # is counted once: same name, same objects. Anything else is its own row.

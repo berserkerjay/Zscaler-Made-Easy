@@ -463,7 +463,9 @@ def parse_subscriptions(body: Any, now: Optional[float] = None) -> List[Dict[str
         active = s.get("subscribed") is not False and not re.search(r"EXPIRED|CANCEL", status, re.I)
         end = s.get("endDate")
         end_ts = None
-        if isinstance(end, (int, float)) and not isinstance(end, bool):
+        # Bounded before any arithmetic, as in _iso: a JSON integer has no size
+        # limit, and one too large for a float raises OverflowError.
+        if isinstance(end, (int, float)) and not isinstance(end, bool) and 0 < end < 32503680000 * 1000:
             end_ts = end / 1000.0 if end > 1e11 else float(end)
         area, name = SKU_INFO.get(sid, ("", ""))
         if not name and sid.startswith("ZIA_ISO_"):
@@ -503,7 +505,10 @@ def _zia_level(role: Optional[Dict[str, Any]], alternatives: Iterable[str]) -> O
 
 
 def _find_by(rows: Any, name: str, rid: str, name_keys=("name",)) -> Optional[Dict[str, Any]]:
-    for r in rows if isinstance(rows, list) else []:
+    if isinstance(rows, dict):
+        # ZPA lists in an envelope: {"totalPages": "1", "list": [...]} (zpa.role_controller.list_roles's body).
+        rows = rows.get("list")
+    for r in (rows if isinstance(rows, list) else [])[:1000]:
         if not isinstance(r, dict):
             continue
         if rid and str(r.get("id", "")) == rid:

@@ -1,0 +1,397 @@
+{
+ "area": "scope-offline",
+ "title": "Snapshots, the sample tenant, readiness, the scope and permission maps and the Scope page's channel logic",
+ "files": [
+  "offline_tenant.py",
+  "sample_tenant.py",
+  "readiness.py",
+  "permissions.py",
+  "scope_permissions.py",
+  "channel_scope.py",
+  "beacon_scope.py"
+ ],
+ "standards": [
+  "ASVS V1.4.1",
+  "ASVS V1.4.4",
+  "ASVS V4.1.1",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.3",
+  "ASVS V8.3.4",
+  "ASVS V12.1.1",
+  "A01:2021",
+  "A02:2021",
+  "A03:2021",
+  "A04:2021",
+  "CWE-20",
+  "CWE-200",
+  "CWE-312",
+  "CWE-636",
+  "CWE-863",
+  "CWE-1287",
+  "WSTG-ATHZ-02",
+  "WSTG-INPV-13",
+  "WSTG-SESS-02",
+  "WCAG 2.2 SC 1.3.1",
+  "SSDF PW.4.1"
+ ],
+ "coverage": {
+  "before": 92.6,
+  "after": 98.6
+ },
+ "checks": [
+  {
+   "id": "SNAP-01",
+   "what": "Snapshot save reads only ticked scopes and channels, GET only",
+   "standard": "ASVS V4.1.3 · CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "SNAP-02",
+   "what": "Snapshot open: untrusted file (size, depth, node count, format, version, fields, status, every path, NaN)",
+   "standard": "ASVS V5.1.3 · CWE-20 · CWE-22",
+   "result": "pass"
+  },
+  {
+   "id": "SNAP-03",
+   "what": "Masking of secret fields in snapshots, against every secret-like field name in the SDK models",
+   "standard": "ASVS V8.3.4 · CWE-312",
+   "result": "fixed"
+  },
+  {
+   "id": "SNAP-04",
+   "what": "Compare: per object, change times ignored, scrubbed on both sides, one row shape",
+   "standard": "ASVS V8.3.4 · CWE-200",
+   "result": "fixed"
+  },
+  {
+   "id": "SNAP-05",
+   "what": "Offline clients (raw and SDK) open no socket; every service builds on the in-memory executor",
+   "standard": "ASVS V1.14.1 · CWE-653",
+   "result": "pass"
+  },
+  {
+   "id": "SNAP-06",
+   "what": "Writes refused while a snapshot is open (raw, SDK, every method)",
+   "standard": "ASVS V4.1.1 · CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "SNAP-07",
+   "what": "Offline tenant cookie and request context: exact ids only, fail closed when gone, robust to neighbour cookies",
+   "standard": "ASVS V1.4.1 · CWE-636",
+   "result": "fixed"
+  },
+  {
+   "id": "SAMPLE-01",
+   "what": "Sample field names vs SDK 1.11.3 models (21 answers)",
+   "standard": "CWE-1287 · SSDF PW.4.1",
+   "result": "fixed"
+  },
+  {
+   "id": "SAMPLE-02",
+   "what": "Every check and page read on the sample: answers for every SDK-documented endpoint",
+   "standard": "CWE-1287",
+   "result": "fixed"
+  },
+  {
+   "id": "SAMPLE-03",
+   "what": "Sample deterministic and copy-isolated; reserved example domains only",
+   "standard": "CWE-330 · CWE-200",
+   "result": "pass"
+  },
+  {
+   "id": "READY-01",
+   "what": "Verdict oracle: 5 roles x 4 licence states for the DLP scope, web/email write kinds and Deploy policy packs",
+   "standard": "ASVS V1.4.4 · CWE-284",
+   "result": "pass"
+  },
+  {
+   "id": "READY-02",
+   "what": "ZPA role read through the SDK's own service",
+   "standard": "CWE-1287",
+   "result": "fixed"
+  },
+  {
+   "id": "READY-03",
+   "what": "Token decode limits (size, base64, UTF-8, depth, object, list caps) and licence date bounds",
+   "standard": "ASVS V5.1.4 · CWE-400 · CWE-190",
+   "result": "fixed"
+  },
+  {
+   "id": "READY-04",
+   "what": "Readiness HTML escapes every tenant value; locked browsers see none",
+   "standard": "ASVS V5.3.3 · CWE-79",
+   "result": "pass"
+  },
+  {
+   "id": "MAP-01",
+   "what": "Every Scope page key has a Required API access card and readiness mapping",
+   "standard": "CWE-1059",
+   "result": "fixed"
+  },
+  {
+   "id": "MAP-02",
+   "what": "Every write kind maps to a portal permission and a readiness need",
+   "standard": "CWE-1059",
+   "result": "pass"
+  },
+  {
+   "id": "MAP-03",
+   "what": "Every ZIA permission listed is in the SDK admin_roles docs (two aliases accepted)",
+   "standard": "SSDF PW.4.1 · CWE-1104",
+   "result": "accepted"
+  },
+  {
+   "id": "MAP-04",
+   "what": "Every registry section maps to the Scope page key that runs it",
+   "standard": "CWE-1059",
+   "result": "fixed"
+  },
+  {
+   "id": "CHAN-01",
+   "what": "'Marked Zscaler' oracle: choice normalization, prerequisites, blocked alternatives, declarations, partition, pack targets",
+   "standard": "ASVS V4.1.3 · CWE-863",
+   "result": "fixed"
+  },
+  {
+   "id": "CHAN-02",
+   "what": "Beacon watch reads no channel left out of the declaration; unmapped endpoints never read",
+   "standard": "ASVS V4.1.3 · CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "CHAN-03",
+   "what": "Endpoint pattern is linear (no ReDoS)",
+   "standard": "CWE-1333",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-SCOPE-OFFLINE-01",
+   "title": "Snapshots kept Client Connector OTPs and stored credentials (deviceOtpArray, exitOtp, uninstallOtp, zpaDisableOtp, credJson, tempAuthCode, keyValue, apiCredentials, provisionKey) in the saved file",
+   "severity": "medium",
+   "cwe": "CWE-312",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "scrub masks every OTP and stored-credential field name the SDK models use, any value type",
+   "test": "tests/test_c6_scope_offline.py::test_a_snapshot_never_keeps_an_otp_or_stored_credential",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-02",
+   "title": "Another localhost app's malformed cookie made the server ignore the sample/snapshot choice and put the browser back on the live tenant",
+   "severity": "medium",
+   "cwe": "CWE-636",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "the offline cookie is read pair by pair (RFC 6265) instead of SimpleCookie, which drops every cookie after one it cannot parse",
+   "test": "tests/test_c6_scope_offline.py::test_another_apps_malformed_cookie_never_drops_the_offline_choice",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-03",
+   "title": "Readiness never found the API client's ZPA role: the SDK hands list_roles' body as a {list: [...]} envelope, so view-only ZPA classes were missed and segment moves judged on the role name alone",
+   "severity": "medium",
+   "cwe": "CWE-1287",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "_find_by reads the ZPA envelope's list (bounded)",
+   "test": "tests/test_c6_scope_offline.py::test_readiness_finds_the_zpa_role_in_the_sdks_envelope",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-04",
+   "title": "Compare with the live tenant keyed and named an object with no id or name by its unscrubbed live JSON, so a secret field's value could appear in the result",
+   "severity": "low",
+   "cwe": "CWE-200",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "both sides are scrubbed before keying and naming; settings rows carry counts like list rows",
+   "test": "tests/test_c6_scope_offline.py::test_compare_never_shows_a_live_secret_of_an_object_with_no_id_or_name",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-05",
+   "title": "A licence end date too large for a float (or hugely negative) raised OverflowError and crashed the readiness job",
+   "severity": "low",
+   "cwe": "CWE-190",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "the end date is bounded before any arithmetic, as _iso already did",
+   "test": "tests/test_c6_scope_offline.py::test_a_hostile_licence_end_date_is_no_date_and_never_raises",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-06",
+   "title": "The rbac Scope page key had no Required API access card, and refused RBAC checks were counted under zia_extras, zcc, zpa or zidentity, so the RBAC permissions were never listed",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "rbac added to SCOPE_PERMISSIONS; every RBAC section maps to rbac",
+   "test": "tests/test_c6_scope_offline.py::test_rbac_checks_that_could_not_run_count_under_the_rbac_scope",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-07",
+   "title": "Sample tenant shapes differed from the API (ZDX camelCase, invented company-info and app-profile fields, Evaluate All Rules under advancedSettings, endpoint/email receivers, file-type classes) and it lacked answers the checks and pages read (14 Cloud App Control types, DLP global options, privacy, cleanup, admin sync, ZDX alerts and inventory, Path analyzer ZIA reads, ZPA roles and profiles)",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "sample data re-shaped from SDK 1.11.3 models; every SDK-documented read a check or page makes has an answer",
+   "test": "tests/test_c6_scope_offline.py::test_the_sample_tenant_speaks_the_sdk_models_field_names",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-08",
+   "title": "The offline platform filter ignored device_type (the API's app-profile field), so a per-platform read returned every platform's profiles",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "answer_get filters on device_type or deviceType",
+   "test": "tests/test_c6_scope_offline.py::test_the_platform_filter_reads_the_apis_device_type_field",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-09",
+   "title": "A saved snapshot dropped the channel declaration it was saved with (_clean_meta rejected channel_scope.normalize's dicts)",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "_clean_meta keeps each channel's choice from a normalized declaration",
+   "test": "tests/test_c6_scope_offline.py::test_a_snapshot_keeps_the_channel_declaration_it_was_saved_with",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-10",
+   "title": "Sample writes aliased the caller's payload: changing a posted or updated dict later changed the in-memory tenant",
+   "severity": "low",
+   "cwe": "CWE-374",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "POST and PUT deep-copy the body",
+   "test": "tests/test_c6_scope_offline.py::test_a_sample_write_never_aliases_the_callers_payload",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-11",
+   "title": "Copying the channel guard (channel_scope.ScopedClient) recursed until RecursionError (__getattr__ before __init__)",
+   "severity": "low",
+   "cwe": "CWE-674",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "__getattr__ answers AttributeError for _client and dunder names",
+   "test": "tests/test_c6_scope_offline.py::test_the_scoped_client_can_be_copied",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-12",
+   "title": "A request could rename a fixed Scope page channel, and that name appeared in the report and page notes",
+   "severity": "low",
+   "cwe": "CWE-451",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "a Scope page channel always carries its canonical name; custom channels keep theirs, bounded",
+   "test": "tests/test_c6_scope_offline.py::test_a_sent_name_never_renames_a_scope_page_channel",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-13",
+   "title": "open_document accepted the sample's id, so a snapshot could replace the sample tenant in memory (unreachable from the routes today: tenant_profiles validates ids)",
+   "severity": "info",
+   "cwe": "CWE-706",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "a snapshot never takes the id 'sample'",
+   "test": "tests/test_c6_scope_offline.py::test_an_opened_snapshot_can_never_take_the_sample_tenants_id",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-14",
+   "title": "The offline id pattern ended in '$', which also accepts a trailing newline",
+   "severity": "info",
+   "cwe": "CWE-625",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "anchored with \\A and \\Z",
+   "test": "tests/test_c6_scope_offline.py::test_an_offline_id_with_a_trailing_newline_is_no_id",
+   "commit": "9634455"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-15",
+   "title": "Traffic flow (data_flow.py) reads only older app-profile names: on an API-shaped profile it shows Endpoint DLP and the SSL certificate as off and drops the comma-separated destination exclusions and custom app bypasses (exposed by the corrected sample)",
+   "severity": "medium",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.3",
+   "status": "open",
+   "fix": "read enableZdpService, install_ssl_certs/installCerts first; split packetTunnelExcludeList; count bypassCustomAppIds",
+   "test": "",
+   "commit": "",
+   "proposed_patch": "--- a/data_flow.py\n+++ b/data_flow.py\n@@ -362,6 +362,9 @@\n                 domains, apps, processes, ips, vpn = [], [], [], [], []\n                 for k, v in p.items():\n                     kl = str(k).lower()\n+                    if isinstance(v, str) and \"exclu\" in kl:\n+                        # The API sends destination exclusions as one comma-separated string (packetTunnelExcludeList).\n+                        v = [x.strip() for x in str(v).split(\",\") if x.strip()]\n                     if not isinstance(v, list) or not v:\n                         continue\n                     vals = [x.get(\"name\") or x.get(\"url\") or x.get(\"domain\") or x.get(\"ip\") or x.get(\"path\") or json.dumps(x)[:80] if isinstance(x, dict) else str(x) for x in v]\n@@ -369,9 +372,9 @@\n                         vpn += vals\n                     elif re.search(r\"process\", kl):\n                         processes += vals\n-                    elif re.search(r\"bypassapp|appbypass|applicationbypass|predefinedbypass|custombypass\", kl):\n+                    elif re.search(r\"bypassapp|appbypass|applicationbypass|predefinedbypass|custombypass|bypasscustomapp\", kl):\n                         apps += vals\n-                    elif re.search(r\"ipexclu|excludeip|bypassip|ipbypass|destinationexclu|nonzscaler\", kl):\n+                    elif re.search(r\"ipexclu|excludeip|bypassip|ipbypass|destinationexclu|nonzscaler|packettunnelexclude\", kl):\n                         ips += vals\n                     elif re.search(r\"domain|hostname|bypassurl|url|tunnelbypass\", kl) and re.search(r\"bypass|exclu|exempt\", kl):\n                         domains += vals\n@@ -381,8 +384,10 @@\n                     \"forwarding_profile\": _v(p, \"forwardingProfileId\", \"forwardingProfileName\", \"forwardingProfile\") or _v(linked_policy, \"id\", \"name\"),\n                     \"pac_url\": p.get(\"pacUrl\") or p.get(\"customPacUrl\") or p.get(\"pac_url\"),\n                     \"strict_enforcement\": _truthy(_v(p, \"strictEnforcement\", \"strictMode\")),\n-                    \"endpoint_dlp\": _truthy(_v(p, \"installEndpointDlp\", \"endpointDlpEnabled\", \"zdpEnabled\")),\n-                    \"ssl_cert\": _truthy(_v(p, \"sslCertInstall\", \"installSslCert\", \"sslCertificateEnabled\")),\n+                    # The API's names first (zscaler/zcc/models/webpolicy.py: policyExtension.enableZdpService,\n+                    # the platform policy's install_ssl_certs or installCerts), then older exports'.\n+                    \"endpoint_dlp\": _truthy(_v(p, \"enableZdpService\", \"installEndpointDlp\", \"endpointDlpEnabled\", \"zdpEnabled\")),\n+                    \"ssl_cert\": _truthy(_v(p, \"install_ssl_certs\", \"installCerts\", \"sslCertInstall\", \"installSslCert\", \"sslCertificateEnabled\")),\n                     \"bypass\": {\"domains\": domains, \"apps\": apps, \"processes\": processes, \"ips\": ips, \"vpn_gateways\": vpn},\n                     \"groups\": _names(p.get(\"groups\") or p.get(\"groupNames\") or []),\n                 })\n"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-16",
+   "title": "ZCC company-info check (zscaler_full_checks.zcc_5) reads companyName, which getCompanyInfo does not send (businessName), so it always says 'Company: ?'",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.3",
+   "status": "open",
+   "fix": "read businessName first",
+   "test": "",
+   "commit": "",
+   "proposed_patch": "--- a/zscaler_full_checks.py\n+++ b/zscaler_full_checks.py\n@@ -722,7 +722,8 @@\n     \"\"\"Company info\"\"\"\n     d, c = cl.get(\"/zcc/companyInfo\")\n     if c in (200, 204) and isinstance(d, dict):\n-        name = d.get(\"companyName\", d.get(\"name\", \"?\"))\n+        # getCompanyInfo names the company businessName (zscaler/zcc/models/company_info.py).\n+        name = d.get(\"businessName\") or d.get(\"companyName\") or d.get(\"name\") or \"?\"\n         return R(R.PASS, f\"Company: {name}\")\n     return R(R.WARN, \"Cannot retrieve company info. Note: This may indicate the ZCC API scope is not enabled for this API client. Verify API role includes ZCC read permissions.\")\n \n"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-17",
+   "title": "_scope_selection and _beacon_scope drop a non-empty channel declaration whose entries cannot be read, so it narrows nothing instead of making every channel a gap (channel_scope.effective's rule)",
+   "severity": "low",
+   "cwe": "CWE-636",
+   "asvs": "V4.1.3",
+   "status": "open",
+   "fix": "keep any non-empty dict as the declaration",
+   "test": "",
+   "commit": "",
+   "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -5908,7 +5908,7 @@\n         except Exception:  # noqa: BLE001 — an unreadable profile store is no selection\n             prof = {}\n         sc = beacon_scope.normalize_scopes(prof.get(\"scopes\"))\n-        ch = prof.get(\"channels\") if channel_scope.normalize(prof.get(\"channels\")) else {}\n+        ch = prof.get(\"channels\") if isinstance(prof.get(\"channels\"), dict) and prof.get(\"channels\") else {}\n         if sc or ch:\n             src.append(f\"the saved profile {prof.get('name') or profile_id}\")\n     if not sc and not ch:\n@@ -9768,7 +9768,10 @@\n     import channel_scope\n     sc = [str(x) for x in (getattr(req, \"scopes\", None) or [])]\n     raw = getattr(req, \"channels\", None)\n-    ch = raw if channel_scope.normalize(raw) else {}\n+    # A non-empty declaration counts even when none of its entries can be\n+    # read (channel_scope.effective: every channel is then a gap), never\n+    # \"nothing narrowed\".\n+    ch = raw if isinstance(raw, dict) and raw else {}\n     source = \"\"\n     pid = getattr(req, \"profile_id\", \"\") or \"\"\n     if sc or ch or getattr(req, \"from_page\", False):\n@@ -9780,7 +9783,7 @@\n         except Exception:  # noqa: BLE001 — an unreadable profile store is no selection\n             prof = {}\n         sc = [str(x) for x in (prof.get(\"scopes\") or [])]\n-        ch = prof.get(\"channels\") if channel_scope.normalize(prof.get(\"channels\")) else {}\n+        ch = prof.get(\"channels\") if isinstance(prof.get(\"channels\"), dict) and prof.get(\"channels\") else {}\n         if sc or ch:\n             source = f\"the saved profile {prof.get('name') or pid}\"\n     return sc, ch, source\n"
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-18",
+   "title": "Readiness reports a read-only role before a missing licence for a write kind that has a permission to check (web), while a kind without one (email) says not licensed",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.4",
+   "status": "accepted",
+   "fix": "kept: tests/test_qa6_verdicts_reports.py encodes this precedence; the oracle in this area's tests records it",
+   "test": "tests/test_c6_scope_offline.py::test_readiness_verdict_oracle_for_role_and_licence",
+   "commit": ""
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-19",
+   "title": "readiness.ZIA_PERMS lists URL_FILTERING_CONTROL and CLOUD_APP_CONTROL, which SDK 1.11.3's admin_roles docs do not name",
+   "severity": "info",
+   "cwe": "CWE-1104",
+   "asvs": "V1.14.6",
+   "status": "accepted",
+   "fix": "kept as aliases only (never the first spelling, so no step asks for them); test-enforced",
+   "test": "tests/test_c6_scope_offline.py::test_every_zia_permission_listed_is_documented_by_the_sdk_or_a_named_alias",
+   "commit": ""
+  },
+  {
+   "id": "C6-SCOPE-OFFLINE-20",
+   "title": "The sample answers no Client Connector endpoint the SDK does not document (appPostureInfo, webMachineTunnel, webZPNModuleMode, webBrowserProtectionProfile, getLastAppPostureFields), nor sandbox quota, ZTW or the CBI config paths",
+   "severity": "info",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.3",
+   "status": "accepted",
+   "fix": "kept: their real answers are unverified, and the checks treat 404 as 'not in the public API'",
+   "test": "",
+   "commit": ""
+  }
+ ],
+ "tests_added": 119
+}
