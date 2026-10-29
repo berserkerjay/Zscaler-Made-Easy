@@ -100,21 +100,14 @@ def _resolve_configs(pack_dir: str) -> str:
     return pack_dir
 
 
-def _load_json(configs_dir: str, filename: str) -> List[Dict[str, Any]]:
-    """A pack file's list of definitions. A file that is not JSON, or not a
-    list of objects, is refused in words (ValueError), never read as
-    something else: an uploaded pack is untrusted."""
-    path = os.path.join(configs_dir, filename)
-    if not os.path.exists(path):
-        return []
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (ValueError, RecursionError) as e:   # JSONDecodeError and UnicodeDecodeError are ValueErrors
-        raise ValueError(f"{filename}: not valid JSON ({str(e)[:80]})") from None
-    if not isinstance(data, list) or not all(isinstance(x, dict) for x in data):
-        raise ValueError(f"{filename}: must be a JSON list of objects")
-    return data
+def _load_json(configs_dir: str, filename: str, pack_id: Any = "") -> List[Dict[str, Any]]:
+    """A pack file's list of definitions, through the app's one pack-file
+    reader (pack_deploy.load_pack_file: UTF-8 with or without a BOM, size
+    and nesting capped, a list of objects whose fields have the types the
+    planner reads). Anything else is refused in words (PackFileError, a
+    ValueError), never read as something else: an uploaded pack is untrusted."""
+    import pack_deploy   # here, not at the top: pack_deploy imports this module
+    return pack_deploy.load_pack_file(configs_dir, filename, pack_id)
 
 
 def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
@@ -132,11 +125,12 @@ def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
     if not isinstance(meta, dict):
         meta = {}
     configs = _resolve_configs(pack_dir)
+    pid = os.path.basename(os.path.normpath(pack_dir))
     try:
-        dicts = _load_json(configs, "dlp_dictionaries.json")
-        engines = _load_json(configs, "dlp_engines.json")
-        policies = _load_json(configs, "dlp_policies.json")
-        app_groups = _load_json(configs, "endpoint_application_groups.json")
+        dicts = _load_json(configs, "dlp_dictionaries.json", pid)
+        engines = _load_json(configs, "dlp_engines.json", pid)
+        policies = _load_json(configs, "dlp_policies.json", pid)
+        app_groups = _load_json(configs, "endpoint_application_groups.json", pid)
     except (ValueError, OSError) as e:
         # One broken pack must not take the pack list (and every page that
         # lists packs) down with it: it is listed, counted empty, with the reason.
@@ -213,11 +207,12 @@ def load_pack_contents(pack_dir: str) -> Dict[str, Any]:
     whose files cannot be read is summarised empty with the reason in
     `error` (a summary page, nothing deploys from it)."""
     configs = _resolve_configs(pack_dir)
+    pid = os.path.basename(os.path.normpath(pack_dir))
     error = None
     try:
-        dicts = _load_json(configs, "dlp_dictionaries.json")
-        engines = _load_json(configs, "dlp_engines.json")
-        policies = _load_json(configs, "dlp_policies.json")
+        dicts = _load_json(configs, "dlp_dictionaries.json", pid)
+        engines = _load_json(configs, "dlp_engines.json", pid)
+        policies = _load_json(configs, "dlp_policies.json", pid)
     except (ValueError, OSError) as e:
         error, dicts, engines, policies = str(e)[:200], [], [], []
 

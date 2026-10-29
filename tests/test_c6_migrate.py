@@ -152,9 +152,16 @@ def test_the_pack_detail_of_a_broken_pack_says_why(tmp_path):
 
 def test_the_pack_detail_tolerates_a_definition_without_a_name(tmp_path):
     """ASVS V5.1.4 · CWE-20 · WSTG-INPV-01: a definition missing its name is summarised, not a KeyError."""
-    pack = _pack(tmp_path, {"dlp_engines.json": [{"expression": "D:x"}], "dlp_policies.json": [{"action": "ALLOW", "sub_rules": "x"}]})
+    pack = _pack(tmp_path, {"dlp_engines.json": [{"expression": "D:x"}], "dlp_policies.json": [{"action": "ALLOW"}]})
     out = di.load_pack_contents(pack)
     assert out["engines"]["items"] == [{"name": None}] and out["metadata"]["policies"] == 1
+
+
+def test_the_pack_detail_refuses_sub_rules_that_are_not_a_list_as_deploy_does(tmp_path):
+    """ASVS V5.1.4 · CWE-20 · WSTG-INPV-01: sub_rules that are not a list of objects make the pack detail say why (the one pack-file reader, as deploy refuses it), never a crash."""
+    pack = _pack(tmp_path, {"dlp_engines.json": [{"expression": "D:x"}], "dlp_policies.json": [{"action": "ALLOW", "sub_rules": "x"}]})
+    out = di.load_pack_contents(pack)
+    assert "sub_rules must be a list of objects" in out["error"] and out["policies"]["total"] == 0
 
 
 def _custom(**over: Any) -> Dict[str, Any]:

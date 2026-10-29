@@ -743,3 +743,86 @@ def test_a_host_name_uts46_refuses_is_refused_in_words_in_every_module(bad):
     with pytest.raises(ValueError):
         ops_zpa.check_domain(bad, "Domain")
     assert admin_ops._ascii_host(bad) is None and admin_ops.normalize_domain(bad)[0] is None
+
+
+# ── One pack-file reader: deploy, Terraform export and the library agree ──
+
+def _pack_on_disk(tmp_path, pack_id, policies_bytes):
+    from test_pack_deploy import _dict, _engine, _policy, write_pack
+    pack = write_pack(tmp_path, pack_id, dicts=[_dict("QA Dict")], engines=[_engine("QA Engine", "(D:QA Dict)")],
+                      policies=[_policy("QA-Monitor", ["QA Engine"])], meta={"name": "QA pack", "confidence_tweaks": []})
+    if policies_bytes is not None:
+        with open(os.path.join(pack["dir"], "configs", "dlp_policies.json"), "wb") as f:
+            f.write(policies_bytes)
+    return pack
+
+
+def _reader_verdicts(pack):
+    """Accepted (True) or refused (False) by each reader of a pack folder."""
+    import dlp_importer
+    import pack_deploy
+    import pack_library
+    import pack_terraform
+
+    def ok(fn):
+        try:
+            out = fn()
+        except ValueError:      # PackFileError is a ValueError
+            return False
+        return not (isinstance(out, dict) and out.get("error"))
+    return {
+        "deploy (pack_deploy.load_sources)": ok(lambda: pack_deploy.load_sources([pack])),
+        "Terraform export (pack_terraform.load_pack)": ok(lambda: pack_terraform.load_pack(pack)),
+        "library listing (dlp_importer.load_pack_metadata)": ok(lambda: dlp_importer.load_pack_metadata(pack["dir"])),
+        "pack detail (dlp_importer.load_pack_contents)": ok(lambda: dlp_importer.load_pack_contents(pack["dir"])),
+        "library bundle (pack_library.pack_bundle)": ok(lambda: pack_library.pack_bundle(pack["dir"])),
+    }
+
+
+_PACK_FILES = [
+    ("plain", None, True),
+    ("utf8-bom", b"\xef\xbb\xbf" + json.dumps([{"name": "QA-Monitor", "engines": ["QA Engine"], "channel": "web"}]).encode(), True),
+    ("name-not-text", json.dumps([{"name": 5, "engines": ["QA Engine"]}]).encode(), False),
+    ("not-a-list", b'{"policies": []}', False),
+    ("too-deep", ("[" * 40 + "]" * 40).encode(), False),
+]
+
+
+@pytest.mark.parametrize("label,content,accepted", _PACK_FILES, ids=[c[0] for c in _PACK_FILES])
+def test_every_pack_reader_accepts_and_refuses_the_same_files(tmp_path, label, content, accepted):
+    """ASVS V5.1.3 · V5.1.4 · CWE-20 · CWE-1287: one pack-file reader: a pack with a UTF-8 BOM, a non-text name, a non-list or deep nesting gets the same verdict from deploy, Terraform export and the library."""
+    # Arrange
+    pack = _pack_on_disk(tmp_path, f"qa_{label.replace('-', '_')}", content)
+    # Act
+    verdicts = _reader_verdicts(pack)
+    # Assert
+    assert verdicts == {k: accepted for k in verdicts}
+
+
+def test_an_oversize_pack_file_is_refused_by_every_reader(tmp_path, monkeypatch):
+    """ASVS V12.1.1 · CWE-400 · CWE-770: a pack file over the size cap is refused by deploy, Terraform export and the library alike, never parsed."""
+    # Arrange
+    import pack_deploy
+    monkeypatch.setattr(pack_deploy, "PACK_FILE_MAX_BYTES", 64)
+    pack = _pack_on_disk(tmp_path, "qa_big", json.dumps([{"name": "P" * 200}]).encode())
+    # Act
+    verdicts = _reader_verdicts(pack)
+    # Assert
+    assert verdicts == {k: False for k in verdicts}
+
+
+def test_the_fan_out_tool_reads_packs_through_the_one_reader(tmp_path):
+    """SSDF PW.4.1 · CWE-20 · CWE-1287: tools/fan_out_channels.py reads a pack with the same reader (a BOM pack loads, a non-text name is refused)."""
+    # Arrange
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("fan_out_channels_qa", os.path.join(ROOT, "tools", "fan_out_channels.py"))
+    fan = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fan)
+    bom = _pack_on_disk(tmp_path, "qa_fan_bom", _PACK_FILES[1][1])
+    bad = _pack_on_disk(tmp_path, "qa_fan_bad", _PACK_FILES[2][1])
+    # Act
+    changed, _summary = fan.process(bom, write=False)
+    # Assert
+    assert changed is True
+    with pytest.raises(ValueError):
+        fan.process(bad, write=False)
