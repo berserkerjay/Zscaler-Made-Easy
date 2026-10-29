@@ -571,3 +571,161 @@ def test_beacon_read_only_client_cannot_write():
     for name in ("post", "put", "patch", "delete", "request", "_client_post"):
         with pytest.raises(PermissionError):
             getattr(ro, name)
+
+
+# ── discover_endpoints: a stand-alone probe, made safe ───────────────
+
+class _Resp:
+    def __init__(self, status=200, body=None, text=None):
+        self.status_code, self._body = status, body
+        self.content = (text if text is not None else json.dumps(body)).encode()
+        self.text = text if text is not None else json.dumps(body)
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("not json")
+        return self._body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"{self.status_code} error")
+
+
+@pytest.fixture
+def disc(monkeypatch):
+    import discover_endpoints as d
+    sent: List[Dict[str, Any]] = []
+    answers: Dict[str, _Resp] = {}
+
+    def post(url, **kw):
+        sent.append({"method": "POST", "url": url, **kw})
+        return answers.get("token", _Resp(200, {"access_token": "tok-123"}))
+
+    def get(url, **kw):
+        sent.append({"method": "GET", "url": url, **kw})
+        return answers.get(url.rsplit("/v1", 1)[-1], _Resp(404, {}))
+    monkeypatch.setattr(d.requests, "post", post)
+    monkeypatch.setattr(d.requests, "get", get)
+    return d, sent, answers
+
+
+def test_discover_keeps_field_names_and_types_never_values(disc):
+    """ASVS V8.3.4 · A02:2021 · CWE-359 · CWE-532: a device row's values (a person's name, a serial) never reach the discovery output."""
+    d, sent, answers = disc
+    answers["/zcc/devices"] = _Resp(200, [{"user": "alice@example.com", "serial": "SN-PRIVATE-1", "id": 7}])
+
+    rows = d.probe("https://api.zsapi.net/v1", "tok", ["/zcc/devices"], sleep=lambda s: None)
+
+    assert rows[0]["sample_keys"] == ["user", "serial", "id"] and rows[0]["first_item_types"] == {"user": "str", "serial": "str", "id": "int"}
+    assert "alice" not in json.dumps(rows) and "SN-PRIVATE" not in json.dumps(rows)
+
+
+def test_discover_object_and_non_json_answers_keep_no_values(disc):
+    """ASVS V8.3.4 · CWE-532: an object answer keeps keys and types; a non-JSON answer keeps its length, never its text."""
+    d, sent, answers = disc
+    answers["/zia/a"] = _Resp(200, {"secretish": "value-xyz"})
+    answers["/zia/b"] = _Resp(200, None, text="<html>value-abc</html>")
+
+    rows = d.probe("https://api.zsapi.net/v1", "tok", ["/zia/a", "/zia/b"], sleep=lambda s: None)
+
+    assert rows[0]["types"] == {"secretish": "str"} and rows[1] == {"path": "/zia/b", "status": 200, "works": True, "type": "non-json", "length": 22}
+    assert "value-" not in json.dumps(rows)
+
+
+def test_discover_follows_no_redirect_with_the_token(disc):
+    """ASVS V12.6.1 · A10:2021 · CWE-918 · CWE-601: neither the token POST nor a probe GET follows a redirect."""
+    d, sent, answers = disc
+    answers["/zia/x"] = _Resp(302, {})
+
+    d.authenticate("cid", "sec", "acme", "production")
+    rows = d.probe("https://api.zsapi.net/v1", "tok", ["/zia/x"], sleep=lambda s: None)
+
+    assert all(s["allow_redirects"] is False for s in sent) and "not followed" in rows[0]["note"]
+
+
+def test_discover_token_redirect_is_an_error(disc):
+    """ASVS V12.6.1 · CWE-601: a token endpoint that answers a redirect fails the sign-in instead of repeating the POST elsewhere."""
+    d, sent, answers = disc
+    answers["token"] = _Resp(307, {})
+
+    with pytest.raises(RuntimeError, match="redirect"):
+        d.authenticate("cid", "sec", "acme", "production")
+
+
+@pytest.mark.parametrize("vanity", ["evil.example/#", "a@b", "x:1"])
+def test_discover_bad_vanity_never_sends_the_secret(disc, vanity):
+    """ASVS V5.2.6 · A10:2021 · CWE-918 · CWE-522: a vanity domain that is not a DNS name is refused before the token POST."""
+    d, sent, _ = disc
+
+    with pytest.raises(ValueError):
+        d.authenticate("cid", "sec", vanity, "production")
+    assert sent == []
+
+
+@pytest.mark.parametrize("cloud,host", [("production", "acme.zslogin.net"), ("zscalertwo", "acme.zslogin.net"),
+                                        ("zscalerbeta", "acme.zsloginbeta.net"), ("zscalergov", "acme.zidentitygov.net"),
+                                        ("zscalergovus", "acme.zidentitygov.us")])
+def test_discover_token_goes_to_the_clouds_sign_in_host(disc, cloud, host):
+    """ASVS V12.6.1 · CWE-918: the token POST goes to <vanity> under the cloud's ZIdentity domain (as SDK 1.11.3's _get_auth_url)."""
+    d, sent, _ = disc
+
+    d.authenticate("cid", "sec", "acme", cloud)
+
+    assert sent[0]["url"] == f"https://{host}/oauth2/v1/token"
+
+
+def test_discover_request_error_has_tokens_redacted(disc, monkeypatch):
+    """ASVS V7.1.1 · CWE-532: a transport error echoing the bearer token is kept masked."""
+    d, _, _ = disc
+
+    def boom(url, **kw):
+        raise d.requests.exceptions.ConnectionError(f"proxy said Authorization: Bearer {TOKEN}")
+    monkeypatch.setattr(d.requests, "get", boom)
+
+    rows = d.probe("https://api.zsapi.net/v1", "tok", ["/zia/x"], sleep=lambda s: None)
+
+    assert TOKEN not in rows[0]["error"] and rows[0]["status"] == 0
+
+
+@pytest.mark.parametrize("cfg,why", [({}, "lacks client_id, client_secret, vanity_domain"), ([], "JSON object"),
+                                     ({"client_id": "a", "client_secret": "b", "vanity_domain": "x/y"}, "Invalid vanity")])
+def test_discover_config_is_checked_with_a_plain_error(tmp_path, cfg, why):
+    """ASVS V5.1.3 · CWE-20 · CWE-209 · WSTG-INPV-01: a config file that is not what the tool needs is refused in plain words, never echoing a value."""
+    import discover_endpoints as d
+    p = tmp_path / "tenant.json"
+    p.write_text(json.dumps(cfg), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=why) as e:
+        d.load_config(str(p))
+    assert "x/y" not in str(e.value)
+
+
+def test_discover_main_writes_an_owner_only_file_without_a_cloud_in_the_config(disc, tmp_path, monkeypatch, capsys):
+    """ASVS V8.3.1 · CWE-276 · CWE-732 · CWE-755: a config without a cloud runs (production) and the output is 0600."""
+    d, sent, answers = disc
+    monkeypatch.setattr(d, "PROBE_PATHS", {"zia_dlp_engines": ["/zia/dlpEngines"]})
+    monkeypatch.setattr(d.time, "sleep", lambda s: None)
+    answers["/zia/dlpEngines"] = _Resp(200, [{"name": "E", "id": 1}])
+    cfg, out = tmp_path / "tenant.json", tmp_path / "discovery.json"
+    cfg.write_text(json.dumps({"client_id": "cid", "client_secret": SECRET, "vanity_domain": "acme"}), encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["discover_endpoints.py", "--config", str(cfg), "--output", str(out)])
+
+    d.main()
+
+    printed = capsys.readouterr().out
+    assert stat.S_IMODE(os.stat(out).st_mode) == 0o600 and SECRET not in printed + out.read_text()
+    assert json.loads(out.read_text())["summary"]["working"][0]["path"] == "/zia/dlpEngines"
+
+
+def test_discover_failed_sign_in_message_masks_the_secret(disc, tmp_path, monkeypatch, capsys):
+    """ASVS V7.1.1 · CWE-209 · CWE-532: a sign-in error that echoes the client secret is printed masked."""
+    d, sent, answers = disc
+    cfg = tmp_path / "tenant.json"
+    cfg.write_text(json.dumps({"client_id": "cid", "client_secret": SECRET, "vanity_domain": "acme", "cloud": "production"}), encoding="utf-8")
+    monkeypatch.setattr(d, "authenticate", lambda *a: (_ for _ in ()).throw(RuntimeError(f"bad client_secret={SECRET}")))
+    monkeypatch.setattr("sys.argv", ["discover_endpoints.py", "--config", str(cfg), "--output", str(tmp_path / "o.json")])
+
+    with pytest.raises(SystemExit):
+        d.main()
+
+    assert SECRET not in capsys.readouterr().out
