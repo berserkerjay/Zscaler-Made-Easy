@@ -140,6 +140,9 @@ def _hex(digits: str) -> float:
         return float("inf")
 
 
+_DIGITS = frozenset("0123456789")   # JavaScript's decimal digits: "٣" or "²" is no digit there
+
+
 def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
     """(kind, value, position) tokens; kind is id, num, str or p. Linear:
     every character is looked at a bounded number of times."""
@@ -169,7 +172,7 @@ def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
             toks.append(("id", src[i:j], i))
             i = j
             continue
-        if c.isdigit() or (c == "." and i + 1 < n and src[i + 1].isdigit()):
+        if c in _DIGITS or (c == "." and i + 1 < n and src[i + 1] in _DIGITS):
             j = i
             if src.startswith(("0x", "0X"), i):
                 j = i + 2
@@ -177,7 +180,7 @@ def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
                     j += 1
                 toks.append(("num", _hex(src[i + 2:j]), i))
             else:
-                while j < n and (src[j].isdigit() or src[j] == "."):
+                while j < n and (src[j] in _DIGITS or src[j] == "."):
                     j += 1
                 try:
                     toks.append(("num", float(src[i:j]), i))

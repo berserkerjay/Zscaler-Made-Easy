@@ -172,6 +172,12 @@ _BLOCK_WORDS = {"block", "blocked", "deny", "denied", "drop", "reject", "shouldb
 _ALLOW_WORDS = {"allow", "allowed", "permit", "permitted", "pass", "shouldallow", "good", "benign"}
 
 
+def _digits(s: str) -> bool:
+    """ASCII digits only: str.isdigit() also takes "²" (which int() refuses)
+    and "٣" (which no Zscaler field takes as a number)."""
+    return s.isascii() and s.isdigit()
+
+
 def _cell(v: Any, limit: int = MAX_CELL_CHARS) -> str:
     return _CONTROL.sub("", str(v or "")).strip()[:limit]
 
@@ -214,7 +220,7 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
     else:   # no header: destination[, port][, protocol]
         raw["destination"] = cells[0] if cells else ""
         for c in cells[1:3]:
-            if c.isdigit() and "port" not in raw:
+            if _digits(c) and "port" not in raw:
                 raw["port"] = c
             elif c.lower() in _PROTOCOLS and "protocol" not in raw:
                 raw["protocol"] = c
@@ -222,7 +228,7 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
     e: Dict[str, Any] = {"line": line_no, "input": raw.get("destination", "")}
     port = raw.get("port", "")
     if port:
-        if port.isdigit() and 0 < int(port) < 65536:
+        if _digits(port) and 0 < int(port) < 65536:
             e["port"] = int(port)
         else:
             notes.append(f"port '{port[:20]}' ignored: not 1-65535")
@@ -282,7 +288,7 @@ def _ip_range(text: str) -> Optional[Tuple[int, int, int]]:
             first = ipaddress.ip_address(a)
         except ValueError:
             return None
-        if b.isdigit() and first.version == 4:
+        if _digits(b) and first.version == 4:
             if int(b) > 255:
                 raise ValueError("the range's last octet is over 255")
             last = ipaddress.ip_address(".".join(a.split(".")[:3] + [b]))
@@ -475,7 +481,7 @@ def _post(client, chunk: List[str]) -> Tuple[Any, int, Optional[float]]:
             ra = float(ra) if ra is not None else None
         except (TypeError, ValueError):
             ra = None
-        return {"error": type(e).__name__}, int(status) if str(status).isdigit() else 0, ra
+        return {"error": type(e).__name__}, int(status) if _digits(str(status)) else 0, ra
 
 
 def _error_text(data: Any) -> str:

@@ -275,7 +275,7 @@ def traffic_context(dest: Dict[str, Any], protocol: Any = None, port: Any = None
     if port in (None, ""):
         n = None
     else:
-        whole = isinstance(port, int) or (isinstance(port, float) and port.is_integer()) or (isinstance(port, str) and port.strip().isdigit())
+        whole = isinstance(port, int) or (isinstance(port, float) and port.is_integer()) or (isinstance(port, str) and port.strip().isascii() and port.strip().isdigit())
         n = _int(port) if whole else None
         if n is None or not 1 <= n <= 65535 or isinstance(port, bool):
             raise ValueError("The port must be a whole number from 1 to 65535.")

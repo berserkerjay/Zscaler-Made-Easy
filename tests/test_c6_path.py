@@ -2051,3 +2051,38 @@ def test_a_list_against_a_5000_network_group_costs_little_per_row():
     took = time.perf_counter() - t0
     assert took < 2.0, took
     assert (rn.row(0)["result"], rn.row(len(parsed) - 1)["result"]) == ("allowed", "blocked")
+
+
+# ── C6-PATH-20: digits that are not ASCII ──────────────────────────────
+@pytest.mark.parametrize("text", ["a.example,²", "destination,port\na.example,²\n", "10.0.0.5-²\nb.example\n", "a.example,٣\n",
+                                  "destination,port\na.example,４４３\n"])
+def test_a_list_with_a_superscript_or_non_ascii_digit_is_read_never_a_crash(text):
+    """ASVS V5.1.3 · CWE-20 · CWE-1287 · WSTG-ERRH-01: a port or range end of "²", "٣" or full-width digits is no number: noted or skipped, never a ValueError (HTTP 500)."""
+    p = bt.parse(text)
+    assert len(p) == 1 and all("port" not in e for e in p.entries)
+
+
+@pytest.mark.parametrize("port", ["٣", "４４３", "²"])
+def test_a_traced_port_must_be_ascii_digits(port):
+    """ASVS V5.1.3 · CWE-20 · CWE-1287: the analyzer's port takes ASCII digits only, refused in words otherwise."""
+    with pytest.raises(ValueError, match="port must be a whole number"):
+        zpm.traffic_context(pa.parse_destination("a.example"), "tcp", port)
+
+
+@pytest.mark.parametrize("digit", ["٣", "²", "５"])
+def test_a_pac_number_written_in_non_ascii_digits_is_refused_as_javascript_refuses_it(digit):
+    """ASVS V5.2.4 · CWE-1287 · CWE-697: JavaScript has no number "٣" (a browser rejects such a PAC), so the evaluator refuses it rather than reading 3."""
+    r = pac_eval.evaluate('function FindProxyForURL(u, h) { return "" + (%s); }' % digit, "https://a.example/", "a.example")
+    assert r["status"] == "error" and r["error"].startswith(pac_eval.PREFIX)
+
+
+def test_the_list_route_answers_a_superscript_port_without_a_500():
+    """ASVS V7.4.1 · CWE-209 · CWE-755 · WSTG-ERRH-01: the Test a list route's parse answers rows or a 400 for "²" in a port, never an unhandled ValueError (HTTP 500 with a trace)."""
+    import dlp_api_server as srv
+    from fastapi import HTTPException
+    try:
+        parsed = srv._bulk_parse(srv.BulkTestRequest(text="destination,port\na.example,²\n"))
+    except HTTPException as e:   # a refusal in words is acceptable; an unhandled error is not
+        assert e.status_code == 400
+    else:
+        assert len(parsed) == 1
