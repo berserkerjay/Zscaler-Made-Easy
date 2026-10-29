@@ -1231,3 +1231,110 @@ def test_mcp_loopback_and_stdio_start_without_a_flag(mcp, monkeypatch, argv):
     monkeypatch.setattr(mcp.mcp, "run", lambda transport, host=None, port=None: ran.append((transport, host, port)))
 
     assert mcp.main(argv) == 0 and len(ran) == 1
+
+
+# ── scenario_flow: input caps and the evidence it claims ─────────────
+
+@pytest.mark.parametrize("field,value", [("destination", "a\x7fb"), ("destination", "a\x9bb"), ("operation", "up\nload"),
+                                         ("scenario_id", "x" * 101), ("destination", "x" * 2049), ("file_type", 5)])
+def test_scenario_input_with_control_characters_or_over_cap_is_refused(field, value):
+    """ASVS V5.1.3 · V5.1.4 · CWE-20 · CWE-117 · WSTG-INPV-01: a control character (C0, DEL, C1), a wrong type or an over-cap value is refused."""
+    import scenario_flow as sf
+
+    with pytest.raises(ValueError, match="Invalid"):
+        sf.normalize_input({field: value})
+
+
+@pytest.mark.parametrize("raw,ok", [({"destination": "x" * 2048}, True), ({"corpus": "é" * (128 * 1024)}, True),
+                                    ({"corpus": "é" * (128 * 1024) + "a"}, False), ({"channel": "fax"}, False),
+                                    ({"network": "satellite"}, False), ({"platform": "amiga"}, False), ({"corpus": ["x"]}, False)])
+def test_scenario_input_boundaries(raw, ok):
+    """ASVS V5.1.4 · CWE-400 · CWE-20: caps hold at the byte boundary (256 KB of UTF-8) and only listed channels, networks and platforms pass."""
+    import scenario_flow as sf
+
+    if ok:
+        assert sf.normalize_input(raw)["channel"] == "web"
+    else:
+        with pytest.raises(ValueError):
+            sf.normalize_input(raw)
+
+
+@pytest.mark.parametrize("channel", ["endpoint", "email", "saas"])
+def test_scenario_non_web_channel_claims_no_inline_enforcement(channel):
+    """ASVS V1.1.1 · CWE-1059: a non-web channel shows the inline controls as not applicable and its capture as unverified, never enforced."""
+    import scenario_flow as sf
+    ctx = sf.normalize_input({"channel": channel})
+
+    res = sf.build_result(ctx, tenant_key="t", scope={"scopes": ["dlp"], "read": [], "channel_enabled": True}, read_at="2026-01-01T00:00:00Z")
+
+    st = {s["key"]: s["status"] for s in res["stages"]}
+    assert {st[k] for k in ("url", "ssl", "ftc", "cac")} == {"not_applicable"} and st["capture"] == "unverified"
+    assert st["action"] == "unverified" and res["execution_status"] == "complete"
+
+
+def test_scenario_stopped_path_marks_dlp_stages_not_reached():
+    """ASVS V1.1.1 · CWE-1059: a web path blocked before DLP leaves dictionaries, engines and rules 'not reached', and a corpus result is counterfactual."""
+    import scenario_flow as sf
+    ctx = sf.normalize_input({"destination": "https://x.example", "corpus": "4111 1111 1111 1111"})
+    path = {"trace": {"hops": [{"key": "url", "label": "URL filtering", "status": "blocked", "detail": "Blocked", "decided_by": {"id": 1, "name": "Block X"}}]}}
+
+    res = sf.build_result(ctx, tenant_key="t", scope={"scopes": ["dlp"], "read": ["url"]}, path=path, read_at="2026-01-01T00:00:00Z")
+
+    st = {s["key"]: s for s in res["stages"]}
+    assert all(st[k]["status"] == "not_reached" for k in ("dictionaries", "engines", "rules", "action"))
+    assert st["url"]["object_name"] == "Block X" and any("counterfactual" in l for l in res["limitations"])
+
+
+def test_scenario_corpus_out_of_scope_is_not_evaluated():
+    """ASVS V4.1.3 · A01:2021 · CWE-863: test content with DLP out of scope is reported as not evaluated."""
+    import scenario_flow as sf
+    ctx = sf.normalize_input({"corpus": "x"})
+
+    res = sf.build_result(ctx, tenant_key="t", scope={"scopes": [], "read": []}, read_at="2026-01-01T00:00:00Z")
+
+    assert res["execution_status"] == "out_of_scope"
+
+
+def test_scenario_scope_key_is_order_independent():
+    """ASVS V1.1.1 · CWE-20: the scope key ignores the order and repeats of the ticked scopes."""
+    import scenario_flow as sf
+
+    assert sf.scope_key(["dlp", "url", "dlp"], {"web": "zscaler"}) == sf.scope_key(["url", "dlp"], {"web": "zscaler"})
+
+
+# ── engine_explain helpers ───────────────────────────────────────────
+
+def test_engine_explain_names_by_id_reads_every_shape():
+    """ASVS V5.1.3 · CWE-20: the {id,name} list, the {name:{id}} map and the {id:name} map all name ids; an id-less entry is skipped."""
+    import engine_explain as ee
+
+    assert ee.names_by_id([{"id": 1, "name": "A"}, {"id": None, "name": "B"}]) == {"1": "A"}
+    assert ee.names_by_id({"A": {"id": 1}, "2": "B"}) == {"1": "A", "2": "B"}
+
+
+@pytest.mark.parametrize("token,label,kind", [("FTCATEGORY_MS_WORD", "MS Word", "File type category"),
+                                              ("ftcategory_pdf_document", "PDF document", "File type category"),
+                                              ("FTCATEGORY_WINDOWS_EXECUTABLES", "Windows executables", "File type category"),
+                                              ("CUSTOM_FT", "Custom ft", "File type"), ("", "", "File type")])
+def test_engine_explain_file_type_label_oracle(token, label, kind):
+    """ASVS V5.1.3 · CWE-20: file type tokens read as words, acronyms upper case."""
+    import engine_explain as ee
+
+    assert ee.file_type_label(token) == (label, kind)
+
+
+def test_engine_explain_named_and_template_terms():
+    """ASVS V5.1.3 · CWE-20: a pack's D:<name> terms and a template term read as names; a bare term is 'at least one'."""
+    import engine_explain as ee
+
+    assert ee.summary("D:Credit Cards > 1 AND D:SSN") == "Fires when the content has more than one Credit Cards match and at least one SSN match."
+    assert ee.readable("D${dict}.S > 0") == "D${dict} count > 0"
+
+
+def test_engine_explain_deep_nesting_is_named_not_parsed():
+    """ASVS V5.1.4 · CWE-674 · CWE-400: parentheses nested past the limit give no summary and no RecursionError."""
+    import engine_explain as ee
+
+    expr = "(" * 60 + "D1.S > 0" + ")" * 60
+
+    assert ee.summary(expr) == "" and "count" in ee.readable(expr, NAMES)
