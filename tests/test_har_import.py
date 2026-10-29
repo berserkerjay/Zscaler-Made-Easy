@@ -134,7 +134,10 @@ def test_over_the_host_cap_the_rest_are_listed_never_silently_dropped():
     assert out["hosts"][0]["host"] == "zz-upload.example.com", "a host that received an upload is always analyzed first"
     assert {h["host"] for h in out["hosts"]}.isdisjoint({m["host"] for m in out["more"]})
     page = open(os.path.join(ROOT, "static", "report_path.html"), encoding="utf-8").read()
-    assert "more host(s) not analyzed" in page and "Show the ${p.more.length} host(s) left out" in page
+    words = open(os.path.join(ROOT, "static", "har_parse.js"), encoding="utf-8").read()
+    # The note counts every host left out (HarParse.leftOut: more_total), and lists the ones kept.
+    assert "more host(s) not analyzed" in words and "host(s) left out" in words
+    assert "HarParse.leftOut(p)" in page and "<summary>${E(L.summary)}</summary>" in page
 
 
 def test_the_page_sends_only_host_names_and_counts():
