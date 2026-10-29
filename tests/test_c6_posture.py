@@ -904,3 +904,67 @@ def test_a_rule_whose_sub_rules_are_not_a_list_is_still_analysed(v):
     """ASVS V5.1.4 · CWE-20 · CWE-843 · WSTG-INPV-01: subRules that came back as a number or true never stops the shadow analysis."""
     res = sr.analyse({"url_filtering": [_r(1, 1, urlCategories=["A"], subRules=v), _r(2, 2, urlCategories=["A"])]})
     assert res["counts_by_policy"]["url_filtering"]["rules"] == 2
+
+
+class _Zcc:
+    def __init__(self, pages=None, err=None, boom=False):
+        self.pages, self.err, self.boom, self.calls = list(pages or []), err, boom, []
+
+    def list_by_company(self, query_params=None):
+        self.calls.append(dict(query_params or {}))
+        if self.boom:
+            raise RuntimeError("Bearer abc.def failed")
+        if self.err:
+            return None, None, self.err
+        return (self.pages.pop(0) if self.pages else []), None, None
+
+
+def _zcc_client(svc):
+    class C:
+        zcc = type("Z", (), {"trusted_networks": svc})()
+    return C()
+
+
+def test_client_connector_networks_are_paged_and_their_failures_said():
+    """ASVS V7.4.1 · CWE-755 · WSTG-ERRH-01: the list is paged until a short page; an error or exception is a reason, never a raise."""
+    full = [{"id": str(i), "guid": f"g{i}", "networkName": f"N{i}", "active": True, "dnsServers": ["10.0.0.1"]} for i in range(dp.ZCC_PAGE_SIZE)]
+    svc = _Zcc(pages=[full, [{"id": "x", "guid": "gx", "networkName": "Last", "active": "false", "ssids": "corp"}]])
+    out = dp.read_zcc_networks(_zcc_client(svc), pace=0)
+    assert out["read"] and len(out["networks"]) == dp.ZCC_PAGE_SIZE + 1 and [c["page"] for c in svc.calls] == [1, 2]
+    assert out["networks"][-1]["criteria"] == ["Wi-Fi networks"] and out["networks"][-1]["active"] is False
+    assert not dp.read_zcc_networks(_zcc_client(_Zcc(err="HTTP 403")), pace=0)["read"]
+    r = dp.read_zcc_networks(_zcc_client(_Zcc(boom=True)), pace=0)
+    assert not r["read"] and "abc.def" not in r["reason"] and "could not be read" in r["reason"]
+    assert dp.read_zcc_networks(object(), pace=0)["read"] is False
+
+
+def test_client_connector_read_honours_stop_before_each_page():
+    """ASVS V11.1.6 · CWE-367 · WSTG-BUSL-07: Stop set before the read sends nothing."""
+    import threading
+    ev = threading.Event()
+    ev.set()
+    svc = _Zcc(pages=[[{"id": "1"}]])
+    with pytest.raises(zr.Stopped):
+        dp.read_zcc_networks(_zcc_client(svc), cancel=ev, pace=0)
+    assert svc.calls == []
+
+
+@pytest.mark.parametrize("op, words", [
+    ({"type": "SCIM_GROUP", "lhs": "idp1", "rhs": "g1"}, "member of SCIM group “HR” (Okta)"),
+    ({"type": "SAML", "lhs": "a1", "rhs": "Finance"}, "SAML attribute “Department” is “Finance”"),
+    ({"type": "SCIM", "lhs": "title", "rhs": "CFO"}, "SCIM attribute “title” is “CFO”"),
+    ({"type": "IDP", "lhs": "id", "rhs": "idp1"}, "signed in through IdP “Okta”"),
+    ({"type": "MACHINE_GRP", "lhs": "id", "rhs": "m-gone", "name": "Old"}, "machine group “Old”"),
+    ({"type": "COUNTRY_CODE", "lhs": "us", "rhs": "false"}, "country is US"),
+    ({"type": "CLIENT_TYPE", "lhs": "id", "rhs": "zpn_client_type_zapp"}, "client type is"),
+    ({"type": "PLATFORM", "lhs": "ios", "rhs": "true"}, "platform is iOS"),
+    ({"type": "RISK_FACTOR_TYPE", "lhs": "ZIA", "rhs": "HIGH"}, "risk is “HIGH”"),
+    ({"type": "", "lhs": "", "rhs": ""}, "condition"),
+])
+def test_every_operand_type_reads_in_plain_words(op, words):
+    """ASVS V1.14.1 · CWE-697 · WSTG-BUSL-01: each ZPA operand type is named in words, unresolved ids by what the rule says."""
+    names = dp.Names({"idps": [{"id": "idp1", "name": "Okta"}], "saml_attributes": [{"id": "a1", "name": "Department"}],
+                      "scim_groups": {"idp1": {"groups": [{"id": "g1", "name": "HR"}]}}})
+    o = names.operand(op)
+    assert words in o["text"] and o["short"]
+    assert o["not"] is (op.get("rhs") == "false" and op["type"] in ("COUNTRY_CODE", "PLATFORM", "POSTURE", "TRUSTED_NETWORK"))
