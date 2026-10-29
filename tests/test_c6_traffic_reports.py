@@ -693,3 +693,133 @@ def test_insights_read_uses_the_injected_clock():
     out = insights.read(z, NOW_MS - DAY_MS, NOW_MS, pace=0, now_ms=NOW_MS)
 
     assert out["window"] == {"start_ms": NOW_MS - DAY_MS, "end_ms": NOW_MS, "days": 1.0} and out["queries"] == 9
+
+
+# ═══ pass 2: facts, verdicts, the live cursor, every export ═══════════
+def test_the_last_tunnel_state_is_the_last_one_in_a_long_log():
+    """ASVS V11.1.1 · CWE-682 · WSTG-BUSL-01: after more than 400 state changes the reported state is the latest, not the 400th."""
+    lines = [f"2026-09-01 08:00:{i % 60:02d} INF ZSATunnel: Tunnel state changed to TUNNEL_STATE_CONNECTING" for i in range(450)]
+    lines.append("2026-09-01 08:59:59 INF ZSATunnel: Tunnel state changed to TUNNEL_STATE_ZERO_TRUST_ON")
+
+    r = la.analyze_logs([("t.log", "\n".join(lines))])
+
+    assert r["facts"]["last_tunnel_state"] == "TUNNEL_STATE_ZERO_TRUST_ON"
+
+
+def test_a_pac_with_a_low_finding_is_not_said_to_pass_every_check():
+    """ASVS V11.1.1 · CWE-684 · WSTG-BUSL-01: the one-line verdict never contradicts the findings listed below it."""
+    pac = 'function FindProxyForURL(url, host) {\n  return "PROXY ${GATEWAY}:80; PROXY ${SECONDARY_GATEWAY}:80";\n}\n'
+
+    r = la.analyze([{"name": "proxy.pac", "content": pac}])
+
+    assert any(f["severity"] == "low" for f in r["pac"][0]["findings"])
+    assert "passes every check" not in r["verdict"]["headline"]
+
+
+def test_a_clean_pac_still_passes_every_check():
+    """ASVS V11.1.1 · CWE-684 · WSTG-BUSL-01: a PAC with only informational findings keeps the calm verdict (negative case of the above)."""
+    pac = ('function FindProxyForURL(url, host) {\n  if (isPlainHostName(host) || isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0")) return "DIRECT";\n'
+           '  return "PROXY ${GATEWAY}:80; PROXY ${SECONDARY_GATEWAY}:80";\n}\n')
+
+    r = la.analyze([{"name": "proxy.pac", "content": pac}])
+
+    assert r["verdict"]["level"] == "ok"
+
+
+@pytest.mark.parametrize("since", [datetime(2026, 10, 1, 11, 59, 0), NOW + timedelta(days=3)])
+def test_a_live_feed_cursor_without_a_zone_or_from_the_future_is_read_safely(since):
+    """ASVS V5.1.4 · CWE-20 · CWE-755 · WSTG-INPV-01: a naive or future 'since' is a UTC time no later than now, never a 500 or an inverted window."""
+    c = type("C", (), {})()
+    seen = []
+
+    class Api:
+        def dlp_incident_search(self, query_params=None, fields=None, time_range=None, **kw):
+            seen.append(time_range)
+            return {"incidents": []}, None, None
+    c.zwa = type("Z", (), {"dlp_incidents": Api()})()
+
+    out = dh.poll_incidents(c, since, now=NOW)
+
+    assert out["errors"] == [] and seen[0]["startTime"] <= seen[0]["endTime"]
+    assert datetime.fromisoformat(out["next_since"]) <= NOW
+
+
+def _bypass_hostile_report():
+    rules = [{"id": 1, "name": "=HYPERLINK(\"http://x\")\x00\x07" + HOSTILE, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["C1"],
+              "urls": ["+cmd|' /C calc'!A0"], "description": "@SUM(1)"}]
+    cats = [{"id": "C1", "configuredName": "C1\x0b", "customCategory": True, "urls": ["-2+3"], "keywords": ["k\x1f"]}]
+    zcc = [{"id": 1, "name": "P\x01", "bypassApps": [{"name": "=1+1", "path": "C:\\x", "os": "win"}], "trustedNetworks": [{"ssid": "Net"}]}]
+    return br.generate_bypass_report(_Get({"/zia/sslInspectionRules": (rules, 200), "/zia/urlCategories": (cats, 200),
+                                           "/zcc/webPolicies": (zcc, 200), "/zia/advancedSettings": ({}, 200)}))
+
+
+def test_the_bypass_word_export_survives_control_characters_and_keeps_names_as_text(tmp_path):
+    """ASVS V5.3.1 · A03:2021 · CWE-74 · CWE-116 · WSTG-INPV-01: control characters and formula-like names make a valid .docx with the names as plain text."""
+    import docx
+    out = br.to_docx(_bypass_hostile_report(), str(tmp_path / "b.docx"))
+
+    text = "\n".join(p.text for p in docx.Document(out).paragraphs) + "\n".join(c.text for t in docx.Document(out).tables for r in t.rows for c in r.cells)
+    assert "HYPERLINK" in text and "\x00" not in text and "\x07" not in text
+    with zipfile.ZipFile(out) as z:
+        assert not [n for n in z.namelist() if "macro" in n.lower() or n.endswith(".bin")]
+
+
+def test_the_bypass_csv_never_starts_a_cell_with_a_formula():
+    """ASVS V5.3.10 · A03:2021 · CWE-1236 · WSTG-INPV-01: every tenant value that starts like a formula is neutralised in the CSV."""
+    import csv
+    cells = [c for row in csv.reader(io.StringIO(br.to_csv(_bypass_hostile_report()))) for c in row]
+
+    assert cells and not [c for c in cells if c[:1] in ("=", "+", "-", "@", "\t", "\r")]
+
+
+def test_the_ssl_coverage_workbook_has_no_formula_and_inert_names():
+    """ASVS V5.3.10 · A03:2021 · CWE-1236 · WSTG-INPV-01: a tenant name like '=cmd|…' lands in the workbook as text, never as a formula."""
+    ssl = [{"id": 1, "name": "=cmd|' /C calc'!A0", "order": 1, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["AI_ML_APPS"]}]
+    rep = sc.analyse(ssl)
+    rep.update(tenant_label="=evil", volume={"available": True, "protocols": {"BYTES": sc.protocol_split([{"name": "=X", "total": 1}]), "TRANSACTIONS": None}},
+               history=[{"at": "2026-10-01", "by_risk": {"high": 1}}])
+
+    data = sc.to_xlsx(rep)
+
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        xml = "".join(z.read(n).decode("utf-8") for n in z.namelist() if n.endswith(".xml"))
+    assert "<f>" not in xml and "<f " not in xml and "calc" in xml
+
+
+def test_the_insights_csv_leaves_users_out_and_neutralises_formulas():
+    """ASVS V8.3.1 · V5.3.10 · A01:2021 · CWE-359 · CWE-1236 · WSTG-INPV-01: per-user rows never reach the CSV and a tenant name is never a formula."""
+    import csv
+    res = {"traffic_unit": "BYTES", "order": list(insights.SECTION_KEYS), "sections": {
+        "web_location": {"title": "Web", "status": "ok", "rows": [{"name": "=HQ", "total": 5}]},
+        "top_users": {"title": "Users", "status": "ok", "rows": [{"name": "jane.doe@example.com", "total": 9}]}}}
+
+    cells = [c for row in csv.reader(io.StringIO(insights.to_csv(res))) for c in row]
+
+    assert "jane.doe@example.com" not in " ".join(cells) and not [c for c in cells if c.startswith("=")]
+    assert insights.exportable(res)["sections"]["top_users"]["status"] == "omitted"
+
+
+def test_the_detection_health_markdown_is_inert():
+    """ASVS V5.3.3 · A03:2021 · CWE-1236 · CWE-79 · WSTG-CLNT-01: rule, user and destination names cannot add a link, tag or table row to the export."""
+    incs = [dh.normalize_incident(_dh_inc(f"i{i}", HOSTILE, user=HOSTILE, url="https://evil.example/|x"), dh.DEFAULTS["not_real"]) for i in range(3)]
+    ev = dh.evaluate(incs, [], now=NOW)
+    ev.update(days=30, incident_count=3, errors=[HOSTILE])
+
+    md = dh.to_markdown(ev, HOSTILE)
+
+    prose = re.sub(r"(`+).+?\1", "", md)
+    assert "<img" not in prose and "\n# Forged" not in md
+    for line in md.splitlines():
+        if line.startswith("| ") and "evil" in line:
+            assert line.count(" | ") == line.replace("\\|", "").count(" | ")
+
+
+def test_the_ssl_flow_markdown_and_csv_are_inert():
+    """ASVS V5.3.3 · V5.3.10 · CWE-1236 · CWE-79 · WSTG-CLNT-01: a hostile rule name stays text in the Markdown and is never a formula in the CSV."""
+    import csv
+    rep = sf.analyse([{"id": 1, "name": "=1+1 " + HOSTILE, "order": 1, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["AI_ML_APPS"]}], [])
+
+    md, text = sf.to_markdown(rep), sf.to_csv(rep)
+
+    assert "<img" not in re.sub(r"(`+).+?\1", "", md) and "\n# Forged" not in md
+    assert not [c for row in csv.reader(io.StringIO(text)) for c in row if c.startswith("=")]

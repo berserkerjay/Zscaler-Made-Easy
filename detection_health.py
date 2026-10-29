@@ -378,6 +378,10 @@ def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datet
     incidents (oldest first), `next_since` (pass this back next poll) and
     any read errors. Never raises."""
     now = now or datetime.now(timezone.utc)
+    if since is not None and since.tzinfo is None:   # a time without a zone is UTC, as the API's are
+        since = since.replace(tzinfo=timezone.utc)
+    if since is not None and since > now:            # a cursor from the future (a skewed clock) starts now
+        since = now
     if since is None:
         since = now - timedelta(seconds=LIVE_FIRST_LOOKBACK_SECONDS)
     elif since < now - timedelta(seconds=LIVE_POLL_CLAMP_SECONDS):

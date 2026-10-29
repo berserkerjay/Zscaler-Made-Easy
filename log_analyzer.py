@@ -28,7 +28,7 @@ import lzma
 import re
 import tarfile
 import zipfile
-from collections import Counter
+from collections import Counter, deque
 from typing import Any, Dict, List, Tuple
 
 import safe_files
@@ -627,7 +627,7 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
     """texts: [(name, text)] for every log file. Findings, facts, top errors."""
     hits: Dict[str, Dict[str, Any]] = {}
     facts: Dict[str, Any] = {"versions": Counter(), "os": Counter(), "users": Counter(), "clouds": Counter(),
-                             "tunnel": Counter(), "states": []}
+                             "tunnel": Counter(), "states": deque(maxlen=400)}   # the latest 400: the last state is the one that counts
     top_errors: Counter = Counter()
     error_example: Dict[str, str] = {}
     files_out: List[Dict[str, Any]] = []
@@ -679,7 +679,7 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
                 elif _FACT_T1.search(msg):
                     facts["tunnel"]["Z-Tunnel 1.0"] += 1
                 sm = _FACT_STATE.search(msg)
-                if sm and len(facts["states"]) < 400:
+                if sm:
                     facts["states"].append((ts, (sm.group(1) or sm.group(2) or "").strip()))
             # signatures
             for sig, rx, ex in _COMPILED:
@@ -1012,6 +1012,8 @@ def _verdict(result: Dict[str, Any]) -> Dict[str, str]:
         return {"level": "medium", "headline": "The client was working, with things worth tuning.", "detail": "Nothing here stops the user; each medium finding says what to improve."}
     if findings or (logs.get("top_errors")):
         return {"level": "info", "headline": "The client looks healthy. Only context and unrecognised errors are listed.", "detail": "Read the top repeated errors; if the user reports a problem, ask for a fresh bundle taken while it happens."}
+    if pac_sev.get("low"):
+        return {"level": "info", "headline": "The PAC file works; a few things in it are worth tidying.", "detail": "Read the low findings below; none changes what is protected today."}
     if result.get("pac") and not logs:
         return {"level": "ok", "headline": "The PAC file passes every check here.", "detail": "Its bypass list is shown below so you can confirm each one is intended."}
     return {"level": "ok", "headline": "Nothing wrong was found in these logs.", "detail": "If the user still has a problem, the logs may not cover the time it happened: ask for Export Logs taken right after the problem."}
