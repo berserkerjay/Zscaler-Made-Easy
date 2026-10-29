@@ -591,6 +591,32 @@ def _flock_held(path: str) -> Optional[bool]:
         os.close(fd)
 
 
+def _clear_owner_note_if_free(path: str) -> bool:
+    """Empty the owner note of the loop's run lock, while holding the lock
+    itself: a run that took the lock since it was found free keeps its
+    note (truncating by name would erase the live owner's PID)."""
+    try:
+        import fcntl
+    except ImportError:
+        return False
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError:
+        return False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False   # a run holds it now: its note is current
+        try:
+            os.ftruncate(fd, 0)
+            return True
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
 def _git_dir(app_dir: str) -> Optional[str]:
     g = os.path.join(app_dir, ".git")
     if os.path.isdir(g):
@@ -628,8 +654,7 @@ def check_locks(now: Optional[float] = None) -> Dict[str, Any]:
             elif held and pid and alive:
                 notes.append(f"a run of the evaluation loop is in progress (process {pid})")
             elif held is False and pid and alive is False:
-                with open(p, "w", encoding="utf-8"):
-                    pass   # the lock is free; only the stale owner note is cleared
+                _clear_owner_note_if_free(p)   # only the stale owner note is cleared
     except Exception:  # noqa: BLE001
         pass
     # 2. the ZIA rate state's lock file (an O_EXCL file; a save waits at most seconds for it)

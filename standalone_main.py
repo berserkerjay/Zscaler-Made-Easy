@@ -47,6 +47,7 @@ LOOPBACK = "127.0.0.1"
 FIRST_PORT = 8000
 PORT_TRIES = 100
 SETTINGS_FILE = "local_settings.env"
+MAX_SETTINGS_BYTES = 256 * 1024
 BUILD_INFO_FILE = "standalone_build.json"
 # Set for the lifetime of a standalone server. A process that starts with
 # it already set was spawned by the app itself (a subprocess that reached
@@ -88,10 +89,16 @@ def load_settings_file(path: str, env: MutableMapping[str, str]) -> List[str]:
     environment wins. Returns the keys it set."""
     added: List[str] = []
     try:
-        with open(path, encoding="utf-8") as f:
-            lines = f.read().splitlines()
-    except OSError:
+        # utf-8-sig: Notepad's "UTF-8 with BOM" must not glue the BOM to the
+        # first key. A file that is not text, or far larger than any settings
+        # file, is not read: the app starts with its defaults instead.
+        with open(path, encoding="utf-8-sig") as f:
+            text = f.read(MAX_SETTINGS_BYTES + 1)
+    except (OSError, ValueError):
         return added
+    if len(text) > MAX_SETTINGS_BYTES:
+        return added
+    lines = text.splitlines()
     for line in lines:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
