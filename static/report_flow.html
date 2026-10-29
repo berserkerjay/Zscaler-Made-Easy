@@ -126,7 +126,7 @@
       let first = null;
       svg.querySelectorAll('.dz-node').forEach(el => {
         const n = g && g.nodes.get(el.dataset.key);
-        const hit = !!n && n.name.toLowerCase().includes(q);
+        const hit = !!n && String(n.name || '').toLowerCase().includes(q);
         el.classList.toggle('is-dim', !hit);
         if (hit && !first) first = el;
       });

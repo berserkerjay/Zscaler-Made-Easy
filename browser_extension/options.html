@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Zscaler Made Easy companion: settings</title>
 <link rel="stylesheet" href="popup.css">
-<style>body { width: auto; max-width: 560px; padding: 20px; } input { width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--text); font: inherit; } label { display: block; margin: 12px 0 4px; font-weight: 600; } .row { display: flex; gap: 8px; margin-top: 10px; } .row button { width: auto; }</style>
+<link rel="stylesheet" href="options.css">
 <link rel="stylesheet" href="hover_help.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
   <input id="app" type="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8000">
   <div class="row"><button type="button" id="save" class="primary">Save and test</button><button type="button" id="reset">Use the default</button></div>
   <p id="msg" class="status" role="status" aria-live="polite"></p>
-  <h2 style="font-size:var(--fs-headline);margin:22px 0 4px;">Badges in the Zscaler admin console</h2>
+  <h2 class="opt-h">Badges in the Zscaler admin console</h2>
   <p class="hint">Shows a Zscaler Made Easy badge next to DLP dictionaries, engines and rules on the ZIA admin console (admin.zscaler.net and the other Zscaler clouds): what uses them, or their most serious finding. Your browser asks you to allow the extension on those sites. The badges compare names on the page with what Zscaler Made Easy read, inside the page: nothing from the console is sent anywhere.</p>
   <div class="row"><button type="button" id="badgesOn" class="primary">Show badges</button><button type="button" id="badgesOff">Turn badges off</button></div>
   <p id="badgeMsg" class="status" role="status" aria-live="polite"></p>
