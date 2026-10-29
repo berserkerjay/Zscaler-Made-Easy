@@ -369,6 +369,13 @@
   }
   $('zfInstPlat').addEventListener('change', instForm);
   $('zfInstBuild').addEventListener('click', instBuild);
+  // A change to the form makes the built command stale: Copy and Download wait for the next build.
+  const instStale = () => {
+    if (!instOut) return;
+    instOut = null; $('zfInstCmd').hidden = true; setEnabled('zfInstCopy', false); setEnabled('zfInstSave', false);
+    const st = $('zfInstStatus'); st.classList.remove('bad'); st.textContent = 'The form changed: build the command again.';
+  };
+  ['input', 'change'].forEach(ev => $('zfInstall').addEventListener(ev, e => { if (e.target && e.target.closest('#zfInstOpts, #zfInstPlat, #zfInstType, #zfInstName, #zfInstProfile')) instStale(); }));
   $('zfInstReveal').addEventListener('click', () => {
     reveal = !reveal;
     $('zfInstReveal').setAttribute('aria-pressed', reveal ? 'true' : 'false');

@@ -153,6 +153,12 @@ async function _dhApplyFlow(tenant, p, direction, box, host) {
     } catch (e) { box.innerHTML = `<div class="df-hint">Not applied: ${_dhE(e.message)}</div>`; }
   });
 }
+// The typed confirmation, compared as the server does (security.typed_phrase_matches).
+function _dhPhraseMatches(typed, phrase) {
+  const want = [...String(phrase || '').normalize('NFC').trim()], got = [...String(typed || '').normalize('NFC').trim()];
+  if (!want.length || got.length !== want.length) return false;
+  return got.every((a, i) => a === want[i] || (a.toUpperCase() === want[i].toUpperCase() && a.toLowerCase() === want[i].toLowerCase()));
+}
 let _dhPTenant = null, _dhPShowClosed = false;
 async function renderProposals(tenant, host) {
   if (!host) return;
@@ -192,8 +198,8 @@ async function renderProposals(tenant, host) {
     const dbl = p.gate === 'approve_double';
     const actions = p.status === 'open' ? `
       <div class="dh-pactions">
-        ${dbl ? `<input type="text" class="dh-confirm" placeholder="type ${_dhE(data.confirm_phrase)}" aria-label="Confirm phrase for ${_dhE(p.title)}" data-for="${_dhE(p.id)}">` : ''}
-        <button type="button" class="rp-btn primary" data-act="approve" data-id="${_dhE(p.id)}">Approve${dbl ? ' (stricter for users)' : ''}</button>
+        ${dbl ? `<label class="df-ctl"><span class="lbl">Type <strong>${_dhE(data.confirm_phrase)}</strong> to approve</span><input type="text" class="dh-confirm" autocomplete="off" spellcheck="false" aria-label="Type ${_dhE(data.confirm_phrase)} to approve ${_dhE(p.title)}" data-for="${_dhE(p.id)}"></label>` : ''}
+        <button type="button" class="rp-btn primary" data-act="approve" data-id="${_dhE(p.id)}"${dbl ? ' disabled' : ''}>Approve${dbl ? ' (stricter for users)' : ''}</button>
         <button type="button" class="rp-btn" data-act="snooze" data-id="${_dhE(p.id)}" title="Quiet for 14 days">Snooze</button>
         <button type="button" class="rp-btn" data-act="dismiss" data-id="${_dhE(p.id)}" title="Not raised again for ${_dhE(data.dismiss_days)} days">Dismiss</button>
       </div>` : (p.status === 'approved' && p.applies_via === 'phase 3' ? `<div class="dh-pactions"><button type="button" class="rp-btn primary" data-flow="apply" data-id="${_dhE(p.id)}">Preview and apply to the tenant</button><button type="button" class="rp-btn" data-act="reopen" data-id="${_dhE(p.id)}">Reopen</button></div><div class="dh-flow" data-box="${_dhE(p.id)}"></div>`
@@ -220,6 +226,11 @@ async function renderProposals(tenant, host) {
     <div class="df-hint">Each proposal names one change, the evidence behind it, the expected effect and the way back. Approving never writes anything by itself. An approved proposal gets a <em>Preview and apply</em> button: the rules are re-read, you see exactly what changes, you confirm, the app updates each rule and reads it back, and a <em>Roll back</em> stays available afterwards (write mode required; ZIA keeps the change pending until an admin activates). A change that makes the tenant stricter for users (monitor → confirm or block) needs the confirm phrase. A dismissal is remembered for ${_dhE(data.dismiss_days)} days.</div>
     <ul class="dh-plist">${(data.items || []).map(row).join('') || '<li class="df-hop-d">Nothing to decide: the evaluation raised no proposal for this tenant.</li>'}</ul>`;
   host.querySelector('#dhClosed').addEventListener('change', e => { _dhPShowClosed = e.target.checked; renderProposals(tenant, host); });
+  // A stricter-for-users approval: its Approve button stays disabled until the phrase is typed exactly.
+  host.querySelectorAll('.dh-confirm').forEach(inp => inp.addEventListener('input', () => {
+    const btn = host.querySelector(`button[data-act="approve"][data-id="${CSS.escape(inp.dataset.for)}"]`);
+    if (btn) btn.disabled = !_dhPhraseMatches(inp.value, data.confirm_phrase);
+  }));
   host.querySelectorAll('button[data-flow]').forEach(b => b.addEventListener('click', () => {
     const p = (data.items || []).find(x => x.id === b.dataset.id); if (!p) return;
     _dhApplyFlow(tenant, p, b.dataset.flow, host.querySelector(`.dh-flow[data-box="${CSS.escape(p.id)}"]`), host);

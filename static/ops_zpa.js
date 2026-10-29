@@ -172,7 +172,7 @@
       try {
         const q = await fetch('/api/operations/zpa/provisioning-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ token: s.token }) });
         const d = await q.json().catch(() => ({}));
-        if (!q.ok) throw new Error(d.detail || `HTTP ${q.status}`);
+        if (!q.ok) throw new Error(typeof d.detail === 'string' && d.detail ? d.detail : (d.detail && d.detail.cause) || `HTTP ${q.status}`);
         box.innerHTML = `<div class="t">Provisioning key ${E(d.name)}: copy it now</div>
           <div>It is shown this once. This app does not keep it; if you lose it, copy it from the ZPA Admin Portal.</div>
           <div class="op-row"><label class="df-ctl"><span class="lbl">Key</span><input id="zbKey" readonly autocomplete="off" spellcheck="false" aria-label="Provisioning key"></label>

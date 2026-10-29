@@ -78,7 +78,15 @@ FAKE_API = r"""
       { type: 'zpa_policies', family: 'zpa_build', label: 'ZPA policies', hint: '', script: 'ops_zpa.js' },
       { type: 'zpa_prefix_delete', family: 'zpa_build', label: 'ZPA delete', hint: '', script: 'ops_zpa.js' },
       { type: 'zdx_probes', family: 'zdx', label: 'ZDX probes', hint: '', script: 'ops_zdx.js' },
-      { type: 'zdx_probe_state', family: 'zdx', label: 'ZDX state', hint: '', script: 'ops_zdx.js' }] });
+      { type: 'zdx_probe_state', family: 'zdx', label: 'ZDX state', hint: '', script: 'ops_zdx.js' },
+      { type: 'zdx_probe_delete', family: 'zdx', label: 'ZDX delete', hint: '', script: 'ops_zdx.js' },
+      { type: 'zcc_profile_build', family: 'zcc_profiles', label: 'ZCC build', hint: '', script: 'ops_zcc.js' },
+      { type: 'zcc_profile_delete', family: 'zcc_profiles', label: 'ZCC delete', hint: '', script: 'ops_zcc.js' },
+      { type: 'aiguard_routing', family: 'aiguard', label: 'AI Guard routing', hint: '', script: 'ops_aiguard.js' },
+      { type: 'aiguard_detection_policy', family: 'aiguard', label: 'AI Guard policy', hint: '', script: 'ops_aiguard.js' },
+      { type: 'zia_baseline', family: 'zia_baseline', label: 'ZIA baseline', hint: '', script: 'ops_zia_baseline.js' },
+      { type: 'ssl_certificate_move', family: 'zia_baseline', label: 'SSL certificates', hint: '', script: 'ops_zia_baseline.js' },
+      { type: 'bad type', family: 'x', label: 'Bad', hint: '', script: '../evil.js' }] });
     if (u === '/api/write-mode') return json({ enabled: true });
     if (u === '/api/tenant-profiles') return json({ profiles: [] });
     if (u === '/api/operations') return json({ operations: [] });
@@ -86,6 +94,7 @@ FAKE_API = r"""
       ? json({ detail: [{ type: 'missing', loc: ['body', 'family'], msg: 'Field required' }] }, 422) : json({ job_id: 'j_read' });
     if (u === '/api/operations/preview/start') return json({ job_id: 'j_prev', operation: body.operation });
     if (u === '/api/operations/apply/start') return json({ job_id: 'j_apply' });
+    if (u === '/api/operations/zpa/provisioning-key') return body.token === 't1' ? json({ name: XSS, provisioning_key: 'KEY<b>&1' }) : json({ detail: [{ msg: 'Gone' }] }, 410);
     if (u === '/api/operations/op-1/undo/preview/start') return json({ job_id: 'j_undo', operation: { type: 'rule_state', value: 'ENABLED' }, undo_of: 'op-1' });
     const m = /^\/api\/dlp-packs\/jobs\/(j_[a-z]+)\?/.exec(u);
     if (m) return json(Object.assign({ logs: [], next: 0 }, jobs[m[1]]));
@@ -95,7 +104,7 @@ FAKE_API = r"""
 """ % {"xss": json.dumps(XSS), "phrase": json.dumps(PHRASE)}
 
 DRIVER = CDP_PRELUDE + r"""
-const [fakeApi, assessor] = args;
+const [fakeApi, assessor, catsJson] = args;
 const out = {};
 // Each measurement is kept on its own: one that throws is recorded as an error and the run goes on.
 const safe = async (name, fn) => { try { out[name] = await fn(); } catch (e) { out[name] = 'ERR ' + String(e.message).slice(0, 120); } };
@@ -113,7 +122,8 @@ const frame = () => until(() => ev(`new Promise(r => requestAnimationFrame(() =>
 await send('Page.addScriptToEvaluateOnNewDocument', { source: fakeApi });
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 await send('Page.navigate', { url: base + '/report/operations' });
-await until(() => ev(`document.readyState === 'complete' && document.querySelectorAll('input[name=opKind]').length >= 10 && !!(window.OPS_PLUGINS.defs.zdx_probes && window.OPS_PLUGINS.defs.zpa_policies)`), 'the builders');
+await until(() => ev(`document.readyState === 'complete' && document.querySelectorAll('input[name=opKind]').length >= 17 && ['zdx_probe_delete', 'zpa_policies', 'zcc_profile_delete', 'aiguard_detection_policy', 'ssl_certificate_move'].every(t => window.OPS_PLUGINS.defs[t])`), 'the builders');
+await safe('badKind', () => ev(`!document.querySelector('input[name=opKind][value="bad type"]') && !document.querySelector('script[src*="evil"]')`));
 await safe('scripts', () => ev(`(() => { const c = {}; document.querySelectorAll('script[src^="/static/ops_"]').forEach(s => { const n = s.getAttribute('src'); c[n] = (c[n] || 0) + 1; }); return c; })()`));
 
 // Read, pick all twelve, preview.
@@ -182,6 +192,121 @@ await ev(`window.__fail422 = true, document.getElementById('opRead').click(), 1`
 await until(() => ev(`/could not be read/.test(document.getElementById('opObjects').textContent)`), 'the read error').catch(() => null);
 await safe('error422', () => ev(`document.getElementById('opObjects').textContent`));
 
+// Every Build new form, rendered from crafted tenant data: escaping, links, each validation message, the spec.
+await safe('forms', () => ev(`(async () => {
+  const D = window.OPS_PLUGINS.defs, X = ${JSON.stringify(%(xss)s)}, CATS = ${catsJson};
+  const H = { E: s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    $: id => document.getElementById(id), say() {}, S: {} };
+  const set = (box, sel, v) => { const el = box.querySelector(sel); if (!el) throw new Error('no ' + sel);
+    if (el.type === 'checkbox' || el.type === 'radio') { el.checked = v; el.dispatchEvent(new Event('change')); }
+    else { el.value = v; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); } };
+  const run = (type, res, steps) => {
+    const box = document.createElement('div'); document.body.append(box); const S = {};
+    D[type].render(res, box, S, H);
+    const spec = () => { try { return D[type].spec(S, H); } catch (e) { return 'ERR ' + e.message; } };
+    const out = { steps: steps(box, spec, S) };
+    out.xss = !!box.querySelector('img') || window.__xss !== undefined;
+    out.js = [...box.querySelectorAll('a[href]')].some(a => /^ *javascript:/i.test(a.getAttribute('href')));
+    out.text = box.textContent.includes(X);
+    box.remove(); return out;
+  };
+  const r = {};
+  const zbRule = { key: 'url.x', area: 'url', suffix: 'X', title: X, tiers: { balanced: 'BLOCK' }, locked: '', action_locked: '', catch_all: false, default_on: true, choices: ['ALLOW', 'BLOCK'], sources: [{ title: X, url: 'javascript:alert(1)' }] };
+  r.zia_baseline = run('zia_baseline', Object.assign({}, CATS.zb, { rules: CATS.zb.rules.concat([zbRule]), in_scope: ['url', 'firewall'], not_in_scope_areas: { ssl: X },
+    isolation_profiles: [{ name: X }], certificates: [{ name: X }], errors: { url_categories: X } }), (box, spec) => {
+    const a = spec();
+    set(box, 'select[data-zb-act="url.x"]', 'ALLOW');
+    const weaker = /Weaker than the tier: Block → Allow/.test(box.textContent);
+    set(box, '#zbPrefix', 'B L'); const badPrefix = spec();
+    set(box, '#zbPrefix', 'QA_1');
+    [...box.querySelectorAll('input[data-zb-area]')].forEach(c => { if (c.checked) { c.checked = false; c.dispatchEvent(new Event('change')); } });
+    return { areas: (a.areas || []).sort(), type: a.type, prefix: a.prefix, enable: a.enable_rules, weaker, badPrefix, noArea: spec() };
+  });
+  r.ssl = run('ssl_certificate_move', { ssl_rules: [{ id: 11, name: X, inspect: true, locked: '', state: 'ENABLED', certificate: X, action: 'DECRYPT' },
+    { id: 12, name: 'nd', inspect: false, locked: '', state: 'ENABLED', certificate: '', action: 'DO_NOT_DECRYPT' }],
+    certificates: [{ id: 7, name: X, type: 'ZSCALER', status: 'ACTIVE', default_certificate: false, cert_exp_date: 1900000000 }] }, (box, spec) => {
+    const none = spec(); set(box, 'input[data-zc="11"]', true); const noTarget = spec(); set(box, '#zcTarget', '7');
+    return { none, noTarget, ok: spec(), ndDisabled: box.querySelector('input[data-zc="12"]').disabled };
+  });
+  r.zcc = run('zcc_profile_build', { catalog: CATS.zcc, inventory: { forwarding: [{ id: '5', name: X, used_by: 1 }], app: { windows: [{ id: '9', name: X, active: false }], macos: [] } } }, (box, spec) => {
+    const noApp = spec(); set(box, '#zcAppName', ' App ① '); const noFwd = spec(); set(box, '#zcFwdName', 'Fwd 李');
+    const ok = spec();
+    set(box, 'input[name="zcFwdTpl"][value="existing"]', true); const noExisting = spec();
+    set(box, '#zcFwdId', '5'); const linked = spec();
+    set(box, 'input[name="zcPlat"][value="macos"]', true);
+    return { noApp, noFwd, ok: { app: ok.app.name, fwd: ok.forwarding.name, settings: ok.forwarding.settings.length > 0, enable: ok.enable }, noExisting,
+      linked: linked.forwarding, stillShown: box.querySelector('#zcFwdId').value, mac: spec().platform };
+  });
+  r.zccDel = run('zcc_profile_delete', { inventory: { forwarding: [{ id: '5', name: 'F', used_by: 1 }], app: { windows: [{ id: '9', name: X, active: false }, { id: '10', name: 'On', active: true }] } } }, (box, spec) => {
+    const none = spec(); const dis = [...box.querySelectorAll('input[name="zcDel"]')].map(i => i.disabled);
+    set(box, 'input[name="zcDel"][value="app|9|windows"]', true);
+    return { none, dis, ok: spec() };
+  });
+  r.aigRoute = run('aiguard_routing', { catalog: { apps: [{ id: 'chatgpt', name: 'ChatGPT', default: true }, { id: 'gemini', name: X, default: false }], assumed: [X], gateway_steps: [X] },
+    readiness: { checks: [{ id: 'zia.gateway', status: 'fail', name: X, detail: X, fix: X }] }, certificates: [], proxies: [{ name: X }], in_scope: {}, names: { proxy: X }, genai_licensed: false }, (box, spec) => {
+    const a = spec();
+    set(box, '#aigPem', 'x'.repeat(16385)); const big = spec();
+    set(box, '#aigPem', ' -----BEGIN CERTIFICATE-----\\nMII\\n-----END CERTIFICATE----- '); const pem = spec();
+    set(box, 'input[data-aig-app="chatgpt"]', false); const noApp = spec();
+    return { apps: a.apps, cert: a.cert || null, big, pem: pem.cert, noApp };
+  });
+  r.aigPol = run('aiguard_detection_policy', { catalog: { apps: [{ id: 'chatgpt', name: 'ChatGPT', default: true }], profiles: [{ id: 'HIPAA', name: 'HIPAA', why: X }, { id: 'PCI', name: 'PCI DSS', why: 'cards' }], assumed: [] },
+    readiness: { checks: [] }, policies: [{ name: X }], names: { proxy: 'AIG-x' } }, (box, spec) => {
+    const a = spec(); set(box, '#aigProfile', 'PCI'); set(box, 'input[name="aigMode"][value="block"]', true);
+    return { a: [a.profile, a.mode], b: [spec().profile, spec().mode], why: box.querySelector('#aigWhy').textContent };
+  });
+  const zdxData = { templates: [{ id: 'best_practice', name: 'Best', about: X, predefined: [{ provider: 'm365' }], custom: [{ name: X, url: 'https://p.example/' }], interval_minutes: 10, protocol: 'ICMP' },
+      { id: 'empty', name: 'Empty', about: '', predefined: [], custom: [] }],
+    catalogue: [{ provider: 'm365', label: X, about: X, needs_prefix: true, host: '<prefix>.sharepoint.com', active: false, configured: false }],
+    apps: [{ key: 'a1', name: X, type: 'CUSTOM', host: 'h', active: true, deletable: true, probes: [{ id: 'p1', name: X, kind: 'web', target: 'https://h/', frequency: 300, active: true, deletable: true }] },
+      { key: 'zoom', name: 'Zoom', type: 'PREDEFINED', active: true, deletable: false, probes: [] }],
+    intervals: [5, 10, 15], protocols: ['ADAPTIVE', 'ICMP'], counts: { apps: 2 }, assumed: X };
+  r.zdx = run('zdx_probes', { zdx: zdxData }, (box, spec) => {
+    set(box, 'input[data-pre="m365"][data-f="prefix"]', ' acme ');
+    const a = spec();
+    for (let i = 0; i < 21; i++) box.querySelector('#zdxAdd').click();
+    const rows = box.querySelectorAll('input[data-cus][data-f="name"]').length;
+    set(box, 'input[name="zdxTpl"][value="empty"]', true);
+    return { pre: a.predefined, custom: a.custom, interval: a.interval_minutes, protocol: a.protocol, rows, empty: spec() };
+  });
+  r.zdxState = run('zdx_probe_state', { zdx: zdxData }, (box, spec) => {
+    const none = spec(); set(box, 'input[data-k="a1|p1"]', true); set(box, 'input[name="zdxTo"][value="on"]', true);
+    return { none, ok: spec().targets };
+  });
+  r.zdxDel = run('zdx_probe_delete', { zdx: zdxData }, (box, spec) => {
+    const none = spec(); set(box, 'input[data-k="a1|"]', true); const noName = spec();
+    set(box, 'input[data-nk="a1|"]', X);
+    return { none, noName, ok: spec().targets, predefinedOff: !box.querySelector('input[data-k="zoom|"]') };
+  });
+  r.zpaSeg = run('zpa_app_segments', { connector_groups: [{ id: '3', label: X }], verticals: [{ id: 'health', label: 'Healthcare', apps: [{ label: X, host: 'ehr', tcp: '443' }] }],
+    certificates: [{ id: 'c1', name: X }], pra_portals: [{ id: 'p1', name: X }], limits: { csv_rows: 500, csv_bytes: 262144 }, errors: { isolation: X } }, (box, spec) => {
+    const noPrefix = spec(); set(box, '#zbPrefix', 'pov1'); const noApp = spec();
+    set(box, '#zbVert', 'health'); const noBase = spec(); set(box, '#zbPDom', ' hospital.org ');
+    set(box, '#zbBaDom', 'ehr.hospital.org'); const noCert = spec(); set(box, '#zbBaCert', 'c1');
+    set(box, '#zbWDom', ' corp.example.com '); set(box, '#zbCsv', 'name,domains\\nA,a.example'); set(box, '#zbRdp', ' rdp01 ');
+    return { noPrefix, noApp, noBase, noCert, ok: spec() };
+  });
+  r.zpaPol = run('zpa_policies', { timeouts: [{ id: '28800', label: '8 h' }], idle_timeouts: [{ id: '3600', label: '1 h' }], isolation_profiles: [] }, (box, spec) => {
+    const ok = spec(); set(box, '#zbAccess', false); set(box, '#zbTimeout', false);
+    return { ok, none: spec() };
+  });
+  r.zpaDel = run('zpa_prefix_delete', { inventory: [{ kind: 'segment', id: '1', label: 'Segment', name: 'pov1-a' }, { kind: 'segment', id: '2', label: 'Segment', name: 'other-b' },
+    { kind: 'server_group', id: '3', label: X, name: 'pov1-' + X }] }, (box, spec) => {
+    const rows = box.querySelectorAll('input[data-k]').length, none = spec();
+    set(box, 'input[data-k="segment:1"]', true); const one = spec();
+    set(box, '#zbAll', true);
+    return { rows, none, one: one.select, all: [spec().everything, spec().select] };
+  });
+  // The one-time provisioning key: shown in a read-only field (never as HTML), and a refusal reads as words.
+  const kb = document.createElement('div'); document.body.append(kb);
+  window.OPS_PLUGINS.defs.zpa_connector_group.result({ one_time_secrets: [{ token: 't1' }, { token: 'gone' }] }, kb, H);
+  for (let i = 0; i < 200 && kb.querySelectorAll('.bp-card .t').length < 2; i++) await new Promise(res => setTimeout(res, 10));
+  r.key = { value: (kb.querySelector('#zbKey') || {}).value, xss: !!kb.querySelector('img') || window.__xss !== undefined,
+    readonly: !!(kb.querySelector('#zbKey') || {}).readOnly, text: kb.textContent.replace(/\\s+/g, ' ') };
+  kb.remove();
+  return r;
+})()`));
+
 // The ZPA connector group form: the enrollment count reaches the spec as typed.
 await safe('maxUsage', () => ev(`(() => {
   const def = window.OPS_PLUGINS.defs.zpa_connector_group, box = document.createElement('div'), H = { E: s => String(s), say() {} };
@@ -200,6 +325,34 @@ await send('Page.navigate', { url: base + '/report/fleet' });
 await until(() => ev(`document.readyState === 'complete' && !!document.querySelector('#zfInstOpts input')`), 'the fleet page').catch(() => null);
 await frame();
 await safe('fleetOverflow', () => ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`));
+
+// The install command builder: a change to the form after a build withdraws Copy and Download.
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+await ev(`(() => { const real = window.fetch.bind(window); window.fetch = (u, o) => String(u) === '/api/zcc/install'
+  ? Promise.resolve(new Response(JSON.stringify({ command: 'msiexec /i a.msi', script: 'x', script_name: 'install.ps1', masked: [] }), { status: 200 })) : real(u, o); return 1; })()`);
+await ev(`document.getElementById('zfInstBuild').click(), 1`);
+await until(() => ev(`!document.getElementById('zfInstCopy').disabled`), 'the built command').catch(() => null);
+await safe('instBuilt', () => ev(`!document.getElementById('zfInstCopy').disabled && !document.getElementById('zfInstCmd').hidden`));
+await ev(`document.getElementById('zfInstName').focus(), 1`);
+await typeIn('other.msi');
+await safe('instStale', () => ev(`({ copy: document.getElementById('zfInstCopy').disabled, save: document.getElementById('zfInstSave').disabled,
+  shown: !document.getElementById('zfInstCmd').hidden, status: document.getElementById('zfInstStatus').textContent })`));
+
+// Detection health: a stricter-for-users approval shows its phrase and waits for it.
+await send('Page.navigate', { url: base + '/report/health' });
+await until(() => ev(`document.readyState === 'complete' && typeof window.renderProposals === 'function'`), 'the health page');
+await safe('approve', () => ev(`(async () => {
+  const real = window.fetch.bind(window);
+  window.fetch = (u, o) => String(u).startsWith('/api/proposals?') ? Promise.resolve(new Response(JSON.stringify({ confirm_phrase: 'I UNDERSTAND', dismiss_days: 30,
+    summary: { open: 1 }, items: [{ id: 'p1', status: 'open', gate: 'approve_double', title: 'Block on rule A', label: 'Promote', rollback: { note: 'back' } }] }), { status: 200 })) : real(u, o);
+  const host = document.createElement('div'); document.body.append(host);
+  await window.renderProposals('t', host);
+  const btn = host.querySelector('button[data-act="approve"]'), inp = host.querySelector('.dh-confirm');
+  const typed = v => { inp.value = v; inp.dispatchEvent(new Event('input')); return btn.disabled; };
+  const r = { shown: (inp.closest('label') || {}).textContent || '', start: btn.disabled, lookalike: typed('I UNDER\u017fTAND'), right: typed(' i understand ') };
+  host.remove();
+  return r;
+})()`));
 
 // The bypass report renderer with a crafted rule id and a huge aggregated list.
 await send('Page.navigate', { url: base + '/report/bypass' });
@@ -220,9 +373,16 @@ ws.close(); p.kill(); process.exit(0);
 """ % {"xss": json.dumps(XSS)}
 
 
+def _catalogs():
+    """The real catalogues the server sends with a read (templates, rules, settings): no tenant needed."""
+    import ops_zcc
+    import ops_zia_baseline
+    return json.dumps({"zb": ops_zia_baseline.catalog(), "zcc": ops_zcc.catalog()})
+
+
 @pytest.fixture(scope="module")
 def ui(tmp_path_factory):
-    return run_in_browser(tmp_path_factory.mktemp("c6ui"), DRIVER, FAKE_API, ASSESSOR)
+    return run_in_browser(tmp_path_factory.mktemp("c6ui"), DRIVER, FAKE_API, ASSESSOR, _catalogs())
 
 
 # ── Typed confirmation and the other gates (Bulk changes, step 4) ────
@@ -310,6 +470,23 @@ def test_the_fleet_page_reflows_at_320px(ui):
     assert ui["fleetOverflow"] <= 0
 
 
+def test_a_changed_install_form_withdraws_the_old_command(ui):
+    """ASVS V1.11.3 · CWE-367 · WSTG-BUSL-04: after the form changes, Copy and Download wait for a new build."""
+    assert ui["instBuilt"] is True
+    assert ui["instStale"] == {"copy": True, "save": True, "shown": False, "status": "The form changed: build the command again."}
+
+
+def test_a_stricter_approval_shows_its_phrase(ui):
+    """ASVS V1.11.3 · CWE-841 · WCAG 2.2 SC 3.3.2: the phrase is a visible label, not a placeholder that disappears."""
+    assert "Type I UNDERSTAND to approve" in ui["approve"]["shown"]
+
+
+def test_a_stricter_approval_waits_for_the_exact_phrase(ui):
+    """ASVS V1.11.3 · CWE-841 · WSTG-BUSL-06: Approve is disabled at first and for a look-alike, armed by the phrase."""
+    a = ui["approve"]
+    assert (a["start"], a["lookalike"], a["right"]) == (True, True, False)
+
+
 # ── Values reach the API without loss; tenant data stays text ───────
 
 def test_the_apply_request_carries_the_values_as_typed(ui):
@@ -344,7 +521,142 @@ def test_a_validation_error_reads_as_words(ui):
 
 def test_each_builder_script_loads_once(ui):
     """ASVS V14.2.1 · CWE-1188 · NIST SSDF PW.4: a script serving several builder types is added to the page once."""
-    assert ui["scripts"] == {"/static/ops_zpa.js": 1, "/static/ops_zdx.js": 1}
+    assert ui["scripts"] == {f"/static/ops_{n}.js": 1 for n in ("zpa", "zdx", "zcc", "aiguard", "zia_baseline")}
+
+
+def test_a_builder_with_a_bad_type_or_script_is_not_loaded(ui):
+    """ASVS V14.2.1 · CWE-829 · WSTG-CLNT-13: a plugin entry with an invalid type or script name adds no form and no script."""
+    assert ui["badKind"] is True
+
+
+FORMS = ["zia_baseline", "ssl", "zcc", "zccDel", "aigRoute", "aigPol", "zdx", "zdxState", "zdxDel"]
+
+
+@pytest.mark.parametrize("form", FORMS)
+def test_every_build_new_form_shows_tenant_markup_as_text(ui, form):
+    """ASVS V5.3.3 · CWE-79 · WSTG-INPV-02: tenant names, errors and checks with markup render as text in each form."""
+    f = ui["forms"][form]
+    assert (f["xss"], f["text"]) == (False, True)
+
+
+def test_a_baseline_source_link_is_never_javascript(ui):
+    """ASVS V5.3.3 · CWE-79 · WSTG-CLNT-04: a rule source with a javascript: URL is not a link."""
+    assert ui["forms"]["zia_baseline"]["js"] is False
+
+
+def test_the_baseline_form_validates_and_builds_its_spec(ui):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: areas default to the in-scope ones, a bad prefix and no area are refused in words."""
+    st = ui["forms"]["zia_baseline"]["steps"]
+    assert (st["type"], st["areas"], st["prefix"], st["enable"]) == ("zia_baseline", ["firewall", "url"], "BL", False)
+    assert st["badPrefix"] == "ERR The rule name prefix is 1 to 10 letters, digits, - or _."
+    assert st["noArea"] == "ERR Pick at least one area."
+
+
+def test_the_baseline_form_flags_a_weaker_action(ui):
+    """ASVS V1.11.3 · CWE-1188 · WSTG-CONF-02: choosing Allow on a Block rule is shown as weaker than the tier."""
+    assert ui["forms"]["zia_baseline"]["steps"]["weaker"] is True
+
+
+def test_the_certificate_move_form_validates_and_builds_its_spec(ui):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: no rule, then no target, are refused; a non-Inspect rule cannot be picked."""
+    st = ui["forms"]["ssl"]["steps"]
+    assert (st["none"], st["noTarget"]) == ("ERR Pick at least one Inspect rule.", "ERR Pick the certificate to move the rules to.")
+    assert st["ok"] == {"type": "ssl_certificate_move", "rules": [11], "certificate": 7} and st["ndDisabled"] is True
+
+
+def test_the_zcc_build_form_validates_and_keeps_unicode_names(ui):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: each missing name is refused in words; names reach the spec trimmed, unicode intact."""
+    st = ui["forms"]["zcc"]["steps"]
+    assert (st["noApp"], st["noFwd"]) == ("ERR Give the app profile a name.", "ERR Give the forwarding profile a name.")
+    assert st["ok"] == {"app": "App ①", "fwd": "Fwd 李", "settings": True, "enable": False}
+
+
+def test_the_zcc_build_form_links_an_existing_profile(ui):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: linking needs a pick; the picked id survives a platform change on screen and in the spec."""
+    st = ui["forms"]["zcc"]["steps"]
+    assert st["noExisting"] == "ERR Pick the existing forwarding profile to link to."
+    assert (st["linked"], st["stillShown"], st["mac"]) == ({"template": "existing", "id": "5"}, "5", "macos")
+
+
+def test_the_zcc_delete_form_refuses_profiles_in_use(ui):
+    """ASVS V4.1.3 · CWE-841 · WSTG-BUSL-06: a linked forwarding profile and an enabled app profile cannot be picked."""
+    st = ui["forms"]["zccDel"]["steps"]
+    assert st["none"] == "ERR Pick the profile to delete." and st["dis"] == [True, False, True]
+    assert st["ok"]["targets"] == [{"kind": "app", "id": "9", "name": XSS, "platform": "windows"}]
+
+
+def test_the_ai_guard_routing_form_validates_the_certificate_and_apps(ui):
+    """ASVS V12.1.1 · CWE-400 · WSTG-INPV-01: a PEM over 16 KB and no app are refused; a pasted PEM goes trimmed."""
+    st = ui["forms"]["aigRoute"]["steps"]
+    assert (st["apps"], st["cert"]) == (["chatgpt"], None)
+    assert st["big"] == "ERR The certificate is larger than 16 KB." and st["noApp"] == "ERR Pick at least one GenAI app."
+    assert st["pem"] == {"mode": "upload", "pem": "-----BEGIN CERTIFICATE-----\nMII\n-----END CERTIFICATE-----"}
+
+
+def test_the_ai_guard_policy_form_defaults_to_monitor(ui):
+    """ASVS V1.14.6 · CWE-1188 · WSTG-CONF-02: the detection policy starts in monitor mode; the picked profile and mode go as picked."""
+    st = ui["forms"]["aigPol"]["steps"]
+    assert st["a"] == ["HIPAA", "monitor"] and st["b"] == ["PCI", "block"] and st["why"] == "cards"
+
+
+def test_the_zdx_setup_form_builds_its_spec_and_caps_custom_apps(ui):
+    """ASVS V5.1.3 · CWE-400 · WSTG-BUSL-05: the template fills the spec, the prefix is trimmed, at most 20 custom apps."""
+    st = ui["forms"]["zdx"]["steps"]
+    assert st["pre"] == [{"provider": "m365", "web": True, "cloudpath": True, "prefix": "acme"}]
+    assert st["custom"] == [{"name": XSS, "url": "https://p.example/", "cloudpath": True}]
+    assert (st["interval"], st["protocol"], st["rows"]) == (10, "ICMP", 20)
+    assert st["empty"] == "ERR Pick at least one predefined app or add a custom app."
+
+
+def test_the_zdx_state_form_validates_and_builds_its_spec(ui):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: nothing picked is refused; a picked probe goes with the chosen state."""
+    st = ui["forms"]["zdxState"]["steps"]
+    assert st["none"] == "ERR Pick at least one app or probe." and st["ok"] == [{"app": "a1", "probe": "p1", "to": "on"}]
+
+
+def test_the_zdx_delete_form_needs_each_name_typed(ui):
+    """ASVS V1.11.3 · CWE-841 · WSTG-BUSL-06: a delete needs each name typed; a predefined app cannot be picked."""
+    st = ui["forms"]["zdxDel"]["steps"]
+    assert st["none"] == "ERR Pick at least one custom app or probe to delete."
+    assert st["noName"] == "ERR Type the name of each app or probe you picked to confirm deleting it."
+    assert st["ok"] == [{"app": "a1", "probe": None, "name": XSS}] and st["predefinedOff"] is True
+
+
+def test_the_zpa_segments_form_validates_and_builds_its_spec(ui):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: prefix, an application, the preset's domain and the BA certificate are each asked for."""
+    st = ui["forms"]["zpaSeg"]["steps"]
+    assert st["noPrefix"] == "ERR Enter a prefix: 1 to 20 letters, digits, - or _."
+    assert st["noApp"].startswith("ERR Add at least one application")
+    assert (st["noBase"], st["noCert"]) == ("ERR Enter the base domain for the preset.", "ERR Pick the web server certificate for Browser Access.")
+    ok = st["ok"]
+    assert (ok["prefix"], ok["wildcard"]["domain"], ok["preset"], ok["csv"]) == ("pov1", "corp.example.com", {"vertical": "health", "domain": "hospital.org"}, "name,domains\nA,a.example")
+    assert ok["browser_access"]["certificate_id"] == "c1" and ok["pra"]["rdp_host"] == "rdp01" and ok["enable"] is False
+
+
+def test_the_zpa_policies_form_needs_one_policy(ui):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: access and timeout by default; none picked is refused in words."""
+    st = ui["forms"]["zpaPol"]["steps"]
+    assert (st["ok"]["access"], st["ok"]["timeout"], st["ok"]["inspection"]) == (True, True, False)
+    assert st["none"] == "ERR Pick at least one policy."
+
+
+def test_the_zpa_delete_form_lists_only_the_prefix(ui):
+    """ASVS V4.1.3 · CWE-863 · WSTG-ATHZ-02: only objects named prefix-… are offered; a pick or everything is required."""
+    st = ui["forms"]["zpaDel"]["steps"]
+    assert st["rows"] == 2 and st["none"] == "ERR Pick the objects to delete, or tick everything named with the prefix."
+    assert st["one"] == ["segment:1"] and st["all"] == [True, []]
+
+
+def test_the_provisioning_key_is_shown_once_as_a_value(ui):
+    """ASVS V8.3.1 · CWE-200 · WSTG-INPV-02: the key goes into a read-only field as text; its name is escaped."""
+    k = ui["forms"]["key"]
+    assert (k["value"], k["readonly"], k["xss"]) == ("KEY<b>&1", True, False)
+
+
+def test_a_refused_provisioning_key_reads_as_words(ui):
+    """ASVS V7.4.1 · CWE-209 · WSTG-ERRH-01: a refused key (a list detail) says HTTP 410, never '[object Object]'."""
+    k = ui["forms"]["key"]
+    assert "could not be shownHTTP 410" in k["text"] and "[object Object]" not in k["text"]
 
 
 def test_the_zpa_enrollment_count_is_sent_as_typed(ui):
@@ -388,7 +700,7 @@ def test_the_page_compares_the_phrase_as_the_server_does():
 
 # ── Error text helper (every UI-ops page) ───────────────────────────
 
-ERR_FILES = ["pov.js", "zcc_fleet.js", "beacon.js", "path_list.js", "path_whatif.js", "detection_health.js",
+ERR_FILES = ["ops_zpa.js", "pov.js", "zcc_fleet.js", "beacon.js", "path_list.js", "path_whatif.js", "detection_health.js",
              "report_browser.html", "report_device_posture.html", "report_shadow.html", "report_operations.html"]
 
 
@@ -397,7 +709,7 @@ def test_no_page_turns_an_error_detail_into_object_text(name):
     """ASVS V7.4.1 · CWE-209 · WSTG-ERRH-01: no page passes FastAPI's detail (a list or object) straight to Error()."""
     src = _read("static", name)
     assert not re.search(r"new Error\(\(?(?:d|data)(?:\.detail| && (?:d|data)\.detail)", src), name
-    assert re.search(r"(?:errText|_dhErrText|detailText)\((?:d|data), r\.status\)", src), name
+    assert re.search(r"(?:errText|_dhErrText|detailText)\((?:d|data), r\.status\)|typeof d\.detail === 'string'", src), name
 
 
 @node
