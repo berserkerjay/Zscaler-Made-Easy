@@ -250,10 +250,13 @@ def test_the_cached_console_index_is_returned_without_a_tenant_read(monkeypatch)
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: (_ for _ in ()).throw(AssertionError("no tenant read")))
     ci.cache_clear()
     c = _client()
-    assert c.get("/api/console-index/cached", params={"profile_id": "p1"}).json() == {"index": None, "profile_id": "p1"}
-    ci.cache_put(ci.cache_key("p1", ["web"]), {"tenant_label": A, "objects": [{"kind": "rule", "name": "R"}], "read_at": 1})
-    ci.cache_put(ci.cache_key("p2", ["web"]), {"tenant_label": B, "objects": [], "read_at": 2})
-    got = c.get("/api/console-index/cached", params={"profile_id": "p1"}).json()["index"]
+    # The kept index answers only for the tenant the saved profile names now (C6-MISC-10).
+    p1 = tenant_profiles.upsert({"name": "Acme", "vanity_domain": "acme", "cloud": "production", "client_id": "cid-1", "auth_method": "oneapi"})["id"]
+    p2 = tenant_profiles.upsert({"name": "Globex", "vanity_domain": "globex", "cloud": "zscalertwo", "client_id": "cid-2", "auth_method": "oneapi"})["id"]
+    assert c.get("/api/console-index/cached", params={"profile_id": p1}).json() == {"index": None, "profile_id": p1}
+    ci.cache_put(ci.cache_key(p1, ["web"]), {"tenant_label": A, "objects": [{"kind": "rule", "name": "R"}], "read_at": 1})
+    ci.cache_put(ci.cache_key(p2, ["web"]), {"tenant_label": B, "objects": [], "read_at": 2})
+    got = c.get("/api/console-index/cached", params={"profile_id": p1}).json()["index"]
     assert got["tenant_label"] == A and got["cached_at"]
     assert c.get("/api/console-index/cached").json()["index"] is None, "the server's own tenant has no index kept"
     ci.cache_clear()

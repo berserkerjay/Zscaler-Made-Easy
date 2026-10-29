@@ -5726,15 +5726,47 @@ def _console_zia(req: Any, zscope: Dict[str, Any]):
         return None, f"not available: {str(e)[:160]}"
 
 
+def _cached_index_tenant(profile_id: str, vanity_domain: str, cloud: str, auth_method: str) -> Optional[str]:
+    """The tenant label a kept console index must carry to answer the page:
+    the sample tenant's or opened snapshot's, the saved profile's (as it is
+    now, so an edited profile never gets its old tenant's index), the typed
+    OneAPI sign-in's (vanity domain and cloud), else the server's own
+    tenant. None (nothing answers) for a profile that is gone and for a
+    typed classic-API sign-in, whose label cannot tell two classic tenants
+    on one cloud apart (its admin login is never sent in a URL): Load
+    tenant objects reads and checks it instead. Never reads the tenant."""
+    off = _offline_creds()
+    if off:
+        return tenant_auth.record_label(off)
+    if (profile_id or "").strip():
+        import tenant_profiles
+        prof = tenant_profiles.get(profile_id.strip())
+        return tenant_auth.record_label(tenant_profiles.creds_from(prof)) if prof else None
+    try:
+        method = tenant_auth.normalize_method(auth_method)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="auth_method must be oneapi or legacy.")
+    if method == tenant_auth.LEGACY:
+        return None
+    if (vanity_domain or "").strip():
+        return tenant_auth.record_label({"vanity_domain": validate_vanity(vanity_domain.strip()),
+                                         "cloud": validate_cloud(cloud.strip()) if (cloud or "").strip() else "", "auth_method": method})
+    env = tenant_auth.from_env()
+    return tenant_auth.record_label(env) if tenant_auth.complete(env) else None
+
+
 @app.get("/api/console-index/cached")
-async def console_index_cached(profile_id: str = ""):
+async def console_index_cached(profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = ""):
     """The last console index this server read for a tenant profile (or for
     the server's own tenant), whatever scope it was read with, while it is
-    kept (30 minutes). Never reads the tenant: Find anything searches it as
-    you type, and only its Load tenant objects button reads (POST
-    /api/console-index, with the Scope page's selection)."""
+    kept (30 minutes), and only when it was read for the tenant the page
+    is signed in to (typed sign-ins of every tenant share one bucket; a
+    profile may have been edited since). Never reads the tenant: Find
+    anything searches it as you type, and only its Load tenant objects
+    button reads (POST /api/console-index, with the Scope page's selection)."""
     import console_index as ci
-    hit = ci.cache_latest(profile_id)
+    label = _cached_index_tenant(profile_id, vanity_domain, cloud, auth_method)
+    hit = ci.cache_latest(profile_id, tenant_label=label) if label else None
     return {"index": hit, "profile_id": profile_id or ""}
 
 
