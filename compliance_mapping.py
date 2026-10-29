@@ -7,7 +7,7 @@ controls in major regulatory and compliance frameworks.
 
 Frameworks covered:
   - NIST SP 800-53 Rev 5 (Federal security controls)
-  - NIST SP 800-171 Rev 3 (CUI / DFARS)
+  - NIST SP 800-171 Rev 2 (CUI / DFARS; the control numbering CMMC 2.0 Level 2 uses)
   - SOC 2 (AICPA Trust Services Criteria)
   - GDPR (EU General Data Protection Regulation)
   - HIPAA (Health Insurance Portability and Accountability Act)
@@ -31,7 +31,7 @@ Usage:
 # Control families that broadly apply to Zscaler's security capabilities
 FRAMEWORK_DESCRIPTIONS = {
     "NIST_800_53": "NIST SP 800-53 Rev 5 — Security and Privacy Controls for Federal Information Systems",
-    "NIST_800_171": "NIST SP 800-171 Rev 3 — Protecting Controlled Unclassified Information (CUI)",
+    "NIST_800_171": "NIST SP 800-171 Rev 2 — Protecting Controlled Unclassified Information (CUI)",
     "SOC_2": "SOC 2 — AICPA Trust Services Criteria (Security, Availability, Confidentiality, Processing Integrity, Privacy)",
     "GDPR": "EU General Data Protection Regulation (Regulation 2016/679)",
     "HIPAA": "Health Insurance Portability and Accountability Act — Security Rule (45 CFR Part 164 Subpart C)",
@@ -56,17 +56,17 @@ CONTROL_DOMAINS = {
         "HIPAA": ["§164.312(e)(1) (Transmission Security)", "§164.312(e)(2)(ii) (Encryption)"],
         "PCI_DSS": ["4.2.1 (Strong Cryptography in Transit)", "11.5.1 (Intrusion Detection)"],
         "ISO_27001": ["A.5.10 (Acceptable Use)", "A.8.20 (Networks Security)", "A.8.24 (Use of Cryptography)"],
-        "CIS": ["13.10 (Encrypt Sensitive Data in Transit)", "13.6 (Collect Network Traffic Flow Logs)"],
+        "CIS": ["3.10 (Encrypt Sensitive Data in Transit)", "13.6 (Collect Network Traffic Flow Logs)"],
         "CMMC_L1": ["SC.L1-3.13.1 (Boundary Protection)"],
         "CMMC_L2": ["SC.L2-3.13.8 (Transmission Confidentiality)", "SC.L2-3.13.11 (FIPS Cryptography)", "SC.L2-3.13.16 (Protection of CUI at Rest)", "SI.L2-3.14.6 (Monitor Communications)"],
-        "CMMC_L3": ["SC.L3-3.13.4e (Control Information Flows — Critical Programs)", "SI.L3-3.14.1e (Integrity Verification)"],
+        "CMMC_L3": ["SC.L3-3.13.4e (Isolation — Critical Programs)", "SI.L3-3.14.1e (Integrity Verification)"],
     },
     "dlp": {
         "NIST_800_53": ["AC-4 (Information Flow Enforcement)", "SC-7 (Boundary Protection)", "MP-5 (Media Transport)", "AU-12 (Audit Generation)"],
         "NIST_800_171": ["3.1.3 (Information Flow Control)", "3.1.20 (External Connections)", "3.13.1 (Boundary Protection)"],
         "SOC_2": ["CC6.7 (Restrict Movement of Information)", "C1.1 (Confidential Information)", "P4.1 (Use, Retention, Disposal)"],
         "GDPR": ["Art. 5(1)(f) (Integrity & Confidentiality)", "Art. 32 (Security of Processing)", "Art. 25 (Privacy by Design)"],
-        "HIPAA": ["§164.308(a)(4) (Information Access Management)", "§164.312(b) (Audit Controls)", "§164.312(c) (Integrity)"],
+        "HIPAA": ["§164.308(a)(4) (Information Access Management)", "§164.312(b) (Audit Controls)", "§164.312(c)(1) (Integrity)"],
         "PCI_DSS": ["3.5 (Protect Stored PAN)", "4.2 (PAN in Transit)", "10.2 (Audit Logs)"],
         "ISO_27001": ["A.5.34 (Privacy & PII Protection)", "A.8.12 (Data Leakage Prevention)", "A.8.10 (Information Deletion)"],
         "CIS": ["3.13 (Deploy DLP)", "3.3 (Configure Data Access Control Lists)"],
@@ -81,11 +81,11 @@ CONTROL_DOMAINS = {
         "GDPR": ["Art. 32 (Security of Processing)"],
         "HIPAA": ["§164.308(a)(4) (Information Access Management)"],
         "PCI_DSS": ["1.4 (Network Security Controls)", "5.4 (Anti-Phishing)"],
-        "ISO_27001": ["A.8.20 (Networks Security)", "A.8.21 (Security of Network Services)", "A.8.22 (Web Filtering)"],
+        "ISO_27001": ["A.8.20 (Networks Security)", "A.8.21 (Security of Network Services)", "A.8.23 (Web Filtering)"],
         "CIS": ["9.3 (Maintain and Enforce Network-Based URL Filters)"],
         "CMMC_L1": ["SC.L1-3.13.1 (Boundary Protection)", "AC.L1-3.1.20 (External Connections)"],
         "CMMC_L2": ["SC.L2-3.13.6 (Deny Communications by Default)", "AC.L2-3.1.3 (Control CUI Flow)"],
-        "CMMC_L3": ["SC.L3-3.13.4e (Control Info Flows — Critical Programs)"],
+        "CMMC_L3": ["SC.L3-3.13.4e (Isolation — Critical Programs)"],
     },
     "firewall": {
         "NIST_800_53": ["SC-7 (Boundary Protection)", "AC-4 (Information Flow Enforcement)", "CA-3 (System Interconnections)"],
@@ -97,8 +97,8 @@ CONTROL_DOMAINS = {
         "ISO_27001": ["A.8.20 (Networks Security)", "A.8.22 (Segregation in Networks)"],
         "CIS": ["12.2 (Establish and Maintain Network Architecture)", "13.4 (Perform Traffic Filtering Between Network Segments)"],
         "CMMC_L1": ["SC.L1-3.13.1 (Boundary Protection)", "SC.L1-3.13.5 (Public-Access System Components)"],
-        "CMMC_L2": ["SC.L2-3.13.6 (Deny by Default)", "SC.L2-3.13.2 (Security Engineering Principles)", "CA.L2-3.12.4 (Plans of Action)"],
-        "CMMC_L3": ["SC.L3-3.13.4e (Control Info Flows — Critical Programs)"],
+        "CMMC_L2": ["SC.L2-3.13.6 (Deny by Default)", "SC.L2-3.13.2 (Security Engineering Principles)", "CA.L2-3.12.2 (Plans of Action)"],
+        "CMMC_L3": ["SC.L3-3.13.4e (Isolation — Critical Programs)"],
     },
     "zpa_zero_trust": {
         "NIST_800_53": ["AC-3 (Access Enforcement)", "AC-6 (Least Privilege)", "AC-17 (Remote Access)", "IA-2 (Identification)"],
@@ -111,28 +111,28 @@ CONTROL_DOMAINS = {
         "CIS": ["6.7 (Centralize Access Control)", "6.8 (Define and Maintain Role-Based Access Control)", "12.7 (Ensure Remote Devices Use VPN/ZTNA)"],
         "CMMC_L1": ["AC.L1-3.1.1 (Authorized Access)", "AC.L1-3.1.2 (Transaction Limits)", "IA.L1-3.5.1 (Identify Users)", "IA.L1-3.5.2 (Authenticate Users)"],
         "CMMC_L2": ["AC.L2-3.1.5 (Least Privilege)", "AC.L2-3.1.12 (Monitor Remote Access)", "AC.L2-3.1.13 (Remote Access Cryptography)", "IA.L2-3.5.3 (Multifactor Authentication)"],
-        "CMMC_L3": ["AC.L3-3.1.2e (Restrict Privileges — Critical Programs)"],
+        "CMMC_L3": ["AC.L3-3.1.2e (Organizationally Controlled Assets)"],
     },
     "logging_monitoring": {
         "NIST_800_53": ["AU-2 (Audit Events)", "AU-3 (Audit Records Content)", "AU-6 (Audit Review)", "AU-12 (Audit Generation)", "SI-4 (System Monitoring)"],
-        "NIST_800_171": ["3.3.1 (Audit Logs)", "3.3.2 (Audit Reduction)", "3.3.5 (Correlate Audit Records)", "3.14.6 (System Monitoring)"],
+        "NIST_800_171": ["3.3.1 (Audit Logs)", "3.3.2 (User Accountability)", "3.3.5 (Correlate Audit Records)", "3.14.6 (System Monitoring)"],
         "SOC_2": ["CC4.1 (Monitoring Activities)", "CC7.1 (System Monitoring)", "CC7.2 (Anomaly Detection)", "CC7.3 (Incident Response)"],
         "GDPR": ["Art. 30 (Records of Processing)", "Art. 33 (Breach Notification)"],
         "HIPAA": ["§164.308(a)(1)(ii)(D) (Information System Activity Review)", "§164.312(b) (Audit Controls)"],
-        "PCI_DSS": ["10.2 (Audit Logs)", "10.5 (Log Retention 1 Year)", "10.7 (Time Synchronization)"],
+        "PCI_DSS": ["10.2 (Audit Logs)", "10.5 (Log Retention 1 Year)", "10.6 (Time Synchronization)"],
         "ISO_27001": ["A.8.15 (Logging)", "A.8.16 (Monitoring Activities)", "A.5.25 (Assessment of Information Security Events)"],
         "CIS": ["8.1 (Establish Audit Log Management)", "8.5 (Collect Detailed Audit Logs)", "8.10 (Retain Audit Logs)"],
         "CMMC_L1": [],
         "CMMC_L2": ["AU.L2-3.3.1 (Create & Retain Audit Records)", "AU.L2-3.3.2 (Audit Record Content)", "AU.L2-3.3.5 (Correlate Audit Records)", "SI.L2-3.14.6 (Monitor System)", "SI.L2-3.14.7 (Identify Unauthorized Use)"],
-        "CMMC_L3": ["AU.L3-3.3.1e (Automated Audit Analysis)", "SI.L3-3.14.6e (Threat Hunting)"],
+        "CMMC_L3": ["SI.L3-3.14.6e (Threat Hunting)"],
     },
     "endpoint_dlp": {
         "NIST_800_53": ["MP-5 (Media Transport)", "MP-7 (Media Use)", "AC-19 (Mobile Device Access Control)", "SC-7 (Boundary Protection)"],
         "NIST_800_171": ["3.8.7 (Removable Media)", "3.8.8 (Removable Media Use)", "3.13.1 (Boundary Protection)"],
         "SOC_2": ["CC6.7 (Restrict Movement)", "CC6.8 (Prevent Unauthorized Software)", "C1.1 (Confidential Information)"],
         "GDPR": ["Art. 32 (Security of Processing)"],
-        "HIPAA": ["§164.310(d) (Device and Media Controls)", "§164.310(d)(1) (Disposal)"],
-        "PCI_DSS": ["3.5 (Protect Stored PAN)", "9.7 (Removable Media)"],
+        "HIPAA": ["§164.310(d)(1) (Device and Media Controls)", "§164.310(d)(2)(i) (Disposal)"],
+        "PCI_DSS": ["3.5 (Protect Stored PAN)", "9.4 (Media with Cardholder Data Secured)"],
         "ISO_27001": ["A.8.7 (Protection Against Malware)", "A.8.9 (Configuration Management)", "A.8.12 (Data Leakage)"],
         "CIS": ["3.6 (Encrypt Data on End-User Devices)", "10.5 (Enable Anti-Exploitation)"],
         "CMMC_L1": ["MP.L1-3.8.3 (Media Sanitization)"],
@@ -147,7 +147,7 @@ CONTROL_DOMAINS = {
         "HIPAA": ["§164.308(a)(5)(ii)(B) (Protection from Malicious Software)"],
         "PCI_DSS": ["5.2 (Anti-Malware Mechanisms)", "5.3 (Protection from Malware)", "5.4 (Anti-Phishing)"],
         "ISO_27001": ["A.8.7 (Protection Against Malware)"],
-        "CIS": ["10.1 (Deploy Anti-Malware)", "10.2 (Centrally Manage Anti-Malware)", "10.7 (Anti-Phishing)"],
+        "CIS": ["10.1 (Deploy Anti-Malware)", "10.2 (Centrally Manage Anti-Malware)", "9.7 (Deploy and Maintain Email Server Anti-Malware Protections)"],
         "CMMC_L1": ["SI.L1-3.14.1 (Flaw Remediation)", "SI.L1-3.14.2 (Malicious Code Protection)", "SI.L1-3.14.4 (Update Malicious Code Protection)", "SI.L1-3.14.5 (Scan for Malicious Code)"],
         "CMMC_L2": ["SI.L2-3.14.3 (Monitor Security Advisories)"],
         "CMMC_L3": ["SI.L3-3.14.1e (Integrity Verification)"],
@@ -170,7 +170,7 @@ CONTROL_DOMAINS = {
         "NIST_800_171": ["3.6.1 (Incident Handling Capability)", "3.6.2 (Track, Document, Report Incidents)", "3.6.3 (Test Incident Response)"],
         "SOC_2": ["CC7.3 (Incident Response)", "CC7.4 (Incident Recovery)", "CC7.5 (Recovery Procedures)"],
         "GDPR": ["Art. 33 (Breach Notification 72hr)", "Art. 34 (Communication to Data Subject)"],
-        "HIPAA": ["§164.308(a)(6) (Security Incident Procedures)"],
+        "HIPAA": ["§164.308(a)(6)(i) (Security Incident Procedures)"],
         "PCI_DSS": ["12.10 (Incident Response Plan)", "12.10.1 (Incident Response Procedures)"],
         "ISO_27001": ["A.5.24 (Incident Management Planning)", "A.5.25 (Event Assessment)", "A.5.26 (Incident Response)"],
         "CIS": ["17.1 (Designate Incident Response Personnel)", "17.4 (Establish Incident Response Plans)"],
@@ -184,7 +184,7 @@ CONTROL_DOMAINS = {
         "SOC_2": ["CC3.1 (Risk Identification)", "CC3.2 (Risk Assessment)", "C1.1 (Confidential Information)"],
         "GDPR": ["Art. 22 (Automated Decision-Making)", "Art. 25 (Privacy by Design)", "Art. 35 (Data Protection Impact Assessment)"],
         "HIPAA": ["§164.308(a)(1)(ii)(A) (Risk Analysis)", "§164.308(a)(8) (Evaluation)"],
-        "PCI_DSS": ["12.3.1 (Risk Assessment for Critical Technologies)"],
+        "PCI_DSS": ["12.3.1 (Targeted Risk Analysis)"],
         "ISO_27001": ["A.5.7 (Threat Intelligence)", "A.5.34 (PII Protection)", "A.8.27 (Secure System Architecture)"],
         "CIS": ["3.1 (Establish Data Management Process)", "3.13 (Deploy DLP)"],
         "CMMC_L1": [],
@@ -194,16 +194,16 @@ CONTROL_DOMAINS = {
     },
     "device_compliance": {
         "NIST_800_53": ["CM-2 (Baseline Configuration)", "CM-7 (Least Functionality)", "AC-19 (Mobile Devices)", "SI-4 (Monitoring)"],
-        "NIST_800_171": ["3.4.1 (Baseline Configuration)", "3.4.6 (Least Functionality)", "3.7.5 (Monitor Maintenance)"],
+        "NIST_800_171": ["3.4.1 (Baseline Configuration)", "3.4.6 (Least Functionality)", "3.4.2 (Security Configuration Settings)"],
         "SOC_2": ["CC6.8 (Prevent Unauthorized Software)", "CC7.1 (System Monitoring)"],
         "GDPR": ["Art. 32 (Security of Processing)"],
-        "HIPAA": ["§164.310(c) (Workstation Security)", "§164.310(d) (Device Controls)"],
-        "PCI_DSS": ["1.4.5 (NSC for User Devices)", "8.4 (MFA for All Access)"],
+        "HIPAA": ["§164.310(c) (Workstation Security)", "§164.310(d)(1) (Device and Media Controls)"],
+        "PCI_DSS": ["1.5.1 (Security Controls on Computing Devices)", "8.4 (MFA for All Access)"],
         "ISO_27001": ["A.8.1 (User Endpoint Devices)", "A.5.9 (Inventory)", "A.8.9 (Configuration Management)"],
         "CIS": ["1.1 (Establish Device Inventory)", "4.1 (Establish Secure Configuration Process)"],
         "CMMC_L1": ["AC.L1-3.1.20 (External Connections)", "AC.L1-3.1.22 (Control Public Info)"],
         "CMMC_L2": ["CM.L2-3.4.1 (Baseline Configuration)", "CM.L2-3.4.2 (Security Configurations)", "CM.L2-3.4.6 (Least Functionality)", "AC.L2-3.1.18 (Control Mobile Device Connection)"],
-        "CMMC_L3": ["CM.L3-3.4.1e (Application Whitelisting)"],
+        "CMMC_L3": ["CM.L3-3.4.1e (Authoritative Source and Repository)"],
     },
 }
 
@@ -230,9 +230,9 @@ _EXTRA_FRAMEWORKS = {
         "url_filtering": ["314.4(c)(1) (Access controls)", "314.4(c)(8) (Monitoring)"],
         "firewall": ["314.4(c)(1) (Access controls)", "314.4(c)(8) (Monitoring)"],
         "zpa_zero_trust": ["314.4(c)(1) (Access controls, least privilege)", "314.4(c)(5) (Multi-factor authentication)"],
-        "logging_monitoring": ["314.4(c)(8) (Monitor and log user activity)", "314.4(d) (Continuous monitoring or penetration testing)"],
+        "logging_monitoring": ["314.4(c)(8) (Monitor and log user activity)", "314.4(d)(2) (Continuous monitoring or penetration testing)"],
         "endpoint_dlp": ["314.4(c)(2) (Identify and manage data, devices and systems)", "314.4(c)(8) (Monitoring)"],
-        "malware_threat": ["314.4(c)(8) (Monitoring)", "314.4(d) (Continuous monitoring)"],
+        "malware_threat": ["314.4(c)(8) (Monitoring)", "314.4(d)(2) (Continuous monitoring)"],
         "identity_admin": ["314.4(c)(1) (Access controls)", "314.4(c)(5) (Multi-factor authentication)", "314.4(a) (Qualified individual)"],
         "incident_response": ["314.4(h) (Written incident response plan)", "314.4(j) (Notify the FTC of a notification event)"],
         "ai_governance": ["314.4(b) (Risk assessment)", "314.4(c)(1) (Access controls)"],
@@ -263,6 +263,8 @@ CHECK_DOMAIN_MAP = {
     "8.": ["dlp", "endpoint_dlp"],
     "9.": ["logging_monitoring"],
     "10.": ["device_compliance"],
+    "C.": ["dlp"],                      # Ch.C — SaaS Security (CASB DLP)
+    "D.": ["dlp"],                      # Ch.D — Email DLP
     # Platform checks
     "FW.": ["firewall"],
     "UF.": ["url_filtering"],
@@ -275,6 +277,9 @@ CHECK_DOMAIN_MAP = {
     "ZCC.": ["device_compliance", "endpoint_dlp"],
     # GenAI checks
     "AI.": ["ai_governance", "dlp"],
+    # Admin roles, SSO and the identity directory
+    "RBAC.": ["identity_admin"],
+    "ZID.": ["identity_admin"],
 }
 
 

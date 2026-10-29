@@ -15,6 +15,7 @@ Based on Zscaler best practices for securing GenAI:
 
 import re
 
+from zscaler_full_checks import guard_registry
 from dlp_assessment_full_auto import (R, _ls, _ssl_action, _ssl_enabled, _SSL_INSPECT, _SSL_DNI, _fv, _names, _enabled, _truthy,
                                       GENAI_CATS, genai_category_ids, targets_genai)
 
@@ -54,11 +55,12 @@ SENSITIVE_PATTERNS = [
 
 
 def _has_any(text, keywords):
-    """Return True if text contains any of the keywords (case-insensitive)."""
+    """Return True if text contains any of the keywords as whole words
+    (case-insensitive): a bare substring finds "repo" in Report, "pan" in
+    Company and "code" in Barcode, and would pass a check on a rule's name."""
     if not text:
         return False
-    t = text.lower()
-    return any(k in t for k in keywords)
+    return bool(re.search(r"\b(?:" + "|".join(re.escape(k.strip()) for k in keywords) + r")\b", text, re.I))
 
 
 def _genai_rules(rules, field="name", ids=None):
@@ -207,7 +209,7 @@ def ai_9(cl):
         if (r.get("state") or "").upper() != "ENABLED":
             continue
         text = (r.get("name") or "") + " " + (r.get("description") or "")
-        if _has_any(text, ["source", "code", "github", "repo", "snippet", "codebase"]):
+        if _has_any(text, ["source code", "source", "code", "github", "repo", "repository", "repositories", "snippet", "codebase"]):
             code_rules.append(r)
     if code_rules:
         names = ", ".join(r.get("name", "?") for r in code_rules[:3])
@@ -469,3 +471,4 @@ GENAI_REG = [
     ("AI.19", "GenAI — Isolation & Posture", "Zero Trust Browser with restricted controls", ai_19),
     ("AI.20", "GenAI — Isolation & Posture", "Device posture gates AI access", ai_20),
 ]
+GENAI_REG = guard_registry(GENAI_REG)   # a refused read (HTTP 401/403) is "Not permitted", never judged

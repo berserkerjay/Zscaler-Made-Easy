@@ -41,7 +41,7 @@ AREAS = [
     ("ZIA policy", ("ZIA —",)),
     ("Client Connector", ("ZCC —", "1 —", "2 —", "3 —", "6 —", "10 —")),
     ("SSL inspection", ("4 —", "7 —", "GenAI — SSL")),
-    ("DLP programme", ("5 —", "8 —", "9 —", "11 —", "12 —", "Multi-Channel", "Ch.A", "Ch.B")),
+    ("DLP programme", ("5 —", "8 —", "9 —", "11 —", "12 —", "Multi-Channel", "Ch.A", "Ch.B", "Ch.C", "Ch.D")),
     ("GenAI governance", ("GenAI", "Ch.E")),
     ("Private access (ZPA)", ("ZPA —",)),
     ("Administration & RBAC", ("RBAC", "ZIdentity")),
@@ -53,16 +53,18 @@ AREAS = [
 DLP_PROGRAMME = [
     ("Foundation", ["1 —", "2 —", "3 —", "6 —"], "Client Connector portal, bypass inventory, app profile and versions in order"),
     ("Visibility", ["4 —", "7 —", "Ch.A"], "SSL inspection decrypts what matters and inline web DLP sees it"),
-    ("Coverage", ["5 —", "Ch.B", "Multi-Channel", "Ch.E"], "Endpoint, SaaS, email and GenAI channels carry the same policy"),
+    ("Coverage", ["5 —", "Ch.B", "Ch.C", "Ch.D", "Multi-Channel", "Ch.E"], "Endpoint, SaaS, email and GenAI channels carry the same policy"),
     ("Operation", ["8 —", "9 —", "10 —", "11 —"], "Pilot tests, troubleshooting, macOS and rollback are rehearsed"),
     ("Response", ["12 —"], "Incidents are notified, triaged and measured"),
 ]
 
 
 def area_of(section: str) -> str:
-    s = section or ""
+    """The benchmark area of a section, by its prefix only: "11 — Rollback"
+    contains "1 —", so a substring match would file it under Client Connector."""
+    s = str(section or "")
     for area, prefixes in AREAS:
-        if any(s.startswith(p) or p in s for p in prefixes):
+        if any(s.startswith(p) for p in prefixes):
             return area
     return "Other"
 
@@ -191,7 +193,8 @@ def benchmark_report(report: Dict[str, Any]) -> Dict[str, Any]:
     """Everything the Benchmarks card shows, from an assessment report
     (the `complete` event payload or a saved JSON)."""
     import channel_scope
-    results, _ = channel_scope.visible(report.get("checks") or [])   # a check outside the selected scope is hidden
+    checks = report.get("checks") if isinstance(report.get("checks"), list) else []   # a saved file may hold anything
+    results, _ = channel_scope.visible([c for c in checks if isinstance(c, dict)])   # a check outside the selected scope is hidden
     journey = report.get("journey") if isinstance(report.get("journey"), dict) else None
     j = None
     if journey and journey.get("status") not in (None, "pending", "error"):
@@ -227,13 +230,13 @@ def to_markdown(b: Dict[str, Any], org: str = "") -> str:
     p = b["dlp_programme"]
     lines += ["", f"## DLP programme: stage {p['stage']} of {len(p['stages'])} ({p['stage_name']})", ""]
     for s in p["stages"]:
-        lines.append(f"- {'✓' if s['met'] else '✗'} {s['n']}. {s['name']} — {s['what']}: {s['passed']}/{s['measured']} ({s['pct'] if s['pct'] is not None else 'n/a'}%)")
+        lines.append(f"- {'✓' if s['met'] else '✗'} {s['n']}. {s['name']} — {s['what']}: {s['passed']}/{s['measured']} ({_pct_text(s['pct'])})")
     lines += ["", "## Frameworks", "", "| Framework | Alignment | Status | Controls | Failing |", "|---|---|---|---|---|"]
     for f in b["frameworks"]:
         lines.append(f"| {f['name']} | {'n/a' if f['alignment_pct'] is None else str(f['alignment_pct']) + '%'} | {f['status']} | {f['controls']} | {f['failing']} |")
     if b.get("journey") and b["journey"].get("status") not in (None, "pending"):
         j = b["journey"]
-        lines += ["", f"## Data governance journey: stage {j.get('stage')} of 5, {j.get('score')}%", ""]
+        lines += ["", f"## Data governance journey: stage {j.get('stage') if j.get('stage') is not None else 'n/a'} of 5, {_pct_text(j.get('score'))}", ""]
         for x in j.get("baselines") or []:
-            lines.append(f"- {x['name']}: stage {x['stage']} ({x['stage_name']}), {x['score']}%")
+            lines.append(f"- {x['name']}: stage {x['stage']} ({x['stage_name']}), {_pct_text(x['score'])}")
     return "\n".join(lines) + "\n"

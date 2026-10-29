@@ -17,6 +17,7 @@ Checks are read-only and use the same Client interface as the other
 zscaler_*_checks modules. All failures gracefully degrade to INFO.
 """
 
+from zscaler_full_checks import guard_registry
 from dlp_assessment_full_auto import R, _ls
 
 # The administration, apps and devices endpoints return only active data and
@@ -150,3 +151,4 @@ ZDX_REG = [
     ("ZDX.7", "ZDX — Reports",        "Reports endpoint reachable",      zdx_reports_available),
     ("ZDX.8", "ZDX — Troubleshooting","ZDX device telemetry reachable",  zdx_troubleshoot),
 ]
+ZDX_REG = guard_registry(ZDX_REG)   # a refused read (HTTP 401/403) is "Not permitted", never judged
