@@ -2001,6 +2001,10 @@ def execute(client, spec: Dict[str, Any], *, plan_hash: str, scope: Dict[str, An
     written: status blocked, busy true."""
     if writes_enabled is not True:
         raise PermissionError("write mode is off: nothing was written")
+    if not str(assessor or "").strip():
+        # The route requires the named assessor too; the engine refuses on
+        # its own as well (defence in depth for every caller), before any read.
+        raise OperationError("A named assessor is required to apply a change: nothing was read or written.")
     with ops.tenant_run(client) as mine:
         if not mine:
             ops.audit_refusal("operation", client, plan_hash=plan_hash, reason=ops.BUSY_REASON)

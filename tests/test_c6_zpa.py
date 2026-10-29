@@ -1168,3 +1168,29 @@ def test_a_zia_bulk_change_does_not_need_a_customer_id(ops_api):
     assert admin_ops.product_of({"type": "rule_state"}) == "zia" and admin_ops.product_of("url_categories") == "zia"
     assert admin_ops.product_of("zpa_segments") == "zpa" and admin_ops.product_of(ops_zpa.FAMILY) == "zpa"
     assert admin_ops.product_of({"type": "zpa_connector_group"}) == "zpa"
+
+
+# ── C6-ZPA-17: the engine itself refuses an apply without a named assessor ──
+
+class _Tripwire:
+    """A client any use of which fails the test: nothing may be read or written."""
+    def __getattr__(self, name):
+        raise AssertionError(f"the client was used ({name}) before the assessor was checked")
+
+
+@pytest.mark.parametrize("assessor", ["", "   ", None])
+@pytest.mark.parametrize("op_type", ao.types())
+def test_execute_without_a_named_assessor_is_refused_before_anything_is_read(op_type, assessor):
+    """ASVS V4.2.2 · A01:2021 · CWE-841 · WSTG-BUSL-06 · CISA SbD defence in depth: admin_ops.execute refuses a blank assessor for every operation type before it touches the client."""
+    # Arrange
+    spec = {"type": op_type}
+    # Act / Assert
+    with pytest.raises(ao.OperationError, match="named assessor"):
+        ao.execute(_Tripwire(), spec, plan_hash="h" * 64, scope=ZPA, writes_enabled=True, assessor=assessor)
+
+
+def test_write_mode_off_is_still_checked_first():
+    """ASVS V4.2.2 · CWE-841 · WSTG-BUSL-06: with write mode off the refusal stays the write-mode one (the gates' order is unchanged)."""
+    # Arrange / Act / Assert
+    with pytest.raises(PermissionError, match="write mode is off"):
+        ao.execute(_Tripwire(), {"type": "zpa_connector_group"}, plan_hash="h" * 64, scope=ZPA, writes_enabled=False, assessor="")

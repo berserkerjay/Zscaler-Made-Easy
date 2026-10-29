@@ -344,7 +344,7 @@ def test_every_write_run_refuses_while_another_run_holds_the_tenant(monkeypatch,
     monkeypatch.setattr(zia_rate, "key_of", lambda c: "tenant-acme")
     call = {"deploy": lambda: pack_deploy.apply(client, [], plan_hash="h", writes_enabled=True),
             "removal": lambda: pack_removal.remove(client, [], plan_hash="h", writes_enabled=True),
-            "operation": lambda: ao.execute(client, BUILD, plan_hash="h", scope={}, writes_enabled=True)}[runner]
+            "operation": lambda: ao.execute(client, BUILD, plan_hash="h", scope={}, writes_enabled=True, assessor=ASSESSOR)}[runner]
     # Act
     with ops.tenant_run(holder) as got:
         assert got
@@ -362,7 +362,7 @@ def test_a_refused_busy_run_is_on_the_audit_log_with_its_actor(monkeypatch, tmp_
     client = SimpleNamespace(_zia_rate_key="tenant-acme", _zia_rate_label="acme (zscalerten)")
     # Act
     with ops.tenant_run(holder), ops.audit_scope(actor="writer@example.com"):
-        out = ao.execute(client, BUILD, plan_hash="h" * 64, scope={}, writes_enabled=True, confirm_text="x")
+        out = ao.execute(client, BUILD, plan_hash="h" * 64, scope={}, writes_enabled=True, assessor=ASSESSOR, confirm_text="x")
     # Assert
     entries = [e for e in audit.tail(50) if e.get("event") == "run_refused"]
     assert out.get("busy") and len(entries) == 1
@@ -644,7 +644,7 @@ def test_every_operation_type_out_of_scope_reads_nothing(t):
     with pytest.raises(ao.OperationError):
         ao.plan(Tripwire(), {"type": t}, scope=scope)
     with pytest.raises(ao.OperationError):
-        ao.execute(Tripwire(), {"type": t}, plan_hash=gates.HASH, scope=scope, writes_enabled=True)
+        ao.execute(Tripwire(), {"type": t}, plan_hash=gates.HASH, scope=scope, writes_enabled=True, assessor=ASSESSOR)
     fam = ao.PLUGINS[t]["family"] if t in ao.PLUGINS else {"rule_state": "rules", "reorder": "rules"}.get(t, FAMILY_TYPE.get(t, t))
     if fam in FAMILIES:
         with pytest.raises(ao.OperationError):
@@ -668,7 +668,7 @@ def test_every_plugin_re_plans_before_writing_and_a_moved_tenant_writes_nothing(
     monkeypatch.setitem(ao.PLUGIN_HANDLERS, "qa_tripwire", lambda run, g, units: pytest.fail("wrote although the tenant moved"))
     preview = ao.plan(SimpleNamespace(zia=None, zpa=None), {"type": t}, scope=scope)
     # Act
-    out = ao.execute(SimpleNamespace(zia=None, zpa=None), {"type": t}, plan_hash=preview["plan_hash"], scope=scope, writes_enabled=True)
+    out = ao.execute(SimpleNamespace(zia=None, zpa=None), {"type": t}, plan_hash=preview["plan_hash"], scope=scope, writes_enabled=True, assessor=ASSESSOR)
     # Assert
     assert calls["plan"] == 2 and out["status"] == "plan_changed" and out["items"] == []
 
@@ -895,7 +895,7 @@ def test_a_blank_own_phrase_never_hides_the_always_phrase(monkeypatch, own):
     client = SimpleNamespace(zia=None, zpa=None)
     p = ao.plan(client, {"type": t}, scope=scope)
     # Act
-    out = ao.execute(client, {"type": t}, plan_hash=p["plan_hash"], scope=scope, writes_enabled=True, confirm_text="")
+    out = ao.execute(client, {"type": t}, plan_hash=p["plan_hash"], scope=scope, writes_enabled=True, assessor=ASSESSOR, confirm_text="")
     # Assert
     assert p["confirm_phrase"] == "DELETE QA" and out["status"] == "refused"
 

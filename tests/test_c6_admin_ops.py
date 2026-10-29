@@ -267,9 +267,9 @@ def test_a_plugins_own_phrase_is_needed_even_for_one_change(clean_registry, phra
     p = ao.plan(c, {"type": "c6_demo"}, scope=FULL_SCOPE)
     assert p["confirm_phrase"] == "DELETE X"
     for typed in ("", "DELETE", "APPLY 1 CHANGES"):
-        res = ao.execute(c, {"type": "c6_demo"}, plan_hash=p["plan_hash"], scope=FULL_SCOPE, writes_enabled=True, confirm_text=typed)
+        res = ao.execute(c, {"type": "c6_demo"}, plan_hash=p["plan_hash"], scope=FULL_SCOPE, writes_enabled=True, assessor="Jane Doe", confirm_text=typed)
         assert res["status"] == "refused" and c.zpa.writes == []
-    res = ao.execute(c, {"type": "c6_demo"}, plan_hash=p["plan_hash"], scope=FULL_SCOPE, writes_enabled=True, confirm_text="delete x")
+    res = ao.execute(c, {"type": "c6_demo"}, plan_hash=p["plan_hash"], scope=FULL_SCOPE, writes_enabled=True, assessor="Jane Doe", confirm_text="delete x")
     assert res["status"] == "applied" and c.zpa.writes == ["demo:1"]
 
 
