@@ -33,6 +33,7 @@ Design principles
    module's main entry point. Only dependency is the Client.
 """
 from __future__ import annotations
+import json
 from typing import Any, Dict, List, Optional
 
 
@@ -75,7 +76,8 @@ REMEDIATIONS: List[Dict[str, Any]] = [
             {"key": "state",       "label": "Rule state",
              "type": "enum",       "required": True,
              "options": ["ENABLED", "DISABLED"],
-             "default": "ENABLED"},
+             "default": "DISABLED",
+             "hint": "Disabled by default: review the rule in the admin portal, then enable it."},
             {"key": "order",       "label": "Order (position)",
              "type": "number",     "required": True, "default": 1, "min": 1, "max": 999,
              "hint": "Lower = higher priority. Start with order=1 for a default rule; reorder later."},
@@ -119,7 +121,8 @@ REMEDIATIONS: List[Dict[str, Any]] = [
              "hint": "Example: ADULT_MATERIAL,GAMBLING,MALICIOUS_SITES — paste category IDs from ZIA Admin → URL Categories."},
             {"key": "state",             "label": "Rule state",
              "type": "enum",             "required": True,
-             "options": ["ENABLED", "DISABLED"], "default": "ENABLED"},
+             "options": ["ENABLED", "DISABLED"], "default": "DISABLED",
+             "hint": "Disabled by default: review the rule in the admin portal, then enable it."},
             {"key": "order",             "label": "Order",
              "type": "number",           "required": True, "default": 1, "min": 1, "max": 999},
             {"key": "rank",              "label": "Admin rank",
@@ -184,7 +187,8 @@ REMEDIATIONS: List[Dict[str, Any]] = [
              "hint": "DECRYPT for full inspection; DO_NOT_DECRYPT for documented exemptions (banking, healthcare)."},
             {"key": "state",       "label": "Rule state",
              "type": "enum",       "required": True,
-             "options": ["ENABLED", "DISABLED"], "default": "ENABLED"},
+             "options": ["ENABLED", "DISABLED"], "default": "DISABLED",
+             "hint": "Disabled by default: review the rule in the admin portal, then enable it."},
             {"key": "order",       "label": "Order",
              "type": "number",     "required": True, "default": 1, "min": 1, "max": 999},
             {"key": "rank",        "label": "Admin rank",
@@ -223,7 +227,8 @@ REMEDIATIONS: List[Dict[str, Any]] = [
              "hint": "ALERT during initial rollout so you gather signal; move to BLOCK after validation."},
             {"key": "state",       "label": "Rule state",
              "type": "enum",       "required": True,
-             "options": ["ENABLED", "DISABLED"], "default": "ENABLED"},
+             "options": ["ENABLED", "DISABLED"], "default": "DISABLED",
+             "hint": "Disabled by default: review the rule in the admin portal, then enable it."},
             {"key": "order",       "label": "Order",
              "type": "number",     "required": True, "default": 1, "min": 1, "max": 999},
             {"key": "rank",        "label": "Admin rank",
@@ -300,8 +305,8 @@ def _resolve_field(value: Any, spec: str):
             raise ValueError(f"Field '{spec[:-4]}' must be an integer.")
     if spec.endswith(":csv"):
         # Split comma-separated into list + strip whitespace
-        return [x.strip() for x in str(value or "").split(",") if x.strip()]
-    return str(value or "")
+        return [x.strip() for x in ("" if value is None else str(value)).split(",") if x.strip()]
+    return "" if value is None else str(value)
 
 
 def _render_template(template: Any, criteria: Dict[str, Any]) -> Any:
@@ -319,9 +324,9 @@ def _render_template(template: Any, criteria: Dict[str, Any]) -> Any:
             # Whole value is a single placeholder — preserve type
             field, typ = matches[0]
             val = criteria.get(field)
-            if typ == ":int":    return int(val)
+            if typ == ":int":    return _resolve_field(val, ":int")
             if typ == ":csv":    return _resolve_field(val, ":csv")
-            return val
+            return _resolve_field(val, "")
         # Otherwise string-substitute
         for field, typ in matches:
             val = _resolve_field(criteria.get(field, ""), typ)
@@ -344,6 +349,23 @@ def _render_endpoint(endpoint_tpl: str, criteria: Dict[str, Any]) -> str:
 
 
 _PATH_PARAM = __import__("re").compile(r"^[A-Za-z0-9_-]{1,64}$")
+# A free-text field with no max_length of its own is still capped (assumed:
+# well above what ZIA keeps for a rule's name or description).
+MAX_TEXT = 2048
+# A list of ids (URL categories): ZIA ids are upper-case words such as
+# GAMBLING or CUSTOM_01 (assumed: a little wider here, the tenant refuses the rest).
+MAX_CSV_ITEMS = 256
+_CSV_ITEM = __import__("re").compile(r"^[A-Za-z0-9_.-]{1,128}$")
+
+
+def _with_defaults(recipe: Dict[str, Any], criteria: Dict[str, Any]) -> Dict[str, Any]:
+    """The criteria with each field's default filled in where it was left
+    out, so an optional field never reaches the body as nothing."""
+    out = dict(criteria or {})
+    for f in recipe.get("fields", []):
+        if out.get(f["key"]) in (None, "") and "default" in f:
+            out[f["key"]] = f["default"]
+    return out
 
 
 def _validate_criteria(recipe: Dict[str, Any], criteria: Dict[str, Any]) -> List[str]:
@@ -361,8 +383,16 @@ def _validate_criteria(recipe: Dict[str, Any], criteria: Dict[str, Any]) -> List
             errors.append(f"'{f['label']}' is required.")
             continue
         if val is None or val == "":
+            if "{" + key + ":int}" in json.dumps(recipe.get("body_template") or {}):
+                errors.append(f"'{f['label']}' must be a number.")
+            continue
+        if isinstance(val, (dict, list, tuple, set)) or (isinstance(val, float) and not val.is_integer()):
+            errors.append(f"'{f['label']}' must be a single value, not a list or an object.")
             continue
         if f.get("type") == "number":
+            if isinstance(val, bool):
+                errors.append(f"'{f['label']}' must be a number.")
+                continue
             try:
                 n = int(val)
                 if "min" in f and n < f["min"]:
@@ -374,8 +404,13 @@ def _validate_criteria(recipe: Dict[str, Any], criteria: Dict[str, Any]) -> List
         if f.get("type") == "enum":
             if str(val) not in (f.get("options") or []):
                 errors.append(f"'{f['label']}' must be one of: {', '.join(f['options'])}.")
-        if f.get("max_length") and isinstance(val, str) and len(val) > f["max_length"]:
-            errors.append(f"'{f['label']}' exceeds {f['max_length']} chars.")
+        if f.get("type") == "csv":
+            parts = [x.strip() for x in str(val).split(",") if x.strip()]
+            if len(parts) > MAX_CSV_ITEMS or not all(_CSV_ITEM.match(x) for x in parts):
+                errors.append(f"'{f['label']}' must be up to {MAX_CSV_ITEMS} comma-separated ids (letters, digits, '_', '.', '-').")
+        limit = f.get("max_length") or MAX_TEXT
+        if len(str(val)) > limit:
+            errors.append(f"'{f['label']}' exceeds {limit} chars.")
     return errors
 
 
@@ -386,6 +421,9 @@ def plan(check_id: str, criteria: Dict[str, Any]) -> Dict[str, Any]:
     recipe = get_recipe(check_id)
     if not recipe:
         return {"ok": False, "errors": [f"No remediation recipe registered for check '{check_id}'."]}
+    if not isinstance(criteria, dict):
+        return {"ok": False, "errors": ["The criteria must be an object of field values."], "recipe_label": recipe["label"]}
+    criteria = _with_defaults(recipe, criteria)
     errors = _validate_criteria(recipe, criteria)
     if errors:
         return {"ok": False, "errors": errors, "recipe_label": recipe["label"]}
@@ -430,11 +468,17 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
         elif method == "PUT":
             resp, code = client.put(endpoint, body)
         elif method in ("PATCH",):
-            # Client may not expose patch; fall back to put
             if hasattr(client, "patch"):
                 resp, code = client.patch(endpoint, body)
             else:
-                resp, code = client.put(endpoint, body)
+                # ZIA rules are updated with a PUT of the whole rule (assumed:
+                # the API has no PATCH): read it, change the fields, send it
+                # back. A PUT of the changed fields alone would replace the rule.
+                cur, rcode = client.get(endpoint)
+                if rcode != 200 or not isinstance(cur, dict):
+                    return {"status": "failed", "http_status": rcode,
+                            "error": f"could not read {endpoint} before changing it, so nothing was sent", **{k: v for k, v in p.items() if k != "ok"}}
+                resp, code = client.put(endpoint, dict(cur, **body))
         elif method == "DELETE":
             resp, code = client.delete(endpoint, body)
         else:
