@@ -8208,6 +8208,9 @@ async def assess_stream(req: AssessRequest):
 _DOCX_MAX_CHECKS = 1000
 
 
+WORD_REPORT_FAILED = "The Word report could not be built; the server log says why."
+
+
 @app.post("/api/report/docx")
 async def generate_docx(request: Request):
     """Generate a Word doc from assessment results (at most _DOCX_MAX_CHECKS
@@ -8240,10 +8243,11 @@ async def generate_docx(request: Request):
     except Exception as e:
         if tmp_path:
             _unlink_quietly(tmp_path)   # a failed report leaves no copy of the assessment behind
-        # Surface the real error to the browser instead of a generic 500
+        # The traceback stays in the server log; the browser gets plain words
+        # (an exception's text can quote the posted assessment, CWE-209).
         tb = _tb.format_exc()
         print(f"\n=== Word generation failed ===\n{tb}===\n", flush=True)
-        raise HTTPException(status_code=500, detail=f"Word generation error: {type(e).__name__}: {str(e)[:300]}")
+        raise HTTPException(status_code=500, detail=WORD_REPORT_FAILED)
 
     org = re.sub(r"[^A-Za-z0-9_-]+", "_", str(cfg.get("org", "report"))).strip("_")[:60] or "report"
     # The temp file holds the whole assessment: remove it once it has been sent.
@@ -8705,9 +8709,13 @@ async def _bypass_export_response(report: Dict[str, Any], fmt: str):
         except ImportError as e:
             _unlink_quietly(output_path)
             raise HTTPException(status_code=500, detail=f"python-docx missing: {e}. Run: pip install python-docx")
-        except Exception as e:
+        except Exception:
             _unlink_quietly(output_path)
-            raise HTTPException(status_code=500, detail=f"Word generation failed: {type(e).__name__}: {str(e)[:300]}")
+            # As /api/report/docx: the traceback (which can quote the bypass
+            # report's tenant data) stays in the server log, CWE-209.
+            import traceback as _tb_bypass
+            print(f"\n=== Word generation failed (bypass report) ===\n{_tb_bypass.format_exc()}===\n", flush=True)
+            raise HTTPException(status_code=500, detail=WORD_REPORT_FAILED)
         return FileResponse(output_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             filename=f"zscaler_bypass_{ts}.docx", background=BackgroundTask(_unlink_quietly, output_path))
     return Response(content=json.dumps(report, indent=2, default=str), media_type="application/json",

@@ -223,8 +223,45 @@ def test_a_server_fault_names_no_server_folder(client, monkeypatch):
     # Act
     r = client.post("/api/report/docx", json={"checks": [{"id": "DLP-01", "status": "FAIL"}]})
     # Assert
-    assert r.status_code == 500 and srv._APP_DIR not in r.text and "<app folder>" in r.json()["detail"]
+    assert r.status_code == 500 and srv._APP_DIR not in r.text and "x.docx" not in r.text   # nothing of the error is echoed (C6-REPORTS-16)
     assert _hardened(r)
+
+
+CANARY_REPORT_TEXT = "Contoso-board-minutes-canary"
+
+
+def _word_build_fails(monkeypatch):
+    import bypass_report
+    import report_docx
+
+    def fail(*a, **k):
+        raise ValueError(f"cannot place paragraph '{CANARY_REPORT_TEXT}'")
+    monkeypatch.setattr(report_docx, "generate_report", fail)
+    monkeypatch.setattr(bypass_report, "to_docx", fail)
+
+
+def test_a_failed_word_report_returns_plain_words_not_the_exception(client, monkeypatch):
+    """ASVS V7.4.1 · A04:2021 · CWE-209 · WSTG-ERRH-01: POST /api/report/docx whose build raises answers a plain 500; the exception's type and text (which can quote the posted report) stay in the server log."""
+    # Arrange
+    _word_build_fails(monkeypatch)
+    # Act
+    r = client.post("/api/report/docx", json={"checks": [{"id": "DLP-01", "status": "FAIL"}]})
+    # Assert
+    assert r.status_code == 500 and r.json()["detail"] == srv.WORD_REPORT_FAILED
+    assert CANARY_REPORT_TEXT not in r.text and "ValueError" not in r.text
+
+
+def test_a_failed_bypass_word_export_returns_plain_words_not_the_exception(monkeypatch):
+    """ASVS V7.4.1 · A04:2021 · CWE-209 · WSTG-ERRH-01: the bypass report's Word export (tenant bypass data) that raises is a plain 500 naming nothing of the error."""
+    # Arrange
+    import asyncio
+    from fastapi import HTTPException
+    _word_build_fails(monkeypatch)
+    # Act
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(srv._bypass_export_response({"rows": [{"domain": CANARY_REPORT_TEXT}]}, "docx"))
+    # Assert
+    assert e.value.status_code == 500 and e.value.detail == srv.WORD_REPORT_FAILED
 
 
 def test_path_scrubbing_covers_each_folder_and_only_server_faults():
