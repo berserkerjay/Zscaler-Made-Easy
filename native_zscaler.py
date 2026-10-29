@@ -65,9 +65,18 @@ def kind_of(obj: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _as_list(v: Any) -> List[Any]:
+    """A field that should be a list: one value as a one-item list (an
+    upload may carry "PDF" where the API gives ["PDF"]), never its
+    characters; nothing for None or an empty value."""
+    if isinstance(v, (list, tuple)):
+        return list(v)
+    return [v] if v not in (None, "", {}) else []
+
+
 def _names(items: Any) -> List[str]:
     out = []
-    for x in items or []:
+    for x in _as_list(items):
         if isinstance(x, dict):
             v = x.get("name") or x.get("id")
         else:
@@ -197,7 +206,7 @@ def _common(rule: Dict[str, Any], warnings: List[str]) -> Dict[str, Any]:
     if rule.get("severity"):
         out["severity"] = rule["severity"]
     if rule.get("fileTypes"):
-        out["file_types"] = list(rule["fileTypes"])
+        out["file_types"] = _as_list(rule["fileTypes"])
     if rule.get("labels"):
         out["labels"] = _names(rule["labels"])
     tpl = rule.get("notificationTemplate")
@@ -206,7 +215,7 @@ def _common(rule: Dict[str, Any], warnings: List[str]) -> Dict[str, Any]:
     if rule.get("withoutContentInspection"):
         out["without_content_inspection"] = True
     if rule.get("userRiskScoreLevels"):
-        out["user_risk_score_levels"] = list(rule["userRiskScoreLevels"])
+        out["user_risk_score_levels"] = _as_list(rule["userRiskScoreLevels"])
     dropped = [k for k in _SCOPE_FIELDS if rule.get(k)]
     if dropped:
         warnings.append(f"rule '{name}': tenant-specific scope ({', '.join(dropped)}) was dropped; scope it again in the target tenant")
@@ -222,7 +231,7 @@ def convert_rule(rule: Dict[str, Any], warnings: List[str], hint: str = "") -> O
     out = _common(rule, warnings)
     out["channel"] = ch
     if ch == "web":
-        out["protocols"] = list(rule.get("protocols") or ["ANY_RULE"])
+        out["protocols"] = _as_list(rule.get("protocols")) or ["ANY_RULE"]
         for src, dst in (("minSize", "min_size"), ("cloudApplications", "cloud_applications"), ("urlCategories", "url_categories")):
             v = rule.get(src)
             if v:
@@ -236,7 +245,7 @@ def convert_rule(rule: Dict[str, Any], warnings: List[str], hint: str = "") -> O
         if rule.get("dataTransferMethod"):
             out["data_transfer_method"] = rule["dataTransferMethod"]
         if rule.get("deviceTrustLevels"):
-            out["device_trust_levels"] = list(rule["deviceTrustLevels"])
+            out["device_trust_levels"] = _as_list(rule["deviceTrustLevels"])
         if rule.get("eunEnabled") is not None:
             out["eun_enabled"] = bool(rule["eunEnabled"])
         if rule.get("networkType"):
@@ -247,8 +256,13 @@ def convert_rule(rule: Dict[str, Any], warnings: List[str], hint: str = "") -> O
         if groups:
             out["endpoint_application_groups"] = groups
         subs = []
-        for sr in rule.get("subRules") or []:
+        for sr in _as_list(rule.get("subRules")):
             if isinstance(sr, dict) and sr.get("name"):
+                if sr.get("subRules"):
+                    # ZIA nests sub-rules one level only: deeper ones are not
+                    # carried (and an upload can never recurse without bound).
+                    warnings.append(f"rule '{out['name']}': sub-rule '{sr['name']}' has sub-rules of its own; those were dropped")
+                    sr = {k: v for k, v in sr.items() if k != "subRules"}
                 c = convert_rule(dict(sr, dataTransferMethod=sr.get("dataTransferMethod") or rule.get("dataTransferMethod")), warnings, "endpoint")
                 if c:
                     c.pop("channel", None)
@@ -260,7 +274,7 @@ def convert_rule(rule: Dict[str, Any], warnings: List[str], hint: str = "") -> O
         out["tenants"] = "any"
         if rule.get("cloudAppTenants"):
             warnings.append(f"rule '{out['name']}': SaaS tenant ids ({', '.join(_names(rule['cloudAppTenants']))}) were dropped; the pack scopes the rule to any matching onboarded tenant")
-        out["collaboration_scope"] = list(rule.get("collaborationScope") or ["ANY"])
+        out["collaboration_scope"] = _as_list(rule.get("collaborationScope")) or ["ANY"]
         for src, dst in (("components", "components"), ("contentLocation", "content_location"), ("recipient", "recipient"), ("domains", "domains")):
             if rule.get(src):
                 out[dst] = rule[src]

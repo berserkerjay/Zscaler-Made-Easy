@@ -1090,3 +1090,63 @@ def test_corpus_reserved_ssns_are_not_counted_and_generated_samples_are_injected
     assert ce.sample("phone", rng=random.Random(1)) == ce.sample("phone", rng=random.Random(1)) and ce.sample("phone", rng=random.Random(1)).startswith("(555) 555-01")
     with pytest.raises(KeyError):
         ce.sample("nope")
+
+
+@pytest.mark.parametrize("field,out_field,given,want", [
+    ("fileTypes", "file_types", "PDF", ["PDF"]), ("protocols", "protocols", "FTP_RULE", ["FTP_RULE"]),
+    ("userRiskScoreLevels", "user_risk_score_levels", "HIGH", ["HIGH"]), ("fileTypes", "file_types", ["PDF", "ZIP"], ["PDF", "ZIP"]),
+])
+def test_native_single_value_is_one_item_not_its_characters(field, out_field, given, want):
+    """ASVS V5.1.3 · A08:2021 · CWE-20 · CWE-704: an uploaded rule's single value where a list belongs is one item, never one per character."""
+    import native_zscaler as nz
+
+    out = nz.convert_rule({"name": "R", "dlpEngines": [{"name": "E"}], field: given}, [])
+
+    assert out[out_field] == want
+
+
+def test_native_sub_rules_nest_one_level_only():
+    """ASVS V5.1.4 · CWE-674 · CWE-400: an upload's sub-rules of sub-rules are dropped with a warning, never recursed without bound."""
+    import native_zscaler as nz
+    rule = {"name": "R", "dataTransferMethod": "USB", "subRules": [{"name": "S0", "subRules": [{"name": "S1", "subRules": [{"name": "S2"}]}]}]}
+    warnings: List[str] = []
+
+    out = nz.convert_rule(rule, warnings, "endpoint")
+
+    assert [s["name"] for s in out["sub_rules"]] == ["S0"] and "sub_rules" not in out["sub_rules"][0]
+    assert "sub-rule 'S0' has sub-rules of its own" in warnings[0]
+
+
+def test_native_convert_parts_round_trip_names_ids_and_drops_tenant_scope():
+    """ASVS V5.1.3 · A08:2021 · CWE-20: a native export becomes a pack: ids named, predefined objects counted, tenant scope dropped with a warning."""
+    import native_zscaler as nz
+    parts = {"dictionaries": [{"id": 7, "name": "Project codes", "custom": True, "dictionaryType": "PATTERNS_AND_PHRASES",
+                               "phrases": [{"phrase": "falcon"}], "patterns": []},
+                              {"id": 8, "name": "CREDIT_CARD", "custom": False, "dictionaryType": "PREDEFINED", "nameL10nTag": True}],
+             "engines": [{"id": 1, "name": "Codes", "customDlpEngine": True, "engineExpression": "((D7.S > 1) AND (D8.S > 0))"},
+                         {"id": 2, "predefinedEngineName": "PCI"}],
+             "policies": [{"name": "Web rule", "dlpEngines": [{"id": 1, "name": "Codes"}], "groups": [{"id": 5}], "action": "BLOCK"},
+                          {"name": "Mail rule", "emailTenants": [{"id": 3}], "dlpEngines": [{"name": "Codes"}], "action": "BLOCK"},
+                          {"name": "SaaS rule", "cloudAppTenants": [{"id": 4, "name": "Box"}], "type": "OFLCASB_DLP_FILE", "dlpEngines": [{"name": "Codes"}]}]}
+
+    out, warnings, counts = nz.convert_parts(parts)
+
+    assert out["engines"] == [{"name": "Codes", "expression": "((D:Project codes > 1) AND (D:CREDIT_CARD > 0))"}]
+    assert counts == {"dictionaries": 1, "engines": 1, "policies": 3, "predefined_dictionaries": 1, "predefined_engines": 1}
+    assert [p["channel"] for p in out["policies"]] == ["web", "email", "saas"] and all(p.get("tenants", "any") == "any" for p in out["policies"])
+    assert any("tenant-specific scope (groups)" in w for w in warnings) and any("Box" in w for w in warnings)
+
+
+@pytest.mark.parametrize("dct,kept,warn", [
+    ({"phrases": [{"phrase": "a"}], "patterns": [{"pattern": "b"}], "proximity": 50, "customPhraseMatchType": "MATCH_ALL"}, 50, "match type changed"),
+    ({"phrases": [{"phrase": "a"}], "proximity": 50, "customPhraseMatchType": "MATCH_ALL"}, None, "dropped"),
+    ({"phrases": [{"phrase": "a"}], "patterns": [{"pattern": "b"}], "proximity": "x"}, None, ""),
+])
+def test_native_dictionary_proximity_is_made_deployable(dct, kept, warn):
+    """ASVS V5.1.3 · CWE-20: a proximity window is kept only where ZIA accepts it (any pattern with any phrase), else dropped, and said."""
+    import native_zscaler as nz
+    warnings: List[str] = []
+
+    out = nz.convert_dictionary(dict(dct, name="D", custom=True, dictionaryType="PATTERNS_AND_PHRASES"), warnings)
+
+    assert out.get("proximity") == kept and (warn in " ".join(warnings) if warn else warnings == [])
