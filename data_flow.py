@@ -228,6 +228,17 @@ def stop_on(client: Any, cancel: Any) -> Iterator[None]:
 
 
 # ── Client Connector readers ──────────────────────────────────────────
+def _rule_order(v: Any) -> Optional[int]:
+    """An app profile's ruleOrder as a number ("1" and 1 alike); one that is
+    not a whole number has no order (it sorts last), never a TypeError."""
+    if isinstance(v, bool):
+        return None
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def _hostname_of(dest: str) -> str:
     d = (dest or "").strip().lower()
     d = re.sub(r"^[a-z]+://", "", d)
@@ -309,7 +320,8 @@ def forwarding_actions(profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                 label, kind = classify_mode(mode_raw)
                 if str(mode_raw) == "1" and _truthy(_v(entry, "enablePacketTunnel")):
                     label, kind = "Z-Tunnel 2.0", "tunnel"
-                proxy = _v(entry, "systemProxyData", default={}) or {}
+                proxy = _v(entry, "systemProxyData", default={})
+                proxy = proxy if isinstance(proxy, dict) else {}
                 out[classify_network(net_raw)] = {"mode_label": label, "mode_kind": kind,
                     "pac_url": _v(proxy, "pacURL") or _v(entry, "customPac"),
                     "raw": {k: v for k, v in entry.items() if re.sub(r"[^a-z0-9]", "", k.lower()) in
@@ -735,7 +747,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
 
     # 1. Client Connector app profile
     profiles = [p for p in zcc.get("app_profiles", []) if p.get("active", True) and (p["platform"] in (platform, "all", ""))]
-    ordered = sorted(profiles, key=lambda p: (p.get("priority") is None, p.get("priority") or 0))
+    ordered = sorted(profiles, key=lambda p: (_rule_order(p.get("priority")) is None, _rule_order(p.get("priority")) or 0))
     # The first profile in order whose users and groups include the user
     # applies; one with neither applies to everyone. For any user, a scoped
     # profile ahead of the first unscoped one decides only for its own users

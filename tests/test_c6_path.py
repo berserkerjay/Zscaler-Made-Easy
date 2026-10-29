@@ -1907,3 +1907,25 @@ def test_fuzz_hostile_connector_rules_never_crash_the_workload_evaluation():
         seg = rng.choice([None, {"id": "s1", "name": "Git", "segment_group_id": None, "segment_group_name": None}])
         ev = wp.evaluate(ztw_snap(data), w, d, seg, rng.random() < 0.5)
         assert ev["go"] in ("zia", "zpa", "direct", "local", "proxy", "drop", "conditional", "unknown")
+
+
+# ── C6-PATH-16: app profile order and proxy data from the API ──────────
+@pytest.mark.parametrize("orders,decides", [
+    (["10", "9"], "P9"),          # numbers sent as text sort as numbers, not as text ("10" < "9")
+    (["1", 2], "P1"),             # text and a number together: no TypeError
+    ([[], 3], "P3"),              # an order that is not a number sorts last
+    ([{"x": 1}, True], "P{'x': 1}"),
+])
+def test_app_profiles_are_ordered_by_their_rule_order_as_numbers(orders, decides):
+    """ASVS V5.1.3 · CWE-1287 · CWE-697: app profiles sort by ruleOrder as a number; an order of the wrong type sorts last and never crashes."""
+    profiles = [{"id": i + 1, "name": f"P{o}", "ruleOrder": o} for i, o in enumerate(orders)]
+    res = run("files.example", _profiles(*profiles))
+    assert hop(res, "zcc")["decided_by"]["name"] == decides
+
+
+@pytest.mark.parametrize("proxy", ["x", 5, ["a"]])
+def test_system_proxy_data_that_is_not_an_object_is_ignored(proxy):
+    """ASVS V5.1.3 · CWE-20 · CWE-1287: a forwarding action's systemProxyData that is not an object is ignored, never an AttributeError."""
+    acts = df.forwarding_actions({"forwardingProfileActions": [{"networkType": "OFF_TRUSTED_NETWORK", "actionType": "ENFORCE_PROXY",
+                                                                "systemProxyData": proxy, "customPac": "https://pac.example/p.pac"}]})
+    assert acts["off"]["mode_label"] == "Enforce proxy (PAC)" and acts["off"]["pac_url"] == "https://pac.example/p.pac"
