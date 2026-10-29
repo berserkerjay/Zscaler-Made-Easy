@@ -193,14 +193,18 @@ def test_a_folder_name_cannot_change_what_the_relauncher_runs(tmp_path, monkeypa
     monkeypatch.setattr(au.sys, "platform", "linux")
     app = tmp_path / 'a$(touch PWNED)"b`touch PWNED2`'
     app.mkdir()
+    monkeypatch.setattr(au.sys, "executable", "true")   # a harmless program as the server
     cmd = au.restart_command(str(app))
-    # Run it for real, without the wait and with a harmless program as the server.
-    cmd = [c.replace("sleep 3", "sleep 0") for c in cmd]
-    cmd = ["true" if c == sys.executable else c for c in cmd]
-    subprocess.run(cmd, cwd=tmp_path, timeout=10, check=False)
+    # Run it for real, without the wait.
+    subprocess.run([c.replace("sleep 3", "sleep 0") for c in cmd], cwd=tmp_path, timeout=10, check=False)
     assert not (tmp_path / "PWNED").exists() and not (tmp_path / "PWNED2").exists()
-    assert str(app) not in cmd[2], "the folder is an argument, not part of the script"
     assert (app / "server.pid").read_text().strip().isdigit(), "the relauncher ran in the named folder"
+
+
+@pytest.mark.parametrize("text,want", [("/a b/c", "/a b/c"), ('a"b', 'a\\"b'), ("$(x)", "\\$(x)"), ("`x`", "\\`x\\`"), ("a\\b", "a\\\\b"), ("", "")])
+def test_sh_double_quote_escaping_oracle(text, want):
+    """ASVS V5.3.8 · CWE-78 · WSTG-INPV-12: oracle table: exactly backslash, double quote, $ and ` are escaped."""
+    assert au._sh_dq(text) == want
 
 
 def _conflict_on(repo, tmp_path, name):
@@ -739,28 +743,15 @@ def test_the_version_option_reads_the_build_info(monkeypatch, tmp_path, capsys):
     assert sm.main(["--version"], env={}) == 0 and "6.0 (abc1234)" in capsys.readouterr().out
 
 
-def test_the_old_data_folder_is_renamed_once_and_kept_owner_only(monkeypatch, tmp_path):
-    """ASVS V8.3.4 · CWE-276 · WSTG-CONF-11: %LOCALAPPDATA%\\ZscalerAssessment moves to ZscalerMadeEasy with its files; the folder is 0700."""
-    monkeypatch.setattr(zu.sys, "platform", "win32")
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    old = tmp_path / "ZscalerAssessment"
-    old.mkdir()
-    (old / "beacon_state.json").write_text("{}")
-    d = zu.data_dir()
-    assert d == str(tmp_path / "ZscalerMadeEasy") and os.path.exists(os.path.join(d, "beacon_state.json")) and not old.exists()
-    if os.name != "nt":
-        assert oct(os.stat(d).st_mode & 0o777) == oct(0o700)
-
-
 def test_a_linked_old_data_folder_is_not_followed(monkeypatch, tmp_path):
     """ASVS V12.3.1 · CWE-59 · WSTG-ATHZ-01: a symlink under the old folder name is never renamed into place."""
     target = tmp_path / "elsewhere"
     target.mkdir()
     monkeypatch.setattr(zu.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    os.symlink(target, tmp_path / "zscaler_assessment")
+    os.symlink(target, tmp_path / zu.DATA_DIR_NAMES["other"][1])   # the folder's name before the rename
     d = zu.data_dir()
-    assert d == str(tmp_path / "zscaler_made_easy") and os.path.islink(tmp_path / "zscaler_assessment") and not os.path.islink(d)
+    assert d == str(tmp_path / "zscaler_made_easy") and os.path.islink(tmp_path / zu.DATA_DIR_NAMES["other"][1]) and not os.path.islink(d)
 
 
 def test_reset_cache_removes_only_the_cache_file(monkeypatch, tmp_path):

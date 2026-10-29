@@ -836,15 +836,22 @@ def restart_command(app_dir: str) -> List[str]:
         if os.path.isfile(vbs):
             return ["wscript.exe", "//B", "//Nologo", vbs, "/restart"]
         return ["cmd", "/c", f'ping -n 4 127.0.0.1 >nul && "{bat}"']
+    server = os.path.join(app_dir, "dlp_api_server.py")
     log = os.path.join(app_dir, "server.log")
     pid = os.path.join(app_dir, "server.pid")
     # The same interpreter that runs this server (the .venv one when it was
     # started by start.sh), detached, with its pid recorded the way
     # `./start.sh --background` records it, so ./stop.sh can stop it.
-    # The paths are arguments ($1..$4), never part of the script text, so a
-    # folder name with a quote, $( ) or ` in it cannot change what sh runs.
-    return ["sh", "-c", 'sleep 3; cd "$1" || exit 1; nohup "$2" "$1/dlp_api_server.py" >> "$3" 2>&1 & echo $! > "$4"',
-            "sh", app_dir, sys.executable, log, pid]
+    # Each path is escaped for sh's double quotes, so a folder name with a
+    # quote, $( ) or ` in it is only ever a path, never script text.
+    app, exe, server, log, pid = (_sh_dq(p) for p in (app_dir, sys.executable, server, log, pid))
+    return ["sh", "-c", f'sleep 3; cd "{app}" || exit 1; nohup "{exe}" "{server}" >> "{log}" 2>&1 & echo $! > "{pid}"']
+
+
+def _sh_dq(text: str) -> str:
+    """`text` for use inside sh double quotes: the four characters sh still
+    reads there (backslash, double quote, dollar, backtick) are escaped."""
+    return re.sub(r'([\\"$`])', r"\\\1", text)
 
 
 def manual_restart_hint(app_dir: str) -> str:
