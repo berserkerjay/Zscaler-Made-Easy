@@ -1,0 +1,3 @@
+{"area": "Secure by design: auth", "title": "Fixture: auth checks",
+ "findings": [{"id": "SBD-AUTH-01", "title": "Fixture: the token is long-lived by design", "severity": "low", "cwe": "CWE-613", "asvs": "V3.3.1",
+               "status": "accepted", "reason": "Fixture: documented in SECURITY.md"}]}

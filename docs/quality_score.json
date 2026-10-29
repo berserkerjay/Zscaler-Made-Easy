@@ -1,0 +1,568 @@
+{
+  "schema_version": 1,
+  "generated_by": "tools/quality_score.py",
+  "run": null,
+  "overall": {
+    "score": null,
+    "raw": null,
+    "grade": "",
+    "label": "No score yet",
+    "meaning": "No full test run is recorded yet (docs/qa/test_run.json).",
+    "cap": null
+  },
+  "areas": [
+    {
+      "key": "regression",
+      "name": "Regression",
+      "weight": 25,
+      "score": null,
+      "subs": [
+        {
+          "key": "regression",
+          "name": "Regression",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 100.0,
+            "covered": [
+              "SSDF PW.8.2",
+              "SSDF PW.9.1",
+              "SSDF RV.1.1",
+              "Scorecard CI-Tests"
+            ],
+            "missing": []
+          }
+        }
+      ]
+    },
+    {
+      "key": "secure_by_design",
+      "name": "Secure by design",
+      "weight": 35,
+      "score": null,
+      "subs": [
+        {
+          "key": "write_paths",
+          "name": "Write paths",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 100.0,
+            "covered": [
+              "ASVS V4.1.3",
+              "ASVS V4.1.5",
+              "ASVS V4.2.2",
+              "ASVS V7.1.3",
+              "ASVS V11.1.1",
+              "CWE-284",
+              "CWE-352",
+              "CWE-862",
+              "CWE-863"
+            ],
+            "missing": []
+          }
+        },
+        {
+          "key": "untrusted_input",
+          "name": "Untrusted input",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 100.0,
+            "covered": [
+              "ASVS V5.1.3",
+              "ASVS V5.1.4",
+              "ASVS V5.2.4",
+              "ASVS V5.3.3",
+              "ASVS V12.1.1",
+              "ASVS V12.3.1",
+              "CWE-20",
+              "CWE-22",
+              "CWE-79",
+              "CWE-400",
+              "CWE-611",
+              "CWE-918",
+              "CWE-1333"
+            ],
+            "missing": []
+          }
+        },
+        {
+          "key": "auth_scope_secrets",
+          "name": "Auth, scope and secrets",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 100.0,
+            "covered": [
+              "ASVS V3.4.1",
+              "ASVS V3.4.3",
+              "ASVS V4.1.1",
+              "ASVS V4.2.1",
+              "ASVS V6.4.1",
+              "ASVS V7.1.1",
+              "ASVS V8.3.4",
+              "CWE-200",
+              "CWE-306",
+              "CWE-532",
+              "CWE-639",
+              "CWE-798"
+            ],
+            "missing": []
+          }
+        },
+        {
+          "key": "supply_chain",
+          "name": "Supply chain",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 100.0,
+            "covered": [
+              "SLSA v1.0 Build L2",
+              "SLSA v1.0 Build L3",
+              "Scorecard Pinned-Dependencies",
+              "Scorecard Token-Permissions",
+              "Scorecard Dangerous-Workflow",
+              "Scorecard Vulnerabilities",
+              "Scorecard SBOM",
+              "SSDF PS.1.1",
+              "SSDF PS.2.1",
+              "SSDF PS.3.2",
+              "SSDF PW.4.1",
+              "CWE-494",
+              "CWE-829"
+            ],
+            "missing": []
+          }
+        }
+      ]
+    },
+    {
+      "key": "functionality",
+      "name": "Functionality",
+      "weight": 25,
+      "score": null,
+      "subs": [
+        {
+          "key": "traffic_analysis",
+          "name": "Traffic analysis",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 100.0,
+            "covered": [
+              "ASVS V11.1.1",
+              "ASVS V11.1.4",
+              "CWE-670",
+              "CWE-682",
+              "CWE-754"
+            ],
+            "missing": []
+          }
+        },
+        {
+          "key": "builders",
+          "name": "Builders",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 100.0,
+            "covered": [
+              "ASVS V4.1.3",
+              "ASVS V5.1.3",
+              "ASVS V11.1.4",
+              "CWE-20",
+              "CWE-841",
+              "CWE-1188"
+            ],
+            "missing": []
+          }
+        },
+        {
+          "key": "ui_a11y",
+          "name": "UI and accessibility",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 81.8,
+            "covered": [
+              "WCAG SC 1.1.1",
+              "WCAG SC 1.3.1",
+              "WCAG SC 1.4.3",
+              "WCAG SC 1.4.10",
+              "WCAG SC 2.1.1",
+              "WCAG SC 2.5.8",
+              "WCAG SC 3.3.2",
+              "WCAG SC 4.1.2",
+              "WCAG SC 4.1.3"
+            ],
+            "missing": [
+              "WCAG SC 1.4.11",
+              "WCAG SC 2.4.7"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "key": "motion",
+      "name": "Motion",
+      "weight": 15,
+      "score": null,
+      "subs": [
+        {
+          "key": "motion",
+          "name": "Motion",
+          "score": null,
+          "based_on": [],
+          "tests": null,
+          "findings": null,
+          "coverage": {
+            "score": 83.3,
+            "covered": [
+              "WCAG SC 1.1.1",
+              "WCAG SC 2.1.1",
+              "WCAG SC 2.3.3",
+              "WCAG SC 1.4.10",
+              "CWE-79"
+            ],
+            "missing": [
+              "WCAG SC 2.2.2"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "findings": 0,
+    "by_severity": {
+      "critical": {
+        "open": 0,
+        "fixed": 0,
+        "accepted": 0
+      },
+      "high": {
+        "open": 0,
+        "fixed": 0,
+        "accepted": 0
+      },
+      "medium": {
+        "open": 0,
+        "fixed": 0,
+        "accepted": 0
+      },
+      "low": {
+        "open": 0,
+        "fixed": 0,
+        "accepted": 0
+      },
+      "info": {
+        "open": 0,
+        "fixed": 0,
+        "accepted": 0
+      }
+    },
+    "checks": {
+      "pass": 0,
+      "fixed": 0,
+      "open": 0,
+      "accepted": 0
+    },
+    "tests_added": 0
+  },
+  "findings": [],
+  "records": [],
+  "standards": {
+    "asvs_chapters": [
+      "V1",
+      "V2",
+      "V3",
+      "V4",
+      "V5",
+      "V6",
+      "V7",
+      "V8",
+      "V9",
+      "V10",
+      "V11",
+      "V12",
+      "V14"
+    ],
+    "asvs_requirements": 72,
+    "wcag": [
+      "SC 1.1.1",
+      "SC 1.3.1",
+      "SC 1.4.3",
+      "SC 1.4.10",
+      "SC 2.1.1",
+      "SC 2.3.3",
+      "SC 2.4.4",
+      "SC 2.4.6",
+      "SC 2.5.8",
+      "SC 3.2.2",
+      "SC 3.2.3",
+      "SC 3.2.4",
+      "SC 3.3.1",
+      "SC 3.3.2",
+      "SC 4.1.2",
+      "SC 4.1.3"
+    ],
+    "cwe": [
+      "CWE-15",
+      "CWE-20",
+      "CWE-22",
+      "CWE-59",
+      "CWE-74",
+      "CWE-78",
+      "CWE-79",
+      "CWE-88",
+      "CWE-94",
+      "CWE-95",
+      "CWE-113",
+      "CWE-116",
+      "CWE-117",
+      "CWE-176",
+      "CWE-178",
+      "CWE-183",
+      "CWE-185",
+      "CWE-200",
+      "CWE-201",
+      "CWE-208",
+      "CWE-209",
+      "CWE-223",
+      "CWE-226",
+      "CWE-248",
+      "CWE-250",
+      "CWE-256",
+      "CWE-259",
+      "CWE-269",
+      "CWE-272",
+      "CWE-276",
+      "CWE-284",
+      "CWE-285",
+      "CWE-287",
+      "CWE-290",
+      "CWE-295",
+      "CWE-306",
+      "CWE-312",
+      "CWE-319",
+      "CWE-330",
+      "CWE-345",
+      "CWE-346",
+      "CWE-350",
+      "CWE-352",
+      "CWE-354",
+      "CWE-359",
+      "CWE-362",
+      "CWE-367",
+      "CWE-379",
+      "CWE-384",
+      "CWE-400",
+      "CWE-405",
+      "CWE-407",
+      "CWE-409",
+      "CWE-436",
+      "CWE-441",
+      "CWE-451",
+      "CWE-454",
+      "CWE-459",
+      "CWE-460",
+      "CWE-472",
+      "CWE-494",
+      "CWE-502",
+      "CWE-506",
+      "CWE-522",
+      "CWE-524",
+      "CWE-532",
+      "CWE-538",
+      "CWE-540",
+      "CWE-552",
+      "CWE-598",
+      "CWE-601",
+      "CWE-605",
+      "CWE-611",
+      "CWE-613",
+      "CWE-614",
+      "CWE-636",
+      "CWE-639",
+      "CWE-650",
+      "CWE-653",
+      "CWE-654",
+      "CWE-664",
+      "CWE-668",
+      "CWE-670",
+      "CWE-672",
+      "CWE-674",
+      "CWE-682",
+      "CWE-684",
+      "CWE-693",
+      "CWE-694",
+      "CWE-696",
+      "CWE-697",
+      "CWE-732",
+      "CWE-754",
+      "CWE-755",
+      "CWE-770",
+      "CWE-776",
+      "CWE-778",
+      "CWE-779",
+      "CWE-798",
+      "CWE-829",
+      "CWE-841",
+      "CWE-843",
+      "CWE-862",
+      "CWE-863",
+      "CWE-915",
+      "CWE-918",
+      "CWE-922",
+      "CWE-942",
+      "CWE-1004",
+      "CWE-1023",
+      "CWE-1059",
+      "CWE-1088",
+      "CWE-1104",
+      "CWE-1173",
+      "CWE-1188",
+      "CWE-1236",
+      "CWE-1275",
+      "CWE-1284",
+      "CWE-1287",
+      "CWE-1321",
+      "CWE-1325",
+      "CWE-1327",
+      "CWE-1333",
+      "CWE-1357",
+      "CWE-1385",
+      "CWE-1395"
+    ],
+    "top10": [
+      "A01:2021",
+      "A03:2021",
+      "A04:2021",
+      "A05:2021",
+      "A06:2021",
+      "A07:2021",
+      "A09:2021"
+    ],
+    "wstg": 30,
+    "slsa": [
+      "SLSA v1.0 Build L2",
+      "SLSA v1.0 Build L2 (provenance)",
+      "SLSA v1.0 Build L3",
+      "SLSA v1.0 Build L3 (pinned inputs)",
+      "SLSA v1.0 Source",
+      "SLSA v1.0 Source (verified provenance)"
+    ],
+    "scorecard": [
+      "Binary-Artifacts",
+      "CI-Tests",
+      "Dangerous-Workflow",
+      "Pinned-Dependencies",
+      "SBOM",
+      "Signed-Releases",
+      "Token-Permissions",
+      "Vulnerabilities"
+    ],
+    "ssdf": [
+      "PO.3.2",
+      "PO.5.1",
+      "PS.1",
+      "PS.1.1",
+      "PS.2.1",
+      "PS.3.1",
+      "PS.3.2",
+      "PW.1.1",
+      "PW.4",
+      "PW.4.1",
+      "PW.4.4",
+      "PW.5.1",
+      "PW.6.2",
+      "PW.7.2",
+      "PW.8.2",
+      "PW.9.1",
+      "RV.1.1",
+      "RV.1.2",
+      "RV.2.2"
+    ]
+  },
+  "formula": {
+    "part_weights": {
+      "tests": 0.4,
+      "findings": 0.4,
+      "coverage": 0.2
+    },
+    "area_weights": {
+      "regression": 25,
+      "secure_by_design": 35,
+      "functionality": 25,
+      "motion": 15
+    },
+    "penalty": {
+      "critical": 40,
+      "high": 20,
+      "medium": 8,
+      "low": 2,
+      "info": 0
+    },
+    "cvss_bands": {
+      "critical": "9.0-10.0",
+      "high": "7.0-8.9",
+      "medium": "4.0-6.9",
+      "low": "0.1-3.9",
+      "info": "0.0"
+    },
+    "caps": {
+      "critical": 39,
+      "high": 69
+    },
+    "grades": [
+      {
+        "min": 90,
+        "grade": "A",
+        "label": "Strong"
+      },
+      {
+        "min": 80,
+        "grade": "B",
+        "label": "Good"
+      },
+      {
+        "min": 70,
+        "grade": "C",
+        "label": "Fair"
+      },
+      {
+        "min": 60,
+        "grade": "D",
+        "label": "Weak"
+      },
+      {
+        "min": 0,
+        "grade": "F",
+        "label": "Poor"
+      }
+    ]
+  },
+  "warnings": [
+    "No full test run is recorded (docs/qa/test_run.json), so there is no overall score yet.",
+    "No findings record yet for: Regression, Write paths, Untrusted input, Auth, scope and secrets, Supply chain, Traffic analysis, Builders, UI and accessibility, Motion. Their scores leave the findings part out."
+  ]
+}

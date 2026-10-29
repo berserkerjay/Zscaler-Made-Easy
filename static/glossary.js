@@ -146,6 +146,8 @@
     'rule walk': { term: 'rule walk', def: 'A rule walk shows one web request meeting the SSL rules in order. The first rule that fits decides what happens to it.' },
     'packet': { term: 'packet', def: 'A packet is a small piece of traffic. The moving dots in a picture show packets on their way.' },
     'incident receiver': { term: 'incident receiver', def: 'The incident receiver gets a copy of what a DLP rule caught. It puts it where Workflow Automation can see it.' },
+    'quality score': { term: 'quality score', def: 'The quality score shows how well this app itself is tested. It goes from 0 to 100. Open problems pull it down.' },
+    'severity': { term: 'severity', def: 'Severity says how bad a problem is. It goes from info and low up to medium, high and critical.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

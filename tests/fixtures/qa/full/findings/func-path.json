@@ -1,0 +1,3 @@
+{"area": "Functionality: traffic analysis", "title": "Fixture: path checks",
+ "findings": [{"id": "FUNC-PATH-01", "title": "Fixture: a verdict label is vague", "severity": "low", "cwe": "CWE-451",
+               "status": "open", "reason": "Fixture: waiting for wording"}], "tests_added": 1}
