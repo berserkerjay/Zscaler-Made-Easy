@@ -280,6 +280,48 @@ def test_har_methods_and_schemes_that_are_not_lists_are_dropped(odd):
     assert stats["a.example.com"]["methods"] == [] and stats["a.example.com"]["schemes"] == []
 
 
+@pytest.mark.parametrize("path,key", [("/api/migrate/optimize", "rules"), ("/api/migrate/upload", "rules"), ("/api/migrate/post", "proposed_rules")])
+@pytest.mark.parametrize("field,value", [("action", 5), ("action", ["BLOCK"]), ("state", {"a": 1}), ("name", True)],
+                         ids=["action-number", "action-list", "state-object", "name-bool"])
+def test_a_migration_rule_whose_text_field_is_not_text_is_a_400(client, signins, path, key, field, value):
+    """ASVS V5.1.4 · A04:2021 · CWE-20 · WSTG-INPV-01: a rule's name, state or action that is not text is a 400 naming the field, before any sign-in (it was an AttributeError, 500)."""
+    # Act
+    r = client.post(path, json={**LIVE, **SCOPE, key: [{"id": 1, "name": "ok", field: value}]})
+    # Assert
+    assert r.status_code == 400 and f"{key}[0].{field}" in r.json()["detail"] and signins == []
+
+
+@pytest.mark.parametrize("exceptions", [{"audit_only_actions": [5]}, {"audit_only_actions": "ALLOW"}, {"pinned": [1]},
+                                        {"pinned": {"rule_id": 1, "position": "x"}}, {"skip_rule_ids": 5}, {"skip_rule_ids": [{"a": 1}]}],
+                         ids=["action-number", "actions-text", "pinned-list", "position-text", "skip-number", "skip-object"])
+def test_evaluate_all_exceptions_of_the_wrong_shape_are_a_400(client, exceptions):
+    """ASVS V5.1.4 · A04:2021 · CWE-20 · WSTG-INPV-01: the optimiser's exceptions are checked (they were AttributeError / ValueError / TypeError 500s)."""
+    # Act
+    r = client.post("/api/migrate/optimize", json={"rules": [{"id": 1, "name": "r", "action": "ALLOW"}], "exceptions": exceptions})
+    # Assert
+    assert r.status_code == 400, r.text[:200]
+
+
+def test_good_evaluate_all_exceptions_are_still_honoured(client):
+    """ASVS V5.1.4 · CWE-20: well-formed exceptions (audit-only actions, a pin, a skip list) still optimise (regression)."""
+    # Act
+    r = client.post("/api/migrate/optimize", json={"rules": [{"id": 1, "name": "a", "action": "ALLOW"}, {"id": 2, "name": "b", "action": "BLOCK"}],
+                                                   "exceptions": {"audit_only_actions": ["allow"], "pinned": {"rule_id": 2, "position": 1},
+                                                                  "skip_rule_ids": [1]}})
+    # Assert
+    assert r.status_code == 200, r.text[:200]
+
+
+@pytest.mark.parametrize("path", ["/api/posture/analyze", "/api/posture/project"])
+@pytest.mark.parametrize("value", [[1], {"a": 1}, 5], ids=["list", "object", "number"])
+def test_posture_check_rows_with_odd_sections_are_not_a_500(client, path, value):
+    """ASVS V5.1.4 · A04:2021 · CWE-20 · WSTG-INPV-01: a check row whose section or channel is not text is read as text (a list or object was an unhashable TypeError, 500)."""
+    # Act
+    r = client.post(path, json={"checks": [{"id": "DLP-01", "status": "FAIL", "sec": value, "section": value, "channel": value}]})
+    # Assert
+    assert r.status_code == 200, r.text[:200]
+
+
 def test_har_host_counts_are_bounded_and_odd_fields_dropped():
     """ASVS V5.1.3 · CWE-20 · CWE-400: counts are whole numbers in 0..10**12, methods and schemes keep only known short values, duplicates and URLs are skipped."""
     # Arrange

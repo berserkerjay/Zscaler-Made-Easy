@@ -411,12 +411,35 @@ def _xml_text(value: Any) -> Any:
 def _rule_rows(data: Dict[str, Any], missing: str) -> List[Dict[str, Any]]:
     """`data["rules"]` (the Evaluate All Rules migration's DLP rules) as
     objects whose name, state and action are text or absent; 400 otherwise."""
-    rows = _object_list(data, "rules", missing)
+    return _rule_text_fields(_object_list(data, "rules", missing), "rules")
+
+
+def _rule_text_fields(rows: List[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:
+    """`rows` when each rule's name, state and action (what rule_migrator
+    reads as text) are text or absent; 400 naming the first that is not."""
     for i, row in enumerate(rows):
         for k in ("name", "state", "action"):
             if row.get(k) is not None and not isinstance(row[k], str):
-                raise HTTPException(status_code=400, detail=f"`rules[{i}].{k}` must be text.")
+                raise HTTPException(status_code=400, detail=f"`{key}[{i}].{k}` must be text.")
     return rows
+
+
+def _eval_all_exceptions(exc: Dict[str, Any]) -> Dict[str, Any]:
+    """The optimiser's exceptions, checked: audit_only_actions a list of
+    text, pinned an object whose position is a whole number, skip_rule_ids
+    a list of ids (text or numbers). 400 otherwise."""
+    actions = exc.get("audit_only_actions")
+    if actions is not None and not (isinstance(actions, list) and all(isinstance(a, str) for a in actions)):
+        raise HTTPException(status_code=400, detail="`exceptions.audit_only_actions` must be a list of actions (text).")
+    pinned = exc.get("pinned")
+    if pinned is not None:
+        pos = pinned.get("position") if isinstance(pinned, dict) else None
+        if not isinstance(pinned, dict) or (pos is not None and not (isinstance(pos, int) and not isinstance(pos, bool))):
+            raise HTTPException(status_code=400, detail="`exceptions.pinned` must be {rule_id, position} with a whole-number position.")
+    skip = exc.get("skip_rule_ids")
+    if skip is not None and not (isinstance(skip, list) and all(isinstance(x, (str, int)) and not isinstance(x, bool) for x in skip)):
+        raise HTTPException(status_code=400, detail="`exceptions.skip_rule_ids` must be a list of rule ids.")
+    return exc
 
 @app.exception_handler(RecursionError)
 async def _json_too_deep_handler(request: Request, exc: RecursionError):
@@ -7412,7 +7435,8 @@ async def migrate_optimize(req: OptimizeRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.rules:
         raise HTTPException(status_code=400, detail="No rules provided.")
-    return await asyncio.to_thread(optimize_for_eval_all_with_exceptions, req.rules, req.exceptions)
+    rules = _rule_text_fields(req.rules, "rules")
+    return await asyncio.to_thread(optimize_for_eval_all_with_exceptions, rules, _eval_all_exceptions(req.exceptions))
 
 
 # ── Step 4: Enable Evaluate All Rules ────────────────────────────
@@ -7485,6 +7509,7 @@ async def migrate_post(req: PostRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.proposed_rules:
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
+    _rule_text_fields(req.proposed_rules, "proposed_rules")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Posting rules to the tenant")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
@@ -7509,6 +7534,7 @@ async def migrate_upload(req: UploadRulesRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.rules:
         raise HTTPException(status_code=400, detail="No rules in upload.")
+    _rule_text_fields(req.rules, "rules")
     return {
         "count": len(req.rules),
         "rules": req.rules,
@@ -9253,6 +9279,11 @@ def _posture_checks(req: PostureRequest) -> List[Dict[str, Any]]:
         if not isinstance(c, dict):
             continue
         row = {k: c.get(k) for k in ("id", "sec", "section", "label", "status", "out_of_scope", "channel") if c.get(k) is not None}
+        for k in ("sec", "section", "channel"):   # grouped and counted by: text, never a list or an object (unhashable, 500)
+            if k in row:
+                row[k] = str(row[k])[:120]
+        if "out_of_scope" in row:
+            row["out_of_scope"] = row["out_of_scope"] is True
         row["id"] = str(row.get("id") or "")[:32]
         row["label"] = str(row.get("label") or "")[:200]
         row["status"] = str(row.get("status") or "").upper()[:10]
