@@ -212,6 +212,9 @@ def _dh_client(incidents, *, forward=True):
     ({"fp_rate_pct": 250}, "fp_rate_pct"),
     ({"dead_days": True}, "dead_days"),
     ({"recent_limit": -1}, "recent_limit"),
+    ({"fp_min_incidents": float("inf")}, "fp_min_incidents"),
+    ({"promote_fp_pct": float("nan")}, "promote_fp_pct"),
+    ({"dest_fp_pct": 12.5}, "dest_fp_pct"),
     ({"not_real": "x"}, "not_real"),
 ])
 def test_bad_threshold_overrides_fall_back_to_the_default_with_a_note(settings, key):

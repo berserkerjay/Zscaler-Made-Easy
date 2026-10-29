@@ -27,6 +27,7 @@ be overridden per request; nothing here writes to the tenant.
 """
 from __future__ import annotations
 
+import math
 import md_safe
 import re
 from datetime import datetime, timedelta, timezone
@@ -87,7 +88,7 @@ def clean_settings(settings: Any) -> Tuple[Dict[str, Any], List[str]]:
     for k, v in (settings.items() if isinstance(settings, dict) else []):
         if k in INT_SETTINGS:
             lo, hi = INT_SETTINGS[k]
-            if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or int(v) != v or not lo <= v <= hi:
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or int(v) != v or not lo <= v <= hi:
                 notes.append(f"Setting {k} ignored: it must be a whole number from {lo} to {hi}; the default {DEFAULTS[k]} was used.")
                 continue
             s[k] = int(v)
