@@ -1243,6 +1243,24 @@ def inspect(source: str) -> Dict[str, Any]:
     flags = {"isinnet_on_host": False}
     budget = [0]
 
+    def returned(stmts) -> List[Any]:
+        """The expressions a helper function's body returns (any branch)."""
+        out, stack = [], list(stmts)
+        while stack and len(out) < 64:
+            st = stack.pop()
+            if st[0] == "return" and st[1] is not None:
+                out.append(st[1])
+            elif st[0] == "block":
+                stack.extend(st[1])
+            elif st[0] == "if":
+                stack.extend(body for _c, body, _ in st[1])
+                if st[2] is not None:
+                    stack.append(st[2])
+        return out
+    # A condition that calls a helper function (isCorp(host)) is that
+    # helper's returned conditions: a DIRECT behind it lists them too.
+    helpers = {name: returned(body) for name, (_params, body) in prog["functions"].items() if name != "FindProxyForURL"}
+
     def lit(e) -> Optional[str]:
         if e is None:
             return None
@@ -1259,6 +1277,7 @@ def inspect(source: str) -> Dict[str, Any]:
 
     def conds(e, positive: bool, out: List[Dict[str, Any]]) -> None:
         stack = [(e, positive)]
+        expanded: set = set()   # each helper once per condition: a recursive helper never loops
         while stack:
             budget[0] += 1
             if budget[0] > MAX_STEPS:
@@ -1282,6 +1301,9 @@ def inspect(source: str) -> Dict[str, Any]:
                         out.append({"fn": x[1], "value": "", "line": x[3]})
                     elif strings:
                         out.append({"fn": x[1], "value": strings[0], "line": x[3]})
+                if pos and x[1] in helpers and x[1] not in expanded:
+                    expanded.add(x[1])
+                    stack.extend((y, pos) for y in reversed(helpers[x[1]]))
             elif k == "cmp":
                 stack.extend([(x[2], pos), (x[3], pos)])
             elif k == "arith":

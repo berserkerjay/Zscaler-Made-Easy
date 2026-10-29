@@ -235,13 +235,26 @@ def test_a_hourly_body_without_a_long_retry_after_is_still_not_retried(monkeypat
     assert zia_rate.paused_for(c.rate_key) > 30
 
 
-def test_a_clients_429_holds_the_sdk_reads_of_the_same_tenant():
+def test_a_clients_429_holds_the_sdk_reads_of_the_same_tenant(monkeypatch):
     """ASVS V11.1.4 · CWE-770: a client's 429 holds the SDK reads of the same tenant (event, not polling)."""
     # An assessment's Client is refused (Retry-After 20): an export's SDK
     # session on the same tenant waits for it before it reads.
     log = []
     answers = iter([(429, {"Retry-After": "20"})])
     c = _client(lambda r: next(answers, (200, {})), log)
+    # ZIA's rate state stands still from the moment the hold is published
+    # until the checks below are done: how long a busy machine takes to
+    # schedule this thread again must not change the seconds left (on the
+    # wall clock a 1 s stall between the hold and the check failed it).
+    frozen = []
+    real_now = zia_rate._now
+    monkeypatch.setattr(zia_rate, "_now", lambda: frozen[0] if frozen else real_now())
+    real_pause = c._limiter.pause
+
+    def pause(seconds):
+        frozen.append(real_now())
+        real_pause(seconds)
+    c._limiter.pause = pause
     held = _on_pause(c)
     t = threading.Thread(target=lambda: c.get("/zia/webDlpRules"))
     t.start()
@@ -250,12 +263,13 @@ def test_a_clients_429_holds_the_sdk_reads_of_the_same_tenant():
         # the hold's publication itself, preserving the actual wait check.
         assert held.wait(10), "the client published its 429 hold"
         assert log and log[0][3] == 429
-        assert zia_rate.paused_for(c.rate_key) >= 19
+        assert zia_rate.paused_for(c.rate_key) == pytest.approx(20)
         waited = zia_rate.wait("GET", "/dlpDictionaries", key=c.rate_key)
-        assert waited >= 19, "an SDK read on the tenant waits out the Client's 429"
+        assert waited == pytest.approx(20), "an SDK read on the tenant waits out the Client's 429"
         # Another tenant's reads are not held.
         assert zia_rate.wait("GET", "/dlpDictionaries", key="another-tenant") == 0
     finally:
+        frozen.clear()
         c.stopped.set()   # callbacks already captured by the limiter see this
         t.join(5)
     assert not t.is_alive()
