@@ -23,7 +23,6 @@ import contextlib
 import hashlib
 import json
 import os
-import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -108,11 +107,15 @@ def _locked():
 
 
 def _write(data: Dict[str, Any]) -> None:
-    """Owner-only from the first byte and atomic: a unique temporary file
-    (mkstemp, 0600) in the same folder, flushed, then renamed over the store."""
+    """Owner-only from the first byte and atomic: <store>.tmp (git-ignored)
+    created afresh (O_EXCL, O_NOFOLLOW, 0600: a stale file or a planted
+    link is removed first and never followed), flushed, then renamed over
+    the store. Callers hold _locked(), so one writer uses the name at a time."""
     p = store_path()
-    folder = os.path.dirname(os.path.abspath(p)) or "."
-    fd, tmp = tempfile.mkstemp(prefix=".proposals.", suffix=".tmp", dir=folder)
+    tmp = p + ".tmp"
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(tmp)   # a crash's leftover, or a link: the link itself goes, never its target
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), 0o600)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=1)

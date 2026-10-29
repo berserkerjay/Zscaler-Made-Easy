@@ -649,14 +649,14 @@ def test_snooze_days_that_are_not_a_number_are_a_plain_error():
 
 
 def test_the_store_write_never_follows_a_planted_temp_symlink(tmp_path):
-    """ASVS V12.3.1 · A01:2021 · CWE-59 · CWE-377 · WSTG-ATHZ-01: the store is written through a fresh mkstemp file, not a fixed .tmp path a link can redirect."""
+    """ASVS V12.3.1 · A01:2021 · CWE-59 · CWE-377 · WSTG-ATHZ-01: the store's temporary is created afresh (O_EXCL, O_NOFOLLOW), so a planted link is never followed."""
     victim = tmp_path / "victim.txt"
     victim.write_text("keep me")
     os.symlink(victim, proposals.store_path() + ".tmp")
     _proposal()
     assert victim.read_text() == "keep me"
     assert stat.S_IMODE(os.stat(proposals.store_path()).st_mode) == 0o600
-    assert not [f for f in os.listdir(tmp_path) if f.startswith(".proposals.") and f.endswith(".tmp")]
+    assert not os.path.lexists(proposals.store_path() + ".tmp")
 
 
 def test_concurrent_merges_from_two_threads_lose_nothing():
