@@ -606,6 +606,16 @@ class _CoverIndex:
                       key=lambda a: self.pos[id(a)])
 
 
+def _content_candidates(live: List[Dict[str, Any]]) -> Callable[[Dict[str, Any]], List[Dict[str, Any]]]:
+    """For a rule b under evaluate-all, the rules that can cover it at all,
+    in their order (_CoverIndex; every rule when the policy has no
+    dimension to index on)."""
+    index = _CoverIndex(live)
+    if not index.complete:
+        return lambda b: list(live)
+    return index.candidates
+
+
 def _content_keys(r: Dict[str, Any]) -> List[Any]:
     """The DLP content dimension's key: the rule's engines when it inspects content."""
     if r["criteria"].get("withoutcontentinspection"):
@@ -662,13 +672,13 @@ def _superseded(rules: List[Dict[str, Any]], *, ties: bool, mode_label: str) -> 
     a matching child replaces its parent's action in the same pass."""
     out: List[Dict[str, Any]] = []
     live = [r for r in rules if r["enabled"] and not r["sub_rules"]]
-    index = _CoverIndex(live)
+    candidates = _content_candidates(live)
     for b in live:
         sb = _DLP_STRICT.get(b.get("action") or "")
         if sb is None:
             continue
         best = None
-        for a in (index.candidates(b) if index.complete else live):
+        for a in candidates(b):
             if a is b:
                 continue
             sa = _DLP_STRICT.get(a.get("action") or "")
