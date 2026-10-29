@@ -443,6 +443,11 @@ PAGE_AUDIT = r"""(() => {
   const lum = c => { const f = x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
   const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
   out.contrast = [];
+  // The glass effect (static/glass.css): a glass surface's gradient is its sheen, measured as a layer (not skipped as an
+  // image), and the soft page wash painted over the body's colour is measured too (each blob's peak, as well as the plain page).
+  const bodyStyle = getComputedStyle(document.body), washOn = /gradient/.test(getComputedStyle(document.body, '::before').backgroundImage);
+  const wash = washOn ? [1, 2, 3].map(k => rgba(bodyStyle.getPropertyValue('--glass-amb-' + k))).filter(c => c && c.a > 0) : [];
+  const glassOf = ns => (parseInt(ns.getPropertyValue('--glass-surface'), 10) || 0) > 0;
   const texts = [...document.querySelectorAll('body *')].filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim()) && vis(e) && !e.closest('svg, option, [disabled], [aria-disabled="true"], .sr-only'));
   for (const e of texts.slice(0, 1500)) {
     const s = getComputedStyle(e); if (opacity(e) < 0.5) continue;   // faded out, or a dimmed inactive card (SC 1.4.3 exempts inactive components)
@@ -451,17 +456,30 @@ PAGE_AUDIT = r"""(() => {
     if (r.bottom < 0 || r.top > innerHeight) { e.scrollIntoView({ block: 'center' }); }
     const r2 = e.getBoundingClientRect();
     if (r2.bottom <= 0 || r2.right <= 0 || r2.top >= innerHeight || r2.left >= innerWidth) continue;   // off screen until focused (a skip link): measured by the focus walk
-    const px = Math.min(Math.max(r2.left + 2, 0), innerWidth - 1), py = Math.min(Math.max(r2.top + Math.min(r2.height / 2, 10), 0), innerHeight - 1);
+    // Sample where the text itself is drawn (its own line box), not the element's corner: a capsule's rounded corner is not under its text.
+    const tn = [...e.childNodes].find(n => n.nodeType === 3 && n.nodeValue.trim()); const rg = document.createRange(); rg.selectNodeContents(tn);
+    const tr = [...rg.getClientRects()].find(q => q.width > 0 && q.height > 0) || r2;
+    const px = Math.min(Math.max(tr.left + 2, 0), innerWidth - 1), py = Math.min(Math.max(tr.top + Math.min(tr.height / 2, 10), 0), innerHeight - 1);
     const stack = document.elementsFromPoint(px, py); let i = stack.indexOf(e); if (i < 0) { const k = stack.findIndex(n => e.contains(n) || n.contains(e)); if (k < 0) continue; i = k; }
-    const layers = []; let image = false;
-    for (const n of stack.slice(i)) { const ns = getComputedStyle(n); if (ns.backgroundImage !== 'none' && !/^url\(/.test(ns.backgroundImage) && ns.backgroundImage.includes('gradient')) { image = true; break; } if (n.tagName === 'IMG' || n.tagName === 'VIDEO' || n.tagName === 'CANVAS') { image = true; break; } const c = rgba(ns.backgroundColor); if (c && c.a > 0) { layers.push(c); if (c.a >= 0.999) break; } }
+    const layers = []; let image = false, washed = false;
+    for (const n of stack.slice(i)) { const ns = getComputedStyle(n), glass = glassOf(ns); if (!glass && ns.backgroundImage !== 'none' && !/^url\(/.test(ns.backgroundImage) && ns.backgroundImage.includes('gradient')) { image = true; break; } if (n.tagName === 'IMG' || n.tagName === 'VIDEO' || n.tagName === 'CANVAS') { image = true; break; } const c = rgba(ns.backgroundColor);
+      const sheen = glass && /linear-gradient/.test(ns.backgroundImage) ? rgba(ns.getPropertyValue('--glass-sheen')) : null;
+      if ((c && c.a > 0) || sheen) layers.push({ c: c && c.a > 0 ? c : { r: 0, g: 0, b: 0, a: 0 }, sheen, wash: n === document.body && wash.length > 0 });
+      if (n === document.body && wash.length) washed = true;
+      if (c && c.a >= 0.999) break; }
     if (image) continue;
-    let bg = { r: 255, g: 255, b: 255, a: 1 };
-    const root = rgba(getComputedStyle(document.documentElement).backgroundColor); if (root && root.a > 0) bg = over(root, bg);
-    for (const c of layers.reverse()) bg = over(c, bg);
-    fg = over(fg, bg);
+    let base = { r: 255, g: 255, b: 255, a: 1 };
+    const root = rgba(getComputedStyle(document.documentElement).backgroundColor); if (root && root.a > 0) base = over(root, base);
+    // Every way the layers can paint: with and without the sheens, and the plain page or each peak of the wash under the body's content.
+    const fg0 = fg; let bg = null, got = 99;
+    for (const peak of [null].concat(washed ? wash : [])) for (const withSheen of [false, true]) {
+      let b = base;
+      for (const l of [...layers].reverse()) { b = over(l.c, b); if (l.wash && peak) b = over(peak, b); if (withSheen && l.sheen) b = over(l.sheen, b); }
+      const f = over(fg0, b), r = ratio(f, b);
+      if (r < got) { got = r; bg = b; fg = f; }
+    }
     const size = parseFloat(s.fontSize), bold = parseInt(s.fontWeight, 10) >= 700, large = size >= 24 || (bold && size >= 18.66);
-    const need = large ? 3 : 4.5, got = ratio(fg, bg);
+    const need = large ? 3 : 4.5;
     const hex = c => '#' + [c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
     if (got + 0.02 < need) out.contrast.push(desc(e) + ' ' + got.toFixed(2) + ':1 (' + hex(fg) + ' on ' + hex(bg) + ' under ' + stack.slice(i, i + 4).map(n => n.tagName.toLowerCase() + (n.id ? '#' + n.id : '')).join('<') + ')');
   }
@@ -489,7 +507,9 @@ PAGE_AUDIT = r"""(() => {
 FOCUS_STEP = r"""new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done((() => {
   const el = document.activeElement; if (!el || el === document.body || el === document.documentElement) return null;
   const s = getComputedStyle(el), r = el.getBoundingClientRect();
-  let ring = (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || (s.boxShadow && s.boxShadow !== 'none');
+  // A box-shadow counts as a ring only when it differs from the control's resting shadow (glass buttons rest with a rim and a shadow).
+  const rest = window.__ringRest && window.__ringRest.get(el);
+  let ring = (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || (s.boxShadow && s.boxShadow !== 'none' && s.boxShadow !== rest);
   if (!ring && el instanceof SVGElement) { const sh = el.querySelector('rect, path, circle'); ring = !!(sh && parseFloat(getComputedStyle(sh).strokeWidth) >= 2); }
   const d = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + '.' + String(el.className.baseVal ?? el.className).trim().split(/\s+/).slice(0, 2).join('.') + ' "' + (el.getAttribute('aria-label') || el.textContent || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 30) + '"';
   return { d, ring, k: d + '@' + Math.round(r.top + scrollY) + ',' + Math.round(r.left), hidden: r.width === 0 || r.height === 0 };
@@ -528,6 +548,8 @@ for (const theme of JSON.parse(themesJson)) {
     if (theme === 'dark') {
       // Keyboard only: Tab through the page.
       await ev(`(document.activeElement && document.activeElement.blur && document.activeElement.blur(), window.scrollTo(0, 0), true)`);
+      // Each control's resting box-shadow, taken while nothing has focus: the focus walk below compares against it.
+      await ev(`(window.__ringRest = new WeakMap(), document.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]').forEach(e => window.__ringRest.set(e, getComputedStyle(e).boxShadow)), true)`);
       const stops = []; const noRing = []; let prev = '', stuck = 0;
       for (let i = 0; i < 250; i++) {
         await key('Tab', 'Tab', 9);

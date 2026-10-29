@@ -24,7 +24,8 @@ function browser(options) {
   const html = fs.readFileSync(path.join(ROOT, 'static/report_motion.html'), 'utf8');
   const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)[1];
   const doc = new El('#document');
-  parse(html.split('<script')[0], doc);
+  // The markup up to the body's first script (the head's glass.js runs before paint and holds no markup).
+  parse(html.slice(0, html.indexOf('<script', html.indexOf('<body'))), doc);
   const all = () => doc.all();
   const nativeMatches = El.prototype.matches;
   const listeners = {};

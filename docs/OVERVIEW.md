@@ -107,6 +107,16 @@ what you get, what to do next.
   by selector; a native tooltip is converted into it, not kept beside
   it, and a test fails, naming the page and the selector, when a control
   has no entry.
+- **Glass effect** (every page; on by default, switched off per browser
+  under Advanced settings → Appearance) — the bars, sidebar, cards,
+  dialogs, pop-ups, banners and buttons are one translucent material
+  (`static/glass.css`, driven by the theme tokens): a blurred, saturated
+  tint over a soft background, a light rim and a soft shadow. Text keeps
+  WCAG 2.2 AA contrast against the worst case behind each surface, tables
+  stay near-opaque, and surfaces turn solid and unblurred when the system
+  asks for reduced transparency, more contrast or forced colours, when
+  printing, and in browsers without `backdrop-filter`. The pointer-follow
+  highlight (`static/glass.js`) is off under reduced motion.
 - **Simple mode** (`/simple`, first item in the sidebar) — the same app
   as seven big tasks for someone with little Zscaler knowledge: connect,
   check how safe the data is, fix the top three problems, protect

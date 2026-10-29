@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
 <link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page adv-page">
   <div class="rp-page">
@@ -22,6 +23,7 @@
       <a class="rp-btn" href="#formats">What the app accepts</a>
       <a class="rp-btn" href="#update">Update the app</a>
       <a class="rp-btn" href="#server">This server</a>
+      <a class="rp-btn" href="#appearance">Appearance</a>
       <a class="rp-btn" href="#sbd">This app's Secure by Design score</a>
       <a class="rp-btn" href="#quality">Quality and security score</a>
       <a class="rp-btn" href="#upstream">Daily upstream check</a>
@@ -124,6 +126,13 @@
         <section id="server" aria-labelledby="advSrvH">
           <h2 class="df-h" id="advSrvH">This server</h2>
           <div class="tw"><table class="bp-table adv-table" id="advServer" aria-describedby="advSrvH"><tbody><tr><td class="dim">Loading…</td></tr></tbody></table></div>
+        </section>
+
+        <section id="appearance" aria-labelledby="advLookH">
+          <h2 class="df-h" id="advLookH">Appearance</h2>
+          <p class="adv-lead">The glass effect makes the bars, cards, dialogs and buttons see-through, like frosted glass over a soft background. Turn it off for solid surfaces. The choice is kept in this browser only, and surfaces stay solid anyway when your system asks for less transparency or more contrast.</p>
+          <label class="adv-switch" for="advGlass"><input type="checkbox" id="advGlass" role="switch" checked aria-describedby="advGlassNote"><span>Glass effect</span></label>
+          <p class="adv-lead dim" id="advGlassNote" role="status" aria-live="polite"></p>
         </section>
 
         <section id="sbd" aria-labelledby="advSbdH">

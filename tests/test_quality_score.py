@@ -494,7 +494,7 @@ def test_the_script_escapes_and_never_writes_style_markup():
 DRIVER = r"""
 const [width] = args;
 const out = {};
-function lum(c) { const m = c.match(/[0-9.]+/g).map(Number); const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); }
+function lum(c) { const m = c.match(/[0-9.]+/g).map(Number); if (/^color\(srgb/.test(c)) for (let i = 0; i < 3; i++) m[i] *= 255; /* color-mix() computes to color(srgb r g b / a), 0..1 */ const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); }
 for (const theme of ['light', 'dark']) {
   await send('Emulation.setDeviceMetricsOverride', { width: Number(width), height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: base + '/report/advanced' });

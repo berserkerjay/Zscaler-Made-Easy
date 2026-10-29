@@ -516,12 +516,15 @@ if os.path.isdir(STATIC_DIR):
 # if the file exists — a <link> before </head>, a <script> before </body>.
 # Scripts run after index.html's inline script, so they can replace legacy
 # functions by redefining them. Same-origin, so the CSP ('self') allows them.
+# A "head-script" goes before </head> instead: it runs before the first paint.
 GUI_ADDONS = [
     ("deploy_studio.css", "style"),
     ("guide.css", "style"),
     ("reports.css", "style"),
     ("dashboard.css", "style"),
     ("hover_help.css", "style"),
+    ("glass.css", "style"),         # the glass effect (also @imported by reports.css): last, so it layers over the others
+    ("glass.js", "head-script"),    # in <head>: the viewer's glass on/off choice is on <html> before the first paint
     ("icons.js", "script"),         # first: the symbol set every page and add-on draws its icons from
     ("ui_auth.js", "script"),       # the in-app unlock and notice dialogs the fetch wrapper and the guide use
     ("rate_gate.js", "script"),     # the rate-limit check every deploy and delete confirms with
@@ -562,6 +565,8 @@ def _inject_gui_addons(html: str) -> str:
         v = int(os.path.getmtime(path))
         if kind == "style":
             tag, pos = f'<link rel="stylesheet" href="/static/{name}?v={v}">\n', html.find("</head>")
+        elif kind == "head-script":
+            tag, pos = f'<script src="/static/{name}?v={v}"></script>\n', html.find("</head>")
         else:
             tag, pos = f'<script src="/static/{name}?v={v}"></script>\n', html.rfind("</body>")
         if pos >= 0:

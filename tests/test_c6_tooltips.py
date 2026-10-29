@@ -686,7 +686,7 @@ await open(page, 1280, true);
 out.reduced = await ev(`(() => { window.HoverHelp.show(document.querySelector(${JSON.stringify(sel)})); return getComputedStyle(window.HoverHelp.tip()).transitionDuration; })()`);
 
 // Contrast in the dark (default) and light themes.
-const CONTRAST = `(() => { const lum = c => { const v = c.match(/[\\d.]+/g).slice(0, 3).map(Number).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+const CONTRAST = `(() => { const lum = c => { const v = c.match(/[\\d.]+/g).slice(0, 3).map(Number).map(x => /^color\\(srgb/.test(c) ? x * 255 : x).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
   const H = window.HoverHelp; H.show(document.querySelector(${JSON.stringify(sel)})); const t = H.tip(); const bg = lum(getComputedStyle(t).backgroundColor);
   return Math.min(...[t, ...t.querySelectorAll('p, strong')].map(n => { const f = lum(getComputedStyle(n).color); return (Math.max(f, bg) + 0.05) / (Math.min(f, bg) + 0.05); })); })()`;
 await ev(`document.body.classList.remove('theme-light'), 1`);

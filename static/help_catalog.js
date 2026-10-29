@@ -2362,6 +2362,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#advGlass": {
+    "what": "Turns the glass effect on or off. On, bars, cards and buttons are see-through like frosted glass. Off, they are solid.",
+    "input": "Tick it or clear it. The choice is kept in this browser only and every open tab follows it.",
+    "effect": "local"
+   },
    "#advAssessor": {
     "what": "Names the assessor in every Terraform download. Each object's description is tagged with this name, never Zscaler Made Easy.",
     "input": "Required for Terraform downloads. A person's name, up to 40 letters, like Alex Morgan. Not the tool's name.",

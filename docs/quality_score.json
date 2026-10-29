@@ -8,15 +8,7 @@
     "grade": "",
     "label": "No score yet",
     "meaning": "No full test run is recorded yet (docs/qa/test_run.json).",
-    "cap": {
-      "severity": "high",
-      "limit": 69,
-      "findings": [
-        "C6-CHECKS-02"
-      ],
-      "reason": "1 high finding is open (C6-CHECKS-02); any open high finding caps the overall score at 69.",
-      "applied": false
-    }
+    "cap": null
   },
   "areas": [
     {
@@ -66,9 +58,9 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 98.0,
-            "open": 1,
-            "fixed": 126,
+            "score": 100.0,
+            "open": 0,
+            "fixed": 127,
             "accepted": 8,
             "records": [
               "c6-admin-ops",
@@ -102,9 +94,9 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 74.0,
-            "open": 4,
-            "fixed": 99,
+            "score": 100.0,
+            "open": 0,
+            "fixed": 103,
             "accepted": 3,
             "records": [
               "c6-exports",
@@ -141,9 +133,9 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 90.0,
-            "open": 2,
-            "fixed": 70,
+            "score": 100.0,
+            "open": 0,
+            "fixed": 72,
             "accepted": 6,
             "records": [
               "c6-api-server",
@@ -213,9 +205,9 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 54.0,
-            "open": 5,
-            "fixed": 114,
+            "score": 100.0,
+            "open": 0,
+            "fixed": 119,
             "accepted": 3,
             "records": [
               "c6-assessment",
@@ -245,9 +237,9 @@
           "based_on": [],
           "tests": null,
           "findings": {
-            "score": 90.0,
-            "open": 3,
-            "fixed": 46,
+            "score": 100.0,
+            "open": 1,
+            "fixed": 48,
             "accepted": 0,
             "records": [
               "c6-zcc-zdx",
@@ -277,16 +269,17 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 46,
+            "fixed": 53,
             "accepted": 2,
             "records": [
               "c6-tooltips",
               "c6-ui-ops",
+              "glass",
               "ui"
             ]
           },
           "coverage": {
-            "score": 90.9,
+            "score": 100.0,
             "covered": [
               "WCAG SC 1.1.1",
               "WCAG SC 1.3.1",
@@ -294,14 +287,13 @@
               "WCAG SC 1.4.10",
               "WCAG SC 1.4.11",
               "WCAG SC 2.1.1",
+              "WCAG SC 2.4.7",
               "WCAG SC 2.5.8",
               "WCAG SC 3.3.2",
               "WCAG SC 4.1.2",
               "WCAG SC 4.1.3"
             ],
-            "missing": [
-              "WCAG SC 2.4.7"
-            ]
+            "missing": []
           }
         }
       ]
@@ -344,7 +336,7 @@
     }
   ],
   "counts": {
-    "findings": 542,
+    "findings": 549,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -352,259 +344,35 @@
         "accepted": 0
       },
       "high": {
-        "open": 1,
-        "fixed": 12,
+        "open": 0,
+        "fixed": 13,
         "accepted": 0
       },
       "medium": {
-        "open": 8,
-        "fixed": 145,
+        "open": 0,
+        "fixed": 153,
         "accepted": 0
       },
       "low": {
-        "open": 5,
-        "fixed": 306,
+        "open": 0,
+        "fixed": 315,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 42,
+        "fixed": 45,
         "accepted": 22
       }
     },
     "checks": {
-      "pass": 290,
-      "fixed": 273,
-      "open": 19,
+      "pass": 296,
+      "fixed": 284,
+      "open": 11,
       "accepted": 10
     },
-    "tests_added": 7631
+    "tests_added": 8497
   },
   "findings": [
-    {
-      "id": "C6-CHECKS-02",
-      "title": "Engine DLP registry (outside slice): 11 checks PASS on HTTP 403, e.g. MC.12 counts the error body as a rule",
-      "severity": "high",
-      "status": "open",
-      "cwe": "CWE-863",
-      "asvs": "V4.1.5",
-      "wcag": "",
-      "fix": "run every check through the same permission guard in assess_stream (removes 10 of 11; 10.4 makes no read)",
-      "test": "tests/test_c6_checks.py::test_a_check_built_on_a_refused_read_is_not_permitted",
-      "commit": "a4c1ae7",
-      "reason": "",
-      "slug": "c6-checks",
-      "area": "functionality",
-      "sub_area": "traffic_analysis"
-    },
-    {
-      "id": "C6-ASSESSMENT-17",
-      "title": "zcc_evaluation (spliced into sections 1, 6, 12): 1.16-1.23 PASS on zero active app profiles ('all 0 profile(s)'), and 1.27/1.28 call a 403 'not readable' without the status, so it is not classed as not permitted. 1.24-1.26 also pass on zero forwarding profiles (same pattern, not in this patch).",
-      "severity": "medium",
-      "status": "open",
-      "cwe": "CWE-755",
-      "asvs": "V7.4.1",
-      "wcag": "",
-      "fix": "Return INFO when no active profile is returned; name the HTTP status of an unreadable company/privacy read",
-      "test": "tests/test_c6_assessment.py",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-assessment",
-      "area": "functionality",
-      "sub_area": "traffic_analysis"
-    },
-    {
-      "id": "C6-CHECKS-04",
-      "title": "zscaler_update_check._safe_get reads the whole answer into memory with no size cap (outside this slice); the crawler's 8 MB/2 MB caps apply only after the download",
-      "severity": "medium",
-      "status": "open",
-      "cwe": "CWE-400",
-      "asvs": "V12.1.1",
-      "wcag": "",
-      "fix": "stream the answer and refuse one larger than MAX_BODY_BYTES (10 MB); test fakes of requests.get then need iter_content/close",
-      "test": "tests/test_c6_checks.py::test_a_hostile_sitemap_parses_in_linear_time",
-      "commit": "a4c1ae7",
-      "reason": "",
-      "slug": "c6-checks",
-      "area": "functionality",
-      "sub_area": "traffic_analysis"
-    },
-    {
-      "id": "C6-MISC-10",
-      "title": "GET /api/console-index/cached does not say which tenant the page is signed in to, so for typed sign-ins it can no longer return an index (fail closed) and for an edited profile it cannot check the tenant",
-      "severity": "medium",
-      "status": "open",
-      "cwe": "CWE-668",
-      "asvs": "V4.2.1",
-      "wcag": "",
-      "fix": "server passes the signed-in tenant's label to console_index.cache_latest; Find anything sends its sign-in",
-      "test": "tests/test_c6_misc.py::test_console_index_cached_without_a_tenant_is_refused",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-misc",
-      "area": "secure_by_design",
-      "sub_area": "untrusted_input"
-    },
-    {
-      "id": "C6-SCOPE-OFFLINE-15",
-      "title": "Traffic flow (data_flow.py) reads only older app-profile names: on an API-shaped profile it shows Endpoint DLP and the SSL certificate as off and drops the comma-separated destination exclusions and custom app bypasses (exposed by the corrected sample)",
-      "severity": "medium",
-      "status": "open",
-      "cwe": "CWE-1287",
-      "asvs": "V5.1.3",
-      "wcag": "",
-      "fix": "read enableZdpService, install_ssl_certs/installCerts first; split packetTunnelExcludeList; count bypassCustomAppIds",
-      "test": "",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-scope-offline",
-      "area": "secure_by_design",
-      "sub_area": "auth_scope_secrets"
-    },
-    {
-      "id": "C6-TRAFFIC-REPORTS-25",
-      "title": "The /api/detection-health and live-feed routes do not mask the sign-in's secrets in the read problems they return",
-      "severity": "medium",
-      "status": "open",
-      "cwe": "CWE-532",
-      "asvs": "V7.1.1",
-      "wcag": "",
-      "fix": "Mask report['errors'] and poll['errors'] with tenant_auth.mask_secrets(…, creds), as the Insights and SSL coverage routes do",
-      "test": "",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-traffic-reports",
-      "area": "secure_by_design",
-      "sub_area": "untrusted_input"
-    },
-    {
-      "id": "C6-TRAFFIC-REPORTS-26",
-      "title": "The Log Analyzer page's Markdown download builds from raw upload text: file and PAC names, users, notes and bypass values add headings, links or table cells, and a log line holding ``` closes the evidence fence",
-      "severity": "medium",
-      "status": "open",
-      "cwe": "CWE-1236",
-      "asvs": "V5.3.3",
-      "wcag": "",
-      "fix": "Escape upload text as md_safe.text does and fence evidence longer than any backtick run it holds (verified with node: no forged heading, tag or fence break)",
-      "test": "",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-traffic-reports",
-      "area": "secure_by_design",
-      "sub_area": "untrusted_input"
-    },
-    {
-      "id": "C6-ZIA-BASELINE-AIGUARD-04",
-      "title": "Other Bulk changes operations re-read rules with admin_ops._one, which drops fields the SDK model lacks (sandbox cbiProfile) before a PUT",
-      "severity": "medium",
-      "status": "open",
-      "cwe": "CWE-665",
-      "asvs": "V1.4.1",
-      "wcag": "",
-      "fix": "admin_ops._one merges the raw body's missing fields (patch below; verified against the suite)",
-      "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_sandbox_update_keeps_the_isolation_profile_the_sdk_model_drops",
-      "commit": "e120140",
-      "reason": "",
-      "slug": "c6-zia-baseline-aiguard",
-      "area": "functionality",
-      "sub_area": "builders"
-    },
-    {
-      "id": "C6-ZPA-05",
-      "title": "Bulk changes routes for ZPA builder types do not check the OneAPI sign-in and customer ID before signing in",
-      "severity": "medium",
-      "status": "open",
-      "cwe": "CWE-20",
-      "asvs": "V5.1.3",
-      "wcag": "",
-      "fix": "Add _ops_zpa_gate (400 before sign-in) to the six /api/operations routes; the route tests that post ZPA families must then send a customer_id (test_scope_rule_routes zpa cases, test_ops_zpa key-through-API test).",
-      "test": "",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-zpa",
-      "area": "functionality",
-      "sub_area": "traffic_analysis"
-    },
-    {
-      "id": "C6-ADMIN-OPS-19",
-      "title": "/api/remediation/execute has no Scope check: a live fix writes (and, for RULE-DESC, now reads the rule) whatever the Scope page ticks",
-      "severity": "low",
-      "status": "open",
-      "cwe": "CWE-863",
-      "asvs": "V4.1.3",
-      "wcag": "",
-      "fix": "Proposed: require the recipe's scope (DLP + Inline Web DLP for Web DLP rules, else ZIA platform) before sign-in; the page must then send its selection",
-      "test": "",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-admin-ops",
-      "area": "secure_by_design",
-      "sub_area": "write_paths"
-    },
-    {
-      "id": "C6-API-SERVER-13",
-      "title": "POST /api/dlp-packs/jobs/stop-before-start cancels a job that already exists for the start token whoever started it (SSO: one person can stop another's run if they hold its start token)",
-      "severity": "low",
-      "status": "open",
-      "cwe": "CWE-639",
-      "asvs": "V4.2.1",
-      "wcag": "",
-      "fix": "pack_jobs.stop_before_start(token, actor) refuses (PermissionError -> 403) when the job's known starter is someone else; the route passes _actor(request)",
-      "test": "",
-      "commit": "",
-      "reason": "Proposed test: tests/test_run_control.py — a token whose job actor is alice, stopped as mallory, is a 403 and the job keeps running",
-      "slug": "c6-api-server",
-      "area": "secure_by_design",
-      "sub_area": "auth_scope_secrets"
-    },
-    {
-      "id": "C6-REPORTS-16",
-      "title": "/api/report/docx returns the exception type and text to the browser on a failed build",
-      "severity": "low",
-      "status": "open",
-      "cwe": "CWE-209",
-      "asvs": "V7.4.1",
-      "wcag": "",
-      "fix": "Return a plain message; the traceback stays in the server log (dlp_api_server.py, outside this slice)",
-      "test": "",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-reports",
-      "area": "secure_by_design",
-      "sub_area": "untrusted_input"
-    },
-    {
-      "id": "C6-ZIA-BASELINE-AIGUARD-20",
-      "title": "Baseline areas or Undo areas not ticked were refused only after sign-in: the engine's pre-sign-in check does not pass the spec to a plugin",
-      "severity": "low",
-      "status": "open",
-      "cwe": "CWE-863",
-      "asvs": "V4.1.3",
-      "wcag": "",
-      "fix": "ops_zia_baseline._in_scope(scope, spec) now refuses them; admin_ops.require_scope must pass the spec (patch below; verified with tests/test_scope_rule_routes.py and the baseline suites)",
-      "test": "tests/test_c6_zia_baseline_aiguard.py::test_the_scope_check_refuses_areas_that_are_not_ticked",
-      "commit": "1d3b0ba",
-      "reason": "",
-      "slug": "c6-zia-baseline-aiguard",
-      "area": "functionality",
-      "sub_area": "builders"
-    },
-    {
-      "id": "C6-ZPA-17",
-      "title": "admin_ops.execute does not itself require a named assessor (the route does): no defence in depth for the write gate",
-      "severity": "low",
-      "status": "open",
-      "cwe": "CWE-841",
-      "asvs": "V4.2.2",
-      "wcag": "",
-      "fix": "Refuse an empty assessor in admin_ops.execute.",
-      "test": "",
-      "commit": "",
-      "reason": "",
-      "slug": "c6-zpa",
-      "area": "functionality",
-      "sub_area": "traffic_analysis"
-    },
     {
       "id": "FUNC-BUILDERS-12",
       "title": "On the sample tenant most Build new types cannot plan: it carries no network applications, DNS gateways, cloud application catalogue, Cloud App Control rule types, ZPA provisioning keys or inspection controls, and its in-memory store does not model ZPA policy rule writes or Client Connector's edit endpoints; each builder says plainly what it could not read and writes nothing",
@@ -1006,6 +774,22 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "C6-CHECKS-02",
+      "title": "Engine DLP registry (outside slice): 11 checks PASS on HTTP 403, e.g. MC.12 counts the error body as a rule",
+      "severity": "high",
+      "status": "fixed",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.5",
+      "wcag": "",
+      "fix": "The permission guard moved into the engine and wraps REG after its splices, so API, MCP and CLI runs fail closed on a 401/403 read (the 11 named engine checks were already not permitted; 1.27/1.28 were not). Also ...::test_an_engine_check_built_on_a_refused_read_is_not_permitted",
+      "test": "tests/test_c6_checks.py::test_every_check_the_assessment_run_executes_reads_through_the_permission_guard",
+      "commit": "243a86f",
+      "reason": "",
+      "slug": "c6-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-DEPLOY-01",
       "title": "Removal deleted untagged customer objects that only shared a pack or legacy name (e.g. a customer's own 'PCI - High' engine)",
       "severity": "high",
@@ -1326,6 +1110,22 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "C6-ASSESSMENT-17",
+      "title": "zcc_evaluation (spliced into sections 1, 6, 12): 1.16-1.23 PASS on zero active app profiles ('all 0 profile(s)'), and 1.27/1.28 call a 403 'not readable' without the status, so it is not classed as not permitted. 1.24-1.26 also pass on zero forwarding profiles (same pattern, not in this patch).",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "zcc_evaluation: zero active app profiles (1.15-1.23) or zero forwarding profiles (1.24-1.26) is INFO 'could not be assessed'; 1.27/1.28 name the HTTP status of an unreadable read (one read, not two). Also ...::test_an_unreadable_company_or_privacy_read_names_its_status",
+      "test": "tests/test_c6_assessment.py::test_a_client_connector_check_with_nothing_returned_is_not_a_pass",
+      "commit": "af5f0fc",
+      "reason": "",
+      "slug": "c6-assessment",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-AUTH-01",
       "title": "Redacting a JSON Web Token took quadratic time: an echoed error with a long '-eyJ-eyJ…' run (80 KB: 2 s, 200 KB: 12 s) held the job thread",
       "severity": "medium",
@@ -1496,6 +1296,22 @@
       "fix": "one linear pass over sitemap open/close tags; 8 MB parses in 0.16 s",
       "test": "tests/test_c6_checks.py::test_a_hostile_sitemap_parses_in_linear_time",
       "commit": "a4c1ae7",
+      "reason": "",
+      "slug": "c6-checks",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "C6-CHECKS-04",
+      "title": "zscaler_update_check._safe_get reads the whole answer into memory with no size cap (outside this slice); the crawler's 8 MB/2 MB caps apply only after the download",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-400",
+      "asvs": "V12.1.1",
+      "wcag": "",
+      "fix": "Already fixed on integrate/w6 (update-heal slice): _safe_get streams with stream=True and _read_capped refuses an answer (declared or read) past MAX_BODY_BYTES (64 MB, sized for SDK wheels); no change needed",
+      "test": "tests/test_c6_update_heal.py::test_an_answer_larger_than_the_cap_is_refused_not_read",
+      "commit": "1a6728d",
       "reason": "",
       "slug": "c6-checks",
       "area": "functionality",
@@ -1960,6 +1776,22 @@
       "fix": "bucket name no profile can take; cache_latest matches the tenant label and denies without profile or tenant",
       "test": "tests/test_c6_misc.py::test_console_index_cached_answers_only_for_the_named_tenant",
       "commit": "ad0364c",
+      "reason": "",
+      "slug": "c6-misc",
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
+    },
+    {
+      "id": "C6-MISC-10",
+      "title": "GET /api/console-index/cached does not say which tenant the page is signed in to, so for typed sign-ins it can no longer return an index (fail closed) and for an edited profile it cannot check the tenant",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-668",
+      "asvs": "V4.2.1",
+      "wcag": "",
+      "fix": "GET /api/console-index/cached takes the page's sign-in (profile, or vanity domain and cloud; no secret) and passes its label to cache_latest; a gone profile or typed classic-API sign-in gets nothing; Find anything sends signInRef()",
+      "test": "tests/test_c6_misc.py::test_console_index_cached_answers_only_for_the_signed_in_tenant",
+      "commit": "cc42393",
       "reason": "",
       "slug": "c6-misc",
       "area": "secure_by_design",
@@ -2574,6 +2406,22 @@
       "sub_area": "auth_scope_secrets"
     },
     {
+      "id": "C6-SCOPE-OFFLINE-15",
+      "title": "Traffic flow (data_flow.py) reads only older app-profile names: on an API-shaped profile it shows Endpoint DLP and the SSL certificate as off and drops the comma-separated destination exclusions and custom app bypasses (exposed by the corrected sample)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "data_flow reads enableZdpService, install_ssl_certs/installCerts and bypassCustomAppIds first (SDK 1.11.3 zcc/models/webpolicy.py), older names after; destination exclusions were already read as tunnel.exclude, so not duplicated",
+      "test": "tests/test_c6_scope_offline.py::test_the_sample_tenant_app_profiles_show_endpoint_dlp_certificate_and_app_bypass",
+      "commit": "afd09b7",
+      "reason": "",
+      "slug": "c6-scope-offline",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
       "id": "C6-TRAFFIC-REPORTS-01",
       "title": "Log evidence redaction missed bearer tokens, JSON-quoted keys, prefixed *_token / JSESSIONID / provisioning_key keys and all but the first cookie",
       "severity": "medium",
@@ -2696,6 +2544,38 @@
       "fix": "generate() and poll_incidents() take a scrub applied to every read problem",
       "test": "tests/test_c6_traffic_reports.py::test_read_problems_pass_through_the_given_scrub",
       "commit": "bad67ff",
+      "reason": "",
+      "slug": "c6-traffic-reports",
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
+    },
+    {
+      "id": "C6-TRAFFIC-REPORTS-25",
+      "title": "The /api/detection-health and live-feed routes do not mask the sign-in's secrets in the read problems they return",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-532",
+      "asvs": "V7.1.1",
+      "wcag": "",
+      "fix": "/api/detection-health and /api/live-feed pass detection_health's scrub hook (tenant_auth.mask_secrets with the sign-in); the report's log lines and proposal error are masked too (test isolation follow-up a730f83)",
+      "test": "tests/test_c6_traffic_reports.py::test_a_read_problem_that_echoes_the_secret_is_masked",
+      "commit": "3e338a5",
+      "reason": "",
+      "slug": "c6-traffic-reports",
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
+    },
+    {
+      "id": "C6-TRAFFIC-REPORTS-26",
+      "title": "The Log Analyzer page's Markdown download builds from raw upload text: file and PAC names, users, notes and bypass values add headings, links or table cells, and a log line holding ``` closes the evidence fence",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1236",
+      "asvs": "V5.3.3",
+      "wcag": "",
+      "fix": "report_logs.html escapes every upload-derived value as md_safe.text does and fences evidence longer than any backtick run it holds; tests run the page's own markdown() in Node. Also ...::test_the_log_analyzer_markdown_evidence_fence_cannot_be_closed_by_a_log_line",
+      "test": "tests/test_c6_traffic_reports.py::test_the_log_analyzer_markdown_forges_no_heading_tag_or_link",
+      "commit": "ec7ad51",
       "reason": "",
       "slug": "c6-traffic-reports",
       "area": "secure_by_design",
@@ -2894,6 +2774,22 @@
       "sub_area": "builders"
     },
     {
+      "id": "C6-ZIA-BASELINE-AIGUARD-04",
+      "title": "Other Bulk changes operations re-read rules with admin_ops._one, which drops fields the SDK model lacks (sandbox cbiProfile) before a PUT",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-665",
+      "asvs": "V1.4.1",
+      "wcag": "",
+      "fix": "Already fixed on integrate/w6: admin_ops._one now returns pack_export.one_row(ret), which backfills the raw answer's fields the SDK model drops (sandbox cbiProfile); no change needed",
+      "test": "tests/test_qa6_builders_lifecycle.py::test_a_single_read_keeps_what_the_model_drops",
+      "commit": "195005b",
+      "reason": "",
+      "slug": "c6-zia-baseline-aiguard",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ZPA-02",
       "title": "ZPA reader stopped at a short page even when totalPages said more, and trusted the SDK's default totalPages=1: large tenants silently truncated",
       "severity": "medium",
@@ -2936,6 +2832,22 @@
       "fix": "customer_id_problem() refuses a missing or non-alphanumeric (>64) customer ID before any ZPA call.",
       "test": "tests/test_c6_zpa.py::test_reader_refuses_a_missing_or_invalid_customer_id_before_any_call",
       "commit": "1e16a03",
+      "reason": "",
+      "slug": "c6-zpa",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "C6-ZPA-05",
+      "title": "Bulk changes routes for ZPA builder types do not check the OneAPI sign-in and customer ID before signing in",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "_ops_zpa_gate (400 before sign-in for a classic-API sign-in or a missing/invalid customer ID) on the six /api/operations routes and the Undo preview; admin_ops.product_of names a type's product; the ops request models take the customer_id the page already sent (it was dropped)",
+      "test": "tests/test_c6_zpa.py::test_a_zpa_bulk_change_without_the_customer_id_is_refused_before_sign_in",
+      "commit": "a907995",
       "reason": "",
       "slug": "c6-zpa",
       "area": "functionality",
@@ -3710,6 +3622,22 @@
       "sub_area": "write_paths"
     },
     {
+      "id": "C6-ADMIN-OPS-19",
+      "title": "/api/remediation/execute has no Scope check: a live fix writes (and, for RULE-DESC, now reads the rule) whatever the Scope page ticks",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "A live /api/remediation/execute maps its recipe (RULE-DESC by rule_type) to an admin_ops policy and refuses one admin_ops.scope_for does not put in scope (400 before sign-in); unknown policy denied; dry runs unchanged; the page sends scopePageSelection()",
+      "test": "tests/test_c6_admin_ops.py::test_a_live_fix_outside_the_scope_page_is_refused_before_sign_in",
+      "commit": "90f7b6c",
+      "reason": "",
+      "slug": "c6-admin-ops",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
       "id": "C6-API-SERVER-01",
       "title": "Non-JSON NaN/Infinity literals in a body reached handlers (int(NaN) in the HAR batch was a 500)",
       "severity": "low",
@@ -3880,6 +3808,22 @@
       "fix": "Resolved at integration (QA func-path, fea4d7d): parse_destination brackets a bare IPv6 literal; a v6 CIDR row of a list parses address by address",
       "test": "tests/test_c6_open_low.py::test_every_address_of_an_ipv6_range_in_a_list_can_be_analysed",
       "commit": "fea4d7d, 37a8f7c",
+      "reason": "",
+      "slug": "c6-api-server",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "C6-API-SERVER-13",
+      "title": "POST /api/dlp-packs/jobs/stop-before-start cancels a job that already exists for the start token whoever started it (SSO: one person can stop another's run if they hold its start token)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-639",
+      "asvs": "V4.2.1",
+      "wcag": "",
+      "fix": "pack_jobs.stop_before_start(token, actor) follows the /cancel owner rule (403 when someone else started the job) and a waiting stop is honoured only for a job its sender starts. Also ...::test_a_waiting_stop_from_someone_else_does_not_stop_the_job",
+      "test": "tests/test_c6_api_server.py::test_stop_before_start_of_an_existing_job_is_only_for_its_starter",
+      "commit": "4d6ba05",
       "reason": "",
       "slug": "c6-api-server",
       "area": "secure_by_design",
@@ -6206,6 +6150,22 @@
       "sub_area": "untrusted_input"
     },
     {
+      "id": "C6-REPORTS-16",
+      "title": "/api/report/docx returns the exception type and text to the browser on a failed build",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-209",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "/api/report/docx and the bypass report's Word export answer one plain sentence (WORD_REPORT_FAILED); the traceback stays in the server log. Also ...::test_a_failed_bypass_word_export_returns_plain_words_not_the_exception",
+      "test": "tests/test_c6_api_server.py::test_a_failed_word_report_returns_plain_words_not_the_exception",
+      "commit": "19c97e0",
+      "reason": "",
+      "slug": "c6-reports",
+      "area": "secure_by_design",
+      "sub_area": "untrusted_input"
+    },
+    {
       "id": "C6-REPORTS-17",
       "title": "tools/quality_score.py refuses the files, coverage and proposed_patch keys that the wave-6 findings schema asks for",
       "severity": "low",
@@ -7454,6 +7414,22 @@
       "sub_area": "builders"
     },
     {
+      "id": "C6-ZIA-BASELINE-AIGUARD-20",
+      "title": "Baseline areas or Undo areas not ticked were refused only after sign-in: the engine's pre-sign-in check does not pass the spec to a plugin",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "admin_ops.require_scope gives a plugin's in_scope the spec when its signature takes it (inspect.signature), so the baseline refuses unticked areas and Undo steps before sign-in. Also ...::test_the_engine_scope_check_before_sign_in_passes_the_spec_to_the_baseline",
+      "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_preview_naming_an_unticked_baseline_area_is_refused_before_sign_in",
+      "commit": "0ace940",
+      "reason": "",
+      "slug": "c6-zia-baseline-aiguard",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ZIA-BASELINE-AIGUARD-21",
       "title": "A detection policy threshold from the tenant such as 1.2.3 crashed the AI Guard plan (ValueError)",
       "severity": "low",
@@ -7640,6 +7616,22 @@
       "fix": "IPv6 /32 or wider is high, /48 or wider medium.",
       "test": "tests/test_c6_zpa.py::test_over_broad_check_covers_ipv6_subnets",
       "commit": "227b108",
+      "reason": "",
+      "slug": "c6-zpa",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "C6-ZPA-17",
+      "title": "admin_ops.execute does not itself require a named assessor (the route does): no defence in depth for the write gate",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-841",
+      "asvs": "V4.2.2",
+      "wcag": "",
+      "fix": "admin_ops.execute refuses a blank assessor (OperationError) right after the write-mode check, before the client is touched; table-driven over every operation type",
+      "test": "tests/test_c6_zpa.py::test_execute_without_a_named_assessor_is_refused_before_anything_is_read",
+      "commit": "1cd9a84",
       "reason": "",
       "slug": "c6-zpa",
       "area": "functionality",
@@ -7852,6 +7844,70 @@
       "slug": "func-path",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "GLASS-01",
+      "title": "Dark theme: secondary and semantic text on glass panels and capsule buttons fell to 3.9:1 against the brightest point of the page wash once the sheen (6% white) and the pointer lens (8% white) were added",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-684",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 1.4.3",
+      "fix": "static/glass.css: dark sheen 2% and lens 4%; a hovered capsule turns more opaque instead of lighter",
+      "test": "tests/test_glass.py::test_text_on_each_glass_tier_meets_aa_against_the_worst_backdrop",
+      "commit": "adcaa91",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
+      "id": "GLASS-02",
+      "title": "Accent text on --accent-tint (the hero badge, a selected tab) dropped to 4.37 to 4.42:1 over translucent glass in the dark theme, because the tint is itself see-through",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-684",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 1.4.3",
+      "fix": "static/glass.css: with the glass on, --accent-tint is mixed into the opaque card (14% dark, 12% light), as the status chips are",
+      "test": "tests/test_glass.py::test_accent_text_on_its_tint_is_independent_of_the_glass",
+      "commit": "adcaa91",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
+      "id": "GLASS-03",
+      "title": "The sticky details panel of the Deploy flow page (an rp-card) was panel-tier glass: with content able to pass behind a sticky surface, its text fell to 2.1:1 in the worst case",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-684",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 1.4.3",
+      "fix": "static/glass.css: .rp-card.fl-side uses the floating tier (95% / 90% opaque)",
+      "test": "tests/test_glass_browser.py::test_text_on_glass_meets_aa_against_the_worst_backdrop",
+      "commit": "adcaa91",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
+      "id": "GLASS-04",
+      "title": "A backdrop-filter on the sidebar made it the containing block of the sidebar's fixed drag-and-drop marker (sidebar_order.js), so the marker would be placed against the scrolled sidebar instead of the window",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-684",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 2.1.1",
+      "fix": "static/glass.css: the sidebar keeps the floating tint but no blur (only the still wash is behind it)",
+      "test": "tests/test_glass_browser.py::test_blur_stays_on_a_few_chrome_layers",
+      "commit": "adcaa91",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
     },
     {
       "id": "REGRESSION-02",
@@ -8990,6 +9046,54 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "GLASS-05",
+      "title": "The existing page audit skipped every text whose background stack contained a gradient and counted any box-shadow as a focus ring, so glass surfaces (sheen gradient, resting rim and shadow) would have passed contrast and focus checks without being measured",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 2.4.7",
+      "fix": "tests/test_accessibility.py PAGE_AUDIT and FOCUS_STEP measure the sheen and the wash and compare a shadow with the control's resting shadow",
+      "test": "tests/test_accessibility.py::test_keyboard_focus_is_visible_and_never_trapped",
+      "commit": "adcaa91",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
+      "id": "GLASS-06",
+      "title": "Two browser contrast checks read color(srgb r g b / a), the form color-mix() computes to, as 0..255 values, so any color-mix() surface measured as near black (1.01:1 and 1.17:1 false failures, and false passes in the dark theme)",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 1.4.3",
+      "fix": "tests/test_quality_score.py and tests/test_c6_tooltips.py scale color(srgb) channels to 0..255 before the luminance",
+      "test": "tests/test_quality_score.py::test_the_section_reads_and_reflows_at_390px",
+      "commit": "adcaa91",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
+      "id": "GLASS-07",
+      "title": "The page audit sampled the colour under a text at its element's top-left corner; on a capsule button the rounded corner is outside the button, so white button text was measured against the bar behind it (1.00:1 false failure)",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 1.4.3",
+      "fix": "tests/test_accessibility.py samples at the text's own line box (a Range over its text node)",
+      "test": "tests/test_accessibility.py::test_text_contrast_meets_aa_in_both_themes",
+      "commit": "adcaa91",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
       "id": "REGRESSION-04",
       "title": "Known flaky test_tenant_pacing: the 429-hold test asserted 19 s left of a 20 s hold on the wall clock, so a 1 s scheduling stall under load failed it (reproduced by injecting a 1.2 s stall)",
       "severity": "info",
@@ -9077,7 +9181,7 @@
       ],
       "checks": 16,
       "findings": 22,
-      "tests_added": 165
+      "tests_added": 188
     },
     {
       "slug": "c6-api-server",
@@ -9106,7 +9210,7 @@
       ],
       "checks": 23,
       "findings": 17,
-      "tests_added": 65
+      "tests_added": 70
     },
     {
       "slug": "c6-assessment",
@@ -9131,7 +9235,7 @@
       ],
       "checks": 12,
       "findings": 17,
-      "tests_added": 527
+      "tests_added": 544
     },
     {
       "slug": "c6-auth",
@@ -9179,7 +9283,7 @@
       ],
       "checks": 15,
       "findings": 23,
-      "tests_added": 851
+      "tests_added": 1264
     },
     {
       "slug": "c6-deploy",
@@ -9271,7 +9375,7 @@
       ],
       "checks": 22,
       "findings": 31,
-      "tests_added": 385
+      "tests_added": 395
     },
     {
       "slug": "c6-packs",
@@ -9392,7 +9496,7 @@
       ],
       "checks": 15,
       "findings": 17,
-      "tests_added": 149
+      "tests_added": 151
     },
     {
       "slug": "c6-scope-offline",
@@ -9426,7 +9530,7 @@
       ],
       "checks": 21,
       "findings": 20,
-      "tests_added": 119
+      "tests_added": 129
     },
     {
       "slug": "c6-tooltips",
@@ -9504,7 +9608,7 @@
       ],
       "checks": 21,
       "findings": 32,
-      "tests_added": 158
+      "tests_added": 163
     },
     {
       "slug": "c6-ui-ops",
@@ -9617,7 +9721,7 @@
       ],
       "checks": 17,
       "findings": 25,
-      "tests_added": 443
+      "tests_added": 449
     },
     {
       "slug": "c6-zpa",
@@ -9632,7 +9736,7 @@
       ],
       "checks": 18,
       "findings": 19,
-      "tests_added": 82
+      "tests_added": 149
     },
     {
       "slug": "func-builders",
@@ -9681,6 +9785,29 @@
       "checks": 25,
       "findings": 22,
       "tests_added": 46
+    },
+    {
+      "slug": "glass",
+      "area": "UI and accessibility: the glass effect (static/glass.css, static/glass.js) on every page styled by the app's stylesheet, its solid fallbacks and the Advanced settings switch",
+      "title": "Glass effect checked for WCAG 2.2 AA contrast against the worst case behind each surface, every solid fallback, reflow, focus, motion and blur cost, statically and in Chrome on the sample tenant",
+      "standards": [
+        "WCAG 2.2 SC 1.4.3",
+        "WCAG 2.2 SC 1.4.11",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.4.7",
+        "WCAG 2.2 SC 2.4.11",
+        "WCAG 2.2 SC 2.3.3",
+        "WCAG 2.2 SC 2.2.2",
+        "WCAG 2.2 SC 2.1.1",
+        "WCAG 2.2 SC 4.1.2",
+        "WCAG 2.2 SC 1.4.13",
+        "ASVS V14.4",
+        "CWE-248",
+        "CWE-684"
+      ],
+      "checks": 9,
+      "findings": 7,
+      "tests_added": 308
     },
     {
       "slug": "motion-zpa",
@@ -9873,6 +10000,7 @@
       "SC 1.4.6",
       "SC 1.4.10",
       "SC 1.4.11",
+      "SC 1.4.12",
       "SC 1.4.13",
       "SC 2.1.1",
       "SC 2.1.2",
@@ -9883,10 +10011,12 @@
       "SC 2.4.4",
       "SC 2.4.5",
       "SC 2.4.6",
+      "SC 2.4.7",
       "SC 2.5.1",
       "SC 2.5.8",
       "SC 3.1.2",
       "SC 3.1.5",
+      "SC 3.2.1",
       "SC 3.2.2",
       "SC 3.2.3",
       "SC 3.2.4",
