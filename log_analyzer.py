@@ -28,7 +28,8 @@ import lzma
 import re
 import tarfile
 import zipfile
-from collections import Counter
+import zlib
+from collections import Counter, deque
 from typing import Any, Dict, List, Tuple
 
 import safe_files
@@ -40,6 +41,7 @@ MAX_EVIDENCE = 4
 EVIDENCE_WIDTH = 240
 TOP_ERRORS = 6
 MAX_LINE_CHARS = 4096   # a log or PAC line longer than this is read up to here
+MAX_NOTES = 50          # notes about skipped members kept; the rest are counted
 
 ARCHIVE_EXT = (".zip", ".tar", ".tgz", ".tar.gz", ".gz")
 PAC_EXT = (".pac", ".dat", ".js")
@@ -47,7 +49,19 @@ LOG_EXT = (".log", ".txt", ".out", ".err")
 
 
 # ── Redaction ────────────────────────────────────────────────────────
-_SECRET_KV = re.compile(r"(?i)\b(password|passwd|pwd|secret|client[_-]?secret|token|bearer|cookie|authorization|api[_-]?key|session[_-]?id|otp)\b(\s*[:=]\s*|\s+)(\S+)")
+# A key names a credential when it ends in one of these words, whatever
+# prefixes it (access_token, refresh-token, JSESSIONID, provisioning_key,
+# "password" in JSON). Every key pattern starts only at the beginning of a
+# run of key characters and its prefix is bounded, so a long run costs a
+# linear scan.
+_SECRET_WORDS = (r"password|passwd|passphrase|pwd|secret|token|bearer|api[_-]?key|apikey|session[_-]?id|sessionid|sessid"
+                 r"|otp|provisioning[_-]?key|private[_-]?key|credentials?")
+_SECRET_KV = re.compile(r"(?i)(?<![\w.-])([\"']?)([\w.-]{0,40}?(?:" + _SECRET_WORDS + r")[\w-]{0,20})\1(\s*[:=]\s*|\s+)"
+                        r"(\"[^\"\n]*\"|'[^'\n]*'|[^\s\"',;&}]+)")
+# Authorization headers keep their scheme (Bearer, Basic...) and lose the value.
+_AUTH_HEADER = re.compile(r"(?i)(?<![\w-])((?:proxy-)?authori[sz]ation)([\"']?\s*[:=]\s*[\"']?)(?:(bearer|basic|negotiate|ntlm|digest)\s+)?([^\s\"',;]+)")
+# A cookie header carries many name=value pairs: everything after it goes.
+_COOKIE_HEADER = re.compile(r"(?i)(?<![\w-])((?:set-)?cookie)(\s*[:=]\s*)\S.*")
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
 _LONG_TOKEN = re.compile(r"\b[A-Za-z0-9+/_-]{48,}={0,2}\b")
 
@@ -55,7 +69,9 @@ _LONG_TOKEN = re.compile(r"\b[A-Za-z0-9+/_-]{48,}={0,2}\b")
 def redact(line: str) -> str:
     """Drop anything that looks like a credential before a line is shown back."""
     s = _JWT.sub("[jwt-redacted]", line)
-    s = _SECRET_KV.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", s)
+    s = _AUTH_HEADER.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(3) + ' ' if m.group(3) else ''}[redacted]", s)
+    s = _COOKIE_HEADER.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", s)
+    s = _SECRET_KV.sub(lambda m: m.group(0) if m.group(4) == "[redacted]" else f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}[redacted]", s)
     s = _LONG_TOKEN.sub("[token-redacted]", s)
     if len(s) > EVIDENCE_WIDTH:
         s = s[:EVIDENCE_WIDTH - 1] + "…"
@@ -96,15 +112,37 @@ def _to_text(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+class _NoteList(list):
+    """The notes about what was skipped, at most MAX_NOTES of them: an
+    archive of a hundred thousand entries must not come back as a hundred
+    thousand notes. The rest are counted in one closing note."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dropped = 0
+
+    def append(self, note: str) -> None:  # type: ignore[override]
+        if len(self) < MAX_NOTES:
+            super().append(note)
+        else:
+            self.dropped += 1
+
+    def closed(self) -> List[str]:
+        return list(self) + ([f"… and {self.dropped} more notes like these"] if self.dropped else [])
+
+
 class _Budget:
     def __init__(self) -> None:
         self.members = 0
         self.total = 0
-        self.notes: List[str] = []
+        self.full = False
+        self.notes = _NoteList()
 
     def take(self, name: str, size: int) -> bool:
         if self.members >= MAX_MEMBERS:
-            self.notes.append(f"stopped after {MAX_MEMBERS} files; the rest of the archive was not read")
+            if not self.full:
+                self.notes.append(f"stopped after {MAX_MEMBERS} files; the rest of the archive was not read")
+            self.full = True
             return False
         if size > MAX_MEMBER_BYTES:
             self.notes.append(f"{name}: skipped, larger than {MAX_MEMBER_BYTES // (1024 * 1024)} MB")
@@ -162,7 +200,7 @@ def expand(files: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, bytes]], List[s
         name = _basename(str(f.get("name") or "file"))
         data = _decode_upload(f)
         _expand_one(name, data, out, budget, depth=0)
-    return out, budget.notes
+    return out, budget.notes.closed()
 
 
 def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _Budget, depth: int) -> None:
@@ -174,6 +212,8 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as z:
                 for info in z.infolist():
+                    if budget.full:
+                        break
                     if info.is_dir():
                         continue
                     member = _basename(info.filename)
@@ -184,11 +224,13 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
                     except safe_files.ArchiveRefused as e:
                         budget.notes.append(f"{member}: skipped, {str(e).split(': ', 1)[-1]}")
                         continue
-                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError, OSError, EOFError) as e:
-                        budget.notes.append(f"{member}: could not be read ({e})")
+                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError, OSError, EOFError, ValueError, zlib.error) as e:
+                        # ValueError: a local header offset that lies ("negative seek value")
+                        budget.notes.append(f"{member}: could not be read ({str(e)[:120]})")
                         continue
                     _expand_one(member, payload, out, budget, depth + 1)
-        except zipfile.BadZipFile:
+        except (zipfile.BadZipFile, NotImplementedError, ValueError, OSError, EOFError):
+            # NotImplementedError: a central directory claiming a ZIP version Python does not read
             budget.notes.append(f"{name}: not a valid ZIP file")
         return
     if low.endswith((".tar", ".tgz", ".tar.gz")) or (len(data) > 262 and data[257:262] == b"ustar"):
@@ -202,8 +244,7 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         try:
             with tarfile.open(fileobj=stream, mode="r|") as t:
                 for info in t:
-                    if budget.members >= MAX_MEMBERS:
-                        budget.notes.append(f"stopped after {MAX_MEMBERS} files; the rest of the archive was not read")
+                    if budget.full or (budget.members >= MAX_MEMBERS and not budget.take(info.name, 0)):
                         break
                     if not info.isfile():
                         continue
@@ -229,7 +270,7 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data)) as g:
                 inner = g.read(MAX_MEMBER_BYTES + 1)
-        except (OSError, EOFError) as e:
+        except (OSError, EOFError, zlib.error) as e:   # zlib.error: a damaged deflate stream behind a good header
             budget.notes.append(f"{name}: could not gunzip ({e})")
             return
         if len(inner) > MAX_MEMBER_BYTES:
@@ -589,7 +630,7 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
     """texts: [(name, text)] for every log file. Findings, facts, top errors."""
     hits: Dict[str, Dict[str, Any]] = {}
     facts: Dict[str, Any] = {"versions": Counter(), "os": Counter(), "users": Counter(), "clouds": Counter(),
-                             "tunnel": Counter(), "states": []}
+                             "tunnel": Counter(), "states": deque(maxlen=400)}   # the latest 400: the last state is the one that counts
     top_errors: Counter = Counter()
     error_example: Dict[str, str] = {}
     files_out: List[Dict[str, Any]] = []
@@ -641,7 +682,7 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
                 elif _FACT_T1.search(msg):
                     facts["tunnel"]["Z-Tunnel 1.0"] += 1
                 sm = _FACT_STATE.search(msg)
-                if sm and len(facts["states"]) < 400:
+                if sm:
                     facts["states"].append((ts, (sm.group(1) or sm.group(2) or "").strip()))
             # signatures
             for sig, rx, ex in _COMPILED:
@@ -974,6 +1015,8 @@ def _verdict(result: Dict[str, Any]) -> Dict[str, str]:
         return {"level": "medium", "headline": "The client was working, with things worth tuning.", "detail": "Nothing here stops the user; each medium finding says what to improve."}
     if findings or (logs.get("top_errors")):
         return {"level": "info", "headline": "The client looks healthy. Only context and unrecognised errors are listed.", "detail": "Read the top repeated errors; if the user reports a problem, ask for a fresh bundle taken while it happens."}
+    if pac_sev.get("low"):
+        return {"level": "info", "headline": "The PAC file works; a few things in it are worth tidying.", "detail": "Read the low findings below; none changes what is protected today."}
     if result.get("pac") and not logs:
         return {"level": "ok", "headline": "The PAC file passes every check here.", "detail": "Its bypass list is shown below so you can confirm each one is intended."}
     return {"level": "ok", "headline": "Nothing wrong was found in these logs.", "detail": "If the user still has a problem, the logs may not cover the time it happened: ask for Export Logs taken right after the problem."}

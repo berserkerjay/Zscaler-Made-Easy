@@ -110,8 +110,14 @@ def _f(r: Dict[str, Any], *names: str, default: Any = None) -> Any:
 
 
 def _names(items: Any) -> List[str]:
+    # One name sent bare is one name (never its characters); a number,
+    # bool or object where a list belongs names nothing.
+    if isinstance(items, str):
+        items = [items]
+    elif not isinstance(items, (list, tuple)):
+        items = []
     out: List[str] = []
-    for x in items or []:
+    for x in items:
         if isinstance(x, dict):
             v = x.get("name") or x.get("id") or x.get("url")
             if v is not None:
@@ -283,14 +289,20 @@ def _ref_name(v: Any) -> Optional[str]:
     return (str(v) if v not in (None, "", 0) else None)
 
 
-def _sort_key(rule: Dict[str, Any]) -> Tuple[int, int, int]:
-    o = rule.get("order")
+def _int(v: Any, default: int) -> int:
+    """A whole number from tenant data, else `default`: an id or order the
+    API sends as text ("abc", "", 1.5e400) never stops the report."""
+    if isinstance(v, bool):
+        return default
     try:
-        o = int(o)
-    except (TypeError, ValueError):
-        o = 10 ** 6
+        return int(v)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _sort_key(rule: Dict[str, Any]) -> Tuple[int, int, int]:
     # The default rule is always evaluated last whatever its order says.
-    return (1 if rule.get("default_rule") else 0, o, int(rule.get("id") or 0))
+    return (1 if rule.get("default_rule") else 0, _int(rule.get("order"), 10 ** 6), _int(rule.get("id"), 0))
 
 
 # ── Tenant reads ─────────────────────────────────────────────────────
@@ -409,7 +421,7 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
     catalogue = catalogue or {}
     read_errors = read_errors or {}
     ssl = sorted((normalize_ssl_rule(r) for r in ssl_rules), key=_sort_key)
-    dlp = sorted((normalize_dlp_rule(r) for r in dlp_rules), key=lambda r: (int(r["order"]) if str(r.get("order") or "").lstrip("-").isdigit() else 10 ** 6, int(r.get("id") or 0)))
+    dlp = sorted((normalize_dlp_rule(r) for r in dlp_rules), key=lambda r: (_int(r.get("order"), 10 ** 6), _int(r.get("id"), 0)))
     enabled_ssl = [r for r in ssl if r["enabled"]]
     enabled_dlp = [r for r in dlp if r["enabled"]]
     known_cats = set(category_lookup.keys()) if category_lookup else set()
@@ -566,6 +578,7 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
         "high": sum(1 for g in all_gaps if g["severity"] == "high"),
         "medium": sum(1 for g in all_gaps if g["severity"] == "medium"),
         "low": sum(1 for g in all_gaps if g["severity"] == "low"),
+        "info": sum(1 for g in all_gaps if g["severity"] == "info"),   # high + medium + low + info == gaps
         "ssl_rules": len(ssl), "ssl_rules_enabled": len(enabled_ssl),
         "ssl_decrypt_rules": sum(1 for r in enabled_ssl if r["decision"] == "inspected"),
         "ssl_exempt_rules": sum(1 for r in enabled_ssl if r["decision"] == "not_inspected"),

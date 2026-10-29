@@ -1,0 +1,565 @@
+{
+ "area": "traffic-reports",
+ "title": "Traffic reports: bypass inventory, SSL coverage and flow, Z-Insights client, Log Analyzer, FP/TP Detection Health",
+ "files": [
+  "bypass_report.py",
+  "ssl_coverage.py",
+  "ssl_flow.py",
+  "insights.py",
+  "log_analyzer.py",
+  "detection_health.py"
+ ],
+ "standards": [
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.1.5",
+  "ASVS V5.3.3",
+  "ASVS V5.3.4",
+  "ASVS V5.3.10",
+  "ASVS V7.1.1",
+  "ASVS V7.4.1",
+  "ASVS V8.3.1",
+  "ASVS V8.3.4",
+  "ASVS V11.1.1",
+  "ASVS V11.1.4",
+  "ASVS V12.1.1",
+  "ASVS V12.3.1",
+  "ASVS V12.6.1",
+  "OWASP A01:2021",
+  "OWASP A03:2021",
+  "OWASP A04:2021",
+  "OWASP A09:2021",
+  "CWE-20",
+  "CWE-22",
+  "CWE-248",
+  "CWE-400",
+  "CWE-409",
+  "CWE-532",
+  "CWE-682",
+  "CWE-754",
+  "CWE-755",
+  "CWE-841",
+  "CWE-1236",
+  "CWE-1287",
+  "CWE-1333",
+  "WSTG-INPV-01",
+  "WSTG-INPV-11",
+  "WSTG-ERRH-01",
+  "WSTG-BUSL-01",
+  "WSTG-BUSL-05",
+  "WSTG-BUSL-09",
+  "WSTG-CLNT-01",
+  "WSTG-ATHZ-02"
+ ],
+ "coverage": {
+  "before": 88.0,
+  "after": 92.9
+ },
+ "checks": [
+  {
+   "id": "counts-add-up",
+   "what": "Totals equal their parts and every % is 0..100 (detection health, bypass, ssl flow, ssl coverage, log findings), seeded corpora",
+   "standard": "ASVS V11.1.1 · CWE-682",
+   "result": "fixed"
+  },
+  {
+   "id": "protocol-mapping",
+   "what": "Oracle table of Z-Insights protocol names; unknown names listed, never folded into SSL or HTTP, kept out of percentages",
+   "standard": "ASVS V11.1.1 · CWE-1287",
+   "result": "fixed"
+  },
+  {
+   "id": "graphql-injection",
+   "what": "Insights queries are SDK calls with typed GraphQL variables (zscaler/zins/*.py 1.11.3); unit and window are validated before any query",
+   "standard": "ASVS V5.3.4 · CWE-943",
+   "result": "pass"
+  },
+  {
+   "id": "insights-windows",
+   "what": "Window boundaries (15 min, 92 days, 180-day look-back, 5-min future skew), NaN/inf/text/bool",
+   "standard": "ASVS V5.1.4 · CWE-20",
+   "result": "fixed"
+  },
+  {
+   "id": "insights-partial",
+   "what": "GraphQL errors with data are 'partial', errors fail one section only, messages scrubbed",
+   "standard": "ASVS V7.4.1 · CWE-209",
+   "result": "pass"
+  },
+  {
+   "id": "rate-limit",
+   "what": "One query at a time, PACE_SECONDS between queries and none before the first, Stop during the pause; 429 hint",
+   "standard": "ASVS V11.1.4 · CWE-770",
+   "result": "fixed"
+  },
+  {
+   "id": "pagination",
+   "what": "Incident search pages 1..n once each, stops at a short page, dedups, says when cut at MAX_PAGES",
+   "standard": "ASVS V11.1.1 · CWE-835",
+   "result": "fixed"
+  },
+  {
+   "id": "upload-bombs",
+   "what": "gzip, tar and ZIP bombs, member and note caps, nesting depth, traversal names, 10 MB single lines",
+   "standard": "ASVS V12.1.1 · CWE-409 · CWE-400 · CWE-22",
+   "result": "fixed"
+  },
+  {
+   "id": "upload-parsing",
+   "what": "Seeded byte mutations of every bundle kind end in a result or a plain error",
+   "standard": "ASVS V12.1.1 · CWE-248",
+   "result": "fixed"
+  },
+  {
+   "id": "redaction",
+   "what": "Secrets in evidence and error lines (bearer, JSON, *_token, cookies, provisioning keys)",
+   "standard": "ASVS V7.1.1 · CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "incident-data",
+   "what": "Insights user rows never exported; detection-health logs carry no names; report errors scrubbed (server patch open)",
+   "standard": "ASVS V8.3.1 · CWE-359 · CWE-532",
+   "result": "open"
+  },
+  {
+   "id": "detection-math",
+   "what": "Verdict oracle, FP/TP in lowest terms, rates and shares within 0..100",
+   "standard": "ASVS V11.1.1 · CWE-682",
+   "result": "pass"
+  },
+  {
+   "id": "detection-proposals",
+   "what": "No dead-rule proposal from unobserved data; applying a proposal is refused without the write gates before any client is built",
+   "standard": "ASVS V4.1.3 · CWE-841",
+   "result": "fixed"
+  },
+  {
+   "id": "settings-input",
+   "what": "Threshold overrides validated; no request-written regular expression",
+   "standard": "ASVS V5.1.5 · CWE-1333 · CWE-20",
+   "result": "fixed"
+  },
+  {
+   "id": "export-injection",
+   "what": "Markdown, CSV, DOCX and XLSX exports of all six reports keep hostile tenant text inert",
+   "standard": "ASVS V5.3.3 · V5.3.10 · CWE-1236 · CWE-79",
+   "result": "fixed"
+  },
+  {
+   "id": "scope",
+   "what": "Bypass report reads nothing out of scope and refuses an empty scope",
+   "standard": "ASVS V4.1.3 · CWE-863",
+   "result": "pass"
+  },
+  {
+   "id": "file-permissions",
+   "what": "SSL coverage history written 0600, atomically, no temp file left; damaged history reads as empty",
+   "standard": "ASVS V8.3.4 · CWE-276 · CWE-732",
+   "result": "pass"
+  },
+  {
+   "id": "ssrf",
+   "what": "Nothing fetches a URL from an upload or tenant string: PAC evaluation assumes public DNS and never resolves or downloads",
+   "standard": "ASVS V12.6.1 · CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "fail-closed-reporting",
+   "what": "An unreadable rule list is 'could not be read', never 'no bypass'",
+   "standard": "ASVS V7.4.1 · CWE-754",
+   "result": "fixed"
+  },
+  {
+   "id": "tenant-data-robustness",
+   "what": "400 seeded malformed incidents, rules, ZCC profiles and Insights answers never stop a report",
+   "standard": "ASVS V5.1.3 · CWE-20 · CWE-248",
+   "result": "fixed"
+  },
+  {
+   "id": "markdown-download-page",
+   "what": "Client-side Markdown download of the Log Analyzer page",
+   "standard": "ASVS V5.3.3 · CWE-1236",
+   "result": "open"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-TRAFFIC-REPORTS-01",
+   "title": "Log evidence redaction missed bearer tokens, JSON-quoted keys, prefixed *_token / JSESSIONID / provisioning_key keys and all but the first cookie",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "Header-aware (Authorization, Cookie) and key-suffix redaction, quoted keys and values, bounded linear patterns",
+   "test": "tests/test_c6_traffic_reports.py::test_redact_hides_credentials_in_every_common_log_shape",
+   "commit": "83d4c6f"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-02",
+   "title": "A ZIP with thousands of entries past the member cap returned one note per entry (unbounded response)",
+   "severity": "low",
+   "cwe": "CWE-400",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "Stop at the member cap and keep at most MAX_NOTES notes plus a count",
+   "test": "tests/test_c6_traffic_reports.py::test_a_zip_with_thousands_of_entries_notes_the_member_cap_once",
+   "commit": "83d4c6f"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-03",
+   "title": "Detection Health threshold overrides were not validated: a text threshold was a 500 and telemetry_patterns compiled a request-written regular expression",
+   "severity": "medium",
+   "cwe": "CWE-1333",
+   "asvs": "V5.1.5",
+   "status": "fixed",
+   "fix": "clean_settings: bounded whole numbers, short text lists, plain-text telemetry fragments; invalid values keep the default with a note",
+   "test": "tests/test_c6_traffic_reports.py::test_a_request_never_supplies_a_regular_expression",
+   "commit": "7089135"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-04",
+   "title": "The not_real override was echoed in the report but verdicts were always taken with the defaults",
+   "severity": "low",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Verdicts re-derived with the run's not_real list",
+   "test": "tests/test_c6_traffic_reports.py::test_the_not_real_override_decides_the_verdicts",
+   "commit": "7089135"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-05",
+   "title": "fp/dead/promote windows longer than the incidents read: 7 days of incidents raised 'Disable X: no incident in 30 days'",
+   "severity": "medium",
+   "cwe": "CWE-841",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Each window is clamped to the days read and the report states the windows used",
+   "test": "tests/test_c6_traffic_reports.py::test_no_window_is_longer_than_the_incidents_read",
+   "commit": "7089135"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-06",
+   "title": "An incident read stopped at MAX_PAGES was silent, so counts and dead rules were built on part of the window",
+   "severity": "medium",
+   "cwe": "CWE-841",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Truncation is a read problem and no rule is called dead",
+   "test": "tests/test_c6_traffic_reports.py::test_a_read_cut_at_the_page_cap_calls_no_rule_dead",
+   "commit": "7089135"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-07",
+   "title": "A Web DLP rule that forwards no match to an Incident Receiver (it can never have an incident) was called dead and given a retire proposal",
+   "severity": "medium",
+   "cwe": "CWE-841",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Such rules are not_measured, with no dead-rule finding or proposal",
+   "test": "tests/test_c6_traffic_reports.py::test_a_rule_that_forwards_no_incident_is_not_called_dead",
+   "commit": "7089135"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-08",
+   "title": "Summary users / destinations counted the '(unknown ...)' placeholder rows",
+   "severity": "low",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Count distinct known users and destinations only",
+   "test": "tests/test_c6_traffic_reports.py::test_the_unknown_user_row_is_not_counted_as_a_user",
+   "commit": "7089135"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-09",
+   "title": "Bypass Markdown export wrote tenant category names, rule names, URLs and keywords raw in the URL Category Expansion Detail (forged heading, link, code-span break-out)",
+   "severity": "medium",
+   "cwe": "CWE-1236",
+   "asvs": "V5.3.3",
+   "status": "fixed",
+   "fix": "md_safe.text / md_safe.code for every tenant value in that section",
+   "test": "tests/test_c6_traffic_reports.py::test_category_expansion_detail_in_markdown_is_inert",
+   "commit": "82c072d"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-10",
+   "title": "A boolean advanced setting whose key holds 'bypass' (enableEvaluatePolicyOnGlobalSSLBypass) was counted as an SSL exemption and as a bypassed URL 'False'",
+   "severity": "low",
+   "cwe": "CWE-843",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Only lists and non-empty texts are exempted values",
+   "test": "tests/test_c6_traffic_reports.py::test_a_switch_in_advanced_settings_is_not_an_exemption",
+   "commit": "82c072d"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-11",
+   "title": "A rule list or advanced settings answering 401/403/5xx was reported as zero bypasses (fail-open reporting)",
+   "severity": "medium",
+   "cwe": "CWE-754",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Unreadable sections are a diagnostic and status unverified; 404 stays 'not on this tenant'; ZCC with no endpoint answering is a diagnostic",
+   "test": "tests/test_c6_traffic_reports.py::test_an_unreadable_section_is_could_not_be_read_not_zero_bypasses",
+   "commit": "82c072d, 402ada5"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-12",
+   "title": "Bypass rules scoped by SDK conditions (locationGroups, sourceIpGroups, deviceGroups, platforms, timeWindows, ...) were flagged 'applies to everyone'",
+   "severity": "low",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "The scope summary reads every scope field the SDK models carry (as_dict camelCase)",
+   "test": "tests/test_c6_traffic_reports.py::test_a_bypass_rule_scoped_by_any_sdk_condition_is_not_flagged_global",
+   "commit": "cf475b0"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-13",
+   "title": "SSL flow sort crashed on a rule id or order sent as text or an infinity",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "_int() with a default for ids and orders",
+   "test": "tests/test_c6_traffic_reports.py::test_tenant_ids_and_orders_that_are_not_numbers_never_stop_the_report",
+   "commit": "596cc69"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-14",
+   "title": "SSL flow summary left info gaps out, so high + medium + low did not add up to gaps",
+   "severity": "info",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Summary counts info gaps",
+   "test": "tests/test_c6_traffic_reports.py::test_gap_severities_add_up_to_the_gap_total",
+   "commit": "596cc69"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-15",
+   "title": "SSL coverage counted a boolean protocol total as 1 and did not total the unrecognised protocols apart",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Booleans skipped; unrecognised_total added (names still listed, never bucketed)",
+   "test": "tests/test_c6_traffic_reports.py::test_an_unrecognised_protocol_is_listed_and_kept_out_of_every_percentage",
+   "commit": "596cc69"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-16",
+   "title": "Insights validate_window raised OverflowError (not WindowError) for an infinite bound",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "OverflowError refused as a WindowError",
+   "test": "tests/test_c6_traffic_reports.py::test_time_windows_follow_their_boundaries",
+   "commit": "596cc69"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-17",
+   "title": "A rate-limited Insights answer (429) had no plain-language hint",
+   "severity": "info",
+   "cwe": "CWE-770",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "Rate-limit hint",
+   "test": "tests/test_c6_traffic_reports.py::test_a_rate_limited_section_says_to_wait_and_try_again",
+   "commit": "596cc69"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-18",
+   "title": "Log Analyzer kept the first 400 tunnel states, so a long log reported a stale last tunnel state",
+   "severity": "low",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "deque of the latest 400",
+   "test": "tests/test_c6_traffic_reports.py::test_the_last_tunnel_state_is_the_last_one_in_a_long_log",
+   "commit": "98090c0"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-19",
+   "title": "A PAC with a low finding was summed up as 'passes every check'",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "Low PAC findings give an 'info' verdict",
+   "test": "tests/test_c6_traffic_reports.py::test_a_pac_with_a_low_finding_is_not_said_to_pass_every_check",
+   "commit": "98090c0"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-20",
+   "title": "Live feed 'since' without a zone was a TypeError (500); one in the future asked an inverted window",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "Naive is UTC; a future cursor starts now",
+   "test": "tests/test_c6_traffic_reports.py::test_a_live_feed_cursor_without_a_zone_or_from_the_future_is_read_safely",
+   "commit": "98090c0"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-21",
+   "title": "A .gz with a good header and a broken deflate body raised zlib.error out of analyze() (500)",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "zlib.error is a note",
+   "test": "tests/test_c6_traffic_reports.py::test_a_damaged_compressed_upload_is_a_note_never_a_crash",
+   "commit": "77c5595"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-22",
+   "title": "A ZIP claiming a future version raised NotImplementedError (500); a lying member offset failed the whole upload with 'negative seek value'",
+   "severity": "low",
+   "cwe": "CWE-248",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "Both are notes for that archive or member; seeded mutation test",
+   "test": "tests/test_c6_traffic_reports.py::test_a_zip_python_cannot_open_is_a_note_never_a_crash",
+   "commit": "58cee80"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-23",
+   "title": "Malformed tenant data stopped reports: a bare category name read character by character, int() of text match counts, out-of-range createdAt, non-list fields, a list rule id, ZCC shapes",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Defensive readers (_names, _whole, _items, _seq/_map); 400-case seeded test",
+   "test": "tests/test_c6_traffic_reports.py::test_seeded_malformed_tenant_data_never_stops_any_report",
+   "commit": "1c17785"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-24",
+   "title": "Detection Health read problems (SDK error text) went into the report and the live feed with no scrub",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "generate() and poll_incidents() take a scrub applied to every read problem",
+   "test": "tests/test_c6_traffic_reports.py::test_read_problems_pass_through_the_given_scrub",
+   "commit": "bad67ff"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-25",
+   "title": "The /api/detection-health and live-feed routes do not mask the sign-in's secrets in the read problems they return",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "open",
+   "fix": "Mask report['errors'] and poll['errors'] with tenant_auth.mask_secrets(…, creds), as the Insights and SSL coverage routes do",
+   "test": "",
+   "commit": "",
+   "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -1667,6 +1667,8 @@\n                     + (\"\" if sc[\"read_incidents\"] else \"; Workflow Automation is not marked as run on Zscaler, so its incidents are not read\") + \".\")\n     report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append,\n                                                                        channels=list(sc[\"pack_channels\"]), read_incidents=bool(sc[\"read_incidents\"])))\n+    # An SDK error that echoes the sign-in's secret never reaches the report.\n+    report[\"errors\"] = [tenant_auth.mask_secrets(str(e), creds) for e in report.get(\"errors\") or []]\n     import dlp_analysis\n     raw = await asyncio.to_thread(_build_client, req)\n     requested_scopes, requested_channels, _ = _scope_selection(req)\n@@ -1803,6 +1805,7 @@\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     label = tenant_auth.record_label(creds)   # never the classic API's admin login (user rule 3)\n     poll = (await asyncio.to_thread(detection_health.poll_incidents, client, since)) if sc[\"read_incidents\"] else {\"incidents\": [], \"next_since\": req.since, \"errors\": [DH_WA_ALTERNATIVE], \"read_at\": datetime.now(timezone.utc).isoformat()}\n+    poll[\"errors\"] = [tenant_auth.mask_secrets(str(e), creds) for e in poll.get(\"errors\") or []]\n     import tenant_fingerprint\n     # The rule cache's key names no classic-API tenant by a vanity domain or\n     # its admin login (an opaque fingerprint key), and keeps two classic\n"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-26",
+   "title": "The Log Analyzer page's Markdown download builds from raw upload text: file and PAC names, users, notes and bypass values add headings, links or table cells, and a log line holding ``` closes the evidence fence",
+   "severity": "medium",
+   "cwe": "CWE-1236",
+   "asvs": "V5.3.3",
+   "status": "open",
+   "fix": "Escape upload text as md_safe.text does and fence evidence longer than any backtick run it holds (verified with node: no forged heading, tag or fence break)",
+   "test": "",
+   "commit": "",
+   "proposed_patch": "--- a/static/report_logs.html\t2026-10-29 04:01:29.643973277 +0000\n+++ b/static/report_logs.html\t2026-10-29 04:01:29.663601177 +0000\n@@ -236,6 +236,14 @@\n       setEnabled('laDownload', true); setEnabled('laCopy', true);\n     }\n \n+    // Upload-controlled text (file and PAC names, users, notes, bypass values,\n+    // log lines) is made inert as md_safe.text does on the server: one line,\n+    // no tag, link, code or table syntax. Evidence goes in a fence longer\n+    // than any backtick run it holds, so a log line cannot close it.\n+    const M = s => String(s == null ? '' : s).replace(/[\\r\\n\\t\\u2028\\u2029\\u0085\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]+/g, ' ')\n+      .replace(/[\\u202a-\\u202e\\u2066-\\u2069]/g, '\\ufffd').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/([\\\\`\\[\\]|])/g, '\\\\$1');\n+    const fenceFor = lines => '`'.repeat(Math.max(3, ...lines.map(l => Math.max(0, ...(String(l).match(/`+/g) || []).map(r => r.length + 1)))));\n+    const oneLine = s => String(s == null ? '' : s).replace(/[\\r\\n\\u2028\\u2029\\u0085]+/g, ' ');\n     function markdown(d) {\n       const out = [];\n       const v = d.verdict || {};\n@@ -245,30 +253,30 @@\n         out.push('## What we read', '');\n         out.push(`- Period: ${L.period && L.period.first ? `${L.period.first} → ${L.period.last}` : 'no timestamps'}`);\n         const f = L.facts || {};\n-        out.push(`- Client Connector: ${(f.client_versions || []).join(', ') || 'unknown'}; OS: ${(f.operating_systems || []).join(', ') || 'unknown'}; user: ${(f.users || []).join(', ') || 'unknown'}; cloud: ${(f.clouds || []).join(', ') || 'unknown'}`);\n-        out.push(`- Files: ${(L.files || []).map(x => `${x.name} (${x.lines} lines)`).join(', ')}`, '');\n+        out.push(`- Client Connector: ${(f.client_versions || []).map(M).join(', ') || 'unknown'}; OS: ${(f.operating_systems || []).map(M).join(', ') || 'unknown'}; user: ${(f.users || []).map(M).join(', ') || 'unknown'}; cloud: ${(f.clouds || []).map(M).join(', ') || 'unknown'}`);\n+        out.push(`- Files: ${(L.files || []).map(x => `${M(x.name)} (${x.lines} lines)`).join(', ')}`, '');\n         out.push('## Findings', '');\n         for (const x of L.findings || []) {\n           out.push(`### [${x.severity.toUpperCase()}] ${x.title} (${x.count} lines${x.first ? `, ${x.first} → ${x.last}` : ''})`, '');\n           out.push(`**What happened.** ${x.what}`, '', `**What it means.** ${x.means}`, '', '**What to do next.**');\n           (x.do || []).forEach((s, i) => out.push(`${i + 1}. ${s}`));\n           if (x.context) out.push('', `> ${x.context}`);\n-          if ((x.evidence || []).length) { out.push('', '```'); x.evidence.forEach(ev => out.push(`${ev.file}${ev.ts ? ' ' + ev.ts : ''}: ${ev.line}`)); out.push('```'); }\n+          if ((x.evidence || []).length) { const ls = x.evidence.map(ev => oneLine(`${ev.file}${ev.ts ? ' ' + ev.ts : ''}: ${ev.line}`)); const fn = fenceFor(ls); out.push('', fn, ...ls, fn); }\n           out.push('');\n         }\n-        if ((L.top_errors || []).length) { out.push('## Most repeated error lines', '', '```'); L.top_errors.forEach(t => out.push(`x${t.count} ${t.message}`)); out.push('```', ''); }\n+        if ((L.top_errors || []).length) { const ls = L.top_errors.map(t => oneLine(`x${t.count} ${t.message}`)); const fn = fenceFor(ls); out.push('## Most repeated error lines', '', fn, ...ls, fn, ''); }\n       }\n       for (const p of d.pac || []) {\n         const s = p.summary || {};\n-        out.push(`## PAC file: ${p.name}`, '', `- Default: ${s.default}; gateways: ${(s.gateways || []).join(', ') || 'none'}; macros: ${(s.macros || []).join(', ') || 'none'}; bypasses: ${s.bypass_count || 0}`, '');\n+        out.push(`## PAC file: ${M(p.name)}`, '', `- Default: ${M(s.default)}; gateways: ${(s.gateways || []).map(M).join(', ') || 'none'}; macros: ${(s.macros || []).map(M).join(', ') || 'none'}; bypasses: ${s.bypass_count || 0}`, '');\n         for (const x of p.findings || []) {\n-          out.push(`### [${x.severity.toUpperCase()}] ${x.title}`, '', `**What happened.** ${x.what}`, '', `**What it means.** ${x.means}`, '', '**What to do next.**');\n-          (x.do || []).forEach((st, i) => out.push(`${i + 1}. ${st}`));\n+          out.push(`### [${x.severity.toUpperCase()}] ${M(x.title)}`, '', `**What happened.** ${M(x.what)}`, '', `**What it means.** ${M(x.means)}`, '', '**What to do next.**');\n+          (x.do || []).forEach((st, i) => out.push(`${i + 1}. ${M(st)}`));\n           out.push('');\n         }\n-        if ((s.bypasses || []).length) { out.push('| Line | Test | Value | Risk |', '|---|---|---|---|'); s.bypasses.forEach(b => out.push(`| ${b.line} | ${b.kind} | ${b.value} | ${b.risk} |`)); out.push(''); }\n+        if ((s.bypasses || []).length) { out.push('| Line | Test | Value | Risk |', '|---|---|---|---|'); s.bypasses.forEach(b => out.push(`| ${M(b.line)} | ${M(b.kind)} | ${M(b.value)} | ${M(b.risk)} |`)); out.push(''); }\n       }\n-      if ((d.notes || []).length) out.push('## Skipped', '', ...d.notes.map(n => `- ${n}`), '');\n+      if ((d.notes || []).length) out.push('## Skipped', '', ...d.notes.map(n => `- ${M(n)}`), '');\n       return out.join('\\n');\n     }\n     $('laDownload').addEventListener('click', () => {\n"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-27",
+   "title": "safe_files.zip_member lets ValueError ('negative seek value') and OSError escape for a member whose offset lies, so callers that catch only ArchiveRefused fail",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "open",
+   "fix": "Refuse them as ArchiveRefused (re-raising ArchiveRefused itself first, since it is a ValueError); log_analyzer already catches them",
+   "test": "",
+   "commit": "",
+   "proposed_patch": "--- a/safe_files.py\n+++ b/safe_files.py\n@@ -133,7 +133,10 @@\n                 out += chunk\n                 if len(out) > limit:\n                     raise ArchiveRefused(f\"{name}: expands past its limit\")\n-    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError) as e:\n+    except ArchiveRefused:\n+        raise\n+    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError, ValueError, OSError) as e:\n+        # ValueError: a local header offset that lies (\"negative seek value\").\n         # A damaged member (a CRC that does not match, a size that lies) is refused, not a server error.\n         raise ArchiveRefused(f\"{name}: damaged or not what it claims ({str(e)[:80]})\") from None\n     return bytes(out)\n"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-28",
+   "title": "The Bypass report's aggregated 'bypassed' lists and summary include rules whose state is DISABLED",
+   "severity": "info",
+   "cwe": "CWE-682",
+   "asvs": "V11.1.1",
+   "status": "accepted",
+   "fix": "Kept on purpose: the inventory is for auditors, every item carries its rule state, and risk flags already require ENABLED",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-29",
+   "title": "Log Analyzer facts show the device user's e-mail address from the logs",
+   "severity": "info",
+   "cwe": "CWE-359",
+   "asvs": "V8.3.1",
+   "status": "accepted",
+   "fix": "Needed to identify the device; shown on screen only, never logged or written to disk",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-30",
+   "title": "The live feed polls by creation time, so an incident ingested after its window passed is not shown live",
+   "severity": "info",
+   "cwe": "CWE-665",
+   "asvs": "V11.1.1",
+   "status": "accepted",
+   "fix": "Documented limit of a creation-time window; the full report reads the whole period",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-31",
+   "title": "clean_settings (added in this wave) raised OverflowError on an Infinity threshold",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "math.isfinite check",
+   "test": "tests/test_c6_traffic_reports.py::test_bad_threshold_overrides_fall_back_to_the_default_with_a_note",
+   "commit": "85860d8"
+  },
+  {
+   "id": "C6-TRAFFIC-REPORTS-32",
+   "title": "docs/SECURITY_TESTING.md is stale once this branch's 66 mapped tests land (test_security_test_matrix::test_the_standards_document_is_current)",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.6",
+   "status": "open",
+   "fix": "Integrator regenerates the document after merging: python tools/security_test_matrix.py (this agent may not edit it)",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "",
+   "proposed_patch": "Regenerated, not hand-written: run `python tools/security_test_matrix.py` and commit docs/SECURITY_TESTING.md."
+  }
+ ],
+ "tests_added": 158,
+ "coverage_detail": {
+  "method": "coverage.py line+branch over the six files, the 32 test files that exercise them (+ the new test file after)",
+  "before": {
+   "bypass_report.py": 74,
+   "detection_health.py": 90,
+   "insights.py": 96,
+   "log_analyzer.py": 90,
+   "ssl_coverage.py": 89,
+   "ssl_flow.py": 97
+  },
+  "after": {
+   "bypass_report.py": 89,
+   "detection_health.py": 93,
+   "insights.py": 97,
+   "log_analyzer.py": 93,
+   "ssl_coverage.py": 92,
+   "ssl_flow.py": 97
+  }
+ }
+}
