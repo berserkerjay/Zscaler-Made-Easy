@@ -125,14 +125,29 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+_HELD = threading.local()   # how deep this thread is inside _locked()
+
+
 @contextlib.contextmanager
 def _locked() -> Iterator[None]:
     """This process's lock, then an exclusive lock on <store>.lock, so a
-    read-modify-write never interleaves with another thread or process."""
+    read-modify-write never interleaves with another thread or process.
+    Re-entrant: a nested call in the same thread only counts depth (a
+    second lock on a new descriptor of the same file would wait on this
+    thread's own lock forever)."""
     with _LOCK:
+        depth = getattr(_HELD, "depth", 0)
+        if depth:
+            _HELD.depth = depth + 1
+            try:
+                yield
+            finally:
+                _HELD.depth = depth
+            return
         p = store_path()
         safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)) or ".")
         fd = os.open(p + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+        _HELD.depth = 1
         try:
             if fcntl is not None:
                 fcntl.flock(fd, fcntl.LOCK_EX)
@@ -140,6 +155,7 @@ def _locked() -> Iterator[None]:
                 msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
             yield
         finally:
+            _HELD.depth = 0
             try:
                 if fcntl is not None:
                     fcntl.flock(fd, fcntl.LOCK_UN)
