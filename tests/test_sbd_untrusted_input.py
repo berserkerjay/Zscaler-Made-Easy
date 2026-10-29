@@ -420,12 +420,25 @@ def test_a_har_host_entry_of_the_wrong_type_is_read_as_nothing_not_a_500(app, it
 
 @pytest.mark.parametrize("raw", ["NaN", "Infinity", "-Infinity"])
 def test_a_har_count_of_nan_or_infinity_is_not_a_500(app, raw):
-    """ASVS V5.1.4 · CWE-1287 · CWE-681: JSON's non-standard NaN and Infinity are refused by the request parser (422) or count as nothing (400 before sign-in); never a 500."""
+    """ASVS V5.1.4 · CWE-1287 · CWE-681: JSON's non-standard NaN and Infinity are refused by the strict request parser: exactly 422 json_invalid, never a 500 and never read as a number."""
     # Act
     r = app.post("/api/path-analyzer/batch/start", content='{"har_hosts": [{"host": "a.example.com", "requests": %s}]}' % raw,
                  headers={"Content-Type": "application/json"})
     # Assert
-    assert r.status_code in (400, 422) and (r.status_code == 422 or "in scope" in r.json()["detail"]), r.text
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"][0]["type"] == "json_invalid"
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "-inf"])
+def test_batch_host_counts_of_nan_or_infinity_count_as_nothing(bad):
+    """ASVS V5.1.4 · CWE-1287 · CWE-681: the second line of defence: a NaN or infinite count reaching _batch_hosts from inside the process becomes 0, never an OverflowError or ValueError."""
+    # Arrange
+    req = srv.PathBatchRequest(har_hosts=[{"host": "a.example.com", "requests": bad, "bytes_sent": bad, "uploads": bad}])
+    # Act
+    hosts, stats, skipped = srv._batch_hosts(req)
+    # Assert
+    assert hosts == ["a.example.com"] and skipped == []
+    assert (stats["a.example.com"]["requests"], stats["a.example.com"]["bytes_sent"], stats["a.example.com"]["uploads"]) == (0, 0, 0)
 
 
 def test_batch_host_counts_keep_valid_numbers():

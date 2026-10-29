@@ -540,7 +540,7 @@ def rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def _item_line(i: Dict[str, Any]) -> str:
     if i.get("method"):
-        return f"{i.get('method')} {i.get('endpoint')}"
+        return f"{i.get('method')} {i.get('endpoint')}" + (f" — {i['note']}" if i.get("note") else "")
     bits = [str(i.get("status") or ""), str(i.get("kind") or ""), str(i.get("name") or "")]
     if i.get("channel"):
         bits.append(f"({i['channel']})")

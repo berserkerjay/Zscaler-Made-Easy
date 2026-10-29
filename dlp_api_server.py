@@ -2260,7 +2260,7 @@ async def change_queue_file_recipe(req: ChangeRequestRecipe, request: Request):
             title=req.title or f"{plan.get('recipe_label')} (check {req.check_id})",
             summary={"api_call": 1, "write": 1 if plan.get("destructive") else 0},
             items=[{"method": plan.get("method"), "endpoint": plan.get("endpoint"), "body": plan.get("body"), "status": "send",
-                    "kind": "call", "name": plan.get("recipe_label")}],
+                    "kind": "call", "name": plan.get("recipe_label"), **({"note": plan["note"]} if plan.get("note") else {})}],
             plan_hash=change_queue.recipe_plan_hash(req.check_id, plan), requested_by=_cq_by(request), note=req.note,
             payload={"check_id": req.check_id, "recipe": recipe.get("check_id"), "criteria": criteria})
     except Exception as e:  # noqa: BLE001
@@ -8899,7 +8899,9 @@ def _batch_hosts(req: PathBatchRequest) -> Tuple[List[str], Dict[str, Dict[str, 
     if len(req.har_hosts) > path_analyzer.BATCH_MAX:
         raise HTTPException(status_code=400, detail=f"At most {path_analyzer.BATCH_MAX} hosts are analyzed per run; {len(req.har_hosts)} were sent.")
     # Each count and list is checked for its type (deny by default): a value of
-    # another type, NaN or Infinity counts as nothing, never a 500.
+    # another type, NaN or Infinity counts as nothing, never a 500. Over HTTP
+    # NaN and Infinity never get here (_StrictJSONRoute refuses the body, 422);
+    # only callers inside the process can pass them, and this stays the guard.
     num = lambda v: max(0, min(int(v), 10 ** 12)) if (isinstance(v, int) or (isinstance(v, float) and abs(v) < float("inf"))) and not isinstance(v, bool) else 0  # noqa: E731
     for item in req.har_hosts:
         raw = item.get("host") if isinstance(item, dict) else item

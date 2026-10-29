@@ -13,7 +13,9 @@ new route or plugin that breaks one of these rules fails CI:
   look-alike (decided: no NFKC; security.typed_phrase_matches), and a
   blank phrase never switches the confirmation off;
 * defaults create nothing enabled or enforcing unless the operator chose it
-  (plugins, remediation recipes); enforcing AI Guard plans ask their phrase;
+  (plugins, remediation recipes; a recipe that leaves the state out is
+  planned DISABLED); every AI Guard plan with a change asks its phrase
+  (monitor-only too: nothing it writes is created disabled), Undo included;
 * an Undo applies only the recorded inverse of its operation, once; the
   Undo-only forms (revert / undo) are refused as ordinary operations;
 * two applies at once write once (pack_ops.tenant_run), a refused busy run
@@ -569,7 +571,8 @@ def test_an_update_that_timed_out_is_still_retried():
 
 
 # ---------------------------------------------------------------------------
-# A plan that switches enforcement on asks for its typed phrase every time
+# Every AI Guard plan with a change asks for its typed phrase, whatever the
+# count and the mode (nothing it writes is created disabled), Undo included
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -598,10 +601,35 @@ def test_an_ai_guard_plan_that_turns_enforcement_on_needs_the_typed_phrase(aig, 
 
 
 def test_a_monitor_only_ai_guard_policy_still_asks_for_its_phrase(aig):
-    """ASVS V11.1.1 · CWE-1188 · CWE-841: the detection policy in its default monitor mode (detect only) is still live once saved, so it asks for its typed phrase whatever the count."""
+    """ASVS V11.1.1 · CWE-1188 · CWE-841: the detection policy in its default monitor mode (detect only) is still live once saved, so it asks for its typed phrase whatever the count, and an execute with no phrase is refused with no write."""
+    # Arrange
     f = aig.Fake()
     p = aig.preview(f, aig.POLICY)
+    # Act
+    refused = ao.execute(f, aig.POLICY, plan_hash=p["plan_hash"], scope=aig.FULL, writes_enabled=True, assessor=ASSESSOR, confirm_text="",
+                         settle_seconds=0)
+    # Assert
     assert p["spec"].get("mode", "monitor") == "monitor" and p["confirm_phrase"].startswith("APPLY ")
+    assert refused["status"] == "refused" and not [w for w in f.t.writes if w[1] in ("add", "update", "delete")]
+
+
+@pytest.mark.parametrize("spec_name", ["ROUTE", "POLICY"])
+def test_an_ai_guard_undo_plan_asks_for_its_phrase_and_refuses_a_blank_one(aig, spec_name):
+    """ASVS V11.1.1 · V1.4.1 · CWE-841 · A04:2021: the Undo plan of an applied AI Guard change (it deletes live rules) asks for its typed phrase too; an execute with a blank phrase is refused and writes nothing."""
+    # Arrange
+    f = aig.Fake(proxy=True, gateway=True)
+    spec = getattr(aig, spec_name)
+    done = aig.apply(f, spec)
+    assert done["status"] == "applied" and done["inverse"], done.get("status")
+    inverse = done["inverse"]
+    before = len(f.t.writes)
+    p = aig.preview(f, inverse)
+    # Act
+    refused = ao.execute(f, inverse, plan_hash=p["plan_hash"], scope=aig.FULL, writes_enabled=True, assessor=ASSESSOR, confirm_text="",
+                         settle_seconds=0)
+    # Assert
+    assert p["counts"]["change"] > 0 and p["confirm_phrase"].startswith("APPLY ")
+    assert refused["status"] == "refused" and not [w for w in f.t.writes[before:] if w[1] in ("add", "update", "delete")]
 
 
 # ---------------------------------------------------------------------------
@@ -992,7 +1020,7 @@ def test_every_remediation_recipe_offers_its_rule_disabled_by_default(check_id):
 
 
 @pytest.mark.parametrize("check_id", STATE_RECIPES)
-def test_a_remediation_without_a_state_is_refused_never_left_to_the_tenant(check_id):
+def test_a_remediation_without_a_state_gets_disabled_never_left_to_the_tenant(check_id):
     """ASVS V5.1.3 · V4.1.3 · CWE-1188 · CWE-20: a request that leaves the rule state out (a script) gets the secure default DISABLED; the state is never left for ZIA to choose, and an explicit ENABLED is honoured."""
     recipe = remediation.get_recipe(check_id)
     criteria = {f["key"]: (f.get("default") if f.get("default") not in (None, "") else ("1" if f.get("type") == "number" else "QA"))

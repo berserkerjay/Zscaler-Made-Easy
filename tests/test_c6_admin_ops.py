@@ -774,8 +774,8 @@ def _writes_on(monkeypatch):
     monkeypatch.setattr(security, "writes_enabled", lambda: True)
 
 
-def test_a_patch_recipe_without_client_patch_sends_the_whole_rule(monkeypatch):
-    """ASVS V1.14.6 · A04:2021 · CWE-440 · WSTG-BUSL-01: 'Add description' reads the rule and PUTs it back whole; a PUT of the description alone would replace the rule."""
+def test_a_merge_recipe_on_a_raw_client_sends_the_whole_rule(monkeypatch):
+    """ASVS V1.14.6 · A04:2021 · CWE-440 · WSTG-BUSL-01: 'Add description' (a merge recipe) reads the rule and PUTs it back whole; a PUT of the description alone would replace the rule."""
     _writes_on(monkeypatch)
     c = _RawClient(current={"id": 7, "name": "PCI", "order": 3, "action": "BLOCK", "description": ""})
     out = remediation.execute(c, "RULE-DESC", {"rule_type": "webDlpRules", "rule_id": "7", "description": "owner: SecOps"}, dry_run=False)
@@ -785,7 +785,7 @@ def test_a_patch_recipe_without_client_patch_sends_the_whole_rule(monkeypatch):
 
 
 @pytest.mark.parametrize("current,code", [(None, 404), ("error page", 200), ({"error": "x"}, 401)])
-def test_a_patch_recipe_whose_rule_cannot_be_read_sends_nothing(monkeypatch, current, code):
+def test_a_merge_recipe_whose_rule_cannot_be_read_sends_nothing(monkeypatch, current, code):
     """ASVS V7.4.1 · CISA SbD fail closed · CWE-755 · WSTG-ERRH-01: if the rule cannot be read first, no write is sent."""
     _writes_on(monkeypatch)
     c = _RawClient(current=current, get_code=code)
@@ -897,9 +897,10 @@ def _demo_recipe(method):
 
 
 @pytest.mark.parametrize("method,verb,code,status", [("PUT", "PUT", 200, "completed"), ("DELETE", "DELETE", 204, "completed"),
-                                                    ("POST", "POST", 500, "failed"), ("OPTIONS", None, None, "error")])
+                                                    ("POST", "POST", 500, "failed"), ("OPTIONS", None, None, "error"),
+                                                    ("PATCH", None, None, "error")])
 def test_each_recipe_method_goes_to_the_matching_call(monkeypatch, method, verb, code, status):
-    """ASVS V13.2.1 · CWE-650 · WSTG-CONF-06: PUT, DELETE and POST map to their own call; an unsupported method sends nothing."""
+    """ASVS V13.2.1 · CWE-650 · WSTG-CONF-06: PUT, DELETE and POST map to their own call; an unsupported method (PATCH included: ZIA updates by a whole-rule PUT, so a partial change is a merge recipe) sends nothing, not even a read."""
     monkeypatch.setattr(remediation, "REMEDIATIONS", [_demo_recipe(method)])
     _writes_on(monkeypatch)
 
@@ -907,6 +908,10 @@ def test_each_recipe_method_goes_to_the_matching_call(monkeypatch, method, verb,
         def post(self, ep, body=None):
             self.calls.append(("POST", ep, body))
             return ({"error": "boom"}, code)
+
+        def patch(self, ep, body=None):
+            self.calls.append(("PATCH", ep, body))
+            return ({}, 200)
     c = C()
     out = remediation.execute(c, "C6-DEMO", {"rule_id": "42", "note": "x"}, dry_run=False)
     assert out["status"] == status
@@ -927,6 +932,26 @@ def test_a_description_fix_reads_the_rule_and_puts_it_back_whole(monkeypatch):
     c = P(current=rule)
     assert remediation.execute(c, "RULE-DESC", {"rule_type": "webDlpRules", "rule_id": "7", "description": "d"}, dry_run=False)["status"] == "completed"
     assert c.calls == [("GET", "/zia/webDlpRules/7", None), ("PUT", "/zia/webDlpRules/7", dict(rule, description="d"))]
+
+
+def test_a_patch_recipe_on_a_raw_client_without_patch_sends_nothing(monkeypatch):
+    """ASVS V1.14.6 · CWE-440 · CISA SbD fail closed: a PATCH recipe is refused before any call, on a client without patch() too (the dead fallback read with a weaker check and PUT the rule)."""
+    monkeypatch.setattr(remediation, "REMEDIATIONS", [_demo_recipe("PATCH")])
+    _writes_on(monkeypatch)
+    c = _RawClient(current={"id": 42, "name": "Keep me"})
+    out = remediation.execute(c, "C6-DEMO", {"rule_id": "42", "note": "x"}, dry_run=False)
+    assert out["status"] == "error" and "Unsupported method" in out["error"] and c.calls == []
+
+
+@pytest.mark.parametrize("rule_type", ["webDlpRules", "sslInspectionRules"])
+def test_the_description_fix_plan_and_dry_run_say_the_rule_is_read_and_sent_back_whole(rule_type):
+    """ASVS V1.14.6 · CWE-440 · CWE-451: the preview and the dry run of "Add description" say the rule is read and sent back whole, so a PUT with a description-only body is not mistaken for a wipe."""
+    crit = {"rule_type": rule_type, "rule_id": "7", "description": "d"}
+    plan = remediation.plan("RULE-DESC", crit)
+    dry = remediation.execute(None, "RULE-DESC", crit, dry_run=True)
+    assert plan["merge"] is True and "reads the rule and sends it back whole" in plan["note"].lower()
+    assert "send it back whole" in dry["message"] and dry["note"] == plan["note"]
+    assert "merge" not in remediation.plan("FW-01", GOOD_FW) and "note" not in remediation.plan("FW-01", GOOD_FW)
 
 
 @pytest.mark.parametrize("field,value,msg", [("order", 0, "≥"), ("order", 1000, "≤"), ("action", "PERMIT", "one of"), ("order", "ten", "number")])

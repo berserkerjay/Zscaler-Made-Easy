@@ -367,7 +367,11 @@ _CSV_ITEM = __import__("re").compile(r"^[A-Za-z0-9_.-]{1,128}$")
 
 def _with_defaults(recipe: Dict[str, Any], criteria: Dict[str, Any]) -> Dict[str, Any]:
     """The criteria with each field's default filled in where it was left
-    out, so an optional field never reaches the body as nothing."""
+    out, so an optional field never reaches the body as nothing.
+    Note: this runs before _validate_criteria, so a field marked "required"
+    that HAS a default (a rule's state, DISABLED) is filled here, never
+    refused: "required" only refuses a field with no default. An omitted
+    state is therefore planned DISABLED, never left for the tenant to choose."""
     out = dict(criteria or {})
     for f in recipe.get("fields", []):
         if out.get(f["key"]) in (None, "") and "default" in f:
@@ -436,7 +440,7 @@ def plan(check_id: str, criteria: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "errors": errors, "recipe_label": recipe["label"]}
     endpoint = _render_endpoint(recipe["endpoint"], criteria)
     body     = _render_template(recipe.get("body_template") or {}, criteria)
-    return {
+    out = {
         "ok": True,
         "recipe_label": recipe["label"],
         "destructive":  recipe.get("destructive", False),
@@ -445,6 +449,16 @@ def plan(check_id: str, criteria: Dict[str, Any]) -> Dict[str, Any]:
         "body":         body,
         "success_msg":  recipe.get("success_msg", ""),
     }
+    if recipe.get("merge"):
+        # The body shown is only what changes: say so, or a reader who knows
+        # that a PUT replaces the object would take it for a wipe.
+        out["merge"] = True
+        out["note"] = MERGE_NOTE
+    return out
+
+
+MERGE_NOTE = ("Reads the rule and sends it back whole: the request is a PUT of the rule as the tenant has it now, "
+              "with only the fields shown here changed.")
 
 
 def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = True) -> Dict[str, Any]:
@@ -456,8 +470,10 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
         return {"status": "invalid", **p}
 
     if dry_run:
+        would = (f"read {p['endpoint']} and send it back whole ({p['method']}) with only the fields shown changed" if p.get("merge")
+                 else f"{p['method']} {p['endpoint']}")
         return {"status": "dry_run", **p,
-                "message": f"DRY RUN: Would {p['method']} {p['endpoint']}. Set dry_run=false + ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND to actually apply."}
+                "message": f"DRY RUN: Would {would}. Set dry_run=false + ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND to actually apply."}
 
     # Deny by default: any live call is a tenant write, whatever the recipe's
     # `destructive` flag says (a recipe without it must not slip past write mode).
@@ -486,18 +502,10 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
             resp, code = client.post(endpoint, body)
         elif method == "PUT":
             resp, code = client.put(endpoint, body)
-        elif method in ("PATCH",):
-            if hasattr(client, "patch"):
-                resp, code = client.patch(endpoint, body)
-            else:
-                # ZIA rules are updated with a PUT of the whole rule (assumed:
-                # the API has no PATCH): read it, change the fields, send it
-                # back. A PUT of the changed fields alone would replace the rule.
-                cur, rcode = client.get(endpoint)
-                if rcode != 200 or not isinstance(cur, dict):
-                    return {"status": "failed", "http_status": rcode,
-                            "error": f"could not read {endpoint} before changing it, so nothing was sent", **{k: v for k, v in p.items() if k != "ok"}}
-                resp, code = client.put(endpoint, dict(cur, **body))
+        # No PATCH: ZIA updates a rule with a PUT of the whole rule (assumed:
+        # the API has no PATCH), so a recipe that changes some fields is a
+        # "merge" PUT (the read-modify-write above, which fails closed). A
+        # PATCH recipe is refused below as an unsupported method, nothing sent.
         elif method == "DELETE":
             resp, code = client.delete(endpoint, body)
         else:
