@@ -82,11 +82,25 @@ def _read() -> Dict[str, Any]:
     return {"version": 1, "tenants": {}}
 
 
+_HELD = threading.local()   # how deep this thread is inside _locked()
+
+
 @contextlib.contextmanager
 def _locked():
     """This process's lock, then an exclusive lock on <store>.lock, so a
-    read-modify-write never interleaves with another server process."""
+    read-modify-write never interleaves with another server process.
+    Re-entrant: a nested call in the same thread only counts depth (a
+    second flock on a new descriptor of the same file would wait on this
+    thread's own lock forever)."""
     with _LOCK:
+        depth = getattr(_HELD, "depth", 0)
+        if depth:
+            _HELD.depth = depth + 1
+            try:
+                yield
+            finally:
+                _HELD.depth = depth
+            return
         p = store_path()
         fd = None
         if fcntl is not None:
@@ -97,9 +111,11 @@ def _locked():
                 if fd is not None:
                     os.close(fd)
                 fd = None
+        _HELD.depth = 1
         try:
             yield
         finally:
+            _HELD.depth = 0
             if fd is not None:
                 with contextlib.suppress(OSError):
                     fcntl.flock(fd, fcntl.LOCK_UN)
