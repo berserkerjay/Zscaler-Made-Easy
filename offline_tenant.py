@@ -83,6 +83,13 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _SECRET_KEY = re.compile(r"password|passwd|passcode|passphrase|secret|api_?key|private_?key|pre_?shared_?key|(^|_)psk$|(^|_)otp$|"
                          r"access_?token|refresh_?token|bearer|cookie|cert(ificate)?_?data", re.I)
 _PASS_SUFFIX = re.compile(r"(?:^pass|(?<![A-Za-z])pass|[a-z0-9_]Pass)$")
+# Text values under a token or key name are secrets too: a Client Connector
+# app profile's policyToken (ops_zcc.INSTALL_PARAMS marks it secret), the
+# company info's machineToken, a cloud NSS feed's authenticationToken, a ZPA
+# provisioningKey (zscaler/zcc/models, zscaler/zia/models/cloud_nss.py,
+# zscaler/zpa/models/provisioning_keys.py). Only text is masked, so a
+# switch such as sendDefaultPolicyForInvalidPolicyToken (true/false) stays.
+_TOKEN_KEY = re.compile(r"token|provisioning_?key|enrollment_?key|config_?key", re.I)
 _VOLATILE = re.compile(r"(modified|lastseen|last_seen|lastsync|updated|creation|created)(time|at|date|_time|_at)?$|^(modifiedBy|lastModifiedBy)$", re.I)
 
 
@@ -166,7 +173,7 @@ def scrub(value: Any, depth: int = 0) -> Any:
         out = {}
         for k, v in value.items():
             key = str(k)
-            if _SECRET_KEY.search(key) or _PASS_SUFFIX.search(key):
+            if _SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or (isinstance(v, str) and _TOKEN_KEY.search(key)):
                 out[key] = "(set)" if v not in (None, "", [], {}, False) else "(not set)"
             else:
                 out[key] = scrub(v, depth + 1)

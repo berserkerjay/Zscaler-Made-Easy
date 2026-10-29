@@ -529,3 +529,62 @@ def test_a_failed_unlock_is_audited_as_denied_and_never_credited_to_the_token_ho
     assert gate_on.post("/api/tenant/check", json={}, headers={security.UI_TOKEN_HEADER: TOKEN}).status_code != 401
     last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
     assert last["actor"] == security.LOCAL_TOKEN_ACTOR
+
+
+# ── 8. Every route, derived from app.routes: the Host check and public data ──
+
+@pytest.mark.parametrize("method,path", ROUTES, ids=[f"{m} {p}" for m, p in ROUTES])
+def test_with_the_gate_off_every_route_refuses_a_rebinding_host(gate_off, method, path):
+    """ASVS V14.5.2 · V4.1.1 · CWE-350 · CWE-346 · A01:2021 · WSTG-INPV-17: with ZSCALER_UI_AUTH=0 every route, the Wave 5 ones included, refuses a Host that is not loopback before any handler runs."""
+    # Arrange
+    url = _concrete(path)
+    headers = [("host", "127.0.0.1.attacker.example:8000"), ("content-type", "application/json")]
+    # Act
+    status, body = _asgi(method, url, headers, body=b"{}")
+    # Assert
+    assert status == 403 and b"ZSCALER_UI_AUTH=0" in body, (method, path, status)
+
+
+TENANT_CANARY = "CANARY-TENANT-QA6"
+
+
+@pytest.fixture
+def tenant_data_in_memory(monkeypatch):
+    """Arrange: what the app holds in memory about a tenant (the latest
+    readiness answer, with the tenant's name, its API role and a licence)."""
+    import readiness
+    holder = type(srv._READINESS)()
+    holder[TENANT_CANARY] = {"tenant_label": f"{TENANT_CANARY} (zscalerten)", "status": "done", "summary": f"{TENANT_CANARY} summary",
+                             "checked_at": "2026-10-29T00:00:00Z",
+                             "products": [{"product": "ZIA", "label": "ZIA", "access": "read", "role": f"{TENANT_CANARY} role",
+                                           "in_token": True, "responds": True, "why": "x"}],
+                             "licences": {"read": True, "rows": [{"area": "DLP", "name": f"{TENANT_CANARY} licence", "id": "SKU",
+                                                                  "active": True}]},
+                             "scopes": [{"key": "dlp", "label": "DLP", "status": "ok", "why": TENANT_CANARY}], "writes": [],
+                             "token": {"ok": True}}
+    monkeypatch.setattr(srv, "_READINESS", holder)
+    assert TENANT_CANARY in readiness.html_section(srv._readiness_latest())   # the canary does render when shown
+    return holder
+
+
+PUBLIC_GETS = sorted({(m, p) for m, p in PINNED_UNAUTHENTICATED if m == "GET" and "/sso/" not in p} | set(REPORT_PAGES))
+
+
+@pytest.mark.parametrize("method,path", PUBLIC_GETS, ids=[f"{m} {p}" for m, p in PUBLIC_GETS])
+def test_no_route_reachable_without_the_token_shows_tenant_data(gate_on, tenant_data_in_memory, method, path):
+    """ASVS V4.1.1 · V8.3.1 · CWE-200 · CWE-306 · A01:2021 · WSTG-ATHZ-02: a page served without the UI token (or to a DNS-rebinding page) carries no tenant name, role or licence the app holds."""
+    # Act
+    r = gate_on.get(path, follow_redirects=False)
+    # Assert
+    assert TENANT_CANARY not in r.text, (path, r.status_code)
+
+
+def test_the_permissions_page_shows_the_live_answers_with_the_token_only(gate_on, tenant_data_in_memory):
+    """ASVS V4.1.1 · V8.2.1 · CWE-200 · CWE-524: positive control: with the token the live readiness part is shown, and that page is never cached."""
+    # Arrange
+    authed = TestClient(srv.app, cookies={security.UI_TOKEN_COOKIE: TOKEN})
+    # Act
+    anon, mine = gate_on.get("/permissions"), authed.get("/permissions")
+    # Assert
+    assert anon.status_code == 200 and "UI token" in anon.text and "Required" in anon.text
+    assert mine.status_code == 200 and TENANT_CANARY in mine.text and mine.headers["cache-control"] == "no-store"

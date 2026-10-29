@@ -356,7 +356,15 @@ _ERR_HTTP_WORDS_RE = re.compile(r"\b(?:http|status(?:\s+code)?)\W{0,3}([1-5]\d{2
 
 
 def _error_parts(err: Any) -> Tuple[str, Optional[str], Optional[int]]:
-    """(message, code, http_status) from whatever the SDK handed back."""
+    """(message, code, http_status) from whatever the SDK handed back, with
+    any echoed access token or session id redacted (tenant_auth.redact_tokens):
+    the message reaches job logs, results and records."""
+    import tenant_auth
+    msg, code, status = _error_parts_raw(err)
+    return tenant_auth.redact_tokens(msg), code, status
+
+
+def _error_parts_raw(err: Any) -> Tuple[str, Optional[str], Optional[int]]:
     if isinstance(err, dict):
         msg = err.get("message") or err.get("error") or str(err)
         status = err.get("status") or err.get("status_code")

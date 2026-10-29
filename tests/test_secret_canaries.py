@@ -651,3 +651,318 @@ def test_the_console_index_the_extension_stores_holds_no_tenant_secret():
     blob = json.dumps(idx)
     assert idx["objects"], "the index was built"
     assert not [v for v in TENANT_SECRETS.values() if v in blob]
+
+
+# ── Wave 6: the Wave 5 sinks (job logs, exports, the POV, snapshots, readiness) ──
+import base64 as _b64
+
+
+def _seg(obj) -> str:
+    return _b64.urlsafe_b64encode(json.dumps(obj).encode()).decode().rstrip("=")
+
+
+# The OneAPI access token the sign-in returns: a bearer credential, sent on
+# every read, that an API gateway's error page can echo back.
+ACCESS_TOKEN = _seg({"alg": "RS256", "typ": "JWT"}) + "." + _seg({"sub": "CANARYatSubject", "service-info": []}) + ".CANARYatSig0123456789abcdef"
+ACCESS_PARTS = [ACCESS_TOKEN, ACCESS_TOKEN.split(".")[1], ACCESS_TOKEN.split(".")[2]]
+
+
+def _token_echo_send(self, request, **kw):
+    """requests' transport: the token endpoint signs in; every API call is
+    refused by a 'gateway' whose error text repeats the Authorization
+    header first (and the request after it). Never opens a socket."""
+    r = requests.models.Response()
+    if "/oauth2/v1/token" in request.url:
+        r.status_code, r._content = 200, json.dumps({"access_token": ACCESS_TOKEN, "token_type": "Bearer", "expires_in": 3600}).encode()
+        r.headers["Content-Type"] = "application/json"
+    else:
+        r.status_code = 400
+        r._content = (f"Gateway refused: {request.headers.get('Authorization')} for {request.url} "
+                      + json.dumps(dict(request.headers))).encode()
+        r.headers["Content-Type"] = "text/plain"
+    r.url, r.request, r.encoding = request.url, request, "utf-8"
+    return r
+
+
+@pytest.fixture
+def token_echo(monkeypatch, tmp_path):
+    """The app with the real clients (raw and SDK) over the echoing transport,
+    every store in tmp_path, jobs finished inside the request."""
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", _token_echo_send)
+    for k in [k for k in os.environ if k.startswith("ZSCALER_") and k != "ZSCALER_UI_AUTH"]:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+    import dlp_api_server as srv
+    import pack_jobs
+    real_start = pack_jobs.start
+
+    def start_and_finish(*a, **k):
+        job = real_start(*a, **k)
+        job.thread.join(60)
+        return job
+    monkeypatch.setattr(pack_jobs, "start", start_and_finish)
+    import insights
+    import zpa_reader
+    monkeypatch.setattr(zpa_reader, "PACE_SECONDS", 0.0)   # injected time: no read is paced against the real clock
+    monkeypatch.setattr(insights, "PACE_SECONDS", 0.0)
+    import conftest
+    import dlp_assessment_full_auto as full
+    clock = conftest.FakeClock()
+    for engine in (full, srv.engine):   # the server loads its own copy of the assessment engine
+        monkeypatch.setattr(engine, "_now", clock.time)
+        monkeypatch.setattr(engine, "_sleep", clock.sleep)
+    monkeypatch.setattr(srv, "_tenant_config_path", lambda: str(tmp_path / "none.json"), raising=False)
+    monkeypatch.setattr(srv, "_REPORTS", {})
+    monkeypatch.setattr(srv, "_READINESS", type(srv._READINESS)())
+    return srv, TestClient(srv.app, raise_server_exceptions=False)
+
+
+def _job_text(c, r) -> str:
+    out = r.text
+    try:
+        job_id = (r.json() or {}).get("job_id")
+    except ValueError:
+        job_id = None
+    if job_id:
+        out += c.get(f"/api/dlp-packs/jobs/{job_id}").text
+    return out
+
+
+def _data_files() -> str:
+    """Every file the app wrote in this test's data folder (conftest points every store there)."""
+    import audit
+    folder = os.path.dirname(audit.path())
+    out = []
+    for root, _dirs, files in os.walk(folder):
+        for f in files:
+            with open(os.path.join(root, f), encoding="utf-8", errors="replace") as fh:
+                out.append(fh.read())
+    return "\n".join(out)
+
+
+ECHO_SCOPE = {"scopes": ["dlp", "zia_extras", "zcc", "zpa", "insights"], "channels": CHANNELS, "from_page": True}
+ECHO_CREDS = {"cloud": "zscalerten", "vanity_domain": "acme", "client_id": "acmeclientid0001", "client_secret": CLIENT_SECRET,
+              "customer_id": "216196257331281920"}
+ECHO_ROUTES = [
+    ("/api/path-analyzer/start", {"destination": "example.com"}),
+    ("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}),
+    ("/api/readiness/start", {}),
+    ("/api/zcc/install", {"app_profile_id": "21"}),
+    ("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}),
+]
+
+
+@pytest.mark.parametrize("path,extra", ECHO_ROUTES, ids=[p for p, _ in ECHO_ROUTES])
+def test_an_access_token_echoed_by_an_api_error_reaches_no_job_log_result_or_file(token_echo, capsys, path, extra):
+    """ASVS V7.1.1 · ASVS V8.3.4 · CWE-532 · CWE-209 · A09:2021 · WSTG-ERRH-01: a gateway that repeats the request's Authorization header leaves the bearer token in no answer, job log, result, export, audit line, file or console print."""
+    # Arrange
+    srv, c = token_echo
+    # Act
+    r = c.post(path, json=dict(ECHO_CREDS, **ECHO_SCOPE, **extra))
+    texts = [_job_text(c, r)]
+    if path == "/api/bulk-test/start":
+        job_id = r.json()["job_id"]
+        texts += [c.get(f"/api/bulk-test/{job_id}/export", params={"format": "csv"}).text]
+    out = capsys.readouterr()
+    texts += [_data_files(), out.out, out.err]
+    # Assert
+    assert r.status_code == 200, r.text[:300]
+    leaks = _leaks("\n".join(texts), ACCESS_PARTS + [CLIENT_SECRET])
+    assert not leaks, f"{path}: {leaks}"
+
+
+def test_a_pov_proof_recorded_from_an_echoed_error_keeps_no_token(token_echo):
+    """ASVS V8.3.4 · CWE-532 · CWE-312: Prove it records the Path analyzer's answer on the POV (a file, its export and the Word and PDF reports) with no bearer token in any of them."""
+    # Arrange
+    srv, c = token_echo
+    import tenant_profiles
+    pid = tenant_profiles.upsert({"name": "Acme", "cloud": "zscalerten", "vanity_domain": "acme", "client_id": "acmeclientid0001"},
+                                 client_secret=CLIENT_SECRET, remember_secret=True)["id"]
+    assert c.post("/api/pov/create", json={"profile_id": pid, "intake": {"customer": "Acme", "vertical": "general"}}).status_code == 200
+    # Act
+    proved = c.post("/api/pov/prove/start", json=dict(ECHO_SCOPE, profile_id=pid, test_id="url-block"))
+    export = c.post("/api/pov/export", json={"profile_id": pid})
+    reports = [c.post("/api/pov/report", json={"profile_id": pid, "format": f}) for f in ("docx", "pdf")]
+    # Assert
+    assert proved.status_code == 200 and export.status_code == 200 and all(x.status_code == 200 for x in reports)
+    blob = "\n".join([_job_text(c, proved), export.text, _data_files()] + [_office_text(x.content) for x in reports])
+    assert not _leaks(blob, ACCESS_PARTS), _leaks(blob, ACCESS_PARTS)
+
+
+def _office_text(data: bytes) -> str:
+    """The text of a Word file (every XML part) or a PDF (its bytes)."""
+    import io
+    import zipfile
+    if data[:2] == b"PK":
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            return "\n".join(z.read(n).decode("utf-8", "replace") for n in z.namelist())
+    return data.decode("latin-1")
+
+
+@pytest.mark.parametrize("text", [
+    "Gateway refused: Bearer " + ACCESS_TOKEN,
+    '{"Authorization": "Bearer ' + ACCESS_TOKEN + '"}',
+    "token " + ACCESS_TOKEN + " expired",
+    "authorization: bearer opaqueTokenValue123456",
+    "Cookie: JSESSIONID=0123456789ABCDEF0123; Path=/",
+])
+def test_mask_secrets_redacts_an_echoed_bearer_token_jwt_or_session(text):
+    """ASVS V7.1.1 · CWE-532 · CWE-209: the access token and the classic session id, which no credential dict holds, are masked by shape."""
+    masked = tenant_auth.mask_secrets(text, SECRETS)
+    assert "[redacted" in masked
+    assert not any(p in masked for p in ACCESS_PARTS + ["opaqueTokenValue123456", "0123456789ABCDEF0123"]), masked
+
+
+@pytest.mark.parametrize("text", ["HTTP 403: Resource Access Blocked", "a bearer token is required", "JSESSIONID missing",
+                                  "the eyJ prefix alone is not a token"])
+def test_token_masking_leaves_ordinary_error_words_alone(text):
+    """ASVS V7.1.1 · CWE-532: boundary: words that only mention a token are not changed."""
+    assert tenant_auth.mask_secrets(text, SECRETS) == text
+
+
+def test_the_raw_client_masks_its_own_token_in_an_error_it_returns(monkeypatch):
+    """ASVS V7.1.1 · CWE-209 · CWE-532: the assessment client's GET error answer carries no secret and no access token, as its get_text already did."""
+    # Arrange
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", _token_echo_send)
+    import dlp_assessment_full_auto as full
+    client = full.Client("acmeclientid0001", CLIENT_SECRET, "acme", "zscalerten", "")
+    # Act
+    data, code = client.get("/zia/webDlpRules")
+    # Assert
+    assert code == 400 and "Gateway refused" in data["error"]
+    assert not _leaks(json.dumps(data), ACCESS_PARTS + [CLIENT_SECRET]), data
+
+
+# Fields of tenant answers whose text is a secret though no password word names
+# it (zscaler SDK models: zcc application_profiles.policyToken, company_info's
+# webAppConfig.machineToken, zia cloud_nss.authenticationToken, zpa
+# provisioning_keys.provisioningKey) and the install builder's deviceToken.
+TOKEN_FIELDS = {"policyToken": "CANARYpolicyTok0001", "deviceToken": "CANARYdeviceTok0002", "machineToken": "CANARYmachineTok003",
+                "authenticationToken": "CANARYnssAuthTok004", "provisioningKey": "CANARYprovKey000005"}
+
+
+def _answers_with_token_fields():
+    prof = dict({"id": 21, "name": "Default", "deviceType": 3, "sendDefaultPolicyForInvalidPolicyToken": True,
+                 "refreshKerberosToken": False}, policyToken=TOKEN_FIELDS["policyToken"], deviceToken=TOKEN_FIELDS["deviceToken"])
+    return {"/zcc/papi/public/v1/application-profiles": {"status": 200, "body": [prof]},
+            "/zcc/papi/public/v1/getCompanyInfo": {"status": 200, "body": {"webAppConfig": {"machineToken": TOKEN_FIELDS["machineToken"]}}},
+            "/zia/api/v1/nssFeeds": {"status": 200, "body": [{"id": 1, "name": "SIEM", "authenticationToken": TOKEN_FIELDS["authenticationToken"]}]},
+            "/zpa/mgmtconfig/v1/admin/customers/1/associationType/CONNECTOR_GRP/provisioningKey":
+                {"status": 200, "body": [{"id": "9", "name": "pov1-key", "provisioningKey": TOKEN_FIELDS["provisioningKey"]}]}}
+
+
+@pytest.mark.parametrize("how", ["saved", "opened"])
+def test_a_snapshot_keeps_no_token_or_key_value_and_keeps_true_false_switches(how):
+    """ASVS V8.3.4 · ASVS V6.1.1 · CWE-312 · CWE-200: a snapshot (saved, or opened from a file) holds no policy, device, machine or feed token and no provisioning key; a true/false switch named after a token stays."""
+    import offline_tenant as ot
+    # Arrange
+    doc = ot.build_snapshot(_answers_with_token_fields(), {"tenant_label": "acme (zscalerten)"})
+    # Act
+    if how == "opened":
+        raw = _answers_with_token_fields()
+        doc = {"format": ot.FORMAT, "version": ot.VERSION, "meta": {}, "responses": raw}
+        responses, _meta = ot.parse_snapshot(json.dumps(doc))
+        text = json.dumps(responses)
+    else:
+        text = ot.dumps(doc)
+    # Assert
+    assert not [v for v in TOKEN_FIELDS.values() if v in text], text[:400]
+    assert '"policyToken": "(set)"' in text.replace('":"', '": "')
+    assert '"sendDefaultPolicyForInvalidPolicyToken": true' in text.replace('":', '": ').replace(":  ", ": ")
+
+
+def test_a_snapshot_saved_from_the_tenant_carries_no_token_value(tmp_path, monkeypatch):
+    """ASVS V8.3.4 · CWE-312 · CWE-532: end to end: Save a snapshot reads an app profile with a policy token, and the owner-only file keeps only that one is set."""
+    # Arrange
+    import dlp_api_server as srv
+    import offline_tenant as ot
+    import pack_jobs
+    import sample_tenant
+    import tenant_profiles
+    resp = {ot.normalize_path(p): {"status": 200, "body": b} for p, b in sample_tenant.responses().items()}
+    resp.update(_answers_with_token_fields())
+    live = ot.OfflineStore("snap-" + "1" * 16, "snapshot", resp, {"tenant_label": "acme (zscalerten)"})
+    monkeypatch.setattr(srv, "_raw_client", lambda creds: ot.OfflineRawClient(live, creds))
+    real_start = pack_jobs.start
+    monkeypatch.setattr(pack_jobs, "start", lambda *a, **k: (lambda j: (j.thread.join(60), j)[1])(real_start(*a, **k)))
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+    c = TestClient(srv.app, base_url="http://127.0.0.1")
+    # Act
+    r = c.post("/api/tenant-profiles/snapshots/save/start", json=dict(ECHO_CREDS, scopes=["zcc"], channels={}, from_page=True))
+    # Assert
+    assert r.status_code == 200, r.text
+    snaps = tenant_profiles.list_snapshots("")
+    assert snaps, _job_text(c, r)
+    with open(tenant_profiles.snapshot_path(snaps[0]["id"]), encoding="utf-8") as f:
+        text = f.read()
+    assert "(set)" in text and not [v for v in TOKEN_FIELDS.values() if v in text]
+    assert CLIENT_SECRET not in text and json.dumps(CLIENT_SECRET)[1:-1] not in text
+
+
+POV_SINKS = ["file", "export", "docx", "pdf", "audit"]
+
+
+@pytest.mark.parametrize("sink", POV_SINKS)
+def test_a_typed_secret_pasted_into_a_pov_reaches_no_pov_sink(app_client, sink):
+    """ASVS V8.3.4 · ASVS V7.1.1 · CWE-312 · CWE-532: the client secret typed with a POV request, and pasted into its intake, is in no POV file, export, Word or PDF report, or audit line."""
+    # Arrange
+    srv, c = app_client
+    import audit
+    import tenant_profiles
+    pid = tenant_profiles.upsert({"name": "Acme", "cloud": "zscalerten", "vanity_domain": "acme", "client_id": "acmeclientid0001"})["id"]
+    body = dict(ECHO_CREDS, profile_id=pid, intake={"customer": f"Acme {CLIENT_SECRET}", "vertical": "general",
+                                                     "notes": f"secret is {CLIENT_SECRET}"})
+    created = c.post("/api/pov/create", json=body)
+    assert created.status_code == 200, created.text
+    # Act
+    if sink == "file":
+        text = _data_files().replace(open(audit.path(), encoding="utf-8").read(), "")
+    elif sink == "export":
+        text = c.post("/api/pov/export", json=dict(ECHO_CREDS, profile_id=pid)).text
+    elif sink in ("docx", "pdf"):
+        rep = c.post("/api/pov/report", json=dict(ECHO_CREDS, profile_id=pid, format=sink))
+        assert rep.status_code == 200
+        text = _office_text(rep.content)
+    else:
+        text = open(audit.path(), encoding="utf-8").read()
+    # Assert
+    assert not _leaks(text + created.text, [CLIENT_SECRET]), (sink, _leaks(text, [CLIENT_SECRET]))
+
+
+def test_a_job_that_fails_with_a_token_in_its_error_keeps_it_out_of_its_log_error_and_audit():
+    """ASVS V7.1.1 · ASVS V7.4.1 · CWE-532 · CWE-209 · A09:2021: the job runner's last line of defence: a log line or an exception that repeats a bearer token (a library's error) is masked before the job keeps or audits it."""
+    # Arrange
+    import audit
+    import pack_jobs
+
+    def fn(log, cancel):
+        log(f"read failed: Authorization: Bearer {ACCESS_TOKEN}")
+        raise RuntimeError(f"gateway said {ACCESS_TOKEN}")
+    # Act
+    job = pack_jobs.start("qa-canary", fn, label="qa", actor="qa")
+    job.thread.join(10)
+    # Assert
+    blob = json.dumps(job.logs) + str(job.error) + open(audit.path(), encoding="utf-8").read()
+    assert job.status == "failed" and "[redacted token]" in job.error
+    assert not _leaks(blob, ACCESS_PARTS), _leaks(blob, ACCESS_PARTS)
+
+
+@pytest.mark.parametrize("debug", ["0", "1"])
+def test_the_crash_log_and_the_debug_answer_carry_no_token(capsys, monkeypatch, debug):
+    """ASVS V7.1.1 · ASVS V7.4.1 · CWE-532 · CWE-209 · WSTG-ERRH-01: an unhandled error that repeats a bearer token writes server.log (the console) and, in debug mode, the answer without it."""
+    # Arrange
+    import asyncio
+    from starlette.requests import Request
+    import dlp_api_server as srv
+    monkeypatch.setenv("ZSCALER_DEBUG", debug)
+    try:
+        raise RuntimeError(f"upstream said: Authorization: Bearer {ACCESS_TOKEN}")
+    except RuntimeError as e:
+        exc = e
+    req = Request({"type": "http", "method": "POST", "path": "/api/path-analyzer", "headers": [], "query_string": b""})
+    # Act
+    resp = asyncio.run(srv._safe_exception_handler(req, exc))
+    # Assert
+    blob = capsys.readouterr().out + resp.body.decode()
+    assert resp.status_code == 500 and "RuntimeError" in blob
+    assert not _leaks(blob, ACCESS_PARTS), _leaks(blob, ACCESS_PARTS)

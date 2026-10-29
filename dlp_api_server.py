@@ -204,7 +204,7 @@ async def _safe_exception_handler(request: Request, exc: Exception):
     if is_debug():
         import traceback
         return JSONResponse(
-            {"detail": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()},
+            {"detail": tenant_auth.redact_tokens(f"{type(exc).__name__}: {exc}"), "trace": tenant_auth.redact_tokens(traceback.format_exc())},
             status_code=500,
         )
     # In normal mode, return a generic message — log details server-side only
@@ -217,7 +217,9 @@ async def _safe_exception_handler(request: Request, exc: Exception):
     if len(trace) > _LOG_TRACE_MAX:
         trace = trace[:_LOG_TRACE_MAX // 2] + "\n… [cut] …\n" + trace[-_LOG_TRACE_MAX // 2:]
     what = str(exc)
-    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path[:300]}: {what[:_LOG_LINE_MAX]}\n{trace}")
+    # server.log is a file on disk: an access token or session id the
+    # exception repeated is masked by shape before it is written.
+    print(tenant_auth.redact_tokens(f"[error] {type(exc).__name__} on {request.method} {request.url.path[:300]}: {what[:_LOG_LINE_MAX]}\n{trace}"))
     return JSONResponse(
         {"detail": f"Internal error ({type(exc).__name__}). The traceback is in server.log next to the app; run with ZSCALER_DEBUG=1 to see it here."},
         status_code=500,
@@ -3610,7 +3612,9 @@ def _offline_answer(request: Request, body: Dict[str, Any], source: Optional[str
     """`body` as JSON, with this browser's offline tenant set (or cleared)."""
     resp = JSONResponse(body)
     if source:
-        resp.set_cookie(_offline.COOKIE, source, httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/")
+        # Secure whenever the page came over HTTPS, a TLS reverse proxy included
+        # (X-Forwarded-Proto), the same rule as the UI token cookie (security._https).
+        resp.set_cookie(_offline.COOKIE, source, httponly=True, samesite="strict", secure=_security._https(request), path="/")
     else:
         resp.delete_cookie(_offline.COOKIE, path="/")
     return resp
@@ -6161,12 +6165,16 @@ async def report_deploy_flow_page():
 
 
 @app.get("/permissions")
-async def serve_permissions_page():
+async def serve_permissions_page(request: Request):
     """Standalone HTML view of the Required API Access catalog.
     Renders the same data as /api/permissions/required but as a full
     page so the GUI's quick-link button can target="_blank" and open
     it in a new browser tab (per user request).
-    """
+
+    The page is reachable without the UI token (security._UI_AUTH_EXEMPT_PATHS),
+    so its live readiness part (a tenant's name, roles and licences) is
+    rendered only for a caller who passes the token or sign-in gate
+    (security.ui_request_ok); anyone else gets the catalogue alone."""
     try:
         from scope_permissions import get_all_permissions
         import html as _html
@@ -6181,8 +6189,9 @@ async def serve_permissions_page():
         f'<li>{esc(n)}</li>' for n in data.get("global_notes", [])
     )
     import readiness as _rd
-    latest = _readiness_latest()
-    live_html = _rd.html_section(latest)
+    signed_in = _security.ui_request_ok(request)   # deny by default: no tenant data on a public page
+    latest = _readiness_latest() if signed_in else []
+    live_html = _rd.html_section(latest, locked=not signed_in)
     verdict = {f["key"]: f for f in (latest[0].get("scopes") or [])} if latest else {}
     cards_html = []
     for key, s in (data.get("scopes") or {}).items():
@@ -6341,7 +6350,8 @@ async def serve_permissions_page():
 </body>
 </html>"""
     from fastapi.responses import HTMLResponse
-    return HTMLResponse(content=page, headers={"Cache-Control": "no-cache, must-revalidate"})
+    # With live answers in it the page carries tenant data: never kept in a cache.
+    return HTMLResponse(content=page, headers={"Cache-Control": "no-store" if latest else "no-cache, must-revalidate"})
 
 
 @app.get("/api/permissions/required")

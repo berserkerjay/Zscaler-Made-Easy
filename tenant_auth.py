@@ -197,6 +197,27 @@ def _mask(value: str, keep: int = 3) -> str:
     return f"{v[:keep]}…{v[-keep:]} (len={len(v)})"
 
 
+# A bearer credential a request carries and an error page can echo back: the
+# OneAPI access token (a JWT, "Authorization: Bearer ..."), the classic API's
+# JSESSIONID session cookie. Neither is in `creds`, so they are found by shape.
+_TOKEN_ECHO = (
+    (re.compile(r"(?i)(\bbearer[\s:=\"']+)[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted token]"),
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]*"), "[redacted token]"),
+    (re.compile(r"(?i)(\bJSESSIONID[\s:=\"']+)[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted session]"),
+)
+
+
+def redact_tokens(text: str) -> str:
+    """`text` with every bearer access token, JSON Web Token and classic
+    session id replaced by a fixed marker: an API error page (a gateway,
+    a proxy) may echo the request's Authorization header or cookie, and that
+    text then reaches a job log, a result, an export or a POV file."""
+    out = str(text or "")
+    for rx, repl in _TOKEN_ECHO:
+        out = rx.sub(repl, out)
+    return out
+
+
 def mask_secrets(text: str, creds: Dict[str, Any]) -> str:
     """`text` with every secret value of `creds` replaced by a fixed
     '[redacted <field>]', so an error can be shown without leaking a
@@ -213,7 +234,7 @@ def mask_secrets(text: str, creds: Dict[str, Any]) -> str:
         for form in sorted(secret_forms(v), key=len, reverse=True):
             if form in out:
                 out = out.replace(form, f"[redacted {k}]")
-    return out
+    return redact_tokens(out)
 
 
 def secret_forms(value: str) -> set:

@@ -660,7 +660,9 @@ what you get, what to do next.
   every change of this app that will not work, with the plain steps to ask
   the admin for. On the Start page the same check shows as a short summary,
   greys out the scopes that will not work and stops a deploy or removal
-  the role cannot make. Where: the Connect to the tenant card (`/permissions`).
+  the role cannot make. Where: the Connect to the tenant card (`/permissions`;
+  the page opens without the UI token, so its live part is shown only to a
+  browser that has unlocked the app).
 
 ## The policy packs it ships with
 

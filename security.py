@@ -195,8 +195,8 @@ def write_enable_hint() -> str:
                 "and run it again to go back to read-only)")
     import sys
     if getattr(sys, "frozen", False):
-        return (f"turn on write mode with the switch in the app, or start the standalone app with ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} "
-                "set in its environment or in local_settings.env in your data folder")
+        return (f"turn on write mode with the switch in the app (type {WRITE_CONFIRM_PHRASE} to confirm): the standalone edition starts "
+                "read-only every time and ignores ENABLE_WRITE_ACTIONS")
     if os.name == "nt":
         return "start the server with START_Zscaler_Made_Easy_WRITES_ENABLED.bat"
     return f"start the server with: ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} ./start.sh"

@@ -247,6 +247,10 @@ def _clean_text(v: Any, limit: int = 120) -> str:
 def _iso(ts: Any) -> Optional[str]:
     if isinstance(ts, bool) or not isinstance(ts, (int, float)):
         return None
+    # Bounded before any arithmetic: a JSON integer has no size limit, and
+    # one too large for a float would raise OverflowError in the division.
+    if not 0 < ts < 32503680000 * 1000:
+        return None
     if ts > 1e11:   # milliseconds
         ts = ts / 1000.0
     if not 0 < ts < 32503680000:
@@ -1037,13 +1041,21 @@ def scope_badge(f: Optional[Dict[str, Any]]) -> str:
             f'{_steps_html(f.get("steps"))}</div>')
 
 
-def html_section(results: List[Dict[str, Any]]) -> str:
+LOCKED_NOTE = ("The live answers are shown only to a browser that has unlocked this app with its UI token (or signed in): open the app "
+               "from the launcher, or paste the token from ui_token.txt, then reload this page. The minimum access per scope is listed below.")
+
+
+def html_section(results: List[Dict[str, Any]], locked: bool = False) -> str:
     """The live readiness block of /permissions, from the latest answers
-    (newest first). Every value is escaped; an empty state says why."""
+    (newest first). Every value is escaped; an empty state says why.
+    `locked`: the caller has not passed the UI token or sign-in gate, so no
+    answer is shown (they name a tenant, its roles and its licences)."""
     head = ('<section class="rd" aria-labelledby="rdH"><h2 id="rdH">What this API client can do now</h2>'
             '<p class="lead">Checked right after you click Authenticate on the Start page: the products and roles in the access token '
             '(read without checking its signature, for display only) and a few reads for what is in scope (licences, the API role). '
             'Click Authenticate again to refresh, then reload this page.</p>')
+    if locked:
+        return head + f'<p class="rd-empty">{_e(LOCKED_NOTE)}</p></section>'
     if not results:
         return head + ('<p class="rd-empty">No readiness check has run on this server yet, so there is nothing live to show. Sign in with '
                        'Authenticate on the Start page; the check runs by itself and its answer appears here. The minimum access per scope is listed below.</p></section>')
