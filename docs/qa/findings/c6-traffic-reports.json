@@ -121,7 +121,7 @@
    "id": "incident-data",
    "what": "Insights user rows never exported; detection-health logs carry no names; report errors scrubbed (server patch open)",
    "standard": "ASVS V8.3.1 · CWE-359 · CWE-532",
-   "result": "open"
+   "result": "fixed"
   },
   {
    "id": "detection-math",
@@ -181,7 +181,7 @@
    "id": "markdown-download-page",
    "what": "Client-side Markdown download of the Log Analyzer page",
    "standard": "ASVS V5.3.3 · CWE-1236",
-   "result": "open"
+   "result": "fixed"
   }
  ],
  "findings": [
@@ -455,11 +455,10 @@
    "severity": "medium",
    "cwe": "CWE-532",
    "asvs": "V7.1.1",
-   "status": "open",
-   "fix": "Mask report['errors'] and poll['errors'] with tenant_auth.mask_secrets(…, creds), as the Insights and SSL coverage routes do",
-   "test": "",
-   "commit": "",
-   "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -1667,6 +1667,8 @@\n                     + (\"\" if sc[\"read_incidents\"] else \"; Workflow Automation is not marked as run on Zscaler, so its incidents are not read\") + \".\")\n     report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append,\n                                                                        channels=list(sc[\"pack_channels\"]), read_incidents=bool(sc[\"read_incidents\"])))\n+    # An SDK error that echoes the sign-in's secret never reaches the report.\n+    report[\"errors\"] = [tenant_auth.mask_secrets(str(e), creds) for e in report.get(\"errors\") or []]\n     import dlp_analysis\n     raw = await asyncio.to_thread(_build_client, req)\n     requested_scopes, requested_channels, _ = _scope_selection(req)\n@@ -1803,6 +1805,7 @@\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     label = tenant_auth.record_label(creds)   # never the classic API's admin login (user rule 3)\n     poll = (await asyncio.to_thread(detection_health.poll_incidents, client, since)) if sc[\"read_incidents\"] else {\"incidents\": [], \"next_since\": req.since, \"errors\": [DH_WA_ALTERNATIVE], \"read_at\": datetime.now(timezone.utc).isoformat()}\n+    poll[\"errors\"] = [tenant_auth.mask_secrets(str(e), creds) for e in poll.get(\"errors\") or []]\n     import tenant_fingerprint\n     # The rule cache's key names no classic-API tenant by a vanity domain or\n     # its admin login (an opaque fingerprint key), and keeps two classic\n"
+   "status": "fixed",
+   "fix": "/api/detection-health and /api/live-feed pass detection_health's scrub hook (tenant_auth.mask_secrets with the sign-in); the report's log lines and proposal error are masked too (test isolation follow-up a730f83)",
+   "test": "tests/test_c6_traffic_reports.py::test_a_read_problem_that_echoes_the_secret_is_masked",
+   "commit": "3e338a5"
   },
   {
    "id": "C6-TRAFFIC-REPORTS-26",
@@ -467,11 +466,10 @@
    "severity": "medium",
    "cwe": "CWE-1236",
    "asvs": "V5.3.3",
-   "status": "open",
-   "fix": "Escape upload text as md_safe.text does and fence evidence longer than any backtick run it holds (verified with node: no forged heading, tag or fence break)",
-   "test": "",
-   "commit": "",
-   "proposed_patch": "--- a/static/report_logs.html\t2026-10-29 04:01:29.643973277 +0000\n+++ b/static/report_logs.html\t2026-10-29 04:01:29.663601177 +0000\n@@ -236,6 +236,14 @@\n       setEnabled('laDownload', true); setEnabled('laCopy', true);\n     }\n \n+    // Upload-controlled text (file and PAC names, users, notes, bypass values,\n+    // log lines) is made inert as md_safe.text does on the server: one line,\n+    // no tag, link, code or table syntax. Evidence goes in a fence longer\n+    // than any backtick run it holds, so a log line cannot close it.\n+    const M = s => String(s == null ? '' : s).replace(/[\\r\\n\\t\\u2028\\u2029\\u0085\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]+/g, ' ')\n+      .replace(/[\\u202a-\\u202e\\u2066-\\u2069]/g, '\\ufffd').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/([\\\\`\\[\\]|])/g, '\\\\$1');\n+    const fenceFor = lines => '`'.repeat(Math.max(3, ...lines.map(l => Math.max(0, ...(String(l).match(/`+/g) || []).map(r => r.length + 1)))));\n+    const oneLine = s => String(s == null ? '' : s).replace(/[\\r\\n\\u2028\\u2029\\u0085]+/g, ' ');\n     function markdown(d) {\n       const out = [];\n       const v = d.verdict || {};\n@@ -245,30 +253,30 @@\n         out.push('## What we read', '');\n         out.push(`- Period: ${L.period && L.period.first ? `${L.period.first} → ${L.period.last}` : 'no timestamps'}`);\n         const f = L.facts || {};\n-        out.push(`- Client Connector: ${(f.client_versions || []).join(', ') || 'unknown'}; OS: ${(f.operating_systems || []).join(', ') || 'unknown'}; user: ${(f.users || []).join(', ') || 'unknown'}; cloud: ${(f.clouds || []).join(', ') || 'unknown'}`);\n-        out.push(`- Files: ${(L.files || []).map(x => `${x.name} (${x.lines} lines)`).join(', ')}`, '');\n+        out.push(`- Client Connector: ${(f.client_versions || []).map(M).join(', ') || 'unknown'}; OS: ${(f.operating_systems || []).map(M).join(', ') || 'unknown'}; user: ${(f.users || []).map(M).join(', ') || 'unknown'}; cloud: ${(f.clouds || []).map(M).join(', ') || 'unknown'}`);\n+        out.push(`- Files: ${(L.files || []).map(x => `${M(x.name)} (${x.lines} lines)`).join(', ')}`, '');\n         out.push('## Findings', '');\n         for (const x of L.findings || []) {\n           out.push(`### [${x.severity.toUpperCase()}] ${x.title} (${x.count} lines${x.first ? `, ${x.first} → ${x.last}` : ''})`, '');\n           out.push(`**What happened.** ${x.what}`, '', `**What it means.** ${x.means}`, '', '**What to do next.**');\n           (x.do || []).forEach((s, i) => out.push(`${i + 1}. ${s}`));\n           if (x.context) out.push('', `> ${x.context}`);\n-          if ((x.evidence || []).length) { out.push('', '```'); x.evidence.forEach(ev => out.push(`${ev.file}${ev.ts ? ' ' + ev.ts : ''}: ${ev.line}`)); out.push('```'); }\n+          if ((x.evidence || []).length) { const ls = x.evidence.map(ev => oneLine(`${ev.file}${ev.ts ? ' ' + ev.ts : ''}: ${ev.line}`)); const fn = fenceFor(ls); out.push('', fn, ...ls, fn); }\n           out.push('');\n         }\n-        if ((L.top_errors || []).length) { out.push('## Most repeated error lines', '', '```'); L.top_errors.forEach(t => out.push(`x${t.count} ${t.message}`)); out.push('```', ''); }\n+        if ((L.top_errors || []).length) { const ls = L.top_errors.map(t => oneLine(`x${t.count} ${t.message}`)); const fn = fenceFor(ls); out.push('## Most repeated error lines', '', fn, ...ls, fn, ''); }\n       }\n       for (const p of d.pac || []) {\n         const s = p.summary || {};\n-        out.push(`## PAC file: ${p.name}`, '', `- Default: ${s.default}; gateways: ${(s.gateways || []).join(', ') || 'none'}; macros: ${(s.macros || []).join(', ') || 'none'}; bypasses: ${s.bypass_count || 0}`, '');\n+        out.push(`## PAC file: ${M(p.name)}`, '', `- Default: ${M(s.default)}; gateways: ${(s.gateways || []).map(M).join(', ') || 'none'}; macros: ${(s.macros || []).map(M).join(', ') || 'none'}; bypasses: ${s.bypass_count || 0}`, '');\n         for (const x of p.findings || []) {\n-          out.push(`### [${x.severity.toUpperCase()}] ${x.title}`, '', `**What happened.** ${x.what}`, '', `**What it means.** ${x.means}`, '', '**What to do next.**');\n-          (x.do || []).forEach((st, i) => out.push(`${i + 1}. ${st}`));\n+          out.push(`### [${x.severity.toUpperCase()}] ${M(x.title)}`, '', `**What happened.** ${M(x.what)}`, '', `**What it means.** ${M(x.means)}`, '', '**What to do next.**');\n+          (x.do || []).forEach((st, i) => out.push(`${i + 1}. ${M(st)}`));\n           out.push('');\n         }\n-        if ((s.bypasses || []).length) { out.push('| Line | Test | Value | Risk |', '|---|---|---|---|'); s.bypasses.forEach(b => out.push(`| ${b.line} | ${b.kind} | ${b.value} | ${b.risk} |`)); out.push(''); }\n+        if ((s.bypasses || []).length) { out.push('| Line | Test | Value | Risk |', '|---|---|---|---|'); s.bypasses.forEach(b => out.push(`| ${M(b.line)} | ${M(b.kind)} | ${M(b.value)} | ${M(b.risk)} |`)); out.push(''); }\n       }\n-      if ((d.notes || []).length) out.push('## Skipped', '', ...d.notes.map(n => `- ${n}`), '');\n+      if ((d.notes || []).length) out.push('## Skipped', '', ...d.notes.map(n => `- ${M(n)}`), '');\n       return out.join('\\n');\n     }\n     $('laDownload').addEventListener('click', () => {\n"
+   "status": "fixed",
+   "fix": "report_logs.html escapes every upload-derived value as md_safe.text does and fences evidence longer than any backtick run it holds; tests run the page's own markdown() in Node. Also ...::test_the_log_analyzer_markdown_evidence_fence_cannot_be_closed_by_a_log_line",
+   "test": "tests/test_c6_traffic_reports.py::test_the_log_analyzer_markdown_forges_no_heading_tag_or_link",
+   "commit": "ec7ad51"
   },
   {
    "id": "C6-TRAFFIC-REPORTS-27",
@@ -542,7 +540,7 @@
    "proposed_patch": "Regenerated, not hand-written: run `python tools/security_test_matrix.py` and commit docs/SECURITY_TESTING.md."
   }
  ],
- "tests_added": 158,
+ "tests_added": 163,
  "coverage_detail": {
   "method": "coverage.py line+branch over the six files, the 32 test files that exercise them (+ the new test file after)",
   "before": {

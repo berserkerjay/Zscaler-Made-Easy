@@ -135,7 +135,7 @@
    "id": "remediation-scope",
    "what": "Live fix recipes honour the Scope page",
    "standard": "CWE-863",
-   "result": "open"
+   "result": "fixed"
   },
   {
    "id": "standards-doc",
@@ -349,11 +349,10 @@
    "severity": "low",
    "cwe": "CWE-863",
    "asvs": "V4.1.3",
-   "status": "open",
-   "fix": "Proposed: require the recipe's scope (DLP + Inline Web DLP for Web DLP rules, else ZIA platform) before sign-in; the page must then send its selection",
-   "test": "",
-   "commit": "",
-   "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -703,6 +703,19 @@\n     confirm: bool = False      # dry_run=false needs confirm=true, the assessor, a writer and write mode\n     assessor: str = \"\"\n     profile_id: str = \"\"\n+    scopes: List[str] = []        # the Scope page selection (user rule 1)\n+    channels: Dict[str, Any] = {}\n+    from_page: bool = False\n+\n+\n+def _remediation_scope(check_id: str, criteria: Dict[str, Any]) -> Tuple[str, str]:\n+    \"\"\"(scope, channel) a fix recipe writes in: Inline Web DLP rules need DLP\n+    with Inline Web DLP marked Zscaler; the other ZIA rules need ZIA platform.\"\"\"\n+    import remediation\n+    rid = (remediation.get_recipe(check_id) or {}).get(\"check_id\")\n+    if rid == \"DLP-01\" or (rid == \"RULE-DESC\" and str((criteria or {}).get(\"rule_type\")) == \"webDlpRules\"):\n+        return \"dlp\", \"web_dlp\"\n+    return \"zia_extras\", \"\"\n \n \n @app.get(\"/api/remediation/catalog\")\n@@ -738,6 +751,8 @@\n         raise HTTPException(status_code=500, detail=f\"remediation unavailable: {e}\")\n     if not req.dry_run:\n         _require_tenant_write(req, confirmed=req.confirm, what=\"Applying a remediation\")\n+        scope, channel = _remediation_scope(req.check_id, req.criteria)\n+        _require_in_scope(req, scope, \"Applying a remediation\", channel)\n     client = await asyncio.to_thread(_build_client, req)\n     result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)\n     return result\n"
+   "status": "fixed",
+   "fix": "A live /api/remediation/execute maps its recipe (RULE-DESC by rule_type) to an admin_ops policy and refuses one admin_ops.scope_for does not put in scope (400 before sign-in); unknown policy denied; dry runs unchanged; the page sends scopePageSelection()",
+   "test": "tests/test_c6_admin_ops.py::test_a_live_fix_outside_the_scope_page_is_refused_before_sign_in",
+   "commit": "90f7b6c"
   },
   {
    "id": "C6-ADMIN-OPS-20",
@@ -390,5 +389,5 @@
    "proposed_patch": "--- a/.gitignore\n+++ b/.gitignore\n@@ -56,6 +56,7 @@\n # Continuous evaluation: the per-tenant approval queue (local, never committed)\n proposals.json\n proposals.json.tmp\n+proposals.json.lock\n # The team change queue (change_queue.py): requests, its lock file and atomic-write temporaries\n change_requests.json\n change_requests.json.lock\n"
   }
  ],
- "tests_added": 165
+ "tests_added": 188
 }

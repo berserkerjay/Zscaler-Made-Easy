@@ -47,7 +47,7 @@
       "id": "customer-id-route",
       "what": "route refuses before sign-in",
       "standard": "ASVS V5.1.3",
-      "result": "open"
+      "result": "fixed"
     },
     {
       "id": "segment-matching",
@@ -125,7 +125,7 @@
       "id": "write-gates-assessor-engine",
       "what": "engine-level assessor check",
       "standard": "CWE-841",
-      "result": "open"
+      "result": "fixed"
     }
   ],
   "findings": [
@@ -179,11 +179,10 @@
       "severity": "medium",
       "cwe": "CWE-20",
       "asvs": "V5.1.3",
-      "status": "open",
-      "fix": "Add _ops_zpa_gate (400 before sign-in) to the six /api/operations routes; the route tests that post ZPA families must then send a customer_id (test_scope_rule_routes zpa cases, test_ops_zpa key-through-API test).",
-      "test": "",
-      "commit": "",
-      "proposed_patch": "--- a/dlp_api_server.py\t2026-10-29 03:36:11.699933777 +0000\n+++ b/dlp_api_server.py\t2026-10-29 03:36:11.725870510 +0000\n@@ -5079,6 +5079,23 @@\n     return scope\n \n \n+def _ops_zpa_gate(what: Any, creds: Dict[str, str]) -> None:\n+    \"\"\"A ZPA bulk change or builder type needs a OneAPI sign-in and a valid\n+    ZPA customer ID: 400 before any sign-in otherwise (an SDK client with no\n+    customer ID would call /customers/None/...).\"\"\"\n+    import admin_ops\n+    t = what if isinstance(what, str) else str((what or {}).get(\"type\") or \"\")\n+    reg = admin_ops.PLUGINS.get(t)\n+    zpa = t in (\"zpa_segments\", \"zpa_domains\") or (reg or {}).get(\"product\") == \"zpa\" or \\\n+        any(p.get(\"family\") == t and p.get(\"product\") == \"zpa\" for p in admin_ops.PLUGINS.values())\n+    if not zpa:\n+        return\n+    if creds.get(\"auth_method\") == tenant_auth.LEGACY:\n+        raise HTTPException(status_code=400, detail=ZPA_NEEDS_ONEAPI)\n+    if not validate_customer_id(creds.get(\"customer_id\") or \"\"):\n+        raise HTTPException(status_code=400, detail=ZPA_NEEDS_CUSTOMER_ID)\n+\n+\n def _ops_assessor(req: Any) -> str:\n     try:\n         return _require_assessor(req)\n@@ -5165,6 +5182,7 @@\n     import pack_jobs\n     scope = _ops_scope(req, req.family)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.family, creds)\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     label = tenant_auth.record_label(creds)\n     job = pack_jobs.start(\"ops_objects\", lambda log, cancel: _keyed(client, _run_ops_objects, client, req.family, scope, label, log, cancel),\n@@ -5177,6 +5195,7 @@\n     \"\"\"The same list, waited for (for scripts).\"\"\"\n     scope = _ops_scope(req, req.family)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.family, creds)\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     out = await asyncio.to_thread(_keyed, client, _run_ops_objects, client, req.family, scope, tenant_auth.record_label(creds), None, None)\n     if out.get(\"status\") == \"refused\":\n@@ -5191,6 +5210,7 @@\n     import pack_jobs\n     scope = _ops_scope(req, req.operation)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.operation, creds)\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     label = tenant_auth.record_label(creds)\n     job = pack_jobs.start(\"ops_preview\", lambda log, cancel: _keyed(client, _run_ops_preview, client, req, scope, label, log, cancel),\n@@ -5203,6 +5223,7 @@\n     \"\"\"The same preview, waited for (for scripts).\"\"\"\n     scope = _ops_scope(req, req.operation)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.operation, creds)\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds), None, None)\n     if out.get(\"status\") == \"refused\":\n@@ -5220,6 +5241,7 @@\n     import pack_jobs\n     scope, by = _ops_apply_gate(req)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.operation, creds)\n     if req.undo_of:\n         import deployments\n         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)\n@@ -5236,6 +5258,7 @@\n     since the preview or the plan is blocked.\"\"\"\n     scope, by = _ops_apply_gate(req)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.operation, creds)\n     if req.undo_of:\n         import deployments\n         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)\n"
+      "status": "fixed",
+      "fix": "_ops_zpa_gate (400 before sign-in for a classic-API sign-in or a missing/invalid customer ID) on the six /api/operations routes and the Undo preview; admin_ops.product_of names a type's product; the ops request models take the customer_id the page already sent (it was dropped)",
+      "test": "tests/test_c6_zpa.py::test_a_zpa_bulk_change_without_the_customer_id_is_refused_before_sign_in",
+      "commit": "a907995"
     },
     {
       "id": "C6-ZPA-06",
@@ -312,11 +311,10 @@
       "severity": "low",
       "cwe": "CWE-841",
       "asvs": "V4.2.2",
-      "status": "open",
-      "fix": "Refuse an empty assessor in admin_ops.execute.",
-      "test": "",
-      "commit": "",
-      "proposed_patch": "--- a/admin_ops.py\t2026-10-29 03:41:00.177652837 +0000\n+++ b/admin_ops.py\t2026-10-29 03:41:00.191024035 +0000\n@@ -1830,6 +1830,8 @@\n     import zia_rate\n     if writes_enabled is not True:\n         raise PermissionError(\"write mode is off: nothing was written\")\n+    if not str(assessor or \"\").strip():\n+        raise OperationError(\"A named assessor is required to apply a change: nothing was written.\")\n     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run(\"operation\", client, plan_hash=plan_hash, cancel=cancel) as box:\n         box[\"result\"] = _execute(client, spec, plan_hash=plan_hash, scope=scope, confirm_text=confirm_text, assessor=assessor,\n                                  tenant_label=tenant_label, log=log, cancel=cancel, settle_seconds=settle_seconds)\n"
+      "status": "fixed",
+      "fix": "admin_ops.execute refuses a blank assessor (OperationError) right after the write-mode check, before the client is touched; table-driven over every operation type",
+      "test": "tests/test_c6_zpa.py::test_execute_without_a_named_assessor_is_refused_before_anything_is_read",
+      "commit": "1cd9a84"
     },
     {
       "id": "C6-ZPA-18",
@@ -341,5 +339,5 @@
       "commit": ""
     }
   ],
-  "tests_added": 82
+  "tests_added": 149
 }

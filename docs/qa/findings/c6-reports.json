@@ -305,9 +305,10 @@
    "severity": "low",
    "cwe": "CWE-209",
    "asvs": "V7.4.1",
-   "status": "open",
-   "fix": "Return a plain message; the traceback stays in the server log (dlp_api_server.py, outside this slice)",
-   "proposed_patch": "--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -8000,10 +8000,11 @@\n     except Exception as e:\n         if tmp_path:\n             _unlink_quietly(tmp_path)   # a failed report leaves no copy of the assessment behind\n-        # Surface the real error to the browser instead of a generic 500\n+        # The traceback stays in the server log; the browser gets plain words\n+        # (an exception's text can quote the posted report, CWE-209).\n         tb = _tb.format_exc()\n         print(f\"\\n=== Word generation failed ===\\n{tb}===\\n\", flush=True)\n-        raise HTTPException(status_code=500, detail=f\"Word generation error: {type(e).__name__}: {str(e)[:300]}\")\n+        raise HTTPException(status_code=500, detail=\"The Word report could not be built; the server log says why.\")\n \n     org = re.sub(r\"[^A-Za-z0-9_-]+\", \"_\", str(cfg.get(\"org\", \"report\"))).strip(\"_\")[:60] or \"report\"\n     # The temp file holds the whole assessment: remove it once it has been sent.\n"
+   "status": "fixed",
+   "fix": "/api/report/docx and the bypass report's Word export answer one plain sentence (WORD_REPORT_FAILED); the traceback stays in the server log. Also ...::test_a_failed_bypass_word_export_returns_plain_words_not_the_exception",
+   "test": "tests/test_c6_api_server.py::test_a_failed_word_report_returns_plain_words_not_the_exception",
+   "commit": "19c97e0"
   },
   {
    "id": "C6-REPORTS-17",
@@ -320,5 +321,5 @@
    "proposed_patch": "--- a/tools/quality_score.py\n+++ b/tools/quality_score.py\n@@ -159,9 +159,10 @@\n CONTROL_CHARS = re.compile(r\"[\\x00-\\x1f\\x7f\\u202a-\\u202e\\u2066-\\u2069\\u2028\\u2029]\")\n MARKUP = re.compile(r\"<\\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;\")\n \n-ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False}\n+ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False,\n+             \"files\": False, \"coverage\": False}\n FINDING_KEYS = {\"id\": True, \"title\": True, \"severity\": True, \"status\": True, \"cwe\": False, \"asvs\": False, \"wcag\": False,\n-                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False}\n+                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False, \"proposed_patch\": False}\n CHECK_KEYS = {\"id\": True, \"what\": True, \"result\": True, \"standard\": False}\n RUN_KEYS = {\"passed\": True, \"failed\": True, \"skipped\": True, \"duration_s\": True, \"commit\": True, \"date\": True,\n             \"errors\": False, \"files\": False}\n"
   }
  ],
- "tests_added": 149
+ "tests_added": 151
 }

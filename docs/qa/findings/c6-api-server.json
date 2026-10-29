@@ -117,7 +117,7 @@
    "id": "stop-before-start-ownership",
    "what": "stop-before-start honours the job's starter",
    "standard": "ASVS V4.2.1 · CWE-639",
-   "result": "open"
+   "result": "fixed"
   },
   {
    "id": "download-names",
@@ -314,11 +314,10 @@
    "severity": "low",
    "cwe": "CWE-639",
    "asvs": "V4.2.1",
-   "status": "open",
-   "fix": "pack_jobs.stop_before_start(token, actor) refuses (PermissionError -> 403) when the job's known starter is someone else; the route passes _actor(request)",
-   "test": "proposed: tests/test_run_control.py — a token whose job actor is alice, stopped as mallory, is a 403 and the job keeps running",
-   "commit": "",
-   "proposed_patch": "--- a/pack_jobs.py\n+++ b/pack_jobs.py\n@@ -153,10 +153,12 @@\n             del _token_jobs[k]\n \n \n-def stop_before_start(token: Any) -> Dict[str, Any]:\n+def stop_before_start(token: Any, actor: Optional[str] = None) -> Dict[str, Any]:\n     \"\"\"Stop for a run whose start request has not answered yet. When its\n     job already exists it is cancelled now; otherwise the stop waits for\n-    the job, which then starts stopped. Returns what was done.\"\"\"\n+    the job, which then starts stopped. Returns what was done.\n+    PermissionError when the job exists and was started by someone else\n+    (`actor` given and the job's actor known and different).\"\"\"\n     t = valid_start_token(token)\n     if t is None:\n         raise ValueError(\"start_token must be 8-64 letters, digits, '-' or '_'.\")\n@@ -170,6 +172,9 @@\n                 del _pending_stops[oldest]\n             _pending_stops[t] = now\n     if job_id is not None:\n+        job = get(job_id)\n+        if actor is not None and job is not None and job.actor and job.actor != actor:\n+            raise PermissionError(\"This job was started by someone else; only the person who started it can stop it.\")\n         return {\"job_id\": job_id, \"cancelled\": cancel(job_id), \"pending\": False}\n     return {\"job_id\": None, \"cancelled\": True, \"pending\": True}\n \n--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -3368,14 +3368,16 @@\n \n \n @app.post(\"/api/dlp-packs/jobs/stop-before-start\")\n-async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):\n+async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest, request: Request):\n     \"\"\"Stop pressed while a start request (deploy, removal, export,\n     Terraform hand-off, path analysis) is still signing in, so there is no\n     job id yet. The job that start creates begins with its cancel set and\n     reads or writes nothing; one that already exists is cancelled now.\"\"\"\n     import pack_jobs\n     try:\n-        return pack_jobs.stop_before_start(req.start_token)\n+        return pack_jobs.stop_before_start(req.start_token, actor=_actor(request))\n+    except PermissionError as e:\n+        raise HTTPException(status_code=403, detail=str(e))\n     except ValueError as e:\n         raise HTTPException(status_code=400, detail=str(e))\n \n"
+   "status": "fixed",
+   "fix": "pack_jobs.stop_before_start(token, actor) follows the /cancel owner rule (403 when someone else started the job) and a waiting stop is honoured only for a job its sender starts. Also ...::test_a_waiting_stop_from_someone_else_does_not_stop_the_job",
+   "test": "tests/test_c6_api_server.py::test_stop_before_start_of_an_existing_job_is_only_for_its_starter",
+   "commit": "4d6ba05"
   },
   {
    "id": "C6-API-SERVER-14",
@@ -366,5 +365,5 @@
    "commit": ""
   }
  ],
- "tests_added": 65
+ "tests_added": 70
 }
