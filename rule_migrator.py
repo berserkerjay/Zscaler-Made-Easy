@@ -663,8 +663,14 @@ def assess_current_status(client) -> Dict[str, Any]:
                 feature_available = _is_truthy(match_value)
                 feature_source = path_str + " (capability flag — not the mode selector)"
             continue
-        # Mode-bearing endpoint → this is the actual current selection
-        evaluate_all = _is_truthy(match_value)
+        # Mode-bearing endpoint → this is the actual current selection.
+        # A key named for first match / rule order says the opposite of
+        # Evaluate All: true there means Rule Order.
+        mk = str(match_key).lower().replace("_", "").replace("-", "")
+        if isinstance(match_value, bool) and ("firstmatch" in mk or "ruleorder" in mk):
+            evaluate_all = not match_value
+        else:
+            evaluate_all = _is_truthy(match_value)
         found_via = path_str
         break
 

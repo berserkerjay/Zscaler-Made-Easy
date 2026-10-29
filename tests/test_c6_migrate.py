@@ -903,3 +903,95 @@ def test_the_per_rule_mode_field_is_read_as_the_mode_words(value, mode):
     """ASVS V1.4.4 · CWE-697 · WSTG-BUSL-01: a per-rule dlpRuleEvaluation of BY_RULE_ORDER reads as Rule Order, not as a true value."""
     c = FakeZia([{"id": 1, "name": "R", "action": "BLOCK", "state": "ENABLED", "order": 1, "dlpRuleEvaluation": value}])
     assert rm.assess_current_status(c)["current_mode"] == mode
+
+
+def test_hostile_reviewed_text_stays_inside_its_hcl_string():
+    """ASVS V5.3.1 · A03:2021 · CWE-94 · CWE-74 · WSTG-INPV-11: quotes, backslashes, ${ and line breaks in reviewed text cannot leave the HCL string."""
+    # Arrange
+    s = _snap()
+    d = _decisions(s, dictionaries=[{"id": "ctx", "name": "CTX", "approved": True, "phrases": ['say "hi" \\ x', "${x} %{y}"], "description": 'a"\nb = 1 ${z}'}])
+    tf, report = vm.compile_export(s, d)
+    # Act
+    hcl = vm.workspace_files(tf, report, "Symantec", 'e"vil`.xml')["dictionaries.tf"]
+    # Assert
+    assert 'phrase = "say \\"hi\\" \\\\ x"' in hcl and 'phrase = "$${x} %%{y}"' in hcl
+    assert "\nb = 1" not in hcl and 'description              = "a\\"\\nb = 1 $${z}"' in hcl
+
+
+def test_the_ssl_bypass_evaluate_flag_is_not_read_as_the_dlp_mode():
+    """ASVS V1.4.4 · CWE-697 · WSTG-BUSL-01: enableEvaluatePolicyOnGlobalSSLBypass on /advancedSettings is not the DLP rule mode."""
+    c = FakeZia([], {"/zia/advancedSettings": {"enableEvaluatePolicyOnGlobalSSLBypass": True}})
+    out = rm.assess_current_status(c)
+    assert out["current_mode"] == "Unknown" and "advancedSettings" in out["recommendation"]
+
+
+@pytest.mark.parametrize("settings,mode", [
+    ({"/zia/dlpConfig": {"inline": {"dlpEvaluateAllRules": True}}}, "Evaluate All Rules"),
+    ({"/zia/dlpConfig": {"dlpRuleFirstMatchEvaluation": False}}, "Evaluate All Rules"),
+    ({"/zia/dlpConfig": {"dlpRuleFirstMatchEvaluation": True}}, "Rule Order"),
+    ({"/zia/dlpConfig": {"dlpRuleOrderEvaluation": True}}, "Rule Order"),
+    ({"/zia/dlpConfig": {"dlpRuleEvaluationOrder": "BY_RULE_ORDER"}}, "Rule Order"),
+])
+def test_the_mode_is_found_one_level_deep_and_by_its_heuristic_name(settings, mode):
+    """ASVS V1.4.4 · CWE-697 · WSTG-BUSL-01: a nested mode field, or one named for DLP rule evaluation, is read as the mode (first-match true = Rule Order)."""
+    assert rm.assess_current_status(FakeZia([], settings))["current_mode"] == mode
+
+
+def test_unreachable_settings_endpoints_say_so_in_plain_words():
+    """ASVS V7.4.1 · CWE-209 · CWE-755 · WSTG-ERRH-01: when every probe fails the answer names the missing permission, with no traceback."""
+    class C(FakeZia):
+        def get(self, path):
+            if path == "/zia/webDlpRules":
+                return [], 200
+            raise ConnectionError("refused")
+    out = rm.assess_current_status(C([]))
+    assert out["current_mode"] == "Unknown" and "Could not reach" in out["recommendation"] and all(d["status"] == 0 for d in out["diagnostics"])
+
+
+@pytest.mark.parametrize("ret,want", [(("d", "resp", "err"), ("d", "err")), (("d", "err"), ("d", "err")), (("d",), ("d", None)), ((), (None, None)), ("bare", ("bare", None))])
+def test_sdk_results_of_every_shape_are_read(ret, want):
+    """ASVS V7.4.1 · CWE-754 · WSTG-ERRH-01: (data, response, error), (data, error), (data,) and a bare value all read as (data, error)."""
+    assert di._nx(ret) == want
+
+
+def test_ids_and_errors_are_read_from_sdk_tuples():
+    """ASVS V7.4.1 · CWE-754 · WSTG-ERRH-01: an id from an object or a dict, an error from a dict, a string or nothing."""
+    class Obj:
+        id = 9
+    assert di._extract_id((Obj(), None, None)) == 9 and di._extract_id(({"id": 4}, None, None)) == 4 and di._extract_id(None) is None
+    assert di._extract_error((None, None, {"message": "bad"})) == "bad" and di._extract_error((None, None, "x")) == "x"
+    assert di._extract_error(None) == "No response" and di._extract_error((1, 2, None)) == "Unknown error"
+
+
+@pytest.mark.parametrize("expr,names,want,unresolved", [
+    ("D:Alpha AND D:Alpha Dict", {"Alpha": 1, "Alpha Dict": 2}, "D1.S > 0 AND D2.S > 0", []),
+    ("(D:A + D:B) > 1", {"A": 1, "B": 2}, "(D1.S + D2.S) > 1", []),
+    ("D:A > 3 OR D:Names (US)", {"A": 1}, "D1.S > 3 OR D:Names (US)", ["Names (US)"]),
+])
+def test_engine_expressions_resolve_against_the_oracle(expr, names, want, unresolved):
+    """ASVS V5.1.3 · CWE-20 · WSTG-BUSL-01: D:<name> becomes D<id>.S, longest name first, bare terms get > 0, misses come back whole."""
+    assert di.resolve_engine_expression(expr, names) == (want, unresolved)
+
+
+def test_healing_predefined_names_renames_and_is_idempotent():
+    """ASVS V1.4.4 · CWE-694 · WSTG-BUSL-01: a dictionary named like a predefined one is prefixed with Z- and its engines follow; a second pass changes nothing."""
+    dicts, engines, renamed = di.heal_predefined_names([{"name": "Private Key"}, {"name": "Mine"}], [{"expression": "D:Private Key > 1 AND D:Private Keys"}])
+    assert renamed == [("Private Key", "Z-Private Key")] and engines[0]["expression"] == "D:Z-Private Key > 1 AND D:Private Keys"
+    assert di.heal_predefined_names(dicts, engines)[2] == []
+
+
+@pytest.mark.parametrize("call,err", [
+    (lambda: vm.decode_upload({"name": "x.xml", "content": "abc", "encoding": "base64"}), "not valid base64"),
+    (lambda: vm.inventory_export("symantec", EXPORT, "x.exe"), "not an export this adapter reads"),
+    (lambda: vm.vendor("other"), "Unknown vendor"),
+    (lambda: vm.inventory_bytes(b"<x><policy id='1'/></x>"), "No policy elements"),
+    (lambda: vm.inventory_bytes(b"<x><policy id='1' name='a'/><policy id='1' name='b'/></x>"), "Duplicate policy IDs"),
+    (lambda: vm.inventory_export("netskope", b"\xff\xfe\x00\xd8", "p.csv"), "not UTF-8 or UTF-16|No Netskope"),
+    (lambda: vm.inventory_export("forcepoint", _zip({"a.bin": b"x"}), "p.zip"), "holds no .json"),
+    (lambda: vm.inventory_export("forcepoint", b"PK\x03\x04garbage", "p.zip"), "not a zip archive"),
+    (lambda: vm.inventory_export("forcepoint", b"{bad", "p.json"), "not valid JSON"),
+])
+def test_bad_exports_are_refused_in_plain_words(call, err):
+    """ASVS V7.4.1 · CWE-209 · CWE-20 · WSTG-ERRH-01: each malformed upload is a ValueError naming the problem, never a traceback."""
+    with pytest.raises(ValueError, match=err):
+        call()
