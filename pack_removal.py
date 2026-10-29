@@ -437,12 +437,17 @@ def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Opt
 
 
 def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_enabled: Optional[bool] = None,
-                      log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+                      log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None,
+                      tenant_held: bool = False) -> Dict[str, Any]:
     """Undo one recorded deployment through the guided path: the plan
     previewed by plan_removal_deployment, tiered deletes with activation,
-    then the same read-back verification as a pack removal."""
-    return _execute(client, lambda c=client: plan_removal_deployment(c, record),
-                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
+    then the same read-back verification as a pack removal.
+    `tenant_held`: the caller already holds ops.tenant_run(client) for this
+    whole run (pack_deploy.undo, which also restores confidence tweaks), so
+    the lock, which is not re-entrant, is not taken a second time."""
+    planner = lambda c=client: plan_removal_deployment(c, record)  # noqa: E731
+    run = _execute_locked if tenant_held else _execute
+    return run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
 def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
@@ -801,16 +806,25 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
     `require_hash`: the removal deletes only the plan the operator
     previewed, so an empty plan_hash is refused (a deployment's undo is
     bound to its record instead, and may run without one)."""
-    import zia_rate
     with ops.tenant_run(client) as mine:
         if not mine:
             ops.audit_refusal("removal", client, plan_hash=plan_hash, reason=ops.BUSY_REASON)
             return ops.busy_result(plan_hash=plan_hash)
-        with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("removal", client, plan_hash=plan_hash, cancel=cancel) as run:
-            run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log,
-                                         settle_seconds=settle_seconds, cancel=cancel,
-                                         require_hash=require_hash)
-            return run["result"]
+        return _execute_locked(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log,
+                               settle_seconds=settle_seconds, cancel=cancel, require_hash=require_hash)
+
+
+def _execute_locked(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
+                    cancel: Optional[threading.Event] = None, require_hash: bool = False) -> Dict[str, Any]:
+    """The removal run of _execute, for a caller that already holds
+    ops.tenant_run(client): the client's ZIA rate limits, run control and
+    the audit log, around _execute_run."""
+    import zia_rate
+    with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("removal", client, plan_hash=plan_hash, cancel=cancel) as run:
+        run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log,
+                                     settle_seconds=settle_seconds, cancel=cancel,
+                                     require_hash=require_hash)
+        return run["result"]
 
 
 def _plan_with(planner, client: Any) -> Dict[str, Any]:

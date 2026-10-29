@@ -832,25 +832,35 @@ _REMEDIATION_RULE_TYPE_POLICY = {"webDlpRules": "web_dlp", "urlFilteringRules": 
                                  "firewallFilteringRules": "firewall", "sslInspectionRules": "ssl_inspection"}
 
 
-def _require_remediation_in_scope(req: "RemediationExecuteRequest") -> None:
-    """A live fix reads and writes one ZIA rule policy: it must be in scope on
-    the Scope page (the Bulk changes rule, admin_ops.scope_for), else 400
-    before sign-in. A recipe whose policy is not known is refused (deny by default)."""
+def _require_recipe_in_scope(check_id: Any, criteria: Any, selection: Any, what: str = "Applying a remediation") -> None:
+    """A fix recipe reads and writes one ZIA rule policy: it must be in scope
+    on the Scope page (the Bulk changes rule, admin_ops.scope_for), else 400
+    before sign-in. A recipe whose policy is not known is refused (deny by
+    default). `selection` is any body carrying the Scope page selection
+    (scopes, channels, from_page, profile_id; see _scope_selection). Used by
+    the direct apply (POST /api/remediation/execute) and by the change queue
+    when a fix recipe is filed and when it is applied, so neither path can
+    write a policy the Scope page left out."""
     import admin_ops
     import remediation
-    rid = str((remediation.get_recipe(req.check_id) or {}).get("check_id") or "")
-    criteria = req.criteria if isinstance(req.criteria, dict) else {}
+    rid = str((remediation.get_recipe(str(check_id or "")) or {}).get("check_id") or "")
+    criteria = criteria if isinstance(criteria, dict) else {}
     pol = _REMEDIATION_RULE_TYPE_POLICY.get(str(criteria.get("rule_type") or "")) if rid == "RULE-DESC" else _REMEDIATION_POLICY.get(rid)
     if not pol:
-        raise HTTPException(status_code=400, detail="Applying a remediation: this fix's rule policy is not known, so it cannot be checked "
+        raise HTTPException(status_code=400, detail=f"{what}: this fix's rule policy is not known, so it cannot be checked "
                                                     "against the Scope page. Nothing was read or written.")
-    sc, ch, _source = _scope_selection(req)
+    sc, ch, _source = _scope_selection(selection)
     scope = admin_ops.scope_for(sc, ch)
     if pol not in scope["policies"]:
         label = admin_ops.POLICIES[pol]["label"]
         why = str((scope.get("not_in_scope") or {}).get(pol) or "")
-        raise HTTPException(status_code=400, detail=f"Applying a remediation is not in scope: {label} is not in scope on the Scope page. "
+        raise HTTPException(status_code=400, detail=f"{what} is not in scope: {label} is not in scope on the Scope page. "
                                                     + (f"{why} " if why else "") + "Nothing was read or written.")
+
+
+def _require_remediation_in_scope(req: "RemediationExecuteRequest") -> None:
+    """The direct apply's Scope check (_require_recipe_in_scope on the request's own fix)."""
+    _require_recipe_in_scope(req.check_id, req.criteria, req)
 
 
 @app.get("/api/remediation/catalog")
@@ -2123,11 +2133,16 @@ class ChangeRequestRemoval(PackRemovalRequest):
 
 
 class ChangeRequestRecipe(TenantCredsRequest):
-    """File a fix recipe: the check, the recipe parameters, a title and a first comment."""
+    """File a fix recipe: the check, the recipe parameters, a title and a
+    first comment, plus the Scope page selection (the recipe's rule policy
+    must be in scope to be filed, as for the direct apply)."""
     check_id: str = ""
     criteria: Dict[str, Any] = {}
     title: str = ""
     note: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
 
 
 class ChangeRequestDecision(BaseModel):
@@ -2137,8 +2152,13 @@ class ChangeRequestDecision(BaseModel):
 
 
 class ChangeRequestApply(TenantCredsRequest):
-    """Apply an approved request: the tenant credentials and the typed confirmation phrase."""
+    """Apply an approved request: the tenant credentials and the typed
+    confirmation phrase, plus the Scope page selection (a fix recipe's rule
+    policy must still be in scope when it is applied)."""
     confirm: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
 
 
 @app.post("/api/change-queue/deploy")
@@ -2234,6 +2254,7 @@ async def change_queue_file_recipe(req: ChangeRequestRecipe, request: Request):
     creds = _validate_creds(_tenant_creds(req))
     tk, label = _cq_tenant(creds)
     criteria = {str(k)[:64]: v for k, v in (req.criteria or {}).items()}
+    _require_recipe_in_scope(req.check_id, criteria, req, what="Requesting approval for a fix")
     plan = remediation.plan(req.check_id, criteria)
     if not plan.get("ok"):
         raise HTTPException(status_code=400, detail="The recipe's parameters are not valid: " + " ".join(plan.get("errors") or []))
@@ -2244,7 +2265,7 @@ async def change_queue_file_recipe(req: ChangeRequestRecipe, request: Request):
             title=req.title or f"{plan.get('recipe_label')} (check {req.check_id})",
             summary={"api_call": 1, "write": 1 if plan.get("destructive") else 0},
             items=[{"method": plan.get("method"), "endpoint": plan.get("endpoint"), "body": plan.get("body"), "status": "send",
-                    "kind": "call", "name": plan.get("recipe_label")}],
+                    "kind": "call", "name": plan.get("recipe_label"), **({"note": plan["note"]} if plan.get("note") else {})}],
             plan_hash=change_queue.recipe_plan_hash(req.check_id, plan), requested_by=_cq_by(request), note=req.note,
             payload={"check_id": req.check_id, "recipe": recipe.get("check_id"), "criteria": criteria})
     except Exception as e:  # noqa: BLE001
@@ -2396,6 +2417,9 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
         _require_write_assessor(req)
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    if rec.get("kind") == "fix_recipe":   # the recipe's rule policy must still be in scope (user rule 1), before sign-in
+        _p = rec.get("payload") or {}
+        _require_recipe_in_scope(_p.get("check_id"), _p.get("criteria") or {}, req, what="Applying this fix")
     creds = _tenant_creds(req)
     tk, label = _cq_tenant(creds)
     if tk != rec.get("tenant"):
@@ -4601,7 +4625,8 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: 
     logs: list = []
     result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.undo(client, rec, writes_enabled=True, log=logs.append))
     result["logs"] = logs
-    updated = deployments.mark_undo(dep_id, result.get("results") or [], complete=bool(result.get("complete")))
+    # A run refused as busy read and wrote nothing: the record keeps its last undo.
+    updated = rec if result.get("busy") else deployments.mark_undo(dep_id, result.get("results") or [], complete=bool(result.get("complete")))
     result["deployment"] = deployments.summary(updated) if updated else None
     return result
 
@@ -8879,7 +8904,9 @@ def _batch_hosts(req: PathBatchRequest) -> Tuple[List[str], Dict[str, Dict[str, 
     if len(req.har_hosts) > path_analyzer.BATCH_MAX:
         raise HTTPException(status_code=400, detail=f"At most {path_analyzer.BATCH_MAX} hosts are analyzed per run; {len(req.har_hosts)} were sent.")
     # Each count and list is checked for its type (deny by default): a value of
-    # another type, NaN or Infinity counts as nothing, never a 500.
+    # another type, NaN or Infinity counts as nothing, never a 500. Over HTTP
+    # NaN and Infinity never get here (_StrictJSONRoute refuses the body, 422);
+    # only callers inside the process can pass them, and this stays the guard.
     num = lambda v: max(0, min(int(v), 10 ** 12)) if (isinstance(v, int) or (isinstance(v, float) and abs(v) < float("inf"))) and not isinstance(v, bool) else 0  # noqa: E731
     for item in req.har_hosts:
         raw = item.get("host") if isinstance(item, dict) else item

@@ -1180,14 +1180,16 @@ def delete_pack(pack_id: str, root: Optional[str] = None) -> str:
 def pack_bundle(pack_dir: str) -> Dict[str, Any]:
     """A single-file JSON copy of a pack: the upload format, and the
     starting point for a customer's own pack."""
-    from dlp_importer import _load_json, _resolve_configs, load_pack_metadata
+    from dlp_importer import _resolve_configs, load_pack_metadata
+    from pack_deploy import load_pack_file   # the one pack-file reader
     meta = load_pack_metadata(pack_dir)
     configs = _resolve_configs(pack_dir)
+    pid = os.path.basename(os.path.normpath(pack_dir))
     out = {k: meta[k] for k in ("name", "version", "description", "references", "baseline") if meta.get(k) is not None}
-    out["dictionaries"] = _load_json(configs, "dlp_dictionaries.json")
-    out["engines"] = _load_json(configs, "dlp_engines.json")
-    out["policies"] = _load_json(configs, "dlp_policies.json")
-    groups = _load_json(configs, "endpoint_application_groups.json")
+    out["dictionaries"] = load_pack_file(configs, "dlp_dictionaries.json", pid)
+    out["engines"] = load_pack_file(configs, "dlp_engines.json", pid)
+    out["policies"] = load_pack_file(configs, "dlp_policies.json", pid)
+    groups = load_pack_file(configs, "endpoint_application_groups.json", pid)
     if groups:
         out["app_groups"] = groups
     return out

@@ -32,7 +32,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pack_channels as pc
-from dlp_importer import _load_json, _resolve_configs, discover_packs
+from dlp_importer import _resolve_configs, discover_packs
+from pack_deploy import load_pack_file   # the app's one pack-file reader
 
 FAN_CHANNELS = (pc.ENDPOINT, pc.SAAS, pc.EMAIL)
 SUFFIX = {pc.ENDPOINT: "Endpoint", pc.SAAS: "SaaS", pc.EMAIL: "Email"}
@@ -109,7 +110,7 @@ def fan_out(policies: list) -> list:
 def process(pack: dict, *, write: bool) -> tuple[bool, str]:
     configs = _resolve_configs(pack["dir"])
     path = os.path.join(configs, "dlp_policies.json")
-    policies = _load_json(configs, "dlp_policies.json")
+    policies = load_pack_file(configs, "dlp_policies.json", pack.get("id"))
     new = fan_out(policies)
     changed = json.dumps(policies, sort_keys=True) != json.dumps(new, sort_keys=True)
     if changed and write:

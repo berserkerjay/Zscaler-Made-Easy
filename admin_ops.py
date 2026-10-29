@@ -630,13 +630,15 @@ _LABEL_RE = re.compile(r"^(?!-)[a-z0-9_-]{1,63}(?<!-)$")
 
 def _ascii_host(host: str) -> Optional[str]:
     """An internationalised host name in its ASCII (punycode) form, as the
-    API stores it (assumed for ZIA and ZPA: the SDK passes names through);
-    None when it cannot be encoded."""
+    API stores it (assumed for ZIA and ZPA: the SDK passes names through),
+    through the app's one IDN encoder (zia_path_modules.ascii_host, UTS 46,
+    the form browsers send); None when it cannot be encoded."""
     if host.isascii():
         return host
+    import zia_path_modules
     try:
-        return host.encode("idna").decode("ascii")
-    except UnicodeError:
+        return zia_path_modules.ascii_host(host)
+    except ValueError:
         return None
 
 

@@ -83,7 +83,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
          "controls": ("SSDF PW.8.2", "SSDF PW.9.1", "SSDF RV.1.1", "Scorecard CI-Tests")},
     )},
     {"key": "secure_by_design", "name": "Secure by design", "weight": 35, "subs": (
-        {"key": "write_paths", "name": "Write paths", "slugs": ("sbd-writes", "c6-admin-ops", "c6-deploy", "c6-packs", "c6-migrate", "c6-update-heal"),
+        {"key": "write_paths", "name": "Write paths", "slugs": ("sbd-writes", "c6-admin-ops", "c6-deploy", "c6-packs", "c6-migrate", "c6-update-heal", "review-backend"),
          "tests": ("test_write_safety_gates.py", "test_pack_deploy.py", "test_pack_removal.py", "test_remediation.py",
                    "test_admin_ops.py", "test_proposal_apply.py", "test_channel_targets_undo.py", "test_team_queue.py"),
          "controls": ("ASVS V4.1.3", "ASVS V4.1.5", "ASVS V4.2.2", "ASVS V7.1.3", "ASVS V11.1.1",

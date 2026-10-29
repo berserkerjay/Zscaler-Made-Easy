@@ -217,7 +217,7 @@
       "cwe": "CWE-1188",
       "asvs": "V4.1.3",
       "status": "fixed",
-      "fix": "every recipe's state defaults to DISABLED; a missing state stays refused as required",
+      "fix": "every recipe's state defaults to DISABLED; a request that leaves the state out is filled server-side as DISABLED before validation (remediation._with_defaults), never left for the tenant to choose",
       "test": "tests/test_sbd_writes.py::test_every_remediation_recipe_offers_its_rule_disabled_by_default",
       "commit": "972b17e"
     },
@@ -228,8 +228,8 @@
       "cwe": "CWE-841",
       "asvs": "V11.1.1",
       "status": "fixed",
-      "fix": "ops_aiguard asks its phrase every time a plan turns enforcement on; monitor-only keeps the count rule",
-      "test": "tests/test_sbd_writes.py::test_an_ai_guard_plan_that_turns_enforcement_on_needs_the_typed_phrase",
+      "fix": "every AI Guard plan with a change asks its typed phrase whatever the count and the mode (monitor-only included: nothing it writes is created disabled), and so does its Undo; a blank phrase is refused with no write",
+      "test": "tests/test_sbd_writes.py::test_a_monitor_only_ai_guard_policy_still_asks_for_its_phrase",
       "commit": "972b17e"
     },
     {

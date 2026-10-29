@@ -373,6 +373,7 @@ class _FakeRaw:
 
 RECIPE = {"check_id": "FW-01", "criteria": {"name": "Default_deny", "description": "Deny by default", "action": "BLOCK_DROP",
                                             "state": "ENABLED", "order": "1", "rank": "7"}}
+FW_SCOPE = {"scopes": ["zia_extras"], "channels": {}, "from_page": True}   # Cloud Firewall in scope on the Scope page
 
 
 def test_a_fix_recipe_is_filed_from_its_preview_and_applied_through_remediation_execute(monkeypatch, tenant):
@@ -383,14 +384,14 @@ def test_a_fix_recipe_is_filed_from_its_preview_and_applied_through_remediation_
     calls = []
     real = remediation.execute
     monkeypatch.setattr(remediation, "execute", lambda *a, **k: calls.append((a[1:], k)) or real(*a, **k))
-    r = alice.post("/api/change-queue/recipe", json={**RECIPE, **CREDS})
+    r = alice.post("/api/change-queue/recipe", json={**RECIPE, **CREDS, **FW_SCOPE})
     assert r.status_code == 200, r.text
     rec = r.json()["request"]
     assert rec["kind"] == "fix_recipe" and rec["items"][0]["endpoint"] == "/zia/firewallFilteringRules" and rec["items"][0]["body"]["order"] == 1
     assert raw.sent == [], "filing sends nothing"
-    assert alice.post("/api/change-queue/recipe", json={"check_id": "FW-01", "criteria": {}, **CREDS}).status_code == 400
+    assert alice.post("/api/change-queue/recipe", json={"check_id": "FW-01", "criteria": {}, **CREDS, **FW_SCOPE}).status_code == 400
     bob.post(f"/api/change-queue/{rec['id']}/approve", json={})
-    _wait(bob.post(f"/api/change-queue/{rec['id']}/apply", json={**CREDS, "confirm": "I UNDERSTAND"}).json()["job_id"])
+    _wait(bob.post(f"/api/change-queue/{rec['id']}/apply", json={**CREDS, **FW_SCOPE, "confirm": "I UNDERSTAND"}).json()["job_id"])
     assert calls == [(("FW-01", RECIPE["criteria"]), {"dry_run": False})]
     assert raw.sent and raw.sent[0][1] == "/zia/firewallFilteringRules"
     done = change_queue.get(rec["id"])
@@ -402,11 +403,11 @@ def test_a_recipe_that_changed_since_it_was_requested_is_stale_and_sends_nothing
     monkeypatch.setattr(security, "_write_override", True)
     raw = _FakeRaw()
     monkeypatch.setattr(srv, "_build_client", lambda req: raw)
-    rid = alice.post("/api/change-queue/recipe", json={**RECIPE, **CREDS}).json()["request"]["id"]
+    rid = alice.post("/api/change-queue/recipe", json={**RECIPE, **CREDS, **FW_SCOPE}).json()["request"]["id"]
     bob.post(f"/api/change-queue/{rid}/approve", json={})
     recipe = remediation.get_recipe("FW-01")
     monkeypatch.setitem(recipe, "endpoint", "/zia/firewallFilteringRules/v2")
-    _wait(bob.post(f"/api/change-queue/{rid}/apply", json={**CREDS, "confirm": "I UNDERSTAND"}).json()["job_id"])
+    _wait(bob.post(f"/api/change-queue/{rid}/apply", json={**CREDS, **FW_SCOPE, "confirm": "I UNDERSTAND"}).json()["job_id"])
     assert change_queue.get(rid)["status"] == "stale" and raw.sent == []
 
 

@@ -420,12 +420,25 @@ def test_a_har_host_entry_of_the_wrong_type_is_read_as_nothing_not_a_500(app, it
 
 @pytest.mark.parametrize("raw", ["NaN", "Infinity", "-Infinity"])
 def test_a_har_count_of_nan_or_infinity_is_not_a_500(app, raw):
-    """ASVS V5.1.4 · CWE-1287 · CWE-681: JSON's non-standard NaN and Infinity are refused by the request parser (422) or count as nothing (400 before sign-in); never a 500."""
+    """ASVS V5.1.4 · CWE-1287 · CWE-681: JSON's non-standard NaN and Infinity are refused by the strict request parser: exactly 422 json_invalid, never a 500 and never read as a number."""
     # Act
     r = app.post("/api/path-analyzer/batch/start", content='{"har_hosts": [{"host": "a.example.com", "requests": %s}]}' % raw,
                  headers={"Content-Type": "application/json"})
     # Assert
-    assert r.status_code in (400, 422) and (r.status_code == 422 or "in scope" in r.json()["detail"]), r.text
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"][0]["type"] == "json_invalid"
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "-inf"])
+def test_batch_host_counts_of_nan_or_infinity_count_as_nothing(bad):
+    """ASVS V5.1.4 · CWE-1287 · CWE-681: the second line of defence: a NaN or infinite count reaching _batch_hosts from inside the process becomes 0, never an OverflowError or ValueError."""
+    # Arrange
+    req = srv.PathBatchRequest(har_hosts=[{"host": "a.example.com", "requests": bad, "bytes_sent": bad, "uploads": bad}])
+    # Act
+    hosts, stats, skipped = srv._batch_hosts(req)
+    # Assert
+    assert hosts == ["a.example.com"] and skipped == []
+    assert (stats["a.example.com"]["requests"], stats["a.example.com"]["bytes_sent"], stats["a.example.com"]["uploads"]) == (0, 0, 0)
 
 
 def test_batch_host_counts_keep_valid_numbers():
@@ -684,3 +697,145 @@ def test_terraform_writes_invisible_characters_as_escapes_and_reads_them_back(va
     assert not md_safe.BIDI_CONTROLS.search(quoted) and "\u200b" not in quoted and "\ufeff" not in quoted
     assert string_value(quoted) == value and pack_library._unescape(quoted[1:-1]) == value
     assert not md_safe.BIDI_CONTROLS.search(comment) and "\u200b" not in comment
+
+
+# ── One IDN encoder (UTS 46) for every module that places a host name ────
+
+_IDN_CASES = [("straße.example", "xn--strae-oqa.example"), ("faß.de", "xn--fa-hia.de"), ("σς.example", "xn--3xab.example"),
+              ("münchen.de", "xn--mnchen-3ya.de"), ("Example.COM.", "example.com")]
+
+
+@pytest.mark.parametrize("typed,expected", _IDN_CASES, ids=[c[1] for c in _IDN_CASES])
+def test_every_module_encodes_an_international_host_name_the_same_way(typed, expected):
+    """ASVS V5.1.3 · CWE-176 · CWE-180: the ZPA analysis, the ZPA builder's domain check, Bulk changes and the Path analyzer give one ASCII form for the same typed name (UTS 46, deviation characters ß and ς kept, not mapped to ss and σ)."""
+    # Arrange
+    import admin_ops
+    import ops_zpa
+    import path_analyzer
+    import zia_path_modules
+    import zpa_analysis
+    # Act
+    got = {
+        "zia_path_modules.ascii_host": zia_path_modules.ascii_host(typed),
+        "path_analyzer.parse_destination": path_analyzer.parse_destination(typed)["host"],
+        "zpa_analysis.parse_destination": zpa_analysis.parse_destination(typed)["host"],
+        "zpa_analysis._entry_key": zpa_analysis._entry_key(typed),
+        "ops_zpa.check_domain": ops_zpa.check_domain(typed, "Domain"),
+        "admin_ops._ascii_host": admin_ops._ascii_host(typed.lower().rstrip(".")),
+        "admin_ops.normalize_domain": admin_ops.normalize_domain(typed)[0],
+        "admin_ops.normalize_url": admin_ops.normalize_url(typed)[0],
+    }
+    # Assert
+    assert got == {k: expected for k in got}
+
+
+def test_a_zpa_segment_holding_the_uts46_form_matches_what_the_user_typed():
+    """ASVS V5.1.3 · CWE-180 · CWE-697: a segment that holds xn--strae-oqa.example (or the name in Unicode) matches the typed straße.example, and a wildcard keeps its "*." while the rest is encoded."""
+    # Arrange
+    import zpa_analysis
+    host = zpa_analysis.parse_destination("straße.example")["host"]
+    # Act
+    exact = zpa_analysis._domain_match("xn--strae-oqa.example", host, False)
+    unicode_entry = zpa_analysis._domain_match("Straße.example.", host, False)
+    wildcard = zpa_analysis._entry_key("*.straße.example")
+    # Assert
+    assert exact is not None and unicode_entry == exact
+    assert wildcard == "*.xn--strae-oqa.example"
+
+
+@pytest.mark.parametrize("bad", ["a‍b.example", "xn--zz.ß́́́.example" * 3, "\ud800.example"])
+def test_a_host_name_uts46_refuses_is_refused_in_words_in_every_module(bad):
+    """ASVS V5.1.3 · CWE-20 · CISA SbD fail closed: a name UTS 46 refuses is refused in words by the ZPA analysis, the ZPA builder and Bulk changes (never encoded another way, never an exception other than ValueError)."""
+    # Arrange
+    import admin_ops
+    import ops_zpa
+    import zpa_analysis
+    # Act / Assert
+    with pytest.raises(ValueError):
+        zpa_analysis.parse_destination(bad)
+    with pytest.raises(ValueError):
+        ops_zpa.check_domain(bad, "Domain")
+    assert admin_ops._ascii_host(bad) is None and admin_ops.normalize_domain(bad)[0] is None
+
+
+# ── One pack-file reader: deploy, Terraform export and the library agree ──
+
+def _pack_on_disk(tmp_path, pack_id, policies_bytes):
+    from test_pack_deploy import _dict, _engine, _policy, write_pack
+    pack = write_pack(tmp_path, pack_id, dicts=[_dict("QA Dict")], engines=[_engine("QA Engine", "(D:QA Dict)")],
+                      policies=[_policy("QA-Monitor", ["QA Engine"])], meta={"name": "QA pack", "confidence_tweaks": []})
+    if policies_bytes is not None:
+        with open(os.path.join(pack["dir"], "configs", "dlp_policies.json"), "wb") as f:
+            f.write(policies_bytes)
+    return pack
+
+
+def _reader_verdicts(pack):
+    """Accepted (True) or refused (False) by each reader of a pack folder."""
+    import dlp_importer
+    import pack_deploy
+    import pack_library
+    import pack_terraform
+
+    def ok(fn):
+        try:
+            out = fn()
+        except ValueError:      # PackFileError is a ValueError
+            return False
+        return not (isinstance(out, dict) and out.get("error"))
+    return {
+        "deploy (pack_deploy.load_sources)": ok(lambda: pack_deploy.load_sources([pack])),
+        "Terraform export (pack_terraform.load_pack)": ok(lambda: pack_terraform.load_pack(pack)),
+        "library listing (dlp_importer.load_pack_metadata)": ok(lambda: dlp_importer.load_pack_metadata(pack["dir"])),
+        "pack detail (dlp_importer.load_pack_contents)": ok(lambda: dlp_importer.load_pack_contents(pack["dir"])),
+        "library bundle (pack_library.pack_bundle)": ok(lambda: pack_library.pack_bundle(pack["dir"])),
+    }
+
+
+_PACK_FILES = [
+    ("plain", None, True),
+    ("utf8-bom", b"\xef\xbb\xbf" + json.dumps([{"name": "QA-Monitor", "engines": ["QA Engine"], "channel": "web"}]).encode(), True),
+    ("name-not-text", json.dumps([{"name": 5, "engines": ["QA Engine"]}]).encode(), False),
+    ("not-a-list", b'{"policies": []}', False),
+    ("too-deep", ("[" * 40 + "]" * 40).encode(), False),
+]
+
+
+@pytest.mark.parametrize("label,content,accepted", _PACK_FILES, ids=[c[0] for c in _PACK_FILES])
+def test_every_pack_reader_accepts_and_refuses_the_same_files(tmp_path, label, content, accepted):
+    """ASVS V5.1.3 · V5.1.4 · CWE-20 · CWE-1287: one pack-file reader: a pack with a UTF-8 BOM, a non-text name, a non-list or deep nesting gets the same verdict from deploy, Terraform export and the library."""
+    # Arrange
+    pack = _pack_on_disk(tmp_path, f"qa_{label.replace('-', '_')}", content)
+    # Act
+    verdicts = _reader_verdicts(pack)
+    # Assert
+    assert verdicts == {k: accepted for k in verdicts}
+
+
+def test_an_oversize_pack_file_is_refused_by_every_reader(tmp_path, monkeypatch):
+    """ASVS V12.1.1 · CWE-400 · CWE-770: a pack file over the size cap is refused by deploy, Terraform export and the library alike, never parsed."""
+    # Arrange
+    import pack_deploy
+    monkeypatch.setattr(pack_deploy, "PACK_FILE_MAX_BYTES", 64)
+    pack = _pack_on_disk(tmp_path, "qa_big", json.dumps([{"name": "P" * 200}]).encode())
+    # Act
+    verdicts = _reader_verdicts(pack)
+    # Assert
+    assert verdicts == {k: False for k in verdicts}
+
+
+def test_the_fan_out_tool_reads_packs_through_the_one_reader(tmp_path):
+    """SSDF PW.4.1 · CWE-20 · CWE-1287: tools/fan_out_channels.py reads a pack with the same reader (a BOM pack loads, a non-text name is refused)."""
+    # Arrange
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("fan_out_channels_qa", os.path.join(ROOT, "tools", "fan_out_channels.py"))
+    fan = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fan)
+    bom = _pack_on_disk(tmp_path, "qa_fan_bom", _PACK_FILES[1][1])
+    bad = _pack_on_disk(tmp_path, "qa_fan_bad", _PACK_FILES[2][1])
+    # Act
+    changed, _summary = fan.process(bom, write=False)
+    # Assert
+    assert changed is True
+    with pytest.raises(ValueError):
+        fan.process(bad, write=False)

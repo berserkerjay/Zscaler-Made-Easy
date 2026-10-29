@@ -65,6 +65,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import admin_ops as ao
 import pack_ops as ops
+import zia_path_modules
 import zpa_reader as zr
 
 FAMILY = "zpa_objects"
@@ -211,11 +212,8 @@ WIDEST_PREFIX = {4: 9, 6: 33}
 
 def check_domain(v: Any, what: str, *, wildcard_ok: bool = True) -> str:
     raw = str(v or "").strip()
-    if not raw.isascii():
-        try:   # an IDN in the punycode form ZPA stores ("*" passes through)
-            raw = raw.lower().encode("idna").decode("ascii")
-        except UnicodeError:
-            pass
+    if not raw.isascii():   # an IDN in the punycode form ZPA stores: the app's one encoder (UTS 46), "*." kept
+        raw = zia_path_modules.entry_host(raw)
     d, why = ao.normalize_domain(raw)
     if why:
         raise _err(f"{what}: '{str(v)[:60]}' {why}.")

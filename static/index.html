@@ -3580,6 +3580,7 @@ async function remediationPreview() {
         <div style="font-weight:600;margin-bottom:0.3rem;">✓ Plan ready</div>
         <div style="font-size:0.82rem;"><strong>Method:</strong> <code>${escapeHtml(data.method)}</code></div>
         <div style="font-size:0.82rem;"><strong>Endpoint:</strong> <code>${escapeHtml(data.endpoint)}</code></div>
+        ${data.note ? `<div style="font-size:0.82rem;margin-top:0.3rem;">${escapeHtml(data.note)}</div>` : ''}
         <div style="font-size:0.82rem;margin-top:0.4rem;"><strong>Body:</strong></div>
         <pre style="background:var(--well);padding:0.5rem;border-radius:4px;font-size:0.75rem;overflow-x:auto;margin-top:0.2rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
@@ -3866,6 +3867,7 @@ async function wizardPreview() {
     resultEl.innerHTML = `
       <div style="padding:0.5rem 0.7rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:6px;font-size:0.82rem;">
         <strong>Plan ready:</strong> <code>${escapeHtml(data.method)}</code> <code>${escapeHtml(data.endpoint)}</code>
+        ${data.note ? `<div style="margin-top:0.3rem;">${escapeHtml(data.note)}</div>` : ''}
         <pre style="background:var(--well);padding:0.4rem;border-radius:4px;font-size:0.72rem;overflow-x:auto;margin-top:0.3rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
     _wizardPlanReady(true);
@@ -3934,6 +3936,7 @@ async function wizardRequestApproval() {
   const body = migrateCredBody();
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();
+  Object.assign(body, scopePageSelection());   // a fix is filed only for a rule policy in scope on the Scope page
   const resultEl = document.getElementById('wizardResult');
   const btn = document.getElementById('wizardRequestBtn');
   if (btn) btn.disabled = true;

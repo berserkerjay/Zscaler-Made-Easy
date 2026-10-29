@@ -60,7 +60,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 127,
+            "fixed": 134,
             "accepted": 8,
             "records": [
               "c6-admin-ops",
@@ -68,6 +68,7 @@
               "c6-migrate",
               "c6-packs",
               "c6-update-heal",
+              "review-backend",
               "sbd-writes"
             ]
           },
@@ -269,17 +270,16 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 53,
+            "fixed": 46,
             "accepted": 2,
             "records": [
               "c6-tooltips",
               "c6-ui-ops",
-              "glass",
               "ui"
             ]
           },
           "coverage": {
-            "score": 100.0,
+            "score": 90.9,
             "covered": [
               "WCAG SC 1.1.1",
               "WCAG SC 1.3.1",
@@ -287,13 +287,14 @@
               "WCAG SC 1.4.10",
               "WCAG SC 1.4.11",
               "WCAG SC 2.1.1",
-              "WCAG SC 2.4.7",
               "WCAG SC 2.5.8",
               "WCAG SC 3.3.2",
               "WCAG SC 4.1.2",
               "WCAG SC 4.1.3"
             ],
-            "missing": []
+            "missing": [
+              "WCAG SC 2.4.7"
+            ]
           }
         }
       ]
@@ -350,27 +351,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 153,
+        "fixed": 155,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 315,
+        "fixed": 314,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 45,
+        "fixed": 44,
         "accepted": 22
       }
     },
     "checks": {
-      "pass": 296,
-      "fixed": 284,
+      "pass": 292,
+      "fixed": 286,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8497
+    "tests_added": 8207
   },
   "findings": [
     {
@@ -973,8 +974,8 @@
       "cwe": "CWE-440",
       "asvs": "V1.14.6",
       "wcag": "",
-      "fix": "Read the rule, merge the changed fields, PUT it back whole; send nothing if the read fails (assumed: ZIA has no PATCH)",
-      "test": "tests/test_c6_admin_ops.py::test_a_patch_recipe_without_client_patch_sends_the_whole_rule",
+      "fix": "Read the rule, merge the changed fields, PUT it back whole; send nothing if the read fails (assumed: ZIA has no PATCH). The dead PATCH branch is gone (a PATCH recipe is refused, nothing sent); the plan and dry run say the rule is read and sent back whole",
+      "test": "tests/test_c6_admin_ops.py::test_a_merge_recipe_on_a_raw_client_sends_the_whole_rule",
       "commit": "97ff5e2",
       "reason": "",
       "slug": "c6-admin-ops",
@@ -3142,6 +3143,38 @@
       "sub_area": "regression"
     },
     {
+      "id": "REVIEW-BACKEND-01",
+      "title": "The change queue's fix-recipe path (file, then apply) skipped the Scope check the direct remediation route enforces, so an approved fix could read and write a rule policy not in scope",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "One helper (_require_recipe_in_scope) on the direct route, on /api/change-queue/recipe and on apply of a fix_recipe, before sign-in; the request models take the optional Scope fields and both pages send them",
+      "test": "tests/test_c6_admin_ops.py::test_applying_an_approved_fix_whose_policy_is_out_of_scope_is_refused_before_sign_in",
+      "commit": "d99cc7f",
+      "reason": "",
+      "slug": "review-backend",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "REVIEW-BACKEND-02",
+      "title": "Deployment Undo PUT dictionary confidence outside the per-tenant write lock and before the busy check, then reported that nothing was read or written",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-362",
+      "asvs": "V11.1.6",
+      "wcag": "",
+      "fix": "pack_deploy.undo holds ops.tenant_run for the tweak PUTs (rate limits, run control, audited run) and the removal (remove_deployment tenant_held, _execute_locked); busy is refused and audited",
+      "test": "tests/test_sbd_writes.py::test_a_deployment_undo_on_a_busy_tenant_puts_nothing_and_is_audited",
+      "commit": "a5b9055",
+      "reason": "",
+      "slug": "review-backend",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
       "id": "SBD-AUTH-01",
       "title": "The API access page (reachable without the UI token) showed the latest readiness answers: tenant name, API role, licences and what works",
       "severity": "medium",
@@ -3629,7 +3662,7 @@
       "cwe": "CWE-863",
       "asvs": "V4.1.3",
       "wcag": "",
-      "fix": "A live /api/remediation/execute maps its recipe (RULE-DESC by rule_type) to an admin_ops policy and refuses one admin_ops.scope_for does not put in scope (400 before sign-in); unknown policy denied; dry runs unchanged; the page sends scopePageSelection()",
+      "fix": "A live fix maps its recipe (RULE-DESC by rule_type) to a rule policy and refuses one not in scope, 400 before sign-in; unknown policy denied; dry runs unchanged. The same check covers a fix filed in and applied from the change queue (REVIEW-BACKEND-01)",
       "test": "tests/test_c6_admin_ops.py::test_a_live_fix_outside_the_scope_page_is_refused_before_sign_in",
       "commit": "90f7b6c",
       "reason": "",
@@ -7846,70 +7879,6 @@
       "sub_area": "traffic_analysis"
     },
     {
-      "id": "GLASS-01",
-      "title": "Dark theme: secondary and semantic text on glass panels and capsule buttons fell to 3.9:1 against the brightest point of the page wash once the sheen (6% white) and the pointer lens (8% white) were added",
-      "severity": "low",
-      "status": "fixed",
-      "cwe": "CWE-684",
-      "asvs": "V14.4",
-      "wcag": "WCAG 2.2 SC 1.4.3",
-      "fix": "static/glass.css: dark sheen 2% and lens 4%; a hovered capsule turns more opaque instead of lighter",
-      "test": "tests/test_glass.py::test_text_on_each_glass_tier_meets_aa_against_the_worst_backdrop",
-      "commit": "adcaa91",
-      "reason": "",
-      "slug": "glass",
-      "area": "functionality",
-      "sub_area": "ui_a11y"
-    },
-    {
-      "id": "GLASS-02",
-      "title": "Accent text on --accent-tint (the hero badge, a selected tab) dropped to 4.37 to 4.42:1 over translucent glass in the dark theme, because the tint is itself see-through",
-      "severity": "low",
-      "status": "fixed",
-      "cwe": "CWE-684",
-      "asvs": "V14.4",
-      "wcag": "WCAG 2.2 SC 1.4.3",
-      "fix": "static/glass.css: with the glass on, --accent-tint is mixed into the opaque card (14% dark, 12% light), as the status chips are",
-      "test": "tests/test_glass.py::test_accent_text_on_its_tint_is_independent_of_the_glass",
-      "commit": "adcaa91",
-      "reason": "",
-      "slug": "glass",
-      "area": "functionality",
-      "sub_area": "ui_a11y"
-    },
-    {
-      "id": "GLASS-03",
-      "title": "The sticky details panel of the Deploy flow page (an rp-card) was panel-tier glass: with content able to pass behind a sticky surface, its text fell to 2.1:1 in the worst case",
-      "severity": "low",
-      "status": "fixed",
-      "cwe": "CWE-684",
-      "asvs": "V14.4",
-      "wcag": "WCAG 2.2 SC 1.4.3",
-      "fix": "static/glass.css: .rp-card.fl-side uses the floating tier (95% / 90% opaque)",
-      "test": "tests/test_glass_browser.py::test_text_on_glass_meets_aa_against_the_worst_backdrop",
-      "commit": "adcaa91",
-      "reason": "",
-      "slug": "glass",
-      "area": "functionality",
-      "sub_area": "ui_a11y"
-    },
-    {
-      "id": "GLASS-04",
-      "title": "A backdrop-filter on the sidebar made it the containing block of the sidebar's fixed drag-and-drop marker (sidebar_order.js), so the marker would be placed against the scrolled sidebar instead of the window",
-      "severity": "low",
-      "status": "fixed",
-      "cwe": "CWE-684",
-      "asvs": "V14.4",
-      "wcag": "WCAG 2.2 SC 2.1.1",
-      "fix": "static/glass.css: the sidebar keeps the floating tint but no blur (only the still wash is behind it)",
-      "test": "tests/test_glass_browser.py::test_blur_stays_on_a_few_chrome_layers",
-      "commit": "adcaa91",
-      "reason": "",
-      "slug": "glass",
-      "area": "functionality",
-      "sub_area": "ui_a11y"
-    },
-    {
       "id": "REGRESSION-02",
       "title": "Log analyzer: a DIRECT condition written in a PAC helper function (isCorp(host)) was no longer listed as a bypass",
       "severity": "low",
@@ -7940,6 +7909,54 @@
       "slug": "regression",
       "area": "regression",
       "sub_area": "regression"
+    },
+    {
+      "id": "REVIEW-BACKEND-03",
+      "title": "Two IDN encodings: the ZPA analysis, ZPA builder and Bulk changes mapped deviation characters (straße to strasse) while the Path analyzer and browsers keep them (xn--strae-oqa)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-176",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "zpa_analysis, ops_zpa.check_domain and admin_ops._ascii_host use zia_path_modules.ascii_host / entry_host (UTS 46); the dead fallback in parse_destination is gone",
+      "test": "tests/test_sbd_untrusted_input.py::test_every_module_encodes_an_international_host_name_the_same_way",
+      "commit": "6522e8c",
+      "reason": "",
+      "slug": "review-backend",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "REVIEW-BACKEND-04",
+      "title": "Two pack-file readers disagreed: a BOM pack deployed but failed the Terraform export and the library; a non-text name was refused by deploy but rendered by the export",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.4",
+      "wcag": "",
+      "fix": "pack_terraform, pack_library, dlp_importer and tools/fan_out_channels.py read through pack_deploy.load_pack_file",
+      "test": "tests/test_sbd_untrusted_input.py::test_every_pack_reader_accepts_and_refuses_the_same_files",
+      "commit": "f71779b",
+      "reason": "",
+      "slug": "review-backend",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "REVIEW-BACKEND-05",
+      "title": "remediation.execute kept a dead PATCH branch with a weaker read check, and the preview showed a description-only PUT body without saying the rule is read and sent back whole",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-440",
+      "asvs": "V1.14.6",
+      "wcag": "",
+      "fix": "PATCH branch removed (a PATCH recipe is refused, nothing sent); plan() and the dry run carry a merge note shown in the previews and the queue item",
+      "test": "tests/test_c6_admin_ops.py::test_a_patch_recipe_on_a_raw_client_without_patch_sends_nothing",
+      "commit": "a16a1d1",
+      "reason": "",
+      "slug": "review-backend",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "SBD-AUTH-02",
@@ -8173,7 +8190,7 @@
       "cwe": "CWE-1188",
       "asvs": "V4.1.3",
       "wcag": "",
-      "fix": "every recipe's state defaults to DISABLED; a missing state stays refused as required",
+      "fix": "every recipe's state defaults to DISABLED; a request that leaves the state out is filled server-side as DISABLED before validation (remediation._with_defaults), never left for the tenant to choose",
       "test": "tests/test_sbd_writes.py::test_every_remediation_recipe_offers_its_rule_disabled_by_default",
       "commit": "972b17e",
       "reason": "",
@@ -8189,8 +8206,8 @@
       "cwe": "CWE-841",
       "asvs": "V11.1.1",
       "wcag": "",
-      "fix": "ops_aiguard asks its phrase every time a plan turns enforcement on; monitor-only keeps the count rule",
-      "test": "tests/test_sbd_writes.py::test_an_ai_guard_plan_that_turns_enforcement_on_needs_the_typed_phrase",
+      "fix": "every AI Guard plan with a change asks its typed phrase whatever the count and the mode (monitor-only included: nothing it writes is created disabled), and so does its Undo; a blank phrase is refused with no write",
+      "test": "tests/test_sbd_writes.py::test_a_monitor_only_ai_guard_policy_still_asks_for_its_phrase",
       "commit": "972b17e",
       "reason": "",
       "slug": "sbd-writes",
@@ -9046,54 +9063,6 @@
       "sub_area": "traffic_analysis"
     },
     {
-      "id": "GLASS-05",
-      "title": "The existing page audit skipped every text whose background stack contained a gradient and counted any box-shadow as a focus ring, so glass surfaces (sheen gradient, resting rim and shadow) would have passed contrast and focus checks without being measured",
-      "severity": "info",
-      "status": "fixed",
-      "cwe": "CWE-1164",
-      "asvs": "V14.4",
-      "wcag": "WCAG 2.2 SC 2.4.7",
-      "fix": "tests/test_accessibility.py PAGE_AUDIT and FOCUS_STEP measure the sheen and the wash and compare a shadow with the control's resting shadow",
-      "test": "tests/test_accessibility.py::test_keyboard_focus_is_visible_and_never_trapped",
-      "commit": "adcaa91",
-      "reason": "",
-      "slug": "glass",
-      "area": "functionality",
-      "sub_area": "ui_a11y"
-    },
-    {
-      "id": "GLASS-06",
-      "title": "Two browser contrast checks read color(srgb r g b / a), the form color-mix() computes to, as 0..255 values, so any color-mix() surface measured as near black (1.01:1 and 1.17:1 false failures, and false passes in the dark theme)",
-      "severity": "info",
-      "status": "fixed",
-      "cwe": "CWE-1164",
-      "asvs": "V14.4",
-      "wcag": "WCAG 2.2 SC 1.4.3",
-      "fix": "tests/test_quality_score.py and tests/test_c6_tooltips.py scale color(srgb) channels to 0..255 before the luminance",
-      "test": "tests/test_quality_score.py::test_the_section_reads_and_reflows_at_390px",
-      "commit": "adcaa91",
-      "reason": "",
-      "slug": "glass",
-      "area": "functionality",
-      "sub_area": "ui_a11y"
-    },
-    {
-      "id": "GLASS-07",
-      "title": "The page audit sampled the colour under a text at its element's top-left corner; on a capsule button the rounded corner is outside the button, so white button text was measured against the bar behind it (1.00:1 false failure)",
-      "severity": "info",
-      "status": "fixed",
-      "cwe": "CWE-1164",
-      "asvs": "V14.4",
-      "wcag": "WCAG 2.2 SC 1.4.3",
-      "fix": "tests/test_accessibility.py samples at the text's own line box (a Range over its text node)",
-      "test": "tests/test_accessibility.py::test_text_contrast_meets_aa_in_both_themes",
-      "commit": "adcaa91",
-      "reason": "",
-      "slug": "glass",
-      "area": "functionality",
-      "sub_area": "ui_a11y"
-    },
-    {
       "id": "REGRESSION-04",
       "title": "Known flaky test_tenant_pacing: the 429-hold test asserted 19 s left of a 20 s hold on the wall clock, so a 1 s scheduling stall under load failed it (reproduced by injecting a 1.2 s stall)",
       "severity": "info",
@@ -9108,6 +9077,38 @@
       "slug": "regression",
       "area": "regression",
       "sub_area": "regression"
+    },
+    {
+      "id": "REVIEW-BACKEND-06",
+      "title": "Records and test names described superseded behaviour: an omitted remediation state 'refused' (it is planned DISABLED) and monitor-only AI Guard 'keeps the count rule' (it asks its phrase)",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "V11.1.1",
+      "wcag": "",
+      "fix": "SBD-WRITES-09/10 and the test wording corrected; AI Guard tests execute with a blank phrase (plan and Undo plan) and see a refusal with no write",
+      "test": "tests/test_sbd_writes.py::test_an_ai_guard_undo_plan_asks_for_its_phrase_and_refuses_a_blank_one",
+      "commit": "a16a1d1",
+      "reason": "",
+      "slug": "review-backend",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "REVIEW-BACKEND-07",
+      "title": "The HAR NaN/Infinity test accepted 400 or 422, so it did not pin the strict JSON parser, and the _batch_hosts guard was untested on its own",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V5.1.4",
+      "wcag": "",
+      "fix": "The HTTP test asserts exactly 422 json_invalid; a direct _batch_hosts test shows NaN and infinite counts become 0",
+      "test": "tests/test_sbd_untrusted_input.py::test_batch_host_counts_of_nan_or_infinity_count_as_nothing",
+      "commit": "a16a1d1",
+      "reason": "",
+      "slug": "review-backend",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "SBD-WRITES-13",
@@ -9787,29 +9788,6 @@
       "tests_added": 46
     },
     {
-      "slug": "glass",
-      "area": "UI and accessibility: the glass effect (static/glass.css, static/glass.js) on every page styled by the app's stylesheet, its solid fallbacks and the Advanced settings switch",
-      "title": "Glass effect checked for WCAG 2.2 AA contrast against the worst case behind each surface, every solid fallback, reflow, focus, motion and blur cost, statically and in Chrome on the sample tenant",
-      "standards": [
-        "WCAG 2.2 SC 1.4.3",
-        "WCAG 2.2 SC 1.4.11",
-        "WCAG 2.2 SC 1.4.10",
-        "WCAG 2.2 SC 2.4.7",
-        "WCAG 2.2 SC 2.4.11",
-        "WCAG 2.2 SC 2.3.3",
-        "WCAG 2.2 SC 2.2.2",
-        "WCAG 2.2 SC 2.1.1",
-        "WCAG 2.2 SC 4.1.2",
-        "WCAG 2.2 SC 1.4.13",
-        "ASVS V14.4",
-        "CWE-248",
-        "CWE-684"
-      ],
-      "checks": 9,
-      "findings": 7,
-      "tests_added": 308
-    },
-    {
       "slug": "motion-zpa",
       "area": "Live motion: ZPA analysis, Traffic insights, Live DLP feed, Bypass report",
       "title": "Moving flows on four report pages, drawn on the Flow animator engine from each page's own result",
@@ -9851,6 +9829,31 @@
       "checks": 17,
       "findings": 4,
       "tests_added": 487
+    },
+    {
+      "slug": "review-backend",
+      "area": "Wave 6 review: backend fixes (scope, run lock, one IDN encoder, one pack reader, integration tidy-ups)",
+      "title": "Backend items of the orchestrated Wave 6 review: change-queue fix recipes, deployment Undo, host-name encoding, pack-file reading, remediation and AI Guard wording",
+      "standards": [
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V11.1.1",
+        "ASVS V11.1.6",
+        "OWASP Top 10 2021 A01",
+        "OWASP Top 10 2021 A04",
+        "WSTG-ATHZ-02",
+        "CWE-20",
+        "CWE-176",
+        "CWE-362",
+        "CWE-440",
+        "CWE-863",
+        "CWE-1287",
+        "CISA Secure by Design"
+      ],
+      "checks": 7,
+      "findings": 7,
+      "tests_added": 18
     },
     {
       "slug": "sbd-auth",
@@ -10000,7 +10003,6 @@
       "SC 1.4.6",
       "SC 1.4.10",
       "SC 1.4.11",
-      "SC 1.4.12",
       "SC 1.4.13",
       "SC 2.1.1",
       "SC 2.1.2",
@@ -10011,12 +10013,10 @@
       "SC 2.4.4",
       "SC 2.4.5",
       "SC 2.4.6",
-      "SC 2.4.7",
       "SC 2.5.1",
       "SC 2.5.8",
       "SC 3.1.2",
       "SC 3.1.5",
-      "SC 3.2.1",
       "SC 3.2.2",
       "SC 3.2.3",
       "SC 3.2.4",
@@ -10049,6 +10049,7 @@
       "CWE-172",
       "CWE-176",
       "CWE-178",
+      "CWE-180",
       "CWE-183",
       "CWE-185",
       "CWE-190",
