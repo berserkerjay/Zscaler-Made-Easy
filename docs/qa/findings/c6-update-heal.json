@@ -30,8 +30,8 @@
   "OWASP A10:2021"
  ],
  "coverage": {
-  "before": 0.0,
-  "after": 0.0
+  "before": 79.0,
+  "after": 85.0
  },
  "checks": [
   {
@@ -237,9 +237,9 @@
    "cwe": "CWE-78",
    "asvs": "V5.3.8",
    "status": "fixed",
-   "fix": "the folder and paths are passed as sh positional arguments ($1..$4)",
+   "fix": "each path is escaped for sh double quotes (_sh_dq: backslash, \", $ and `)",
    "test": "tests/test_c6_update_heal.py::test_a_folder_name_cannot_change_what_the_relauncher_runs",
-   "commit": "15e5653"
+   "commit": "0d13448"
   },
   {
    "id": "C6-UPDATE-HEAL-06",
@@ -416,7 +416,19 @@
    "fix": "kept: the targets live in the 0700 data folder and only files owned by this user are changed",
    "test": "tests/test_self_heal.py::test_permissions_on_secrets_and_stores_are_set_back_to_owner_only",
    "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-22",
+   "title": "docs/SECURITY_TESTING.md is stale after the new tests' standards docstrings (tests/test_security_test_matrix.py fails)",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.1.1",
+   "status": "open",
+   "fix": "regenerate with python tools/security_test_matrix.py (file reserved to the integrator)",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "0d13448",
+   "proposed_patch": "Generated file: run `python tools/security_test_matrix.py` on the integration branch after merging; it rewrites docs/SECURITY_TESTING.md from the test docstrings."
   }
  ],
- "tests_added": 131
+ "tests_added": 136
 }
