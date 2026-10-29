@@ -228,6 +228,22 @@ def test_nesting_is_bounded_and_never_recurses_deeply(depth, ok):
         assert "nested" in c["why"] or "too large" in c["why"]
 
 
+@pytest.mark.parametrize("claim,raw,expected", [
+    ("exp", "1" + "0" * 400, None), ("iat", "1" + "0" * 400, None), ("exp", "-1" + "0" * 400, None),
+    ("exp", "32503679999999", "2999-12-31T23:59:59Z"), ("exp", "32503680000000", None), ("exp", "1e400", None),
+], ids=["exp-401-digits", "iat-401-digits", "exp-negative-401-digits", "exp-last-millisecond", "exp-limit", "exp-float-infinity"])
+def test_a_huge_number_in_a_date_claim_is_no_date_and_never_raises(claim, raw, expected):
+    """ASVS V5.1.4 · ASVS V7.4.1 · CWE-681 · CWE-248 · WSTG-INPV-13: an exp or iat too large for a float (a JSON integer has no size limit) gives no date instead of an OverflowError; the year-3000 limit is a boundary."""
+    # Arrange
+    t = "aaa." + _b64(('{"%s": %s, "service-info": [{"prd": "ZIA"}]}' % (claim, raw)).encode()) + ".sig"
+    # Act
+    c = rd.decode_claims(t)
+    # Assert
+    got = c["expires_at" if claim == "exp" else "issued_at"]
+    assert c["ok"] is True and c["products"][0]["product"] == "ZIA"
+    assert (got is None) if expected is None else got.startswith(expected)
+
+
 def test_brackets_inside_strings_do_not_count_as_nesting():
     """ASVS V5.1.4 · CWE-20: the nesting scan skips strings (with escaped quotes), so a claim with many brackets in text is read."""
     c = rd.decode_claims(jwt({"note": "[[[[[[[[[[[[[[[[[[[[\\\"{{{{{{{{{{{{{{{{{{", "service-info": [{"prd": "ZIA"}]}))

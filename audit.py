@@ -55,8 +55,42 @@ def _omitted(v: Any) -> str:
     return "[omitted]"
 
 
-def redact(value: Any, depth: int = 0) -> Any:
-    """Copy a request body with secret-looking keys removed and values shortened."""
+def _secret_values(value: Any, depth: int = 0) -> list:
+    """The text values under secret-named keys of a request body (a typed
+    client secret, password or API key), so a copy of one pasted into
+    another field (a note, a customer name) is masked there too."""
+    out: list = []
+    if depth > 4:
+        return out
+    if isinstance(value, dict):
+        for k, v in list(value.items())[:_MAX_KEYS]:
+            if isinstance(v, str) and len(v.strip()) >= 6 and _SECRET_KEY.search(str(k)):
+                out.append(v.strip())
+            elif isinstance(v, (dict, list)):
+                out += _secret_values(v, depth + 1)
+    elif isinstance(value, list):
+        for v in value[:20]:
+            out += _secret_values(v, depth + 1)
+    return out
+
+
+def _mask_values(text: str, secrets: tuple) -> str:
+    if not secrets:
+        return text
+    import tenant_auth
+    for sv in secrets:
+        for form in sorted(tenant_auth.secret_forms(sv), key=len, reverse=True):
+            if form in text:
+                text = text.replace(form, "[redacted]")
+    return text
+
+
+def redact(value: Any, depth: int = 0, secrets: tuple = ()) -> Any:
+    """Copy a request body with secret-looking keys removed and values
+    shortened; the body's own secret values are masked wherever else they
+    appear (`secrets`, found by _secret_values when not given)."""
+    if depth == 0 and not secrets:
+        secrets = tuple(_secret_values(value))
     if depth > 4:
         return "…"
     if isinstance(value, dict):
@@ -71,11 +105,12 @@ def redact(value: Any, depth: int = 0) -> Any:
             elif _CONTENT_KEY.match(str(k)):
                 out[str(k)] = _omitted(v)
             else:
-                out[str(k)] = redact(v, depth + 1)
+                out[str(k)] = redact(v, depth + 1, secrets)
         return out
     if isinstance(value, list):
-        return [redact(v, depth + 1) for v in value[:20]] + (["…"] if len(value) > 20 else [])
+        return [redact(v, depth + 1, secrets) for v in value[:20]] + (["…"] if len(value) > 20 else [])
     if isinstance(value, str):
+        value = _mask_values(value, secrets)
         return value if len(value) <= _MAX_VALUE else value[:_MAX_VALUE] + "…"
     return value
 
@@ -123,7 +158,8 @@ def record(event: str, **fields: Any) -> Optional[str]:
     could not be written (never raises; auditing must not break a call,
     but the failure is reported on stderr)."""
     entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event, "actor": fields.pop("actor", None) or _actor()}
-    entry.update({k: redact(v) for k, v in fields.items()})
+    secrets = tuple(_secret_values(fields))
+    entry.update({k: redact(v, 0, secrets) for k, v in fields.items()})
     line = json.dumps(entry, default=str, separators=(",", ":")) + "\n"
     p = path()
     try:

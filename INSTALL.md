@@ -127,9 +127,10 @@ after both succeeded:
 
 **What stays fixed in this edition.** It listens on `127.0.0.1` only
 (this computer), it always asks for the UI token, and it starts
-read-only: changing a tenant needs write mode and its confirmations,
-exactly as in an installed copy. ZSCALER_BIND_HOST and ZSCALER_UI_AUTH=0
-are ignored here; for a copy other people reach over the network, use
+read-only: changing a tenant needs the write-mode switch in the app and
+its confirmations. ZSCALER_BIND_HOST, ZSCALER_UI_AUTH=0,
+ENABLE_WRITE_ACTIONS and ZSCALER_UI_TOKEN are ignored here (a new random
+token every start); for a copy other people reach over the network, use
 [the container](#run-it-in-a-container-instead) with sign-in through your
 identity provider.
 

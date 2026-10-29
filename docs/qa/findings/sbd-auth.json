@@ -1,0 +1,309 @@
+{
+ "area": "Secure by Design: authentication, session, scope, secrets, configuration and supply chain",
+ "title": "Wave 6 recheck after Wave 5: UI token, origin and Host checks, readiness token decode, sample tenant and snapshots, standalone edition, secrets in every sink, least privilege, supply chain, scope rule",
+ "standards": [
+  "ASVS V3.4.1",
+  "ASVS V3.5.3",
+  "ASVS V4.1.1",
+  "ASVS V4.1.3",
+  "ASVS V4.2.2",
+  "ASVS V5.1.4",
+  "ASVS V7.1.1",
+  "ASVS V7.4.1",
+  "ASVS V8.3.4",
+  "ASVS V14.1.3",
+  "ASVS V14.5.2",
+  "OWASP Top 10 2021 A01",
+  "OWASP Top 10 2021 A05",
+  "OWASP Top 10 2021 A09",
+  "SLSA v1.0 Build L2",
+  "OpenSSF Scorecard",
+  "NIST SP 800-218 SSDF",
+  "CISA Secure by Design"
+ ],
+ "checks": [
+  {
+   "id": "ui-token-every-route",
+   "what": "Every route derived from app.routes (Wave 5 routes included) answers 401 without a valid UI token; only the pinned public routes answer",
+   "standard": "ASVS V4.1.1 · CWE-306",
+   "result": "pass"
+  },
+  {
+   "id": "csrf-every-state-changing-route",
+   "what": "Every POST/PUT/PATCH/DELETE route, derived from app.routes, refuses a cross-site form post (Origin and Referer), also with the gate off",
+   "standard": "ASVS V4.2.2 · CWE-352",
+   "result": "pass"
+  },
+  {
+   "id": "loopback-host-every-route",
+   "what": "With ZSCALER_UI_AUTH=0 every route, derived from app.routes, refuses a non-loopback Host (DNS rebinding)",
+   "standard": "ASVS V14.5.2 · CWE-350",
+   "result": "pass"
+  },
+  {
+   "id": "public-routes-carry-no-tenant-data",
+   "what": "No route reachable without the UI token shows a tenant name, role or licence the app holds",
+   "standard": "ASVS V4.1.1 · CWE-200",
+   "result": "fixed"
+  },
+  {
+   "id": "readiness-decode-malformed-oversized",
+   "what": "The access token decode never raises and quotes nothing on malformed, oversized, deeply nested or numerically huge tokens",
+   "standard": "ASVS V5.1.4 · CWE-681",
+   "result": "fixed"
+  },
+  {
+   "id": "readiness-claims-display-only",
+   "what": "The unverified token claims are read only by the readiness routes, sign-in display and the API access page; no gate uses them",
+   "standard": "ASVS V3.5.3 · CWE-347",
+   "result": "pass"
+  },
+  {
+   "id": "readiness-no-token-echo",
+   "what": "Neither the token, its signature nor a raw claim reaches the readiness answer, job log, /latest, /permissions or the console",
+   "standard": "ASVS V8.3.4 · CWE-532",
+   "result": "pass"
+  },
+  {
+   "id": "sample-no-socket",
+   "what": "Every tenant-reading route of the scope table runs on the sample tenant with every socket call refused and recorded: none attempted",
+   "standard": "ASVS V1.14.1 · CWE-653",
+   "result": "pass"
+  },
+  {
+   "id": "snapshot-four-gates",
+   "what": "With a snapshot open, every write route missing any one of the four gates is refused before sign-in, nothing written",
+   "standard": "ASVS V4.1.3 · CWE-862",
+   "result": "pass"
+  },
+  {
+   "id": "snapshot-gates-held-no-write",
+   "what": "With a snapshot open and every gate held, a bulk change and a pack deployment change nothing and send nothing",
+   "standard": "ASVS V4.1.1 · CWE-441",
+   "result": "pass"
+  },
+  {
+   "id": "snapshot-no-secrets",
+   "what": "A saved or opened snapshot holds no credential, password, policy/device/machine/feed token or provisioning key value",
+   "standard": "ASVS V8.3.4 · CWE-312",
+   "result": "fixed"
+  },
+  {
+   "id": "standalone-loopback",
+   "what": "The standalone edition binds 127.0.0.1 whatever ZSCALER_BIND_HOST or local_settings.env say",
+   "standard": "ASVS V1.14.1 · CWE-1327",
+   "result": "pass"
+  },
+  {
+   "id": "standalone-token",
+   "what": "The standalone edition always requires the UI token, minted fresh every start (ZSCALER_UI_AUTH=0 and ZSCALER_UI_TOKEN ignored)",
+   "standard": "ASVS V3.3.1 · CWE-1391",
+   "result": "fixed"
+  },
+  {
+   "id": "standalone-read-only",
+   "what": "The standalone edition starts read-only whatever the environment or local_settings.env say (ENABLE_WRITE_ACTIONS ignored)",
+   "standard": "ASVS V14.1.3 · CWE-1188",
+   "result": "fixed"
+  },
+  {
+   "id": "standalone-no-cli-code",
+   "what": "Code passed on the command line is refused; only the regex worker's exact call runs",
+   "standard": "ASVS V5.2.4 · CWE-94",
+   "result": "pass"
+  },
+  {
+   "id": "secrets-job-logs-results-exports",
+   "what": "An access token echoed by an API error reaches no job log, result, bulk-test export, Client Connector install answer, audit line or file",
+   "standard": "ASVS V7.1.1 · CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "secrets-pov-sinks",
+   "what": "A typed client secret, also pasted into a POV, is in no POV file, export, Word or PDF report or audit line",
+   "standard": "ASVS V8.3.4 · CWE-312",
+   "result": "fixed"
+  },
+  {
+   "id": "secrets-crash-file-job-runner",
+   "what": "The job runner's log and error and the crash log (server.log, debug answer) mask an echoed bearer token",
+   "standard": "ASVS V7.4.1 · CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "secrets-provisioning-key",
+   "what": "The one-time ZPA provisioning key is in no job poll, result, audit line or record and is revealed once (existing tests, re-run)",
+   "standard": "ASVS V8.3.4 · CWE-532",
+   "result": "pass"
+  },
+  {
+   "id": "secrets-sign-in-routes",
+   "what": "Every sign-in route (derived from the request models) returns, logs and audits no echoed client secret, password or API key",
+   "standard": "ASVS V7.1.1 · CWE-209",
+   "result": "pass"
+  },
+  {
+   "id": "file-modes-new-writers",
+   "what": "Snapshots, POVs, POV templates and the stores beside them are 0600 files in 0700 folders with a umask of 0; bulk-test results stay in memory",
+   "standard": "ASVS V8.3.4 · CWE-732",
+   "result": "pass"
+  },
+  {
+   "id": "temp-files",
+   "what": "Atomic writes use mkstemp beside the target (unguessable, owner-only, replaced, never left) and every temporary pattern is git- and docker-ignored",
+   "standard": "ASVS V12.3.1 · CWE-377",
+   "result": "pass"
+  },
+  {
+   "id": "offline-cookie-flags",
+   "what": "The sample/snapshot cookie is HttpOnly, SameSite=Strict and Secure behind a TLS proxy",
+   "standard": "ASVS V3.4.1 · CWE-614",
+   "result": "fixed"
+  },
+  {
+   "id": "scope-every-route-derived",
+   "what": "Every route in app.routes, sent tenant details and an empty Scope page, builds no client and reads nothing unless EXEMPT says why",
+   "standard": "ASVS V4.1.3 · CWE-272",
+   "result": "pass"
+  },
+  {
+   "id": "scope-unticked-product",
+   "what": "With every other scope ticked, a single-product route reads nothing of the product left unticked",
+   "standard": "ASVS V4.1.3 · CWE-285",
+   "result": "pass"
+  },
+  {
+   "id": "locks-hash-pinned",
+   "what": "Every pip install (CI, Docker, installers, updater, release) is --require-hashes from a .lock",
+   "standard": "SLSA v1.0 Build L2 · Scorecard Pinned-Dependencies",
+   "result": "pass"
+  },
+  {
+   "id": "workflow-token-permissions",
+   "what": "Every workflow is read-only at the top; write scopes only on the job that needs them",
+   "standard": "Scorecard Token-Permissions · SSDF PO.5.1",
+   "result": "pass"
+  },
+  {
+   "id": "release-standalone-pinned",
+   "what": "release-standalone.yml uses actions pinned by commit SHA and persist-credentials: false",
+   "standard": "Scorecard Pinned-Dependencies · SLSA v1.0",
+   "result": "pass"
+  },
+  {
+   "id": "release-provenance-fail-closed",
+   "what": "PROVENANCE on means attestation must succeed and every archive is verified before publishing; off is stated in the notes",
+   "standard": "SLSA v1.0 Build L2 · SSDF PS.3.2",
+   "result": "pass"
+  },
+  {
+   "id": "pip-audit-all-locks",
+   "what": "pip-audit 2.10.1 --disable-pip --strict over requirements.lock, -dev, -ci and -pip through the proxy: no known vulnerabilities (2026-10-29)",
+   "standard": "Scorecard Vulnerabilities · SSDF RV.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "sbom-current",
+   "what": "docs/sbom.cdx.json lists exactly the locked packages with licences and a complete dependency graph",
+   "standard": "SSDF PS.3.2 · Scorecard SBOM",
+   "result": "pass"
+  },
+  {
+   "id": "scorecard-sast",
+   "what": "A static analysis tool runs in CI. Open: none does; adding one (CodeQL or similar, on its own job with security-events: write and a SHA-pinned action) is an owner decision, recommended",
+   "standard": "Scorecard SAST · SSDF PW.7.2",
+   "result": "open"
+  }
+ ],
+ "findings": [
+  {
+   "id": "SBD-AUTH-01",
+   "title": "The API access page (reachable without the UI token) showed the latest readiness answers: tenant name, API role, licences and what works",
+   "severity": "medium",
+   "cwe": "CWE-200",
+   "asvs": "V4.1.1",
+   "status": "fixed",
+   "fix": "/permissions renders the live part only for a caller who passes security.ui_request_ok, no-store when it does",
+   "test": "tests/test_auth_session.py::test_no_route_reachable_without_the_token_shows_tenant_data",
+   "commit": "5c75310"
+  },
+  {
+   "id": "SBD-AUTH-02",
+   "title": "The access token decode raised OverflowError on an exp or iat integer too large for a float",
+   "severity": "low",
+   "cwe": "CWE-681",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "readiness._iso bounds the number before any arithmetic",
+   "test": "tests/test_readiness.py::test_a_huge_number_in_a_date_claim_is_no_date_and_never_raises",
+   "commit": "5c75310"
+  },
+  {
+   "id": "SBD-AUTH-03",
+   "title": "A saved or opened snapshot kept the values of policyToken, deviceToken, machineToken, authenticationToken and provisioningKey fields",
+   "severity": "medium",
+   "cwe": "CWE-312",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "offline_tenant.scrub masks text values under token and key names (true/false switches stay)",
+   "test": "tests/test_secret_canaries.py::test_a_snapshot_keeps_no_token_or_key_value_and_keeps_true_false_switches",
+   "commit": "5c75310"
+  },
+  {
+   "id": "SBD-AUTH-04",
+   "title": "An API error page that repeats the Authorization header put the OneAPI access token into Path analyzer and Test a list job logs, results and exports, POV evidence and the install command builder's answer",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "The raw client masks every error text it returns (secrets and its own token); tenant_auth.mask_secrets and SDK error texts redact bearer tokens, JWTs and session ids by shape",
+   "test": "tests/test_secret_canaries.py::test_an_access_token_echoed_by_an_api_error_reaches_no_job_log_result_or_file",
+   "commit": "5c75310"
+  },
+  {
+   "id": "SBD-AUTH-05",
+   "title": "The standalone edition started with writes on from ENABLE_WRITE_ACTIONS (environment or a local_settings.env any program of the user can write) and took a fixed, never-rotated ZSCALER_UI_TOKEN",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "asvs": "V14.1.3",
+   "status": "fixed",
+   "fix": "standalone_main.configure ignores both with a notice; the smoke test starts the build with both set",
+   "test": "tests/test_standalone.py::test_write_mode_is_off_at_every_start_whatever_the_environment_or_settings_file_say",
+   "commit": "5c75310"
+  },
+  {
+   "id": "SBD-AUTH-06",
+   "title": "A typed client secret pasted into another field of a request (a POV's customer or notes) was written to the audit log in clear",
+   "severity": "low",
+   "cwe": "CWE-532",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "audit.redact masks the request's own secret values wherever they appear in it",
+   "test": "tests/test_secret_canaries.py::test_a_typed_secret_pasted_into_a_pov_reaches_no_pov_sink",
+   "commit": "5c75310"
+  },
+  {
+   "id": "SBD-AUTH-07",
+   "title": "The job runner's log and error and the crash log (server.log and the debug answer) kept an exception's text unmasked",
+   "severity": "low",
+   "cwe": "CWE-532",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "pack_jobs and the exception handler pass the text through tenant_auth.redact_tokens",
+   "test": "tests/test_secret_canaries.py::test_the_crash_log_and_the_debug_answer_carry_no_token",
+   "commit": "5c75310"
+  },
+  {
+   "id": "SBD-AUTH-08",
+   "title": "The sample/snapshot cookie lacked Secure behind a TLS reverse proxy (X-Forwarded-Proto), unlike the UI token cookie",
+   "severity": "low",
+   "cwe": "CWE-614",
+   "asvs": "V3.4.1",
+   "status": "fixed",
+   "fix": "The cookie uses security._https like the UI token cookie",
+   "test": "tests/test_sbd_offline_least_privilege.py::test_the_offline_tenant_cookie_is_secure_behind_a_tls_proxy",
+   "commit": "5c75310"
+  }
+ ],
+ "tests_added": 25
+}

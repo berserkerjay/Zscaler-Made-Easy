@@ -9,7 +9,8 @@ it the way a person would, so what is tested is exactly what ships.
 
 Runs the real binary in a throw-away home folder (its per-user data folder
 lands there), with the browser switched off and with the settings that
-would loosen it deliberately set (ZSCALER_UI_AUTH=0, ZSCALER_BIND_HOST=0.0.0.0)
+would loosen it deliberately set (ZSCALER_UI_AUTH=0, ZSCALER_BIND_HOST=0.0.0.0,
+ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND, a fixed ZSCALER_UI_TOKEN)
 to prove the standalone edition ignores them. It then checks, over HTTP on
 127.0.0.1 with nothing but the standard library:
 
@@ -61,8 +62,9 @@ def isolated_env(home: str, port_start: int = 8000) -> Tuple[Dict[str, str], str
     cache = os.path.join(home, ".cache")
     env.update({"HOME": home, "USERPROFILE": home, "LOCALAPPDATA": local, "XDG_CACHE_HOME": cache,
                 "ZSCALER_OPEN_BROWSER": "0", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8",
-                # Settings that would loosen a normal install; the standalone edition must ignore both.
-                "ZSCALER_UI_AUTH": "0", "ZSCALER_BIND_HOST": "0.0.0.0"})
+                # Settings that would loosen a normal install; the standalone edition must ignore all four.
+                "ZSCALER_UI_AUTH": "0", "ZSCALER_BIND_HOST": "0.0.0.0", "ENABLE_WRITE_ACTIONS": "YES_I_UNDERSTAND",
+                "ZSCALER_UI_TOKEN": "weak"})
     if port_start != 8000:
         env["ZSCALER_PORT"] = str(port_start)
     if sys.platform == "win32":
@@ -174,6 +176,8 @@ def smoke(exe: str, commit: str = "", port_start: int = 8000) -> List[str]:
             _stop(proc)
             return problems
         base = f"http://127.0.0.1:{port}"
+        if token == env.get("ZSCALER_UI_TOKEN"):
+            problems.append("the app took its UI token from ZSCALER_UI_TOKEN; it must make a new random one")
         ok = False
         while time.monotonic() < deadline:
             try:

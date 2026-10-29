@@ -452,8 +452,14 @@ class Client:
         s.token = "session"; s.exp = time.time() + s.LEGACY_SESSION_SECONDS
         return True
     def _safe(s, text):
-        """An error message with every secret masked."""
-        return tenant_auth.mask_secrets(text, {"client_secret": s.sec, "password": s.password, "api_key": s.api_key})
+        """An error message with every secret masked: the sign-in's secrets,
+        and the access token or session this client sends (an error page
+        that echoes the request would otherwise carry it to a job log)."""
+        out = tenant_auth.mask_secrets(text, {"client_secret": s.sec, "password": s.password, "api_key": s.api_key})
+        tok = getattr(s, "token", None)
+        if isinstance(tok, str) and len(tok) >= 8 and tok in out:
+            out = out.replace(tok, "[redacted token]")
+        return out
     def stop(s):
         """End the run's reads: every later get() (a retry, a fan-out part,
         a check still running) answers "run stopped" without a request."""
@@ -470,7 +476,7 @@ class Client:
             if not s.token or time.time() >= s.exp:
                 a = s.auth()
                 if a is not True:
-                    return ({"error":str(a),"status":401}, 401)
+                    return ({"error":s._safe(str(a)),"status":401}, 401)
         return None
     def get(s, ep, p=None, _retry=0):
         if ep in _FAN_OUT and _retry == 0:
@@ -556,7 +562,7 @@ class Client:
                     return s.get(ep, p, _retry+1)
                 res = ({"error":"service unavailable","status":r.status_code}, r.status_code)
             else:
-                res = ({"error":r.text[:200] if r.text else "error","status":r.status_code,"path":real_ep}, r.status_code)
+                res = ({"error":s._safe(r.text[:4000])[:200] if r.text else "error","status":r.status_code,"path":real_ep}, r.status_code)
         except requests.exceptions.Timeout:
             # One retry: a second 40 s read timeout on the same listing is not going to help.
             if _retry < 1: return s.get(ep, p, _retry+1)
@@ -566,12 +572,12 @@ class Client:
                 if not _nap(2 ** _retry, s._stopped):
                     return _STOPPED
                 return s.get(ep, p, _retry+1)
-            res = ({"error":f"connection error: {str(e)[:100]}","status":0}, 0)
+            res = ({"error":f"connection error: {s._safe(str(e))[:100]}","status":0}, 0)
         except Exception as e:
             import zia_rate
             if isinstance(e, zia_rate.Cancelled):   # stopped while the request waited for ZIA's rate limit
                 return _STOPPED
-            res = ({"error":str(e)[:200],"status":0}, 0)
+            res = ({"error":s._safe(str(e))[:200],"status":0}, 0)
         s._cache_set(k, res); return res
 
     def _fan_out(s, ep, p=None):
@@ -663,7 +669,7 @@ class Client:
                 if not _nap(2 ** _retry, s._stopped):
                     return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
-            return ({"error": r.text[:200] if r.text else "error", "status": r.status_code}, r.status_code)
+            return ({"error": s._safe(r.text[:4000])[:200] if r.text else "error", "status": r.status_code}, r.status_code)
         except requests.exceptions.Timeout as e:
             if method == "POST" and not isinstance(e, requests.exceptions.ConnectTimeout):
                 return _post_unsure("request timeout")
@@ -676,12 +682,12 @@ class Client:
                 if not _nap(2 ** _retry, s._stopped):
                     return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
-            return ({"error": f"connection error: {str(e)[:100]}", "status": 0}, 0)
+            return ({"error": f"connection error: {s._safe(str(e))[:100]}", "status": 0}, 0)
         except Exception as e:
             import zia_rate
             if isinstance(e, zia_rate.Cancelled):   # stopped while the request waited for ZIA's rate limit
                 return _STOPPED
-            return ({"error": str(e)[:200], "status": 0}, 0)
+            return ({"error": s._safe(str(e))[:200], "status": 0}, 0)
 
     @staticmethod
     def _hourly_answer(seconds):

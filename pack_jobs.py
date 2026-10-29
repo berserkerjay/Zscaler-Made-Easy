@@ -78,9 +78,13 @@ class Job:
     abandoned: Optional[str] = None
 
     def log(self, line: str) -> None:
+        # The last line of defence for every job's log: an access token or
+        # session id an error repeated is masked by shape (tenant_auth.redact_tokens).
+        import tenant_auth
+        line = tenant_auth.redact_tokens(str(line))
         with self.lock:
             self.last_log_at = time.time()
-            self.logs.append(str(line))
+            self.logs.append(line)
             if len(self.logs) > MAX_LOG_LINES:
                 del self.logs[: len(self.logs) - MAX_LOG_LINES]
 
@@ -209,8 +213,9 @@ def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None,
                     job.artifact = artifact
             final = CANCELLED if (job.cancel.is_set() and (job.result or {}).get("stopped")) else DONE
         except Exception as e:  # noqa: BLE001 — the job reports, never crashes the server
+            import tenant_auth
             with job.lock:
-                job.error = f"{type(e).__name__}: {str(e)[:300]}"
+                job.error = f"{type(e).__name__}: {tenant_auth.redact_tokens(str(e)[:2000])[:300]}"
             job.log(f"The run stopped with an error: {job.error}")
         finally:
             _here.job = None
