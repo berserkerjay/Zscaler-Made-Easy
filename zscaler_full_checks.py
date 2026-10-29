@@ -11,7 +11,7 @@ Comprehensive checks across ALL Zscaler services:
 These extend the DLP checks in dlp_assessment_full_auto.py.
 Import and append to REG to run a full platform assessment.
 """
-
+import functools
 
 # Reuse the Result class and helpers from the main engine
 from dlp_assessment_full_auto import (R, _ls, _fv, _names, _enabled, _truthy, _cac_live, _cac_rules_all_types, _tenancy,
@@ -20,6 +20,71 @@ from dlp_assessment_full_auto import (R, _ls, _fv, _names, _enabled, _truthy, _c
 _FW_BP = " Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy"
 _POLICY_GUIDE = " Ref: https://help.zscaler.com/zscaler-deployments-operations/zia-policy-leading-practices-guide"
 _ZPA_GUIDE = " Ref: https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide"
+
+
+# ── A refused read is never judged ────────────────────────────────────
+# A check that reads an endpoint the API client's role may not read (HTTP
+# 401/403) sees an empty list, and would report "No firewall rules" or,
+# worse, "rule order valid" for a tenant it never saw. The run's client
+# (channel_scope.ScopedClient) turns unanswered reads (429, 5xx, timeouts)
+# into "Could not be checked" but passes 401/403 through, so every check of
+# these registries reads through _ReadLog: when any of its reads was
+# refused, a scored result (PASS / FAIL / REVIEW) becomes "Not permitted"
+# (INFO in the words permissions.is_denied recognises), outside the score.
+_REFUSED = (401, 403)
+
+
+class _ReadLog:
+    """The client one check reads through: each read is passed on unchanged
+    and every read the role was refused is noted (endpoint, HTTP code)."""
+
+    def __init__(self, cl):
+        self._cl = cl
+        self.refused = []
+
+    def get(self, ep, *a, **k):
+        res = self._cl.get(ep, *a, **k)
+        code = res[1] if isinstance(res, tuple) and len(res) >= 2 else None
+        if code in _REFUSED:
+            self.refused.append((str(ep).removeprefix("raw:").split("?", 1)[0], code))
+        return res
+
+    def __getattr__(self, name):
+        return getattr(self._cl, name)
+
+
+def _not_permitted(r, label, refused):
+    codes = "/".join(str(c) for c in sorted({c for _ep, c in refused}))
+    eps = ", ".join(sorted({ep for ep, _c in refused}))[:160]
+    why = (f"Not permitted: the API client's role was refused {len(refused)} read(s) (HTTP {codes} on {eps}). "
+           "Access denied — grant the role read access to this feature and run the assessment again.")
+    try:
+        import permissions
+        denied = permissions.is_denied(str(getattr(r, "detail", "")))
+    except Exception:  # noqa: BLE001
+        denied = False
+    if r.status in (R.PASS, R.FAIL, R.WARN):
+        return R(R.INFO, f"{label}: {why} A refused read is not judged as configured or not configured.", getattr(r, "data", None))
+    if denied:
+        return r
+    return R(r.status, f"{str(r.detail).rstrip()} {why}".strip(), getattr(r, "data", None))
+
+
+def permission_guarded(fn, label):
+    """`fn` run through _ReadLog: a result built on a refused read is "Not permitted"."""
+    @functools.wraps(fn)
+    def check(cl):
+        log = _ReadLog(cl)
+        r = fn(log)
+        if not log.refused or not hasattr(r, "status"):
+            return r
+        return _not_permitted(r, label, log.refused)
+    return check
+
+
+def guard_registry(reg):
+    """A check registry [(id, section, label, fn)] with every fn permission-guarded."""
+    return [(cid, sec, label, permission_guarded(fn, label)) for cid, sec, label, fn in reg]
 
 
 def _items(cl, path):
@@ -58,12 +123,13 @@ def fw_1(cl):
 
 def fw_2(cl):
     """Firewall default rule action"""
-    d, c = cl.get("/zia/firewallFilteringRules")
-    r = _ls(d) if c in (200, 204) else []
-    default = [x for x in r if "default" in (x.get("name") or "").lower()]
+    r, c = _items(cl, "/zia/firewallFilteringRules")
+    # The predefined rule says so (defaultRule); a rule merely named "...default..." is a fallback.
+    default = [x for x in r if _truthy(_fv(x, "defaultRule"))] or [x for x in r if "default" in str(x.get("name") or "").lower()]
     if default:
-        act = default[0].get("action", "?")
-        if act.upper() in ("BLOCK_DROP", "BLOCK_RESET", "DROP"):
+        act = str(_fv(default[0], "action") or "?")
+        # Firewall filtering actions: ALLOW, BLOCK_DROP, BLOCK_RESET, BLOCK_ICMP, EVAL_NWAPP (ZIA API reference; assumed, the SDK does not list them).
+        if act.upper().startswith("BLOCK"):
             return R(R.PASS, f"Default rule action: {act}. Aligns with Zscaler best practice of deny-all default posture.")
         return R(R.WARN, f"Default rule action is {act}. Best Practice: Zscaler recommends enabling the Default Firewall Filtering Rule with the Block action and the lowest rule order, so anything no rule allows is dropped. Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy")
     return R(R.WARN, "No default firewall rule found. Best Practice: Enable the predefined Default Firewall Filtering Rule with the Block action at the lowest rule order, and keep the Recommended Firewall Rule as a narrow Allow for HTTP, HTTPS and DNS. Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy")
@@ -602,6 +668,8 @@ def zpa_8(cl):
     healthy = [x for x in r if _zpn_status(x) == _ZPN_UP]
     if not healthy:
         return R(R.FAIL, f"All {len(r)} service edges offline! Private brokering is down.")
+    if len(healthy) < len(r):
+        return R(R.WARN, f"{len(healthy)}/{len(r)} service edge(s) online. {len(r) - len(healthy)} offline — investigate to keep local brokering redundant.")
     return R(R.PASS, f"{len(healthy)}/{len(r)} service edge(s) online.")
 
 def zpa_9(cl):
@@ -714,7 +782,7 @@ def zcc_4(cl):
         return R(R.WARN, "No devices reporting to ZCC. Best Practice: All managed endpoints should have ZCC installed with Z-Tunnel 2.0 enabled, strict enforcement on, and tamper protection (disable/uninstall passwords) configured. Ref: Zscaler Client Connector Deployment and Operations Guide.")
     plat = {}
     for dv in devs[:500]:
-        o = (dv.get("osType") or dv.get("platform") or "?").lower()
+        o = str(dv.get("osType") or dv.get("platform") or "?").lower()   # the API reports osType as a number
         plat[o] = plat.get(o, 0) + 1
     return R(R.PASS, f"{len(devs)} device(s): {', '.join(f'{v}x{k}' for k,v in sorted(plat.items(), key=lambda x: -x[1]))}")
 
@@ -1148,3 +1216,4 @@ PLATFORM_REG = [
     ("ZCC.25", "ZCC — Mobile Portal",    "ZPA group entitlements",              zcc_25),
     ("ZCC.26", "ZCC — Mobile Portal",    "Web app service exclusions",          zcc_26),
 ]
+PLATFORM_REG = guard_registry(PLATFORM_REG)

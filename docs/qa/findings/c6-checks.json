@@ -1,0 +1,381 @@
+{
+  "area": "checks",
+  "title": "Check catalogues, compliance mapping, best-practice sources and crawler, benchmarks",
+  "files": [
+    "zscaler_full_checks.py",
+    "zscaler_best_practices.py",
+    "zscaler_automation_checks.py",
+    "zscaler_genai_checks.py",
+    "zscaler_rbac_checks.py",
+    "zscaler_zdx_checks.py",
+    "zscaler_zidentity_checks.py",
+    "saas_email_checks.py",
+    "saas_matrix.py",
+    "compliance_mapping.py",
+    "bp_crawler.py",
+    "bp_sources.py",
+    "benchmarks.py"
+  ],
+  "standards": [
+    "OWASP ASVS 4.0.3 L2",
+    "OWASP Top 10 2021",
+    "CWE",
+    "OWASP WSTG",
+    "NIST SSDF"
+  ],
+  "coverage": {
+    "before": 0.64,
+    "after": 0.88
+  },
+  "checks": [
+    {
+      "id": "oracle-denied",
+      "what": "every check of the six platform registries with 401 and 403 on every read",
+      "standard": "ASVS V4.1.5 / CWE-863",
+      "result": "fixed"
+    },
+    {
+      "id": "oracle-sample",
+      "what": "guarded checks give the same result as bare checks on the sample tenant",
+      "standard": "ASVS V1.14.6",
+      "result": "pass"
+    },
+    {
+      "id": "oracle-pass-fail-missing",
+      "what": "pass / empty / 404 oracle for count checks across ZIA, ZPA, ZCC, ZDX, ZIdentity, RBAC",
+      "standard": "CWE-697",
+      "result": "pass"
+    },
+    {
+      "id": "refs",
+      "what": "every cited reference is https on a Zscaler host",
+      "standard": "SSDF PW.4.1",
+      "result": "pass"
+    },
+    {
+      "id": "compliance-format",
+      "what": "format regex per framework for every mapped control (NIST 800-53/171, SOC 2, GDPR, HIPAA, PCI DSS, ISO 27001, CIS, CMMC L1-L3, CSF 2.0, GLBA)",
+      "standard": "ASVS V1.1.1",
+      "result": "fixed"
+    },
+    {
+      "id": "compliance-cjis",
+      "what": "CJIS is not a framework in compliance_mapping (it is covered by the CJIS policy pack and guidance topics)",
+      "standard": "ASVS V1.1.1",
+      "result": "accepted"
+    },
+    {
+      "id": "crawler-ssrf",
+      "what": "links/sitemaps to http, metadata IP, loopback, userinfo, backslash, other hosts, javascript:, file: never fetched or listed",
+      "standard": "CWE-918 / WSTG-INPV-19",
+      "result": "pass"
+    },
+    {
+      "id": "crawler-redirect",
+      "what": "redirect hops checked against the allowlist by zscaler_update_check._safe_get (covered by tests/test_outbound_ssrf.py)",
+      "standard": "CWE-918",
+      "result": "pass"
+    },
+    {
+      "id": "crawler-redos",
+      "what": "sitemap parsing linear",
+      "standard": "CWE-1333",
+      "result": "fixed"
+    },
+    {
+      "id": "crawler-size",
+      "what": "page, link, sitemap, title caps",
+      "standard": "CWE-400",
+      "result": "fixed"
+    },
+    {
+      "id": "crawler-html",
+      "what": "stdlib parser, script/style ignored, titles inert text",
+      "standard": "CWE-79",
+      "result": "pass"
+    },
+    {
+      "id": "crawler-perms",
+      "what": "crawl cache written owner-only",
+      "standard": "CWE-276",
+      "result": "pass"
+    },
+    {
+      "id": "benchmarks-maths",
+      "what": "area mapping, stage progression, grades, percentages, totals",
+      "standard": "CWE-682",
+      "result": "fixed"
+    },
+    {
+      "id": "saas-matrix",
+      "what": "tenant status, capability parsing, candidate matching",
+      "standard": "CWE-697",
+      "result": "fixed"
+    },
+    {
+      "id": "md-injection",
+      "what": "benchmark markdown escapes tenant strings",
+      "standard": "CWE-1236",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "C6-CHECKS-01",
+      "title": "Checks judged reads the role was refused (401/403): FW.8 and AI.6 passed, ~69 checks said 'No X configured', 'not accessible' notes counted informational",
+      "severity": "high",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.5",
+      "status": "fixed",
+      "fix": "permission guard (zscaler_full_checks.permission_guarded/guard_registry) wraps every check of the six platform registries and the SaaS/Email checks: a scored result built on a refused read becomes INFO 'Not permitted' (permissions.is_denied wording)",
+      "test": "tests/test_c6_checks.py::test_a_check_built_on_a_refused_read_is_not_permitted",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-02",
+      "title": "Engine DLP registry (outside slice): 11 checks PASS on HTTP 403, e.g. MC.12 counts the error body as a rule",
+      "severity": "high",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.5",
+      "status": "open",
+      "fix": "run every check through the same permission guard in assess_stream (removes 10 of 11; 10.4 makes no read)",
+      "test": "tests/test_c6_checks.py::test_a_check_built_on_a_refused_read_is_not_permitted",
+      "commit": "a4c1ae7",
+      "proposed_patch": "diff --git a/dlp_api_server.py b/dlp_api_server.py\nindex 0a374b7..a1581f9 100755\n--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -7742,7 +7742,8 @@ async def assess_stream(req: AssessRequest):\n                 running.add(idx)\n                 try:\n                     scoped_client.begin()\n-                    r = fn(scoped_client)\n+                    # A read the role was refused (401/403) is \"Not permitted\", never judged (zscaler_full_checks guard).\n+                    r = full_checks.permission_guarded(fn, label)(scoped_client) if \"full_checks\" in globals() else fn(scoped_client)\n                     r = _unanswered_result(r, label, scoped_client.unanswered())\n                 except Exception as ex:  # noqa: BLE001\n                     r = R(R.ERROR, f\"{label}: Could not complete check. {str(ex)[:120]}\")  # \"Could not be checked\", never \"Not configured\"\n"
+    },
+    {
+      "id": "C6-CHECKS-03",
+      "title": "Sitemap regex backtracked cubically on unclosed sitemap tags (18 KB = 4 s, 94 KB > 2 min): a hostile sitemap hangs the crawl",
+      "severity": "medium",
+      "cwe": "CWE-1333",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "one linear pass over sitemap open/close tags; 8 MB parses in 0.16 s",
+      "test": "tests/test_c6_checks.py::test_a_hostile_sitemap_parses_in_linear_time",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-04",
+      "title": "zscaler_update_check._safe_get reads the whole answer into memory with no size cap (outside this slice); the crawler's 8 MB/2 MB caps apply only after the download",
+      "severity": "medium",
+      "cwe": "CWE-400",
+      "asvs": "V12.1.1",
+      "status": "open",
+      "fix": "stream the answer and refuse one larger than MAX_BODY_BYTES (10 MB); test fakes of requests.get then need iter_content/close",
+      "test": "tests/test_c6_checks.py::test_a_hostile_sitemap_parses_in_linear_time",
+      "commit": "a4c1ae7",
+      "proposed_patch": "diff --git a/zscaler_update_check.py b/zscaler_update_check.py\nindex 28fa74a..c8a72b0 100644\n--- a/zscaler_update_check.py\n+++ b/zscaler_update_check.py\n@@ -171,6 +171,7 @@ ALLOWED_HOSTS = {\n \n FETCH_TIMEOUT = 8  # seconds, both connect and read\n MAX_REDIRECTS = 5  # each hop is checked against the allowlist before it is fetched\n+MAX_BODY_BYTES = 10_000_000  # an answer larger than this is refused, not read into memory\n USER_AGENT = \"Mozilla/5.0 (compatible; Zscaler-Made-Easy/1.0; +localhost)\"  # browser-compatible prefix: some CDNs refuse unknown agents\n \n \n@@ -311,10 +312,18 @@ def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[byt\n                 proxies=proxies,\n                 verify=verify_tls,\n                 allow_redirects=False,\n+                stream=True,\n             )\n             location = (r.headers or {}).get(\"Location\") if getattr(r, \"is_redirect\", False) else None\n             if not location:\n-                return r.content, r.status_code, \"\"\n+                body = b\"\"\n+                for chunk in r.iter_content(65536):\n+                    body += chunk\n+                    if len(body) > MAX_BODY_BYTES:\n+                        r.close()\n+                        return None, 0, f\"answer larger than {MAX_BODY_BYTES} bytes refused\"\n+                return body, r.status_code, \"\"\n+            r.close()\n             url = urljoin(url, location)\n             host, refusal = _allowed_url(url)\n             if refusal:\n"
+    },
+    {
+      "id": "C6-CHECKS-05",
+      "title": "RBAC.12 'Stale admin accounts' always passed: SDK UserRecord has no last-login field, so no evidence read as 'none stale'",
+      "severity": "medium",
+      "cwe": "CWE-754",
+      "asvs": "V2.1.1",
+      "status": "fixed",
+      "fix": "no reported login time is INFO (not assessed); clock injectable (_now); booleans are not timestamps",
+      "test": "tests/test_c6_checks.py::test_rbac12_stale_admin_oracle",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-06",
+      "title": "AI.9/AI.10 passed on substrings: 'Weekly report' (repo), 'Barcode' (code), 'Company confidential' (pan)",
+      "severity": "medium",
+      "cwe": "CWE-697",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "_has_any matches whole words",
+      "test": "tests/test_c6_checks.py::test_ai9_source_code_rule_matches_whole_words",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-07",
+      "title": "Compliance mapping cited wrong control ids (ISO A.8.22, PCI DSS 10.7/9.7/1.4.5, CIS 13.10/10.7, CMMC 3.12.4, AU.L3-3.3.1e, HIPAA disposal, 800-171 Rev 3 label)",
+      "severity": "medium",
+      "cwe": "CWE-1164",
+      "asvs": "V1.1.1",
+      "status": "fixed",
+      "fix": "ids and titles corrected against the framework texts; format regex per framework tested for every control",
+      "test": "tests/test_c6_checks.py::test_control_ids_carry_the_framework_title_for_their_number",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-08",
+      "title": "SaaS (C.x), Email (D.x), RBAC and ZIdentity checks mapped to no framework control",
+      "severity": "low",
+      "cwe": "CWE-1164",
+      "asvs": "V1.1.1",
+      "status": "fixed",
+      "fix": "C./D. map to dlp, RBAC./ZID. to identity_admin",
+      "test": "tests/test_c6_checks.py::test_saas_email_rbac_and_identity_checks_map_to_frameworks",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-09",
+      "title": "Benchmarks filed sections 11 and 12 under Client Connector and SaaS/Email channels under Other, missing from the Coverage stage",
+      "severity": "medium",
+      "cwe": "CWE-682",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "prefix-only matching; Ch.C/Ch.D added to the DLP programme area and Coverage stage",
+      "test": "tests/test_c6_checks.py::test_area_of_oracle",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-10",
+      "title": "Benchmark markdown printed 'n/a%' and 'None%'; a saved report whose checks are not a list raised",
+      "severity": "low",
+      "cwe": "CWE-684",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "_pct_text everywhere; checks filtered to dicts",
+      "test": "tests/test_c6_checks.py::test_markdown_never_prints_na_percent_or_none_percent",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-11",
+      "title": "SaaS matrix: an INACTIVE tenant counted as active ('ACTIVE' in 'INACTIVE')",
+      "severity": "medium",
+      "cwe": "CWE-697",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "status list compared by whole token",
+      "test": "tests/test_c6_checks.py::test_an_inactive_tenant_is_not_counted_as_active",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-12",
+      "title": "SaaS matrix: 'Not supported'/'Not available' cells parsed as supported; help page parsed without a size cap",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "negations refused first; page capped at 2 MB; parse errors give []",
+      "test": "tests/test_c6_checks.py::test_capability_cells_oracle",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-13",
+      "title": "SaaS matrix: a Box tenant hid Dropbox from the onboarding candidates (substring match)",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "whole-word match both ways",
+      "test": "tests/test_c6_checks.py::test_a_box_tenant_does_not_hide_dropbox_as_a_candidate",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-14",
+      "title": "D.6 / C.3 PASSed while their tenant list read was refused",
+      "severity": "medium",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.5",
+      "status": "fixed",
+      "fix": "SaaS/Email checks spliced into the engine registry through the permission guard",
+      "test": "tests/test_c6_checks.py::test_d6_with_the_tenant_list_refused_is_not_a_pass",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-15",
+      "title": "Crawl cache read without type checks: a string timestamp raised TypeError in crawl()/last_summary (500 on the library page)",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "_load_cache drops fields of the wrong type",
+      "test": "tests/test_c6_checks.py::test_a_tampered_cache_timestamp_does_not_crash_the_crawl",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-16",
+      "title": "Library store accepted javascript:/data:/http: URLs and unbounded titles; a malformed store raised KeyError",
+      "severity": "low",
+      "cwe": "CWE-79",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "https-only URLs on read and save, titles capped at 300 chars, non-dict entries skipped",
+      "test": "tests/test_c6_checks.py::test_save_discovered_refuses_non_https_urls_and_bounds_titles",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-17",
+      "title": "lookup_by_topic matched short substrings: admin findings linked to the Deception Active Directory guide ('ad' in 'admin')",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "substrings count only at 3+ characters",
+      "test": "tests/test_c6_checks.py::test_lookup_by_topic_does_not_match_on_a_short_substring",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-18",
+      "title": "FW.2 judged a custom rule named '...default...', treated BLOCK_ICMP as not blocking, and raised on a null action",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "predefined defaultRule preferred; any BLOCK_* passes (action list assumed from the ZIA API reference; SDK 1.11.3 does not enumerate it)",
+      "test": "tests/test_c6_checks.py::test_fw2_default_rule_action_oracle",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-19",
+      "title": "ZPA.8 passed with some Private Service Edges offline (ZPA.4 warns for App Connectors)",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V1.14.6",
+      "status": "fixed",
+      "fix": "partial offline is REVIEW",
+      "test": "tests/test_c6_checks.py::test_zpa8_some_service_edges_offline_needs_review",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-20",
+      "title": "ZCC.4 crashed on the API's numeric osType (int.lower())",
+      "severity": "low",
+      "cwe": "CWE-704",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "str() before lower()",
+      "test": "tests/test_c6_checks.py::test_zcc4_numeric_os_type_is_counted_not_a_crash",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-21",
+      "title": "AUTO-SDK-01/02 raised AttributeError on a client without token/exp",
+      "severity": "info",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "getattr with default",
+      "test": "tests/test_c6_checks.py::test_automation_checks_on_a_client_without_token_fields_do_not_crash",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-22",
+      "title": "Benchmarks and compliance percentages use Python round() (half to even): 62.5% shows 62, 87.5% shows 88",
+      "severity": "info",
+      "cwe": "CWE-682",
+      "asvs": "V1.14.6",
+      "status": "accepted",
+      "fix": "kept: the engine score and compliance alignment use the same rounding, so the pages agree",
+      "test": "tests/test_c6_checks.py::test_pct_is_none_when_nothing_was_measured",
+      "commit": "a4c1ae7"
+    },
+    {
+      "id": "C6-CHECKS-23",
+      "title": "Quality-score loader refuses the wave-6 findings schema (files, coverage, proposed_patch), so every wave-6 record is dropped from the score",
+      "severity": "low",
+      "cwe": "CWE-1068",
+      "asvs": "V1.14.6",
+      "status": "open",
+      "fix": "accept the three optional keys (read, not scored) in tools/quality_score.py",
+      "test": "tests/test_quality_score.py::test_the_committed_score_is_current",
+      "commit": "a4c1ae7",
+      "proposed_patch": "diff --git a/tools/quality_score.py b/tools/quality_score.py\nindex 5696a87..29a9c5d 100644\n--- a/tools/quality_score.py\n+++ b/tools/quality_score.py\n@@ -159,9 +159,11 @@ TEST_FILE = re.compile(r\"^tests/[A-Za-z0-9_/-]{1,150}\\.py$\")\n CONTROL_CHARS = re.compile(r\"[\\x00-\\x1f\\x7f\\u202a-\\u202e\\u2066-\\u2069\\u2028\\u2029]\")\n MARKUP = re.compile(r\"<\\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;\")\n \n-ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False}\n+# \"files\", \"coverage\" and \"proposed_patch\" are part of the wave-6 record format (read, not scored).\n+ROOT_KEYS = {\"area\": True, \"title\": True, \"findings\": True, \"standards\": False, \"checks\": False, \"tests_added\": False,\n+             \"files\": False, \"coverage\": False}\n FINDING_KEYS = {\"id\": True, \"title\": True, \"severity\": True, \"status\": True, \"cwe\": False, \"asvs\": False, \"wcag\": False,\n-                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False}\n+                \"fix\": False, \"test\": False, \"commit\": False, \"reason\": False, \"proposed_patch\": False}\n CHECK_KEYS = {\"id\": True, \"what\": True, \"result\": True, \"standard\": False}\n RUN_KEYS = {\"passed\": True, \"failed\": True, \"skipped\": True, \"duration_s\": True, \"commit\": True, \"date\": True,\n             \"errors\": False, \"files\": False}\n"
+    }
+  ],
+  "tests_added": 851
+}
