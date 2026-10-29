@@ -814,3 +814,30 @@ def test_a_badge_for_a_finding_with_no_text_still_has_a_label():
                 "console.log(JSON.stringify([m.badgeLabel({ kind: 'engine', findings: [{ severity: 'high' }] }),"
                 " m.badgeLabel({ kind: 'engine', findings: [{ severity: 'medium', short: 42 }] })]));", os.path.join(EXT, "common.js"))
     assert got == [{"label": "finding", "sev": "high"}, {"label": "42", "sev": "medium"}]
+
+
+def test_every_style_token_the_extension_uses_is_defined():
+    """WCAG 2.2 SC 1.4.11 · ASVS V14.1.1: each var(--x) in the extension's pages is defined in tokens.css (an undefined one dropped the field border)."""
+    # Arrange
+    defined = set(re.findall(r"(--[a-z0-9-]+)\s*:", _read("browser_extension", "tokens.css")))
+    used = set()
+    for name in os.listdir(EXT):
+        if name.endswith((".css", ".html")):
+            used |= set(re.findall(r"var\((--[a-z0-9-]+)\)", _read("browser_extension", name)))
+    # Act
+    missing = sorted(used - defined)
+    # Assert
+    assert len(used) > 10 and missing == []
+
+
+def test_the_extension_csp_denies_by_default():
+    """ASVS V14.4.3 · CWE-1021 · WSTG-CONF-12: extension pages load images, styles and frames only from the extension, and post no form."""
+    csp = dict(d.strip().split(" ", 1) for d in json.loads(_read("browser_extension", "manifest.json"))["content_security_policy"]["extension_pages"].split(";") if d.strip())
+    assert csp["default-src"] == "'self'" and csp["form-action"] == "'none'"
+
+
+@pytest.mark.parametrize("name", ["options.html", "popup.html", "panel.html"])
+def test_no_extension_page_relies_on_inline_style(name):
+    """ASVS V14.4.3 · CWE-1021 · WSTG-CONF-12: no inline <style> or style attribute, which default-src 'self' would block."""
+    html = _read("browser_extension", name)
+    assert "<style" not in html and not re.search(r"\sstyle=", html), name
