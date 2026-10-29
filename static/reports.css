@@ -271,7 +271,7 @@ body.theme-light .df-chip.st-ok, body.theme-light .fl-st.st-ok { color: var(--pa
 body.theme-light .df-chip.st-fail, body.theme-light .fl-st.st-fail, body.theme-light .sev-high .sev, body.theme-light .df-rule.st-fail { color: var(--fail); }
 body.theme-light .df-chip.st-warn, body.theme-light .fl-st.st-modify, body.theme-light .fl-st.st-differs { color: var(--warn); }
 body.theme-light .df-chip.st-block { color: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .rp-page { animation: none; } .rp-wait .spin { animation: none; } .sf-live i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .rp-page { animation: none; } .rp-wait .spin { animation: none; } .sf-live i { animation: none; } .sf-edge.flow { animation: none; } }
 
 /* ── Advanced settings tab ─────────────────────────────────────────── */
 .adv-page .rp-card section { margin-bottom: 2rem; }

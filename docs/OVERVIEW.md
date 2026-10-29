@@ -268,6 +268,17 @@ what you get, what to do next.
   as they land, enforced versus monitor-only per channel; and every flow
   of the Data Security Architect reference, with the steps people miss
   marked. Samples, labelled as such, until you have results. Read-only.
+  The same engine moves the traffic on three report pages, from the result
+  each already shows: the Data Flow Map (every traffic class on every
+  network as a stream through Client Connector, PAC, URL filtering and
+  Cloud App Control, SSL inspection, Web DLP and the incident receiver,
+  each as wide as its share of the traced paths, bypasses marked), the SSL
+  inspection flow (packets on its diagram, and a rule walk: the SSL rules
+  a request meets in order, scoped exemptions peeling packets off, the
+  deciding rule's certificate and TLS-version checks as gates) and SSL
+  coverage (a traffic river of SSL/TLS against HTTP from its Insights
+  numbers, and the causes as branches by their share). Each has Play and
+  Pause, starts still with reduced motion and says the same in words.
 - **Browser extension (companion)** — a small Chrome and Edge extension
   for the app on your computer: its button or a right-click opens the Path
   analyzer with the site, a link or a selected hostname filled in, and the

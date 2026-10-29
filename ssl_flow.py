@@ -151,6 +151,45 @@ def _decision_of(action: str) -> str:
 
 # ── Rule normalisation ────────────────────────────────────────────────
 
+def tls_checks(r: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The certificate and TLS-version checks an SSL inspection rule's
+    action carries, from the rule already read (no extra call). Field
+    names as the SDK's SSLInspectionRuleAction models them
+    (zscaler/zia/models/ssl_inspection_rules.py): decryptSubActions
+    {serverCertificates, ocspCheck, blockSslTrafficWithNoSniEnabled,
+    minClientTLSVersion, minServerTLSVersion, blockUndecrypt} and
+    doNotDecryptSubActions {serverCertificates, ocspCheck,
+    blockSslTrafficWithNoSniEnabled, minTLSVersion}, camelCase or
+    snake_case. None when the rule's action carries no sub-actions:
+    "not in the rule data", never "off"."""
+    a = r.get("action")
+    if not isinstance(a, dict):
+        return None
+    sub = None
+    for k in ("decryptSubActions", "decrypt_sub_actions", "doNotDecryptSubActions", "do_not_decrypt_sub_actions"):
+        if isinstance(a.get(k), dict):
+            sub = a[k]
+            break
+    if sub is None:
+        return None
+
+    def text(*keys: str) -> Optional[str]:
+        v = _f(sub, *keys, default=None)
+        return str(v).upper()[:40] if v not in (None, "") else None
+
+    def flag(*keys: str) -> Optional[bool]:
+        v = _f(sub, *keys, default=None)
+        return None if v is None else _bool(v)
+    return {
+        "server_certificates": text("serverCertificates", "server_certificates"),
+        "ocsp_check": flag("ocspCheck", "ocsp_check"),
+        "block_no_sni": flag("blockSslTrafficWithNoSniEnabled", "block_ssl_traffic_with_no_sni_enabled"),
+        "min_client_tls": text("minClientTLSVersion", "minClientTlsVersion", "min_client_tls_version"),
+        "min_server_tls": text("minServerTLSVersion", "minServerTlsVersion", "min_server_tls_version", "minTLSVersion", "minTlsVersion", "min_tls_version"),
+        "block_undecrypt": flag("blockUndecrypt", "block_undecrypt"),
+    }
+
+
 def normalize_ssl_rule(r: Dict[str, Any]) -> Dict[str, Any]:
     cats = _upper(_names(_f(r, "url_categories", "urlCategories", default=[])))
     apps = _upper(_names(_f(r, "cloud_applications", "cloudApplications", default=[])))
@@ -186,6 +225,7 @@ def normalize_ssl_rule(r: Dict[str, Any]) -> Dict[str, Any]:
         "catch_all": not explicit and (any_cat or default_rule or not predefined),
         "zscaler_maintained": predefined and not explicit and not default_rule and not any_cat,
         "description": str(_f(r, "description", default="") or "")[:300],
+        "checks": tls_checks(r),
     }
 
 
@@ -341,7 +381,7 @@ def _dlp_covers(rule: Dict[str, Any], klass: Dict[str, Any], cats: List[str], ap
 
 
 def _short(rule: Dict[str, Any], hit: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    d = {k: rule.get(k) for k in ("id", "name", "order", "action", "decision", "state", "scope", "predefined", "default_rule", "catch_all", "zscaler_maintained")}
+    d = {k: rule.get(k) for k in ("id", "name", "order", "action", "decision", "state", "scope", "predefined", "default_rule", "catch_all", "zscaler_maintained", "checks")}
     if hit is not None:
         d["matched_on"] = hit
     return d

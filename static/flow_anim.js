@@ -777,6 +777,486 @@
     return { play, step() { if (i >= n - 1) reset(); return stepOnce(); }, reset, destroy() { gen++; clock.destroy(); host.innerHTML = ''; } };
   }
 
+  // ── Traffic motion: Data Flow Map, SSL flow, SSL coverage ────────
+  // Three more pictures, each drawn from the result its page already
+  // shows. The numbers they carry are the page's own (report.summary,
+  // volume.protocols[unit], summary.by_kind): a model never counts a
+  // second way. Where it splits a page number (bypassed at Client
+  // Connector vs at the PAC file) the parts are checked to add up to it,
+  // and `mismatch` says so if they ever do not.
+  const pctOf = (n, d) => (d ? n / d : 0);
+  const fmt1 = n => String(Math.round(n * 10) / 10);
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
+
+  // Sankey-style river model: {cols, nodes: [{key, col, label, value,
+  // tone, exit, sub}], links: [{key, from, to, value, tone, label,
+  // items}], routes: [{links, weight, tone}], total, unit, alt}.
+  function riverAdd(m, from, to, extra) {
+    const key = from + '>' + to;
+    let l = m.links.filter(x => x.key === key)[0];
+    if (!l) { l = Object.assign({ key, from, to, value: 0, items: [] }, extra || {}); m.links.push(l); }
+    return l;
+  }
+
+  // Data Flow Map report → every traced path (traffic class × network)
+  // as a stream: Client Connector → PAC → URL filtering and Cloud App
+  // Control → SSL inspection (split: decrypted / still encrypted) → Web
+  // DLP → incident receiver, in the order the tracer walks the hops.
+  const DF_COLS = ['Traffic', 'Client Connector', 'PAC file', 'URL filtering and Cloud App Control', 'SSL inspection', 'Web DLP', 'DLP outcome', 'Incident receiver'];
+  const DF_NODES = {
+    src: [0, 'Traffic classes × networks', 'idle'],
+    cc: [1, 'Client Connector', 'pass'], x_cc: [2, 'Bypassed at Client Connector', 'stop', 'bypass'], u_cc: [2, 'Routing unverified', 'warn', 'unverified'],
+    pac: [2, 'PAC file', 'pass'], x_pac: [3, 'PAC file sends it direct', 'stop', 'bypass'], u_pac: [3, 'PAC answer unverified', 'warn', 'unverified'],
+    policy: [3, 'URL filtering and Cloud App Control', 'pass'], b_policy: [4, 'Blocked by URL filtering or Cloud App Control', 'block', 'blocked'],
+    ssl: [4, 'SSL inspection', 'pass'], b_ssl: [5, 'Blocked at SSL inspection', 'block', 'blocked'], u_ssl: [5, 'Inspection unverified', 'warn', 'unverified'],
+    enc: [5, 'Still encrypted: DLP blind', 'stop'], dlp: [5, 'Decrypted: Web DLP', 'pass'],
+    o_block: [6, 'Blocked by File Type Control', 'block', 'blocked'], o_enforce: [6, 'A DLP rule can block', 'pass'],
+    o_monitor: [6, 'DLP monitors only', 'warn'], o_other: [6, 'No DLP rule, or unverified', 'warn'],
+    incident: [7, 'Incident receiver configured', 'pass'],
+  };
+  const DF_ORDER = ['src', 'cc', 'x_cc', 'u_cc', 'pac', 'x_pac', 'u_pac', 'policy', 'b_policy', 'ssl', 'dlp', 'enc', 'b_ssl', 'u_ssl', 'o_enforce', 'o_monitor', 'o_other', 'o_block', 'incident'];
+  const SSL_UNVERIFIED = ['unknown', 'out_of_scope', 'conditional', 'not_reached', 'skipped', 'na'];
+
+  // The route one trace takes, by the same tests the report's summary
+  // uses: bypassed = !reaches_zscaler; left encrypted = !conditional,
+  // reaches, outcome not blocked, SSL hop blind; enforce / monitor = the
+  // outcome. Returns node keys, first to last.
+  function dfRoute(t) {
+    const hop = k => (t.hops || []).filter(h => h.key === k)[0] || {};
+    const firstOf = (keys, st) => keys.filter(k => st.indexOf(hop(k).status) >= 0)[0];
+    const r = ['src', 'cc'];
+    if (!t.reaches_zscaler) {
+      if (firstOf(['zcc', 'forwarding', 'pac'], ['bypass']) === 'pac') return r.concat(['pac', 'x_pac']);
+      return r.concat(['x_cc']);
+    }
+    if (t.conditional) {
+      return firstOf(['zcc', 'forwarding'], ['unknown', 'warn']) || hop('pac').status !== 'unknown' ? r.concat(['u_cc']) : r.concat(['pac', 'u_pac']);
+    }
+    r.push('pac', 'policy');
+    const blockedAt = t.outcome === 'blocked' ? firstOf(['cac', 'url', 'ssl', 'ftc'], ['blocked']) : null;
+    if (blockedAt === 'cac' || blockedAt === 'url') return r.concat(['b_policy']);
+    r.push('ssl');
+    const ssl = hop('ssl').status;
+    if (blockedAt === 'ssl') return r.concat(['b_ssl']);
+    if (ssl === 'blind' && t.outcome !== 'blocked') return r.concat(['enc']);
+    if (!t.decrypted || SSL_UNVERIFIED.indexOf(ssl) >= 0) return r.concat([t.outcome === 'blocked' ? 'b_ssl' : 'u_ssl']);
+    r.push('dlp');
+    if (t.outcome === 'blocked') return r.concat(['o_block']);
+    r.push(t.outcome === 'enforce' ? 'o_enforce' : t.outcome === 'monitor' ? 'o_monitor' : 'o_other');
+    if (hop('incident').status === 'conditional') r.push('incident');
+    return r;
+  }
+
+  function dataFlowModel(report) {
+    if (!report || !Array.isArray(report.traces) || !report.summary) return null;
+    const s = report.summary, nets = {};
+    (report.networks || []).forEach(n => { nets[n.key] = n.label || n.key; });
+    const m = { kind: 'dataflow', cols: DF_COLS.slice(), nodes: [], links: [], routes: [], total: s.traces, unit: 'paths', summary: {}, counts: {}, mismatch: [] };
+    ['traces', 'bypassed', 'blind', 'enforced', 'monitored'].forEach(k => { m.summary[k] = s[k]; });
+    const value = {}, items = {};
+    report.traces.forEach((t, i) => {
+      const route = dfRoute(t);
+      const name = `${(t.destination || {}).label || 'Destination'} · ${nets[t.network] || t.network || ''}`;
+      route.forEach(k => { value[k] = (value[k] || 0) + 1; (items[k] = items[k] || []).push(i); });
+      const keys = [];
+      for (let j = 1; j < route.length; j++) {
+        const l = riverAdd(m, route[j - 1], route[j]);
+        l.value++; l.items.push({ i, name });
+        keys.push(l.key);
+      }
+      const end = DF_NODES[route[route.length - 1]];
+      m.routes.push({ links: keys, weight: 1, tone: end[2], item: i, end: route[route.length - 1] });
+    });
+    DF_ORDER.forEach(k => {
+      if (!value[k]) return;
+      const d = DF_NODES[k];
+      m.nodes.push({ key: k, col: d[0], label: d[1], tone: d[2], exit: d[3] || '', value: value[k], items: items[k] });
+    });
+    const n = k => value[k] || 0;
+    m.counts = {
+      traces: report.traces.length, bypassed: n('x_cc') + n('x_pac'), bypassed_cc: n('x_cc'), bypassed_pac: n('x_pac'),
+      unverified_route: n('u_cc') + n('u_pac'), blocked: n('b_policy') + n('b_ssl') + n('o_block'),
+      blocked_policy: n('b_policy'), blocked_ssl: n('b_ssl'), blocked_ftc: n('o_block'), blind: n('enc'), unverified_ssl: n('u_ssl'),
+      decrypted: n('dlp'), enforced: n('o_enforce'), monitored: n('o_monitor'), other: n('o_other'), incident: n('incident'),
+    };
+    // Every path ends in exactly one place, and the named streams are
+    // the summary's own numbers.
+    const terminal = ['x_cc', 'x_pac', 'u_cc', 'u_pac', 'b_policy', 'b_ssl', 'u_ssl', 'enc', 'o_block', 'o_enforce', 'o_monitor', 'o_other'];
+    m.terminals = terminal.filter(k => value[k]).map(k => ({ key: k, label: DF_NODES[k][1], tone: DF_NODES[k][2], count: n(k), share: pctOf(n(k), s.traces) }));
+    [['traces', 'traces'], ['bypassed', 'bypassed'], ['blind', 'blind'], ['enforced', 'enforced'], ['monitored', 'monitored']].forEach(p => {
+      if (m.counts[p[1]] !== s[p[0]]) m.mismatch.push(`${p[0]}: picture ${m.counts[p[1]]}, summary ${s[p[0]]}`);
+    });
+    m.links.forEach(l => {
+      const to = DF_NODES[l.to];
+      l.tone = to[2];
+      l.label = `${DF_NODES[l.from][1]} → ${to[1]}: ${plural(l.value, 'path')} of ${s.traces} (${Math.round(100 * pctOf(l.value, s.traces))}%)`;
+    });
+    const nNets = (report.networks || []).length, nDest = s.destinations;
+    m.label = `Traffic flow: ${plural(s.traces, 'traced path')}${nDest ? ` (${nDest} traffic classes × ${nNets} networks)` : ''} through Client Connector, the PAC file, URL filtering and Cloud App Control, SSL inspection, Web DLP and the incident receiver`;
+    const c = m.counts;
+    m.alt = [
+      `${plural(s.traces, 'path')} traced${nDest ? `: ${nDest} traffic classes on ${nNets} networks` : ''}. Each stream is as wide as its share of them.`,
+      `Never reach Zscaler: ${s.bypassed}${s.bypassed ? ` (${c.bypassed_cc} bypassed at Client Connector, ${c.bypassed_pac} sent direct by the PAC file)` : ''}.`,
+      c.unverified_route ? `Routing unverified (Client Connector or PAC answer not known): ${c.unverified_route}.` : '',
+      c.blocked ? `Blocked before content inspection: ${c.blocked} (${c.blocked_policy} by URL filtering or Cloud App Control, ${c.blocked_ssl} at SSL inspection, ${c.blocked_ftc} by File Type Control).` : '',
+      `Reach ZIA, left encrypted (Web DLP is blind): ${s.blind}.`,
+      c.unverified_ssl ? `SSL inspection unverified (not in scope or not read): ${c.unverified_ssl}.` : '',
+      `Decrypted: ${c.decrypted}. A DLP rule can block: ${s.enforced}. DLP monitors only: ${s.monitored}. No DLP rule, or unverified: ${c.other}.`,
+      c.decrypted ? `A covering rule names the Incident Receiver or an ICAP server on ${plural(c.incident, 'path')}; delivery is not verified.` : '',
+    ].filter(Boolean);
+    return m;
+  }
+
+  // SSL flow report + one traffic class → the SSL rules a request meets
+  // in evaluation order (first match wins). Exemptions scoped to some
+  // users peel packets off; the deciding rule turns the rest; the
+  // certificate and TLS-version checks of that rule are gates on the way
+  // to inline Web DLP.
+  const SSL_DECISION = { inspected: 'Decrypt', not_inspected: 'Do not decrypt', blocked: 'Block', no_rule: 'No rule', unknown: 'Unverified' };
+  const SSL_DLP = { unknown: 'Web DLP unverified', enforcing: 'Web DLP enforcing', monitor: 'Web DLP monitor only', none: 'No inline Web DLP rule',
+    blind: 'Web DLP blind (still encrypted)', blocked: 'Traffic blocked', not_in_scope: 'Web DLP not in scope' };
+  const tlsWord = v => String(v || '').replace(/^(CLIENT|SERVER)_/, '').replace(/^TLS_(\d)_(\d)$/, 'TLS $1.$2').replace(/_/g, ' ');
+  function sslGates(checks, decision) {
+    if (decision !== 'inspected' && decision !== 'not_inspected') return [];
+    const c = checks || null;
+    const cert = !c ? [] : [c.server_certificates ? `untrusted certificate: ${c.server_certificates.replace(/_/g, ' ').toLowerCase()}` : '',
+      c.ocsp_check === true ? 'OCSP revocation check on' : c.ocsp_check === false ? 'OCSP revocation check off' : '',
+      c.block_no_sni === true ? 'no SNI: blocked' : ''].filter(Boolean);
+    const tls = !c ? [] : [c.min_client_tls ? `client at least ${tlsWord(c.min_client_tls)}` : '', c.min_server_tls ? `server at least ${tlsWord(c.min_server_tls)}` : ''].filter(Boolean);
+    const gate = (key, label, parts) => ({ key, label, known: parts.length > 0, parts: parts.length ? parts : ['not in the rule data'], text: parts.length ? parts.join('; ') : 'not in the rule data' });
+    return [gate('cert', 'Certificate check', cert), gate('tls', 'TLS version check', tls)];
+  }
+  function sslWalkModel(rep, key) {
+    if (!rep || !Array.isArray(rep.classes) || !rep.classes.length) return null;
+    const c = rep.classes.filter(x => x.key === key)[0] || rep.classes[0];
+    const exc = {};
+    (c.exceptions || []).forEach(e => { exc[String(e.id)] = e; });
+    const d = c.decided_by || null, dId = d ? String(d.id) : null;
+    const steps = [];
+    let skip = [], decided = false, after = 0;
+    const flush = () => { if (skip.length) { steps.push({ kind: 'skip', count: skip.length, names: skip.slice(0, 6), text: `${plural(skip.length, 'rule')} ${skip.length === 1 ? 'does' : 'do'} not match this traffic` }); skip = []; } };
+    const enabled = (rep.ssl_rules || []).filter(r => r && r.enabled !== false);
+    enabled.forEach(r => {
+      const id = String(r.id);
+      if (decided) { after++; return; }
+      if (dId !== null && id === dId) {
+        flush(); decided = true;
+        steps.push({ kind: 'decide', name: r.name, order: r.order, action: r.action, decision: d.decision, text: `${SSL_DECISION[d.decision] || d.action}: decides for everyone else` });
+        return;
+      }
+      if (exc[id]) {
+        flush();
+        const e = exc[id], scope = (e.scope || []).join(', ') || 'some users';
+        steps.push({ kind: 'exception', name: r.name, order: r.order, action: r.action, decision: e.decision, scope, peel: true,
+          text: e.decision === 'inspected' ? `Decrypts only for its scope (${scope})` : e.decision === 'blocked' ? `Blocks its scope (${scope})` : `Do not decrypt for its scope (${scope})` });
+        return;
+      }
+      skip.push(r.name);
+    });
+    flush();
+    if (!decided && c.decision !== 'unknown') steps.push({ kind: 'none', name: 'No enabled rule matches', decision: 'no_rule', text: 'Nothing decrypts it: it passes encrypted' });
+    const shadowed = (c.shadowed || []).map(r => r.name);
+    if (after) steps.push({ kind: 'after', count: after, shadowed, text: `${plural(after, 'later rule')} never run for this traffic` });
+    const decision = c.decision;
+    const gates = sslGates(d && d.checks, decision);
+    const dlp = { status: c.dlp_status, label: SSL_DLP[c.dlp_status] || String(c.dlp_status || '') };
+    const tone = decision === 'inspected' ? (c.dlp_status === 'enforcing' ? 'pass' : 'warn') : decision === 'blocked' ? 'block' : decision === 'unknown' ? 'warn' : 'stop';
+    const peels = steps.filter(x => x.kind === 'exception');
+    const alt = [`${c.label}: a request meets the enabled SSL inspection rules in order; the first rule that matches decides.`];
+    steps.forEach(x => {
+      if (x.kind === 'skip') alt.push(`${x.text}: ${x.names.join(', ')}${x.count > x.names.length ? ', …' : ''}.`);
+      else if (x.kind === 'exception') alt.push(`${x.name} (order ${x.order}): ${x.text}; those packets leave the stream here.`);
+      else if (x.kind === 'decide') alt.push(`${x.name} (order ${x.order}) decides: ${x.action}.`);
+      else alt.push(`${x.text}${x.kind === 'after' && x.shadowed.length ? `, including the decrypt rule${x.shadowed.length === 1 ? '' : 's'} ${x.shadowed.join(', ')} (shadowed)` : ''}.`);
+    });
+    gates.forEach(g => alt.push(`Gate: ${g.label}: ${g.text}.`));
+    alt.push(`Then: ${dlp.label}.`);
+    return { kind: 'sslwalk', key: c.key, label: c.label, decision, decider: d ? { name: d.name, order: d.order, action: d.action } : null,
+      steps, gates, dlp, tone, peels: peels.length, alt, unknown: decision === 'unknown' };
+  }
+
+  // SSL coverage result → a traffic river (bytes or transactions from
+  // the page's Insights numbers: SSL/TLS against HTTP, inspected against
+  // not) and a causes fan (each kind of cause as wide as its share of the
+  // causes found). Insights cannot measure traffic per rule or category,
+  // so the fan is drawn on its own scale and says so.
+  const COVER_GROUPS = [
+    { key: 'dni', label: 'Do not inspect rules', kinds: ['ssl_rule', 'ssl_rule_scoped', 'catch_all', 'scoped_catch_all'], reaches: true },
+    { key: 'exempt', label: 'Certificate-pinned exemptions', kinds: ['pinned_exemptions'], reaches: true },
+    { key: 'zcc', label: 'Client Connector bypass', kinds: ['zcc_domains', 'zcc_ips', 'zcc_apps', 'zcc_processes', 'zcc_vpn_gateways', 'forwarding_none'], reaches: false },
+    { key: 'pac', label: 'PAC file bypass', kinds: ['pac_direct'], reaches: false },
+  ];
+  function sslCoverageModel(res, unit, fmt) {
+    if (!res || !res.summary) return null;
+    const f = Object.assign({ amount: v => String(v), pct: p => (p == null ? 'not measurable' : `${fmt1(p)}%`) }, fmt || {});
+    const s = res.summary, v = res.volume || {};
+    const sel = v.available && v.protocols ? v.protocols[unit] : null;
+    const out = { kind: 'sslcoverage', unit, traffic: null, causes: null, alt: [], note: '' };
+    if (sel && (sel.ssl_total + sel.http_total) > 0) {
+      const b = sel.buckets || {};
+      const T = sel.ssl_total + sel.http_total, ins = (b.ssl_inspected || 0) + (b.http || 0);
+      const unPct = sel.ssl_pct == null ? null : Math.round((100 - sel.ssl_pct) * 10) / 10;
+      const m = { cols: ['Traffic', 'Protocol', 'Inspection'], nodes: [], links: [], routes: [], total: T, unit };
+      const node = (key, col, label, value, tone, sub, exit) => { if (value > 0) m.nodes.push({ key, col, label, value, tone, sub: sub || f.amount(value), exit: exit || '' }); };
+      node('reach', 0, 'Web traffic reaching Zscaler', T, 'idle');
+      node('ssl', 1, 'SSL/TLS (HTTPS)', sel.ssl_total, 'idle');
+      node('http', 1, 'HTTP (cleartext)', sel.http_total, 'idle');
+      node('ins', 2, 'Inspected', ins, 'pass', `${f.pct(sel.total_pct)} of SSL/TLS and HTTP`);
+      node('unins', 2, 'Not inspected', b.ssl_not_inspected || 0, 'stop', `${f.amount(b.ssl_not_inspected || 0)} left encrypted`);
+      if (sel.other_total > 0) { node('other', 0, 'Other / not classified', sel.other_total, 'idle'); node('other_x', 1, 'Left out of the percentages', sel.other_total, 'idle', f.amount(sel.other_total), 'apart'); }
+      const link = (from, to, value, tone, label) => { if (value > 0) { const l = riverAdd(m, from, to, { tone, label }); l.value = value; } };
+      link('reach', 'ssl', sel.ssl_total, 'idle', `SSL/TLS: ${f.amount(sel.ssl_total)}`);
+      link('reach', 'http', sel.http_total, 'idle', `HTTP: ${f.amount(sel.http_total)}`);
+      link('ssl', 'ins', b.ssl_inspected || 0, 'pass', `SSL/TLS inspected: ${f.pct(sel.ssl_pct)} (${f.amount(b.ssl_inspected || 0)})`);
+      link('ssl', 'unins', b.ssl_not_inspected || 0, 'stop', `SSL/TLS not inspected: ${f.pct(unPct)} (${f.amount(b.ssl_not_inspected || 0)})`);
+      link('http', 'ins', sel.http_total, 'pass', `HTTP inspected: ${f.pct(sel.http_pct)} (cleartext, ${f.amount(sel.http_total)})`);
+      link('other', 'other_x', sel.other_total || 0, 'idle', `Other / not classified: ${f.amount(sel.other_total || 0)}, left out of the percentages`);
+      const route = (keys, w, tone) => { if (w > 0) m.routes.push({ links: keys, weight: w, tone }); };
+      route(['reach>ssl', 'ssl>ins'], b.ssl_inspected || 0, 'pass');
+      route(['reach>ssl', 'ssl>unins'], b.ssl_not_inspected || 0, 'stop');
+      route(['reach>http', 'http>ins'], sel.http_total, 'pass');
+      route(['other>other_x'], sel.other_total || 0, 'idle');
+      m.shares = { ssl_inspected_pct: sel.ssl_pct, ssl_not_inspected_pct: unPct, http_pct: sel.http_pct, total_pct: sel.total_pct };
+      m.label = `Traffic river by ${unit === 'BYTES' ? 'bytes' : 'transactions'}: SSL/TLS ${f.amount(sel.ssl_total)}, HTTP ${f.amount(sel.http_total)}; ${f.pct(sel.total_pct)} inspected`;
+      out.traffic = m;
+      out.alt.push(`Web traffic reaching Zscaler, by ${unit === 'BYTES' ? 'bytes' : 'transactions'}: SSL/TLS ${f.amount(sel.ssl_total)} and HTTP ${f.amount(sel.http_total)}.`,
+        `SSL/TLS: ${f.pct(sel.ssl_pct)} inspected, ${f.pct(unPct)} left encrypted (${f.amount(b.ssl_not_inspected || 0)}). HTTP: ${f.pct(sel.http_pct)} inspected (cleartext).`,
+        `In total ${f.pct(sel.total_pct)} of SSL/TLS and HTTP is inspected.` + (sel.other_total > 0 ? ` Other / not classified (${f.amount(sel.other_total)}) is left out of the percentages.` : ''));
+    } else if (s.classes_total) {
+      // No traffic numbers: the river of kinds of traffic the page counts.
+      const m = { cols: ['Kinds of traffic', 'SSL decision'], nodes: [], links: [], routes: [], total: s.classes_total, unit: 'kinds' };
+      m.nodes.push({ key: 'kinds', col: 0, label: 'Kinds of web traffic', value: s.classes_total, tone: 'idle', sub: plural(s.classes_total, 'kind') });
+      if (s.classes_covered) m.nodes.push({ key: 'cov', col: 1, label: 'Decrypted or blocked', value: s.classes_covered, tone: 'pass', sub: `${s.classes_covered} (${f.pct(s.class_coverage_pct)})` });
+      if (s.classes_not_inspected) m.nodes.push({ key: 'enc', col: 1, label: 'Left encrypted', value: s.classes_not_inspected, tone: 'stop', sub: String(s.classes_not_inspected) });
+      if (s.classes_covered) { const l = riverAdd(m, 'kinds', 'cov', { tone: 'pass', label: `Decrypted or blocked: ${s.classes_covered} of ${s.classes_total} kinds (${f.pct(s.class_coverage_pct)})` }); l.value = s.classes_covered; m.routes.push({ links: [l.key], weight: l.value, tone: 'pass' }); }
+      if (s.classes_not_inspected) { const l = riverAdd(m, 'kinds', 'enc', { tone: 'stop', label: `Left encrypted: ${s.classes_not_inspected} of ${s.classes_total} kinds` }); l.value = s.classes_not_inspected; m.routes.push({ links: [l.key], weight: l.value, tone: 'stop' }); }
+      m.label = `Kinds of web traffic: ${s.classes_covered} of ${s.classes_total} decrypted or blocked`;
+      out.traffic = m;
+      out.note = 'Traffic numbers were not read, so the river shows kinds of web traffic, not bytes.';
+      out.alt.push(`Traffic numbers were not read. Of ${plural(s.classes_total, 'kind')} of web traffic, ${s.classes_covered} ${s.classes_covered === 1 ? 'is' : 'are'} decrypted or blocked (${f.pct(s.class_coverage_pct)}) and ${s.classes_not_inspected} left encrypted.`);
+    }
+    const byKind = s.by_kind || {}, N = s.causes || 0;
+    if (N > 0) {
+      const m = { cols: ['Causes', 'Kind of cause', 'Where it acts'], nodes: [], links: [], routes: [], total: N, unit: 'causes' };
+      const known = {};
+      const groups = COVER_GROUPS.map(g => { g.kinds.forEach(k => { known[k] = 1; }); return { key: g.key, label: g.label, reaches: g.reaches, count: g.kinds.reduce((a, k) => a + (byKind[k] || 0), 0) }; });
+      const rest = Object.keys(byKind).filter(k => !known[k]).reduce((a, k) => a + byKind[k], 0);
+      if (rest) groups.push({ key: 'other', label: 'Other causes', reaches: true, count: rest });
+      m.nodes.push({ key: 'all', col: 0, label: 'Causes found', value: N, tone: 'idle', sub: plural(N, 'cause') });
+      let reach = 0, never = 0;
+      groups.forEach(g => {
+        if (!g.count) return;
+        g.share = pctOf(g.count, N);
+        m.nodes.push({ key: g.key, col: 1, label: g.label, value: g.count, tone: g.reaches ? 'warn' : 'stop', sub: `${g.count} (${Math.round(100 * g.share)}% of causes)` });
+        const l = riverAdd(m, 'all', g.key, { tone: g.reaches ? 'warn' : 'stop', label: `${g.label}: ${plural(g.count, 'cause')}, ${Math.round(100 * g.share)}% of the ${N}` }); l.value = g.count;
+        const to = g.reaches ? 'reach' : 'never';
+        const l2 = riverAdd(m, g.key, to, { tone: g.reaches ? 'warn' : 'stop', label: `${g.label}: ${g.reaches ? 'reaches Zscaler, left encrypted' : 'never reaches Zscaler'}` }); l2.value = g.count;
+        if (g.reaches) reach += g.count; else never += g.count;
+        m.routes.push({ links: [l.key, l2.key], weight: g.count, tone: g.reaches ? 'warn' : 'stop' });
+      });
+      if (reach) m.nodes.push({ key: 'reach', col: 2, label: 'Reaches Zscaler, left encrypted', value: reach, tone: 'warn', sub: plural(reach, 'cause') });
+      if (never) m.nodes.push({ key: 'never', col: 2, label: 'Never reaches Zscaler', value: never, tone: 'stop', exit: 'bypass', sub: `${plural(never, 'cause')}, not in the numbers` });
+      m.groups = groups.filter(g => g.count);
+      m.label = `Why traffic is not inspected: ${plural(N, 'cause')}, ${m.groups.map(g => `${g.label} ${g.count}`).join(', ')}`;
+      out.causes = m;
+      out.alt.push(`Causes found: ${N}. ` + m.groups.map(g => `${g.label}: ${g.count} (${Math.round(100 * g.share)}%)${g.reaches ? '' : ', never reaches Zscaler'}`).join('; ') + '. Branch width is the share of the causes: Insights cannot measure traffic per rule or category.');
+    }
+    return out;
+  }
+
+  // ── River renderer: streams as wide as their share, packets in them ──
+  // opts: onFocus(link|null), onPick(link), height (px of the full total).
+  function river(host, model, opts) {
+    const o = opts || {};
+    host.innerHTML = '';
+    const clock = animator();
+    const W = 1000, BAR = 12, PADR = 150, C = model.cols.length;
+    const step = C > 1 ? (W - 10 - PADR - BAR) / (C - 1) : 0;
+    const SCALE = (o.height || 200) / Math.max(1, model.total);
+    const LABEL_H = 40, GAP = 12, TOP = 26;
+    const pos = {}, colY = {};
+    model.nodes.forEach(nd => {
+      const h = Math.max(3, nd.value * SCALE), slot = Math.max(h, LABEL_H);
+      const y = (colY[nd.col] || TOP);
+      pos[nd.key] = { x: 10 + nd.col * step, y: y + (slot - h) / 2, h };
+      colY[nd.col] = y + slot + GAP;
+    });
+    const H = Math.max.apply(null, Object.keys(colY).map(k => colY[k]).concat([TOP + 60])) + 6;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'group', 'aria-label': model.label || 'Traffic flow', class: 'fa-svg fa-river' });
+    host.appendChild(svg);
+    model.cols.forEach((label, i) => {
+      if (!model.nodes.some(nd => nd.col === i)) return;
+      const t = svgEl('text', { x: 10 + i * step, y: 14, class: 'fa-col' }, svg); t.textContent = clip(label, i === C - 1 ? 20 : Math.max(8, Math.floor((step - 8) / 8.2)));
+      const tt = svgEl('title', {}, t); tt.textContent = label;
+    });
+    const linkEl = {}, bands = svgEl('g', { class: 'fa-bands' }, svg);
+    const port = {};
+    model.nodes.forEach(nd => {
+      const outs = model.links.filter(l => l.from === nd.key && pos[l.to]).sort((x, y) => pos[x.to].y - pos[y.to].y);
+      const ins = model.links.filter(l => l.to === nd.key && pos[l.from]).sort((x, y) => pos[x.from].y - pos[y.from].y);
+      let o1 = 0, i1 = 0;
+      outs.forEach(l => { const w = Math.max(2, l.value * SCALE); (port[l.key] = port[l.key] || {}).y1 = pos[nd.key].y + o1 + w / 2; o1 += w; });
+      ins.forEach(l => { const w = Math.max(2, l.value * SCALE); (port[l.key] = port[l.key] || {}).y2 = pos[nd.key].y + i1 + w / 2; i1 += w; });
+    });
+    model.links.forEach(l => {
+      const a = pos[l.from], b = pos[l.to];
+      if (!a || !b) return;
+      const w = Math.max(2, l.value * SCALE);
+      const y1 = port[l.key].y1, y2 = port[l.key].y2;
+      const x1 = a.x + BAR, x2 = b.x, mx = (x1 + x2) / 2;
+      const p = svgEl('path', { d: `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`, class: `fa-band ${l.tone || 'idle'}`, 'stroke-width': w.toFixed(1),
+        tabindex: '0', role: 'button', 'aria-label': l.label || l.key, 'data-link': l.key }, bands);
+      const tt = svgEl('title', {}, p); tt.textContent = l.label || l.key;
+      const focus = on => { p.classList.toggle('on', on); if (o.onFocus) o.onFocus(on ? l : null); };
+      p.addEventListener('mouseenter', () => focus(true)); p.addEventListener('mouseleave', () => focus(false));
+      p.addEventListener('focus', () => focus(true)); p.addEventListener('blur', () => focus(false));
+      const pick = () => { if (o.onPick) o.onPick(l); };
+      p.addEventListener('click', pick);
+      p.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      linkEl[l.key] = p;
+    });
+    model.nodes.forEach(nd => {
+      const p = pos[nd.key];
+      const g = svgEl('g', { class: `fa-rnode ${nd.tone || 'idle'}${nd.exit ? ' exit' : ''}`, transform: `translate(${p.x},${p.y})`, 'data-node': nd.key }, svg);
+      svgEl('rect', { width: BAR, height: p.h, rx: 2 }, g);
+      const ty = -(Math.max(p.h, LABEL_H) - p.h) / 2 + 11;
+      const words = String(nd.label), cut = nd.col === C - 1 ? 22 : Math.max(10, Math.floor((step - BAR - 12) / 6.6));
+      let l1 = words, l2 = '';
+      if (words.length > cut) { const sp = words.lastIndexOf(' ', cut); l1 = words.slice(0, sp > 0 ? sp : cut); l2 = clip(words.slice(l1.length).trim(), cut); }
+      const t1 = svgEl('text', { x: BAR + 5, y: ty, class: 'fa-t' }, g); t1.textContent = l1;
+      if (l2) { const t2 = svgEl('text', { x: BAR + 5, y: ty + 12, class: 'fa-t' }, g); t2.textContent = l2; }
+      const t3 = svgEl('text', { x: BAR + 5, y: ty + (l2 ? 25 : 13), class: 'fa-s' }, g); t3.textContent = clip(nd.sub != null ? nd.sub : `${nd.value} of ${model.total}`, cut + 3);
+      if (nd.exit) {
+        // The marker a stream leaves the flow with.
+        const mk = svgEl('g', { class: `fa-mark ${nd.exit}`, transform: `translate(${-9},${p.h / 2})` }, g);
+        svgEl('path', { d: nd.exit === 'bypass' ? 'M-6 -6 L6 6 M-6 6 L6 -6' : nd.exit === 'blocked' ? 'M-6 0 L6 0' : 'M-5 -5 L5 5', class: 'fa-mark-p' }, mk);
+      }
+      const tt = svgEl('title', {}, g); tt.textContent = `${nd.label}: ${nd.sub != null ? nd.sub : nd.value}`;
+    });
+    const s = streams(svg, (model.routes || []).map(r => ({ paths: r.links.map(k => linkEl[k]).filter(Boolean), weight: r.weight, tone: r.tone })), { clock, budget: o.budget || 48 });
+    if (!reduced() && o.autoplay !== false) s.play();
+    return { svg, links: linkEl, play: s.play, pause: s.pause, running: s.running, packets: s.count, destroy() { s.destroy(); clock.destroy(); host.innerHTML = ''; } };
+  }
+
+  // Packets along chains of paths, each chain as busy as its weight.
+  // routes: [{paths: [SVGPathElement], weight, tone}]. Pure SVG + rAF.
+  function streams(svg, routes, opts) {
+    const o = opts || {};
+    const clock = o.clock || animator(), own = !o.clock;
+    const live = routes.filter(r => r.paths.length && r.weight > 0 && r.paths.every(p => p.getTotalLength));
+    const total = live.reduce((a, r) => a + r.weight, 0);
+    const budget = o.budget || 40, SPEED = o.speed || 0.16;   // px per ms
+    const dots = [];
+    const layer = svgEl('g', { class: 'fa-packets', 'aria-hidden': 'true' }, svg);
+    live.forEach((r, ri) => {
+      const lens = r.paths.map(p => p.getTotalLength()), L = lens.reduce((a, b) => a + b, 0);
+      if (!L) return;
+      const k = Math.max(1, Math.round(budget * r.weight / (total || 1)));
+      for (let j = 0; j < k; j++) {
+        dots.push({ r, lens, L, phase: (j / k + ri * 0.137) % 1, c: svgEl('circle', { r: 3.2, class: `fa-dot pk ${r.tone || ''}`, opacity: 0 }, layer) });
+      }
+    });
+    let stopFn = null, on = false;
+    const tick = now => {
+      dots.forEach(d => {
+        const dur = d.L / SPEED, prog = ((now / dur) + d.phase) % 1;
+        let s = prog * d.L, i = 0;
+        while (i < d.lens.length - 1 && s > d.lens[i]) { s -= d.lens[i]; i++; }
+        const q = d.r.paths[i].getPointAtLength(Math.min(s, d.lens[i]));
+        d.c.setAttribute('cx', q.x.toFixed(1)); d.c.setAttribute('cy', q.y.toFixed(1));
+        d.c.setAttribute('opacity', Math.min(1, prog * 12, (1 - prog) * 12).toFixed(2));
+      });
+    };
+    return {
+      play() { if (on || !dots.length) return; on = true; stopFn = clock.add(tick); },
+      pause() { on = false; if (stopFn) stopFn(); stopFn = null; },
+      running: () => on, count: () => dots.length,
+      destroy() { on = false; if (stopFn) stopFn(); if (own) clock.destroy(); layer.remove(); },
+    };
+  }
+
+  // ── Rule walk renderer (SSL flow): the rules a request meets ─────
+  function ruleWalk(host, model, opts) {
+    const o = opts || {};
+    host.innerHTML = '';
+    const clock = animator();
+    const W = 1000, BW = 330, BH = 46, RH = 66, X = 16, TOP = 8;
+    const rows = 1 + model.steps.length;
+    const H = TOP + rows * RH + 6;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${model.label}: the SSL inspection rules in order. ${model.alt.slice(1).join(' ')}`, class: 'fa-svg fa-walk', tabindex: '0', focusable: 'true' });
+    host.appendChild(svg);
+    const boxTone = model.tone === 'block' ? 'stop' : model.tone;
+    const tone = { decide: boxTone, exception: 'warn', skip: 'idle', none: 'stop', after: 'after' };
+    const B = [box(svg, X, TOP, BW, BH, `Request: ${model.label}`, 'enters SSL inspection', 'on')];
+    model.steps.forEach((s, i) => {
+      const title = s.kind === 'skip' || s.kind === 'after' || s.kind === 'none' ? s.text : `${s.order != null ? s.order + '. ' : ''}${s.name}`;
+      const sub = s.kind === 'skip' ? clip(s.names.join(', '), 60) : s.kind === 'after' ? (s.shadowed.length ? `shadowed decrypt: ${s.shadowed.join(', ')}` : 'the first match already decided') : s.kind === 'none' ? '' : s.text;
+      B.push(box(svg, X, TOP + (i + 1) * RH, BW, BH, title, sub, tone[s.kind] || ''));
+    });
+    const spine = [];
+    for (let i = 0; i < B.length - 1; i++) {
+      const a = B[i], b = B[i + 1];
+      spine.push(svgEl('path', { d: `M${a.x + BW / 2} ${a.y + BH} L${b.x + BW / 2} ${b.y}`, class: 'fa-edge' + (model.steps[i] && model.steps[i].kind === 'after' ? '' : ' lit') }, svg));
+    }
+    const routes = [];
+    const outX = X + BW + 30;
+    const decideIdx = model.steps.map(s => s.kind).indexOf('decide');
+    const endIdx = decideIdx >= 0 ? decideIdx : model.steps.map(s => s.kind).indexOf('none');
+    model.steps.forEach((s, i) => {
+      if (s.kind !== 'exception') return;
+      const b = B[i + 1];
+      const ex = box(svg, outX, b.y, 250, BH, s.decision === 'inspected' ? `Decrypted for ${s.scope}` : s.decision === 'blocked' ? `Blocked for ${s.scope}` : `Left encrypted for ${s.scope}`,
+        s.decision === 'inspected' ? 'Web DLP can see it' : s.decision === 'blocked' ? 'nothing leaves' : 'peeled off: Web DLP is blind', s.decision === 'inspected' ? 'pass' : 'stop');
+      const p = svgEl('path', { d: `M${b.x + BW} ${b.y + BH / 2} L${ex.x} ${ex.y + BH / 2}`, class: 'fa-edge ' + (s.decision === 'inspected' ? 'lit' : 'dead') }, svg);
+      routes.push({ paths: spine.slice(0, i + 1).concat([p]), weight: 1, tone: s.decision === 'inspected' ? 'pass' : 'stop' });
+    });
+    if (endIdx >= 0) {
+      const b = B[endIdx + 1];
+      let prev = { x: b.x + BW, y: b.y + BH / 2 };
+      const chain = spine.slice(0, endIdx + 1);
+      const gateW = 180, outW = 236;
+      let x = outX;
+      model.gates.forEach(g => {
+        const gb = box(svg, x, b.y, gateW, BH, g.label, g.parts[0], 'gate' + (g.known ? '' : ' idle'));
+        gb.g.querySelector('title').textContent = `${g.label}: ${g.text}`;
+        if (g.parts.length > 1) { const more = svgEl('text', { x: gb.x + 10, y: gb.y + BH + 12, class: 'fa-why' }, svg); more.textContent = clip(g.parts.slice(1).join(' · '), 34); }
+        chain.push(svgEl('path', { d: `M${prev.x} ${prev.y} L${gb.x} ${gb.y + BH / 2}`, class: 'fa-edge lit' }, svg));
+        prev = { x: gb.x + gateW, y: gb.y + BH / 2 };
+        x += gateW + 12;
+      });
+      const ob = box(svg, Math.min(x, W - outW - 4), b.y, outW, BH, model.dlp.label, model.decider ? `${model.decider.action}` : 'no rule decided', boxTone);
+      chain.push(svgEl('path', { d: `M${prev.x} ${prev.y} L${ob.x} ${ob.y + BH / 2}`, class: 'fa-edge ' + (model.tone === 'stop' ? 'dead' : 'lit') }, svg));
+      routes.push({ paths: chain, weight: Math.max(2, 3 - model.peels), tone: model.tone === 'block' ? 'stop' : model.tone });
+    }
+    const s = streams(svg, routes, { clock, budget: 14, speed: 0.12 });
+    if (!reduced() && o.autoplay !== false) s.play();
+    return { svg, play: s.play, pause: s.pause, running: s.running, packets: s.count, destroy() { s.destroy(); clock.destroy(); host.innerHTML = ''; } };
+  }
+
+  // A Play / Pause button for one or more running pictures (reduced
+  // motion: they start still and this button starts them). `handles()`
+  // returns the pictures currently on the page.
+  function playButton(btn, handles) {
+    const all = () => (handles() || []).filter(Boolean);
+    const sync = () => {
+      const on = all().some(h => h.running());
+      btn.textContent = on ? 'Pause motion' : 'Play motion';
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    };
+    btn.addEventListener('click', () => { const on = all().some(h => h.running()); all().forEach(h => (on ? h.pause() : h.play())); sync(); });
+    sync();
+    return sync;
+  }
+  // The words for a picture (WCAG 1.1.1): a list next to it, as text.
+  function altList(host, lines, id) {
+    const ul = root.document.createElement('ul');
+    ul.className = 'fa-alt';
+    if (id) ul.id = id;
+    (lines || []).forEach(t => { const li = root.document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+    host.appendChild(ul);
+    return ul;
+  }
+
   // ── Samples (labelled as such wherever they are shown) ───────────
   const SAMPLE = {
     path: {
@@ -833,6 +1313,7 @@
   const FA = {
     pathModel, parseTerm, corpusModel, pathDrillModel, deployModel, liveModel, drillSummary, hopTone,
     ARCH, SAMPLE, hopPlayer, drill, graph, live, steps, E,
+    dataFlowModel, dfRoute, sslWalkModel, sslCoverageModel, river, streams, ruleWalk, playButton, altList,
   };
   root.FA = FA;
   if (typeof module !== 'undefined' && module.exports) module.exports = FA;

@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/flow_anim.css">
 <style>
   .sc-page .rp-bar .df-ctl, .sc-page .rp-bar select { max-width: 100%; min-width: 0; }
   .sc-lead { font-size: 1rem; line-height: 1.5; margin: 0 0 1rem; padding: 0.75rem 0.9rem; border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--r-md); background: var(--well); }
@@ -88,6 +89,7 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/flow_anim.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -95,7 +97,7 @@
     const meta = document.getElementById('rpMeta');
     const live = document.getElementById('liveRegion');
     const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
-    let running = false, job = null, startToken = null, stopAsked = false, last = null, unit = 'BYTES';
+    let running = false, job = null, startToken = null, stopAsked = false, last = null, unit = 'BYTES', pics = [];
 
     function newStartToken() {
       try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
@@ -233,6 +235,45 @@
         <thead><tr><th scope="col">Run</th><th scope="col" class="num">Traffic kinds covered</th><th scope="col" class="num">Inspected (bytes)</th><th scope="col" class="num">High</th><th scope="col" class="num">Medium</th><th scope="col" class="num">Plan steps</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
+    // ── Traffic river (static/flow_anim.js): the numbers above, moving ──
+    // Stream widths are this page's own Insights numbers in the chosen
+    // unit; the causes fan is each kind of cause's share of the causes.
+    // DOM calls only (textContent): rule and host names are tenant data.
+    function drawRiver() {
+      const host = document.getElementById('scRiver');
+      pics.forEach(p => p.destroy()); pics = [];
+      if (!host || !last) return;
+      host.textContent = '';
+      if (!window.FA || !FA.sslCoverageModel) return;
+      const m = FA.sslCoverageModel(last, unit, { amount: unit === 'BYTES' ? bytes : count, pct });
+      const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+      if (!m || (!m.traffic && !m.causes)) { host.appendChild(el('p', 'sc-note', 'Nothing to draw: no traffic numbers and no cause of uninspected traffic.')); return; }
+      const wrap = el('div', 'fa-motion');
+      wrap.appendChild(el('p', 'fa-lead', 'Packets move through the streams; each stream is as wide as its share. Hover or focus a stream for its numbers.'));
+      const bar = el('div', 'fa-motion-bar'), btn = el('button', 'rp-btn'); btn.type = 'button'; btn.id = 'scRiverPlay';
+      bar.appendChild(btn); wrap.appendChild(bar);
+      if (m.note) wrap.appendChild(el('p', 'sc-note', m.note));
+      const pick = el('div', 'fa-pick'); pick.id = 'scRiverPick'; pick.setAttribute('role', 'status'); pick.setAttribute('aria-live', 'polite');
+      const idle = 'Hover or focus a stream to see its numbers.';
+      pick.textContent = idle;
+      const opts = { height: 180, onFocus: l => { pick.textContent = l ? l.label : idle; }, onPick: l => { pick.textContent = l.label; } };
+      host.appendChild(wrap);
+      if (m.traffic) {
+        wrap.appendChild(el('h3', 'sc-h', m.traffic.unit === 'kinds' ? 'Kinds of web traffic' : `SSL/TLS and HTTP, by ${unit === 'BYTES' ? 'bytes' : 'transactions'}`));
+        const st = el('div', 'fa-stage'); st.id = 'scRiverTraffic'; wrap.appendChild(st);
+        const p = FA.river(st, m.traffic, opts); p.svg.setAttribute('aria-describedby', 'scRiverAlt'); pics.push(p);
+      }
+      if (m.causes) {
+        wrap.appendChild(el('h3', 'sc-h', 'Why traffic is not inspected'));
+        wrap.appendChild(el('p', 'sc-note', 'Each branch is as wide as its share of the causes found: Insights cannot measure traffic per rule or category. Client Connector and PAC bypasses never reach Zscaler, so they are not in the traffic numbers above.'));
+        const st = el('div', 'fa-stage'); st.id = 'scRiverCauses'; wrap.appendChild(st);
+        const p = FA.river(st, m.causes, Object.assign({}, opts, { height: 150, budget: 30 })); p.svg.setAttribute('aria-describedby', 'scRiverAlt'); pics.push(p);
+      }
+      wrap.appendChild(pick);
+      wrap.appendChild(el('h3', 'sc-h', 'In words'));
+      FA.altList(wrap, m.alt, 'scRiverAlt');
+      FA.playButton(btn, () => pics);
+    }
     const DECISION = { inspected: 'Decrypted', not_inspected: 'Left encrypted', no_rule: 'No rule (encrypted)', blocked: 'Blocked', unknown: 'Unknown' };
     function render(res) {
       last = res;
@@ -243,6 +284,7 @@
       const diag = (res.diagnostics || []).map(d => `<li>${E(d.section)}: ${E(d.error_type || '')} ${E(d.error || '')}</li>`).join('');
       body.innerHTML = `
         <p class="sc-lead ${hi ? 'risk' : 'ok'}" role="note">${E(res.headline || '')}</p>
+        <section aria-labelledby="hRiver" id="scRiverSec"><h2 class="sc-h" id="hRiver">Traffic river</h2><div id="scRiver"></div></section>
         <section aria-labelledby="hTraffic" id="scTraffic">${trafficHtml(res)}</section>
         <h2 class="sc-h" id="hPlan">Recovery plan</h2>
         ${(plan.prerequisites || []).length ? `<p class="sc-note"><strong>Before you start:</strong> ${E(plan.prerequisites.join(' '))}</p>` : ''}
@@ -268,11 +310,13 @@
         x.href = `/api/ssl-coverage/export/${encodeURIComponent(res.report_id)}?format=xlsx`; x.hidden = false;
         j.href = `/api/ssl-coverage/export/${encodeURIComponent(res.report_id)}?format=json`; j.hidden = false;
       }
+      drawRiver();
     }
     body.addEventListener('click', e => {
       const b = e.target.closest('button[data-unit]'); if (!b || !last) return;
       unit = b.dataset.unit;
       document.getElementById('scTraffic').innerHTML = trafficHtml(last);
+      drawRiver();
       const again = body.querySelector(`button[data-unit="${unit}"]`); if (again) again.focus();
       say(`Percentages now by ${unit === 'BYTES' ? 'bytes' : 'transactions'}.`);
     });
@@ -322,6 +366,7 @@
       if (running) return;
       const btn = document.getElementById('scRun');
       running = true; stopAsked = false; job = null; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Checking…';
+      pics.forEach(p => p.destroy()); pics = [];
       body.innerHTML = liveHtml();
       document.getElementById('scStop').addEventListener('click', stop);
       say('Checking SSL coverage.');

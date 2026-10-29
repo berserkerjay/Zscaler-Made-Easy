@@ -140,6 +140,8 @@
     'framework file': { term: 'framework file', def: 'A framework file is a saved copy of web rules from one tenant. You can load it to build the same rules in another.' },
     'intermediate certificate': { term: 'intermediate certificate', def: 'Zscaler uses this certificate to open locked web traffic. Your computers must trust it, or sites show a warning.' },
     'trusted resolver': { term: 'Trusted Resolver', def: 'The Trusted Resolver is the Zscaler service that looks up web names. It keeps people off bad sites.' },
+    'traffic river': { term: 'traffic river', def: 'A traffic river is a moving picture of your web traffic. Each stream is as wide as its share, and dots show the traffic going by.' },
+    'rule walk': { term: 'rule walk', def: 'A rule walk shows one web request meeting the SSL rules in order. The first rule that fits decides what happens to it.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;
