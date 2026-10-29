@@ -28,6 +28,7 @@ import lzma
 import re
 import tarfile
 import zipfile
+import zlib
 from collections import Counter, deque
 from typing import Any, Dict, List, Tuple
 
@@ -267,7 +268,7 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data)) as g:
                 inner = g.read(MAX_MEMBER_BYTES + 1)
-        except (OSError, EOFError) as e:
+        except (OSError, EOFError, zlib.error) as e:   # zlib.error: a damaged deflate stream behind a good header
             budget.notes.append(f"{name}: could not gunzip ({e})")
             return
         if len(inner) > MAX_MEMBER_BYTES:

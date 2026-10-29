@@ -836,3 +836,16 @@ def test_a_bypass_rule_scoped_by_any_sdk_condition_is_not_flagged_global(field):
 
     assert [r["name"] for r in rep["risk_flags"]] == ["Everyone"]
     assert rep["sections"]["ssl_bypass_rules"]["items"][0]["scope"] != "global (unscoped)"
+
+
+@pytest.mark.parametrize("name", ["ZSATray.log.gz", "bundle.tgz", "bundle.tar"])
+def test_a_damaged_compressed_upload_is_a_note_never_a_crash(name):
+    """ASVS V7.4.1 · V12.1.1 · CWE-755 · CWE-248 · WSTG-ERRH-01: a gzip with a good header and a broken body is noted as unreadable; analyze() raises only the plain 'nothing readable'."""
+    good = gzip.compress(b"2026-09-01 08:00:01 INF x\n" * 1000)
+    bad = good[:20] + bytes(200) + good[220:]
+
+    members, notes = la.expand([{"name": name, "content": _b64(bad), "encoding": "base64"}])
+
+    assert members == [] and notes and name in notes[0]
+    with pytest.raises(ValueError, match="nothing readable"):
+        la.analyze([{"name": name, "content": _b64(bad), "encoding": "base64"}])
