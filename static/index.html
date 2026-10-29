@@ -4032,9 +4032,10 @@ async function _fetchBestPractices() {
 async function openBestPracticesModal() {
   _ensureBestPracticesModal();
   const modal = document.getElementById('bestPracticesModal');
+  if (modal.style.display !== 'block') _lastFocus = document.activeElement;
   modal.style.display = 'block';
   document.body.style.overflow = 'hidden';
-  _lastFocus = document.activeElement;
+  _focusFirstInModal(modal);   // keyboard and screen-reader users land in the dialog, not behind it
   const host = document.getElementById('bestPracticesContent');
   // Always re-fetch on open so newly-added curated entries and any
   // server-side changes appear immediately. The payload is tiny (~40
@@ -4586,6 +4587,29 @@ function _focusFirstInModal(modalEl) {
   );
   if (focusable) focusable.focus();
 }
+// The trap itself, for every modal on this page (these dialogs, Deploy
+// policy packs, the Terraform hand-off, the score distribution): while one
+// is shown, Tab and Shift+Tab cycle through its own controls and never reach
+// the page behind it, as aria-modal="true" promises. A dialog that handles
+// Tab itself (Find anything) or a native <dialog> (which traps on its own)
+// is left alone.
+function _shownModal() {
+  const shown = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
+    .filter(m => m.getClientRects().length && getComputedStyle(m).display !== 'none' && getComputedStyle(m).visibility !== 'hidden');
+  return shown.length ? shown[shown.length - 1] : null;
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || document.querySelector('dialog[open]')) return;
+  const m = _shownModal();
+  if (!m) return;
+  const items = [...m.querySelectorAll('button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && !el.closest('[hidden], [inert]'));
+  if (!items.length) { e.preventDefault(); return; }
+  const first = items[0], last = items[items.length - 1], at = document.activeElement;
+  if (!m.contains(at)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+  else if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+});
 
 function openUpdateModal() {
   _lastFocus = document.activeElement;

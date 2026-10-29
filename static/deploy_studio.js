@@ -2295,13 +2295,17 @@ function _tfEnsureModal() {
     </div>
     <div id="terraformBody"></div></div>`;
   document.body.appendChild(m);
+  // Keyboard: Escape closes it, like every other dialog of the app (WCAG 2.1.2).
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && m.style.display === 'block') closeTerraformModal(); });
 }
 async function openTerraformModal(packIds) {
   _tfEnsureModal();
   const m = document.getElementById('terraformModal');
+  if (m.style.display !== 'block') TF._opener = document.activeElement;   // focus goes back there on close
   m.style.display = 'block'; document.body.style.overflow = 'hidden';
   TF.error = '';
   _tfRender();
+  const close = m.querySelector('button[aria-label="Close"]'); if (close) close.focus();
   try {
     if (!TF.packs.length) {
       const r = await fetch('/api/dlp-packs', { cache: 'no-store' });
@@ -2318,6 +2322,8 @@ function closeTerraformModal() {
   const m = document.getElementById('terraformModal');
   if (m) m.style.display = 'none';
   document.body.style.overflow = '';
+  const o = TF._opener; TF._opener = null;
+  if (o && document.body.contains(o) && typeof o.focus === 'function') o.focus();
 }
 async function _tfLoadSummary(id) {
   if (TF.summaries[id]) return;

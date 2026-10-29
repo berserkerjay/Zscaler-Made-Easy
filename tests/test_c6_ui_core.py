@@ -239,6 +239,36 @@ async function grab(key, promise) { try { out[key] = await promise; } catch (e) 
     await ctx.close();
   }
 
+  // 10. Keyboard: each modal of the main page keeps Tab and Shift+Tab inside it, Escape closes it, focus goes back.
+  {
+    const { ctx, errs } = await context();
+    const pg = await open(ctx, '/');
+    out.trap = {};
+    for (const fn of ['openBestPracticesModal', 'openUpdateModal', 'openDlpEfficacyModal', 'openPermissionsModal', 'openBypassModal', 'openDlpPacksModal', 'openTerraformModal']) {
+      const r = out.trap[fn] = { left: [] };
+      try {
+        await pg.evaluate(fn => { const b = document.createElement('button'); b.id = 'c6Opener'; b.textContent = 'Opener'; document.body.appendChild(b); b.focus(); window[fn](); }, fn);
+        await pg.waitForFunction(() => [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some(m => m.getClientRects().length && getComputedStyle(m).display !== 'none' && m.contains(document.activeElement)));
+        r.modal = await pg.evaluate(() => document.activeElement.closest('[role="dialog"]').id);
+        for (const key of ['Tab', 'Shift+Tab']) for (let i = 0; i < 40; i++) {
+          await pg.keyboard.press(key);
+          const where = await pg.evaluate(id => document.getElementById(id).contains(document.activeElement) ? null : (document.activeElement.tagName + '#' + document.activeElement.id), r.modal);
+          if (where && !r.left.includes(where)) r.left.push(where);
+        }
+        await pg.keyboard.press('Escape');
+        await pg.waitForFunction(id => { const m = document.getElementById(id); return !m.getClientRects().length || getComputedStyle(m).display === 'none'; }, r.modal, { timeout: 5000 });
+        r.back = await pg.evaluate(() => document.activeElement && document.activeElement.id);
+      } catch (e) { r.__error = String(e && e.message || e).slice(0, 200); }
+      // Isolation: whatever this one left open is closed before the next.
+      await pg.evaluate(() => {
+        for (const f of ['closeBestPracticesModal', 'closeUpdateModal', 'closeDlpEfficacyModal', 'closePermissionsModal', 'closeBypassModal', 'closeDlpPacksModal', 'closeTerraformModal']) { try { if (typeof window[f] === 'function') window[f](); } catch (e) { /* not open */ } }
+        const b = document.getElementById('c6Opener'); if (b) b.remove();
+      });
+    }
+    out.trapErrors = errs.slice();
+    await ctx.close();
+  }
+
   // 9. Contrast, names, ids and reflow on every page, both themes, desktop and 320px.
   out.a11y = {};
   for (const scheme of ['dark', 'light']) for (const width of [1280, 320]) {
@@ -553,6 +583,27 @@ def test_no_page_scrolls_sideways_at_320px_in_either_theme(ui, path):
 def test_each_page_shows_exactly_one_main_heading(ui, path):
     """WCAG 2.2 SC 1.3.1 · SC 2.4.6: one visible h1 per page."""
     assert _a11y(ui, f"dark 1280 {path}")["h1"] == 1
+
+
+# ── Keyboard (WCAG 2.1.2, 2.4.3) ────────────────────────────────────
+
+MODALS = ["openBestPracticesModal", "openUpdateModal", "openDlpEfficacyModal", "openPermissionsModal", "openBypassModal", "openDlpPacksModal", "openTerraformModal"]
+
+
+@pytest.mark.parametrize("fn", MODALS)
+def test_tab_never_leaves_an_open_modal(ui, fn):
+    """WCAG 2.2 SC 2.4.3 · SC 2.1.2 · ASVS V1.1 (n/a): forty Tab and forty Shift+Tab presses keep focus inside the aria-modal dialog."""
+    r = ui["trap"][fn]
+    assert "__error" not in r, r
+    assert r["left"] == [], (r["modal"], r["left"])
+
+
+@pytest.mark.parametrize("fn", MODALS)
+def test_escape_closes_a_modal_and_focus_goes_back_to_its_opener(ui, fn):
+    """WCAG 2.2 SC 2.1.2 · SC 2.4.3: Escape closes the dialog (no keyboard trap) and focus returns to the control that opened it."""
+    r = ui["trap"][fn]
+    assert r.get("back") == "c6Opener", r
+    assert ui["trapErrors"] == []
 
 
 # ── UI token (ASVS V3, V2.10) ───────────────────────────────────────
