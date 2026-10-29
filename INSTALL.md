@@ -66,8 +66,8 @@ with `gh auth login` (the repository is private, so use the account that
 can see it), then:
 
 ```bash
-gh attestation verify ZscalerMadeEasy-<version>-windows-x64.zip --repo berserkerjay/DLP-Check \
-  --signer-workflow berserkerjay/DLP-Check/.github/workflows/release-standalone.yml
+gh attestation verify ZscalerMadeEasy-<version>-windows-x64.zip --repo berserkerjay/Zscaler-Made-Easy \
+  --signer-workflow berserkerjay/Zscaler-Made-Easy/.github/workflows/release-standalone.yml
 ```
 
 (use your file's name; on Windows put both lines on one line without the
@@ -178,7 +178,7 @@ installing only puts the program on your computer.
       goes through Zscaler or a proxy, read the
       [work laptop box](#work-laptop-tls-inspection-or-a-proxy) before you
       start; it changes one step.
-- [ ] **Access to the GitHub repository** `github.com/berserkerjay/DLP-Check`.
+- [ ] **Access to the GitHub repository** `github.com/berserkerjay/Zscaler-Made-Easy`.
       It is **private**: someone on the team must add your GitHub account
       first. If the page says "404" or asks you to sign in and then still
       refuses, that is the reason.
@@ -250,7 +250,7 @@ it installed once, the same way it needs a PDF reader to open a PDF.
 
    ```
    cd %USERPROFILE%\Documents
-   git clone https://github.com/berserkerjay/DLP-Check.git
+   git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
    ```
 
    A window titled **Connect to GitHub** opens the first time: choose
@@ -262,7 +262,7 @@ it installed once, the same way it needs a PDF reader to open a PDF.
 
 *Option B: a ZIP.*
 
-1. In your browser, go to `github.com/berserkerjay/DLP-Check` and sign in
+1. In your browser, go to `github.com/berserkerjay/Zscaler-Made-Easy` and sign in
    if it asks.
 2. Click the green **Code** button, then **Download ZIP**.
 3. Find the downloaded ZIP (usually in Downloads), right-click it, choose
@@ -370,7 +370,7 @@ pressing Enter after each:
 
 ```bash
 cd ~/Documents
-git clone https://github.com/berserkerjay/DLP-Check.git
+git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
 ```
 
 The first time, macOS asks to install the "command line developer tools";
@@ -382,7 +382,7 @@ personal access token" walks you through it.) You now have a folder
 `Documents/DLP-Check`.
 
 *Option B: a ZIP.* In your browser, sign in to GitHub, go to
-`github.com/berserkerjay/DLP-Check`, click the green **Code** button, then
+`github.com/berserkerjay/Zscaler-Made-Easy`, click the green **Code** button, then
 **Download ZIP**. Safari extracts it into Downloads as a folder named
 `DLP-Check-main`; double-click the ZIP if it did not. Move that folder
 into Documents.
@@ -465,8 +465,8 @@ token** once: on `github.com`, click your avatar → **Settings** →
 ```bash
 git config --global credential.helper store   # remember the sign-in, so updates work later
 cd ~
-git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+cd Zscaler-Made-Easy
 ```
 
 When `git clone` asks `Username for 'https://github.com':`, type your
@@ -515,16 +515,16 @@ folder you want the app in):
 
 ```powershell
 # Windows (PowerShell)
-git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+cd Zscaler-Made-Easy
 powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
 docker logs dlp-check
 ```
 
 ```bash
 # Mac (Terminal) or Linux
-git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+cd Zscaler-Made-Easy
 ./update_container.sh --force
 docker logs dlp-check
 ```
@@ -709,8 +709,8 @@ the first time.
 
   ```powershell
   cd $HOME\Documents
-  git clone https://github.com/berserkerjay/DLP-Check.git
-  cd DLP-Check
+  git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+  cd Zscaler-Made-Easy
   ```
 
   A browser window opens to sign in to GitHub (Git Credential Manager);
@@ -721,8 +721,8 @@ the first time.
 
   ```bash
   cd ~/Documents
-  git clone https://github.com/berserkerjay/DLP-Check.git
-  cd DLP-Check
+  git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+  cd Zscaler-Made-Easy
   ```
 
   If macOS offers to install the "command line developer tools", click
@@ -904,7 +904,7 @@ read -rsp "GitHub token: " GIT_AUTH_TOKEN; export GIT_AUTH_TOKEN; echo   # Mac, 
 (`#main` is the branch; `#qa` or `#dev` for those):
 
 ```
-docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 *Behind TLS inspection (Zscaler or another proxy)* the build stops with
@@ -916,13 +916,13 @@ own and hand that folder to the build with `--build-context certs=…`:
 New-Item -ItemType Directory -Force $HOME\dlp-certs | Out-Null
 $c = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root | Where-Object { $_.Subject -like "*Zscaler Root CA*" } | Select-Object -First 1
 "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n" | Set-Content -Encoding ascii -NoNewline $HOME\dlp-certs\zscaler-root.crt
-docker build --build-context certs=$HOME\dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+docker build --build-context certs=$HOME\dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 ```bash
 # Mac, for Zscaler (Linux: copy the .crt file IT gave you into ~/dlp-certs instead)
 mkdir -p ~/dlp-certs && security find-certificate -c "Zscaler Root CA" -p > ~/dlp-certs/zscaler-root.crt
-docker build --build-context certs=$HOME/dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+docker build --build-context certs=$HOME/dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 The build log then says `extra root certificates added: 1`.
@@ -1234,7 +1234,7 @@ app** button or `UPDATE_Zscaler_Made_Easy.bat`), renames the shortcut to
 - For a security problem in the app itself, `SECURITY.md` says how to
   report it.
 - With access to the repository, open an issue at
-  `github.com/berserkerjay/DLP-Check/issues` and paste the message.
+  `github.com/berserkerjay/Zscaler-Made-Easy/issues` and paste the message.
 
 ## Native install verification
 

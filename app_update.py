@@ -201,7 +201,10 @@ def _github_owner_repo(app_dir: str) -> Optional[Tuple[str, str]]:
     return (m.group(1), m.group(2)) if m else None
 
 
-UPSTREAM_REPO = "berserkerjay/DLP-Check"
+UPSTREAM_REPO = "berserkerjay/Zscaler-Made-Easy"
+# The same repository under its earlier name: GitHub redirects it, and clones
+# made before the rename still name it as their origin.
+UPSTREAM_ALIASES = ("berserkerjay/DLP-Check",)
 
 
 def github_branch_head(branch: str, timeout: int = 10) -> Tuple[Optional[str], Optional[str]]:
@@ -280,8 +283,10 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
     # would vouch for whatever it serves itself, so "verified" would mean
     # nothing. Deny by default; DLP_CHECK_GITHUB_REPO names another
     # repository the operator trusts (the same setting github_branch_head uses).
-    upstream = os.environ.get("DLP_CHECK_GITHUB_REPO", "").strip() or UPSTREAM_REPO
-    if f"{owner}/{repo}".lower() != upstream.lower():
+    override = os.environ.get("DLP_CHECK_GITHUB_REPO", "").strip()
+    upstream = override or UPSTREAM_REPO
+    trusted = {upstream.lower()} | (set() if override else {a.lower() for a in UPSTREAM_ALIASES})
+    if f"{owner}/{repo}".lower() not in trusted:
         return {"checked": False, "reason": (f"origin is {owner}/{repo}, not the upstream repository {upstream} (a fork or a mirror), "
                                              "so GitHub's API for it cannot vouch for the pull. Set DLP_CHECK_GITHUB_REPO to it "
                                              "only if that is the repository you trust")}

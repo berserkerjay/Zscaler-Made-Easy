@@ -711,3 +711,33 @@ def test_a_refused_update_writes_no_audit_event(repos, monkeypatch, tmp_path):
     monkeypatch.setenv("ZSCALER_BIND_HOST", "0.0.0.0")
     assert TestClient(srv.app).post("/api/app/update").status_code == 403
     assert not log.exists() or "app_update" not in log.read_text()
+
+
+
+@pytest.mark.parametrize("origin,trusted", [
+    ("https://github.com/berserkerjay/Zscaler-Made-Easy.git", True),
+    ("https://github.com/berserkerjay/DLP-Check.git", True),      # the same repository under its earlier name
+    ("https://github.com/someone-else/Zscaler-Made-Easy.git", False),
+    ("https://github.com/berserkerjay/Other.git", False),
+])
+def test_the_upstream_check_trusts_the_repository_under_both_its_names(tmp_path, monkeypatch, origin, trusted):
+    """SLSA v1.0 Source · SSDF PS.2.1 · CWE-494: after the GitHub rename, a clone naming the new or the old name of the same repository is vouched for; a fork or another repository is not (refused before any request)."""
+    import requests
+    monkeypatch.delenv("DLP_CHECK_GITHUB_REPO", raising=False)
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "remote", "add", "origin", origin)
+    calls = []
+
+    class R:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"sha": "a" * 40}
+    monkeypatch.setattr(requests, "get", lambda url, **kw: calls.append(url) or R())
+    v = au.verify_against_github_api(str(repo), "main", "a" * 40)
+    assert bool(v.get("checked")) is trusted and bool(calls) is trusted, v

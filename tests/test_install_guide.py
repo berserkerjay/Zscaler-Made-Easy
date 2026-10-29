@@ -284,7 +284,7 @@ def test_a_fresh_container_install_is_spelled_out_for_windows_mac_and_linux():
     flat = re.sub(r"\s+", " ", part)
     assert "no ready-made image to download" in flat
     assert "Use `git clone`, not a ZIP" in flat and "Download ZIP" not in flat
-    assert flat.count("git clone https://github.com/berserkerjay/DLP-Check.git") >= 4, "short version for two shells, Step 2 on Windows and Mac"
+    assert flat.count("git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git") >= 4, "short version for two shells, Step 2 on Windows and Mac"
     for piece in ("cd $HOME\\Documents","cd ~/Documents", "Git Credential Manager", "personal access token", "command line developer tools",
                   "update_container.ps1 -Force", "./update_container.sh --force", "bash update_container.sh --force", "docker logs dlp-check"):
         assert piece in flat, piece
@@ -304,7 +304,7 @@ def test_the_container_installs_with_docker_commands_only():
     private repository itself with a token passed as a build secret, and a
     TLS-inspection certificate comes in through --build-context certs=."""
     part = INSTALL[INSTALL.index("### Install with Docker commands only"):INSTALL.index("### Build and run it by hand")]
-    url = '"https://github.com/berserkerjay/DLP-Check.git#main"'
+    url = '"https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"'
     assert part.count("--secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN") == 3 and part.count(url) == 3
     assert "Contents*: **Read-only**" in part.replace("\n", " ") and "Read-Host" in part and "read -rsp" in part
     assert "--build-context certs=$HOME\dlp-certs" in part and "--build-context certs=$HOME/dlp-certs" in part
