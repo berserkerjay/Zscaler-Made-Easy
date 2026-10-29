@@ -50,6 +50,7 @@ this module writes to a tenant.
 """
 from __future__ import annotations
 
+import bisect
 import csv
 import fnmatch
 import ipaddress
@@ -790,6 +791,12 @@ class _HostIndex:
         self.names: Dict[str, List[str]] = {}
         self.nets: List[Tuple[int, int, int, str]] = []
         self.globs: List[Tuple[str, str]] = []
+        # Every address between two consecutive range ends is in the same
+        # entries: one bisect finds that stretch, and its entries are worked
+        # out once (a list of 250,000 addresses against a group of thousands
+        # of networks is not 250,000 scans of every network).
+        self._ends: Dict[int, List[int]] = {}
+        self._in: Dict[Tuple[int, int], frozenset] = {}
         for raw in entries:
             self._add(str(raw or "").strip())
 
@@ -820,9 +827,14 @@ class _HostIndex:
         out = set()
         if ip is not None and self.nets:
             ver, n = ip.version, int(ip)
-            for v, lo, hi, raw in self.nets:
-                if v == ver and lo <= n <= hi:
-                    out.add((raw, "in"))
+            ends = self._ends.get(ver)
+            if ends is None:
+                ends = self._ends[ver] = sorted({x for v, lo, hi, _ in self.nets if v == ver for x in (lo, hi + 1)})
+            stretch = (ver, bisect.bisect_right(ends, n))
+            hit = self._in.get(stretch)
+            if hit is None:
+                hit = self._in[stretch] = frozenset((raw, "in") for v, lo, hi, raw in self.nets if v == ver and lo <= n <= hi)
+            out |= hit
         if self.names:
             parts = host.split(".")
             for i in range(len(parts)):

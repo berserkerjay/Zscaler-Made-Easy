@@ -2019,3 +2019,35 @@ def test_5000_connector_rules_on_shared_groups_evaluate_in_under_two_seconds():
     took = time.perf_counter() - t0
     # Assert
     assert took < 2.0 and ev["go"] == "zia" and len(ev["walked"]) == 60, took
+
+
+# ── C6-PATH-19: list rows against thousands of address entries ─────────
+def test_the_list_index_finds_exactly_the_entries_a_full_scan_finds():
+    """ASVS V1.4.4 · CWE-697 · CWE-682: the address index answers, for random overlapping ranges and addresses, exactly what a scan of every entry answers."""
+    import random
+    rng = random.Random(4242)
+    entries = []
+    for _ in range(300):
+        a = rng.randint(0, 4000)
+        b = a + rng.choice([0, 0, 3, 50, 700])
+        entries.append(f"10.0.{a // 256}.{a % 256}-10.0.{min(b, 4095) // 256}.{min(b, 4095) % 256}")
+    entries += ["10.0.0.0/22", "2001:db8::/120", "2001:db8::5", "10.0.15.255"]
+    idx = bt._HostIndex(entries)
+    nets = [(bt._net(e.lower()), e) for e in entries]
+    for _ in range(3000):
+        ip = ipaddress.ip_address(rng.choice([f"10.0.{rng.randint(0, 16)}.{rng.randint(0, 255)}", f"2001:db8::{rng.randint(0, 300):x}"]))
+        want = frozenset((raw, "in") for (v, lo, hi), raw in nets if v == ip.version and lo <= int(ip) <= hi)
+        assert idx.match("", ip) == want
+
+
+def test_a_list_against_a_5000_network_group_costs_little_per_row():
+    """ASVS V1.11.3 · CWE-400 · CWE-407: 16,384 rows against a destination group of 5,000 networks are tested in under 2 s (no full scan per row)."""
+    dg = [{"id": 1, "name": "Big", "addresses": [f"172.{16 + i // 256}.{i % 256}.0/24" for i in range(5000)]}]
+    tenant = Tenant({"/zia/firewallFilteringRules": [fw_rule(1, 1, "BLOCK_DROP", destIpGroups=[{"id": 1, "name": "Big"}]), DEFAULT_FW],
+                     "/zia/ipDestinationGroups": dg})
+    parsed = bt.parse("destination\n10.5.0.0/18\n172.16.0.0/30\n")
+    t0 = time.perf_counter()
+    rn = bt.run(tenant, parsed, scope=FULL, lookup=False, sleep=lambda s: None)
+    took = time.perf_counter() - t0
+    assert took < 2.0, took
+    assert (rn.row(0)["result"], rn.row(len(parsed) - 1)["result"]) == ("allowed", "blocked")
