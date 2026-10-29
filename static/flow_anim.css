@@ -153,3 +153,38 @@
 }
 .fa-ctl .df-ctl { max-width: 100%; min-width: 0; }
 .fa-ctl .df-ctl select { max-width: 100%; }
+
+/* ── Live motion on the report pages (static/flow_pages.js) ───────────
+   ZPA connections and diagnosis walk, Traffic insights flow, Live DLP
+   feed lanes, Bypass streams. Theme tokens only. */
+.fp-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.2rem 0 0.5rem; }
+.fp-mode { font-weight: 600; font-size: 0.85rem; }
+.fp-note { font-size: 0.8rem; color: var(--dim); flex: 1 1 14rem; min-width: 0; }
+.fp-stage { max-width: 100%; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); }
+.fp-stage:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.fp-stage .fa-svg { min-width: 680px; }
+.fp-link { fill: none; stroke: var(--accent); stroke-opacity: 0.45; }
+.fp-link.tone-pass { stroke: var(--pass); }
+.fp-link.tone-stop { stroke: var(--fail); }
+.fp-link.tone-warn { stroke: var(--warn); }
+.fp-link.tone-idle { stroke: var(--border-strong, var(--border)); }
+.fp-link.dashed, .fp-link.st-idle, .fp-link.st-unknown { stroke-dasharray: 4 4; }
+.fp-link.st-idle, .fp-link.st-unknown { stroke: var(--border-strong, var(--border)); stroke-opacity: 0.7; }
+.fp-link.st-flicker { stroke: var(--fail); stroke-opacity: 0.85; stroke-dasharray: 7 4; }
+.fp-link.st-stop { stroke: var(--fail); stroke-opacity: 0.9; stroke-dasharray: 3 5; }
+.fp-moving .fp-link.st-flicker { animation: fp-flicker 1.6s ease-in-out infinite; }
+@keyframes fp-flicker { 0%, 100% { stroke-opacity: 0.9; } 50% { stroke-opacity: 0.2; } }
+.fp-dot.tone-pass { fill: var(--pass); }
+.fp-dot.tone-stop { fill: var(--fail); }
+.fp-dot.tone-warn { fill: var(--warn); }
+.fp-dot.tone-idle { fill: var(--dim); }
+.fp-dot.pop { opacity: 0.35; }
+.fp-summary, .fp-walk, .fp-livelog { font-size: 0.82rem; color: var(--dim); padding-left: 1.2rem; margin: 0.5rem 0 0; overflow-wrap: anywhere; }
+.fp-walk, .fp-livelog { padding-left: 2rem; }
+.fp-summary li, .fp-walk li, .fp-livelog li { margin: 0.15rem 0; }
+.fp-walk li.cur { color: var(--text); font-weight: 600; }
+.fp-tally { font-size: 0.85rem; margin: 0.4rem 0 0; overflow-wrap: anywhere; }
+.fp-views { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 0 0 0.4rem; font-size: 0.82rem; }
+.fp-views select { max-width: 100%; min-height: 34px; font: inherit; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); }
+.fp-views select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .fp-moving .fp-link.st-flicker { animation: none; } }

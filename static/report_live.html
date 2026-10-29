@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/flow_anim.css">
 </head>
 <body class="report-page lf-page">
   <div class="rp-page">
@@ -33,6 +34,11 @@
         <div class="df-hint">Content captured on a channel → dictionaries (typed, carry the confidence, report match counts) → the DLP engine (Boolean expression, match counts, the Channels gate; at most four engines per rule) → the channel rule acts → it forwards on its own: the evidence lane to Workflow Automation, the telemetry lane to your SIEM, auditor email and third-party ICAP beside them. Until the first incident lands every lane idles; then each channel that raised one carries bits through its rule and the evidence lane to Workflow Automation, faster the more it raised, with its rule tagged enforce or monitor. From the <a href="/reference/data-security-architect#chain" target="_blank" rel="noopener">reference architecture's chain ↗</a>.</div>
         <div id="lfMotionBody"></div>
       </section>
+      <section class="pa-motion" id="lfLanes" aria-labelledby="lfLanesH">
+        <h2 id="lfLanesH">Each incident as it lands</h2>
+        <div class="df-hint">Every new incident in this feed flies through its own lanes: the channel that captured it, the dictionaries and engine that matched, the rule, the action that rule is configured with now, and the incident receiver that forwarded it to Workflow Automation. The list under the picture says the same in words, without user or file names.</div>
+        <div id="lfLanesBody"></div>
+      </section>
       <div id="lfBody">
         <div class="pa-intro" id="lfHow">
           <div class="pa-intro-t">How it works</div>
@@ -53,6 +59,8 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/data_flow.js"></script>
   <script src="/static/path_motion.js"></script>
+  <script src="/static/flow_anim.js"></script>
+  <script src="/static/flow_pages.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -74,6 +82,13 @@
     // picture never decides whether a poll worked.
     let motion = { update() {} };
     try { motion = renderPathMotion(document.getElementById('lfMotionBody')); } catch (e) { document.getElementById('lfMotion').hidden = true; }
+    // Each incident through the lanes (static/flow_pages.js on FA.live).
+    let lanes = null;
+    function newLanes() {
+      if (lanes) lanes.destroy();
+      try { lanes = FP.mountLive(document.getElementById('lfLanesBody')); } catch (e) { lanes = null; document.getElementById('lfLanes').hidden = true; }
+    }
+    newLanes();
     function showMotion() {
       try { motion.update(rows.length ? { live: rows } : null); } catch (e) { document.getElementById('lfMotion').hidden = true; }
     }
@@ -208,6 +223,7 @@
       rows = d.incidents.slice().reverse().concat(rows).slice(0, 500);   // newest first, bounded
       render(freshIds);
       if (d.incidents.length) showMotion();
+      if (lanes) d.incidents.forEach(i => { try { lanes.push(i); } catch (e) { /* the feed never depends on the picture */ } });
       if (d.incidents.length) say(`${d.incidents.length} new incident${d.incidents.length === 1 ? '' : 's'}.`);
     }
     function schedule(my) { timer = setTimeout(async () => { if (!isCurrent(my)) return; await poll(my); if (isCurrent(my)) schedule(my); }, POLL_MS); }
@@ -233,6 +249,7 @@
       stop(); since = ''; stats = {}; rows = []; errShown = false; connector = null;
       render();
       showMotion();
+      newLanes();
       say('Session cleared.');
     }
     document.getElementById('lfStart').addEventListener('click', start);

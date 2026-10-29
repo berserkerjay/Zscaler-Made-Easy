@@ -144,6 +144,8 @@
     'trusted resolver': { term: 'Trusted Resolver', def: 'The Trusted Resolver is the Zscaler service that looks up web names. It keeps people off bad sites.' },
     'traffic river': { term: 'traffic river', def: 'A traffic river is a moving picture of your web traffic. Each stream is as wide as its share, and dots show the traffic going by.' },
     'rule walk': { term: 'rule walk', def: 'A rule walk shows one web request meeting the SSL rules in order. The first rule that fits decides what happens to it.' },
+    'packet': { term: 'packet', def: 'A packet is a small piece of traffic. The moving dots in a picture show packets on their way.' },
+    'incident receiver': { term: 'incident receiver', def: 'The incident receiver gets a copy of what a DLP rule caught. It puts it where Workflow Automation can see it.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;
