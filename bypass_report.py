@@ -479,8 +479,8 @@ def _aggregate_bypasses(sections: Dict[str, Any], url_cat_lookup: Optional[Dict[
         entry = bucket.setdefault(key, {"value": key, "count": 0, "rules": []})
         entry["count"] += 1
         # De-dup the rule list by (source, id) to avoid noise when the same rule has many items
-        sig = (ctx.get("source"), ctx.get("id"))
-        if sig not in {(r.get("source"), r.get("id")) for r in entry["rules"]}:
+        sig = (str(ctx.get("source")), str(ctx.get("id")))   # str: an id the tenant sends as a list or object is still a key
+        if sig not in {(str(r.get("source")), str(r.get("id"))) for r in entry["rules"]}:
             entry["rules"].append(ctx)
 
     for section_key in ("ssl_bypass_rules", "url_filter_allow", "firewall_allow", "dlp_allow"):

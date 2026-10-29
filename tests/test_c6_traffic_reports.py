@@ -899,3 +899,75 @@ def test_seeded_mutations_of_every_bundle_kind_never_crash_the_analyzer():
             la.analyze([{"name": name, "content": _b64(bytes(b)), "encoding": "base64"}])
         except ValueError as e:
             assert "nothing readable" in str(e)
+
+
+# ═══ pass 3: malformed tenant data never stops a report ════════════════
+def _junk(rnd, depth=0):
+    atoms = [None, True, False, 0, -1, 1.5, float("nan"), float("inf"), 10 ** 20, "", "x", "ENABLED", "DO_NOT_DECRYPT",
+             "2026-01-01T00:00:00Z", [], {}]
+    keys = ["id", "name", "order", "state", "action", "type", "urlCategories", "cloudApplications", "rules", "engines", "dictionaries",
+            "matchCount", "matchingPolicies", "applicationInfo", "userInfo", "status", "resolution", "createdAt", "url", "email", "emailInfo",
+            "total", "entries", "defaultRule", "predefined", "urls", "users", "bypassApps", "bypassDomains", "trustedNetworks", "incidents",
+            "app_profiles", "bypass", "domains", "forwarding_profiles", "actions", "pac_files", "direct_hosts", "trend", "trend_start_time",
+            "trend_values", "configuredName", "customCategory", "keywords"]
+    r = rnd.random()
+    if depth > 3 or r < 0.5:
+        return rnd.choice(atoms)
+    if r < 0.75:
+        return [_junk(rnd, depth + 1) for _ in range(rnd.randint(0, 3))]
+    return {rnd.choice(keys): _junk(rnd, depth + 1) for _ in range(rnd.randint(0, 5))}
+
+
+def test_seeded_malformed_tenant_data_never_stops_any_report():
+    """ASVS V5.1.3 · V7.4.1 · CWE-20 · CWE-248 · CWE-1287 · WSTG-INPV-01: 400 seeded malformed incidents, rules, profiles and Insights answers give a report, never an exception."""
+    import random
+    rnd = random.Random(99)
+    for _ in range(400):
+        objs = [_junk(rnd) for _ in range(rnd.randint(0, 4))]
+        one = _junk(rnd)
+        dicts = [x for x in objs if isinstance(x, dict)]
+
+        dh.evaluate([dh.normalize_incident(x, dh.DEFAULTS["not_real"]) for x in objs], dicts)
+        dh._flatten(one)
+        insights.rows_of(one), insights.app_rows(one), insights.summary_of(one), insights.rule_hits(one)
+        br.to_markdown(br.generate_bypass_report(_Get({"/zia/sslInspectionRules": (objs, 200), "/zcc/webPolicies": (objs, 200),
+                                                       "/zia/urlCategories": (objs, 200), "/zia/advancedSettings": (one, 200)})))
+        sf.to_markdown(sf.analyse(dicts, dicts))
+        sc.analyse(dicts, cc=one if isinstance(one, dict) else None)
+        sc.protocol_split(objs), sc._trend_rows(objs)
+
+
+@pytest.mark.parametrize("value, expected", [("FINANCE", ["FINANCE"]), (7, []), (True, []), (1.5, []), (None, []), ([{"name": "A"}, "B", 3], ["A", "B", "3"])])
+def test_a_rule_field_sent_bare_is_one_name_not_its_characters(value, expected):
+    """ASVS V5.1.3 · CWE-20 · CWE-843 · WSTG-INPV-01: urlCategories: 'FINANCE' is one category (never F, I, N…); a number or bool where a list belongs names nothing."""
+    assert sf._names(value) == expected
+
+
+@pytest.mark.parametrize("raw, count", [("abc", 0), (float("nan"), 0), (float("inf"), 0), (True, 0), (-3, 0), ("7", 7), (4.0, 4)])
+def test_an_incident_match_count_that_is_not_a_count_is_zero(raw, count):
+    """ASVS V5.1.3 · CWE-20 · CWE-1287 · WSTG-INPV-01: a match count sent as text, NaN, an infinity, a bool or a negative is no count, never a crash."""
+    inc = _dh_inc("i", "R")
+    inc["matchCount"] = raw
+    inc["matchingPolicies"]["dictionaries"][0]["matchCount"] = raw
+
+    n = dh.normalize_incident(inc, dh.DEFAULTS["not_real"])
+
+    assert n["match_count"] == count and n["dictionaries"][0]["count"] == count
+
+
+@pytest.mark.parametrize("ts", [float("nan"), float("inf"), 10 ** 20, True])
+def test_an_incident_time_out_of_range_is_no_time(ts):
+    """ASVS V5.1.4 · CWE-20 · CWE-755 · WSTG-INPV-01: a createdAt that is NaN, an infinity, past year 9999 or a bool is an unknown time, never a crash."""
+    inc = _dh_inc("i", "R")
+    inc["createdAt"] = ts
+
+    assert dh.normalize_incident(inc, dh.DEFAULTS["not_real"])["created_at"] is None
+
+
+def test_a_rule_id_sent_as_a_list_still_aggregates():
+    """ASVS V5.1.3 · CWE-20 · CWE-704 · WSTG-INPV-01: a bypass rule whose id is a list or object (not hashable) is still traced in the aggregated lists."""
+    rules = [{"id": [1, 2], "name": "Odd", "action": {"type": "DO_NOT_DECRYPT"}, "urls": ["a.example", "a.example"]}]
+
+    rep = br.generate_bypass_report(_Get({"/zia/sslInspectionRules": (rules, 200)}))
+
+    assert rep["aggregated"]["urls"]["items"][0]["value"] == "a.example" and len(rep["aggregated"]["urls"]["items"][0]["rules"]) == 1

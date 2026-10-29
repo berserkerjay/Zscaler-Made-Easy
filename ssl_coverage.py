@@ -197,6 +197,15 @@ def _bypass_other_policies(raw: Mapping[str, Any]) -> bool:
     return ssl_flow._bool(_f(sub, "bypassOtherPolicies", "bypass_other_policies"))
 
 
+def _seq(v: Any) -> List[Any]:
+    """A list from the Client Connector reading; anything else is none."""
+    return list(v) if isinstance(v, (list, tuple)) else []
+
+
+def _map(v: Any) -> Mapping[str, Any]:
+    return v if isinstance(v, Mapping) else {}
+
+
 def _cat_name(cat: str, lookup: Mapping[str, Any]) -> str:
     e = (lookup or {}).get(cat) or {}
     return str(e.get("configured_name") or cat)
@@ -327,7 +336,7 @@ def zcc_causes(cc: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
     app-profile bypass lists, forwarding profiles that send a network
     direct, PAC files that return DIRECT. Traffic sent this way never
     reaches Zscaler at all. Pure."""
-    if not cc:
+    if not cc or not isinstance(cc, Mapping):
         return []
     out: List[Dict[str, Any]] = []
     kinds = (("domains", "Client Connector domain bypass", "domains"), ("ips", "Client Connector IP bypass", "IP addresses or subnets"),
@@ -335,8 +344,8 @@ def zcc_causes(cc: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
              ("vpn_gateways", "Client Connector VPN gateway bypass", "VPN gateways"))
     for key, label, noun in kinds:
         vals: Dict[str, set] = {}
-        for p in cc.get("app_profiles") or []:
-            for v in ((p.get("bypass") or {}).get(key) or []):
+        for p in map(_map, _seq(cc.get("app_profiles"))):
+            for v in _seq(_map(p.get("bypass")).get(key)):
                 vals.setdefault(str(v), set()).add(str(p.get("name") or p.get("id")))
         if not vals:
             continue
@@ -372,9 +381,9 @@ def zcc_causes(cc: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
                           recovery=recovery, console=ZCC_APP_CONSOLE, safe=safe, safe_note=safe_note, values=values[:VALUES_MAX],
                           apps=values[:VALUES_MAX] if key in ("apps", "processes") else []))
     net_label = {"off": "off a trusted network (remote)", "on": "on a trusted network (office)", "vpn": "on VPN", "any": "on every network"}
-    for fp in cc.get("forwarding_profiles") or []:
-        for net, act in sorted((fp.get("actions") or {}).items()):
-            if (act or {}).get("mode_kind") != "none":
+    for fp in map(_map, _seq(cc.get("forwarding_profiles"))):
+        for net, act in sorted(_map(fp.get("actions")).items(), key=lambda kv: str(kv[0])):
+            if _map(act).get("mode_kind") != "none":
                 continue
             office = net == "on"
             out.append(_cause(id=f"fwd-{fp.get('id')}-{net}", kind="forwarding_none", kind_label="Forwarding profile sends traffic direct",
@@ -387,8 +396,8 @@ def zcc_causes(cc: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
                               recovery=("Confirm the office forwards web traffic to Zscaler through a GRE or IPsec tunnel; if not, set the forwarding action to Tunnel."
                                         if office else "Set the forwarding action for this network to Tunnel (Z-Tunnel 2.0) so the traffic reaches Zscaler."),
                               console=ZCC_FWD_CONSOLE, safe="test", safe_note="Change it for a pilot group of devices first and check sign-in and VPN behaviour."))
-    for pf in cc.get("pac_files") or []:
-        hosts = [str(h) for h in (pf.get("direct_hosts") or [])]
+    for pf in map(_map, _seq(cc.get("pac_files"))):
+        hosts = [str(h) for h in _seq(pf.get("direct_hosts"))]
         if not hosts:
             continue
         external = [h for h in hosts if not _internal(h)]
@@ -514,7 +523,7 @@ def _trend_rows(entries: Any) -> List[Dict[str, Any]]:
             continue
         try:
             start = int(t.get("trend_start_time"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):   # OverflowError: an infinity
             continue
         vals = t.get("trend_values") if isinstance(t.get("trend_values"), list) else []
         for i, v in enumerate(vals[:120]):

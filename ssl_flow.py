@@ -110,8 +110,14 @@ def _f(r: Dict[str, Any], *names: str, default: Any = None) -> Any:
 
 
 def _names(items: Any) -> List[str]:
+    # One name sent bare is one name (never its characters); a number,
+    # bool or object where a list belongs names nothing.
+    if isinstance(items, str):
+        items = [items]
+    elif not isinstance(items, (list, tuple)):
+        items = []
     out: List[str] = []
-    for x in items or []:
+    for x in items:
         if isinstance(x, dict):
             v = x.get("name") or x.get("id") or x.get("url")
             if v is not None:

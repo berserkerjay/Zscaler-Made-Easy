@@ -121,6 +121,23 @@ def _g(obj: Any, *names: str, default: Any = None) -> Any:
     return default
 
 
+def _whole(v: Any) -> int:
+    """A count from an incident record: a whole number, else 0 (text, NaN,
+    an infinity or a bool is no count)."""
+    if isinstance(v, bool):
+        return 0
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0
+    return int(f) if f == f and abs(f) != float("inf") and f >= 0 else 0
+
+
+def _items(v: Any) -> List[Any]:
+    """A list from an incident record; anything else (a number, a text) is none."""
+    return list(v) if isinstance(v, (list, tuple)) else []
+
+
 def _snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
@@ -132,11 +149,16 @@ def _both(name: str) -> Tuple[str, str]:
 def _parse_time(v: Any) -> Optional[datetime]:
     if v in (None, ""):
         return None
+    if isinstance(v, bool):
+        return None
     if isinstance(v, (int, float)):
         ts = float(v)
         if ts > 1e12:
             ts /= 1000.0
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        try:
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+        except (ValueError, OverflowError, OSError):   # NaN, an infinity, a year past 9999
+            return None
     s = str(v).strip()
     try:
         if s.endswith("Z"):
@@ -229,10 +251,10 @@ def verdict(status: Any, resolution: Any, closed_code: Any, not_real: Iterable[s
 def normalize_incident(inc: Any, not_real: Iterable[str]) -> Dict[str, Any]:
     d = inc.as_dict() if hasattr(inc, "as_dict") else inc
     mp = _g(d, *_both("matchingPolicies"), default={}) or {}
-    rules = [str(_g(r, "name", default="")) for r in (_g(mp, "rules", default=[]) or []) if _g(r, "name")]
-    engines = [str(_g(e, "name", default="")) for e in (_g(mp, "engines", default=[]) or []) if _g(e, "name")]
-    dicts = [{"name": str(_g(x, "name", default="")), "count": int(_g(x, *_both("matchCount"), default=0) or 0)}
-             for x in (_g(mp, "dictionaries", default=[]) or []) if _g(x, "name")]
+    rules = [str(_g(r, "name", default="")) for r in _items(_g(mp, "rules", default=[])) if _g(r, "name")]
+    engines = [str(_g(e, "name", default="")) for e in _items(_g(mp, "engines", default=[])) if _g(e, "name")]
+    dicts = [{"name": str(_g(x, "name", default="")), "count": _whole(_g(x, *_both("matchCount"), default=0))}
+             for x in _items(_g(mp, "dictionaries", default=[])) if _g(x, "name")]
     app = _g(d, *_both("applicationInfo"), default={}) or {}
     user = _g(d, *_both("userInfo"), default={}) or {}
     net = _g(d, *_both("networkInfo"), default={}) or {}
@@ -275,7 +297,7 @@ def normalize_incident(inc: Any, not_real: Iterable[str]) -> Dict[str, Any]:
         "actions": [str(a) for a in actions if a],
         "file": str(_g(content, *_both("fileName"), default="") or ""),
         "rules": rules, "engines": engines, "dictionaries": dicts,
-        "match_count": int(_g(d, *_both("matchCount"), default=0) or 0),
+        "match_count": _whole(_g(d, *_both("matchCount"), default=0)),
         "real": verdict(status, resolution, closed_code, not_real),
     }
 
@@ -447,7 +469,7 @@ def _flatten(result: Any) -> List[Any]:
     if items is None and isinstance(result, list):
         items = result
     leaves: List[Any] = []
-    for it in items or []:
+    for it in _items(items):
         inner = _g(it, "incidents", default=None)
         if isinstance(inner, list) and inner and not _g(it, *_both("matchingPolicies")):
             leaves.extend(inner)
