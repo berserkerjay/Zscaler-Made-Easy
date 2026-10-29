@@ -10,7 +10,8 @@ reversible with Undo, exactly like every other bulk change:
                             uploaded), the AI Guard proxy (reused or created),
                             a destination group of the apps' domains, a QUIC
                             block, an SSL Inspect rule at the top of SSL
-                            inspection (above every Do Not Decrypt bypass),
+                            inspection (above every Do Not Decrypt bypass
+                            and Block rule),
                             GenAI prompt capture when licensed, the forwarding
                             rule to the proxy gateway, and an Allow in ZIA for
                             the apps above any Block, Caution or Isolate rule.
@@ -477,7 +478,8 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
             if rerr:
                 P.p["blockers"].append(f"The SSL inspection rules could not be read ({rerr}).")
             ex = _by_name(rules, "ssl_rule", n["ssl"])
-            dni = sorted((r for r in rules if r is not ex and str(ag.get(r, "action.type") or "").upper() == "DO_NOT_DECRYPT"
+            # Every enabled Do Not Decrypt bypass or Block rule would stop the apps before inspection: the Inspect rule goes above them all.
+            dni = sorted((r for r in rules if r is not ex and str(ag.get(r, "action.type") or "").upper() in _SSL_STOPPERS
                           and str(ag.get(r, "state") or "ENABLED").upper() != "DISABLED" and not ag.get(r, "default_rule")),
                          key=lambda r: ao._int(ag.get(r, "order"), 0))
             action = {"type": "DECRYPT", "showEUN": False, "showEUNATP": False, "overrideDefaultCertificate": False,
@@ -498,7 +500,7 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
                 ok = str(ag.get(ex, "action.type") or "").upper() == "DECRYPT" and str(ag.get(ex, "state") or "").upper() != "DISABLED" \
                     and str(group_id) in ag.ref_ids(ag.get(ex, "dest_ip_groups"))
                 if above and ok:
-                    P.unit("ssl", "ssl_rule", n["ssl"], status="noop", oid=ag.get(ex, "id"), reason="already inspects the apps above every bypass",
+                    P.unit("ssl", "ssl_rule", n["ssl"], status="noop", oid=ag.get(ex, "id"), reason="already inspects the apps above every bypass and Block rule",
                            before=f"order {ag.get(ex, 'order')}", after="unchanged")
                 else:
                     fields = ("state", "action", "dest_ip_groups", "order")
@@ -570,6 +572,7 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
     return P.done()
 
 
+_SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model)
 _STOP_WEB_USE = re.compile(r"^(DENY|BLOCK|CAUTION|ISOLATE)_AI_ML_WEB_USE$")
 
 

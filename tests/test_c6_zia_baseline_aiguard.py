@@ -1540,3 +1540,13 @@ def test_a_captured_framework_always_loads_again():
     assert [r["name"] for r in got["rules"]] == ["Fine"]
     reasons = " ".join(x["reason"] for x in fw["not_exported"])
     assert "characters a framework file does not carry" in reasons and "cannot be carried in a framework file" in reasons
+
+
+@pytest.mark.parametrize("action,want", [("BLOCK", "change"), ("DO_NOT_DECRYPT", "change"), ("DECRYPT", "noop")])
+def test_ssl_inspect_is_kept_above_an_ssl_block_rule_too(action, want):
+    """ASVS V1.4.1 · CWE-1188 · CWE-696: an AI Guard Inspect rule below an enabled SSL inspection Block rule is moved to order 1 (a Block would stop the apps before inspection); another Inspect rule above it changes nothing."""
+    f = at.Fake(proxy=True, gateway=True)
+    aig_apply(f, at.ROUTE)
+    next(r for r in f.stores["ssl"].rows if r["name"] == "AIG-Inspect")["order"] = 5
+    f.stores["ssl"].rows.append({"id": 78, "name": "Theirs", "order": 2, "state": "ENABLED", "action": {"type": action}})
+    assert at.by_key(aig_preview(f, at.ROUTE))["ssl"]["status"] == want
