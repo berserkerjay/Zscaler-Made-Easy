@@ -224,11 +224,13 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
                     except safe_files.ArchiveRefused as e:
                         budget.notes.append(f"{member}: skipped, {str(e).split(': ', 1)[-1]}")
                         continue
-                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError, OSError, EOFError) as e:
-                        budget.notes.append(f"{member}: could not be read ({e})")
+                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError, OSError, EOFError, ValueError, zlib.error) as e:
+                        # ValueError: a local header offset that lies ("negative seek value")
+                        budget.notes.append(f"{member}: could not be read ({str(e)[:120]})")
                         continue
                     _expand_one(member, payload, out, budget, depth + 1)
-        except zipfile.BadZipFile:
+        except (zipfile.BadZipFile, NotImplementedError, ValueError, OSError, EOFError):
+            # NotImplementedError: a central directory claiming a ZIP version Python does not read
             budget.notes.append(f"{name}: not a valid ZIP file")
         return
     if low.endswith((".tar", ".tgz", ".tar.gz")) or (len(data) > 262 and data[257:262] == b"ustar"):

@@ -849,3 +849,53 @@ def test_a_damaged_compressed_upload_is_a_note_never_a_crash(name):
     assert members == [] and notes and name in notes[0]
     with pytest.raises(ValueError, match="nothing readable"):
         la.analyze([{"name": name, "content": _b64(bad), "encoding": "base64"}])
+
+
+def _patched_zip(fn) -> bytes:
+    b = bytearray(_zip([("a.log", "2026-09-01 08:00:01 INF x\n" * 20)]))
+    fn(b)
+    return bytes(b)
+
+
+def _future_version(b):
+    b[b.index(b"PK\x01\x02") + 6] = 200        # central directory: "needs ZIP version 20.0 to extract"
+
+
+def _lying_offset(b):
+    eocd = b.index(b"PK\x05\x06")
+    off = int.from_bytes(b[eocd + 16: eocd + 20], "little") + 500
+    b[eocd + 16: eocd + 20] = off.to_bytes(4, "little")   # member offsets now point before the file starts
+
+
+@pytest.mark.parametrize("damage", [_future_version, _lying_offset], ids=["future-zip-version", "negative-member-offset"])
+def test_a_zip_python_cannot_open_is_a_note_never_a_crash(damage):
+    """ASVS V7.4.1 · V12.1.1 · CWE-755 · CWE-248 · WSTG-ERRH-01: a ZIP claiming a future version or lying about offsets is noted as unreadable, never a 500 or a misleading error."""
+    data = _patched_zip(damage)
+
+    members, notes = la.expand([{"name": "bundle.zip", "content": _b64(data), "encoding": "base64"}])
+
+    assert members == [] and notes and ("not a valid ZIP" in notes[0] or "could not be read" in notes[0])
+
+
+def test_seeded_mutations_of_every_bundle_kind_never_crash_the_analyzer():
+    """ASVS V12.1.1 · V7.4.1 · CWE-248 · CWE-20 · WSTG-INPV-01: 300 seeded byte mutations of ZIP, tar, gzip, log and PAC uploads end in a result or the plain 'nothing readable'."""
+    import random
+    rnd = random.Random(2026)
+    base = b"2026-09-01 08:00:01 ERR ZSATunnel: tunnel down, auth failed token=abc\n" * 20
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as t:
+        info = tarfile.TarInfo("a.log")
+        info.size = len(base)
+        t.addfile(info, io.BytesIO(base))
+    seeds = [("x.zip", _zip([("a.log", base), ("in.zip", _zip([("i.log", base)]))])), ("x.tgz", buf.getvalue()), ("x.log.gz", gzip.compress(base)),
+             ("x.log", base), ("p.pac", b"function FindProxyForURL(url, host) { if (shExpMatch(host,'*.a')) return 'DIRECT'; return 'PROXY ${GATEWAY}:80'; }")]
+
+    for _ in range(300):
+        name, data = rnd.choice(seeds)
+        b = bytearray(data)
+        for _ in range(rnd.randint(1, 30)):
+            b[rnd.randrange(len(b))] = rnd.randrange(256)
+        try:
+            la.analyze([{"name": name, "content": _b64(bytes(b)), "encoding": "base64"}])
+        except ValueError as e:
+            assert "nothing readable" in str(e)
