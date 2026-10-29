@@ -359,3 +359,99 @@ def test_proposal_apply_is_refused_without_the_write_gates(monkeypatch):
     r = TestClient(srv.app).post("/api/proposals/acme/p1/apply", json={"vanity_domain": "acme", "client_id": "x", "client_secret": "y", "confirm": True})
 
     assert r.status_code in (400, 401, 403) and built == []
+
+
+# ═══ bypass_report: the inventory of what skips inspection ═════════════
+class _Get:
+    """sdk_client.Client stand-in: .get(endpoint) → (data, status)."""
+
+    def __init__(self, answers, default=([], 200)):
+        self.answers, self.default, self.asked = answers, default, []
+
+    def get(self, endpoint):
+        self.asked.append(endpoint)
+        return self.answers.get(endpoint, self.default)
+
+
+HOSTILE = "evil`](javascript:alert(1))\n# Forged heading <img src=x onerror=alert(1)>"
+
+
+def test_category_expansion_detail_in_markdown_is_inert():
+    """ASVS V5.3.3 · A03:2021 · CWE-1236 · CWE-79 · WSTG-CLNT-01: tenant category names, rule names, URLs and keywords cannot add a heading, link or tag to the Markdown export."""
+    rules = [{"id": 1, "name": HOSTILE, "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["CUSTOM_01"]}]
+    cats = [{"id": "CUSTOM_01", "configuredName": HOSTILE, "customCategory": True, "urls": [HOSTILE], "keywords": [HOSTILE]}]
+    c = _Get({"/zia/sslInspectionRules": (rules, 200), "/zia/urlCategories": (cats, 200), "/zia/advancedSettings": ({}, 200)})
+
+    md = br.to_markdown(br.generate_bypass_report(c))
+
+    detail = md.split("## URL Category Expansion Detail", 1)[1]
+    prose = re.sub(r"(`+).+?\1", "", detail)   # text outside code spans is what a viewer renders as Markdown
+    assert "<img" not in prose and "](javascript:" not in prose.replace("\\]", "")
+    assert "\n# Forged" not in detail
+
+
+def test_a_switch_in_advanced_settings_is_not_an_exemption():
+    """ASVS V11.1.1 · CWE-682 · CWE-843 · WSTG-BUSL-01: enableEvaluatePolicyOnGlobalSSLBypass=false is a setting, not a bypassed URL, and is not counted."""
+    adv = {"enableEvaluatePolicyOnGlobalSSLBypass": False, "authBypassUrls": ["login.example.com"], "kerberosBypassUrlCategories": []}
+    c = _Get({"/zia/advancedSettings": (adv, 200)})
+
+    rep = br.generate_bypass_report(c)
+
+    assert [i["value"] for i in rep["sections"]["ssl_exemptions"]["items"]] == ["login.example.com"]
+    assert rep["summary"]["ssl_exemptions"] == 1
+    assert "False" not in [u["value"] for u in rep["aggregated"]["urls"]["items"]]
+
+
+@pytest.mark.parametrize("endpoint, section", [
+    ("/zia/sslInspectionRules", "ssl_bypass_rules"), ("/zia/urlFilteringRules", "url_filter_allow"),
+    ("/zia/firewallFilteringRules", "firewall_allow"), ("/zia/webDlpRules", "dlp_allow"), ("/zia/advancedSettings", "ssl_exemptions")])
+def test_an_unreadable_section_is_could_not_be_read_not_zero_bypasses(endpoint, section):
+    """ASVS V7.4.1 · A04:2021 · CWE-754 · CWE-636 · WSTG-ERRH-01: a 403 on a rule list is a diagnostic and an unverified section, never a clean 'no bypass'."""
+    c = _Get({endpoint: ({"message": "forbidden"}, 403)})
+
+    rep = br.generate_bypass_report(c)
+
+    assert rep["sections"][section]["status"] == "unverified"
+    assert any(d["section"] == section and "403" in d["error"] for d in rep["diagnostics"])
+
+
+def test_no_client_connector_endpoint_answering_is_a_diagnostic():
+    """ASVS V7.4.1 · CWE-754 · WSTG-ERRH-01: when no ZCC endpoint answers 200 the ZCC section is unverified and says why."""
+    c = _Get({ep: ({}, 401) for ep in ("/zcc/webPolicies", "/zcc/forwardingProfiles", "/zcc/trustedNetworks", "/zcc/webAppService")})
+
+    rep = br.generate_bypass_report(c)
+
+    assert rep["sections"]["zcc"]["status"] == "unverified"
+    assert any(d["section"] == "zcc" and "401" in d["error"] for d in rep["diagnostics"])
+
+
+def test_bypass_totals_equal_the_sum_of_their_parts():
+    """ASVS V11.1.1 · CWE-682 · WSTG-BUSL-01: total_bypass_items is the sum of the ten section counts, and each count matches its items."""
+    ssl = [{"id": i, "name": f"S{i}", "action": {"type": "DO_NOT_DECRYPT"}, "urls": [f"s{i}.example"]} for i in range(3)] + \
+          [{"id": 9, "name": "Decrypt", "action": {"type": "DECRYPT"}}]
+    url = [{"id": 20, "name": "U", "action": "ALLOW", "urls": ["a.example", "b.example"]}, {"id": 21, "name": "B", "action": "BLOCK"}]
+    zcc = [{"id": 1, "name": "P", "bypassApps": [{"name": "Zoom"}], "bypassDomains": ["x.example", "y.example"]}]
+    c = _Get({"/zia/sslInspectionRules": (ssl, 200), "/zia/urlFilteringRules": (url, 200), "/zcc/webPolicies": (zcc, 200)})
+
+    rep = br.generate_bypass_report(c)
+
+    s = rep["summary"]
+    parts = [k for k in s if k != "total_bypass_items"]
+    assert len(parts) == 10 and s["total_bypass_items"] == sum(s[k] for k in parts)
+    assert s["ssl_bypass_rules"] == 3 == len(rep["sections"]["ssl_bypass_rules"]["items"]) and s["url_filter_allow"] == 1
+    assert s["zcc_apps"] == 1 and s["zcc_domains"] == 2
+    allu = {u["value"]: u for u in rep["aggregated"]["all_urls_bypassed"]["items"]}
+    assert set(allu) == {"s0.example", "s1.example", "s2.example", "a.example", "b.example", "x.example", "y.example"}
+    assert all(u["count"] == 1 for u in allu.values())
+
+
+def test_the_bypass_report_reads_nothing_out_of_scope():
+    """ASVS V4.1.3 · A01:2021 · CWE-863 · WSTG-ATHZ-02: with only ZCC in scope no ZIA endpoint is asked, and nothing in scope is refused."""
+    c = _Get({})
+
+    rep = br.generate_bypass_report(c, {"read": ["zcc"], "not_in_scope": {"ssl": "no"}})
+
+    assert all(ep.startswith("/zcc/") for ep in c.asked)
+    assert rep["sections"]["ssl_bypass_rules"]["not_in_scope"] == "no"
+    with pytest.raises(ValueError):
+        br.generate_bypass_report(c, {"read": []})
