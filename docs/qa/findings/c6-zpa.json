@@ -1,0 +1,345 @@
+{
+  "area": "zpa",
+  "title": "ZPA builder, reader, analysis, overview and Path stage",
+  "files": [
+    "ops_zpa.py",
+    "zpa_analysis.py",
+    "zpa_overview.py",
+    "zpa_reader.py",
+    "zpa_path.py"
+  ],
+  "standards": [
+    "ASVS 4.0.3 L2 V1.4, V4.1, V4.2, V5.1, V7.1, V7.4, V8.3, V11.1",
+    "OWASP Top 10 2021 A01, A03, A04, A05, A09",
+    "WSTG INPV-01, INPV-13, ATHZ-02, ATHZ-04, BUSL-01, BUSL-05, BUSL-06, BUSL-07, ERRH-01, INFO-05",
+    "NIST SSDF PW.4.1, PW.8"
+  ],
+  "coverage": {
+    "before": 86.0,
+    "after": 89.0
+  },
+  "checks": [
+    {
+      "id": "builder-lifecycle",
+      "what": "create, re-run is a no-op, update in place, prefix delete, Undo restore",
+      "standard": "ASVS V1.4.4",
+      "result": "pass"
+    },
+    {
+      "id": "builder-toctou",
+      "what": "create/update/delete re-read before writing; plan_changed when the tenant moved",
+      "standard": "CWE-367",
+      "result": "pass"
+    },
+    {
+      "id": "provisioning-key",
+      "what": "shown once, never in plan, result, log, audit or record; same actor; ten minutes",
+      "standard": "ASVS V8.3.4",
+      "result": "fixed"
+    },
+    {
+      "id": "customer-id",
+      "what": "required and validated before any ZPA call",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "customer-id-route",
+      "what": "route refuses before sign-in",
+      "standard": "ASVS V5.1.3",
+      "result": "open"
+    },
+    {
+      "id": "segment-matching",
+      "what": "exact, longest wildcard, longest prefix; ports, UDP/TCP, apex, disabled, ties",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "bypass-forwarding",
+      "what": "Always / On-Net / VPN, intercept, intercept accessible, bypass",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "access-policy",
+      "what": "first match, disabled skipped, posture pass and fail, default deny",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "diagnostics-why",
+      "what": "why-not text per rule shape",
+      "standard": "ASVS V7.4.1",
+      "result": "fixed"
+    },
+    {
+      "id": "pagination",
+      "what": "every page read; incomplete never planned from",
+      "standard": "CWE-754",
+      "result": "fixed"
+    },
+    {
+      "id": "payloads-sdk",
+      "what": "every create payload field and rule action known to zscaler-sdk-python 1.11.3",
+      "standard": "SSDF PW.4.1",
+      "result": "pass"
+    },
+    {
+      "id": "input-validation",
+      "what": "CSV, ports, prefix, specs, restore entries, destinations",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "prefix-scope",
+      "what": "a prefix never reaches another build's objects",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "secrets-in-sinks",
+      "what": "errors and logs redact keys and tokens",
+      "standard": "CWE-532",
+      "result": "fixed"
+    },
+    {
+      "id": "read-only-reader",
+      "what": "the reader calls only list_* methods",
+      "standard": "CWE-269",
+      "result": "pass"
+    },
+    {
+      "id": "redos",
+      "what": "redaction patterns run on bounded text",
+      "standard": "CWE-1333",
+      "result": "pass"
+    },
+    {
+      "id": "write-gates",
+      "what": "write mode and the previewed plan hash at the engine",
+      "standard": "CWE-841",
+      "result": "pass"
+    },
+    {
+      "id": "write-gates-assessor-engine",
+      "what": "engine-level assessor check",
+      "standard": "CWE-841",
+      "result": "open"
+    }
+  ],
+  "findings": [
+    {
+      "id": "C6-ZPA-01",
+      "title": "Prefix delete and policy rules of prefix 'pov' took the objects of another build 'pov-2' (names also start with 'pov-')",
+      "severity": "high",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "Another build's longer prefix is recognised from the builder's fixed object names and excluded (deny by default).",
+      "test": "tests/test_c6_zpa.py::test_prefix_delete_applied_leaves_the_other_build_intact",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-02",
+      "title": "ZPA reader stopped at a short page even when totalPages said more, and trusted the SDK's default totalPages=1: large tenants silently truncated",
+      "severity": "medium",
+      "cwe": "CWE-754",
+      "asvs": "V11.1.2",
+      "status": "fixed",
+      "fix": "The page body's totalPages decides; only when no total is stated does a short page end the list; an empty page always ends it.",
+      "test": "tests/test_c6_zpa.py::test_reader_reads_past_short_pages_when_total_pages_says_more",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-03",
+      "title": "ZPA builder planned from a list cut at the page limit (duplicates created, objects to delete missed)",
+      "severity": "medium",
+      "cwe": "CWE-754",
+      "asvs": "V11.1.2",
+      "status": "fixed",
+      "fix": "An incomplete list is a read error: the plan is refused.",
+      "test": "tests/test_c6_zpa.py::test_builder_refuses_to_plan_from_an_incomplete_list",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-04",
+      "title": "ZPA reader and builder called ZPA with an SDK client whose customer ID was missing or invalid (/customers/None/...)",
+      "severity": "medium",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "customer_id_problem() refuses a missing or non-alphanumeric (>64) customer ID before any ZPA call.",
+      "test": "tests/test_c6_zpa.py::test_reader_refuses_a_missing_or_invalid_customer_id_before_any_call",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-05",
+      "title": "Bulk changes routes for ZPA builder types do not check the OneAPI sign-in and customer ID before signing in",
+      "severity": "medium",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "open",
+      "fix": "Add _ops_zpa_gate (400 before sign-in) to the six /api/operations routes; the route tests that post ZPA families must then send a customer_id (test_scope_rule_routes zpa cases, test_ops_zpa key-through-API test).",
+      "test": "",
+      "commit": "",
+      "proposed_patch": "--- a/dlp_api_server.py\t2026-10-29 03:36:11.699933777 +0000\n+++ b/dlp_api_server.py\t2026-10-29 03:36:11.725870510 +0000\n@@ -5079,6 +5079,23 @@\n     return scope\n \n \n+def _ops_zpa_gate(what: Any, creds: Dict[str, str]) -> None:\n+    \"\"\"A ZPA bulk change or builder type needs a OneAPI sign-in and a valid\n+    ZPA customer ID: 400 before any sign-in otherwise (an SDK client with no\n+    customer ID would call /customers/None/...).\"\"\"\n+    import admin_ops\n+    t = what if isinstance(what, str) else str((what or {}).get(\"type\") or \"\")\n+    reg = admin_ops.PLUGINS.get(t)\n+    zpa = t in (\"zpa_segments\", \"zpa_domains\") or (reg or {}).get(\"product\") == \"zpa\" or \\\n+        any(p.get(\"family\") == t and p.get(\"product\") == \"zpa\" for p in admin_ops.PLUGINS.values())\n+    if not zpa:\n+        return\n+    if creds.get(\"auth_method\") == tenant_auth.LEGACY:\n+        raise HTTPException(status_code=400, detail=ZPA_NEEDS_ONEAPI)\n+    if not validate_customer_id(creds.get(\"customer_id\") or \"\"):\n+        raise HTTPException(status_code=400, detail=ZPA_NEEDS_CUSTOMER_ID)\n+\n+\n def _ops_assessor(req: Any) -> str:\n     try:\n         return _require_assessor(req)\n@@ -5165,6 +5182,7 @@\n     import pack_jobs\n     scope = _ops_scope(req, req.family)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.family, creds)\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     label = tenant_auth.record_label(creds)\n     job = pack_jobs.start(\"ops_objects\", lambda log, cancel: _keyed(client, _run_ops_objects, client, req.family, scope, label, log, cancel),\n@@ -5177,6 +5195,7 @@\n     \"\"\"The same list, waited for (for scripts).\"\"\"\n     scope = _ops_scope(req, req.family)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.family, creds)\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     out = await asyncio.to_thread(_keyed, client, _run_ops_objects, client, req.family, scope, tenant_auth.record_label(creds), None, None)\n     if out.get(\"status\") == \"refused\":\n@@ -5191,6 +5210,7 @@\n     import pack_jobs\n     scope = _ops_scope(req, req.operation)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.operation, creds)\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     label = tenant_auth.record_label(creds)\n     job = pack_jobs.start(\"ops_preview\", lambda log, cancel: _keyed(client, _run_ops_preview, client, req, scope, label, log, cancel),\n@@ -5203,6 +5223,7 @@\n     \"\"\"The same preview, waited for (for scripts).\"\"\"\n     scope = _ops_scope(req, req.operation)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.operation, creds)\n     client = await asyncio.to_thread(_build_sdk_client, creds)\n     out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds), None, None)\n     if out.get(\"status\") == \"refused\":\n@@ -5220,6 +5241,7 @@\n     import pack_jobs\n     scope, by = _ops_apply_gate(req)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.operation, creds)\n     if req.undo_of:\n         import deployments\n         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)\n@@ -5236,6 +5258,7 @@\n     since the preview or the plan is blocked.\"\"\"\n     scope, by = _ops_apply_gate(req)\n     creds = _tenant_creds(req)\n+    _ops_zpa_gate(req.operation, creds)\n     if req.undo_of:\n         import deployments\n         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)\n"
+    },
+    {
+      "id": "C6-ZPA-06",
+      "title": "SDK error text could carry a provisioning key value into logs and results (only bearer/token/secret/password were redacted)",
+      "severity": "medium",
+      "cwe": "CWE-532",
+      "asvs": "V7.1.1",
+      "status": "fixed",
+      "fix": "Provisioning-key shaped values and provisioningKey/api_key fields are replaced by [hidden]; the text is cut before redaction.",
+      "test": "tests/test_c6_zpa.py::test_reader_error_text_hides_provisioning_keys_and_credentials",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-07",
+      "title": "ZPA builder accepted 0.0.0.0/0, ::/0 and /8 subnets from a CSV: segments its own analysis reports as over-broad (high)",
+      "severity": "medium",
+      "cwe": "CWE-1188",
+      "asvs": "V1.4.3",
+      "status": "fixed",
+      "fix": "Subnets wider than IPv4 /9 or IPv6 /33 are refused with their size.",
+      "test": "tests/test_c6_zpa.py::test_builder_refuses_a_subnet_its_own_analysis_calls_over_broad",
+      "commit": "227b108"
+    },
+    {
+      "id": "C6-ZPA-08",
+      "title": "Tenant port strings such as '²' or 5,000 digits made int() raise and ended the whole ZPA read",
+      "severity": "low",
+      "cwe": "CWE-1287",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Ports are parsed from 1-5 ASCII digits within 0-65535; anything else is skipped.",
+      "test": "tests/test_c6_zpa.py::test_reader_skips_port_strings_that_are_not_ascii_ports",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-09",
+      "title": "Connector versions mixing text and numbers ('23.1', 'beta.1') raised TypeError in the analysis and the overview",
+      "severity": "low",
+      "cwe": "CWE-704",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Version keys are (0, number) or (1, text) parts, always comparable.",
+      "test": "tests/test_c6_zpa.py::test_analysis_sorts_mixed_text_and_number_versions_without_crashing",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-10",
+      "title": "Non-finite connector times ('NaN', 'inf') hid a stale, disconnected connector",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "epoch_seconds returns None for non-finite values.",
+      "test": "tests/test_c6_zpa.py::test_a_connector_with_a_nan_last_seen_is_reported_stale",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-11",
+      "title": "Destination ports written with non-ASCII digits answered Python's int() error instead of a plain sentence",
+      "severity": "low",
+      "cwe": "CWE-209",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "Inline and field ports are ASCII digits; a bad bracketed-IPv6 port is refused in words.",
+      "test": "tests/test_c6_zpa.py::test_destination_with_a_non_ascii_inline_port_is_refused_in_plain_words",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-12",
+      "title": "IDN host names were refused (diagnosis, Path analyzer and builder) instead of compared in their punycode form",
+      "severity": "low",
+      "cwe": "CWE-176",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Hosts and segment entries are compared, and the builder stores entries, in punycode.",
+      "test": "tests/test_c6_zpa.py::test_destination_idn_is_matched_in_its_punycode_form",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-13",
+      "title": "Diagnosis 'why not matched' text was wrong for negated application conditions, OR-joined rules and operands the tool cannot evaluate",
+      "severity": "low",
+      "cwe": "CWE-684",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "Each case has its own sentence; unevaluable operands say 'this tool cannot evaluate', not 'you left as any'.",
+      "test": "tests/test_c6_zpa.py::test_why_text_of_a_negated_application_condition_reads_correctly",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-14",
+      "title": "Path analyzer said an On-Net segment bypasses ZPA on a trusted network when the device was off network",
+      "severity": "low",
+      "cwe": "CWE-684",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "The On-Net reason is given only for network 'on'; otherwise the forwarding/access reason.",
+      "test": "tests/test_c6_zpa.py::test_path_on_net_segment_off_network_does_not_claim_a_trusted_network_bypass",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-15",
+      "title": "Over-broad check (ZPA-AS-04) flagged no IPv6 subnet except ::/0 (2000::/3 passed clean)",
+      "severity": "low",
+      "cwe": "CWE-1023",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "IPv6 /32 or wider is high, /48 or wider medium.",
+      "test": "tests/test_c6_zpa.py::test_over_broad_check_covers_ipv6_subnets",
+      "commit": "227b108"
+    },
+    {
+      "id": "C6-ZPA-16",
+      "title": "ZPA overview workbook rebuilt all seven tables twice per sheet",
+      "severity": "info",
+      "cwe": "CWE-1050",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "Tables are built once per workbook.",
+      "test": "tests/test_c6_zpa.py::test_overview_workbook_builds_the_tables_once",
+      "commit": "1e16a03"
+    },
+    {
+      "id": "C6-ZPA-17",
+      "title": "admin_ops.execute does not itself require a named assessor (the route does): no defence in depth for the write gate",
+      "severity": "low",
+      "cwe": "CWE-841",
+      "asvs": "V4.2.2",
+      "status": "open",
+      "fix": "Refuse an empty assessor in admin_ops.execute.",
+      "test": "",
+      "commit": "",
+      "proposed_patch": "--- a/admin_ops.py\t2026-10-29 03:41:00.177652837 +0000\n+++ b/admin_ops.py\t2026-10-29 03:41:00.191024035 +0000\n@@ -1830,6 +1830,8 @@\n     import zia_rate\n     if writes_enabled is not True:\n         raise PermissionError(\"write mode is off: nothing was written\")\n+    if not str(assessor or \"\").strip():\n+        raise OperationError(\"A named assessor is required to apply a change: nothing was written.\")\n     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run(\"operation\", client, plan_hash=plan_hash, cancel=cancel) as box:\n         box[\"result\"] = _execute(client, spec, plan_hash=plan_hash, scope=scope, confirm_text=confirm_text, assessor=assessor,\n                                  tenant_label=tenant_label, log=log, cancel=cancel, settle_seconds=settle_seconds)\n"
+    },
+    {
+      "id": "C6-ZPA-18",
+      "title": "Overlapping port ranges in one CSV row (80-90, 85-95) are sent as given, not merged",
+      "severity": "info",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "accepted",
+      "fix": "Accepted: whether ZPA refuses overlapping ranges in one segment is not verifiable without a tenant; ZPA's own answer is shown.",
+      "test": "",
+      "commit": ""
+    },
+    {
+      "id": "C6-ZPA-19",
+      "title": "A wildcard on a public suffix such as *.co.uk is not recognised as over-broad",
+      "severity": "info",
+      "cwe": "CWE-1023",
+      "asvs": "V4.1.3",
+      "status": "accepted",
+      "fix": "Accepted: needs the public suffix list, which the app does not ship; single-label TLD wildcards are refused.",
+      "test": "",
+      "commit": ""
+    }
+  ],
+  "tests_added": 82
+}

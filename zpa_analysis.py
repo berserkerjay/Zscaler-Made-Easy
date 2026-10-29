@@ -102,7 +102,7 @@ CATALOG: List[Dict[str, Any]] = [
      "checks": "The same domain or address in two enabled segments with overlapping ports on the same protocol: which segment, and so which access rule and server group, applies is ambiguous.",
      "needs": ["segments"]},
     {"id": "ZPA-AS-04", "title": "Over-broad domain or subnet", "severity": "high", "scope": "App segments",
-     "checks": "A domain entry of \"*\", a wildcard on a top-level domain (*.com), 0.0.0.0/0, or a subnet of /16 or wider (/8 or wider is high).",
+     "checks": "A domain entry of \"*\", a wildcard on a top-level domain (*.com), 0.0.0.0/0 or ::/0, an IPv4 subnet of /16 or wider (/8 or wider is high), or an IPv6 subnet of /48 or wider (/32 or wider is high).",
      "needs": ["segments"]},
     {"id": "ZPA-AS-05", "title": "Very wide port range", "severity": "medium", "scope": "App segments",
      "checks": "A TCP or UDP range of 1-65535 (medium), or one spanning more than 1,000 ports (low).",
@@ -666,8 +666,19 @@ def _t_unused(snap, ix):
     return out
 
 
+def _idna(host: str) -> str:
+    """A host name in its ASCII (punycode) form, as ZPA stores it; the text
+    unchanged when it is ASCII already or cannot be encoded."""
+    if host.isascii():
+        return host
+    try:
+        return host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return host
+
+
 def _entry_key(d: str) -> str:
-    return d.strip().lower().rstrip(".")
+    return _idna(d.strip().lower().rstrip("."))
 
 
 MAX_OVERLAP_FINDINGS = 200     # overlapping pairs listed; past it one finding says there are more
@@ -740,8 +751,9 @@ def _t_broad(snap, ix):
                     net = ipaddress.ip_network(k, strict=False) if "/" in k else None
                 except ValueError:
                     net = None
-                if net is not None and net.version == 4 and net.prefixlen <= 16:
-                    sev = "high" if net.prefixlen <= 8 else "medium"
+                medium, high = (16, 8) if net is not None and net.version == 4 else (48, 32)
+                if net is not None and net.prefixlen <= medium:
+                    sev = "high" if net.prefixlen <= high else "medium"
                     txt = f"\"{d}\" covers {net.num_addresses:,} addresses"
             if sev:
                 why.append(txt)
@@ -887,7 +899,10 @@ def _t_server_groups(snap, ix):
 
 
 def _vkey(v: str) -> Tuple:
-    return tuple(int(x) if x.isdigit() else x for x in re.split(r"[.\-]", v or ""))
+    """A version as a sort key: numeric parts by value, the rest as text. Each
+    part is (0, number) or (1, text), so tenant strings that mix the two
+    always compare (int < str raises in Python)."""
+    return tuple((0, int(x)) if re.fullmatch(r"[0-9]{1,18}", x) else (1, x) for x in re.split(r"[.\-]", v or ""))
 
 
 def _t_connector_groups(snap, ix):
@@ -1062,13 +1077,20 @@ def parse_destination(dest: str, port: Any = None, protocol: str = "tcp") -> Dic
     if rest.startswith("["):
         host = rest[1:rest.index("]")] if "]" in rest else rest[1:]
         tail = rest[rest.index("]") + 1:] if "]" in rest else ""
-        if tail.startswith(":") and tail[1:].isdigit():
+        if re.fullmatch(r":[0-9]{1,6}", tail):
             inline_port = int(tail[1:])
+        elif tail:
+            raise ValueError("The port must be a number from 1 to 65535.")
     elif rest.count(":") == 1:
         h, p = rest.split(":")
-        if p.isdigit():
+        if re.fullmatch(r"[0-9]{1,6}", p):
             host, inline_port = h, int(p)
     host = host.strip().lower().rstrip(".")
+    if not host.isascii():
+        try:
+            host = host.encode("idna").decode("ascii")
+        except UnicodeError:
+            raise ValueError(f"\"{host[:80]}\" is not a hostname or IP address.")
     is_ip = False
     try:
         ipaddress.ip_address(host)
@@ -1086,7 +1108,10 @@ def parse_destination(dest: str, port: Any = None, protocol: str = "tcp") -> Dic
     p = None
     if port not in (None, ""):
         try:
-            p = int(str(port).strip())
+            ps = str(port).strip()
+            if not re.fullmatch(r"[0-9]{1,6}", ps):
+                raise ValueError(ps)
+            p = int(ps)
         except ValueError:
             raise ValueError("The port must be a number from 1 to 65535.")
     elif inline_port is not None:
@@ -1269,7 +1294,7 @@ def _or(vals: List[Optional[bool]]) -> Optional[bool]:
 
 def evaluate_rule(rule: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[str, Any]], ix: _Index) -> Dict[str, Any]:
     """{status: matched / not_matched / conditional, why, depends_on}."""
-    results, depends, failing = [], [], []
+    results, depends, unevaluable, failing = [], [], [], []
     for c in rule["conditions"]:
         if not c["operands"]:
             continue
@@ -1284,25 +1309,45 @@ def evaluate_rule(rule: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[st
         results.append(v)
         labels = [ix.operand_label(o) for o in c["operands"]]
         joined = (" and " if c["operator"] == "AND" else " or ").join(labels[:5]) + (f" (+{len(labels) - 5} more)" if len(labels) > 5 else "")
-        text = ("not " if c["negated"] else "") + joined
         if v is None:
-            depends += sorted({f for f, x in zip(facts, vals) if x is None})
+            for o, f, x in zip(c["operands"], facts, vals):
+                if x is None:
+                    (depends if o["type"] in EVALUATED_OPERANDS else unevaluable).append(f)
         elif v is False:
-            failing.append((all(o["type"] in APP_TYPES for o in c["operands"]), text))
-    v = _or(results) if (rule["operator"] == "OR" and len(results) > 1) else _and(results)
+            failing.append({"app": all(o["type"] in APP_TYPES for o in c["operands"]), "negated": bool(c["negated"]), "text": joined})
+    any_of = rule["operator"] == "OR" and len(results) > 1
+    v = _or(results) if any_of else _and(results)
     if not results:
         v = True
     if v is True:
         return {"status": "matched", "why": "Every condition matches." if results else "It has no conditions, so it matches every request.", "depends_on": []}
     if v is False:
-        app_fail = [t for is_app, t in failing if is_app]
-        if app_fail:
-            why = f"It applies to {app_fail[0]}, not to {('app segment ' + seg['name']) if seg else 'this destination'}."
-        else:
-            why = f"It requires {failing[0][1]}, which this user does not meet." if failing else "Its conditions do not match."
-        return {"status": "not_matched", "why": why, "depends_on": []}
-    deps = sorted(set(depends))
-    return {"status": "conditional", "why": f"It matches only if the user meets its conditions on {_and_list(deps)}, which you left as any.", "depends_on": deps}
+        return {"status": "not_matched", "why": _why_not(failing, seg, any_of), "depends_on": []}
+    deps, unev = sorted(set(depends)), sorted(set(unevaluable) - set(depends))
+    parts = ([f"its conditions on {_and_list(deps)}, which you left as any"] if deps else []) + \
+            ([f"its conditions on {_and_list(unev)}, which this tool cannot evaluate"] if unev else [])
+    return {"status": "conditional", "why": f"It matches only if the user meets {' and '.join(parts)}.", "depends_on": deps + unev}
+
+
+def _why_not(failing: List[Dict[str, Any]], seg: Optional[Dict[str, Any]], any_of: bool) -> str:
+    """Why a rule did not match, from the conditions that failed: an
+    application condition first (it names where the rule applies), and for
+    a rule whose conditions are joined by OR, every one of them."""
+    where = ("app segment " + seg["name"]) if seg else "this destination"
+
+    def one(f: Dict[str, Any]) -> str:
+        if f["app"]:
+            return (f"It applies to every application except {f['text']}, and this destination is {where}." if f["negated"]
+                    else f"It applies to {f['text']}, not to {where}.")
+        return (f"It excludes {f['text']}, and this user has that." if f["negated"]
+                else f"It requires {f['text']}, which this user does not meet.")
+    if not failing:
+        return "Its conditions do not match."
+    if any_of and len(failing) > 1:
+        texts = [("not " if f["negated"] else "") + f["text"] for f in failing]
+        return f"It matches when any of its conditions is met ({'; or '.join(texts[:5])}), and none is."
+    app = [f for f in failing if f["app"]]
+    return one(app[0] if app else failing[0])
 
 
 def _first_match(rules: List[Dict[str, Any]], u, seg, ix, stop_at_match: bool = True) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -1321,6 +1366,10 @@ def _first_match(rules: List[Dict[str, Any]], u, seg, ix, stop_at_match: bool = 
     return decided, walked
 
 
+# The operand types _eval_operand evaluates; any other is a fact this tool
+# cannot know (risk score, location, Chrome Enterprise, ...).
+EVALUATED_OPERANDS = frozenset({"APP", "APP_GROUP", "SCIM_GROUP", "SAML", "SCIM", "IDP", "POSTURE", "TRUSTED_NETWORK",
+                                "CLIENT_TYPE", "PLATFORM", "COUNTRY_CODE", "MACHINE_GRP"})
 ACTION_WORDS = {"ALLOW": "allowed", "DENY": "denied", "REQUIRE_APPROVAL": "allowed after approval"}
 
 
