@@ -60,16 +60,31 @@ def _rules_to_list(data: Any) -> List[Dict[str, Any]]:
 def _scope_summary(r: Dict[str, Any]) -> str:
     """Render a concise scope string for a rule."""
     parts = []
+    # Every "who / where from" condition the SDK models carry (as_dict is
+    # camelCase: zscaler/zia/models/ssl_inspection_rules.py,
+    # url_filtering_rules.py, cloud_firewall_rules.py, dlp_web_rules.py).
+    # A rule limited by any of them is not global, so it is not flagged as
+    # applying to everyone. destIpGroups narrows the destinations.
     for field, label in [
         ("users", "users"),
         ("groups", "groups"),
         ("departments", "depts"),
         ("locations", "locations"),
+        ("locationGroups", "locationGrps"),
         ("srcIpGroups", "srcIpGrps"),
+        ("sourceIpGroups", "srcIpGrps"),
         ("destIpGroups", "dstIpGrps"),
+        ("devices", "devices"),
+        ("deviceGroups", "deviceGrps"),
+        ("deviceTrustLevels", "trustLevels"),
+        ("platforms", "platforms"),
+        ("userAgentTypes", "userAgents"),
+        ("timeWindows", "timeWindows"),
+        ("workloadGroups", "workloadGrps"),
+        ("userRiskScoreLevels", "riskLevels"),
     ]:
         v = r.get(field)
-        if v:
+        if v and isinstance(v, (list, tuple)) and label not in {p.split(":")[0] for p in parts}:
             parts.append(f"{label}:{len(v)}")
     if not parts:
         return "global (unscoped)"

@@ -823,3 +823,16 @@ def test_the_ssl_flow_markdown_and_csv_are_inert():
 
     assert "<img" not in re.sub(r"(`+).+?\1", "", md) and "\n# Forged" not in md
     assert not [c for row in csv.reader(io.StringIO(text)) for c in row if c.startswith("=")]
+
+
+@pytest.mark.parametrize("field", ["locationGroups", "sourceIpGroups", "deviceGroups", "devices", "deviceTrustLevels", "platforms",
+                                   "userAgentTypes", "timeWindows", "workloadGroups", "userRiskScoreLevels"])
+def test_a_bypass_rule_scoped_by_any_sdk_condition_is_not_flagged_global(field):
+    """ASVS V11.1.1 · CWE-682 · CWE-863 · WSTG-BUSL-01: a rule limited by an SDK scope field (as_dict camelCase) is scoped, not 'applies to everyone'."""
+    rules = [{"id": 1, "name": "Scoped", "state": "ENABLED", "action": {"type": "DO_NOT_DECRYPT"}, field: [{"id": 9}]},
+             {"id": 2, "name": "Everyone", "state": "ENABLED", "action": {"type": "DO_NOT_DECRYPT"}}]
+
+    rep = br.generate_bypass_report(_Get({"/zia/sslInspectionRules": (rules, 200)}))
+
+    assert [r["name"] for r in rep["risk_flags"]] == ["Everyone"]
+    assert rep["sections"]["ssl_bypass_rules"]["items"][0]["scope"] != "global (unscoped)"
