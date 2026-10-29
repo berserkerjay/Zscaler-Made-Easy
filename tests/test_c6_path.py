@@ -2122,3 +2122,41 @@ def test_a_list_never_shares_an_answer_between_an_idn_row_in_a_unicode_entry_and
 def test_a_list_entry_host_is_normalised_and_never_raises(raw, want):
     """ASVS V5.1.3 · CWE-176 · CWE-20: a list entry's host is lower case, punycode and keeps its wildcard; a name IDNA refuses is kept, never a crash."""
     assert zpm.entry_host(raw) == want
+
+
+# ── C6-PATH-22: the app profile's IP bypasses ──────────────────────────
+@pytest.mark.parametrize("dest,excl,status", [
+    ("10.1.2.3", ["10.0.0.0/8"], "bypass"),
+    ("10.255.255.255", ["10.0.0.0/8"], "bypass"),               # last address of the block
+    ("11.0.0.0", ["10.0.0.0/8"], "pass"),
+    ("203.0.113.9", ["203.0.113.1-203.0.113.9"], "bypass"),     # a range, end inclusive
+    ("2001:db8::5", ["2001:db8::/64"], "bypass"),
+    ("10.1.2.3", ["2001:db8::/64"], "pass"),                    # another family never holds it
+    ("10.1.2.3", [{"ip": "10.1.2.0/24"}], "bypass"),            # an entry given as an object
+])
+def test_an_ip_destination_in_the_app_profiles_ip_bypass_never_reaches_zscaler(dest, excl, status):
+    """ASVS V4.1.3 · CWE-863 · CWE-697: an IP destination inside the app profile's IP bypasses (ipExclusions) leaves the device directly: bypassed, the entry named."""
+    res = run(dest, _profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "ipExclusions": excl}))
+    z = hop(res, "zcc")
+    assert z["status"] == status and (status == "pass" or "bypasses this destination (IP " in z["detail"])
+    assert res["verdict"]["outcome"] == ("bypassed" if status == "bypass" else "enforce")
+
+
+@pytest.mark.parametrize("excl,noted", [(["10.0.0.0/8", "fd00::/8"], False), (["198.51.100.0/24"], True)])
+def test_a_host_name_with_public_ip_bypasses_says_it_is_assumed_to_resolve_outside_them(excl, noted):
+    """ASVS V1.4.4 · CWE-754: a host name is never resolved; when IP bypasses hold public addresses the hop says it is assumed to resolve outside them."""
+    z = hop(run("files.example", _profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "ipExclusions": excl})), "zcc")
+    assert z["status"] == "pass" and ("assumed to resolve outside them" in z["detail"]) is noted
+
+
+def test_a_destination_exclusion_that_is_a_host_name_bypasses_it():
+    """ASVS V4.1.3 · CWE-863: a destination exclusion written as a host name bypasses that host."""
+    z = hop(run("files.example", _profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "destinationExclusions": ["files.example"]})), "zcc")
+    assert z["status"] == "bypass"
+
+
+def test_a_list_row_in_an_ip_bypass_never_shares_the_answer_of_a_row_outside_it():
+    """ASVS V1.4.4 · CWE-697: Test a list relates a row to the app profile's IP bypasses, so a bypassed row and a tunnelled row are answered apart."""
+    tenant = Tenant(_profiles({"id": 1, "name": "Corp", "ruleOrder": 1, "ipExclusions": ["198.51.100.0/24"]}))
+    rn = bt.run(tenant, bt.parse("198.51.101.5\n198.51.100.5\n"), scope=FULL, lookup=False, sleep=lambda s: None)
+    assert [rn.row(i)["result"] for i in range(2)] == ["allowed", "bypassed"]

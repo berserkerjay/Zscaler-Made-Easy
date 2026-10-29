@@ -228,6 +228,24 @@ def stop_on(client: Any, cancel: Any) -> Iterator[None]:
 
 
 # ── Client Connector readers ──────────────────────────────────────────
+_LOCAL_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16",
+                                                 "100.64.0.0/10", "fc00::/7", "fe80::/10", "::1/128")]
+
+
+def _non_public(entry: str) -> bool:
+    """Whether an IP bypass entry lies wholly in private, loopback,
+    link-local or shared address space, where a public host name never
+    resolves (the assumption pac_eval's "assume_public" states too)."""
+    try:
+        if "-" in entry:
+            ends = [ipaddress.ip_network(x.strip()) for x in entry.split("-", 1)]
+        else:
+            ends = [ipaddress.ip_network(entry, strict=False)]
+        return all(any(e.version == n.version and e.subnet_of(n) for n in _LOCAL_NETS) for e in ends)
+    except (ValueError, TypeError):
+        return False
+
+
 def _rule_order(v: Any) -> Optional[int]:
     """An app profile's ruleOrder as a number ("1" and 1 alike); one that is
     not a whole number has no order (it sorts last), never a TypeError."""
@@ -796,17 +814,33 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     else:
         b = prof["bypass"]
         hit_domain = _domain_hit(b["domains"], host) if host else None
+        # IP bypasses (destination exclusions): an address in one never
+        # enters the tunnel. A host name is not resolved: it is assumed to
+        # resolve outside them, and that assumption is said.
+        try:
+            dest_ip: Any = ipaddress.ip_address(host)
+        except ValueError:
+            dest_ip = None
+        ip_entries = [str(x).strip() for x in b.get("ips") or [] if _zpm._is_ip_entry(str(x).strip())]
+        hit_ip = next((e for e in ip_entries if _zpm._ip_rel(dest_ip, e)), None) if dest_ip is not None else None
+        hit_domain = hit_domain or (_domain_hit([x for x in b.get("ips") or [] if not _zpm._is_ip_entry(str(x).strip())], host) if host and dest_ip is None else None)
         hit_app = next((a for a in b["apps"] if dest["label"].lower() in str(a).lower() or str(a).lower() in dest["label"].lower()), None) if dest["kind"] in ("application", "unknown") else None
         notes = []
         if not prof["strict_enforcement"]:
             notes.append("strict enforcement off (a user can disable the client)")
         if not prof["ssl_cert"]:
             notes.append("Zscaler root certificate not pushed by this profile (decryption fails unless deployed by MDM)")
-        if hit_domain or hit_app:
+        public = [e for e in ip_entries if not _non_public(e)]
+        if public and dest_ip is None and host:
+            ip_entries = public
+            notes.append(f"{len(ip_entries)} IP bypass entr{'y' if len(ip_entries) == 1 else 'ies'} ({_zpm._short(ip_entries, 3)}) apply if {host} resolves into them; "
+                         "it is not resolved and is assumed to resolve outside them")
+        if hit_domain or hit_app or hit_ip:
             reaches_zscaler = False
             ends = "zcc"
+            what = f"domain {hit_domain}" if hit_domain else f"IP {hit_ip}" if hit_ip else f"application {hit_app}"
             hops.append(_hop("zcc", "Client Connector app profile", "bypass", {"name": prof["name"], "id": prof["id"]},
-                             f"'{prof['name']}' bypasses this destination ({'domain ' + hit_domain if hit_domain else 'application ' + str(hit_app)}): the traffic leaves the device directly and never reaches Zscaler.",
+                             f"'{prof['name']}' bypasses this destination ({what}): the traffic leaves the device directly and never reaches Zscaler.",
                              _weak("high", "Bypassed at the client", "Remove the bypass from the app profile, or accept that only Endpoint DLP can see this traffic and make sure it is enabled."),
                              profile=prof["name"], notes=notes))
         else:
