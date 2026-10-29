@@ -466,6 +466,49 @@ def test_part_in_scope_of_a_saved_profile_reads_only_that_part(tenant, route):
     assert not leaked, f"read out of scope: {leaked}"
 
 
+PROFILE_ONLY = [
+    Route("/api/path-analyzer/start", DEST),
+    Route("/api/path-analyzer", DEST),
+    Route("/api/report/data-flow"),
+    Route("/api/migrate/status"),
+    Route("/api/flow/scenario", {"scenario_id": "web_upload", "destination": "example.com"}),
+]
+
+
+@pytest.mark.parametrize("route", PROFILE_ONLY, ids=_ids)
+def test_a_profile_only_request_signs_in_on_the_profiles_cloud(tenant, monkeypatch, route):
+    """ASVS V4.2.1 · CWE-639: a body naming only a saved profile on another cloud signs in on that cloud, never the request model's default (regression: production was used)."""
+    # Arrange: a profile on zscalerten; the page (report_path.html's credBody) sends only its id.
+    import tenant_profiles
+    pid = tenant_profiles.upsert({"name": "Ten", "cloud": "zscalerten", "vanity_domain": "acme", "client_id": CREDS["client_id"],
+                                  "scopes": WEB["scopes"], "channels": WEB["channels"]},
+                                 client_secret=CREDS["client_secret"], remember_secret=True)["id"]
+    clouds: List[str] = []
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda c: clouds.append(c["cloud"]) or FakeSdk(tenant))
+    monkeypatch.setattr(srv, "_raw_client", lambda c: clouds.append(c["cloud"]) or FakeRaw(tenant))
+    # Act
+    r = TestClient(srv.app).post(route.path, json=dict(route.body, profile_id=pid))
+    # Assert
+    assert r.status_code == 200, r.text[:400]
+    assert clouds and set(clouds) == {"zscalerten"}, clouds
+
+
+def test_a_rebuilt_profile_only_request_keeps_the_profiles_cloud(tenant):
+    """ASVS V4.2.1 · CWE-639: boundary: a request rebuilt from every field (cloud now counts as sent) still takes the profile's cloud; nothing named falls back to production."""
+    # Arrange
+    import tenant_auth
+    import tenant_profiles
+    pid = tenant_profiles.upsert({"name": "Ten", "cloud": "zscalerten", "vanity_domain": "acme", "client_id": CREDS["client_id"]},
+                                 client_secret=CREDS["client_secret"], remember_secret=True)["id"]
+    rebuilt = srv.MigrateRequest(**srv.MigrateRequest(profile_id=pid).model_dump())
+    # Act
+    creds = srv._tenant_creds(rebuilt)
+    typed = srv._tenant_creds(srv.MigrateRequest(**CREDS))
+    # Assert
+    assert creds["cloud"] == "zscalerten" and tenant_auth.record_label(creds) == "acme (zscalerten)"
+    assert typed["cloud"] == "production" and srv._validate_creds(typed)["cloud"] == "production"
+
+
 # ── Negative and boundary cases ────────────────────────────────────────
 
 EXPLICIT_PICKS = [

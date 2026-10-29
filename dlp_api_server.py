@@ -758,7 +758,10 @@ async def remediation_execute(req: RemediationExecuteRequest):
 # ─────────────────────────────────────────────────────────────────
 class MigrateRequest(BaseModel):
     """Tenant credentials for the Evaluate-All migration endpoints."""
-    cloud: str = "production"
+    # Blank, not "production": a body with only a profile_id signs in on the
+    # profile's cloud (_fill_from_profile fills blanks only), and
+    # _validate_creds falls back to production when no source names one.
+    cloud: str = ""
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
@@ -1167,13 +1170,15 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     if off is not None:
         return off
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
-    # A cloud the body did not send is the model's default ("production"),
-    # not a typed value: the profile, environment or tenant_config.json
-    # names the cloud, and the default applies only when none does.
+    # A cloud the body did not send is the model's default (blank, or
+    # "production" on the older models), not a typed value: the profile,
+    # environment or tenant_config.json names the cloud, and production
+    # applies only when none does.
     sent = getattr(req, "model_fields_set", None)
     default_cloud = ""
     if sent is not None and "cloud" not in sent:
-        default_cloud, creds["cloud"] = creds["cloud"], ""
+        default_cloud = creds["cloud"] or ("production" if isinstance(req, MigrateRequest) else "")
+        creds["cloud"] = ""
     if not tenant_auth.started(creds):
         # Nothing typed for a tenant: the source that has the sign-in decides
         # its method (the form always sends its selector, OneAPI by default).
@@ -10009,8 +10014,6 @@ async def pov_prove_start(req: PovProveRequest, request: Request):
     test = pov.RUNBOOK_BY_ID.get(req.test_id)
     if test is None:
         raise HTTPException(status_code=404, detail="Unknown runbook test.")
-    if not (req.vanity_domain or req.username):
-        req.cloud = ""   # nothing typed: the profile's cloud, not this model's "production" default
     req.destination = (req.destination or "").strip() or test["destination"]
     if not req.destination:
         raise HTTPException(status_code=400, detail=test["prove_note"] or "This test has no web destination for the Path analyzer.")

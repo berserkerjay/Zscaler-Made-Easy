@@ -5,6 +5,11 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-29
+
+### A saved profile's cloud is never replaced by the default
+- **Fix.** The tenant body behind the Path analyzer, data flow, migration and flow scenario routes no longer defaults its cloud to "production": a request naming only a saved profile (the Path analyzer's Tenant select, or the request rebuilt from every field) signs in on the profile's own cloud, and production still applies when nothing names one. The POV planner's *Prove it* no longer needs its own workaround.
+
 ## 2026-10-28
 
 ### Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition
