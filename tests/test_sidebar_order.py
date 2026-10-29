@@ -274,9 +274,14 @@ out.throwingInit = await ev(`(() => { const c = SidebarOrder.init({ root: docume
 // 12. Narrow width: dragging is off, Alt+arrows still move.
 await open('h.html', null);
 await send('Emulation.setDeviceMetricsOverride', { width: 800, height: 900, deviceScaleFactor: 1, mobile: false });
-await sleep(150);
+// Wait for the media-query change itself, not a guessed delay.
+for (let i = 0; i < 100 && await ev(`document.getElementById('dbSidebar').classList.contains('sb-drag-on')`); i++) await sleep(20);
 out.dragOnNarrow = await ev(`document.getElementById('dbSidebar').classList.contains('sb-drag-on')`);
-await ev(`document.getElementById('dbSidebar').style.cssText = 'transform:none;visibility:visible', 1`);
+// Show the off-canvas sidebar with no transition. dashboard.css hides it at this width with
+// `visibility 0s linear 0.25s`, so without transition:none an inline visibility:visible lands
+// 250 ms late; focus() in that window fails and Alt+Up goes nowhere. That was the narrow-width flake.
+await ev(`document.getElementById('dbSidebar').style.cssText = 'transition:none;transform:none;visibility:visible', 1`);
+out.narrowVisibleAtOnce = await ev(`getComputedStyle(document.getElementById('dbSidebar')).visibility`);
 t = await ev(`ctr(sid('fn-hit-flow'))`);
 await drag(`[data-sb-id="fn-hit-path"]`, t.x, t.top + 3);
 out.narrowAfterDrag = await ev('flat()');
@@ -402,6 +407,7 @@ def test_corrupt_or_hostile_storage_falls_back_to_the_default(browser_run):
 def test_narrow_widths_turn_dragging_off_but_keep_the_keyboard(browser_run):
     r = browser_run
     assert r["dragOnNarrow"] is False
+    assert r["narrowVisibleAtOnce"] == "visible", "the harness must not race the 0.25 s visibility transition"
     assert r["narrowAfterDrag"] == DEFAULT
     assert r["narrowAfterKey"][2] == "find-gaps:fn-hit-path,fn-hit-flow,fn-openToolTab-efficacy"
     assert r["errors"] == []
