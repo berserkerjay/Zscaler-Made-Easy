@@ -1338,3 +1338,154 @@ def test_engine_explain_deep_nesting_is_named_not_parsed():
     expr = "(" * 60 + "D1.S > 0" + ")" * 60
 
     assert ee.summary(expr) == "" and "count" in ee.readable(expr, NAMES)
+
+
+# ── url_tools: workbooks, lookups, scope ─────────────────────────────
+
+def test_url_tools_workbook_neutralises_formula_values():
+    """ASVS V5.3.10 · A03:2021 · CWE-1236 · WSTG-INPV-15: a tenant URL that looks like a formula is text in the workbook, never a formula."""
+    import url_tools as ut
+    from test_xlsx_writer import read_workbook
+    evil = '=HYPERLINK("https://evil.example","x")'
+    occ = [ut._occ(evil, "Custom URL category", "URLs", "Mine"), ut._occ("@SUM(1)", "Advanced settings", "Authentication bypass URLs")]
+
+    wb = read_workbook(ut.urls_workbook(occ, tenant_label="acme (production)"))
+
+    cells = [c for row in wb["URLs"] + wb["Occurrences"] for c in row if c]
+    assert not any(c.startswith(("=", "@")) for c in cells) and any(evil in c for c in cells)
+
+
+def test_url_tools_lookup_retries_429_then_marks_the_rest():
+    """ASVS V11.1.4 · CWE-770 · CWE-400: a 429 is retried with growing waits (injected sleep), then the batch is 'rate limited', not an error."""
+    import url_tools as ut
+    waits: List[float] = []
+
+    class C:
+        def post(self, ep, body):
+            return {"message": "slow down"}, 429
+
+    found, missed, stats = ut.lookup_batches(C(), ["a.example"], pace=1.0, retries=2, sleep=waits.append)
+
+    assert found == {} and missed == {"a.example": "rate limited (HTTP 429) after retries"} and stats == {"requests": 3, "retries": 2}
+    assert sum(waits) == 2.0 + 4.0
+
+
+def test_url_tools_lookup_without_post_reads_nothing():
+    """ASVS V4.1.3 · CWE-841: a client that cannot POST the lookup marks every URL not looked up, sending nothing."""
+    import url_tools as ut
+
+    found, missed, stats = ut.lookup_batches(object(), ["a.example", "b.example"], pace=0, sleep=lambda s: None)
+
+    assert found == {} and set(missed) == {"a.example", "b.example"} and stats["requests"] == 0
+
+
+def test_url_tools_lookup_stops_before_the_next_request():
+    """ASVS V11.1.4 · CWE-400: Stop during the pause between batches ends the lookup before another request."""
+    import threading
+    import url_tools as ut
+    stop = threading.Event()
+    sent = []
+
+    class C:
+        def post(self, ep, body):
+            sent.append(len(body))
+            stop.set()
+            return [{"url": u, "urlClassifications": []} for u in body], 200
+
+    with pytest.raises(ut.Stopped):
+        ut.lookup_batches(C(), [f"h{i}.example" for i in range(150)], pace=1.0, cancel=stop, sleep=lambda s: None)
+    assert sent == [100]
+
+
+def test_url_tools_lookup_sends_no_scheme_or_wildcard():
+    """ASVS V5.1.3 · CWE-20: the lookup is asked for the bare host and path (no scheme, no leading *. or .)."""
+    import url_tools as ut
+    asked = []
+
+    class C:
+        def post(self, ep, body):
+            asked.extend(body)
+            return [{"url": u, "urlClassifications": ["FINANCE"]} for u in body], 200
+
+    found, _, _ = ut.lookup_batches(C(), ["HTTPS://*.Bank.example/x", ".shop.example"], pace=0, sleep=lambda s: None)
+
+    assert asked == ["Bank.example/x", "shop.example"] and set(found) == {"HTTPS://*.Bank.example/x", ".shop.example"}
+
+
+def test_url_tools_sources_follow_the_scope_page():
+    """ASVS V4.1.3 · A01:2021 · CWE-863: with nothing ticked the URLs export reads nothing and the analyzer is out of scope."""
+    import url_tools as ut
+
+    src, an = ut.sources_for([], {}), ut.analyzer_in_scope([], {})
+
+    assert src["read"] == [] and src["summary"] == ut.NOTHING_IN_SCOPE_URLS and an["in_scope"] is False
+
+
+# ── guidance: approvals and the shipped config ───────────────────────
+
+def test_guidance_approval_records_once_and_merges_with_the_shipped_file(gd):
+    """ASVS V1.1.1 · CWE-20: an approval records the article once per check (idempotent) and load_config sees it with the shipped references."""
+    prop = {"kind": "update_check", "change": {"article": "https://help.zscaler.com/a", "checks": ["4.1"], "packs": ["p"], "channels": ["web"]},
+            "evidence": {"article_title": "A"}}
+
+    first, again = gd.record_approval(prop, by="tester"), gd.record_approval(prop, by="tester")
+
+    refs = gd.references_for("4.1")
+    assert first["checks"] == ["4.1"] and again["checks"] == [] and [r["url"] for r in refs].count("https://help.zscaler.com/a") == 1
+
+
+def test_guidance_approval_without_an_article_is_refused(gd):
+    """ASVS V5.1.3 · CWE-20: a proposal with no article cannot be approved into the config."""
+    with pytest.raises(ValueError):
+        gd.record_approval({"change": {}})
+
+
+def test_guidance_stale_source_is_flagged_after_seven_days(gd):
+    """ASVS V7.4.1 · CWE-1188: a watched source with no answer for more than seven days is stale; one tried once just now is not."""
+    import bp_sources
+    sid = next(s["id"] for s in bp_sources.SOURCES if s.get("crawlable"))
+    gd.update_source_health([{"source_id": sid, "reached": False, "error": "timeout"}], now=1_000_000)
+
+    fresh = next(s for s in gd.source_health(now=1_000_000) if s["id"] == sid)
+    old = next(s for s in gd.source_health(now=1_000_000 + 7 * 86400 + 1) if s["id"] == sid)
+
+    assert (fresh["stale"], old["stale"], old["last_error"]) == (False, True, "timeout")
+
+
+# ── plain_english: a refused read is never 'not configured' ──────────
+
+def test_plain_english_refused_read_says_not_permitted():
+    """ASVS V7.4.1 · CWE-755: an INFO result whose detail is a permission refusal reads 'could not be read', outside the score."""
+    import plain_english as pe
+
+    out = pe.explain({"id": "4.1", "section": "4 — SSL Policy", "label": "SSL rules", "status": "INFO", "detail": "HTTP 403: not permitted"})
+
+    assert "not permitted" in out["found"] and "outside the score" in out["means"]
+
+
+def test_plain_english_enrich_never_breaks_a_result(monkeypatch):
+    """ASVS V7.4.1 · CWE-755: if the explanation raises, the result still carries a plain block."""
+    import plain_english as pe
+    monkeypatch.setattr(pe, "explain", lambda c: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    out = pe.enrich({"id": "4.1", "section": "4 — SSL Policy", "label": "SSL rules"})
+
+    assert out["plain"]["found"] == "SSL rules" and out["plain"]["outcome"]
+
+
+def test_discover_main_sorts_working_forbidden_and_missing(disc, tmp_path, monkeypatch, capsys):
+    """ASVS V7.4.1 · CWE-755: the summary files each feature under working, forbidden (403), not found (404) or errors, first working path wins."""
+    d, sent, answers = disc
+    monkeypatch.setattr(d, "PROBE_PATHS", {"ok": ["/zia/missing", "/zia/ok"], "no": ["/zia/no"], "gone": ["/zia/gone"], "odd": ["/zia/odd"]})
+    monkeypatch.setattr(d.time, "sleep", lambda s: None)
+    answers.update({"/zia/ok": _Resp(204, {}), "/zia/no": _Resp(403, {}), "/zia/gone": _Resp(404, {}), "/zia/odd": _Resp(500, {})})
+    cfg, out = tmp_path / "tenant.json", tmp_path / "discovery.json"
+    cfg.write_text(json.dumps({"client_id": "cid", "client_secret": SECRET, "vanity_domain": "acme", "cloud": "zscalergov"}), encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["discover_endpoints.py", "--config", str(cfg), "--output", str(out)])
+
+    d.main()
+
+    summary = json.loads(out.read_text())["summary"]
+    assert [w["path"] for w in summary["working"]] == ["/zia/ok"] and summary["forbidden"] == ["no"]
+    assert summary["not_found"] == ["gone"] and summary["errors"] == ["odd"]
+    assert sent[0]["url"] == "https://acme.zidentitygov.net/oauth2/v1/token" and all(s["url"].startswith("https://api.zscalergov.net/v1/") for s in sent[1:])
