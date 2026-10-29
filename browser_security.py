@@ -168,8 +168,10 @@ def scope_for(scopes: Any, channels: Any = None) -> Dict[str, Any]:
 # ── small helpers ──────────────────────────────────────────────────────
 def _err_text(err: Any) -> str:
     s = re.sub(r"\s+", " ", str(err or "")).strip()
-    s = re.sub(r"(?i)(bearer|token|secret|password|pem)\S*\s*[:=]?\s*\S+", r"\1 [hidden]", s)
+    # PEM blocks first: hiding a "token=..." value just before one would eat
+    # its BEGIN line and leave the body behind.
     s = re.sub(r"-----BEGIN[^-]*-----.*?(-----END[^-]*-----|$)", "[certificate hidden]", s)
+    s = re.sub(r"(?i)(bearer|token|secret|password|pem)\S*\s*[:=]?\s*\S+", r"\1 [hidden]", s)
     return s[:200] or "the API answered an error"
 
 
@@ -882,7 +884,10 @@ def _control_findings(e: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _version_key(v: str) -> Tuple:
-    return tuple(int(x) if x.isdigit() else x for x in re.findall(r"\d+|[A-Za-z]+", v))
+    """Numbers in numeric order, words after them: (0, n) and (1, word), so
+    "90" and "beta" (untrusted text from the tenant) never compare an int
+    with a str."""
+    return tuple((0, int(x), "") if x.isdigit() else (1, 0, x.lower()) for x in re.findall(r"\d+|[A-Za-z]+", str(v or "")))
 
 
 def outdated_not_blocked(bc: Dict[str, Any], supported: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

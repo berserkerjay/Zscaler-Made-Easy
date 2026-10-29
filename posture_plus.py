@@ -42,6 +42,7 @@ documented heuristic (effort_for):
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import tempfile
@@ -425,7 +426,9 @@ def save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
 def score_drop(prev_score: Any, cur_score: Any, threshold: Optional[int] = None) -> Optional[int]:
     """The points lost when the score fell by at least `threshold`, else None."""
     t = settings()["score_drop_points"] if threshold is None else int(threshold)
-    if not isinstance(prev_score, (int, float)) or not isinstance(cur_score, (int, float)):
+    # A score is a finite number (0-100); a hand-edited history may hold
+    # true, NaN or Infinity, which are no score (and int(inf) would raise).
+    if not all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in (prev_score, cur_score)):
         return None
     lost = prev_score - cur_score
     return int(lost) if lost >= t else None

@@ -338,8 +338,12 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
         seen = _alerts_seen()
         for t in digest["tenants"]:
             full = tenant_profiles.get(str(t.get("profile_id") or "")) or {}
-            t["score_alerts"] = posture_plus.tenant_alerts(t, full.get("history") or [], cfg=cfg,
-                                                           seen={(k, a) for p, k, a in seen if p == t.get("profile_id")})
+            mine = {(k, a) for p, k, a in seen if p == t.get("profile_id")}
+            t["score_alerts"] = posture_plus.tenant_alerts(t, full.get("history") or [], cfg=cfg, seen=mine)
+            # Carried forward, so a drop this run leaves out as already
+            # reported is still known as reported to the next run.
+            t["score_alerts_reported"] = sorted({a for k, a in mine if k == "assessment"}
+                                                | {str(x.get("at")) for x in t["score_alerts"] if x.get("kind") == "assessment"})[-ALERTS_KEPT:]
         digest["score_drop_points"] = cfg["score_drop_points"]
     except Exception as e:  # noqa: BLE001
         digest["errors"].append(f"score alerts: {type(e).__name__}: {str(e)[:200]}")
@@ -653,9 +657,14 @@ def _sync_reauthorise(tenant_key: str, not_active: List[Dict[str, Any]]) -> None
     proposals.merge(tenant_key, fresh, source="continuous_evaluation")
 
 
+ALERTS_KEPT = 20   # assessment drops remembered per tenant as already reported
+
+
 def _alerts_seen() -> set:
-    """(profile id, kind, at) of the assessment score drops the previous
-    digest already reported, so one drop is reported once."""
+    """(profile id, kind, at) of the assessment score drops an earlier
+    digest already reported (the previous digest's alerts and the ones it
+    carried forward as reported), so one drop is reported once, not again
+    every other run."""
     try:
         last = list_digests(1)
         prev = get_digest(str(last[0]["id"])) if last else None
@@ -664,8 +673,10 @@ def _alerts_seen() -> set:
     out = set()
     for t in (prev or {}).get("tenants") or []:
         for a in t.get("score_alerts") or []:
-            if a.get("kind") == "assessment":
+            if isinstance(a, dict) and a.get("kind") == "assessment":
                 out.add((t.get("profile_id"), "assessment", str(a.get("at"))))
+        for at in t.get("score_alerts_reported") or []:
+            out.add((t.get("profile_id"), "assessment", str(at)))
     return out
 
 
@@ -867,6 +878,7 @@ def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:
     if mode == "never" or (mode != "always" and not d.get("noteworthy")):
         return [{"channel": "none", "sent": False, "why": f"mode {mode}, digest {'noteworthy' if d.get('noteworthy') else 'quiet'}"}]
     out = []
+    d = for_notification(d)
     md = to_markdown(d)
     s = d.get("summary") or {}
     subject = f"Zscaler Made Easy digest: {s.get('proposals_new', 0)} new proposal(s), {s.get('guidance_new', 0)} new guidance, {s.get('drift_changed', 0)} pack(s) moved"
@@ -876,6 +888,20 @@ def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:
         out.append(_send_webhook(subject, md, os.environ.get("DLP_CHECK_DIGEST_WEBHOOK", "").strip()))
     if not out:
         out.append({"channel": "none", "sent": False, "why": "no e-mail or webhook configured (DLP_CHECK_SMTP_HOST + DLP_CHECK_DIGEST_TO, or DLP_CHECK_DIGEST_WEBHOOK)"})
+    return out
+
+
+def for_notification(d: Dict[str, Any]) -> Dict[str, Any]:
+    """The digest as it may leave the machine: a score drop is sent only
+    when score-drop alerts are turned on (posture_plus notify_score_drop).
+    Off, a drop stays in the digest file and on the page, and an e-mail or
+    webhook sent for something else does not carry it."""
+    tenants = []
+    for t in d.get("tenants") or []:
+        alerts = [a for a in t.get("score_alerts") or [] if isinstance(a, dict) and a.get("notify")]
+        tenants.append(dict(t, score_alerts=alerts) if isinstance(t, dict) else t)
+    out = dict(d, tenants=tenants)
+    out["summary"] = summarise(out)
     return out
 
 
