@@ -63,6 +63,45 @@
   .fa-box rect { transition: none; }
 }
 
+/* ── Traffic motion (Data Flow Map, SSL flow, SSL coverage) ────────── */
+.fa-motion { margin: 0.4rem 0 1rem; min-width: 0; }
+.fa-motion .fa-lead { font-size: 0.88rem; margin: 0 0 0.5rem; line-height: 1.45; }
+.fa-motion .fa-stage { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card-solid); padding: 0.4rem; }
+.fa-river.fa-svg, .fa-walk.fa-svg { min-width: 860px; }   /* a phone scrolls the picture, not the page */
+.fa-band { fill: none; stroke-opacity: 0.32; stroke-linecap: butt; cursor: pointer; transition: stroke-opacity 0.2s; }
+.fa-band.idle, .fa-band.after { stroke: var(--dim); }
+.fa-band.pass { stroke: var(--pass); }
+.fa-band.warn { stroke: var(--warn); }
+.fa-band.stop, .fa-band.block { stroke: var(--fail); }
+.fa-band:hover, .fa-band.on { stroke-opacity: 0.62; }
+.fa-band:focus { outline: none; }
+.fa-band:focus-visible { stroke-opacity: 0.75; stroke-dasharray: 6 3; }
+.fa-rnode rect { fill: var(--dim); }
+.fa-rnode.pass rect { fill: var(--pass); } .fa-rnode.warn rect { fill: var(--warn); }
+.fa-rnode.stop rect, .fa-rnode.block rect { fill: var(--fail); }
+.fa-rnode .fa-t { fill: var(--text); font-size: 11px; font-weight: 600; }
+.fa-rnode .fa-s { fill: var(--dim); font-size: 10.5px; }
+.fa-river text, .fa-walk text { paint-order: stroke; stroke: var(--card-solid); stroke-width: 3px; stroke-linejoin: round; }
+.fa-mark-p { fill: none; stroke: var(--fail); stroke-width: 2.5; stroke-linecap: round; }
+.fa-mark.unverified .fa-mark-p, .fa-mark.apart .fa-mark-p { stroke: var(--warn); }
+.fa-dot.pk { fill: var(--accent); }
+.fa-dot.pk.pass { fill: var(--pass); } .fa-dot.pk.warn { fill: var(--warn); }
+.fa-dot.pk.stop, .fa-dot.pk.block { fill: var(--fail); }
+.fa-dot.pk.idle { fill: var(--dim); }
+.fa-motion-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0 0 0.5rem; }
+.fa-motion-bar .rp-btn[aria-pressed="true"] { border-color: var(--accent); }
+.fa-pick { margin: 0.5rem 0 0; padding: 0.55rem 0.75rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font-size: 0.84rem; min-height: 2.2rem; overflow-wrap: anywhere; }
+.fa-pick ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+.fa-pick a { color: var(--accent); }
+.fa-alt { margin: 0.5rem 0 0; padding-left: 1.2rem; font-size: 0.84rem; color: var(--dim); line-height: 1.45; overflow-wrap: anywhere; }
+.fa-alt li { margin: 0.15rem 0; }
+.fa-warnline { font-size: 0.82rem; margin: 0.4rem 0; padding: 0.4rem 0.6rem; border-radius: var(--r-md); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.sf-peel { fill: none; stroke: var(--fail); stroke-width: 2; stroke-dasharray: 3 4; opacity: 0.8; }
+.sf-gate { stroke: var(--warn); stroke-width: 3; stroke-linecap: round; }
+@media (prefers-reduced-motion: reduce) {
+  .fa-band { transition: none; }
+}
+
 /* Shared scenario inputs stay visible beside passive live evidence. */
 #scenarioWorkspace { padding-bottom: 1.2rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
 #scenarioCorpus { display: block; box-sizing: border-box; width: 100%; min-height: 7rem; margin: .5rem 0; padding: .7rem; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: .5rem; font: inherit; }

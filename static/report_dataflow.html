@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/flow_anim.css">
 </head>
 <body class="report-page df-page">
   <div class="rp-page">
@@ -45,13 +46,14 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/flow_anim.js"></script>
   <script src="/static/data_flow.js"></script>
   <script>
   (function () {
     const q = new URLSearchParams(location.search);
     const body = document.getElementById('rpBody');
     const meta = document.getElementById('rpMeta');
-    let report = null, rid = null;
+    let report = null, rid = null, motion = null;
     const E = _dfE;
     const fail = (title, msg) => { body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}</div><div style="margin-top:0.5rem;"><a class="rp-btn" href="/">Back to the assessment</a></div></div>`; };
 
@@ -60,6 +62,8 @@
       // Diagram first: the selected path's flow, then visibility by cloud
       // app category, then the full destination x network table and totals.
       body.innerHTML = `
+        <h2 class="df-h" id="dfMotionTitle">Traffic flow: every traffic class on every network</h2>
+        <div id="dfMotion"></div>
         <h2 class="df-h">How ZIA processes a policy: device → incident</h2>
         <div id="dfEnforcement"></div>
         <h2 class="df-h" id="dfTraceTitle">Path</h2>
@@ -84,6 +88,8 @@
           <div class="df-stat ${s.high ? 'bad' : ''}"><div class="n">${s.high}</div><div class="l">high-severity weak points</div></div>
         </div>
         <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>`;
+      if (motion) motion.destroy();
+      motion = renderDataFlowMotion(report, document.getElementById('dfMotion'), i => toRow(i));
       renderPolicyEnforcementFlow(document.getElementById('dfEnforcement'));
       renderDataFlowOverview(report, document.getElementById('dfOverview'));
       renderCategoryVisibility(report, document.getElementById('dfCategories'));
@@ -92,6 +98,8 @@
       const wire = r => { r.addEventListener('click', () => sel(Number(r.dataset.i))); r.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sel(Number(r.dataset.i)); } }); };
       const sel = i => { document.querySelectorAll('.df-row').forEach(x => x.classList.remove('sel')); const row = document.querySelector(`.df-row[data-i="${i}"]`); if (row) row.classList.add('sel'); showTrace(report.traces[i]); };
       window.__dfSel = sel;
+      // A stream's path links to its row in the table: select it there, show its path, keep focus on the row.
+      const toRow = i => { sel(i); const r = document.getElementById(`dfRow-${i}`); if (r) { r.scrollIntoView({ block: 'center', behavior: 'smooth' }); r.focus({ preventScroll: true }); } };
       document.querySelectorAll('.df-row').forEach(wire);
       document.querySelectorAll('.df-vis[data-i], .df-gap[data-i], .df-cat-card[data-i]').forEach(b => b.addEventListener('click', () => sel(Number(b.dataset.i))));
       const first = report.traces.findIndex(t => t.weak_points.some(w => w.severity === 'high'));
