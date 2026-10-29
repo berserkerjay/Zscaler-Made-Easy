@@ -222,6 +222,12 @@ def workload_input(w: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ── membership ──────────────────────────────────────────────────────────
+def _seq(v: Any) -> List[Any]:
+    """A list from the tenant: one string is one item; a value of another
+    type (a number, true, an object where a list belongs) is no list."""
+    return [v] if isinstance(v, str) and v else list(v) if isinstance(v, (list, tuple)) else []
+
+
 def _lc(s: Any) -> str:
     return as_str(s).lower()
 
@@ -239,11 +245,11 @@ def group_expression(g: Dict[str, Any]) -> Tuple[str, List[Dict[str, Any]]]:
     """(join operator, [{type, operator, tags}]) of a workload group."""
     ej = get(g, "expressionJson") or {}
     conts = []
-    for c in get(ej, "expressionContainers") or []:
+    for c in _seq(get(ej, "expressionContainers")):
         if not isinstance(c, dict):
             continue
         tc = get(c, "tagContainer") or {}
-        tags = [x for x in (get(tc, "tags") or []) if isinstance(x, dict) and as_str(x.get("key"))]
+        tags = [x for x in _seq(get(tc, "tags")) if isinstance(x, dict) and as_str(x.get("key"))]
         conts.append({"type": as_str(get(c, "tagType")).upper() or None, "operator": (as_str(get(tc, "operator")) or "AND").upper(), "tags": tags})
     op = (as_str(get(ej, "operator")) or "AND").upper()
     return ("OR" if op == "OR" else "AND"), conts
@@ -272,7 +278,7 @@ def member(g: Dict[str, Any], tags: List[Dict[str, Any]], picked: Optional[str])
 
 
 def membership(snap: Dict[str, Any], w: Dict[str, Any]) -> List[Dict[str, Any]]:
-    groups = [member(g, w["tags"], w["workload_group"]) for g in snap.get("workload_groups") or [] if isinstance(g, dict)]
+    groups = [member(g, w["tags"], w["workload_group"]) for g in _seq(snap.get("workload_groups")) if isinstance(g, dict)]
     if w["workload_group"] and not any(m["state"] == "match" for m in groups):
         groups.append({"id": "", "name": w["workload_group"], "state": "match", "why": "picked by name (not found in the workload groups read)"})
     return groups
@@ -281,7 +287,7 @@ def membership(snap: Dict[str, Any], w: Dict[str, Any]) -> List[Dict[str, Any]]:
 # ── rule criteria ───────────────────────────────────────────────────────
 def _refs(v: Any) -> List[Dict[str, str]]:
     out = []
-    for x in v or []:
+    for x in _seq(v):
         if isinstance(x, dict):
             # ZTW's own id first; ZPA's ids (externalId on a segment, zpaId on
             # a segment group: ztw/models/forwarding_rules.py) kept beside it.
@@ -354,7 +360,7 @@ def normalize_rule(r: Dict[str, Any], index: int) -> Dict[str, Any]:
         order = None
     out = {"id": as_str(get(r, "id")), "name": as_str(get(r, "name")) or as_str(get(r, "id")), "order": order, "index": index,
            "state": as_str(get(r, "state")).upper() or "ENABLED", "forward_method": as_str(get(r, "forwardMethod")).upper() or "ZIA",
-           "src_ips": [as_str(x) for x in get(r, "srcIps") or []], "dest_addresses": [as_str(x) for x in get(r, "destAddresses") or []],
+           "src_ips": [as_str(x) for x in _seq(get(r, "srcIps"))], "dest_addresses": [as_str(x) for x in _seq(get(r, "destAddresses"))],
            "src_ip_groups": _refs(get(r, "srcIpGroups")), "dest_ip_groups": _refs(get(r, "destIpGroups")),
            "src_group_exclusion": get(r, "sourceIpGroupExclusion") is True,
            "src_workload_groups": _refs(get(r, "srcWorkloadGroups")), "ec_groups": _refs(get(r, "ecGroups")),
@@ -387,8 +393,8 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
               ec: Optional[Dict[str, Any]], zpa_seg: Optional[Dict[str, Any]], zpa_read: bool) -> List[Dict[str, str]]:
     """Each criterion of a forwarding rule with its state."""
     crit: List[Dict[str, str]] = []
-    src_groups = {as_str(get(g, "id")): g for g in snap.get("ip_source_groups") or [] if isinstance(g, dict)}
-    dst_groups = {as_str(get(g, "id")): g for g in snap.get("ip_destination_groups") or [] if isinstance(g, dict)}
+    src_groups = {as_str(get(g, "id")): g for g in _seq(snap.get("ip_source_groups")) if isinstance(g, dict)}
+    dst_groups = {as_str(get(g, "id")): g for g in _seq(snap.get("ip_destination_groups")) if isinstance(g, dict)}
     def source(ips: List[str], refs: List[Dict[str, str]]) -> Tuple[Optional[bool], bool]:
         entries, missing = list(ips), False
         for ref in refs:
@@ -396,7 +402,7 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
             if g is None:
                 missing = True
             else:
-                entries += [as_str(x) for x in get(g, "ipAddresses") or []]
+                entries += [as_str(x) for x in _seq(get(g, "ipAddresses"))]
         return (_ip_in(w["ip"], entries) if w["ip"] else None), missing
 
     group_words = [f"group “{x['name'] or x['id']}”" for x in r["src_ip_groups"][:3]]
@@ -432,7 +438,7 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
             if g is None:
                 missing = True
             else:
-                entries += [as_str(x) for x in get(g, "addresses") or []]
+                entries += [as_str(x) for x in _seq(get(g, "addresses"))]
         if d["is_ip"]:
             hit = _ip_in(d["host"], entries)
             state = "match" if hit else ("unknown" if hit is None or missing else "nomatch")
@@ -467,7 +473,7 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
 def find_ec_group(snap: Dict[str, Any], name: Optional[str]) -> Optional[Dict[str, Any]]:
     if not name:
         return None
-    for g in snap.get("ec_groups") or []:
+    for g in _seq(snap.get("ec_groups")):
         if isinstance(g, dict) and _lc(name) in (_lc(get(g, "id")), _lc(get(g, "name"))):
             loc = get(g, "location")
             return {"id": as_str(get(g, "id")), "name": as_str(get(g, "name")), "location": as_str((loc or {}).get("name")) if isinstance(loc, dict) else "",

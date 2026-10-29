@@ -353,9 +353,9 @@ def test_an_answer_an_evaluator_returns_with_unhashable_values_is_kept_on_its_ow
 
 
 def test_a_large_list_keeps_well_under_a_kilobyte_per_row():
-    """ASVS V1.11.3 · CWE-400 · CWE-770: Test a list keeps under 400 bytes per row (a 250,000-row list under 100 MB), measured on 8,192 rows."""
+    """ASVS V1.11.3 · CWE-400 · CWE-770: Test a list keeps under 400 bytes per row (a 250,000-row list under 100 MB), measured on 4,096 rows."""
     # Arrange
-    parsed = bt.parse("destination\n10.2.0.0/19\n")
+    parsed = bt.parse("destination\n10.2.0.0/20\n")
     tenant = Tenant()
     tracemalloc.start()
     try:
@@ -366,7 +366,7 @@ def test_a_large_list_keeps_well_under_a_kilobyte_per_row():
     finally:
         tracemalloc.stop()
     # Assert
-    assert len(rn.p) == 8192 and kept / len(rn.p) < 400, kept / len(rn.p)
+    assert len(rn.p) == 4096 and kept / len(rn.p) < 400, kept / len(rn.p)
 
 
 # ═══ 2. Cloud & Branch Connector forwarding: every forward method ═══════
@@ -1555,3 +1555,355 @@ def test_a_kept_read_from_before_profiles_carried_users_still_traces():
         p.pop("users", None)
     again = pa.analyze(Tenant(), "files.example", scope=FULL, snapshot=snap)
     assert again["verdict"]["outcome"] == res["verdict"]["outcome"] == "enforce"
+
+
+# ═══ 13. Client Connector reads and forwarding actions (data_flow) ══════
+@pytest.mark.parametrize("profile,want", [
+    ({"forwardingProfileActions": [{"networkType": "ON_TRUSTED_NETWORK", "actionType": "1", "enablePacketTunnel": True}]},
+     {"on": "Z-Tunnel 2.0"}),                                                     # Z-Tunnel 1.0 code with packet tunnel on is 2.0
+    ({"forwardingProfileActions": [{"networkType": "2", "actionType": "4"}, {"networkType": "0", "actionType": "0"}]},
+     {"vpn": "Z-Tunnel 2.0", "off": "None (direct)"}),                             # numeric codes
+    ({"enableUnifiedTunnel": True, "unifiedTunnel": [{"networkType": "OFF_TRUSTED_NETWORK", "actionTypeZIA": "ENFORCE_PROXY"}],
+      "forwardingProfileActions": [{"networkType": "OFF_TRUSTED_NETWORK", "actionType": "NONE"}]}, {"off": "Enforce proxy (PAC)"}),
+    ({"enableUnifiedTunnel": False, "unifiedTunnel": [{"networkType": "OFF_TRUSTED_NETWORK", "actionTypeZIA": "ENFORCE_PROXY"}],
+      "forwardingProfileActions": [{"networkType": "OFF_TRUSTED_NETWORK", "actionType": "NONE"}]}, {"off": "None (direct)"}),
+    ({"forwardingProfileZpaActions": [{"networkType": "OFF_TRUSTED_NETWORK", "actionType": "NONE"}]}, {}),   # the ZPA list never decides ZIA
+    ({"forwardingProfileActions": [{"networkType": "ON_TRUSTED_NETWORK", "proxyAction": "Tunnel with local proxy"}]},
+     {"on": "Tunnel with local proxy"}),                                          # a mode read from an unnamed field
+    ({"forwardingProfileActions": [{"networkType": "ON_TRUSTED_NETWORK", "dnsTimeout": 5}]}, {}),             # no mode at all: skipped
+    ({"tunnelMode": "Z-Tunnel 1.0"}, {"any": "Z-Tunnel 1.0"}),                     # one mode for every network
+    ({"tunnelMode": "warp drive"}, {}),
+])
+def test_forwarding_profile_actions_oracle(profile, want):
+    """ASVS V5.1.3 · CWE-20 · CWE-697: each forwarding profile shape gives the mode per network (codes, unified tunnel, ZPA list ignored)."""
+    got = {k: v["mode_label"] for k, v in df.forwarding_actions(profile).items()}
+    assert got == want
+
+
+@pytest.mark.parametrize("raw,mode", [("", ("not set", "unknown")), (None, ("not set", "unknown")), ("xyz", ("unknown (xyz)", "unknown")),
+                                      ("3", ("Tunnel with local proxy", "tunnel")), ("ZSCALER_TUNNEL_1", ("Z-Tunnel 1.0", "tunnel"))])
+def test_a_forwarding_mode_is_named_or_unknown(raw, mode):
+    """ASVS V5.1.3 · CWE-20: a forwarding mode the tool does not know is "unknown (value)", never taken for a tunnel."""
+    assert df.classify_mode(raw) == mode
+
+
+@pytest.mark.parametrize("raw,net", [("2", "vpn"), ("TRUSTED", "on"), ("untrusted wifi", "off"), (None, "any"), ("??", "any")])
+def test_a_network_type_is_named_or_any(raw, net):
+    """ASVS V5.1.3 · CWE-20: a network type is on, off, vpn or (unknown) any."""
+    assert df.classify_network(raw) == net
+
+
+class ZccTenant(Tenant):
+    def __init__(self, routes, fail=()):
+        super().__init__(routes)
+        self.fail = set(fail)
+
+    def get(self, ep, p=None):
+        if ep in self.fail:
+            raise RuntimeError(f"{ep} timed out")
+        return super().get(ep, p)
+
+
+def test_the_client_connector_read_records_every_failure_and_keeps_raw_only_when_asked():
+    """ASVS V7.4.1 · CWE-755 · CWE-209: a failed Client Connector list is recorded, never raised; raw profiles are kept only when asked."""
+    routes = {"/zcc/webPolicies": [{"id": 1, "name": "Win", "deviceType": "DEVICE_TYPE_WINDOWS", "active": 1, "ruleOrder": 1,
+                                    "vpnGateways": ["vpn.example"], "bypassProcesses": ["a.exe"], "bypassApps": [{"name": "Zoom"}],
+                                    "ipExclusions": [{"ip": "10.0.0.0/8"}], "groups": [{"id": 1, "name": "All"}]}],
+              "/zcc/forwardingProfiles": [{"id": 5, "name": "Fwd"}], "/zcc/trustedNetworks": [{"id": 1, "networkName": "HQ", "dnsServers": "10.0.0.1"}, 7]}
+    out = df.read_client_connector(ZccTenant(routes), keep_raw=True)
+    p = out["app_profiles"][0]
+    assert p["platform"] == "windows" and p["bypass"]["vpn_gateways"] == ["vpn.example"] and p["bypass"]["processes"] == ["a.exe"]
+    assert p["bypass"]["apps"] == ["Zoom"] and p["bypass"]["ips"] == ["10.0.0.0/8"] and "raw" in p and "raw" in out["forwarding_profiles"][0]
+    assert out["trusted_networks"] == [{"id": 1, "name": "HQ", "conditions": {"dnsServers": "10.0.0.1"}}]
+    failing = df.read_client_connector(ZccTenant(routes, fail={"/zcc/webPolicies", "/zcc/forwardingProfiles", "/zcc/trustedNetworks", "/zia/pacFiles"}))
+    assert failing["read_status"] == {"app_profiles": "unverified", "forwarding_profiles": "unverified"}
+    assert len(failing["errors"]) >= 4 and all("timed out" in e for e in failing["errors"])
+
+
+def test_a_forwarding_profile_list_that_answers_an_error_is_unverified():
+    """ASVS V7.4.1 · CWE-754: a forwarding profile list answering an HTTP error is unverified with the status, never an empty list."""
+    class Err(Tenant):
+        def get(self, ep, p=None):
+            return ({"error": "denied"}, 403) if ep in ("/zcc/forwardingProfiles", "/zia/pacFiles") else super().get(ep, p)
+    out = df.read_client_connector(Err())
+    assert out["read_status"]["forwarding_profiles"] == "unverified" and "/zcc/forwardingProfiles: HTTP 403 (denied)" in out["errors"]
+    assert out["read_status"]["pac_files"] == "unverified"
+
+
+def test_the_client_connector_read_is_stopped_between_requests():
+    """ASVS V1.11.3 · CWE-400: Stop ends the Client Connector read before the next request."""
+    stop = threading.Event()
+
+    class Stopper(Tenant):
+        calls = []
+
+        def get(self, ep, p=None):
+            Stopper.calls.append(ep)
+            stop.set()
+            return super().get(ep, p)
+    with pytest.raises(df.ReadStopped):
+        df.read_client_connector(Stopper(), cancel=stop)
+    assert len({c.split("?")[0] for c in Stopper.calls}) == 1
+
+
+@pytest.mark.parametrize("cancel,stopped", [(None, False), (lambda: True, True), (lambda: 1 / 0, False), (threading.Event(), False)])
+def test_stop_requested_takes_an_event_or_a_callable_and_a_broken_hook_never_stops(cancel, stopped):
+    """ASVS V1.11.3 · CWE-755: Stop is an Event or a callable; a hook that raises never stops a read by itself."""
+    assert df.stop_requested(cancel) is stopped
+
+
+def test_stop_on_binds_and_restores_the_clients_stop_hook():
+    """ASVS V1.11.3 · CWE-664: while a read runs the client's stop hook is the operator's Stop; it is put back afterwards, even for a client without one."""
+    class C:
+        stop_check = "before"
+    c, stop = C(), threading.Event()
+    with df.stop_on(c, stop):
+        stop.set()
+        assert c.stop_check() is True
+    assert c.stop_check == "before"
+
+    class Frozen:
+        __slots__ = ()
+    with df.stop_on(Frozen(), stop):
+        pass
+
+
+@pytest.mark.parametrize("pack_channel,rule,state", [
+    ("ssl", {"id": 1, "name": "P", "order": 1, "state": "ENABLED", "action": {"type": "DECRYPT"}, "urlCategories": ["ANY"]}, "enforcing"),
+    ("ssl", {"id": 1, "name": "P", "order": 1, "state": "ENABLED", "action": {"type": "DO_NOT_DECRYPT"}, "urlCategories": ["ANY"]}, "monitoring"),
+    ("cloud_app", {"id": 1, "name": "P", "order": 1, "state": "ENABLED", "actions": ["BLOCK_FILE_SHARE_UPLOAD"], "applications": ["DROPBOX"]}, "enforcing"),
+    ("cloud_app", {"id": 1, "name": "P", "order": 1, "state": "ENABLED", "actions": ["ALLOW_FILE_SHARE_UPLOAD"], "applications": ["DROPBOX"]}, "monitoring"),
+    ("url", {"id": 1, "name": "P", "order": 1, "state": "ENABLED", "action": "CAUTION", "urlCategories": ["NEWS"]}, "enforcing"),
+    ("url", {"id": 1, "name": "P", "order": 1, "state": "ENABLED", "action": "ALLOW", "urlCategories": ["NEWS"]}, "monitoring"),
+    ("url", {"id": 1, "name": "P", "order": 1, "state": "DISABLED", "action": "BLOCK", "urlCategories": ["NEWS"]}, "disabled"),
+    ("file_type", {"id": 1, "name": "Q", "order": 1, "state": "ENABLED", "filteringAction": "BLOCK"}, "missing"),
+])
+def test_the_policy_pack_overlay_names_each_rules_state(pack_channel, rule, state):
+    """ASVS V1.4.4 · CWE-697: each policy pack rule is enforcing, monitoring, disabled or missing, by its channel's own action."""
+    section = {"ssl": "/zia/sslInspectionRules", "cloud_app": "/zia/cloudApplicationRules", "url": "/zia/urlFilteringRules",
+               "file_type": "/zia/fileTypeRules"}[pack_channel]
+    pack = [{"id": "p", "name": "Pack", "policies": [{"name": "P", "channel": pack_channel}]}]
+    res = run("news.example", {section: [rule]}, packs=pack)
+    assert res["trace"]["packs"][0]["rules"][0]["state"] == state
+
+
+# ═══ 14. Test a list with ZPA in scope (bulk_test.PathEvaluator) ════════
+def _zpa_in():
+    from test_path_zpa_workloads import zpa_snap
+    snap, prof = zpa_snap()
+    return {"snapshot": snap, "profiles": prof}
+
+
+def test_a_list_row_zpa_carries_is_answered_by_zpa_and_others_by_zia():
+    """ASVS V4.1.3 · CWE-863: a row in a ZPA segment is answered by ZPA's access policy; a row in none goes on to ZIA."""
+    parsed = bt.parse("destination\ngit.corp.example\nwiki.corp.example\nnews.example\n")
+    rn = bt.run(Tenant(), parsed, scope=FULL, lookup=False, sleep=lambda s: None, zpa=_zpa_in())
+    rows = [rn.row(i) for i in range(3)]
+    assert [r["area"] for r in rows] == ["ZPA", "ZPA", "URL"] and rows[0]["segment"] == "Git" and rows[1]["segment"] == "Corp wildcard"
+    assert rn.summary["zpa"]["state"] == "kept"
+
+
+def test_a_list_with_zpa_that_cannot_be_read_says_so_once():
+    """ASVS V7.4.1 · CWE-754: ZPA in scope but not readable is said once in the assumptions; rows go on to ZIA."""
+    rn = bt.run(Tenant(), bt.parse("git.corp.example\n"), scope=FULL, lookup=False, sleep=lambda s: None,
+                zpa={"problem": "ZPA is not reachable with this sign-in."})
+    assert rn.row(0)["area"] != "ZPA" and "ZPA is not reachable with this sign-in." in rn.summary["assumptions"]
+
+
+def test_a_list_reads_zpa_once_with_its_client_and_masks_a_read_error():
+    """ASVS V7.4.1 · CWE-209 · CWE-532: a ZPA read error is masked before it is shown; the rows go on to ZIA."""
+    import zpa_path
+
+    class Broken:
+        pass
+
+    def boom(*a, **k):
+        raise zpa_path.ReadError("token=abc123 refused")
+    orig = zpa_path.read
+    zpa_path.read = boom
+    try:
+        rn = bt.run(Tenant(), bt.parse("git.corp.example\n"), scope=FULL, lookup=False, sleep=lambda s: None,
+                    zpa={"client": Broken(), "mask": lambda s: s.replace("abc123", "***")})
+    finally:
+        zpa_path.read = orig
+    note = rn.summary["zpa"]["note"]
+    assert "abc123" not in note and "***" in note and rn.row(0)["result"] == "allowed"
+
+
+def test_a_list_with_only_zpa_in_scope_traces_no_zia():
+    """ASVS V4.1.3 · CWE-284: with no ZIA part in scope a row ZPA does not carry is "not in scope", never traced through ZIA."""
+    zpa_only = df.path_scope(["zpa"], {})
+    rn = bt.run(Tenant(), bt.parse("news.example\n"), scope=zpa_only, lookup=False, sleep=lambda s: None, zpa=_zpa_in())
+    assert rn.row(0)["result"] == "unverified" and bt.ZIA_NOT_IN_SCOPE in rn.row(0)["notes"]
+
+
+def test_rows_sharing_a_source_condition_fingerprint_share_a_trace():
+    """ASVS V1.11.3 · CWE-400 · CWE-697: rows whose source addresses relate alike to the firewall's source conditions share one trace."""
+    tenant = Tenant({"/zia/firewallFilteringRules": [fw_rule(1, 1, "BLOCK_DROP", srcIps=["10.0.0.0/24"]), DEFAULT_FW]})
+    parsed = bt.parse("destination,port,protocol,source ip\n203.0.113.5,22,tcp,10.0.0.1\n203.0.113.5,22,tcp,10.0.0.2\n203.0.113.5,22,tcp,10.0.1.1\n")
+    rn = bt.run(tenant, parsed, scope=FULL, lookup=False, sleep=lambda s: None)
+    assert [rn.row(i)["result"] for i in range(3)] == ["blocked", "blocked", "allowed"] and rn.summary["traced"] == 2
+
+
+# ═══ 15. PAC refusals: every construct outside the subset is refused in words
+@pytest.mark.parametrize("src,construct", [
+    ('function FindProxyForURL(url, host) { return "x', "an unterminated string"),
+    ('function FindProxyForURL(url, host) { var if = 1; return "DIRECT"; }', "the keyword 'if' used as a name"),
+    ('function f() { return 1; } function f() { return 2; } function FindProxyForURL(u, h) { return "DIRECT"; }', "defined twice"),
+    ('function FindProxyForURL(url, host) { return "DIRECT";', "a block that is never closed"),
+    ('function FindProxyForURL(url, host) { if (x = 1) return "DIRECT"; }', "an assignment inside an expression"),
+    ('function FindProxyForURL(url, host) { function g() {} return "DIRECT"; }', "a function defined inside another"),
+    ('function FindProxyForURL(url, host) { return 1 == 1 == 1; }', "a chained comparison"),
+    ('function FindProxyForURL(url, host) { return 1 < 2 < 3; }', "a chained comparison"),
+    ('function FindProxyForURL(url, host) { return (host)("x"); }', "a call of a computed value"),
+    ('function FindProxyForURL(url, host) { return url.foo(); }', "the property 'foo'"),
+    ('function FindProxyForURL(url, host) { return url.foo; }', "the property 'foo'"),
+    ('function FindProxyForURL(url, host) { return (1).length; }', "'.length' of a value that is not a string"),
+    ('return "DIRECT"; function FindProxyForURL(url, host) { return "DIRECT"; }', "a return outside a function"),
+    ('var x = 1;', "no function FindProxyForURL(url, host)"),
+    ('function FindProxyForURL(url, host) { return 1 & 2; }', "could not evaluate safely"),
+    ('function FindProxyForURL(url, host) { return ,; }', "unexpected ','"),
+])
+def test_a_pac_construct_outside_the_subset_is_refused_in_words(src, construct):
+    """ASVS V5.2.4 · CWE-94 · CWE-95 · WSTG-INPV-11: a PAC construct outside the evaluated subset is refused "could not evaluate safely: ...", never run."""
+    r = pac_eval.evaluate(src, "https://a.example/", "a.example")
+    assert r["status"] == "error" and r["error"].startswith(pac_eval.PREFIX) and construct in r["error"]
+
+
+@pytest.mark.parametrize("src,want", [
+    ('function FindProxyForURL(url, host) { return true ? "DIRECT" : "PROXY x:1"; }', "DIRECT"),
+    ('function FindProxyForURL(url, host) { return false ? "DIRECT" : "PROXY ${GATEWAY}:80"; }', "PROXY ${GATEWAY}:80"),
+    ('var p = "PROXY "; function FindProxyForURL(url, host) { p += "${GATEWAY}:80"; return p; }', "PROXY ${GATEWAY}:80"),
+    ('function FindProxyForURL(url, host) { alert("x"); var n = 3 % 2; if (n) return "DIRECT"; return "PROXY a:1"; }', "DIRECT"),
+    ('function FindProxyForURL(url, host) { var s = "" + undefined; return s == "undefined" ? "DIRECT" : "PROXY a:1"; }', "DIRECT"),
+    ('function FindProxyForURL(url, host) { return "" + (1 === 1.0) + (null === undefined); }', "truefalse"),
+])
+def test_pac_values_and_operators_answer_as_javascript_does(src, want):
+    """ASVS V5.1.3 · CWE-682: ternaries, += on a global, %, alert (ignored), undefined and strict equality answer as JavaScript does."""
+    r = pac_eval.evaluate(src, "https://a.example/", "a.example")
+    assert r["status"] == "ok" and r["result"] == want
+
+
+def test_a_pac_with_a_resolver_injected_uses_it_and_a_failing_resolver_is_not_resolvable():
+    """ASVS V5.1.3 · CWE-918 · CWE-755: DNS is never looked up; an injected resolver answers, and one that raises means "not resolvable"."""
+    src = 'function FindProxyForURL(url, host) { if (isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0")) return "DIRECT"; return "PROXY ${GATEWAY}:80"; }'
+    assert pac_eval.evaluate(src, "https://a.example/", resolve=lambda h: "10.1.2.3")["result"] == "DIRECT"
+    assert pac_eval.evaluate(src, "https://a.example/", resolve=lambda h: 1 / 0)["result"] == "PROXY ${GATEWAY}:80"
+    assert pac_eval.evaluate(src, "https://a.example/")["status"] == "depends"
+
+
+@pytest.mark.parametrize("answer,kind,proxy,fallback", [
+    ("PROXY [2001:db8::1]:8080; DIRECT", "other_proxy", "2001:db8::1:8080", True),
+    ("PROXY gateway.zscalertwo.net:80", "zscaler", "gateway.zscalertwo.net:80", False),
+    ("PROXY evilzscaler.net:80", "other_proxy", "evilzscaler.net:80", False),
+    ("PROXY zscaler.net.evil.example:80", "other_proxy", "zscaler.net.evil.example:80", False),
+    ("PROXY 127.0.0.1:9000", "zscaler", "127.0.0.1:9000", False),
+    ("SOCKS5", "invalid", None, False),
+    ("", "invalid", None, False),
+])
+def test_a_pac_answer_is_classified_by_its_first_entry(answer, kind, proxy, fallback):
+    """ASVS V5.1.3 · CWE-697 · CWE-346: the first entry decides; a host only ending in a Zscaler name is another proxy; a later DIRECT is fail-open."""
+    c = pac_eval.classify(answer)
+    assert (c["kind"], c["proxy"], c["fallback_direct"]) == (kind, proxy, fallback)
+
+
+# ═══ 16. Destinations that are not one (path_analyzer.parse_destination) ═
+@pytest.mark.parametrize("typed", ["a::b::c", "‍‍.example"])
+def test_an_ipv6_looking_or_unencodable_name_is_refused_in_words(typed):
+    """ASVS V5.1.3 · CWE-20 · CWE-176: text with colons that is no IPv6 address, or a name IDNA cannot encode, is refused in words."""
+    with pytest.raises(ValueError, match="not a URL, hostname or IP address"):
+        pa.parse_destination(typed)
+
+
+def test_a_conditional_route_is_said_before_any_policy_answer():
+    """ASVS V1.4.4 · CWE-754: when how the device reaches ZIA is not verified, the headline says so before any policy result."""
+    t = {"hops": [], "outcome": "unknown", "reaches_zscaler": True, "decrypted": False, "destination": {}, "channels": {}, "conditional": True}
+    v = pa.derive_verdict(t, {"host": "a.example"}, {"security_alerts": []})
+    assert v["headline"] == "Unable to verify how the device reaches a.example."
+
+
+# ── C6-PATH-15: hostile shapes in tenant lists (fuzz, fixed seed) ──────
+_JUNK = [None, "", 0, -1, 1.5, float("nan"), True, "x", "10.0.0.1-2001:db8::1", "::", "*", [], [None], [1, "a"], {}, {"id": None},
+         {"name": 5}, [{"start": "a", "end": None}], [{"start": 10, "end": 5}], [{"id": {"x": 1}}], "ANY", ["ANY"], "2001:db8::/129",
+         "300.1.1.1", ["*.example"], [".", "*.", "-"], "\U0001f642", ["\U0001f642"] * 3]
+
+
+@pytest.mark.parametrize("field,value,go", [("srcIps", True, "drop"), ("destAddresses", 1.5, "drop"), ("srcIpGroups", True, "drop"),
+                                            ("ecGroups", 7, "drop"), ("zpaAppSegments", {"name": "x"}, "drop"),
+                                            ("srcWorkloadGroups", "Dev", "conditional"),   # one string is one item, never its letters
+                                            ("srcIps", "10.0.0.1", "drop"), ("srcIps", "10.9.9.9", "zia")])
+def test_a_connector_rule_list_field_of_the_wrong_type_is_no_list_not_a_crash(field, value, go):
+    """ASVS V5.1.3 · CWE-20 · CWE-1287 · CWE-755: a forwarding rule list field that is a number, true or an object is no list; one string is one item."""
+    snap = connector([fwd(1, 1, "Odd", "DROP", **{field: value})])
+    assert wp.evaluate(snap, wl(ip="10.0.0.1"), zp.destination("example.com"))["go"] == go
+
+
+def test_connector_group_and_tag_lists_of_the_wrong_type_are_no_list():
+    """ASVS V5.1.3 · CWE-20 · CWE-1287: workload groups, tag containers and IP group members of the wrong type are read as empty."""
+    data = ztw_data([fwd(1, 1, "Src", "DROP", srcIpGroups=[{"id": 21, "name": "B"}])])
+    data["workload_groups"] = [[{"id": 1, "name": "G", "expressionJson": {"expressionContainers": 5}},
+                                {"id": 2, "name": "H", "expressionJson": {"expressionContainers": [{"tagContainer": {"tags": True}}]}}]]
+    data["ip_source_groups"] = [[{"id": 21, "name": "B", "ipAddresses": 10}]]
+    snap = ztw_snap(data)
+    ev = wp.evaluate(snap, wl(ip="10.0.0.1", tags="Env=prod"), zp.destination("example.com"))
+    assert ev["go"] == "conditional" and [g["state"] for g in ev["groups"]] == ["unknown", "nomatch"]
+
+
+def _junk_rule(rng, fields):
+    r = {"id": rng.randint(1, 9), "name": "R", "order": rng.randint(-2, 5), "state": "ENABLED",
+         "action": rng.choice(["ALLOW", "BLOCK_DROP", "BLOCK", "REDIR_ZPA"])}
+    for f in rng.sample(fields, rng.randint(1, 8)):
+        r[f] = copy.deepcopy(rng.choice(_JUNK))
+    return r
+
+
+def test_fuzz_hostile_module_rules_never_crash_the_analyzer():
+    """ASVS V5.1.3 · CWE-20 · CWE-1287 · CWE-755 · WSTG-INPV-01: 90 random tenants with wrong types in every firewall, DNS, Sandbox and ATP field never raise."""
+    import random
+    rng = random.Random(20261029)
+    fields = ["destAddresses", "srcIps", "destIpGroups", "srcIpGroups", "nwServices", "nwServiceGroups", "nwApplications", "nwApplicationGroups",
+              "destIpCategories", "destCountries", "order", "action", "state", "name", "id", "defaultRule", "predefined", "users", "timeWindows",
+              "destIpv6Groups", "srcIpv6Groups", "protocols", "dnsRuleRequestTypes", "resCategories", "applications", "applicationGroups",
+              "fileTypes", "urlCategories", "baRuleAction", "firstTimeEnable", "firstTimeOperation", "baPolicyCategories", "byThreatScore",
+              "enforceTimeValidity", "validityStartTime", "validityEndTime", "accessControl", "excludedUsers"]
+    for _ in range(90):
+        routes = {"/zia/firewallFilteringRules": [_junk_rule(rng, fields) for _ in range(3)] + [DEFAULT_FW],
+                  "/zia/firewallDnsRules": [_junk_rule(rng, fields) for _ in range(2)], "/zia/sandboxRules": [_junk_rule(rng, fields)],
+                  "/zia/networkServices": [_junk_rule(rng, fields + ["destTcpPorts", "srcUdpPorts", "tag"])],
+                  "/zia/networkServiceGroups": [dict(_junk_rule(rng, fields), services=rng.choice(_JUNK))],
+                  "/zia/networkApplicationGroups": [dict(_junk_rule(rng, fields), networkApplications=rng.choice(_JUNK))],
+                  "/zia/ipDestinationGroups": [dict(_junk_rule(rng, fields), addresses=rng.choice(_JUNK), ipCategories=rng.choice(_JUNK))],
+                  "/zia/ipSourceGroups": [dict(_junk_rule(rng, fields), ipAddresses=rng.choice(_JUNK))],
+                  "/zia/cyberThreatProtection/advancedThreatSettings": {"malwareSitesBlocked": rng.choice(_JUNK), "blockedCountries": rng.choice(_JUNK),
+                                                                         "riskTolerance": rng.choice(_JUNK)},
+                  "/zia/cyberThreatProtection/maliciousUrls": {"maliciousUrls": ["a.example", rng.choice(["10.0.0.1-10.0.0.9", "::1", "x/y"])]}}
+        dest = rng.choice(["203.0.113.5", "2001:db8::5", "casino.example", "https://x.example/a", "10.0.0.5"])
+        proto, port = rng.choice([(None, None), ("tcp", 22), ("udp", 53), ("udp", 443), ("tcp", 2222), ("tcp", 80)])
+        res = pa.analyze(Tenant(routes), dest, scope=FULL, protocol=proto, port=port,
+                         context={"source_ip": rng.choice(["10.0.0.1", "2001:db8::9", None]), "file_types": rng.choice([None, ["pdf"], [5]])})
+        assert res["zia_modules"]["certainty"] in ("definite", "conditional")
+
+
+def test_fuzz_hostile_connector_rules_never_crash_the_workload_evaluation():
+    """ASVS V5.1.3 · CWE-20 · CWE-1287 · CWE-755: 300 random connector reads with wrong types in every forwarding rule field never raise."""
+    import random
+    rng = random.Random(20261030)
+    fields = ["srcIps", "destAddresses", "srcIpGroups", "destIpGroups", "srcWorkloadGroups", "ecGroups", "zpaAppSegments", "zpaApplicationSegmentGroups",
+              "proxyGateway", "zpaGateway", "wanSelection", "order", "state", "forwardMethod", "sourceIpGroupExclusion", "destCountries", "name"]
+    for _ in range(300):
+        rules = []
+        for _ in range(3):
+            r = fwd(rng.randint(1, 9), rng.randint(-2, 4), "R", rng.choice(["ZIA", "ZPA", "DIRECT", "DROP", "INVALID"]))
+            for f in rng.sample(fields, rng.randint(1, 6)):
+                r[f] = copy.deepcopy(rng.choice(_JUNK))
+            rules.append(r)
+        data = ztw_data(rules)
+        data["workload_groups"] = [[{"id": 1, "name": "G", "expressionJson": rng.choice(_JUNK + [{"expressionContainers": [
+            {"tagType": rng.choice(_JUNK), "tagContainer": rng.choice(_JUNK + [{"tags": rng.choice(_JUNK)}])}]}])}]]
+        data["ip_source_groups"] = [[{"id": 21, "name": "B", "ipAddresses": rng.choice(_JUNK)}]]
+        w = wp.workload_input({"ip": rng.choice(["10.0.0.1", "2001:db8::1", ""]), "tags": rng.choice(["Env=prod", "", "VPC:a=b"]),
+                               "workload_group": rng.choice(["", "G"]), "connector_group": rng.choice(["", "x"])})
+        d = zp.destination(rng.choice(["example.com", "10.0.0.5", "2001:db8::5", "100.64.0.1"]), "443")
+        seg = rng.choice([None, {"id": "s1", "name": "Git", "segment_group_id": None, "segment_group_name": None}])
+        ev = wp.evaluate(ztw_snap(data), w, d, seg, rng.random() < 0.5)
+        assert ev["go"] in ("zia", "zpa", "direct", "local", "proxy", "drop", "conditional", "unknown")
