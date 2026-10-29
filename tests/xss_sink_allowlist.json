@@ -31,7 +31,6 @@
   "rule.id": [1, "ZIA integer id or an app-made key, never a name"]
  },
  "static/dashboard.js": {
-  "c.icon": [1, "CSS class or icon from the page's own status table"],
   "last.journey.stage": [1, "number the server computes (count, percentage, score, stage, position)"],
   "sections[k].pct": [1, "number the server computes (count, percentage, score, stage, position)"],
   "sections[names[i]].pct": [1, "number the server computes (count, percentage, score, stage, position)"],
@@ -69,7 +68,7 @@
   "st.body": [1, "the page's own explanatory HTML (constant)"]
  },
  "static/deploy_studio.js": {
-  "c": [3, "channel key the app sets (web, endpoint, saas, email)"],
+  "c": [2, "channel key the app sets (web, endpoint, saas, email)"],
   "channels[c]": [1, "number the server computes (count, percentage, score, stage, position)"],
   "(p.channels || {})[c]": [1, "number the server computes (count, percentage, score, stage, position)"],
   "_dzE(p.id)": [7, "id in an inline handler: pack ids are slugs [a-z0-9_], rule and object ids are ZIA integers, the rest page constants; never a name"],
