@@ -544,7 +544,9 @@ EXEMPT: Dict[str, str] = {
     "POST /api/dlp-packs/removal/apply/start": "a write: as /api/dlp-packs/removal/apply",
     "POST /api/change-queue/deploy": "files a deploy plan for approval (the Deploy Studio plan)",
     "POST /api/change-queue/removal": "files a removal plan for approval",
-    "POST /api/change-queue/{rid}/apply": "a write: applies an approved change request",
+    "POST /api/change-queue/{rid}/apply": ("a write: applies an approved change request; a fix recipe is scope-gated before sign-in "
+                                           "(_require_recipe_in_scope, as when it is filed: test_c6_admin_ops.py), a deploy or "
+                                           "removal applies the plan the operator picked"),
     "POST /api/proposals/{tenant}/{pid}/preview": "re-reads the one rule a proposal raised by an in-scope read names",
     "POST /api/proposals/{tenant}/{pid}/apply": "a write: applies an approved proposal",
     "POST /api/proposals/{tenant}/{pid}/rollback": "a write: rolls an applied proposal back",

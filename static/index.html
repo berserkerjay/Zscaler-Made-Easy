@@ -3934,6 +3934,7 @@ async function wizardRequestApproval() {
   const body = migrateCredBody();
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();
+  Object.assign(body, scopePageSelection());   // a fix is filed only for a rule policy in scope on the Scope page
   const resultEl = document.getElementById('wizardResult');
   const btn = document.getElementById('wizardRequestBtn');
   if (btn) btn.disabled = true;

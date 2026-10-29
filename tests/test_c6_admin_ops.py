@@ -1070,6 +1070,142 @@ def test_a_dry_run_fix_needs_no_scope(fix_route):
     assert r.status_code == 200
 
 
+# The same fix through the four-eyes change queue: filed and applied, the
+# recipe's rule policy must be in scope as for the direct route above.
+
+_Q_CREDS = {"cloud": "production", "vanity_domain": "acme", "client_id": "cid", "client_secret": "never-echoed",
+            "auth_method": "oneapi", "assessor": "Jane Doe"}
+_ZIA_EXTRAS_ONLY = {"scopes": ["zia_extras"], "channels": {}, "from_page": True}
+_Q_OUT_OF_SCOPE = [
+    ("DLP-01", {"name": "q_dlp", "description": "why"}),
+    ("SSL-01", {"name": "q_ssl", "description": "why"}),
+    ("RULE-DESC", {"rule_type": "sslInspectionRules", "rule_id": "7", "description": "d"}),
+    ("RULE-DESC", {"rule_type": "webDlpRules", "rule_id": "7", "description": "d"}),
+]
+_Q_IN_SCOPE = [
+    ("FW-01", dict(GOOD_FW), [("POST", "/zia/firewallFilteringRules")]),
+    ("RULE-DESC", {"rule_type": "firewallFilteringRules", "rule_id": "7", "description": "d"},
+     [("GET", "/zia/firewallFilteringRules/7"), ("PUT", "/zia/firewallFilteringRules/7")]),
+]
+
+
+class _QueueRaw:
+    """A raw ZIA client that records every call (no tenant)."""
+
+    def __init__(self):
+        self.calls = []
+
+    def get(self, endpoint):
+        self.calls.append(("GET", endpoint))
+        return {"id": 7, "name": "r", "order": 1, "state": "ENABLED"}, 200
+
+    def put(self, endpoint, body):
+        self.calls.append(("PUT", endpoint))
+        return dict(body), 200
+
+    def post(self, endpoint, body):
+        self.calls.append(("POST", endpoint))
+        return {"id": 42}, 200
+
+
+@pytest.fixture
+def queue_world(monkeypatch):
+    """The change queue with every write gate held: write mode on, four-eyes
+    off (no SSO here), a sign-in that records itself, jobs run inline."""
+    import types
+    import pack_jobs
+    raw, signed = _QueueRaw(), []
+    monkeypatch.setenv("DLP_CHECK_FOUR_EYES", "0")
+    monkeypatch.setattr(security, "_write_override", True)
+    monkeypatch.setattr(srv, "writes_enabled", lambda: True)
+    monkeypatch.setattr(srv, "_build_client", lambda req: signed.append(1) or raw)
+
+    def run_now(kind, fn, **kw):
+        fn(lambda *_a, **_k: None, threading.Event())
+        return types.SimpleNamespace(id="job-inline", status="done", kind=kind)
+    monkeypatch.setattr(pack_jobs, "start", run_now)
+    return TestClient(srv.app), raw, signed
+
+
+def _approved_recipe(check_id, criteria):
+    """A fix recipe filed (bypassing the filing route) and approved by a second person."""
+    plan = remediation.plan(check_id, criteria)
+    assert plan["ok"], plan
+    tk, label = srv._cq_tenant(srv._tenant_creds(srv.ChangeRequestApply(**_Q_CREDS)))
+    rec = change_queue.file_request(kind="fix_recipe", tenant=tk, tenant_label=label, title="q", summary={"api_call": 1},
+                                    items=[{"method": plan["method"], "endpoint": plan["endpoint"]}],
+                                    plan_hash=change_queue.recipe_plan_hash(check_id, plan), requested_by="alice@example.com",
+                                    payload={"check_id": check_id, "recipe": check_id, "criteria": criteria})
+    change_queue.decide(rec["id"], "approve", by="bob@example.com")
+    return rec["id"]
+
+
+@pytest.mark.parametrize("check_id,criteria", _Q_OUT_OF_SCOPE, ids=[f"{c[0]}-{c[1].get('rule_type', '')}" for c in _Q_OUT_OF_SCOPE])
+def test_filing_a_fix_whose_policy_is_out_of_scope_is_refused(queue_world, check_id, criteria):
+    """ASVS V4.1.3 · A01:2021 · CWE-863 · WSTG-ATHZ-02: a fix recipe filed in the change queue whose rule policy is not in scope is a 400 and nothing is filed."""
+    # Arrange
+    api, raw, signed = queue_world
+    # Act
+    r = api.post("/api/change-queue/recipe", json=dict(_Q_CREDS, **_ZIA_EXTRAS_ONLY, check_id=check_id, criteria=criteria))
+    # Assert
+    assert r.status_code == 400 and "not in scope" in r.json()["detail"], r.text
+    assert change_queue.list_requests() == [] and signed == [] and raw.calls == [] and "never-echoed" not in r.text
+
+
+@pytest.mark.parametrize("check_id,criteria", _Q_OUT_OF_SCOPE, ids=[f"{c[0]}-{c[1].get('rule_type', '')}" for c in _Q_OUT_OF_SCOPE])
+def test_applying_an_approved_fix_whose_policy_is_out_of_scope_is_refused_before_sign_in(queue_world, check_id, criteria):
+    """ASVS V4.1.3 · A01:2021 · CWE-863 · WSTG-ATHZ-02: applying an approved fix recipe whose rule policy is not in scope is a 400 before sign-in, with no GET, PUT or POST."""
+    # Arrange
+    api, raw, signed = queue_world
+    rid = _approved_recipe(check_id, criteria)
+    # Act
+    r = api.post(f"/api/change-queue/{rid}/apply", json=dict(_Q_CREDS, **_ZIA_EXTRAS_ONLY, confirm=change_queue.CONFIRM_PHRASE))
+    # Assert
+    assert r.status_code == 400 and "not in scope" in r.json()["detail"], r.text
+    assert signed == [] and raw.calls == [] and change_queue.get(rid)["status"] == "approved"
+
+
+def test_applying_an_approved_fix_with_no_scope_selection_is_refused(queue_world):
+    """ASVS V4.1.3 · CWE-863 · CISA SbD deny by default: an apply that sends no Scope selection (and no profile) has nothing in scope, so even a firewall fix is refused before sign-in."""
+    # Arrange
+    api, raw, signed = queue_world
+    rid = _approved_recipe("FW-01", dict(GOOD_FW))
+    # Act
+    r = api.post(f"/api/change-queue/{rid}/apply", json=dict(_Q_CREDS, confirm=change_queue.CONFIRM_PHRASE))
+    # Assert
+    assert r.status_code == 400 and "not in scope" in r.json()["detail"] and signed == [] and raw.calls == []
+
+
+@pytest.mark.parametrize("check_id,criteria,calls", _Q_IN_SCOPE, ids=[c[0] for c in _Q_IN_SCOPE])
+def test_a_fix_in_scope_is_filed_and_applied_through_the_queue(queue_world, check_id, criteria, calls):
+    """ASVS V4.1.3 · CWE-863 · WSTG-BUSL-01: positive control: a fix whose rule policy is in scope is filed, approved and applied, and sends exactly its own calls."""
+    # Arrange
+    api, raw, signed = queue_world
+    filed = api.post("/api/change-queue/recipe", json=dict(_Q_CREDS, **_ZIA_EXTRAS_ONLY, check_id=check_id, criteria=criteria))
+    assert filed.status_code == 200, filed.text
+    rid = filed.json()["request"]["id"]
+    change_queue.decide(rid, "approve", by="bob@example.com")
+    # Act
+    r = api.post(f"/api/change-queue/{rid}/apply", json=dict(_Q_CREDS, **_ZIA_EXTRAS_ONLY, confirm=change_queue.CONFIRM_PHRASE))
+    # Assert
+    assert r.status_code == 200, r.text
+    assert signed == [1] and raw.calls == calls and change_queue.get(rid)["status"] == "applied"
+
+
+def test_the_pages_send_the_scope_selection_when_filing_and_applying_a_fix():
+    """ASVS V4.1.3 · CWE-863 · WSTG-ATHZ-02: the wizard's Request approval and the Change queue's Apply send the Scope page selection the server checks."""
+    # Arrange
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    index = open(os.path.join(root, "static", "index.html"), encoding="utf-8").read()
+    queue = open(os.path.join(root, "static", "report_queue.html"), encoding="utf-8").read()
+    # Act
+    filing = index[index.index("async function wizardRequestApproval"):][:1200]
+    apply_call = next(line for line in queue.splitlines() if "/apply`" in line)
+    # Assert
+    assert "scopePageSelection()" in filing
+    assert "...scopeSelection()" in apply_call and "function scopeSelection()" in queue and "from_page: true" in queue
+
+
 @pytest.mark.parametrize("mod_name", ["proposals", "change_queue"])
 def test_the_store_lock_is_reentrant_in_one_thread(mod_name, tmp_path, monkeypatch):
     """CWE-833 · ASVS V1.11.3: a nested _locked() in the same thread never waits on its own file lock (a deadlock froze the whole server)."""
