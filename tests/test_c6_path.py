@@ -2000,3 +2000,22 @@ def test_the_pack_library_is_read_with_every_file_closed(tmp_path, monkeypatch):
         gc.collect()
     assert [p["policies"] for p in packs] == [[{"name": "R1", "channel": "web"}], []]
     assert not [w for w in seen if issubclass(w.category, ResourceWarning)]
+
+
+def test_5000_connector_rules_on_shared_groups_evaluate_in_under_two_seconds():
+    """ASVS V1.11.3 · CWE-400 · CWE-407: 5,000 connector forwarding rules on 500 source and destination groups and 300 workload groups take under 2 s."""
+    # Arrange
+    rules = [fwd(i, i + 1, f"R{i}", "DIRECT", srcIpGroups=[{"id": 1000 + i % 500}], destIpGroups=[{"id": 2000 + i % 500}],
+                 srcWorkloadGroups=[{"id": 1, "name": "G"}]) for i in range(5000)]
+    data = ztw_data(rules)
+    data["ip_source_groups"] = [[{"id": 1000 + g, "name": f"S{g}", "ipAddresses": [f"10.{g % 250}.{k}.0/24" for k in range(20)]} for g in range(500)]]
+    data["ip_destination_groups"] = [[{"id": 2000 + g, "name": f"D{g}", "addresses": [f"172.16.{k}.0/24" for k in range(20)]} for g in range(500)]]
+    data["workload_groups"] = [[{"id": i, "name": f"G{i}", "expressionJson": {"expressionContainers": [
+        {"tagType": "ATTR", "tagContainer": {"operator": "AND", "tags": [{"key": "Env", "value": "prod"}]}}]}} for i in range(300)]]
+    snap = ztw_snap(data)
+    # Act
+    t0 = time.perf_counter()
+    ev = wp.evaluate(snap, wl(ip="192.168.1.1", tags="Env=dev"), zp.destination("198.51.100.5", "443"))
+    took = time.perf_counter() - t0
+    # Assert
+    assert took < 2.0 and ev["go"] == "zia" and len(ev["walked"]) == 60, took

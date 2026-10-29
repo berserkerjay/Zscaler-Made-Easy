@@ -51,6 +51,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import zia_path_modules
 import zpa_path
 import zpa_reader
 from zpa_reader import as_str, get
@@ -300,27 +301,21 @@ def _refs(v: Any) -> List[Dict[str, str]]:
 
 def _ip_in(ip: str, entries: List[str]) -> Optional[bool]:
     """Whether `ip` is in any IP, CIDR or a-b range entry; None when no
-    entry is an address at all."""
+    entry is an address at all. Each entry is parsed once
+    (zia_path_modules._parse_entry); a range or network of the other
+    address family never holds it."""
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return None
     seen = False
     for e in entries:
-        e = as_str(e)
-        try:
-            if "-" in e:
-                a, b = (ipaddress.ip_address(x.strip()) for x in e.split("-", 1))
-                seen = True
-                if a.version == b.version == addr.version and a <= addr <= b:
-                    return True
-                continue
-            net = ipaddress.ip_network(e, strict=False)
-            seen = True
-            if net.version == addr.version and addr in net:
-                return True
-        except ValueError:
+        e = as_str(e).strip()
+        if zia_path_modules._parse_entry(e) is None:
             continue
+        seen = True
+        if zia_path_modules._ip_rel(addr, e):
+            return True
     return False if seen else None
 
 
@@ -389,12 +384,19 @@ def _names(refs: List[Dict[str, str]], n: int = 4) -> str:
     return ", ".join(items) + (f" and {len(refs) - n} more" if len(refs) > n else "")
 
 
+def _group_index(snap: Dict[str, Any], key: str) -> Dict[str, Dict[str, Any]]:
+    """{id: group} of one IP group list (built once per evaluation)."""
+    return {as_str(get(g, "id")): g for g in _seq(snap.get(key)) if isinstance(g, dict)}
+
+
 def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]], snap: Dict[str, Any], d: Dict[str, Any],
-              ec: Optional[Dict[str, Any]], zpa_seg: Optional[Dict[str, Any]], zpa_read: bool) -> List[Dict[str, str]]:
-    """Each criterion of a forwarding rule with its state."""
+              ec: Optional[Dict[str, Any]], zpa_seg: Optional[Dict[str, Any]], zpa_read: bool,
+              index: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None) -> List[Dict[str, str]]:
+    """Each criterion of a forwarding rule with its state. `index` holds the
+    IP source and destination groups by id (evaluate builds it once)."""
     crit: List[Dict[str, str]] = []
-    src_groups = {as_str(get(g, "id")): g for g in _seq(snap.get("ip_source_groups")) if isinstance(g, dict)}
-    dst_groups = {as_str(get(g, "id")): g for g in _seq(snap.get("ip_destination_groups")) if isinstance(g, dict)}
+    index = index or {k: _group_index(snap, k) for k in ("ip_source_groups", "ip_destination_groups")}
+    src_groups, dst_groups = index["ip_source_groups"], index["ip_destination_groups"]
     def source(ips: List[str], refs: List[Dict[str, str]]) -> Tuple[Optional[bool], bool]:
         entries, missing = list(ips), False
         for ref in refs:
@@ -420,8 +422,11 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
         state = "match" if hit else ("unknown" if hit is None or missing else "nomatch")
         crit.append({"name": "Source IP " + ", ".join(r["src_ips"][:3] + group_words), "state": state})
     if r["src_workload_groups"]:
-        want = {(_lc(x["id"]), _lc(x["name"])) for x in r["src_workload_groups"]}
-        rel = [g for g in groups if (_lc(g["id"]), _lc(g["name"])) in want or _lc(g["name"]) in {n for _, n in want if n} or (g["id"] and _lc(g["id"]) in {i for i, _ in want})]
+        # A group the rule names by id or by name (both compared lower case).
+        ids = {_lc(x["id"]) for x in r["src_workload_groups"] if x["id"]}
+        names = {_lc(x["name"]) for x in r["src_workload_groups"] if x["name"]}
+        lowered = index.get("groups") or [(g, _lc(g["id"]), _lc(g["name"])) for g in groups]
+        rel = [g for g, gid, gname in lowered if (gid and gid in ids) or (gname and gname in names)]
         state = "match" if any(g["state"] == "match" for g in rel) else ("unknown" if any(g["state"] == "unknown" for g in rel) or not rel else "nomatch")
         crit.append({"name": f"Source workload group {_names(r['src_workload_groups'])}", "state": state})
     if r["ec_groups"]:
@@ -515,14 +520,16 @@ def evaluate(snap: Dict[str, Any], w: Dict[str, Any], d: Dict[str, Any], zpa_seg
         hops.append(zpa_path.flow_hop("connector", "Connector forwarding", "unknown", reason))
         return {"go": "unknown", "possible": ["zia", "zpa", "direct", "local", "proxy", "drop"], "rule": None, "groups": groups, "connector_group": ec,
                 "modules": mods, "hops": hops, "headline": reason, "impacts": [], "walked": []}
-    norm = order_rules([normalize_rule(r, i) for i, r in enumerate(rules) if isinstance(r, dict)])
+    norm = order_rules([normalize_rule(r, i) for i, r in enumerate(_seq(rules)) if isinstance(r, dict)])
+    index = {k: _group_index(snap, k) for k in ("ip_source_groups", "ip_destination_groups")}
+    index["groups"] = [(g, _lc(g["id"]), _lc(g["name"])) for g in groups]
     walked, cond = [], []
     decided = None
     for r in norm:
         if r["state"] == "DISABLED":
             walked.append({"name": r["name"], "order": r["order"], "status": "disabled"})
             continue
-        crit = _criteria(r, w, groups, snap, d, ec, zpa_seg, zpa_read)
+        crit = _criteria(r, w, groups, snap, d, ec, zpa_seg, zpa_read, index)
         states = {c["state"] for c in crit}
         status = "not_matched" if "nomatch" in states else ("conditional" if "unknown" in states else "matched")
         row = {"name": r["name"], "order": r["order"], "status": status, "method": r["forward_method"], "criteria": crit}
