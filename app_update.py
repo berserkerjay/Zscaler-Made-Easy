@@ -46,6 +46,8 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+import safe_files
+
 GIT_TIMEOUT = 60
 PIP_TIMEOUT = 300
 
@@ -84,10 +86,16 @@ def _out(cp: subprocess.CompletedProcess) -> str:
     return (cp.stdout or "").strip()
 
 
+_URL_USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@'\"]*@")
+
+
 def _err(cp: subprocess.CompletedProcess, default: str = "") -> str:
+    """git's own words for a failure, with the user name and password of
+    any URL replaced: an older git quotes a remote such as
+    https://user:<token>@github.com/... as it was configured."""
     lines = [ln.strip() for ln in ((cp.stderr or "") + "\n" + (cp.stdout or "")).splitlines() if ln.strip()]
     fatal = [ln for ln in lines if ln.lower().startswith(("fatal:", "error:"))]
-    return (fatal[0] if fatal else (lines[-1] if lines else default))[:400]
+    return _URL_USERINFO.sub(r"\1[redacted]@", fatal[0] if fatal else (lines[-1] if lines else default))[:400]
 
 
 INDEX_LOCK_STALE_S = 20   # a lock older than this was left behind by an interrupted git
@@ -123,10 +131,12 @@ def unmerged_files(app_dir: str) -> List[str]:
     """Paths git holds in a conflicted (unmerged) state: what a stash pop
     that hit a conflict leaves behind. While any exist, git refuses to
     stash or pull."""
-    cp = _git(app_dir, "diff", "--name-only", "--diff-filter=U")
+    # -z: a path with a non-ASCII character comes back as it is, not
+    # quoted ("caf\303\251.py"), so it can be copied aside before a reset.
+    cp = _git(app_dir, "diff", "--name-only", "-z", "--diff-filter=U")
     if cp.returncode != 0:
         return []
-    return [ln.strip() for ln in (cp.stdout or "").splitlines() if ln.strip()]
+    return [p for p in (cp.stdout or "").split("\0") if p.strip()]
 
 
 def recover_unmerged(app_dir: str) -> Optional[Dict[str, Any]]:
@@ -200,6 +210,10 @@ def github_branch_head(branch: str, timeout: int = 10) -> Tuple[Optional[str], O
     a read-only token in DLP_CHECK_GITHUB_TOKEN (fine-grained, Contents:
     read) is needed; it is only ever sent to api.github.com and never
     logged. Returns (sha, error)."""
+    try:
+        branch = valid_branch(branch)   # it goes into the URL: one of BRANCHES only
+    except ValueError as e:
+        return None, str(e)
     repo = os.environ.get("DLP_CHECK_GITHUB_REPO", "").strip() or UPSTREAM_REPO
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         return None, "DLP_CHECK_GITHUB_REPO must look like owner/repository"
@@ -214,8 +228,8 @@ def github_branch_head(branch: str, timeout: int = 10) -> Tuple[Optional[str], O
         msg = str(e).replace(token, "[token]") if token else str(e)
         return None, f"GitHub could not be reached ({type(e).__name__}: {msg[:160]}); on a network with TLS inspection see INSTALL.md (certs folder)"
     if r.status_code == 200:
-        sha = str((r.json() or {}).get("sha") or "")[:7]
-        return (sha or None), (None if sha else "GitHub's answer had no commit")
+        sha = _api_sha(r)
+        return (sha[:7] or None), (None if sha else "GitHub's answer had no commit")
     if r.status_code in (401, 403, 404) and not token:
         return None, ("The repository is private, so the update check needs a read-only GitHub token: create a fine-grained token with "
                       "Contents: read on " + repo + " and put DLP_CHECK_GITHUB_TOKEN=<token> in the .env file next to docker-compose.yml, "
@@ -223,6 +237,21 @@ def github_branch_head(branch: str, timeout: int = 10) -> Tuple[Optional[str], O
     if r.status_code in (401, 403, 404):
         return None, f"GitHub refused the token (HTTP {r.status_code}): it must be able to read {repo} (Contents: read) and not be expired."
     return None, f"GitHub answered HTTP {r.status_code}"
+
+
+_SHA_RE = re.compile(r"[0-9a-f]{7,64}")
+
+
+def _api_sha(r: Any) -> str:
+    """The commit sha in a GitHub commits answer, or "" when the answer is
+    not JSON, not an object, or its sha is not a hex commit id (an
+    answer is data from the network: it never raises here)."""
+    try:
+        data = r.json()
+    except Exception:  # noqa: BLE001 - not JSON
+        return ""
+    sha = data.get("sha") if isinstance(data, dict) else None
+    return sha.lower() if isinstance(sha, str) and _SHA_RE.fullmatch(sha.lower()) else ""
 
 
 def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout: int = 10) -> Dict[str, Any]:
@@ -271,13 +300,14 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
             return {"checked": False, "reason": f"GitHub refused DLP_CHECK_GITHUB_TOKEN (HTTP {r.status_code}): it must be able to read "
                                                 f"{owner}/{repo} (Contents: read) and not be expired"}
         r.raise_for_status()
-        api_sha = (r.json() or {}).get("sha") or ""
+        api_sha = _api_sha(r)
     except Exception as e:  # noqa: BLE001
         msg = str(e).replace(token, "[token]") if token else str(e)
         return {"checked": False, "reason": f"could not reach the GitHub API: {type(e).__name__}: {msg[:200]}"}
     if not api_sha:
         return {"checked": False, "reason": "the GitHub API response had no commit sha"}
-    return {"checked": True, "match": api_sha.startswith(local_sha) or local_sha.startswith(api_sha),
+    local_sha = str(local_sha or "").strip().lower()
+    return {"checked": True, "match": bool(local_sha) and (api_sha.startswith(local_sha) or local_sha.startswith(api_sha)),
             "api_sha": api_sha, "local_sha": local_sha, "owner": owner, "repo": repo}
 
 
@@ -490,7 +520,8 @@ def migrate_settings(app_dir: str, dirty: List[str]) -> Tuple[List[str], List[st
         lines_to_add = [f"set {k}={v}" for k, v in found if k not in existing]
         if lines_to_add:
             header = "" if os.path.isfile(ls_path) else ("@echo off\nREM Machine-specific settings (git-ignored; survive updates). Created by the updater.\n")
-            with open(ls_path, "a", encoding="utf-8") as f:
+            # Owner-only: the settings moved here can include ZSCALER_CLIENT_SECRET.
+            with safe_files.private_open(ls_path, "a", encoding="utf-8") as f:
                 if header:
                     f.write(header)
                 f.write(f"\nREM Moved from {rel} by the updater on {time.strftime('%Y-%m-%d %H:%M')}\n")
@@ -512,6 +543,18 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     checked-out one by default, else main), pull fast-forward only,
     install requirements. Never raises; every step is reported in
     `steps` and a failure sets `error`. `updated` is True when HEAD moved."""
+    try:
+        return _update(app_dir, install_deps, python, branch)
+    except Exception as e:  # noqa: BLE001 - git vanished, timed out or the folder went away mid-update
+        return {"ok": False, "updated": False, "before": None, "after": None, "error":
+                f"The update stopped unexpectedly ({type(e).__name__}). Nothing was deleted; edits set aside before the stop "
+                "are in git stash (run  git stash list  in the app folder). Run the update again.",
+                "steps": [{"name": "Update", "ok": False, "detail": type(e).__name__, "soft": False}], "deps_ok": None,
+                "restart_required": False, "preserved": [], "migrated": [], "recovered": None, "branch": None,
+                "verified": None, "verify_skipped": None}
+
+
+def _update(app_dir: str, install_deps: bool, python: Optional[str], branch: Optional[str]) -> Dict[str, Any]:
     steps: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {"ok": False, "updated": False, "before": None, "after": None, "steps": steps, "error": None,
                               "deps_ok": None, "restart_required": False, "preserved": [], "migrated": [], "recovered": None,
@@ -619,7 +662,13 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
             return result
         step(f"Switch to {target}", True, f"was on {st.get('branch')}")
 
-    cp = _git(app_dir, "pull", "--ff-only", "origin", target, timeout=GIT_TIMEOUT)
+    try:
+        cp = _git(app_dir, "pull", "--ff-only", "origin", target, timeout=GIT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        result["error"] = "GitHub did not finish sending the update within 60 seconds. Check the connection or proxy, then try again."
+        step("Pull latest code", False, result["error"])
+        _restore(app_dir, stashed, step, result)
+        return result
     if cp.returncode != 0:
         msg = _err(cp, "git pull failed")
         result["error"] = "Pull refused: " + msg + _auth_hint(msg) + _index_hint(msg)
@@ -793,7 +842,16 @@ def restart_command(app_dir: str) -> List[str]:
     # The same interpreter that runs this server (the .venv one when it was
     # started by start.sh), detached, with its pid recorded the way
     # `./start.sh --background` records it, so ./stop.sh can stop it.
-    return ["sh", "-c", f'sleep 3; cd "{app_dir}" || exit 1; nohup "{sys.executable}" "{server}" >> "{log}" 2>&1 & echo $! > "{pid}"']
+    # Each path is escaped for sh's double quotes, so a folder name with a
+    # quote, $( ) or ` in it is only ever a path, never script text.
+    app, exe, server, log, pid = (_sh_dq(p) for p in (app_dir, sys.executable, server, log, pid))
+    return ["sh", "-c", f'sleep 3; cd "{app}" || exit 1; nohup "{exe}" "{server}" >> "{log}" 2>&1 & echo $! > "{pid}"']
+
+
+def _sh_dq(text: str) -> str:
+    """`text` for use inside sh double quotes: the four characters sh still
+    reads there (backslash, double quote, dollar, backtick) are escaped."""
+    return re.sub(r'([\\"$`])', r"\\\1", text)
 
 
 def manual_restart_hint(app_dir: str) -> str:

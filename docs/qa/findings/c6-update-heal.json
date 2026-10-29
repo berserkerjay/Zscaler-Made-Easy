@@ -1,0 +1,434 @@
+{
+ "area": "update-heal",
+ "title": "Self-heal, in-app update, upstream and SDK update checks, standalone start",
+ "files": [
+  "self_heal.py",
+  "app_update.py",
+  "zscaler_update_check.py",
+  "upstream_check.py",
+  "standalone_main.py"
+ ],
+ "standards": [
+  "ASVS V1.14.1",
+  "ASVS V5.1.3",
+  "ASVS V5.3.8",
+  "ASVS V7.4.1",
+  "ASVS V8.3.4",
+  "ASVS V10.3.2",
+  "ASVS V11.1.6",
+  "ASVS V12.1.1",
+  "ASVS V12.3.1",
+  "ASVS V12.6.1",
+  "ASVS V14.1.3",
+  "SLSA v1.0",
+  "NIST SSDF PW.6",
+  "OWASP A01:2021",
+  "OWASP A03:2021",
+  "OWASP A04:2021",
+  "OWASP A05:2021",
+  "OWASP A08:2021",
+  "OWASP A10:2021"
+ ],
+ "coverage": {
+  "before": 79.0,
+  "after": 85.0
+ },
+ "checks": [
+  {
+   "id": "self-heal-never-deletes",
+   "what": "A damaged store is moved aside (two in one second keep both), never deleted",
+   "standard": "ASVS V12.3.1 \u00b7 CWE-404",
+   "result": "pass"
+  },
+  {
+   "id": "self-heal-last-good",
+   "what": "Restore from the last-good copy; the copy is 0600 whatever the umask",
+   "standard": "ASVS V8.3.4 \u00b7 CWE-276",
+   "result": "pass"
+  },
+  {
+   "id": "self-heal-locks-live",
+   "what": "A held run lock or fresh index.lock is left alone",
+   "standard": "ASVS V11.1.6 \u00b7 CWE-367",
+   "result": "pass"
+  },
+  {
+   "id": "self-heal-lock-race",
+   "what": "Clearing a stale owner note cannot erase a live run's note",
+   "standard": "ASVS V11.1.6 \u00b7 CWE-367",
+   "result": "fixed"
+  },
+  {
+   "id": "self-heal-unattended",
+   "what": "Unattended heal is refused whatever DLP_CHECK_SELF_HEAL_AUTO_APPLY says",
+   "standard": "ASVS V1.14.1 \u00b7 CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "self-heal-oracles",
+   "what": "interval_minutes and _ts oracle tables",
+   "standard": "ASVS V5.1.3 \u00b7 CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "update-ff-only",
+   "what": "Only git pull --ff-only; the branch is an allowlist before git runs (option-looking names refused)",
+   "standard": "ASVS V5.3.8 \u00b7 CWE-88",
+   "result": "pass"
+  },
+  {
+   "id": "update-fork",
+   "what": "A fork or mirror is never reported as verified",
+   "standard": "ASVS V10.3.2 \u00b7 CWE-494 \u00b7 SLSA v1.0",
+   "result": "pass"
+  },
+  {
+   "id": "update-network",
+   "what": "Fetch and pull timeouts and git vanishing are plain errors",
+   "standard": "ASVS V7.4.1 \u00b7 CWE-755",
+   "result": "fixed"
+  },
+  {
+   "id": "update-api-json",
+   "what": "GitHub answers that are not JSON, not objects or not hex",
+   "standard": "ASVS V5.1.3 \u00b7 CWE-20",
+   "result": "fixed"
+  },
+  {
+   "id": "update-secrets",
+   "what": "Tokens and URL credentials never in update results",
+   "standard": "ASVS V8.3.4 \u00b7 CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "update-perms",
+   "what": "local_settings.bat is 0600",
+   "standard": "ASVS V8.3.4 \u00b7 CWE-276",
+   "result": "fixed"
+  },
+  {
+   "id": "update-cmd-injection",
+   "what": "The relauncher cannot be changed by the folder name",
+   "standard": "ASVS V5.3.8 \u00b7 CWE-78",
+   "result": "fixed"
+  },
+  {
+   "id": "update-standalone",
+   "what": "The standalone edition never updates or restarts itself",
+   "standard": "ASVS V10.3.2 \u00b7 CWE-494",
+   "result": "pass"
+  },
+  {
+   "id": "standalone-loopback",
+   "what": "Loopback, token gate on, read-only, pinned token and container flag dropped, from env and from the settings file",
+   "standard": "ASVS V14.1.3 \u00b7 CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "standalone-no-code",
+   "what": "-c text other than the regex worker and unknown options are refused",
+   "standard": "ASVS V5.2.4 \u00b7 CWE-94",
+   "result": "pass"
+  },
+  {
+   "id": "standalone-settings-file",
+   "what": "BOM, non-UTF-8 and oversized settings files",
+   "standard": "ASVS V7.4.1 \u00b7 CWE-755 \u00b7 CWE-400",
+   "result": "fixed"
+  },
+  {
+   "id": "standalone-ports",
+   "what": "ZSCALER_PORT oracle and the 65535 boundary",
+   "standard": "ASVS V5.1.3 \u00b7 CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "outbound-ssrf",
+   "what": "Every upstream request goes to an allowlisted https host (existing SSRF suite plus the online run)",
+   "standard": "ASVS V12.6.1 \u00b7 CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "outbound-size",
+   "what": "Response size cap, with the boundary at the cap",
+   "standard": "ASVS V12.1.1 \u00b7 CWE-400",
+   "result": "fixed"
+  },
+  {
+   "id": "outbound-json",
+   "what": "Bad JSON and wrong shapes from PyPI and the registry",
+   "standard": "ASVS V5.1.3 \u00b7 CWE-20 \u00b7 CWE-755",
+   "result": "fixed"
+  },
+  {
+   "id": "outbound-path",
+   "what": "Version strings from PyPI never become paths",
+   "standard": "ASVS V12.3.1 \u00b7 CWE-22",
+   "result": "fixed"
+  },
+  {
+   "id": "outbound-zip",
+   "what": "Wheel hash checked; zip bomb and damaged wheel refused",
+   "standard": "ASVS V12.1.1 \u00b7 CWE-409 \u00b7 CWE-494",
+   "result": "fixed"
+  },
+  {
+   "id": "data-dir-perms",
+   "what": "The per-user data folder is 0700 even when it already existed; a linked old folder is not followed",
+   "standard": "ASVS V8.3.4 \u00b7 CWE-276 \u00b7 CWE-59",
+   "result": "fixed"
+  },
+  {
+   "id": "self-heal-page-escaping",
+   "what": "report_self_heal.html escapes every tenant-derived string (E())",
+   "standard": "ASVS V5.3.3 \u00b7 CWE-79",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-UPDATE-HEAL-01",
+   "title": "update() raised on a git pull timeout or when git vanished mid-update, so POST /api/app/update answered 500",
+   "severity": "medium",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "update() wraps the run; a pull timeout is a step error and set-aside edits are re-applied",
+   "test": "tests/test_c6_update_heal.py::test_a_pull_that_times_out_is_reported_and_the_edits_are_put_back",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-02",
+   "title": "github_branch_head() raised on a GitHub answer that was not JSON or not an object, returned a non-hex 'sha', and put an unvalidated branch into the URL",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "branch checked with valid_branch(); the sha must be hex; any bad answer is (None, reason)",
+   "test": "tests/test_c6_update_heal.py::test_github_branch_head_reads_a_bad_answer_as_no_commit",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-03",
+   "title": "verify_against_github_api() raised on a non-string sha and matched an empty local commit as verified",
+   "severity": "low",
+   "cwe": "CWE-345",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "sha parsed by _api_sha(); an empty local commit never matches (fail closed)",
+   "test": "tests/test_c6_update_heal.py::test_verify_never_matches_an_empty_local_commit",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-04",
+   "title": "local_settings.bat, which receives ZSCALER_CLIENT_SECRET when settings are moved out of a start script, was created with the umask (0644)",
+   "severity": "medium",
+   "cwe": "CWE-276",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "written through safe_files.private_open (0600, an existing file narrowed)",
+   "test": "tests/test_c6_update_heal.py::test_settings_moved_to_local_settings_are_owner_only",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-05",
+   "title": "The POSIX relauncher put the app folder into sh -c script text, so a folder named with $( ), ` or a quote ran commands on restart",
+   "severity": "medium",
+   "cwe": "CWE-78",
+   "asvs": "V5.3.8",
+   "status": "fixed",
+   "fix": "each path is escaped for sh double quotes (_sh_dq: backslash, \", $ and `)",
+   "test": "tests/test_c6_update_heal.py::test_a_folder_name_cannot_change_what_the_relauncher_runs",
+   "commit": "0d13448"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-06",
+   "title": "recover_unmerged() read conflicted paths without -z, so a non-ASCII file name came back quoted, was not copied aside, and was reset",
+   "severity": "low",
+   "cwe": "CWE-404",
+   "asvs": "V12.3.1",
+   "status": "fixed",
+   "fix": "git diff --name-only -z",
+   "test": "tests/test_c6_update_heal.py::test_a_conflicted_file_with_a_non_ascii_name_is_copied_aside_before_the_reset",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-07",
+   "title": "git error text shown in update results could quote a credentialed remote URL (older git)",
+   "severity": "low",
+   "cwe": "CWE-532",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "_err() redacts URL user-info",
+   "test": "tests/test_c6_update_heal.py::test_a_git_error_quoting_a_credentialed_remote_never_shows_the_token",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-08",
+   "title": "_safe_get() read every answer whole into memory with no size cap",
+   "severity": "medium",
+   "cwe": "CWE-400",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "streamed and capped at MAX_BODY_BYTES (64 MB); a larger or larger-declared body is refused",
+   "test": "tests/test_c6_update_heal.py::test_an_answer_larger_than_the_cap_is_refused_not_read",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-09",
+   "title": "The update check's network diagnostics and fetch errors echoed proxy URLs with user:password (HTTPS_PROXY, http_proxy, ZSCALER_UPDATE_PROXY)",
+   "severity": "medium",
+   "cwe": "CWE-200",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "redact_url_credentials() on every proxy value and error message",
+   "test": "tests/test_c6_update_heal.py::test_the_network_diagnostics_never_show_a_proxy_password",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-10",
+   "title": "An update cache that was not a JSON object (or had a non-object entry) turned every source into an internal error",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "_load_cache() keeps only object entries",
+   "test": "tests/test_c6_update_heal.py::test_a_cache_file_that_is_not_the_apps_shape_starts_a_new_baseline",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-11",
+   "title": "_check_pypi() raised on a PyPI answer in the wrong shape",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "shape checked; status error with plain words",
+   "test": "tests/test_c6_update_heal.py::test_a_pypi_answer_in_the_wrong_shape_is_a_plain_error",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-12",
+   "title": "An existing per-user data folder (an older version's, or the old name moved into place) kept 0755; in the standalone edition it holds the UI token, profiles and the audit log",
+   "severity": "medium",
+   "cwe": "CWE-276",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "data_dir() narrows an owned, non-link folder to 0700",
+   "test": "tests/test_c6_update_heal.py::test_an_existing_world_readable_data_folder_is_narrowed_to_owner_only",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-13",
+   "title": "download_sdk() used a version string from PyPI's answer as a URL segment and as the extraction folder (../ escaped the work folder)",
+   "severity": "medium",
+   "cwe": "CWE-22",
+   "asvs": "V12.3.1",
+   "status": "fixed",
+   "fix": "valid_version() (PEP 440 characters only) before any request or path; malformed release keys ignored",
+   "test": "tests/test_c6_update_heal.py::test_download_sdk_refuses_a_version_that_is_not_one",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-14",
+   "title": "download_sdk() unpacked a wheel with no cap on members or unpacked size",
+   "severity": "low",
+   "cwe": "CWE-409",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "MAX_WHEEL_MEMBERS and MAX_WHEEL_UNPACKED checked before extractall",
+   "test": "tests/test_c6_update_heal.py::test_download_sdk_refuses_a_wheel_that_unpacks_past_the_cap",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-15",
+   "title": "pypi_releases(), registry_latest() and download_sdk() raised on JSON of another shape, deep nesting or a damaged wheel",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "shape checks; (None, reason) results",
+   "test": "tests/test_c6_update_heal.py::test_pypi_releases_reads_the_wrong_shape_as_an_error",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-16",
+   "title": "The standalone edition crashed at start with a traceback on a local_settings.env that is not UTF-8 (UTF-16 from Notepad) and glued a UTF-8 BOM to the first key",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "read as utf-8-sig; a file that is not text is skipped",
+   "test": "tests/test_c6_update_heal.py::test_a_settings_file_that_is_not_text_does_not_stop_the_start",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-17",
+   "title": "local_settings.env was read whole with no size cap",
+   "severity": "info",
+   "cwe": "CWE-400",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "MAX_SETTINGS_BYTES (256 KB); larger files are ignored",
+   "test": "tests/test_c6_update_heal.py::test_a_settings_file_far_larger_than_any_is_not_read",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-18",
+   "title": "check_locks() cleared a stale owner note by truncating the file by name after the check, erasing the note of a run that took the lock in between",
+   "severity": "low",
+   "cwe": "CWE-367",
+   "asvs": "V11.1.6",
+   "status": "fixed",
+   "fix": "_clear_owner_note_if_free() truncates only while holding the flock",
+   "test": "tests/test_c6_update_heal.py::test_a_run_that_took_the_lock_after_the_check_keeps_its_owner_note",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-19",
+   "title": "check_locks() removes a run lock that is still flock-held when the PID in its note is not alive here (a holder in another PID namespace sharing the data folder would lose its lock)",
+   "severity": "info",
+   "cwe": "CWE-667",
+   "asvs": "V11.1.6",
+   "status": "accepted",
+   "fix": "kept: the designed case is an orphaned fd inherited by a child of a crashed run, pinned by tests/test_self_heal.py::test_stale_run_lock_whose_owner_is_gone_is_released; the container and a local install do not share a data folder by default",
+   "test": "tests/test_self_heal.py::test_stale_run_lock_whose_owner_is_gone_is_released",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-20",
+   "title": "The updater installs requirements.lock from the pulled tree; a package without a wheel would be built from its hashed sdist",
+   "severity": "info",
+   "cwe": "CWE-494",
+   "asvs": "V10.3.2",
+   "status": "accepted",
+   "fix": "kept: --require-hashes --no-deps pins every artifact by SHA-256, and the pulled tree is the code the app runs next anyway; --only-binary would break platforms without wheels",
+   "test": "tests/test_app_update.py::test_status_and_fast_forward_update",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-21",
+   "title": "check_permissions() follows symbolic links when it narrows a store's mode",
+   "severity": "info",
+   "cwe": "CWE-59",
+   "asvs": "V12.3.1",
+   "status": "accepted",
+   "fix": "kept: the targets live in the 0700 data folder and only files owned by this user are changed",
+   "test": "tests/test_self_heal.py::test_permissions_on_secrets_and_stores_are_set_back_to_owner_only",
+   "commit": "15e5653"
+  },
+  {
+   "id": "C6-UPDATE-HEAL-22",
+   "title": "docs/SECURITY_TESTING.md is stale after the new tests' standards docstrings (tests/test_security_test_matrix.py fails)",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.1.1",
+   "status": "open",
+   "fix": "regenerate with python tools/security_test_matrix.py (file reserved to the integrator)",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "0d13448",
+   "proposed_patch": "Generated file: run `python tools/security_test_matrix.py` on the integration branch after merging; it rewrites docs/SECURITY_TESTING.md from the test docstrings."
+  }
+ ],
+ "tests_added": 136
+}
