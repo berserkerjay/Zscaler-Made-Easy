@@ -740,6 +740,48 @@ _BROAD = re.compile(r"^\*?\.?(\*|\*\.\w{2,3}|\w{2,3})$")
 PAC_SAMPLES = ("https://drive.google.com/", "https://www.dropbox.com/", "https://mail.google.com/", "https://chatgpt.com/",
                "https://www.example.com/", "http://intranet/", "https://10.1.2.3/")
 
+# A PAC pac_eval refuses (a regular expression, an array, a loop, switch...)
+# is still read from its text, as before pac_eval: its string returns and
+# the conditions in the lines just above each DIRECT. Text only, never run.
+_PAC_RETURN = re.compile(r"return\s*(['\"])(.*?)\1", re.I | re.S)
+_PAC_COND_FN = re.compile(r"\b(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet|isPlainHostName)\s*\(([^()]*)\)", re.I)
+_PAC_ISINNET = re.compile(r"isInNet\s*\(((?:[^()]|\([^()]*\))*)\)", re.I)
+_PAC_STR = re.compile(r"['\"]([^'\"]+)['\"]")
+_PAC_FN_NAMES = {"shexpmatch": "shExpMatch", "dnsdomainis": "dnsDomainIs", "localhostordomainis": "localHostOrDomainIs",
+                 "isinnet": "isInNet", "isplainhostname": "isPlainHostName"}
+
+
+def _pac_text_reading(body: str) -> Dict[str, Any]:
+    """The text reading of a PAC pac_eval could not evaluate, in
+    pac_eval.inspect's shape (returns, direct_rules, isinnet_on_host,
+    calls): every literal answer in order, and every condition within four
+    lines above a `return "DIRECT"`. Bounded as the evaluator is: the first
+    pac_eval.MAX_SOURCE characters, each line up to MAX_LINE_CHARS."""
+    import pac_eval
+    lines = [ln[:MAX_LINE_CHARS] for ln in body[:pac_eval.MAX_SOURCE].splitlines()]
+    returns = [m.group(2).strip() for m in _PAC_RETURN.finditer("\n".join(lines))]
+    rules: List[Dict[str, Any]] = []
+    seen = set()
+    for i, line in enumerate(lines):
+        if not re.search(r"return\s*['\"]\s*DIRECT\s*['\"]", line, re.I):
+            continue
+        window = "\n".join(lines[max(0, i - 4): i + 1])
+        found = [("isInNet", s[0]) for s in (_PAC_STR.findall(a) for a in _PAC_ISINNET.findall(window)) if s]
+        for fn, args in _PAC_COND_FN.findall(window):
+            fn = _PAC_FN_NAMES[fn.lower()]
+            if fn == "isPlainHostName":
+                found.append((fn, ""))
+            elif fn != "isInNet":
+                found += [(fn, s) for s in _PAC_STR.findall(args)]
+        for fn, value in found:
+            if (fn, value) not in seen:
+                seen.add((fn, value))
+                rules.append({"fn": fn, "value": value, "line": i + 1})
+    text = "\n".join(lines)
+    calls = {c for c in ("myIpAddress", "isResolvable") if re.search(rf"\b{c}\s*\(", text)}
+    return {"returns": returns, "direct_rules": rules, "isinnet_on_host": bool(re.search(r"isInNet\s*\(\s*host\s*,", text, re.I)),
+            "calls": calls}
+
 
 def analyze_pac(name: str, text: str) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
@@ -761,15 +803,17 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                                 "Test in a browser: about:policies or the OS proxy settings show a PAC parse error."], "evidence": []})
     import pac_eval
     info = pac_eval.inspect(body)
-    if not info["ok"]:
+    text_only = not info["ok"]
+    if text_only:
         findings.append({"severity": "medium", "title": "The PAC could not be evaluated safely",
                          "what": f"The app {info['error']}.",
-                         "means": "PAC files are read here without running them, and only the subset PAC files normally use is understood. This file uses something outside it, so its bypasses were not listed and its answers were not checked.",
+                         "means": "PAC files are read here without running them, and only the subset PAC files normally use is understood. This file uses something outside it, so its answers were not checked for any destination; its answers and bypasses below were read from the text only.",
                          "do": ["Test the PAC in a browser (or Client Connector) and read its bypasses by hand.",
                                 "Prefer plain if / else with shExpMatch, dnsDomainIs and isInNet: they are easier to review and faster for the browser."], "evidence": []})
+        info = dict(_pac_text_reading(body), ok=False, error=info["error"])
     returns = [r for r in info["returns"]]
     literal = [r.strip() for r in returns if r is not None]
-    if info["ok"] and not returns:
+    if not returns and (info["ok"] or not re.search(r"\breturn\b", body)):
         findings.append({"severity": "critical", "title": "No return statement: the PAC decides nothing",
                          "what": "FindProxyForURL never returns a proxy string.",
                          "means": "Every request gets an undefined answer and the browser goes direct.",
@@ -834,7 +878,7 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                          "do": ["Ask why each one exists; most were added years ago for a problem that a Zscaler SSL exemption or a cloud-app policy now solves without a full bypass.",
                                 "Prefer narrower fixes: an SSL inspection exemption for a pinned app, a Cloud App Control rule, or a ZCC app-profile bypass limited to the exact host."],
                          "evidence": [f"line {b['line']}: {b['kind']}({b['value']}) [{b['risk']}]" for b in risky[:8]]})
-    if info["ok"] and not any(b["kind"] == "plain host names" for b in bypasses) and not any(b["kind"] == "isInNet" and _PRIVATE_NET.match(b["value"]) for b in bypasses):
+    if not any(b["kind"] == "plain host names" for b in bypasses) and not any(b["kind"] == "isInNet" and _PRIVATE_NET.match(b["value"]) for b in bypasses):
         findings.append({"severity": "low", "title": "No bypass for private addresses or plain host names",
                          "what": "The PAC does not send RFC 1918 ranges or single-label intranet names DIRECT.",
                          "means": "Intranet sites and printers would be sent to Zscaler, which cannot reach them, so they break. Zscaler's reference PAC starts with these bypasses.",

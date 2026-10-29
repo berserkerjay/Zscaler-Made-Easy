@@ -87,6 +87,8 @@ def _read() -> Dict[str, Any]:
         return {"version": 1, "profiles": {}}
     data.setdefault("version", 1)
     data.setdefault("profiles", {})
+    if not isinstance(data.get("snapshots", {}), dict):
+        data["snapshots"] = {}   # not a snapshot list this app wrote: ignored, never a crash (its files are left alone)
     if _upgrade_classic_profiles(data):
         _write(data)
     return data
