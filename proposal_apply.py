@@ -128,12 +128,18 @@ def preview(client, tenant: str, pid: str, *, direction: str = "apply") -> Dict[
         else:
             before = ((p.get("applied") or {}).get("before") or {}).get(str(row["rule_id"])) if p.get("applied") else None
             want = norm(before) if before is not None else norm((p.get("rollback") or {}).get("to"))
-            row.update({"current": now, "to": want})
+            set_to = norm(c.get("to")) if c.get("to") is not None else None   # what the apply left the rule holding
+            row.update({"current": now, "to": want, "expected": set_to})
             if want is None:
                 row.update({"ok": False, "why": "no recorded value to roll back to"})
                 ok = False
             elif now == want:
                 row.update({"ok": True, "noop": True, "why": f"{field} is already {want}"})
+            elif set_to is not None and now != set_to:
+                # Only while the rule still holds what the apply set: a later change is someone else's, and is kept.
+                row.update({"ok": False, "why": f"{field} is {now} in the tenant, not {set_to} as the apply left it: it was changed since, "
+                                                "so the rollback leaves it as it is (roll back in the ZIA portal if still wanted)"})
+                ok = False
             else:
                 row.update({"ok": True})
         steps.append(row)
@@ -189,6 +195,9 @@ def _execute_keyed(client, tenant: str, pid: str, *, direction: str, writes_enab
         rule, err = read_rule(client, s["channel"], rule_id=s["rule_id"], name=s["name"])
         if err:
             row.update({"result": "failed", "why": err}); failed = True; results.append(row); continue
+        if current_value(rule, field) != s.get("current"):   # re-read right before the write: it moved since the preview
+            row.update({"result": "failed", "why": f"{field} is now {current_value(rule, field)}, not {s.get('current')} as previewed: "
+                                                   "left as it is; preview again"}); failed = True; results.append(row); continue
         before[str(s["rule_id"])] = current_value(rule, field)
         if log:
             log(f"{direction}: {pc.label(s['channel'])} rule '{s['name']}' {field} {row['current']} → {row['to']}")

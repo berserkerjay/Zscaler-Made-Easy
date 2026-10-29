@@ -546,7 +546,20 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
     if _bool(spec, "allow_in_zia"):
         _plan_allow(client, P, n, apps, parts, say, cancel)
     P.p["warnings"].append("Then, in the AI Guard portal: " + " ".join(s.replace("In the AI Guard portal, ", "") for s in ag.PORTAL_STEPS[:2]))
+    _typed_when_enforcing(P, any(g["target"].get("op") in ("create", "update") and KINDS[g["target"]["kind"]].get("channel") is not None
+                                 or g["target"]["kind"] == "forwarding_rule" for g in P.p["groups"]))
     return P.p
+
+
+def _typed_when_enforcing(P: "_Plan", enforcing: bool) -> None:
+    """A plan that turns enforcement on (it creates or enables ZIA rules that
+    change traffic once activated, or a blocking detection policy) asks for
+    its typed phrase whatever the count of changes (admin_ops._finish
+    `confirm_always`), as the ZIA baseline does for a rule it creates or
+    turns on. Monitor-only plans keep the count rule."""
+    changes = sum(1 for u in P.p["items"] if u["status"] == "change")
+    if enforcing and changes:
+        P.p["confirm_always"] = f"APPLY {changes} CHANGE{'' if changes == 1 else 'S'}"
 
 
 _STOP_WEB_USE = re.compile(r"^(DENY|BLOCK|CAUTION|ISOLATE)_AI_ML_WEB_USE$")
@@ -755,6 +768,7 @@ def _plan_policy(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cance
                    step={"op": "update", "id": ag.get(exr, "id"), "set": setv, "expect": cur, "restore": cur, "check": {"policy_id": pref, "enabled": True}})
     if mode == "monitor":
         P.p["notes"].append("Monitor mode: AI Guard detects and logs; nothing is blocked. Preview again with Block once the detections look right.")
+    _typed_when_enforcing(P, mode != "monitor")
     P.p["warnings"].append("In the AI Guard portal, Tenant Settings > Security: turn on Store Prompts/Responses to see what was detected.")
     return P.p
 

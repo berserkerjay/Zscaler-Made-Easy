@@ -1184,10 +1184,11 @@ def _halt_or_fail(run: Any, units: List[Dict[str, Any]], err: Optional[str], wha
 
 
 def _actor() -> Optional[str]:
+    """Who runs this build: the job's actor, or on the synchronous route the
+    actor its audit scope names (dlp_api_server._as_actor). A key is bound
+    to that person, so another writer holding the token cannot reveal it."""
     try:
-        import pack_jobs
-        job = pack_jobs.current()
-        return job.actor if job is not None else None
+        return ops.audit_context().get("actor") or None
     except Exception:  # noqa: BLE001
         return None
 

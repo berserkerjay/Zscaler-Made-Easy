@@ -186,6 +186,28 @@ def writes_enabled() -> bool:
     return os.environ.get("ENABLE_WRITE_ACTIONS") == WRITE_CONFIRM_PHRASE
 
 
+def typed_phrase_matches(typed: object, phrase: object) -> bool:
+    """Is `typed` the confirmation `phrase` a write asks for? Surrounding
+    spaces are ignored and letters compare case-insensitively, one character
+    for one character: a character matches only when it is the same, or its
+    upper AND lower case forms are the same (so 'e' matches 'E', 'é' 'É').
+    Deliberately no NFKC or other compatibility folding: a look-alike that
+    str.upper() alone would turn into the phrase (dotless 'ı', long 'ſ',
+    the 'ﬁ' ligature) or that NFKC would (full-width letters and digits,
+    the Kelvin sign) is refused, so the phrase is typed as it is shown.
+    Only canonical composition (NFC) is applied, so an accent typed as a
+    combining mark is the same character. An empty, blank or non-text
+    phrase or answer never matches: there is no way past by sending nothing."""
+    import unicodedata
+    if not isinstance(typed, str) or not isinstance(phrase, str):
+        return False
+    want = unicodedata.normalize("NFC", phrase).strip()
+    got = unicodedata.normalize("NFC", typed).strip()
+    if not want or len(got) != len(want):
+        return False
+    return all(a == b or (a.upper() == b.upper() and a.lower() == b.lower()) for a, b in zip(got, want))
+
+
 def write_enable_hint() -> str:
     """How to start the server with writes on, for where it runs: the
     container (a .env setting), Windows (the start script) or Mac/Linux."""

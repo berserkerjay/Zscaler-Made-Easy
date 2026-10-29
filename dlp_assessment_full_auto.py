@@ -339,6 +339,22 @@ class _RateLimiter:
             zia_rate.hold(float(seconds), key=s._key, reads=True)
 
 
+def _post_unsure(why: str):
+    """The answer to a POST (a create) that may have been applied although
+    the answer was an error (a read timeout, a reset connection, a 502 or
+    504): it is not sent again, so nothing is created twice. A 429 or a 503
+    (refused before it was handled) and a connection never made are retried."""
+    return ({"error": f"{why}: not sent again, as the create may have been applied; check the tenant (or preview again) before "
+                      "running it again", "status": 0}, 0)
+
+
+def _never_connected(e: BaseException) -> bool:
+    """True when the connection was never made (nothing was sent)."""
+    text = str(e).lower()
+    return isinstance(e, requests.exceptions.ConnectTimeout) or "failed to establish a new connection" in text or \
+        "name or service not known" in text or "nodename nor servname" in text or "connection refused" in text
+
+
 class Client:
     """One signed-in session against the tenant, a bounded response cache and
     a request pacer shared by every check.
@@ -642,14 +658,20 @@ class Client:
                 s.token = None
                 return s._write(method, ep, body, _retry + 1)
             if r.status_code in (502, 503, 504) and _retry < 2:
+                if method == "POST" and r.status_code != 503:
+                    return _post_unsure(f"HTTP {r.status_code}")
                 if not _nap(2 ** _retry, s._stopped):
                     return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
             return ({"error": r.text[:200] if r.text else "error", "status": r.status_code}, r.status_code)
-        except requests.exceptions.Timeout:
+        except requests.exceptions.Timeout as e:
+            if method == "POST" and not isinstance(e, requests.exceptions.ConnectTimeout):
+                return _post_unsure("request timeout")
             if _retry < 2: return s._write(method, ep, body, _retry + 1)
             return ({"error": "request timeout", "status": 0}, 0)
         except requests.exceptions.ConnectionError as e:
+            if method == "POST" and not _never_connected(e):
+                return _post_unsure(f"connection error: {str(e)[:100]}")
             if _retry < 2:
                 if not _nap(2 ** _retry, s._stopped):
                     return _STOPPED
