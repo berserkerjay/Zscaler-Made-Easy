@@ -519,7 +519,7 @@ def _clean_insights(raw: Any) -> List[Dict[str, Any]]:
     for r in _list(raw, "Insights runs", MAX_INSIGHTS_RUNS * 2):
         r = _obj(r, "an Insights run")
         out.append({"at": _clean(r.get("at"), 40, what="a date") or _now(), "by": _clean(r.get("by"), MAX_LABEL, what="a name"),
-                    "counts": _clean_counts(r.get("counts"))})
+                    "counts": _clean_counts(r.get("counts")), **({"imported": True} if r.get("imported") is True else {})})
     return out[-MAX_INSIGHTS_RUNS:]
 
 
@@ -714,7 +714,7 @@ def create(profile_id: Any, creds: Optional[Dict[str, Any]], intake: Any, *, by:
     """Start the profile's POV (refused when it already has one)."""
     path, b = _bind(profile_id, creds)
     raw = intake if isinstance(intake, dict) else {}
-    template = get_template(template_id) if template_id else None
+    template = _usable_template(get_template(template_id)) if template_id else None
     if template:
         raw = dict(raw, vertical=raw.get("vertical") or template["vertical"],
                    products=raw.get("products") if raw.get("products") is not None else template["products"])
@@ -756,11 +756,7 @@ def update(profile_id: Any, creds: Optional[Dict[str, Any]], rev: Any, changes: 
         if "timeline" in changes:
             clean["timeline"] = _clean_timeline(changes["timeline"])
         if "notes" in changes:
-            old_ids = {n.get("id") for n in pov.get("notes") or []}
-            clean["notes"] = _clean_notes(changes["notes"])
-            for n in clean["notes"]:
-                if n["id"] not in old_ids:
-                    n["by"], n["at"] = by, _now()
+            clean["notes"] = _attribute(_clean_notes(changes["notes"]), pov.get("notes") or [], by)
         if "follow_ups" in changes:
             clean["follow_ups"] = _clean_follow_ups(changes["follow_ups"])
         if "status" in changes:
@@ -788,13 +784,31 @@ def _merge_tests(stored: Dict[str, Any], raw: Any, by: str) -> Dict[str, Any]:
             t["updated_at"], t["updated_by"] = _now(), by
         else:
             t["updated_at"], t["updated_by"] = old.get("updated_at"), old.get("updated_by", "")
-        for e in t["evidence"]:
-            if e["kind"] == "note" and e["id"] not in old_ids:
-                e["by"], e["at"] = by, _now()
+        notes = _attribute([e for e in t["evidence"] if e["kind"] == "note"], old.get("evidence") or [], by)
+        t["evidence"] = [e for e in t["evidence"] if e["kind"] != "note"] + notes
     for tid, old in stored.items():   # a test the page did not send stays as it was
         if tid not in tests and tid in RUNBOOK_BY_ID:
             tests[tid] = old
     return tests
+
+
+def _attribute(notes: List[Dict[str, Any]], stored: Sequence[Any], by: str) -> List[Dict[str, Any]]:
+    """Who wrote a note and when come from the app, never from the page: a
+    note the page kept as it was keeps its stored author and time, a new or
+    edited one is the editor's, now. A note that reuses the id of another
+    item (a verdict, a second copy) gets an id of its own."""
+    old = {e.get("id"): e for e in stored if isinstance(e, dict)}
+    seen = set()
+    for n in notes:
+        prev = old.get(n["id"])
+        if n["id"] in seen or (prev is not None and prev.get("kind", "note") != "note"):
+            n["id"], prev = _item_id(), None
+        seen.add(n["id"])
+        if prev is not None and prev.get("text") == n["text"]:
+            n["by"], n["at"] = prev.get("by", ""), prev.get("at") or _now()
+        else:
+            n["by"], n["at"] = by, _now()
+    return notes
 
 
 def delete(profile_id: Any, creds: Optional[Dict[str, Any]], *, by: str) -> bool:
@@ -817,7 +831,7 @@ def add_system_evidence(profile_id: Any, creds: Optional[Dict[str, Any]], test_i
         pov = _load(path, b)
         if pov is None:
             raise PovError("This tenant profile has no POV yet: start one first.", 404)
-        ev = _clean_evidence_item(dict(item, by=by, at=_now()), manual_only=False)
+        ev = _masked(_clean_evidence_item(dict(item, by=by, at=_now()), manual_only=False), profile_id, creds)
         t = pov.setdefault("tests", {}).setdefault(test_id, {"status": "not_run", "notes": "", "evidence": [], "updated_at": None, "updated_by": ""})
         t["evidence"] = ([e for e in t.get("evidence") or [] if e.get("kind") != "prove"] + [ev])[-MAX_EVIDENCE:]
         _bump(pov)
@@ -834,6 +848,7 @@ def add_insights(profile_id: Any, creds: Optional[Dict[str, Any]], counts: Dict[
         if pov is None:
             raise PovError("This tenant profile has no POV yet: start one first.", 404)
         pov["insights"] = _clean_insights((pov.get("insights") or []) + [{"at": _now(), "by": by, "counts": counts}])
+        pov["insights"][-1] = _masked(pov["insights"][-1], profile_id, creds)
         _bump(pov)
         _write_file(path, pov)
     _audit("insights", b["label"], by)
@@ -890,13 +905,32 @@ def parse_import(text: Any) -> Dict[str, Any]:
         raise PovError("the file does not say which tenant the POV is for")
     fp = _clean(tenant.get("fp"), 64, what="the tenant")
     status = data.get("status") if data.get("status") in POV_STATUSES else "planning"
-    created = _clean(data.get("created_at"), 40, what="a date") or _now()
+    created = _start_time(data.get("created_at"))
     return {"format": FORMAT, "version": VERSION, "tenant": {"label": label, **({"fp": fp} if fp else {})},
             "created_at": created, "created_by": _clean(data.get("created_by"), MAX_LABEL, what="a name"),
             "status": status, "intake": clean_intake(data.get("intake")), "template": _clean(data.get("template"), MAX_LABEL, what="a template"),
             "criteria": _clean_criteria(data.get("criteria")), "tests": _imported(_clean_tests(data.get("tests"), manual_only=False)),
             "timeline": _clean_timeline(data.get("timeline")), "notes": _clean_notes(data.get("notes")),
-            "follow_ups": _clean_follow_ups(data.get("follow_ups")), "insights": _clean_insights(data.get("insights"))}
+            "follow_ups": _clean_follow_ups(data.get("follow_ups")),
+            "insights": [dict(r, imported=True) for r in _clean_insights(data.get("insights"))]}
+
+
+def _start_time(value: Any) -> str:
+    """An imported POV's start: a real time no later than now. It decides
+    which of this app's changes the customer report lists, so a start set
+    in the future (every change hidden) or not a time is refused."""
+    s = _clean(value, 40, what="the start time")
+    if not s:
+        return _now()
+    try:
+        when = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        raise PovError("the file's start time (created_at) is not a date and time: export the POV again and import that file")
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    if when > datetime.fromisoformat(_now()):
+        raise PovError("the file's start time (created_at) is in the future, which no exported POV is")
+    return when.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
 def _imported(tests: Dict[str, Any]) -> Dict[str, Any]:
@@ -954,6 +988,23 @@ def get_template(tid: Any) -> Dict[str, Any]:
         if t.get("id") == tid:
             return t
     raise PovError("No such template.", 404)
+
+
+def _usable_template(t: Dict[str, Any]) -> Dict[str, Any]:
+    """A stored template as a POV starts from it: templates.json is a file
+    on disk, so its vertical, products and criteria are checked like any
+    input (an unknown vertical is the default, a bad criterion dropped)."""
+    texts = []
+    for c in t.get("criteria") if isinstance(t.get("criteria"), list) else []:
+        with contextlib.suppress(PovError):
+            c = _clean(c, MAX_SHORT, what="a success criterion") if isinstance(c, str) else ""
+            if c:
+                texts.append(c)
+    return {"name": _clean(t.get("name"), MAX_LABEL, what="the template name") if isinstance(t.get("name"), str) else "",
+            "vertical": t.get("vertical") if t.get("vertical") in VERTICALS else DEFAULT_VERTICAL,
+            "products": [p for p in t.get("products") if isinstance(p, str) and p in PRODUCTS] or None
+            if isinstance(t.get("products"), list) else None,
+            "criteria": texts[:MAX_CRITERIA]}
 
 
 def save_template(pov: Dict[str, Any], name: Any, description: Any, *, by: str) -> Dict[str, Any]:
@@ -1260,7 +1311,8 @@ def _counts_lines(m: Dict[str, Any]) -> List[str]:
                              for r in sec.get("rows") or [])
             out.append(f"{sec.get('title')}: {rows or 'no data in this window'}")
         if out:
-            out.insert(0, f"ZIA Insights, {counts.get('window') or 'window not recorded'}, read {str(run.get('at') or '')[:10]}.")
+            out.insert(0, f"ZIA Insights, {counts.get('window') or 'window not recorded'}, read {str(run.get('at') or '')[:10]}."
+                       + (" (Recorded elsewhere and imported.)" if run.get("imported") else ""))
     return out
 
 

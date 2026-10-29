@@ -157,10 +157,25 @@ def cell_text(value: Any) -> Optional[str]:
         # tenant names is tenant text too (formula quote, length cap).
         value = "\n".join(str(x) for x in value if x is not None and str(x) != "")
     s = clean_text(value).replace("\r\n", "\n").replace("\r", "\n")
-    if len(s) > MAX_CELL_CHARS:
-        s = s[: MAX_CELL_CHARS - len(TRUNCATED)] + TRUNCATED
     # Never a formula; and text that looks like one keeps csv_safe's quote.
-    return csv_safe.safe_cell(s) if s else s
+    s = csv_safe.safe_cell(s) if s else s
+    # Excel's cap counts UTF-16 units, the quote included: one unit more and
+    # Excel calls the whole workbook damaged.
+    if len(s) * 2 > MAX_CELL_CHARS and _units(s) > MAX_CELL_CHARS:
+        room = MAX_CELL_CHARS - len(TRUNCATED)
+        cut, used = 0, 0
+        for ch in s:
+            used += 2 if ord(ch) > 0xFFFF else 1
+            if used > room:
+                break
+            cut += 1
+        s = s[:cut] + TRUNCATED
+    return s
+
+
+def _units(s: str) -> int:
+    """Length of `s` in UTF-16 code units (how Excel counts a cell)."""
+    return len(s) + sum(1 for ch in s if ord(ch) > 0xFFFF)
 
 
 def _display_len(value: Any) -> int:
