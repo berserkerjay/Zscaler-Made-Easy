@@ -9,7 +9,7 @@
 // buttons. One passive pointermove listener, at most one update per frame
 // (requestAnimationFrame), two CSS variables on the one element under the
 // pointer. Off under prefers-reduced-motion, reduced transparency, more
-// contrast, forced colours, on touch-only screens and when the effect is off.
+// contrast, forced colours, for touch (no pointer to follow) and when the effect is off.
 // No library, no external asset, nothing from the server.
 (function () {
   'use strict';
@@ -36,7 +36,7 @@
   // ── The lens ──
   var lensTarget = null, lastEvent = null, frame = 0;
   function lensAllowed() {
-    if (!enabled() || !media('(hover: hover)')) return false;
+    if (!enabled()) return false;
     for (var i = 0; i < QUIET.length; i++) if (media(QUIET[i])) return false;
     return true;
   }
@@ -64,7 +64,7 @@
   function recheck() { allowed = lensAllowed(); if (!allowed) clearLens(); }
   document.addEventListener('pointermove', onMove, { passive: true });
   root.addEventListener('pointerleave', clearLens, { passive: true });
-  QUIET.concat(['(hover: hover)']).forEach(function (q) {
+  QUIET.forEach(function (q) {
     try { var m = window.matchMedia(q); if (m.addEventListener) m.addEventListener('change', function () { recheck(); sync(); }); } catch (e) { /* old browser */ }
   });
 
