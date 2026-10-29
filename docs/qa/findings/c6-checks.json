@@ -137,11 +137,10 @@
       "severity": "high",
       "cwe": "CWE-863",
       "asvs": "V4.1.5",
-      "status": "open",
-      "fix": "run every check through the same permission guard in assess_stream (removes 10 of 11; 10.4 makes no read)",
-      "test": "tests/test_c6_checks.py::test_a_check_built_on_a_refused_read_is_not_permitted",
-      "commit": "a4c1ae7",
-      "proposed_patch": "diff --git a/dlp_api_server.py b/dlp_api_server.py\nindex 0a374b7..a1581f9 100755\n--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -7742,7 +7742,8 @@ async def assess_stream(req: AssessRequest):\n                 running.add(idx)\n                 try:\n                     scoped_client.begin()\n-                    r = fn(scoped_client)\n+                    # A read the role was refused (401/403) is \"Not permitted\", never judged (zscaler_full_checks guard).\n+                    r = full_checks.permission_guarded(fn, label)(scoped_client) if \"full_checks\" in globals() else fn(scoped_client)\n                     r = _unanswered_result(r, label, scoped_client.unanswered())\n                 except Exception as ex:  # noqa: BLE001\n                     r = R(R.ERROR, f\"{label}: Could not complete check. {str(ex)[:120]}\")  # \"Could not be checked\", never \"Not configured\"\n"
+      "status": "fixed",
+      "fix": "The permission guard moved into the engine and wraps REG after its splices, so API, MCP and CLI runs fail closed on a 401/403 read (the 11 named engine checks were already not permitted; 1.27/1.28 were not). Also ...::test_an_engine_check_built_on_a_refused_read_is_not_permitted",
+      "test": "tests/test_c6_checks.py::test_every_check_the_assessment_run_executes_reads_through_the_permission_guard",
+      "commit": "243a86f"
     },
     {
       "id": "C6-CHECKS-03",
@@ -160,11 +159,10 @@
       "severity": "medium",
       "cwe": "CWE-400",
       "asvs": "V12.1.1",
-      "status": "open",
-      "fix": "stream the answer and refuse one larger than MAX_BODY_BYTES (10 MB); test fakes of requests.get then need iter_content/close",
-      "test": "tests/test_c6_checks.py::test_a_hostile_sitemap_parses_in_linear_time",
-      "commit": "a4c1ae7",
-      "proposed_patch": "diff --git a/zscaler_update_check.py b/zscaler_update_check.py\nindex 28fa74a..c8a72b0 100644\n--- a/zscaler_update_check.py\n+++ b/zscaler_update_check.py\n@@ -171,6 +171,7 @@ ALLOWED_HOSTS = {\n \n FETCH_TIMEOUT = 8  # seconds, both connect and read\n MAX_REDIRECTS = 5  # each hop is checked against the allowlist before it is fetched\n+MAX_BODY_BYTES = 10_000_000  # an answer larger than this is refused, not read into memory\n USER_AGENT = \"Mozilla/5.0 (compatible; Zscaler-Made-Easy/1.0; +localhost)\"  # browser-compatible prefix: some CDNs refuse unknown agents\n \n \n@@ -311,10 +312,18 @@ def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[byt\n                 proxies=proxies,\n                 verify=verify_tls,\n                 allow_redirects=False,\n+                stream=True,\n             )\n             location = (r.headers or {}).get(\"Location\") if getattr(r, \"is_redirect\", False) else None\n             if not location:\n-                return r.content, r.status_code, \"\"\n+                body = b\"\"\n+                for chunk in r.iter_content(65536):\n+                    body += chunk\n+                    if len(body) > MAX_BODY_BYTES:\n+                        r.close()\n+                        return None, 0, f\"answer larger than {MAX_BODY_BYTES} bytes refused\"\n+                return body, r.status_code, \"\"\n+            r.close()\n             url = urljoin(url, location)\n             host, refusal = _allowed_url(url)\n             if refusal:\n"
+      "status": "fixed",
+      "fix": "Already fixed on integrate/w6 (update-heal slice): _safe_get streams with stream=True and _read_capped refuses an answer (declared or read) past MAX_BODY_BYTES (64 MB, sized for SDK wheels); no change needed",
+      "test": "tests/test_c6_update_heal.py::test_an_answer_larger_than_the_cap_is_refused_not_read",
+      "commit": "1a6728d"
     },
     {
       "id": "C6-CHECKS-05",
@@ -376,5 +374,5 @@
       "commit": "bde03b1, 37a8f7c"
     }
   ],
-  "tests_added": 851
+  "tests_added": 1264
 }

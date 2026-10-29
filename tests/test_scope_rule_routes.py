@@ -526,7 +526,8 @@ FACTORIES = {"_build_sdk_client", "_build_client", "_raw_client"}
 # each with why (CISA Secure by Design: every exception is written down).
 EXEMPT: Dict[str, str] = {
     "POST /api/tenant/check": "sign-in test only: lists and counts nothing (tenant_check docstring)",
-    "POST /api/remediation/execute": "one remediation of a check the operator picked; the write is gated by write mode",
+    "POST /api/remediation/execute": ("one remediation of a check the operator picked: a live fix is refused before sign-in unless its rule policy is "
+                                      "in scope (test_c6_admin_ops.py); a dry run plans without reading"),
     "POST /api/dlp-packs/{pack_id}/from-tenant": "Deploy Studio: rebuilds the pack the operator picked from its own dictionaries",
     "POST /api/dlp-packs/preflight": "Deploy Studio: plans the packs and channels the operator ticked on each pack card",
     "POST /api/dlp-packs/journey": "Deploy Studio: measures the pack the operator picked on the channels ticked on its card",

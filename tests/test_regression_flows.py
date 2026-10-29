@@ -227,7 +227,8 @@ def test_remediation_live_needs_write_mode_and_then_sends_the_planned_call(raw_t
     """ASVS V4.1.3 · A01:2021 · CWE-862: a live fix is refused without write mode, and with every gate sends exactly the planned call once."""
     c = TestClient(srv.app)
     recipe = _destructive_recipe(c)
-    body = dict(CREDS, check_id=recipe["check_id"], criteria=recipe["criteria"], dry_run=False, confirm=True, assessor=ASSESSOR)
+    every_policy = {"scopes": ["dlp", "zia_extras"], "channels": {"web_dlp": "zscaler", "ssl_inspection": "zscaler"}, "from_page": True}
+    body = dict(CREDS, **every_policy, check_id=recipe["check_id"], criteria=recipe["criteria"], dry_run=False, confirm=True, assessor=ASSESSOR)
     assert c.post("/api/remediation/execute", json=body).status_code == 403
     assert c.post("/api/remediation/execute", json=dict(body, confirm=False)).status_code == 400
     assert raw_tenant.writes == [] and raw_tenant.signed_in == 0

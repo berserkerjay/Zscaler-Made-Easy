@@ -329,11 +329,10 @@
    "severity": "medium",
    "cwe": "CWE-1287",
    "asvs": "V5.1.3",
-   "status": "open",
-   "fix": "read enableZdpService, install_ssl_certs/installCerts first; split packetTunnelExcludeList; count bypassCustomAppIds",
-   "test": "",
-   "commit": "",
-   "proposed_patch": "--- a/data_flow.py\n+++ b/data_flow.py\n@@ -362,6 +362,9 @@\n                 domains, apps, processes, ips, vpn = [], [], [], [], []\n                 for k, v in p.items():\n                     kl = str(k).lower()\n+                    if isinstance(v, str) and \"exclu\" in kl:\n+                        # The API sends destination exclusions as one comma-separated string (packetTunnelExcludeList).\n+                        v = [x.strip() for x in str(v).split(\",\") if x.strip()]\n                     if not isinstance(v, list) or not v:\n                         continue\n                     vals = [x.get(\"name\") or x.get(\"url\") or x.get(\"domain\") or x.get(\"ip\") or x.get(\"path\") or json.dumps(x)[:80] if isinstance(x, dict) else str(x) for x in v]\n@@ -369,9 +372,9 @@\n                         vpn += vals\n                     elif re.search(r\"process\", kl):\n                         processes += vals\n-                    elif re.search(r\"bypassapp|appbypass|applicationbypass|predefinedbypass|custombypass\", kl):\n+                    elif re.search(r\"bypassapp|appbypass|applicationbypass|predefinedbypass|custombypass|bypasscustomapp\", kl):\n                         apps += vals\n-                    elif re.search(r\"ipexclu|excludeip|bypassip|ipbypass|destinationexclu|nonzscaler\", kl):\n+                    elif re.search(r\"ipexclu|excludeip|bypassip|ipbypass|destinationexclu|nonzscaler|packettunnelexclude\", kl):\n                         ips += vals\n                     elif re.search(r\"domain|hostname|bypassurl|url|tunnelbypass\", kl) and re.search(r\"bypass|exclu|exempt\", kl):\n                         domains += vals\n@@ -381,8 +384,10 @@\n                     \"forwarding_profile\": _v(p, \"forwardingProfileId\", \"forwardingProfileName\", \"forwardingProfile\") or _v(linked_policy, \"id\", \"name\"),\n                     \"pac_url\": p.get(\"pacUrl\") or p.get(\"customPacUrl\") or p.get(\"pac_url\"),\n                     \"strict_enforcement\": _truthy(_v(p, \"strictEnforcement\", \"strictMode\")),\n-                    \"endpoint_dlp\": _truthy(_v(p, \"installEndpointDlp\", \"endpointDlpEnabled\", \"zdpEnabled\")),\n-                    \"ssl_cert\": _truthy(_v(p, \"sslCertInstall\", \"installSslCert\", \"sslCertificateEnabled\")),\n+                    # The API's names first (zscaler/zcc/models/webpolicy.py: policyExtension.enableZdpService,\n+                    # the platform policy's install_ssl_certs or installCerts), then older exports'.\n+                    \"endpoint_dlp\": _truthy(_v(p, \"enableZdpService\", \"installEndpointDlp\", \"endpointDlpEnabled\", \"zdpEnabled\")),\n+                    \"ssl_cert\": _truthy(_v(p, \"install_ssl_certs\", \"installCerts\", \"sslCertInstall\", \"installSslCert\", \"sslCertificateEnabled\")),\n                     \"bypass\": {\"domains\": domains, \"apps\": apps, \"processes\": processes, \"ips\": ips, \"vpn_gateways\": vpn},\n                     \"groups\": _names(p.get(\"groups\") or p.get(\"groupNames\") or []),\n                 })\n"
+   "status": "fixed",
+   "fix": "data_flow reads enableZdpService, install_ssl_certs/installCerts and bypassCustomAppIds first (SDK 1.11.3 zcc/models/webpolicy.py), older names after; destination exclusions were already read as tunnel.exclude, so not duplicated",
+   "test": "tests/test_c6_scope_offline.py::test_the_sample_tenant_app_profiles_show_endpoint_dlp_certificate_and_app_bypass",
+   "commit": "afd09b7"
   },
   {
    "id": "C6-SCOPE-OFFLINE-16",
@@ -391,5 +390,5 @@
    "commit": ""
   }
  ],
- "tests_added": 119
+ "tests_added": 129
 }

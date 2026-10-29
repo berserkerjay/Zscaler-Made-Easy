@@ -307,6 +307,79 @@ def test_console_index_cached_answers_only_for_the_named_tenant(ci):
     assert m.cache_latest("", tenant_label="gamma (production)") is None
 
 
+@pytest.fixture
+def cached_route(ci, monkeypatch, tmp_path):
+    """GET /api/console-index/cached on an isolated profile store, no stored sign-in, no tenant reachable."""
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    import tenant_auth
+    monkeypatch.setenv("DLP_CHECK_PROFILES", str(tmp_path / "tenant_profiles.json"))
+    for k in tenant_auth.ENV.values():
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(srv, "_offline_creds", lambda: None)
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: (_ for _ in ()).throw(AssertionError("no tenant read")))
+    m, now = ci
+    m.cache_put(m.cache_key("", ["web"]), {"tenant_label": "alpha (production)", "objects": [{"name": "A"}]})
+    now["t"] += 1
+    m.cache_put(m.cache_key("", ["web", "email"]), {"tenant_label": "beta (zscalertwo)", "objects": [{"name": "B"}]})
+    return TestClient(srv.app), m
+
+
+@pytest.mark.parametrize("params,expected", [
+    ({"vanity_domain": "alpha", "cloud": "production"}, [{"name": "A"}]),
+    ({"vanity_domain": "beta", "cloud": "zscalertwo"}, [{"name": "B"}]),
+    ({"vanity_domain": "alpha"}, [{"name": "A"}]),                      # boundary: no cloud is production
+    ({"vanity_domain": "gamma", "cloud": "production"}, None),
+    ({"vanity_domain": "beta", "cloud": "production"}, None),           # same name, another cloud: another tenant
+    ({}, None),                                                         # no sign-in and no server tenant
+    ({"auth_method": "legacy", "cloud": "production"}, None),           # classic API: cannot tell two tenants apart from a URL
+])
+def test_console_index_cached_answers_only_for_the_signed_in_tenant(cached_route, params, expected):
+    """ASVS V4.2.1 · A01:2021 · CWE-668 · CWE-639 · WSTG-ATHZ-04: GET /api/console-index/cached gives a typed sign-in its own tenant's kept index, never another's, and nothing when it cannot tell."""
+    # Arrange
+    c, _m = cached_route
+    # Act
+    got = c.get("/api/console-index/cached", params=params).json()["index"]
+    # Assert
+    assert (got or {}).get("objects") == expected if expected else got is None
+
+
+def test_console_index_cached_follows_an_edited_profile(cached_route):
+    """ASVS V4.2.1 · A01:2021 · CWE-639 · WSTG-ATHZ-04: a profile edited to another tenant no longer gets the index read for its old tenant."""
+    # Arrange
+    import tenant_profiles
+    c, m = cached_route
+    pid = tenant_profiles.upsert({"name": "P", "vanity_domain": "alpha", "cloud": "production", "client_id": "cid-1", "auth_method": "oneapi"})["id"]
+    m.cache_put(m.cache_key(pid, ["web"]), {"tenant_label": "alpha (production)", "objects": [{"name": "A"}]})
+    before = c.get("/api/console-index/cached", params={"profile_id": pid}).json()["index"]
+    tenant_profiles.upsert({"id": pid, "name": "P", "vanity_domain": "beta", "cloud": "zscalertwo", "client_id": "cid-1", "auth_method": "oneapi"})
+    # Act
+    after = c.get("/api/console-index/cached", params={"profile_id": pid}).json()["index"]
+    gone = c.get("/api/console-index/cached", params={"profile_id": "no-such-profile"}).json()["index"]
+    # Assert
+    assert before["objects"] == [{"name": "A"}] and after is None and gone is None
+
+
+def test_console_index_cached_refuses_a_malformed_sign_in(cached_route):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: a malformed vanity domain or sign-in method is a 400, not a lookup."""
+    # Arrange
+    c, _m = cached_route
+    # Act / Assert
+    assert c.get("/api/console-index/cached", params={"vanity_domain": "a b/<x>"}).status_code == 400
+    assert c.get("/api/console-index/cached", params={"vanity_domain": "alpha", "auth_method": "kerberos"}).status_code == 400
+
+
+def test_find_anything_sends_the_sign_in_without_secrets():
+    """ASVS V8.3.1 · CWE-598 · WSTG-INFO-05: Find anything asks for the kept index with the page's sign-in (profile, or vanity domain and cloud), never a secret or the admin login in the URL."""
+    # Arrange
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "find_anything.js"), encoding="utf-8").read()
+    body = src[src.index("function signInRef()"):src.index("function tenantRef()")]
+    # Act / Assert
+    assert "qs(signInRef())" in src
+    for secret in ("client_secret", "password", "api_key", "username", "client_id"):
+        assert secret not in body
+
+
 def test_console_index_profile_and_tenant_must_both_match(ci):
     """ASVS V4.2.1 · CWE-639: a profile's kept index read for another tenant (the profile was edited) does not answer."""
     m, _ = ci

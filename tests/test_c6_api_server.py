@@ -222,8 +222,45 @@ def test_a_server_fault_names_no_server_folder(client, monkeypatch):
     # Act
     r = client.post("/api/report/docx", json={"checks": [{"id": "DLP-01", "status": "FAIL"}]})
     # Assert
-    assert r.status_code == 500 and srv._APP_DIR not in r.text and "<app folder>" in r.json()["detail"]
+    assert r.status_code == 500 and srv._APP_DIR not in r.text and "x.docx" not in r.text   # nothing of the error is echoed (C6-REPORTS-16)
     assert _hardened(r)
+
+
+CANARY_REPORT_TEXT = "Contoso-board-minutes-canary"
+
+
+def _word_build_fails(monkeypatch):
+    import bypass_report
+    import report_docx
+
+    def fail(*a, **k):
+        raise ValueError(f"cannot place paragraph '{CANARY_REPORT_TEXT}'")
+    monkeypatch.setattr(report_docx, "generate_report", fail)
+    monkeypatch.setattr(bypass_report, "to_docx", fail)
+
+
+def test_a_failed_word_report_returns_plain_words_not_the_exception(client, monkeypatch):
+    """ASVS V7.4.1 · A04:2021 · CWE-209 · WSTG-ERRH-01: POST /api/report/docx whose build raises answers a plain 500; the exception's type and text (which can quote the posted report) stay in the server log."""
+    # Arrange
+    _word_build_fails(monkeypatch)
+    # Act
+    r = client.post("/api/report/docx", json={"checks": [{"id": "DLP-01", "status": "FAIL"}]})
+    # Assert
+    assert r.status_code == 500 and r.json()["detail"] == srv.WORD_REPORT_FAILED
+    assert CANARY_REPORT_TEXT not in r.text and "ValueError" not in r.text
+
+
+def test_a_failed_bypass_word_export_returns_plain_words_not_the_exception(monkeypatch):
+    """ASVS V7.4.1 · A04:2021 · CWE-209 · WSTG-ERRH-01: the bypass report's Word export (tenant bypass data) that raises is a plain 500 naming nothing of the error."""
+    # Arrange
+    import asyncio
+    from fastapi import HTTPException
+    _word_build_fails(monkeypatch)
+    # Act
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(srv._bypass_export_response({"rows": [{"domain": CANARY_REPORT_TEXT}]}, "docx"))
+    # Assert
+    assert e.value.status_code == 500 and e.value.detail == srv.WORD_REPORT_FAILED
 
 
 def test_path_scrubbing_covers_each_folder_and_only_server_faults():
@@ -692,6 +729,71 @@ def test_a_stop_racing_its_start_is_honoured(monkeypatch, client):
     gate.wait(5)
     # Assert
     assert stop.json()["pending"] is True and job.cancel.is_set() and ran == [True]
+
+
+def _as_person(monkeypatch):
+    """Per-user identity as SSO provides it: the X-Test-Actor header names who asks."""
+    monkeypatch.setattr(srv, "_actor", lambda request: request.headers.get("X-Test-Actor") or None)
+
+
+def _held_job(token, actor):
+    gate = threading.Event()
+
+    def fn(log, cancel):
+        gate.wait(5)
+        return {"status": "done"}
+    return pack_jobs.start("path", fn, actor=actor, start_token=token), gate
+
+
+@pytest.mark.parametrize("who,status", [("mallory@example.com", 403), (None, 403), ("alice@example.com", 200)])
+def test_stop_before_start_of_an_existing_job_is_only_for_its_starter(monkeypatch, client, who, status):
+    """ASVS V4.2.1 · A01:2021 · CWE-639 · WSTG-ATHZ-04: with per-user identity, a start token held by someone else cannot stop alice's running job (403); alice can."""
+    # Arrange
+    _as_person(monkeypatch)
+    monkeypatch.setattr(pack_jobs, "_pending_stops", {})
+    monkeypatch.setattr(pack_jobs, "_token_jobs", {})
+    token = "c6-owner-token-0001"
+    job, gate = _held_job(token, "alice@example.com")
+    # Act
+    r = client.post("/api/dlp-packs/jobs/stop-before-start", json={"start_token": token}, headers={"X-Test-Actor": who} if who else {})
+    stopped = job.cancel.is_set()
+    gate.set()
+    # Assert
+    assert r.status_code == status and stopped is (status == 200)
+    if status == 403:
+        assert "someone else" in r.json()["detail"]
+
+
+def test_a_waiting_stop_from_someone_else_does_not_stop_the_job(monkeypatch, client):
+    """ASVS V4.2.1 · A01:2021 · CWE-639 · WSTG-ATHZ-04: a Stop mallory sends for alice's token before alice's start answers never makes alice's job begin stopped."""
+    # Arrange
+    _as_person(monkeypatch)
+    monkeypatch.setattr(pack_jobs, "_pending_stops", {})
+    monkeypatch.setattr(pack_jobs, "_token_jobs", {})
+    token = "c6-owner-token-0002"
+    # Act
+    stop = client.post("/api/dlp-packs/jobs/stop-before-start", json={"start_token": token}, headers={"X-Test-Actor": "mallory@example.com"})
+    job, gate = _held_job(token, "alice@example.com")
+    stopped = job.cancel.is_set()
+    gate.set()
+    # Assert
+    assert stop.status_code == 200 and stop.json()["pending"] is True and stopped is False
+
+
+def test_a_waiting_stop_from_the_starter_is_still_honoured(monkeypatch, client):
+    """ASVS V1.11.3 · CWE-367 · WSTG-BUSL-07: alice's own Stop, sent before her start answered, still makes her job begin stopped (the race fix is kept)."""
+    # Arrange
+    _as_person(monkeypatch)
+    monkeypatch.setattr(pack_jobs, "_pending_stops", {})
+    monkeypatch.setattr(pack_jobs, "_token_jobs", {})
+    token = "c6-owner-token-0003"
+    # Act
+    client.post("/api/dlp-packs/jobs/stop-before-start", json={"start_token": token}, headers={"X-Test-Actor": "alice@example.com"})
+    job, gate = _held_job(token, "alice@example.com")
+    stopped = job.cancel.is_set()
+    gate.set()
+    # Assert
+    assert stopped is True
 
 
 def test_the_in_memory_result_stores_are_capped():

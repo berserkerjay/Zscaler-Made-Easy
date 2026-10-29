@@ -815,6 +815,37 @@ class RemediationExecuteRequest(BaseModel):
     confirm: bool = False      # dry_run=false needs confirm=true, the assessor, a writer and write mode
     assessor: str = ""
     profile_id: str = ""
+    scopes: List[str] = []     # the Scope page selection (user rule 1): a live fix writes only a policy in scope
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+# The rule policy (admin_ops.POLICIES) each fix recipe writes in; "Add
+# description" writes in the policy of the rule type it names.
+_REMEDIATION_POLICY = {"FW-01": "firewall", "URL-01": "url_filtering", "SSL-01": "ssl_inspection", "DLP-01": "web_dlp"}
+_REMEDIATION_RULE_TYPE_POLICY = {"webDlpRules": "web_dlp", "urlFilteringRules": "url_filtering",
+                                 "firewallFilteringRules": "firewall", "sslInspectionRules": "ssl_inspection"}
+
+
+def _require_remediation_in_scope(req: "RemediationExecuteRequest") -> None:
+    """A live fix reads and writes one ZIA rule policy: it must be in scope on
+    the Scope page (the Bulk changes rule, admin_ops.scope_for), else 400
+    before sign-in. A recipe whose policy is not known is refused (deny by default)."""
+    import admin_ops
+    import remediation
+    rid = str((remediation.get_recipe(req.check_id) or {}).get("check_id") or "")
+    criteria = req.criteria if isinstance(req.criteria, dict) else {}
+    pol = _REMEDIATION_RULE_TYPE_POLICY.get(str(criteria.get("rule_type") or "")) if rid == "RULE-DESC" else _REMEDIATION_POLICY.get(rid)
+    if not pol:
+        raise HTTPException(status_code=400, detail="Applying a remediation: this fix's rule policy is not known, so it cannot be checked "
+                                                    "against the Scope page. Nothing was read or written.")
+    sc, ch, _source = _scope_selection(req)
+    scope = admin_ops.scope_for(sc, ch)
+    if pol not in scope["policies"]:
+        label = admin_ops.POLICIES[pol]["label"]
+        why = str((scope.get("not_in_scope") or {}).get(pol) or "")
+        raise HTTPException(status_code=400, detail=f"Applying a remediation is not in scope: {label} is not in scope on the Scope page. "
+                                                    + (f"{why} " if why else "") + "Nothing was read or written.")
 
 
 @app.get("/api/remediation/catalog")
@@ -850,6 +881,7 @@ async def remediation_execute(req: RemediationExecuteRequest):
         raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Applying a remediation")
+        _require_remediation_in_scope(req)
     client = await asyncio.to_thread(_build_client, req)
     result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)
     return result
@@ -1798,7 +1830,10 @@ async def detection_health_generate(req: DetectionHealthRequest):
     if sc["source"]:
         logs.append(f"In scope, from {sc['source']}: the DLP rules on {', '.join(sc['pack_channels'])}"
                     + ("" if sc["read_incidents"] else "; Workflow Automation is not marked as run on Zscaler, so its incidents are not read") + ".")
-    report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append,
+    # An SDK error that echoes the sign-in's secret never reaches the report or its log.
+    scrub = lambda text: tenant_auth.mask_secrets(str(text), creds)  # noqa: E731
+    report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None,
+                                                                       log=lambda m: logs.append(scrub(m)), scrub=scrub,
                                                                        channels=list(sc["pack_channels"]), read_incidents=bool(sc["read_incidents"])))
     import dlp_analysis
     raw = await asyncio.to_thread(_build_client, req)
@@ -1823,7 +1858,7 @@ async def detection_health_generate(req: DetectionHealthRequest):
         else:
             report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
     except Exception as e:  # noqa: BLE001
-        report["proposals"] = {"error": str(e)[:200]}
+        report["proposals"] = {"error": scrub(e)[:200]}
     rid = _remember_report("health", report, tenant_auth.record_label(creds))
     return _REPORTS[rid]
 
@@ -1948,7 +1983,9 @@ async def live_feed_poll(req: LiveFeedRequest):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)   # never the classic API's admin login (user rule 3)
-    poll = (await asyncio.to_thread(detection_health.poll_incidents, client, since)) if sc["read_incidents"] else {"incidents": [], "next_since": req.since, "errors": [DH_WA_ALTERNATIVE], "read_at": datetime.now(timezone.utc).isoformat()}
+    # An SDK error that echoes the sign-in's secret never reaches the feed.
+    poll = (await asyncio.to_thread(detection_health.poll_incidents, client, since,
+                                    scrub=lambda text: tenant_auth.mask_secrets(str(text), creds))) if sc["read_incidents"] else {"incidents": [], "next_since": req.since, "errors": [DH_WA_ALTERNATIVE], "read_at": datetime.now(timezone.utc).isoformat()}
     import tenant_fingerprint
     # The rule cache's key names no classic-API tenant by a vanity domain or
     # its admin login (an opaque fingerprint key), and keeps two classic
@@ -3400,14 +3437,17 @@ class StopBeforeStartRequest(BaseModel):
 
 
 @app.post("/api/dlp-packs/jobs/stop-before-start")
-async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):
+async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest, request: Request):
     """Stop pressed while a start request (deploy, removal, export,
     Terraform hand-off, path analysis) is still signing in, so there is no
     job id yet. The job that start creates begins with its cancel set and
-    reads or writes nothing; one that already exists is cancelled now."""
+    reads or writes nothing; one that already exists is cancelled now.
+    As /cancel: only the person who started a job can stop it (403)."""
     import pack_jobs
     try:
-        return pack_jobs.stop_before_start(req.start_token)
+        return pack_jobs.stop_before_start(req.start_token, actor=_actor(request))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -5213,12 +5253,19 @@ async def report_operations_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
-class OperationObjectsRequest(ScopedTenantCredsRequest):
+class OperationCredsRequest(ScopedTenantCredsRequest):
+    """Tenant credentials of a bulk change, with the ZPA customer ID the
+    page sends (a ZPA type or family is refused before sign-in without it,
+    _ops_zpa_gate); blank falls back to the saved profile's."""
+    customer_id: str = ""
+
+
+class OperationObjectsRequest(OperationCredsRequest):
     """Body of the object picker: what to list (rules, url_categories or zpa_segments)."""
     family: str = "rules"
 
 
-class OperationRequest(ScopedTenantCredsRequest):
+class OperationRequest(OperationCredsRequest):
     """Body of a bulk change: the operation (admin_ops spec) and, to apply
     it, the previewed plan_hash, confirm=true and, above ten changes, the
     typed phrase. `undo_of` names the operation an Undo reverses."""
@@ -5245,6 +5292,25 @@ def _ops_scope(req: Any, what: Any) -> Dict[str, Any]:
     except admin_ops.OperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return scope
+
+
+OPS_ZPA_NEEDS_ONEAPI = ("ZPA bulk changes need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+                        "Sign in with an API client that has a ZPA role, then run it again. Nothing was read.")
+OPS_ZPA_NEEDS_CUSTOMER_ID = ("ZPA bulk changes need the ZPA customer ID (Connect to the tenant → Customer ID, or the saved profile): "
+                             "every ZPA API path carries it. Nothing was read.")
+
+
+def _ops_zpa_gate(what: Any, creds: Dict[str, str]) -> None:
+    """A ZPA bulk change, builder type or family needs a OneAPI sign-in and
+    the ZPA customer ID: 400 before any sign-in otherwise (a client without
+    the customer ID would call /customers/None/...)."""
+    import admin_ops
+    if admin_ops.product_of(what) != "zpa":
+        return
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=OPS_ZPA_NEEDS_ONEAPI)
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail=OPS_ZPA_NEEDS_CUSTOMER_ID)
 
 
 def _ops_assessor(req: Any) -> str:
@@ -5345,6 +5411,7 @@ async def operations_objects_start(req: OperationObjectsRequest, request: Reques
     import pack_jobs
     scope = _ops_scope(req, req.family)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.family, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("ops_objects", lambda log, cancel: _keyed(client, _run_ops_objects, client, req.family, scope, label, log, cancel),
@@ -5357,6 +5424,7 @@ async def operations_objects(req: OperationObjectsRequest):
     """The same list, waited for (for scripts)."""
     scope = _ops_scope(req, req.family)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.family, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(_keyed, client, _run_ops_objects, client, req.family, scope, tenant_auth.record_label(creds), None, None)
     if out.get("status") == "refused":
@@ -5371,6 +5439,7 @@ async def operations_preview_start(req: OperationRequest, request: Request):
     import pack_jobs
     scope = _ops_scope(req, req.operation)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.operation, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("ops_preview", lambda log, cancel: _keyed(client, _run_ops_preview, client, req, scope, label, log, cancel),
@@ -5383,6 +5452,7 @@ async def operations_preview(req: OperationRequest):
     """The same preview, waited for (for scripts)."""
     scope = _ops_scope(req, req.operation)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.operation, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds), None, None)
     if out.get("status") == "refused":
@@ -5400,6 +5470,7 @@ async def operations_apply_start(req: OperationRequest, request: Request):
     import pack_jobs
     scope, by = _ops_apply_gate(req)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.operation, creds)
     if req.undo_of:
         import deployments
         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
@@ -5416,6 +5487,7 @@ async def operations_apply(req: OperationRequest, request: Request):
     since the preview or the plan is blocked."""
     scope, by = _ops_apply_gate(req)
     creds = _tenant_creds(req)
+    _ops_zpa_gate(req.operation, creds)
     if req.undo_of:
         import deployments
         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
@@ -5473,7 +5545,7 @@ async def operations_get(op_id: str):
     return {k: v for k, v in rec.items() if k not in ("tenant_key", "tenant_fp")}
 
 
-async def _ops_undo_inputs(op_id: str, req: ScopedTenantCredsRequest):
+async def _ops_undo_inputs(op_id: str, req: OperationCredsRequest):
     import deployments
     rec = deployments.get_operation(op_id)
     if not rec:
@@ -5485,12 +5557,13 @@ async def _ops_undo_inputs(op_id: str, req: ScopedTenantCredsRequest):
     body = OperationRequest(**{**req.model_dump(), "operation": rec["inverse"], "undo_of": op_id})
     scope = _ops_scope(body, body.operation)
     creds = _tenant_creds(body)
+    _ops_zpa_gate(body.operation, creds)
     _require_same_tenant(rec, creds)
     return body, scope, creds
 
 
 @app.post("/api/operations/{op_id}/undo/preview/start")
-async def operations_undo_preview_start(op_id: str, req: ScopedTenantCredsRequest, request: Request):
+async def operations_undo_preview_start(op_id: str, req: OperationCredsRequest, request: Request):
     """Undo builds the inverse of what the operation applied and previews it
     like any other operation (its own plan_hash and confirmation); it is
     applied through /api/operations/apply with undo_of. Read-only."""
@@ -5504,7 +5577,7 @@ async def operations_undo_preview_start(op_id: str, req: ScopedTenantCredsReques
 
 
 @app.post("/api/operations/{op_id}/undo/preview")
-async def operations_undo_preview(op_id: str, req: ScopedTenantCredsRequest):
+async def operations_undo_preview(op_id: str, req: OperationCredsRequest):
     """The same Undo preview, waited for (for scripts)."""
     body, scope, creds = await _ops_undo_inputs(op_id, req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
@@ -5657,15 +5730,47 @@ def _console_zia(req: Any, zscope: Dict[str, Any]):
         return None, f"not available: {str(e)[:160]}"
 
 
+def _cached_index_tenant(profile_id: str, vanity_domain: str, cloud: str, auth_method: str) -> Optional[str]:
+    """The tenant label a kept console index must carry to answer the page:
+    the sample tenant's or opened snapshot's, the saved profile's (as it is
+    now, so an edited profile never gets its old tenant's index), the typed
+    OneAPI sign-in's (vanity domain and cloud), else the server's own
+    tenant. None (nothing answers) for a profile that is gone and for a
+    typed classic-API sign-in, whose label cannot tell two classic tenants
+    on one cloud apart (its admin login is never sent in a URL): Load
+    tenant objects reads and checks it instead. Never reads the tenant."""
+    off = _offline_creds()
+    if off:
+        return tenant_auth.record_label(off)
+    if (profile_id or "").strip():
+        import tenant_profiles
+        prof = tenant_profiles.get(profile_id.strip())
+        return tenant_auth.record_label(tenant_profiles.creds_from(prof)) if prof else None
+    try:
+        method = tenant_auth.normalize_method(auth_method)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="auth_method must be oneapi or legacy.")
+    if method == tenant_auth.LEGACY:
+        return None
+    if (vanity_domain or "").strip():
+        return tenant_auth.record_label({"vanity_domain": validate_vanity(vanity_domain.strip()),
+                                         "cloud": validate_cloud(cloud.strip()) if (cloud or "").strip() else "", "auth_method": method})
+    env = tenant_auth.from_env()
+    return tenant_auth.record_label(env) if tenant_auth.complete(env) else None
+
+
 @app.get("/api/console-index/cached")
-async def console_index_cached(profile_id: str = ""):
+async def console_index_cached(profile_id: str = "", vanity_domain: str = "", cloud: str = "", auth_method: str = ""):
     """The last console index this server read for a tenant profile (or for
     the server's own tenant), whatever scope it was read with, while it is
-    kept (30 minutes). Never reads the tenant: Find anything searches it as
-    you type, and only its Load tenant objects button reads (POST
-    /api/console-index, with the Scope page's selection)."""
+    kept (30 minutes), and only when it was read for the tenant the page
+    is signed in to (typed sign-ins of every tenant share one bucket; a
+    profile may have been edited since). Never reads the tenant: Find
+    anything searches it as you type, and only its Load tenant objects
+    button reads (POST /api/console-index, with the Scope page's selection)."""
     import console_index as ci
-    hit = ci.cache_latest(profile_id)
+    label = _cached_index_tenant(profile_id, vanity_domain, cloud, auth_method)
+    hit = ci.cache_latest(profile_id, tenant_label=label) if label else None
     return {"index": hit, "profile_id": profile_id or ""}
 
 
@@ -8148,6 +8253,9 @@ async def assess_stream(req: AssessRequest):
 _DOCX_MAX_CHECKS = 1000
 
 
+WORD_REPORT_FAILED = "The Word report could not be built; the server log says why."
+
+
 @app.post("/api/report/docx")
 async def generate_docx(request: Request):
     """Generate a Word doc from assessment results (at most _DOCX_MAX_CHECKS
@@ -8180,10 +8288,11 @@ async def generate_docx(request: Request):
     except Exception as e:
         if tmp_path:
             _unlink_quietly(tmp_path)   # a failed report leaves no copy of the assessment behind
-        # Surface the real error to the browser instead of a generic 500
+        # The traceback stays in the server log; the browser gets plain words
+        # (an exception's text can quote the posted assessment, CWE-209).
         tb = _tb.format_exc()
         print(f"\n=== Word generation failed ===\n{tb}===\n", flush=True)
-        raise HTTPException(status_code=500, detail=f"Word generation error: {type(e).__name__}: {str(e)[:300]}")
+        raise HTTPException(status_code=500, detail=WORD_REPORT_FAILED)
 
     org = re.sub(r"[^A-Za-z0-9_-]+", "_", str(cfg.get("org", "report"))).strip("_")[:60] or "report"
     # The temp file holds the whole assessment: remove it once it has been sent.
@@ -8645,9 +8754,13 @@ async def _bypass_export_response(report: Dict[str, Any], fmt: str):
         except ImportError as e:
             _unlink_quietly(output_path)
             raise HTTPException(status_code=500, detail=f"python-docx missing: {e}. Run: pip install python-docx")
-        except Exception as e:
+        except Exception:
             _unlink_quietly(output_path)
-            raise HTTPException(status_code=500, detail=f"Word generation failed: {type(e).__name__}: {str(e)[:300]}")
+            # As /api/report/docx: the traceback (which can quote the bypass
+            # report's tenant data) stays in the server log, CWE-209.
+            import traceback as _tb_bypass
+            print(f"\n=== Word generation failed (bypass report) ===\n{_tb_bypass.format_exc()}===\n", flush=True)
+            raise HTTPException(status_code=500, detail=WORD_REPORT_FAILED)
         return FileResponse(output_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             filename=f"zscaler_bypass_{ts}.docx", background=BackgroundTask(_unlink_quietly, output_path))
     return Response(content=json.dumps(report, indent=2, default=str), media_type="application/json",

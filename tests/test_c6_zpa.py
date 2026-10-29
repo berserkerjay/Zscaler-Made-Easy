@@ -1084,3 +1084,113 @@ def test_error_text_of_a_huge_error_is_bounded():
     text = ("token " + "1|" + "a" * 50) * 20000
     out = zr._err_text(text)
     assert len(out) <= 200
+
+
+# ── C6-ZPA-05: the Bulk changes routes check the ZPA sign-in before signing in ──
+
+OPS_CREDS = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+OPS_ZPA_SCOPE = {"scopes": ["zpa"], "channels": {}, "from_page": True}
+OPS_APPLY = {"plan_hash": "h" * 64, "confirm": True, "assessor": ASSESSOR}
+OPS_ROUTES = [
+    ("/api/operations/objects/start", {"family": ops_zpa.FAMILY}),
+    ("/api/operations/objects", {"family": ops_zpa.FAMILY}),
+    ("/api/operations/preview/start", {"operation": {"type": "zpa_connector_group", "prefix": "pov1"}}),
+    ("/api/operations/preview", {"operation": {"type": "zpa_connector_group", "prefix": "pov1"}}),
+    ("/api/operations/apply/start", dict(OPS_APPLY, operation={"type": "zpa_connector_group", "prefix": "pov1"})),
+    ("/api/operations/apply", dict(OPS_APPLY, operation={"type": "zpa_domains", "action": "move"})),
+]
+
+
+@pytest.fixture
+def ops_api(monkeypatch):
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    import security
+    import tenant_auth
+    for k in tenant_auth.ENV.values():   # the sign-in variables only (no stored customer ID); the UI settings stay
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(srv, "_offline_creds", lambda: None)
+    monkeypatch.setattr(security, "_write_override", True)
+    built = []
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append(dict(creds)) or Client())
+    return TestClient(srv.app), built
+
+
+@pytest.mark.parametrize("path,body", OPS_ROUTES, ids=[r[0] for r in OPS_ROUTES])
+def test_a_zpa_bulk_change_without_the_customer_id_is_refused_before_sign_in(ops_api, path, body):
+    """ASVS V5.1.3 · A04:2021 · CWE-20 · WSTG-INPV-01 · CISA SbD fail closed: a ZPA type or family with no customer ID is a 400 before any client is built (never /customers/None/...)."""
+    # Arrange
+    api, built = ops_api
+    # Act
+    r = api.post(path, json=dict(OPS_CREDS, **OPS_ZPA_SCOPE, **body))
+    # Assert
+    assert r.status_code == 400 and "customer ID" in r.json()["detail"] and built == [], r.text
+
+
+@pytest.mark.parametrize("path,body", OPS_ROUTES, ids=[r[0] for r in OPS_ROUTES])
+def test_a_zpa_bulk_change_on_the_classic_api_is_refused_before_sign_in(ops_api, path, body):
+    """ASVS V5.1.3 · A04:2021 · CWE-20 · WSTG-INPV-01: a ZPA type or family signed in through the classic ZIA API is a 400 before any client is built."""
+    # Arrange
+    api, built = ops_api
+    legacy = {"auth_method": "legacy", "username": "admin@acme.example", "password": "pw-pw-pw-pw", "api_key": "k" * 12, "customer_id": "7210000000000"}
+    # Act
+    r = api.post(path, json=dict(legacy, **OPS_ZPA_SCOPE, **body))
+    # Assert
+    assert r.status_code == 400 and "OneAPI" in r.json()["detail"] and built == [], r.text
+
+
+def test_a_bad_customer_id_is_refused_before_sign_in(ops_api):
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: a customer ID that is not alphanumeric is a 400 (boundary: input validation), never sent to the SDK."""
+    # Arrange
+    api, built = ops_api
+    # Act
+    r = api.post("/api/operations/objects", json=dict(OPS_CREDS, **OPS_ZPA_SCOPE, family=ops_zpa.FAMILY, customer_id="72/../1"))
+    # Assert
+    assert r.status_code == 400 and built == []
+
+
+def test_the_typed_customer_id_reaches_the_zpa_sign_in(ops_api):
+    """ASVS V5.1.3 · CWE-20 · WSTG-BUSL-01: the customer ID the page sends with a ZPA bulk change is the one the client is built with."""
+    # Arrange
+    api, built = ops_api
+    # Act
+    r = api.post("/api/operations/objects", json=dict(OPS_CREDS, **OPS_ZPA_SCOPE, family=ops_zpa.FAMILY, customer_id="7210000000000"))
+    # Assert
+    assert r.status_code == 200, r.text
+    assert [c["customer_id"] for c in built] == ["7210000000000"]
+
+
+def test_a_zia_bulk_change_does_not_need_a_customer_id(ops_api):
+    """ASVS V1.14.6 · CWE-440 · WSTG-BUSL-01: the ZPA gate leaves the ZIA types alone (negative case)."""
+    # Arrange
+    import admin_ops
+    # Act / Assert
+    assert admin_ops.product_of({"type": "rule_state"}) == "zia" and admin_ops.product_of("url_categories") == "zia"
+    assert admin_ops.product_of("zpa_segments") == "zpa" and admin_ops.product_of(ops_zpa.FAMILY) == "zpa"
+    assert admin_ops.product_of({"type": "zpa_connector_group"}) == "zpa"
+
+
+# ── C6-ZPA-17: the engine itself refuses an apply without a named assessor ──
+
+class _Tripwire:
+    """A client any use of which fails the test: nothing may be read or written."""
+    def __getattr__(self, name):
+        raise AssertionError(f"the client was used ({name}) before the assessor was checked")
+
+
+@pytest.mark.parametrize("assessor", ["", "   ", None])
+@pytest.mark.parametrize("op_type", ao.types())
+def test_execute_without_a_named_assessor_is_refused_before_anything_is_read(op_type, assessor):
+    """ASVS V4.2.2 · A01:2021 · CWE-841 · WSTG-BUSL-06 · CISA SbD defence in depth: admin_ops.execute refuses a blank assessor for every operation type before it touches the client."""
+    # Arrange
+    spec = {"type": op_type}
+    # Act / Assert
+    with pytest.raises(ao.OperationError, match="named assessor"):
+        ao.execute(_Tripwire(), spec, plan_hash="h" * 64, scope=ZPA, writes_enabled=True, assessor=assessor)
+
+
+def test_write_mode_off_is_still_checked_first():
+    """ASVS V4.2.2 · CWE-841 · WSTG-BUSL-06: with write mode off the refusal stays the write-mode one (the gates' order is unchanged)."""
+    # Arrange / Act / Assert
+    with pytest.raises(PermissionError, match="write mode is off"):
+        ao.execute(_Tripwire(), {"type": "zpa_connector_group"}, plan_hash="h" * 64, scope=ZPA, writes_enabled=False, assessor="")

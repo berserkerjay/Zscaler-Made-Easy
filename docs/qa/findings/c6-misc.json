@@ -84,7 +84,7 @@
    "id": "C6-MISC-CHK-CI-TENANT",
    "what": "Console index cache never answers for another tenant",
    "standard": "ASVS V4.2.1 · CWE-668",
-   "result": "open"
+   "result": "fixed"
   },
   {
    "id": "C6-MISC-CHK-CI-PII",
@@ -271,11 +271,10 @@
    "severity": "medium",
    "cwe": "CWE-668",
    "asvs": "V4.2.1",
-   "status": "open",
-   "fix": "server passes the signed-in tenant's label to console_index.cache_latest; Find anything sends its sign-in",
-   "test": "tests/test_c6_misc.py::test_console_index_cached_without_a_tenant_is_refused",
-   "commit": "",
-   "proposed_patch": "diff --git a/dlp_api_server.py b/dlp_api_server.py\nindex 0a374b7..4c44565 100755\n--- a/dlp_api_server.py\n+++ b/dlp_api_server.py\n@@ -5498,14 +5498,21 @@ def _console_zia(req: Any, zscope: Dict[str, Any]):\n \n \n @app.get(\"/api/console-index/cached\")\n-async def console_index_cached(profile_id: str = \"\"):\n+async def console_index_cached(profile_id: str = \"\", vanity_domain: str = \"\", cloud: str = \"\", auth_method: str = \"\"):\n     \"\"\"The last console index this server read for a tenant profile (or for\n     the server's own tenant), whatever scope it was read with, while it is\n-    kept (30 minutes). Never reads the tenant: Find anything searches it as\n-    you type, and only its Load tenant objects button reads (POST\n-    /api/console-index, with the Scope page's selection).\"\"\"\n+    kept (30 minutes), and only when it was read for the tenant the page\n+    is signed in to (typed sign-ins of every tenant share one bucket).\n+    Never reads the tenant: Find anything searches it as you type, and\n+    only its Load tenant objects button reads (POST /api/console-index,\n+    with the Scope page's selection).\"\"\"\n     import console_index as ci\n-    hit = ci.cache_latest(profile_id)\n+    import workspace_notes as wn\n+    try:\n+        label = _notes_tenant(\"\", profile_id, vanity_domain, cloud, auth_method)\n+    except wn.NotesError:\n+        label = None   # a profile that is gone keeps its own bucket; no sign-in at all answers nothing\n+    hit = ci.cache_latest(profile_id, tenant_label=label)\n     return {\"index\": hit, \"profile_id\": profile_id or \"\"}\n \n \ndiff --git a/static/find_anything.js b/static/find_anything.js\nindex 93941f7..6778f4e 100644\n--- a/static/find_anything.js\n+++ b/static/find_anything.js\n@@ -346,6 +346,16 @@\n   }\n   // Which tenant a note belongs to: the loaded index's, else the sign-in on\n   // the assessment page (no secret), else the server's own tenant.\n+  // The tenant the page is signed in to (never the kept index's own label).\n+  function signInRef() {\n+    const h = home();\n+    try {\n+      const b = (h && h.migrateCredBody()) || {};\n+      if (b.profile_id) return { profile_id: b.profile_id };\n+      if (b.vanity_domain || b.auth_method === 'legacy') return { vanity_domain: b.vanity_domain || '', cloud: b.cloud || '', auth_method: b.auth_method || '' };\n+    } catch (e) { /* below */ }\n+    return { profile_id: profileId() };\n+  }\n   function tenantRef() {\n     if (S.index && S.index.tenant_label) return { tenant: S.index.tenant_label };\n     const h = home();\n@@ -390,7 +400,7 @@\n     if (S.cachedAsked) return;\n     S.cachedAsked = true;\n     try {\n-      const d = await getJson('/api/console-index/cached?' + qs({ profile_id: profileId() }));\n+      const d = await getJson('/api/console-index/cached?' + qs(signInRef()));\n       if (d && d.index) { S.index = d.index; }\n     } catch (e) { /* no index kept */ }\n     noteIndex();\n",
+   "status": "fixed",
+   "fix": "GET /api/console-index/cached takes the page's sign-in (profile, or vanity domain and cloud; no secret) and passes its label to cache_latest; a gone profile or typed classic-API sign-in gets nothing; Find anything sends signInRef()",
+   "test": "tests/test_c6_misc.py::test_console_index_cached_answers_only_for_the_signed_in_tenant",
+   "commit": "cc42393",
    "files": [
     "dlp_api_server.py",
     "static/find_anything.js"
@@ -513,7 +512,7 @@
    "commit": "f3bf00b"
   }
  ],
- "tests_added": 385,
+ "tests_added": 395,
  "notes": [
   "Zscaler API details: hosts and URL construction verified against zscaler-sdk-python 1.11.3 (oneapi_oauth_client._get_auth_url, request_executor._resolve_api_base_url, zia/legacy.py); how the URL lookup spells an internationalised host and whether ZIA engines accept D<id>.U terms are assumed, not documented in the SDK.",
   "Pre-existing on integrate/w6 and outside this area: tests/test_regression_flows.py::test_rule_migration_post_applies_the_planned_order_through_every_gate fails the same with this branch's changes reverted (plan_hash required)."

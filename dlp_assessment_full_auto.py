@@ -12,7 +12,7 @@ Usage:
     python dlp_assessment_full_auto.py --config tenant.json --output report.json
 """
 
-import argparse, json, os, sys, time
+import argparse, functools, json, os, sys, time
 from datetime import datetime, timezone
 
 try:
@@ -2544,6 +2544,71 @@ def c_e15(cl):
     """Check E.15 (Ch.E — GenAI): GenAI logging."""
     return _web_retention(cl,"GenAI prompts and transactions") or R(R.WARN,"No enabled NSS feed — GenAI events stay in ZIA only for its six-month log window (180 days). Ref: https://help.zscaler.com/zia/about-insights-logs")
 
+# ── A refused read is never judged ────────────────────────────────────
+# A check that reads an endpoint the API client's role may not read (HTTP
+# 401/403) sees an empty list, and would report "No firewall rules" or,
+# worse, "rule order valid" for a tenant it never saw. The run's client
+# (channel_scope.ScopedClient) turns unanswered reads (429, 5xx, timeouts)
+# into "Could not be checked" but passes 401/403 through, so every check of
+# these registries reads through _ReadLog: when any of its reads was
+# refused, a scored result (PASS / FAIL / REVIEW) becomes "Not permitted"
+# (INFO in the words permissions.is_denied recognises), outside the score.
+_REFUSED = (401, 403)
+
+
+class _ReadLog:
+    """The client one check reads through: each read is passed on unchanged
+    and every read the role was refused is noted (endpoint, HTTP code)."""
+
+    def __init__(self, cl):
+        self._cl = cl
+        self.refused = []
+
+    def get(self, ep, *a, **k):
+        res = self._cl.get(ep, *a, **k)
+        code = res[1] if isinstance(res, tuple) and len(res) >= 2 else None
+        if code in _REFUSED:
+            self.refused.append((str(ep).removeprefix("raw:").split("?", 1)[0], code))
+        return res
+
+    def __getattr__(self, name):
+        return getattr(self._cl, name)
+
+
+def _not_permitted(r, label, refused):
+    codes = "/".join(str(c) for c in sorted({c for _ep, c in refused}))
+    eps = ", ".join(sorted({ep for ep, _c in refused}))[:160]
+    why = (f"Not permitted: the API client's role was refused {len(refused)} read(s) (HTTP {codes} on {eps}). "
+           "Access denied — grant the role read access to this feature and run the assessment again.")
+    try:
+        import permissions
+        denied = permissions.is_denied(str(getattr(r, "detail", "")))
+    except Exception:  # noqa: BLE001
+        denied = False
+    if r.status in (R.PASS, R.FAIL, R.WARN):
+        return R(R.INFO, f"{label}: {why} A refused read is not judged as configured or not configured.", getattr(r, "data", None))
+    if denied:
+        return r
+    return R(r.status, f"{str(r.detail).rstrip()} {why}".strip(), getattr(r, "data", None))
+
+
+def permission_guarded(fn, label):
+    """`fn` run through _ReadLog: a result built on a refused read is "Not permitted"."""
+    @functools.wraps(fn)
+    def check(cl):
+        log = _ReadLog(cl)
+        r = fn(log)
+        if not log.refused or not hasattr(r, "status"):
+            return r
+        return _not_permitted(r, label, log.refused)
+    return check
+
+
+def guard_registry(reg):
+    """A check registry [(id, section, label, fn)] with every fn permission-guarded."""
+    return [(cid, sec, label, permission_guarded(fn, label)) for cid, sec, label, fn in reg]
+
+
 # === FULL REGISTRY ===
 REG = [
     ("1.1","1 — CC Portal","ZCC Portal accessible",c_1_1),("1.2","1 — CC Portal","VPN GW Bypasses",c_1_2),("1.3","1 — CC Portal","IP Inclusions",c_1_3),("1.4","1 — CC Portal","IP Exclusions",c_1_4),("1.5","1 — CC Portal","App Bypasses",c_1_5),("1.6","1 — CC Portal","Forwarding Profile listener",c_1_6),("1.7","1 — CC Portal","DNS exclusion priority",c_1_7),("1.8","1 — CC Portal","Strict Enforcement",c_1_8),("1.9","1 — CC Portal","Pre-enrollment gap",c_1_9),("1.10","1 — CC Portal","Tamper passwords",c_1_10),("1.11","1 — CC Portal","Machine Tunnel",c_1_11),("1.12","1 — CC Portal","ZCC Telemetry",c_1_12),("1.13","1 — CC Portal","Posture Profiles",c_1_13),("1.14","1 — CC Portal","Posture-linked policies",c_1_14),
@@ -2580,6 +2645,12 @@ try:
     REG = _zcc_eval.splice(REG)
 except Exception as _e:  # noqa: BLE001
     print(f"[warn] strict ZCC checks not loaded: {_e}")
+
+# Every check of the engine's own registry (its spliced SaaS, Email and Client
+# Connector rows too) reads through the same permission guard as the platform
+# registries: a result built on a refused read (HTTP 401/403) is "Not
+# permitted", never judged, whichever runner calls it (API, MCP, CLI).
+REG = guard_registry(REG)
 
 # === RUNNER ===
 def run(client, con=None):

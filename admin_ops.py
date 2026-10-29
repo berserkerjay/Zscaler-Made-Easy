@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import inspect
 import json
 import os
 import re
@@ -179,6 +180,22 @@ def types() -> Tuple[str, ...]:
     return TYPES + tuple(sorted(PLUGINS))
 
 
+def product_of(spec_or_family: Any) -> str:
+    """The product an operation type or a family (the classic ZPA types, a
+    plugin type, a plugin family) reads and changes: "zpa", "zcc", "zdx" or
+    "zia" (the default for the ZIA rule and URL category types)."""
+    load_plugins()
+    t = spec_or_family if isinstance(spec_or_family, str) else str((spec_or_family or {}).get("type") or "") if isinstance(spec_or_family, dict) else ""
+    if t in ("zpa_segments", "zpa_domains"):
+        return "zpa"
+    if t in PLUGINS:
+        return str(PLUGINS[t].get("product") or "zia")
+    for p in PLUGINS.values():
+        if p.get("family") == t:
+            return str(p.get("product") or "zia")
+    return "zia"
+
+
 def plugin_catalog() -> List[Dict[str, Any]]:
     """What the page needs to offer the plugin types: no callables."""
     load_plugins()
@@ -282,11 +299,26 @@ def require_scope(spec_or_family: Any, scope: Dict[str, Any]) -> None:
             raise OperationError(scope["not_in_scope"]["zpa_segments"])
     elif t in PLUGINS or t in PLUGIN_FAMILIES:
         reg = PLUGINS.get(t) or PLUGIN_FAMILIES[t]
-        why = reg["in_scope"](scope)
+        why = _plugin_in_scope(reg["in_scope"], scope, spec_or_family)
         if why:
             raise OperationError(str(why))
     else:
         raise OperationError(f"Unknown operation '{t}'. Use one of: {', '.join(types())}.")
+
+
+def _plugin_in_scope(fn: Callable[..., Optional[str]], scope: Dict[str, Any], spec: Any) -> Optional[str]:
+    """A plugin's scope check. One that takes the spec too (the ZIA
+    baseline: the areas it names, or its Undo touches) is given it, so what
+    is not ticked is refused here, before sign-in (deny by default)."""
+    if isinstance(spec, dict):
+        try:
+            params = [p for p in inspect.signature(fn).parameters.values()
+                      if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL)]
+        except (TypeError, ValueError):
+            params = []
+        if len(params) >= 2 or any(p.kind == p.VAR_POSITIONAL for p in params):
+            return fn(scope, spec)
+    return fn(scope)
 
 
 # ---------------------------------------------------------------------------
@@ -1969,6 +2001,10 @@ def execute(client, spec: Dict[str, Any], *, plan_hash: str, scope: Dict[str, An
     written: status blocked, busy true."""
     if writes_enabled is not True:
         raise PermissionError("write mode is off: nothing was written")
+    if not str(assessor or "").strip():
+        # The route requires the named assessor too; the engine refuses on
+        # its own as well (defence in depth for every caller), before any read.
+        raise OperationError("A named assessor is required to apply a change: nothing was read or written.")
     with ops.tenant_run(client) as mine:
         if not mine:
             ops.audit_refusal("operation", client, plan_hash=plan_hash, reason=ops.BUSY_REASON)

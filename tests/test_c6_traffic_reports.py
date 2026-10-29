@@ -992,3 +992,108 @@ def test_read_problems_pass_through_the_given_scrub():
 
     assert secret not in str(rep) and secret not in str(poll)
     assert any("[redacted client_secret]" in e for e in rep["errors"]) and rep["read"]["incidents"] is False
+
+
+# ── C6-TRAFFIC-REPORTS-25: read problems never carry the sign-in's secret ──
+
+_DH_SECRET = "Sk-canary-d3tect10n-health-77"
+
+
+class _EchoingSearch:
+    """An incident search whose error echoes the secret it was signed in with (as some SDK errors do)."""
+
+    def dlp_incident_search(self, *a, **kw):
+        raise RuntimeError(f"401 Unauthorized: client_secret={_DH_SECRET} was rejected")
+
+
+@pytest.mark.parametrize("path", ["/api/detection-health", "/api/live-feed"])
+def test_a_read_problem_that_echoes_the_secret_is_masked(monkeypatch, path):
+    """ASVS V7.1.1 · A09:2021 · CWE-532 · WSTG-INFO-05: an SDK error that quotes the client secret reaches neither the report's read problems nor its log, on both routes."""
+    # Arrange
+    import dlp_analysis
+    import dlp_api_server as srv
+    from fastapi.testclient import TestClient
+    c = _dh_client([])
+    c.zwa = type("ZWA", (), {"dlp_incidents": _EchoingSearch()})()
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: c)
+    monkeypatch.setattr(srv, "_build_client", lambda req: object())
+    monkeypatch.setattr(dlp_analysis, "inspect", lambda *a, **k: [])
+    monkeypatch.setattr(srv, "_live_connector_context", lambda *a, **k: {})
+    monkeypatch.setattr(srv, "_live_rules_cache", {})   # isolated: no rule actions kept for the next test's tenant
+    monkeypatch.setattr(srv, "_REPORTS", dict(srv._REPORTS))
+    body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": _DH_SECRET,
+            "scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}, "from_page": True}
+    # Act
+    r = TestClient(srv.app).post(path, json=body)
+    # Assert
+    assert r.status_code == 200, r.text[:300]
+    assert r.json()["errors"], "the failed incident read is reported"
+    assert _DH_SECRET not in r.text and _DH_SECRET[:12] not in r.text
+
+
+# ── C6-TRAFFIC-REPORTS-26: the Log Analyzer page's Markdown download is inert ──
+
+def _logs_page_markdown(data):
+    """Run static/report_logs.html's own markdown() in Node on `data`."""
+    import json as _json
+    import shutil
+    import subprocess
+    node = shutil.which("node") or ("/opt/node22/bin/node" if os.path.exists("/opt/node22/bin/node") else None)
+    if not node:
+        pytest.skip("needs node")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    page = open(os.path.join(root, "static", "report_logs.html"), encoding="utf-8").read()
+    start = page.find("    // Upload-controlled text")
+    start = start if start >= 0 else page.index("    function markdown(d) {")
+    src = page[start:page.index("    $('laDownload').addEventListener('click'")]
+    script = src + "\nprocess.stdout.write(JSON.stringify(markdown(JSON.parse(process.argv[1]))));\n"
+    r = subprocess.run([node, "-e", script, _json.dumps(data)], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr[:400]
+    return _json.loads(r.stdout)
+
+
+_HOSTILE_UPLOAD = {
+    "verdict": {"headline": "Two problems", "detail": "see below"},
+    "logs": {"period": {"first": "2026-10-01", "last": "2026-10-02"},
+             "facts": {"users": ["<img src=x onerror=alert(1)>"], "client_versions": ["4.5"], "operating_systems": ["Windows"], "clouds": ["zscalertwo"]},
+             "files": [{"name": "ztray.log\n# Forged heading", "lines": 3}],
+             "findings": [{"severity": "high", "title": "Tunnel down", "count": 2, "what": "w", "means": "m", "do": ["a"],
+                           "context": "[click](javascript:alert(1))",
+                           "evidence": [{"file": "z.log", "ts": "", "line": "```"}, {"file": "z.log", "ts": "", "line": "# after the fence\n## and a heading"}]}],
+             "top_errors": [{"count": 3, "message": "````` closes nothing"}]},
+    "pac": [{"name": "proxy.pac", "summary": {"default": "direct", "gateways": [], "macros": [], "bypass_count": 1,
+                                              "bypasses": [{"line": 4, "kind": "shExpMatch", "value": "*.corp | evil | cell", "risk": "broad"}]},
+             "findings": []}],
+    "notes": ["skipped <script>alert(1)</script>"],
+}
+
+
+def test_the_log_analyzer_markdown_forges_no_heading_tag_or_link():
+    """ASVS V5.3.3 · A03:2021 · CWE-1236 · CWE-79 · WSTG-INPV-01: upload text in the downloaded Markdown adds no heading, HTML tag or live link."""
+    # Arrange / Act
+    md = _logs_page_markdown(_HOSTILE_UPLOAD)
+    lines = md.split("\n")
+    # Assert
+    assert "# Forged heading" not in lines and not any(line.startswith("## and a heading") for line in lines)
+    assert "<img" not in md and "<script" not in md and "&lt;img" in md
+    assert "[click](" not in md and "\\[click\\]" in md
+
+
+def test_the_log_analyzer_markdown_evidence_fence_cannot_be_closed_by_a_log_line():
+    """ASVS V5.3.3 · CWE-1236 · WSTG-INPV-01: a log line holding ``` (or a longer run) stays inside its evidence block (boundary: runs of 3 and 5)."""
+    # Arrange / Act
+    lines = _logs_page_markdown(_HOSTILE_UPLOAD).split("\n")
+    # Assert
+    for needle in ("z.log: ```", "x3 ````` closes nothing"):
+        i = lines.index(needle)
+        opener = next(lines[j] for j in range(i - 1, -1, -1) if set(lines[j]) == {"`"})
+        assert len(opener) > max(len(r) for r in re.findall(r"`+", needle))
+        assert lines[lines.index(opener, max(0, i - 4)):].index(opener, 1) > 0   # the block closes only on its own fence, after the line
+
+
+def test_the_log_analyzer_markdown_table_row_keeps_its_four_cells():
+    """ASVS V5.3.3 · CWE-1236 · WSTG-INPV-01: a bypass value holding | is one cell, not three."""
+    # Arrange / Act
+    row = next(line for line in _logs_page_markdown(_HOSTILE_UPLOAD).split("\n") if line.startswith("| 4 |"))
+    # Assert
+    assert len(re.findall(r"(?<!\\)\|", row)) == 5

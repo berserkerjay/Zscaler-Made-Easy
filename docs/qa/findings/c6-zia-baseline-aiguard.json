@@ -169,11 +169,10 @@
    "severity": "medium",
    "cwe": "CWE-665",
    "asvs": "V1.4.1",
-   "status": "open",
-   "fix": "admin_ops._one merges the raw body's missing fields (patch below; verified against the suite)",
-   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_sandbox_update_keeps_the_isolation_profile_the_sdk_model_drops",
-   "commit": "e120140",
-   "proposed_patch": "--- a/admin_ops.py\t2026-10-29 03:52:20.094011513 +0000\n+++ b/admin_ops.py\t2026-10-29 03:52:20.112405049 +0000\n@@ -280,7 +280,21 @@\n         return None, str(err)[:300]\n     if data is None:\n         return None, \"no answer\"\n-    return pack_export._plain(data), None\n+    row = pack_export._plain(data)\n+    # A field the SDK model leaves out (1.11.3's sandbox model has no\n+    # cbiProfile) is taken from the raw answer, as the list reads do\n+    # (pack_export._rows): a PUT rebuilt from this row must not strip it.\n+    getter = getattr(ret[1], \"get_body\", None) if isinstance(ret, tuple) and len(ret) >= 3 else None\n+    try:\n+        body = getter() if callable(getter) else None\n+        body = json.loads(body) if isinstance(body, (bytes, str)) and body else body\n+    except Exception:  # noqa: BLE001 — the model's fields are used alone\n+        body = None\n+    if isinstance(body, dict):\n+        for k, v in pack_export._plain(body).items():\n+            if row.get(k) in (None, \"\", [], {}) and v not in (None, \"\", [], {}):\n+                row[k] = v\n+    return row, None\n \n \n def _service(zia, policy: str):\n"
+   "status": "fixed",
+   "fix": "Already fixed on integrate/w6: admin_ops._one now returns pack_export.one_row(ret), which backfills the raw answer's fields the SDK model drops (sandbox cbiProfile); no change needed",
+   "test": "tests/test_qa6_builders_lifecycle.py::test_a_single_read_keeps_what_the_model_drops",
+   "commit": "195005b"
   },
   {
    "id": "C6-ZIA-BASELINE-AIGUARD-05",
@@ -346,11 +345,10 @@
    "severity": "low",
    "cwe": "CWE-863",
    "asvs": "V4.1.3",
-   "status": "open",
-   "fix": "ops_zia_baseline._in_scope(scope, spec) now refuses them; admin_ops.require_scope must pass the spec (patch below; verified with tests/test_scope_rule_routes.py and the baseline suites)",
-   "test": "tests/test_c6_zia_baseline_aiguard.py::test_the_scope_check_refuses_areas_that_are_not_ticked",
-   "commit": "1d3b0ba",
-   "proposed_patch": "--- a/admin_ops.py\t2026-10-29 03:44:00.660941154 +0000\n+++ b/admin_ops.py\t2026-10-29 03:44:00.676096715 +0000\n@@ -257,7 +257,11 @@\n             raise OperationError(scope[\"not_in_scope\"][\"zpa_segments\"])\n     elif t in PLUGINS or t in PLUGIN_FAMILIES:\n         reg = PLUGINS.get(t) or PLUGIN_FAMILIES[t]\n-        why = reg[\"in_scope\"](scope)\n+        fn = reg[\"in_scope\"]\n+        # A plugin whose check takes the spec too (ops_zia_baseline: the areas it\n+        # names) refuses what is not ticked here, before sign-in.\n+        takes_spec = isinstance(spec_or_family, dict) and getattr(getattr(fn, \"__code__\", None), \"co_argcount\", 1) >= 2\n+        why = fn(scope, spec_or_family) if takes_spec else fn(scope)\n         if why:\n             raise OperationError(str(why))\n     else:\n"
+   "status": "fixed",
+   "fix": "admin_ops.require_scope gives a plugin's in_scope the spec when its signature takes it (inspect.signature), so the baseline refuses unticked areas and Undo steps before sign-in. Also ...::test_the_engine_scope_check_before_sign_in_passes_the_spec_to_the_baseline",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_preview_naming_an_unticked_baseline_area_is_refused_before_sign_in",
+   "commit": "0ace940"
   },
   {
    "id": "C6-ZIA-BASELINE-AIGUARD-21",
@@ -408,5 +406,5 @@
    "commit": "37a8f7c"
   }
  ],
- "tests_added": 443
+ "tests_added": 449
 }

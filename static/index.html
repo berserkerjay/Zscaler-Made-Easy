@@ -3603,6 +3603,7 @@ async function remediationActivate() {
   body.check_id = check_id;
   body.criteria = criteria;
   body.dry_run = false;
+  Object.assign(body, scopePageSelection());   // a live fix writes only a rule policy in scope on the Scope page
   tenantWriteBody(body);
   const resultEl = document.getElementById('remediationResult');
   resultEl.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Applying...</div>';
@@ -3884,6 +3885,7 @@ async function wizardApply() {
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();
   body.dry_run = false;
+  Object.assign(body, scopePageSelection());   // a live fix writes only a rule policy in scope on the Scope page
   tenantWriteBody(body);
   const resultEl = document.getElementById('wizardResult');
   resultEl.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">⏳ Applying…</div>';

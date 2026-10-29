@@ -1491,3 +1491,56 @@ def test_an_endpoint_no_check_reads_is_unmapped_and_never_read():
     sel = bs.select(["dlp"], {"web_dlp": "zscaler"}, endpoints={"/zia/onlyAFeatureReadsThis": ["x.py"], "/zia/webDlpRules": ["y.py"]})
 
     assert sel["unmapped"] == ["/zia/onlyAFeatureReadsThis"] and list(sel["endpoints"]) == ["/zia/webDlpRules"]
+
+
+# ── C6-SCOPE-OFFLINE-15: Traffic flow reads the API's app-profile field names ──
+
+def _flow_profiles(monkeypatch, profiles):
+    import data_flow
+    monkeypatch.setattr(data_flow, "read_app_profiles", lambda get, cancel=None: (profiles, [], {}))
+    out = data_flow.read_client_connector(types.SimpleNamespace(get=lambda *a, **k: ([], 200)))
+    return {p["name"]: p for p in out["app_profiles"]}
+
+
+def test_the_sample_tenant_app_profiles_show_endpoint_dlp_certificate_and_app_bypass():
+    """ASVS V5.1.3 · CWE-1287 · WSTG-BUSL-01: on the API-shaped sample tenant, Install Endpoint DLP, the SSL certificate and the custom app bypass are read, not shown as off or dropped."""
+    # Arrange
+    import data_flow
+    cl = ot.OfflineRawClient(ot.sample_store(), {})
+    # Act
+    prof = {p["name"]: p for p in data_flow.read_client_connector(cl)["app_profiles"]}
+    # Assert
+    assert prof["Windows - Corporate"]["endpoint_dlp"] is True and prof["Windows - Contractors"]["endpoint_dlp"] is False
+    assert prof["Windows - Corporate"]["ssl_cert"] is True and prof["macOS - Corporate"]["ssl_cert"] is True
+    assert prof["Windows - Contractors"]["bypass"]["apps"] == ["5001"]
+    assert prof["Windows - Contractors"]["tunnel"]["exclude"] == ["10.0.0.0/8", "192.0.2.0/24"]
+
+
+@pytest.mark.parametrize("profile,field,expected", [
+    ({"policyExtension": {"enableZdpService": "1"}}, "endpoint_dlp", True),
+    ({"policyExtension": '{"enableZdpService": 1}'}, "endpoint_dlp", True),        # the extension as a JSON string
+    ({"policyExtension": {"enableZdpService": "0"}}, "endpoint_dlp", False),       # boundary: "0" is off
+    ({"installEndpointDlp": True}, "endpoint_dlp", True),                          # an older export still reads
+    ({"windowsPolicy": {"install_ssl_certs": 1}}, "ssl_cert", True),
+    ({"linuxPolicy": {"installCerts": 1}}, "ssl_cert", True),
+    ({"windowsPolicy": {"install_ssl_certs": 0}}, "ssl_cert", False),
+    ({}, "ssl_cert", False),                                                       # nothing said is not "on"
+])
+def test_an_api_shaped_app_profile_is_read_by_its_api_names(monkeypatch, profile, field, expected):
+    """ASVS V5.1.3 · CWE-1287 · WSTG-BUSL-01: each switch is read from the name zscaler-sdk-python's WebPolicy model gives it, older names still read."""
+    # Arrange
+    p = dict({"id": 1, "name": "P", "device_type": 3, "active": 1}, **profile)
+    # Act
+    got = _flow_profiles(monkeypatch, [p])["P"]
+    # Assert
+    assert got[field] is expected
+
+
+def test_custom_and_predefined_app_bypasses_are_both_counted(monkeypatch):
+    """ASVS V5.1.3 · CWE-1287 · WSTG-BUSL-01: bypassCustomAppIds and bypassAppIds both land in the app bypasses."""
+    # Arrange
+    p = {"id": 1, "name": "P", "device_type": 3, "active": 1, "bypassCustomAppIds": ["c1"], "bypassAppIds": ["a1", "a2"]}
+    # Act
+    apps = _flow_profiles(monkeypatch, [p])["P"]["bypass"]["apps"]
+    # Assert
+    assert sorted(apps) == ["a1", "a2", "c1"]
