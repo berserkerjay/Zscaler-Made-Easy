@@ -5,6 +5,9 @@
 // Traffic insights (read-only, only what is in scope on the Scope page).
 (function () {
   'use strict';
+  // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+  const errText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+    return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
   const $ = id => document.getElementById(id);
   const live = $('liveRegion');
   const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
@@ -90,11 +93,11 @@
     const r = await fetch(path, Object.assign({ method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined, cache: 'no-store' }, opts || {}));
     if ((opts || {}).raw) {
-      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error((d && d.detail) || `HTTP ${r.status}`); }
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(errText(d, r.status)); }
       return r;
     }
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) { const e = new Error((d && (d.detail && (d.detail.cause || d.detail))) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    if (!r.ok) { const e = new Error(errText(d, r.status)); e.status = r.status; throw e; }
     return d;
   }
   function take(d) { pov = d.pov || null; tenantLabel = d.tenant_label || tenantLabel; if (d.templates) templates = d.templates; render(); }
@@ -405,7 +408,7 @@
     const k = cat.kit;
     const vertical = pov ? pov.intake.vertical : '';
     const files = k.files.slice().sort((a, b) => (b.vertical === vertical) - (a.vertical === vertical));
-    const links = list => h('ul', { class: 'pv-list' }, list.map(l => h('li', {}, h('a', { class: 'pv-ext', href: l.url, target: '_blank', rel: 'noopener noreferrer', text: l.label }), h('span', { class: 'pv-meta', text: l.url }))));
+    const links = list => h('ul', { class: 'pv-list' }, list.map(l => h('li', {}, h('a', { class: 'pv-ext', href: /^https:\/\//i.test(String(l.url || '')) ? String(l.url) : '#', target: '_blank', rel: 'noopener noreferrer', text: l.label }), h('span', { class: 'pv-meta', text: l.url }))));
     box.replaceChildren(
       h('p', { class: 'pv-lead', text: 'Files and links to run the tests with. Every file is synthetic test data or a harmless test file, never real data. ' + k.how }),
       h('div', { class: 'pv-sec' }, h('h2', { text: 'Files' }), h('ul', { class: 'pv-list pv-kit' }, files.map(f => h('li', {},

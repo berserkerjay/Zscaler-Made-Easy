@@ -43,7 +43,8 @@
   .zf-alert .def { border-left: 3px solid var(--accent); padding: 0.3rem 0.6rem; background: var(--well); border-radius: 0 var(--r-sm) var(--r-sm) 0; margin: 0 0 0.5rem; }
   .zf-count { font-variant-numeric: tabular-nums; margin-left: 0.4rem; }
   .zf-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0; }
-  .zf-row label { display: inline-flex; gap: 0.35rem; align-items: center; font-size: 0.86rem; }
+  .zf-row label { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; font-size: 0.86rem; max-width: 100%; min-width: 0; }
+  .zf-row input { max-width: 100%; min-width: 0; }
   .zf-row select, .zf-row input[type=search] { min-height: 34px; padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.84rem; max-width: 100%; }
   .zf-pre { font-family: var(--mono); font-size: 0.74rem; background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem; overflow: auto; max-height: 420px; white-space: pre; }
   .zf-pre .add { color: var(--pass); } .zf-pre .del { color: var(--fail); }

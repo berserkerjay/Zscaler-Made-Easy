@@ -5,6 +5,9 @@
  * exports offer a counts-only form. */
 (function () {
   'use strict';
+  // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+  const errText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+    return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = id => document.getElementById(id);
   const out = $('zfOut');
@@ -116,7 +119,7 @@
       const r = await fetch('/api/zcc/fleet/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken },
         body: JSON.stringify(Object.assign({}, credBody(), scopeSelection())) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(errText(d, r.status));
       job = d.job_id;
       if (stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* token stopped it */ } }
       const snap = await follow(job);
@@ -151,7 +154,7 @@
     const [lab, cls] = STATUS[st] || [st, 'st-unknown'];
     return `<span class="zf-cell ${cls}" title="${E(detail || '')}">${E(lab)}</span>`;
   }
-  function when(d) { return d.last_seen ? `${E(d.last_seen.replace('T', ' ').slice(0, 16))} (${d.hours_since_seen} h)` : 'never'; }
+  function when(d) { return d.last_seen ? `${E(String(d.last_seen).replace('T', ' ').slice(0, 16))} (${E(d.hours_since_seen)} h)` : 'never'; }
   function deviceRows(rows, extra) {
     if (!rows.length) return '<p class="zf-dim">None.</p>';
     return `<div class="zf-wrap"><table class="zf-t"><thead><tr><th scope="col">User</th><th scope="col">Device</th><th scope="col">Platform</th><th scope="col">Version</th><th scope="col">Last seen (UTC)</th><th scope="col">App profile</th><th scope="col">ZIA</th><th scope="col">ZPA</th>${extra ? `<th scope="col">${E(extra[0])}</th>` : ''}</tr></thead><tbody>
@@ -159,12 +162,12 @@
     </tbody></table></div>`;
   }
   function alertHtml(a) {
-    const count = !a.evaluated ? '<span class="zf-chip">not evaluated</span>' : `<span class="zf-count">${a.count}</span>`;
+    const count = !a.evaluated ? '<span class="zf-chip">not evaluated</span>' : `<span class="zf-count">${E(a.count)}</span>`;
     let body;
     if (!a.evaluated) body = `<p>${E(a.why_not)}</p>`;
     else if (a.key === 'multi_device') {
       body = a.rows.length ? `<div class="zf-wrap"><table class="zf-t"><thead><tr><th scope="col">User</th><th scope="col" class="num">Registered devices</th><th scope="col">Devices</th><th scope="col">Platforms</th></tr></thead><tbody>
-        ${a.rows.map(u => `<tr><td>${E(u.user)}</td><td class="num">${u.devices}</td><td>${E(u.hostnames.join(', '))}</td><td>${E(u.platforms.join(', '))}</td></tr>`).join('')}</tbody></table></div>` : '<p class="zf-dim">None.</p>';
+        ${a.rows.map(u => `<tr><td>${E(u.user)}</td><td class="num">${E(u.devices)}</td><td>${E([].concat(u.hostnames || []).join(', '))}</td><td>${E([].concat(u.platforms || []).join(', '))}</td></tr>`).join('')}</tbody></table></div>` : '<p class="zf-dim">None.</p>';
     } else {
       const extra = a.key === 'registration_anomaly' ? ['Why', 'reason'] : (a.rows[0] && a.rows[0].newest ? ['Newest on platform', 'newest'] : null);
       body = deviceRows(a.rows, extra);
@@ -178,7 +181,7 @@
     const rows = Object.entries(obj || {});
     if (!rows.length) return '';
     return `<div class="zf-wrap"><table class="zf-t"><caption>${E(caption)}</caption><thead><tr><th scope="col">${E(caption.split(' ')[0])}</th><th scope="col" class="num">Devices</th></tr></thead><tbody>
-      ${rows.map(([k, n]) => `<tr><th scope="row">${E((labels || {})[k] || k)}</th><td class="num">${n}</td></tr>`).join('')}</tbody></table></div>`;
+      ${rows.map(([k, n]) => `<tr><th scope="row">${E((labels || {})[k] || k)}</th><td class="num">${E(n)}</td></tr>`).join('')}</tbody></table></div>`;
   }
   function heatmap(res) {
     const cols = res.checks;
@@ -188,13 +191,13 @@
       <div class="zf-wrap"><table class="zf-t zf-heat"><caption>Each cell says pass, warn, fail, unknown or not applicable; hover or read the list below for the reason.</caption>
       <thead><tr><th scope="col">App profile</th><th scope="col" class="num">Devices</th><th scope="col" class="num">Score</th>${cols.map(c => `<th scope="col" title="${E(c.definition)}">${E(c.label)}</th>`).join('')}</tr></thead>
       <tbody>${profs.map(p => `<tr><th scope="row">${E(p.name)} <span class="zf-dim">${E(p.platform)}${p.active ? '' : ', inactive'}</span></th>
-        <td class="num">${p.devices == null ? '—' : p.devices}</td><td class="num">${p.score == null ? '—' : p.score}</td>
+        <td class="num">${p.devices == null ? '—' : E(p.devices)}</td><td class="num">${p.score == null ? '—' : E(p.score)}</td>
         ${cols.map(c => { const x = p.checks[c.key] || { status: 'unknown', detail: '' }; return `<td>${cell(x.status, x.detail)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>
       <details class="zf-details"><summary>Why each profile fails or warns</summary>
         ${profs.map(p => { const bad = cols.filter(c => p.checks[c.key] && ['fail', 'warn', 'unknown'].includes(p.checks[c.key].status));
           return bad.length ? `<h3>${E(p.name)} (${E(p.platform)})</h3><ul>${bad.map(c => `<li><strong>${E(c.label)}</strong> (${E(STATUS[p.checks[c.key].status][0])}): ${E(p.checks[c.key].detail)}</li>`).join('')}</ul>` : ''; }).join('')}
       </details>
-      <details class="zf-details"><summary>What each check means</summary><dl>${cols.map(c => `<dt><strong>${E(c.label)}</strong> (impact ${c.impact})</dt><dd>${E(c.definition)}</dd>`).join('')}</dl></details>`;
+      <details class="zf-details"><summary>What each check means</summary><dl>${cols.map(c => `<dt><strong>${E(c.label)}</strong> (impact ${E(c.impact)})</dt><dd>${E(c.definition)}</dd>`).join('')}</dl></details>`;
   }
   function compareHtml(res) {
     const opts = res.profiles.map(p => `<option value="${E(p.pid)}">${E(p.name)} (${E(p.platform)})</option>`).join('');
@@ -208,7 +211,7 @@
     const only = $('zfOnlyDiff').checked;
     const rows = d.rows.filter(r => !only || !r.same);
     const add = l => (l.startsWith('+') && !l.startsWith('+++') ? `<span class="add">${E(l)}</span>` : l.startsWith('-') && !l.startsWith('---') ? `<span class="del">${E(l)}</span>` : E(l));
-    $('zfDiff').innerHTML = `<p>${d.differences} setting${d.differences === 1 ? '' : 's'} differ between <strong>${E(d.a)}</strong> and <strong>${E(d.b)}</strong>. Passwords and secrets show only whether they are set.</p>
+    $('zfDiff').innerHTML = `<p>${E(d.differences)} setting${d.differences === 1 ? '' : 's'} differ between <strong>${E(d.a)}</strong> and <strong>${E(d.b)}</strong>. Passwords and secrets show only whether they are set.</p>
       <div class="zf-wrap"><table class="zf-t zf-diff"><thead><tr><th scope="col">Setting</th><th scope="col">${E(d.a)}</th><th scope="col">${E(d.b)}</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="${r.same ? '' : 'diff'}"><th scope="row">${E(r.key)}</th><td>${r.a == null ? '<span class="zf-dim">absent</span>' : E(r.a)}</td><td>${r.b == null ? '<span class="zf-dim">absent</span>' : E(r.b)}</td></tr>`).join('') || '<tr><td colspan="3">The two profiles have the same settings.</td></tr>'}</tbody></table></div>
       <details class="zf-details"><summary>Raw JSON diff</summary><pre class="zf-pre" tabindex="0" aria-label="Unified diff of the two profiles">${d.unified ? d.unified.split('\n').map(add).join('\n') : 'No difference.'}</pre></details>`;
@@ -219,13 +222,13 @@
     try {
       const r = await fetch(`/api/zcc/fleet/${encodeURIComponent(lastJob)}/diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`, { cache: 'no-store' });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(errText(d, r.status));
       renderDiff(d); say(`${d.differences} settings differ.`);
     } catch (e) { $('zfDiff').innerHTML = `<p class="zf-status bad">${E(e.message)}</p>`; }
   }
   function pacHtml(res) {
     const m = res.pac.matrix, files = res.pac.files;
-    const head = files.length ? `<p class="zf-dim">${files.length} hosted PAC file${files.length === 1 ? '' : 's'} read; ${m.risky} risky DIRECT entr${m.risky === 1 ? 'y' : 'ies'}; ${m.differing} entr${m.differing === 1 ? 'y differs' : 'ies differ'} between profiles. A PAC that is not hosted in ZIA cannot be read here: drop it into the Log analyzer.</p>` : '<p class="zf-dim">No hosted PAC file was read.</p>';
+    const head = files.length ? `<p class="zf-dim">${files.length} hosted PAC file${files.length === 1 ? '' : 's'} read; ${E(m.risky)} risky DIRECT entr${m.risky === 1 ? 'y' : 'ies'}; ${E(m.differing)} entr${m.differing === 1 ? 'y differs' : 'ies differ'} between profiles. A PAC that is not hosted in ZIA cannot be read here: drop it into the Log analyzer.</p>` : '<p class="zf-dim">No hosted PAC file was read.</p>';
     if (!m.columns.length) return head + '<p class="zf-dim">No app profile uses a PAC file this read could open.</p>';
     const risk = r => (r === 'ok' ? '<span class="zf-chip">ok</span>' : `<span class="zf-chip st-${r === 'broad' ? 'warn' : 'fail'}">${E(r)}</span>`);
     return head + `<div class="zf-wrap"><table class="zf-t"><caption>DIRECT statements (rows) per app profile (columns): DIRECT means the profile's PAC sends that traffic around Zscaler.</caption>
@@ -238,14 +241,14 @@
     return `${known ? '' : '<p class="zf-dim">Device counts are unknown (no device telemetry), so the plan is ranked by impact alone.</p>'}
       <div class="zf-wrap"><table class="zf-t zf-plan"><caption>Ranked by impact (1 to 3, halved for a warning) times the devices affected.</caption>
       <thead><tr><th scope="col" class="num">Rank</th><th scope="col">What</th><th scope="col" class="num">Devices</th><th scope="col" class="num">Priority</th><th scope="col">Fix</th></tr></thead>
-      <tbody>${res.plan.map(x => `<tr><td class="num">${x.rank}</td><td>${cell(x.status, x.detail)} <strong>${E(x.title)}</strong><div class="why">${E(x.detail)}</div></td>
-        <td class="num">${x.devices == null ? 'unknown' : x.devices}</td><td class="num">${x.priority}</td><td class="fix">${E(x.fix)}</td></tr>`).join('')}</tbody></table></div>`;
+      <tbody>${res.plan.map(x => `<tr><td class="num">${E(x.rank)}</td><td>${cell(x.status, x.detail)} <strong>${E(x.title)}</strong><div class="why">${E(x.detail)}</div></td>
+        <td class="num">${x.devices == null ? 'unknown' : E(x.devices)}</td><td class="num">${E(x.priority)}</td><td class="fix">${E(x.fix)}</td></tr>`).join('')}</tbody></table></div>`;
   }
   function devicesHtml(res) {
     if (!res.devices.length) return '<p class="zf-dim">No device list (see the note at the top).</p>';
     return `<div class="zf-row"><label for="zfFilter">Filter</label><input type="search" id="zfFilter" placeholder="User, device, profile or version" autocomplete="off">
       <span class="zf-dim" id="zfShown"></span></div><div id="zfDevTable"></div>
-      ${res.devices_truncated ? `<p class="zf-dim">The first ${res.devices.length} of ${res.devices_total} devices are kept for this page and the device export; every figure above counts all of them.</p>` : ''}`;
+      ${res.devices_truncated ? `<p class="zf-dim">The first ${res.devices.length} of ${E(res.devices_total)} devices are kept for this page and the device export; every figure above counts all of them.</p>` : ''}`;
   }
   function drawDevices() {
     const q = ($('zfFilter') ? $('zfFilter').value : '').trim().toLowerCase();
@@ -273,7 +276,7 @@
         </div>
         <p class="zf-dim">${E(sc.note)}</p>
         ${k ? `<div class="zf-tiles" style="margin-top:0.6rem;align-items:start">${countTable('Registration state', k.registration_states, k.registration_labels)}${countTable('Platform (registered)', k.os_mix)}</div>
-        <details class="zf-details"><summary>Client Connector versions per platform</summary>${Object.entries(k.versions).map(([p, v]) => countTable(`${p} versions (newest ${k.newest[p] || '—'})`, v)).join('')}</details>` : ''}
+        <details class="zf-details"><summary>Client Connector versions per platform</summary>${Object.entries(k.versions).map(([p, v]) => countTable(`${p} versions (newest ${(k.newest || {})[p] || '—'})`, v)).join('')}</details>` : ''}
         ${t.service_values && t.service_values.length ? `<details class="zf-details"><summary>How the service status was read</summary><p class="zf-dim">The service status file's wording is not documented, so every value seen is listed with how it was read. Columns used: ${E(Object.entries(t.service_columns).map(([s, c]) => `${s.toUpperCase()}: ${c || 'none'}`).join(', '))}.</p>
           <div class="zf-wrap"><table class="zf-t"><thead><tr><th scope="col">Service</th><th scope="col">Value</th><th scope="col">Read as</th><th scope="col" class="num">Devices</th></tr></thead><tbody>${t.service_values.map(v => `<tr><td>${E(v.service)}</td><td>${E(v.value)}</td><td>${E(SVC[v.read_as] || v.read_as)}</td><td class="num">${v.devices}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
       </section>
@@ -303,7 +306,7 @@
     const fmt = format || 'csv';
     try {
       const r = await fetch(`/api/zcc/fleet/${encodeURIComponent(lastJob)}/export?what=${what}&counts_only=${counts}&format=${fmt}`, { cache: 'no-store' });
-      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`); }
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(errText(d, r.status)); }
       const cd = r.headers.get('Content-Disposition') || '';
       const name = ((cd.match(/filename="?([^";]+)"?/) || [])[1]) || `zcc_fleet_${what}.${fmt}`;
       const url = URL.createObjectURL(await r.blob());
@@ -354,7 +357,7 @@
     try {
       const r = await fetch('/api/zcc/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(errText(d, r.status));
       instOut = d;
       const pre = $('zfInstCmd'); pre.hidden = false; pre.textContent = d.command;
       const notes = [...(d.errors || []).map(x => `Fix: ${x}`), ...(d.warnings || [])];

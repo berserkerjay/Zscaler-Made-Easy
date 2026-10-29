@@ -56,8 +56,14 @@
       <div class="df-hint">The provisioning key is what an App Connector uses to enroll. It is shown once, right after the apply: copy it then. This app never keeps, logs or exports it.</div>`;
     bind(where, id => { renderGroup(res, where, H); const el = document.getElementById(id); if (el) el.focus(); });
   }
+  // The number as typed: a whole number goes as a number, anything else (0.5, 1e3, 'ten')
+  // goes as typed so the server answers its own plain error, never a silent 5; blank is 5.
+  function maxUsage() {
+    const v = String(F.max == null ? '' : F.max).trim();
+    return !v ? 5 : /^\d{1,6}$/.test(v) ? Number(v) : v;
+  }
   function specGroup() {
-    const spec = { type: 'zpa_connector_group', prefix: needPrefix(), mode: F.mode, location: F.location, max_usage: Number(F.max) || 5 };
+    const spec = { type: 'zpa_connector_group', prefix: needPrefix(), mode: F.mode, location: F.location, max_usage: maxUsage() };
     if (F.mode === 'existing') { if (!F.cg) throw new Error('Pick the existing App Connector group.'); spec.connector_group_id = F.cg; }
     return spec;
   }

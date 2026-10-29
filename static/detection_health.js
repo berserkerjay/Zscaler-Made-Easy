@@ -17,12 +17,12 @@ function renderDetectionHealth(rep, container) {
   const misconfigured = (d.misconfigured || []).length > 0;
   const deliveryCls = misconfigured ? 'st-fail' : ({ cloud: 'st-ok', icap: 'st-ok', both: 'st-ok', none: 'st-fail' }[d.path] || 'st-dim');
   const deliveryLab = { cloud: 'Zscaler Incident Receiver (cloud-to-cloud)', icap: 'On-premises Incident Receiver (ICAP)', both: 'Zscaler Incident Receiver + ICAP', none: 'No incident forwarding' }[d.path] || 'Unknown';
-  const findings = (rep.findings || []).map(f => `<li class="${_dhSev(f.severity)}"><span class="sev">${_dhE(f.severity)}</span> <strong>${_dhE(f.name)}</strong>${f.channel ? ` <span class="df-by">${_dhE(DH_CHAN[f.channel] || f.channel)}</span>` : ''}<div class="df-hop-d">${_dhE(f.why && f.why.length ? f.text.split(' Why: ')[0] : f.text)}</div>${f.why && f.why.length ? `<div class="df-hop-d"><strong>Why:</strong> ${_dhE(f.why.join(' '))}</div><div class="df-hop-d"><strong>Fix:</strong> ${_dhE(f.fix || '')}</div>` : ''}</li>`).join('');
+  const findings = (rep.findings || []).map(f => `<li class="${_dhSev(f.severity)}"><span class="sev">${_dhE(f.severity)}</span> <strong>${_dhE(f.name)}</strong>${f.channel ? ` <span class="df-by">${_dhE(DH_CHAN[f.channel] || f.channel)}</span>` : ''}<div class="df-hop-d">${_dhE(f.why && f.why.length ? String(f.text || '').split(' Why: ')[0] : f.text)}</div>${f.why && f.why.length ? `<div class="df-hop-d"><strong>Why:</strong> ${_dhE(f.why.join(' '))}</div><div class="df-hop-d"><strong>Fix:</strong> ${_dhE(f.fix || '')}</div>` : ''}</li>`).join('');
   const ruleRow = r => {
     const [lab, cls] = DH_STATUS[r.status] || [r.status, 'dim'];
-    return `<tr><td>${_dhE(r.name)}${r.tagged ? ' <span class="df-chip st-dim" title="created by Zscaler Made Easy">pack</span>' : ''}</td><td>${_dhE(DH_CHAN[r.channel] || r.channel || '')}</td><td>${_dhE((r.state || '').toLowerCase())}${r.monitor_only ? ' · monitor' : ''}</td><td class="num">${r.incidents}</td><td class="num">${r.open}</td><td class="num">${r.closed}</td><td class="num">${r.not_real}</td><td class="num">${_dhPct(r.fp_rate_pct)}</td><td><span class="df-chip st-${cls}" title="${_dhE(r.why || '')}">${_dhE(lab)}</span></td></tr>`;
+    return `<tr><td>${_dhE(r.name)}${r.tagged ? ' <span class="df-chip st-dim" title="created by Zscaler Made Easy">pack</span>' : ''}</td><td>${_dhE(DH_CHAN[r.channel] || r.channel || '')}</td><td>${_dhE((r.state || '').toLowerCase())}${r.monitor_only ? ' · monitor' : ''}</td><td class="num">${_dhE(r.incidents)}</td><td class="num">${_dhE(r.open)}</td><td class="num">${_dhE(r.closed)}</td><td class="num">${_dhE(r.not_real)}</td><td class="num">${_dhPct(r.fp_rate_pct)}</td><td><span class="df-chip st-${cls}" title="${_dhE(r.why || '')}">${_dhE(lab)}</span></td></tr>`;
   };
-  const grpRow = g => `<tr><td>${_dhE(g.name)}</td><td class="num">${g.incidents}</td><td class="num">${g.closed}</td><td class="num">${g.not_real}</td><td class="num">${_dhPct(g.fp_rate_pct)}</td><td>${g.noisy ? '<span class="df-chip st-fail">Noisy</span>' : ''}</td><td>${_dhE((g.rules || []).slice(0, 4).join(', '))}${(g.rules || []).length > 4 ? '…' : ''}</td></tr>`
+  const grpRow = g => `<tr><td>${_dhE(g.name)}</td><td class="num">${_dhE(g.incidents)}</td><td class="num">${_dhE(g.closed)}</td><td class="num">${_dhE(g.not_real)}</td><td class="num">${_dhPct(g.fp_rate_pct)}</td><td>${g.noisy ? '<span class="df-chip st-fail">Noisy</span>' : ''}</td><td>${_dhE((g.rules || []).slice(0, 4).join(', '))}${(g.rules || []).length > 4 ? '…' : ''}</td></tr>`
     + (g.noisy && (g.why || []).length ? `<tr class="dh-why"><td colspan="7"><div class="df-hop-d"><strong>Why it is noisy:</strong> ${_dhE(g.why.join(' '))}</div><div class="df-hop-d"><strong>Fix:</strong> ${_dhE(g.fix || '')}</div>${_dhEvidence(g.evidence)}</td></tr>` : '');
   const _dhEvidence = ev => {
     if (!ev || !ev.not_real) return '';
@@ -42,12 +42,12 @@ function renderDetectionHealth(rep, container) {
   const ratioCls = share == null ? 'st-dim' : share >= (st.fp_rate_pct || 40) ? 'st-fail' : share >= 20 ? 'st-warn' : 'st-ok';
   const ratioText = share == null ? 'No verdicts yet: analysts have not closed an incident in this window, so the ratio cannot be measured.'
     : `${s.fp} not real for every ${s.tp} real${share >= (st.fp_rate_pct || 40) ? ': most of what the analysts look at is noise. Exclude the destinations marked below first, then tune the dictionaries.' : share >= 20 ? ': worth trimming; start with the destinations marked for exclusion.' : ': the incidents are worth an analyst\'s time.'}`;
-  const userRow = u => `<tr><td>${_dhE(u.name)}${u.display_name ? ` <span class="df-by">${_dhE(u.display_name)}</span>` : ''}</td><td>${_dhE(u.department || '')}</td><td class="num">${u.incidents}</td><td class="num">${u.real || 0}</td><td class="num">${u.not_real}</td><td class="num">${u.open}</td><td>${_dhE((u.destinations || []).map(([n, c]) => `${n} (${c})`).join(', '))}</td><td>${_dhE((u.rules || []).slice(0, 3).join(', '))}${(u.rules || []).length > 3 ? '…' : ''}</td></tr>`;
-  const destRow = h => `<tr class="${h.exclude ? 'dh-excl' : ''}"><td>${_dhE(h.name)}${h.telemetry ? ' <span class="df-chip st-warn" title="Matches a telemetry / public-content pattern">telemetry</span>' : ''}</td><td class="num">${h.incidents}</td><td class="num">${h.users || 0}</td><td class="num">${h.real || 0}</td><td class="num">${h.not_real}</td><td class="num">${_dhPct(h.fp_rate_pct)}</td><td>${_dhE((h.actions || []).join(', '))}</td><td>${h.exclude ? '<span class="df-chip st-fail">Exclude</span>' : (h.real ? '<span class="df-chip st-ok">Real data</span>' : '')}</td><td>${_dhE((h.rules || []).slice(0, 3).join(', '))}${(h.rules || []).length > 3 ? '…' : ''}</td></tr>`
+  const userRow = u => `<tr><td>${_dhE(u.name)}${u.display_name ? ` <span class="df-by">${_dhE(u.display_name)}</span>` : ''}</td><td>${_dhE(u.department || '')}</td><td class="num">${_dhE(u.incidents)}</td><td class="num">${_dhE(u.real || 0)}</td><td class="num">${_dhE(u.not_real)}</td><td class="num">${_dhE(u.open)}</td><td>${_dhE((u.destinations || []).map(([n, c]) => `${n} (${c})`).join(', '))}</td><td>${_dhE((u.rules || []).slice(0, 3).join(', '))}${(u.rules || []).length > 3 ? '…' : ''}</td></tr>`;
+  const destRow = h => `<tr class="${h.exclude ? 'dh-excl' : ''}"><td>${_dhE(h.name)}${h.telemetry ? ' <span class="df-chip st-warn" title="Matches a telemetry / public-content pattern">telemetry</span>' : ''}</td><td class="num">${_dhE(h.incidents)}</td><td class="num">${_dhE(h.users || 0)}</td><td class="num">${_dhE(h.real || 0)}</td><td class="num">${_dhE(h.not_real)}</td><td class="num">${_dhPct(h.fp_rate_pct)}</td><td>${_dhE((h.actions || []).join(', '))}</td><td>${h.exclude ? '<span class="df-chip st-fail">Exclude</span>' : (h.real ? '<span class="df-chip st-ok">Real data</span>' : '')}</td><td>${_dhE((h.rules || []).slice(0, 3).join(', '))}${(h.rules || []).length > 3 ? '…' : ''}</td></tr>`
     + (h.exclude ? `<tr class="dh-why"><td colspan="9"><div class="df-hop-d"><strong>Why:</strong> ${_dhE(h.why)}</div><div class="df-hop-d"><strong>Fix:</strong> ${_dhE(h.fix)}</div></td></tr>` : '');
   const recentRow = r => `<tr><td class="dh-when">${r.at ? _dhE(new Date(r.at).toLocaleString()) : ''}</td><td>${_dhE(r.who || '(unknown)')}${r.department ? ` <span class="df-by">${_dhE(r.department)}</span>` : ''}</td><td>${_dhE(r.trigger)}${r.dictionaries ? `<div class="df-by">${_dhE(r.dictionaries)}</div>` : ''}</td><td>${_dhE(r.sent_to || '(unknown)')}${r.file ? `<div class="df-by">${_dhE(r.file)}</div>` : ''}</td><td>${_dhE(DH_CHAN[r.channel] || r.channel)}${(r.actions || []).length ? ` · ${_dhE(r.actions.join(', '))}` : ''}</td><td><span class="df-chip ${r.verdict === 'real' ? 'st-fail' : r.verdict === 'not real' ? 'st-ok' : 'st-dim'}">${_dhE(r.verdict)}</span></td></tr>`;
   container.innerHTML = `
-    <div class="df-outcome ${ratioCls}"><span class="df-chip ${ratioCls}">FP/TP ${_dhE(s.fp_tp_ratio || '–')}</span><strong>False-positive to true-positive ratio${share != null ? ` · ${share}% of verdicts not real` : ''}</strong> <span class="df-by">${_dhE(ratioText)}</span></div>
+    <div class="df-outcome ${ratioCls}"><span class="df-chip ${ratioCls}">FP/TP ${_dhE(s.fp_tp_ratio || '–')}</span><strong>False-positive to true-positive ratio${share != null ? ` · ${_dhE(share)}% of verdicts not real` : ''}</strong> <span class="df-by">${_dhE(ratioText)}</span></div>
     <div class="df-hint">How it is measured: every Workflow Automation incident an analyst closed counts once; a resolution of ${_dhE((st.not_real || []).join(', '))} is a false positive (FP), any other closed incident a true positive (TP); open incidents wait. Destinations that never produce a real incident and look like telemetry or public content are marked <em>Exclude</em>: excluding them is a policy-scope fix that removes noise without losing coverage.</div>
     <div class="df-stats">
       ${tile(rep.incident_count || 0, `incidents in ${rep.days} days`)}
@@ -62,7 +62,7 @@ function renderDetectionHealth(rep, container) {
       ${tile(s.promotable_rules || 0, 'ready to promote')}
       ${tile(s.noisy_dictionaries || 0, 'noisy dictionaries', !!s.noisy_dictionaries)}
     </div>
-    <div class="df-outcome ${deliveryCls}"><span class="df-chip ${deliveryCls}">${misconfigured ? 'Configured but not delivering' : _dhE(deliveryLab)}</span><strong>How incidents reach Workflow Automation</strong> <span class="df-by">${d.rules_enabled || 0} enabled Web DLP rule(s): ${d.rules_cloud || 0} set to Zscaler Incident Receiver (cloud-to-cloud), ${d.rules_icap || 0} to an on-premises Incident Receiver over ICAP${(d.rules_silent || []).length ? `, ${d.rules_silent.length} forward nowhere` : ''}${(d.receivers || []).length ? ` · Incident Receiver objects: ${_dhE(d.receivers.map(x => x.name).join(', '))}` : ' · no Incident Receiver object configured'}${(d.icap_servers || []).length ? ` · ICAP server objects: ${_dhE(d.icap_servers.map(x => x.name).join(', '))}` : ''}</span></div>
+    <div class="df-outcome ${deliveryCls}"><span class="df-chip ${deliveryCls}">${misconfigured ? 'Configured but not delivering' : _dhE(deliveryLab)}</span><strong>How incidents reach Workflow Automation</strong> <span class="df-by">${_dhE(d.rules_enabled || 0)} enabled Web DLP rule(s): ${_dhE(d.rules_cloud || 0)} set to Zscaler Incident Receiver (cloud-to-cloud), ${_dhE(d.rules_icap || 0)} to an on-premises Incident Receiver over ICAP${(d.rules_silent || []).length ? `, ${d.rules_silent.length} forward nowhere` : ''}${(d.receivers || []).length ? ` · Incident Receiver objects: ${_dhE(d.receivers.map(x => x.name).join(', '))}` : ' · no Incident Receiver object configured'}${(d.icap_servers || []).length ? ` · ICAP server objects: ${_dhE(d.icap_servers.map(x => x.name).join(', '))}` : ''}</span></div>
     <div class="df-hint">${_dhE(d.explain || '')}${(d.rules_silent || []).length ? ` Rules that forward nowhere: ${_dhE(d.rules_silent.slice(0, 8).join(', '))}${d.rules_silent.length > 8 ? '…' : ''}.` : ''}</div>
     ${misconfigured ? `<ul class="df-weaks">${d.misconfigured.map(m => `<li class="sev-high"><span class="sev">high</span> <strong>Incident delivery configured but not working (${m.path === 'cloud' ? 'cloud-to-cloud' : 'ICAP'})</strong><div class="df-hop-d">${_dhE(m.text)}</div></li>`).join('')}</ul>` : ''}
     ${rep.read && (!rep.read.incidents || !rep.read.rules) ? `<div class="df-gap-h st-fail">Partial read</div><div class="df-hint">${!rep.read.incidents ? 'Workflow Automation incidents could not be read, so there are no verdicts to learn from — grant the API client the Workflow Automation read scope. ' : ''}${!rep.read.rules ? 'The DLP rules of the tenant could not be listed. ' : ''}See the read problems at the bottom.</div>` : ''}
@@ -102,6 +102,9 @@ const DH_PSTATUS = { open: ['Open', 'warn'], approved: ['Approved, ready to appl
 // Credentials for applying: the assessment page that opened this tab (its
 // tenant details), else the profile the report was made from.
 function _dhCreds() {
+// An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+const _dhErrText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+  return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
   try { if (window.opener && !window.opener.closed && typeof window.opener.migrateValidateCreds === 'function') { const b = window.opener.migrateValidateCreds(); if (b) return b; } } catch (e) { /* cross-window */ }
   return { profile_id: (window.__dhReport || {}).profile_id || '' };
 }
@@ -116,7 +119,7 @@ function _dhAssessor() {
 async function _dhPost(url, body) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+  if (!r.ok) throw new Error(_dhErrText(d, r.status));
   return d;
 }
 function _dhStepsHtml(pv) {
@@ -159,8 +162,8 @@ async function renderProposals(tenant, host) {
   let data;
   try {
     const r = await fetch(`/api/proposals?tenant=${encodeURIComponent(tenant)}${_dhPShowClosed ? '&include_closed=true' : ''}`, { cache: 'no-store' });
-    data = await r.json();
-    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(_dhErrText(data, r.status));
   } catch (e) { host.innerHTML = `<div class="df-hint">Proposals could not be loaded: ${_dhE(e.message)}</div>`; return; }
   const s = data.summary || {};
   const ev = (p) => {
@@ -192,12 +195,12 @@ async function renderProposals(tenant, host) {
         ${dbl ? `<input type="text" class="dh-confirm" placeholder="type ${_dhE(data.confirm_phrase)}" aria-label="Confirm phrase for ${_dhE(p.title)}" data-for="${_dhE(p.id)}">` : ''}
         <button type="button" class="rp-btn primary" data-act="approve" data-id="${_dhE(p.id)}">Approve${dbl ? ' (stricter for users)' : ''}</button>
         <button type="button" class="rp-btn" data-act="snooze" data-id="${_dhE(p.id)}" title="Quiet for 14 days">Snooze</button>
-        <button type="button" class="rp-btn" data-act="dismiss" data-id="${_dhE(p.id)}" title="Not raised again for ${data.dismiss_days} days">Dismiss</button>
+        <button type="button" class="rp-btn" data-act="dismiss" data-id="${_dhE(p.id)}" title="Not raised again for ${_dhE(data.dismiss_days)} days">Dismiss</button>
       </div>` : (p.status === 'approved' && p.applies_via === 'phase 3' ? `<div class="dh-pactions"><button type="button" class="rp-btn primary" data-flow="apply" data-id="${_dhE(p.id)}">Preview and apply to the tenant</button><button type="button" class="rp-btn" data-act="reopen" data-id="${_dhE(p.id)}">Reopen</button></div><div class="dh-flow" data-box="${_dhE(p.id)}"></div>`
       : (p.status === 'applied' || p.status === 'failed') && p.applies_via === 'phase 3' ? `<div class="dh-pactions"><button type="button" class="rp-btn" data-flow="rollback" data-id="${_dhE(p.id)}">Roll back</button></div><div class="dh-flow" data-box="${_dhE(p.id)}"></div>`
       : (p.status === 'approved' || p.status === 'snoozed' || p.status === 'dismissed' ? `<div class="dh-pactions"><button type="button" class="rp-btn" data-act="reopen" data-id="${_dhE(p.id)}">Reopen</button></div>` : ''));
     return `<li class="dh-prop st-${cls}">
-      <div class="dh-phead"><span class="df-chip st-${cls}">${_dhE(lab)}</span><span class="df-chip st-dim">${_dhE(p.label)}</span><strong>${_dhE(p.title)}</strong>${p.times_seen > 1 ? ` <span class="df-by">seen ${p.times_seen}×</span>` : ''}</div>
+      <div class="dh-phead"><span class="df-chip st-${cls}">${_dhE(lab)}</span><span class="df-chip st-dim">${_dhE(p.label)}</span><strong>${_dhE(p.title)}</strong>${p.times_seen > 1 ? ` <span class="df-by">seen ${_dhE(p.times_seen)}×</span>` : ''}</div>
       <div class="df-hop-d"><strong>Change:</strong> ${_dhE(change(p))} <span class="df-by">(${p.applies_via === 'phase 3' ? 'applied from here once approved' : 'made in the ZIA portal; the proposal tracks it'})</span></div>
       <div class="df-hop-d"><strong>Evidence:</strong> ${_dhE(ev(p))}</div>
       <div class="df-hop-d"><strong>Expected:</strong> ${_dhE(p.expected_effect)} <strong>Rollback:</strong> ${_dhE(p.rollback && (p.rollback.note || (p.rollback.field + ' back to ' + p.rollback.to)))}</div>
@@ -207,14 +210,14 @@ async function renderProposals(tenant, host) {
   };
   host.innerHTML = `
     <div class="dh-ptop">
-      <h2 class="df-h" style="margin:0;">Proposals <span class="df-by">${s.open || 0} open · ${s.approved || 0} approved · ${s.snoozed || 0} snoozed · ${s.dismissed || 0} dismissed</span></h2>
+      <h2 class="df-h" style="margin:0;">Proposals <span class="df-by">${_dhE(s.open || 0)} open · ${_dhE(s.approved || 0)} approved · ${_dhE(s.snoozed || 0)} snoozed · ${_dhE(s.dismissed || 0)} dismissed</span></h2>
       <div class="dh-pactions">
         <label class="df-ctl"><span class="lbl">Decided by</span><input type="text" id="dhBy" placeholder="your name" aria-label="Your name for the audit log"></label>
         <label class="df-ctl"><input type="checkbox" id="dhClosed" ${_dhPShowClosed ? 'checked' : ''}> <span class="lbl">show closed</span></label>
         <a class="rp-btn" href="/api/proposals/export?tenant=${encodeURIComponent(tenant)}">Markdown</a>
       </div>
     </div>
-    <div class="df-hint">Each proposal names one change, the evidence behind it, the expected effect and the way back. Approving never writes anything by itself. An approved proposal gets a <em>Preview and apply</em> button: the rules are re-read, you see exactly what changes, you confirm, the app updates each rule and reads it back, and a <em>Roll back</em> stays available afterwards (write mode required; ZIA keeps the change pending until an admin activates). A change that makes the tenant stricter for users (monitor → confirm or block) needs the confirm phrase. A dismissal is remembered for ${data.dismiss_days} days.</div>
+    <div class="df-hint">Each proposal names one change, the evidence behind it, the expected effect and the way back. Approving never writes anything by itself. An approved proposal gets a <em>Preview and apply</em> button: the rules are re-read, you see exactly what changes, you confirm, the app updates each rule and reads it back, and a <em>Roll back</em> stays available afterwards (write mode required; ZIA keeps the change pending until an admin activates). A change that makes the tenant stricter for users (monitor → confirm or block) needs the confirm phrase. A dismissal is remembered for ${_dhE(data.dismiss_days)} days.</div>
     <ul class="dh-plist">${(data.items || []).map(row).join('') || '<li class="df-hop-d">Nothing to decide: the evaluation raised no proposal for this tenant.</li>'}</ul>`;
   host.querySelector('#dhClosed').addEventListener('change', e => { _dhPShowClosed = e.target.checked; renderProposals(tenant, host); });
   host.querySelectorAll('button[data-flow]').forEach(b => b.addEventListener('click', () => {
@@ -231,7 +234,7 @@ async function renderProposals(tenant, host) {
       const r = await fetch(`/api/proposals/${encodeURIComponent(tenant)}/${encodeURIComponent(id)}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision: act, by: (host.querySelector('#dhBy') || {}).value || '', note, days: 14, confirm: conf ? conf.value : '' }) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(_dhErrText(d, r.status));
       renderProposals(tenant, host);
     } catch (e) { alert(`Could not record the decision: ${e.message}`); b.disabled = false; }
   }));

@@ -52,6 +52,9 @@
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+    const errText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+      return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
     const body = document.getElementById('shBody');
     const meta = document.getElementById('rpMeta');
     const live = document.getElementById('liveRegion');
@@ -179,7 +182,7 @@
         const payload = Object.assign({}, credBody(), scopeSelection(), { web_dlp_mode: document.getElementById('shMode').value });
         const r = await fetch('/api/shadow-rules/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        if (!r.ok) throw new Error(errText(d, r.status));
         job = d.job_id;
         if (stopAsked) {   // Stop pressed while signing in: cancel by id too
           try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }

@@ -5,7 +5,12 @@
 // reads nothing more), /api/beacon/scope (what the watch would
 // read; no tenant call) and, for the tenant choices, /api/tenant-profiles.
 (function () {
+  // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+  const errText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+    return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // A link from a watched page or the run history is data: only an https address becomes a link.
+  const safeHref = u => (/^https:\/\//i.test(String(u || '')) ? String(u) : '#');
   const $ = id => document.getElementById(id);
   const WATCHER = { sdk: 'SDK', api: 'API', terraform: 'Terraform', tenant: 'Tenant' };
   const KIND = { version: 'version', changelog: 'changelog', drift_new: 'new drift', drift_cleared: 'cleared', doc_changed: 'page changed', doc_gone: 'page gone', doc_unreadable: 'not readable', endpoint_status: 'endpoint', scope_changed: 'scope', watch_failed: 'read nothing', watch_partial: 'stopped early' };
@@ -21,7 +26,7 @@
   async function api(path, body) {
     const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((data && data.detail) || `Error ${r.status}`);
+    if (!r.ok) throw new Error(errText(data, r.status));
     return data;
   }
   const when = iso => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? E(iso) : E(d.toLocaleString()); };
@@ -50,7 +55,7 @@
         <div style="margin-top:0.35rem;">${E(head)}</div>
         <div class="dim" style="margin-top:0.25rem;">This run: ${when(latest.at)} (${E(latest.trigger || '')}, ${E(latest.seconds)} s). Compared with: ${diff.against && diff.against.upstream_at ? when(diff.against.upstream_at) : 'nothing yet'}${diff.against && diff.against.tenant_at ? `; tenant watch compared with ${when(diff.against.tenant_at)}` : ''}.</div></div>
       ${changes.length ? `<div class="tw" style="flex-basis:100%;"><table class="bp-table adv-table" aria-label="Changes since the last run"><thead><tr><th scope="col">Area</th><th scope="col">What</th><th scope="col">Change</th></tr></thead><tbody>
-        ${changes.map(c => `<tr><td>${E(WATCHER[c.watcher] || c.watcher)}</td><td>${chip(KIND[c.kind] || c.kind, c.kind === 'drift_new' ? 'bad' : c.kind === 'drift_cleared' ? 'ok' : WARN_KINDS.has(c.kind) ? 'warn' : '')}</td><td class="adv-sbd-ev">${E(c.text)}${c.url ? ` <a href="${E(c.url)}" target="_blank" rel="noopener">open</a>` : ''}</td></tr>`).join('')}
+        ${changes.map(c => `<tr><td>${E(WATCHER[c.watcher] || c.watcher)}</td><td>${chip(KIND[c.kind] || c.kind, c.kind === 'drift_new' ? 'bad' : c.kind === 'drift_cleared' ? 'ok' : WARN_KINDS.has(c.kind) ? 'warn' : '')}</td><td class="adv-sbd-ev">${E(c.text)}${c.url ? ` <a href="${E(safeHref(c.url))}" target="_blank" rel="noopener">open</a>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : ''}`;
   }
   function renderTimer(d) {
@@ -89,7 +94,7 @@
     const sd = w.service_definition, ref = w.reference;
     let html = `<p>${statusChip(w)}</p>${reason(w)}` + kv([
       ['Service definition', sd ? `${E(sd.version)} · apiVersion ${E(sd.api_version || '?')} · ${E(sd.operations)} operations` : '<span class="dim">not read (no 2.x prerelease, or an offline run)</span>'],
-      ['API reference', ref ? (ref.reachable ? '<span class="chip ok">answers</span>' : `<span class="chip warn">not fetched</span> <span class="dim">${E(ref.error || '')}</span>`) + (ref.url ? ` <a href="${E(ref.url)}" target="_blank" rel="noopener">open</a>` : '') : '<span class="dim">not read</span>'],
+      ['API reference', ref ? (ref.reachable ? '<span class="chip ok">answers</span>' : `<span class="chip warn">not fetched</span> <span class="dim">${E(ref.error || '')}</span>`) + (ref.url ? ` <a href="${E(safeHref(ref.url))}" target="_blank" rel="noopener">open</a>` : '') : '<span class="dim">not read</span>'],
     ]);
     if (sd && sd.endpoints && Object.keys(sd.endpoints).length) {
       html += `<div class="tw"><table class="bp-table adv-table" aria-label="What the app writes, against the service definition"><thead><tr><th scope="col">What the app writes</th><th scope="col">Operation</th><th scope="col">Fields the definition does not list</th></tr></thead><tbody>
@@ -97,7 +102,7 @@
     }
     if ((w.pages || []).length) {
       html += `<div class="tw"><table class="bp-table adv-table" aria-label="Help-center and OneAPI pages"><thead><tr><th scope="col">Page</th><th scope="col">State</th></tr></thead><tbody>
-        ${w.pages.map(p => `<tr><td><a href="${E(p.url)}" target="_blank" rel="noopener">${E(p.name)}</a></td><td>${p.hash ? (p.ok ? chip('read', 'ok') : chip(pageGone(p), 'warn')) : chip('not fetched', 'warn')} <span class="dim">${E(p.reason || '')}</span></td></tr>`).join('')}</tbody></table></div>`;
+        ${w.pages.map(p => `<tr><td><a href="${E(safeHref(p.url))}" target="_blank" rel="noopener">${E(p.name)}</a></td><td>${p.hash ? (p.ok ? chip('read', 'ok') : chip(pageGone(p), 'warn')) : chip('not fetched', 'warn')} <span class="dim">${E(p.reason || '')}</span></td></tr>`).join('')}</tbody></table></div>`;
     }
     $('bcApi').innerHTML = html + findingsTable(w.findings, 'No API findings.');
   }
