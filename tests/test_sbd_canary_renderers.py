@@ -280,7 +280,7 @@ URL_SINK_REVIEWED = {
     ("static/find_anything.js", "target.href || ''"): "sent to /api/workspace/notes, which keeps only paths in this app (clean_href)",
     ("static/path_list.js", "open"): "/report/operations?fix= with the id through encodeURIComponent",
     ("static/posture_banner.js", "'/report/posture' + (hash || ''"): "a fixed page with the page's own fragment",
-    ("static/pov.js", "l.url"): "the test kit's links: constants in pov.py (EICAR_LINKS and the other kit lists), never tenant data",
+    ("static/pov.js", "/^https:\\/\\//i.test(String(l.url || '')) ? String(l.url) : '#'"): "the test kit's links (constants in pov.py, EICAR_LINKS and the other kit lists), linked only when https, else '#'",
     ("static/simple.js", "a.href"): "fixAction()'s app path for a finding's fix",
     ("static/ui_auth.js", "ssoStatus.sso_login_url || '/api/auth/sso/login'"): "the server's fixed SSO path (/api/auth/sso/login)",
     ("static/zcc_fleet.js", "url"): "URL.createObjectURL of the downloaded export",

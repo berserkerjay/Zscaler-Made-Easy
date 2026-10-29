@@ -14,6 +14,7 @@
 //     more_total,                // every host over the cap, listed or not
 //     untracked,                 // entries for hosts past MAX_TRACKED distinct hosts: counted, not kept
 //     total_hosts, capped }
+//   HarParse.leftOut(parsed) -> { total, listed, untracked, heading, summary, note }   // the page's words for a capped parse
 //   HarParse.MAX_BYTES, HarParse.MAX_HOSTS
 //
 // Runs in the page (window.HarParse) and under node for the tests
@@ -103,7 +104,22 @@
       total_hosts: all.length, capped: rest.length > 0 || untracked > 0 };
   }
 
-  const api = { parse, hostOf, MAX_BYTES, MAX_HOSTS, MAX_TRACKED, MAX_MORE };
+  // What the page says about the hosts a capped parse left out (plain text,
+  // the page escapes it): every host over the cap (more_total), not only the
+  // MAX_MORE listed, and the requests to hosts past MAX_TRACKED.
+  function leftOut(p) {
+    const listed = Array.isArray(p && p.more) ? p.more.length : 0;
+    const total = Math.max(listed, Number(p && p.more_total) || 0);
+    const untracked = Number(p && p.untracked) || 0;
+    return {
+      total, listed, untracked,
+      heading: total ? `${total} more host(s) not analyzed` : `${untracked} request(s) to further hosts not analyzed`,
+      summary: !listed ? '' : total > listed ? `Show the first ${listed} of the ${total} host(s) left out` : `Show the ${listed} host(s) left out`,
+      note: untracked ? `${untracked} more request(s) went to hosts past the ${MAX_TRACKED} this page tracks; they are counted, not listed.` : ''
+    };
+  }
+
+  const api = { parse, hostOf, leftOut, MAX_BYTES, MAX_HOSTS, MAX_TRACKED, MAX_MORE };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.HarParse = api;
 })(typeof window !== 'undefined' ? window : this);

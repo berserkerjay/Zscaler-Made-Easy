@@ -365,7 +365,7 @@
   },
   {
    "id": "C6-ZIA-BASELINE-AIGUARD-22",
-   "title": "A captured framework could not be loaded again when a tenant rule name had < or > or a value that is not a Zscaler name",
+   "title": "A captured framework could not be loaded again when a tenant rule name had a less-than or greater-than sign or a value that is not a Zscaler name",
    "severity": "low",
    "cwe": "CWE-20",
    "asvs": "V5.1.3",

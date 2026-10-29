@@ -5,8 +5,7 @@
   "standards": ["ASVS 4.0.3 L2 V4.1.3", "ASVS V5.1.3", "ASVS V5.1.4", "ASVS V5.3.8", "ASVS V5.3.10", "ASVS V7.4.1", "ASVS V8.3.4",
                 "ASVS V11.1.1", "ASVS V11.1.4", "ASVS V12.3.1", "ASVS V12.6.1", "OWASP Top 10 2021 A01 A02 A03 A04 A06 A09 A10",
                 "OWASP WSTG v4.2", "NIST SSDF PW.4.1", "CISA Secure by Design"],
-  "coverage": {"before": 0.83, "after": 0.91},
-  "coverage_note": "coverage.py combined line+branch over the five files, with their existing tests plus tests/test_c6_zcc_zdx.py; after: lines 0.927, branches 0.863.",
+  "coverage": {"before": 0.83, "after": 0.91, "note": "coverage.py combined line+branch over the five files, with their existing tests plus tests/test_c6_zcc_zdx.py; after: lines 0.927, branches 0.863."},
   "checks": [
     {"id": "zcc-forwarding-then-app", "what": "The forwarding profile is created first and the app profile links to its new id", "standard": "ASVS V11.1.1", "result": "pass"},
     {"id": "zcc-rollback-app-refused", "what": "A refused app profile deletes the new forwarding profile again", "standard": "ASVS V11.1.1 · CWE-460", "result": "pass"},
@@ -32,7 +31,7 @@
     {"id": "zdx-assumed-paths", "what": "The ZDX configuration API paths stay marked as assumed in the module and in every plan", "standard": "NIST SSDF PW.4.1", "result": "pass"},
     {"id": "zdx-errors-plain", "what": "Every ZDX refusal shape and status has one plain sentence; executor exceptions never escape", "standard": "ASVS V7.4.1 · CWE-209 · CWE-755", "result": "pass"},
     {"id": "fleet-version-semantics", "what": "Versions compare semantically (4.7 == 4.7.0, 4.10 > 4.9) and a hostile version cannot crash int()", "standard": "CWE-1025 · CWE-400", "result": "fixed"},
-    {"id": "fleet-device-states", "what": "Registration, device type and service states read as int, text, float or DEVICE_TYPE_<OS>", "standard": "CWE-1287", "result": "fixed"},
+    {"id": "fleet-device-states", "what": "Registration, device type and service states read as int, text, float or DEVICE_TYPE_{OS}", "standard": "CWE-1287", "result": "fixed"},
     {"id": "fleet-big", "what": "Large fleets are counted completely, rows kept are capped, pagination and the page cap hold, a failed page shows no partial figures", "standard": "ASVS V11.1.4 · CWE-400 · CWE-770", "result": "fixed"},
     {"id": "fleet-csv", "what": "The service-status CSV is size-capped and parsed defensively; exports neutralise formulas", "standard": "CWE-400 · CWE-1236", "result": "pass"},
     {"id": "fleet-mask", "what": "The drift view masks secret values, also inside lists", "standard": "ASVS V8.3.4 · CWE-200", "result": "fixed"},
@@ -68,7 +67,7 @@
      "severity": "low", "cwe": "CWE-1025", "asvs": "V5.1.3", "status": "fixed",
      "fix": "version_tuple pads to four parts so trailing zeros compare equal.",
      "test": "tests/test_c6_zcc_zdx.py::test_4_7_and_4_7_0_are_the_same_release_so_neither_drifts", "commit": "6cfbb28"},
-    {"id": "C6-ZCC-ZDX-08", "title": "Device type, registration and app-profile platform codes as floats or DEVICE_TYPE_<OS> read as unknown; 'Darwin' read as Windows",
+    {"id": "C6-ZCC-ZDX-08", "title": "Device type, registration and app-profile platform codes as floats or DEVICE_TYPE_{OS} read as unknown; 'Darwin' read as Windows",
      "severity": "low", "cwe": "CWE-1287", "asvs": "V5.1.3", "status": "fixed",
      "fix": "One code_text normaliser for numbers, floats and DEVICE_TYPE_ prefixes; Apple names matched before 'win' at a word start.",
      "test": "tests/test_c6_zcc_zdx.py::test_device_platforms_arrive_as_numbers_or_text", "commit": "6cfbb28"},
@@ -89,7 +88,7 @@
      "fix": "Field-name normalising is cached and each device's fields are indexed once (about 12 s).",
      "test": "tests/test_c6_zcc_zdx.py::test_a_large_fleet_is_analysed_completely_and_kept_bounded", "commit": "6cfbb28"}
   ],
-  "accepted_notes": [
+  "notes": [
     "ZDX probes run on the enrolled devices, never from this app, so private (RFC 1918, ULA) and internal hosts stay valid ZDX targets; only addresses that name no app are refused.",
     "The ZDX configuration API paths are not in zscaler-sdk-python 1.11.3 and stay marked ASSUMED (module docstring, CONFIG comment and every plan's notes)."
   ],

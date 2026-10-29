@@ -224,7 +224,7 @@
   },
   {
    "id": "C6-ADMIN-OPS-08",
-   "title": "proposals.json was written through a fixed <store>.tmp opened with open() (follows a planted symlink, umask permissions until chmod, no cross-process lock)",
+   "title": "proposals.json was written through a fixed temporary file (the store's name plus .tmp) opened with open() (follows a planted symlink, umask permissions until chmod, no cross-process lock)",
    "severity": "low",
    "cwe": "CWE-59",
    "asvs": "V12.3.1",

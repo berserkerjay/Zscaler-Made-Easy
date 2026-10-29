@@ -499,7 +499,7 @@ def _norm_generic(r: Dict[str, Any]) -> Dict[str, Any]:
     action = r.get("action")
     if isinstance(action, dict):
         action = action.get("type") or action.get("name")
-    actions = [str(a).upper() for a in (r.get("actions") or [])]
+    actions = _upper(_names(r.get("actions")))   # one string is one action; a number or true is none (never a crash)
     state = str(r.get("state") or "ENABLED").upper()
     return {
         "id": r.get("id"), "name": r.get("name") or f"rule {r.get('id')}", "order": r.get("order"), "rank": r.get("rank"),

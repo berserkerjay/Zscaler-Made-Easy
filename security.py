@@ -44,7 +44,7 @@ import contextvars
 import os
 import re
 import time
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional
 from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request
@@ -446,16 +446,30 @@ CONTENT_SECURITY_POLICY = (
 )
 
 
+# The hardening headers every response carries (SecurityHeadersMiddleware),
+# and the refusals answered outside it (BodySizeLimitMiddleware) carry too.
+HARDENING_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), usb=()",
+}
+
+
+def refusal_headers() -> Dict[str, str]:
+    """Headers for a response written by a layer outside the headers
+    middleware: the hardening headers, the CSP and no caching."""
+    return {**HARDENING_HEADERS, "Content-Security-Policy": CONTENT_SECURITY_POLICY, "Cache-Control": "no-store", "Pragma": "no-cache"}
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Apply hardening headers to every response."""
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         h = response.headers
-        h.setdefault("X-Content-Type-Options", "nosniff")
-        h.setdefault("X-Frame-Options", "DENY")
-        h.setdefault("Referrer-Policy", "no-referrer")
-        h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), usb=()")
+        for k, v in HARDENING_HEADERS.items():
+            h.setdefault(k, v)
         # Content-Security-Policy — prevents inline-script injection from
         # taking over the GUI and blocks every external network fetch.
         # 'unsafe-inline' on style + script is required because the app
@@ -550,7 +564,8 @@ class BodySizeLimitMiddleware:
                           client=str(client[0]), bytes=size, limit=self.max_bytes)
         except Exception:  # noqa: BLE001 — logging never blocks the refusal
             pass
-        return JSONResponse({"detail": f"Request body too large (max {self.max_bytes} bytes)."}, status_code=413)
+        # This layer is outside the headers middleware too: its refusal sets them itself.
+        return JSONResponse({"detail": f"Request body too large (max {self.max_bytes} bytes)."}, status_code=413, headers=refusal_headers())
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
@@ -560,7 +575,7 @@ class BodySizeLimitMiddleware:
         declared = headers.get(b"content-length", b"").decode("latin-1").strip()
         if declared:
             if not declared.isdigit():
-                await JSONResponse({"detail": "Invalid Content-Length."}, status_code=400)(scope, receive, send)
+                await JSONResponse({"detail": "Invalid Content-Length."}, status_code=400, headers=refusal_headers())(scope, receive, send)
                 return
             if int(declared) > self.max_bytes:
                 await self._too_large(scope, int(declared))(scope, receive, send)

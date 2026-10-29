@@ -1929,8 +1929,12 @@ def capture(client, areas: Sequence[str], *, name: str = "", tenant_label: str =
             if c:
                 out.append(c)
         if len(out) > MAX_FRAMEWORK_RULES:
-            fw["not_exported"].append({"name": AREAS[area]["label"], "area": AREAS[area]["label"],
-                                       "reason": f"only the first {MAX_FRAMEWORK_RULES} of {len(out)} rules fit in a framework; the rest are left out"})
+            # A framework holds MAX_FRAMEWORK_RULES rules per area (load_framework
+            # refuses more): each rule cut is named, so it can be recreated by hand.
+            for c in out[MAX_FRAMEWORK_RULES:]:
+                fw["not_exported"].append({"name": c["name"], "area": AREAS[area]["label"],
+                                           "reason": f"only the first {MAX_FRAMEWORK_RULES} of {len(out)} rules fit in a framework; "
+                                                     "recreate this one in the target tenant"})
             out = out[:MAX_FRAMEWORK_RULES]
         if out:
             fw["areas"][area] = out

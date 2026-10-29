@@ -154,15 +154,20 @@ ASVS = re.compile(r"^(?:ASVS )?V\d{1,2}(?:\.\d{1,2}){0,2}$")
 WCAG = re.compile(r"^(?:WCAG (?:2\.[12] )?)?(?:SC )?\d\.\d\.\d{1,2}$")
 TEST_REF = re.compile(r"^tests/[A-Za-z0-9_./-]{1,150}\.py(?:::[^\s<>`|\\]{1,200})?$")
 COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
+COMMITS = re.compile(r"^[0-9a-f]{7,40}(?:, [0-9a-f]{7,40}){0,4}$")   # a finding's fix can take up to five commits
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d{1,6})?(?:Z|[+-]\d{2}:?\d{2})?)?$")
 TEST_FILE = re.compile(r"^tests/[A-Za-z0-9_/-]{1,150}\.py$")
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069\u2028\u2029]")
+# A unified diff is lines: newline, tab and carriage return are its own; any
+# other control or direction-override character is still refused.
+PATCH_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069\u2028\u2029]")
+MAX_CONTEXT_BYTES = 8192   # a record's coverage context (method, per-file numbers), serialised
 MARKUP = re.compile(r"<\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;")
 
 ROOT_KEYS = {"area": True, "title": True, "findings": True, "standards": False, "checks": False, "tests_added": False,
              "notes": False, "baseline": False, "files": False, "coverage": False}
 FINDING_KEYS = {"id": True, "title": True, "severity": True, "status": True, "cwe": False, "asvs": False, "wcag": False,
-                "fix": False, "test": False, "commit": False, "reason": False, "proposed_patch": False}
+                "fix": False, "test": False, "commit": False, "reason": False, "proposed_patch": False, "files": False}
 CHECK_KEYS = {"id": True, "what": True, "result": True, "standard": False}
 RUN_KEYS = {"passed": True, "failed": True, "skipped": True, "duration_s": True, "commit": True, "date": True,
             "errors": False, "files": False}
@@ -254,14 +259,14 @@ def _keys(obj: Any, spec: Dict[str, bool], where: str) -> None:
 
 
 def _text(v: Any, where: str, limit: int, *, pattern: Optional[re.Pattern] = None, empty: bool = False,
-          markup: bool = True) -> str:
+          markup: bool = True, controls: re.Pattern = CONTROL_CHARS) -> str:
     if not isinstance(v, str):
         raise InputError(f"{where}: must be a string")
     if len(v) > limit:
         raise InputError(f"{where}: longer than {limit} characters")
     if not v.strip() and not empty:
         raise InputError(f"{where}: must not be empty")
-    if CONTROL_CHARS.search(v):
+    if controls.search(v):
         raise InputError(f"{where}: holds control or direction-override characters")
     if not markup and MARKUP.search(v):
         raise InputError(f"{where}: holds HTML markup (plain text only)")
@@ -274,6 +279,41 @@ def _int(v: Any, where: str, hi: int) -> int:
     if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= hi:
         raise InputError(f"{where}: must be a whole number from 0 to {hi}")
     return v
+
+
+def _files(files: Any, where: str) -> None:
+    if not isinstance(files, list) or len(files) > 200:
+        raise InputError(f"{where}: must be a list of at most 200 paths")
+    for i, p in enumerate(files):
+        _text(p, f"{where}[{i}]", 200, markup=False)
+
+
+def _context(v: Any, where: str) -> None:
+    """Free-form context beside a record's numbers (how coverage was measured,
+    per-file numbers): read, never scored or shown. Bounded in size, and its
+    text is as plain as any other field."""
+    try:
+        size = len(json.dumps(v, ensure_ascii=False))
+    except (TypeError, ValueError):
+        raise InputError(f"{where}: not plain JSON") from None
+    if size > MAX_CONTEXT_BYTES:
+        raise InputError(f"{where}: its context is larger than {MAX_CONTEXT_BYTES} bytes")
+
+    def walk(x: Any, at: str) -> None:
+        if isinstance(x, str):
+            _text(x, at, 2000, empty=True)
+        elif isinstance(x, dict):
+            for k, y in x.items():
+                _text(k, f"{at} key", 80, markup=False)
+                walk(y, f"{at}.{k}")
+        elif isinstance(x, list):
+            for i, y in enumerate(x):
+                walk(y, f"{at}[{i}]")
+        elif isinstance(x, bool) or x is None or isinstance(x, (int, float)):
+            return
+        else:
+            raise InputError(f"{at}: not plain JSON")
+    walk(v, where)
 
 
 def validate_record(obj: Any, slug: str) -> Dict[str, Any]:
@@ -291,17 +331,15 @@ def validate_record(obj: Any, slug: str) -> Dict[str, Any]:
     for i, n in enumerate(notes):
         _text(n, f"{w}.notes[{i}]", 2000)
     _text(obj.get("baseline", ""), f"{w}.baseline", 300, empty=True)
-    files = obj.get("files", [])
-    if not isinstance(files, list) or len(files) > 200:
-        raise InputError(f"{w}.files: must be a list of at most 200 paths")
-    for i, p in enumerate(files):
-        _text(p, f"{w}.files[{i}]", 200, markup=False)
+    _files(obj.get("files", []), f"{w}.files")
     cov = obj.get("coverage", {})
-    if not isinstance(cov, dict) or set(cov) - {"before", "after"}:
-        raise InputError(f"{w}.coverage: must be {{before, after}}")
-    for k, v in cov.items():
+    if not isinstance(cov, dict):
+        raise InputError(f"{w}.coverage: must be {{before, after}} (and how it was measured)")
+    for k in ("before", "after"):
+        v = cov.get(k, 0)
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
             raise InputError(f"{w}.coverage.{k}: must be a number from 0 to 100")
+    _context({k: v for k, v in cov.items() if k not in ("before", "after")}, f"{w}.coverage")
     std = obj.get("standards", [])
     if not isinstance(std, list) or len(std) > MAX_STANDARDS:
         raise InputError(f"{w}.standards: must be a list of at most {MAX_STANDARDS} strings")
@@ -336,14 +374,16 @@ def validate_record(obj: Any, slug: str) -> Dict[str, Any]:
         status = _text(f["status"], f"{fw}.status", 10)
         if status not in STATUSES:
             raise InputError(f"{fw}.status: must be one of {', '.join(STATUSES)}")
-        _text(f.get("proposed_patch", ""), f"{fw}.proposed_patch", 65536, empty=True)   # a diff for the integrator, never shown
+        _files(f.get("files", []), f"{fw}.files")   # the files a finding touches: context, never scored
+        _text(f.get("proposed_patch", ""), f"{fw}.proposed_patch", 65536, empty=True,   # a diff for the integrator, never shown
+              controls=PATCH_CONTROL_CHARS)
         item = {"id": fid, "title": _text(f["title"], f"{fw}.title", 400, markup=False), "severity": sev, "status": status,
                 "cwe": _text(f.get("cwe", ""), f"{fw}.cwe", 12, pattern=CWE, empty=True),
                 "asvs": _text(f.get("asvs", ""), f"{fw}.asvs", 16, pattern=ASVS, empty=True),
                 "wcag": _text(f.get("wcag", ""), f"{fw}.wcag", 24, pattern=WCAG, empty=True),
                 "fix": _text(f.get("fix", ""), f"{fw}.fix", 300, empty=True),
                 "test": _text(f.get("test", ""), f"{fw}.test", 360, pattern=TEST_REF, empty=True),
-                "commit": _text(f.get("commit", ""), f"{fw}.commit", 40, pattern=COMMIT, empty=True),
+                "commit": _text(f.get("commit", ""), f"{fw}.commit", 210, pattern=COMMITS, empty=True),
                 "reason": _text(f.get("reason", ""), f"{fw}.reason", 300, empty=True)}
         if status != "fixed" and not (item["reason"].strip() or item["fix"].strip()):
             raise InputError(f"{fw}: an {status} finding needs a reason")

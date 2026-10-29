@@ -554,8 +554,9 @@
     }
     function moreNote(p) {
       if (!p.capped) return '';
-      return `<div class="pa-har-cap" role="note"><strong>${p.more.length} more host(s) not analyzed</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.
-        <details><summary>Show the ${p.more.length} host(s) left out</summary><ul class="pa-har-more">${p.more.map(m => `<li>${E(m.host)} <span class="df-by">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details></div>`;
+      const L = HarParse.leftOut(p);   // every host left out (more_total), not only the ones listed
+      return `<div class="pa-har-cap" role="note"><strong>${E(L.heading)}</strong>: a run analyzes at most ${HarParse.MAX_HOSTS} hosts, those that sent data first.${L.note ? ' ' + E(L.note) : ''}
+        ${L.listed ? `<details><summary>${E(L.summary)}</summary><ul class="pa-har-more">${p.more.map(m => `<li>${E(m.host)} <span class="df-by">${m.requests} request(s)${m.uploads ? `, ${m.uploads} upload(s)` : ''}</span></li>`).join('')}</ul></details>` : ''}</div>`;
     }
     function renderHarIntro() {
       const p = har.parsed, ups = p.hosts.filter(h => h.uploads).length;

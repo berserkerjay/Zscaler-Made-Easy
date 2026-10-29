@@ -426,7 +426,7 @@
   },
   {
    "id": "C6-MISC-24",
-   "title": "native_zscaler kept the source tenant's dictionary id in an engine whose term was D<id>.U or D(<id>), silently pointing at another dictionary in the target tenant",
+   "title": "native_zscaler kept the source tenant's dictionary id in an engine whose term was D{id}.U or D({id}), silently pointing at another dictionary in the target tenant",
    "severity": "medium",
    "cwe": "CWE-706",
    "asvs": "V5.1.3",

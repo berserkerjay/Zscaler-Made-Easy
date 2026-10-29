@@ -140,10 +140,19 @@ def epoch_seconds(v: Any) -> Optional[float]:
     return n
 
 
+def _items(v: Any) -> List[Any]:
+    """A list the API sends as a list: one string sent bare is one item
+    (never its characters); a number, true or an object where a list
+    belongs is no item, never a crash."""
+    if isinstance(v, str):
+        return [v] if v else []
+    return list(v) if isinstance(v, (list, tuple)) else []
+
+
 def _ref_ids(v: Any) -> List[str]:
     """Ids of a list of references ([{id, name}], ["id"], [model])."""
     out = []
-    for x in v or []:
+    for x in _items(v):
         if isinstance(x, dict):
             i = as_str(x.get("id"))
         else:
@@ -155,7 +164,7 @@ def _ref_ids(v: Any) -> List[str]:
 
 def _refs(v: Any) -> List[Dict[str, str]]:
     out = []
-    for x in v or []:
+    for x in _items(v):
         if isinstance(x, dict):
             i = as_str(x.get("id"))
             if i:
@@ -200,8 +209,8 @@ def port_ranges(seg: Dict[str, Any], proto: str) -> Tuple[List[List[int]], Any]:
 def _app_types(seg: Dict[str, Any]) -> List[str]:
     common = get(seg, "commonAppsDto") or {}
     types = []
-    for cfg in get(common, "appsConfig") or []:
-        for t in get(cfg, "appTypes") or []:
+    for cfg in _items(get(common, "appsConfig")):
+        for t in _items(get(cfg, "appTypes")):
             types.append(as_str(t).upper())
     return types
 
@@ -215,7 +224,7 @@ def normalize_segment(s: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": as_str(get(s, "id")), "name": as_str(get(s, "name")) or as_str(get(s, "id")),
         "enabled": as_bool(get(s, "enabled")) is not False,
-        "domains": [as_str(d) for d in (get(s, "domainNames") or []) if as_str(d)],
+        "domains": [as_str(d) for d in _items(get(s, "domainNames")) if as_str(d)],
         "tcp": tcp, "udp": udp, "tcp_raw": tcp_raw, "udp_raw": udp_raw,
         "segment_group_id": as_str(get(s, "segmentGroupId")), "segment_group_name": as_str(get(s, "segmentGroupName")),
         "server_groups": _refs(get(s, "serverGroups")),
@@ -244,7 +253,7 @@ def normalize_segment_group(g: Dict[str, Any]) -> Dict[str, Any]:
 
 def normalize_server_group(g: Dict[str, Any]) -> Dict[str, Any]:
     servers = []
-    for x in get(g, "servers") or []:
+    for x in _items(get(g, "servers")):
         if isinstance(x, dict):
             servers.append({"id": as_str(x.get("id")), "name": as_str(x.get("name")), "address": as_str(get(x, "address")),
                             "enabled": as_bool(get(x, "enabled")) is not False})
@@ -278,7 +287,7 @@ def normalize_connector(c: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def normalize_connector_group(g: Dict[str, Any]) -> Dict[str, Any]:
-    embedded = [normalize_connector(x) for x in (get(g, "connectors") or []) if isinstance(x, dict)]
+    embedded = [normalize_connector(x) for x in _items(get(g, "connectors")) if isinstance(x, dict)]
     return {"id": as_str(get(g, "id")), "name": as_str(get(g, "name")) or as_str(get(g, "id")),
             "enabled": as_bool(get(g, "enabled")) is not False,
             "version_profile": as_str(get(g, "versionProfileName")), "location": as_str(get(g, "location")),
@@ -287,7 +296,7 @@ def normalize_connector_group(g: Dict[str, Any]) -> Dict[str, Any]:
 
 def normalize_service_edge_group(g: Dict[str, Any]) -> Dict[str, Any]:
     edges = []
-    for x in get(g, "serviceEdges") or []:
+    for x in _items(get(g, "serviceEdges")):
         if isinstance(x, dict):
             raw, up = _status(x)
             edges.append({"id": as_str(x.get("id")), "name": as_str(x.get("name")), "status_raw": raw, "connected": up,
@@ -332,9 +341,9 @@ def _operand_tokens(o: Dict[str, Any]) -> List[Dict[str, Any]]:
     if get(o, "lhs") is not None or get(o, "rhs") is not None:
         return [{"type": t, "lhs": as_str(get(o, "lhs")), "rhs": as_str(get(o, "rhs")), "name": name, "idp_id": idp}]
     out = []
-    for v in get(o, "values") or []:
+    for v in _items(get(o, "values")):
         out.append({"type": t, "lhs": "id", "rhs": as_str(v), "name": name, "idp_id": idp})
-    for ev in get(o, "entryValues") or []:
+    for ev in _items(get(o, "entryValues")):
         if isinstance(ev, dict):
             out.append({"type": t, "lhs": as_str(ev.get("lhs")), "rhs": as_str(ev.get("rhs")), "name": name, "idp_id": idp})
     return out
@@ -342,11 +351,11 @@ def _operand_tokens(o: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def normalize_rule(r: Dict[str, Any], index: int, policy: str) -> Dict[str, Any]:
     conds = []
-    for c in get(r, "conditions") or []:
+    for c in _items(get(r, "conditions")):
         if not isinstance(c, dict):
             continue
         ops = []
-        for o in get(c, "operands") or []:
+        for o in _items(get(c, "operands")):
             if isinstance(o, dict):
                 ops.extend(_operand_tokens(o))
         conds.append({"operator": (as_str(get(c, "operator")) or "OR").upper(), "negated": bool(as_bool(get(c, "negated"))),

@@ -14,22 +14,6 @@
   "E(httpsOnly(s.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"],
   "E(httpsOnly(c.source.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"]
  },
- "static/beacon.js": {
-  "E(c.url)": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"],
-  "E(ref.url)": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"],
-  "E(p.url)": [1, "link target from the app's own catalogue or server configuration (help pages, downloads, SSO), never tenant text"]
- },
- "static/bypass_report.js": {
-  "s.total_bypass_items": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "s.ssl_bypass_rules": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "sec.total_rules": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "sec.count": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "p.status": [1, "HTTP status code of the probe (a number)"],
-  "p.item_count": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "it.count": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "r.id": [1, "ZIA integer id or an app-made key, never a name"],
-  "rule.id": [1, "ZIA integer id or an app-made key, never a name"]
- },
  "static/dashboard.js": {
   "last.journey.stage": [1, "number the server computes (count, percentage, score, stage, position)"],
   "sections[k].pct": [1, "number the server computes (count, percentage, score, stage, position)"],
@@ -150,27 +134,8 @@
   "s.counts.app_groups": [1, "number the server computes (count, percentage, score, stage, position)"]
  },
  "static/detection_health.js": {
-  "r.incidents": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "r.open": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "r.closed": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "r.not_real": [1, "number the server computes (count, percentage, score, stage, position)"],
   "r.fp_rate_pct": [1, "number the server computes (count, percentage, score, stage, position)"],
   "cls": [3, "CSS class or icon from the page's own status table"],
-  "g.incidents": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "g.closed": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "g.not_real": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "s.fp_share_pct": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "u.incidents": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "u.real": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "u.not_real": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "u.open": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "h.incidents": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "h.users": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "h.real": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "h.not_real": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "d.rules_enabled": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "d.rules_cloud": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "d.rules_icap": [1, "number the server computes (count, percentage, score, stage, position)"],
   "st.dest_min_incidents": [1, "number the server computes (count, percentage, score, stage, position)"],
   "st.dest_fp_pct": [1, "number the server computes (count, percentage, score, stage, position)"],
   "st.fp_min_incidents": [1, "number the server computes (count, percentage, score, stage, position)"],
@@ -180,12 +145,6 @@
   "st.promote_min_incidents": [1, "number the server computes (count, percentage, score, stage, position)"],
   "st.promote_window_days": [1, "number the server computes (count, percentage, score, stage, position)"],
   "st.promote_fp_pct": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "data.dismiss_days": [2, "number the server computes (count, percentage, score, stage, position)"],
-  "p.times_seen": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "s.open": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "s.approved": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "s.snoozed": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "s.dismissed": [1, "number the server computes (count, percentage, score, stage, position)"],
   "b.dataset.flow": [1, "a data attribute the page itself wrote (flow key)"]
  },
  "static/explain.js": {
@@ -516,19 +475,6 @@
  },
  "static/zcc_fleet.js": {
   "cls": [1, "CSS class or icon from the page's own status table"],
-  "d.hours_since_seen": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "a.count": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "u.devices": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "p.devices": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "p.score": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "c.impact": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "d.differences": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "m.risky": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "m.differing": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "x.rank": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "x.devices": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "x.priority": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "res.devices_total": [1, "number the server computes (count, percentage, score, stage, position)"],
   "v.devices": [1, "number the server computes (count, percentage, score, stage, position)"]
  }
 }

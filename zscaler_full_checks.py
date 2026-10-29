@@ -790,7 +790,8 @@ def zcc_5(cl):
     """Company info"""
     d, c = cl.get("/zcc/companyInfo")
     if c in (200, 204) and isinstance(d, dict):
-        name = d.get("companyName", d.get("name", "?"))
+        # getCompanyInfo names the company businessName (zscaler/zcc/models/company_info.py, SDK 1.11.3).
+        name = d.get("businessName") or d.get("companyName") or d.get("name") or "?"
         return R(R.PASS, f"Company: {name}")
     return R(R.WARN, "Cannot retrieve company info. Note: This may indicate the ZCC API scope is not enabled for this API client. Verify API role includes ZCC read permissions.")
 

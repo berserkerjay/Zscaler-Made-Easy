@@ -209,7 +209,7 @@
   },
   {
    "id": "C6-AUTH-02",
-   "title": "mask_secrets missed a secret echoed base64-encoded, as HTTP Basic '<id>:<secret>', or percent-encoded byte by byte",
+   "title": "mask_secrets missed a secret echoed base64-encoded, as HTTP Basic 'id:secret', or percent-encoded byte by byte",
    "severity": "medium",
    "cwe": "CWE-532",
    "asvs": "V7.1.1",

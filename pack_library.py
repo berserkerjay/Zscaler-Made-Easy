@@ -468,7 +468,7 @@ def _ref_name(ref: Any, labels: Dict[Tuple[str, str], str]) -> Optional[str]:
     if not isinstance(ref, Ref):
         return None
     # tostring(x.y.group_id) and friends: look through the wrapper.
-    m = re.search(r"(?<![A-Za-z0-9_.])(data\.)?([a-z_]+)\.([A-Za-z0-9_\-]+)\.(id|rule_id|group_id|name)(?![A-Za-z0-9_.])", ref.text)
+    m = re.search(r"(?<![A-Za-z0-9_.])(data\.)?([a-z_]+)\.([A-Za-z0-9_\-]+)\.(id|rule_id|group_id|tenant_id|name)(?![A-Za-z0-9_.])", ref.text)
     if not m:
         return None
     return labels.get((("data." if m.group(1) else "") + m.group(2), m.group(3)))
@@ -502,8 +502,10 @@ def pack_from_terraform(files: Dict[str, str]) -> Tuple[Dict[str, Any], List[str
         for blk in _blocks(doc, "data"):
             lab = blk.get("_labels") or []
             if len(lab) >= 2:
-                if isinstance(blk.get("name"), str):
-                    labels[("data." + lab[0], lab[1])] = blk["name"]
+                # A data source looks its object up by name (zia_casb_tenant: by tenant_name).
+                looked_up = blk.get("name") if isinstance(blk.get("name"), str) else blk.get("tenant_name")
+                if isinstance(looked_up, str):
+                    labels[("data." + lab[0], lab[1])] = looked_up
                 if lab[0] == "zia_cloud_applications":
                     app_class_lookups[lab[1]] = [str(c) for c in (_plain(blk.get("app_class")) or [])]
         for blk in _blocks(doc, "resource"):
@@ -589,6 +591,12 @@ def pack_from_terraform(files: Dict[str, str]) -> Tuple[Dict[str, Any], List[str
                 if k == "type" and channel == pc.SAAS:
                     p["saas_type"] = _plain(v)
                     continue
+                if k in ("labels", "notification_template", "cloud_app_tenants", "email_tenants"):
+                    # Blocks of data-source references (the writer looks each one up by name): the names travel.
+                    named = _ref_list(v, labels, warnings, owner, k.replace("_", " "))
+                    if named:
+                        p["tenants" if k.endswith("tenants") else k] = named[0] if k == "notification_template" else named
+                        continue
                 if isinstance(v, Ref):
                     # cloud_applications built from data.zia_cloud_applications lookups -> app classes
                     used = [lbl for lbl in app_class_lookups if f"data.zia_cloud_applications.{lbl}." in v.text]

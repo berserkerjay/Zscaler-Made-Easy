@@ -54,7 +54,26 @@
  ],
  "coverage": {
   "before": 88.0,
-  "after": 92.9
+  "after": 92.9,
+  "detail": {
+   "method": "coverage.py line+branch over the six files, the 32 test files that exercise them (+ the new test file after)",
+   "before": {
+    "bypass_report.py": 74,
+    "detection_health.py": 90,
+    "insights.py": 96,
+    "log_analyzer.py": 90,
+    "ssl_coverage.py": 89,
+    "ssl_flow.py": 97
+   },
+   "after": {
+    "bypass_report.py": 89,
+    "detection_health.py": 93,
+    "insights.py": 97,
+    "log_analyzer.py": 93,
+    "ssl_coverage.py": 92,
+    "ssl_flow.py": 97
+   }
+  }
  },
  "checks": [
   {
@@ -542,24 +561,5 @@
    "proposed_patch": "Regenerated, not hand-written: run `python tools/security_test_matrix.py` and commit docs/SECURITY_TESTING.md."
   }
  ],
- "tests_added": 158,
- "coverage_detail": {
-  "method": "coverage.py line+branch over the six files, the 32 test files that exercise them (+ the new test file after)",
-  "before": {
-   "bypass_report.py": 74,
-   "detection_health.py": 90,
-   "insights.py": 96,
-   "log_analyzer.py": 90,
-   "ssl_coverage.py": 89,
-   "ssl_flow.py": 97
-  },
-  "after": {
-   "bypass_report.py": 89,
-   "detection_health.py": 93,
-   "insights.py": 97,
-   "log_analyzer.py": 93,
-   "ssl_coverage.py": 92,
-   "ssl_flow.py": 97
-  }
- }
+ "tests_added": 158
 }
