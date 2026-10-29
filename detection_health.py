@@ -394,7 +394,8 @@ def rule_actions(client, channels: Optional[Iterable[str]] = None) -> Dict[str, 
     return actions
 
 
-def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datetime] = None, log=None) -> Dict[str, Any]:
+def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datetime] = None, log=None,
+                   scrub: Optional[Any] = None) -> Dict[str, Any]:
     """One live-feed poll: every incident created since `since` (default:
     two minutes ago, for the first call). Returns the normalised
     incidents (oldest first), `next_since` (pass this back next poll) and
@@ -409,6 +410,8 @@ def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datet
     elif since < now - timedelta(seconds=LIVE_POLL_CLAMP_SECONDS):
         since = now - timedelta(seconds=LIVE_POLL_CLAMP_SECONDS)
     incs, errors = fetch_incidents_window(client, since, now, log)
+    if scrub is not None:
+        errors = [scrub(str(e)) for e in errors]
     incs.sort(key=lambda i: i["_created"] or now)
     next_since = max((i["_created"] for i in incs if i.get("_created")), default=now)
     for i in incs:
@@ -825,7 +828,8 @@ def dictionary_why(name: str, incs: List[Dict[str, Any]], definition: Optional[D
 
 # ── report ─────────────────────────────────────────────────────────────
 def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = None, log=None,
-             channels: Optional[Iterable[str]] = None, read_incidents: bool = True, now: Optional[datetime] = None) -> Dict[str, Any]:
+             channels: Optional[Iterable[str]] = None, read_incidents: bool = True, now: Optional[datetime] = None,
+             scrub: Optional[Any] = None) -> Dict[str, Any]:
     """The Detection Health report for one tenant: incidents from
     Workflow Automation, rules from the tenant inventory, metrics and
     findings. Never raises; read problems are listed in `errors`.
@@ -834,7 +838,10 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
     DLP channels: only their rules are read, incidents on other channels
     are left out, and the incident delivery (Web DLP rules and receivers)
     is read only when web is one of them. None reads every channel.
-    `read_incidents=False` leaves Workflow Automation's incidents unread."""
+    `read_incidents=False` leaves Workflow Automation's incidents unread.
+    `scrub` (text -> text, e.g. tenant_auth.mask_secrets with the sign-in)
+    is applied to every read problem: an SDK error that echoes a secret
+    never reaches the report."""
     _log = log or (lambda m: None)
     s, settings_notes = clean_settings(settings)
     days = int(days or s["days"])
@@ -900,6 +907,8 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
                                   "channel": "web", "text": m["text"], "proposal": "enable_incident_forwarding"})
     for i in incidents:
         i.pop("_created", None)
+    if scrub is not None:
+        errors = [scrub(str(e)) for e in errors]
     incidents_read = read_incidents and not any("incident search" in e or "Workflow Automation" in e for e in errors)
     if not incidents_read:
         _not_measured(ev)

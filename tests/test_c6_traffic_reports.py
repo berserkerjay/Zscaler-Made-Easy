@@ -971,3 +971,21 @@ def test_a_rule_id_sent_as_a_list_still_aggregates():
     rep = br.generate_bypass_report(_Get({"/zia/sslInspectionRules": (rules, 200)}))
 
     assert rep["aggregated"]["urls"]["items"][0]["value"] == "a.example" and len(rep["aggregated"]["urls"]["items"][0]["rules"]) == 1
+
+
+def test_read_problems_pass_through_the_given_scrub():
+    """ASVS V7.1.1 · V8.3.4 · A09:2021 · CWE-209 · CWE-532 · WSTG-ERRH-01: an SDK error that echoes the client secret is masked in the report and in a live-feed poll."""
+    secret = "S3cr3t-Value-0123456789"
+
+    class Api:
+        def dlp_incident_search(self, **kw):
+            raise RuntimeError(f"token request failed: client_secret={secret}")
+    c = _dh_client([])
+    c.zwa = type("Z", (), {"dlp_incidents": Api()})()
+    mask = lambda s: s.replace(secret, "[redacted client_secret]")  # noqa: E731
+
+    rep = dh.generate(c, days=7, now=NOW, scrub=mask)
+    poll = dh.poll_incidents(c, None, now=NOW, scrub=mask)
+
+    assert secret not in str(rep) and secret not in str(poll)
+    assert any("[redacted client_secret]" in e for e in rep["errors"]) and rep["read"]["incidents"] is False
