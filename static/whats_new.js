@@ -33,7 +33,7 @@ window.WHATS_NEW = {
     {
       "id": "zcc-bypass-path", "release": "2026-10-31", "label": "Client Connector bypasses on the Path analyzer",
       "what": "The Path analyzer's Client Connector step checks every bypass in order (VPN gateways, destination bypasses, IP-based applications, Z-Tunnel 1.0 and 2.0) and names the one that decided.",
-      "changelog": ["Client Connector bypasses on the Path analyzer"],
+      "changelog": ["Client Connector bypasses on the Path analyzer", "VPN gateway bypass", "IP-based application bypass", "Z-Tunnel 1.0 and 2.0"],
       "marks": [{ "page": "/report/path", "at": "li.pm-hop[data-module=\"zcc\"] > .df-hop-h > strong", "shown": "after a destination is analyzed" }]
     },
     {
@@ -45,7 +45,7 @@ window.WHATS_NEW = {
     {
       "id": "zcc-device-otp", "release": "2026-10-31", "label": "One-time passwords for a device",
       "what": "The fleet page shows a device's Client Connector one-time passwords for the help desk, once, for 60 seconds, after the assessor's name and a typed confirmation; never kept.",
-      "changelog": ["One-time passwords for a device"],
+      "changelog": ["One-time passwords for a device", "rate limit"],
       "marks": [{ "page": "/report/fleet", "at": "#zfOtpH" }]
     },
     {
