@@ -11296,6 +11296,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     stopped normally, 2 when it could not start (the port is taken, the
     address cannot be bound, the token file cannot be written), with the
     reason printed in plain words instead of a traceback."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["tui"]:
+        # The terminal UI (tui.py): a client of a running server, the same gates.
+        import tui
+        return tui.main(args[1:])
     import uvicorn
 
     host = get_bind_host()
