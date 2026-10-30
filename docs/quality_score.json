@@ -317,12 +317,13 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 48,
+            "fixed": 54,
             "accepted": 0,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
-              "func-builders"
+              "func-builders",
+              "w7-admin-zpa-zcc-zdx"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 585,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -445,17 +446,17 @@
       },
       "high": {
         "open": 0,
-        "fixed": 13,
+        "fixed": 15,
         "accepted": 0
       },
       "medium": {
         "open": 0,
-        "fixed": 158,
+        "fixed": 160,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 339,
         "accepted": 0
       },
       "info": {
@@ -465,7 +466,7 @@
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 313,
       "fixed": 308,
       "open": 11,
       "accepted": 10
@@ -1048,6 +1049,38 @@
       "slug": "func-path",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7-ADMIN-01",
+      "title": "The Browser Access private key would have been written to the audit log's request record (the field name key_pem is not secret-named)",
+      "severity": "high",
+      "status": "fixed",
+      "cwe": "CWE-532",
+      "asvs": "V7.1.1",
+      "wcag": "",
+      "fix": "The upload field is private_key, which audit.redact redacts; a route test reads every file, answer and log.",
+      "test": "tests/test_ops_admin_routes.py::test_a_certificate_rotation_through_the_routes_and_its_undo",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-admin-zpa-zcc-zdx",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-ADMIN-02",
+      "title": "An error answer that quotes the refused request would carry the certificate and key into results, logs and the audit log",
+      "severity": "high",
+      "status": "fixed",
+      "cwe": "CWE-209",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "Errors of the upload are scrubbed of PEM blocks, every key line and long base64 runs before pack_ops sees them.",
+      "test": "tests/test_ops_admin_zpa.py::test_an_error_that_echoes_the_request_never_carries_the_key",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-admin-zpa-zcc-zdx",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ADMIN-OPS-01",
@@ -3576,6 +3609,38 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-ADMIN-03",
+      "title": "The Undo of a schedule change could not be planned: ZPA's default update time (66600 s, 18:30) is not a whole hour",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "The undo form accepts whole minutes; the page still offers whole hours.",
+      "test": "tests/test_ops_admin_zpa.py::test_rename_move_and_schedule_send_the_object_as_read_with_the_changes",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-admin-zpa-zcc-zdx",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-ADMIN-06",
+      "title": "The pasted device list did not reach the matcher (the lookup body had no text field)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "The lookup request carries text, mode and domain; a route test matches a list.",
+      "test": "tests/test_ops_admin_routes.py::test_a_list_is_matched_through_the_lookup_route",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-admin-zpa-zcc-zdx",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -8970,6 +9035,38 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-ADMIN-04",
+      "title": "A portal was refused as in use by a console deleted earlier in the same run",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-841",
+      "asvs": "V11.1.4",
+      "wcag": "",
+      "fix": "Objects deleted earlier in the run no longer count as users; the later delete depends on the earlier one.",
+      "test": "tests/test_ops_admin_zpa.py::test_users_deleted_first_in_the_same_run_free_what_they_used",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-admin-zpa-zcc-zdx",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-ADMIN-05",
+      "title": "The upload held for one person could not be used by the synchronous preview (no actor in its audit scope)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-639",
+      "asvs": "V4.2.1",
+      "wcag": "",
+      "fix": "The waited-for preview runs as the requesting actor, as the job route does.",
+      "test": "tests/test_ops_admin_routes.py::test_a_certificate_rotation_through_the_routes_and_its_undo",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-admin-zpa-zcc-zdx",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -10634,6 +10731,32 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-admin-zpa-zcc-zdx",
+      "area": "w7-admin-zpa-zcc-zdx",
+      "title": "Day-to-day admin for ZPA (connectors, Service Edges, PRA and user portals, provisioning keys, Browser Access certificates), Client Connector (device removal single and bulk, bypass apps, entitlements) and ZDX (deep trace, read-only views)",
+      "standards": [
+        "ASVS 4.0.3 L2 V4.1.3",
+        "ASVS V1.4.1",
+        "ASVS V3.3.1",
+        "ASVS V5.1.3",
+        "ASVS V5.3.3",
+        "ASVS V6.4.1",
+        "ASVS V7.1.1",
+        "ASVS V7.4.1",
+        "ASVS V8.3.4",
+        "ASVS V9.2.1",
+        "ASVS V11.1.4",
+        "ASVS V12.1.1",
+        "ASVS V13.4.1",
+        "OWASP Top 10 2021 A01 A02 A04 A09",
+        "OWASP WSTG v4.2",
+        "CISA Secure by Design"
+      ],
+      "checks": 10,
+      "findings": 6,
+      "tests_added": 0
     }
   ],
   "standards": {
@@ -10653,7 +10776,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -10738,6 +10861,7 @@
       "CWE-287",
       "CWE-290",
       "CWE-295",
+      "CWE-297",
       "CWE-306",
       "CWE-307",
       "CWE-312",
@@ -10782,6 +10906,7 @@
       "CWE-506",
       "CWE-522",
       "CWE-524",
+      "CWE-525",
       "CWE-532",
       "CWE-538",
       "CWE-540",
