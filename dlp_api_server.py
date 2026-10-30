@@ -7058,6 +7058,13 @@ class UpdateNotifyRequest(BaseModel):
     enabled: bool = False
 
 
+@app.get("/api/app/update/notify")
+async def app_update_notify_get():
+    """Whether update notifications are on, the channels they would use (no
+    secret) and the last notice. Reads nothing remote."""
+    return await asyncio.to_thread(_update_notify_overview)
+
+
 @app.put("/api/app/update/notify")
 async def app_update_notify_put(req: UpdateNotifyRequest, request: Request):
     """Save whether a newer version is announced on the digests' e-mail and
