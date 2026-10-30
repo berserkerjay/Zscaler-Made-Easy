@@ -1013,6 +1013,25 @@ def _zpa_kind_write(zpa, kind: str, op: str, oid: Any = None, payload: Optional[
     return call(getattr(svc, d), oid, *key, op="delete", kind=kind, name=name, log=log)
 
 
+# Restore, clone and template apply (ops_config_restore) write any object type
+# of the configuration backup catalogue (config_backup.TYPES) as kind
+# "cfg:<type key>"; the first argument is the product's service root
+# (client.zia, client.zpa or client.zcc). config_backup.write_call names the
+# SDK call (verified against zscaler-sdk-python 1.11.3); a 403 on a ZIA write
+# is waited out as for every ZIA write, and nothing is activated here.
+CONFIG_KIND_PREFIX = "cfg:"
+
+
+def _config_write(root, kind: str, op: str, oid: Any = None, payload: Optional[Dict[str, Any]] = None, *, name: str = "",
+                  rule_type: str = "", log: Optional[Callable[[str], None]] = None) -> Outcome:
+    import config_backup
+    key = kind[len(CONFIG_KIND_PREFIX):]
+    fn, args, kw, err = config_backup.write_call(root, key, op, oid, payload, rule_type)
+    if err:
+        return Outcome(False, error=err)
+    return call(fn, *args, op=op, kind=kind, name=name, log=log, kw=kw, zia=root if key.startswith("zia.") else None)
+
+
 @_audited("create")
 def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = None, parent_id: Any = None,
            name: str = "", log: Optional[Callable[[str], None]] = None) -> Outcome:
@@ -1020,6 +1039,8 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
     have been applied (a timeout, a 5xx) is sent again only after a read by
     name (name_check) shows it is not there."""
     name = name or str(payload.get("name") or "")
+    if str(kind).startswith(CONFIG_KIND_PREFIX):
+        return _config_write(zia, kind, "create", payload=payload, name=name, log=log)
     chk = name_check(zia, kind, name, channel)
     if kind == "dictionary":
         p = dict(payload)
@@ -1072,6 +1093,8 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
     listed URLs (the SDK's incremental update); without it the payload
     replaces the category."""
     name = name or str(payload.get("name") or "")
+    if str(kind).startswith(CONFIG_KIND_PREFIX):
+        return _config_write(zia, kind, "update", oid, payload, name=name, log=log)
     if kind == "dictionary":
         return call(zia.dlp_dictionary.update_dict, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "engine":
@@ -1120,6 +1143,8 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
     name = str(item.get("name") or "")
     if oid is None or oid == "":
         return Outcome(False, error=f"[{kind}] {name}: no id to delete; nothing was sent")
+    if str(kind).startswith(CONFIG_KIND_PREFIX):
+        return _config_write(zia, kind, "delete", oid, name=name, rule_type=str(item.get("type") or ""), log=log)
     if kind in ("app_group", "root_certificate") or (kind == "policy" and channel == pc.ENDPOINT and item.get("parent_id") is not None):
         # These deletes are a raw path: an id that is not a ZIA id (a number)
         # would change the path the DELETE is sent to.

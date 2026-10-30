@@ -30,6 +30,8 @@ os.environ["ZSCALER_UI_AUTH"] = "0"
 # Self-healing's startup run and timer (self_heal.py) stay off in tests: a
 # test runs the checks itself, on its own temporary files.
 os.environ["DLP_CHECK_SELF_HEAL_MINUTES"] = "0"
+# Scheduled configuration backups (config_backup.py) stay off too: a test runs them itself.
+os.environ["DLP_CHECK_BACKUP_SCHEDULE_MINUTES"] = "0"
 
 # Every file the app writes (its stores, audit log, caches) lives in a data
 # folder, as /data does in the container (Dockerfile), never in the repository
