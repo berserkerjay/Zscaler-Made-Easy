@@ -13,6 +13,11 @@
                                         printed at every start so a person
                                         can check it in the browser before
                                         trusting it
+    ZSCALER_TLS=acme                    a certificate from Let's Encrypt (or
+                                        another ACME CA) through the dns-01
+                                        challenge on Cloudflare: server_acme.py
+    ZSCALER_TLS_REDIRECT_PORT           a plain-HTTP port that only redirects
+                                        to HTTPS (e.g. 80)
     ZSCALER_TLS_HOSTNAMES               extra DNS names or IP addresses for
                                         the self-signed certificate,
                                         comma-separated
@@ -41,7 +46,7 @@ HSTS_VALUE = "max-age=31536000"
 def requested() -> bool:
     """Does the configuration ask for HTTPS (a certificate pair, or self-signed)?"""
     return bool(os.environ.get("ZSCALER_TLS_CERT", "").strip() or os.environ.get("ZSCALER_TLS_KEY", "").strip()
-                or os.environ.get("ZSCALER_TLS", "").strip().lower() in SELF_SIGNED_VALUES)
+                or os.environ.get("ZSCALER_TLS", "").strip().lower() in SELF_SIGNED_VALUES + ("acme",))
 
 
 def tls_dir() -> str:
@@ -146,6 +151,9 @@ def ensure() -> Optional[Dict[str, Any]]:
         raise RuntimeError("HTTPS is configured but cannot start: " + "; ".join(errors) + ".")
     cert = os.environ.get("ZSCALER_TLS_CERT", "").strip()
     key = os.environ.get("ZSCALER_TLS_KEY", "").strip()
+    if not (cert or key) and os.environ.get("ZSCALER_TLS", "").strip().lower() == "acme":
+        import server_acme   # Let's Encrypt through dns-01 (optional, declared outbound)
+        return server_acme.ensure()
     if cert and key:
         return {"cert": cert, "key": key, "fingerprint": fingerprint(cert), "self_signed": False, "generated": False}
     folder = tls_dir()
@@ -175,7 +183,7 @@ def remember(info: Optional[Dict[str, Any]]) -> None:
     """What main() started with, for the Team server page (no key material)."""
     _STATUS.clear()
     if info:
-        _STATUS.update({k: info.get(k) for k in ("fingerprint", "self_signed", "generated")})
+        _STATUS.update({k: info.get(k) for k in ("fingerprint", "self_signed", "generated", "acme")})
 
 
 def status() -> Dict[str, Any]:
