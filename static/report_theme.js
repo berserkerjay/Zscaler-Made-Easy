@@ -171,6 +171,16 @@
   window.__dlpGoHome = goHome;
 })();
 
+// What's new (static/whats_new.js): the * after each new feature's label,
+// on every page that loads this file (the home page gets it through
+// GUI_ADDONS). Same origin, so the CSP ('self') allows it.
+(function () {
+  if (window.WhatsNew || document.querySelector('script[src^="/static/whats_new.js"]')) return;
+  const s = document.createElement('script');
+  s.src = '/static/whats_new.js';
+  (document.head || document.documentElement).appendChild(s);
+})();
+
 // Reduced motion covers scripted scrolling too (WCAG 2.3.3): Chromium
 // animates scrollIntoView / scrollTo({ behavior: 'smooth' }) even when the
 // user asked the system for reduced motion, so while that preference is on

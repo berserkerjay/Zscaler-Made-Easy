@@ -19,6 +19,8 @@
 // taken off (two tooltips would stack) and kept as the pop-up's "Note" line
 // when it says more than the entry: a state ("Needs write mode") or the
 // words for one item of a list that shares an entry.
+// A control marked as new (static/whats_new.js sets data-wn-new on it) gets
+// one more line first: "New in the <date> update: <what it is>".
 (function () {
   'use strict';
   if (window.HoverHelp) return;
@@ -138,23 +140,27 @@
     }
     return host;
   }
-  function sentence(item, note) {
+  // The "New in the … update" line whats_new.js puts on a control marked as new.
+  function newsOf(el) { return norm(el.getAttribute('data-wn-new')); }
+  function sentence(item, note, news) {
     const e = item.e;
     const parts = [norm(e.what), 'Input: ' + norm(e.input)];
+    if (news) parts.unshift(news);
     if (EFFECTS[e.effect]) parts.push(EFFECTS[e.effect]);
     if (note) parts.push('Note: ' + note);
     return parts.join(' ');
   }
-  function descFor(el, item, note) {
+  function descFor(el, item, note, news) {
     const host = descHost(el);
-    const id = note ? 'hh-n-' + (++serial) : `hh-d-${item.idx}-${host.dataset.hhScope}`;
-    let span = note ? null : document.getElementById(id);
+    const own = !!(note || news);
+    const id = own ? 'hh-n-' + (++serial) : `hh-d-${item.idx}-${host.dataset.hhScope}`;
+    let span = own ? null : document.getElementById(id);
     if (!span) {
       span = document.createElement('span');
       span.id = id;
       host.appendChild(span);
     }
-    span.textContent = sentence(item, note);
+    span.textContent = sentence(item, note, news);
     return id;
   }
   // The element whose native title describes the control: the control, or
@@ -186,7 +192,7 @@
     const others = mine.filter(id => !/^hh-[dn]-/.test(id));
     const old = mine.find(id => /^hh-n-/.test(id));
     if (old) { const s = document.getElementById(old); if (s) s.remove(); }   // its own Note line, rebuilt below if still needed
-    const id = descFor(el, item, note);
+    const id = descFor(el, item, note, newsOf(el));
     el.setAttribute('aria-describedby', others.concat(id).join(' '));
     el.setAttribute('data-hh', item.sel);
     return item;
@@ -195,7 +201,7 @@
   function scan() {
     pending = false;
     controls(document).forEach(el => {
-      const sig = () => { const h = titleHost(el); return (h.getAttribute('data-hh-title') || '') + '|' + (h.getAttribute('title') || ''); };
+      const sig = () => { const h = titleHost(el); return (h.getAttribute('data-hh-title') || '') + '|' + (h.getAttribute('title') || '') + '|' + (el.getAttribute('data-wn-new') || ''); };
       if (el.__hhSig === sig() && el.hasAttribute('data-hh')) return;
       wire(el);
       el.__hhSig = sig();
@@ -234,6 +240,8 @@
     const e = item.e;
     const note = noteOf(el, item);
     const rows = [make('p', 'hh-what', norm(e.what))];
+    const news = newsOf(el);
+    if (news) rows.unshift(make('p', 'hh-new', news));
     const inp = make('p', 'hh-input');
     inp.append(make('strong', null, 'Input: '), document.createTextNode(norm(e.input)));
     rows.push(inp);
@@ -433,7 +441,7 @@
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
     new MutationObserver(soon).observe(document.body, {
-      subtree: true, childList: true, attributes: true, attributeFilter: ['title', 'id', 'class', 'role', 'type', 'hidden'],
+      subtree: true, childList: true, attributes: true, attributeFilter: ['title', 'id', 'class', 'role', 'type', 'hidden', 'data-wn-new'],
     });
     scan();
   }
