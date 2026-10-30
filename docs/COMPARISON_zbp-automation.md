@@ -2,7 +2,7 @@
 
 A comparison of two approaches to putting Zscaler DLP best-practice
 configuration into a tenant. Written 2026-09-09 against
-`berserkerjay/DLP-Check` at `main` and the fork
+`berserkerjay/Zscaler-Made-Easy` at `main` and the fork
 `berserkerjay/zbp-automation` (upstream `mkoyfman/zbp-automation`,
 single commit `3aa1fdc`).
 

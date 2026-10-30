@@ -278,7 +278,7 @@ jobs:
           persist-credentials: false  # nothing here pushes: keep GITHUB_TOKEN out of .git/config
 
       - name: Build the image
-        run: docker build -t dlp-check:ci .
+        run: docker build -t zscaler-made-easy:ci .
 
       - name: Image runs as non-root and answers /api/ping
         run: |
@@ -288,7 +288,7 @@ jobs:
           # The UI token gate stays on (a container cannot tell a loopback
           # caller from one on its network, so ZSCALER_UI_AUTH=0 is refused):
           # a fixed CI token proves the gate admits it and refuses no token.
-          id=$(docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 -e ZSCALER_UI_TOKEN=ci-smoke-token dlp-check:ci)
+          id=$(docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 -e ZSCALER_UI_TOKEN=ci-smoke-token zscaler-made-easy:ci)
           sleep 8
           docker exec "$id" id -u | grep -qv '^0$'
           curl -fsS http://127.0.0.1:8000/api/ping
@@ -296,10 +296,24 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/health)" = "401"
           docker rm -f "$id" >/dev/null
 
+      - name: Moving to the new name copies the old data volume and keeps it
+        run: |
+          # An install from before the rename: data on <folder>_dlpcheck-data.
+          docker tag zscaler-made-easy:ci zscaler-made-easy:local
+          docker run --rm -v dlp-check_dlpcheck-data:/data -w /data --entrypoint sh zscaler-made-easy:ci \
+            -c 'echo marker > tenant_profiles.json && chmod 600 tenant_profiles.json'
+          bash update_container.sh --migrate-only | tee first.txt
+          grep -q "Copied dlp-check_dlpcheck-data into zscaler-made-easy-data" first.txt
+          docker run --rm -v zscaler-made-easy-data:/data:ro -w /data --entrypoint sh zscaler-made-easy:ci \
+            -c 'test "$(cat tenant_profiles.json)" = marker && test "$(stat -c %a tenant_profiles.json)" = 600'
+          docker volume inspect dlp-check_dlpcheck-data >/dev/null   # the old volume is kept
+          bash update_container.sh --migrate-only | tee second.txt
+          if grep -q "Copied" second.txt; then echo "::error::the second run copied again"; exit 1; fi
+
       - name: Scan the image for known vulnerabilities (Trivy)
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --exit-code 1 --ignore-unfixed --severity CRITICAL,HIGH --format table dlp-check:ci
+            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --exit-code 1 --ignore-unfixed --severity CRITICAL,HIGH --format table zscaler-made-easy:ci
 
       - name: Image SBOM (CycloneDX, every OS and Python package in the image)
         run: |
@@ -307,7 +321,7 @@ jobs:
           # only; this inventories the built image, including the base image's
           # CPython and Debian packages (docs/SBOM.md).
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" \
-            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --format cyclonedx --output /out/image-sbom.cdx.json dlp-check:ci
+            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --format cyclonedx --output /out/image-sbom.cdx.json zscaler-made-easy:ci
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: image-sbom

@@ -683,7 +683,7 @@ def test_the_migration_is_handed_over_as_a_terraform_workspace_following_terrafo
     body = {"vendor": "symantec", "export": _upload("policies.xml", RICH), "decisions": _multi_decisions(snap)}
     r = c.post("/api/vendor-migrate/workspace", json=body)
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip", r.text[:300]
-    assert 'dlp-check-symantec-migration-terraform.zip"' in r.headers["content-disposition"]
+    assert 'zscaler-made-easy-symantec-migration-terraform.zip"' in r.headers["content-disposition"]
     z = zipfile.ZipFile(io.BytesIO(r.content))
     names = {n.split("/", 1)[1] for n in z.namelist()}
     assert names == {"terraform.tf", "providers.tf", "variables.tf", "dictionaries.tf", "engines.tf", "rules.tf", "locals.tf", "outputs.tf",

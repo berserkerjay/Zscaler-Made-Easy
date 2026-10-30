@@ -25,7 +25,7 @@ Two ways to run it, built from this one source tree:
 | Mode | For | How |
 |---|---|---|
 | **Local** | a consultant's laptop | `INSTALL_Zscaler_Made_Easy.bat` (Windows) or `./install.sh` (Linux, macOS), then the Start script |
-| **Container** | a server or cloud host | `docker compose up --build` (or `docker build -t dlp-check .`) |
+| **Container** | a server or cloud host | `docker compose up --build` (or `docker build -t zscaler-made-easy:local .`) |
 
 Both install the same hash-pinned dependencies (`requirements.lock`) and
 run the same entry point (`dlp_api_server.py`). A test
@@ -43,7 +43,7 @@ server runs in the background (output in `server.log`);
 Linux / macOS:
 
 ```bash
-./install.sh        # private .venv, pinned dependencies, the dlp-check command
+./install.sh        # private .venv, pinned dependencies, the zscaler-made-easy command
 ./start.sh          # prints the address and the UI token, opens the browser
 ./stop.sh           # when started with ./start.sh --background
 ```
@@ -60,23 +60,23 @@ There is no published image: Docker builds it from this code. Install Docker fir
 # Windows (PowerShell)
 git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git; cd Zscaler-Made-Easy
 powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
-docker logs dlp-check              # shows the UI token and http://localhost:8001/?token=…
+docker logs zscaler-made-easy      # shows the UI token and http://localhost:8001/?token=…
 ```
 
 ```bash
 # Mac or Linux
 git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git && cd Zscaler-Made-Easy
 ./update_container.sh --force
-docker logs dlp-check              # shows the UI token and http://localhost:8001/?token=…
+docker logs zscaler-made-easy      # shows the UI token and http://localhost:8001/?token=…
 ```
 
-No git? Docker can fetch and build it by itself: `docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"` with a read-only GitHub token in `GIT_AUTH_TOKEN`, then `docker run` (INSTALL.md, *Install with Docker commands only*).
+No git? Docker can fetch and build it by itself: `docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN -t zscaler-made-easy:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"` with a read-only GitHub token in `GIT_AUTH_TOKEN`, then `docker run` (INSTALL.md, *Install with Docker commands only*).
 
 The update script runs `docker compose up -d --build` with the build's git commit stamped in; plain `docker compose up --build` works too. It is published on 127.0.0.1:8001 only (the local install uses 8000).
 
 The container runs as a non-root user on a read-only filesystem with every
 capability dropped; everything it writes (profiles, deployment records,
-audit log, the token file, uploaded packs) goes to the `dlpcheck-data`
+audit log, the token file, uploaded packs) goes to the `zscaler-made-easy-data`
 volume mounted at `/data`. Put `ZSCALER_*` variables in a `.env` file next
 to `docker-compose.yml` to pre-fill credentials (git-ignored). To reach it
 from other machines, front it with a reverse proxy that authenticates users
@@ -149,7 +149,9 @@ Tenant credentials for the command-line assessment come from a JSON file:
 copy `tenant_config_sample.json`, fill in `client_id`, `client_secret`,
 `vanity_domain` and `cloud` (or `auth_method: "legacy"` with `username`,
 `password` and `api_key`), and run
-`.venv/bin/dlp-check-assess --config tenant.json --output report.json`.
+`.venv/bin/zscaler-made-easy-assess --config tenant.json --output report.json`.
+The commands from before the rename (`dlp-check`, `dlp-check-assess`,
+`dlp-check-evaluate`) still work.
 A missing or malformed file is reported in one sentence with exit code 2.
 
 ## How the project is structured
@@ -160,11 +162,11 @@ pack; generated Terraform per pack in `terraform/`; tests in `tests/`.
 
 | Area | Files |
 |---|---|
-| Web server and API | `dlp_api_server.py` (FastAPI, the `dlp-check` command), `security.py` (token gate, origin check, body cap, rate limit, write mode), `sso.py` (optional OpenID Connect sign-in, off by default), `audit.py` |
-| Assessment engine | `dlp_assessment_full_auto.py` (the `Client`, the check registry, the `dlp-check-assess` command), `zscaler_*_checks.py`, `zcc_evaluation.py`, `benchmarks.py`, `compliance_mapping.py`, `plain_english.py`, `report_docx.py` |
+| Web server and API | `dlp_api_server.py` (FastAPI, the `zscaler-made-easy` command), `security.py` (token gate, origin check, body cap, rate limit, write mode), `sso.py` (optional OpenID Connect sign-in, off by default), `audit.py` |
+| Assessment engine | `dlp_assessment_full_auto.py` (the `Client`, the check registry, the `zscaler-made-easy-assess` command), `zscaler_*_checks.py`, `zcc_evaluation.py`, `benchmarks.py`, `compliance_mapping.py`, `plain_english.py`, `report_docx.py` |
 | Policy packs | `pack_ops.py` (the shared execution path every pack goes through: validation, ordering, retries, run control, structured events), `pack_deploy.py` (plan, apply, journey, verify), `pack_removal.py` (remove, undo), `pack_jobs.py` (deploys and removals as background jobs the GUI follows live), `pack_channels.py` (per-channel payloads), `pack_library.py` (uploads), `pack_terraform.py`, `dlp_importer.py` (pack data and ZIA limits); pack data in `cjis_policy_pack/`, `fed_policy_pack/`, `global_banking_baseline/`, `healthcare_phi_baseline/`, `zbp_enterprise_baseline/`, `zbp_source_code_baseline/` |
 | Reports and analysis | `bypass_report.py`, `ssl_flow.py`, `data_flow.py`, `detection_health.py`, `dlp_efficacy.py`, `log_analyzer.py`, `secure_by_design.py` |
-| Continuous evaluation | `continuous_eval.py` (the `dlp-check-evaluate` command), `proposals.py`, `proposal_apply.py`, `deployments.py`, `tenant_profiles.py` |
+| Continuous evaluation | `continuous_eval.py` (the `zscaler-made-easy-evaluate` command), `proposals.py`, `proposal_apply.py`, `deployments.py`, `tenant_profiles.py` |
 | Tools | `tools/fan_out_channels.py` (channel mirrors), `tools/validate_detection.py` (offline detection validation), `app_update.py` (the Update app button), `upstream_check.py` (the SDK, the Terraform provider and Zscaler's API reference cross-checked against what the app sends; offline in `make check`, online daily in `.github/workflows/upstream_check.yml`), `beacon.py` (the same watchers in the app on a timer, what changed since the last run, and the GET-only tenant API watch) |
 
 Documentation: `docs/OVERVIEW.md` (what the app does, in five minutes),

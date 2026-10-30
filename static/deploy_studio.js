@@ -595,7 +595,7 @@ async function _dzTerraform(ids, mode) {
     const blob = await r.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = snap.filename || snap.result.filename || 'dlp-check-terraform.zip';
+    a.download = snap.filename || snap.result.filename || 'zscaler-made-easy-terraform.zip';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     TF.last = Object.assign({}, snap.result, { logs: snap.logs, elapsed_seconds: snap.elapsed_seconds });

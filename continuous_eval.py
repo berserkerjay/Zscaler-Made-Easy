@@ -942,7 +942,7 @@ def _send_email(subject: str, body: str, e: Dict[str, Any]) -> Dict[str, Any]:
     try:
         msg = EmailMessage()
         msg["Subject"] = subject
-        msg["From"] = e["from"] or "dlp-check@localhost"
+        msg["From"] = e["from"] or "zscaler-made-easy@localhost"
         msg["To"] = e["to"]
         msg.set_content(body)
         user = os.environ.get("DLP_CHECK_SMTP_USER", "")

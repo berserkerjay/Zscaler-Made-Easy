@@ -822,14 +822,16 @@ profile.
 
 The same code runs without the browser:
 
-- **Mac and Linux**, after `./install.sh`: `.venv/bin/dlp-check` (the
-  server), `.venv/bin/dlp-check-assess --config tenant.json --output
+- **Mac and Linux**, after `./install.sh`: `.venv/bin/zscaler-made-easy` (the
+  server), `.venv/bin/zscaler-made-easy-assess --config tenant.json --output
   report.json` (the assessment from a JSON file), and
-  `.venv/bin/dlp-check-evaluate` (one run of the evaluation loop, for cron).
+  `.venv/bin/zscaler-made-easy-evaluate` (one run of the evaluation loop, for cron).
+  The names from before the rename (`dlp-check`, `dlp-check-assess`,
+  `dlp-check-evaluate`) still work, so existing cron jobs keep running.
 - **Windows**: `python dlp_assessment_full_auto.py --config tenant.json
   --output report.json`, and `RUN_Continuous_Evaluation.bat` for Task
   Scheduler.
-- **Container**: `docker compose exec dlp-check python continuous_eval.py
+- **Container**: `docker compose exec zscaler-made-easy python continuous_eval.py
   --once`.
 
 `python dlp_mcp_server.py` runs a separate, optional MCP server (port

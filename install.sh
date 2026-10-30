@@ -4,12 +4,13 @@
 # Creates a private Python environment in .venv next to this file, installs
 # the dependencies pinned by hash in requirements.lock (the same file the
 # container installs from), installs the app into that environment so the
-# `dlp-check` command exists, and writes nothing outside this folder.
+# `zscaler-made-easy` command exists (the old name `dlp-check` still works),
+# and writes nothing outside this folder.
 #
 #   ./install.sh            install (or reinstall after an update)
 #   ./start.sh              start the web app and print the address to open
 #   ./stop.sh               stop it
-#   .venv/bin/dlp-check     the same server, as a command
+#   .venv/bin/zscaler-made-easy   the same server, as a command
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,8 +63,8 @@ else
   fail "requirements.lock is missing from this folder, so the dependencies cannot be installed hash-verified. Get a complete copy of the app (git clone, or a fresh ZIP) and run this again."
 fi
 
-# 4. The app itself, editable, so the dlp-check command runs this folder's code.
-say "Installing the dlp-check command…"
+# 4. The app itself, editable, so the zscaler-made-easy command runs this folder's code.
+say "Installing the zscaler-made-easy command…"
 "$VPY" -m pip install --quiet --disable-pip-version-check --no-deps --no-build-isolation -e . \
   || fail "Could not install the app into the environment."
 
