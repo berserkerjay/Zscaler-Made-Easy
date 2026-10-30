@@ -5872,6 +5872,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/vendor": {
+   "a[href=\"#panos\"]": {
+    "what": "Jumps to the Firewall and private access section, which maps a Palo Alto Networks configuration export to Cloud Firewall rules and ZPA segments.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#panExport": {
     "what": "Picks the Palo Alto Networks configuration export (the firewall's or Panorama's). It is read on this computer with a hardened XML reader.",
     "input": "Required. One .xml configuration export, under the upload limit shown.",
