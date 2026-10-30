@@ -306,6 +306,19 @@ DEVICES = [
      "agentVersion": "4.2.0.198", "registrationState": "Registered", "companyName": COMPANY, "policyName": "Windows - Contractors", "lastSeenTime": "2026-10-20 07:12:44",
      "tunnelVersion": "Z-Tunnel 1.0"},
 ]
+# The per-device service status (GET .../downloadServiceStatus, a CSV the SDK's DevicesAPI.download_service_status
+# fetches; it starts "User","Device type"). The other column names are assumed from the Client Connector Portal's
+# Service Status export. The contractor laptop has ZIA off while ZPA is on: the fleet page's bypass risk.
+SERVICE_STATUS_CSV = (
+    '"User","Device type","UDID","Hostname","Zscaler Client Connector Version","Registration State","ZIA Enabled","ZIA Health",'
+    '"ZPA Enabled","ZPA Health","ZDX Enabled","ZDX Health","Last Seen Connected to ZIA"\n'
+    '"avery.quinn@larkspur-freight.example","Windows","LKF-WIN-0001","LKF-LT-0001","4.5.0.334","Registered","true","Active",'
+    '"true","Active","true","Active","2026-10-27 18:05:11 GMT"\n'
+    '"rowan.ellis@larkspur-freight.example","macOS","LKF-MAC-0002","LKF-MBP-0002","4.4.0.208","Registered","true","Active",'
+    '"true","Active","false","Inactive","2026-10-28 08:40:02 GMT"\n'
+    '"jordan.blake@larkspur-freight.example","Windows","LKF-WIN-0003","LKF-CT-0003","4.2.0.198","Registered","true","Inactive",'
+    '"true","Active","true","Inactive","2026-10-20 07:12:44 GMT"\n'
+)
 FAIL_OPEN = [{"id": 1, "enableFailOpen": 1, "enableCaptivePortalDetection": 1, "captivePortalWebSecDisableMinutes": 10,
               "enableStrictEnforcementPrompt": 0, "tunnelFailureRetryCount": 25}]
 # zscaler/zcc/models/company_info.py: zpnEnabled is ZPA, upmEnabled is ZDX, proxyEnabled is ZIA.
@@ -435,6 +448,7 @@ def responses() -> Dict[str, Any]:
         f"{ZCC}/webForwardingProfile/listByCompany": FORWARDING_PROFILES,
         f"{ZCC}/webTrustedNetwork/listByCompany": {"trustedNetworkContracts": TRUSTED_NETWORKS, "totalCount": len(TRUSTED_NETWORKS)},
         f"{ZCC}/getDevices": DEVICES,
+        f"{ZCC}/downloadServiceStatus": SERVICE_STATUS_CSV,
         f"{ZCC}/webFailOpenPolicy/listByCompany": FAIL_OPEN,
         f"{ZCC}/getCompanyInfo": COMPANY_INFO,
         f"{ZCC}/getWebPrivacyInfo": WEB_PRIVACY_INFO, f"{ZCC}/getDeviceCleanupInfo": DEVICE_CLEANUP,

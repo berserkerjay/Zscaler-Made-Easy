@@ -541,6 +541,11 @@ class OfflineSdkClient:
         self._zia_rate_label = store.label
         self._zia_rate_labels = (store.label,)
 
+    def get_request_executor(self) -> "OfflineExecutor":
+        """As the SDK's OneAPI client (oneapi_client.Client.get_request_executor):
+        the fleet's service-status CSV is asked through it."""
+        return self._request_executor
+
     def _svc(self, name: str, build: Callable[[], Any]) -> Any:
         if name not in self._services:
             self._services[name] = build()
