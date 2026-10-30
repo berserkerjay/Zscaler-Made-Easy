@@ -33,19 +33,19 @@ window.WHATS_NEW = {
     {
       "id": "panos-migration", "release": "2026-10-31", "label": "Firewall and private access (Palo Alto Networks)",
       "what": "Migrate from another vendor reads a PAN-OS configuration export and builds a plan for Bulk changes: Cloud Firewall rules with their IP groups and network services, ZPA segments for GlobalProtect access, and every item that cannot be carried, with the reason.",
-      "changelog": ["Firewall and private access"],
+      "changelog": ["Firewall and private access", "Download the ZPA segments CSV"],
       "marks": [{ "page": "/report/vendor", "at": "#vmPanH" }]
     },
     {
       "id": "fw-import", "release": "2026-10-31", "label": "Firewall import from Palo Alto Networks",
       "what": "A Build new operation that creates the migration plan's groups, services and disabled Cloud Firewall rules, previewed against the tenant and undone by deleting what it created.",
-      "changelog": ["Firewall import from Palo Alto Networks"],
+      "changelog": ["Firewall import from Palo Alto Networks", "Open in Bulk changes"],
       "marks": [{ "page": "/report/vendor", "at": "#panOpen" }]
     },
     {
       "id": "local-plugins", "release": "2026-10-31", "label": "Local plugins",
       "what": "Off by default: Python packages an admin approves by their exact SHA-256 can add Bulk changes operations and read-only pages, always through the same gates.",
-      "changelog": ["Local plugins"],
+      "changelog": ["Local plugins", "Approve this hash"],
       "marks": [{ "page": "/report/advanced", "at": "#advPlugH" }]
     },
     {

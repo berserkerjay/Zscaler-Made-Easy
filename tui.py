@@ -462,12 +462,24 @@ def fmt_result(r: Dict[str, Any]) -> List[str]:
 
 
 def fmt_bulk(r: Dict[str, Any]) -> List[str]:
-    rows = r.get("rows") or r.get("results") or []
-    out = [clean(f"{len(rows)} destination(s) tested")]
-    for x in rows[:500]:
-        if isinstance(x, dict):
-            out.append(clean(f"  {x.get('destination') or x.get('input') or ''}: {x.get('verdict') or x.get('outcome') or x.get('summary') or ''}"))
-    return out if rows else out + fmt_any(r, limit=200)
+    """Test a list's summary: outcomes, the rules and categories that decide
+    most, the rows it flagged (the full table is the web page's export)."""
+    out = [clean(f"{r.get('rows', 0)} destination(s) tested on {r.get('tenant_label') or 'the tenant'}"
+                 f"{' (stopped)' if r.get('stopped') else ''}")]
+    counts = r.get("counts") if isinstance(r.get("counts"), dict) else {}
+    out.append(clean("Outcomes: " + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in counts.items() if v) or "Outcomes: none"))
+    if r.get("flagged") or r.get("unmet"):
+        out.append(clean(f"Flagged: {r.get('flagged', 0)} · expectations not met: {r.get('unmet', 0)}"))
+    for title, key, name in (("Rules that decide most", "top_rules", "rule"), ("Categories", "top_categories", "category")):
+        rows = [x for x in r.get(key) or [] if isinstance(x, dict)]
+        if rows:
+            out.append(title + ":")
+            out += [clean(f"  {x.get('count', '')}  {x.get(name) or x.get('name') or ''}") for x in rows[:20]]
+    for x in [x for x in r.get("preview") or [] if isinstance(x, dict)][:200]:
+        out.append(clean(f"  {x.get('destination') or x.get('input') or ''}: {x.get('outcome') or x.get('verdict') or ''}"))
+    for a in r.get("assumptions") or []:
+        out.append(clean(f"Assumed: {a}"))
+    return out
 
 
 def fmt_diff(r: Dict[str, Any]) -> List[str]:

@@ -97,3 +97,6 @@ self_heal.json
 .fingerprint-*
 .deployments-*
 .posture-*
+# Local settings of update notifications and local plugins (update_notify.py, local_plugins.py)
+update_notify.json
+plugins.json

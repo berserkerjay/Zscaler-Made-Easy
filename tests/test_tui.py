@@ -85,7 +85,7 @@ class Screen:
 
     def getch(self):
         if not self.keys:
-            return ord("q")
+            return 27   # Esc: leaves any prompt, page or the menu
         k = self.keys.pop(0)
         return ord(k) if isinstance(k, str) else k
 
@@ -163,7 +163,7 @@ def test_test_a_list_from_a_file(api, tmp_path):
     f.write_text("chat.openai.com\nexample.com\n")
     res = api.bulk_test(tui.read_text_file(str(f)))
     lines = tui.fmt_bulk(res)
-    assert lines and ("POST", "/api/bulk-test/start") in api.t.calls
+    assert lines[0].startswith("2 destination(s) tested") and ("POST", "/api/bulk-test/start") in api.t.calls
     big = tmp_path / "big.txt"
     big.write_bytes(b"a" * (tui.MAX_FILE_BYTES + 1))
     with pytest.raises(tui.ApiError, match="larger"):
@@ -186,17 +186,17 @@ def test_preview_then_apply_goes_through_the_servers_gates(api, tmp_path, monkey
     phrase = api.prepared["confirm_phrase"]
     # A wrong phrase: nothing is sent.
     calls = len(api.t.calls)
-    monkeypatch.setattr(security, "writes_enabled", lambda: True)
+    monkeypatch.setattr(security, "_write_override", True)
     scr = Screen(keys("8", "WRONG", 10, "q"))
     tui.Tui(scr, api).run()
     assert not any(p == "/api/operations/apply" for _m, p in api.t.calls[calls:])
     assert "did not match" in "\n".join(scr.drawn)
     # Write mode off on the server: refused there, with its reason.
-    monkeypatch.setattr(security, "writes_enabled", lambda: False)
-    with pytest.raises(tui.ApiError):
+    monkeypatch.setattr(security, "_write_override", False)
+    with pytest.raises(tui.ApiError, match="(?i)write"):
         api.apply(phrase, "Jane Doe")
     # Phrase, name and write mode: the server applies (to the sample's memory).
-    monkeypatch.setattr(security, "writes_enabled", lambda: True)
+    monkeypatch.setattr(security, "_write_override", True)
     scr = Screen(keys("8", phrase, 10, "Jane Doe", 10, "q", "q"))
     tui.Tui(scr, api).run()
     assert ("POST", "/api/operations/apply") in api.t.calls
@@ -206,6 +206,6 @@ def test_preview_then_apply_goes_through_the_servers_gates(api, tmp_path, monkey
 def test_a_view_that_fails_shows_the_reason_and_the_tui_keeps_running(api):
     """ASVS V7.4.1 · CWE-755: a server refusal is shown on the status line; the menu stays."""
     api.sample, api.profile = False, None
-    scr = Screen(keys("4", "q"))
+    scr = Screen(keys("4", "example.com", 10, "q"))
     tui.Tui(scr, api).run()
     assert any("Pick a tenant first" in d for d in scr.drawn)

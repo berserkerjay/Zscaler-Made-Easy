@@ -55,6 +55,8 @@ change_requests.json.lock
 .change_requests.*.tmp
 .workspace_notes.*.tmp
 posture_settings.json
+update_notify.json
+plugins.json
 self_heal.json
 **/*.last-good
 **/*.corrupt-*
