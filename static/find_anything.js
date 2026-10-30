@@ -304,7 +304,7 @@
     packs: ['openDlpPacksModal'], queue: ['openQueueTab'], operations: ['openOperationsTab'], terraform: ['openToolTab', 'terraform'],
     vendormigrate: ['openVendorMigrateTab'], migration: ['_gdGoMigration'], evalall: ['openEvalAllTab'], bestpractices: ['openToolTab', 'bestpractices'],
     exports: ['openExportsTab'], advanced: ['openAdvancedTab'], updates: ['openToolTab', 'updates'], audit: ['openAuditTimelineTab'],
-    logs: ['openLogAnalyzerTab'], zcc: ['openToolTab', 'zcc'], todo: ['openTodoTab'],
+    logs: ['openLogAnalyzerTab'], trafficlogs: ['openTrafficLogsTab'], zcc: ['openToolTab', 'zcc'], todo: ['openTodoTab'],
     refportfolio: ['openReferenceTab', 'data-security-portfolio-framework'], refai: ['openReferenceTab', 'ai-security-framework'],
     refgenai: ['openReferenceTab', 'genai-security-framework'], refmachine: ['openReferenceTab', 'framework-machine'],
     dsarchitect: ['openReferenceTab', 'data-security-architect'],

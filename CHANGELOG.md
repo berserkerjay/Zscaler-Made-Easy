@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### Wave 7: closing the gaps a comparison with other Zscaler tools found
+- **Traffic and session logs.** A new page (Troubleshoot → Traffic and session logs, `/report/traffic-logs`) reads the logs a customer's log streaming already writes, on this computer only: ZPA LSS User Activity, User Status, App Connector Status and Private Service Edge Status (JSON lines), and ZIA NSS web, firewall and DNS feeds (JSON, the Cloud NSS HTTP shape, a CSV or TSV with a header row in NSS or Insights column names, the default tab-separated format, or a custom feed output format pasted in). It shows sessions and failures over time; the top users, applications, App Connectors, Service Edges, access rules and destinations; every ZPA internal reason with what it means and what to do; ZPA sessions put together per user (sign-in checks under 5 seconds left out, session ID rotation within 60 seconds merged); App Connector and Private Service Edge health (down at the end, flapping, failed sign-ins, CPU and memory, mixed versions); anomalies (spikes of at least 3 times the median and 10 events, users with many failures, destinations first seen in the last day); and for ZIA blocked against allowed, top categories, rules hit per module, DLP and threat events and SSL inspected or not. A destination opens in the Path analyzer (filled in, never started), and Traffic insights opens with the same window; Traffic insights links back for what Insights cannot answer.
+- **Untrusted input, in memory only.** Files go through the Log analyzer's bounded unpacking, then are read line by line: lines over 64 KB and lines past 2,000,000 are counted and skipped, every counter stops taking new values at 50,000, a line no format reads is counted as malformed and never stops the run, and a pasted feed format becomes a reader that cannot backtrack. Only counts are kept, in the server's memory, until you forget them; downloads (CSV, Excel, PDF with the app's exporters) and saved reports are counts only, users shown as user 1, user 2, unless you tick to include names. Saving writes an owner-only file and an audit line with no user names.
+- **SIEM queries.** The same questions as Splunk SPL, Microsoft Sentinel KQL and Elastic ES|QL text to copy, for the NSS and LSS field names, filtered to a user or a destination if you like (each value escaped for the query language, each index or table name checked).
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

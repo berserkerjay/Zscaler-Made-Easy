@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traffic and session logs — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .tl-sec { padding: 0.2rem 0.2rem 1rem; min-width: 0; }
+  .tl-sec h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
+  .tl-sec h3 { font-size: 0.95rem; margin: 1rem 0 0.35rem; }
+  .tl-drop { border: 2px dashed var(--border-strong, var(--border)); border-radius: var(--r-lg); padding: 1.1rem; text-align: center; background: var(--well); }
+  .tl-drop.is-over { border-color: var(--accent); }
+  .tl-drop label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
+  .tl-drop input[type=file] { display: block; margin: 0.4rem auto 0.6rem; max-width: 100%; }
+  .tl-drop p, .tl-dim { color: var(--dim); font-size: 0.85rem; margin: 0.3rem 0 0; }
+  .tl-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.7rem; }
+  .tl-row label { display: inline-flex; gap: 0.35rem; align-items: center; font-size: 0.86rem; }
+  .tl-row input[type=text], .tl-row input[type=number], .tl-row select { min-height: 34px; max-width: 100%; }
+  .tl-status { font-size: 0.88rem; color: var(--dim); min-height: 1.4em; margin-top: 0.5rem; }
+  .tl-status.bad { color: var(--fail); }
+  textarea.tl-format, textarea.tl-query { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 0.78rem; min-height: 4.5rem; }
+  textarea.tl-query { min-height: 9rem; }
+  .tl-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 0.6rem; }
+  .tl-tile { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; min-width: 0; }
+  .tl-tile .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+  .tl-tile .v { font-size: 1.15rem; font-weight: 700; word-break: break-word; }
+  .tl-tile .s { font-size: 0.78rem; color: var(--dim); }
+  .tl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 1rem; }
+  .tl-box { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid, var(--card)); padding: 0.7rem 0.85rem; min-width: 0; }
+  .tl-box h3 { margin-top: 0; }
+  .tl-wrap { overflow-x: auto; max-width: 100%; }
+  table.tl-t { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+  table.tl-t th, table.tl-t td { text-align: left; padding: 0.32rem 0.45rem; border-bottom: 1px solid var(--border); vertical-align: top; word-break: break-word; }
+  table.tl-t th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  table.tl-t td.num, table.tl-t th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tl-chart svg { width: 100%; height: auto; display: block; }
+  .tl-chart .bar-a { fill: var(--accent); }
+  .tl-chart .bar-b { fill: var(--fail); }
+  .tl-chart .axis { stroke: var(--border); stroke-width: 1; }
+  .tl-chart text { fill: var(--dim); font-size: 10px; }
+  .tl-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; margin: 0.2rem 0 0.4rem; }
+  .tl-legend i { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; margin-right: 0.35rem; vertical-align: -0.1rem; }
+  .tl-legend i.a { background: var(--accent); } .tl-legend i.b { background: var(--fail); }
+  .tl-split { display: flex; height: 0.9rem; border-radius: 999px; overflow: hidden; background: var(--well); margin: 0.3rem 0; gap: 2px; }
+  .tl-split span { display: block; height: 100%; }
+  .tl-split .ok { background: var(--pass); } .tl-split .bad { background: var(--fail); } .tl-split .mid { background: var(--warn); } .tl-split .unk { background: var(--border); }
+  .tl-anom { border-left: 3px solid var(--warn); padding: 0.35rem 0.6rem; background: var(--well); border-radius: 0 8px 8px 0; margin: 0.35rem 0; font-size: 0.86rem; }
+  .tl-chip { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.1rem 0.45rem; border-radius: 999px; border: 1px solid var(--border); color: var(--dim); }
+  .tl-chip.down, .tl-chip.failing { color: var(--fail); border-color: var(--fail); } .tl-chip.up { color: var(--pass); border-color: var(--pass); }
+  .tl-act { all: unset; cursor: pointer; color: var(--accent); text-decoration: underline; font-size: 0.8rem; margin-left: 0.35rem; }
+  .tl-act:focus-visible, a.tl-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  a.tl-link { color: var(--accent); }
+  .tl-nav { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.6rem 0; }
+  .tl-saved li { margin: 0.3rem 0; font-size: 0.86rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page df-page tl-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Traffic and session logs</span> from ZPA and ZIA log streaming</h1>
+      <p>Upload the logs the customer's log streaming already writes: ZPA LSS User Activity, User Status, App Connector and Private Service Edge Status (JSON), and ZIA NSS web, firewall and DNS feeds. You get sessions and failures over time, who and what was busiest, why connections failed in plain words, connector health, anomalies, and for ZIA what was blocked, by which rule, DLP, threats and SSL inspection. Read on this computer only; nothing is stored unless you save a report.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="/help" target="_blank" rel="noopener">What does everything do?</a>
+      <span class="sep"></span>
+      <button type="button" class="rp-btn" id="tlCsv" disabled aria-disabled="true">Download CSV</button>
+      <button type="button" class="rp-btn" id="tlXlsx" disabled aria-disabled="true">Download Excel</button>
+      <button type="button" class="rp-btn" id="tlPdf" disabled aria-disabled="true">Download PDF</button>
+      <label class="df-ctl"><input type="checkbox" id="tlNames"> <span class="lbl">Include user names and addresses</span></label>
+      <button type="button" class="rp-btn" id="tlSave" disabled aria-disabled="true">Save report</button>
+      <button type="button" class="rp-btn" id="tlForget" disabled aria-disabled="true">Forget</button>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+      <section class="tl-sec" aria-labelledby="tlUploadH">
+        <h2 id="tlUploadH">1. Choose the log files</h2>
+        <div class="tl-drop" id="tlDrop">
+          <label for="tlFiles">ZPA LSS or ZIA NSS log files (.json, .log, .txt, .csv, .tsv, or a .gz or .zip of them)</label>
+          <input type="file" id="tlFiles" multiple accept=".json,.jsonl,.ndjson,.log,.txt,.csv,.tsv,.gz,.zip,.tar,.tgz" aria-describedby="tlHow tlLimit">
+          <p id="tlHow">Take them from where log streaming writes them (the LSS log receiver or the NSS feed's SIEM or syslog server). JSON lines are read as they are; a CSV or TSV needs its header row. You can also drop the files in this box.</p>
+          <p id="tlLimit">Loading the upload limit…</p>
+        </div>
+        <details id="tlFormatBox" style="margin-top:0.6rem;">
+          <summary>Custom NSS feed? Paste its feed output format</summary>
+          <p class="tl-dim">Copy it from the NSS feed in the ZIA Admin Portal (Feed Output Format), for example <code>%s{time}\t%s{login}\t%s{url}\t%s{action}\t%s{urlcat}</code>. Lines that are not JSON are then split by it. Leave it empty for JSON, a CSV with a header, or the default tab-separated format.</p>
+          <label for="tlFormat" class="sr-only">Feed output format</label>
+          <textarea id="tlFormat" class="tl-format" maxlength="4000" spellcheck="false" placeholder="%s{time}\t%s{login}\t%s{proto}\t%s{url}\t%s{action}…"></textarea>
+        </details>
+        <div class="tl-row">
+          <button type="button" class="rp-btn primary" id="tlRun" disabled aria-disabled="true">Analyze</button>
+          <span id="tlChosen" class="tl-dim"></span>
+        </div>
+        <div class="tl-status" id="tlStatus" aria-live="polite"></div>
+        <p class="tl-dim">Privacy: the files are read by the app on this computer and analysed in memory; the lines themselves are thrown away and only counts are kept, in this server's memory, until you forget them or close the server. Downloads leave user names and addresses out unless you tick <em>Include user names and addresses</em>. <em>Save report</em> writes an owner-only file on this computer.</p>
+        <details id="tlSavedBox" style="margin-top:0.5rem;">
+          <summary>Saved reports</summary>
+          <ul class="tl-saved" id="tlSaved"><li class="tl-dim">None saved yet.</li></ul>
+        </details>
+      </section>
+
+      <section class="tl-sec" id="tlResults" hidden aria-labelledby="tlResultsH">
+        <h2 id="tlResultsH" tabindex="-1">2. What the logs say</h2>
+        <div id="tlSummary" class="tl-tiles"></div>
+        <div id="tlNotes"></div>
+        <nav class="tl-nav" id="tlNav" aria-label="Jump to a part of the results"></nav>
+        <div id="tlAnoms"></div>
+        <div id="tlZpa"></div>
+        <div id="tlHealth"></div>
+        <div id="tlZia"></div>
+      </section>
+
+      <section class="tl-sec" id="tlSiemSec" aria-labelledby="tlSiemH">
+        <h2 id="tlSiemH">3. The same questions in your SIEM</h2>
+        <p class="tl-dim" id="tlSiemNote">Copy a query to ask your SIEM the same question over all your logs.</p>
+        <div class="tl-row">
+          <label for="tlSiem">SIEM</label>
+          <select id="tlSiem"><option value="splunk">Splunk (SPL)</option><option value="sentinel">Microsoft Sentinel (KQL)</option><option value="elastic">Elastic (ES|QL)</option></select>
+          <label for="tlQuestion">Question</label>
+          <select id="tlQuestion"></select>
+          <label for="tlHours">Last hours</label>
+          <input type="number" id="tlHours" min="1" max="2208" value="24" style="width:6rem;">
+        </div>
+        <div class="tl-row">
+          <label for="tlQUser">Only this user</label>
+          <input type="text" id="tlQUser" maxlength="200" placeholder="optional">
+          <label for="tlQDest">Only this destination</label>
+          <input type="text" id="tlQDest" maxlength="200" placeholder="optional">
+        </div>
+        <details style="margin-top:0.5rem;">
+          <summary>Where the logs are in your SIEM</summary>
+          <div class="tl-row">
+            <label for="tlSrcZpa">ZPA</label><input type="text" id="tlSrcZpa" maxlength="120">
+            <label for="tlSrcWeb">ZIA web</label><input type="text" id="tlSrcWeb" maxlength="120">
+            <label for="tlSrcFw">ZIA firewall</label><input type="text" id="tlSrcFw" maxlength="120">
+            <label for="tlSrcDns">ZIA DNS</label><input type="text" id="tlSrcDns" maxlength="120">
+          </div>
+          <p class="tl-dim" id="tlSrcHelp">Splunk: the index name. Sentinel: the table. Elastic: the index pattern. Empty uses the placeholder shown.</p>
+        </details>
+        <label for="tlQuery" class="sr-only">Query text</label>
+        <textarea id="tlQuery" class="tl-query" readonly spellcheck="false"></textarea>
+        <div class="tl-row">
+          <button type="button" class="rp-btn" id="tlCopyQuery">Copy query</button>
+          <span class="tl-status" id="tlQStatus" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section class="tl-sec" aria-labelledby="tlReadsH">
+        <h2 id="tlReadsH">What this page reads, and how it decides</h2>
+        <details><summary>Show the formats and the rules</summary>
+          <ul class="tl-dim" id="tlReads">
+            <li>ZPA Log Streaming Service (LSS) JSON: User Activity (each connection, its access rule, App Connector, Service Edge and internal reason), User Status (sign-ins and sessions), App Connector Status and Private Service Edge Status.</li>
+            <li>ZIA Nanolog Streaming Service (NSS) web, firewall and DNS feeds: JSON (one record per line, or the Cloud NSS HTTP shape with sourcetype and event), a CSV or TSV with a header row (NSS field names or the Insights column names), the default tab-separated format, or a custom format you paste.</li>
+            <li>A line no format reads is counted as malformed and skipped; nothing stops the analysis. Lines longer than <span id="tlLineKb">64</span> KB are skipped, and reading stops after <span id="tlMaxLines">2,000,000</span> lines.</li>
+            <li id="tlRules">A failure is a ZPA connection whose internal reason is not a normal end. A spike is a time slot with at least 3 times the usual (median) count and at least 10. A user is named for many failures at 10 failures and half their connections, or 25 failures. New destinations are those first seen in the last day of the logs (the last quarter when they cover less than two days).</li>
+            <li>ZPA sessions: session IDs from User Status are put together per user. A session shorter than 5 seconds is a sign-in check and left out; sessions of the same user on the same day less than 60 seconds apart are one session (ZPA changes the session ID during a connection).</li>
+            <li>Times are shown as written in the logs; NSS writes them in the time zone set on the feed.</li>
+          </ul>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script src="/static/traffic_logs.js"></script>
+</body>
+</html>
