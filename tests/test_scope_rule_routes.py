@@ -280,6 +280,15 @@ def _pov_for(sel: Dict[str, Any]) -> Dict[str, Any]:
     return dict(CREDS, profile_id=pid, **sel)
 
 
+def _device_lookup(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A kept device lookup (path_device) for this tenant, so one device's details can be asked for."""
+    import tenant_auth
+    creds = srv._tenant_creds(types.SimpleNamespace(**CREDS))
+    rid = srv._remember_report("pathdev", {"kind": "pathdev", "devices": [{"id": "d1", "udid": "U1", "user": "jane@acme.example"}]},
+                               tenant_auth.record_label(creds))
+    return dict(CREDS, ref=rid, device_id="d1", **sel)
+
+
 class Route:
     """One tenant-reading route: its body, the partial selection that puts
     only part of what it reads in scope and what that selection leaves out,
@@ -325,6 +334,9 @@ ROUTES: List[Route] = [
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}),
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
+    Route("/api/path-analyzer/devices", {"device_user": "jane"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/path-analyzer/devices/detail", setup=_device_lookup, partial=ZCC, out=ZCC_OUT),
+    Route("/api/path-analyzer/compare/start", DEST),
     Route("/api/report/data-flow"),
     Route("/api/report/ssl-flow"),
     Route("/api/report/bypass"),

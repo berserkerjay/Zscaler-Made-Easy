@@ -22,8 +22,8 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score",
-    "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
+    "2026-10-31": "Wave 7: closing the gaps a comparison with other Zscaler tools found",
+    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score"
   },
   "skipped": {
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
@@ -31,86 +31,22 @@ window.WHATS_NEW = {
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [
     {
-      "id": "build-new", "release": "2026-10-28", "label": "Build new",
-      "what": "Build new on Bulk changes: builders for a ZIA security baseline, the SSL certificate manager, ZPA, Client Connector profiles, ZDX probes and AI Guard, with the same preview, write gates, read-back and Undo.",
-      "changelog": ["One engine for every builder", "Build new", "ZIA security baseline", "SSL certificate manager", "ZPA builder", "Client Connector profiles", "ZDX probe setup", "AI Guard"],
-      "marks": [
-        { "page": "/", "at": "button[onclick=\"openOperationsTab()\"]" },
-        { "page": "/report/operations", "at": "#opBuildKinds > legend" }
-      ]
+      "id": "path-device", "release": "2026-10-31", "label": "Trace a user's device",
+      "what": "Pick a user's enrolled device from the Client Connector Portal; the Path analyzer then uses its platform, the app profile the Portal reports for it and its client version, and says what is unknown.",
+      "changelog": ["Trace a user's device"],
+      "marks": [{ "page": "/report/path", "at": "#paDevice > summary" }]
     },
     {
-      "id": "zcc-install-builder", "release": "2026-10-28", "label": "Install command builder",
-      "what": "The Client Connector install command builder, with a script to run next to the installer.",
-      "changelog": ["Client Connector profiles"],
-      "marks": [{ "page": "/report/fleet", "at": "#zfInstallH" }]
+      "id": "path-compare", "release": "2026-10-31", "label": "Compare two identities",
+      "what": "The same destination for two identities, side by side, step by step, with the step where they diverge marked; CSV and JSON.",
+      "changelog": ["Compare two identities"],
+      "marks": [{ "page": "/report/path", "at": "#paCompare > summary" }]
     },
     {
-      "id": "path-one-answer", "release": "2026-10-28", "label": "Path analyzer: one answer for the whole path",
-      "what": "The Path analyzer checks ZPA first, then Client Connector, the PAC file (never run) and every ZIA module, each with the rule that decides.",
-      "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]" }]
-    },
-    {
-      "id": "path-any-protocol", "release": "2026-10-28", "label": "Any protocol and port",
-      "what": "Every ZIA module on the path, for web traffic or any protocol and port.",
-      "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/report/path", "at": "#paProto" }]
-    },
-    {
-      "id": "path-workload", "release": "2026-10-28", "label": "Traffic from a workload",
-      "what": "Traffic from a workload, through Cloud and Branch Connector.",
-      "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/report/path", "at": "#paSource" }]
-    },
-    {
-      "id": "path-whatif", "release": "2026-10-28", "label": "What-if",
-      "what": "A what-if for a user, group, department or location.",
-      "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/report/path", "at": "#paWhatIf > summary" }]
-    },
-    {
-      "id": "test-a-list", "release": "2026-10-28", "label": "Test a list",
-      "what": "Test a list: up to 250,000 destinations, each against what it was expected to do, with Fix selected handing off to Bulk changes.",
-      "changelog": ["Test a list"],
-      "marks": [{ "page": "/report/path", "at": "#tab-list" }]
-    },
-    {
-      "id": "readiness", "release": "2026-10-28", "label": "Readiness",
-      "what": "Readiness after sign-in: what this API client's role and licences allow, and the steps to ask for what will not work.",
-      "changelog": ["Readiness after sign-in"],
-      "marks": [
-        { "page": "/", "at": ".db-item[data-db=\"configure\"]" },
-        { "page": "/", "at": "#rdConnect .rd-h", "shown": "after Authenticate" }
-      ]
-    },
-    {
-      "id": "sample-tenant", "release": "2026-10-28", "label": "Sample tenant and snapshots",
-      "what": "A made-up sample tenant to try every page on, and read-only snapshots of a tenant to open offline or compare with the live one.",
-      "changelog": ["Sample tenant and snapshots"],
-      "marks": [
-        { "page": "/", "at": ".db-item[data-db=\"configure\"]" },
-        { "page": "/", "at": "#zoTitle", "shown": "on Connect to the tenant" },
-        { "page": "/simple", "at": "input[name=\"smHow\"][value=\"sample\"]", "shown": "in the Connect task" }
-      ]
-    },
-    {
-      "id": "pov-planner", "release": "2026-10-28", "label": "POV planner",
-      "what": "The POV planner: intake, success criteria, a runbook, Prove it through the Path analyzer, and a Word or PDF report.",
-      "changelog": ["POV planner", "Prove it"],
-      "marks": [
-        { "page": "/", "at": "button[onclick=\"openPovTab()\"]" },
-        { "page": "/report/pov", "at": ".rp-hero h1" },
-        { "page": "/simple", "at": "#smPovLink" }
-      ]
-    },
-    {
-      "id": "zia-framework-export", "release": "2026-10-28", "label": "ZIA policy framework export",
-      "what": "Export from tenant can save the ZIA policy framework (URL, firewall, SSL, Sandbox, DNS and File Type Control rules) for the baseline builder to load into another tenant.",
-      "changelog": ["ZIA policy framework export"],
-      "marks": [
-        { "page": "/", "at": "#dlpDeployModal input[onchange^=\"_dzExportPart('framework'\"]", "shown": "in Deploy policy packs, Export from tenant" }
-      ]
+      "id": "path-test-from-here", "release": "2026-10-31", "label": "Test from here",
+      "what": "One click tests the destination from the computer running this app (name lookup, connect, TLS certificate) and compares it with the prediction.",
+      "changelog": ["Test from here"],
+      "marks": [{ "page": "/report/path", "at": "#paProbeRun", "shown": "after Analyze" }]
     },
     {
       "id": "live-motion", "release": "2026-10-29", "label": "Live motion",

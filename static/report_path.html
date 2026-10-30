@@ -27,7 +27,8 @@
       <label class="df-ctl"><span class="lbl">Traffic from</span><select id="paSource" aria-label="Where the traffic comes from" aria-describedby="paSourceHow">
         <option value="device">A user device</option><option value="workload">A workload</option></select></label>
       <label class="df-ctl" id="paNetWrap"><span class="lbl">Network</span><select id="paNet" aria-label="Network the device is on"></select></label>
-      <label class="df-ctl" id="paPlatWrap"><span class="lbl">Platform</span><select id="paPlat" aria-label="Platform"></select></label>
+      <label class="df-ctl" id="paPlatWrap"><span class="lbl">Platform</span><select id="paPlat" aria-label="Platform" aria-describedby="paPlatFrom"></select></label>
+      <span class="df-hint" id="paPlatFrom" hidden></span>
       <label class="df-ctl"><span class="lbl">Protocol</span><select id="paProto" aria-label="Protocol of the traffic" aria-describedby="paPortHint">
         <option value="">From the URL</option><option value="tcp">TCP</option><option value="udp">UDP</option></select></label>
       <label class="df-ctl pm-port"><span class="lbl">Port</span><input type="text" id="paPort" inputmode="numeric" maxlength="5" placeholder="443" aria-label="Destination port (1 to 65535; empty: from the URL)" aria-describedby="paPortHint" autocomplete="off"></label>
@@ -69,6 +70,35 @@
         </div>
         <p class="df-hint" id="paWiScope"></p>
         <div class="sr-only" id="paWiLive" role="status" aria-live="polite"></div>
+      </details>
+      <!-- A user's enrolled device, and two identities compared (static/path_extras.js) -->
+      <details class="pa-framework pa-whatif" id="paDevice">
+        <summary>Device: trace one user's enrolled device (optional)</summary>
+        <div class="df-hint">Look the user's devices up in the Client Connector Portal and pick one. The trace then uses that device's platform, the app profile the Portal reports for it, its Client Connector version and what the Portal says about it, instead of the Platform you chose. What the API does not give stays unknown: the network the device is on right now (the Network you chose applies) and its ZPA posture results.</div>
+        <div class="pa-wi-grid">
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">User's sign-in name</span><input type="text" id="paDevQ" placeholder="jane@acme.com or part of it" autocomplete="off" spellcheck="false" maxlength="128"></label>
+            <button type="button" class="rp-btn" id="paDevFind" aria-describedby="paDevScope">Find devices</button><ul class="pa-wi-results" id="paDevRes" aria-label="Devices found" hidden></ul></div>
+        </div>
+        <div id="paDevChosen" hidden></div>
+        <p class="df-hint" id="paDevScope"></p>
+        <div class="sr-only" id="paDevLive" role="status" aria-live="polite"></div>
+      </details>
+      <details class="pa-framework pa-whatif" id="paCompare">
+        <summary>Compare two identities (optional)</summary>
+        <div class="df-hint">Runs the destination above twice on one tenant read and shows each step side by side, marking the step where the two paths diverge. A is the what-if and the device above (or anyone); B is what you give here. Names are matched as typed; a user, group, department or location left empty is not given.</div>
+        <div class="pa-wi-grid">
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: user</span><input type="text" id="paCmp_user" placeholder="sam@acme.com or a display name" autocomplete="off" spellcheck="false" maxlength="200"></label></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: group</span><input type="text" id="paCmp_group" placeholder="one or more, separated by commas" autocomplete="off" spellcheck="false" maxlength="200"></label></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: department</span><input type="text" id="paCmp_department" placeholder="Engineering" autocomplete="off" spellcheck="false" maxlength="200"></label></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: location</span><input type="text" id="paCmp_location" placeholder="Branch office" autocomplete="off" spellcheck="false" maxlength="200"></label></div>
+          <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">B: device (user's sign-in name)</span><input type="text" id="paCmpDevQ" placeholder="optional" autocomplete="off" spellcheck="false" maxlength="128"></label>
+            <button type="button" class="rp-btn" id="paCmpDevFind" aria-describedby="paCmpDevScope">Find devices</button><ul class="pa-wi-results" id="paCmpDevRes" aria-label="Devices found for B" hidden></ul></div>
+        </div>
+        <div id="paCmpDevChosen" hidden></div>
+        <p class="df-hint" id="paCmpDevScope"></p>
+        <div class="sr-only" id="paCmpDevLive" role="status" aria-live="polite"></div>
+        <p><button type="button" class="rp-btn primary" id="paCmpRun">Compare A and B</button></p>
+        <div id="paCmpOut"></div>
       </details>
       <details class="pa-framework" id="paFramework" open>
         <summary>The framework: how Zscaler processes a policy, device to incident</summary>
@@ -135,6 +165,7 @@
   <script src="/static/har_parse.js"></script>
   <script src="/static/path_modules.js"></script><!-- every module on the path, one hop shape -->
   <script src="/static/path_whatif.js"></script><!-- what-if lookups and "Policy action also depends on" -->
+  <script src="/static/path_extras.js"></script><!-- a picked device, two identities compared, Test from here -->
   <script src="/static/flow_anim.js"></script><!-- the live path and the list flow (one motion engine) -->
   <script src="/static/path_list.js"></script>
   <script src="/static/help_catalog.js"></script>
@@ -220,6 +251,7 @@
       if (val('paProto')) out.protocol = val('paProto');
       if (val('paPort')) out.port = val('paPort');
       if (out.source === 'workload') out.workload = { ip: val('paWlIp'), tags: val('paWlTags'), workload_group: val('paWlGroup'), connector_group: val('paWlEc') };
+      else if (window.PathExtras && PathExtras.device().ref) out.device = PathExtras.device();   // a picked device (path_extras.js)
       return out;
     }
 
@@ -518,6 +550,7 @@
         <ul class="pa-assume">${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>
         <details class="pa-details"><summary>What was read (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
       PathWhatIf.wire(body);
+      PathExtras.afterRender(res, body);   // the picked device and Test from here (path_extras.js)
       showFlow(res);
       body.querySelectorAll('.df-node').forEach(n => {
         const go = () => { const el = body.querySelector(`.df-hop[data-hop="${n.dataset.hop}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('sel'); setTimeout(() => el.classList.remove('sel'), 1600); } };
@@ -705,6 +738,9 @@
     document.getElementById('paProto').addEventListener('change', syncPortHint);
     document.getElementById('paPort').addEventListener('input', syncPortHint);
     PathWhatIf.init({ credBody, scopeSelection });
+    PathExtras.init({ credBody, scopeSelection, traffic, say, destination: () => document.getElementById('paDest').value.trim(),
+      network: () => document.getElementById('paNet').value, platform: () => document.getElementById('paPlat').value,
+      reportId: () => (fresh ? '' : lastReport) });
     document.getElementById('paRun').addEventListener('click', run);
     document.getElementById('paDest').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
     document.getElementById('paFresh').addEventListener('click', () => { setFresh(!fresh); say(fresh ? 'The next analysis reads the tenant again.' : 'The next analysis reuses the last read.'); });

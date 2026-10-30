@@ -1,0 +1,77 @@
+{
+ "area": "Traffic analysis: the Path analyzer's device pick (path_device.py), two-identity compare (path_compare.py) and Test from here (path_probe.py), their routes, the page (static/path_extras.js, report_path.html) and the SSRF threat model in SECURITY.md",
+ "title": "Wave 7 Path analyzer additions built and tested: a user's enrolled device on the path, two identities side by side, and an opt-in observation from this computer bounded as an SSRF-sensitive feature",
+ "standards": [
+  "ASVS V4.1.3", "ASVS V4.2.1", "ASVS V5.1.3", "ASVS V5.3.3", "ASVS V5.3.4", "ASVS V8.2.1", "ASVS V8.3.1", "ASVS V9.1.1",
+  "ASVS V11.1.4", "ASVS V12.6.1", "ASVS V13.2.3",
+  "CWE-20", "CWE-79", "CWE-200", "CWE-284", "CWE-295", "CWE-306", "CWE-352", "CWE-359", "CWE-400", "CWE-524", "CWE-639",
+  "CWE-670", "CWE-770", "CWE-918", "CWE-1236",
+  "WSTG-INPV-19", "WSTG-ATHZ-02", "WSTG-ATHZ-04",
+  "WCAG 2.2 SC 1.3.1", "WCAG 2.2 SC 1.4.10", "WCAG 2.2 SC 2.1.1", "WCAG 2.2 SC 3.3.2", "WCAG 2.2 SC 4.1.3"
+ ],
+ "checks": [
+  {"id": "W7PE-C01", "what": "Device search: one getDevices call filtered by user name (SDK zcc.devices.list_devices, query username, one page of 50), at most 20 shown, only devices whose user matches what was typed, so an ignored filter never becomes a bulk listing; the UDID stays on the server (the page gets a one-way hash)", "standard": "ASVS V8.3.1", "result": "pass"},
+  {"id": "W7PE-C02", "what": "Device search and pick refused before sign-in when Client Connector is not ticked on the Scope page, for a classic ZIA API sign-in, for a malformed name, and for a pick kept for another tenant or not kept at all", "standard": "ASVS V4.1.3", "result": "pass"},
+  {"id": "W7PE-C03", "what": "The trace follows the app profile the Client Connector Portal reports for the picked device (policyName) and the device's platform; the kept tenant read is never changed; a profile the Portal names but nobody read, or none named, leaves the generic choice and says why", "standard": "CWE-670", "result": "pass"},
+  {"id": "W7PE-C04", "what": "What the API does not give is shown as unknown with its source: the network the device is on now, ZPA posture results, and the details when getDeviceDetails cannot be read; ZIA off on the device, an unsupported client and a device not registered are named as impacts", "standard": "CWE-670", "result": "pass"},
+  {"id": "W7PE-C05", "what": "Compare: both identities checked before sign-in, B runs on A's tenant read, the first step where the paths decide differently is marked once, CSV through csv_safe (a rule named like a formula is quoted) and JSON without the run log", "standard": "CWE-1236", "result": "pass"},
+  {"id": "W7PE-C06", "what": "Test from here: confirm=true required, UI token and origin checks, ZSCALER_TEST_FROM_HERE=0 turns it off, ports 443, 80, 8443 and 8080 only (typed or in the URL), loopback, link-local (metadata), multicast, unspecified, reserved and IPv4-mapped forms refused, first resolved address pinned", "standard": "CWE-918", "result": "pass"},
+  {"id": "W7PE-C07", "what": "Test from here sends nothing but a TCP connect and a TLS ClientHello (a loopback server receives zero application bytes), follows no redirect, gives up on a slow resolver and a silent handshake, runs at most 6 a minute and one at a time, and answers with Cache-Control no-store", "standard": "ASVS V12.6.1", "result": "pass"},
+  {"id": "W7PE-C08", "what": "Every certificate, device, rule and network value the page draws is escaped (hostile markup stays text); keyboard-only device pick; nothing scrolls sideways at 320px; every new control has help and the new features carry the 2026-10-31 mark", "standard": "WCAG 2.2 SC 1.4.10", "result": "pass"}
+ ],
+ "findings": [
+  {
+   "id": "W7PE-01",
+   "title": "The sample tenant's enrolled devices carry lastSeenTime, which the SDK Device model (zcc/models/devices.py reads last_seen_time) drops, so Last seen is unknown for the sample's devices in the device pick and in Client Connector fleet health",
+   "severity": "info",
+   "cwe": "CWE-1188",
+   "status": "accepted",
+   "reason": "Sample data, not this feature: renaming the field in sample_tenant.py changes fleet health's ghost and blind-spot answers on the sample, which other pages' tests pin; the device pick shows it honestly as unknown"
+  },
+  {
+   "id": "W7PE-02",
+   "title": "A first draft named the device search field username, which the analyzer's request model already uses for the classic ZIA admin login, so a classic sign-in's admin name could have been taken as the device user and the device name as the admin login",
+   "severity": "low",
+   "cwe": "CWE-436",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "The field is device_user (dlp_api_server.PathDeviceRequest, static/path_extras.js)",
+   "test": "tests/test_path_device_compare.py::test_the_classic_zia_api_sign_in_cannot_look_devices_up"
+  },
+  {
+   "id": "W7PE-03",
+   "title": "Test from here: the trust check of an IP address typed as such raised ValueError (check_hostname without a server name), a 500 instead of an answer",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "status": "fixed",
+   "fix": "path_probe._tls verifies an IP destination against the address; any handshake error is an answer",
+   "test": "tests/test_path_probe.py::test_a_zscaler_issued_certificate_is_read_and_agrees_with_inspection"
+  },
+  {
+   "id": "W7PE-04",
+   "title": "Test from here: a resolver failure other than gaierror (an encoding error, a refused lookup) surfaced as a 500",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "status": "fixed",
+   "fix": "path_probe.observe reports any resolver failure as a failed name lookup",
+   "test": "tests/test_write_safety_gates.py::test_read_only_routes_never_write_even_with_every_privilege"
+  },
+  {
+   "id": "W7PE-05",
+   "title": "At 320px the Test from here port list (its longest option) widened the page by 70px",
+   "severity": "info",
+   "cwe": "CWE-684",
+   "wcag": "WCAG 2.2 SC 1.4.10",
+   "status": "fixed",
+   "fix": "Shorter option words and a width cap on the select (static/path_extras.js, static/reports.css)",
+   "test": "tests/test_path_extras_browser.py::test_nothing_scrolls_sideways_at_320px"
+  }
+ ],
+ "notes": [
+  "Zscaler semantics verified against zscaler-sdk-python 1.11.3: zcc.devices.list_devices (GET /zcc/papi/public/v1/getDevices, query username, page, page_size up to 5000), Device model fields agentVersion, policyName, type, registrationState, machineHostname, osVersion, udid, tunnelVersion; zcc.devices.get_device_details (GET getDeviceDetails, query udid) and DeviceDetails fields ziaEnabled, zpaEnabled, zdxEnabled, ziaHealth, zpaHealth, deviceTrust, strictEnforcement, vdi; utils.zcc_param_map os codes 1 iOS, 2 Android, 3 Windows, 4 macOS, 5 Linux.",
+  "Assumed (marked in path_device.py and path_probe.py): the on/off and health values of getDeviceDetails (read as 1/true/enabled is on), that the username filter may be partial (the module filters by contains itself), and that ZIA's inspection certificates are issued under names containing Zscaler (a tenant's own custom intermediate CA is shown as not Zscaler's name).",
+  "Port decision for Test from here: an allow-list of 443, 80, 8443 and 8080; a typed port outside it is refused even when valid, so the button cannot scan the networks the server sits on."
+ ],
+ "files": ["path_device.py", "path_compare.py", "path_probe.py", "path_analyzer.py", "dlp_api_server.py", "static/path_extras.js", "static/report_path.html", "static/reports.css", "static/help_catalog.js", "static/whats_new.js", "SECURITY.md", "docs/OVERVIEW.md"],
+ "tests_added": 84
+}

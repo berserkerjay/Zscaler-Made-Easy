@@ -9957,6 +9957,7 @@ class PathAnalyzerRequest(MigrateRequest):
     protocol: str = ""
     port: Optional[Union[str, int]] = None
     identity: Dict[str, Any] = {}  # what-if: {user, group, department, location} (path_whatif)
+    device: Dict[str, Any] = {}    # a device picked from the Client Connector Portal: {ref, id} (path_device)
     source: str = "device"         # "device" (Client Connector) or "workload" (Cloud or Branch Connector)
     workload: Dict[str, Any] = {}  # ip, tags, workload_group, connector_group (workload_path.workload_input)
     zpa_report_id: str = ""        # the ZPA read to reuse
@@ -10172,7 +10173,8 @@ def _path_scope(req: Any, nothing: str = "") -> Dict[str, Any]:
     return sel
 
 
-def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, log, cancel, scope: Dict[str, Any]) -> Dict[str, Any]:
+def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, log, cancel, scope: Dict[str, Any],
+                       device: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The analysis itself, shared by the job the page follows and the
     waiting endpoint. Reads only what `scope` puts in scope. A fresh
     tenant read is remembered as a Data Flow Map report, stamped with its
@@ -10191,7 +10193,7 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
         _log(f"In scope, from {scope['source']}: {scope['summary']}")
     try:
         out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel,
-                                    protocol=req.protocol or None, port=req.port, identity=req.identity)
+                                    protocol=req.protocol or None, port=req.port, identity=req.identity, device=device)
     except path_analyzer.Stopped as e:
         return {"stopped": str(e), "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
     if cancel is not None and cancel.is_set():
@@ -10554,7 +10556,12 @@ def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
     zpa_on = "zpa" in sc
     if source == "device" and not scope["read"] and not zpa_on:
         raise HTTPException(status_code=400, detail=PATH_NOTHING)
+    if req.device and source != "device":
+        raise HTTPException(status_code=400, detail="A picked device applies to traffic from a user device, not from a workload. Nothing was read.")
+    if req.device and "zcc" not in sc:
+        raise HTTPException(status_code=400, detail=PATH_DEVICE_NOT_IN_SCOPE)
     creds = _tenant_creds(req)
+    device = _path_device_pick(req.device, creds) if req.device else None
     oneapi = creds.get("auth_method") != tenant_auth.LEGACY
     if source == "workload" and not oneapi:
         raise HTTPException(status_code=400, detail=PATH_WORKLOAD_NEEDS_ONEAPI)
@@ -10567,7 +10574,7 @@ def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=zpa_problem.replace("ZPA was not read: ", "ZPA cannot be read: ") + " Nothing was read.")
     zpa_kept = _path_kept("" if zpa_problem else req.zpa_report_id, "pathzpa", creds) if zpa_on else None
     ztw_kept = _path_kept(req.ztw_report_id, "pathztw", creds) if source == "workload" else None
-    return {"source": source, "pdest": pdest, "d": d, "w": w, "scope": scope, "zpa_on": zpa_on, "zpa_problem": zpa_problem,
+    return {"source": source, "pdest": pdest, "d": d, "w": w, "scope": scope, "zpa_on": zpa_on, "zpa_problem": zpa_problem, "device": device,
             "creds": creds, "label": tenant_auth.record_label(creds), "zia_kept": _kept_path_read(req.report_id, scope, creds) if scope["read"] else None,
             "zpa_kept": zpa_kept, "ztw_kept": ztw_kept,
             "need_sdk": (zpa_on and not zpa_problem and zpa_kept is None) or (source == "workload" and ztw_kept is None)}
@@ -10655,7 +10662,7 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
             res["verdict"]["not_in_scope"] = [{"hop": "zia", "label": "ZIA policy", "detail": "Not in scope: no ZIA policy section is ticked on the Scope page."}]
             return res
         _log("Tracing the ZIA path…")
-        res = _run_path_analysis(raw_client, req, inp["zia_kept"], label, _log, cancel, scope)
+        res = _run_path_analysis(raw_client, req, inp["zia_kept"], label, _log, cancel, scope, device=inp.get("device"))
         if res.get("stopped"):
             return res
         return zpa_path.merge(res, pre_hops, modules, impacts, assumptions, note)
@@ -10666,6 +10673,9 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
             return res
         res.setdefault("tenant_label", label)
         res.update(out_ids, source=inp["source"], logs=logs)
+        if inp.get("device") and not res.get("device"):
+            import path_device   # ZIA was not traced (ZPA carries it): the device's facts, no profile applied
+            res["device"] = path_device.describe(inp["device"], None, None, req.network)
         v = res.get("verdict") or {}
         v["not_in_scope"] = list(v.get("not_in_scope") or []) + zpa_not_in_scope
         _log(f"Verdict: {v.get('headline', '')}")
@@ -10774,6 +10784,7 @@ async def path_analyzer_start(req: PathAnalyzerRequest, request: Request):
     more read. Nothing is written."""
     import pack_jobs
     inp = _path_inputs(req)
+    req = _with_device_platform(req, inp)
     raw_client, sdk_client = await _path_clients(inp, req)
     job = pack_jobs.start("path", lambda log, cancel: _run_path(inp, req, raw_client, sdk_client, log, cancel), label=req.destination[:80],
                           actor=_actor(request), start_token=_start_token(request))
@@ -10784,6 +10795,7 @@ async def path_analyzer_start(req: PathAnalyzerRequest, request: Request):
 async def path_analyzer_run(req: PathAnalyzerRequest):
     """The same analysis, waited for (for scripts)."""
     inp = _path_inputs(req)
+    req = _with_device_platform(req, inp)
     raw_client, sdk_client = await _path_clients(inp, req)
     return await asyncio.to_thread(_run_path, inp, req, raw_client, sdk_client, None, None)
 
@@ -10812,6 +10824,222 @@ async def path_analyzer_identities(req: PathIdentityRequest):
         raise HTTPException(status_code=400, detail="Type 2 to 64 characters to search. Nothing was read.")
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(path_whatif.search_identities, client, req.kind, req.query)
+
+
+# ── Path analyzer: a user's enrolled device (path_device) ─────────────
+# Look a user's devices up in the Client Connector Portal (one getDevices
+# call filtered by user name), pick one (one getDeviceDetails call), and
+# the analysis uses that device's platform, the app profile the Portal
+# reports for it and what the details say. Only when ZCC is ticked on the
+# Scope page (400 before sign-in otherwise) and with a OneAPI sign-in. The
+# devices found are kept in memory for this tenant (a `pathdev-` record,
+# like the kept reads); the page only ever gets a hash of each UDID.
+PATH_DEVICE_WHAT = "Looking up a user's enrolled devices"
+PATH_DEVICE_NOT_IN_SCOPE = ("A picked device is not in scope: on the Scope page tick Client Connector (ZCC), then look the device up again. "
+                            "Nothing was read.")
+PATH_DEVICE_NEEDS_ONEAPI = ("Enrolled devices need a ZIdentity (OneAPI) API client: the classic ZIA API sign-in cannot read Client Connector "
+                            "devices. Nothing was read.")
+PATH_DEVICE_GONE = "That device pick is no longer kept for this tenant (picks live in memory while the app runs). Look the device up again. Nothing was read."
+
+
+class PathDeviceRequest(MigrateRequest):
+    """Look a user's enrolled devices up (`device_user`: the user's sign-in
+    name, or part of it), or read one found device's details (`ref` and
+    `device_id` from that lookup)."""
+    device_user: str = ""
+    ref: str = ""
+    device_id: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+def _path_device_record(ref: str, creds: Dict[str, Any]) -> Dict[str, Any]:
+    """The kept device lookup `ref` names, only for the same tenant (else 400)."""
+    import tenant_fingerprint
+    rep = _REPORTS.get(ref or "") if str(ref or "").startswith("pathdev-") else None
+    if rep is None or not rep.get("tenant_label") or not tenant_fingerprint.same_tenant(rep, creds):
+        raise HTTPException(status_code=400, detail=PATH_DEVICE_GONE)
+    return rep
+
+
+def _path_device_pick(pick: Dict[str, Any], creds: Dict[str, Any]) -> Dict[str, Any]:
+    """The analysis request's `device` ({ref, id}) → the kept device (no UDID)."""
+    import path_device
+    if not isinstance(pick, dict):
+        raise HTTPException(status_code=400, detail=PATH_DEVICE_GONE)
+    rep = _path_device_record(str(pick.get("ref") or "")[:80], creds)
+    dev = next((d for d in rep.get("devices") or [] if d.get("id") and d["id"] == str(pick.get("id") or "")[:64]), None)
+    if dev is None:
+        raise HTTPException(status_code=400, detail=PATH_DEVICE_GONE)
+    return path_device.public(dev)
+
+
+def _with_device_platform(req: "PathAnalyzerRequest", inp: Dict[str, Any]) -> "PathAnalyzerRequest":
+    """The request with the picked device's platform (ZPA and ZIA both use it)."""
+    import path_analyzer
+    dev = inp.get("device") or {}
+    if dev.get("platform") in path_analyzer.PLATFORMS and dev["platform"] != req.platform:
+        return req.model_copy(update={"platform": dev["platform"]})
+    return req
+
+
+def _path_device_gate(req: PathDeviceRequest) -> Dict[str, Any]:
+    _require_in_scope(req, "zcc", PATH_DEVICE_WHAT)   # user rule 1: nothing read out of scope
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=PATH_DEVICE_NEEDS_ONEAPI)
+    return creds
+
+
+@app.post("/api/path-analyzer/devices")
+async def path_analyzer_devices(req: PathDeviceRequest):
+    """A user's enrolled devices from the Client Connector Portal: one
+    getDevices call filtered by user name, at most path_device.SEARCH_LIMIT
+    devices whose user matches. 400 before sign-in when ZCC is not in
+    scope, the sign-in is the classic ZIA API, or the name is not 2 to 128
+    characters. Read-only."""
+    import path_device
+    if path_device.valid_query(req.device_user) is None:
+        raise HTTPException(status_code=400, detail="Type 2 to 128 characters of the user's sign-in name to search. Nothing was read.")
+    creds = _path_device_gate(req)
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    found = await asyncio.to_thread(path_device.search_devices, sdk, req.device_user)
+    label = tenant_auth.record_label(creds)
+    ref = _remember_report("pathdev", {"kind": "pathdev", "devices": found["devices"]}, label)
+    return {"ref": ref, "query": found["query"], "devices": [path_device.public(d) for d in found["devices"]],
+            "capped": found["capped"], "error": found["error"], "limit": path_device.SEARCH_LIMIT}
+
+
+@app.post("/api/path-analyzer/devices/detail")
+async def path_analyzer_device_detail(req: PathDeviceRequest):
+    """Pick one device from a lookup: its details from the Client Connector
+    Portal (one getDeviceDetails call), kept with the lookup for the
+    analysis. Same gates as the lookup; 400 for a pick that is not kept."""
+    import path_device
+    creds = _path_device_gate(req)
+    rep = _path_device_record(req.ref[:80], creds)
+    dev = next((d for d in rep.get("devices") or [] if d.get("id") and d["id"] == req.device_id[:64]), None)
+    if dev is None:
+        raise HTTPException(status_code=400, detail=PATH_DEVICE_GONE)
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    dev["details"] = await asyncio.to_thread(path_device.read_details, sdk, dev)
+    return {"ref": rep["report_id"], "device": path_device.public(dev)}
+
+
+# ── Path analyzer: compare two identities (path_compare) ───────────────
+class PathCompareRequest(PathAnalyzerRequest):
+    """The Path analyzer's body (identity A in `identity` and `device`) plus
+    identity B (`identity_b`, `device_b`): the same destination, network,
+    traffic and scope for both."""
+    identity_b: Dict[str, Any] = {}
+    device_b: Dict[str, Any] = {}
+
+
+def _run_path_compare(req: PathCompareRequest, inp_a, inp_b, raw_client, sdk_client, log, cancel) -> Dict[str, Any]:
+    """A, then B on A's tenant read, then the comparison."""
+    import path_compare
+    req_a = _with_device_platform(req, inp_a)
+    log("Identity A…")
+    a = _run_path(inp_a, req_a, raw_client, sdk_client, log, cancel)
+    if a.get("stopped"):
+        return a
+    keep = {"report_id": a.get("report_id") or req.report_id, "zpa_report_id": a.get("zpa_report_id") or req.zpa_report_id,
+            "ztw_report_id": a.get("ztw_report_id") or req.ztw_report_id}
+    req_b = req.model_copy(update=dict(keep, identity=req.identity_b, device=req.device_b))
+    inp_b = dict(inp_b, zia_kept=_kept_path_read(keep["report_id"], inp_b["scope"], inp_b["creds"]) if inp_b["scope"]["read"] else None,
+                 zpa_kept=_path_kept(keep["zpa_report_id"], "pathzpa", inp_b["creds"]) if inp_b["zpa_on"] and not inp_b["zpa_problem"] else None,
+                 ztw_kept=_path_kept(keep["ztw_report_id"], "pathztw", inp_b["creds"]) if inp_b["source"] == "workload" else None)
+    req_b = _with_device_platform(req_b, inp_b)
+    log("Identity B, on the same tenant read…")
+    b = _run_path(inp_b, req_b, raw_client, sdk_client, log, cancel)
+    if b.get("stopped"):
+        return b
+    cmp = path_compare.compare(a, b)
+    log("Compared: " + cmp["headline"])
+    out = dict(cmp, destination=(a.get("destination") or {}).get("input") or req.destination, network=req.network,
+               tenant_label=a.get("tenant_label"), report_id=a.get("report_id"), zpa_report_id=a.get("zpa_report_id"),
+               ztw_report_id=a.get("ztw_report_id"), compared_at=time.time())
+    return out
+
+
+@app.post("/api/path-analyzer/compare/start")
+async def path_analyzer_compare_start(req: PathCompareRequest, request: Request):
+    """Run the same destination for two what-if identities (each a user,
+    group, department and location, and a device when one is picked) on
+    one tenant read, and compare them step by step, marking the step where
+    they diverge. Every input of both is checked before sign-in (the same
+    400s as the analyzer). Poll GET /api/dlp-packs/jobs/{job_id}; export
+    with GET /api/path-analyzer/compare/{job_id}/export. Read-only."""
+    import pack_jobs
+    inp_a = _path_inputs(req)
+    inp_b = _path_inputs(req.model_copy(update={"identity": req.identity_b, "device": req.device_b}))
+    need = dict(inp_a, need_sdk=inp_a["need_sdk"] or inp_b["need_sdk"])
+    raw_client, sdk_client = await _path_clients(need, req)
+    job = pack_jobs.start("path-compare", lambda log, cancel: _run_path_compare(req, inp_a, inp_b, raw_client, sdk_client, log, cancel),
+                          label=("Compare: " + req.destination)[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/path-analyzer/compare/{job_id}/export")
+async def path_analyzer_compare_export(job_id: str, format: str = "csv"):
+    """A finished comparison as CSV (spreadsheet-safe) or JSON. No tenant call."""
+    import pack_jobs
+    import path_compare
+    job = pack_jobs.get(job_id)
+    res = getattr(job, "result", None) if job is not None and getattr(job, "kind", "") == "path-compare" else None
+    if not isinstance(res, dict) or not res.get("steps"):
+        raise HTTPException(status_code=404, detail="That comparison is no longer kept (runs are kept for an hour after they finish). Compare again.")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        body = path_compare.export_json(res, {"destination": res.get("destination"), "network": res.get("network"),
+                                              "tenant_label": res.get("tenant_label")})
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=path_compare_{ts}.json", "Cache-Control": "no-store"})
+    return Response(content=path_compare.to_csv(res), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=path_compare_{ts}.csv", "Cache-Control": "no-store"})
+
+
+# ── Path analyzer: Test from here (path_probe) ─────────────────────────
+# An explicit, opt-in observation from the computer running this app (in
+# the container, the container's network): DNS, a TCP connect and a TLS
+# handshake for one destination, compared with the prediction the page
+# sends. SSRF-sensitive: the threat model is in path_probe.py and
+# SECURITY.md. No tenant call, no scope needed; the UI token, origin and
+# CSRF checks apply as on every route; confirm=true is required; one
+# destination per request; allow-listed ports; rate-limited; never cached.
+class PathProbeRequest(BaseModel):
+    destination: str = ""
+    port: Optional[Union[str, int]] = None
+    prediction: Dict[str, Any] = {}
+    confirm: bool = False
+
+    @field_validator("destination", mode="before")
+    @classmethod
+    def _dest(cls, v: Any) -> Any:
+        return v[:2048] if isinstance(v, str) else v
+
+
+@app.post("/api/path-analyzer/test-from-here")
+async def path_analyzer_test_from_here(req: PathProbeRequest):
+    """Test one destination from this computer: DNS, TCP and (on a TLS
+    port) the TLS handshake, and the comparison with the prediction. 400
+    without confirm=true, for a bad destination, a port outside the
+    allow-list or an address that may not be tested; 429 when the rate
+    limit or another test is running; 403 when the install turned it off.
+    Nothing is kept."""
+    import path_probe
+    if not path_probe.enabled():
+        raise HTTPException(status_code=403, detail="Test from here is turned off on this install (ZSCALER_TEST_FROM_HERE=0). Nothing was sent.")
+    if req.confirm is not True:
+        raise HTTPException(status_code=400, detail="Test from here runs only when you click it (confirm=true). Nothing was sent.")
+    try:
+        out = await asyncio.to_thread(path_probe.run, req.destination, req.port, req.prediction)
+    except path_probe.Refused as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except path_probe.Busy as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    return JSONResponse(out, headers={"Cache-Control": "no-store, private", "Pragma": "no-cache"})
 
 
 @app.get("/api/report/data-flow/{report_id}")

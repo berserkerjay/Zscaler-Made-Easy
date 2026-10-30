@@ -275,15 +275,16 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 120,
-            "accepted": 3,
+            "fixed": 124,
+            "accepted": 4,
             "records": [
               "c6-assessment",
               "c6-checks",
               "c6-path",
               "c6-posture",
               "c6-zpa",
-              "func-path"
+              "func-path",
+              "w7-path-extras"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 584,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -455,22 +456,22 @@
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 340,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 48,
-        "accepted": 22
+        "fixed": 49,
+        "accepted": 23
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 311,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8686
   },
   "findings": [
     {
@@ -840,6 +841,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7PE-01",
+      "title": "The sample tenant's enrolled devices carry lastSeenTime, which the SDK Device model (zcc/models/devices.py reads last_seen_time) drops, so Last seen is unknown for the sample's devices in the device pick and in Client Connector fleet health",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1188",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "Sample data, not this feature: renaming the field in sample_tenant.py changes fleet health's ghost and blind-spot answers on the sample, which other pages' tests pin; the device pick shows it honestly as unknown",
+      "slug": "w7-path-extras",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -8970,6 +8987,54 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7PE-02",
+      "title": "A first draft named the device search field username, which the analyzer's request model already uses for the classic ZIA admin login, so a classic sign-in's admin name could have been taken as the device user and the device name as the admin login",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-436",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "The field is device_user (dlp_api_server.PathDeviceRequest, static/path_extras.js)",
+      "test": "tests/test_path_device_compare.py::test_the_classic_zia_api_sign_in_cannot_look_devices_up",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-path-extras",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7PE-03",
+      "title": "Test from here: the trust check of an IP address typed as such raised ValueError (check_hostname without a server name), a 500 instead of an answer",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-755",
+      "asvs": "",
+      "wcag": "",
+      "fix": "path_probe._tls verifies an IP destination against the address; any handshake error is an answer",
+      "test": "tests/test_path_probe.py::test_a_zscaler_issued_certificate_is_read_and_agrees_with_inspection",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-path-extras",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7PE-04",
+      "title": "Test from here: a resolver failure other than gaierror (an encoding error, a refused lookup) surfaced as a 500",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-755",
+      "asvs": "",
+      "wcag": "",
+      "fix": "path_probe.observe reports any resolver failure as a failed name lookup",
+      "test": "tests/test_write_safety_gates.py::test_read_only_routes_never_write_even_with_every_privilege",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-path-extras",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -9736,6 +9801,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7PE-05",
+      "title": "At 320px the Test from here port list (its longest option) widened the page by 70px",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-684",
+      "asvs": "",
+      "wcag": "WCAG 2.2 SC 1.4.10",
+      "fix": "Shorter option words and a width cap on the select (static/path_extras.js, static/reports.css)",
+      "test": "tests/test_path_extras_browser.py::test_nothing_scrolls_sideways_at_320px",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-path-extras",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     }
   ],
   "records": [
@@ -10634,6 +10715,50 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-path-extras",
+      "area": "Traffic analysis: the Path analyzer's device pick (path_device.py), two-identity compare (path_compare.py) and Test from here (path_probe.py), their routes, the page (static/path_extras.js, report_path.html) and the SSRF threat model in SECURITY.md",
+      "title": "Wave 7 Path analyzer additions built and tested: a user's enrolled device on the path, two identities side by side, and an opt-in observation from this computer bounded as an SSRF-sensitive feature",
+      "standards": [
+        "ASVS V4.1.3",
+        "ASVS V4.2.1",
+        "ASVS V5.1.3",
+        "ASVS V5.3.3",
+        "ASVS V5.3.4",
+        "ASVS V8.2.1",
+        "ASVS V8.3.1",
+        "ASVS V9.1.1",
+        "ASVS V11.1.4",
+        "ASVS V12.6.1",
+        "ASVS V13.2.3",
+        "CWE-20",
+        "CWE-79",
+        "CWE-200",
+        "CWE-284",
+        "CWE-295",
+        "CWE-306",
+        "CWE-352",
+        "CWE-359",
+        "CWE-400",
+        "CWE-524",
+        "CWE-639",
+        "CWE-670",
+        "CWE-770",
+        "CWE-918",
+        "CWE-1236",
+        "WSTG-INPV-19",
+        "WSTG-ATHZ-02",
+        "WSTG-ATHZ-04",
+        "WCAG 2.2 SC 1.3.1",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.1.1",
+        "WCAG 2.2 SC 3.3.2",
+        "WCAG 2.2 SC 4.1.3"
+      ],
+      "checks": 8,
+      "findings": 5,
+      "tests_added": 84
     }
   ],
   "standards": {
@@ -10653,7 +10778,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 106,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",

@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### Path analyzer: a user's device, two identities side by side, and a test from this computer
+- **Trace a user's device.** Under Device on the Path analyzer, type a user's sign-in name and Find devices: the Client Connector Portal is asked once (getDevices filtered by user name, at most 20 shown, only devices whose user matches), and only with Client Connector ticked on the Scope page and a OneAPI sign-in. Pick one (one getDeviceDetails call) and the trace uses that device's platform, the app profile the Portal reports for it (instead of choosing one by platform, user and group), its Client Connector version and, when the API gives them, whether ZIA and ZPA are on, its device trust level and strict enforcement. The result says which app and forwarding profile applied and why, lists every fact with where it came from, and says "unknown" for what the API does not give: the network the device is on right now (the Network you choose applies) and its ZPA posture results. ZIA turned off on the device, an unsupported client and a device that is not registered are named as impacts. The device's UDID stays on the server; the page gets a hash.
+- **Compare two identities.** The same destination, network and traffic for identity A (the what-if and the device) and identity B (user, group, department, location and a device of their own), on one tenant read: every step side by side, the step where the paths diverge marked in words, and CSV (spreadsheet-safe) and JSON downloads (`POST /api/path-analyzer/compare/start`, `GET /api/path-analyzer/compare/{job_id}/export`).
+- **Test from here.** After a result, one explicit click tests the destination from the computer running this app (in Docker, the container's network): a name lookup, a TCP connect and, on a TLS port, a TLS handshake (issuer, subject and names on the certificate, TLS version, whether this computer trusts it), compared with the prediction, for example "predicted: inspected by ZIA; observed: certificate issued by Zscaler Intermediate Root CA". It sends no HTTP request, data or credentials and follows no redirect; ports 443, 80, 8443 and 8080 only; loopback, link-local (cloud metadata), multicast and reserved addresses refused; at most 6 a minute, one at a time; nothing kept. SECURITY.md has its threat model; `ZSCALER_TEST_FROM_HERE=0` turns it off.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

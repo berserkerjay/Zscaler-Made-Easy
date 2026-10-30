@@ -211,7 +211,7 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
             hosts = []
     if hosts:
         checks.append(_check("outbound", "Outbound calls go to an allowlist of hosts", P_OWN, "secure_defaults", "pass",
-                             f"{len(hosts)} documentation hosts allowed for the update check, the best-practice library and the SaaS matrix; the Zscaler API for the tenant; GitHub for updates; your own SMTP relay or https webhook only when configured. No AI or LLM service is called.",
+                             f"{len(hosts)} documentation hosts allowed for the update check, the best-practice library and the SaaS matrix; the Zscaler API for the tenant; GitHub for updates; your own SMTP relay or https webhook only when configured; the Path analyzer's Test from here only on an explicit click (one destination, ports 443, 80, 8443, 8080). No AI or LLM service is called.",
                              "Nothing to do."))
     else:
         checks.append(_check("outbound", "Outbound calls go to an allowlist of hosts", P_OWN, "secure_defaults", "warn", "The documentation-host allowlist could not be read.", "Check bp_crawler.ALLOWED_HOSTS."))
