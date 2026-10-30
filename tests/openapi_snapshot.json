@@ -392,10 +392,54 @@
     }
    }
   },
+  "GET /api/config-backups": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/config-backups/{backup_id}/download": {
+   "body": null,
+   "params": {
+    "path:backup_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/config-templates/{template_id}/download": {
+   "body": null,
+   "params": {
+    "path:template_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
   "GET /api/console-index/cached": {
    "body": null,
    "params": {
+    "query:auth_method": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:cloud": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
     "query:profile_id": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:vanity_domain": {
      "required": false,
      "schema": {
       "type": "string"
@@ -823,6 +867,14 @@
      }
     }
    }
+  },
+  "GET /api/quality-score": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/quality-score/report.md": {
+   "body": null,
+   "params": {}
   },
   "GET /api/readiness/catalog": {
    "body": null,
@@ -1497,6 +1549,127 @@
    "body": null,
    "params": {}
   },
+  "POST /api/config-backups/diff": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigDiffRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-backups/diff-live/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigDiffLiveRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-backups/from-snapshot": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigFromSnapshotRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-backups/rehearse": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigRehearseRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-backups/save/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigBackupSaveRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-backups/schedule": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigScheduleRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-backups/{backup_id}/delete": {
+   "body": null,
+   "params": {
+    "path:backup_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/config-cache/refresh/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigBackupSaveRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-templates/export": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigTemplateExportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-templates/import": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigTemplateImportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/config-templates/{template_id}/delete": {
+   "body": null,
+   "params": {
+    "path:template_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
   "POST /api/console-index": {
    "body": {
     "content": {
@@ -2157,7 +2330,7 @@
    "body": {
     "content": {
      "application/json": {
-      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+      "$ref": "#/components/schemas/OperationCredsRequest"
      }
     },
     "required": true
@@ -2175,7 +2348,7 @@
    "body": {
     "content": {
      "application/json": {
-      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+      "$ref": "#/components/schemas/OperationCredsRequest"
      }
     },
     "required": true
@@ -3635,6 +3808,10 @@
     "auth_method": {
      "type": "string"
     },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
     "client_id": {
      "type": "string"
     },
@@ -3647,11 +3824,20 @@
     "confirm": {
      "type": "string"
     },
+    "from_page": {
+     "type": "boolean"
+    },
     "password": {
      "type": "string"
     },
     "profile_id": {
      "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "username": {
      "type": "string"
@@ -3761,6 +3947,10 @@
     "auth_method": {
      "type": "string"
     },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
     "check_id": {
      "type": "string"
     },
@@ -3777,6 +3967,9 @@
      "additionalProperties": true,
      "type": "object"
     },
+    "from_page": {
+     "type": "boolean"
+    },
     "note": {
      "type": "string"
     },
@@ -3785,6 +3978,12 @@
     },
     "profile_id": {
      "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "title": {
      "type": "string"
@@ -3864,6 +4063,137 @@
    },
    "type": "object"
   },
+  "ConfigBackupSaveRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "note": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "products": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigDiffLiveRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "backup_id": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "ignore": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigDiffRequest": {
+   "properties": {
+    "ignore": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "new": {
+     "type": "string"
+    },
+    "old": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
   "ConfigExportRequest": {
    "properties": {
     "api_key": {
@@ -3922,6 +4252,87 @@
      "type": "string"
     },
     "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigFromSnapshotRequest": {
+   "properties": {
+    "profile_id": {
+     "type": "string"
+    },
+    "snapshot_id": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigRehearseRequest": {
+   "properties": {
+    "operation": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "target": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigScheduleRequest": {
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "every_hours": {
+     "type": "integer"
+    },
+    "keep": {
+     "type": "integer"
+    },
+    "products": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "profile_id": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigTemplateExportRequest": {
+   "properties": {
+    "backup_id": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "objects": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "strip_prefix": {
+     "type": "string"
+    },
+    "with_dependencies": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigTemplateImportRequest": {
+   "properties": {
+    "content": {
      "type": "string"
     }
    },
@@ -4263,6 +4674,9 @@
      "type": "boolean"
     },
     "password": {
+     "type": "string"
+    },
+    "plan_hash": {
      "type": "string"
     },
     "profile_id": {
@@ -4911,6 +5325,57 @@
    },
    "type": "object"
   },
+  "OperationCredsRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
   "OperationObjectsRequest": {
    "properties": {
     "api_key": {
@@ -4933,6 +5398,9 @@
      "type": "string"
     },
     "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
      "type": "string"
     },
     "family": {
@@ -4992,6 +5460,9 @@
     "confirm_text": {
      "type": "string"
     },
+    "customer_id": {
+     "type": "string"
+    },
     "from_page": {
      "type": "boolean"
     },
@@ -5013,6 +5484,12 @@
       "type": "string"
      },
      "type": "array"
+    },
+    "secrets": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
     },
     "undo_of": {
      "type": "string"
@@ -5603,6 +6080,9 @@
     "password": {
      "type": "string"
     },
+    "plan_hash": {
+     "type": "string"
+    },
     "profile_id": {
      "type": "string"
     },
@@ -6103,6 +6583,10 @@
     "assessor": {
      "type": "string"
     },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
     "check_id": {
      "type": "string"
     },
@@ -6128,8 +6612,17 @@
     "dry_run": {
      "type": "boolean"
     },
+    "from_page": {
+     "type": "boolean"
+    },
     "profile_id": {
      "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "vanity_domain": {
      "type": "string"
