@@ -480,3 +480,16 @@ def test_backup_routes_never_write_to_a_tenant(api):
     r = c.get("/api/config-backups")
     assert r.status_code == 200 and r.json()["coverage"]["products"]["zia"]
     assert api["target"]["t"].writes == []
+
+
+def test_a_masked_or_secret_named_value_is_never_sent():
+    """ASVS V8.3.4 · CWE-312 · CWE-522: an object whose backup carries a secret-named field (masked "(set)") is created without that field: neither the mask nor the original value is ever sent."""
+    data = source_data()
+    data["zia.rule_labels"][0]["api_key"] = CANARY
+    data["zia.rule_labels"][0]["proxy_password"] = CANARY
+    bid = backup_of(data)
+    t = empty_target()
+    _p, r = apply(Client(t), spec(bid=bid, types=["zia.rule_labels"]))
+    assert r["status"] == "applied" and t.sent
+    sent = json.dumps(t.sent)
+    assert CANARY not in sent and "(set)" not in sent and "api_key" not in sent and "proxy_password" not in sent
