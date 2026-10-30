@@ -333,6 +333,7 @@ const PROBE = `((m, i) => {
   return { at: m.at, releases: m.releases, host: true, star: !!star, tag: star ? star.tagName : '', glyph: star ? getComputedStyle(star, '::before').content : '',
     words: host.textContent, news: host.getAttribute('data-wn-new') || '', expanded: star ? star.getAttribute('aria-expanded') : '',
     desc: star ? (document.getElementById(star.getAttribute('aria-describedby') || '') || {}).textContent || '' : '',
+    kinds: window.HoverHelp.marks().filter(k => k.__hhFor === host).map(k => k.getAttribute('data-hh-mark') + ':' + (k.getAttribute('aria-label') || '')),
     beside: !!(star && host.getClientRects().length && r.width >= 24 && r.height >= 24 && Math.abs((r.top + r.bottom) / 2 - (h.top + h.bottom) / 2) <= Math.max(h.height, 24)) };
 })`;
 for (const [page, marks] of Object.entries(MARKS)) {
@@ -388,10 +389,6 @@ out.rotate = await ev(`(() => {
   const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), heading: document.getElementById('paFlowRefH').textContent, proto: document.getElementById('paProto').getAttribute('aria-label') };
   return { before, after };
 })()`);
-
-// An item with both: * then ?, each its own button.
-await open('/report/advanced');
-out.both = await ev(`(() => { const el = document.getElementById('advGlass'), ms = window.HoverHelp.marks().filter(m => m.__hhFor === el); return ms.map(m => m.getAttribute('data-hh-mark') + ':' + (m.getAttribute('aria-label') || '')); })()`);
 
 // The marks and the legend keep AA contrast: both themes, glass on and off.
 const PAINT = `(() => {
@@ -489,9 +486,11 @@ def test_the_star_works_from_the_keyboard(marks_browser):
 
 def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
     """WCAG 2.2 SC 1.3.2 (Meaningful Sequence) · SC 4.1.2: an item that is new and needs help gets two buttons, * then ?, each reachable on its own."""
-    both = marks_browser["both"]
-    assert [b.split(":")[0] for b in both] == ["new", "help"], both
-    assert both[0].startswith("new:New in this version: ") and both[1].startswith("help:Help: "), both
+    boths = [r["kinds"] for p in marks_browser["pages"].values() for r in p["marks"] if len(r.get("kinds") or []) > 1]
+    assert boths, "no marked item that also has a help mark was toured"
+    for both in boths:
+        assert [b.split(":")[0] for b in both] == ["new", "help"], both
+        assert both[0].startswith("new:New in this version: ") and both[1].startswith("help:Help: "), both
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
