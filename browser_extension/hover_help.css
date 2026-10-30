@@ -28,7 +28,7 @@ body.theme-light .hh-tip {
 .hh-tip .hh-write, .hh-tip .hh-confirm { color: var(--hh-write); font-weight: 600; }
 .hh-tip .hh-local, .hh-tip .hh-download, .hh-tip .hh-nav { color: var(--hh-local); }
 .hh-tip .hh-now { border-top: 1px solid var(--hh-line); padding-top: 0.3rem; }
-.hh-tip .hh-new { font-weight: 700; border-bottom: 1px solid var(--hh-line); padding-bottom: 0.3rem; }
+.hh-tip .hh-new { font-weight: 700; }
 
 @media (prefers-reduced-motion: reduce) {
   .hh-tip, .hh-mark { transition: none !important; animation: none !important; }
