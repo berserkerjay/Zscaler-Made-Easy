@@ -49,13 +49,17 @@
   .cq-empty { color: var(--dim); font-size: 0.88rem; padding: 0.6rem 0; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   .sy-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 0.6rem 1rem; margin: 0.6rem 0; }
-  .sy-form label, .sy-form fieldset { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; min-width: 0; }
-  .sy-form fieldset { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.4rem 0.6rem; margin: 0; }
-  .sy-form fieldset label { flex-direction: row; align-items: center; gap: 0.4rem; }
+  .sy-f, .sy-c { display: flex; align-items: flex-end; gap: 0.3rem; min-width: 0; font-size: 0.85rem; }
+  .sy-c { align-items: center; margin: 0.15rem 0; }
+  .sy-f > label { display: flex; flex-direction: column; gap: 0.25rem; flex: 1 1 auto; min-width: 0; }
+  .sy-c > label { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+  .sy-form fieldset { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.4rem 0.6rem; margin: 0; min-width: 0; font-size: 0.85rem; }
   .sy-form input[type="text"], .sy-form select { font: inherit; background: var(--well); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.3rem 0.45rem; min-width: 0; max-width: 100%; }
   .sy-form input:focus-visible, .sy-form select:focus-visible, .sy-job .rp-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .sy-job { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); margin: 0 0 0.6rem; padding: 0.7rem 0.9rem; }
   .sy-job h3 { font-size: 0.95rem; margin: 0 0 0.3rem; overflow-wrap: anywhere; }
+  .sy-job .cq-wrap table.cq-t { min-width: 34rem; }   /* the run history scrolls in its own box on a phone, never the page */
+  .sy-job .cq-wrap table.cq-t td, .sy-job .cq-wrap table.cq-t th { overflow-wrap: normal; }
   @media (prefers-reduced-motion: reduce) { .cq-req, .cq-tab { transition: none; } }
   @media (max-width: 600px) { .cq-dl { grid-template-columns: 1fr; } }
 </style>
@@ -109,16 +113,16 @@
         <div id="syJobs"><p class="cq-empty">Loading…</p></div>
         <details id="syNew" style="margin-top:0.6rem;"><summary>New sync job</summary>
           <form class="sy-form" id="syForm" novalidate>
-            <label>Name<input type="text" id="syName" maxlength="80" autocomplete="off"></label>
-            <label>Source<select id="sySource"></select></label>
+            <div class="sy-f"><label>Name<input type="text" id="syName" maxlength="80" autocomplete="off"></label></div>
+            <div class="sy-f"><label>Source<select id="sySource"></select></label></div>
             <fieldset><legend>Targets (tenant profiles)</legend><div id="syTargets"></div></fieldset>
             <fieldset><legend>What to keep in step</legend><div id="syGroups"></div></fieldset>
-            <label>Only rules with this rule label (optional)<input type="text" id="syLabel" maxlength="128" autocomplete="off"></label>
-            <label>Only rules whose name starts with (optional)<input type="text" id="syPrefix" maxlength="128" autocomplete="off"></label>
-            <label>How often<select id="syInterval"></select></label>
+            <div class="sy-f"><label>Only rules with this rule label (optional)<input type="text" id="syLabel" maxlength="128" autocomplete="off"></label></div>
+            <div class="sy-f"><label>Only rules whose name starts with (optional)<input type="text" id="syPrefix" maxlength="128" autocomplete="off"></label></div>
+            <div class="sy-f"><label>How often<select id="syInterval"></select></label></div>
             <fieldset><legend>Options</legend>
-              <label><input type="checkbox" id="syDeletes"> Plan deletes of target rules the source does not have</label>
-              <label><input type="checkbox" id="syEnabled"> Create new rules enabled</label></fieldset>
+              <div class="sy-c"><label><input type="checkbox" id="syDeletes"> Plan deletes of target rules the source does not have</label></div>
+              <div class="sy-c"><label><input type="checkbox" id="syEnabled"> Create new rules enabled</label></div></fieldset>
           </form>
           <div class="cq-actions"><button type="button" class="rp-btn primary" id="sySave">Save the job</button></div>
         </details>
@@ -464,9 +468,9 @@
         + T.map(x => `<option value="template:${E(x.id)}">Template: ${E(x.name)}</option>`).join('');
       src.value = cur;
       const tg = $('syTargets'), was = new Set([...tg.querySelectorAll('input:checked')].map(i => i.value));
-      tg.innerHTML = P.length ? P.map(p => `<label><input type="checkbox" value="${E(p.id)}"${was.has(p.id) ? ' checked' : ''}${p.has_secret ? '' : ' disabled'}> ${E(p.name)}${p.has_secret ? '' : ' (no remembered secret)'}</label>`).join('') : '<span class="cq-why">Save a tenant profile with its secret first.</span>';
+      tg.innerHTML = P.length ? P.map(p => `<div class="sy-c"><label><input type="checkbox" value="${E(p.id)}"${was.has(p.id) ? ' checked' : ''}${p.has_secret ? '' : ' disabled'}> ${E(p.name)}${p.has_secret ? '' : ' (no remembered secret)'}</label></div>`).join('') : '<span class="cq-why">Save a tenant profile with its secret first.</span>';
       const gr = $('syGroups'), gwas = new Set([...gr.querySelectorAll('input:checked')].map(i => i.value));
-      gr.innerHTML = (sync.sources.groups || []).map(g => `<label><input type="checkbox" value="${E(g.id)}"${gwas.has(g.id) ? ' checked' : ''}> ${E(g.label)}</label>`).join('');
+      gr.innerHTML = (sync.sources.groups || []).map(g => `<div class="sy-c"><label><input type="checkbox" value="${E(g.id)}"${gwas.has(g.id) ? ' checked' : ''}> ${E(g.label)}</label></div>`).join('');
       const iv = $('syInterval'), ivCur = iv.value;
       iv.innerHTML = (sync.sources.intervals || []).map(h => `<option value="${E(h)}">${E(every(h))}</option>`).join('');
       if (ivCur) iv.value = ivCur;
