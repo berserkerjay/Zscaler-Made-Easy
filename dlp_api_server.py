@@ -668,7 +668,8 @@ async def auth_status(request: Request):
                 "token_file": _security.UI_TOKEN_FILE if _security.ui_auth_enabled() else None,
                 "sso": False}
     session = _security.sso_session(request)
-    return {"required": True, "unlocked": session is not None, "token_file": None, "sso": True,
+    import team_api
+    return {**team_api.session_clock(session), "required": True, "unlocked": session is not None, "token_file": None, "sso": True,
             "user": (session.get("email") or session.get("sub")) if session else None,
             "may_write": _sso.is_writer(session) if session else False,
             "sso_login_url": "/api/auth/sso/login", "logout_url": "/api/auth/logout"}
@@ -11278,6 +11279,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"     can reach this server. Currently listening on {host}:{port}.")
         print("     Set ZSCALER_BIND_HOST=127.0.0.1 (default) to restrict to localhost.\n")
     ssl_args = {"ssl_certfile": tls["cert"], "ssl_keyfile": tls["key"]} if tls else {}
+    import store_crypto
+    if tls and store_crypto.fips_mode():
+        ssl_args["ssl_ciphers"] = store_crypto.FIPS_TLS_CIPHERS   # TLS 1.2 suites; TLS 1.3 suites are the platform OpenSSL's
+        print("  FIPS mode: only FIPS-approved algorithms in this app's own choices (see SECURITY.md for what that does not cover).")
     try:
         if not is_debug():
             # Suppress access log spam in production mode (one line per request)

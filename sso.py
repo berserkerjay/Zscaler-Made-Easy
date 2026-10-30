@@ -270,7 +270,9 @@ def verify_id_token(id_token: str, nonce: str) -> Dict[str, Any]:
     except jwt.PyJWTError:
         raise RuntimeError("The identity provider's ID token is not a signed JSON Web Token.") from None
     alg = header.get("alg")
-    if alg not in ID_TOKEN_ALGORITHMS:
+    import store_crypto
+    allowed = store_crypto.FIPS_ID_TOKEN_ALGORITHMS if store_crypto.fips_mode() else ID_TOKEN_ALGORITHMS
+    if alg not in allowed:
         raise RuntimeError(f"The ID token is signed with an algorithm this server does not accept ({str(alg)[:20]!r}): "
                            "only a public-key signature from the identity provider's key set is.")
     key = next((k for k in jwks() if isinstance(k, dict) and k.get("kid") == header.get("kid")), None)

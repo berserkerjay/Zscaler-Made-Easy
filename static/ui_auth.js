@@ -180,6 +180,7 @@
     const btn = 'font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--border,#334155);border-radius:var(--r-sm,6px);background:transparent;color:inherit;padding:2px 8px;';
     if (status.unlocked) {
       bar.innerHTML = `<span>Signed in as <strong>${esc(status.user || 'you')}</strong>${status.may_write === false ? ' (read and preview only)' : ''}</span>`
+        + (status.team ? `<a href="/report/team" id="dlpTeamLink" style="${btn}text-decoration:none;">Team server</a>` : '')
         + `<button type="button" id="dlpSignOut" style="${btn}">Sign out</button>`;
       bar.querySelector('#dlpSignOut').addEventListener('click', async () => {
         try { await fetch(status.logout_url || '/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
@@ -189,8 +190,52 @@
       bar.innerHTML = `<span>Not signed in</span><a href="${esc(status.sso_login_url || '/api/auth/sso/login')}" style="${btn}text-decoration:none;">Sign in</a>`;
     }
   }
+  // Idle-timeout warning (SSO and team server sessions; the UI token has no
+  // idle limit). Every request this page makes keeps the session alive on the
+  // server, so the page counts its own requests (Resource Timing) as activity.
+  // Two minutes before the idle limit it asks "Still there?": Stay signed in
+  // makes one request (which renews the session), Sign out ends it. At the
+  // limit it goes to the sign-in page. Five minutes before the session's
+  // absolute end it says when that is: that end cannot be pushed back.
+  const IDLE_WARN_S = 120, END_WARN_S = 300;
+  let idleTimer = null;
+  function startIdleWatch(status) {
+    if (idleTimer || !status || !status.unlocked || !(status.idle_seconds > 0) || window.top !== window) return;
+    const idle = Number(status.idle_seconds), loadedAt = Date.now(), endAt = loadedAt + 1000 * Number(status.expires_in || 0);
+    let last = Date.now(), asking = false, endWarned = false;
+    const touch = () => { last = Date.now(); };
+    try {
+      new PerformanceObserver(list => {
+        for (const e of list.getEntries()) {
+          if ((e.initiatorType === 'fetch' || e.initiatorType === 'xmlhttprequest') && String(e.name).startsWith(location.origin + '/')) touch();
+        }
+      }).observe({ type: 'resource', buffered: false });
+    } catch (e) { /* no Resource Timing: the warning still comes, counted from the last answer to Stay */ }
+    const signIn = () => { window.location.href = status.sso_login_url || '/login'; };
+    idleTimer = setInterval(async () => {
+      const left = idle - (Date.now() - last) / 1000;
+      if (left <= 0) { clearInterval(idleTimer); signIn(); return; }
+      if (status.expires_in && !endWarned && (endAt - Date.now()) / 1000 <= END_WARN_S) {
+        endWarned = true;
+        notice({ title: 'Your session ends soon', body: `This session ends at ${new Date(endAt).toLocaleTimeString()} whatever you do (the server's limit for one sign-in). Save your work; you will sign in again.` });
+      }
+      if (left <= IDLE_WARN_S && !asking) {
+        asking = true;
+        const stay = await ask({ title: 'Still there?', body: `You will be signed out in about ${Math.max(1, Math.round(left / 60))} minute(s) because nothing has happened on this page. Stay signed in?`, okLabel: 'Stay signed in', cancelLabel: 'Sign out' });
+        asking = false;
+        if (stay) {
+          try { const r = await fetch('/api/auth/status', { credentials: 'same-origin', cache: 'no-store' }); const s = r.ok ? await r.json() : null; if (s && s.unlocked) touch(); else signIn(); } catch (e) { /* the next tick decides */ }
+        } else {
+          try { await fetch(status.logout_url || '/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) { /* gone anyway */ }
+          signIn();
+        }
+      }
+    }, 10000);
+  }
+  window.__dlpIdleWatch = startIdleWatch;
+
   function loadSsoStatus() {
-    fetch('/api/auth/status', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).then(ssoBar).catch(() => {});
+    fetch('/api/auth/status', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).then(s => { ssoBar(s); startIdleWatch(s); }).catch(() => {});
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadSsoStatus); else loadSsoStatus();
 

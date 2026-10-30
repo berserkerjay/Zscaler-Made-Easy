@@ -16,6 +16,7 @@ import audit
 import safe_files
 import security
 import sso
+import store_crypto
 import team_server as team
 
 SCIM_BASE = "/api/scim/v2"
@@ -64,12 +65,22 @@ def status_fields(request: Request) -> Dict[str, Any]:
     role and whether they may change anything; the sign-in page's address."""
     session = security.sso_session(request)
     u = team.session_user(session)
-    return {"required": True, "unlocked": u is not None, "token_file": None, "sso": True, "team": True,
+    return {**session_clock(session if u else None), "required": True, "unlocked": u is not None, "token_file": None, "sso": True, "team": True,
             "user": u.get("username") if u else None, "role": u.get("role") if u else None,
             "may_write": bool(u and "apply" in team.ROLE_ACTIONS.get(str(u.get("role")), ())),
             "is_admin": bool(u and u.get("role") == "admin"),
             "sso_login_url": "/login", "logout_url": "/api/auth/logout",
             "oidc": sso.sso_enabled(), "oidc_login_url": "/api/auth/sso/login" if sso.sso_enabled() else None}
+
+
+def session_clock(session: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """For the idle-timeout warning (ui_auth.js): how long this session may
+    sit unused, and how long until it ends whatever happens."""
+    if not session:
+        return {}
+    import time as _t
+    idle = session.get("idle") or sso.idle_seconds()
+    return {"idle_seconds": int(idle), "expires_in": max(0, int(float(session.get("expires") or 0) - _t.time()))}
 
 
 def register(app: FastAPI) -> None:
@@ -155,6 +166,7 @@ def register(app: FastAPI) -> None:
                 "profiles": [{"id": p.get("id"), "name": p.get("name") or p.get("org_name") or p.get("id")} for p in tenant_profiles.list_profiles()],
                 "roles": [{"id": r, "label": team.ROLE_LABELS[r], "actions": list(team.ROLE_ACTIONS[r])} for r in team.ROLES],
                 "actions": list(team.ACTIONS), "scim": dict(team.scim_status(), base_path=SCIM_BASE), "tls": server_tls.status(),
+                "stores": store_crypto.status(), "fips": store_crypto.fips_status(),
                 "settings": {"idle_minutes": team.idle_seconds() // 60, "session_hours": round(team.session_seconds() / 3600, 2),
                              "lockout_attempts": team.lockout_attempts(), "lockout_minutes": team.lockout_seconds() // 60,
                              "min_password": team.MIN_PASSWORD, "oidc": sso.sso_enabled()}}
@@ -234,6 +246,19 @@ def register(app: FastAPI) -> None:
         except team.TeamError as e:
             _fail(e)
         return {"grant": rec}
+
+    @app.post("/api/team/store-key/rotate")
+    async def team_store_key_rotate():
+        """Rotate the store encryption key: a new key, every store re-sealed
+        with it, then the old key forgotten. Audited. 409 when encryption is off."""
+        _on()
+        if not store_crypto.enabled():
+            raise HTTPException(status_code=409, detail="Store encryption is off (DLP_CHECK_STORE_ENCRYPTION=1 turns it on).")
+        try:
+            out = store_crypto.rotate()
+        except store_crypto.StoreLocked as e:
+            raise HTTPException(status_code=409, detail=f"Rotation stopped, both keys kept: {e}")
+        return {"new_key": out["new_key"], "files": len(out["files"]), "kept_in": out["kept_in"]}
 
     @app.post("/api/team/scim-token")
     async def team_scim_token():

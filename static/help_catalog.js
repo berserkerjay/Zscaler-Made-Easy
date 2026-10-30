@@ -184,6 +184,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
+   "#dlpTeamLink": {
+    "what": "Opens the Team server page: who you are, what you may do on each tenant profile, and for an administrator the accounts and access.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#dlpSsoBar a": {
     "what": "Opens your company sign-in page to sign in to this app again.",
     "input": "Nothing to type. Just click it.",

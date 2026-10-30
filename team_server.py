@@ -148,8 +148,17 @@ def normalize_username(name: Any) -> str:
 
 
 # ── passwords (hashlib.scrypt) ───────────────────────────────────────────
+PBKDF2_ITERATIONS = 600_000   # NIST SP 800-132 / OWASP for PBKDF2-HMAC-SHA256 (FIPS mode)
+
+
 def hash_password(password: str) -> str:
+    """scrypt, or in FIPS mode (store_crypto.fips_mode) PBKDF2-HMAC-SHA256,
+    the FIPS-approved password-based key derivation."""
     salt = secrets.token_bytes(16)
+    b64 = lambda b: base64.b64encode(b).decode("ascii")  # noqa: E731
+    if store_crypto.fips_mode():
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS, dklen=32)
+        return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${b64(salt)}${b64(dk)}"
     dk = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2 ** SCRYPT_LOG_N, r=SCRYPT_R, p=SCRYPT_P,
                         maxmem=_SCRYPT_MAXMEM, dklen=32)
     b64 = lambda b: base64.b64encode(b).decode("ascii")  # noqa: E731
@@ -160,7 +169,17 @@ def verify_password(password: str, stored: Any) -> bool:
     """Constant-time check of `password` against a stored scrypt hash. A
     malformed or empty hash never matches (and never raises)."""
     try:
-        kind, log_n, r, p, salt, want = str(stored or "").split("$")
+        parts = str(stored or "").split("$")
+        if parts[0] == "pbkdf2_sha256" and len(parts) == 4:
+            iters = int(parts[1])
+            if not 100_000 <= iters <= 10_000_000:
+                return False
+            salt_b, want_b = base64.b64decode(parts[2], validate=True), base64.b64decode(parts[3], validate=True)
+            got = hashlib.pbkdf2_hmac("sha256", str(password).encode("utf-8", "surrogatepass"), salt_b, iters, dklen=len(want_b))
+            return hmac.compare_digest(got, want_b)
+        if store_crypto.fips_mode():
+            return False   # FIPS mode: an scrypt hash is not an approved one; an administrator resets the password
+        kind, log_n, r, p, salt, want = parts
         if kind != "scrypt":
             return False
         log_n, r, p = int(log_n), int(r), int(p)
@@ -271,6 +290,8 @@ def public_user(u: Dict[str, Any]) -> Dict[str, Any]:
             "email": u.get("email") or "", "role": u.get("role"), "active": bool(u.get("active")),
             "source": u.get("source") or "local", "has_password": bool(u.get("password")),
             "groups": list(u.get("groups") or []), "created": u.get("created"), "updated": u.get("updated"),
+            "password_algorithm": str(u.get("password") or "").split("$", 1)[0] or None,
+            "needs_password_reset": bool(store_crypto.fips_mode() and str(u.get("password") or "").startswith("scrypt$")),
             "locked": float(u.get("locked_until") or 0) > now,
             "locked_until": u.get("locked_until") if float(u.get("locked_until") or 0) > now else None,
             "failed_logins": int(u.get("failed") or 0), "sso_linked": bool(u.get("oidc_sub"))}
@@ -830,7 +851,10 @@ def authenticate(username: Any, password: Any, client_ip: str) -> Dict[str, Any]
                 if locked:
                     _audit("team_account_locked", actor=u.get("username"), user=u.get("username"), minutes=lockout_seconds() // 60,
                            client=client_ip)
-        raise LoginRefused(GENERIC_FAILURE, 401, "wrong password" if ok is False and u.get("active") else "account turned off")
+        why = "account turned off" if not u.get("active") else "wrong password"
+        if store_crypto.fips_mode() and str(u.get("password") or "").startswith("scrypt$"):
+            why = "password saved before FIPS mode (scrypt): an administrator must set it again"
+        raise LoginRefused(GENERIC_FAILURE, 401, why)
     if int(u.get("failed") or 0) or u.get("locked_until"):
         with _LOCK:
             data = _read()

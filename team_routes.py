@@ -102,6 +102,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/team/users/{user_id}/unlock": ADMIN,
     "POST /api/team/grants": ADMIN,
     "POST /api/team/scim-token": ADMIN,
+    "POST /api/team/store-key/rotate": ADMIN,
     "DELETE /api/team/scim-token": ADMIN,
     "GET /api/scim/v2/ServiceProviderConfig": SCIM,
     "GET /api/scim/v2/ResourceTypes": SCIM,

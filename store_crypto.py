@@ -335,7 +335,7 @@ def fips_status() -> Dict[str, Any]:
             "Passwords: PBKDF2-HMAC-SHA256 (NIST SP 800-132, 600,000 iterations) instead of scrypt; an scrypt hash is refused until an administrator resets that password",
             "Stores at rest: AES-256-GCM (FIPS 197, SP 800-38D)",
             "Identity-provider tokens: RSA, RSA-PSS and ECDSA signatures only (no EdDSA)",
-            "HTTPS: TLS 1.2 or later, ECDHE/DHE with AES-GCM only (no ChaCha20)",
+            "HTTPS: ECDHE/DHE with AES-GCM only for TLS 1.2 (no ChaCha20); the TLS 1.3 suites are the platform OpenSSL's, which a FIPS OpenSSL limits to AES-GCM",
             "Certificates this app makes: ECDSA P-256 with SHA-256",
             "Tokens and hashes: SHA-256; random values from the operating system's generator",
         ],
@@ -345,3 +345,28 @@ def fips_status() -> Dict[str, Any]:
                         "interpreter and the OpenSSL and cryptography builds it runs on are not a validated module unless your "
                         "platform provides one and runs in FIPS mode (for example a FIPS-enabled RHEL with its validated OpenSSL)."),
     }
+
+
+def _cli(argv: Optional[List[str]] = None) -> int:
+    """python store_crypto.py status | seal-all | rotate | fips"""
+    import sys
+    args = list(sys.argv[1:] if argv is None else argv)
+    cmd = args[0] if args else ""
+    if cmd == "status":
+        print(json.dumps(status(), indent=1))
+    elif cmd == "fips":
+        print(json.dumps(fips_status(), indent=1))
+    elif cmd == "seal-all":
+        out = seal_all()
+        print(f"Sealed {len(out['files'])} store file(s) with key {out['key']}.")
+    elif cmd == "rotate":
+        out = rotate()
+        print(f"Rotated the store key {out['old_key']} -> {out['new_key']}; re-sealed {len(out['files'])} file(s); kept in the {out['kept_in']}.")
+    else:
+        print(_cli.__doc__)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - command line
+    raise SystemExit(_cli())
