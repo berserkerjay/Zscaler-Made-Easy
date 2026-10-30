@@ -16,7 +16,11 @@ every object right before its write, a read-back and an Undo:
   zpa_policies         access, timeout, inspection (an inspection profile
                        made of Zscaler's predefined OWASP controls) and
                        isolation (a chosen isolation profile) rules over the
-                       prefixed application segments
+                       prefixed application segments; the access rule may be
+                       limited to SCIM groups and SAML attribute values
+                       chosen from what the tenant has (read-only lookups:
+                       idp.list_idps, saml_attributes.list_saml_attributes,
+                       scim_groups.list_scim_groups / get_scim_group)
   zpa_prefix_delete    re-reads the tenant and deletes only objects whose name
                        carries the prefix, in ZPA's dependency order
                        (policies, inspection profile, PRA consoles, segments,
@@ -46,8 +50,13 @@ server_groups, application_segment, policies (list_rules / get_rule by policy
 type), app_protection (list_profiles, get_profile,
 list_predef_control_versions), cbi_zpa_profile.list_isolation_profiles,
 pra_portal.list_portals, pra_console, certificates.list_issued_certificates;
-writes go through pack_ops (ZPA_KINDS). Assumed, not verifiable without a
-tenant: that a new rule is added at the bottom of its policy, that a timeout
+writes go through pack_ops (ZPA_KINDS). An access rule's identity
+conditions are SDK v1 condition tuples (policies._create_conditions_v1):
+("scim_group", idp id, SCIM group id) and ("saml", SAML attribute id,
+value); the SDK puts the SCIM groups in one OR condition and the SAML
+values in another, so they are ANDed with the applications and with each
+other. Assumed, not verifiable without a
+tenant: that a rule with no operator joins its conditions with AND, that a new rule is added at the bottom of its policy, that a timeout
 rule takes action RE_AUTH, that deleting a provisioning key before its group
 is accepted, and the vertical presets' host names and ports (templates to
 review, not facts about the customer).
@@ -80,6 +89,12 @@ MAX_SELECT = 5000
 MAX_INVENTORY = 5000
 SECRET_TTL = 600.0
 MAX_SECRETS = 20
+MAX_RULE_IDENTITIES = 20      # SCIM groups, and SAML values, on one access rule
+MAX_SAML_VALUE = 200
+MAX_PICK_IDPS = 10            # IdPs whose SCIM groups the form lists
+SCIM_PICK_PAGES = 2           # pages of 500 SCIM groups listed per IdP for the form
+MAX_PICK_SCIM = 2000          # SCIM groups the form lists in all
+MAX_PICK_SAML = 500
 
 # Delete order: dependents before what they use (ZPA refuses to delete an object something still uses).
 DELETE_ORDER = ("access_rule", "timeout_rule", "inspection_rule", "isolation_rule", "inspection_profile", "pra_console", "segment",
@@ -347,7 +362,8 @@ def _lister(zpa: Any, kind: str):
                "inspection_profile": ("app_protection", "list_profiles"), "pra_console": ("pra_console", "list_consoles"),
                "isolation_profiles": ("cbi_zpa_profile", "list_isolation_profiles"), "pra_portals": ("pra_portal", "list_portals"),
                "certificates": ("certificates", "list_issued_certificates"),
-               "enrollment": ("enrollment_certificates", "list_enrolment")}[kind]
+               "enrollment": ("enrollment_certificates", "list_enrolment"),
+               "idps": ("idp", "list_idps"), "saml_attributes": ("saml_attributes", "list_saml_attributes")}[kind]
     if kind == "enrollment":
         return lambda q: getattr(getattr(zpa, svc), fn)(query_params=dict(q, search="Connector"))
     return lambda q: getattr(getattr(zpa, svc), fn)(query_params=q)
@@ -358,7 +374,7 @@ LIST_LABELS = {"connector_group": "App Connector groups", "provisioning_key": "p
                "pra_console": "PRA consoles", "access_rule": "access policy rules", "timeout_rule": "timeout policy rules",
                "inspection_rule": "inspection policy rules", "isolation_rule": "isolation policy rules",
                "isolation_profiles": "isolation profiles", "pra_portals": "PRA portals", "certificates": "web server certificates",
-               "enrollment": "enrollment certificates"}
+               "enrollment": "enrollment certificates", "idps": "identity providers", "saml_attributes": "SAML attributes"}
 
 
 def list_kind(zpa: Any, kind: str, gate: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
@@ -462,6 +478,25 @@ def rule_apps(row: Dict[str, Any]) -> List[str]:
     return sorted(x for x in out if x)
 
 
+def rule_identities(row: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    """(SCIM groups as "idp:group", SAML values as "attribute:value") of a
+    rule, as read: v1 operands carry lhs/rhs; a v2 SCIM group operand
+    carries idpId and its id in values or entryValues."""
+    scim: Set[str] = set()
+    saml: Set[str] = set()
+    for c in zr.get(row, "conditions") or []:
+        for o in (zr.get(c, "operands") or []) if isinstance(c, dict) else []:
+            if not isinstance(o, dict):
+                continue
+            for t in zr._operand_tokens(o):
+                if t["type"] == "SCIM_GROUP" and t["rhs"]:
+                    idp = t["idp_id"] or (t["lhs"] if t["lhs"] not in ("", "id") else "")
+                    scim.add(f"{idp}:{t['rhs']}")
+                elif t["type"] == "SAML" and t["lhs"] not in ("", "id"):
+                    saml.add(f"{t['lhs']}:{t['rhs']}")
+    return sorted(scim), sorted(saml)
+
+
 def _pra_app_ids(row: Dict[str, Any]) -> List[str]:
     return sorted(zr._ref_ids(zr.get(row, "praApps") or []))
 
@@ -485,6 +520,8 @@ def state(kind: str, row: Dict[str, Any]) -> Dict[str, Any]:
         return {"enabled": _b(g("enabled"))}
     if kind in RULE_KINDS:
         out = {"action": zr.as_str(g("action")).upper(), "apps": rule_apps(row)}
+        if kind == "access_rule":
+            out["scim_groups"], out["saml"] = rule_identities(row)
         if kind == "timeout_rule":
             out.update(reauth_timeout=zr.as_str(g("reauthTimeout")), reauth_idle_timeout=zr.as_str(g("reauthIdleTimeout")))
         if kind == "inspection_rule":
@@ -503,6 +540,8 @@ def _show(v: Any, names: Dict[str, str]) -> str:
     """A value as the preview shows it."""
     if _is_ref(v):
         return f"new: {names.get(v['ref'], v['ref'])}"
+    if isinstance(v, str) and v in names:
+        return names[v]   # an access rule's "idp:group" or "attribute:value", by name
     if isinstance(v, bool):
         return "on" if v else "off"
     if isinstance(v, list):
@@ -538,8 +577,18 @@ def _desc(t: Dict[str, Any], assessor: str) -> str:
     return f"{KINDS[t['kind']]['label']} for {t.get('prefix') or 'the build'}, built by {assessor or 'the assessor'} with the ZPA builder."[:255]
 
 
-def _conditions(apps: Sequence[str]) -> List[Tuple[str, str, str]]:
-    return [("app", "id", str(a)) for a in apps]
+def _conditions(apps: Sequence[str], scim: Sequence[str] = (), saml: Sequence[str] = ()) -> List[Tuple[str, str, str]]:
+    """SDK v1 condition tuples (policies._create_conditions_v1): the
+    applications, then ("scim_group", idp id, group id) and ("saml",
+    attribute id, value). The SDK makes one OR condition of each kind."""
+    out = [("app", "id", str(a)) for a in apps]
+    for x in scim:
+        idp, _, gid = str(x).partition(":")
+        out.append(("scim_group", idp, gid))
+    for x in saml:
+        attr, _, value = str(x).partition(":")
+        out.append(("saml", attr, value))
+    return out
 
 
 _CG_FIELDS = ("name", "description", "enabled", "location", "latitude", "longitude", "city_country", "country_code", "upgrade_day",
@@ -553,7 +602,9 @@ def _camel(k: str) -> str:
 
 
 def _rule_payload(kind: str, name: str, want: Dict[str, Any], description: str) -> Dict[str, Any]:
-    p: Dict[str, Any] = {"name": name, "description": description, "conditions": _conditions(want.get("apps") or [])}
+    p: Dict[str, Any] = {"name": name, "description": description,
+                         "conditions": _conditions(want.get("apps") or [], want.get("scim_groups") or [] if kind == "access_rule" else [],
+                                                   want.get("saml") or [] if kind == "access_rule" else [])}
     if kind == "access_rule":
         p["action"] = "allow"
     elif kind == "timeout_rule":
@@ -995,9 +1046,93 @@ def _owasp_latest(versions: Any) -> str:
     return max(parsed)[1] if parsed else ""
 
 
+def check_rule_identities(spec: Dict[str, Any]) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+    """The access rule's SCIM groups [{idp_id, id}] and SAML values [{id,
+    value}] from what the page sent, checked before anything is read: ids
+    as ZPA gives them (digits), a value of at most MAX_SAML_VALUE
+    characters with no control character, at most MAX_RULE_IDENTITIES each."""
+    scim_raw, saml_raw = spec.get("access_scim_groups") or [], spec.get("access_saml") or []
+    if not isinstance(scim_raw, list) or not isinstance(saml_raw, list):
+        raise _err("Pick the SCIM groups and SAML attributes from the lists read from the tenant.")
+    if len(scim_raw) > MAX_RULE_IDENTITIES or len(saml_raw) > MAX_RULE_IDENTITIES:
+        raise _err(f"Pick at most {MAX_RULE_IDENTITIES} SCIM groups and {MAX_RULE_IDENTITIES} SAML values for one access rule.")
+    scim, saml = [], []
+    for x in scim_raw:
+        if not isinstance(x, dict):
+            raise _err("Pick the SCIM groups from the list read from the tenant.")
+        g = {"idp_id": _id(x.get("idp_id"), "The SCIM group's IdP"), "id": _id(x.get("id"), "The SCIM group")}
+        if g not in scim:
+            scim.append(g)
+    for x in saml_raw:
+        if not isinstance(x, dict):
+            raise _err("Pick the SAML attribute from the list read from the tenant and type its value.")
+        value = str(x.get("value") or "").strip() if isinstance(x.get("value"), (str, int)) else ""
+        if not value or len(value) > MAX_SAML_VALUE or re.search(r"[\x00-\x1f\x7f]", value):
+            raise _err(f"Type each SAML attribute value: 1 to {MAX_SAML_VALUE} characters, no control characters.")
+        a = {"id": _id(x.get("id"), "The SAML attribute"), "value": value}
+        if a not in saml:
+            saml.append(a)
+    return scim, saml
+
+
+def _plan_identities(zpa: Any, plan: "_Plan", scim: List[Dict[str, str]], saml: List[Dict[str, str]], say, cancel) -> Tuple[List[str], List[str], str]:
+    """Each SCIM group and SAML attribute picked, checked against the tenant
+    as it is now (read-only): it exists, under the IdP it was picked with.
+    Returns ("idp:group" values, "attribute:value" values, who in words);
+    what is missing becomes a blocker."""
+    data, _ = read(zpa, ("idps",) + (("saml_attributes",) if saml else ()), say, cancel)
+    idps = {_oid(r): r for r in data["idps"]}
+    attrs = {_oid(r): r for r in data.get("saml_attributes") or []}
+    gate = _gate(cancel)
+    scim_vals, saml_vals, who = [], [], []
+    for g in scim:
+        idp = idps.get(g["idp_id"])
+        gate.before()
+        try:
+            row, _r, err = zr._triple(zpa.scim_groups.get_scim_group(g["id"]))
+        except zr.Stopped:
+            raise ao.Stopped("You clicked Stop: nothing more was read and nothing was written.")
+        except Exception as e:  # noqa: BLE001
+            row, err = None, zr._err_text(e)
+        row = zr._plain(row) if row is not None else None
+        if idp is None:
+            plan.blockers.append(f"The IdP {g['idp_id']} of a SCIM group you picked is not in ZPA now. Read the tenant again and pick it.")
+            continue
+        if row is None or zr.as_str(zr.get(row, "idpId")) not in ("", g["idp_id"]):
+            plan.blockers.append(f"SCIM group {g['id']} is not in ZPA under IdP {_name(idp)} now"
+                                 f"{' (' + zr._err_text(err) + ')' if err and row is None else ''}. Read the tenant again and pick it.")
+            continue
+        val = f"{g['idp_id']}:{g['id']}"
+        plan.names[val] = f"SCIM group {_name(row) or g['id']} ({_name(idp)})"
+        scim_vals.append(val)
+        who.append(plan.names[val])
+        if zr.as_bool(zr.get(idp, "enableScimBasedPolicy")) is False:
+            plan.warnings.append(f"IdP {_name(idp)} has SCIM-based policy off: its SCIM group conditions never match until it is turned on.")
+    for a in saml:
+        attr = attrs.get(a["id"])
+        if attr is None:
+            plan.blockers.append(f"SAML attribute {a['id']} is not in ZPA now. Read the tenant again and pick it.")
+            continue
+        val = f"{a['id']}:{a['value']}"
+        plan.names[val] = f"SAML {_name(attr)} = {a['value']}"
+        saml_vals.append(val)
+        who.append(plan.names[val])
+        idp = idps.get(zr.as_str(zr.get(attr, "idpId")))
+        if idp is not None and zr.as_bool(zr.get(idp, "disableSamlBasedPolicy")) is True:
+            plan.warnings.append(f"IdP {_name(idp)} has SAML-based policy disabled: the condition on {_name(attr)} never matches until it is enabled.")
+    words = ""
+    if scim_vals or saml_vals:
+        parts = ([" or ".join(who[:len(scim_vals)])] if scim_vals else []) + ([" or ".join(who[len(scim_vals):])] if saml_vals else [])
+        words = "users in " + " and with ".join(parts)
+    return sorted(scim_vals), sorted(saml_vals), words
+
+
 def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     p = check_prefix(spec.get("prefix"))
     want_access, want_timeout, want_insp = spec.get("access") is True, spec.get("timeout") is True, spec.get("inspection") is True
+    scim_pick, saml_pick = check_rule_identities(spec)
+    if (scim_pick or saml_pick) and not want_access:
+        raise _err("SCIM groups and SAML attributes limit the access rule: tick Access as well, or clear them.")
     iso = str(spec.get("isolation_profile_id") or "").strip()
     iso = _id(iso, "The isolation profile") if iso else ""
     rt, it = str(spec.get("reauth_timeout") or "28800"), str(spec.get("reauth_idle_timeout") or "3600")
@@ -1006,7 +1141,8 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
     if not (want_access or want_timeout or want_insp or iso):
         raise _err("Pick at least one policy: access, timeout, inspection or isolation.")
     nspec = {"type": "zpa_policies", "prefix": p, "access": want_access, "timeout": want_timeout, "inspection": want_insp,
-             "isolation_profile_id": iso, "reauth_timeout": rt, "reauth_idle_timeout": it}
+             "isolation_profile_id": iso, "reauth_timeout": rt, "reauth_idle_timeout": it,
+             "access_scim_groups": scim_pick, "access_saml": saml_pick}
     zpa = _zpa(client)
     kinds = ["segment", "segment_group"] + [k for k, on in (("access_rule", want_access), ("timeout_rule", want_timeout), ("inspection_rule", want_insp),
                                             ("inspection_profile", want_insp), ("isolation_rule", bool(iso))) if on]
@@ -1018,7 +1154,12 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
         plan.blockers.append(f"No application segment named '{p}-…' in ZPA: build the application segments first (Build new: ZPA application segments).")
     shown = f"{len(apps)} application segment{'s' if len(apps) != 1 else ''} named {p}-…"
     if want_access:
-        plan.ensure("access_rule", f"{p}-access", {"action": "ALLOW", "apps": apps}, data["access_rule"], summary=f"allow {shown}")
+        scim_vals, saml_vals, who = _plan_identities(zpa, plan, scim_pick, saml_pick, say, cancel) if (scim_pick or saml_pick) else ([], [], "")
+        plan.ensure("access_rule", f"{p}-access", {"action": "ALLOW", "apps": apps, "scim_groups": scim_vals, "saml": saml_vals},
+                    data["access_rule"], summary=f"allow {shown}" + (f" for {who}" if who else " for every user"))
+        if scim_vals and saml_vals:
+            plan.warnings.append("The access rule needs both: one of the SCIM groups and one of the SAML values (the SDK puts each kind in its "
+                                 "own condition, and a rule's conditions are joined with AND).")
     if want_timeout:
         plan.ensure("timeout_rule", f"{p}-timeout", {"action": "RE_AUTH", "apps": apps, "reauth_timeout": rt, "reauth_idle_timeout": it},
                     data["timeout_rule"], summary=f"re-authenticate every {TIMEOUT_CHOICES[rt]}, after {IDLE_CHOICES[it]} idle")
@@ -1457,8 +1598,12 @@ def read_objects(client: Any, scope: Dict[str, Any], say, cancel) -> Dict[str, A
     kinds the builder makes (kind, id, name) so the delete form can show what
     a prefix matches."""
     zpa = _zpa(client)
-    kinds = ("connector_group", "isolation_profiles", "pra_portals", "certificates") + DELETE_ORDER
+    kinds = ("connector_group", "isolation_profiles", "pra_portals", "certificates", "idps", "saml_attributes") + DELETE_ORDER
     data, errors = read(zpa, (), say, cancel, optional=kinds)
+    idps = [{"id": _oid(r), "name": _name(r), "scim_enabled": zr.as_bool(zr.get(r, "scimEnabled")) is True,
+             "scim_policy": zr.as_bool(zr.get(r, "enableScimBasedPolicy")) is not False,
+             "saml_policy": zr.as_bool(zr.get(r, "disableSamlBasedPolicy")) is not True} for r in data["idps"] if _oid(r)]
+    scim, scim_cut = _pick_scim_groups(zpa, [i for i in idps if i["scim_enabled"]], say, cancel, errors)
     inv = [{"kind": k, "label": KINDS[k]["label"], "id": _oid(r), "name": _name(r)} for k in DELETE_ORDER for r in data[k]]
     pick = lambda rows: [{"id": _oid(r), "name": _name(r)} for r in rows if _oid(r)]  # noqa: E731
     return {"connector_groups": [dict(x, connectors=len(zr.get(r, "connectors") or [])) for x, r in zip(pick(data["connector_group"]), data["connector_group"])],
@@ -1468,7 +1613,35 @@ def read_objects(client: Any, scope: Dict[str, Any], say, cancel) -> Dict[str, A
             "verticals": [{"id": k, "label": v["label"], "apps": [{"host": h, "label": lab, "tcp": ports} for h, lab, ports in v["apps"]]}
                           for k, v in VERTICALS.items()],
             "timeouts": [{"id": k, "label": v} for k, v in TIMEOUT_CHOICES.items()], "idle_timeouts": [{"id": k, "label": v} for k, v in IDLE_CHOICES.items()],
-            "errors": {LIST_LABELS.get(k, k): v for k, v in errors.items()}, "limits": {"csv_rows": MAX_CSV_ROWS, "csv_bytes": MAX_CSV_BYTES}}
+            "idps": idps[:MAX_PICK_IDPS * 5], "scim_groups": scim, "scim_truncated": scim_cut,
+            "saml_attributes": [{"id": _oid(r), "name": _name(r), "idp_id": zr.as_str(zr.get(r, "idpId"))}
+                                for r in data["saml_attributes"][:MAX_PICK_SAML] if _oid(r)],
+            "errors": {LIST_LABELS.get(k, k): v for k, v in errors.items()},
+            "limits": {"csv_rows": MAX_CSV_ROWS, "csv_bytes": MAX_CSV_BYTES, "rule_identities": MAX_RULE_IDENTITIES}}
+
+
+def _pick_scim_groups(zpa: Any, idps: List[Dict[str, Any]], say, cancel, errors: Dict[str, str]) -> Tuple[List[Dict[str, str]], bool]:
+    """The SCIM groups the access rule form offers: the first pages of each
+    SCIM-enabled IdP (MAX_PICK_IDPS IdPs, SCIM_PICK_PAGES pages each,
+    MAX_PICK_SCIM in all). Read-only; a failure is said, never fatal."""
+    out: List[Dict[str, str]] = []
+    cut = len(idps) > MAX_PICK_IDPS
+    gate = _gate(cancel)
+    for idp in idps[:MAX_PICK_IDPS]:
+        say(f"Reading the SCIM groups of IdP {idp['name']}…")
+        try:
+            rows, complete = zr.list_all(lambda q, _id=idp["id"]: zpa.scim_groups.list_scim_groups(_id, query_params=q), gate, SCIM_PICK_PAGES)
+        except zr.Stopped:
+            raise ao.Stopped("You clicked Stop: nothing more was read and nothing was written.")
+        except Exception as e:  # noqa: BLE001
+            errors[f"scim:{idp['id']}"] = zr._err_text(e)
+            continue
+        cut = cut or not complete
+        for r in rows:
+            if isinstance(r, dict) and _oid(r) and len(out) < MAX_PICK_SCIM:
+                out.append({"idp_id": idp["id"], "idp": idp["name"], "id": _oid(r), "name": _name(r)[:200]})
+        cut = cut or len(out) >= MAX_PICK_SCIM
+    return out, cut
 
 
 _COMMON = dict(family=FAMILY, product="zpa", in_scope=in_scope, read_objects=read_objects, verify=verify, inverse=inverse,

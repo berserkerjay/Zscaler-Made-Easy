@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### ZPA identity in the Path analyzer and the ZPA builder
+- **ZPA identity in the Path analyzer.** The ZPA step no longer treats every user as "any user". In What-if, pick the IdP the user signs in with (Load IdPs from ZPA), type their SCIM user name to look their SCIM groups up (read-only, kept only for that analysis), and type SAML or SCIM attribute values as Name=value. ZPA's access policy is then evaluated for that identity with ZPA's rules: a condition's operands joined by its operator (OR unless it says AND), a negated condition inverted, the conditions joined by the rule's operator, the first matching enabled rule in rule order, default deny. A SCIM group, SCIM attribute or SAML attribute of another IdP is not met, nor one whose IdP has SCIM-based or SAML-based policy off. Anything not given or not read stays "unknown" with the reason, never a match. The verdict says which identity condition decided ("allowed by “Finance apps” because SCIM group “Finance” matched"), which earlier rules do not apply to this user and why, and what is still unknown. A lookup needs ZPA ticked on the Scope page (refused before sign-in otherwise); a filter ZPA ignored is detected and the groups stay unknown; logs carry counts, never a user name, group or value.
+- **ZPA identity column.** Test a list takes idp, SCIM user and attributes columns: each distinct user is looked up once per run (at most 200), and each row's ZPA answer says which identity condition decided.
+- **Access rules for SCIM groups and SAML attributes.** The ZPA builder's access rule can allow only users in SCIM groups or with SAML attribute values picked from what the tenant has (IdPs, SAML attributes and SCIM groups read for the form), each checked again in the preview, through the same four write gates, read-back and Undo. With both kinds picked a user needs one of each (the SDK puts each kind in its own condition).
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

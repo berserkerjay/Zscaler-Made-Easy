@@ -3,8 +3,9 @@
 The Path analyzer page's "Test a list" view sends a CSV of destinations
 (IP addresses, host names, URLs, CIDR blocks and ranges, with optional
 port, protocol, source IP, location, destination country, category,
-user, group, department, label and the expected result, block or
-allow). This module:
+user, group, department, a ZPA identity (IdP, SCIM user name, attribute
+values: zpa_identity), label and the expected result, block or allow).
+This module:
 
 1. parses it defensively (`parse`): the file is untrusted, so it has a
    size cap, a line and cell length cap, no formula is ever evaluated and
@@ -29,7 +30,10 @@ allow). This module:
    row's protocol and port (Client Connector, the PAC file evaluated by
    pac_eval, and every ZIA module in order: zia_path_modules), for the
    row's identity when it names a user, group, department or location
-   (path_whatif). Nothing is re-implemented here and no reader is added:
+   (path_whatif) and, for ZPA, the row's ZPA identity (zpa_identity: the
+   SCIM groups of each distinct user are looked up once per run, at most
+   zpa_identity.MAX_LOOKUPS users, and kept only for the run). Nothing is
+   re-implemented here and no reader is added:
    the reads are path_analyzer.analyze's (ZIA, each module only when in
    scope) and zpa_path.read's. More evaluators plug in with `register`,
    and `combine` lets the one that decides first win;
@@ -129,6 +133,9 @@ ASSUMPTIONS = [
     "A row with a user, group, department or location is evaluated for that identity: rules scoped to it apply and rules scoped to others are "
     "skipped. Without one the row is for any user. A scoped rule that could still block it (or a rule that depends on a time window, device "
     "trust or anything else not given) makes the row 'allowed but blockable'.",
+    "A row with a ZPA identity (an IdP, a SCIM user name and attribute values) is evaluated against ZPA's access policy for that identity: "
+    "the user's SCIM groups are looked up once per run (read-only, kept only for the run) and attribute values are matched by name. "
+    "Without one, ZPA's identity conditions stay unknown.",
     "A row's source IP is matched against the Cloud Firewall's source IP conditions, taken as the address ZIA sees for the device. Destination "
     "country is carried into the results but not evaluated: this tool does not geolocate.",
     "ICMP rows are not traced (the Path analyzer evaluates TCP and UDP); a row with the protocol 'any' is traced as TCP.",
@@ -159,11 +166,18 @@ ALIASES: Dict[str, Tuple[str, ...]] = {
     "user": ("user", "username", "email", "upn"),
     "group": ("group", "groups", "usergroup", "usergroups"),
     "department": ("department", "departments", "dept"),
+    # ZPA identity (zpa_identity): the IdP (name or id), the SCIM user name
+    # to look the user's SCIM groups up with, and attribute values typed
+    # as Name=value, separated by ';'.
+    "idp": ("idp", "zpaidp", "identityprovider"),
+    "zpa_user": ("zpauser", "scimuser", "scimusername"),
+    "attributes": ("saml", "samlattributes", "zpaattributes", "attributes"),
     "label": ("label", "name", "note", "notes", "comment", "description", "tag"),
     "expected": ("expected", "expect", "expectation", "should", "desired", "intent", "expectedaction", "expectedresult"),
 }
 _HEADER = {alias: key for key, names in ALIASES.items() for alias in names}
-FIELDS = ("line", "input", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "group", "department", "label", "expected",
+FIELDS = ("line", "input", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "group", "department", "zpa_identity",
+          "label", "expected",
           "notes")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _CATEGORY_ID = re.compile(r"^[A-Z0-9_]{2,64}$")
@@ -249,6 +263,15 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
     for key in ("location", "dest_country", "user", "group", "department", "label"):
         if raw.get(key):
             e[key] = raw[key][:128]
+    if raw.get("idp") or raw.get("zpa_user") or raw.get("attributes"):
+        import zpa_identity
+        try:
+            z = zpa_identity.parse({"idp": raw.get("idp", "")[:128], "user": raw.get("zpa_user", "")[:128], "attributes": raw.get("attributes", "")})
+        except ValueError as ex:
+            notes.append(f"ZPA identity ignored: {str(ex)[:120]}")
+        else:
+            if z:   # a tuple, so rows with the same identity share their answer
+                e["zpa_identity"] = (z["idp"], z["user"], tuple(z["attributes"]))
     if raw.get("category"):
         cats = []
         for c in re.split(r"[;|,\s]+", raw["category"].upper()):
@@ -897,6 +920,7 @@ class PathEvaluator:
     def __init__(self, *, client, scope: Dict[str, Any], network: str = "off", platform: str = "windows",
                  snapshot: Optional[Dict[str, Any]] = None, packs: Optional[List[Dict[str, Any]]] = None, log: LogFn = None,
                  cancel: Any = None, zpa: Optional[Dict[str, Any]] = None, **_: Any) -> None:
+        import zpa_identity
         self.client, self.scope, self.network, self.platform = client, scope, network, platform
         self.snapshot = snapshot
         self.fresh: Optional[Dict[str, Any]] = None
@@ -913,6 +937,9 @@ class PathEvaluator:
         self.zpa_note: Optional[str] = None
         self.zpa_state = "not_in_scope" if not zpa else "not_read"
         self._zpa_cache: Dict[Tuple[Any, ...], Tuple[str, Dict[str, Any]]] = {}
+        # The rows' ZPA identities, resolved once each; SCIM lookups only for this run.
+        self._zid_lookups = zpa_identity.Lookups((zpa or {}).get("client"), cancel)
+        self._zid_cache: Dict[Tuple[Any, ...], Optional[Dict[str, Any]]] = {}
         self._zidx: Optional[_HostIndex] = None
         self._shared: Dict[Tuple[Any, ...], Tuple[str, Dict[str, Any]]] = {}
         self._index: Optional[Tuple[_HostIndex, Optional[_HostIndex], set, List[str]]] = None
@@ -1104,20 +1131,38 @@ class PathEvaluator:
         sm = zpa_analysis.match_segment(self.zsnap, d)
         if not sm["match"]:
             return None, None
-        key = (sm["match"]["id"], d["protocol"], d["port"], bool(d.get("port_assumed")))
+        zt = row.get("zpa_identity")
+        ident = self._identity(zt) if zt else None
+        key = (sm["match"]["id"], d["protocol"], d["port"], bool(d.get("port_assumed")), zt)
         hit = self._zpa_cache.get(key)
         if hit is None:
-            st = zpa_path.stage(self.zsnap, d, network=self.network, platform=self.platform, profiles=self.zprofiles)
+            st = zpa_path.stage(self.zsnap, d, network=self.network, platform=self.platform, profiles=self.zprofiles, identity=ident)
             hit = (host, st)
             self._zpa_cache[key] = hit
         rep, st = hit
         out = summarize_zpa(st, rep, host)
         if out is not None:
+            why = (st.get("identity") or {}).get("sentence")
+            if why:
+                out = dict(out, notes=list(out.get("notes") or []) + [why])
             return out, None
         head = str(st.get("headline") or "").replace(rep, host)
         if st.get("outcome") == "zpa_conditional":
             return None, "ZPA may carry it (" + head.rstrip(".") + "); when it does not, ZIA applies as shown."
         return None, head
+
+    def _identity(self, zt: Tuple[Any, ...]) -> Optional[Dict[str, Any]]:
+        """A row's ZPA identity resolved against the ZPA read, once per
+        distinct identity in the run."""
+        import zpa_identity
+        import zpa_reader
+        if zt not in self._zid_cache:
+            p = {"idp": zt[0], "user": zt[1], "attributes": list(zt[2])}
+            try:
+                self._zid_cache[zt] = zpa_identity.resolve(p, self.zsnap or {}, self._zid_lookups if zpa_identity.needs_lookup(p) else None)
+            except zpa_reader.Stopped:
+                raise Stopped(STOPPED_REASON)
+        return self._zid_cache[zt]
 
     def _zia(self, row: Dict[str, Any], p: Optional[str], port: Optional[int]) -> Dict[str, Any]:
         import path_analyzer
@@ -1304,7 +1349,7 @@ def category_advice(expected: str, cat: str, kind: str) -> str:
 COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("row", "Row"), ("line", "Input line"), ("input", "Input"), ("target", "Destination"), ("port", "Port"), ("protocol", "Protocol"),
     ("source_ip", "Source IP"), ("location", "Location"), ("dest_country", "Destination country"), ("user", "User"), ("group", "Group"),
-    ("department", "Department"), ("label", "Label"),
+    ("department", "Department"), ("zpa_identity", "ZPA identity"), ("label", "Label"),
     ("category", "Category"), ("security_alert", "Security alert"), ("application", "Cloud app"), ("category_source", "Category source"),
     ("result", "Result"), ("blockable_by", "Allowed but blockable by"), ("area", "Deciding area"), ("rule", "Deciding rule"),
     ("action", "Action"), ("stops_at", "Stops at"), ("segment", "ZPA segment"), ("inspection", "Inspection"), ("expected", "Expected"),
@@ -1351,7 +1396,7 @@ class Run:
                              "private": bool(p.is_ip[i]) and path_analyzer._is_private(ipaddress.ip_address(target)),
                              "port": e.get("port", ""), "protocol": e.get("protocol", ""), "source_ip": e.get("source_ip", ""),
                              "location": e.get("location", ""), "dest_country": e.get("dest_country", ""), "user": e.get("user", ""),
-                             "group": e.get("group", ""), "department": e.get("department", ""),
+                             "group": e.get("group", ""), "department": e.get("department", ""), "zpa_identity": _zid_text(e.get("zpa_identity")),
                              "label": e.get("label", ""), "expected": e.get("expected", ""), "category_source": source}
         if ev is None:
             r.update(result="not tested", category="; ".join(override or ()), security_alert="", application="", blockable_by="", area="",
@@ -1374,6 +1419,14 @@ class Run:
                 yield self.row(i)
 
 
+def _zid_text(zt: Any) -> str:
+    """A row's ZPA identity as the results show it."""
+    if not zt:
+        return ""
+    import zpa_identity
+    return zpa_identity.describe({"idp": zt[0], "user": zt[1], "attributes": list(zt[2])})
+
+
 def _row_context(p: ParsedList, i: int, lk: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     import path_analyzer
     e = p.entries[p.entry_of[i]]
@@ -1381,14 +1434,15 @@ def _row_context(p: ParsedList, i: int, lk: Optional[Dict[str, Any]]) -> Dict[st
     ip = bool(p.is_ip[i])
     return {"target": host, "host": host, "is_ip": ip, "private": ip and path_analyzer._is_private(ipaddress.ip_address(host)),
             "port": e.get("port"), "protocol": e.get("protocol"), "source_ip": e.get("source_ip"), "location": e.get("location"),
-            "dest_country": e.get("dest_country"), "user": e.get("user"), "group": e.get("group"), "department": e.get("department"), "lookup": lk}
+            "dest_country": e.get("dest_country"), "user": e.get("user"), "group": e.get("group"), "department": e.get("department"),
+            "zpa_identity": e.get("zpa_identity"), "lookup": lk}
 
 
 def _row_key(host: str, e: Dict[str, Any]) -> Tuple[Any, ...]:
     """Rows with the same key get the same answer: the destination and every
     column the evaluation uses."""
     return (host, e.get("category"), e.get("port"), e.get("protocol"), e.get("source_ip"), e.get("user"), e.get("group"), e.get("department"),
-            e.get("location"))
+            e.get("location"), e.get("zpa_identity"))
 
 
 # Where each row was decided, for the page's live flow (static/flow_anim.js

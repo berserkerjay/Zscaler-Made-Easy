@@ -325,6 +325,8 @@ ROUTES: List[Route] = [
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}),
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
+    Route("/api/path-analyzer/zpa-identity", {"action": "idps"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/path-analyzer/zpa-identity", {"action": "user", "idp": "216196257331281111", "user": "jo@example.com"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/report/data-flow"),
     Route("/api/report/ssl-flow"),
     Route("/api/report/bypass"),

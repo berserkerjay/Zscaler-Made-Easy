@@ -9161,6 +9161,10 @@ async def bulk_test_start(req: BulkTestRequest, request: Request):
     scope["source"] = src
     if not scope["read"] and "zpa" not in sc:
         raise HTTPException(status_code=400, detail=PATH_NOTHING)
+    zids = [e["zpa_identity"] for e in parsed.entries if e.get("zpa_identity")]
+    if zids and "zpa" not in sc:
+        raise HTTPException(status_code=400, detail="The list's ZPA identity column is not in scope: on the Scope page tick ZPA, "
+                                                    "or remove the idp, SCIM user and attribute columns. Nothing was read.")
     creds = _tenant_creds(req)
     zpa_on, zpa_problem, zpa_kept = _bulk_zpa_inputs(req, creds)
     if not scope["read"] and zpa_problem:
@@ -9173,6 +9177,8 @@ async def bulk_test_start(req: BulkTestRequest, request: Request):
         zpa = {"problem": zpa_problem}
     elif zpa_kept is not None:
         zpa = {"snapshot": zpa_kept["snapshot"], "profiles": zpa_kept["profiles"], "report_id": zpa_kept["report_id"]}
+        if any(z[0] and z[1] for z in zids):   # SCIM lookups for the rows' users, this run only
+            zpa["client"] = await asyncio.to_thread(_build_sdk_client, creds)
     elif zpa_on:
         sdk = await asyncio.to_thread(_build_sdk_client, creds)
         zpa = {"client": sdk, "mask": lambda x: tenant_auth.mask_secrets(str(x), creds)}
@@ -9956,7 +9962,7 @@ class PathAnalyzerRequest(MigrateRequest):
     # string, or nothing (the URL's port, else its scheme's, else 443).
     protocol: str = ""
     port: Optional[Union[str, int]] = None
-    identity: Dict[str, Any] = {}  # what-if: {user, group, department, location} (path_whatif)
+    identity: Dict[str, Any] = {}  # what-if: {user, group, department, location} (path_whatif); zpa: {idp, user, attributes} (zpa_identity)
     source: str = "device"         # "device" (Client Connector) or "workload" (Cloud or Branch Connector)
     workload: Dict[str, Any] = {}  # ip, tags, workload_group, connector_group (workload_path.workload_input)
     zpa_report_id: str = ""        # the ZPA read to reuse
@@ -10554,6 +10560,7 @@ def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
     zpa_on = "zpa" in sc
     if source == "device" and not scope["read"] and not zpa_on:
         raise HTTPException(status_code=400, detail=PATH_NOTHING)
+    zid = _path_zpa_identity(req.identity, zpa_on)
     creds = _tenant_creds(req)
     oneapi = creds.get("auth_method") != tenant_auth.LEGACY
     if source == "workload" and not oneapi:
@@ -10567,10 +10574,30 @@ def _path_inputs(req: PathAnalyzerRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=zpa_problem.replace("ZPA was not read: ", "ZPA cannot be read: ") + " Nothing was read.")
     zpa_kept = _path_kept("" if zpa_problem else req.zpa_report_id, "pathzpa", creds) if zpa_on else None
     ztw_kept = _path_kept(req.ztw_report_id, "pathztw", creds) if source == "workload" else None
+    import zpa_identity
+    zid_lookup = source == "device" and zpa_on and not zpa_problem and zpa_identity.needs_lookup(zid)
     return {"source": source, "pdest": pdest, "d": d, "w": w, "scope": scope, "zpa_on": zpa_on, "zpa_problem": zpa_problem,
             "creds": creds, "label": tenant_auth.record_label(creds), "zia_kept": _kept_path_read(req.report_id, scope, creds) if scope["read"] else None,
-            "zpa_kept": zpa_kept, "ztw_kept": ztw_kept,
-            "need_sdk": (zpa_on and not zpa_problem and zpa_kept is None) or (source == "workload" and ztw_kept is None)}
+            "zpa_kept": zpa_kept, "ztw_kept": ztw_kept, "zid": zid, "zid_lookup": zid_lookup,
+            "need_sdk": (zpa_on and not zpa_problem and (zpa_kept is None or zid_lookup)) or (source == "workload" and ztw_kept is None)}
+
+
+PATH_ZPA_IDENTITY_NOT_IN_SCOPE = ("A ZPA identity is not in scope: on the Scope page tick ZPA (its access policy is what the identity is "
+                                  "evaluated against), or clear the ZPA identity. Nothing was read.")
+
+
+def _path_zpa_identity(identity: Any, zpa_on: bool) -> Optional[Dict[str, Any]]:
+    """The what-if's ZPA identity (zpa_identity.parse), checked before sign-in:
+    400 for a bad one, and for one given while ZPA is not ticked."""
+    import zpa_identity
+    raw = identity.get("zpa") if isinstance(identity, dict) else None
+    try:
+        zid = zpa_identity.parse(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"{e} Nothing was read.")
+    if zid is not None and not zpa_on:
+        raise HTTPException(status_code=400, detail=PATH_ZPA_IDENTITY_NOT_IN_SCOPE)
+    return zid
 
 
 def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_client, log, cancel) -> Dict[str, Any]:
@@ -10643,6 +10670,23 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
                 out_ids["zpa_report_id"] = _remember_report("pathzpa", {"kind": "pathzpa", "snapshot": zsnap, "profiles": profiles}, label)
     if cancel is not None and cancel.is_set():
         return stopped()
+    # The what-if's ZPA identity, resolved against this read: the SCIM
+    # lookups are kept only for this run (zpa_identity.Lookups).
+    zident, zid_block = None, None
+    if inp.get("zid"):
+        import zpa_identity
+        if inp["source"] != "device":
+            zid_block = {"label": zpa_identity.describe(inp["zid"]), "unknown": ["not used: workload traffic has no user, so ZPA identity conditions are never met by it"]}
+        elif zsnap is None:
+            zid_block = {"label": zpa_identity.describe(inp["zid"]), "unknown": [(zst or {}).get("reason") or "ZPA was not read"]}
+        else:
+            try:
+                zident = zpa_identity.resolve(inp["zid"], zsnap, zpa_identity.Lookups(sdk_client, cancel) if inp.get("zid_lookup") else None, log=_log)
+            except zpa_path.Stopped:
+                return stopped()
+            for i, why in enumerate(zident["unknown"]):
+                zident["unknown"][i] = tenant_auth.mask_secrets(why, creds)
+            zid_block = zpa_identity.summary(zident)
     zpa_not_in_scope = [] if inp["zpa_on"] else [{"hop": "zpa", "label": "ZPA", "detail": "Not in scope: ZPA is not ticked on the Scope page, so whether ZPA carries this destination was not assessed."}]
 
     def zia(pre_hops, modules, impacts, assumptions, note):
@@ -10666,6 +10710,8 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
             return res
         res.setdefault("tenant_label", label)
         res.update(out_ids, source=inp["source"], logs=logs)
+        if zid_block is not None:
+            res["zpa_identity"] = (zst or {}).get("identity") or zid_block
         v = res.get("verdict") or {}
         v["not_in_scope"] = list(v.get("not_in_scope") or []) + zpa_not_in_scope
         _log(f"Verdict: {v.get('headline', '')}")
@@ -10735,7 +10781,7 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
     # 4. User device: ZPA first
     if zst is None and zsnap is not None:
         _log("Placing the destination in ZPA: application segment, bypass, client forwarding, access policy…")
-        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles)
+        zst = zpa_path.stage(zsnap, d, network=req.network, platform=req.platform, profiles=profiles, identity=zident)
         _log("ZPA: " + zst["headline"])
     if zst is not None and zst.get("carries") is True:
         res = zpa_path.standalone(zst["hops"], zst["modules"], outcome=zst["outcome"], headline=zst["headline"], summary=zst["summary"],
@@ -10812,6 +10858,56 @@ async def path_analyzer_identities(req: PathIdentityRequest):
         raise HTTPException(status_code=400, detail="Type 2 to 64 characters to search. Nothing was read.")
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(path_whatif.search_identities, client, req.kind, req.query)
+
+
+class PathZpaIdentityRequest(MigrateRequest):
+    """The what-if's ZPA identity pickers: `action` "idps" lists the
+    tenant's IdPs and SAML attribute names; "user" looks one SCIM user's
+    groups up in one IdP (`idp`, `user`). Read only when ZPA is ticked on
+    the Scope page."""
+    action: str = "idps"
+    idp: str = ""
+    user: str = ""
+    customer_id: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+@app.post("/api/path-analyzer/zpa-identity")
+async def path_analyzer_zpa_identity(req: PathZpaIdentityRequest):
+    """Read-only lookups for the what-if's ZPA identity (zpa_identity): the
+    IdPs and SAML attribute names, or one SCIM user's groups in one IdP
+    (at most zpa_identity.SHOWN_GROUPS names shown). 400 before signing in
+    when ZPA is not ticked, the sign-in cannot reach ZPA or the input is
+    not valid. Nothing is kept after the answer, nothing is written."""
+    import zpa_identity
+    _require_in_scope(req, "zpa", "Looking up a ZPA identity")
+    if req.action not in ("idps", "user"):
+        raise HTTPException(status_code=400, detail="Ask for the IdPs or for one user's SCIM groups. Nothing was read.")
+    if req.action == "user":
+        try:
+            zid = zpa_identity.parse({"idp": req.idp, "user": req.user})
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"{e} Nothing was read.")
+        if not zpa_identity.needs_lookup(zid) or not re.fullmatch(r"\d{1,24}", zid["idp"]):
+            raise HTTPException(status_code=400, detail="Pick the IdP from the list and type the user's SCIM user name. Nothing was read.")
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail="ZPA cannot be read with the classic ZIA API sign-in: sign in with a OneAPI API client. Nothing was read.")
+    if not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail="ZPA cannot be read: the ZPA customer ID is missing (Connect to the tenant → Customer ID). Nothing was read.")
+    sdk = await asyncio.to_thread(_build_sdk_client, creds)
+    if req.action == "idps":
+        out = await asyncio.to_thread(zpa_identity.list_idps, sdk)
+    else:
+        res = await asyncio.to_thread(zpa_identity.lookup, sdk, zid["idp"], zid["user"])
+        groups = sorted(res["groups"] or [], key=lambda g: g["name"].casefold())
+        out = {"idp": zid["idp"], "user": zid["user"], "groups": groups[:zpa_identity.SHOWN_GROUPS],
+               "group_count": len(groups) if res["groups"] is not None else None, "complete": res["complete"], "error": res["error"]}
+    if out.get("error"):
+        out["error"] = tenant_auth.mask_secrets(str(out["error"]), creds)
+    return out
 
 
 @app.get("/api/report/data-flow/{report_id}")

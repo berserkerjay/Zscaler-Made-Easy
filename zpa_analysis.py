@@ -1195,15 +1195,72 @@ def _norm_user(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         saml = {str(k).strip().lower(): ([str(x).strip() for x in v] if isinstance(v, list) else [str(v).strip()]) for k, v in saml.items() if str(k).strip()}
     else:
         saml = None
+    names = u.get("scim_attr_names")
     return {"idp": one(u.get("idp")), "scim_groups": lst(u.get("scim_groups")) if u.get("scim_groups") is not None else None,
             "saml": saml if saml else None, "client_type": one(u.get("client_type")), "platform": one(u.get("platform")),
             "posture_pass": lst(u.get("posture_pass")) if u.get("posture_pass") is not None else None,
             "trusted_networks": lst(u.get("trusted_networks")) if u.get("trusted_networks") is not None else None,
-            "country": one(u.get("country")), "machine_group": one(u.get("machine_group"))}
+            "country": one(u.get("country")), "machine_group": one(u.get("machine_group")),
+            # ZPA identity (zpa_identity): whether the SCIM groups given are
+            # every group the user is in for their IdP (a group not listed is
+            # then not theirs) or only some (it stays unknown), and the IdP's
+            # SCIM attribute names by id, to match SCIM conditions by name.
+            "scim_complete": u.get("scim_complete") is not False,
+            "scim_attr_names": {str(k): str(v) for k, v in names.items()} if isinstance(names, dict) else {}}
 
 
 def _ci(a: str, b: str) -> bool:
     return (a or "").strip().lower() == (b or "").strip().lower()
+
+
+def user_idp(u: Dict[str, Any], ix: _Index) -> Optional[str]:
+    """The id of the IdP the user signs in with, when the user context names
+    one this tenant has (by id or name); None otherwise."""
+    want = u.get("idp")
+    if not want:
+        return None
+    if want in ix.idps:
+        return want
+    return next((i for i, x in ix.idps.items() if _ci(x.get("name") or "", want)), None)
+
+
+def operand_idp(o: Dict[str, Any], ix: _Index) -> str:
+    """The IdP an identity operand belongs to: a SCIM group's lhs (v1) or
+    idpId, a SAML attribute's idpId (from the tenant's SAML attributes), a
+    SCIM attribute operand's idpId. "" when the rule does not say."""
+    t = o["type"]
+    if t == "SCIM_GROUP":
+        g = ix.scim.get(o["rhs"])
+        return o.get("idp_id") or (o["lhs"] if o["lhs"] not in ("", "id") else "") or str((g or {}).get("idp_id") or "")
+    if t == "SAML":
+        a = ix.saml.get(o["lhs"])
+        return str((a or {}).get("idp_id") or o.get("idp_id") or "")
+    if t == "SCIM":
+        return o.get("idp_id") or ""
+    return ""
+
+
+def _other_idp(o: Dict[str, Any], u: Dict[str, Any], ix: _Index) -> Optional[str]:
+    """Why an identity operand cannot hold for this user's IdP, or None. A
+    user signs in through one IdP, and SCIM groups, SCIM attributes and SAML
+    attributes are each defined for one IdP: an operand of another IdP is
+    not met (assumed from ZPA's per-IdP identity model: the SDK models carry
+    idpId on SCIMGroup, SAMLAttribute and Operand). The IdP's own switches
+    are read as the ZPA-ID-02 check reads them: SCIM-based policy off, or
+    SAML-based policy disabled, means its conditions are never met."""
+    uid = user_idp(u, ix)
+    if uid is None:
+        return None
+    oid = operand_idp(o, ix)
+    if oid and oid != uid:
+        other = ix.idps.get(oid)
+        return f"it belongs to IdP {other['name'] if other else oid}, not the user's"
+    idp = ix.idps.get(uid) or {}
+    if o["type"] in ("SCIM_GROUP", "SCIM") and idp.get("scim_policy") is False:
+        return f"IdP {idp.get('name') or uid} has SCIM-based policy off"
+    if o["type"] == "SAML" and idp.get("saml_policy_disabled") is True:
+        return f"IdP {idp.get('name') or uid} has SAML-based policy disabled"
+    return None
 
 
 def _eval_operand(o: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[str, Any]], ix: _Index) -> Tuple[Optional[bool], str]:
@@ -1213,22 +1270,30 @@ def _eval_operand(o: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[str, 
         return (bool(seg) and seg["id"] == rhs), "app"
     if t == "APP_GROUP":
         return (bool(seg) and seg.get("segment_group_id") == rhs), "app"
+    if t in ("SCIM_GROUP", "SCIM", "SAML") and u.get("idp") and _other_idp(o, u, ix):
+        return False, "IdP"
     if t == "SCIM_GROUP":
         if u["scim_groups"] is None:
             return None, "SCIM groups"
         g = ix.scim.get(rhs)
         names = {rhs.lower(), (o.get("name") or "").lower(), (g or {}).get("name", "").lower()} - {""}
-        return any(x.lower() in names for x in u["scim_groups"]), "SCIM groups"
+        if any(x.lower() in names for x in u["scim_groups"]):
+            return True, "SCIM groups"
+        # Only part of the user's groups is known: one not listed may still be theirs.
+        return (False if u.get("scim_complete", True) else None), "SCIM groups"
     if t in ("SAML", "SCIM"):
         if u["saml"] is None:
             return None, "SAML attributes" if t == "SAML" else "SCIM attributes"
         a = ix.saml.get(lhs) if t == "SAML" else None
-        keys = {lhs.lower(), (o.get("name") or "").lower()} | ({a["name"].lower(), (a.get("saml_name") or "").lower()} if a else set())
+        scim_name = (u.get("scim_attr_names") or {}).get(lhs, "") if t == "SCIM" else ""
+        keys = {lhs.lower(), (o.get("name") or "").lower(), scim_name.lower()} | \
+            ({a["name"].lower(), (a.get("saml_name") or "").lower()} if a else set())
         keys.discard("")
         vals = [v for k, vs in u["saml"].items() if k in keys for v in vs]
+        label = a["name"] if a else (scim_name or o.get("name") or lhs)
         if not vals:
-            return None, f"attribute {a['name'] if a else (o.get('name') or lhs)}"
-        return any(_ci(v, rhs) for v in vals), f"attribute {a['name'] if a else (o.get('name') or lhs)}"
+            return None, f"attribute {label}"
+        return any(_ci(v, rhs) for v in vals), f"attribute {label}"
     if t == "IDP":
         if u["idp"] is None:
             return None, "IdP"

@@ -55,7 +55,7 @@
       </div>
       <section role="tabpanel" id="panel-one" aria-labelledby="tab-one" tabindex="0">
       <details class="pa-framework pa-whatif" id="paWhatIf">
-        <summary>What-if: a user, group, department or location (optional)</summary>
+        <summary>What-if: a user, group, location or ZPA identity (optional)</summary>
         <div class="df-hint">Leave these empty to analyze for anyone; the result then lists what the policy action also depends on. Fill any of them to evaluate rules scoped to that identity: rules for it apply, rules for others are skipped. Groups you give are taken as the user's only groups.</div>
         <div class="pa-wi-grid">
           <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">User</span><input type="text" id="paWi_user" placeholder="jane@acme.com or a display name" autocomplete="off" spellcheck="false" maxlength="200"></label>
@@ -68,6 +68,19 @@
             <button type="button" class="rp-btn" data-wi-find="location" aria-describedby="paWiScope">Look up in ZIA</button><ul class="pa-wi-results" id="paWiRes_location" aria-label="Location matches in ZIA" hidden></ul></div>
         </div>
         <p class="df-hint" id="paWiScope"></p>
+        <fieldset class="pa-wi-zpa" id="paWiZpa">
+          <legend>ZPA identity</legend>
+          <div class="df-hint">For ZPA's access policy. Pick the IdP the user signs in with and type their SCIM user name: their SCIM groups are looked up in ZPA (read-only, kept only for this analysis). Type SAML or SCIM attribute values by hand, one Name=value per line. Anything you leave out stays unknown, never a match.</div>
+          <div class="pa-wi-grid">
+            <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">IdP</span><select id="paWiZ_idp"><option value="">Not given</option></select></label>
+              <button type="button" class="rp-btn" id="paWiZ_load" aria-describedby="paWiZScope">Load IdPs from ZPA</button></div>
+            <div class="pa-wi-field"><label class="df-ctl"><span class="lbl">SCIM user name</span><input type="text" id="paWiZ_user" placeholder="jane@acme.com" autocomplete="off" spellcheck="false" maxlength="128"></label>
+              <button type="button" class="rp-btn" id="paWiZ_find" aria-describedby="paWiZScope">Look up SCIM groups</button><ul class="pa-wi-results" id="paWiZRes" aria-label="SCIM groups found in ZPA" hidden></ul></div>
+          </div>
+          <label class="op-block"><span class="lbl">Attribute values</span><textarea id="paWiZ_attrs" rows="2" maxlength="4000" spellcheck="false" autocomplete="off" placeholder="Department=Finance&#10;memberOf=VPN users" aria-describedby="paWiZAttrHint"></textarea></label>
+          <p class="df-hint" id="paWiZAttrHint"></p>
+          <p class="df-hint" id="paWiZScope"></p>
+        </fieldset>
         <div class="sr-only" id="paWiLive" role="status" aria-live="polite"></div>
       </details>
       <details class="pa-framework" id="paFramework" open>
@@ -99,7 +112,7 @@
         <div class="pa-intro" id="plHow">
           <div class="pa-intro-t">Test a list</div>
           <p class="pl-lead">Test many destinations at once and see which are blocked, allowed or sent around Zscaler, and, when your list says what you expected, where to fix each miss. Choose a CSV file or paste the list, then click Test the list.</p>
-          <div class="df-hint">One destination per line: an IP address, a CIDR block (up to a /16), a range such as 10.0.0.1-10.0.0.50, a host name or a URL. A first line with column names lets you add: port, protocol, source IP, location, country, category, user, group, department, label and expected (block or allow). The Network, Platform and Tenant above apply. Up to 8 MB and 250,000 rows; the file is read in this browser and only its text is sent to this app. Nothing is written to the tenant.</div>
+          <div class="df-hint">One destination per line: an IP address, a CIDR block (up to a /16), a range such as 10.0.0.1-10.0.0.50, a host name or a URL. A first line with column names lets you add: port, protocol, source IP, location, country, category, user, group, department, label and expected (block or allow), and for ZPA's access policy an identity: idp (the IdP's name), SCIM user (its SCIM groups are looked up once per run, read-only) and attributes (Name=value, separated by ;). A ZPA identity needs ZPA ticked on the Scope page. The Network, Platform and Tenant above apply. Up to 8 MB and 250,000 rows; the file is read in this browser and only its text is sent to this app. Nothing is written to the tenant.</div>
         </div>
         <div class="pl-form">
           <div class="pl-row">
@@ -495,6 +508,7 @@
             <ol class="fa-log" id="paHopLog" aria-label="Hops reached so far"></ol>
           </div>
         </section>
+        ${res.zpa_identity ? PathWhatIf.zpaSection(res.zpa_identity) : ''}
         ${res.whatif ? PathWhatIf.section(res.whatif) : ''}
         ${PathModules.section(res)}
         <h2 class="df-h">What blocks this traffic</h2>
