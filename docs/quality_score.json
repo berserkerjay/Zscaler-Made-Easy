@@ -275,7 +275,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 120,
+            "fixed": 123,
             "accepted": 3,
             "records": [
               "c6-assessment",
@@ -283,7 +283,8 @@
               "c6-path",
               "c6-posture",
               "c6-zpa",
-              "func-path"
+              "func-path",
+              "w7-zpa-identity"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 582,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -450,12 +451,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 158,
+        "fixed": 159,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 339,
         "accepted": 0
       },
       "info": {
@@ -465,12 +466,12 @@
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 315,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8677
   },
   "findings": [
     {
@@ -3576,6 +3577,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-ZPAID-01",
+      "title": "The Path analyzer's ZPA step treated every user as 'any user': SCIM group, SCIM attribute, SAML attribute and IdP conditions were never evaluated, so identity-scoped access rules stayed conditional",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "zpa_identity.py: an IdP, a SCIM user's groups looked up read-only for the run and typed attribute values feed zpa_analysis.evaluate_rule; the verdict names the deciding identity condition",
+      "test": "tests/test_zpa_identity.py::test_the_access_policy_is_evaluated_for_the_identity_in_rule_order",
+      "commit": "e2eb71d",
+      "reason": "",
+      "slug": "w7-zpa-identity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -8970,6 +8987,38 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-ZPAID-02",
+      "title": "With an IdP given, a SCIM group condition of another IdP still matched a group of the same name, and a SAML condition of another IdP matched typed values",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "zpa_analysis._other_idp: an identity operand of another IdP, or of an IdP with its SCIM- or SAML-based policy off, is not met",
+      "test": "tests/test_zpa_identity.py::test_a_condition_of_another_idp_or_a_switched_off_idp_is_not_met",
+      "commit": "e2eb71d",
+      "reason": "",
+      "slug": "w7-zpa-identity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7-ZPAID-03",
+      "title": "The ZPA builder's access rule could only allow every user: no SCIM group or SAML attribute condition",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-284",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "ops_zpa: access_scim_groups and access_saml picked from the tenant, checked in the preview, written with the SDK's v1 condition tuples, compared on read-back and restored by Undo",
+      "test": "tests/test_zpa_identity.py::test_the_builder_creates_an_access_rule_for_scim_groups_and_saml_values_the_sdk_way",
+      "commit": "e2eb71d",
+      "reason": "",
+      "slug": "w7-zpa-identity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -10634,6 +10683,37 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-zpa-identity",
+      "area": "ZPA identity: Path analyzer what-if, Test a list and the ZPA builder",
+      "title": "ZPA access policy evaluated for an IdP, a user's SCIM groups and SAML or SCIM attribute values, with the condition that decided; access rules over SCIM groups and SAML attributes",
+      "standards": [
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.3.3",
+        "ASVS V7.1.1",
+        "ASVS V8.3.4",
+        "ASVS V1.4.1",
+        "CWE-863",
+        "CWE-20",
+        "CWE-79",
+        "CWE-532",
+        "CWE-524",
+        "CWE-770",
+        "CWE-841",
+        "CWE-367",
+        "WSTG-ATHZ-02",
+        "WSTG-INPV-01",
+        "WCAG 2.2 SC 1.3.1",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.1.1",
+        "WCAG 2.2 SC 3.3.2",
+        "WCAG 2.2 SC 4.1.2"
+      ],
+      "checks": 12,
+      "findings": 3,
+      "tests_added": 75
     }
   ],
   "standards": {
