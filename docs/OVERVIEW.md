@@ -627,6 +627,17 @@ what you get, what to do next.
   action you approved, with an API cross-reference and an efficacy
   mapping that says what share of each policy's detection the
   translation carries.
+  Its *Firewall and private access* section reads a Palo Alto Networks
+  PAN-OS configuration export (`panos_migrate.py`, parsed with
+  defusedxml, size, depth and element capped) and builds a plan for Bulk
+  changes: security rules as Cloud Firewall rules with their IP source and
+  destination groups and network services, App-IDs as network
+  applications where one exists, allow rules from a GlobalProtect zone to
+  internal addresses as ZPA application segments and an access rule, zones
+  noted, and every item it cannot carry exactly listed with the reason.
+  Bulk changes' *Firewall import from Palo Alto Networks*
+  (`ops_fw_import.py`) previews it against the tenant and applies it
+  through the four gates, every rule disabled, with Undo.
 - **Evaluate All Rules migration wizard** (toolbar: Rule migration
   wizard) — moves a tenant from first-match-wins to Evaluate All Rules:
   reads the rules, reorders them so nothing changes behaviour, and shows
@@ -668,6 +679,14 @@ what you get, what to do next.
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with
   its Secure by Design score.
+  Two switches there are off by default: *update notifications* (one
+  e-mail or webhook notice per new app version, on the digests' channel,
+  `update_notify.py`) and *local plugins* (`local_plugins.py`: Python
+  packages in the folder `DLP_CHECK_PLUGINS_DIR` names, loaded only when
+  an admin approved their exact SHA-256 there; they can add Bulk changes
+  operations, which go through the same gates, and read-only pages shown
+  at /report/plugin; SECURITY.md says what a plugin can do and why the
+  hash is the control; an example is in docs/plugins).
 - **Quality and security score** — this app's own score from 0 to 100 on
   Advanced settings: tests passed in the last full run, open QA findings
   weighted by CVSS severity (an open critical caps it at 39, an open high
@@ -837,6 +856,15 @@ The same code runs without the browser:
   Scheduler.
 - **Container**: `docker compose exec zscaler-made-easy python continuous_eval.py
   --once`.
+- **Terminal UI**: `zscaler-made-easy tui` (or `dlp-check tui`; `tui.py`)
+  opens a keyboard-only curses view of a running server, over SSH too:
+  tenant profiles or the sample tenant, the assessment and its score,
+  findings, the Path analyzer for one destination, Test a list from a
+  file, snapshots and their differences, and plan previews (a Bulk changes
+  operation or a migration plan as JSON). It calls the same API as the
+  web pages with the UI token from `ui_token.txt` (never shown), so a write
+  goes only through the server's plan, typed confirmation and apply path
+  with the same gates. Plain http only to this computer; https elsewhere.
 
 `python dlp_mcp_server.py` runs a separate, optional MCP server (port
 8080, or `--transport stdio`) that lets an AI agent run the same
