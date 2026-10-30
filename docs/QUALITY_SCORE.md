@@ -29,10 +29,10 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | Severity | Open | Fixed | Accepted |
 |---|---|---|---|
 | critical | 0 | 0 | 0 |
-| high | 0 | 13 | 0 |
+| high | 0 | 14 | 0 |
 | medium | 0 | 158 | 0 |
-| low | 0 | 337 | 0 |
-| info | 1 | 48 | 22 |
+| low | 0 | 338 | 0 |
+| info | 1 | 49 | 22 |
 
 ### Regression
 
@@ -395,6 +395,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | FUNC-PATH-02 | A Cloud Firewall rule naming only IPv6 destination groups matched every destination (a definite wrong block of IPv4 traffic) | high | CWE-697 | V4.1.3 | fixed | Traffic analysis | destIpv6Groups and srcIpv6Groups are criteria: never an IPv4 address, unknown for IPv6 (their list is not read) | tests/test_qa_func_path.py::test_a_firewall_rule_on_ipv6_groups_does_not_block_ipv4_and_is_unknown_for_ipv6 |
 | FUNC-PATH-04 | URL filtering, File Type Control and Web DLP rule protocols were ignored by the trace: an HTTP-only block rule was said to block HTTPS | high | CWE-697 | V4.1.3 | fixed | Traffic analysis | The trace applies each rule's protocols (one shared helper with the module criteria) | tests/test_qa_func_path.py::test_url_filtering_first_match_disabled_any_and_protocols |
 | FUNC-PATH-05 | Web DLP excluded users, groups and departments were ignored: definite 'enforce' for excluded users, and the what-if for an excluded group still enforced | high | CWE-863 | V4.1.3 | fixed | Traffic analysis | Exclusions are scope (conditional for any user) and a negated what-if dimension | tests/test_qa_func_path.py::test_a_dlp_rule_with_excluded_groups_does_not_apply_to_them |
+| W7-RC-01 | A template made from an in-memory (unmasked) backup kept a secret-named field's value | high | CWE-312 | V8.3.4 | fixed | Builders | make_template masks the backup again and drops every secret-named field whatever its value | tests/test_config_backup.py::test_secret_canaries_never_reach_a_template |
 | C6-ASSESSMENT-02 | Checks that read nothing, or found nothing to judge, counted as passes (10.4, MC.12, 8.5 with no enabled rule, 6.1 with no device) | medium | CWE-682 | V1.14.1 | fixed | Traffic analysis | 10.4 reads devices, MC.12 is informational, 8.5 with zero rules is REVIEW, 6.1 with no device is INFO | tests/test_c6_assessment.py::test_check_oracle_table |
 | C6-ASSESSMENT-03 | 50+ checks raised on null, numeric or non-object tenant records (state None, numeric names, bool urlCategories, int fileTypes) | medium | CWE-20 | V5.1.4 | fixed | Traffic analysis | _g keeps objects only; _s/_on/_lst read text and list fields defensively | tests/test_c6_assessment.py::test_seeded_fuzz_never_raises_in_any_check |
 | C6-ASSESSMENT-04 | Efficacy engine-expression parser ignored the SDK format ((D63.S &gt; 1)), so every custom dictionary was flagged unused by engines | medium | CWE-697 | V1.14.1 | fixed | Traffic analysis | Parse \\bD\\(?\\s*(\\d+) (SDK and legacy forms), distinct ids in order | tests/test_c6_assessment.py::test_engine_expression_oracle_matches_the_sdk_format |
@@ -603,6 +604,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | UI-16 | 'Download CSV' on the GenAI and Data Security Portfolio framework pages (and the embedded Copilot readiness page) linked pov-use-cases.csv, which the app does not serve (404), and fetched it on load | low | CWE-1059 | V1.1.1 | fixed | UI and accessibility | the button downloads the catalogue the page embeds, as the AI security framework page already did; nothing is fetched | tests/test_reference.py::test_no_reference_document_links_or_fetches_a_file_that_is_not_served |
 | UI-17 | The Connect step scrolled sideways at 320 px when the checkout's branch name is long: the Update app branch list could not shrink below its longest option | low | — | WCAG 2.2 SC 1.4.10 | fixed | UI and accessibility | guide.css lets the branch label wrap and the list shrink to the line | tests/test_connect_reflow.py::test_connect_step_never_scrolls_sideways |
 | UI-19 | One click on 'Update now' (Advanced settings) or 'Update app' (the dashboard card) fetched and pulled new code, switched the install's branch, stashed local edits and installed packages, with no confirmation and no audit record (seen when the click sweep pressed it: the checkout moved to main and the locked msgpack 1.2.3 was installed) | low | CWE-778 | V7.1.3 | fixed | UI and accessibility | both buttons say what happens and ask first; POST /api/app/update records an app_update audit event (who, branch, builds, result); the API is unchanged | tests/test_app_update.py::test_an_app_update_is_recorded_in_the_audit_log |
+| W7-RC-02 | A boolean field named like a reference (zscalerIncidentReceiver) was read as an object id, so every DLP rule looked unclonable | low | CWE-704 | V5.1.3 | fixed | Builders | booleans are never references; the field is no longer listed as one | tests/test_config_restore.py::test_a_clone_creates_dependencies_first_and_remaps_every_id_by_name |
 | C6-ASSESSMENT-16 | 4.6 listed duplicate SSL rule names in set order (non-deterministic finding text) | info | CWE-1023 | V1.14.1 | fixed | Traffic analysis | Sorted | tests/test_c6_assessment.py::test_duplicate_ssl_rule_names_are_listed_in_a_stable_order |
 | C6-CHECKS-21 | AUTO-SDK-01/02 raised AttributeError on a client without token/exp | info | CWE-755 | V7.4.1 | fixed | Traffic analysis | getattr with default | tests/test_c6_checks.py::test_automation_checks_on_a_client_without_token_fields_do_not_crash |
 | C6-PATH-19 | data_flow.load_packs opened each pack's policy file without closing it | info | CWE-775 | V1.11.3 | fixed | Traffic analysis | Read with a context manager | tests/test_c6_path.py::test_the_pack_library_is_read_with_every_file_closed |
@@ -627,6 +629,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | REVIEW-UI-09 | docs/OVERVIEW.md implied the score's tests part was always shown; it needs a recorded docs/qa/test_run.json | info | CWE-1059 | — | fixed | UI and accessibility | docs/OVERVIEW.md names docs/qa/test_run.json, how to write it, No score yet and every cap | tests/test_quality_score.py::test_the_overview_says_the_tests_part_needs_a_recorded_run |
 | UI-08 | The Word report's headings and cover labels were in Title Case (interface guide: sentence case) | info | — | WCAG 2.2 SC 3.2.4 | fixed | UI and accessibility | sentence case for the 13 fixed headings and 3 cover labels | tests/test_export_integrity.py::test_the_word_report_headings_use_sentence_case |
 | UI-09 | Four glyphs stayed colour emoji (Flow animator, Beacon, Pause, Export Terraform): icons.js had no symbol for them | info | — | WCAG 2.2 SC 3.2.4 | fixed | UI and accessibility | film, satellite and pause symbols added and the four glyphs mapped; a table test scans every page and script | tests/test_icons.py::test_every_emoji_in_a_page_has_a_symbol |
+| W7-RC-03 | Gap closed: the other configuration tool restored and cloned without a fresh target backup, a typed delete phrase, a target entitlement check or an exact Undo; this app now does all of it on the Bulk changes engine | info | CWE-1188 | V1.14.6 | fixed | Builders | ops_config_restore.py on admin_ops; config_backup.py | tests/test_config_restore.py |
 
 ### Records
 
@@ -665,6 +668,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | sbd-input | Secure by Design: untrusted input | Everything a user, a file or a tenant can feed the app: PAC evaluator, Test a list, file imports, identity search, URL builders, tenant strings in every renderer | 21 | 11 | 250 |
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
+| w7-restore-clone | Configuration backups, diff, restore, clone and templates (ZIA, ZPA, Client Connector) | Backups with secrets masked, field-level diff, restore and cross-tenant clone through the write gates, templates, cache, schedules | 17 | 3 | 66 |
 
 ## Standards covered by tests
 

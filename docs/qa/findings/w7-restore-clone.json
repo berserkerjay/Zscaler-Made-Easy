@@ -133,7 +133,7 @@
    "status": "fixed",
    "fix": "make_template masks the backup again and drops every secret-named field whatever its value",
    "test": "tests/test_config_backup.py::test_secret_canaries_never_reach_a_template",
-   "commit": "w7-restore-clone"
+   "commit": "2536b5f"
   },
   {
    "id": "W7-RC-02",
@@ -144,7 +144,7 @@
    "status": "fixed",
    "fix": "booleans are never references; the field is no longer listed as one",
    "test": "tests/test_config_restore.py::test_a_clone_creates_dependencies_first_and_remaps_every_id_by_name",
-   "commit": "w7-restore-clone"
+   "commit": "2536b5f"
   },
   {
    "id": "W7-RC-03",
@@ -155,7 +155,7 @@
    "status": "fixed",
    "fix": "ops_config_restore.py on admin_ops; config_backup.py",
    "test": "tests/test_config_restore.py",
-   "commit": "w7-restore-clone"
+   "commit": "2536b5f"
   }
  ],
  "tests_added": 66
