@@ -294,27 +294,43 @@ def revoke(name: str) -> Dict[str, Any]:
 # Loading: the same bytes that were hashed, from memory
 # ---------------------------------------------------------------------------
 
-class _MemoryFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+class _MemoryFinder(importlib.abc.MetaPathFinder, importlib.abc.InspectLoader):
+    """Serves the plugin's modules from the bytes that were hashed (never
+    from the folder again). The standard loader runs the code it compiles."""
+
     def __init__(self, pkg: str, files: Dict[str, bytes]):
         self.pkg = pkg
         self.files = files
 
-    def find_spec(self, fullname, path=None, target=None):
+    def _file(self, fullname: str) -> Optional[str]:
         if fullname == self.pkg:
-            return importlib.util.spec_from_loader(fullname, self, is_package=True)
-        if fullname.startswith(self.pkg + ".") and f"{fullname[len(self.pkg) + 1:]}.py" in self.files and "." not in fullname[len(self.pkg) + 1:]:
-            return importlib.util.spec_from_loader(fullname, self, is_package=False)
-        return None
+            return "__init__.py"
+        rest = fullname[len(self.pkg) + 1:] if fullname.startswith(self.pkg + ".") else ""
+        return f"{rest}.py" if rest and "." not in rest and f"{rest}.py" in self.files else None
 
-    def create_module(self, spec):
-        return None
+    def find_spec(self, fullname, path=None, target=None):
+        fn = self._file(fullname)
+        if fn is None:
+            return None
+        spec = importlib.util.spec_from_loader(fullname, self, origin=f"<plugin {self.pkg}/{fn}>", is_package=fullname == self.pkg)
+        if fullname == self.pkg and spec is not None:
+            spec.submodule_search_locations = []
+        return spec
 
-    def exec_module(self, module):
-        fn = "__init__.py" if module.__name__ == self.pkg else module.__name__[len(self.pkg) + 1:] + ".py"
-        if module.__name__ == self.pkg:
-            module.__path__ = []
-        code = compile(self.files[fn], f"<plugin {self.pkg}/{fn}>", "exec")
-        exec(code, module.__dict__)  # noqa: S102 - an approved plugin's own code, hash-checked (see the module doc)
+    def is_package(self, fullname: str) -> bool:
+        return fullname == self.pkg
+
+    def get_source(self, fullname: str) -> str:
+        fn = self._file(fullname)
+        if fn is None:
+            raise ImportError(fullname)
+        return self.files[fn].decode("utf-8")
+
+    def get_code(self, fullname: str):
+        fn = self._file(fullname)
+        if fn is None:
+            raise ImportError(fullname)
+        return compile(self.files[fn], f"<plugin {self.pkg}/{fn}>", "exec", dont_inherit=True)
 
 
 def load(name: str) -> Dict[str, Any]:

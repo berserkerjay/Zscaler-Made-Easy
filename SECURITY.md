@@ -104,7 +104,7 @@ release branches.
 | Writes to a tenant | Refused unless write mode is enabled for the session (typed phrase, localhost only) or the server is started with `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`. Under SSO with `ZSCALER_SSO_WRITERS` set, only the listed groups and email addresses may do either, or deploy, remove, import, undo, apply or roll back; everyone else gets 403 and can still assess, read and preview. Every route that changes a tenant (deploy, import, removal, undo, proposal apply and rollback, change queue apply, heal, bulk changes, remediation, the Evaluate All Rules steps) also needs the explicit confirmation (`confirm=true`, or its typed phrase) and the assessor's name, and all four gates are checked before the tenant is signed in to (`tests/test_write_safety_gates.py` holds every POST, PUT and DELETE route to this). Deploys require an approved plan hash; every rule ships DISABLED and monitor-only; nothing is activated; every deployment is recorded for undo. Applying an approved FP/TP Detection Ratio proposal goes through the same gate with an explicit confirmation, a re-read that refuses when the tenant moved, a read-back, and a recorded rollback value; its rollback runs only while the rule still holds the value the apply set. Typed phrases compare case-insensitively, one character for one, with deliberately no NFKC or other compatibility folding: a look-alike (dotless i, long s, full-width letters or digits) never confirms, and a blank phrase never matches (`security.typed_phrase_matches`). One write run per tenant at a time: a second deploy, removal or bulk change started while one is writing is refused as busy, with nothing read or written. A create answered by a timeout or a 502/504 is sent again only after a read by name shows it is not there. An Undo is applied only as the recorded inverse of its operation, once. The migration wizard's delete-all and post write only what their dry run showed (its plan hash). (`tests/test_sbd_writes.py`) |
 | Credentials | Form, `ZSCALER_*` environment, `local_settings.bat`, or a saved profile (secrets only when *remember* is ticked, and only in the OS credential store; without a usable one the secret is not remembered and the save says so, unless the operator explicitly allows the owner-only profile file with `DLP_CHECK_SECRET_STORE=file`). Two sign-ins: a ZIdentity API client (OneAPI) or the classic ZIA API (admin username, password, API key; the password and key are secrets like the client secret). Never returned by the API, masked in every error, redacted in the audit log, all files git-ignored. |
 | Network | Web server and MCP server bind to 127.0.0.1 by default. CORS and origin checks allow localhost origins only. Security headers (CSP, frame-ancestors none, nosniff, no-referrer), a body-size cap and a rate limit are always on. The body-size cap is the outermost layer and counts streamed (chunked) bodies as they arrive, so no other layer (the audit log included) holds more than the cap; a refused body is recorded as `request_too_large` without its content. The rate limit runs ahead of the UI token check, so a flood of unauthenticated calls cannot fill and rotate away the audit log. Update, pack upload and pack rewrite are refused unless bound to localhost. |
-| Outbound calls | Only the Zscaler API for the tenant, GitHub for the app update (git pull and, for the cross-check above, the GitHub REST API), Zscaler and integration-partner documentation hosts on an allowlist for the update check, the best-practice library and the SaaS capability matrix, and, only when you configure them, your SMTP relay and an https Teams or Slack webhook for the digest. Allowlisted fetches are https only and check every redirect hop against the allowlist; the digest webhook's redirects are not followed; the vanity domain must be a DNS name, so the client secret only goes to the cloud's Zscaler sign-in host. The upstream contract check (`upstream_check.py`, run daily in GitHub Actions, never by the server) additionally reads PyPI, the Terraform registry, raw.githubusercontent.com and automate.zscaler.com through the same allowlist. No AI or LLM service is called by the app. |
+| Outbound calls | Only the Zscaler API for the tenant, GitHub for the app update (git pull and, for the cross-check above, the GitHub REST API), Zscaler and integration-partner documentation hosts on an allowlist for the update check, the best-practice library and the SaaS capability matrix, and, only when you configure them, your SMTP relay and an https Teams or Slack webhook for the digest (also used, when switched on in Advanced settings, for one notice per new app version). Allowlisted fetches are https only and check every redirect hop against the allowlist; the digest webhook's redirects are not followed; the vanity domain must be a DNS name, so the client secret only goes to the cloud's Zscaler sign-in host. The upstream contract check (`upstream_check.py`, run daily in GitHub Actions, never by the server) additionally reads PyPI, the Terraform registry, raw.githubusercontent.com and automate.zscaler.com through the same allowlist. No AI or LLM service is called by the app. |
 | Continuous evaluation | Runs read-only only when someone runs it (Run the loop now, `continuous_eval.py --once`, or a scheduled task you create); the server's timer is off unless `DLP_CHECK_CONTINUOUS_EVAL_HOURS` is set above 0. Each tenant profile is read only for what its Scope page puts in scope (nothing when no scope is saved): FP/TP Detection Ratio and the ticked packs' drift on the in-scope DLP channels when DLP is in scope, SaaS tenant status when SaaS Security runs on Zscaler, plus guidance mapping. It raises proposals; a person decides them; applying goes through the deploy path. Digests hold counts, titles and rule names, never credentials; the SMTP password and webhook URL stay in `local_settings.bat` (git-ignored) and are never returned by the API. The manual FP/TP Detection Ratio, the live feed and the Data Flow Map read only what the Scope page (else the chosen profile) puts in scope, and refuse before signing in when nothing they read is. |
 | Inputs | Cloud, vanity domain, credentials and customer id are validated before any client is built; pack ids resolve against the discovered pack list; report ids are random tokens; dictionary patterns are bounded to ZIA's limits. Parsers of uploaded or typed text are bounded so no single request can pin the server: every pattern on user or tenant text runs in time linear in its length (log lines are read up to 4,096 characters, typed dates up to 64), nesting is capped (JSON bodies past the decoder's depth are a 400; Terraform, engine expressions and migration exports refuse nesting past 40 to 64 levels in words), a ZIP member that lies about its size fails its check instead of inflating, uploads and report exports are parsed off the event loop, pack engine expressions are read up to 16,384 characters, a Word report holds at most 1,000 checks and other posted reports 5,000. Analyses of large tenants (shadowed rules, ZPA, device posture, the rule migrator) compare only the pairs that can matter and cap how many pairs they list; finished jobs (200), change-request comment history and the workspace notes store (8 MB) are bounded. |
 | Uploaded logs (Log Analyzer) | Client Connector log bundles and PAC files are analysed in memory on the local server and discarded: nothing is written to disk and nothing leaves the machine. Archives are opened with caps (600 members, 48 MB per member, 160 MB in total, one level of nesting; ZIP members only stored or deflate, read in bounded steps; a compressed tar read as one stream that stops at the total cap; each log line read to 4,096 characters), member names are never used as paths, binary members are skipped, and the whole request is under the body-size cap. Pack and migration uploads take ZIP members the same way, and refuse DTDs in an XML export in any encoding. Evidence lines shown back have passwords, tokens, cookies and JWTs blanked out; the audit log records the call without the file contents. The page renders every value through one HTML escaper. |
@@ -156,6 +156,54 @@ and counts as a writer only by email address.
 Scripts that called the API with the UI token (header or Bearer) stop
 working once SSO is on: the token is refused. Run them against a local
 install without SSO, or sign in through the browser.
+
+## Local plugins: what they cost
+
+Local plugins (`local_plugins.py`) are **off by default** and stay off
+unless `DLP_CHECK_PLUGINS_DIR` names a folder **and** an admin switches
+them on in Advanced settings **and** approves each plugin's exact SHA-256
+there. Say yes to a plugin only if you would also be happy to edit the
+app's own code with it, because that is what it amounts to:
+
+- **A plugin is Python code that runs inside the app's process, with the
+  app's privileges.** It can read whatever the app can read on this
+  computer: tenant profiles and any secret they remember, the audit log,
+  the UI token, files the app's user can open, and the network. The app
+  does not and cannot sandbox it.
+- **The narrow API is a contract, not a wall.** The objects the app hands
+  a plugin are restricted: its planner and object reader get a read-only
+  client (only `list`/`get`/`search`/`lookup`/`read` calls, no private
+  attributes), its write handlers run only inside an apply the engine
+  started (after the Scope rule, write mode, a writer, the named
+  assessor, the typed confirmation and the plan hash) and write only
+  through the audited pack_ops calls; its pages are shown as text. But
+  Python code can import any module, so a plugin written to get around
+  these limits can. The protection is the review and the hash.
+- **The hash is the control.** Approval is for one SHA-256 over every file
+  of the plugin folder (names and content). A plugin that is not on the
+  allow-list, or whose files changed after approval, is refused and never
+  imported. The files are read once, hashed, and the same bytes are run
+  from memory, so a file swapped after the check is not the one that
+  runs. Only plain `.py`, `.json`, `.md` and `.txt` files directly in the
+  folder are accepted (no sub-folders, no links). Approving, switching
+  plugins on and revoking are for a writer, from the computer the app
+  runs on, and are written to the audit log; revoking unloads at once.
+- **Nothing is installed or downloaded.** There is no plugin store, no
+  `pip install` and no network fetch: a plugin is a folder you put there.
+- An approval can name the people (sign-in names) allowed to use the
+  plugin; anyone else gets 403 on its operations and pages.
+
+An example plugin is in `docs/plugins/example_rule_counter/`; it is not in
+any plugin folder and is never loaded unless you copy it there and
+approve it.
+
+## Untrusted XML (the PAN-OS migration)
+
+A Palo Alto Networks configuration export is parsed with `defusedxml`
+(hash-pinned in `requirements.lock`) with DTDs, entity declarations and
+external references refused, after a size cap (8 MiB) and with depth (48)
+and element-count (250,000) caps. Every value that becomes a Zscaler name
+is checked again when the plan is previewed on Bulk changes.
 
 ## Measuring it
 

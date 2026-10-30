@@ -2362,6 +2362,26 @@ window.HELP_CATALOG = {
    }
   },
   "/report/advanced": {
+   "#advUpdNotify": {
+    "what": "Sends one notice per new version, by the e-mail or webhook the digests use, when the update check finds a newer version.",
+    "input": "Optional. Ticked turns it on. Needs the digests' e-mail or webhook set up; a writer may change it.",
+    "effect": "local"
+   },
+   "#advPlugOn": {
+    "what": "Allows approved local plugins to load when the app starts. Off, no plugin loads, approved or not.",
+    "input": "Optional. Ticked turns it on. Needs the plugins folder set (DLP_CHECK_PLUGINS_DIR); a writer on this computer may change it.",
+    "effect": "local"
+   },
+   "#advPlugins button[data-approve]": {
+    "what": "Puts this exact plugin hash on the allow-list after you have read its code. It loads when the app next starts; a changed file is refused.",
+    "input": "Type the plugin's name to confirm, then optionally the people allowed to use it.",
+    "effect": "confirm"
+   },
+   "#advPlugins button[data-revoke]": {
+    "what": "Takes this plugin off the allow-list and unloads it at once.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#advRefresh": {
     "what": "Re-read the library from disk. The pack list then shows the packs saved on this computer now.",
     "input": "Nothing to type. Just click it.",
@@ -3920,6 +3940,21 @@ window.HELP_CATALOG = {
    }
   },
   "/report/operations": {
+   "#fwiFile": {
+    "what": "Loads a migration plan saved from Migrate from another vendor (Palo Alto Networks). The server checks it again before the preview.",
+    "input": "Optional when the plan was handed over from that page. One .json plan file under 4 MB.",
+    "effect": "local"
+   },
+   "#fwiEnable": {
+    "what": "Creates the imported rules enabled instead of disabled, so they decide traffic as soon as ZIA activates. Applying still needs write mode and the typed phrase.",
+    "input": "Optional. Leave it unticked to create every rule disabled.",
+    "effect": "local"
+   },
+   "#opPlugJson": {
+    "what": "The operation for a local plugin, as JSON. The preview shows exactly what it would change; applying needs write mode and the same gates.",
+    "input": "Required. A JSON object with the fields the plugin's documentation names, like {\"name_prefix\": \"tmp-\"}.",
+    "effect": "local"
+   },
    "#opTenant": {
     "what": "Picks which tenant sign-in this page reads and changes.",
     "input": "Optional. Pick one from the list: the assessment tab, a saved tenant profile, or what is saved on this computer.",
@@ -5100,6 +5135,13 @@ window.HELP_CATALOG = {
     "effect": "local"
    }
   },
+  "/report/plugin": {
+   "a.rp-btn[href=\"/report/advanced#plugins\"]": {
+    "what": "Opens Advanced settings at Local plugins, where plugins are switched on, approved and revoked.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   }
+  },
   "/report/pov": {
    "a.skip-link[href=\"#main-content\"]": {
     "what": "Skips straight to the POV planner. Handy if you use the keyboard.",
@@ -5830,6 +5872,51 @@ window.HELP_CATALOG = {
    }
   },
   "/report/vendor": {
+   "#panExport": {
+    "what": "Picks the Palo Alto Networks configuration export (the firewall's or Panorama's). It is read on this computer with a hardened XML reader.",
+    "input": "Required. One .xml configuration export, under the upload limit shown.",
+    "effect": "local"
+   },
+   "#panPrefix": {
+    "what": "Sets the prefix every object the import makes starts with, so a re-run finds them and Undo deletes only them.",
+    "input": "Optional. 1 to 10 letters, digits, - or _, like pan. The default is pan.",
+    "effect": "local"
+   },
+   "#panZones": {
+    "what": "Names the zones GlobalProtect users arrive in. Allow rules from these zones to internal addresses become ZPA application segments.",
+    "input": "Optional. Zone names separated by commas, like gp-users. Empty means zone names that say globalprotect, gp, vpn or remote access.",
+    "effect": "local"
+   },
+   "#panDisabled": {
+    "what": "Also carries rules that are disabled on the firewall. They still arrive disabled in ZIA.",
+    "input": "Optional. Ticked carries them; unticked lists them as not mapped.",
+    "effect": "local"
+   },
+   "#panBuild": {
+    "what": "Maps the export to Cloud Firewall rules, IP groups, network services and ZPA segments, and lists what cannot be carried and why. Nothing is written to the tenant.",
+    "input": "Choose the export file first.",
+    "effect": "local"
+   },
+   "#panDlPlan": {
+    "what": "Saves the migration plan as a JSON file, to load in Bulk changes or the terminal UI.",
+    "input": "Nothing to type. Build the plan first.",
+    "effect": "download"
+   },
+   "#panDlCsv": {
+    "what": "Saves the ZPA application segments as the CSV the ZPA application segments builder reads.",
+    "input": "Nothing to type. Build the plan first; it works when some rules went to ZPA.",
+    "effect": "download"
+   },
+   "#panOpen": {
+    "what": "Opens Bulk changes with this plan in the firewall import form. You still read the tenant, preview and confirm there; nothing is written here.",
+    "input": "Nothing to type. Build the plan first; it works when some rules went to ZIA.",
+    "effect": "nav"
+   },
+   "#panXref summary": {
+    "what": "Opens or closes where each Palo Alto Networks object lands in Zscaler, with the API call.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#vmTemplate": {
     "what": "Saves a decisions file to fill in. It lists every policy with nothing approved yet.",
     "input": "Nothing to type. Run Inventory the export first.",
