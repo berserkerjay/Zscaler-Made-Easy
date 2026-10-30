@@ -128,7 +128,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
         {"key": "ui_a11y", "name": "UI and accessibility", "slugs": ("ui", "c6-ui-core", "c6-ui-ops", "c6-tooltips", "glass", "review-ui"),
          "tests": ("test_accessibility.py", "test_*reflow*.py", "test_page_layout.py", "test_polish.py", "test_icons.py",
                    "test_explain.py", "test_safety_banner.py", "test_static_js_parses.py", "test_simple_mode.py",
-                   "test_navigation.py", "test_sidebar_*.py", "test_c6_ui_core.py", "test_c6_ui_ops.py", "test_c6_tooltips.py",
+                   "test_navigation.py", "test_sidebar_*.py", "test_c6_ui_core.py", "test_c6_ui_ops.py", "test_c6_tooltips.py", "test_new_marks.py",
                    "test_glass*.py"),
          "controls": ("WCAG SC 1.1.1", "WCAG SC 1.3.1", "WCAG SC 1.4.3", "WCAG SC 1.4.10", "WCAG SC 1.4.11", "WCAG SC 2.1.1",
                       "WCAG SC 2.4.7", "WCAG SC 2.5.8", "WCAG SC 3.3.2", "WCAG SC 4.1.2", "WCAG SC 4.1.3")},

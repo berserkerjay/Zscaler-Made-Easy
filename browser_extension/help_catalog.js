@@ -9,6 +9,16 @@
 window.HELP_CATALOG = {
  "pages": {
   "*": {
+   "button.wn-mark": {
+    "what": "Marks something that is new in this version. The first line says what is new.",
+    "input": "Nothing to type. Point at it, focus it or click it to read what is new.",
+    "effect": "local"
+   },
+   "#advWnHide": {
+    "what": "Hides the * marks on new features, on every page of this app.",
+    "input": "Ticked hides the marks. Unticked shows them. The choice is kept in this browser only.",
+    "effect": "local"
+   },
    "#faOpenBtn": {
     "what": "Opens Find anything: one search box over pages, glossary words, tenant objects, findings and to-dos. Find anything (Ctrl+J or /)",
     "input": "Nothing to type. Just click it. Ctrl+J or / opens it from the keyboard too.",
