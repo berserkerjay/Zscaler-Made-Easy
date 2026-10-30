@@ -6,7 +6,7 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 **Overall: 100 / 100, grade A (Strong).** Tests pass, no serious finding is open and the standards are well covered.
 
-Run: commit `c054f3df0793`, 2026-10-29T17:05:01. 21327 passed, 0 failed, 0 errors, 133 skipped, 2130.3 s.
+Run: commit `1b0557d31af8`, 2026-10-30T04:59:58. 21678 passed, 0 failed, 0 errors, 14 skipped, 2555.3 s.
 
 - No findings record yet for: Supply chain. Their scores leave the findings part out.
 
@@ -14,14 +14,14 @@ Run: commit `c054f3df0793`, 2026-10-29T17:05:01. 21327 passed, 0 failed, 0 error
 
 | Area | Sub-area | Score | Tests | Findings (open) | Standards covered | Based on |
 |---|---|---|---|---|---|---|
-| Regression (100, weight 25) | Regression | **100** | 100 (21327 passed, 0 failed) | 100 (0) | 100 (4 of 4) | tests, findings, coverage |
+| Regression (100, weight 25) | Regression | **100** | 100 (21678 passed, 0 failed) | 100 (0) | 100 (4 of 4) | tests, findings, coverage |
 | Secure by design (100, weight 35) | Write paths | **100** | 100 (2477 passed, 0 failed) | 100 (0) | 100 (9 of 9) | tests, findings, coverage |
-| Secure by design (100, weight 35) | Untrusted input | **100** | 100 (2896 passed, 0 failed) | 100 (0) | 100 (13 of 13) | tests, findings, coverage |
+| Secure by design (100, weight 35) | Untrusted input | **100** | 100 (2902 passed, 0 failed) | 100 (0) | 100 (13 of 13) | tests, findings, coverage |
 | Secure by design (100, weight 35) | Auth, scope and secrets | **100** | 100 (4212 passed, 0 failed) | 100 (0) | 100 (12 of 12) | tests, findings, coverage |
-| Secure by design (100, weight 35) | Supply chain | **100** | 100 (284 passed, 0 failed) | no record | 100 (13 of 13) | tests, coverage |
-| Functionality (100, weight 25) | Traffic analysis | **100** | 100 (3680 passed, 0 failed) | 100 (0) | 100 (5 of 5) | tests, findings, coverage |
+| Secure by design (100, weight 35) | Supply chain | **100** | 100 (322 passed, 0 failed) | no record | 100 (13 of 13) | tests, coverage |
+| Functionality (100, weight 25) | Traffic analysis | **100** | 100 (3738 passed, 0 failed) | 100 (0) | 100 (5 of 5) | tests, findings, coverage |
 | Functionality (100, weight 25) | Builders | **100** | 100 (1723 passed, 0 failed) | 100 (1) | 100 (6 of 6) | tests, findings, coverage |
-| Functionality (100, weight 25) | UI and accessibility | **100** | 100 (2081 passed, 0 failed) | 100 (0) | 100 (11 of 11) | tests, findings, coverage |
+| Functionality (100, weight 25) | UI and accessibility | **100** | 100 (2303 passed, 0 failed) | 100 (0) | 100 (11 of 11) | tests, findings, coverage |
 | Motion (100, weight 15) | Motion | **100** | 100 (833 passed, 0 failed) | 100 (0) | 100 (6 of 6) | tests, findings, coverage |
 
 ## Findings
@@ -31,7 +31,7 @@ Run: commit `c054f3df0793`, 2026-10-29T17:05:01. 21327 passed, 0 failed, 0 error
 | critical | 0 | 0 | 0 |
 | high | 0 | 13 | 0 |
 | medium | 0 | 158 | 0 |
-| low | 0 | 334 | 0 |
+| low | 0 | 335 | 0 |
 | info | 1 | 48 | 22 |
 
 ### Regression
@@ -513,6 +513,7 @@ Run: commit `c054f3df0793`, 2026-10-29T17:05:01. 21327 passed, 0 failed, 0 error
 | C6-UI-CORE-06 | Save config threw when site storage was blocked, and Clear config left the fields filled | low | CWE-755 | V7.4.1 | fixed | UI and accessibility | static/index.html: Save config reports blocked storage in words; Clear config still clears the fields | tests/test_c6_ui_core.py::test_save_config_says_so_when_storage_is_blocked |
 | C6-UI-CORE-07 | The SSO bar used the sign-in and sign-out addresses from the status answer as they came, so another site or a javascript: URL could become the link | low | CWE-601 | V5.1.5 | fixed | UI and accessibility | static/ui_auth.js: only a same-origin path is used; anything else falls back to the fixed path (deny by default) | tests/test_c6_ui_core.py::test_the_sso_sign_in_link_is_only_ever_a_path_on_this_origin |
 | C6-UI-CORE-08 | A browser that refuses alert, confirm or prompt made the button that asked throw and stop working | low | CWE-755 | V7.4.1 | fixed | UI and accessibility | static/ui_auth.js: a refused box reads as no (fail closed) and the app's own dialog shows its text | tests/test_c6_ui_core.py::test_a_refused_confirm_or_prompt_reads_as_no_and_never_throws |
+| C6-UI-CORE-09 | The Terraform hand-off dialog dropped keyboard focus to the page behind it whenever it redrew its body (packs loaded, a pack ticked with Space, the mode changed) | low | CWE-684 | V14.4 | fixed | UI and accessibility | static/deploy_studio.js: _tfRender puts focus back on the same control after it rebuilds the body, or on the dialog's Close button when that control is gone | tests/test_c6_ui_core.py::test_the_terraform_dialog_keeps_focus_when_it_redraws |
 | C6-UI-OPS-01 | Bulk changes Apply was enabled before the typed phrase, the review box or the assessor were given, and the page's phrase check (toUpperCase) accepted look-alikes the server refuses | low | CWE-841 | V1.11.3 | fixed | UI and accessibility | Apply is disabled until every gate is met; phraseMatches mirrors security.typed_phrase_matches; the phrase is shown in bold | tests/test_c6_ui_ops.py::test_apply_stays_disabled_without_the_phrase |
 | C6-UI-OPS-02 | A window focus redrew the Bulk changes apply form, erasing the typed phrase, the review tick and the keyboard focus | low | CWE-1188 | V1.11.3 | fixed | UI and accessibility | Redraw only when write mode changed; a redraw of the same plan keeps the phrase, the box and the focus | tests/test_c6_ui_ops.py::test_a_window_focus_keeps_the_phrase_the_box_and_the_cursor |
 | C6-UI-OPS-04 | Bypass report drew every aggregated item (tens of thousands after category expansion) in one innerHTML write | low | CWE-400 | V11.1.4 | fixed | UI and accessibility | Draw the first 500 rows with 6 references each and say how many more the export has | tests/test_c6_ui_ops.py::test_the_bypass_report_caps_huge_lists |
@@ -645,7 +646,7 @@ Run: commit `c054f3df0793`, 2026-10-29T17:05:01. 21327 passed, 0 failed, 0 error
 | c6-scope-offline | scope-offline | Snapshots, the sample tenant, readiness, the scope and permission maps and the Scope page's channel logic | 21 | 20 | 129 |
 | c6-tooltips | tooltips | Help on hover: a pop-up for every control on every page (what it does, what input it expects, whether it reads or changes the tenant), with its catalogue and coverage tests | 13 | 8 | 320 |
 | c6-traffic-reports | traffic-reports | Traffic reports: bypass inventory, SSL coverage and flow, Z-Insights client, Log Analyzer, FP/TP Detection Health | 21 | 32 | 163 |
-| c6-ui-core | UI core in a real browser (Playwright, headless Chromium): the assessment page, Simple mode, the guide, Deploy Studio, the shared dialogs (ui_auth.js) and the report pages, on the sample tenant and on a hostile copy whose every name is markup | UI core QA (wave 6): the partial-scan card, values restored from web storage, blocked storage, the SSO sign-in link and browsers that refuse their own boxes | 11 | 8 | 27 |
+| c6-ui-core | UI core in a real browser (Playwright, headless Chromium): the assessment page, Simple mode, the guide, Deploy Studio, the shared dialogs (ui_auth.js) and the report pages, on the sample tenant and on a hostile copy whose every name is markup | UI core QA (wave 6): the partial-scan card, values restored from web storage, blocked storage, the SSO sign-in link and browsers that refuse their own boxes | 11 | 9 | 29 |
 | c6-ui-ops | ui-ops | Bulk changes and its Build new forms, the POV, fleet, Beacon, bypass, detection health and Path analyzer scripts, the browser, posture, shadow and flow pages, and the browser extension: typed confirmation, keyboard and focus, escaping, plain errors, reflow, HAR caps, extension CSP | 38 | 21 | 79 |
 | c6-update-heal | update-heal | Self-heal, in-app update, upstream and SDK update checks, standalone start | 25 | 22 | 136 |
 | c6-zcc-zdx | zcc-zdx | Client Connector profiles and install command, ZDX probe setup, fleet health and the strict ZCC evaluation | 30 | 12 | 283 |

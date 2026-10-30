@@ -1,19 +1,24 @@
 {
-  "passed": 21327,
+  "passed": 21678,
   "failed": 0,
-  "skipped": 133,
+  "skipped": 14,
   "errors": 0,
-  "duration_s": 2130.3,
-  "commit": "c054f3df0793",
-  "date": "2026-10-29T17:05:01",
+  "duration_s": 2555.3,
+  "commit": "1b0557d31af8",
+  "date": "2026-10-30T04:59:58",
   "files": {
     "tests/test_accessibility.py": {
-      "passed": 681,
+      "passed": 682,
       "failed": 0,
       "skipped": 0
     },
     "tests/test_admin_ops.py": {
       "passed": 37,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_admin_rank.py": {
+      "passed": 58,
       "failed": 0,
       "skipped": 0
     },
@@ -28,7 +33,7 @@
       "skipped": 0
     },
     "tests/test_app_update.py": {
-      "passed": 39,
+      "passed": 43,
       "failed": 0,
       "skipped": 0
     },
@@ -193,7 +198,7 @@
       "skipped": 0
     },
     "tests/test_c6_tooltips.py": {
-      "passed": 337,
+      "passed": 340,
       "failed": 0,
       "skipped": 0
     },
@@ -203,9 +208,9 @@
       "skipped": 0
     },
     "tests/test_c6_ui_core.py": {
-      "passed": 10,
+      "passed": 132,
       "failed": 0,
-      "skipped": 120
+      "skipped": 0
     },
     "tests/test_c6_ui_ops.py": {
       "passed": 79,
@@ -346,6 +351,11 @@
       "passed": 56,
       "failed": 0,
       "skipped": 0
+    },
+    "tests/test_docker_rename.py": {
+      "passed": 37,
+      "failed": 0,
+      "skipped": 1
     },
     "tests/test_dos_limits.py": {
       "passed": 236,
@@ -508,7 +518,7 @@
       "skipped": 0
     },
     "tests/test_icons.py": {
-      "passed": 82,
+      "passed": 83,
       "failed": 0,
       "skipped": 0
     },
@@ -577,6 +587,11 @@
       "failed": 0,
       "skipped": 0
     },
+    "tests/test_new_marks.py": {
+      "passed": 94,
+      "failed": 0,
+      "skipped": 0
+    },
     "tests/test_no_implicit_reads.py": {
       "passed": 29,
       "failed": 0,
@@ -589,6 +604,11 @@
     },
     "tests/test_offline_tenant.py": {
       "passed": 66,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_old_repo_name.py": {
+      "passed": 23,
       "failed": 0,
       "skipped": 0
     },
@@ -628,7 +648,7 @@
       "skipped": 0
     },
     "tests/test_outbound_ssrf.py": {
-      "passed": 354,
+      "passed": 355,
       "failed": 0,
       "skipped": 0
     },
@@ -828,7 +848,7 @@
       "skipped": 0
     },
     "tests/test_quality_score.py": {
-      "passed": 325,
+      "passed": 329,
       "failed": 0,
       "skipped": 0
     },
@@ -873,7 +893,7 @@
       "skipped": 0
     },
     "tests/test_report_reflow.py": {
-      "passed": 293,
+      "passed": 294,
       "failed": 0,
       "skipped": 0
     },
@@ -1068,7 +1088,7 @@
       "skipped": 0
     },
     "tests/test_supply_chain_qa.py": {
-      "passed": 219,
+      "passed": 220,
       "failed": 0,
       "skipped": 0
     },
@@ -1153,7 +1173,7 @@
       "skipped": 0
     },
     "tests/test_xss_sinks.py": {
-      "passed": 108,
+      "passed": 109,
       "failed": 0,
       "skipped": 0
     },
