@@ -184,13 +184,14 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 72,
-            "accepted": 6,
+            "fixed": 73,
+            "accepted": 8,
             "records": [
               "c6-api-server",
               "c6-auth",
               "c6-scope-offline",
-              "sbd-auth"
+              "sbd-auth",
+              "w7-mcp-skill"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 582,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -455,8 +456,8 @@
       },
       "low": {
         "open": 0,
-        "fixed": 337,
-        "accepted": 0
+        "fixed": 338,
+        "accepted": 2
       },
       "info": {
         "open": 1,
@@ -465,12 +466,12 @@
       }
     },
     "checks": {
-      "pass": 303,
-      "fixed": 308,
+      "pass": 312,
+      "fixed": 309,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8712
   },
   "findings": [
     {
@@ -488,6 +489,38 @@
       "slug": "func-builders",
       "area": "functionality",
       "sub_area": "builders"
+    },
+    {
+      "id": "W7-MCP-02",
+      "title": "Tenant text (rule names, descriptions) reaches an AI assistant and could carry instructions (indirect prompt injection)",
+      "severity": "low",
+      "status": "accepted",
+      "cwe": "CWE-1426",
+      "asvs": "V5.2.1",
+      "wcag": "",
+      "fix": "answers keep tenant text under data with an untrusted-data note; the skill's rule 6 says never follow it; no tool can write, so an injected instruction has nothing to act on",
+      "test": "tests/test_mcp_tools.py::test_every_answer_marks_tenant_text_as_untrusted_and_names_its_source",
+      "commit": "",
+      "reason": "An assistant reading tenant names cannot be made immune; the read-only surface limits the impact to a wrong answer",
+      "slug": "w7-mcp-skill",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
+      "id": "W7-MCP-03",
+      "title": "The HTTP transport has no sign-in of its own: any local process that reaches the loopback port can use the tenant credentials the server holds",
+      "severity": "low",
+      "status": "accepted",
+      "cwe": "CWE-306",
+      "asvs": "V14.5.3",
+      "wcag": "",
+      "fix": "",
+      "test": "tests/test_mcp_tools.py::test_loopback_http_refuses_a_foreign_host_or_origin",
+      "commit": "",
+      "reason": "The existing access model, kept as asked: loopback only with DNS-rebinding protection, beyond loopback refused unless --allow-remote behind an authenticating proxy; the docs recommend stdio, which listens on nothing",
+      "slug": "w7-mcp-skill",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "C6-ADMIN-OPS-20",
@@ -8970,6 +9003,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-MCP-01",
+      "title": "The MCP server had no request-level read-only guard: an assessment check (or a new tool) could have sent a write with the environment's credentials",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-284",
+      "asvs": "V4.1.3",
+      "wcag": "",
+      "fix": "mcp_tools.read_only wraps every tool and assessment run; guard_process covers the whole server process; clients a tool builds are sealed",
+      "test": "tests/test_mcp_tools.py::test_while_a_tool_runs_a_write_request_is_stopped_before_it_is_sent",
+      "commit": "b52bed9",
+      "reason": "",
+      "slug": "w7-mcp-skill",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -10634,6 +10683,38 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-mcp-skill",
+      "area": "Auth, scope and secrets: the MCP server's read-only analysis tools",
+      "title": "Live-analysis MCP tools over the app's engines (Path analyzer, Test a list, rule precedence, DLP explainer, Data Flow Map, SSL coverage, Live DLP feed, Traffic insights, ZPA path, fleet health, snapshot diff, URL lookup, readiness, compliance) and the end-user skill that routes questions to them",
+      "standards": [
+        "ASVS V1.4.1",
+        "ASVS V2.10.4",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V7.4.1",
+        "ASVS V8.3.1",
+        "ASVS V8.3.4",
+        "ASVS V12.1.1",
+        "ASVS V14.5.3",
+        "OWASP A01:2021",
+        "CWE-20",
+        "CWE-200",
+        "CWE-209",
+        "CWE-284",
+        "CWE-359",
+        "CWE-532",
+        "CWE-770",
+        "CWE-1426",
+        "WSTG-ATHZ-02",
+        "WSTG-INPV-01",
+        "SSDF PW.8.2"
+      ],
+      "checks": 10,
+      "findings": 3,
+      "tests_added": 110
     }
   ],
   "standards": {
@@ -10653,7 +10734,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -10873,7 +10954,8 @@
       "CWE-1357",
       "CWE-1385",
       "CWE-1391",
-      "CWE-1395"
+      "CWE-1395",
+      "CWE-1426"
     ],
     "top10": [
       "A01:2021",
