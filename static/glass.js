@@ -10,6 +10,15 @@
 // (requestAnimationFrame), two CSS variables on the one element under the
 // pointer. Off under prefers-reduced-motion, reduced transparency, more
 // contrast, forced colours, for touch (no pointer to follow) and when the effect is off.
+//
+// The backdrop's drift is pure CSS (glass.css). The one thing it needs from
+// here: while the tab is hidden, html.glass-still pauses it (one
+// visibilitychange listener; nothing runs per frame for it).
+//
+// Blur fits the window: a card or dialog card is blurred only while it is no
+// taller than the window (class glass-fit). A ResizeObserver keeps that
+// current; a MutationObserver (debounced) picks up cards added later. A card
+// not yet measured stays unblurred, the safe side.
 // No library, no external asset, nothing from the server.
 (function () {
   'use strict';
@@ -32,6 +41,11 @@
   function systemSolid() { return media('(prefers-reduced-transparency: reduce)') || media('(prefers-contrast: more)') || media('(forced-colors: active)'); }
 
   apply(read() !== 'off');
+
+  // ── The drift pauses while the tab is hidden ──
+  function still() { root.classList.toggle('glass-still', document.visibilityState === 'hidden'); }
+  still();
+  document.addEventListener('visibilitychange', still);
 
   // ── The lens ──
   var lensTarget = null, lastEvent = null, frame = 0;
@@ -67,6 +81,38 @@
   QUIET.forEach(function (q) {
     try { var m = window.matchMedia(q); if (m.addEventListener) m.addEventListener('change', function () { recheck(); sync(); }); } catch (e) { /* old browser */ }
   });
+
+  // ── Blur fits the window ──
+  var FIT = '.rp-card, .container .card, .xp-details, .db-modal-card, [id$="Modal"] > div';
+  var seen = typeof WeakSet === 'function' ? new WeakSet() : null, ro = null, scanTimer = 0, fitTimer = 0;
+  function fitOne(el) {
+    var h = el.getBoundingClientRect().height;
+    el.classList.toggle('glass-fit', h > 0 && h <= window.innerHeight);
+  }
+  function scan() {
+    scanTimer = 0;
+    if (!ro) return;
+    var els = document.querySelectorAll(FIT);
+    for (var i = 0; i < els.length; i++) if (!seen.has(els[i])) { seen.add(els[i]); ro.observe(els[i]); }
+  }
+  function refit() {   // the window's height changed: every card again (debounced, not per frame)
+    fitTimer = 0;
+    var els = document.querySelectorAll(FIT);
+    for (var i = 0; i < els.length; i++) fitOne(els[i]);
+  }
+  if (seen && typeof window.ResizeObserver === 'function') {
+    ro = new window.ResizeObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var t = entries[i].target;
+        if (t.isConnected) fitOne(t); else { ro.unobserve(t); seen.delete(t); }   // removed from the page: let it go
+      }
+    });
+    window.addEventListener('resize', function () { if (!fitTimer) fitTimer = setTimeout(refit, 120); }, { passive: true });
+    if (typeof window.MutationObserver === 'function') {
+      new window.MutationObserver(function () { if (!scanTimer) scanTimer = setTimeout(scan, 200); }).observe(root, { childList: true, subtree: true });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan); else scan();
+  }
 
   // ── The switch in Advanced settings ──
   function sync() {

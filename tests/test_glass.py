@@ -1,6 +1,9 @@
-"""The glass effect (static/glass.css, static/glass.js): one shared material,
-its solid fallbacks, its wiring on every page, and the WCAG 2.2 AA contrast of
-text on it, computed against the worst case behind each tier.
+"""The glass effect (static/glass.css, static/glass.js, and the extension's
+browser_extension/glass.css): one shared material over a living backdrop of
+soft colour fields, its solid and still fallbacks, its wiring on every page,
+and the WCAG 2.2 AA contrast of text on it, computed against the worst case
+behind each tier (the brightest and darkest point of the colour fields
+included).
 
 Static and deterministic: the material's numbers are read from glass.css and
 the theme tokens from app.css (the first <style> of index.html), and every
@@ -70,6 +73,7 @@ def test_every_fallback_turns_the_glass_solid(head):
     # Assert
     assert decls.get("--glass-solid-filter") == "none", head
     assert decls.get("--glass-solid-img") == "none", head
+    assert decls.get("--glass-solid-motion") == "none", (head, "the backdrop stands still too")
     assert len(ALPHAS) >= 5 and all(decls.get(a) == "100%" for a in ALPHAS), (head, {a: decls.get(a) for a in ALPHAS})
     assert re.search(r"body, body\.theme-light, body\.has-portrait, body\.has-logo\s*\{", body), "covers both themes and the branding override"
 
@@ -80,13 +84,52 @@ def test_print_contrast_and_forced_colours_also_drop_the_shadows(head):
     assert _decls(_block(CSS_NO_COMMENTS, head)).get("--glass-solid-shadow") == "none"
 
 
-def test_reduced_motion_turns_the_pointer_lens_off_and_nothing_shimmers():
-    """WCAG 2.2 SC 2.3.3 · SC 2.2.2: under prefers-reduced-motion the pointer-follow highlight is transparent; the material has no animation or transition at all."""
-    body = _block(CSS_NO_COMMENTS, "@media (prefers-reduced-motion: reduce)")
-    assert _decls(body).get("--glass-lens-on") == "transparent"
-    assert not re.search(r"\b(animation|transition|@keyframes)\b", CSS_NO_COMMENTS)
+def test_reduced_motion_stops_the_drift_and_the_pointer_lens():
+    """WCAG 2.2 SC 2.3.3 · SC 2.2.2 (pause, stop, hide): under prefers-reduced-motion the backdrop's drift is switched off (--glass-solid-motion: none) and the pointer-follow highlight is transparent."""
+    decls = _decls(_block(CSS_NO_COMMENTS, "@media (prefers-reduced-motion: reduce)"))
+    assert decls.get("--glass-solid-motion") == "none" and decls.get("--glass-lens-on") == "transparent", decls
     js = _read("glass.js")
     assert "'(prefers-reduced-motion: reduce)'" in js and "requestAnimationFrame(draw)" in js
+
+
+def test_only_the_backdrop_moves_slowly_and_through_its_switch():
+    """WCAG 2.2 SC 2.2.2, 2.3.1 · performance: the only animation is the backdrop's drift: on the two backdrop layers, through --glass-solid-motion (so every fallback and reduced motion stop it), slow (60 s or more per cycle), stepped (a few updates a second) and transform-only (compositor, no layout or paint); no transition anywhere."""
+    # Arrange
+    uses = re.findall(r"(?<![\w-])animation\s*:\s*([^;]+);", CSS_NO_COMMENTS)
+    frames = re.findall(r"@keyframes\s+([\w-]+)\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}", CSS_NO_COMMENTS)
+    drift = float(_decls(_block(CSS_NO_COMMENTS, "body"))["--glass-drift"].rstrip("s"))
+    # Act
+    props = {p.strip() for _, body in frames for p in re.findall(r"([\w-]+)\s*:", body)}
+    # Assert
+    assert len(uses) == 2 and all(u.startswith("var(--glass-solid-motion, glass-drift-") and re.search(r"steps\(\d+\)", u) for u in uses), uses
+    assert len(frames) == 2 and props == {"transform"}, (frames, props)
+    assert drift >= 60
+    assert not re.search(r"\btransition\s*:", CSS_NO_COMMENTS)
+    for m in re.finditer(r"([^{}]+)\{[^{}]*(?<![\w-])animation\s*:", CSS_NO_COMMENTS):
+        assert all(re.search(r"body:not\(\.has-(portrait|logo)\)::(before|after)$", part.strip()) for part in _top_level_parts(m.group(1))), m.group(1)
+
+
+def test_the_drift_pauses_while_the_tab_is_hidden():
+    """WCAG 2.2 SC 2.2.2 · performance (no work for a hidden tab): glass.js sets html.glass-still on visibilitychange while the page is hidden, and glass.css pauses both backdrop layers on it."""
+    js = _read("glass.js")
+    assert "document.addEventListener('visibilitychange', still);" in js
+    assert "root.classList.toggle('glass-still', document.visibilityState === 'hidden')" in js
+    body = _block(CSS_NO_COMMENTS, ":root:not(.glass-off).glass-still body::before,\n:root:not(.glass-off).glass-still body::after")
+    assert "animation-play-state: paused" in body
+
+
+def test_a_blurred_card_is_never_taller_than_the_window():
+    """Performance (a GPU render surface the size of the page) · WCAG 2.2 SC 1.4.10: cards and the assessment page's dialog cards are blurred only with .glass-fit, which glass.js gives a surface no taller than the window (ResizeObserver, no per-frame work); unmeasured means unblurred."""
+    # Arrange
+    rules = re.findall(r"([^{}]+)\{([^{}]*backdrop-filter:\s*var[^{}]*)\}", CSS_NO_COMMENTS)
+    # Act
+    card_rules = [p for p, _ in rules if re.search(r"\.rp-card|\.card\b|xp-details|Modal", p)]
+    # Assert
+    assert card_rules and all(p.strip().endswith(".glass-fit") for p in card_rules), card_rules
+    assert ":root:not(.glass-off) .db-modal-card:not(.glass-fit) { -webkit-backdrop-filter: none; backdrop-filter: none; }" in CSS_NO_COMMENTS
+    js = _read("glass.js")
+    assert "el.classList.toggle('glass-fit', h > 0 && h <= window.innerHeight);" in js
+    assert "new window.ResizeObserver(" in js and "setTimeout(scan, 200)" in js
 
 
 def test_every_blur_sheen_and_shadow_goes_through_its_solid_switch():
@@ -128,7 +171,7 @@ def test_every_glass_rule_is_behind_the_viewer_switch():
             if depth == 0:
                 start = k + 1
     # Act
-    rules = [p for p in preludes if not p.startswith(("@property", "@media", "@supports"))
+    rules = [p for p in preludes if not p.startswith(("@property", "@media", "@supports", "@keyframes"))
              and p not in ("body", "body.theme-light", "body.has-portrait, body.has-logo")]
     # Assert
     assert len(rules) >= 20
@@ -227,7 +270,8 @@ const cls = new Set(); const listeners = {};
 global.localStorage = { getItem(k) { if (throwing) throw new Error('blocked'); return k in store ? store[k] : null; },
                         setItem(k, v) { if (throwing) throw new Error('blocked'); store[k] = v; } };
 const root = { classList: { toggle(c, on) { on ? cls.add(c) : cls.delete(c); }, contains(c) { return cls.has(c); } }, addEventListener() {} };
-global.document = { documentElement: root, readyState: 'complete', getElementById: () => null, addEventListener() {} };
+const docListeners = {};
+global.document = { documentElement: root, readyState: 'complete', visibilityState: 'visible', getElementById: () => null, querySelectorAll: () => [], addEventListener(t, f) { docListeners[t] = f; } };
 global.window = { matchMedia: q => ({ matches: false, addEventListener() {} }), addEventListener(t, f) { listeners[t] = f; }, dispatchEvent() {} };
 global.CustomEvent = function (t, o) { this.type = t; this.detail = o && o.detail; };
 global.requestAnimationFrame = f => 0;
@@ -236,6 +280,9 @@ const out = { first: !cls.has('glass-off') };
 window.dlpGlass.set(false); out.afterOff = { off: cls.has('glass-off'), stored: throwing ? null : store.zassess_glass };
 window.dlpGlass.set(true); out.afterOn = { off: cls.has('glass-off'), stored: throwing ? null : store.zassess_glass };
 listeners.storage({ key: 'zassess_glass', newValue: 'off' }); out.otherTab = cls.has('glass-off');
+out.stillAtStart = cls.has('glass-still');
+document.visibilityState = 'hidden'; docListeners.visibilitychange(); out.stillHidden = cls.has('glass-still');
+document.visibilityState = 'visible'; docListeners.visibilitychange(); out.stillShown = cls.has('glass-still');
 process.stdout.write(JSON.stringify(out));
 """
 
@@ -249,7 +296,7 @@ process.stdout.write(JSON.stringify(out));
     ({}, True, True),                                 # storage blocked (private mode): on, and no exception
 ])
 def test_the_switch_reads_writes_and_follows_other_tabs(store, throwing, first):
-    """ASVS V14.2 · CWE-248 · WCAG 2.2 SC 3.2.4: the choice is read before paint, written per viewer, survives blocked storage, and another tab's change is followed."""
+    """ASVS V14.2 · CWE-248 · WCAG 2.2 SC 3.2.4, 2.2.2: the choice is read before paint, written per viewer, survives blocked storage, another tab's change is followed, and the drift pauses while the tab is hidden."""
     # Arrange
     src = NODE_HARNESS.replace("STORE", json.dumps(store)).replace("THROWING", json.dumps(throwing)).replace("SRC", _read("glass.js"))
     # Act
@@ -261,6 +308,7 @@ def test_the_switch_reads_writes_and_follows_other_tabs(store, throwing, first):
     assert got["afterOff"] == {"off": True, "stored": None if throwing else "off"}
     assert got["afterOn"] == {"off": False, "stored": None if throwing else "on"}
     assert got["otherTab"] is True
+    assert (got["stillAtStart"], got["stillHidden"], got["stillShown"]) == (False, True, False), "the drift pauses only while the tab is hidden"
 
 
 # ── Contrast on the glass, against the worst case behind each tier ──────
@@ -325,12 +373,19 @@ class Theme:
         m = re.fullmatch(r"var\(--([\w-]+)\)", expr)
         return float((self.vars["--" + m.group(1)] if m else expr).rstrip("%")) / 100
 
-    def ambient(self):
-        """Every colour the page wash can paint: the page, each blob's peak and each pair half and half."""
-        bg = _hex(self.tokens["bg"])
-        peaks = [self.value(f"var(--glass-amb-{i})") for i in (1, 2, 3)]
-        out = [bg] + [_over(p, bg) for p in peaks]
-        out += [_over(_mix(a, b, 0.5), bg) for i, a in enumerate(peaks) for b in peaks[i + 1:]]
+    def fields(self):
+        """The backdrop's colour fields (--glass-amb-1, -2, ...), at their peak."""
+        names = sorted((k for k in self.vars if re.fullmatch(r"--glass-amb-\d+", k)), key=lambda k: int(k.rsplit("-", 1)[1]))
+        return [self.value(f"var({k})") for k in names]
+
+    def ambient(self, bases=("bg",)):
+        """Every colour the backdrop can paint: the page, each field's peak and each pair half and half (where two fields overlap)."""
+        out = []
+        for base in bases:
+            bg = _hex(self.tokens[base])
+            peaks = self.fields()
+            out += [bg] + [_over(p, bg) for p in peaks]
+            out += [_over(_mix(a, b, 0.5), bg) for i, a in enumerate(peaks) for b in peaks[i + 1:]]
         return out
 
     def worst(self, fg, tint, behind, overlays):
@@ -348,10 +403,11 @@ class Theme:
 
 THEMES = ("dark", "light")
 # (tier, its tint, what can be behind it, its overlays)
+# The inner glow is counted as if it covered the whole surface (it only lights the edges): the conservative side.
 TIERS = [
-    ("float", "var(--glass-float-bg)", "extremes", ("var(--glass-sheen-float)",)),
-    ("chrome", "var(--glass-chrome-bg)", "ambient", ("var(--glass-sheen-panel)",)),
-    ("panel", "var(--glass-panel-bg)", "ambient", ("var(--glass-sheen-panel)", "var(--glass-lens-on)")),
+    ("float", "var(--glass-float-bg)", "extremes", ("var(--glass-sheen-float)", "var(--glass-glow)")),
+    ("chrome", "var(--glass-chrome-bg)", "ambient", ("var(--glass-sheen-panel)", "var(--glass-glow)")),   # also the sidebar beside the page
+    ("panel", "var(--glass-panel-bg)", "ambient", ("var(--glass-sheen-panel)", "var(--glass-glow)", "var(--glass-lens-on)")),
     ("capsule", "var(--glass-capsule-bg)", "ambient", ("var(--glass-sheen-panel)", "var(--glass-lens-on)")),
     ("capsule-hover", "var(--glass-capsule-hover)", "ambient", ("var(--glass-sheen-panel)", "var(--glass-lens-on)")),
     ("dense", "var(--glass-dense-bg)", "extremes", ()),
@@ -450,3 +506,103 @@ def test_the_mix_matches_css_color_5():
     assert _mix(WHITE, CLEAR, 0.4) == (255.0, 255.0, 255.0, 0.4)
     assert _mix(WHITE, BLACK, 0.5)[:3] == (127.5, 127.5, 127.5)
     assert round(_ratio(_over((255.0, 255.0, 255.0, 0.5), BLACK), BLACK), 2) == round(_ratio((127.5, 127.5, 127.5, 1.0), BLACK), 2)
+
+
+# ── The backdrop: visible, and inside the contrast budget ───────────────
+
+@pytest.mark.parametrize("theme", THEMES)
+def test_the_backdrop_has_visible_colour_fields_inside_the_contrast_budget(theme):
+    """WCAG 2.2 SC 1.4.3 (the contrast budget is spent on colour the glass can show, never past it): five colour fields, each one visibly away from the page colour (12 or more on some sRGB channel), drawn on two layers; text on their brightest or darkest point is checked above and below."""
+    # Arrange
+    t = Theme(theme)
+    bg = _hex(t.tokens["bg"])
+    # Act
+    fields = [_over(f, bg) for f in t.fields()]
+    gaps = [max(abs(f[i] - bg[i]) for i in range(3)) for f in fields]
+    # Assert
+    assert len(fields) == 5 and min(gaps) >= 12, gaps
+    layer = lambda pseudo: "".join(body for prelude, body in re.findall(r"([^{}]+)\{([^{}]*)\}", CSS_NO_COMMENTS) if prelude.strip().endswith(pseudo))
+    assert all(f"var(--glass-amb-{i})" in layer("body:not(.has-portrait)::before") for i in (1, 2, 3))
+    assert all(f"var(--glass-amb-{i})" in layer("body:not(.has-logo)::after") for i in (4, 5))
+
+
+def test_the_contrast_check_fails_a_too_bright_backdrop():
+    """WCAG 2.2 SC 1.4.3 · negative case: the same computation fails the dark theme's text on a colour field twice as strong (and on the shipped one passes), so the backdrop checks can fail."""
+    t = Theme("dark")
+    t.vars["--glass-amb-1"] = "color-mix(in srgb, var(--btn) 64%, var(--bg))"
+    assert min(_ratio(_hex(t.tokens["info"]), a) for a in t.ambient()) < 4.5
+    assert min(_ratio(_hex(t.tokens["info"]), a) for a in Theme("dark").ambient()) >= 4.5
+
+
+# ── The extension's pages (browser_extension/glass.css) ─────────────────
+
+EXT = os.path.join(ROOT, "browser_extension")
+EXT_CSS = re.sub(r"/\*.*?\*/", "", open(os.path.join(EXT, "glass.css"), encoding="utf-8").read(), flags=re.S)
+EXT_TEXT = ("text", "dim", "info", "accent", "pass", "warn", "fail")
+
+
+class ExtTheme(Theme):
+    """browser_extension/glass.css over browser_extension/tokens.css, for one colour scheme."""
+
+    def __init__(self, theme):
+        tokens_css = re.sub(r"/\*.*?\*/", "", open(os.path.join(EXT, "tokens.css"), encoding="utf-8").read(), flags=re.S)
+        parse = lambda block: dict(re.findall(r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\s*;", block))
+        dark_tokens = _block(_block(tokens_css, "@media (prefers-color-scheme: dark)"), ":root")
+        self.tokens = parse(_block(tokens_css, ":root"))
+        self.vars = _decls(_block(EXT_CSS, ":root"))
+        if theme == "dark":
+            self.tokens.update(parse(dark_tokens))
+            self.vars.update(_decls(_block(_block(EXT_CSS, "@media (prefers-color-scheme: dark)"), ":root")))
+
+
+EXT_TIERS = [("panel", "var(--glass-panel-bg)", ("var(--glass-sheen)",)), ("capsule", "var(--glass-capsule-bg)", ("var(--glass-sheen)",)),
+             ("capsule-hover", "var(--glass-capsule-hover)", ("var(--glass-sheen)",))]
+
+
+@pytest.mark.parametrize("theme", THEMES)
+def test_extension_text_meets_aa_on_its_backdrop_and_glass(theme):
+    """WCAG 2.2 SC 1.4.3: on the extension's pages every text colour is 4.5:1 directly on the backdrop (over the popup's card and the side panel's page colour) and on each glass surface over its worst point, with the sheen."""
+    # Arrange
+    t = ExtTheme(theme)
+    behind = t.ambient(("card", "bg"))
+    # Act
+    on_wash = {k: min(_ratio(_hex(t.tokens[k]), a) for a in behind) for k in EXT_TEXT}
+    on_glass = {(tier, k): t.worst(_hex(t.tokens[k]), t.value(tint), behind, [t.value(o) for o in ov]) for tier, tint, ov in EXT_TIERS for k in EXT_TEXT}
+    # Assert
+    assert len(t.fields()) == 3
+    assert min(on_wash.values()) >= 4.5, {k: round(v, 2) for k, v in on_wash.items() if v < 4.5}
+    assert min(on_glass.values()) >= 4.5, {k: round(v, 2) for k, v in on_glass.items() if v < 4.5}
+
+
+@pytest.mark.parametrize("theme", THEMES)
+@pytest.mark.parametrize("fill", ["btn", "btn-hover"])
+def test_extension_white_on_a_primary_capsule_meets_aa(theme, fill):
+    """WCAG 2.2 SC 1.4.3: white text on the extension's tinted primary button is 4.5:1 over any point of the backdrop and over a glass panel, with its darkening sheen (the dark scheme's old #0a84ff fill was 3.6:1)."""
+    t = ExtTheme(theme)
+    tint = _mix(_hex(t.tokens[fill]), CLEAR, t.pct("var(--glass-a-tint)"))
+    behind = t.ambient(("card", "bg"))
+    parents = behind + [_over(t.value("var(--glass-panel-bg)"), a) for a in behind]
+    assert t.worst(WHITE, tint, parents, [t.value("var(--glass-sheen-tint)")]) >= 4.5
+
+
+@pytest.mark.parametrize("head", ["@media (prefers-reduced-transparency: reduce)", "@media (prefers-contrast: more)", "@media (forced-colors: active)", "@media print"])
+def test_extension_fallbacks_are_solid(head):
+    """WCAG 2.2 SC 1.4.3, 1.4.11 · CSS Media Queries 5: the extension's glass turns into plain, opaque surfaces and drops the backdrop for reduced transparency, more contrast, forced colours and print."""
+    decls = _decls(_block(_block(EXT_CSS, head), ":root"))
+    assert decls.get("--glass-solid-img") == "none"
+    assert all(decls.get(a) == "100%" for a in ("--glass-a-panel", "--glass-a-capsule", "--glass-a-hover", "--glass-a-tint")), decls
+
+
+def test_extension_glass_is_local_static_and_on_every_page():
+    """ASVS V14.4.3 · CWE-829 · WCAG 2.2 SC 2.2.2: the extension's glass is a local stylesheet linked after each page's own (so it layers over them), with no colour literal, no remote asset, no blur and no motion; every image and shadow goes through its solid switch."""
+    # Arrange
+    pages = {name: open(os.path.join(EXT, name), encoding="utf-8").read() for name in ("popup.html", "panel.html", "options.html")}
+    # Act
+    decls = re.findall(r"(?<![\w-])(background-image|box-shadow)\s*:\s*([^;]+);", EXT_CSS)
+    # Assert
+    for name, own in (("popup.html", "popup.css"), ("panel.html", "panel.css"), ("options.html", "options.css")):
+        html = pages[name]
+        assert html.index(f'href="{own}"') < html.index('<link rel="stylesheet" href="glass.css">') < html.index("</head>"), name
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(|url\(|https?:", EXT_CSS)
+    assert not re.search(r"backdrop-filter|animation|transition|@keyframes", EXT_CSS)
+    assert len(decls) >= 5 and all(v.startswith(("var(--glass-solid-img,", "var(--glass-solid-shadow,")) for _, v in decls), decls
