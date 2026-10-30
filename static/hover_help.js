@@ -63,7 +63,7 @@
   const OBVIOUS = new Set(['close', 'cancel', 'ok', 'okay', 'done', 'back', 'yes', 'no', 'next', 'previous', 'stop', 'reload',
     'refresh', 'find', 'search', 'copy', 'clear', 'reset', 'print', 'more', 'less', 'show more', 'show less', 'play', 'pause',
     'step', 'csv', 'json', 'pdf', 'xlsx', 'excel', 'word', 'markdown', 'download', 'dismiss', 'got it', 'not now', 'later',
-    'no thanks', 'skip', 'light mode', 'dark mode', 'x', 'help']);
+    'no thanks', 'skip', 'light mode', 'dark mode', 'x', 'help', 'play motion', 'pause motion', 'replay']);
   const OBVIOUS_RE = /^(back to .+|skip to .+|download( as)? (csv|json|pdf|excel|word|markdown|xlsx)|(csv|json|pdf|excel|word|markdown) download)$/;
   const HOVER_DELAY = 250;   // ms of pointing at a mark before it opens (moving across a row stays quiet)
   const LEAVE_GRACE = 200;   // ms to move the pointer from the mark onto the pop-up
