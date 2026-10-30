@@ -3502,6 +3502,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/insights": {
+   "#tiLogsLink": {
+    "what": "Opens Traffic and session logs, where uploaded NSS logs answer what Insights cannot: per rule, per category, per user and per host.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#tiTenant": {
     "what": "Picks which tenant to read: the one signed in on the assessment tab, a saved tenant profile, or the one saved on this computer.",
     "input": "Pick one from the list. It shows only when there is more than one choice.",
