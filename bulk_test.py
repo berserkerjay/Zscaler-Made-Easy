@@ -721,6 +721,14 @@ def summarize_analysis(res: Dict[str, Any]) -> Dict[str, Any]:
                        rule=name(stop), stops_at=stop.get("label") or "", **base)
     if t.get("conditional"):
         return _result(result="unverified", area="", blockable_by=blockable, notes=["how the device reaches Zscaler could not be verified"], **base)
+    # Admin ranking not known, and rank order would decide a module
+    # differently (admin_rank): the row is not asserted either way.
+    rank = next((m for m in [zm.get("modifier") or {}] + list(zm.get("modules") or [])
+                 if m.get("admin_rank_caution") and m.get("status") not in ("not_reached", "not_applicable", "out_of_scope")), None)
+    if rank is not None:
+        r = rank.get("rule") or {}
+        return _result(result="unverified", area=_HOP_AREA.get(str(rank.get("key")), ""), rule=str(r.get("name") or ""), action=str(r.get("action") or ""),
+                       blockable_by=blockable, notes=[str(rank["admin_rank_caution"])], **base)
     if not web:
         # Not web: only the Cloud Firewall decides (DNS Control and ATP
         # block first when they do; that is the `blocked` case above).

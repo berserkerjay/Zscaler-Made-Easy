@@ -83,10 +83,10 @@ filled in and waits for you to click *Analyze*.
 1. Download it from Zscaler Made Easy: **Advanced settings → Browser extension →
    Download the extension** (or use the `browser_extension` folder of the
    repository).
-2. Unzip `dlp-check-extension.zip` somewhere it can stay.
+2. Unzip `zscaler-made-easy-extension.zip` somewhere it can stay.
 3. Open `chrome://extensions` (Edge: `edge://extensions`) and turn on
    **Developer mode**.
-4. Click **Load unpacked** and pick the `dlp-check-extension` folder.
+4. Click **Load unpacked** and pick the `zscaler-made-easy-extension` folder.
 5. Pin the extension. If the app is not at `http://127.0.0.1:8000` (the
    container listens on `http://127.0.0.1:8001`), open the extension's
    **Settings** and enter the address.

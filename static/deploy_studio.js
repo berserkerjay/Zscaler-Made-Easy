@@ -595,7 +595,7 @@ async function _dzTerraform(ids, mode) {
     const blob = await r.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = snap.filename || snap.result.filename || 'dlp-check-terraform.zip';
+    a.download = snap.filename || snap.result.filename || 'zscaler-made-easy-terraform.zip';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     TF.last = Object.assign({}, snap.result, { logs: snap.logs, elapsed_seconds: snap.elapsed_seconds });
@@ -2366,9 +2366,29 @@ async function _tfDownload() {
   catch (e) { TF.last = { status: 'failed', error: e.message, logs: (DZ.job || {}).logs || [] }; }
   finally { TF.busy = false; _tfRender(); }
 }
+// _tfRender rebuilds the dialog's body (after the packs load, a pack is
+// ticked, the mode changes or a download runs). Focus inside it would fall
+// to <body>, out of the dialog (WCAG 2.4.3), so it goes back to the same
+// control (same handler, name and value, same position among its kind),
+// or to the dialog's Close button when that control is gone or disabled.
+const _tfSig = e => [e.tagName, ...['onchange', 'onclick', 'name', 'value', 'id'].map(k => e.getAttribute(k) || '')].join('|');
+function _tfFocusKey(host) {
+  const a = document.activeElement;
+  if (!a || a === host || !host.contains(a)) return null;
+  const s = _tfSig(a);
+  return { tag: a.tagName, s, n: [...host.querySelectorAll(a.tagName)].filter(e => _tfSig(e) === s).indexOf(a) };
+}
+function _tfRestoreFocus(host, key) {
+  if (!key) return;
+  const el = [...host.querySelectorAll(key.tag)].filter(e => _tfSig(e) === key.s)[key.n];
+  if (el) el.focus({ preventScroll: true });
+  const m = document.getElementById('terraformModal');
+  if (m && !m.contains(document.activeElement)) { const c = m.querySelector('button[aria-label="Close"]'); if (c) c.focus({ preventScroll: true }); }
+}
 function _tfRender() {
   const host = document.getElementById('terraformBody');
   if (!host) return;
+  const focusKey = _tfFocusKey(host);
   const mode = _tfMode();
   const sel = [...TF.selected];
   const packs = TF.packs.map(p => `<label class="tf-pack ${TF.selected.has(p.id) ? 'on' : ''}"><input type="checkbox" ${TF.selected.has(p.id) ? 'checked' : ''} onchange="_tfToggle('${_dzE(p.id)}', this.checked)"> <span><b>${_dzE(p.name || p.id)}</b>${p.baseline ? ' <span class="dz-chip kind-baseline">Policy pack</span>' : ''}<br><span class="d">${_dzN(p.dictionaries || 0, 'dictionary', 'dictionaries')} · ${_dzN(p.engines || 0, 'engine')} · ${_dzN(p.policies || 0, 'rule')}</span></span></label>`).join('');
@@ -2429,4 +2449,5 @@ function _tfRender() {
         <li>From then on Terraform owns these objects. <code>terraform plan</code> later shows how the tenant has moved away from the reference; treat an enabled rule or a hardened action as progress to fold back into the pack, not as drift to revert.</li>
         <li>Requirements: Terraform ${_dzE((TF.summaries[sel[0]] || {}).terraform_version || '>= 1.5')}, provider ${_dzE((TF.summaries[sel[0]] || {}).provider || 'zscaler/zia')} ${_dzE((TF.summaries[sel[0]] || {}).provider_version || '~> 4.8')}.</li>
       </ol></div></div></div>`;
+  _tfRestoreFocus(host, focusKey);
 }

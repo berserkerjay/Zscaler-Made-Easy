@@ -444,9 +444,10 @@ PAGE_AUDIT = r"""(() => {
   const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
   out.contrast = [];
   // The glass effect (static/glass.css): a glass surface's gradient is its sheen, measured as a layer (not skipped as an
-  // image), and the soft page wash painted over the body's colour is measured too (each blob's peak, as well as the plain page).
-  const bodyStyle = getComputedStyle(document.body), washOn = /gradient/.test(getComputedStyle(document.body, '::before').backgroundImage);
-  const wash = washOn ? [1, 2, 3].map(k => rgba(bodyStyle.getPropertyValue('--glass-amb-' + k))).filter(c => c && c.a > 0) : [];
+  // image), and the backdrop's colour fields painted over the body's colour are measured too (each field's peak, on either
+  // backdrop layer, as well as the plain page).
+  const bodyStyle = getComputedStyle(document.body), washOn = ['::before', '::after'].some(p => /gradient/.test(getComputedStyle(document.body, p).backgroundImage));
+  const wash = washOn ? [1, 2, 3, 4, 5].map(k => rgba(bodyStyle.getPropertyValue('--glass-amb-' + k))).filter(c => c && c.a > 0) : [];
   const glassOf = ns => (parseInt(ns.getPropertyValue('--glass-surface'), 10) || 0) > 0;
   const texts = [...document.querySelectorAll('body *')].filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim()) && vis(e) && !e.closest('svg, option, [disabled], [aria-disabled="true"], .sr-only'));
   for (const e of texts.slice(0, 1500)) {

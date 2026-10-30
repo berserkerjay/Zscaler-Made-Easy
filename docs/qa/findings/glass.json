@@ -1,5 +1,5 @@
 {
- "area": "UI and accessibility: the glass effect (static/glass.css, static/glass.js) on every page styled by the app's stylesheet, its solid fallbacks and the Advanced settings switch",
+ "area": "UI and accessibility: the glass effect (static/glass.css, static/glass.js, browser_extension/glass.css) on every page styled by the app's stylesheet and on the extension's pages, its living backdrop, its solid and still fallbacks and the Advanced settings switch",
  "title": "Glass effect checked for WCAG 2.2 AA contrast against the worst case behind each surface, every solid fallback, reflow, focus, motion and blur cost, statically and in Chrome on the sample tenant",
  "standards": [
   "WCAG 2.2 SC 1.4.3",
@@ -19,13 +19,13 @@
  "checks": [
   {
    "id": "GLASS-C01",
-   "what": "Text tokens on each glass tier against the worst case behind it, computed from glass.css and the theme tokens: floating chrome over pure white and black (lowest 4.74:1 dark, 4.81:1 light), chrome in the flow over the page wash (5.62 / 5.63), panels (5.02 / 5.58), capsule buttons (5.00 / 5.50), tables (5.49 / 5.65); white on a primary capsule over any parent 5.29 / 5.61; text straight on the wash 5.80 / 5.00",
+   "what": "Text tokens on each glass tier against the worst case behind it, computed from glass.css and the theme tokens, with the sheen, the inner glow (counted over the whole surface) and the lens: floating chrome over pure white and black (lowest 5.08:1 dark, 4.81:1 light), chrome in the flow and the sidebar beside the page over the backdrop's five colour fields (5.40 / 5.12), panels (4.61 / 5.01), capsule buttons (4.92 / 5.07), tables (5.49 / 5.65); white on a primary capsule over any parent 5.28 / 5.61; text straight on the brightest or darkest point of the backdrop 5.43 / 4.57",
    "standard": "WCAG 2.2 SC 1.4.3",
    "result": "pass"
   },
   {
    "id": "GLASS-C02",
-   "what": "Focus ring (--accent-hover) against every glass tier: lowest 6.19:1 dark, 6.96:1 light; keyboard focus on glass buttons draws a solid 3px outline",
+   "what": "Focus ring (--accent-hover) against every glass tier: lowest 6.02:1 dark, 6.96:1 light; keyboard focus on glass buttons draws a solid 3px outline",
    "standard": "WCAG 2.2 SC 1.4.11",
    "result": "pass"
   },
@@ -49,7 +49,7 @@
   },
   {
    "id": "GLASS-C06",
-   "what": "Pointer-follow lens moves per animation frame and is never set under prefers-reduced-motion; the material has no animation, transition or shimmer",
+   "what": "Motion: the only animation is the backdrop's drift (two fixed layers, transform only, stepped, 72 to 90 s a cycle, through --glass-solid-motion); it stops under prefers-reduced-motion and every solid fallback, pauses while the tab is hidden (html.glass-still on visibilitychange) and resumes; the pointer-follow lens moves per animation frame and is never set under prefers-reduced-motion; no transition or shimmer",
    "standard": "WCAG 2.2 SC 2.3.3",
    "result": "pass"
   },
@@ -61,7 +61,7 @@
   },
   {
    "id": "GLASS-C08",
-   "what": "Blur cost: at most 16 blurred layers per page (measured 6 to 8), none taller than the window, no table blurred or see-through, no fixed element inside a blurred one; scroll frame time median 16.7 ms with the glass on and off on /help (25k px), /report/advanced, /report/operations and /report/path",
+   "what": "Blur cost: at most 16 blurred layers per page, none taller than the window (a card or dialog card is blurred only while it fits the window: .glass-fit from a ResizeObserver), no table blurred or see-through, no fixed element inside a blurred one (the sidebar drops its blur while an item is dragged, so the fixed drop marker stays placed against the window)",
    "standard": "WCAG 2.2 SC 1.4.10",
    "result": "fixed"
   },
@@ -69,6 +69,18 @@
    "id": "GLASS-C09",
    "what": "The existing a11y page audit measures glass: a glass surface's gradient is composited as its sheen instead of being skipped as an image, the page wash's peaks are composited under the body's content, and a box-shadow counts as a focus ring only when it differs from the control's resting shadow",
    "standard": "WCAG 2.2 SC 2.4.7",
+   "result": "fixed"
+  },
+  {
+   "id": "GLASS-C10",
+   "what": "The backdrop: five colour fields from the brand tokens (blue, violet, teal, indigo, accent) on body::before and body::after, each at least 12 sRGB steps from the page colour, inside the contrast budget of every text token in both themes; drawn and drifting with the glass on, gone with the glass off, under reduced transparency and forced colours; no horizontal scroll at 320 px while it drifts",
+   "standard": "WCAG 2.2 SC 1.4.3",
+   "result": "pass"
+  },
+  {
+   "id": "GLASS-C11",
+   "what": "The extension's popup, side panel and settings: a still backdrop, glass panels and capsule buttons from tokens.css (now the app's accessible values); every text colour 4.5:1 on the backdrop (lowest 5.43:1 dark, 4.81:1 light) and on each glass surface (5.69 / 5.32), white on a primary capsule 4.5:1; solid under reduced transparency, more contrast, forced colours and print; no blur, no motion, no remote asset",
+   "standard": "WCAG 2.2 SC 1.4.3",
    "result": "fixed"
   }
  ],
@@ -156,7 +168,31 @@
    "fix": "tests/test_accessibility.py samples at the text's own line box (a Range over its text node)",
    "test": "tests/test_accessibility.py::test_text_contrast_meets_aa_in_both_themes",
    "commit": "adcaa91"
+  },
+  {
+   "id": "GLASS-08",
+   "title": "Blurring every card made a card taller than the window (the Advanced settings card is about 11,000 px) a backdrop-filter render surface the size of the page: headless Chrome drew large black areas, and a GPU may refuse a surface that tall",
+   "severity": "low",
+   "cwe": "CWE-400",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "static/glass.js marks a card or dialog card that fits the window with .glass-fit (ResizeObserver, debounced MutationObserver for new cards); static/glass.css blurs only those",
+   "test": "tests/test_glass_browser.py::test_short_cards_are_real_glass_and_tall_ones_are_not_blurred",
+   "commit": ""
+  },
+  {
+   "id": "GLASS-09",
+   "title": "The extension's tokens.css said it carried the app's values but did not: white on its dark primary button (#0a84ff) was 3.6:1 and its light success green (#248a3d) 4.4:1 on white, so no backdrop could be added without text failing AA",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "browser_extension/tokens.css: the app's accessible text and fill colours in both schemes",
+   "test": "tests/test_glass.py::test_extension_white_on_a_primary_capsule_meets_aa",
+   "commit": ""
   }
  ],
- "tests_added": 308
+ "tests_added": 340
 }

@@ -413,7 +413,8 @@ def zia_read(client, scope: Dict[str, Any], *, ftc: bool = False, log=None, canc
     from ssl_flow import _fetch_rules
     got = shadow_rules.read_policies(client, scope, log=log, cancel=cancel)
     mode = (got.get("mode") or {}).get("web_dlp") or shadow_rules.MODE_UNKNOWN
-    res = shadow_rules.analyse(got["rules"], web_dlp_mode=mode, engines=got.get("engines"), categories=got.get("categories"))
+    res = shadow_rules.analyse(got["rules"], web_dlp_mode=mode, engines=got.get("engines"), categories=got.get("categories"),
+                               admin_ranking=got.get("admin_ranking"))
     rules = dict(got["rules"])
     errors = dict(got.get("read_errors") or {})
     nis = dict(got.get("not_in_scope") or {})

@@ -784,6 +784,18 @@ def _order_key(r: Dict[str, Any]) -> Tuple[int, int, str]:
     return (1 if _is_default(r) else 0, o if o is not None and o >= 0 else 10 ** 9, str(_f(r, "id") or ""))
 
 
+def _ranked_key(ranked: bool) -> Callable[[Dict[str, Any]], Tuple[Any, ...]]:
+    """Evaluation order (admin_rank): the default rule last, then the admin
+    rank when admin ranking is on, then the rule order and id."""
+    import admin_rank
+    return admin_rank.key(lambda r: _order_key(r)[1:], ranked, _is_default)
+
+
+def _rank_state(ctx: Dict[str, Any]) -> str:
+    import admin_rank
+    return admin_rank.state_of(ctx.get("ranking"))
+
+
 def _action(r: Dict[str, Any], *fields: str) -> str:
     for k in fields or ("action",):
         a = _f(r, k)
@@ -799,14 +811,23 @@ def _enabled(r: Dict[str, Any]) -> bool:
 
 
 def _run(module: str, key: str, rules: List[Dict[str, Any]], criteria: Callable[[Dict[str, Any]], List[Optional[Dict[str, str]]]],
-         verdict_of: Callable[[Dict[str, Any]], str], action_of: Callable[[Dict[str, Any]], str], default_verdict: str, default_detail: str) -> Dict[str, Any]:
-    """First definite match decides (rules in order, the default rule
-    last). Earlier rules with an unknown criterion and another outcome
-    could override it: the module is then conditional."""
+         verdict_of: Callable[[Dict[str, Any]], str], action_of: Callable[[Dict[str, Any]], str], default_verdict: str, default_detail: str,
+         ranking: Any = None) -> Dict[str, Any]:
+    """First definite match decides (rules in evaluation order: the
+    default rule last and, when admin ranking is on, by admin rank first;
+    admin_rank). Earlier rules with an unknown criterion and another
+    outcome could override it: the module is then conditional. With
+    `ranking` (the recorded admin ranking setting) on, a decision rank made
+    over rule order says so (decided_by "rank"); not known, a decision rank
+    order would change is conditional with the caution."""
+    import admin_rank
+    state = admin_rank.state_of(ranking)
+    ranked = state == admin_rank.ON
     ev = []
-    for r in sorted((r for r in rules if isinstance(r, dict) and _enabled(r)), key=_order_key):
+    for r in sorted((r for r in rules if isinstance(r, dict) and _enabled(r)), key=_ranked_key(ranked)):
         crits = [c for c in criteria(r) if c]
         ev.append({"id": _f(r, "id"), "name": str(_f(r, "name") or f"rule {_f(r, 'id')}"), "order": _f(r, "order"), "default": _is_default(r),
+                   "rank": admin_rank.shown_rank({"rank": _f(r, "rank")}), "rank_key": admin_rank.rank_of({"rank": _f(r, "rank")}),
                    "action": action_of(r), "verdict": verdict_of(r), "state": _state(crits), "criteria": crits})
     idx = next((i for i, e in enumerate(ev) if e["state"] == "match"), None)
     deciding = ev[idx] if idx is not None else None
@@ -824,7 +845,49 @@ def _run(module: str, key: str, rules: List[Dict[str, Any]], criteria: Callable[
     if could:
         res["reason"] = (f"{len(could)} earlier rule(s) with a condition that cannot be evaluated would give another outcome: "
                          + _short([f"'{e['name']}' ({e['action']})" for e in could], 3))
+    _rank_effect(res, ev, deciding, ranking)
     return res
+
+
+def _rank_effect(res: Dict[str, Any], ev: List[Dict[str, Any]], deciding: Optional[Dict[str, Any]], ranking: Any) -> None:
+    """What admin ranking did to a module's decision (`ev` in the order
+    the module used, `deciding` its first definite match): the deciding
+    rule's rank and decided_by (rank or order) when ranking is on, or the
+    caution when ranking is not known and rank order would decide
+    differently. Never changes the rule order the decision was made in."""
+    import admin_rank
+    state = admin_rank.state_of(ranking)
+    alt = admin_rank.alternative(state)
+    if deciding is None:
+        return
+    res["decided_by"] = "order"
+    if state == admin_rank.ON and res.get("rule"):
+        res["rule"]["rank"] = deciding.get("rank")
+    if alt is None:
+        return
+    base = lambda e: (1 if e["default"] else 0, _int(e.get("order")) if _int(e.get("order")) is not None and _int(e.get("order")) >= 0 else 10 ** 9, str(e.get("id") or ""))  # noqa: E731
+    other_order = sorted(ev, key=lambda e: (base(e)[0], e["rank_key"] if alt else 0) + base(e)[1:])
+    other = next((e for e in other_order if e["state"] == "match"), None)
+    if other is None or other is deciding:
+        return
+    if state == admin_rank.ON:
+        res["decided_by"] = "rank"
+        res["rank_note"] = admin_rank.rank_decided(deciding, other)
+        res["detail"] = (str(res.get("detail") or "").rstrip() + " " + res["rank_note"]).strip()
+    elif other["verdict"] != deciding["verdict"]:
+        text = admin_rank.caution(ranking, deciding, other)
+        res["could_override_other"] = bool(res.get("could_override"))   # other reasons it is conditional too
+        res["certainty"] = "conditional"
+        res["admin_rank_caution"] = text
+        res["reason"] = (str(res.get("reason") or "").rstrip(".") + "; " if res.get("reason") else "") + text
+        res["could_override"] = list(res.get("could_override") or []) + [dict(_overlap(other, deciding["verdict"], criteria=True),
+                                                                             detail="Decides instead when admin ranking is on.")]
+
+
+def _clear_rank(m: Dict[str, Any]) -> None:
+    """A module that is not reached decides nothing: no admin ranking note."""
+    for k in ("decided_by", "admin_rank_caution", "rank_note", "could_override_other"):
+        m.pop(k, None)
 
 
 def _rule_ref(e: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -835,6 +898,8 @@ def _rule_ref(e: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
 def _overlap(e: Dict[str, Any], verdict: str, criteria: bool = False) -> Dict[str, Any]:
     o = {"id": e.get("id"), "name": e["name"], "order": e.get("order"), "action": e.get("action"), "verdict": e["verdict"], "differs": e["verdict"] != verdict}
+    if e.get("rank") is not None:
+        o["rank"] = e["rank"]
     if criteria:
         o["criteria"] = list(e["criteria"])
     return o
@@ -1029,7 +1094,8 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
         return "block" if a.startswith("BLOCK") or a in ("DROP", "RESET") else "allow" if a in ("ALLOW", "EVAL_NWAPP") else (a.lower() or "unknown")
 
     res = _run("Cloud Firewall", "firewall", data.get("rules") or [], criteria, verdict_of, lambda r: _action(r, "action", "accessControl"),
-               "unknown", "No Cloud Firewall rule matches and the default rule was not among the rules read, so the firewall's action is unknown.")
+               "unknown", "No Cloud Firewall rule matches and the default rule was not among the rules read, so the firewall's action is unknown.",
+               ranking=ctx.get("ranking"))
     if res["verdict"] == "unknown" and res["certainty"] == "definite":
         res["certainty"] = "unknown"
     missing = [READS["firewall"][i][2] for i, (p, _, _, _) in enumerate(READS["firewall"]) if p != "rules" and data.get(p) is None]
@@ -1076,7 +1142,7 @@ def _dns(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
         return "block" if a.startswith("BLOCK") else "allow" if a == "ALLOW" else "redirect" if a.startswith(("REDIR", "RESOLVE")) else (a.lower() or "unknown")
 
     res = _run("DNS Control", "dns", rules, criteria, verdict_of, lambda r: _action(r), "allow",
-               f"No DNS Control rule matches: the lookup of {ctx['host']} resolves normally.")
+               f"No DNS Control rule matches: the lookup of {ctx['host']} resolves normally.", ranking=ctx.get("ranking"))
     if res["verdict"] == "redirect" and res["rule"]:
         res["notes"].append(f"'{res['rule']['name']}' answers the lookup differently ({res['rule']['action']}): the traffic goes where that answer points (for example ZPA), not necessarily on through ZIA.")
     res["notes"].append("DNS Control sees the lookup only when DNS goes through ZIA (Z-Tunnel 2.0, a site tunnel, or ZIA as the resolver).")
@@ -1106,7 +1172,7 @@ def _sandbox(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
         return a + (f", first time: {first}" if first else "")
 
     res = _run("Sandbox", "sandbox", rules, criteria, lambda r: "inspect", action_of, "none",
-               "No Sandbox rule matches: unknown files on this path are not held for behavioural analysis.")
+               "No Sandbox rule matches: unknown files on this path are not held for behavioural analysis.", ranking=ctx.get("ranking"))
     # Which file the transaction carries is content, decided at run time:
     # a rule unknown only on its file conditions applies to such a file.
     content = {"File type", "Threat category", "Threat score"}
@@ -1153,6 +1219,12 @@ def _visibility(t: Dict[str, Any], traffic: Dict[str, Any]) -> Tuple[Optional[bo
         vis, verdict, cert, detail = None, "unknown", "unknown", "Whether this traffic is decrypted is not established."
     entry = _module("SSL inspection", "ssl", verdict, cert, "modifier", rule=rule, modifier=True, detail=detail,
                     notes=[hop["detail"]] if hop.get("detail") and traffic["web"] else [])
+    if rule is not None and dec.get("rank") is not None:
+        rule["rank"] = dec["rank"]
+    if rule is not None and dec.get("by"):
+        entry["decided_by"] = dec["by"]
+    if hop.get("rank_caution") and traffic["web"] and traffic["encrypted"]:
+        entry["admin_rank_caution"] = entry["reason"] = hop["rank_caution"]
     return vis, entry
 
 
@@ -1175,7 +1247,10 @@ def _from_hop(t: Dict[str, Any], key: str, module: str, zia: Dict[str, Any], ctx
     status = {"out_of_scope": "out_of_scope", "not_reached": "not_reached", "na": "not_applicable"}.get(st, "evaluated")
     dec = hop.get("decided_by") or {}
     pool = {"cac": zia.get("cac"), "url": zia.get("url"), "ftc": zia.get("ftc"), "dlp": zia.get("dlp")}.get(key) or []
-    ordered = sorted((r for r in pool if r.get("enabled", True)), key=lambda r: (_int(r.get("order")) if _int(r.get("order")) is not None else 10 ** 9, str(r.get("id"))))
+    import admin_rank
+    ranked = _rank_state(ctx) == admin_rank.ON
+    ordered = admin_rank.ordered((r for r in pool if r.get("enabled", True)),
+                                 lambda r: (_int(r.get("order")) if _int(r.get("order")) is not None else 10 ** 9, str(r.get("id"))), ranked)
     evals = [(r, _generic_criteria(r, key, ctx)) for r in ordered]
     rule, criteria, overlaps = None, [], []
     if dec.get("name") and status == "evaluated":
@@ -1185,15 +1260,27 @@ def _from_hop(t: Dict[str, Any], key: str, module: str, zia: Dict[str, Any], ctx
             criteria = evals[i][1]
             if rule["order"] is None:
                 rule["order"] = evals[i][0].get("order")
-            overlaps = [{"id": r.get("id"), "name": r.get("name"), "order": r.get("order"), "action": r.get("action") or ", ".join(r.get("actions") or []),
-                         "verdict": "", "differs": (r.get("action") or "") != (evals[i][0].get("action") or "")}
+            if ranked:
+                rule["rank"] = admin_rank.shown_rank(evals[i][0])
+            overlaps = [dict({"id": r.get("id"), "name": r.get("name"), "order": r.get("order"), "action": r.get("action") or ", ".join(r.get("actions") or []),
+                              "verdict": "", "differs": (r.get("action") or "") != (evals[i][0].get("action") or "")},
+                             **({"rank": admin_rank.shown_rank(r)} if ranked and admin_rank.shown_rank(r) is not None else {}))
                         for r, c in evals[i + 1:] if _state(c) == "match"]
             if any(c["state"] == "unknown" for c in criteria) and cert == "definite":
                 cert = "conditional"
-    could = [{"id": r.get("id"), "name": r.get("name"), "order": r.get("order"), "action": r.get("action"), "verdict": "", "differs": True}
+    could = [dict({"id": r.get("id"), "name": r.get("name"), "order": r.get("order"), "action": r.get("action"), "verdict": "", "differs": True},
+                  **({"rank": admin_rank.shown_rank(r)} if hop.get("rank_caution") and admin_rank.shown_rank(r) is not None else {}))
              for r in hop.get("candidate_rules") or [] if isinstance(r, dict)]
     res = _module(module, key, verdict, cert, status, rule=rule, criteria=criteria, overlaps=overlaps, could_override=could if st == "conditional" else [],
                   considered=len(evals), detail=hop.get("detail") or "")
+    if rule is not None and dec.get("by"):
+        res["decided_by"] = dec["by"]
+    if hop.get("rank_caution") and status == "evaluated":
+        # Admin ranking is not known and rank order would decide otherwise:
+        # never asserted (admin_rank.caution).
+        res["certainty"] = "conditional"
+        res["admin_rank_caution"] = hop["rank_caution"]
+        res["reason"] = hop["rank_caution"]
     if key == "dlp" and status == "evaluated" and hop.get("rules"):
         res["overlaps"] = [{"id": r.get("id"), "name": r.get("name"), "order": r.get("order"), "action": r.get("action"), "verdict": "inspect", "differs": False}
                            for r in hop["rules"] if not rule or str(r.get("id")) != str(rule.get("id"))]
@@ -1262,7 +1349,10 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
            "categories": sorted({str(c).upper() for c in rd.get("categories") or []}), "alerts": sorted({str(c).upper() for c in lookup.get("security_alerts") or []}),
            "applications": sorted({str(a).upper() for a in rd.get("applications") or []}), "app_classes": sorted({str(a).upper() for a in rd.get("app_classes") or []}),
            "file_types": sorted({str(x).upper() for x in given if x and str(x).upper().startswith("FTCATEGORY_")}),
-           "dst_groups": {str(g.get("id")): g for g in fw_groups.get("data") or [] if isinstance(g, dict)} if fw_groups.get("ok") else None}
+           "dst_groups": {str(g.get("id")): g for g in fw_groups.get("data") or [] if isinstance(g, dict)} if fw_groups.get("ok") else None,
+           # The recorded admin ranking setting (admin_rank): missing in an
+           # older kept read, it is unknown, never off.
+           "ranking": zia.get("admin_ranking") if isinstance(zia.get("admin_ranking"), dict) else None}
     vis, ssl_entry = _visibility(t, traffic)
     ctx["visible"] = vis
     if ssl_entry.get("rule"):
@@ -1299,10 +1389,12 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
     stop = None
     for m in seq:
         if not reached:
+            _clear_rank(m)
             m.update(verdict="not_reached", status="not_reached", certainty="definite", rule=None, criteria=[], overlaps=[], overlaps_catch_all=0,
                      could_override=[], detail="Not reached: the traffic never reaches Zscaler.")
             continue
         if stop is not None and m["status"] not in ("not_applicable",):
+            _clear_rank(m)
             m.update(verdict="not_reached", status="not_reached", certainty="definite", detail=f"Not reached: {stop['module']} ends the transaction first.",
                      overlaps=[], overlaps_catch_all=0, could_override=[], criteria=[], rule=None)
             continue
@@ -1313,6 +1405,7 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
     if (stop is not None or not reached) and traffic["web"]:
         # SSL inspection acts on the web modules after these: a path that
         # ends before them (or never reaches Zscaler) never gets there.
+        _clear_rank(ssl_entry)
         ssl_entry.update(verdict="not_reached", status="not_reached", certainty="definite", rule=None, criteria=[],
                          detail=f"Not reached: {stop['module']} ends the transaction first." if stop is not None else "Not reached: the traffic never reaches Zscaler.")
     reasons: List[str] = []
@@ -1410,6 +1503,7 @@ def extend_trace(t: Dict[str, Any], result: Dict[str, Any]) -> None:
                     h["module_hop"] = module_hop(h["module_hop"]["module"], "not_reached", key=h["module_hop"]["key"],
                                                  detail="Not reached: the forwarding profile sends this traffic direct.")
         for m in result["modules"]:
+            _clear_rank(m)
             m.update(verdict="not_reached", status="not_reached", certainty="definite", rule=None, criteria=[], overlaps=[], overlaps_catch_all=0,
                      could_override=[], detail="Not reached: the forwarding mode sends this traffic direct.")
         result["stops_at"] = None
@@ -1420,9 +1514,15 @@ def extend_trace(t: Dict[str, Any], result: Dict[str, Any]) -> None:
         m = by_key[key]
         r = m.get("rule") or None
         where = "the default rule" if r and r.get("default") else f"order {r.get('order')}" if r and r.get("order") is not None else ""
+        if r and r.get("rank") is not None and not r.get("default"):
+            where = f"rank {r['rank']}, " + where if where else f"rank {r['rank']}"
         detail = (f"Rule '{r['name']}'" + (f" ({where})" if where else "") + f" decides: {r.get('action') or m['verdict']}." if r else m["detail"])
+        for extra in (m.get("rank_note"), m.get("admin_rank_caution")):
+            if extra and extra not in detail:
+                detail = f"{detail} {extra}"
         return {"key": key, "label": m["module"], "status": "conditional" if m["certainty"] == "conditional" and m["verdict"] == "block" else _HOP_STATUS.get(m["verdict"], "unknown"),
-                "decided_by": {k: r.get(k) for k in ("id", "name", "order", "action")} if r else None, "detail": detail, "weak_point": None,
+                "decided_by": dict({k: r.get(k) for k in ("id", "name", "order", "action")}, **{k: v for k, v in (("rank", r.get("rank")), ("by", m.get("decided_by"))) if v is not None})
+                if r else None, "detail": detail, "weak_point": None, **({"rank_caution": m["admin_rank_caution"]} if m.get("admin_rank_caution") else {}),
                 "why": None if r or m["verdict"] not in ("unknown",) else "not established", "evidence_mode": "configuration", "observed": False,
                 "certainty": m["certainty"]}
 
@@ -1481,8 +1581,10 @@ def annotate_verdict(v: Dict[str, Any], result: Dict[str, Any], host: str) -> No
         v["headline"] = f"{traffic['label']} to {host}: the Cloud Firewall's decision is unknown."
     else:
         what = "blocked" if fw["verdict"] == "block" else "allowed"
-        by = (f"Cloud Firewall rule '{r.get('name')}'" + (" (the default rule)" if r.get("default") else f" (order {r.get('order')})")) if r.get("name") else "the Cloud Firewall"
+        by = (f"Cloud Firewall rule '{r.get('name')}'" + (" (the default rule)" if r.get("default") else
+                                                          f" (rank {r['rank']}, order {r.get('order')})" if r.get("rank") is not None else f" (order {r.get('order')})")) if r.get("name") else "the Cloud Firewall"
         v["headline"] = f"{traffic['label']} to {host} is {what} by {by}" + (
+            ", unless admin ranking is on: it was not established, and with it on another rule decides." if fw["certainty"] == "conditional" and fw.get("admin_rank_caution") and not fw.get("could_override_other") else
             ", unless an earlier rule with a condition this tool cannot evaluate applies first." if fw["certainty"] == "conditional" else ".")
     v["summary"] = (f"{traffic['label']} is not web traffic: URL filtering, Cloud App Control, SSL inspection, Sandbox, File Type Control and Web DLP never see it, "
                     "so its content is not inspected inline.")

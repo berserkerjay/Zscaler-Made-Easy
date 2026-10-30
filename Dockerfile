@@ -1,7 +1,7 @@
 # Zscaler Made Easy in a container: pinned base, hash-pinned dependencies, no root,
-# read-only filesystem, loopback publish. Build:  docker build -t dlp-check .
+# read-only filesystem, loopback publish. Build:  docker build -t zscaler-made-easy:local .
 # Run (see docker-compose.yml for the full set of flags):
-#   docker run --rm -p 127.0.0.1:8001:8000 -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -v dlpcheck-data:/data --read-only --tmpfs /tmp dlp-check
+#   docker run --rm -p 127.0.0.1:8001:8000 -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -v zscaler-made-easy-data:/data --read-only --tmpfs /tmp zscaler-made-easy:local
 # DLP_CHECK_IN_CONTAINER=1 (set below) makes the app judge exposure by
 # DLP_CHECK_HOST_BIND, the host address in -p: loopback starts; anything
 # else needs SSO (ZSCALER_SSO_ENABLED=1 plus the ZSCALER_SSO_* settings).
@@ -121,6 +121,11 @@ ENV ZSCALER_BIND_HOST=0.0.0.0 \
     XDG_CACHE_HOME=/data/cache \
     DLP_CHECK_IN_CONTAINER=1
 
+LABEL org.opencontainers.image.title="Zscaler Made Easy" \
+      org.opencontainers.image.source="https://github.com/berserkerjay/Zscaler-Made-Easy"
+
+# The image's own user keeps the internal name dlpcheck (never shown in the
+# app); files on existing data volumes belong to its user id.
 USER dlpcheck
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/ping', timeout=4).status == 200 else 1)"

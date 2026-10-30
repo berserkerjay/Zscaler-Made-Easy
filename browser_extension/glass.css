@@ -1,0 +1,110 @@
+/* ── Glass for the extension's pages (popup, side panel, settings) ──
+   The app's Liquid Glass material (static/glass.css) for the companion's
+   small pages, from the same tokens (tokens.css): a soft backdrop of colour
+   fields in the brand blues, teal and violet, translucent panels with a
+   gradient sheen and a specular rim (a light 1px inner edge at the top, a
+   faint darker one at the bottom), and glass capsule buttons with a pressed
+   state; a primary button is tinted glass. Nothing scrolls under these
+   panels and the backdrop stands still, so there is no blur and no motion:
+   the look costs no compositing. Linked last on each page, so it layers over
+   popup.css, panel.css and options.css.
+
+   Contrast: every text colour keeps WCAG 2.2 AA (4.5:1) on each surface over
+   the worst point of the backdrop, in both themes (tests/test_glass.py).
+   Solid, plain surfaces under prefers-reduced-transparency,
+   prefers-contrast: more, forced colours and print. No colour literal: only
+   the theme tokens, mixed with color-mix(). */
+:root {
+  --glass-a-panel: 40%;
+  --glass-a-capsule: 40%;
+  --glass-a-hover: 90%;
+  --glass-a-tint: 92%;
+  --glass-tint: var(--card);
+  --glass-panel-bg: color-mix(in srgb, var(--glass-tint) var(--glass-a-panel), transparent);
+  --glass-capsule-bg: color-mix(in srgb, var(--glass-tint) var(--glass-a-capsule), transparent);
+  --glass-capsule-hover: color-mix(in srgb, var(--glass-tint) var(--glass-a-hover), transparent);
+  --glass-sheen: color-mix(in srgb, white 50%, transparent);
+  --glass-sheen-tint: color-mix(in srgb, black 18%, transparent);
+  --glass-rim: color-mix(in srgb, white 95%, transparent);
+  --glass-rim-low: color-mix(in srgb, var(--text) 10%, transparent);
+  --glass-edge: color-mix(in srgb, var(--text) 12%, transparent);
+  --glass-press: color-mix(in srgb, var(--text) 18%, transparent);
+  --glass-teal: color-mix(in srgb, var(--accent) 50%, var(--pass));
+  --glass-violet: color-mix(in srgb, var(--accent) 50%, var(--fail));
+  --glass-amb-1: color-mix(in srgb, var(--accent) 15%, var(--card));
+  --glass-amb-2: color-mix(in srgb, var(--glass-violet) 14%, var(--card));
+  --glass-amb-3: color-mix(in srgb, var(--glass-teal) 16%, var(--card));
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass-a-panel: 56%;
+    --glass-a-capsule: 48%;
+    --glass-a-hover: 95%;
+    --glass-tint: color-mix(in srgb, var(--card) 55%, var(--bg));
+    --glass-sheen: color-mix(in srgb, white 3%, transparent);
+    --glass-rim: color-mix(in srgb, white 30%, transparent);
+    --glass-rim-low: color-mix(in srgb, black 45%, transparent);
+    --glass-edge: color-mix(in srgb, var(--text) 16%, transparent);
+    --glass-press: color-mix(in srgb, black 45%, transparent);
+    --glass-amb-1: color-mix(in srgb, var(--btn) 32%, var(--bg));
+    --glass-amb-2: color-mix(in srgb, var(--glass-violet) 22%, var(--bg));
+    --glass-amb-3: color-mix(in srgb, var(--glass-teal) 20%, var(--bg));
+  }
+}
+
+/* The backdrop: three soft colour fields over the page's own colour. */
+body {
+  background-image: var(--glass-solid-img,
+    radial-gradient(70% 50% at 10% 0%, var(--glass-amb-1), transparent 70%),
+    radial-gradient(60% 45% at 100% 40%, var(--glass-amb-2), transparent 70%),
+    radial-gradient(70% 50% at 30% 100%, var(--glass-amb-3), transparent 70%));
+  background-attachment: fixed;
+}
+/* The side panel paints its own html background, so its body (where the backdrop is) fills the window. */
+:root[data-hh-page="ext:panel"] body { min-height: 100vh; }
+
+/* Panels: the settings groups, the side panel's lists and its segmented control. */
+:root .group, :root .list, :root .empty, :root .seg {
+  background-color: var(--glass-panel-bg);
+  background-image: var(--glass-solid-img, linear-gradient(165deg, var(--glass-sheen) 0%, transparent 55%));
+  border: 1px solid var(--glass-edge);
+  border-radius: 16px;
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-rim-low));
+}
+
+/* Capsules: every plain button (not the list rows, not the segmented tabs). */
+:root button:not(.primary):not(.obj):not([role="tab"]) {
+  background-color: var(--glass-capsule-bg);
+  background-image: var(--glass-solid-img, linear-gradient(170deg, var(--glass-sheen) 0%, transparent 70%));
+  border-color: var(--glass-edge);
+  border-radius: var(--r-pill);
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-rim-low));
+}
+:root button:not(.primary):not(.obj):not([role="tab"]):hover:not(:disabled) { background-color: var(--glass-capsule-hover); border-color: var(--border-strong); }
+:root button:not(.primary):not(.obj):not([role="tab"]):active:not(:disabled) {
+  background-color: var(--glass-capsule-hover);
+  box-shadow: var(--glass-solid-shadow, inset 0 2px 6px var(--glass-press));
+}
+/* Primary: tinted glass; white text sits on at least 92% of the button fill, and the sheen darkens. */
+:root button.primary {
+  background-color: color-mix(in srgb, var(--btn) var(--glass-a-tint), transparent);
+  background-image: var(--glass-solid-img, linear-gradient(0deg, var(--glass-sheen-tint) 0%, transparent 70%));
+  border-radius: var(--r-pill);
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 color-mix(in srgb, white 30%, transparent), inset 0 -1px 0 var(--glass-rim-low));
+}
+:root button.primary:hover:not(:disabled) { background-color: color-mix(in srgb, var(--btn-hover) var(--glass-a-tint), transparent); }
+:root button.primary:active:not(:disabled) { background-color: var(--btn-hover); box-shadow: var(--glass-solid-shadow, inset 0 2px 6px var(--glass-press)); }
+
+/* ── Solid fallbacks: the same shapes, opaque and plain. ── */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass-solid-img: none; --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-hover: 100%; --glass-a-tint: 100%; }
+}
+@media (prefers-contrast: more) {
+  :root { --glass-solid-img: none; --glass-solid-shadow: none; --glass-edge: var(--border-strong); --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-hover: 100%; --glass-a-tint: 100%; }
+}
+@media (forced-colors: active) {
+  :root { --glass-solid-img: none; --glass-solid-shadow: none; --glass-edge: CanvasText; --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-hover: 100%; --glass-a-tint: 100%; }
+}
+@media print {
+  :root { --glass-solid-img: none; --glass-solid-shadow: none; --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-hover: 100%; --glass-a-tint: 100%; }
+}

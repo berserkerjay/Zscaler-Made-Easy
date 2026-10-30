@@ -8,8 +8,16 @@
 # _REDIRECT_URL) in that .env file. It is required only if you publish
 # the container beyond this machine's loopback (DLP_CHECK_HOST_BIND);
 # see SECURITY.md.
+#
+# Names: project, service and container are zscaler-made-easy; the image is
+# zscaler-made-easy:local; saved data is on the volume zscaler-made-easy-data,
+# a fixed name that does not depend on this folder's name. Installs from
+# before the rename kept their data on <folder>_dlpcheck-data:
+# update_container.sh / .ps1 copy it across (never move or delete it); see
+# "Moving to the new name" in INSTALL.md.
+name: zscaler-made-easy
 services:
-  dlp-check:
+  zscaler-made-easy:
     build:
       context: .
       # Which commit the image is built from, so the app can say whether
@@ -18,8 +26,8 @@ services:
       args:
         DLP_CHECK_BUILD_COMMIT: "${DLP_CHECK_BUILD_COMMIT:-unknown}"
         DLP_CHECK_BUILD_BRANCH: "${DLP_CHECK_BUILD_BRANCH:-main}"
-    image: dlp-check:local
-    container_name: dlp-check
+    image: zscaler-made-easy:local
+    container_name: zscaler-made-easy
     ports:
       # Host port: 8001, so the container runs beside a local install that has
       # 8000; set DLP_CHECK_HOST_PORT in .env for another one. The app inside
@@ -47,7 +55,7 @@ services:
       # the ZIA API rate limit: off (0) unless you opt in with a number of hours in .env.
       DLP_CHECK_CONTINUOUS_EVAL_HOURS: "${DLP_CHECK_CONTINUOUS_EVAL_HOURS:-0}"
     volumes:
-      - dlpcheck-data:/data
+      - zscaler-made-easy-data:/data
     read_only: true
     tmpfs:
       - /tmp:size=256m
@@ -60,4 +68,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  dlpcheck-data:
+  zscaler-made-easy-data:
+    name: zscaler-made-easy-data

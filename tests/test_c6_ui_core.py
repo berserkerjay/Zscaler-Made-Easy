@@ -255,8 +255,20 @@ async function grab(key, promise) { try { out[key] = await promise; } catch (e) 
           const where = await pg.evaluate(id => document.getElementById(id).contains(document.activeElement) ? null : (document.activeElement.tagName + '#' + document.activeElement.id), r.modal);
           if (where && !r.left.includes(where)) r.left.push(where);
         }
+        // A help pop-up (static/hover_help.js) takes the first Escape (WCAG 1.4.13: dismissed
+        // without moving focus) and must leave the dialog open and focus where it was; the next
+        // Escape is the dialog's. Opened here from the modal's first "?" mark, with Enter.
+        const state = () => pg.evaluate(id => { const t = document.getElementById('hhTip'), m = document.getElementById(id);
+          return { tip: !!(t && !t.hidden), modalOpen: !!(m.getClientRects().length && getComputedStyle(m).display !== 'none'), focusKept: document.activeElement === window.__c6Focus }; }, r.modal);
+        r.tipAfterTab = (await state()).tip;
+        r.mark = await pg.evaluate(id => { const k = [...document.getElementById(id).querySelectorAll('.hh-mark')].find(b => b.getClientRects().length && !b.hidden);
+          if (k) k.focus(); return !!k && document.activeElement === k; }, r.modal);
+        if (r.mark) await pg.keyboard.press('Enter');
+        await pg.evaluate(() => { window.__c6Focus = document.activeElement; });
+        r.tip = (await state()).tip;
+        if (r.tip) { await pg.keyboard.press('Escape'); r.tipEscape = await state(); }
         await pg.keyboard.press('Escape');
-        await pg.waitForFunction(id => { const m = document.getElementById(id); return !m.getClientRects().length || getComputedStyle(m).display === 'none'; }, r.modal, { timeout: 5000 });
+        await pg.waitForFunction(id => { const m = document.getElementById(id); return !m.getClientRects().length || getComputedStyle(m).display === 'none'; }, r.modal, { timeout: 15000 });
         r.back = await pg.evaluate(() => document.activeElement && document.activeElement.id);
       } catch (e) { r.__error = String(e && e.message || e).slice(0, 200); }
       // Isolation: whatever this one left open is closed before the next.
@@ -265,6 +277,24 @@ async function grab(key, promise) { try { out[key] = await promise; } catch (e) 
         const b = document.getElementById('c6Opener'); if (b) b.remove();
       });
     }
+    // The Terraform dialog redraws its body when its packs load, a pack is ticked or the mode
+    // changes: focus stays on the same control, never falls out of the dialog to <body>.
+    await grab('tfRedraw', (async () => {
+      const r = {};
+      await pg.evaluate(() => openTerraformModal());
+      await pg.waitForFunction(() => document.querySelector('#terraformBody .tf-pack input') && !/loading/i.test(document.getElementById('terraformBody').textContent), null, { timeout: 30000 });
+      const where = () => pg.evaluate(() => { const a = document.activeElement; return { inDialog: document.getElementById('terraformModal').contains(a), tag: a.tagName, change: a.getAttribute('onchange'), checked: !!a.checked }; });
+      const box = await pg.evaluate(() => document.querySelector('#terraformBody .tf-pack input').getAttribute('onchange'));
+      await pg.focus('#terraformBody .tf-pack input');
+      await pg.keyboard.press('Space');   // ticks the pack: a summary loads, the body redraws
+      await pg.waitForFunction(() => !/loading/i.test(document.getElementById('terraformBody').textContent), null, { timeout: 30000 });
+      r.tick = Object.assign(await where(), { same: (await where()).change === box });
+      await pg.focus('#terraformBody summary');
+      await pg.evaluate(() => _tfRender());
+      r.redraw = await where();
+      await pg.evaluate(() => closeTerraformModal());
+      return r;
+    })());
     out.trapErrors = errs.slice();
     await ctx.close();
   }
@@ -600,10 +630,27 @@ def test_tab_never_leaves_an_open_modal(ui, fn):
 
 @pytest.mark.parametrize("fn", MODALS)
 def test_escape_closes_a_modal_and_focus_goes_back_to_its_opener(ui, fn):
-    """WCAG 2.2 SC 2.1.2 · SC 2.4.3: Escape closes the dialog (no keyboard trap) and focus returns to the control that opened it."""
+    """WCAG 2.2 SC 2.1.2 · SC 2.4.3 · SC 1.4.13: Escape closes the dialog (no keyboard trap) and focus returns to the control that opened it; a help pop-up open on the focused control takes the first Escape and leaves the dialog and focus alone."""
     r = ui["trap"][fn]
+    if r.get("mark"):
+        assert r.get("tip"), r   # Enter on a focused "?" mark opens its help
+    if r.get("tip"):
+        assert r.get("tipEscape") == {"tip": False, "modalOpen": True, "focusKept": True}, r
     assert r.get("back") == "c6Opener", r
     assert ui["trapErrors"] == []
+
+
+def test_the_terraform_dialog_keeps_focus_when_it_redraws(ui):
+    """WCAG 2.2 SC 2.4.3 · SC 2.1.1: ticking a pack with Space, or any redraw of the dialog, leaves focus on the same control inside the dialog, never on the page behind it."""
+    r = ui["tfRedraw"]
+    assert "__error" not in r, r
+    assert r["tick"] == {"inDialog": True, "tag": "INPUT", "change": r["tick"]["change"], "checked": True, "same": True}, r
+    assert r["redraw"]["inDialog"] and r["redraw"]["tag"] == "SUMMARY", r
+
+
+def test_a_help_pop_up_in_a_modal_is_dismissed_first(ui):
+    """WCAG 2.2 SC 1.4.13 · SC 2.1.2: the pop-up path above really ran: a "?" mark inside at least one modal opened its help with Enter, and its Escape was checked."""
+    assert any(r.get("mark") and r.get("tip") and "tipEscape" in r for r in ui["trap"].values()), ui["trap"]
 
 
 # ── UI token (ASVS V3, V2.10) ───────────────────────────────────────

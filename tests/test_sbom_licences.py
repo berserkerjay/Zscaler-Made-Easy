@@ -49,7 +49,7 @@ def test_every_sbom_component_and_the_root_carry_a_licence():
     sbom = _sbom()
     unlicensed = [f"{c['name']}=={c['version']}" for c in sbom["components"] if not _licence(c)]
     assert not unlicensed, f"SBOM components without a licence: {unlicensed}"
-    assert _licence(sbom["metadata"]["component"]) == "LicenseRef-DLP-Check-Internal"
+    assert _licence(sbom["metadata"]["component"]) == "LicenseRef-Zscaler-Made-Easy-Internal"
 
 
 def test_the_weak_copyleft_components_are_labelled_as_such():

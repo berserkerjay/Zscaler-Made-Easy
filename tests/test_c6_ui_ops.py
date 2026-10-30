@@ -112,7 +112,8 @@ const key = async (k, code, vk, text) => {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, text });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk });
 };
-const pressTab = () => key('Tab', 'Tab', 9);
+// Tab to the next field: a help mark (the "?" after a field) is its own stop, passed over here.
+const pressTab = async () => { await key('Tab', 'Tab', 9); for (let i = 0; i < 3 && await ev(`document.activeElement.classList.contains('hh-mark')`); i++) await key('Tab', 'Tab', 9); };
 const active = () => ev('document.activeElement && document.activeElement.id');
 const goOff = () => ev("document.getElementById('opGo').disabled");
 const typeIn = t => send('Input.insertText', { text: t });
@@ -446,7 +447,7 @@ def test_a_window_focus_keeps_the_phrase_the_box_and_the_cursor(ui):
 
 
 def test_the_apply_form_is_in_keyboard_order(ui):
-    """WCAG 2.2 SC 2.1.1 · SC 2.4.3: Tab goes assessor → phrase → review box → Apply."""
+    """WCAG 2.2 SC 2.1.1 · SC 2.4.3: Tab goes assessor → phrase → review box → Apply (each field's "?" help mark comes right after it)."""
     assert (ui["tab1"], ui["tab2"], ui["tab3"]) == ("opPhrase", "opAgree", "opGo")
 
 

@@ -248,8 +248,8 @@ function _gdUpdateHelp() {
   const win = /^[A-Za-z]:[\\/]|^\\\\/.test(dir);
   const settings = win ? 'local_settings.bat' : 'local_settings.env';
   const cmd = win
-    ? 'cd /d "%USERPROFILE%" && (if exist "Zscaler Made Easy\\\\.git" (cd /d "%USERPROFILE%\\\\Zscaler Made Easy" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git "Zscaler Made Easy" && cd /d "%USERPROFILE%\\\\Zscaler Made Easy")) && call INSTALL_Zscaler_Made_Easy.bat && call UPDATE_Zscaler_Made_Easy.bat'
-    : 'cd ~ && git clone https://github.com/berserkerjay/DLP-Check.git "Zscaler Made Easy" && cd "Zscaler Made Easy" && ./install.sh && ./start.sh';
+    ? 'cd /d "%USERPROFILE%" && (if exist "Zscaler Made Easy\\\\.git" (cd /d "%USERPROFILE%\\\\Zscaler Made Easy" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git "Zscaler Made Easy" && cd /d "%USERPROFILE%\\\\Zscaler Made Easy")) && call INSTALL_Zscaler_Made_Easy.bat && call UPDATE_Zscaler_Made_Easy.bat'
+    : 'cd ~ && git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git "Zscaler Made Easy" && cd "Zscaler Made Easy" && ./install.sh && ./start.sh';
   const where = win ? 'a Command Prompt' : 'Terminal';
   const does = win ? 'it clones the repository under your user folder, installs it and repoints the shortcuts' : 'it clones the repository into your home folder, installs it and starts it';
   _gdUpdateBox(`<div class="gd-upd-line">This copy was not installed with git (a ZIP download), so it cannot pull updates. The simple way: stop the app, download a fresh ZIP from GitHub, replace this folder keeping <code>${settings}</code>, and run the installer again. Or, once, run this in ${where}; ${does}, and Update app works from then on. Copy <code>${settings}</code> from the old folder afterwards.</div>
@@ -266,7 +266,7 @@ function _gdContainerUpdateHelp() {
   const win = `powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 -Branch ${branch}`;
   const nix = `./update_container.sh --branch ${branch}`;
   const copy = id => `<button type="button" class="gd-btn quiet gd-btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('${id}').textContent).then(() => announce('Command copied'))">Copy command</button>`;
-  _gdUpdateBox(`<div class="gd-upd-line">This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker: open a terminal in the Zscaler Made Easy folder (the one with <code>docker-compose.yml</code>) and run the command for that computer. It pulls the latest code from GitHub and rebuilds the container only when there is something new; saved data stays, and the app restarts with a new UI token (<code>docker logs dlp-check</code>).</div>
+  _gdUpdateBox(`<div class="gd-upd-line">This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker: open a terminal in the Zscaler Made Easy folder (the one with <code>docker-compose.yml</code>) and run the command for that computer. It pulls the latest code from GitHub and rebuilds the container only when there is something new; saved data stays, and the app restarts with a new UI token (<code>docker logs zscaler-made-easy</code>).</div>
     <div class="gd-upd-line soft">Windows (PowerShell):</div><pre class="gd-upd-cmd" id="gdUpdCmdWin">${_gdE(win)}</pre>${copy('gdUpdCmdWin')}
     <div class="gd-upd-line soft">Mac or Linux (Terminal):</div><pre class="gd-upd-cmd" id="gdUpdCmdNix">${_gdE(nix)}</pre>${copy('gdUpdCmdNix')}
     <div class="gd-upd-line soft">These update from <strong>${_gdE(branch)}</strong>; choose another Branch above to switch (main is what customers run; qa and dev carry changes before they are promoted). Later runs keep the branch chosen.</div>

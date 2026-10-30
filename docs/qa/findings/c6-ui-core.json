@@ -47,7 +47,7 @@
   {"id": "C6-UI-CORE-C07", "what": "The SSO sign-in and sign-out links are only same-origin paths", "standard": "ASVS V5.1.5, CWE-601", "result": "fixed"},
   {"id": "C6-UI-CORE-C08", "what": "A browser that refuses alert, confirm or prompt reads as no, and the app's dialog shows the text", "standard": "ASVS V7.4.1, CWE-755", "result": "fixed"},
   {"id": "C6-UI-CORE-C09", "what": "Text contrast at 4.5:1 in both themes, an accessible name on every control, unique ids, one main heading, no sideways scroll at 320 px", "standard": "WCAG 2.2 SC 1.4.3, SC 4.1.2, SC 1.4.10", "result": "pass"},
-  {"id": "C6-UI-CORE-C10", "what": "Tab never leaves an open modal; Escape closes it and focus returns to its opener", "standard": "WCAG 2.2 SC 2.1.2, SC 2.4.3", "result": "pass"},
+  {"id": "C6-UI-CORE-C10", "what": "Tab never leaves an open modal; a help pop-up opened in it takes the first Escape, the next closes the modal and focus returns to its opener; the Terraform dialog keeps focus when it redraws", "standard": "WCAG 2.2 SC 2.1.2, SC 2.4.3, SC 1.4.13", "result": "fixed"},
   {"id": "C6-UI-CORE-C11", "what": "With the UI token gate on: a refused token is asked for again with the reason, the field is masked, the token lives only in an HttpOnly cookie, and three refusals stop the asking", "standard": "ASVS V2.2.1, V3.4.2, CWE-307", "result": "pass"}
  ],
  "findings": [
@@ -139,7 +139,19 @@
    "fix": "static/ui_auth.js: a refused box reads as no (fail closed) and the app's own dialog shows its text",
    "test": "tests/test_c6_ui_core.py::test_a_refused_confirm_or_prompt_reads_as_no_and_never_throws",
    "commit": "65bac56"
+  },
+  {
+   "id": "C6-UI-CORE-09",
+   "title": "The Terraform hand-off dialog dropped keyboard focus to the page behind it whenever it redrew its body (packs loaded, a pack ticked with Space, the mode changed)",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V14.4",
+   "wcag": "WCAG 2.2 SC 2.4.3",
+   "status": "fixed",
+   "fix": "static/deploy_studio.js: _tfRender puts focus back on the same control after it rebuilds the body, or on the dialog's Close button when that control is gone",
+   "test": "tests/test_c6_ui_core.py::test_the_terraform_dialog_keeps_focus_when_it_redraws",
+   "commit": "1766fb6"
   }
  ],
- "tests_added": 27
+ "tests_added": 29
 }

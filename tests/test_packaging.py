@@ -28,7 +28,11 @@ def test_pyproject_lists_every_top_level_module_and_the_entry_points():
     on_disk = {os.path.basename(p)[:-3] for p in glob.glob(os.path.join(ROOT, "*.py"))}
     assert modules == on_disk, {"missing from pyproject": sorted(on_disk - modules), "not on disk": sorted(modules - on_disk)}
     scripts = meta["project"]["scripts"]
-    assert scripts["dlp-check"] == "dlp_api_server:main" and scripts["dlp-check-assess"] == "dlp_assessment_full_auto:main"
+    for new, old in (("zscaler-made-easy", "dlp-check"), ("zscaler-made-easy-assess", "dlp-check-assess"),
+                     ("zscaler-made-easy-evaluate", "dlp-check-evaluate")):
+        assert scripts[new] == scripts[old], f"{old} stays an alias of {new} for existing cron jobs and scripts"
+    assert scripts["zscaler-made-easy"] == "dlp_api_server:main" and scripts["zscaler-made-easy-assess"] == "dlp_assessment_full_auto:main"
+    assert scripts["zscaler-made-easy-evaluate"] == "continuous_eval:main"
     import dlp_api_server, dlp_assessment_full_auto, continuous_eval
     assert callable(dlp_api_server.main) and callable(dlp_assessment_full_auto.main) and callable(continuous_eval.main)
     assert meta["project"]["requires-python"] == ">=3.11"
@@ -93,8 +97,12 @@ def test_the_container_is_updated_from_the_docker_host_with_a_schedulable_script
     import subprocess
     assert subprocess.run(["bash", "-n", os.path.join(ROOT, "update_container.sh")]).returncode == 0
     assert os.access(os.path.join(ROOT, "update_container.sh"), os.X_OK) or sys.platform.startswith("win")
-    for src in (sh, ps):
-        assert "git pull --ff-only" in src and "docker compose up -d --build" in src
+    for src, migrate in ((sh, "migrate_old_data ||"), (ps, "Move-OldData |")):
+        assert "git pull --ff-only" in src
+        # Build, copy any data from before the rename, then start: the new
+        # container never starts before the copy has succeeded.
+        build = src.index("docker compose build")
+        assert src.index("docker compose up -d", src.index(migrate, build)) > build
         assert "DLP_CHECK_BUILD_COMMIT" in src and "Up to date" in src, "rebuilds only when GitHub is ahead"
         assert "git status --porcelain --untracked-files=no" in src, "never overwrites hand edits"
     assert "--schedule" in sh and "crontab" in sh and "--unschedule" in sh
@@ -261,7 +269,7 @@ def test_the_shell_update_script_switches_branches_against_a_scratch_remote(tmp_
         git("checkout", "-q", "main", cwd=seed)
     git("clone", "-q", str(origin), str(deploy), cwd=tmp_path)
     fake.mkdir()
-    (fake / "docker").write_text('#!/bin/sh\necho "$*" >> "$(dirname "$0")/calls"\n[ "$1" = ps ] && echo dlp-check\nexit 0\n', newline="\n")
+    (fake / "docker").write_text('#!/bin/sh\necho "$*" >> "$(dirname "$0")/calls"\n[ "$1" = ps ] && echo zscaler-made-easy\nexit 0\n', newline="\n")
     os.chmod(fake / "docker", 0o755)
     # A bash-style PATH entry: on Windows a C:\ path's colon would split PATH.
     fake_dir = sh("cd", f"'{fake.as_posix()}'", "&&", "pwd", cwd=tmp_path).stdout.strip()
@@ -282,7 +290,7 @@ def test_the_shell_update_script_switches_branches_against_a_scratch_remote(tmp_
     code, out, branch, _ = run("--branch", "prod")
     assert code == 2 and branch == "qa" and "choose main, qa or dev" in out
     calls = (fake / "calls").read_text()
-    assert calls.count("compose up -d --build") == 3, "every switch rebuilds; staying up to date does not"
+    assert calls.count("compose build") == 3 and calls.count("compose up -d") == 3, "every switch rebuilds; staying up to date does not"
 
 
 def test_the_windows_update_script_survives_docker_progress_on_stderr():
@@ -290,10 +298,13 @@ def test_the_windows_update_script_survives_docker_progress_on_stderr():
     # PowerShell 5.1 with ErrorActionPreference Stop, the first such line
     # ended the script mid-build. The build is judged by docker's exit code.
     ps = _read("update_container.ps1")
-    i = ps.index("docker compose up -d --build")
+    i = ps.index("docker compose build")
     before, after = ps[max(0, i - 400):i], ps[i:i + 400]
     assert "$ErrorActionPreference = 'Continue'" in before
     assert "$buildExit = $LASTEXITCODE" in after and "$ErrorActionPreference = 'Stop'" in after and "if ($buildExit -ne 0)" in after
+    j = ps.index("docker compose up -d")
+    before, after = ps[max(0, j - 200):j], ps[j:j + 300]
+    assert "$ErrorActionPreference = 'Continue'" in before and "$upExit = $LASTEXITCODE" in after and "if ($upExit -ne 0)" in after
 
 
 def test_the_image_is_debian_13_and_carries_only_what_python_needs():

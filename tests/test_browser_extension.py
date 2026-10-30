@@ -139,11 +139,11 @@ def test_the_app_serves_the_extension_and_advanced_settings_offers_it():
     c = TestClient(srv.app)
     r = c.get("/api/browser-extension.zip")
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
-    assert 'filename="dlp-check-extension.zip"' in r.headers["content-disposition"]
+    assert 'filename="zscaler-made-easy-extension.zip"' in r.headers["content-disposition"]
     names = set(zipfile.ZipFile(io.BytesIO(r.content)).namelist())
-    on_disk = {f"dlp-check-extension/{os.path.relpath(os.path.join(d, n), EXT).replace(os.sep, '/')}"
+    on_disk = {f"zscaler-made-easy-extension/{os.path.relpath(os.path.join(d, n), EXT).replace(os.sep, '/')}"
                for d, _, files in os.walk(EXT) for n in files if not n.startswith(".")}
-    assert names == on_disk and "dlp-check-extension/manifest.json" in names
+    assert names == on_disk and "zscaler-made-easy-extension/manifest.json" in names
     adv = open(os.path.join(ROOT, "static", "report_advanced.html"), encoding="utf-8").read()
     assert 'href="/api/browser-extension.zip"' in adv and "Load unpacked" in adv and "chrome://extensions" in adv
     assert "companion browser extension" in open(os.path.join(ROOT, "static", "explain.js"), encoding="utf-8").read()
