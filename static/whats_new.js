@@ -33,7 +33,7 @@ window.WHATS_NEW = {
     {
       "id": "admin-zpa", "release": "2026-10-31", "label": "ZPA day-to-day admin",
       "what": "Change App Connectors, Service Edges, their groups and PRA and user portals (health first, rename, on or off, move, update schedule), delete them with a typed confirmation, make a provisioning key shown once, and rotate Browser Access certificates.",
-      "changelog": ["ZPA day-to-day admin"],
+      "changelog": ["ZPA day-to-day admin", "ZPA provisioning keys", "ZPA Browser Access certificates"],
       "marks": [
         { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zpa_infra_update\"]", "shown": "in Build new" },
         { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zpa_ba_certificate\"]", "shown": "in Build new" }
@@ -42,7 +42,7 @@ window.WHATS_NEW = {
     {
       "id": "admin-zcc", "release": "2026-10-31", "label": "Client Connector day-to-day admin",
       "what": "Remove or force remove devices, one user's or a whole list in batches within the hourly API budget, manage custom bypass apps, and set who gets ZPA and ZDX.",
-      "changelog": ["Client Connector day-to-day admin", "Remove devices from a list"],
+      "changelog": ["Client Connector day-to-day admin", "Remove devices from a list", "Custom bypass apps and entitlements"],
       "marks": [
         { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zcc_device_bulk_remove\"]", "shown": "in Build new" },
         { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zcc_entitlements\"]", "shown": "in Build new" }
