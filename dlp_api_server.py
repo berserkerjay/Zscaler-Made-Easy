@@ -7033,11 +7033,16 @@ async def app_update_status(refresh: bool = False, branch: Optional[str] = None)
     # Update notifications (update_notify): off by default; once per version,
     # on the digests' e-mail / webhook channel, in the background.
     if st.get("update_available") is True:
-        import threading
-        import update_notify
-        threading.Thread(target=update_notify.maybe_notify, args=(dict(st),), daemon=True, name="update-notify").start()
+        _start_update_notice(dict(st))
     st["notify"] = await asyncio.to_thread(_update_notify_overview)
     return st
+
+
+def _start_update_notice(st: Dict[str, Any]) -> None:
+    """The notice (update_notify.maybe_notify) in the background: the page never waits on a mail server."""
+    import threading
+    import update_notify
+    threading.Thread(target=update_notify.maybe_notify, args=(st,), daemon=True, name="update-notify").start()
 
 
 def _update_notify_overview() -> Dict[str, Any]:
