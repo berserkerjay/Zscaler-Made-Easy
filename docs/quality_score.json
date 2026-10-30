@@ -88,8 +88,8 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 134,
-            "accepted": 8,
+            "fixed": 136,
+            "accepted": 10,
             "records": [
               "c6-admin-ops",
               "c6-deploy",
@@ -97,7 +97,8 @@
               "c6-packs",
               "c6-update-heal",
               "review-backend",
-              "sbd-writes"
+              "sbd-writes",
+              "w7-sync-csv"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 583,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -455,22 +456,22 @@
       },
       "low": {
         "open": 0,
-        "fixed": 337,
-        "accepted": 0
+        "fixed": 338,
+        "accepted": 1
       },
       "info": {
         "open": 1,
-        "fixed": 48,
-        "accepted": 22
+        "fixed": 49,
+        "accepted": 23
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 313,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8660
   },
   "findings": [
     {
@@ -488,6 +489,22 @@
       "slug": "func-builders",
       "area": "functionality",
       "sub_area": "builders"
+    },
+    {
+      "id": "W7-SC-03",
+      "title": "ZPA access rules cannot be created disabled through the SDK's add_access_rule, so the 'new objects arrive disabled' default cannot hold for them",
+      "severity": "low",
+      "status": "accepted",
+      "cwe": "CWE-1188",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "tests/test_rule_csv.py::test_zpa_new_rules_need_the_tick_because_they_cannot_be_created_disabled",
+      "commit": "",
+      "reason": "A new ZPA row is excluded unless the person ticks 'create new rules enabled' (and a sync job's owner set it); the preview says why",
+      "slug": "w7-sync-csv",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ADMIN-OPS-20",
@@ -840,6 +857,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-SC-04",
+      "title": "ZIA rule renumbering after an add or delete, and ZPA bulk reorder taking every non-default rule, are assumed (not in the SDK docs)",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "Each move re-reads the whole sequence and stops (conflict) if it differs from the plan; the read-back compares the final order",
+      "slug": "w7-sync-csv",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -8970,6 +9003,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-SC-01",
+      "title": "The rule CSV export first wrote with csv.writer directly, bypassing the app's one CSV path",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1236",
+      "asvs": "V5.3.10",
+      "wcag": "",
+      "fix": "rule_csv.to_csv writes through csv_safe.writer; cells are neutralised before, and read_cell undoes exactly one neutralising quote",
+      "test": "tests/test_rule_csv.py::test_export_neutralises_formulas_and_reads_back_exactly",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-sync-csv",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -9736,6 +9785,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-SC-02",
+      "title": "Bulk changes explainer did not name the two new spreadsheet types",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "",
+      "wcag": "",
+      "fix": "static/explain.js X.operations names both types; X.queue names scheduled sync",
+      "test": "tests/test_explain.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-sync-csv",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     }
   ],
   "records": [
@@ -10634,6 +10699,32 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-sync-csv",
+      "area": "Configuration lifecycle: rules as a spreadsheet (ZIA Cloud Firewall, URL filtering, ZPA access policy) and scheduled cross-tenant sync as plans approved by a second person",
+      "title": "CSV round-trip with preview, typed delete confirmation, read-back and Undo; scheduled sync that only reads and files four-eyes plans, refused as stale when the target moved",
+      "standards": [
+        "ASVS V1.4.1",
+        "ASVS V4.1.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.3.10",
+        "ASVS V7.1.1",
+        "ASVS V11.1.3",
+        "ASVS V12.1.1",
+        "CWE-20",
+        "CWE-285",
+        "CWE-367",
+        "CWE-400",
+        "CWE-532",
+        "CWE-862",
+        "CWE-1188",
+        "CWE-1236"
+      ],
+      "checks": 10,
+      "findings": 4,
+      "tests_added": 58
     }
   ],
   "standards": {
@@ -10653,7 +10744,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 106,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -10887,7 +10978,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 57,
+    "wstg": 58,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",
