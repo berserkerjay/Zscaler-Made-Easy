@@ -2,13 +2,13 @@
   "schema_version": 1,
   "generated_by": "tools/quality_score.py",
   "run": {
-    "commit": "c054f3df0793",
-    "date": "2026-10-29T17:05:01",
-    "passed": 21327,
+    "commit": "1b0557d31af8",
+    "date": "2026-10-30T04:59:58",
+    "passed": 21678,
     "failed": 0,
     "errors": 0,
-    "skipped": 133,
-    "duration_s": 2130.3
+    "skipped": 14,
+    "duration_s": 2555.3
   },
   "overall": {
     "score": 100,
@@ -36,9 +36,9 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 21327,
+            "passed": 21678,
             "failed": 0,
-            "skipped": 133,
+            "skipped": 14,
             "files": null
           },
           "findings": {
@@ -127,7 +127,7 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2896,
+            "passed": 2902,
             "failed": 0,
             "skipped": 0,
             "files": 18
@@ -222,10 +222,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 284,
+            "passed": 322,
             "failed": 0,
-            "skipped": 0,
-            "files": 7
+            "skipped": 1,
+            "files": 8
           },
           "findings": null,
           "coverage": {
@@ -267,10 +267,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 3680,
+            "passed": 3738,
             "failed": 0,
             "skipped": 0,
-            "files": 23
+            "files": 24
           },
           "findings": {
             "score": 100.0,
@@ -349,10 +349,10 @@
           ],
           "tests": {
             "score": 100.0,
-            "passed": 2081,
+            "passed": 2303,
             "failed": 0,
-            "skipped": 124,
-            "files": 19
+            "skipped": 4,
+            "files": 20
           },
           "findings": {
             "score": 100.0,
