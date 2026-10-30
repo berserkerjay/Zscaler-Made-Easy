@@ -1880,8 +1880,9 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
     if not urls and not fixes:
         why = "; ".join(sorted({e["why"] for e in excluded})[:3])
         raise ListError("None of the picked rows can be fixed from here" + (f": {why}." if why else "."))
+    import csv_safe
     buf = io.StringIO()
-    w = csv.writer(buf, lineterminator="\n")
+    w = csv_safe.writer(buf, lineterminator="\n")   # the rows to test again: formula-neutralised like every CSV the app writes
     w.writerow(RETEST_COLUMNS)
     w.writerows(retest)
     fid = secrets.token_hex(12)

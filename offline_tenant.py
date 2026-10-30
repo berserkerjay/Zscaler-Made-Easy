@@ -304,7 +304,8 @@ class OfflineStore:
             # is replaced whole (PUT /security).
             if method == "POST" and path.endswith("/security/advanced/blacklistUrls"):
                 entry = self._lookup(path[: -len("/blacklistUrls")])
-                action = str((params or {}).get("action") or "")
+                from urllib.parse import parse_qs, urlsplit
+                action = str((params or {}).get("action") or (parse_qs(urlsplit(str(url)).query).get("action") or [""])[0])
                 urls = [str(u) for u in ((body or {}).get("blacklistUrls") or []) if isinstance(u, (str, int))] if isinstance(body, dict) else []
                 if entry is None or not isinstance(entry.get("body"), dict) or action not in ("ADD_TO_LIST", "REMOVE_FROM_LIST"):
                     return 400, {"code": "NOT_MODELLED", "message": "The sample tenant takes ADD_TO_LIST or REMOVE_FROM_LIST here."}
@@ -505,7 +506,12 @@ class OfflineExecutor:
             status, body = self._store.answer_get(request.get("url", ""), request.get("params") or {})
         else:
             payload = request.get("json") if request.get("json") is not None else request.get("data")
-            status, body = self._store.answer_write(method, request.get("url", ""), payload, request.get("params") or {})
+            url = request.get("url", "")
+            params = request.get("params") or {}
+            if params:   # a write's query (the denylist's ?action=) rides on the URL: answer_write reads it from there
+                from urllib.parse import urlencode
+                url = f"{url}{'&' if '?' in url else '?'}{urlencode(params)}"
+            status, body = self._store.answer_write(method, url, payload)
         answer = _Answer(status, body)
         if status >= 400:
             msg = body.get("message") if isinstance(body, dict) else str(body)

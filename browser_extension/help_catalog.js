@@ -4092,7 +4092,7 @@ window.HELP_CATALOG = {
    },
    "#laAdd": {
     "what": "The URLs to add to the list.",
-    "input": "Optional. One per line, like example.com or example.com/path, without http://.",
+    "input": "Optional. One per line, like example.com or example.com/path, with no scheme in front.",
     "effect": "local"
    },
    "#laRemove": {
@@ -5138,7 +5138,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#plFix": {
-    "what": "Opens Bulk changes in a new tab with the picked rows filled in, each for what it was expected to do: a URL category change, IP destination groups with a Cloud Firewall or DNS Control rule, or the ATP lists. Nothing is written until you preview it and apply it there in write mode.",
+    "what": "Opens Bulk changes in a new tab with the picked rows filled in. Each row is fixed for what it was expected to do: in a URL category, an IP destination group with a rule, or an ATP list. Nothing is written until you preview it and apply it there in write mode.",
     "input": "Pick at least one row first. Needs what each row's fix changes in scope on the Scope page.",
     "effect": "nav"
    },
@@ -5153,7 +5153,7 @@ window.HELP_CATALOG = {
     "effect": "download"
    },
    "#plBody button[data-fixarea]": {
-    "what": "Opens Bulk changes in a new tab with this list filled in: a URL category change, or IP destination groups with a rule, or the ATP lists. Nothing is written there until you apply it.",
+    "what": "Opens Bulk changes in a new tab with this list filled in. It goes into a URL category, an IP destination group with a rule, or an ATP list. Nothing is written there until you apply it.",
     "input": "Nothing to type. Needs that area in scope on the Scope page.",
     "effect": "nav"
    },

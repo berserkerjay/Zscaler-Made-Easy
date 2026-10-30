@@ -18,11 +18,15 @@
   const isIp = v => /^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$|^\d{1,3}(\.\d{1,3}){3}-\d{1,3}(\.\d{1,3}){3}$/.test(v);
   const isV6 = v => v.includes(':') && /^[0-9a-f:.\/]+$/i.test(v);
   const today = () => new Date().toISOString().slice(0, 10);
+  function errs(H, res) {
+    const rows = Object.entries((res && res.errors) || {});
+    return rows.length ? `<div class="bp-card warn"><div class="t">Could not be read</div><ul>${rows.map(([k, v]) => `<li>${H.E(k)}: ${H.E(v)}</li>`).join('')}</ul></div>` : '';
+  }
 
   function section(f) {
     const dests = (f.destinations || []).map(d => ({ value: String(d.value || ''), rows: (d.rows || []).slice(0, 50) }));
     const name = `${f.purpose === 'allow' ? 'Allow' : 'Block'} ${today()}`;
-    return { area: f.area || 'firewall', purpose: f.purpose === 'allow' ? 'allow' : 'block', include: true, action: 'add', dests,
+    return { area: f.area || 'firewall', purpose: f.purpose === 'allow' ? 'allow' : 'block', include: true, mode: 'add', dests,
       rows: f.rows || [], decided: f.decided_by || [], rec: f.recommendation || '',
       ip: 'new', ipName: `Fix ${name} IPs`, host: 'new', hostName: `Fix ${name} hosts`,
       rule: 'new', ruleId: '', ruleName: `Fix ${name}`.slice(0, 31), above: '', enabled: false, services: [] };
@@ -45,9 +49,9 @@
     const cur = sec[which], nm = which === 'ip' ? sec.ipName : sec.hostName;
     return `<label class="df-ctl"><span class="lbl">${which === 'ip' ? 'Put the addresses in' : 'Put the host names in'}</span>
         <select id="lf${which === 'ip' ? 'Ip' : 'Host'}${i}" aria-label="IP destination group for the ${word}">
-        ${sec.action === 'add' ? `<option value="new"${cur === 'new' ? ' selected' : ''}>A new group…</option>` : ''}
+        ${sec.mode === 'add' ? `<option value="new"${cur === 'new' ? ' selected' : ''}>A new group…</option>` : ''}
         ${groups.map(g => `<option value="${E(g.id)}"${String(cur) === String(g.id) ? ' selected' : ''}>${E(g.name)} (${E(g.count)} of ${E((res.limits || {}).group_addresses || 8000)})</option>`).join('')}</select></label>
-      ${cur === 'new' && sec.action === 'add' ? `<label class="df-ctl"><span class="lbl">New group name</span><input id="lf${which === 'ip' ? 'Ip' : 'Host'}Name${i}" value="${E(nm)}" maxlength="128" aria-label="Name of the new group for the ${word}"></label>` : ''}`;
+      ${cur === 'new' && sec.mode === 'add' ? `<label class="df-ctl"><span class="lbl">New group name</span><input id="lf${which === 'ip' ? 'Ip' : 'Host'}Name${i}" value="${E(nm)}" maxlength="128" aria-label="Name of the new group for the ${word}"></label>` : ''}`;
   }
   function ruleBlock(H, res, i, sec) {
     const E = H.E, rules = (res[`${sec.area}_rules`] || []);
@@ -81,17 +85,17 @@
       const lists = res.atp_lists || {};
       const addTo = sec.purpose === 'block' ? 'denylist' : 'allowlist', other = sec.purpose === 'block' ? 'allowlist' : 'denylist';
       return `${head}${rec}<div class="op-row">${inc}<label class="df-ctl"><span class="lbl">Change</span><select id="lfAct${i}" aria-label="How the ATP lists change">
-          <option value="add"${sec.action === 'add' ? ' selected' : ''}>Add them to the security policy ${addTo} (${E((lists[addTo] || {}).count || 0)} entries now)</option>
-          <option value="remove"${sec.action === 'remove' ? ' selected' : ''}>Take them off the security policy ${other} (${E((lists[other] || {}).count || 0)} entries now)</option></select></label></div>
+          <option value="add"${sec.mode === 'add' ? ' selected' : ''}>Add them to the security policy ${addTo} (${E((lists[addTo] || {}).count || 0)} entries now)</option>
+          <option value="remove"${sec.mode === 'remove' ? ' selected' : ''}>Take them off the security policy ${other} (${E((lists[other] || {}).count || 0)} entries now)</option></select></label></div>
         <div class="df-hint">ATP applies these lists to every user and location as soon as ZIA activates the change, so applying asks for the typed phrase.</div>${list}`;
     }
     return `${head}${rec}<div class="op-row">${inc}<label class="df-ctl"><span class="lbl">Change</span><select id="lfAct${i}" aria-label="Add the destinations to a group, or take them out">
-        <option value="add"${sec.action === 'add' ? ' selected' : ''}>Add them to a group</option>
-        <option value="remove"${sec.action === 'remove' ? ' selected' : ''}>Take them out of a group</option></select></label></div>
+        <option value="add"${sec.mode === 'add' ? ' selected' : ''}>Add them to a group</option>
+        <option value="remove"${sec.mode === 'remove' ? ' selected' : ''}>Take them out of a group</option></select></label></div>
       ${ips.length ? `<div class="op-row">${groupSelect(H, res, i, 'ip', sec)}<span class="df-hint">${ips.length} address${ips.length === 1 ? '' : 'es'}; single addresses are merged into CIDR blocks.</span></div>` : ''}
       ${hosts.length ? `<div class="op-row">${groupSelect(H, res, i, 'host', sec)}<span class="df-hint">${hosts.length} host name${hosts.length === 1 ? '' : 's'}.</span></div>` : ''}
       ${v6.length ? `<div class="df-hint">${v6.length} IPv6 destination${v6.length === 1 ? '' : 's'} cannot go into a group: ZIA's API has no user-defined IPv6 destination group. The preview lists them as excluded.</div>` : ''}
-      ${sec.action === 'add' ? ruleBlock(H, res, i, sec) : ''}${list}`;
+      ${sec.mode === 'add' ? ruleBlock(H, res, i, sec) : ''}${list}`;
   }
   function rowsTable(H, rows) {
     if (!rows.length) return '';
@@ -104,7 +108,7 @@
   function manualHtml(H, z) {
     const E = H.E, m = z.manual;
     return `<div class="op-row"><label class="df-ctl"><span class="lbl">Area</span><select id="lfArea" aria-label="Area to fix">
-        ${Object.entries(AREA).map(([k, l]) => `<option value="${k}"${m.area === k ? ' selected' : ''}>${E(l)}</option>`).join('')}</select></label>
+        ${Object.entries(AREA).map(([k, l]) => `<option value="${E(k)}"${m.area === k ? ' selected' : ''}>${E(l)}</option>`).join('')}</select></label>
       <label class="df-ctl"><span class="lbl">The destinations should be</span><select id="lfPurpose" aria-label="Block or allow the destinations">
         <option value="block"${m.purpose === 'block' ? ' selected' : ''}>Blocked</option><option value="allow"${m.purpose === 'allow' ? ' selected' : ''}>Allowed</option></select></label></div>
       <div class="op-row"><label class="df-ctl"><span class="lbl">Destinations, one per line</span><textarea id="lfDests" rows="4" aria-label="Destinations to fix, one per line">${E(m.text)}</textarea></label>
@@ -115,7 +119,7 @@
     const E = H.E, z = st(S);
     const fromList = !!(S.handoff && (S.handoff.fixes || []).length);
     const secs = z.sections || [];
-    where.innerHTML = `${H.errorsHtml(res)}
+    where.innerHTML = `${errs(H, res)}
       <p>${fromList ? 'These rows of the Path analyzer\'s Test a list did not do what was expected. For each area, pick where the destinations go and which rule uses them, then preview: it says each change in plain words and the rows it fixes.'
         : 'Fix destinations that did not do what was expected: pick Fix selected on the Path analyzer\'s Test a list view to fill this in, or paste them below.'} New rules arrive disabled; nothing is written until you apply.</p>
       ${fromList ? '' : manualHtml(H, z)}
@@ -133,7 +137,7 @@
     });
     secs.forEach((sec, i) => {
       on(`lfInc${i}`, 'change', e => { sec.include = e.target.checked; });
-      on(`lfAct${i}`, 'change', e => { sec.action = e.target.value; if (sec.action === 'remove') { if (sec.ip === 'new') sec.ip = ''; if (sec.host === 'new') sec.host = ''; } again(`lfAct${i}`); });
+      on(`lfAct${i}`, 'change', e => { sec.mode = e.target.value; if (sec.mode === 'remove') { if (sec.ip === 'new') sec.ip = ''; if (sec.host === 'new') sec.host = ''; } again(`lfAct${i}`); });
       on(`lfIp${i}`, 'change', e => { sec.ip = e.target.value; again(`lfIp${i}`); });
       on(`lfHost${i}`, 'change', e => { sec.host = e.target.value; again(`lfHost${i}`); });
       on(`lfIpName${i}`, 'input', e => { sec.ipName = e.target.value; });
@@ -153,17 +157,17 @@
     const fixes = [];
     (z.sections || []).forEach(sec => {
       if (!sec.include || !(res.areas || []).includes(sec.area)) return;
-      const f = { area: sec.area, purpose: sec.purpose, action: sec.action, destinations: sec.dests, decided_by: sec.decided.slice(0, 5) };
-      if (sec.area === 'atp') { f.list = sec.action === 'add' ? (sec.purpose === 'block' ? 'denylist' : 'allowlist') : (sec.purpose === 'block' ? 'allowlist' : 'denylist'); fixes.push(f); return; }
+      const f = { area: sec.area, purpose: sec.purpose, action: sec.mode, destinations: sec.dests, decided_by: sec.decided.slice(0, 5) };
+      if (sec.area === 'atp') { f.list = sec.mode === 'add' ? (sec.purpose === 'block' ? 'denylist' : 'allowlist') : (sec.purpose === 'block' ? 'allowlist' : 'denylist'); fixes.push(f); return; }
       const ref = (v, name) => v === 'new' ? { new: String(name || '').trim() } : v ? { id: v } : null;
       const hasIp = sec.dests.some(d => isIp(d.value)), hasHost = sec.dests.some(d => !isIp(d.value) && !isV6(d.value));
       f.ip_group = hasIp ? ref(sec.ip, sec.ipName) : null;
       f.fqdn_group = hasHost ? ref(sec.host, sec.hostName) : null;
-      if ((hasIp && !f.ip_group) || (hasHost && !f.fqdn_group)) throw new Error(`${AREA[sec.area]}: pick the group the destinations ${sec.action === 'add' ? 'go into' : 'come out of'}.`);
-      if (sec.action === 'add' && sec.rule === 'existing') {
+      if ((hasIp && !f.ip_group) || (hasHost && !f.fqdn_group)) throw new Error(`${AREA[sec.area]}: pick the group the destinations ${sec.mode === 'add' ? 'go into' : 'come out of'}.`);
+      if (sec.mode === 'add' && sec.rule === 'existing') {
         if (!sec.ruleId) throw new Error(`${AREA[sec.area]}: pick the rule to add the group to, or another choice under Then.`);
         f.rule = { id: sec.ruleId };
-      } else if (sec.action === 'add' && sec.rule === 'new') {
+      } else if (sec.mode === 'add' && sec.rule === 'new') {
         f.rule = { new: { name: String(sec.ruleName || '').trim(), above: sec.above || null, enabled: !!sec.enabled } };
       } else f.rule = null;
       f.services = sec.area === 'firewall' && f.rule ? sec.services : [];
@@ -224,8 +228,8 @@
   function renderGroup(res, where, S, H) {
     const E = H.E, z = gst(S), lim = (res.limits || {}).group_addresses || 8000;
     const groups = (res.ip_groups || []).filter(g => g.editable && ['DSTN_IP', 'DSTN_FQDN', 'DSTN_DOMAIN'].includes(g.type));
-    if (!(res.areas || []).includes('firewall')) { where.innerHTML = `${H.errorsHtml(res)}<div class="bp-card warn"><div>${E((res.not_in_scope_areas || {}).firewall || 'Not in scope on the Scope page.')}</div></div>`; return; }
-    where.innerHTML = `${H.errorsHtml(res)}
+    if (!(res.areas || []).includes('firewall')) { where.innerHTML = `${errs(H, res)}<div class="bp-card warn"><div>${E((res.not_in_scope_areas || {}).firewall || 'Not in scope on the Scope page.')}</div></div>`; return; }
+    where.innerHTML = `${errs(H, res)}
       <p>Add or remove entries on one IP destination group, or make a new one. A group holds IPv4 addresses, CIDR blocks and ranges (type IP) or host names (type FQDN), at most ${E(lim)} entries (assumed limit). The preview names the rules that use the group.</p>
       <div class="op-row"><label class="df-ctl"><span class="lbl">Group</span><select id="lgGroup" aria-label="IP destination group to change">
           <option value="">Pick one…</option><option value="new"${z.group === 'new' ? ' selected' : ''}>A new group…</option>
@@ -256,8 +260,8 @@
   function ast(S) { if (!S.la) S.la = { list: 'denylist', add: '', remove: '' }; return S.la; }
   function renderList(res, where, S, H) {
     const E = H.E, z = ast(S), lists = res.atp_lists || {};
-    if (!(res.areas || []).includes('atp')) { where.innerHTML = `${H.errorsHtml(res)}<div class="bp-card warn"><div>${E((res.not_in_scope_areas || {}).atp || 'Not in scope on the Scope page.')}</div></div>`; return; }
-    where.innerHTML = `${H.errorsHtml(res)}
+    if (!(res.areas || []).includes('atp')) { where.innerHTML = `${errs(H, res)}<div class="bp-card warn"><div>${E((res.not_in_scope_areas || {}).atp || 'Not in scope on the Scope page.')}</div></div>`; return; }
+    where.innerHTML = `${errs(H, res)}
       <p>Add or remove URLs on the security policy lists Advanced Threat Protection applies to every user and location: the denylist blocks, the allowlist exempts (and wins over the denylist). A change acts as soon as ZIA activates it, so applying asks for the typed phrase.</p>
       <div class="op-row"><label class="df-ctl"><span class="lbl">List</span><select id="laList" aria-label="Security policy list to change">
         <option value="denylist"${z.list === 'denylist' ? ' selected' : ''}>Denylist (${E((lists.denylist || {}).count || 0)} entries)</option>
