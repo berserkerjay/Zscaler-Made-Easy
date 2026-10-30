@@ -1487,7 +1487,7 @@ def _may_reach(name: str, value: str, action: str, user: Dict[str, Any], groups:
     if hit is not None:
         owner, prof = hit
         if name == "report_id" and str(value).startswith("plan-"):
-            return may_use("plan", value)   # a saved plan: its owner, or whom it is shared with (and who may read its profile)
+            return may_use("plan", value, user, groups)   # a saved plan: its owner, or whom it is shared with (and who may read its profile)
         return owner == user.get("id") or (bool(prof) and action in actions_on(user, prof, groups))
     fn = _RESOLVERS.get(name)
     if fn is None:
@@ -1562,16 +1562,21 @@ def share(kind: str, rid: Any, principals: Any, *, by: str = "") -> Dict[str, An
     return rec
 
 
-def may_use(kind: str, rid: Any) -> bool:
+def may_use(kind: str, rid: Any, user: Optional[Dict[str, Any]] = None, groups: Optional[Iterable[str]] = None) -> bool:
     """May the person making this request see and use this template or saved
     plan? Outside team mode, an administrator, its owner, or someone it is
     shared with; a template from before team mode (no owner) is everyone's.
     A plan also needs read on its tenant profile, shared or not."""
-    if not enabled() or _CTX.get() is None or is_admin():
-        return True
-    u = current_user()
+    if user is None:
+        if not enabled() or _CTX.get() is None or is_admin():
+            return True
+        user, groups = current_user(), current_token_groups()
+    u = user
     if not u:
         return False
+    if u.get("role") == "admin":
+        return True
+    groups = list(groups or [])
     rec = sharing(kind, rid) or {}
     owner = rec.get("owner")
     hit = bound(rid) if kind == "plan" else None
@@ -1582,11 +1587,11 @@ def may_use(kind: str, rid: Any) -> bool:
     if owner == u.get("id"):
         return True
     data = _read()
-    mine = {f"user:{u.get('id')}"} | {f"group:{g}" for g in _user_groups(data, str(u.get("id")), current_token_groups())}
+    mine = {f"user:{u.get('id')}"} | {f"group:{g}" for g in _user_groups(data, str(u.get("id")), groups)}
     if not mine & set(rec.get("principals") or []):
         return False
     if kind == "plan":
-        return bool(hit and hit[1]) and "read" in actions_on(u, hit[1], current_token_groups())
+        return bool(hit and hit[1]) and "read" in actions_on(u, hit[1], groups)
     return True
 
 

@@ -1123,6 +1123,76 @@ Sign out**, and the token is neither printed nor written to
 
 ---
 
+## Team server (optional): several people on one server
+
+By default the app is for one person, on one computer: it listens on this
+computer only and asks for its UI token. Leave it that way unless a team
+needs to share one server. Team mode is **off unless you turn it on**.
+
+**What it gives you.** Each person signs in with their own account. Each
+account has a role (viewer, operator, approver, administrator) and is given
+access per tenant profile (read, plan, apply, approve). Every change is in
+the audit log with who made it and for which tenant profile; a change
+request needs a second person to approve it.
+
+**1. Turn it on and make the first administrator.** In `local_settings.env`
+(or the `.env` next to `docker-compose.yml`):
+
+```
+ZSCALER_TEAM_MODE=1
+```
+
+Then, once, in the app folder (it asks for the password twice; at least 12
+characters):
+
+```
+python team_server.py add-admin alice
+```
+
+In the container: `docker compose exec zscaler-made-easy python team_server.py add-admin alice`.
+
+**2. Turn on HTTPS.** A team server that other computers can reach does
+not start without it. Pick one:
+
+- your own certificate: `ZSCALER_TLS_CERT=/path/cert.pem` and `ZSCALER_TLS_KEY=/path/key.pem`;
+- a self-signed one made on the first start: `ZSCALER_TLS=self-signed` (add the
+  names people type in `ZSCALER_TLS_HOSTNAMES`). The start-up window prints its
+  SHA-256 fingerprint: check that the browser shows the same before you trust it;
+- Let's Encrypt through your Cloudflare DNS: `ZSCALER_TLS=acme`,
+  `ZSCALER_ACME_DOMAINS=team.example.com`, optionally `ZSCALER_ACME_EMAIL`. Store a
+  Cloudflare API token that may edit that zone's DNS with
+  `python server_acme.py set-cloudflare-token` (kept in the OS credential store;
+  on Linux add `DLP_CHECK_SECRET_STORE=file` to keep it in an owner-only file).
+  The certificate renews at start-up when fewer than 30 days are left. This is
+  the only time the app talks to Let's Encrypt and Cloudflare.
+
+Optionally `ZSCALER_TLS_REDIRECT_PORT=80` makes plain `http://` only redirect
+to HTTPS. Then let others reach it: `ZSCALER_BIND_HOST=0.0.0.0` (local
+install) or `DLP_CHECK_HOST_BIND=0.0.0.0` (container).
+
+**3. Add people and give access.** Open `https://<server>:8000/login`, sign
+in, and open **Team server** (top right). Add accounts, pick a role, and
+under *Access to tenant profiles* tick what each may do on which profile.
+Nothing is allowed until you give it. With SSO configured too (the
+`ZSCALER_SSO_*` settings), people can use **Sign in with SSO**; their
+account is matched by a verified email. To have your identity provider
+create and remove accounts and groups, make a SCIM token on the same page
+and give the provider the SCIM address it shows (`/api/scim/v2`).
+
+**4. Optional hardening.** `DLP_CHECK_STORE_ENCRYPTION=1` encrypts the app's
+stores on disk (`python store_crypto.py seal-all` seals what is already
+there; `python store_crypto.py rotate` changes the key). `DLP_CHECK_FIPS_MODE=1`
+keeps the app to FIPS-approved algorithms (passwords made before must then be
+set again: `python team_server.py reset-password <name>`); it does not make
+Python itself a validated module, see SECURITY.md.
+
+Sessions end after 15 quiet minutes (a warning comes first) and after 8 hours
+at most; five wrong passwords lock an account for 15 minutes
+(`python team_server.py unlock <name>`, or **Unlock** on the Team server
+page). Restarting the server signs everyone out. SAML and passkeys are not
+built in: use your identity provider's OpenID Connect app. SECURITY.md,
+"Team server", has the details and the threat model.
+
 ## Connecting to a Zscaler tenant
 
 Once you are in, **Connect to the tenant** has a **Sign-in method**

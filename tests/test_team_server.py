@@ -492,8 +492,8 @@ def test_hsts_only_on_a_team_server_over_https(world, monkeypatch):
 def test_audit_entries_name_the_actor_and_profile_and_viewers_see_only_their_tenants(world):
     """ASVS V7.1.3 · V7.2.1 · CWE-778 · CWE-200 · WSTG-ATHZ-04: every call is audited with its actor and tenant profile; a viewer's audit read is filtered to their tenants; refusals are audited."""
     olga = _login("olga")
-    olga.post("/api/workspace/notes", json={"profile_id": world["a"], "kind": "rule", "ref": "1", "action": "tag", "tag": "x"}, headers=ORIGIN)
-    olga.post("/api/workspace/notes", json={"profile_id": world["b"], "kind": "rule", "ref": "1", "action": "tag", "tag": "x"}, headers=ORIGIN)
+    olga.post("/api/workspace/notes", json={"profile_id": world["a"], "kind": "rule", "ref": "1", "action": "add_tag", "tag": "x"}, headers=ORIGIN)
+    olga.post("/api/workspace/notes", json={"profile_id": world["b"], "kind": "rule", "ref": "1", "action": "add_tag", "tag": "x"}, headers=ORIGIN)
     entries = audit.tail(500)
     mine = [e for e in entries if e.get("event") == "api" and e.get("path") == "/api/workspace/notes"]
     assert mine and all(e["actor"] == "olga" for e in mine) and mine[0]["profile"] == world["a"]

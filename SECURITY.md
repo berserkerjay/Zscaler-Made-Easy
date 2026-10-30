@@ -104,7 +104,7 @@ release branches.
 | Writes to a tenant | Refused unless write mode is enabled for the session (typed phrase, localhost only) or the server is started with `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`. Under SSO with `ZSCALER_SSO_WRITERS` set, only the listed groups and email addresses may do either, or deploy, remove, import, undo, apply or roll back; everyone else gets 403 and can still assess, read and preview. Every route that changes a tenant (deploy, import, removal, undo, proposal apply and rollback, change queue apply, heal, bulk changes, remediation, the Evaluate All Rules steps) also needs the explicit confirmation (`confirm=true`, or its typed phrase) and the assessor's name, and all four gates are checked before the tenant is signed in to (`tests/test_write_safety_gates.py` holds every POST, PUT and DELETE route to this). Deploys require an approved plan hash; every rule ships DISABLED and monitor-only; nothing is activated; every deployment is recorded for undo. Applying an approved FP/TP Detection Ratio proposal goes through the same gate with an explicit confirmation, a re-read that refuses when the tenant moved, a read-back, and a recorded rollback value; its rollback runs only while the rule still holds the value the apply set. Typed phrases compare case-insensitively, one character for one, with deliberately no NFKC or other compatibility folding: a look-alike (dotless i, long s, full-width letters or digits) never confirms, and a blank phrase never matches (`security.typed_phrase_matches`). One write run per tenant at a time: a second deploy, removal or bulk change started while one is writing is refused as busy, with nothing read or written. A create answered by a timeout or a 502/504 is sent again only after a read by name shows it is not there. An Undo is applied only as the recorded inverse of its operation, once. The migration wizard's delete-all and post write only what their dry run showed (its plan hash). (`tests/test_sbd_writes.py`) |
 | Credentials | Form, `ZSCALER_*` environment, `local_settings.bat`, or a saved profile (secrets only when *remember* is ticked, and only in the OS credential store; without a usable one the secret is not remembered and the save says so, unless the operator explicitly allows the owner-only profile file with `DLP_CHECK_SECRET_STORE=file`). Two sign-ins: a ZIdentity API client (OneAPI) or the classic ZIA API (admin username, password, API key; the password and key are secrets like the client secret). Never returned by the API, masked in every error, redacted in the audit log, all files git-ignored. |
 | Network | Web server and MCP server bind to 127.0.0.1 by default. CORS and origin checks allow localhost origins only. Security headers (CSP, frame-ancestors none, nosniff, no-referrer), a body-size cap and a rate limit are always on. The body-size cap is the outermost layer and counts streamed (chunked) bodies as they arrive, so no other layer (the audit log included) holds more than the cap; a refused body is recorded as `request_too_large` without its content. The rate limit runs ahead of the UI token check, so a flood of unauthenticated calls cannot fill and rotate away the audit log. Update, pack upload and pack rewrite are refused unless bound to localhost. |
-| Outbound calls | Only the Zscaler API for the tenant, GitHub for the app update (git pull and, for the cross-check above, the GitHub REST API), Zscaler and integration-partner documentation hosts on an allowlist for the update check, the best-practice library and the SaaS capability matrix, and, only when you configure them, your SMTP relay and an https Teams or Slack webhook for the digest. Allowlisted fetches are https only and check every redirect hop against the allowlist; the digest webhook's redirects are not followed; the vanity domain must be a DNS name, so the client secret only goes to the cloud's Zscaler sign-in host. The upstream contract check (`upstream_check.py`, run daily in GitHub Actions, never by the server) additionally reads PyPI, the Terraform registry, raw.githubusercontent.com and automate.zscaler.com through the same allowlist. No AI or LLM service is called by the app. |
+| Outbound calls | Only the Zscaler API for the tenant, GitHub for the app update (git pull and, for the cross-check above, the GitHub REST API), Zscaler and integration-partner documentation hosts on an allowlist for the update check, the best-practice library and the SaaS capability matrix, and, only when you configure them, your SMTP relay and an https Teams or Slack webhook for the digest. Only with `ZSCALER_TLS=acme` (off by default): the ACME directory's host (acme-v02.api.letsencrypt.org by default) and api.cloudflare.com, for a Let's Encrypt certificate through dns-01. Allowlisted fetches are https only and check every redirect hop against the allowlist; the digest webhook's redirects are not followed; the vanity domain must be a DNS name, so the client secret only goes to the cloud's Zscaler sign-in host. The upstream contract check (`upstream_check.py`, run daily in GitHub Actions, never by the server) additionally reads PyPI, the Terraform registry, raw.githubusercontent.com and automate.zscaler.com through the same allowlist. No AI or LLM service is called by the app. |
 | Continuous evaluation | Runs read-only only when someone runs it (Run the loop now, `continuous_eval.py --once`, or a scheduled task you create); the server's timer is off unless `DLP_CHECK_CONTINUOUS_EVAL_HOURS` is set above 0. Each tenant profile is read only for what its Scope page puts in scope (nothing when no scope is saved): FP/TP Detection Ratio and the ticked packs' drift on the in-scope DLP channels when DLP is in scope, SaaS tenant status when SaaS Security runs on Zscaler, plus guidance mapping. It raises proposals; a person decides them; applying goes through the deploy path. Digests hold counts, titles and rule names, never credentials; the SMTP password and webhook URL stay in `local_settings.bat` (git-ignored) and are never returned by the API. The manual FP/TP Detection Ratio, the live feed and the Data Flow Map read only what the Scope page (else the chosen profile) puts in scope, and refuse before signing in when nothing they read is. |
 | Inputs | Cloud, vanity domain, credentials and customer id are validated before any client is built; pack ids resolve against the discovered pack list; report ids are random tokens; dictionary patterns are bounded to ZIA's limits. Parsers of uploaded or typed text are bounded so no single request can pin the server: every pattern on user or tenant text runs in time linear in its length (log lines are read up to 4,096 characters, typed dates up to 64), nesting is capped (JSON bodies past the decoder's depth are a 400; Terraform, engine expressions and migration exports refuse nesting past 40 to 64 levels in words), a ZIP member that lies about its size fails its check instead of inflating, uploads and report exports are parsed off the event loop, pack engine expressions are read up to 16,384 characters, a Word report holds at most 1,000 checks and other posted reports 5,000. Analyses of large tenants (shadowed rules, ZPA, device posture, the rule migrator) compare only the pairs that can matter and cap how many pairs they list; finished jobs (200), change-request comment history and the workspace notes store (8 MB) are bounded. |
 | Uploaded logs (Log Analyzer) | Client Connector log bundles and PAC files are analysed in memory on the local server and discarded: nothing is written to disk and nothing leaves the machine. Archives are opened with caps (600 members, 48 MB per member, 160 MB in total, one level of nesting; ZIP members only stored or deflate, read in bounded steps; a compressed tar read as one stream that stops at the total cap; each log line read to 4,096 characters), member names are never used as paths, binary members are skipped, and the whole request is under the body-size cap. Pack and migration uploads take ZIP members the same way, and refuse DTDs in an XML export in any encoding. Evidence lines shown back have passwords, tokens, cookies and JWTs blanked out; the audit log records the call without the file contents. The page renders every value through one HTML escaper. |
@@ -156,6 +156,125 @@ and counts as a writer only by email address.
 Scripts that called the API with the UI token (header or Bearer) stop
 working once SSO is on: the token is refused. Run them against a local
 install without SSO, or sign in through the browser.
+
+## Team server (optional; off by default)
+
+`ZSCALER_TEAM_MODE=1` turns the app into a multi-user team server
+(`team_server.py`). Off, nothing in this section runs: the app is the
+single-person app bound to this computer with its UI token, as above.
+
+**What it adds.** Local accounts (passwords hashed with scrypt from the
+Python standard library, N=2^15, r=8, p=1, a 16-byte salt; PBKDF2-HMAC-SHA256
+with 600,000 iterations in FIPS mode), roles (viewer: read; operator: read,
+plan, apply; approver: read, approve; administrator: everything and the
+server itself) and grants of read, plan, apply and approve per tenant profile
+to a user or a SCIM group (or `*` for every profile). What a person may do on
+a profile is their role's actions AND what is granted there: deny by default.
+Sign-in with a password, or through the existing OpenID Connect SSO (`sso.py`),
+matched to an account by subject or a verified email.
+
+**Enforcement.** Every route has an access rule in `team_routes.py`
+(public, session, read, plan, apply, approve, admin, scim). The access
+middleware refuses a route with no rule (403, audited), checks the role, the
+tenant profile the request names (path, query or JSON body `profile_id`) and
+every stored record it names (reports, jobs, saved plans, change requests,
+deployments, operations, snapshots, proposal queues: owned by their maker or
+reached through the same right on their tenant profile; unknown is "not
+found"). Where the tenant credentials are resolved, the request must name a
+profile the person holds the route's action on, and typed sign-in details
+naming another tenant are refused, never used. `tests/test_team_server.py`
+enumerates every registered route and fails on one with no rule.
+
+**Sign-in and sessions.** Five wrong passwords lock an account for 15
+minutes (`ZSCALER_TEAM_LOCKOUT_ATTEMPTS`, `ZSCALER_TEAM_LOCKOUT_MINUTES`); a
+locked account is refused even with the right password until the lock runs
+out or an administrator unlocks it. A name with no account answers and locks
+exactly like a wrong password, after the same hashing work. Sign-in attempts
+are limited per address (20 in 5 minutes, then 429). Every sign-in makes a
+new session id and ends the browser's earlier one. The cookie holds only that
+id: HttpOnly, SameSite=Strict, Secure over HTTPS. A session ends after 15
+quiet minutes (`ZSCALER_TEAM_IDLE_MINUTES`) and after 8 hours whatever happens
+(`ZSCALER_TEAM_SESSION_HOURS`, at most 12); every page warns two minutes
+before the idle sign-out ("Still there?") and five minutes before the
+absolute end. A role change, a password change or a disabled account ends
+that person's sessions at once. The UI token is refused in every form. The
+origin and CSRF checks stay; in addition a change that carries the session
+cookie must carry an `Origin` (or `Referer`) of this server.
+
+**SCIM 2.0** (`/api/scim/v2/Users`, `/Groups`, team mode only): a bearer
+token an administrator makes on the Team server page, shown once, stored as
+its SHA-256 (a 256-bit random value, so a fast hash is the right one), and
+revocable. SCIM never makes, demotes or removes an administrator.
+
+**HTTPS.** `ZSCALER_TLS_CERT` and `ZSCALER_TLS_KEY`, or
+`ZSCALER_TLS=self-signed` (ECDSA P-256, made on the first start with the
+pinned `cryptography` package; its SHA-256 fingerprint is printed at every
+start), or `ZSCALER_TLS=acme` for Let's Encrypt through the dns-01 challenge
+on Cloudflare (`server_acme.py`; the Cloudflare API token is kept in the OS
+credential store, or with `DLP_CHECK_SECRET_STORE=file` in an owner-only
+file). `ZSCALER_TLS_REDIRECT_PORT` adds a plain-HTTP port that only answers a
+308 to HTTPS. A team server answering over HTTPS sends HSTS (one year).
+**A team server reachable beyond this computer refuses to start without
+HTTPS.** Without team mode, the older ways beyond loopback (SSO, or a reverse
+proxy with `ZSCALER_ALLOW_NONLOCAL_BIND`) still start, with a loud warning on
+stderr that team mode with HTTPS is the supported way.
+
+**Audit and four-eyes.** Every audit entry names its actor (the account's
+user name; a background job's entries name the person who started it) and,
+on a team server, the tenant profile the request named. Only an
+administrator sees entries that name no profile; anyone else sees only the
+entries of profiles they may read. Four-eyes cannot be turned off on a team
+server: the approver must be another signed-in person than the requester,
+with approve on that request's tenant profile.
+
+**Templates and saved plans** belong to the person who saved them. Their
+owner (or an administrator) shares them with users and groups; a shared plan
+still opens only for people who may read its tenant profile.
+
+**Encryption at rest** (`DLP_CHECK_STORE_ENCRYPTION=1`, any mode;
+`store_crypto.py`): tenant profiles, snapshots, the change queue, proposals,
+deployment and operation records, workspace notes, POVs and templates, the
+team accounts and the audit log are sealed with AES-256-GCM. The key is kept
+in the OS credential store, or in an owner-only key file
+(`store_keys.json`, 0600). `python store_crypto.py rotate` (or the Team
+server page's administrator) makes a new key, re-seals every store with it
+and only then forgets the old one. Turning the setting off never locks data
+away: sealed stores still read while their key is there.
+
+**FIPS mode** (`DLP_CHECK_FIPS_MODE=1`) restricts the app's own choices to
+FIPS-approved algorithms: PBKDF2-HMAC-SHA256 passwords (an earlier scrypt
+hash is refused until an administrator sets the password again), AES-256-GCM
+stores, RSA/RSA-PSS/ECDSA ID tokens (no EdDSA), ECDHE/DHE with AES-GCM for
+TLS 1.2, ECDSA P-256 certificates, SHA-256 tokens. **It does not make the app
+FIPS 140-3 validated**: the Python interpreter and the OpenSSL and
+`cryptography` builds it runs on are not a validated module unless your
+platform provides one and runs in FIPS mode (for example FIPS-enabled RHEL
+with its validated OpenSSL). The TLS 1.3 cipher suites are the platform
+OpenSSL's choice.
+
+**Not available, said plainly.** SAML sign-in is not built in: verifying
+SAML assertions safely needs an XML-signature library (xmlsec), which is not
+in the pinned dependencies and cannot be added safely here; use your identity
+provider's OpenID Connect app instead (every major SAML provider offers one).
+Passkeys (WebAuthn) are not built in: no vetted WebAuthn library is in the
+pinned dependencies, and adding one (with its CBOR and attestation
+dependencies) to the hash-pinned lock was not done in this change.
+
+### Threat model
+
+| Threat | What stops it |
+|---|---|
+| Someone on the network signs in as another person | Per-person accounts; scrypt (or PBKDF2) hashes; lockout enforced; per-address sign-in limit; same answer and timing for unknown names; OIDC sign-in only through a linked subject or a verified email |
+| A stolen or fixated session cookie | Random 256-bit ids kept server-side; a new id at every sign-in; HttpOnly, SameSite=Strict, Secure over HTTPS; idle and absolute timeouts; HSTS |
+| Passwords or cookies read on the wire | HTTPS required beyond loopback; refusal to start otherwise; HTTP only redirects |
+| Cross-site request forgery, DNS rebinding | SameSite=Strict; the origin check; a cookie-bearing change must carry this server's Origin |
+| A person reaches a tenant they were not given (horizontal) | A rule on every route; the profile checked in the middleware and again where credentials are resolved; typed details of another tenant refused; reports, jobs, plans and records bound to their profile; lists filtered |
+| A viewer or approver changes a tenant (vertical) | Roles cap every grant; apply needs the apply right on that profile, plus write mode, the assessor's name and the typed confirmation as always |
+| One person deploys a change alone | Four-eyes always on: approver is another person with approve on that profile |
+| A provisioning credential leaks | The SCIM token is stored hashed, shown once, revocable, and cannot make administrators |
+| The audit log hides who did what, or leaks other tenants | Every entry has an actor and its profile; reads are filtered per profile |
+| The data folder is copied | Optional AES-256-GCM sealing of every store with the key outside the folder (credential store) or owner-only; rotation |
+| An administrator account is the weak point | It is the root of trust: protect it with a long password, keep few of them, and prefer SSO with your provider's MFA. The app cannot protect against a malicious administrator or the operating-system account that runs it. |
 
 ## Measuring it
 
