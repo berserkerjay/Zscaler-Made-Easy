@@ -4010,6 +4010,56 @@ window.HELP_CATALOG = {
     "input": "Tick it, then click Read from the tenant to list what the prefix matches. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zpa_infra_update\"]": {
+    "what": "Picks \"Change ZPA App Connectors, Service Edges and portals\". It shows each one's health, then renames, turns on or off, moves App Connectors and sets update schedules. Undo puts it back.",
+    "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zpa_infra_delete\"]": {
+    "what": "Picks \"Delete ZPA connectors, groups, portals, certificates or keys\". Anything connected or still used is kept. This cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zpa_provisioning_key_new\"]": {
+    "what": "Picks \"New ZPA provisioning key\". It makes a key for an App Connector group or a Service Edge group, shown once.",
+    "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zpa_ba_certificate\"]": {
+    "what": "Picks \"ZPA Browser Access certificate\". It uploads a certificate with its key, or picks one, and points Browser Access applications at it.",
+    "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zcc_device_remove\"]": {
+    "what": "Picks \"Remove Client Connector devices\". It removes or force removes one user's devices. This cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zcc_device_bulk_remove\"]": {
+    "what": "Picks \"Remove Client Connector devices from a list\". It matches a list of users, host names or device ids and removes them in batches. This cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zcc_bypass_app\"]": {
+    "what": "Picks \"Client Connector custom bypass apps\". It lists, creates, edits or deletes the apps whose traffic skips the Zscaler tunnel.",
+    "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zcc_entitlements\"]": {
+    "what": "Picks \"ZPA and ZDX entitlements\". It sets who gets ZPA and ZDX in Client Connector.",
+    "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zdx_deeptrace_start\"]": {
+    "what": "Picks \"Start a ZDX deep trace\". It shows application scores, a user's devices and their health, and starts a deep trace on one device.",
+    "input": "Tick it, then click Read from the tenant. Needs ZDX ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"zdx_deeptrace_stop\"]": {
+    "what": "Picks \"Stop a ZDX deep trace\". ZDX deletes the trace and what it collected. This cannot be undone.",
+    "input": "Tick it, then click Read from the tenant. Needs ZDX ticked on the Scope page.",
+    "effect": "local"
+   },
    "#opBuildKinds input[name=\"opKind\"]": {
     "what": "Picks this \"Build new\" builder. Its form shows after you read the tenant.",
     "input": "Tick it, then click Read from the tenant.",
@@ -4659,6 +4709,316 @@ window.HELP_CATALOG = {
     "what": "Starts an Undo of this change. It previews the Undo first. Nothing is written until you apply it.",
     "input": "Nothing to type. Just click it.",
     "effect": "read"
+   },
+   "#admFilter": {
+    "what": "Shows only the objects whose name, group or health has these words.",
+    "input": "Optional. Any words, like disconnected.",
+    "effect": "local"
+   },
+   "input[data-admpick]": {
+    "what": "Picks this object to change.",
+    "input": "Tick it to include it. At most 50 per change.",
+    "effect": "local"
+   },
+   "input[name=\"admOn\"]": {
+    "what": "Turns the picked objects on or off, or leaves them as they are.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admName": {
+    "what": "Renames the one picked object.",
+    "input": "Optional. 1 to 128 characters, like hq-connector-1. Pick only one object.",
+    "effect": "local"
+   },
+   "#admMoveTo": {
+    "what": "Moves the picked App Connectors to this App Connector group.",
+    "input": "Optional. Pick a group, or Do not move.",
+    "effect": "local"
+   },
+   "#admDay": {
+    "what": "Sets the day the picked groups take software updates.",
+    "input": "Optional. A day of the week.",
+    "effect": "local"
+   },
+   "#admHour": {
+    "what": "Sets the hour the picked groups take software updates.",
+    "input": "Optional. A whole hour, 00:00 to 23:00.",
+    "effect": "local"
+   },
+   "#admVer": {
+    "what": "Sets the software version profile of the picked groups.",
+    "input": "Optional. Default, Previous default or New release.",
+    "effect": "local"
+   },
+   "input[data-admdel]": {
+    "what": "Picks this object to delete. Deleting cannot be undone.",
+    "input": "Tick it. You type the confirmation when you apply.",
+    "effect": "local"
+   },
+   "input[name=\"admKeyType\"]": {
+    "what": "Picks whether the key enrolls App Connectors or Service Edges.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admKeyGroup": {
+    "what": "Picks the group the new key enrolls into.",
+    "input": "Required. Pick one from the list.",
+    "effect": "local"
+   },
+   "#admKeyName": {
+    "what": "Names the new provisioning key.",
+    "input": "Required. 1 to 128 characters, like branch-key.",
+    "effect": "local"
+   },
+   "#admKeyMax": {
+    "what": "Sets how many App Connectors or Service Edges may enroll with the key.",
+    "input": "Required. A number from 1 to 500.",
+    "effect": "local"
+   },
+   "#admKeyOn": {
+    "what": "Turns the new key on. Off: nothing can enroll with it until it is on.",
+    "input": "Tick it to turn it on.",
+    "effect": "local"
+   },
+   "#admKeyValue": {
+    "what": "Shows the new provisioning key, this once.",
+    "input": "Nothing to type. Copy it now: it is not kept.",
+    "effect": "local"
+   },
+   "#admKeyCopy": {
+    "what": "Copies the new provisioning key.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "input[name=\"admCertMode\"]": {
+    "what": "Picks whether to upload a new certificate or use one ZPA has.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admCertName": {
+    "what": "Names the uploaded certificate in ZPA.",
+    "input": "Required for an upload. 1 to 128 characters, like wiki-2027.",
+    "effect": "local"
+   },
+   "#admCertDesc": {
+    "what": "Describes the uploaded certificate in ZPA.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#admCertPem": {
+    "what": "Takes the certificate, the server certificate first, then its chain.",
+    "input": "Required for an upload. PEM text starting -----BEGIN CERTIFICATE-----.",
+    "effect": "local"
+   },
+   "#admCertFile": {
+    "what": "Loads the certificate from a file.",
+    "input": "Optional. A .pem, .crt or .cer file, at most 64 KB.",
+    "effect": "local"
+   },
+   "#admKeyPem": {
+    "what": "Takes the certificate's private key. It is sent to this app once and never kept, logged or shown.",
+    "input": "Required for an upload. An unencrypted PEM key.",
+    "effect": "local"
+   },
+   "#admKeyFile": {
+    "what": "Loads the private key from a file.",
+    "input": "Optional. A .pem or .key file, at most 16 KB.",
+    "effect": "local"
+   },
+   "#admCertUpload": {
+    "what": "Checks the certificate and its key and holds them for ten minutes for your change. It does not touch the tenant.",
+    "input": "Nothing to type. Needs write mode on.",
+    "effect": "local"
+   },
+   "#admCertPick": {
+    "what": "Picks a certificate ZPA already has.",
+    "input": "Required. Pick one from the list.",
+    "effect": "local"
+   },
+   "input[data-admba]": {
+    "what": "Picks this Browser Access application to point at the certificate.",
+    "input": "Tick it to include it. At most 20.",
+    "effect": "local"
+   },
+   "#admUser": {
+    "what": "Gives the user whose Client Connector devices to list.",
+    "input": "Required. The user's email, like jdoe@acme.com.",
+    "effect": "local"
+   },
+   "#admFind": {
+    "what": "Lists the user's enrolled devices. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "input[name=\"admMode\"]": {
+    "what": "Picks Remove (unenrolls at its next check-in) or Force remove (dropped at once).",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[data-admdev]": {
+    "what": "Picks this device to remove. This cannot be undone.",
+    "input": "Tick it. At most 25; use the list removal for more.",
+    "effect": "local"
+   },
+   "#admList": {
+    "what": "Takes the users, host names, device ids or @domains to remove, one a line.",
+    "input": "Required. Like jdoe@acme.com, LAPTOP-12, or @old-domain.com. At most 5000 lines.",
+    "effect": "local"
+   },
+   "#admListFile": {
+    "what": "Loads the list from a file.",
+    "input": "Optional. A .txt or .csv file, at most 1 MB.",
+    "effect": "local"
+   },
+   "#admListDomain": {
+    "what": "Keeps only devices of users in this domain.",
+    "input": "Optional. A domain, like acme.com.",
+    "effect": "local"
+   },
+   "#admBatch": {
+    "what": "Sets how many devices go in one call to Client Connector.",
+    "input": "Required. 1 to 100. Larger batches use fewer of the 100 calls an hour.",
+    "effect": "local"
+   },
+   "input[name=\"admBulkMode\"]": {
+    "what": "Picks Remove or Force remove for the whole list.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admMatch": {
+    "what": "Matches the list against the enrolled devices. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "select[data-admamb]": {
+    "what": "Picks which device this ambiguous entry means.",
+    "input": "Optional. Pick one, or leave it out.",
+    "effect": "local"
+   },
+   "a[data-admcsv=\"full\"]": {
+    "what": "Downloads the plan or the result as a CSV file. It holds user and host names.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "a[data-admcsv=\"counts\"]": {
+    "what": "Downloads only the counts per status and user domain, without names.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "input[name=\"admApp\"]": {
+    "what": "Picks this custom bypass app to edit or delete.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"admAppAct\"]": {
+    "what": "Picks whether to create, edit or delete a custom bypass app.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admAppName": {
+    "what": "Names the custom bypass app.",
+    "input": "Required. 1 to 64 letters, digits, spaces or . _ ( ) -, like Teams media.",
+    "effect": "local"
+   },
+   "#admAppOn": {
+    "what": "Turns the app on. New apps start off.",
+    "input": "Tick it to turn it on.",
+    "effect": "local"
+   },
+   "#admAppEntries": {
+    "what": "Lists what the app bypasses: protocol, port and address, one a line.",
+    "input": "Required. Like TCP 443 10.0.0.0/8 or UDP 3478-3481 52.112.0.0/14. At most 100.",
+    "effect": "local"
+   },
+   "input[name=\"admSvc\"]": {
+    "what": "Picks the ZPA or the ZDX entitlement to change.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"admAll\"]": {
+    "what": "Turns the service on for every user, or only for the listed groups.",
+    "input": "Tick one. Off narrows who gets it.",
+    "effect": "local"
+   },
+   "#admAddGroups": {
+    "what": "Adds these groups to the entitlement.",
+    "input": "Optional. One group name a line, like Engineering.",
+    "effect": "local"
+   },
+   "input[data-admgrp]": {
+    "what": "Takes this group out of the entitlement.",
+    "input": "Tick it to take it out.",
+    "effect": "local"
+   },
+   "button[data-admscore]": {
+    "what": "Shows this application's ZDX score over the last day. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#admZUser": {
+    "what": "Gives the user whose ZDX devices to find.",
+    "input": "Required. An email, like jdoe@acme.com, or part of a name.",
+    "effect": "local"
+   },
+   "#admZFind": {
+    "what": "Finds the user's ZDX devices. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#admZDev": {
+    "what": "Picks the device to look at or trace.",
+    "input": "Required. Pick one from the list.",
+    "effect": "local"
+   },
+   "#admZHealthView": {
+    "what": "Shows the device's details and health metrics. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "button[data-admperf]": {
+    "what": "Shows how this application performs on this device. It only reads.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "button[data-admfollow]": {
+    "what": "Follows this deep trace until it ends, a limited number of reads, then shows its results.",
+    "input": "Nothing to type. Stop ends it.",
+    "effect": "read"
+   },
+   "input[name=\"admTrace\"]": {
+    "what": "Picks the deep trace to stop. Stopping deletes it and its results.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#admZName": {
+    "what": "Names the deep trace session.",
+    "input": "Required. 1 to 64 letters, digits, spaces or _ . -, like slow teams.",
+    "effect": "local"
+   },
+   "#admZLen": {
+    "what": "Sets how long the deep trace runs.",
+    "input": "Required. 5, 15, 30 or 60 minutes.",
+    "effect": "local"
+   },
+   "#admZApp": {
+    "what": "Picks the application the deep trace measures.",
+    "input": "Optional. Pick one, or None.",
+    "effect": "local"
+   },
+   "#admZWeb": {
+    "what": "Picks the application's Web probe the trace runs.",
+    "input": "Optional. Pick one, or None.",
+    "effect": "local"
+   },
+   "#admZPath": {
+    "what": "Picks the application's CloudPath probe the trace runs.",
+    "input": "Optional. Pick one, or None.",
+    "effect": "local"
+   },
+   "#admZHealth": {
+    "what": "Collects the device's own health (CPU, memory, network) during the trace.",
+    "input": "Tick it to collect it.",
+    "effect": "local"
    }
   },
   "/report/path": {

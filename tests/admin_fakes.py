@@ -306,7 +306,10 @@ class _Dev:
     def list_devices(self, query_params=None):
         q = query_params or {}
         self.t.reads.append(f"devices:{q.get('username')}")
-        rows = [copy.deepcopy(d) for d in self.t.devices if d["user"] == q.get("username")] if int(q.get("page") or 1) == 1 else []
+        mine = [d for d in self.t.devices if q.get("username") in (None, d["user"])]
+        size = int(q.get("page_size") or 50)
+        page = int(q.get("page") or 1)
+        rows = [copy.deepcopy(d) for d in mine[(page - 1) * size: page * size]]
         return rows, Resp(rows), None
 
     def _remove(self, kind, kw):

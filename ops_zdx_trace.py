@@ -336,13 +336,13 @@ def lookup(client: Any, what: str, query: Dict[str, Any], cancel: Optional[threa
 
 
 def follow(client: Any, device_id: str, trace_id: str, *, log: Optional[Callable[[str], None]] = None, cancel: Optional[threading.Event] = None,
-           max_polls: int = MAX_POLLS, interval: float = DEFAULT_INTERVAL, sleep: Callable[[float], None] = time.sleep) -> Dict[str, Any]:
+           max_polls: Optional[int] = None, interval: Optional[float] = None, sleep: Callable[[float], None] = time.sleep) -> Dict[str, Any]:
     """Poll one trace until it ends: at most min(max_polls, MAX_POLLS) reads,
     at least MIN_INTERVAL seconds apart, stopped by Stop. Read-only."""
     device_id, trace_id = check_id(device_id, "The device"), check_id(trace_id, "The deep trace")
     say = log or (lambda m: None)
     limit = max(1, min(int(max_polls or MAX_POLLS), MAX_POLLS))
-    wait = max(MIN_INTERVAL, float(interval or DEFAULT_INTERVAL))
+    wait = max(MIN_INTERVAL, float(DEFAULT_INTERVAL if interval is None else interval))
     polls, errors, last = 0, 0, None
     while polls < limit:
         if cancel is not None and cancel.is_set():
@@ -435,7 +435,8 @@ def _done(t: str, title: str, spec: Dict[str, Any], items: List[Dict[str, Any]],
           warnings: Sequence[str] = (), blockers: Sequence[str] = (), notes: Sequence[str] = (), **extra: Any) -> Dict[str, Any]:
     return dict({"type": t, "product": "zdx", "title": title, "spec": spec, "items": items, "groups": groups, "undo_note": undo,
                  "warnings": list(dict.fromkeys(warnings)), "blockers": list(blockers),
-                 "notes": [undo] + list(notes) + ["ZDX starts or stops the trace as it is asked; there is no activation step."]}, **extra)
+                 "notes": [undo] + list(notes)}, apply_note="ZDX starts or stops the trace as it is asked; there is no activation step.",
+                **extra)
 
 
 def _obj(device_id: str, name: str, trace_id: str = "") -> Dict[str, Any]:

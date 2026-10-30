@@ -218,3 +218,115 @@ def test_entitlement_lists_are_validated():
     for bad in ({"add_groups": ["a\x00b"]}, {"add_groups": ["<b>"]}, {"add_groups": ["X"], "remove_groups": ["x"]}, {}, {"enable_for_all": "no"}):
         with pytest.raises(ao.OperationError):
             ao.plan(c, dict({"type": zc.T_ENT, "service": "zpa"}, **bad), scope=ZCC)
+
+
+# ── bulk removal from a list ───────────────────────────────────────────
+
+def fleet(n=60):
+    c = ZccClient()
+    c.tenant.seed()
+    for i in range(n):
+        c.tenant.devices.append({"udid": f"UD-{i:03d}", "user": f"u{i}@old.example", "machineHostname": f"LT-{i:03d}", "registrationState": "Registered"})
+    c.tenant.devices.append({"udid": "UD-DUP-1", "user": "a@old.example", "machineHostname": "SHARED-PC", "registrationState": "Registered"})
+    c.tenant.devices.append({"udid": "UD-DUP-2", "user": "b@old.example", "machineHostname": "SHARED-PC", "registrationState": "Registered"})
+    return c
+
+
+@pytest.fixture()
+def no_delay(monkeypatch):
+    monkeypatch.setattr(zc, "VERIFY_DELAY", 0.0)
+    monkeypatch.setattr(zc, "_LEDGER", {})
+
+
+def test_a_list_is_matched_exact_first_with_ambiguous_and_unmatched_shown(no_delay):
+    """ASVS V5.1.3 · CWE-20 · CWE-1287: device id, pair, user, host name and @domain entries; a host name enrolled twice is ambiguous,
+    never planned; unknown entries are listed; a domain filter keeps the rest out; one paged inventory read."""
+    c = fleet()
+    text = "user,hostname\nUD-001\nu2@old.example\nu3@old.example,LT-003\nLT-004\nSHARED-PC\nnobody@x.example\n@old.example\nJDOE-LT\n<bad>\n"
+    out = zc.lookup(c, "match", {"text": text, "domain": "old.example"})
+    planned = {d["udid"] for d in out["planned"]}
+    assert {"UD-001", "UD-002", "UD-003", "UD-004"} <= planned and len(planned) == 62   # the @domain entry takes every device of the domain
+    assert [a["entry"] for a in out["ambiguous"]] == ["SHARED-PC"] and len(out["ambiguous"][0]["candidates"]) == 2
+    assert [x["entry"] for x in out["not_found"]] == ["nobody@x.example"] and out["invalid"] == [{"entry": "<bad>"}]
+    assert [x["entry"] for x in out["filtered"]] == ["JDOE-LT"] and out["per_domain"] == {"old.example": 62}
+    assert c.tenant.reads.count("devices:None") == 1 and c.tenant.writes == []
+
+
+def test_bulk_removal_is_batched_typed_confirmed_verified_and_audited(no_delay, isolated):
+    """ASVS V4.1.3 · V7.1.1 · CWE-841 · CWE-352: explicit device ids only, batches of the chosen size, "REMOVE <n> DEVICES" always,
+    a verification re-read, one audit entry per batch and the record with the actor."""
+    c = fleet()
+    devs = [{"udid": f"UD-{i:03d}", "user": f"u{i}@old.example", "entry": f"u{i}@old.example"} for i in range(30)]
+    spec = {"type": zc.T_BULK, "mode": "remove", "batch_size": 7, "devices": devs}
+    p = ao.plan(c, spec, scope=ZCC)
+    assert p["confirm_phrase"] == "REMOVE 30 DEVICES" and len(p["groups"]) == 5 and p["budget"]["needed"] <= p["budget"]["remaining"]
+    r = ao.execute(c, spec, plan_hash=p["plan_hash"], scope=ZCC, writes_enabled=True, assessor=ASSESSOR, confirm_text="REMOVE 29 DEVICES")
+    assert r["status"] == "refused" and c.tenant.writes == []
+    r = ao.execute(c, spec, plan_hash=p["plan_hash"], scope=ZCC, writes_enabled=True, assessor=ASSESSOR, confirm_text="remove 30 devices")
+    assert r["status"] == "applied" and r["verification"]["confirmed"] == 30
+    assert [len(w[2]["udids"]) for w in c.tenant.writes] == [7, 7, 7, 7, 2] and all(set(w[2]) == {"udids"} for w in c.tenant.writes)
+    rec = ao.record(r, by=ASSESSOR, actor="alice")
+    audit = [json.loads(x) for x in (isolated / "audit.log").read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert sum(1 for e in audit if e.get("event") == "object_write" and e.get("object_type") == "zcc_device_remove") == 5
+    assert any(e.get("event") == "admin_operation" and e.get("actor") == "alice" for e in audit) and rec["inverse"] is None
+
+
+def test_the_cap_of_one_pick_is_25_and_only_the_batched_path_goes_beyond(no_delay):
+    """ASVS V11.1.4 · CWE-770: the per-user removal stops at 25 devices; the batched path takes more, up to its own hard cap."""
+    c = fleet()
+    devs = [{"udid": f"UD-{i:03d}", "user": f"u{i}@old.example"} for i in range(26)]
+    with pytest.raises(ao.OperationError, match="25"):
+        ao.plan(c, {"type": zc.T_REMOVE, "mode": "remove", "devices": devs}, scope=ZCC)
+    assert ao.plan(c, {"type": zc.T_BULK, "mode": "force", "devices": devs}, scope=ZCC)["confirm_phrase"] == "FORCE REMOVE 26 DEVICES"
+    with pytest.raises(ao.OperationError):
+        ao.plan(c, {"type": zc.T_BULK, "mode": "remove", "devices": [{"udid": f"X{i}", "user": "a@b.c"} for i in range(zc.BULK_MAX + 1)]}, scope=ZCC)
+    for bs in (0, 101, "5", True):
+        with pytest.raises(ao.OperationError):
+            ao.plan(c, {"type": zc.T_BULK, "mode": "remove", "batch_size": bs, "devices": devs[:2]}, scope=ZCC)
+
+
+def test_the_hourly_budget_blocks_a_plan_that_would_exceed_it(no_delay):
+    """ASVS V13.4.1 · CWE-770 · CWE-799: with too few of Client Connector's 100 calls an hour left, the plan is blocked and nothing is sent."""
+    c = fleet()
+    zc.note_calls(c, zc.ZCC_CALLS_PER_HOUR - 5)
+    p = ao.plan(c, {"type": zc.T_BULK, "mode": "remove", "batch_size": 1,
+                    "devices": [{"udid": f"UD-{i:03d}", "user": f"u{i}@old.example"} for i in range(20)]}, scope=ZCC)
+    assert p["status"] == "blocked" and "100 API calls an hour" in p["blockers"][0] and c.tenant.writes == []
+    assert zc.budget(c, now=__import__("time").time() + 3601)["remaining"] == zc.ZCC_CALLS_PER_HOUR
+
+
+def test_a_device_that_changed_before_its_batch_is_left_and_the_rest_go(no_delay):
+    """ASVS V11.1.4 · CWE-367: the re-read right before the first batch finds a device already removed elsewhere: conflict, not sent."""
+    c = fleet()
+    spec = {"type": zc.T_BULK, "mode": "remove", "devices": [{"udid": "UD-001", "user": "u1@old.example"}, {"udid": "UD-002", "user": "u2@old.example"}]}
+    p = ao.plan(c, spec, scope=ZCC)
+    orig = zc.inventory
+    calls = []
+
+    def moved(client, cancel=None):
+        rows, pages, err = orig(client, cancel)
+        calls.append(1)
+        if len(calls) == 2:   # the re-read inside the run (the first is the re-plan)
+            for d in rows:
+                if d["udid"] == "UD-002":
+                    d["state"] = "removal pending"
+        return rows, pages, err
+    zc.inventory = moved
+    try:
+        r = ao.execute(c, spec, plan_hash=p["plan_hash"], scope=ZCC, writes_enabled=True, assessor=ASSESSOR, confirm_text=p["confirm_phrase"])
+    finally:
+        zc.inventory = orig
+    st = {u["object"]["id"]: u["status"] for u in r["items"]}
+    assert st == {"UD-001": "applied", "UD-002": "conflict"} and c.tenant.writes[0][2] == {"udids": ["UD-001"]}
+
+
+def test_the_plan_csv_is_injection_safe_and_offers_counts_only(no_delay):
+    """ASVS V5.3.3 · CWE-1236 · CWE-359: a cell starting = + - @ is neutralised; counts-only names no user or host."""
+    c = fleet(0)
+    c.tenant.devices.append({"udid": "UD-EVIL", "user": "evil@old.example", "machineHostname": "=HYPERLINK(\"http://x\")", "registrationState": "Registered"})
+    p = ao.plan(c, {"type": zc.T_BULK, "mode": "remove", "devices": [{"udid": "UD-EVIL", "user": "evil@old.example", "entry": "=cmd|' /C calc'!A0"}]},
+                scope=ZCC)
+    csv_text = zc.plan_csv(p)
+    assert "\n=" not in csv_text and ",=" not in csv_text and "'=HYPERLINK" in csv_text
+    counts = zc.plan_csv(p, counts_only=True)
+    assert "evil" not in counts and "old.example" in counts

@@ -15,6 +15,17 @@ one exists (every preview says when there is none):
                       the device at once, without waiting for it). The typed
                       confirmation always names the count and the kind of
                       removal. No Undo: the user enrolls again.
+  zcc_device_bulk_remove
+                      the same removal from a pasted or uploaded list of
+                      users, host names, device ids, user + host name pairs
+                      or @domains, matched against one paged read of the
+                      enrolled devices (ambiguous and unmatched entries are
+                      shown for the operator to resolve first), up to
+                      BULK_MAX devices by explicit device id, in batches,
+                      after an hourly budget check against Client
+                      Connector's limit of 100 API calls an hour
+                      (zscaler/zcc/legacy.py); a verification re-read
+                      afterwards; the plan and the result as CSV.
   zcc_bypass_app      list, create, edit and delete custom IP-based bypass
                       applications (protocol, port and an IP address, a
                       subnet or a host name per entry). A new one is created
@@ -66,6 +77,7 @@ import ipaddress
 import json
 import re
 import threading
+import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import admin_ops as ao
@@ -73,7 +85,7 @@ import ops_zcc
 import pack_ops as ops
 
 FAMILY = "zcc_admin"
-T_REMOVE, T_BYPASS, T_ENT = "zcc_device_remove", "zcc_bypass_app", "zcc_entitlements"
+T_REMOVE, T_BYPASS, T_ENT, T_BULK = "zcc_device_remove", "zcc_bypass_app", "zcc_entitlements", "zcc_device_bulk_remove"
 GROUP = "Day-to-day admin"
 BASE = "/zcc/papi/public/v1"
 NOT_IN_SCOPE = "Not in scope: tick ZCC (Client Connector) on the Scope page, then try again. Nothing was read."
@@ -241,6 +253,7 @@ def check_udid(v: Any) -> str:
 def devices_of(client: Any, user: str, cancel: Optional[threading.Event] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """The user's devices (only the shown fields); (rows, error)."""
     z = _zcc(client)
+    note_calls(client)
     rows, err = ops_zcc._read_all(z.devices.list_devices, {"username": user}, cancel)
     out = [device_row(r) for r in rows if isinstance(r, dict)]
     # The portal's username filter is assumed to match exactly; anything else it answers is not this user's.
@@ -327,7 +340,21 @@ def read_objects(client: Any, scope: Dict[str, Any], say: Callable[[str], None],
 
 
 def lookup(client: Any, what: str, query: Dict[str, Any], cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
-    """Read-only answers to the page's searches: a user's devices."""
+    """Read-only answers to the page's searches: a user's devices, or a list
+    matched against one paged read of the enrolled devices."""
+    if what == "match":
+        entries = parse_list(query.get("text"))
+        mode = "force" if query.get("mode") == "force" else "remove"
+        dom = str(query.get("domain") or "").strip().lower()
+        if dom and not _DOMAIN_RE.match(dom):
+            raise _err("The domain filter must be a domain like acme.com.")
+        inv, _pages, err = inventory(client, cancel)
+        if err:
+            return {"error": err, "counts": {}, "planned": []}
+        out = match_list(inv, entries, mode=mode, domain=dom)
+        out["budget"] = budget(client)
+        out["planned"] = out["planned"][:BULK_MAX]
+        return out
     if what != "devices":
         raise _err("Unknown lookup.")
     user = check_user(query.get("user"))
@@ -370,8 +397,9 @@ def _done(t: str, title: str, spec: Dict[str, Any], items: List[Dict[str, Any]],
           warnings: Sequence[str] = (), blockers: Sequence[str] = (), notes: Sequence[str] = (), **extra: Any) -> Dict[str, Any]:
     return dict({"type": t, "product": "zcc", "title": title, "spec": spec, "items": items, "groups": groups, "undo_note": undo,
                  "warnings": list(dict.fromkeys(warnings)), "blockers": list(blockers),
-                 "notes": [undo] + list(notes) + ["Client Connector applies each change as it is saved; devices pick it up at their next "
-                                                  "policy refresh. There is no activation step."]}, **extra)
+                 "notes": [undo] + list(notes)},
+                apply_note="Client Connector applies each change as it is saved; devices pick it up at their next policy refresh. "
+                           "There is no activation step.", **extra)
 
 
 # ── zcc_device_remove ──────────────────────────────────────────────────
@@ -452,10 +480,358 @@ def _h_remove(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
         return
     z = _zcc(run.client)
     fn = z.devices.remove_devices if t["mode"] == "remove" else z.devices.force_remove_devices
+    note_calls(run.client)
     out = _write(fn, op="delete", kind=f"zcc_device_{t['mode']}", name=t["name"], log=run.log, oid=t["udid"], kw={"udids": [t["udid"]]},
                  check=_removed_check)
     if run.outcome(units, out, "delete"):
         run.log(f"[Client Connector device] {t['name']}: {'force removed' if t['mode'] == 'force' else 'marked for removal'}")
+
+
+# ── zcc_device_bulk_remove: removal from a list, batched ───────────────
+#
+# A list of users (email), host names, device ids (udid), user + host name
+# pairs or @domains is matched against ONE paged read of the enrolled devices:
+# a device id first (exact), then a user + host name pair, a user, a host
+# name, a domain. A host name enrolled more than once is ambiguous and never
+# removed until the operator picks the device; an entry that matches nothing
+# is listed. The plan then carries explicit device ids only (never criteria),
+# in batches of BATCH_DEFAULT (1 to BATCH_MAX) per call, after an hourly
+# budget check against Client Connector's API limit (ZCC_CALLS_PER_HOUR,
+# zscaler/zcc/legacy.py: 100 calls an hour); the typed confirmation names the
+# count and the kind. After the writes a verification re-read (after
+# VERIFY_DELAY seconds) checks every device, and devices still not removed are
+# looked up again by user.
+
+BULK_MAX = 2000                  # devices in one batched removal (a hard cap)
+BATCH_DEFAULT, BATCH_MAX = 25, 100
+MAX_LIST_BYTES = 1024 * 1024     # a pasted or uploaded list
+MAX_LIST_ENTRIES = 5000
+INVENTORY_PAGE = 5000            # the SDK's documented getDevices maximum (zcc_fleet.DEVICE_PAGE_SIZE)
+INVENTORY_PAGES = 40
+ZCC_CALLS_PER_HOUR = 100         # zscaler/zcc/legacy.py RATE_LIMIT: 100 calls an hour (per endpoint and source)
+VERIFY_DELAY = 10.0
+LEFTOVER_LOOKUPS = 10
+_LEDGER: Dict[str, List[float]] = {}
+_LEDGER_LOCK = threading.Lock()
+
+
+def _tenant(client: Any) -> str:
+    try:
+        import zia_rate
+        k = zia_rate.key_of(client)
+        if k:
+            return str(k)
+    except Exception:  # noqa: BLE001
+        pass
+    return f"client-{id(client)}"
+
+
+def note_calls(client: Any, n: int = 1, now: Optional[float] = None) -> None:
+    """Count Client Connector calls this app made for the tenant (the hourly budget)."""
+    t = time.time() if now is None else now
+    with _LEDGER_LOCK:
+        _LEDGER.setdefault(_tenant(client), []).extend([t] * max(0, int(n)))
+
+
+def budget(client: Any, now: Optional[float] = None) -> Dict[str, Any]:
+    """{used, remaining, limit, resets_in_seconds} over the last hour."""
+    now = time.time() if now is None else now
+    with _LEDGER_LOCK:
+        recent = [x for x in _LEDGER.get(_tenant(client), []) if now - x < 3600]
+        _LEDGER[_tenant(client)] = recent
+    left = max(0, ZCC_CALLS_PER_HOUR - len(recent))
+    return {"used": len(recent), "remaining": left, "limit": ZCC_CALLS_PER_HOUR,
+            "resets_in_seconds": int(3600 - (now - min(recent))) + 1 if recent else 0}
+
+
+def inventory(client: Any, cancel: Optional[threading.Event] = None) -> Tuple[List[Dict[str, Any]], int, Optional[str]]:
+    """Every enrolled device (the shown fields only), paged; (rows, pages read, error)."""
+    z = _zcc(client)
+    rows: List[Dict[str, Any]] = []
+    for page in range(1, INVENTORY_PAGES + 1):
+        _check_stop(cancel)
+        note_calls(client)
+        try:
+            ret = z.devices.list_devices(query_params={"page": page, "page_size": INVENTORY_PAGE})
+        except Exception as e:  # noqa: BLE001
+            return rows, page, f"{type(e).__name__}: {str(e)[:200]}"
+        items, resp, err = (tuple(ret) + (None, None, None))[:3] if isinstance(ret, tuple) else (ret, None, None)
+        if err:
+            return rows, page, ops_zcc._err_text(err)
+        batch = ops_zcc._wire_items(ops_zcc._wire(resp))
+        if batch is None:
+            batch = [ops_zcc._plain(x) for x in (items or [])]
+        rows.extend(device_row(r) for r in batch if isinstance(r, dict))
+        if len(batch) < INVENTORY_PAGE:
+            return rows, page, None
+    return rows, INVENTORY_PAGES, f"more than {INVENTORY_PAGES * INVENTORY_PAGE:,} devices: the list could not be read completely"
+
+
+_DOMAIN_RE = re.compile(r"^@?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)$", re.I)
+
+
+def parse_list(text: Any) -> List[Dict[str, str]]:
+    """Entries of a pasted or uploaded list (text or CSV: one entry a line;
+    "user,hostname" is a pair; a header line is skipped). Pure; capped."""
+    if not isinstance(text, str):
+        raise _err("Paste the list, or choose a .txt or .csv file.")
+    if len(text.encode("utf-8", "ignore")) > MAX_LIST_BYTES:
+        raise _err(f"The list is larger than {MAX_LIST_BYTES // 1024} KB.")
+    out: List[Dict[str, str]] = []
+    for raw in text.splitlines():
+        line = raw.strip().strip("﻿")
+        if not line or line.startswith("#"):
+            continue
+        cells = [c.strip().strip('"').strip() for c in re.split(r"[,;\t]", line) if c.strip().strip('"').strip()]
+        if not cells or (len(out) == 0 and all(c.lower() in ("user", "username", "email", "hostname", "host", "udid", "device", "device id",
+                                                               "machine hostname", "domain") for c in cells)):
+            continue
+        if any(re.search(r"[\x00-\x1f\x7f<>]", c) or len(c) > 256 for c in cells):
+            out.append({"entry": line[:120], "kind": "invalid"})
+            continue
+        if len(cells) >= 2 and "@" in cells[0] and "@" not in cells[1]:
+            out.append({"entry": f"{cells[0]}, {cells[1]}", "kind": "pair", "user": cells[0].lower(), "host": cells[1].lower()})
+        else:
+            for c in cells:
+                low = c.lower()
+                if low.startswith("@") and _DOMAIN_RE.match(low):
+                    out.append({"entry": c, "kind": "domain", "domain": low.lstrip("@")})
+                elif "@" in low and _USER_RE.match(c):
+                    out.append({"entry": c, "kind": "user", "user": low})
+                else:
+                    out.append({"entry": c, "kind": "name", "value": low})
+        if len(out) > MAX_LIST_ENTRIES:
+            raise _err(f"At most {MAX_LIST_ENTRIES} entries in one list.")
+    return out
+
+
+def _domain_of(user: str) -> str:
+    return user.rsplit("@", 1)[1].lower() if "@" in user else ""
+
+
+def match_list(devices: List[Dict[str, Any]], entries: List[Dict[str, str]], *, mode: str = "remove", domain: str = "") -> Dict[str, Any]:
+    """Match the list against the inventory (pure): exact device ids first,
+    then a user + host name pair, a user, a host name, a domain. Categories:
+    planned (devices to remove), ambiguous (a host name enrolled more than
+    once: the operator picks), not_found, already_removed, filtered (outside
+    the domain filter), invalid."""
+    by_udid = {d["udid"].lower(): d for d in devices if d["udid"]}
+    by_user: Dict[str, List[Dict[str, Any]]] = {}
+    by_host: Dict[str, List[Dict[str, Any]]] = {}
+    for d in devices:
+        by_user.setdefault(d["user"].lower(), []).append(d)
+        if d["hostname"]:
+            by_host.setdefault(d["hostname"].lower(), []).append(d)
+    dom = domain.lower().lstrip("@")
+    planned: Dict[str, Dict[str, Any]] = {}
+    out: Dict[str, List[Dict[str, Any]]] = {"ambiguous": [], "not_found": [], "already_removed": [], "filtered": [], "invalid": []}
+
+    def take(d: Dict[str, Any], entry: str) -> None:
+        if dom and _domain_of(d["user"]) != dom:
+            out["filtered"].append({"entry": entry, "udid": d["udid"], "user": d["user"], "hostname": d["hostname"]})
+            return
+        if d["state"] == "removed" or (mode == "remove" and d["state"] == "removal pending"):
+            out["already_removed"].append({"entry": entry, "udid": d["udid"], "user": d["user"], "hostname": d["hostname"], "state": d["state"]})
+            return
+        planned.setdefault(d["udid"], dict(d, entry=entry))
+
+    for e in entries:
+        k = e["kind"]
+        if k == "invalid":
+            out["invalid"].append({"entry": e["entry"]})
+            continue
+        if k == "pair":
+            hits = [d for d in by_user.get(e["user"], []) if d["hostname"].lower() == e["host"]]
+        elif k == "user":
+            hits = by_user.get(e["user"], [])
+        elif k == "domain":
+            hits = [d for d in devices if _domain_of(d["user"]) == e["domain"]]
+        else:
+            v = e["value"]
+            if v in by_udid:
+                hits = [by_udid[v]]
+            else:
+                hits = by_host.get(v, [])
+                if len(hits) > 1:
+                    out["ambiguous"].append({"entry": e["entry"], "candidates": [{k2: d[k2] for k2 in ("udid", "user", "hostname", "state", "last_seen")}
+                                                                                for d in hits][:20]})
+                    continue
+        if not hits:
+            out["not_found"].append({"entry": e["entry"]})
+            continue
+        for d in hits:
+            take(d, e["entry"])
+    per_domain: Dict[str, int] = {}
+    for d in planned.values():
+        per_domain[_domain_of(d["user"]) or "(none)"] = per_domain.get(_domain_of(d["user"]) or "(none)", 0) + 1
+    return {"planned": list(planned.values()), **out, "per_domain": dict(sorted(per_domain.items(), key=lambda x: (-x[1], x[0]))),
+            "counts": {"planned": len(planned), **{k: len(v) for k, v in out.items()}}}
+
+
+def plan_bulk(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
+    mode = str(spec.get("mode") or "")
+    if mode not in ("remove", "force"):
+        raise _err("Pick Remove or Force remove.")
+    bs = spec.get("batch_size", BATCH_DEFAULT)
+    if isinstance(bs, bool) or not isinstance(bs, int) or not 1 <= bs <= BATCH_MAX:
+        raise _err(f"The batch size must be a whole number from 1 to {BATCH_MAX}.")
+    raw = spec.get("devices")
+    if not isinstance(raw, list) or not raw or len(raw) > BULK_MAX or not all(isinstance(d, dict) for d in raw):
+        raise _err(f"Pick 1 to {BULK_MAX} devices (match a list first).")
+    devs = [{"udid": check_udid(d.get("udid")), "user": check_user(d.get("user")), "entry": re.sub(r"[\x00-\x1f\x7f<>]", "", str(d.get("entry") or ""))[:120]}
+            for d in raw]
+    if len({d["udid"] for d in devs}) != len(devs):
+        raise _err("Each device may appear once.")
+    nspec = {"type": T_BULK, "mode": mode, "batch_size": bs, "devices": devs}
+    _zcc(client)
+    say("Reading the enrolled devices (one paged read)…")
+    inv, pages, err = inventory(client, cancel)
+    if err:
+        raise _err(f"The enrolled devices could not be read completely, so nothing was planned: {err}")
+    by = {d["udid"]: d for d in inv}
+    items, groups, batch = [], [], []
+    after = "removal pending" if mode == "remove" else "removed (forced)"
+    for d in devs:
+        row = by.get(d["udid"])
+        key = f"dev:{d['udid']}"
+        o = {"type": "zcc_device", "kind": "device", "label": "Client Connector device", "id": d["udid"], "user": d["user"], "entry": d["entry"],
+             "hostname": row["hostname"] if row else "", "name": f"{(row or {}).get('hostname') or d['udid'][:24]} ({d['user']})"}
+        if row is None or row["user"].lower() != d["user"].lower():
+            items.append(ao._unit(key, "", "device", o, "registration", "", after, status="excluded", reason="no such device for this user now"))
+            continue
+        if row["state"] == "removed" or (mode == "remove" and row["state"] == "removal pending"):
+            items.append(ao._unit(key, "", "device", o, "registration", row["state"], after, status="noop", reason=f"already {row['state']}"))
+            continue
+        batch.append((key, d["udid"], row["state"]))
+        items.append(ao._unit(key, f"batch:{len(groups) + 1}", "device", o, "registration", row["state"], after,
+                              reason=f"In batch {len(groups) + 1}: POST /{'removeDevices' if mode == 'remove' else 'forceRemoveDevices'} with its udid."))
+        if len(batch) == bs:
+            groups.append({"key": f"batch:{len(groups) + 1}", "handler": "zcc_adm_bulk_remove",
+                           "target": {"mode": mode, "udids": [b[1] for b in batch], "before": {b[1]: b[2] for b in batch}}})
+            batch = []
+    if batch:
+        groups.append({"key": f"batch:{len(groups) + 1}", "handler": "zcc_adm_bulk_remove",
+                       "target": {"mode": mode, "udids": [b[1] for b in batch], "before": {b[1]: b[2] for b in batch}}})
+    for u in items:   # an item outside every batch keeps a group of its own name (never written)
+        if not u["group"]:
+            u["group"] = u["key"]
+    n = sum(len(g["target"]["udids"]) for g in groups)
+    b = budget(client)
+    need = len(groups) + 2 * pages + LEFTOVER_LOOKUPS   # the re-read before the writes, the batches, the verification and leftovers
+    blockers = []
+    if groups and need > b["remaining"]:
+        blockers.append(f"Client Connector allows {ZCC_CALLS_PER_HOUR} API calls an hour; this needs about {need} and {b['remaining']} are left "
+                        f"this hour (this app counted {b['used']}). Wait {max(1, b['resets_in_seconds'] // 60)} minute(s), or use larger batches.")
+    phrase = (f"{'FORCE ' if mode == 'force' else ''}REMOVE {n} DEVICE{'' if n == 1 else 'S'}") if n else ""
+    warnings = [f"{n} device(s) in {len(groups)} batch(es) of up to {bs}; about {need} of the {b['remaining']} Client Connector API calls left "
+                "this hour.", "The plan and the result hold user names and host names: the CSV download is personal data (a counts-only "
+                "download is offered)."]
+    if mode == "force":
+        warnings.append("Force remove drops each device at once; the users must enroll again.")
+    return _done(T_BULK, f"{'Force remove' if mode == 'force' else 'Remove'} {n} Client Connector devices in batches", nspec, items, groups,
+                 warnings=warnings, blockers=blockers, confirm_always=phrase, budget=dict(b, needed=need),
+                 undo="No Undo: removed devices come back only when their users enroll Client Connector again.",
+                 notes=["You type the confirmation naming the count whatever the count.", ASSUMED[3]])
+
+
+def _h_bulk(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
+    t = g["target"]
+    inv = getattr(run, "_zcc_inventory", None)
+    if inv is None:   # one re-read right before the first batch, shared by the batches
+        rows, _pages, err = inventory(run.client)
+        if err:
+            _read_fail(run, units, err, "the enrolled devices")
+            return
+        inv = run._zcc_inventory = {d["udid"]: d for d in rows}
+    ok = []
+    for u in units:
+        now = inv.get(u["object"]["id"])
+        if now is None or now["state"] != t["before"].get(u["object"]["id"]):
+            run.mark([u], "conflict", f"the device changed since the preview (now {now['state'] if now else 'gone'}); left as it is")
+        else:
+            ok.append(u)
+    if not ok:
+        return
+    z = _zcc(run.client)
+    fn = z.devices.remove_devices if t["mode"] == "remove" else z.devices.force_remove_devices
+    udids = [u["object"]["id"] for u in ok]
+    note_calls(run.client)
+    out = _write(fn, op="delete", kind=f"zcc_device_{t['mode']}", name=f"{g['key']} ({len(udids)} devices)", log=run.log, oid=g["key"],
+                 kw={"udids": udids}, check=_removed_check)
+    if out.ok:
+        run.mark(ok, "applied", "")
+        run.counts["deleted"] += 1
+        run.log(f"[Client Connector] {g['key']}: {len(udids)} device(s) {'force removed' if t['mode'] == 'force' else 'marked for removal'}")
+    else:
+        run.outcome(ok, out, "delete")
+
+
+def verify_bulk(run: Any) -> Dict[str, Any]:
+    """One re-read of the inventory after VERIFY_DELAY seconds; devices still
+    not removed are looked up again by user (at most LEFTOVER_LOOKUPS users)."""
+    out = {"checked": 0, "confirmed": 0, "mismatched": [], "unread": []}
+    applied = [u for u in run.p["items"] if u["status"] == "applied"]
+    if not applied:
+        return out
+    if VERIFY_DELAY > 0:
+        time.sleep(VERIFY_DELAY)
+    rows, _pages, err = inventory(run.client)
+    if err:
+        for u in applied:
+            u["verified"] = None
+        out["checked"] = len(applied)
+        out["unread"].append(f"the enrolled devices: {err}")
+        return out
+    by = {d["udid"]: d for d in rows}
+    mode = run.p["spec"]["mode"]
+    good = ("removal pending", "removed") if mode == "remove" else ("removed",)
+    left = [u for u in applied if by.get(u["object"]["id"]) is not None and by[u["object"]["id"]]["state"] not in good]
+    for user in sorted({u["object"]["user"] for u in left})[:LEFTOVER_LOOKUPS]:
+        note_calls(run.client)
+        again, e2 = devices_of(run.client, user)
+        if not e2:
+            for d in again:
+                by[d["udid"]] = d
+            known = {d["udid"] for d in again}
+            for u in left:
+                if u["object"]["user"] == user and u["object"]["id"] not in known:
+                    by.pop(u["object"]["id"], None)
+    for u in applied:
+        out["checked"] += 1
+        d = by.get(u["object"]["id"])
+        ok = d is None or d["state"] in good
+        u["verified"] = ok
+        if ok:
+            out["confirmed"] += 1
+        else:
+            out["mismatched"].append(f"{u['object']['name']}: still {d['state']}")
+    return out
+
+
+def plan_csv(result: Dict[str, Any], *, counts_only: bool = False) -> str:
+    """A plan or a result of a device removal as CSV (cells made safe for
+    spreadsheets). counts_only: per status and user domain, no names."""
+    import csv_safe
+    import io
+    buf = io.StringIO()
+    w = csv_safe.writer(buf)
+    items = [u for u in result.get("items") or [] if (u.get("object") or {}).get("type") == "zcc_device"]
+    if counts_only:
+        tally: Dict[Tuple[str, str], int] = {}
+        for u in items:
+            k = (u.get("status") or "", _domain_of(str(u["object"].get("user") or "")) or "(none)")
+            tally[k] = tally.get(k, 0) + 1
+        w.writerow(["status", "user domain", "devices"])
+        for (st, dom), n in sorted(tally.items()):
+            w.writerow([st, dom, n])
+        return buf.getvalue()
+    w.writerow(["entry", "user", "hostname", "udid", "before", "after", "status", "reason", "read back"])
+    for u in items:
+        o = u["object"]
+        w.writerow([o.get("entry") or "", o.get("user") or "", o.get("hostname") or "", o.get("id") or "", u.get("before") or "", u.get("after") or "",
+                    u.get("status") or "", " — ".join(str(x) for x in (u.get("reason"), u.get("error")) if x),
+                    {True: "yes", False: "no"}.get(u.get("verified"), "")])
+    return buf.getvalue()
 
 
 # ── zcc_bypass_app ─────────────────────────────────────────────────────
@@ -821,7 +1197,7 @@ def _h_entitlement(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> 
         run.log(f"[Client Connector] {label} entitlements updated")
 
 
-HANDLERS = {"zcc_adm_remove": _h_remove, "zcc_adm_app_create": _h_app_create, "zcc_adm_app_update": _h_app_update,
+HANDLERS = {"zcc_adm_remove": _h_remove, "zcc_adm_bulk_remove": _h_bulk, "zcc_adm_app_create": _h_app_create, "zcc_adm_app_update": _h_app_update,
             "zcc_adm_app_delete": _h_app_delete, "zcc_adm_entitlement": _h_entitlement}
 
 
@@ -830,6 +1206,8 @@ HANDLERS = {"zcc_adm_remove": _h_remove, "zcc_adm_app_create": _h_app_create, "z
 # ---------------------------------------------------------------------------
 
 def verify(run: Any) -> Dict[str, Any]:
+    if run.p.get("type") == T_BULK:
+        return verify_bulk(run)
     out = {"checked": 0, "confirmed": 0, "mismatched": [], "unread": []}
     for g in run.p["groups"]:
         applied = [u for u in run.p["items"] if u["group"] == g["key"] and u["status"] == "applied"]
@@ -902,6 +1280,10 @@ _COMMON = dict(family=FAMILY, product="zcc", in_scope=in_scope, read_objects=rea
 ao.register(T_REMOVE, label="Remove Client Connector devices", plan=plan_remove, handlers=HANDLERS,
             hint="Find a user's devices and remove them (marked Removal Pending) or force remove them (dropped at once). You type the "
                  "confirmation every time. No Undo: the user enrolls again.", **_COMMON)
+ao.register(T_BULK, label="Remove Client Connector devices from a list", plan=plan_bulk, handlers=HANDLERS,
+            hint="Paste or upload users, host names, device ids or @domains; resolve ambiguous and unmatched entries, then remove or force "
+                 f"remove up to {BULK_MAX} devices in batches, within Client Connector's hourly API budget. Plan and result as CSV. No Undo.",
+            **_COMMON)
 ao.register(T_BYPASS, label="Client Connector custom bypass apps", plan=plan_bypass, handlers=HANDLERS,
             hint="List, create, edit or delete custom IP-based bypass apps (protocol, port, address or host name). New ones start off; an app a "
                  "profile bypasses is never deleted. Undo for create and edit.", **_COMMON)

@@ -5479,13 +5479,15 @@ async def operations_preview_start(req: OperationRequest, request: Request):
 
 
 @app.post("/api/operations/preview")
-async def operations_preview(req: OperationRequest):
-    """The same preview, waited for (for scripts)."""
+async def operations_preview(req: OperationRequest, request: Request):
+    """The same preview, waited for (for scripts). It runs as the person who
+    asked (an upload held for them, ops_zpa_admin, is theirs only)."""
     scope = _ops_scope(req, req.operation)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds), None, None)
+    out = await asyncio.to_thread(_as_actor, _actor(request), _keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds),
+                                  None, None)
     if out.get("status") == "refused":
         raise HTTPException(status_code=400, detail=out["message"])
     return out
@@ -5639,6 +5641,27 @@ async def operations_zdx_trace_follow(req: DeepTraceFollowRequest, request: Requ
 
     job = pack_jobs.start("zdx_trace_follow", run, label=tenant_auth.record_label(creds)[:80], actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/operations/jobs/{job_id}/devices.csv")
+async def operations_devices_csv(job_id: str, counts_only: bool = False):
+    """A Client Connector device removal's plan (a preview job) or result (an
+    apply job) as CSV: entry, user, host name, device id, before, after,
+    status, reason, read back; every cell made safe for spreadsheets. It
+    holds personal data: counts_only=true gives counts per status and user
+    domain instead. Reaches no tenant."""
+    import ops_zcc_admin
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind not in ("ops_preview", "ops_apply"):
+        raise HTTPException(status_code=404, detail="No such preview or apply. They are kept for an hour; preview again.")
+    res = job.result or {}
+    if res.get("type") not in (ops_zcc_admin.T_BULK, ops_zcc_admin.T_REMOVE):
+        raise HTTPException(status_code=409, detail="This job is not a Client Connector device removal" +
+                            (" yet; it is still running." if job.status == pack_jobs.RUNNING else "."))
+    body = ops_zcc_admin.plan_csv(res, counts_only=counts_only).encode("utf-8")
+    kind = "result" if job.kind == "ops_apply" else "plan"
+    return _attachment(body, "text/csv; charset=utf-8", f"device-removal-{kind}{'-counts' if counts_only else ''}.csv")
 
 
 class BaCertificateUpload(BaseModel):

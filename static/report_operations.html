@@ -233,7 +233,10 @@
     // window.OPS_PLUGINS.register({type, render(res, where, S, H), spec(S, H)})
     // and then runs through the same read, preview, gates, apply and Undo.
     window.OPS_PLUGINS = { defs: {}, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
-    const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m) };
+    // body(): the tenant sign-in and the Scope page selection a plugin's own read-only lookups send;
+    // runJob(): the shared job runner (Stop, the live log) for a plugin's read-only job.
+    const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m), body: x => body(x),
+      runJob: (url, payload, where, title) => runJob(url, payload, where, title), detailText: (d, st) => detailText(d, st) };
     (async function loadBuilders() {
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }
@@ -460,6 +463,8 @@
         if (!res.plan_hash) throw new Error('The preview did not finish.');
         S.preview = res; S.previewJob = snap.job_id; S.spec = (snap.extra && snap.extra.operation) || payload.operation; S.undoOf = undoOf || null;
         renderPlan(res);
+        const plugPrev = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[res.type];
+        if (plugPrev && typeof plugPrev.preview === 'function') plugPrev.preview(res, $('opPlan'), H, snap.job_id);   // e.g. the plan as CSV
         const pdf = $('opPdf'); pdf.href = `/api/operations/jobs/${encodeURIComponent(S.previewJob)}/plan.pdf`; pdf.hidden = false;
         renderApply();
         // An Undo starts from a button that the preview removes: focus goes to the plan it made.
@@ -551,7 +556,7 @@
       $('opGo').disabled = true; say('Applying the change.');
       try {
         const snap = await runJob('/api/operations/apply/start', payload, where, 'Applying the change');
-        renderResult(snap.result || {}, snap.logs || []);
+        renderResult(Object.assign({ job_id: snap.job_id }, snap.result || {}), snap.logs || []);
       } catch (e) { fail(where, 'The change could not be applied', e.message); say(`The change could not be applied: ${e.message}`); }
       finally { loadHistory(); }
     }

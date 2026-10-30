@@ -530,7 +530,7 @@ def _done(t: str, title: str, spec: Dict[str, Any], items: List[Dict[str, Any]],
           blockers: Sequence[str] = (), undo: str, notes: Sequence[str] = (), **extra: Any) -> Dict[str, Any]:
     return dict({"type": t, "product": "zpa", "title": title, "spec": spec, "items": items, "groups": groups,
                  "warnings": list(dict.fromkeys(warnings)), "blockers": list(blockers), "undo_note": undo,
-                 "notes": [undo] + list(notes) + ["ZPA applies each change as it is saved; there is no activation step."]}, **extra)
+                 "notes": [undo] + list(notes)}, apply_note="ZPA applies each change as it is saved; there is no activation step.", **extra)
 
 
 # ── zpa_infra_update ───────────────────────────────────────────────────
