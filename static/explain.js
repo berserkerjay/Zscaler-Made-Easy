@@ -358,7 +358,7 @@
     what: 'Upload the logs the customer\'s log streaming writes: ZPA LSS User Activity, User Status, App Connector and Private Service Edge Status (JSON), and ZIA NSS web, firewall and DNS feeds (JSON, CSV or TSV with a header, the default tab-separated format, or a custom format you paste). They are read on this computer and only counts are kept, in memory, until you save a report.',
     why: 'Insights and the configuration say what should happen; the logs say what did. Why connections failed, which rule blocked what, which users and connectors struggle, and what changed suddenly are all in the logs, and Insights cannot break traffic down by rule, category, user or host.',
     when: 'When a customer reports that a ZPA application is unreachable or slow, when you need rule hit counts or blocked categories, after a change to see its effect, and in a POV to show what the policy actually did.',
-    get: 'Sessions and failures over time, the top users, applications, App Connectors, Service Edges and destinations, every ZPA failure reason in plain words with what to do, App Connector and Private Service Edge health, anomalies (spikes, many failures for one user, new destinations), and for ZIA blocked against allowed, top categories, rules hit, DLP and threat events and SSL inspected or not. CSV, Excel and PDF downloads (counts only unless you tick names), saved reports, and the same questions as Splunk, Sentinel and Elastic queries to copy.',
+    get: 'Sessions and failures over time, the top users, applications, App Connectors, Service Edges and destinations, every ZPA failure reason in plain words with what to do, App Connector and Private Service Edge health, anomalies (spikes, many failures for one user, new destinations), and for ZIA blocked against allowed, top categories, rules hit, DLP and threat events and SSL inspected or not. CSV, Excel and PDF downloads (counts only unless you tick names), saved reports, and the same questions as SIEM queries to copy for Splunk, Sentinel and Elastic.',
     next: 'Click a destination to analyse its path, open Traffic insights for the same window, and take the top failure reason to ZPA analysis (Diagnose) or the App Connector it names.',
   };
   X.zcc = {
@@ -501,7 +501,7 @@
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
-    'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'zcc', 'permissions'];
+    'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'trafficlogs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

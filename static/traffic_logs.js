@@ -281,7 +281,7 @@
       g2.appendChild(box('Top users', null, table(['User', 'Connections', 'Failures'], more(act.users, 15).map(x => [userCell(x.name), x.count, x.failures]), [1, 2])));
       g2.appendChild(box('Top applications (segments)', null, table(['Application', 'Connections', 'Failures'], more(act.apps, 15).map(x => [x.name, x.count, x.failures]), [1, 2])));
       g2.appendChild(box('Top App Connectors', null, table(['App Connector', 'Connections', 'Failures'], more(act.connectors, 15).map(x => [x.name, x.count, x.failures]), [1, 2])));
-      g2.appendChild(box('Top destinations', 'tlZpaDest', table(['Host', 'Connections', 'Failures', 'Port'], more(act.destinations, 15).map(x => [destCell(x), x.count, x.failures, x.port]), [1, 2])));
+      g2.appendChild(box('Top destinations', 'tlZpaDest', table(['Host', 'Connections', 'Failures', 'Port'], more(act.destinations, 15).map(x => [destCell(x), x.count, x.failures, x.port]), [1, 2, 3])));
       g2.appendChild(box('Service Edges users came through', null, table(['Service Edge', 'Connections', 'Failures'], more(act.service_edges, 15).map(x => [x.name, x.count, x.failures]), [1, 2])));
       g2.appendChild(box('Access rules that allowed or denied', null, table(['Access rule', 'Connections'], more(act.rules, 15).map(x => [x.name, x.count]), [1])));
       root.appendChild(g2);

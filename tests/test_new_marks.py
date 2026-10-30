@@ -287,8 +287,11 @@ console.log(JSON.stringify({ now, next, bad, real: W.releases(), words: W.words(
 # Pages toured, and the marks there that show without a tenant (the rest
 # appear after a read or in a dialog: "shown" in the manifest).
 BROWSER_PAGES = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/report/fleet",
-                 "/report/motion", "/report/live", "/simple"]
-NARROW = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/simple"]
+                 "/report/motion", "/report/live", "/simple", "/report/traffic-logs"]
+# The narrow (320px) tour: the pages of this list that have a mark showing
+# without a tenant in the current manifest (a release rotating out takes
+# its pages' marks with it).
+NARROW_CANDIDATES = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/simple", "/report/traffic-logs"]
 
 
 def _load_marks():
@@ -303,6 +306,9 @@ def _load_marks():
             elif f["release"] not in rec["releases"]:
                 rec["releases"].append(f["release"])
     return out
+
+
+NARROW = [p for p in NARROW_CANDIDATES if p in _load_marks()]
 
 
 DRIVER = CDP_PRELUDE + EVENTS + r"""
@@ -358,7 +364,7 @@ const hoverAt = async js => {
   await until(() => ev(`(() => { const t = document.getElementById('hhTip'); return !!t && !t.hidden; })()`), 'the help', 2000).catch(() => null);
   return ev(`(() => { const t = document.getElementById('hhTip'); if (!t || t.hidden) return null; const first = t.querySelector('p'); return { first: first.className, text: first.textContent, all: t.textContent }; })()`);
 };
-out.hover = { item: await hoverAt(`document.getElementById('tab-list')`), tab: await hoverAt(STAR('#tab-list')), heading: await hoverAt(STAR('#paFlowRefH')) };
+out.hover = { item: await hoverAt(`document.getElementById('tab-list')`), heading: await hoverAt(STAR('#paFlowRefH')) };
 await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
 await ev(`(window.HoverHelp.hide(), true)`);
 // Keyboard: focus alone opens nothing; Enter opens it.
@@ -373,21 +379,28 @@ await frame();
 out.focus = await ev(`(() => { const t = document.getElementById('hhTip'); const b = document.activeElement; const s = getComputedStyle(b); return { focusOnly: ${focusOnly}, open: !!t && !t.hidden, text: t ? t.textContent : '', ring: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0, w: b.getBoundingClientRect().width, h: b.getBoundingClientRect().height, expanded: b.getAttribute('aria-expanded') }; })()`);
 await ev(`(window.HoverHelp.hide(), true)`);
 out.headingName = await axName('#paFlowRefH');
+// The newest release's * (a folded section on Traffic and session logs) opens its words too.
+await open('/report/traffic-logs');
+out.hover.tab = await hoverAt(STAR('#tlFormatBox > summary'));
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
+await ev(`(window.HoverHelp.hide(), true)`);
 // An item with both: * then ?, each its own button.
-out.both = await ev(`(() => { const el = document.getElementById('paProto'), ms = window.HoverHelp.marks().filter(m => m.__hhFor === el); return ms.map(m => m.getAttribute('data-hh-mark') + ':' + (m.getAttribute('aria-label') || '')); })()`);
+out.both = await ev(`(() => { const el = document.querySelector('#tlFormatBox > summary'), ms = window.HoverHelp.marks().filter(m => m.__hhFor === el); return ms.map(m => m.getAttribute('data-hh-mark') + ':' + (m.getAttribute('aria-label') || '')); })()`);
+await open('/');
 
 // An older release is not marked; the next release pushes the oldest set out.
 out.rotate = await ev(`(() => {
   const W = window.WhatsNew, H = window.HoverHelp;
   const has = sel => { const e = document.querySelector(sel); H.scan(); return !!e && (e.hasAttribute('data-wn-new') || H.marks().some(m => m.__hhFor === e && m.getAttribute('data-hh-mark') === 'new')); };
   W.manifest.releases['2026-10-26'] = 'older';
-  W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
+  const PROBE_AT = 'button[onclick="openInsightsTab()"]', LIVE = 'button[onclick="openPathAnalyzerTab()"]', LOGS = 'button[onclick="openTrafficLogsTab()"]';
+  W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/', at: PROBE_AT }] });
   W.apply();
-  const before = { older: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH') };
-  W.manifest.releases['2026-10-30'] = 'next';
-  W.manifest.features.push({ id: 'next-probe', release: '2026-10-30', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
+  const before = { older: has(PROBE_AT), logs: has(LOGS), live: has(LIVE) };
+  W.manifest.releases['2099-01-01'] = 'next';
+  W.manifest.features.push({ id: 'next-probe', release: '2099-01-01', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/', at: PROBE_AT }] });
   W.apply();
-  const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), proto: document.getElementById('paProto').getAttribute('aria-label') };
+  const after = { next: has(PROBE_AT), logs: has(LOGS), live: has(LIVE), logsName: document.querySelector(LOGS).textContent.trim(), liveLabel: document.querySelector(LIVE).getAttribute('aria-label') };
   return { before, after };
 })()`);
 
@@ -471,7 +484,7 @@ def test_the_star_opens_what_is_new_and_the_item_opens_nothing(marks_browser):
     """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a tab or a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
     h = marks_browser["hover"]
     assert h["item"] is None, h["item"]
-    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-28 update: Test a list"), h["tab"]
+    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-31 update: Paste a custom NSS feed"), h["tab"]
     assert h["heading"] and h["heading"]["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), h["heading"]
 
 
@@ -493,11 +506,11 @@ def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
-    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks go."""
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a newer release is listed, the oldest kept release's marks (2026-10-29) go and the 2026-10-31 ones stay."""
     before, after = marks_browser["rotate"]["before"], marks_browser["rotate"]["after"]
-    assert before == {"older": False, "tab": True, "live": True}, before
-    assert after["next"] and after["live"] and not after["tab"], after
-    assert after["tabName"] == "Test a list" and not str(after["proto"]).endswith("(new)"), after
+    assert before == {"older": False, "logs": True, "live": True}, before
+    assert after["next"] and after["logs"] and not after["live"], after
+    assert "Traffic and session logs" in after["logsName"] and not str(after["liveLabel"]).endswith("(new)"), after
 
 
 @pytest.mark.parametrize("combo", ["dark on", "dark off", "light on", "light off"])

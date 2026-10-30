@@ -56,7 +56,7 @@ MAX_TEMPLATE = 4000            # characters of a pasted feed output format
 MAX_TEMPLATE_FIELDS = 200
 TOP = 100                      # rows kept per top list
 SESSION_ROWS = 5000            # consolidated sessions kept for the table and export
-MAX_BUCKETS = 400              # points on a time chart
+MAX_BUCKETS = 96               # points on a time chart (an hour a bar for up to four days)
 OTHER = "(other values, past the counting limit)"
 
 # Session consolidation (ZPA User Status). A session shorter than this is a
