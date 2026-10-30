@@ -189,7 +189,11 @@ SSL_RULES = [
      "action": {"type": "DO_NOT_DECRYPT", "doNotDecryptSubActions": {"bypassOtherPolicies": False}}, "urlCategories": ["FINANCE"]},
     {"id": 702, "order": 2, "rank": 7, "name": "Do not decrypt webmail", "state": "ENABLED",
      "action": {"type": "DO_NOT_DECRYPT", "doNotDecryptSubActions": {"bypassOtherPolicies": True}}, "urlCategories": ["WEB_MAIL"]},
-    {"id": 703, "order": 3, "rank": 7, "name": "Decrypt everything else", "state": "ENABLED", "defaultRule": True,
+    # An Inspect rule with its own certificate choice, for the SSL certificate manager (Build new) to show and move.
+    {"id": 705, "order": 3, "rank": 7, "name": "Inspect partner portals", "state": "ENABLED", "urlCategories": ["CUSTOM_01"],
+     "action": {"type": "DECRYPT", "overrideDefaultCertificate": False,
+                "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2"}}},
+    {"id": 703, "order": 4, "rank": 7, "name": "Decrypt everything else", "state": "ENABLED", "defaultRule": True,
      "action": {"type": "DECRYPT", "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2",
                                                      "minServerTLSVersion": "SERVER_TLS_1_2"}},
      "urlCategories": ["ANY"]},
@@ -378,6 +382,91 @@ ZID_GROUPS = [{"id": "g-33", "name": "Finance Team", "source": "SCIM"}, {"id": "
 ZID_RESOURCE_SERVERS = [{"id": "rs-1", "name": "ZIA", "primaryAud": "https://api.zscaler.com"}]
 
 
+# ── What the builders read (Build new, the POV build) ──────────────────
+# The catalogues a tenant carries and a builder plans against, so every
+# Build new type and the POV build can make its full plan and dry run on
+# the sample (a rehearsal: nothing is ever written from it). Shapes as the
+# APIs answer them, the same lists tests/sdk_wire_fake.py checks against
+# the installed SDK's models (zscaler/zia/url_categories.py
+# list_categories_lite, cloud_firewall.list_network_apps,
+# cloud_applications.list_cloud_app_policy, dns_gatways.list_dns_gateways,
+# intermediate_certificates.list_ready_to_use; zscaler/zpa/
+# enrollment_certificates, provisioning, app_protection; zscaler/aiguard/
+# policies, policy_match_rules, llm_providers). The ZDX configuration API is
+# not in the SDK: its shapes are ops_zdx's (assumed there).
+AIG = "/aiguard/v1"
+ZDX_CONFIG = f"{ZDX}/config"
+INTERMEDIATE_CERTIFICATES = [
+    {"id": 50, "name": "Zscaler Intermediate CA", "defaultCertificate": True, "status": "ENABLED", "type": "ZSCALER"},
+    {"id": 52, "name": "Larkspur Issuing CA 2026", "status": "ENABLED", "type": "CUSTOM"}]
+ROOT_CERTIFICATES = [{"id": 11, "name": "Larkspur AI Guard CA"}]
+DNS_GATEWAYS = [{"id": 9, "name": "Zscaler Trusted Resolver", "natZtrGateway": True}]
+SUBSCRIPTIONS = [{"id": "ZIA_BUS", "status": "ACTIVE", "subscribed": True}, {"id": "ZS_DP_GEN_AI", "status": "ACTIVE", "subscribed": True}]
+URL_APP_SETTINGS = {"enableChatGptPrompt": False, "enableMicrosoftCoPilotPrompt": False, "enableGeminiPrompt": False, "enableClaudePrompt": False,
+                    "enableMsftO365": True, "enforceSafeSearch": True}
+ENROLLMENT_CERTS = [{"id": "8001", "name": "Connector"}, {"id": "8002", "name": "Service Edge"}]
+OWASP_VERSIONS = ["OWASP_CRS/3.3.0", "OWASP_CRS/4.8.0"]
+OWASP_CONTROLS = [
+    {"id": "70001", "name": "Preprocessors", "defaultGroup": True, "predefinedInspectionControls": [
+        {"id": "70011", "name": "Multipart request body failed strict validation", "action": "BLOCK", "defaultAction": "BLOCK",
+         "controlType": "PREDEFINED", "protocolType": "HTTP", "paranoiaLevel": "1", "severity": "CRITICAL"}]},
+    {"id": "70002", "name": "Environment and port scanners", "defaultGroup": True, "predefinedInspectionControls": [
+        {"id": "70021", "name": "Found User-Agent associated with security scanner", "action": "BLOCK", "defaultAction": "BLOCK",
+         "controlType": "PREDEFINED", "protocolType": "HTTP", "paranoiaLevel": "1", "severity": "CRITICAL"}]}]
+ZDX_SUPPORTED = [{"provider": "MICROSOFT_LOGIN", "name": "Microsoft Login", "host": "login.microsoftonline.com"},
+                 {"provider": "OUTLOOK", "name": "Outlook", "host": "outlook.office365.com"},
+                 {"provider": "MICROSOFT_TEAMS", "name": "Microsoft Teams", "host": "teams.microsoft.com"},
+                 {"provider": "SHAREPOINT", "name": "SharePoint", "host": "<prefix>.sharepoint.com"},
+                 {"provider": "ONEDRIVE", "name": "OneDrive", "host": "<prefix>-my.sharepoint.com"},
+                 {"provider": "ZOOM", "name": "Zoom", "host": "<prefix>.zoom.us"},
+                 {"provider": "BOX", "name": "Box", "host": "app.box.com"}]
+ZDX_COLLECTIONS = [{"id": 1, "name": "Custom Apps Collection", "type": "END_USER"}]
+ZDX_CONFIG_APPS = [{"id": 3002, "name": "Freight billing", "type": "CUSTOM", "active": True, "collection": {"id": 1, "name": "Custom Apps Collection"}}]
+ZDX_MONITORS = [{"id": 3201, "name": "Freight billing Web", "type": "WEB", "active": True, "class": "CUSTOM", "url": f"https://billing.{DOMAIN}/",
+                 "application": {"id": 3002, "name": "Freight billing"}, "frequencyInSeconds": 300}]
+AIGUARD_PROVIDERS = [{"id": 1, "name": "Default OpenAI Provider"}, {"id": 2, "name": "Default Anthropic Provider"}]
+
+
+def builder_catalogues() -> Dict[str, Any]:
+    """{path: body} of what the builders read and the rest of the sample
+    does not carry: every URL category, network application and cloud
+    application the ZIA baseline names (ops_zia_baseline.CATALOG, Zscaler's
+    published names) plus the custom category, the Trusted Resolver, two
+    ready-to-use intermediate certificates, ZPA's enrollment certificates
+    and predefined OWASP controls, the ZDX configuration, ZIA's proxy
+    chaining objects and AI Guard's lists (empty: nothing built yet)."""
+    import ops_zia_baseline as zb   # its catalogue names what a tenant carries; imported here, not at load (no cycle)
+    cats = sorted({c for r in zb.CATALOG for c in r["fields"].get("url_categories", [])} | {c["id"] for c in URL_CATEGORIES if not c["customCategory"]})
+    nw = sorted({a for r in zb.CATALOG for a in r["fields"].get("nw_applications", [])})
+    cloud = sorted({a for r in zb.CATALOG for a in r["fields"].get("applications", []) if r["area"] == "cac"})
+    lite = [{"id": c} for c in cats] + [{"id": c["id"], "configuredName": c["configuredName"], "customCategory": True}
+                                         for c in URL_CATEGORIES if c["customCategory"]]
+    return {
+        f"{ZIA}/urlCategories/lite": lite,
+        f"{ZIA}/networkApplications": [{"id": a} for a in nw],
+        # No app class on the rows: a read for one class (ssl_flow, pack_channels) answers "no data", as before.
+        f"{ZIA}/cloudApplications/policy": [{"app": a} for a in cloud],
+        f"{ZIA}/dnsGateways": DNS_GATEWAYS,
+        f"{ZIA}/intermediateCaCertificate/readyToUse": INTERMEDIATE_CERTIFICATES,
+        f"{ZIA}/rootCertificates": ROOT_CERTIFICATES,
+        f"{ZIA}/proxies": [], f"{ZIA}/proxyGateways": [], f"{ZIA}/forwardingRules": [],
+        f"{ZIA}/advancedUrlFilterAndCloudAppSettings": URL_APP_SETTINGS,
+        f"{ZIA}/subscriptions": SUBSCRIPTIONS,
+        f"{ZPA1}/enrollmentCert": _zpa(ENROLLMENT_CERTS), f"{ZPA2}/enrollmentCert": _zpa(ENROLLMENT_CERTS),
+        f"{ZPA1}/associationType/SERVICE_EDGE_GRP/provisioningKey": _zpa([]),
+        f"{ZPA1}/inspectionControls/predefined/versions": OWASP_VERSIONS,
+        f"{ZPA1}/inspectionControls/predefined": OWASP_CONTROLS,
+        f"{ZPA1}/clientlessCertificate/issued": _zpa([]),
+        f"{ZDX_CONFIG}/applications": {"items": ZDX_CONFIG_APPS},
+        f"{ZDX_CONFIG}/applications/supported": ZDX_SUPPORTED,
+        f"{ZDX_CONFIG}/monitors": ZDX_MONITORS,
+        f"{ZDX_CONFIG}/collections": ZDX_COLLECTIONS,
+        f"{AIG}/detections/policies": {"items": []},
+        f"{AIG}/detections/policy-match-rules": {"items": []},
+        f"{AIG}/llm-providers": {"items": AIGUARD_PROVIDERS},
+    }
+
+
 def responses() -> Dict[str, Any]:
     """Every answer of the sample tenant: {OneAPI path: JSON body}. A fresh
     deep copy each time, so changing one sample never changes another."""
@@ -480,6 +569,8 @@ def responses() -> Dict[str, Any]:
     }
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
+    for path, body in builder_catalogues().items():
+        r.setdefault(path, body)
     return copy.deepcopy(r)
 
 

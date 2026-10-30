@@ -200,6 +200,78 @@ def plugin_catalog() -> List[Dict[str, Any]]:
     """What the page needs to offer the plugin types: no callables."""
     load_plugins()
     return [{k: p[k] for k in ("type", "family", "product", "label", "hint", "group", "script")} for p in sorted(PLUGINS.values(), key=lambda p: (p["group"], p["label"]))]
+
+# ---------------------------------------------------------------------------
+# A plan made as one step of several (the POV build): what earlier steps of
+# the same plan will create or delete
+# ---------------------------------------------------------------------------
+# While pov_build plans its steps one after another, before anything is
+# written, a builder that needs what an earlier step creates (ZPA segments
+# need the connector group, policies the segments) asks pending_ref() and
+# gets a stand-in instead of a blocker; an Undo step asks pending_deleted()
+# so an object an earlier Undo step deletes no longer keeps another. Outside
+# such a plan (every ordinary preview and apply) both answer "no", so no
+# builder's own checks change.
+import contextvars as _cv
+
+PENDING_PREFIX = "pending:"
+_PENDING: "_cv.ContextVar[Optional[Dict[str, Any]]]" = _cv.ContextVar("admin_ops_pending", default=None)
+
+
+def pending_token(product: str, kind: str, name: str) -> str:
+    """The stand-in id for an object an earlier step of this plan creates."""
+    return f"{PENDING_PREFIX}{product}:{kind}:{name}"
+
+
+class pending_plan:
+    """Plan with `creates` ({(product, kind, name)}) and `deletes`
+    ({(product, kind, id)}) of the earlier steps in effect."""
+
+    def __init__(self, creates: Iterable[Tuple[str, str, str]] = (), deletes: Iterable[Tuple[str, str, str]] = ()):
+        self.state = {"creates": {tuple(map(str, c)) for c in creates}, "deletes": {tuple(map(str, d)) for d in deletes}}
+        self._token: Any = None
+
+    def __enter__(self) -> "pending_plan":
+        self._token = _PENDING.set(self.state)
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        _PENDING.reset(self._token)
+
+
+def pending_ref(product: str, kind: str, name: str) -> Optional[str]:
+    """pending_token() when an earlier step of this plan creates the object, else None."""
+    st = _PENDING.get()
+    return pending_token(product, kind, name) if st and (product, kind, name) in st["creates"] else None
+
+
+def pending_names(product: str, kind: str) -> Dict[str, str]:
+    """{name: stand-in id} of the objects of `kind` earlier steps of this plan create."""
+    st = _PENDING.get()
+    return {n: pending_token(p, k, n) for p, k, n in sorted((st or {}).get("creates") or ()) if p == product and k == kind}
+
+
+def pending_deleted(product: str, kind: str, oid: Any) -> bool:
+    """Whether an earlier (Undo) step of this plan deletes the object."""
+    st = _PENDING.get()
+    return bool(st) and (product, kind, str(oid)) in st["deletes"]
+
+
+def planned_effects(prepared: Dict[str, Any]) -> Dict[str, List[Tuple[str, str, str]]]:
+    """What a prepared operation will create ((product, kind, name)) and
+    delete ((product, kind, id)), from its "exists" items that change."""
+    product = str(prepared.get("product") or "zia")
+    creates, deletes = [], []
+    for u in prepared.get("items") or []:
+        if u.get("status") != "change" or u.get("field") != "exists":
+            continue
+        obj = u.get("object") or {}
+        if u.get("before") in (False, None) and u.get("after") is True and obj.get("name"):
+            creates.append((product, str(u.get("kind")), str(obj["name"])))
+        elif u.get("before") is True and u.get("after") is False and obj.get("id") not in (None, ""):
+            deletes.append((product, str(u.get("kind")), str(obj["id"])))
+    return {"creates": creates, "deletes": deletes}
+
 STATES = ("ENABLED", "DISABLED")
 
 # Policy types an operation can change: label, the pack_channels channel

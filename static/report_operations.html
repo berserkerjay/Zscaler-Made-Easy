@@ -495,6 +495,7 @@
         <div class="op-summary"><strong>${E(p.title)}</strong>${S.undoOf ? ' <span class="df-chip st-warn">Undo</span>' : ''}
           <span class="df-chip st-block">${E(c.change)} to change</span><span class="df-chip">${E(c.noop)} already as asked</span><span class="df-chip${c.excluded ? ' st-warn' : ''}">${E(c.excluded)} excluded</span></div>
         <div class="df-hint">Plan ${E(String(p.plan_hash).slice(0, 16))}… · ${E(p.tenant_label)} · ${E(p.writes)} write${p.writes === 1 ? '' : 's'}${p.needs_activation ? ', then one ZIA activation' : ''}</div>
+        ${p.rehearsal ? `<div class="bp-card info op-rehearsal" role="note"><div class="t">${E(p.rehearsal.note)}</div><div>${E(p.rehearsal.apply)}</div></div>` : ''}
         ${listCard('Blocked', p.blockers, 'risk')}${listCard('Check before applying', p.warnings, 'warn')}${listCard('How this is applied', p.notes, 'info')}
         ${impact}${order}<h3 class="op-h">Items</h3>${itemsTable(p.items || [], 'Planned items')}`;
     }
@@ -512,6 +513,7 @@
       const gates = [];
       gates.push(on ? ['ok', 'Write mode is on.'] : ['no', w.can_toggle ? 'Write mode is off: turn it on in Deploy policy packs (you type the confirmation phrase), then come back.' : `Write mode is off${w.reason ? ': ' + w.reason : (w.how_to_enable ? ': ' + w.how_to_enable : '')}.`]);
       gates.push(ready ? ['ok', `${p.counts.change} change${p.counts.change === 1 ? '' : 's'} to apply.`] : ['no', p.status === 'blocked' ? 'The plan is blocked (see above).' : 'Nothing to change.']);
+      if (p.rehearsal) gates.unshift(['no', p.rehearsal.apply]);   // the sample or a snapshot: a rehearsal, never applied
       where.innerHTML = `<ul class="op-gates">${gates.map(([s, t]) => `<li class="${s === 'ok' ? 'ok' : 'no'}"><span class="df-chip ${s === 'ok' ? 'st-ok' : 'st-warn'}">${s === 'ok' ? 'ready' : 'needed'}</span> ${E(t)}</li>`).join('')}</ul>
         <div class="op-row"><label class="df-ctl"><span class="lbl">Assessor's name</span><input id="opAssessor" value="${E(assessor)}" aria-label="Assessor's name" placeholder="Jane Doe, Zscaler DS Engineer"></label></div>
         ${p.confirm_phrase ? `<div class="op-row"><label class="df-ctl"><span class="lbl">Type <strong class="op-phrase">${E(p.confirm_phrase)}</strong> to confirm</span><input id="opPhrase" autocomplete="off" spellcheck="false" aria-label="Type ${E(p.confirm_phrase)} to confirm"></label></div>` : ''}
@@ -523,6 +525,7 @@
       // plan with changes, the assessor's name, the review box and the exact phrase.
       const arm = () => {
         const need = [];
+        if (p.rehearsal) need.push('the live tenant (this is a rehearsal)');
         if (!on) need.push('write mode');
         if (!ready) need.push('a plan with changes');
         if (!$('opAssessor').value.trim()) need.push("the assessor's name");

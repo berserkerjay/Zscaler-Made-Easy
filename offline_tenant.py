@@ -73,8 +73,8 @@ READ_ONLY = ("This is an offline snapshot: it is read-only, and nothing is sent 
 GONE = ("The offline tenant this page was using is no longer open (the server restarted or it was closed). "
         "Open the sample or the snapshot again, or choose Leave to use the live tenant.")
 
-KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights")
-_PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
+KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard")
+_PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw|aiguard)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
 _CUSTOMER_SEG = re.compile(r"(/zpa/mgmtconfig/v[0-9]+/admin/customers/)[^/]+")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -267,6 +267,14 @@ class OfflineStore:
                     page = 1
                 if page > 1:
                     return status, _empty_page(body)
+                if path.endswith("/cloudApplications/policy") and (params.get("app_class") or params.get("appClass")):
+                    # The catalogue for one application class (ssl_flow, pack_channels): only rows that
+                    # carry their class can answer it; otherwise there is no answer for one class.
+                    cls = str(params.get("app_class") or params.get("appClass"))
+                    rows = [x for x in (_items(body) or []) if isinstance(x, dict) and ("appClass" in x or "app_class" in x)]
+                    if not rows:
+                        return 404, {"code": "NOT_FOUND", "message": self._missing(f"{path}?app_class={cls[:40]}")}
+                    return status, [x for x in rows if str(x.get("appClass", x.get("app_class"))) == cls]
                 dt = params.get("deviceType")
                 items = _items(body)
                 # The platform is device_type on an app profile (zscaler/zcc/models/webpolicy.py), deviceType on older answers.
@@ -454,7 +462,7 @@ class OfflineExecutor:
     @staticmethod
     def get_service_type(url: str) -> str:
         u = str(url or "")
-        for marker, kind in (("/ziam/admin/api/v1", "ziam"), ("/zia", "zia"), ("/ztw", "ztw"), ("/zcc", "zcc"), ("/zdx", "zdx"),
+        for marker, kind in (("/aiguard/", "aiguard"), ("/ziam/admin/api/v1", "ziam"), ("/zia", "zia"), ("/ztw", "ztw"), ("/zcc", "zcc"), ("/zdx", "zdx"),
                              ("/zwa", "zwa"), ("/zpa", "zpa"), ("/mgmtconfig", "zpa"), ("/zins", "zins")):
             if marker in u:
                 return kind
@@ -587,6 +595,12 @@ class OfflineSdkClient:
     def ztw(self):
         from zscaler.ztw.ztw_service import ZTWService
         return self._svc("ztw", lambda: ZTWService(self._request_executor))
+
+    @property
+    def aiguard(self):
+        # AI Guard's OneAPI configuration services (zscaler/aiguard/aiguard_service.py), as ZscalerClient.aiguard.
+        from zscaler.aiguard.aiguard_service import AIGuardService
+        return self._svc("aiguard", lambda: AIGuardService(self._request_executor))
 
     def authenticate(self) -> None:
         return None
@@ -973,8 +987,23 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     + [(("zdx",), f"/zdx/{x}") for x in ("administration/apps", "troubleshooting/devices", "administration/departments",
                                          "administration/locations")]
     + [(("zidentity",), f"/zid/{x}") for x in ("users", "groups", "resourceServers")]
+    # What the builders (Build new, the POV build) plan against, so a snapshot can rehearse them offline:
+    # the ZIA catalogues and certificates, proxy chaining, ZPA's enrollment certificates, keys and
+    # inspection catalogue, the ZDX configuration (assumed API, ops_zdx) and AI Guard's lists.
+    + [(_ZIA, f"/zia/{x}") for x in ("urlCategories/lite", "networkApplications", "cloudApplications/policy", "dnsGateways",
+                                     "intermediateCaCertificate/readyToUse", "rootCertificates", "proxies", "proxyGateways",
+                                     "forwardingRules", "advancedUrlFilterAndCloudAppSettings", "subscriptions")]
+    + [(("zpa",), f"/zpa/{x}") for x in ("enrollmentCert", "associationType/CONNECTOR_GRP/provisioningKey", "inspectionProfile",
+                                         "inspectionControls/predefined", "inspectionControls/predefined/versions", "praConsole",
+                                         "praPortal", "clientlessCertificate/issued", "isolation/profiles")]
+    + [(("zdx",), f"raw:/zdx/v1/config/{x}") for x in ("applications", "applications/supported", "monitors", "collections")]
+    + [(("aiguard",), f"raw:/aiguard/v1/{x}") for x in ("detections/policies", "detections/policy-match-rules", "llm-providers")]
 )
-_ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments"}
+# Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
+_UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}
+_PARAMS = {"raw:/zdx/v1/config/applications/supported": {"type": "PREDEFINED"},
+           "/zia/rootCertificates": {"certTypes": "PROXY_CHAINING"}}   # ai_guard.CERT_TYPE: the certificates proxy chaining uses
+_ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments", "/zia/cloudApplications/policy"}
 _UNANSWERED = (0, 429, 502, 503, 504)
 
 
@@ -1027,7 +1056,9 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
             for e in errors[:4]:
                 unread.append(_text(e, 160))
             continue
-        if ep.startswith("/zpa/"):
+        if ep in _PARAMS or ep in _UNPAGED:
+            body, code = guard.get(ep, dict(_PARAMS[ep])) if ep in _PARAMS else guard.get(ep)
+        elif ep.startswith("/zpa/"):
             body, code = _read_zpa(guard, ep)
         elif ep in _ZIA_PAGED:
             body, code = _read_zia_pages(guard, ep)

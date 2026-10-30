@@ -121,7 +121,7 @@ SINKS = [
     ("pack_deploy", "apply", None), ("pack_deploy", "undo", None),
     ("pack_removal", "remove", None), ("pack_removal", "remove_selected", None), ("pack_removal", "remove_deployment", None),
     ("proposal_apply", "apply", None), ("proposal_apply", "rollback", None),
-    ("admin_ops", "execute", None),
+    ("admin_ops", "execute", None), ("pov_build", "execute", None),
     ("remediation", "execute", 3),
     ("rule_migrator", "enable_evaluate_all_rules", 1), ("rule_migrator", "delete_all_rules", 1),
     ("rule_migrator", "post_new_rule_order", 2),
@@ -264,6 +264,36 @@ def _proposal_tenant(world: World) -> str:
     return proposals.tenant_key(tenant_fingerprint.proposal_key(world.creds(), ""))
 
 
+def _pov_with_build(world: World) -> Tuple[str, str]:
+    """A tenant profile for CREDS' tenant with a POV, and on it a build whose
+    one part is a recorded bulk change with an Undo: (profile id, build id)."""
+    import deployments
+    import pov
+    import tenant_profiles
+    creds = world.creds()
+    pid = tenant_profiles.upsert({"name": "Acme", "cloud": CREDS["cloud"], "vanity_domain": CREDS["vanity_domain"], "client_id": CREDS["client_id"]},
+                                 client_secret=CREDS["client_secret"], remember_secret=True)["id"]
+    pov.create(pid, None, {"customer": "Acme", "vertical": "general"}, by=ASSESSOR)
+    op = {"id": deployments.new_operation_id(), "at": deployments._now(), "tenant_label": tenant_auth.record_label(creds), "by": ASSESSOR,
+          "type": "rule_state", "title": "QA", "product": "zia", "spec": OPERATION, "plan_hash": HASH, "status": "applied", "counts": {},
+          "created": [], "items": [], "inverse": dict(OPERATION, value="ENABLED"), "undo_of": None, "undone_by": None, "undone_at": None,
+          **srv._record_ids(creds)}
+    deployments.add_operation(op)
+    bid = pov.new_build_id()
+    pov.add_build(pid, None, {"id": bid, "at": "2026-10-31T00:00:00+00:00", "by": ASSESSOR, "plan_hash": HASH, "status": "applied",
+                              "steps": [{"key": "zia_baseline", "label": "ZIA security baseline", "status": "applied", "operation_id": op["id"]}]},
+                  by=ASSESSOR)
+    return pid, bid
+
+
+def _pov_build_body(world: World, undo: bool = False) -> Dict[str, Any]:
+    pid, bid = _pov_with_build(world)
+    body = dict(_b(**SCOPE), profile_id=pid, plan_hash=HASH, confirm=True, confirm_text="APPLY 1 POV CHANGE")
+    if undo:
+        return dict(body, build_id=bid)
+    return dict(body, parts={"zia_baseline": {"type": "zia_baseline", "tier": "balanced", "prefix": "QA", "areas": ["url"]}})
+
+
 # ---------------------------------------------------------------------------
 # The routes that can change a tenant, with every gate satisfied
 # ---------------------------------------------------------------------------
@@ -324,6 +354,10 @@ WRITE_CASES: List[WriteCase] = [
     ("bulk-apply-aiguard", "POST", "/api/operations/apply",
      lambda w: ("/api/operations/apply", dict(_b(**dict(SCOPE, scopes=SCOPE["scopes"] + ["aiguard"])),
                                               operation={"type": "aiguard_detection_policy", "profile": "HIPAA"}, plan_hash=HASH, confirm=True)), BOOL),
+    ("pov-build-apply", "POST", "/api/pov/build/apply/start",
+     lambda w: ("/api/pov/build/apply/start", _pov_build_body(w)), BOOL),
+    ("pov-build-undo", "POST", "/api/pov/build/undo/apply/start",
+     lambda w: ("/api/pov/build/undo/apply/start", _pov_build_body(w, undo=True)), BOOL),
     ("self-heal", "POST", "/api/self-heal/tenant/heal",
      lambda w: ("/api/self-heal/tenant/heal", dict(_b(**SCOPE), ids=[_heal_proposal(w)], confirm=PHRASE)), PHRASE),
     ("remediation", "POST", "/api/remediation/execute",
@@ -401,6 +435,10 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/operations/objects"): "reads",
     ("POST", "/api/operations/preview/start"): "preview",
     ("POST", "/api/operations/preview"): "preview",
+    ("POST", "/api/pov/build/defaults"): "local: the parts an intake suggests",
+    ("POST", "/api/pov/build/preview/start"): "preview",
+    ("POST", "/api/pov/build/preview"): "preview",
+    ("POST", "/api/pov/build/undo/preview/start"): "preview",
     ("POST", "/api/operations/{op_id}/undo/preview/start"): "preview",
     ("POST", "/api/operations/{op_id}/undo/preview"): "preview",
     ("POST", "/api/operations/zpa/provisioning-key"): "reveals once a value held in this app's memory; reaches no tenant",

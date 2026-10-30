@@ -213,7 +213,7 @@
     host.appendChild(row);
     if (active()) {
       host.appendChild(el('p', { class: 'gd-need' }, S.status.mode === 'sample'
-        ? `Using ${S.status.company || 'the sample tenant'}: nothing here is real. Every page reads it; a change you deploy changes only its copy in this app's memory.`
+        ? `Using ${S.status.company || 'the sample tenant'}: nothing here is real. Every page reads it; plans and dry runs work here as a rehearsal, and nothing is ever applied to it.`
         : `In use: ${S.status.tenant_label}, offline and read-only. Nothing is read from or sent to a tenant.`));
     }
     host.appendChild(el('p', { id: 'zoStatus', class: 'gd-need', role: 'status', 'aria-live': 'polite' }, S.msg));

@@ -70,8 +70,13 @@ what you get, what to do next.
   engines and rules on every channel, URL filtering, SSL inspection,
   Cloud Firewall, Cloud App Control, Client Connector profiles, ZPA
   segments and policies and ZDX applications. Every page works on it, and
-  a banner on every page says "Sample tenant: nothing here is real"; its
-  changes stay in the app's memory. *Save a snapshot* reads the live
+  a banner on every page says "Sample tenant: nothing here is real".
+  Every builder (each Build new type, the POV build, policy packs and the
+  Bulk changes types) makes its full plan and dry run on the sample and on
+  an opened snapshot, labelled "Rehearsal — nothing was written": the
+  sample carries the catalogues the builders read, and a snapshot keeps
+  them for the products in scope. Applying is refused there with a plain
+  message, before any client is built. *Save a snapshot* reads the live
   tenant (read-only, only what is in scope) into an owner-only file kept
   beside the profile, with no credentials and no secret field values in
   it; *Open* uses it offline and read-only, *Compare with the live tenant*
@@ -157,7 +162,24 @@ what you get, what to do next.
   records show for the tenant since the POV began), exports and imports
   the POV (an untrusted file: size, JSON depth, format and every field
   checked) and keeps templates (vertical, products, criteria; never the
-  customer). It never writes to the tenant. Simple mode links to it.
+  customer). Its Build tab is the one place it changes the tenant, only
+  through the Build new builders and their gates (`pov_build.py`): after
+  the intake it suggests the parts the POV needs (ZIA security baseline,
+  SSL certificates, ZPA connector group, segments and policy rules, Client
+  Connector profiles, ZDX probes, AI Guard routing and detection policy)
+  with each builder's safe defaults for the vertical preset, plans them as
+  ONE dry run (a section per product, every object before and after, one
+  plan hash over every part) and applies them with ONE typed confirmation
+  (`APPLY <n> POV CHANGES`) in a safe order, what other parts use first.
+  Write mode, a writer, the named assessor and the Scope rule per part
+  hold; the whole plan is read again first, then each part right before it
+  is written, through its builder's own checks, read back, audited and
+  recorded with its Undo. The first part that does not apply stops the run;
+  Undo reverses what was applied, latest first, as one more dry run and
+  confirmation. New objects arrive disabled or monitor-only unless chosen
+  otherwise. On the sample tenant or a snapshot it is a rehearsal. A
+  preset's builder defaults are data (`pov_build.PRESET_DEFAULTS`, or the
+  preset's own `build` entry in `pov.VERTICALS`). Simple mode links to it.
 
 ### Find the gaps
 

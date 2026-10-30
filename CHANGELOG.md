@@ -5,6 +5,18 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### POV build and rehearsal on the sample tenant and snapshots
+- **POV build: one plan, one dry run, one apply.** After the intake the POV planner builds the tenant the POV needs through the Build new builders (`pov_build.py`): the ZIA security baseline, SSL certificates, the ZPA App Connector group, application segments and policy rules, Client Connector profiles, ZDX probes, AI Guard routing and its detection policy, each with its safe defaults for the vertical preset. New objects arrive disabled or monitor-only unless you choose otherwise. A preset's builder defaults are data (`pov_build.PRESET_DEFAULTS`, or the preset's own `build` entry), so a new intake preset needs no code.
+- **Build tab.** On the POV planner: tick the parts (a part whose product is not ticked on the Scope page cannot be picked, and the server refuses it before sign-in), change the main options, or the part exactly as it is sent.
+- **One dry run.** Every part planned by its own builder in a safe order, what other parts use first (the connector group before the segments, the segments before the policy rules: a part that needs an earlier part's object is planned against it instead of being blocked), shown as a section per product with every object before and after, under one plan hash over every part.
+- **One typed confirmation.** `APPLY <n> POV CHANGES` applies the whole build. Every gate stays: write mode, a writer, the named assessor, the Scope rule per part, the ZPA customer ID. The whole plan is read again first (a tenant that moved writes nothing); then each part is read again right before it is written and must match the preview, and is applied through its builder's own checks (its plan hash and phrase, a re-read before every write, read-back, activation, the audit log) and recorded with its Undo. The first part that does not apply completely stops the run, and the report names it and what was applied. Each build is listed on the POV.
+- **Undo everything applied so far.** The recorded Undos of a build's applied parts, latest first, as one dry run and one confirmation (`UNDO <n> POV CHANGES`), stopping at the first that does not apply.
+- **Load choices from the tenant.** The SSL certificates and AI Guard routing parts read the certificates and Inspect rules to pick from (read-only, only what is in scope).
+- **Rehearsal on the sample tenant and snapshots.** Every Build new type, the classic Bulk changes types and the POV build now make their full plan and dry run on the sample tenant and on an opened snapshot, labelled "Rehearsal — nothing was written". The sample carries the catalogues the builders read (URL categories, network and cloud applications, the Trusted Resolver, intermediate and AI Guard root certificates, ZPA enrollment certificates and OWASP controls, the ZDX configuration, AI Guard's lists) and an Inspect rule to move; a saved snapshot now keeps those lists for the products in scope. An apply there (a bulk change, a builder, a POV build, a pack deploy, removal or Undo) is refused with a plain message before any client is built, so nothing is written to the sample's memory either. This closes the open finding that most Build new types could not plan on the sample.
+- **Rehearsal in Deploy policy packs.** A pack's preview (and the removal preview) on the sample tenant or a snapshot says it is a rehearsal; deploying there is refused the same way.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

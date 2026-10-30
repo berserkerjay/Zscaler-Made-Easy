@@ -24,7 +24,8 @@ password, API key or admin login; a secret pasted into its text is masked.
 Bound to its tenant. A POV opens only for the tenant it was made for: an
 import, an evidence update or a report against another tenant is refused.
 
-Read-only. Nothing here writes to a tenant. "Prove it" asks the Path
+Read-only. Nothing here writes to a tenant (the planner's Build tab writes
+only through pov_build and the Build new builders' gates). "Prove it" asks the Path
 analyzer for the verdict the configuration gives a test's destination, and
 ZIA Insights for counts, both through the app's existing read-only, scoped
 readers; any change to the tenant goes through Deploy policy packs or Bulk
@@ -853,6 +854,67 @@ def add_insights(profile_id: Any, creds: Optional[Dict[str, Any]], counts: Dict[
         _write_file(path, pov)
     _audit("insights", b["label"], by)
     return pov
+
+
+# ── Builds applied from the POV (pov_build) ─────────────────────────────
+MAX_BUILDS = 20
+_BUILD_ID_RE = re.compile(r"^b-[a-f0-9]{12}$")
+_OP_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+
+
+def new_build_id() -> str:
+    return "b-" + secrets.token_hex(6)
+
+
+def _clean_build(rec: Any) -> Dict[str, Any]:
+    """A build record as pov_build.build_record makes it, bounded: the steps,
+    the operation each step was recorded as (Bulk changes keeps the change
+    itself), the plan hash and who ran it. Never a secret or tenant data."""
+    r = _obj(rec, "a build")
+    bid = str(r.get("id") or "")
+    if not _BUILD_ID_RE.match(bid):
+        raise PovError("a build record has no valid id")
+    steps = []
+    for s in _list(r.get("steps"), "build steps", 30):
+        s = _obj(s, "a build step")
+        op = str(s.get("operation_id") or "")
+        steps.append({"key": _clean(s.get("key"), 40, what="a build step"), "label": _clean(s.get("label"), MAX_LABEL, what="a build step"),
+                      "status": _clean(s.get("status"), 30, what="a build step"), "operation_id": op if _OP_ID_RE.match(op) else None})
+    return {"id": bid, "at": _clean(r.get("at"), 40, what="a time"), "by": _clean(r.get("by"), MAX_LABEL, what="a name"),
+            "plan_hash": _clean(r.get("plan_hash"), 64, what="a plan hash"), "status": _clean(r.get("status"), 30, what="a status"),
+            "undo": r.get("undo") is True, "undo_of": _clean(r.get("undo_of"), 20, what="a build") or None,
+            "undone_by": _clean(r.get("undone_by"), 20, what="a build") or None, "steps": steps}
+
+
+def add_build(profile_id: Any, creds: Optional[Dict[str, Any]], record: Dict[str, Any], *, by: str, undo_of: str = "") -> Dict[str, Any]:
+    """Keep a build applied from this POV (or its Undo) on the POV, newest
+    last; an Undo marks the build it reversed."""
+    path, b = _bind(profile_id, creds)
+    rec = _clean_build(dict(record, undo_of=undo_of or None))
+    with _locked(path):
+        pov = _load(path, b)
+        if pov is None:
+            raise PovError("This tenant profile has no POV yet: start one first.", 404)
+        builds = [_clean_build(x) for x in (pov.get("builds") or []) if isinstance(x, dict) and _BUILD_ID_RE.match(str(x.get("id") or ""))]
+        if undo_of:
+            for x in builds:
+                if x["id"] == undo_of:
+                    x["undone_by"] = rec["id"]
+        pov["builds"] = (builds + [rec])[-MAX_BUILDS:]
+        _bump(pov)
+        _write_file(path, pov)
+    _audit("build_undo" if undo_of else "build", b["label"], by, build=rec["id"], status=rec["status"], plan_hash=rec["plan_hash"],
+           steps=len(rec["steps"]), undo_of=undo_of or None)
+    return pov
+
+
+def get_build(pov: Dict[str, Any], build_id: Any) -> Dict[str, Any]:
+    """One build record of the POV, or PovError 404."""
+    bid = str(build_id or "")
+    for x in pov.get("builds") or []:
+        if isinstance(x, dict) and x.get("id") == bid and _BUILD_ID_RE.match(bid):
+            return _clean_build(x)
+    raise PovError("This POV has no such build: it may have been made on another computer, or the POV was replaced.", 404)
 
 
 # ── Export and import ───────────────────────────────────────────────────
