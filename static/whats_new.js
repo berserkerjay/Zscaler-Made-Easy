@@ -73,7 +73,7 @@ window.WHATS_NEW = {
     {
       "id": "config-restore", "release": "2026-10-31", "label": "Backups, restore and clone",
       "what": "Backups of ZIA, ZPA and Client Connector, a field-by-field compare, restore and clone with a plan, a fresh backup first and Undo, and templates for any tenant.",
-      "changelog": ["Configuration backups", "Compare field by field", "Restore and clone", "Templates", "Scheduled backups", "Configuration cache"],
+      "changelog": ["Configuration backups", "Compare field by field", "Restore and clone", "Templates", "Scheduled backups", "Configuration cache", "Rehearsal", "Licence check"],
       "marks": [
         { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"config_restore_zia\"]", "shown": "after the page lists the builders" }
       ]

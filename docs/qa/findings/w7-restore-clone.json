@@ -1,0 +1,162 @@
+{
+ "area": "Configuration backups, diff, restore, clone and templates (ZIA, ZPA, Client Connector)",
+ "title": "Backups with secrets masked, field-level diff, restore and cross-tenant clone through the write gates, templates, cache, schedules",
+ "standards": [
+  "ASVS V1.14.6",
+  "ASVS V4.2.1",
+  "ASVS V5.1.3",
+  "ASVS V8.3.4",
+  "ASVS V11.1.1",
+  "ASVS V11.1.6",
+  "WSTG-ATHZ-02",
+  "WSTG-ATHZ-04",
+  "CWE-20",
+  "CWE-312",
+  "CWE-362",
+  "CWE-639",
+  "CWE-754",
+  "CWE-1023",
+  "CWE-1188",
+  "CISA Secure by Design"
+ ],
+ "checks": [
+  {
+   "id": "W7-RC-C01",
+   "what": "Every catalogue service and method exists in zscaler-sdk-python 1.11.3",
+   "standard": "ASVS V14.2.1 \u00b7 CWE-1104",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C02",
+   "what": "Secret canaries (PSK, tokens, passwords, API keys) never reach a backup, cache, template, plan, result, record, log or audit entry",
+   "standard": "ASVS V8.3.4 \u00b7 CWE-312",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C03",
+   "what": "Backups, caches and templates are owner-only files beside the profile store (0600 / 0700)",
+   "standard": "ASVS V8.3.4 \u00b7 CWE-732",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C04",
+   "what": "Hostile backup and template files are refused (size, nesting, format, version, type keys, references, NaN)",
+   "standard": "ASVS V5.1.3 \u00b7 CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C05",
+   "what": "Diff oracle: field-level diff of hand-made backups is exact; volatile fields and ignore patterns left out",
+   "standard": "ASVS V1.14.1 \u00b7 CWE-1023",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C06",
+   "what": "Dependency order: dependencies created first, deletes reversed (ZIA, ZPA, Client Connector)",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-1023",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C07",
+   "what": "Id remapping by name, including DLP engine expressions and objects created in the same run",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-1023",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C08",
+   "what": "Conflict guard: re-read before each write; a changed object stops the run before it is overwritten",
+   "standard": "ASVS V11.1.6 \u00b7 CWE-362",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C09",
+   "what": "First failure stops the run; nothing activated; Undo covers what was applied",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C10",
+   "what": "Undo exactness: tenant state after Undo equals the original, compared by name",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-1023",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C11",
+   "what": "Deletes need DELETE n OBJECTS; a fresh automatic backup is saved before any write, or nothing is written",
+   "standard": "ASVS V11.1.1 \u00b7 CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C12",
+   "what": "Entitlement on the target: a clone or template writes only to the tenant of the saved profile the person has open; 'same' must be the backup's tenant",
+   "standard": "ASVS V4.2.1 \u00b7 CWE-639 \u00b7 WSTG-ATHZ-04",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C13",
+   "what": "Rehearsal (sample tenant, snapshot or backup) never builds a client and can never be applied",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C14",
+   "what": "Scheduled backups only read, only the profile's scope, never for a profile without a remembered secret; retention kept",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-306",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C15",
+   "what": "Licence gap between source and target blocks a clone until acknowledged",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-1188",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C16",
+   "what": "Opt-in rollback of a failed run through the recorded inverse; re-push plan offered",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W7-RC-C17",
+   "what": "Per-key settings merge; proxy chaining objects with a manual-step report",
+   "standard": "ASVS V1.14.6 \u00b7 CWE-1023",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-RC-01",
+   "title": "A template made from an in-memory (unmasked) backup kept a secret-named field's value",
+   "severity": "high",
+   "cwe": "CWE-312",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "make_template masks the backup again and drops every secret-named field whatever its value",
+   "test": "tests/test_config_backup.py::test_secret_canaries_never_reach_a_template",
+   "commit": "w7-restore-clone"
+  },
+  {
+   "id": "W7-RC-02",
+   "title": "A boolean field named like a reference (zscalerIncidentReceiver) was read as an object id, so every DLP rule looked unclonable",
+   "severity": "low",
+   "cwe": "CWE-704",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "booleans are never references; the field is no longer listed as one",
+   "test": "tests/test_config_restore.py::test_a_clone_creates_dependencies_first_and_remaps_every_id_by_name",
+   "commit": "w7-restore-clone"
+  },
+  {
+   "id": "W7-RC-03",
+   "title": "Gap closed: the other configuration tool restored and cloned without a fresh target backup, a typed delete phrase, a target entitlement check or an exact Undo; this app now does all of it on the Bulk changes engine",
+   "severity": "info",
+   "cwe": "CWE-1188",
+   "asvs": "V1.14.6",
+   "status": "fixed",
+   "fix": "ops_config_restore.py on admin_ops; config_backup.py",
+   "test": "tests/test_config_restore.py",
+   "commit": "w7-restore-clone"
+  }
+ ],
+ "tests_added": 0
+}

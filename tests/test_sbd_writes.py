@@ -814,6 +814,26 @@ def _aiguard_policy_default():
     return p["status"] == "ready" and "Monitor" in p["title"]
 
 
+def _config_restore_default():
+    """A clone from a backup creates its rules and segments disabled unless
+    the operator ticks 'keep each rule's state' (ops_config_restore)."""
+    import config_backup as cb
+    import ops_config_restore as ocr
+    rule = {"id": 10, "name": "R", "order": 1, "state": "ENABLED", "action": "BLOCK"}
+    seg = {"id": "601", "name": "S", "enabled": True, "domain_names": ["a.example"]}
+    src = {"zia.url_filtering_rules": [rule], "zpa.application_segments": [seg]}
+    tgt = {"zia.url_filtering_rules": [], "zpa.application_segments": []}
+    ok = True
+    for t, key, field, off in (("config_restore_zia", "zia.url_filtering_rules", "state", "DISABLED"),
+                               ("config_restore_zpa", "zpa.application_segments", "enabled", False)):
+        p = ocr.build_plan(src, ocr.DocReader(tgt), ocr.check_spec({"type": t, "source": {"backup": "bk-" + "0" * 16}, "mode": "add_missing",
+                                                                   "target": "other", "target_profile_id": "qa"}, t.rsplit("_", 1)[1]),
+                           t.rsplit("_", 1)[1])
+        made = [g["target"]["desired"] for g in p["groups"] if g["handler"] == "cfg_create" and g["target"]["type"] == key]
+        ok = ok and bool(made) and all(m.get(field) == off for m in made)
+    return ok and bool(cb.BY_KEY)
+
+
 # How each type that creates or changes enforcement keeps it off unless the
 # operator chose it; or why "off" does not apply. A new type must be listed.
 DEFAULT_OFF: Dict[str, Any] = {
@@ -834,6 +854,9 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zcc_profile_delete": "deletes profiles only; creates and enables nothing",
     "zdx_probe_delete": "deletes apps and probes (or turns them off) only",
     "zpa_prefix_delete": "deletes the prefixed objects only; creates and enables nothing",
+    "config_restore_zia": _config_restore_default,
+    "config_restore_zpa": _config_restore_default,
+    "config_restore_zcc": "Client Connector trusted networks, forwarding profiles and settings carry no on/off state; app profiles are never written",
 }
 
 

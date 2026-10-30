@@ -1265,10 +1265,25 @@ def read_objects(client: Any, scope: Dict[str, Any], say, cancel) -> Dict[str, A
             "modes": [{"id": m, "label": MODE_WORDS[m]} for m in MODES]}
 
 
-_COMMON = dict(family=FAMILY, in_scope=in_scope, read_objects=read_objects, handlers=HANDLERS, verify=verify, inverse=inverse,
-               plan=plan, script="ops_config_restore.js", group="Backups")
+def _in_scope_for(product: str):
+    """The scope check of one product's restore type and its family (the
+    object picker): refused unless that product is ticked."""
+    def check(scope: Dict[str, Any], spec: Any = None) -> Optional[str]:
+        return in_scope(scope, {"type": TYPE_FOR[product]})
+    return check
+
+
+def _read_for(product: str):
+    def read(client: Any, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
+        return read_objects(client, scope, say, cancel)
+    return read
+
+
+FAMILY_FOR = {p: f"{FAMILY}_{p}" for p in TYPE_FOR}
+_COMMON = dict(handlers=HANDLERS, verify=verify, inverse=inverse, plan=plan, script="ops_config_restore.js", group="Backups")
 for _p, _t in TYPE_FOR.items():
-    ao.register(_t, product=_p, label=f"Restore or clone {cb.PRODUCT_LABELS[_p]}",
+    ao.register(_t, product=_p, family=FAMILY_FOR[_p], in_scope=_in_scope_for(_p), read_objects=_read_for(_p),
+                label=f"Restore or clone {cb.PRODUCT_LABELS[_p]}",
                 hint=f"From a backup or a template: add what is missing, update what differs, or match exactly (with deletes). "
                      f"Planned in dependency order, with a fresh backup first{', ZIA activation last' if _p == 'zia' else ''}, and Undo.",
                 **_COMMON)
