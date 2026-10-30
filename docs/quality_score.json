@@ -317,12 +317,13 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 48,
-            "accepted": 0,
+            "fixed": 54,
+            "accepted": 1,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
-              "func-builders"
+              "func-builders",
+              "w7-migrate-tui-plugins"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 586,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -455,22 +456,22 @@
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 338,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 48,
-        "accepted": 22
+        "fixed": 53,
+        "accepted": 23
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 311,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8672
   },
   "findings": [
     {
@@ -840,6 +841,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-MTP-07",
+      "title": "The sample tenant has no network applications list, so a firewall import previewed on it excludes the rules that name an application",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "sample_tenant.py is shared by every page's answers; the import is exercised with fakes that carry the list, and the preview on the sample says why those rules are excluded",
+      "slug": "w7-migrate-tui-plugins",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -8970,6 +8987,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-MTP-02",
+      "title": "No hardened XML parser in the runtime lock: an XML upload relied on a hand-written DTD refusal",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-611",
+      "asvs": "V5.5.2",
+      "wcag": "",
+      "fix": "defusedxml 0.7.1 added to requirements.txt and requirements.lock with hashes (SBOM and notices regenerated); the PAN-OS reader uses it with forbid_dtd, forbid_entities and forbid_external",
+      "test": "tests/test_panos_migrate.py::test_dtds_entities_and_external_references_are_refused",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-migrate-tui-plugins",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -9736,6 +9769,86 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-MTP-01",
+      "title": "Gap: no firewall or private-access migration from Palo Alto Networks (only DLP vendors were migrated)",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "panos_migrate.py builds a plan from a PAN-OS export; ops_fw_import.py applies its ZIA part on Bulk changes; the ZPA part feeds the existing ZPA builders",
+      "test": "tests/test_panos_migrate.py::test_preview_then_apply_creates_disabled_rules_after_their_objects_and_undo_deletes_them",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-migrate-tui-plugins",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-MTP-03",
+      "title": "Gap: Bulk changes had no way to create IP source groups or network services (pack_ops kinds)",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "pack_ops create/update/delete take ip_source_group and network_service (SDK cloud_firewall add_/update_/delete_ip_source_group and _network_service)",
+      "test": "tests/test_panos_migrate.py::test_preview_then_apply_creates_disabled_rules_after_their_objects_and_undo_deletes_them",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-migrate-tui-plugins",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-MTP-04",
+      "title": "Gap: no terminal UI for SSH sessions",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "tui.py and the `tui` subcommand of zscaler-made-easy and dlp-check",
+      "test": "tests/test_tui.py::test_preview_then_apply_goes_through_the_servers_gates",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-migrate-tui-plugins",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-MTP-05",
+      "title": "Gap: no opt-in extension point outside the app's own modules; a Bulk changes type without a page script would show an endless 'Loading the form'",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "local_plugins.py (hash allow-list, narrow API) and a generic JSON form on Bulk changes for a type that ships no script",
+      "test": "tests/test_local_plugins.py::test_a_plugin_modified_after_approval_is_refused",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-migrate-tui-plugins",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-MTP-06",
+      "title": "Gap: a newer app version was announced only on the page; no notice on the digest channel",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "update_notify.py, called from the update check, once per version, off by default",
+      "test": "tests/test_update_notify.py::test_once_per_version",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-migrate-tui-plugins",
+      "area": "functionality",
+      "sub_area": "builders"
     }
   ],
   "records": [
@@ -10634,6 +10747,49 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-migrate-tui-plugins",
+      "area": "Wave 7: firewall migration from Palo Alto Networks, a terminal UI, local plugins and update notifications",
+      "title": "PAN-OS export to a Bulk changes plan (Cloud Firewall and ZPA), the curses TUI over the same API and gates, hash-allow-listed local plugins with a narrow API, update notices once per version",
+      "standards": [
+        "ASVS V1.4.1",
+        "ASVS V4.1.3",
+        "ASVS V4.1.5",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V5.3.1",
+        "ASVS V5.5.2",
+        "ASVS V8.3.4",
+        "ASVS V9.1.1",
+        "ASVS V10.3.2",
+        "ASVS V11.1.1",
+        "ASVS V14.1.1",
+        "ASVS V14.2.4",
+        "CWE-20",
+        "CWE-59",
+        "CWE-150",
+        "CWE-200",
+        "CWE-250",
+        "CWE-269",
+        "CWE-284",
+        "CWE-319",
+        "CWE-345",
+        "CWE-367",
+        "CWE-400",
+        "CWE-494",
+        "CWE-611",
+        "CWE-776",
+        "CWE-799",
+        "CWE-829",
+        "CWE-862",
+        "CWE-1188",
+        "WSTG-INPV-07",
+        "WSTG-ATHZ-02"
+      ],
+      "checks": 8,
+      "findings": 7,
+      "tests_added": 70
     }
   ],
   "standards": {
@@ -10653,7 +10809,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -10758,12 +10914,14 @@
       "CWE-377",
       "CWE-379",
       "CWE-384",
+      "CWE-390",
       "CWE-392",
       "CWE-400",
       "CWE-404",
       "CWE-405",
       "CWE-407",
       "CWE-409",
+      "CWE-434",
       "CWE-436",
       "CWE-440",
       "CWE-441",
