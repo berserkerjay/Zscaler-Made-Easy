@@ -110,7 +110,7 @@ function _gdSteps() {
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
       what: 'A policy pack is a complete, layered policy design for one situation: Healthcare PHI, CUI markings, Zscaler\'s enterprise best practice, Endpoint DLP, and so on. Each card says who it is for and when to use it. Preflight reads the tenant and shows exactly what would be created, what already exists and is kept, and what the impact is. Nothing is written.',
       need: 'A connected tenant. Preflight works in read-only mode; it is the plan you show the customer.',
-      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy policy packs, tick a policy pack, click Run preflight, then read the Impact cards and the plan.',
+      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${Number(deployed.created) || 0} created.` : 'Open Deploy policy packs, tick a policy pack, click Run preflight, then read the Impact cards and the plan.',
       actions: [{ label: 'Open Deploy policy packs', fn: 'openDlpPacksModal()', kind: 'primary' }],
     },
     {
@@ -275,6 +275,9 @@ function _gdContainerUpdateHelp() {
 async function _gdUpdateApp() {
   if (GD.about && GD.about.in_container) { _gdContainerUpdateHelp(); return; }
   if (GD.about && GD.about.is_git_checkout === false) { _gdUpdateHelp(); return; }
+  // The update changes this app's own code (and may switch its branch): say what happens and ask first (WCAG 3.3.4).
+  const want = _gdUpdBranch() || 'its branch';
+  if (!window.confirm(`Update Zscaler Made Easy now to the latest ${want} from GitHub? The app pulls the code, keeps any local edits in git stash, installs the locked requirements and then asks you to restart it. Nothing in the tenant changes.`)) return;
   const btn = document.getElementById('gdUpdateBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   const lines = [];
   const show = (extra = '') => _gdUpdateBox(`<div class="gd-upd-steps">${lines.map(l => `<div class="gd-upd-line ${l.ok === false ? (l.soft ? 'soft' : 'warn') : l.ok ? 'ok' : ''}">${l.ok === false ? (l.soft ? '⚠' : '✗') : l.ok ? '✓' : '…'} ${_gdE(l.name)}${l.detail ? ` <span class="dim">— ${_gdE(l.detail)}</span>` : ''}</div>`).join('')}${extra}</div>`);

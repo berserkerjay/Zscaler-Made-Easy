@@ -56,8 +56,7 @@ BYPASS_LABELS = {"NEVER": "Never", "ON_NET": "On-Net", "ALWAYS": "Always"}
 FORWARDING_LABELS = {"INTERCEPT": "Intercept", "INTERCEPT_ACCESSIBLE": "Intercept accessible", "BYPASS": "Bypass"}
 ACCESS_EFFECT = {"ALLOW": "allow", "REQUIRE_APPROVAL": "allow", "DENY": "deny"}
 # The operand types zpa_analysis can evaluate; any other is flagged.
-KNOWN_OPERANDS = frozenset({"APP", "APP_GROUP", "SCIM_GROUP", "SAML", "SCIM", "IDP", "POSTURE", "TRUSTED_NETWORK",
-                            "CLIENT_TYPE", "PLATFORM", "COUNTRY_CODE", "MACHINE_GRP"})
+KNOWN_OPERANDS = zpa_analysis.EVALUATED_OPERANDS
 # The Path analyzer's platform names to ZPA's PLATFORM operand values.
 PLATFORM_TO_ZPA = {"windows": "windows", "macos": "mac", "mac": "mac", "linux": "linux", "ios": "ios", "android": "android"}
 
@@ -372,7 +371,7 @@ def stage(snap: Dict[str, Any], d: Dict[str, Any], *, network: str = "off", plat
                scenarios={k: {"forwarding": v["fwd"]["effect"], "access": v["acc"]["effect"], "ends": sorted(v["ends"]),
                               "rule": (v["acc"]["rule"] or {}).get("name"), "conditional": [c["name"] for c in v["acc"]["conditional"]][:5]}
                           for k, v in scen.items()})
-    _verdict(out, seg, dest_txt, bt, f, a, scen, source)
+    _verdict(out, seg, dest_txt, bt, f, a, scen, source, network)
     return out
 
 
@@ -408,7 +407,7 @@ def _access_words(scen: Dict[str, Dict[str, Any]], source: str) -> Tuple[str, st
 
 
 def _verdict(out: Dict[str, Any], seg: Dict[str, Any], dest_txt: str, bt: str, f: Dict[str, Any], a: Dict[str, Any],
-             scen: Dict[str, Dict[str, Any]], source: str) -> None:
+             scen: Dict[str, Dict[str, Any]], source: str, network: str = "off") -> None:
     ends = set(out["ends"])
     name = seg["name"]
     impacts: List[Dict[str, Any]] = []
@@ -416,7 +415,7 @@ def _verdict(out: Dict[str, Any], seg: Dict[str, Any], dest_txt: str, bt: str, f
         out["carries"] = False
         if bt == "ALWAYS":
             why = f"segment “{name}” is set to bypass ZPA always"
-        elif bt == "ON_NET" and "outside" in ends and f["effect"] != "bypass":
+        elif bt == "ON_NET" and network == "on":
             why = f"segment “{name}” bypasses ZPA on a trusted network"
         elif f["effect"] == "bypass":
             why = f"Client Forwarding Policy rule “{(f['rule'] or {}).get('name')}” bypasses ZPA"
@@ -452,7 +451,15 @@ def _verdict(out: Dict[str, Any], seg: Dict[str, Any], dest_txt: str, bt: str, f
             head = (f"Depends on device posture: when posture passes {' or '.join(words[e] for e in sorted(p['ends']))}; "
                     f"when it fails {' or '.join(words[e] for e in sorted(fl['ends']))}.")
         else:
-            head = f"Depends on who the user is or on facts not given: ZPA may {'carry or not carry' if 'outside' in ends else 'allow or deny'} {dest_txt}."
+            # Name what it depends on: the VPN for an On-Net bypass, and each
+            # earlier rule with the facts it needs that were not given.
+            deps = []
+            if any(m.get("key") == "zpa_bypass" and m.get("verdict") == "conditional" for m in out.get("modules") or []):
+                deps.append("whether the VPN counts as a trusted network (the segment's On-Net bypass)")
+            for c in list(f.get("conditional") or []) + list(a.get("conditional") or []):
+                deps.append(f"rule “{c['name']}” ({c['action']}), which needs {zpa_analysis._and_list(c.get('depends_on') or []) or 'a fact not given'}")
+            head = (f"Depends on {'; '.join(deps[:3])}" if deps else "Depends on who the user is or on facts not given") + \
+                f": ZPA may {'carry or not carry' if 'outside' in ends else 'allow or deny'} {dest_txt}."
         out.update(outcome="zpa_conditional", headline=head,
                    summary=f"Application segment “{name}” matches. " + ("If ZPA carries it, ZIA does not apply; the ZIA path below is what happens otherwise."
                                                                       if "outside" in ends else "Either way ZPA carries it, so ZIA does not apply."))

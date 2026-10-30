@@ -1,0 +1,422 @@
+{
+  "area": "Functional correctness of traffic analysis: Path analyzer (ZIA modules, ZPA, workloads, PAC, what-if), Test a list, Data Flow Map, SSL flow and SSL coverage, ZPA diagnostics",
+  "title": "Oracle, property, edge, wording and arithmetic checks of every traffic-analysis answer",
+  "standards": [
+    "ASVS V1.4.4",
+    "ASVS V4.1.3",
+    "ASVS V5.1.3",
+    "ASVS V5.1.4",
+    "ASVS V5.2.4",
+    "ASVS V7.1.1",
+    "CWE-20",
+    "CWE-200",
+    "CWE-670",
+    "CWE-682",
+    "CWE-684",
+    "CWE-697",
+    "CWE-863"
+  ],
+  "checks": [
+    {
+      "id": "ORACLE-PARSE",
+      "what": "Destinations as typed: upper case, trailing dot, user info, port, path, query, fragment, IP literal, bare and bracketed IPv6, IDN to punycode, port 0/65535/65536",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-PRIVATE",
+      "what": "Private address boundaries: RFC 1918 edges, IPv6 ULA, IPv4-mapped IPv6, documentation ranges",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-URLLIST",
+      "what": "ZIA URL list semantics: exact host, leading-dot domain, *. wildcard, path entries, CIDR and range boundaries, IPv6, case, trailing dot",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-CUSTOMCAT",
+      "what": "Custom URL category placement drives URL filtering by ZIA semantics",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-ORDER",
+      "what": "Rule order, first match, default rule last, disabled rules never decide (Cloud Firewall, URL filtering, SSL, ZPA, connectors)",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "ORACLE-CRITERIA",
+      "what": "Every firewall criterion kind: users, groups, departments, locations, time windows, device trust, network services and ports, ANY, network applications, destination addresses, IP groups (v4 and v6), IP categories, countries, source IPs",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-URLF",
+      "what": "URL filtering: first match, disabled, ANY category, protocols (HTTP, HTTPS, ANY), conditions (time window, device trust, risk score, group, location, validity period)",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-SSL",
+      "what": "SSL inspection: no rule, decrypt, exemption, disabled exemption, block, scoped same-action, scoped exemption, plain HTTP",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-DLP-NEG",
+      "what": "Negation: Web DLP excluded users, groups and departments, for any user and with a what-if identity; ZPA negated conditions",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-WHATIF",
+      "what": "What-if scope semantics: who any-of, where any-of, kinds AND-ed, exclusions negate, open conditions stay open",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-PAC",
+      "what": "PAC helpers against the PAC spec: dnsDomainIs, shExpMatch, isInNet (boundaries), localHostOrDomainIs, isPlainHostName, dnsDomainLevels, weekdayRange/timeRange/dateRange/myIpAddress/isResolvable unknown; https URL stripping",
+      "standard": "ASVS V5.2.4",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-ZPA-SEG",
+      "what": "ZPA segments: exact, longest wildcard, wildcard not apex, disabled, port 65535, IPv6 prefix, IDN, tie by narrowest ports",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-ZPA-POLICY",
+      "what": "ZPA bypass modes per network, client forwarding (intercept, intercept accessible, bypass), access first match, default deny, posture pass and fail, negation",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "ORACLE-ZPA-DIAG",
+      "what": "ZPA diagnostics: conditional only when an earlier rule would decide differently",
+      "standard": "ASVS V1.4.4",
+      "result": "fixed"
+    },
+    {
+      "id": "ORACLE-CONNECTOR",
+      "what": "Cloud and Branch Connector forwarding: order, range and CIDR boundaries, IPv6, trailing dot, unknown with same end, disabled, default ZIA",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "PROP-DISABLED",
+      "what": "Property: an unrelated disabled rule never changes a verdict (4 sections, seeded)",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "PROP-REORDER",
+      "what": "Property: reordering rules below the deciding rule never changes it (URL, SSL, firewall, seeded)",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "PROP-PARITY",
+      "what": "Property: Test a list equals the single-destination answer for every row over protocols, ports, IPv6, IDN, identity and source IP",
+      "standard": "ASVS V1.4.4",
+      "result": "fixed"
+    },
+    {
+      "id": "PROP-WHATIF",
+      "what": "Property: a what-if identity no rule is scoped to (or on a dimension no rule uses) equals no what-if",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "PROP-SCOPE",
+      "what": "Property: every part out of scope says not in scope, never no rule",
+      "standard": "ASVS V1.4.4",
+      "result": "pass"
+    },
+    {
+      "id": "EDGE-TRAFFIC",
+      "what": "Edges: IPv6, IDN, port 65535, QUIC (UDP/443), port 1, HTTP on 8080, ICMP refused or not traced",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "WORDING",
+      "what": "Definite has no conditional step; every conditional names the rule or condition it depends on (Path analyzer, ZPA)",
+      "standard": "ASVS V1.4.4",
+      "result": "fixed"
+    },
+    {
+      "id": "COUNTS-DATAFLOW",
+      "what": "Data Flow Map: every path in one visibility class; tiles sum to paths traced and match the gap list",
+      "standard": "ASVS V1.4.4",
+      "result": "fixed"
+    },
+    {
+      "id": "COUNTS-SSL",
+      "what": "SSL flow class and gap counts; SSL coverage percentages in 0-100, non-finite volumes ignored, class and cause counts",
+      "standard": "ASVS V1.4.4",
+      "result": "fixed"
+    },
+    {
+      "id": "COUNTS-LIST",
+      "what": "Test a list: results plus not tested equal the rows; allowed-but-blockable within allowed",
+      "standard": "ASVS V1.4.4",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "FUNC-PATH-01",
+      "title": "Plain HTTP (TCP/80, http://) was reported as 'encrypted, DLP blind' with no SSL rule, and as 'decrypted' with one",
+      "severity": "high",
+      "cwe": "CWE-684",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "The trace takes plain HTTP as having no TLS: SSL hop not applicable, content visible, headline says unencrypted (plain HTTP)",
+      "test": "tests/test_qa_func_path.py::test_plain_http_is_never_called_encrypted_or_decrypted",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-02",
+      "title": "A Cloud Firewall rule naming only IPv6 destination groups matched every destination (a definite wrong block of IPv4 traffic)",
+      "severity": "high",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "destIpv6Groups and srcIpv6Groups are criteria: never an IPv4 address, unknown for IPv6 (their list is not read)",
+      "test": "tests/test_qa_func_path.py::test_a_firewall_rule_on_ipv6_groups_does_not_block_ipv4_and_is_unknown_for_ipv6",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-03",
+      "title": "A network service UDP_ANY or ICMP_ANY on a rule was 'unknown' for TCP traffic, making the firewall answer falsely conditional",
+      "severity": "medium",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "A protocol-wide service of another protocol is a definite no match",
+      "test": "tests/test_qa_func_path.py::test_every_firewall_criterion_kind_is_match_no_match_or_unknown",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-04",
+      "title": "URL filtering, File Type Control and Web DLP rule protocols were ignored by the trace: an HTTP-only block rule was said to block HTTPS",
+      "severity": "high",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "The trace applies each rule's protocols (one shared helper with the module criteria)",
+      "test": "tests/test_qa_func_path.py::test_url_filtering_first_match_disabled_any_and_protocols",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-05",
+      "title": "Web DLP excluded users, groups and departments were ignored: definite 'enforce' for excluded users, and the what-if for an excluded group still enforced",
+      "severity": "high",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "Exclusions are scope (conditional for any user) and a negated what-if dimension",
+      "test": "tests/test_qa_func_path.py::test_a_dlp_rule_with_excluded_groups_does_not_apply_to_them",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-06",
+      "title": "A URL or DLP rule limited to a user risk score was treated as applying to everyone: a definite 'Blocked' headline under a conditional certainty",
+      "severity": "medium",
+      "cwe": "CWE-684",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "userRiskScoreLevels is scope in the trace and an open what-if dimension",
+      "test": "tests/test_qa_func_path.py::test_a_rule_that_applies_only_sometimes_is_conditional_and_says_on_what",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-07",
+      "title": "A URL filtering rule's validity period (enforceTimeValidity) was ignored: a block outside its period was reported as definite",
+      "severity": "medium",
+      "cwe": "CWE-684",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "An enforced validity period is a condition named with its dates",
+      "test": "tests/test_qa_func_path.py::test_a_rule_that_applies_only_sometimes_is_conditional_and_says_on_what",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-08",
+      "title": "A scoped SSL or URL rule with the same action ahead of the deciding rule made the answer conditional",
+      "severity": "medium",
+      "cwe": "CWE-670",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Only a scoped rule that would act differently makes the answer conditional",
+      "test": "tests/test_qa_func_path.py::test_a_scoped_rule_with_the_same_action_as_the_deciding_one_changes_nothing",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-09",
+      "title": "A bare custom URL category entry (example.com) placed its subdomains in the category, and a path entry placed every path",
+      "severity": "medium",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "Category placement uses ZIA's URL list semantics (zia_path_modules.url_hit), path entries only for that path",
+      "test": "tests/test_qa_func_path.py::test_a_custom_url_category_places_a_destination_by_zia_semantics",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-10",
+      "title": "Internationalised host names (IDN) were refused by the Path analyzer, Test a list and ZPA diagnostics",
+      "severity": "medium",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "IDN hosts are converted to punycode (UTS 46) as ZIA, ZPA and DNS hold them",
+      "test": "tests/test_qa_func_path.py::test_a_destination_is_placed_by_the_host_the_tenant_sees",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-11",
+      "title": "A bare IPv6 address was refused, and an IPv6 destination became its own URL category and application",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Bare IPv6 accepted; an IP literal is resolved as a host, never as a category; IPv4-mapped addresses checked as IPv4",
+      "test": "tests/test_qa_func_path.py::test_edges_trace_without_inventing_categories",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-12",
+      "title": "A password typed in a URL (https://user:pass@host/) was repeated in the result and in error messages",
+      "severity": "medium",
+      "cwe": "CWE-200",
+      "asvs": "V7.1.1",
+      "status": "fixed",
+      "fix": "User info is left out of the echoed input and every message",
+      "test": "tests/test_qa_func_path.py::test_the_password_in_a_typed_url_is_never_repeated_back",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-13",
+      "title": "The PAC file was evaluated against the full https:// URL (browsers strip it to scheme, host and port) and against https:// for plain-HTTP traffic",
+      "severity": "medium",
+      "cwe": "CWE-697",
+      "asvs": "V5.2.4",
+      "status": "fixed",
+      "fix": "path_analyzer.pac_url gives the URL a browser passes; Test a list uses the same one",
+      "test": "tests/test_qa_func_path.py::test_an_https_url_reaches_the_pac_file_without_its_path",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-14",
+      "title": "Conditional answers said only 'the decision depends on conditions that are not established'",
+      "severity": "low",
+      "cwe": "CWE-684",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Each reason names the rule, its action and the condition (group, time window, risk score, validity, request method)",
+      "test": "tests/test_qa_func_path.py::test_property_definite_means_nothing_on_the_path_is_conditional_and_every_conditional_names_why",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-15",
+      "title": "Data Flow Map tile 'reach ZIA, left encrypted' counted paths the gap list calls unverified; the tiles did not add up to the paths traced",
+      "severity": "low",
+      "cwe": "CWE-682",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "One visibility class per path (data_flow.visibility, the page's own order); blocked, unverified and decrypted-without-DLP tiles added",
+      "test": "tests/test_qa_func_path.py::test_data_flow_map_counts_add_up_and_match_the_page_lists",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-16",
+      "title": "SSL coverage accepted a non-finite protocol volume, giving NaN percentages and JSON that does not parse",
+      "severity": "low",
+      "cwe": "CWE-682",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "A NaN, infinite or negative volume is not counted",
+      "test": "tests/test_qa_func_path.py::test_ssl_coverage_percentages_stay_between_0_and_100",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-17",
+      "title": "Port 0 was accepted and silently traced as port 80 or 443",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Port 0 is refused in words",
+      "test": "tests/test_qa_func_path.py::test_a_destination_that_is_not_one_is_refused_in_words",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-18",
+      "title": "Test a list traced a row with protocol 'http' as HTTPS (TCP/443)",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Protocol http is TCP/80 and https TCP/443 unless a port is given",
+      "test": "tests/test_qa_func_path.py::test_a_list_row_with_protocol_http_is_tcp_80",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-19",
+      "title": "A conditional SSL rule after a definite firewall, ATP or DNS block still made the answer conditional; non-web or bypassed traffic stayed 'policy conditional' on web rules it never meets",
+      "severity": "medium",
+      "cwe": "CWE-684",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "SSL is not reached after a definite stop; policy_conditional is recomputed from the hops as they stand",
+      "test": "tests/test_qa_func_path.py::test_a_module_after_a_definite_block_does_not_make_the_answer_conditional",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-20",
+      "title": "ZPA diagnostics said 'Depends on the user' when every possible answer is deny, and 'unless' an earlier rule with the same action",
+      "severity": "medium",
+      "cwe": "CWE-684",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Only an earlier rule that would allow where the rest deny (or the reverse) makes it conditional",
+      "test": "tests/test_qa_func_path.py::test_zpa_diagnostics_depends_on_the_user_only_when_the_answer_would_differ",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-21",
+      "title": "Test a list shared one answer between rows that must differ: list entries with a trailing dot, an IPv4 and an IPv6 row, PAC answers for http:// rows",
+      "severity": "medium",
+      "cwe": "CWE-682",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "The sharing fingerprint strips trailing dots, includes the address family and evaluates the PAC for the row's own URL",
+      "test": "tests/test_qa_func_path.py::test_a_list_relates_rows_to_list_entries_written_with_a_trailing_dot",
+      "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-22",
+      "title": "A conditional ZPA answer said 'Depends on who the user is or on facts not given' without naming the rule or the fact",
+      "severity": "low",
+      "cwe": "CWE-684",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "The headline names each earlier rule and the fact it needs, or the VPN On-Net question",
+      "test": "tests/test_qa_func_path.py::test_a_conditional_zpa_answer_names_what_it_depends_on",
+      "commit": "fea4d7d"
+    }
+  ],
+  "notes": [
+    "Verified against zscaler-sdk-python 1.11.3: excludedUsers/excludedGroups/excludedDepartments and userRiskScoreLevels (models/dlp_web_rules.py, url_filtering_rules.py), enforceTimeValidity/validityStartTime/validityEndTime (url_filtering_rules.py), srcIpv6Groups/destIpv6Groups (cloud_firewall_rules.py) and their separate list /ipDestinationGroups/ipv6DestinationGroups (cloud_firewall.py), ICMP_ANY as a network service name (cloud_firewall.py), ZPA bypassType NEVER/ON_NET/ALWAYS and client forwarding actions.",
+    "Assumed (said in the result): users, groups and departments are any-of within a rule and exclusions negate (Zscaler help text); HTTPS also counts as SSL and Tunnel SSL protocols; browsers strip https:// URLs before FindProxyForURL; the ATP allowlist wins over the denylist; ZPA REQUIRE_APPROVAL allows; a tie between equally specific ZPA segments goes to the narrowest port range.",
+    "PAC: the app follows the PAC specification where browsers differ: localHostOrDomainIs('www.example', 'www.example.com') is false (spec: the host has no domain part), dnsDomainIs compares case-insensitively, isPlainHostName treats an IPv6 literal (no dot) as plain.",
+    "Not changed: IPv6 destination and source groups are not read (a separate endpoint), so an IPv6 address against them stays unknown; ZPA segment domains written in Unicode are compared as written; when the Cloud Firewall's block is itself conditional and a later module blocks for certain, the headline names the later module and the reason names the firewall rule."
+  ],
+  "tests_added": 46
+}

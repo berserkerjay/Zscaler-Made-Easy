@@ -472,9 +472,24 @@ def _load_discovered() -> List[Dict[str, Any]]:
     try:
         with open(_discovered_store_path(), "r", encoding="utf-8") as f:
             data = json.load(f)
-            return data.get("entries", []) if isinstance(data, dict) else []
     except Exception:
         return []
+    entries = data.get("entries") if isinstance(data, dict) else None
+    # A file on disk: only well-formed entries (a dict with an https URL) are read.
+    return [e for e in entries if isinstance(e, dict) and _https_url(e.get("url"))] if isinstance(entries, list) else []
+
+
+def _https_url(url: Any) -> bool:
+    """An https:// URL with a host: what the library may link to (never javascript:, data: or http:)."""
+    u = str(url or "")
+    if len(u) > 2048 or any(ch.isspace() or ord(ch) < 32 for ch in u):
+        return False
+    from urllib.parse import urlparse
+    try:
+        p = urlparse(u)
+    except ValueError:
+        return False
+    return p.scheme == "https" and bool(p.hostname)
 
 
 def save_discovered(new_entries: List[Dict[str, Any]]) -> int:
@@ -489,8 +504,10 @@ def save_discovered(new_entries: List[Dict[str, Any]]) -> int:
     existing_urls = {e["url"] for e in existing}
     added = []
     for e in new_entries:
+        if not isinstance(e, dict):
+            continue
         url = e.get("url")
-        if not url or url in curated_urls or url in existing_urls:
+        if not _https_url(url) or url in curated_urls or url in existing_urls:
             continue
         source_id = e.get("source") or e.get("source_id") or "help_zscaler"
         src_meta = get_source(source_id)
@@ -498,7 +515,7 @@ def save_discovered(new_entries: List[Dict[str, Any]]) -> int:
         added.append({
             "key":     e.get("key") or f"discovered_{len(existing) + len(added) + 1}",
             "service": e.get("service", "Other"),
-            "title":   e.get("title", ""),
+            "title":   str(e.get("title") or "")[:300],
             "url":     url,
             "topics":  e.get("topics", []),
             "source":  source_id,
@@ -551,7 +568,10 @@ def lookup_by_topic(topic: str) -> Dict[str, Any]:
         return {}
     for entry in _merged_catalog():
         for topic_kw in entry.get("topics", []):
-            if topic_kw == t or topic_kw in t or t in topic_kw:
+            kw = str(topic_kw or "").lower()
+            # A substring counts only when it is 3+ characters: "ad" is in
+            # "admin" and "ai" in "containment", which matched the wrong guide.
+            if kw == t or (len(kw) >= 3 and kw in t) or (len(t) >= 3 and t in kw):
                 return entry
     return {}
 

@@ -85,8 +85,14 @@ def _read() -> Dict[str, Any]:
             data = json.load(f) or {}
     except Exception:
         return {"version": 1, "profiles": {}}
+    if not isinstance(data, dict):
+        return {"version": 1, "profiles": {}}   # not a store this app wrote: read as empty, never a crash
     data.setdefault("version", 1)
-    data.setdefault("profiles", {})
+    if not isinstance(data.get("profiles"), dict):
+        data["profiles"] = {}
+    data["profiles"] = {k: v for k, v in data["profiles"].items() if isinstance(v, dict)}
+    if not isinstance(data.get("snapshots", {}), dict):
+        data["snapshots"] = {}   # not a snapshot list this app wrote: ignored, never a crash (its files are left alone)
     if _upgrade_classic_profiles(data):
         _write(data)
     return data
@@ -329,13 +335,23 @@ def _load_secret(profile_id: str, field: str = SECRET_FIELD) -> Optional[str]:
 
 
 def _forget_secret(profile_id: str, stored: Optional[str], field: str = SECRET_FIELD) -> None:
-    if stored != KEYRING_MARK:
-        return
+    """Delete the profile's secret from the credential store, whatever the
+    profile file holds for it now (`stored`): a secret the store kept
+    before the profile moved to the file opt-in, or lost its marker, is
+    deleted too, never left behind (CWE-459). When the store refuses the
+    delete, the entry is overwritten with nothing, so no secret stays."""
     kr = _keyring()
     if kr is None:
         return
+    key = _keyring_key(profile_id, field)
     try:
-        kr.delete_password(KEYRING_SERVICE, _keyring_key(profile_id, field))
+        kr.delete_password(KEYRING_SERVICE, key)
+        return
+    except Exception:  # noqa: BLE001 — no entry (PasswordDeleteError), or a backend that refused
+        pass
+    try:
+        if kr.get_password(KEYRING_SERVICE, key):
+            kr.set_password(KEYRING_SERVICE, key, "")
     except Exception:  # noqa: BLE001
         pass
 
@@ -364,6 +380,11 @@ def upsert(fields: Dict[str, Any], *, client_secret: str = "", remember_secret: 
     with _LOCK:
         data = _read()
         pid = profile_id or slugify(fields.get("name") or fields.get("org_name") or fields.get("vanity_domain") or "")
+        if pid not in data["profiles"] and not _PROFILE_ID_RE.match(str(pid)):
+            # An id from the request that is not one this app makes ('../x',
+            # a megabyte of text) is slugified like a name: it is a store
+            # key, a credential-store key and a file name (pov_path).
+            pid = slugify(str(pid))
         p = data["profiles"].get(pid) or {"id": pid, "created_at": _now(), "history": []}
         for k in PROFILE_FIELDS:
             if k in fields and fields[k] is not None:
@@ -379,6 +400,8 @@ def upsert(fields: Dict[str, Any], *, client_secret: str = "", remember_secret: 
                         _forget_secret(pid, p.get(field), field)
                         p.pop(field, None)
                     else:
+                        if stored != KEYRING_MARK:   # kept in the file: no older copy stays in the credential store
+                            _forget_secret(pid, p.get(field), field)
                         p[field] = stored
             else:
                 _forget_secret(pid, p.get(field), field)

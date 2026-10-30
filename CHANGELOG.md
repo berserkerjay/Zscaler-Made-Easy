@@ -5,6 +5,24 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-29
+
+### Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score
+- **What you asked for.** Regression testing and comprehensive secure-by-design and functionality testing, every problem fixed; live motion for every path, flow and traffic analysis; a hover pop-up on every control saying what it does and what input it expects; the Liquid Glass look; the score documented in Advanced settings; and an orchestrated workflow of checks and balances.
+- **How.** 11 local agents and 22 cloud agents, each owning its own files, looped until a full pass found nothing new; two more agents closed what they left open. Then an orchestrated review: four reviewers (security, correctness, user experience and accessibility, maintainability) read the merged change, two skeptics tried to disprove each finding, a three-judge panel (security, daily admin, engineering) weighed every place two branches disagreed, and an arbiter ranked what was left. Two agents fixed what survived.
+- **Findings.** 552 fixed (13 high, 157 medium, 334 low, 48 info), 22 accepted with a reason, 1 open (info: the sample tenant cannot carry every Build new catalogue without changing other pages' answers). Every fix has a test that fails without it, mapped to OWASP ASVS, CWE, WSTG, WCAG 2.2, SLSA, Scorecard or SSDF.
+- **Highlights.**
+  - Traffic analysis gave wrong answers in 22 places (plain HTTP shown as encrypted, IPv6-only firewall rules matching everything, HTTP-only rules said to block HTTPS, Web DLP exclusions ignored, IDN hosts refused); fixed, with oracle and property tests, and Test a list now gives each row exactly the single-destination answer.
+  - Writes: Undo could be replayed or aimed at objects the app never made; two applies at once both wrote; a timed-out create was sent again blind; rule migration had no plan hash; a remediation recipe wiped whole firewall rules; one-click fixes and queued fixes skipped the Scope page. All closed, with one write run per tenant at a time.
+  - 11 assessment checks passed when ZIA refused the read; they now say "not permitted".
+  - Secrets: an access token echoed by a gateway reached job logs and exports; snapshots kept device and policy tokens; all masked.
+  - A deadlock in the change-queue and proposals stores could freeze the app; locks are now re-entrant.
+- **Live motion.** The Path analyzer (ZPA, PAC, every ZIA module, what-if, workloads), Test a list, the Flow animator, the Data Flow Map, SSL flow, SSL coverage, ZPA analysis, Traffic insights, the Live DLP feed and the Bypass report each show their result as a live flow, from the result the page already has; still under reduced motion, paused when hidden, said in words.
+- **Help on hover.** Every control on every page and in the browser extension has a pop-up: what it does, what input it expects, and whether it reads or changes the tenant. It shows on hover, keyboard focus and touch; Esc closes it. CI fails when a control has none.
+- **Liquid Glass.** Translucent, blurred surfaces with a light edge on the bars, sidebar, dialogs, tabs, cards and buttons; tables stay near-solid. Text keeps WCAG AA contrast in both themes; it turns solid for reduced transparency, more contrast, forced colours and print, and has a switch in Advanced settings.
+- **Quality and security score** (Advanced settings, `docs/QUALITY_SCORE.md`): built from every QA record, the standards each test covers and the last full test run; open critical or high findings, or any failing test, cap it. CI fails when it is stale.
+- **Verified.** Full suite 21,327 passed, 0 failed, 133 skipped (recorded in `docs/qa/test_run.json`); quality and security score 100 / 100, grade A.
+
 ## 2026-10-28
 
 ### Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition

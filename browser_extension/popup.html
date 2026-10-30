@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-hh-page="ext:popup">
 <head>
 <meta charset="utf-8">
 <title>Zscaler Made Easy</title>
 <link rel="stylesheet" href="popup.css">
+<link rel="stylesheet" href="hover_help.css">
 </head>
 <body>
   <header><img src="icons/icon32.png" alt="" width="20" height="20"><h1>Zscaler Made Easy</h1></header>
@@ -19,6 +20,8 @@
   <nav id="links" aria-label="Open in Zscaler Made Easy"></nav>
   <p id="down" class="hint" hidden>Start Zscaler Made Easy (START_Zscaler_Made_Easy, ./start.sh or the container), or set its address in <a href="#" id="opts">settings</a>.</p>
   <footer><a href="#" id="settings">Settings</a><span id="addr"></span></footer>
+  <script src="help_catalog.js"></script>
+  <script src="hover_help.js"></script>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

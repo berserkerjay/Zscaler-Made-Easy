@@ -1631,13 +1631,13 @@
       <div class="pov-section">
         <div class="pov-section-title">Use Case Catalog</div>
         <div class="pov-catalog-tools">
-          <a class="pov-catalog-link" href="pov-use-cases.csv" download>Download CSV</a>
+          <button class="pov-catalog-link" type="button" onclick="downloadEmbeddedPovCsv()">Download CSV</button>
           <label class="pov-catalog-upload">
             Upload edited CSV
             <input type="file" accept=".csv,text/csv" onchange="importPovCatalog(event)">
           </label>
         </div>
-        <div class="pov-catalog-note" id="povCatalogNote">Baseline catalog loads from pov-use-cases.csv, with the same CSV embedded as the offline fallback.</div>
+        <div class="pov-catalog-note" id="povCatalogNote">Baseline catalog loads from the embedded POV use-case catalog.</div>
       </div>
       <div class="pov-section">
         <div class="pov-section-heading">
@@ -2425,10 +2425,22 @@ function setPovCatalog(rows, sourceLabel = 'catalog') {
 function loadDefaultPovCatalog() {
   if(povCatalogLoadAttempted) return;
   povCatalogLoadAttempted = true;
-  fetch('pov-use-cases.csv')
-    .then(res => res.ok ? res.text() : Promise.reject(new Error('CSV not available')))
-    .then(text => setPovCatalog(normalizePovCatalog(text), 'Baseline loaded from pov-use-cases.csv'))
-    .catch(() => setPovCatalog(normalizePovCatalog(POV_BASELINE_CATALOG_CSV), 'Fallback baseline loaded from embedded pov-use-cases.csv'));
+  // The catalog ships inside this page (no separate file is served): use it directly.
+  setPovCatalog(normalizePovCatalog(POV_BASELINE_CATALOG_CSV), 'Baseline loaded from embedded POV use-case catalog');
+}
+
+// "Download CSV" hands over the embedded catalog itself (a link to a
+// pov-use-cases.csv file answered 404: no such file is served).
+function downloadEmbeddedPovCsv() {
+  const blob = new Blob([POV_BASELINE_CATALOG_CSV], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'pov-use-cases.csv';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function importPovCatalog(event) {

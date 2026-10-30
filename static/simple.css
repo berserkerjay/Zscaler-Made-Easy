@@ -13,7 +13,7 @@
 .sm-conn { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--dim); font-size: 0.95rem; overflow-wrap: anywhere; }
 
 /* ── Task tiles ─────────────────────────────────────────────────── */
-.sm-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3); }
+.sm-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: var(--sp-3); }
 .sm-tile { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-1) var(--sp-3); align-items: start; text-align: left;
   min-height: 112px; padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--well);
   color: var(--text); font: inherit; cursor: pointer; }

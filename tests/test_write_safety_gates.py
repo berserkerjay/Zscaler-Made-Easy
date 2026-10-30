@@ -309,7 +309,8 @@ WRITE_CASES: List[WriteCase] = [
     ("queue-apply-removal", "POST", "/api/change-queue/{rid}/apply",
      lambda w: (f"/api/change-queue/{_approved_request(w, 'pack_removal')}/apply", _b(confirm=PHRASE)), PHRASE),
     ("queue-apply-recipe", "POST", "/api/change-queue/{rid}/apply",
-     lambda w: (f"/api/change-queue/{_approved_request(w, 'fix_recipe')}/apply", _b(confirm=PHRASE)), PHRASE),
+     lambda w: (f"/api/change-queue/{_approved_request(w, 'fix_recipe')}/apply",
+                _b(confirm=PHRASE, scopes=["zia_extras"], channels={}, from_page=True)), PHRASE),
     ("bulk-apply", "POST", "/api/operations/apply",
      lambda w: ("/api/operations/apply", dict(_b(**SCOPE), operation=OPERATION, plan_hash=HASH, confirm=True)), BOOL),
     ("bulk-apply-job", "POST", "/api/operations/apply/start",
@@ -326,13 +327,14 @@ WRITE_CASES: List[WriteCase] = [
     ("self-heal", "POST", "/api/self-heal/tenant/heal",
      lambda w: ("/api/self-heal/tenant/heal", dict(_b(**SCOPE), ids=[_heal_proposal(w)], confirm=PHRASE)), PHRASE),
     ("remediation", "POST", "/api/remediation/execute",
-     lambda w: ("/api/remediation/execute", _b(check_id="FW-01", criteria={}, dry_run=False, confirm=True)), BOOL),
+     lambda w: ("/api/remediation/execute", _b(check_id="FW-01", criteria={}, dry_run=False, confirm=True,
+                                             scopes=["zia_extras"], channels={}, from_page=True)), BOOL),
     ("migrate-enable", "POST", "/api/migrate/enable",
      lambda w: ("/api/migrate/enable", dict(_b(**SCOPE), dry_run=False, confirm=True)), BOOL),
     ("migrate-delete-all", "POST", "/api/migrate/delete-all",
-     lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True)), BOOL),
+     lambda w: ("/api/migrate/delete-all", dict(_b(**SCOPE), dry_run=False, confirm=True, plan_hash=HASH)), BOOL),
     ("migrate-post", "POST", "/api/migrate/post",
-     lambda w: ("/api/migrate/post", dict(_b(**SCOPE), dry_run=False, confirm=True, mode="update",
+     lambda w: ("/api/migrate/post", dict(_b(**SCOPE), dry_run=False, confirm=True, mode="update", plan_hash=HASH,
                                           proposed_rules=[{"id": 1, "name": "QA rule"}])), BOOL),
 ]
 
@@ -580,6 +582,35 @@ def test_dropping_any_one_gate_writes_nothing(world, case, gate):
     assert 400 <= r.status_code < 500, (gate, url, r.status_code, r.text[:300])
     assert world.touched() == [], (gate, url, world.touched())
     assert world.built == [], f"{url} signed in to the tenant before refusing ({gate})"
+
+
+# The four gates, one dropped at a time, with an offline snapshot open in the
+# browser: opening one never stands in for a gate.
+SNAPSHOT_GATES = ["write-mode-off", "not-a-writer", "assessor-blank", "confirm-missing"]
+SNAPSHOT_MATRIX = [(c, g) for c in WRITE_CASES for g in SNAPSHOT_GATES]
+
+
+@pytest.mark.parametrize("case,gate", SNAPSHOT_MATRIX, ids=[f"{c[0]}-{g}" for c, g in SNAPSHOT_MATRIX])
+def test_with_a_snapshot_open_every_gate_still_refuses(world, monkeypatch, case, gate):
+    """ASVS V4.1.3 · V11.1.1 · CWE-862 · CWE-441 · A01:2021: with an offline snapshot open in the browser, a write route missing any one of the four gates is refused before sign-in and nothing is written."""
+    # Arrange
+    import offline_tenant as ot
+    monkeypatch.setattr(ot, "_OPEN", type(ot._OPEN)())
+    st = ot.open_document(ot.dumps(ot.build_snapshot({"/zia/api/v1/webDlpRules": {"status": 200, "body": [{"id": 1, "name": "R"}]}},
+                                                     {"tenant_label": "acme (zscalerten)"})))
+    _id, method, _route, arrange, kind = case
+    world.write_mode(gate != "write-mode-off")
+    url, body = arrange(world)
+    if gate in BODY_GATES:
+        body = _drop(gate, kind, body)
+    client = world.client(READER if gate == "not-a-writer" else WRITER)
+    client.cookies.set(ot.COOKIE, st.id)
+    # Act
+    r = client.request(method, url, json=body)
+    # Assert
+    assert 400 <= r.status_code < 500, (gate, url, r.status_code, r.text[:300])
+    assert world.touched() == [] and world.built == [], (gate, url, world.touched(), world.built)
+    assert st.writes == 0 and st.responses["/zia/api/v1/webDlpRules"]["body"] == [{"id": 1, "name": "R"}]
 
 
 # ---------------------------------------------------------------------------

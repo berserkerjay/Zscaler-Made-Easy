@@ -36,6 +36,7 @@ import os
 import secrets
 import tempfile
 import threading
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
@@ -124,14 +125,29 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+_HELD = threading.local()   # how deep this thread is inside _locked()
+
+
 @contextlib.contextmanager
 def _locked() -> Iterator[None]:
     """This process's lock, then an exclusive lock on <store>.lock, so a
-    read-modify-write never interleaves with another thread or process."""
+    read-modify-write never interleaves with another thread or process.
+    Re-entrant: a nested call in the same thread only counts depth (a
+    second lock on a new descriptor of the same file would wait on this
+    thread's own lock forever)."""
     with _LOCK:
+        depth = getattr(_HELD, "depth", 0)
+        if depth:
+            _HELD.depth = depth + 1
+            try:
+                yield
+            finally:
+                _HELD.depth = depth
+            return
         p = store_path()
         safe_files.private_makedirs(os.path.dirname(os.path.abspath(p)) or ".")
         fd = os.open(p + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+        _HELD.depth = 1
         try:
             if fcntl is not None:
                 fcntl.flock(fd, fcntl.LOCK_EX)
@@ -139,6 +155,7 @@ def _locked() -> Iterator[None]:
                 msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
             yield
         finally:
+            _HELD.depth = 0
             try:
                 if fcntl is not None:
                     fcntl.flock(fd, fcntl.LOCK_UN)
@@ -209,8 +226,31 @@ def _mutate(rid: str, fn: Callable[[Dict[str, Any]], None]) -> Dict[str, Any]:
         return json.loads(json.dumps(rec))
 
 
+def _person_key(who: Any) -> str:
+    """One spelling per person: NFKC (full-width and compatibility forms
+    fold to plain letters) and case-folded."""
+    return unicodedata.normalize("NFKC", str(who or "")).strip().casefold()
+
+
 def _same_person(a: Any, b: Any) -> bool:
-    return str(a or "").strip().lower() == str(b or "").strip().lower()
+    return _person_key(a) == _person_key(b)
+
+
+def _need_actor(by: Any) -> str:
+    """The server's view of who is acting; a step nobody can be named for is refused."""
+    who = str(by or "").strip()
+    if not who:
+        raise QueueError("could not tell who you are (sign in again)", 401)
+    return who
+
+
+def approval_digest(rec: Dict[str, Any]) -> str:
+    """sha256 over what an approval approves: the kind, the tenant, the
+    plan_hash and the stored payload the apply runs from. Recorded when a
+    request is approved and checked again before it is applied, so an
+    approval never carries over to a different plan or payload."""
+    core = {"kind": rec.get("kind"), "tenant": rec.get("tenant"), "plan_hash": rec.get("plan_hash"), "payload": rec.get("payload") or {}}
+    return hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
 
 
 def _history(rec: Dict[str, Any], action: str, by: str, **fields: Any) -> None:
@@ -308,6 +348,7 @@ def decide(rid: str, decision: str, *, by: str, comment: str = "") -> Dict[str, 
     decision = (decision or "").lower()
     if decision not in ("approve", "reject"):
         raise QueueError("decision must be approve or reject", 400)
+    by = _need_actor(by)
     text = _clean_text(comment)
     if decision == "reject" and not text:
         raise QueueError("say why in a comment when you reject a request", 400)
@@ -315,6 +356,12 @@ def decide(rid: str, decision: str, *, by: str, comment: str = "") -> Dict[str, 
     def fn(rec: Dict[str, Any]) -> None:
         if rec.get("status") != "pending":
             raise QueueError(f"only a pending request can be {decision}d; this one is {rec.get('status')}")
+        if decision == "approve" and four_eyes_required() and _is_local_identity(by):
+            # Without SSO every caller is a local identity (with or without the
+            # UI token, or the app itself): none of them is a second person.
+            raise QueueError(
+                f"four-eyes: {by} is not a signed-in person, so it cannot be the second pair of eyes. Turn on SSO so each "
+                "person signs in, or set DLP_CHECK_FOUR_EYES=0 for a single-person install.", 403)
         if decision == "approve" and four_eyes_required() and _same_person(by, rec.get("requested_by")):
             raise QueueError(
                 f"four-eyes: {by} filed this request, so another person must approve it. "
@@ -323,6 +370,8 @@ def decide(rid: str, decision: str, *, by: str, comment: str = "") -> Dict[str, 
         rec["status"] = "approved" if decision == "approve" else "rejected"
         rec["decided_by"] = by
         rec["decided_at"] = _now()
+        if decision == "approve":
+            rec["approved_digest"] = approval_digest(rec)
         if text:
             _add_comment(rec, by, text)
         _history(rec, "approved" if decision == "approve" else "rejected", by, comment=text)
@@ -332,12 +381,20 @@ def decide(rid: str, decision: str, *, by: str, comment: str = "") -> Dict[str, 
     return rec
 
 
+_NOT_A_PERSON = ("unknown",)
+
+
 def _is_local_identity(who: Any) -> bool:
+    """A caller that is not one signed-in person: the local UI token, the
+    local server without one, the app itself, or no name at all."""
+    names = set(_NOT_A_PERSON)
     try:
         import security
-        return str(who) in (security.LOCAL_TOKEN_ACTOR, security.LOCAL_NO_TOKEN_ACTOR)
+        names |= {security.LOCAL_TOKEN_ACTOR, security.LOCAL_NO_TOKEN_ACTOR, security.NO_REQUEST_ACTOR}
     except Exception:  # noqa: BLE001
-        return False
+        names |= {"local UI token", "local, no UI token"}
+    key = _person_key(who)
+    return not key or key in {_person_key(n) for n in names}
 
 
 def _add_comment(rec: Dict[str, Any], by: str, text: str) -> None:
@@ -350,6 +407,7 @@ def comment(rid: str, *, by: str, text: str) -> Dict[str, Any]:
     t = _clean_text(text)
     if not t:
         raise QueueError("the comment is empty", 400)
+    by = _need_actor(by)
     rec = _mutate(rid, lambda r: (_add_comment(r, by, t), _history(r, "commented", by)))
     _audit("commented", rec, by)
     return rec
@@ -357,6 +415,7 @@ def comment(rid: str, *, by: str, text: str) -> Dict[str, Any]:
 
 def withdraw(rid: str, *, by: str, comment: str = "") -> Dict[str, Any]:
     """The requester takes back a pending or approved request."""
+    by = _need_actor(by)
     text = _clean_text(comment)
 
     def fn(rec: Dict[str, Any]) -> None:
@@ -379,10 +438,18 @@ def withdraw(rid: str, *, by: str, comment: str = "") -> Dict[str, Any]:
 # ── applying ────────────────────────────────────────────────────────────
 def begin_apply(rid: str, *, by: str, job_running: Optional[Callable[[str], bool]] = None) -> Dict[str, Any]:
     """Claim an approved request for one apply run. A second apply while
-    the first one's job is still running is refused."""
+    the first one's job is still running is refused, and so is a request
+    whose kind, tenant, plan_hash or payload is not the one approved."""
+    by = _need_actor(by)
+
     def fn(rec: Dict[str, Any]) -> None:
         if rec.get("status") != "approved":
             raise QueueError(f"only an approved request can be applied; this one is {rec.get('status')}")
+        # A request approved before approved_digest existed has none: it still applies (its
+        # plan_hash is re-checked against the tenant by the apply path, as it always was).
+        if not rec.get("decided_by") or ("approved_digest" in rec and rec["approved_digest"] != approval_digest(rec)):
+            raise QueueError("this request is not the one that was approved (its plan or payload changed after the approval); "
+                             "request it again")
         cur = rec.get("applying") or {}
         if cur:
             jid = str(cur.get("job_id") or "")
@@ -429,6 +496,10 @@ def finish_apply(rid: str, *, by: str, status: str, result: Dict[str, Any], note
         raise QueueError(f"an apply ends applied, failed or stale, not {status}", 400)
 
     def fn(rec: Dict[str, Any]) -> None:
+        if rec.get("status") != "approved" or not rec.get("applying"):
+            # Only the run that claimed it (begin_apply) ends it, once: a
+            # finished request is never re-marked.
+            raise QueueError(f"this request is {rec.get('status')} and not being applied")
         rec.pop("applying", None)
         rec["status"] = status
         rec["applied_by"] = by
@@ -469,7 +540,7 @@ def rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def _item_line(i: Dict[str, Any]) -> str:
     if i.get("method"):
-        return f"{i.get('method')} {i.get('endpoint')}"
+        return f"{i.get('method')} {i.get('endpoint')}" + (f" — {i['note']}" if i.get("note") else "")
     bits = [str(i.get("status") or ""), str(i.get("kind") or ""), str(i.get("name") or "")]
     if i.get("channel"):
         bits.append(f"({i['channel']})")

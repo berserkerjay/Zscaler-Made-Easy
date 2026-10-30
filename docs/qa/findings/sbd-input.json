@@ -1,0 +1,280 @@
+{
+ "area": "Secure by Design: untrusted input",
+ "title": "Everything a user, a file or a tenant can feed the app: PAC evaluator, Test a list, file imports, identity search, URL builders, tenant strings in every renderer",
+ "standards": [
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.1",
+  "ASVS V5.3.3",
+  "ASVS V7.4.1",
+  "ASVS V12.1.1",
+  "ASVS V12.6.1",
+  "OWASP A03:2021",
+  "OWASP A04:2021",
+  "OWASP A10:2021",
+  "CWE-20",
+  "CWE-79",
+  "CWE-400",
+  "CWE-407",
+  "CWE-451",
+  "CWE-843",
+  "CWE-918",
+  "CWE-1236",
+  "CWE-1287",
+  "CWE-1333",
+  "WSTG-INPV-11",
+  "WSTG-BUSL-09"
+ ],
+ "checks": [
+  {
+   "id": "pac-corpus",
+   "what": "35 adversarial PACs (deep nesting, huge strings, catastrophic shExpMatch, __proto__/constructor, unicode escapes, comment tricks, BOM, CRLF, NUL, lone surrogates, recursion, fork and string bombs) end in a result or 'could not evaluate safely' within the caps",
+   "standard": "ASVS V12.1.1 · CWE-400 · CWE-1333",
+   "result": "fixed"
+  },
+  {
+   "id": "pac-generator",
+   "what": "300 deterministic generated PAC programs (seeded) never make evaluate or inspect raise",
+   "standard": "ASVS V5.1.3 · CWE-248",
+   "result": "fixed"
+  },
+  {
+   "id": "pac-caps",
+   "what": "step, time (injected clock), branch, string, depth and size caps hold under the corpus; parse is linear in calls",
+   "standard": "ASVS V12.1.1 · CWE-407",
+   "result": "fixed"
+  },
+  {
+   "id": "list-formula",
+   "what": "Test a list CSV and Excel exports neutralise =cmd| and markup labels (canary run)",
+   "standard": "ASVS V5.3.1 · CWE-1236",
+   "result": "pass"
+  },
+  {
+   "id": "list-limits",
+   "what": "0.0.0.0/0, ::/0, /8, IPv6 /64, inverted and mixed ranges, octet > 255, bad prefixes are skipped in words; /16 boundary exact",
+   "standard": "ASVS V12.1.1 · CWE-770 · CWE-1284",
+   "result": "pass"
+  },
+  {
+   "id": "list-hostile-lines",
+   "what": "quote bombs, 3000 columns, NUL and doubled BOM never raise",
+   "standard": "ASVS V5.1.3 · CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "list-encoding",
+   "what": "UTF-16 LE/BE and UTF-8 BOM list files keep header and non-ASCII letters",
+   "standard": "ASVS V5.1.3 · CWE-172 · CWE-838",
+   "result": "fixed"
+  },
+  {
+   "id": "list-250k",
+   "what": "250,000 rows (3 x /16 plus host names): parse 1.8 s, run 7.8 s, CSV 7 s, Excel (100,000-row cap) 16 s, peak RSS about 580 MB; the line, row and size caps refuse past them",
+   "standard": "ASVS V12.1.1 · CWE-770",
+   "result": "pass"
+  },
+  {
+   "id": "snapshot-import",
+   "what": "snapshot files: size, nesting, node count, path traversal in answer paths, extra keys, status types (existing tests) plus NaN / Infinity / 1e999 and a type-confusion fuzz of every answer over 12 tenant-reading jobs",
+   "standard": "ASVS V5.1.4 · CWE-22 · CWE-1287",
+   "result": "fixed"
+  },
+  {
+   "id": "framework-import",
+   "what": "ZIA framework files: wrong types, non-string names, hidden characters, megabyte titles, format_version true",
+   "standard": "ASVS V5.1.4 · CWE-843 · CWE-407",
+   "result": "fixed"
+  },
+  {
+   "id": "pov-import",
+   "what": "POV import: size, depth, format (existing) plus NaN / Infinity",
+   "standard": "ASVS V5.1.4 · CWE-1287",
+   "result": "fixed"
+  },
+  {
+   "id": "pack-import",
+   "what": "policy pack uploads: NaN / Infinity in any field",
+   "standard": "ASVS V5.1.4 · CWE-1287",
+   "result": "fixed"
+  },
+  {
+   "id": "har-import",
+   "what": "HAR batch host entries of the wrong type, NaN and Infinity counts",
+   "standard": "ASVS V5.1.4 · CWE-843",
+   "result": "fixed"
+  },
+  {
+   "id": "log-upload",
+   "what": "log uploads: member names reduced to base names, read in memory, archive and member caps (existing tests); request model typed",
+   "standard": "ASVS V12.1.1 · CWE-22 · CWE-409",
+   "result": "pass"
+  },
+  {
+   "id": "post-body-fuzz",
+   "what": "every POST route's Any/dict/list fields (101 routes, 10 hostile values each, jobs run on the sample tenant) never answer 500; table-driven test over the route table",
+   "standard": "ASVS V7.4.1 · CWE-20 · CWE-755",
+   "result": "fixed"
+  },
+  {
+   "id": "identity-search",
+   "what": "what-if identity search: 2-64 printable characters; any query (../, ?, #, %2e) reaches only the encoded query string of the fixed endpoint",
+   "standard": "ASVS V5.3.1 · CWE-74",
+   "result": "pass"
+  },
+  {
+   "id": "zdx-aiguard-ssrf",
+   "what": "ZDX custom app URL and AI Guard app list are data for the Zscaler API; the builders import no network library; non-http(s), credentials, bad ports and hosts refused",
+   "standard": "ASVS V12.6.1 · CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "xss-sink-scan",
+   "what": "existing HTML sink scan (101 tests) passes; extended with a URL-sink scan (href/src/action, setAttribute, window.open, location) with a reviewed list of 12 values",
+   "standard": "ASVS V5.3.3 · CWE-79 · CWE-601",
+   "result": "pass"
+  },
+  {
+   "id": "canary-exports",
+   "what": "canary names (<img onerror>, ${}/%{}, =cmd|, ../, RTL + zero-width) through the sample tenant, 16 jobs and 17 exports in every format: HTML, Markdown, CSV, Excel, Word, PDF, JSON, Terraform (strict HCL), file and member names",
+   "standard": "ASVS V5.3.1 · CWE-79 · CWE-1236 · CWE-94 · CWE-22",
+   "result": "fixed"
+  },
+  {
+   "id": "canary-browser",
+   "what": "real-browser run (Playwright, Chromium) of the canary snapshot through Path analyzer, Test a list, shadowed rules, ZPA, SSL coverage, browser security, device posture, fleet and Bulk changes: no dialog, no injected element; canaries shown as text",
+   "standard": "ASVS V5.3.3 · CWE-79 · WSTG-CLNT-01",
+   "result": "pass"
+  },
+  {
+   "id": "bidi-html",
+   "what": "HTML pages show a tenant name's bidirectional control as given: table cells and list items confine it; only a sentence the server composes around a name can be reordered on screen",
+   "standard": "CWE-451",
+   "result": "accepted"
+  }
+ ],
+ "findings": [
+  {
+   "id": "SBD-INPUT-01",
+   "title": "A PAC hex literal past 2^1024 raised OverflowError out of pac_eval.evaluate() and inspect() (tenant PAC read, log upload, Test a list); other parse errors were not failed closed",
+   "severity": "medium",
+   "cwe": "CWE-248",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "hex literals read as Infinity like JavaScript; compile_pac turns any unexpected parse error into 'could not evaluate safely'",
+   "test": "tests/test_sbd_untrusted_input.py::test_a_hex_literal_too_large_for_a_double_is_infinity_as_in_javascript",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-02",
+   "title": "PAC parse was quadratic: every call rescanned the source for its line number (1.7 s for 145 KB, outside the 0.5 s evaluation cap)",
+   "severity": "low",
+   "cwe": "CWE-407",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "line numbers by binary search over newline offsets found once",
+   "test": "tests/test_sbd_untrusted_input.py::test_line_numbers_cost_one_pass_not_one_scan_per_call",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-03",
+   "title": "An opened snapshot with NaN / Infinity made every job poll on it a 500 (invalid JSON in the result)",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "parse_snapshot reads strict RFC 8259 JSON (safe_files.strict_json_loads)",
+   "test": "tests/test_sbd_untrusted_input.py::test_a_snapshot_with_a_number_json_does_not_have_is_refused",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-04",
+   "title": "An imported POV file with NaN was stored and made the import and every later open of that profile's POV a 500",
+   "severity": "medium",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "POV import reads strict JSON; Insights counts kept only when finite",
+   "test": "tests/test_sbd_untrusted_input.py::test_a_pov_file_with_nan_is_refused_and_the_pov_still_opens",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-05",
+   "title": "A policy pack upload with NaN passed validation (rule rank NaN) and was kept; its bundle download was not JSON",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "pack uploads read strict JSON",
+   "test": "tests/test_sbd_untrusted_input.py::test_a_pack_upload_with_nan_is_refused_and_nothing_is_kept",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-06",
+   "title": "ZIA framework files were not type-checked: fields of the wrong type made the Bulk changes preview a 500, non-string names were coerced, and names with right-to-left overrides or zero-width characters were written to the tenant as rule names",
+   "severity": "medium",
+   "cwe": "CWE-843",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "load_framework denies by default: name and title text, fields an object, format_version an integer, no bidirectional / invisible / control character in a name",
+   "test": "tests/test_sbd_untrusted_input.py::test_a_framework_rule_of_the_wrong_type_or_with_hidden_characters_is_refused",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-07",
+   "title": "A framework rule title (or a captured rule description) was cut one character at a time with a re-encode each step: quadratic, minutes of CPU for a 1 MB title",
+   "severity": "medium",
+   "cwe": "CWE-407",
+   "asvs": "V12.1.1",
+   "status": "fixed",
+   "fix": "_fit_bytes cuts to the byte limit in characters first, then trims",
+   "test": "tests/test_sbd_untrusted_input.py::test_a_framework_with_a_megabyte_title_is_cut_in_linear_time",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-08",
+   "title": "HAR batch host entries with a non-list methods/schemes or a NaN / Infinity count answered 500",
+   "severity": "low",
+   "cwe": "CWE-843",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "counts accepted only as finite numbers and lists only as lists",
+   "test": "tests/test_sbd_untrusted_input.py::test_a_har_host_entry_of_the_wrong_type_is_read_as_nothing_not_a_500",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-09",
+   "title": "The live feed trusted the tally the browser echoes back: unknown keys or wrong types answered 500 (KeyError / TypeError)",
+   "severity": "low",
+   "cwe": "CWE-472",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "live_stats rebuilds the tally from its known counters, whole numbers only",
+   "test": "tests/test_sbd_untrusted_input.py::test_the_live_feeds_echoed_tally_is_rebuilt_from_known_counters",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-10",
+   "title": "Test a list read every file as UTF-8: a UTF-16 list (Excel Unicode Text) lost its header, so its expected column and every non-ASCII letter",
+   "severity": "low",
+   "cwe": "CWE-838",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "the page decodes by byte order mark (UTF-16 LE/BE, else UTF-8)",
+   "test": "tests/test_sbd_untrusted_input.py::test_a_list_file_is_read_in_the_encoding_its_byte_order_mark_names",
+   "commit": "d802638"
+  },
+  {
+   "id": "SBD-INPUT-11",
+   "title": "A right-to-left override in a tenant name reordered the text after it in Markdown, CSV, Excel and Word exports, and sat raw in generated Terraform source (Trojan Source style)",
+   "severity": "low",
+   "cwe": "CWE-451",
+   "asvs": "V5.3.1",
+   "status": "fixed",
+   "fix": "export cleaners show explicit bidirectional controls as U+FFFD; Terraform strings escape invisible characters as \\uNNNN (read back unchanged by the pack reader)",
+   "test": "tests/test_sbd_canary_renderers.py::test_every_export_keeps_canary_names_inert",
+   "commit": "d802638"
+  }
+ ],
+ "tests_added": 250
+}

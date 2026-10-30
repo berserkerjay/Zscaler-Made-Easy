@@ -66,8 +66,8 @@ with `gh auth login` (the repository is private, so use the account that
 can see it), then:
 
 ```bash
-gh attestation verify ZscalerMadeEasy-<version>-windows-x64.zip --repo berserkerjay/DLP-Check \
-  --signer-workflow berserkerjay/DLP-Check/.github/workflows/release-standalone.yml
+gh attestation verify ZscalerMadeEasy-<version>-windows-x64.zip --repo berserkerjay/Zscaler-Made-Easy \
+  --signer-workflow berserkerjay/Zscaler-Made-Easy/.github/workflows/release-standalone.yml
 ```
 
 (use your file's name; on Windows put both lines on one line without the
@@ -127,9 +127,10 @@ after both succeeded:
 
 **What stays fixed in this edition.** It listens on `127.0.0.1` only
 (this computer), it always asks for the UI token, and it starts
-read-only: changing a tenant needs write mode and its confirmations,
-exactly as in an installed copy. ZSCALER_BIND_HOST and ZSCALER_UI_AUTH=0
-are ignored here; for a copy other people reach over the network, use
+read-only: changing a tenant needs the write-mode switch in the app and
+its confirmations. ZSCALER_BIND_HOST, ZSCALER_UI_AUTH=0,
+ENABLE_WRITE_ACTIONS and ZSCALER_UI_TOKEN are ignored here (a new random
+token every start); for a copy other people reach over the network, use
 [the container](#run-it-in-a-container-instead) with sign-in through your
 identity provider.
 
@@ -177,7 +178,7 @@ installing only puts the program on your computer.
       goes through Zscaler or a proxy, read the
       [work laptop box](#work-laptop-tls-inspection-or-a-proxy) before you
       start; it changes one step.
-- [ ] **Access to the GitHub repository** `github.com/berserkerjay/DLP-Check`.
+- [ ] **Access to the GitHub repository** `github.com/berserkerjay/Zscaler-Made-Easy`.
       It is **private**: someone on the team must add your GitHub account
       first. If the page says "404" or asks you to sign in and then still
       refuses, that is the reason.
@@ -249,7 +250,7 @@ it installed once, the same way it needs a PDF reader to open a PDF.
 
    ```
    cd %USERPROFILE%\Documents
-   git clone https://github.com/berserkerjay/DLP-Check.git
+   git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
    ```
 
    A window titled **Connect to GitHub** opens the first time: choose
@@ -261,7 +262,7 @@ it installed once, the same way it needs a PDF reader to open a PDF.
 
 *Option B: a ZIP.*
 
-1. In your browser, go to `github.com/berserkerjay/DLP-Check` and sign in
+1. In your browser, go to `github.com/berserkerjay/Zscaler-Made-Easy` and sign in
    if it asks.
 2. Click the green **Code** button, then **Download ZIP**.
 3. Find the downloaded ZIP (usually in Downloads), right-click it, choose
@@ -369,7 +370,7 @@ pressing Enter after each:
 
 ```bash
 cd ~/Documents
-git clone https://github.com/berserkerjay/DLP-Check.git
+git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
 ```
 
 The first time, macOS asks to install the "command line developer tools";
@@ -381,7 +382,7 @@ personal access token" walks you through it.) You now have a folder
 `Documents/DLP-Check`.
 
 *Option B: a ZIP.* In your browser, sign in to GitHub, go to
-`github.com/berserkerjay/DLP-Check`, click the green **Code** button, then
+`github.com/berserkerjay/Zscaler-Made-Easy`, click the green **Code** button, then
 **Download ZIP**. Safari extracts it into Downloads as a folder named
 `DLP-Check-main`; double-click the ZIP if it did not. Move that folder
 into Documents.
@@ -464,8 +465,8 @@ token** once: on `github.com`, click your avatar → **Settings** →
 ```bash
 git config --global credential.helper store   # remember the sign-in, so updates work later
 cd ~
-git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+cd Zscaler-Made-Easy
 ```
 
 When `git clone` asks `Username for 'https://github.com':`, type your
@@ -514,16 +515,16 @@ folder you want the app in):
 
 ```powershell
 # Windows (PowerShell)
-git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+cd Zscaler-Made-Easy
 powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
 docker logs dlp-check
 ```
 
 ```bash
 # Mac (Terminal) or Linux
-git clone https://github.com/berserkerjay/DLP-Check.git
-cd DLP-Check
+git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+cd Zscaler-Made-Easy
 ./update_container.sh --force
 docker logs dlp-check
 ```
@@ -708,8 +709,8 @@ the first time.
 
   ```powershell
   cd $HOME\Documents
-  git clone https://github.com/berserkerjay/DLP-Check.git
-  cd DLP-Check
+  git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+  cd Zscaler-Made-Easy
   ```
 
   A browser window opens to sign in to GitHub (Git Credential Manager);
@@ -720,8 +721,8 @@ the first time.
 
   ```bash
   cd ~/Documents
-  git clone https://github.com/berserkerjay/DLP-Check.git
-  cd DLP-Check
+  git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+  cd Zscaler-Made-Easy
   ```
 
   If macOS offers to install the "command line developer tools", click
@@ -903,7 +904,7 @@ read -rsp "GitHub token: " GIT_AUTH_TOKEN; export GIT_AUTH_TOKEN; echo   # Mac, 
 (`#main` is the branch; `#qa` or `#dev` for those):
 
 ```
-docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 *Behind TLS inspection (Zscaler or another proxy)* the build stops with
@@ -915,13 +916,13 @@ own and hand that folder to the build with `--build-context certs=…`:
 New-Item -ItemType Directory -Force $HOME\dlp-certs | Out-Null
 $c = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root | Where-Object { $_.Subject -like "*Zscaler Root CA*" } | Select-Object -First 1
 "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n" | Set-Content -Encoding ascii -NoNewline $HOME\dlp-certs\zscaler-root.crt
-docker build --build-context certs=$HOME\dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+docker build --build-context certs=$HOME\dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 ```bash
 # Mac, for Zscaler (Linux: copy the .crt file IT gave you into ~/dlp-certs instead)
 mkdir -p ~/dlp-certs && security find-certificate -c "Zscaler Root CA" -p > ~/dlp-certs/zscaler-root.crt
-docker build --build-context certs=$HOME/dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+docker build --build-context certs=$HOME/dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 The build log then says `extra root certificates added: 1`.
@@ -1135,6 +1136,37 @@ shows the CA bundle in use, so you can check it took.
 
 ---
 
+## Install the browser extension (optional)
+
+The companion extension puts badges and a side panel on DLP objects and policy
+rules in the ZIA admin console, exports what you are looking at, and runs the
+Path analyzer for any site. It talks only to this app on your own computer.
+`docs/BROWSER_EXTENSION.md` has the full details.
+
+1. Start the app and open it once (for the container, the
+   `http://localhost:8001/?token=…` link the start or update script prints).
+2. Go to **Advanced settings → Browser extension → Download the extension**.
+   This saves `dlp-check-extension.zip`.
+3. Unzip it somewhere it can stay (for example your Documents folder). Chrome
+   and Edge load it from that folder every time, so do not delete it.
+4. Open `chrome://extensions` (Edge: `edge://extensions`) and turn on
+   **Developer mode** (top right).
+5. Click **Load unpacked** and choose the unzipped `dlp-check-extension` folder.
+6. Pin it (the puzzle-piece icon, then the pin).
+7. **Container or another port:** the extension expects the app at
+   `http://127.0.0.1:8000`. The container listens on port **8001**, so open the
+   extension's **Settings** and enter `http://127.0.0.1:8001`.
+8. Open the ZIA admin console: the badges appear on DLP pages and rules. If the
+   extension says it cannot reach the app, open the app's tab once (so the
+   browser holds its sign-in) and try again.
+
+**Updating it:** after you update the app, download the extension again,
+replace the old folder's contents with the new ones, and click the reload
+arrow on the extension's card in `chrome://extensions`.
+
+A managed work browser may block unpacked extensions; IT can allow it by policy
+(`ExtensionInstallAllowlist`).
+
 ## Starting, stopping, updating and removing it later
 
 | I want to… | Windows | Mac / Linux |
@@ -1202,7 +1234,7 @@ app** button or `UPDATE_Zscaler_Made_Easy.bat`), renames the shortcut to
 - For a security problem in the app itself, `SECURITY.md` says how to
   report it.
 - With access to the repository, open an issue at
-  `github.com/berserkerjay/DLP-Check/issues` and paste the message.
+  `github.com/berserkerjay/Zscaler-Made-Easy/issues` and paste the message.
 
 ## Native install verification
 

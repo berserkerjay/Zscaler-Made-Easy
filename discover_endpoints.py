@@ -13,16 +13,24 @@ dlp_assessment_full_auto.py with the correct paths and field names.
 Usage:
     python discover_endpoints.py --config tenant.json
     python discover_endpoints.py --config tenant.json --output discovery.json
+
+The output holds field names and value types only, never a value from the
+tenant (the first item of /zcc/devices is a person's device), and is
+written owner-only. Only GET requests are sent; no redirect is followed,
+so neither the client secret nor the access token can be sent to another
+host.
 """
 
 import json, sys, time, argparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     import requests
 except ImportError:
     print("pip install requests"); sys.exit(1)
 
+import safe_files
+import tenant_auth
 import zscaler_clouds
 
 
@@ -102,21 +110,30 @@ def authenticate(client_id, client_secret, vanity_domain, cloud):
         },
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=30,
+        allow_redirects=False,   # a 307/308 would repeat the POST, secret included, to another host
     )
+    if 300 <= resp.status_code < 400:
+        raise RuntimeError(f"the token endpoint answered a redirect (HTTP {resp.status_code}); it was not followed")
     resp.raise_for_status()
     return resp.json()["access_token"]
 
 
-def probe(base_url, token, paths):
-    """Probe a list of paths and return the first that works."""
+def _shape(value):
+    """A value's type, never the value: what the output keeps."""
+    return type(value).__name__
+
+
+def probe(base_url, token, paths, sleep=time.sleep):
+    """Probe a list of paths and return the first that works. Records the
+    status, the field names and their value types (never a value)."""
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     results = []
 
     for path in paths:
         url = f"{base_url}{path}"
         try:
-            resp = requests.get(url, headers=headers, timeout=15)
-            time.sleep(0.3)
+            resp = requests.get(url, headers=headers, timeout=15, allow_redirects=False)
+            sleep(0.3)
 
             result = {
                 "path": path,
@@ -131,18 +148,18 @@ def probe(base_url, token, paths):
                         result["type"] = "array"
                         result["count"] = len(data)
                         if data:
-                            result["sample_keys"] = list(data[0].keys()) if isinstance(data[0], dict) else []
-                            result["first_item_preview"] = {k: str(v)[:100] for k, v in list(data[0].items())[:10]} if isinstance(data[0], dict) else str(data[0])[:200]
+                            result["sample_keys"] = [str(k) for k in data[0].keys()] if isinstance(data[0], dict) else []
+                            result["first_item_types"] = ({str(k): _shape(v) for k, v in list(data[0].items())[:50]}
+                                                          if isinstance(data[0], dict) else _shape(data[0]))
                     elif isinstance(data, dict):
                         result["type"] = "object"
-                        result["keys"] = list(data.keys())
-                        result["preview"] = {k: str(v)[:100] for k, v in list(data.items())[:10]}
+                        result["keys"] = [str(k) for k in data.keys()]
+                        result["types"] = {str(k): _shape(v) for k, v in list(data.items())[:50]}
                     else:
                         result["type"] = type(data).__name__
-                        result["preview"] = str(data)[:200]
-                except:
+                except ValueError:
                     result["type"] = "non-json"
-                    result["preview"] = resp.text[:200]
+                    result["length"] = len(resp.content or b"")
 
             elif resp.status_code == 204:
                 result["type"] = "empty (204)"
@@ -158,14 +175,37 @@ def probe(base_url, token, paths):
 
             elif resp.status_code == 429:
                 result["note"] = "Rate limited"
-                time.sleep(5)
+                sleep(5)
+
+            elif 300 <= resp.status_code < 400:
+                result["note"] = "Redirect: not followed (the access token is never sent to another host)"
 
             results.append(result)
 
         except requests.exceptions.RequestException as e:
-            results.append({"path": path, "status": 0, "works": False, "error": str(e)})
+            results.append({"path": path, "status": 0, "works": False, "error": tenant_auth.redact_tokens(str(e))[:300]})
 
     return results
+
+
+def load_config(path):
+    """The tenant JSON file: an object with client_id, client_secret and
+    vanity_domain (cloud optional, production by default). ValueError,
+    naming what is missing (never a value), for anything else."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            cfg = safe_files.strict_json_loads(f.read(1_000_001))
+    except OSError as e:
+        raise ValueError(f"the config file could not be read ({type(e).__name__})") from None
+    except (ValueError, RecursionError):
+        raise ValueError("the config file is not valid JSON") from None
+    if not isinstance(cfg, dict):
+        raise ValueError("the config file must be a JSON object")
+    missing = [k for k in ("client_id", "client_secret", "vanity_domain") if not str(cfg.get(k) or "").strip()]
+    if missing:
+        raise ValueError("the config file lacks " + ", ".join(missing))
+    zscaler_clouds.check_vanity(cfg["vanity_domain"])
+    return cfg
 
 
 def main():
@@ -174,30 +214,33 @@ def main():
     parser.add_argument("--output", default="discovery.json", help="Output file")
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        cfg = json.load(f)
-
-    base_url = _base_url(cfg.get("cloud"))
+    try:
+        cfg = load_config(args.config)
+        cloud = zscaler_clouds.normalize(cfg.get("cloud"))
+        base_url = _base_url(cloud)
+    except ValueError as e:
+        print(f"Cannot start: {e}", file=sys.stderr)
+        sys.exit(2)
 
     print(f"\n{'='*60}")
     print("  ZSCALER ONEAPI ENDPOINT DISCOVERY")
-    print(f"  Cloud: {cfg['cloud']}  Base: {base_url}")
+    print(f"  Cloud: {cloud}  Base: {base_url}")
     print(f"{'='*60}\n")
 
     # Authenticate
     print("  Authenticating...", end=" ", flush=True)
     try:
-        token = authenticate(cfg["client_id"], cfg["client_secret"], cfg["vanity_domain"], cfg["cloud"])
+        token = authenticate(cfg["client_id"], cfg["client_secret"], cfg["vanity_domain"], cloud)
         print("OK\n")
     except Exception as e:
-        print(f"FAILED: {e}")
+        print(f"FAILED: {tenant_auth.mask_secrets(str(e), cfg)}")
         sys.exit(1)
 
     # Probe all endpoint groups
     discovery = {
         "metadata": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "cloud": cfg["cloud"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "cloud": cloud,
             "base_url": base_url,
             "org": cfg.get("org_name", ""),
         },
@@ -243,8 +286,8 @@ def main():
 
         probed += len(paths)
 
-    # Save
-    with open(args.output, "w") as f:
+    # Save (owner-only: it names what the API client can read)
+    with safe_files.private_open(args.output, "w", encoding="utf-8") as f:
         json.dump(discovery, f, indent=2, default=str)
 
     # Print summary

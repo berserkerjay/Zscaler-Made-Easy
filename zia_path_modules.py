@@ -50,6 +50,7 @@ zia/cloud_firewall_dns.py, zia/sandbox_rules.py). Read-only.
 """
 from __future__ import annotations
 
+import functools
 import ipaddress
 import re
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -162,12 +163,22 @@ UNEVALUATED: List[Tuple[str, str, str]] = [
     ("srcIps", "Source IP", "the user's source IP address is not known"),
     ("sourceIpGroups", "Source IP groups", "the user's source IP address is not known"),
     ("srcIpGroups", "Source IP groups", "the user's source IP address is not known"),
+    ("srcIpv6Groups", "Source IPv6 groups", "the user's source IP address is not known"),
+]
+# Exclusions (Web DLP rules, zscaler-sdk-python 1.11.3 models/dlp_web_rules.py
+# excludedUsers / excludedGroups / excludedDepartments): the rule applies to
+# everyone in its scope except these, so for any user they are unknown too.
+EXCLUDED: List[Tuple[str, str, str]] = [
+    ("excludedUsers", "Excluded users", "the trace is for any user"),
+    ("excludedGroups", "Excluded groups", "the trace is for any user"),
+    ("excludedDepartments", "Excluded departments", "the trace is for any user"),
 ]
 
 _ANY = {"ANY", "ALL", "ANY_RULE", "NONE", ""}
 
 
 # ── Small helpers ────────────────────────────────────────────────────
+@functools.lru_cache(maxsize=512)
 def _snake(camel: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", camel).lower()
 
@@ -219,6 +230,44 @@ def _int(v: Any) -> Optional[int]:
         return None
 
 
+def ascii_host(host: str) -> str:
+    """A host name as ZIA and ZPA hold it: lower case, no trailing dot, and
+    an internationalised name (münchen.de) in its punycode form
+    (xn--mnchen-3ya.de), which is what DNS, the browser's SNI and the URL
+    lists carry. UTS 46 through the idna package when it is installed,
+    else Python's own IDNA codec. ValueError for a name that cannot be
+    encoded."""
+    h = str(host or "").strip().lower().rstrip(".")
+    if h.isascii():
+        return h
+    try:
+        import idna
+    except ImportError:   # pragma: no cover - idna ships with requests
+        idna = None
+    try:
+        if idna is not None:
+            return idna.encode(h, uts46=True, transitional=False).decode("ascii")
+        return h.encode("idna").decode("ascii")
+    except Exception as e:  # noqa: BLE001 - every codec error is "not a host name"
+        raise ValueError(f"'{h[:80]}' is not a valid internationalised host name") from e
+
+
+def entry_host(h: str) -> str:
+    """A host name from a tenant list (a URL category, a bypass, a
+    destination) as a destination is placed: lower case, no trailing dot
+    and an internationalised name in punycode, keeping a leading "*." or
+    "." (the domain and its subdomains). Never raises: a name IDNA refuses
+    is kept as written."""
+    h = str(h or "").strip().lower().rstrip(".")
+    if h.isascii():
+        return h
+    lead = "*." if h.startswith("*.") else "." if h.startswith(".") else ""
+    try:
+        return lead + ascii_host(h[len(lead):])
+    except ValueError:
+        return h
+
+
 def well_known(protocol: str, port: Optional[int]) -> Optional[Dict[str, Any]]:
     """The well-known service on protocol/port, or None."""
     if port is None:
@@ -242,7 +291,7 @@ def traffic_context(dest: Dict[str, Any], protocol: Any = None, port: Any = None
     if port in (None, ""):
         n = None
     else:
-        whole = isinstance(port, int) or (isinstance(port, float) and port.is_integer()) or (isinstance(port, str) and port.strip().isdigit())
+        whole = isinstance(port, int) or (isinstance(port, float) and port.is_integer()) or (isinstance(port, str) and port.strip().isascii() and port.strip().isdigit())
         n = _int(port) if whole else None
         if n is None or not 1 <= n <= 65535 or isinstance(port, bool):
             raise ValueError("The port must be a whole number from 1 to 65535.")
@@ -273,7 +322,7 @@ def traffic_context(dest: Dict[str, Any], protocol: Any = None, port: Any = None
 
 # ── Reading the tenant ───────────────────────────────────────────────
 _KEEP = {
-    "network_services": ("id", "name", "tag", "type", "destTcpPorts", "destUdpPorts"),
+    "network_services": ("id", "name", "tag", "type", "destTcpPorts", "destUdpPorts", "srcTcpPorts", "srcUdpPorts"),
     "network_service_groups": ("id", "name", "services"),
     "network_app_groups": ("id", "name", "networkApplications"),
     "ip_destination_groups": ("id", "name", "type", "addresses", "countries", "ipCategories"),
@@ -365,30 +414,41 @@ def _norm_entry(entry: str) -> Tuple[str, str]:
     e = str(entry or "").strip().lower()
     e = re.sub(r"^[a-z][a-z0-9+.-]*://", "", e)
     host, _, path = e.partition("/")
-    return host.split(":")[0], ("/" + path if path else "")
+    return entry_host(host.split(":")[0]), ("/" + path if path else "")
+
+
+def _parse_entry(entry: str) -> Optional[Tuple[Any, ...]]:
+    """An IP, CIDR or a-b range entry parsed once (a 5,000-rule tenant names
+    the same groups again and again): ("range", first, last), ("net",
+    network) or None when it is not an address entry. No address entry is
+    longer than 100 characters, so a longer string is none and never cached."""
+    return None if len(entry) > 100 else _parse_cached(entry)
+
+
+@functools.lru_cache(maxsize=16384)
+def _parse_cached(entry: str) -> Optional[Tuple[Any, ...]]:
+    try:
+        if "-" in entry:
+            a, b = (ipaddress.ip_address(x.strip()) for x in entry.split("-", 1))
+            return ("range", a, b)
+        return ("net", ipaddress.ip_network(entry, strict=False))
+    except ValueError:
+        return None
 
 
 def _ip_rel(ip: Any, entry: str) -> bool:
-    e = str(entry or "").strip()
-    try:
-        if "-" in e:
-            a, b = (ipaddress.ip_address(x.strip()) for x in e.split("-", 1))
-            return a <= ip <= b
-        return ip in ipaddress.ip_network(e, strict=False)
-    except ValueError:
+    """Whether `ip` is in an IP, CIDR or a-b range entry. An address of the
+    other family is never in it (ipaddress refuses to compare the two)."""
+    e = _parse_entry(str(entry or "").strip())
+    if e is None:
         return False
+    if e[0] == "range":
+        return e[1].version == e[2].version == ip.version and e[1] <= ip <= e[2]
+    return ip in e[1]
 
 
 def _is_ip_entry(entry: str) -> bool:
-    e = str(entry or "").strip()
-    try:
-        if "-" in e:
-            [ipaddress.ip_address(x.strip()) for x in e.split("-", 1)]
-        else:
-            ipaddress.ip_network(e, strict=False)
-        return True
-    except ValueError:
-        return False
+    return _parse_entry(str(entry or "").strip()) is not None
 
 
 def url_hit(entries: Iterable[Any], dest: Dict[str, Any], visible: Optional[bool]) -> Tuple[str, Optional[str]]:
@@ -456,7 +516,46 @@ def unevaluated(rule: Dict[str, Any], skip: Iterable[str] = ()) -> List[Dict[str
         v = _names(_f(rule, field))
         if v:
             out.append(_crit(label, "unknown", f"Applies only to {_short(v)}; {why}."))
+    for field, label, why in EXCLUDED:
+        v = _names(_f(rule, field))
+        if v and field not in skip:
+            out.append(_crit(label, "unknown", f"Does not apply to {_short(v)}; {why}."))
+    window = validity(rule)
+    if window and "validity" not in skip:
+        out.append(_crit("Validity period", "unknown", f"Applies only {window}; the time of the transaction is not part of the trace."))
     return out
+
+
+def validity(rule: Dict[str, Any]) -> Optional[str]:
+    """'from <start> to <end> (UTC)' when a URL filtering rule enforces its
+    validity period (zscaler-sdk-python 1.11.3 models/url_filtering_rules.py
+    enforceTimeValidity, validityStartTime, validityEndTime: epoch
+    seconds), else None. Outside the period the rule does not apply."""
+    if not isinstance(rule, dict) or not _f(rule, "enforceTimeValidity"):
+        return None
+    import datetime as _dt
+
+    def when(v: Any) -> str:
+        n = _int(v)
+        if n is None:
+            return "an unknown time"
+        try:
+            return _dt.datetime.fromtimestamp(n, _dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
+        except (OverflowError, OSError, ValueError):
+            return "an unknown time"
+    return f"from {when(_f(rule, 'validityStartTime'))} to {when(_f(rule, 'validityEndTime'))} (UTC)"
+
+
+def protocol_applies(rule_protocols: Iterable[Any], web_protocol: str) -> bool:
+    """Whether a URL filtering, File Type Control or Web DLP rule's
+    protocols include this web transaction. `web_protocol` is HTTP_RULE
+    (plain HTTP) or HTTPS_RULE; no protocol, or ANY, is every protocol.
+    HTTPS also counts as SSL and Tunnel SSL (the SDK's protocol names;
+    which of them ZIA records for HTTPS it does not decrypt is assumed)."""
+    p = [str(x).upper() for x in rule_protocols or [] if str(x).upper() not in _ANY]
+    if not p:
+        return True
+    return web_protocol in p or (web_protocol == "HTTPS_RULE" and any(x in p for x in ("TUNNELSSL_RULE", "SSL_RULE")))
 
 
 def _crit_categories(rule_cats: List[str], ctx: Dict[str, Any], name: str = "URL category") -> Optional[Dict[str, str]]:
@@ -480,7 +579,7 @@ def _crit_web_protocol(rule_protocols: List[str], ctx: Dict[str, Any]) -> Option
     want = ("HTTPS_RULE" if t["encrypted"] else "HTTP_RULE") if t["web"] else None
     if want is None:
         return _crit("Protocol", "no_match", f"Applies to {', '.join(p)}; this is {t['label']}.")
-    ok = want in p or (want == "HTTPS_RULE" and any(x in p for x in ("TUNNELSSL_RULE", "SSL_RULE")))
+    ok = protocol_applies(p, want)
     return _crit("Protocol", "match" if ok else "no_match", f"This is {want.replace('_RULE', '')}; the rule applies to {', '.join(x.replace('_RULE', '') for x in p)}.")
 
 
@@ -505,11 +604,18 @@ def _crit_destination(rule: Dict[str, Any], ctx: Dict[str, Any], groups: Optiona
         addrs += a
         cats += c
         countries += k
-    if not (addrs or cats or countries or unresolved):
+    # IPv6 destination groups (destIpv6Groups) are a list of their own
+    # (/ipDestinationGroups/ipv6DestinationGroups), not read here: an IPv4
+    # address is never in one; anything else depends on its members.
+    v6 = [_name(g) or str(_id(g)) for g in _list(_f(rule, "destIpv6Groups"))]
+    if not (addrs or cats or countries or unresolved or v6):
         return None
     host, ip = ctx["host"], ctx["ip"]
     hits: List[str] = []
     unknown: List[str] = []
+    if v6 and not (ip is not None and ip.version == 4):
+        unknown.append(f"the members of the IPv6 group(s) {_short(v6, 3)} are not read")
+    gnames += [f"{g} (IPv6)" for g in v6]
     names_ = [a for a in addrs if not _is_ip_entry(a)]
     ips = [a for a in addrs if _is_ip_entry(a)]
     if names_ and ip is None:
@@ -555,8 +661,12 @@ def _crit_source(rule: Dict[str, Any], groups: Optional[Dict[str, Dict[str, Any]
         if not members:
             unresolved.append(_name(g))
         ips += members
-    if not ips and not names_:
+    v6 = [_name(g) or str(_id(g)) for g in _list(_f(rule, "srcIpv6Groups"))]   # not read: see _crit_destination
+    if not ips and not names_ and not v6:
         return None
+    names_ += [f"{n} (IPv6)" for n in v6]
+    if v6 and not (src is not None and src.version == 4):
+        unresolved += [f"{n} (IPv6)" for n in v6]
     what = _short(ips + [f"group {n}" for n in names_], 4)
     if src is None:
         return _crit("Source IP", "unknown", f"Applies to {what}; the user's source IP address is not known.")
@@ -568,9 +678,18 @@ def _crit_source(rule: Dict[str, Any], groups: Optional[Dict[str, Dict[str, Any]
     return _crit("Source IP", "no_match", f"The source {src} is not in {what}.")
 
 
+def _index(fw: Dict[str, Any], part: str) -> Dict[str, Dict[str, Any]]:
+    """{id: object} of one firewall list, built once per evaluation (kept in
+    `fw`), not once per rule."""
+    key = "_by_id_" + part
+    if key not in fw:
+        fw[key] = {str(x.get("id")): x for x in fw.get(part) or [] if isinstance(x, dict)}
+    return fw[key]
+
+
 def _services(rule: Dict[str, Any], fw: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
-    by_id = {str(s.get("id")): s for s in fw.get("network_services") or []}
-    groups = {str(g.get("id")): g for g in fw.get("network_service_groups") or []}
+    by_id = _index(fw, "network_services")
+    groups = _index(fw, "network_service_groups")
     out, unresolved = [], []
     for s in _list(_f(rule, "nwServices")):
         out.append(by_id.get(_id(s) or "") or (s if isinstance(s, dict) else {"name": str(s)}))
@@ -591,10 +710,14 @@ def _crit_services(rule: Dict[str, Any], ctx: Dict[str, Any], fw: Dict[str, Any]
     t = ctx["traffic"]
     proto, port = t["protocol"], t["port"]
     unknown = [f"group {g}" for g in unresolved]
+    src_only: List[str] = []
     for s in svcs:
         tag = str(_f(s, "tag") or "").upper()
-        if tag in (f"{proto.upper()}_ANY", "ANY"):
+        idents = {tag, _name(s).upper()} - {""}
+        if idents & {f"{proto.upper()}_ANY", "ANY"}:
             return _crit("Network service", "match", f"{t['label']} is any {proto.upper()} ({_name(s)}).")
+        if idents & ({"TCP_ANY", "UDP_ANY", "ICMP_ANY"} - {f"{proto.upper()}_ANY"}):
+            continue   # every port of another protocol (ICMP_ANY, UDP_ANY, ...): never this traffic
         own = _port_ranges(_f(s, "destTcpPorts" if proto == "tcp" else "destUdpPorts"))
         other = _port_ranges(_f(s, "destUdpPorts" if proto == "tcp" else "destTcpPorts"))
         if not own and not other:
@@ -604,16 +727,21 @@ def _crit_services(rule: Dict[str, Any], ctx: Dict[str, Any], fw: Dict[str, Any]
                 unknown.append(_name(s))
                 continue
         if any(a <= port <= b for a, b in own):
+            if _port_ranges(_f(s, "srcTcpPorts" if proto == "tcp" else "srcUdpPorts")):
+                src_only.append(_name(s))
+                continue
             return _crit("Network service", "match", f"{t['label']} is in {_name(s)}.")
     what = _short([_name(s) for s in svcs] + [f"group {g}" for g in unresolved], 5)
-    if unknown:
-        return _crit("Network service", "unknown", f"Applies to {what}; the ports of {_short(unknown, 3)} are not known.")
+    if unknown or src_only:
+        why = ([f"the ports of {_short(unknown, 3)} are not known"] if unknown else []) + \
+            ([f"{_short(src_only, 3)} also need(s) a source port, which is not known"] if src_only else [])
+        return _crit("Network service", "unknown", f"Applies to {what}; " + "; ".join(why) + ".")
     return _crit("Network service", "no_match", f"{t['label']} is not in {what}.")
 
 
 def _crit_network_apps(rule: Dict[str, Any], ctx: Dict[str, Any], fw: Dict[str, Any]) -> Optional[Dict[str, str]]:
     apps = _names(_f(rule, "nwApplications"))
-    groups = {str(g.get("id")): g for g in fw.get("network_app_groups") or []}
+    groups = _index(fw, "network_app_groups")
     unresolved = []
     for g in _list(_f(rule, "nwApplicationGroups")):
         full = groups.get(_id(g) or "")
@@ -630,7 +758,9 @@ def _crit_network_apps(rule: Dict[str, Any], ctx: Dict[str, Any], fw: Dict[str, 
     if hit:
         return _crit("Network application", "match", f"{t['label']} is identified as {hit} (from the port).")
     known = [next((w for w in WELL_KNOWN if any(_norm(x) == _norm(a) for x in w["apps"])), None) for a in apps]
-    if apps and not unresolved and all(known) and not any(any(a <= t["port"] <= b for a, b in w.get(t["protocol"], [])) for w in known):
+    # On a port no well-known service names, what runs there is not known
+    # (ZIA identifies SSH on 2222 as SSH): never a definite no match.
+    if t["service"] and apps and not unresolved and all(known) and not any(any(a <= t["port"] <= b for a, b in w.get(t["protocol"], [])) for w in known):
         return _crit("Network application", "no_match", f"{t['label']} is not {what}.")
     return _crit("Network application", "unknown", f"Applies to {what}; ZIA identifies the application from the traffic itself, which the port alone does not establish.")
 
@@ -892,7 +1022,7 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
 
     def criteria(r):
         return [_crit_source(r, sgroups, ctx.get("source_ip")), _crit_destination(r, ctx, dgroups), _crit_services(r, ctx, fw), _crit_network_apps(r, ctx, fw)] + \
-            unevaluated(r, skip=("srcIps", "srcIpGroups", "sourceIpGroups"))
+            unevaluated(r, skip=("srcIps", "srcIpGroups", "sourceIpGroups", "srcIpv6Groups"))
 
     def verdict_of(r):
         a = _action(r, "action", "accessControl")
@@ -920,10 +1050,14 @@ def _dns(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     rules = ((sec.get("parts") or {}).get("rules") or {}).get("data") or []
 
     def criteria(r):
-        out: List[Optional[Dict[str, str]]] = [_crit_destination(r, ctx, None, "Requested domain")]
+        # The IP destination groups are the Cloud Firewall's read (the same
+        # /ipDestinationGroups list, in scope with it); without it unknown.
+        out: List[Optional[Dict[str, str]]] = [_crit_destination(r, ctx, ctx.get("dst_groups"), "Requested domain")]
+        # The SDK docstring writes TCP, UDP, DOHTTPS; the API answers TCP_RULE,
+        # UDP_RULE, DOHTTPS_RULE (as every other ZIA rule's protocols).
         p = [x.upper() for x in _names(_f(r, "protocols"))]
         if p:
-            out.append(_crit("DNS protocol", "match", "A lookup over UDP is assumed (the standard resolver path).") if "UDP_RULE" in p else
+            out.append(_crit("DNS protocol", "match", "A lookup over UDP is assumed (the standard resolver path).") if {"UDP", "UDP_RULE"} & set(p) else
                        _crit("DNS protocol", "unknown", f"Applies to {', '.join(x.replace('_RULE', '') for x in p)}; whether this lookup uses TCP or DNS over HTTPS is not known."))
         types = [x.upper() for x in _names(_f(r, "dnsRuleRequestTypes"))]
         if types:
@@ -1120,10 +1254,15 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
         src = ipaddress.ip_address(str((context or {}).get("source_ip") or ""))
     except ValueError:
         pass
+    # A file type is a ZIA file category (FTCATEGORY_*), as data_flow.trace
+    # takes it: a bare extension ("pdf") is not one, so it decides nothing.
+    given = list((context or {}).get("file_types") or []) + [(context or {}).get("file_type")]
+    fw_groups = (((mods.get("firewall") or {}).get("parts") or {}).get("ip_destination_groups") or {})
     ctx = {"host": dest.get("host") or "", "ip": ip, "dest": dest, "traffic": traffic, "visible": None, "source_ip": src,
            "categories": sorted({str(c).upper() for c in rd.get("categories") or []}), "alerts": sorted({str(c).upper() for c in lookup.get("security_alerts") or []}),
            "applications": sorted({str(a).upper() for a in rd.get("applications") or []}), "app_classes": sorted({str(a).upper() for a in rd.get("app_classes") or []}),
-           "file_types": sorted({str(x).upper() for x in (context or {}).get("file_types") or [] if x})}
+           "file_types": sorted({str(x).upper() for x in given if x and str(x).upper().startswith("FTCATEGORY_")}),
+           "dst_groups": {str(g.get("id")): g for g in fw_groups.get("data") or [] if isinstance(g, dict)} if fw_groups.get("ok") else None}
     vis, ssl_entry = _visibility(t, traffic)
     ctx["visible"] = vis
     if ssl_entry.get("rule"):
@@ -1171,14 +1310,17 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
             stop = m
     for n, m in enumerate(seq, 1):
         m["position"] = n
+    if (stop is not None or not reached) and traffic["web"]:
+        # SSL inspection acts on the web modules after these: a path that
+        # ends before them (or never reaches Zscaler) never gets there.
+        ssl_entry.update(verdict="not_reached", status="not_reached", certainty="definite", rule=None, criteria=[],
+                         detail=f"Not reached: {stop['module']} ends the transaction first." if stop is not None else "Not reached: the traffic never reaches Zscaler.")
     reasons: List[str] = []
     for m in [ssl_entry] + seq:
         if m["status"] in ("not_reached", "not_applicable"):
             continue
         if m["certainty"] == "conditional":
-            reasons.append(f"{m['module']}: " + (m.get("reason") or
-                                                 ("the deciding rule has a condition that cannot be evaluated" if any(c["state"] == "unknown" for c in m["criteria"]) else
-                                                  "the decision depends on conditions that are not established")) + ".")
+            reasons.append(f"{m['module']}: " + (m.get("reason") or _conditional_reason(m, t, ssl_entry)).rstrip(".") + ".")
         elif m["certainty"] == "unknown" and m["status"] == "out_of_scope":
             reasons.append(f"{m['module']}: not in scope on the Scope page, so not assessed.")
         elif m["certainty"] == "unknown":
@@ -1188,6 +1330,54 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
     certainty = "conditional" if reasons else "definite"
     return {"traffic": traffic, "modifier": ssl_entry, "modules": seq, "stops_at": stop["key"] if stop else None,
             "certainty": certainty, "reasons": [r.replace("..", ".") for r in reasons]}
+
+
+def depends_words(r: Dict[str, Any]) -> str:
+    """What a rule the trace calls conditional depends on, named: 'group
+    Finance; time window Night', from its scope (path_whatif.scope_items),
+    request methods and the conditions this tool does not evaluate."""
+    import path_whatif
+    parts: List[str] = []
+    for dim, items in (r.get("scope_items") or {}).items():
+        names = [str(i.get("name")) for i in items if isinstance(i, dict) and i.get("name")]
+        parts.append(f"{path_whatif.LABEL.get(dim, dim)} {_short(names, 3)}" if names else path_whatif.LABEL.get(dim, dim))
+    methods = [m for m in r.get("request_methods") or [] if str(m).upper() not in _ANY]
+    if methods:
+        parts.append(f"request method {_short(methods, 3)}")
+    for c in r.get("conditions") or []:
+        if isinstance(c, dict) and c.get("name") and not any(str(c["name"]).lower().rstrip("s") in p.lower() for p in parts):
+            parts.append(str(c.get("detail") or c["name"]).rstrip("."))
+    if not parts:
+        parts = [str(x) for x in r.get("scope") or []]
+    return "; ".join(parts) or "a condition that is not given"
+
+
+def _conditional_reason(m: Dict[str, Any], t: Dict[str, Any], ssl_entry: Dict[str, Any]) -> str:
+    """Why a module is conditional, naming the rule and the condition it
+    depends on (never just 'conditions not established')."""
+    unknown = [c for c in m.get("criteria") or [] if c.get("state") == "unknown"]
+    rule = (m.get("rule") or {}).get("name")
+    if unknown:
+        return (f"the deciding rule '{rule}'" if rule else "the deciding rule") + " applies only when " + \
+            "; ".join(f"{c['name'].lower()}: {str(c.get('detail') or 'not known').rstrip('.')}" for c in unknown[:3])
+    hop = next((h for h in t.get("hops") or [] if h.get("key") == m.get("key")), {}) or {}
+    cands = [r for r in hop.get("candidate_rules") or [] if isinstance(r, dict)]
+    if not cands and hop.get("status") == "conditional":   # Web DLP: every covering rule is scoped
+        cands = [r for r in hop.get("rules") or [] if isinstance(r, dict) and r.get("scope")]
+    if cands:
+        def act(r: Dict[str, Any]) -> str:
+            return str(r.get("action") or ", ".join(r.get("actions") or []) or "its action")
+        none = "a condition that is not given"
+        scoped = [r for r in cands if depends_words(r) != none]
+        rest = [r for r in cands if depends_words(r) == none]
+        text = _short([f"rule '{r.get('name')}' ({act(r)}) applies only for {depends_words(r)}" for r in scoped], 3) if scoped else \
+            "a rule's conditions cannot be evaluated"
+        return text + (f"; otherwise rule '{rest[0].get('name')}' ({act(rest[0])}) decides" if rest else "")
+    if hop.get("missing_context"):
+        return "it depends on " + ", ".join(str(x) for x in hop["missing_context"]) + ", which the trace is not given"
+    if m.get("key") != "ssl" and ssl_entry.get("certainty") == "conditional":
+        return "it depends on SSL inspection, whose decision is conditional (see SSL inspection)"
+    return "the decision depends on conditions that are not established"
 
 
 # ── Folding the result into the trace and the verdict ────────────────
@@ -1210,6 +1400,7 @@ def extend_trace(t: Dict[str, Any], result: Dict[str, Any]) -> None:
         fwd["detail"] = (fwd.get("detail") or "") + f" {fwd['mode']} carries only web traffic, so {traffic['label']} leaves the device directly and never reaches ZIA."
         fwd["weak_point"] = {"severity": "high", "title": "Non-web traffic not forwarded", "fix": "Use Z-Tunnel 2.0 so every port and protocol reaches the Cloud Firewall."}
         t["reaches_zscaler"], t["outcome"], t["decrypted"] = False, "bypassed", False
+        t["policy_conditional"] = False   # nothing on the path decides anything any more
         t["weak_points"] = [dict(fwd["weak_point"], hop="forwarding", hop_label=fwd["label"])] + list(t.get("weak_points") or [])
         for h in hops:
             if h.get("key") in _WEB_HOPS or h.get("key") == "pac":
@@ -1262,6 +1453,10 @@ def extend_trace(t: Dict[str, Any], result: Dict[str, Any]) -> None:
             t["outcome"] = "blocked"
         t["decrypted"] = False
         t["content_inspection_possible"] = False
+    # Recomputed from the hops as they now stand: a web hop that is not
+    # applicable or not reached makes nothing conditional.
+    t["policy_conditional"] = any(h.get("status") == "conditional" and h.get("key") != "incident" for h in hops) or \
+        (not traffic["web"] and stop is None and by_key["firewall"]["certainty"] == "conditional")
 
 
 def annotate_verdict(v: Dict[str, Any], result: Dict[str, Any], host: str) -> None:

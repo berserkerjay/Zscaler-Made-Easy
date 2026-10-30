@@ -1,0 +1,322 @@
+{
+ "area": "exports",
+ "title": "Exports: Terraform writer and reader, Export from tenant (with the ZIA policy framework part), policy and configuration workbooks",
+ "files": [
+  "pack_terraform.py",
+  "pack_export.py",
+  "policy_exports.py",
+  "config_exports.py"
+ ],
+ "standards": [
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.1",
+  "ASVS V5.3.10",
+  "ASVS V7.4.1",
+  "ASVS V8.3.1",
+  "ASVS V8.3.4",
+  "ASVS V11.1.4",
+  "ASVS V12.3.1",
+  "ASVS V12.3.2",
+  "OWASP A01:2021",
+  "OWASP A02:2021",
+  "OWASP A03:2021",
+  "OWASP A04:2021",
+  "OWASP A09:2021",
+  "OWASP A10:2021",
+  "CWE-20",
+  "CWE-22",
+  "CWE-59",
+  "CWE-67",
+  "CWE-94",
+  "CWE-150",
+  "CWE-200",
+  "CWE-223",
+  "CWE-392",
+  "CWE-407",
+  "CWE-755",
+  "CWE-1236",
+  "WSTG-INPV-11",
+  "WSTG-INPV-19",
+  "WSTG-BUSL-01",
+  "WSTG-BUSL-05",
+  "WSTG-ERRH-01",
+  "WSTG-ATHZ-01"
+ ],
+ "coverage": {
+  "before": 88.0,
+  "after": 90.0
+ },
+ "checks": [
+  {
+   "id": "tf-injection",
+   "what": "Tenant names with ${}, %{}, heredoc, #, //, /* */, \\u / \\U escapes, quotes, backslashes and bidi controls stay one inert string in every .tf file (strict HCL parser)",
+   "standard": "ASVS V5.3.1 · CWE-94 · CWE-74",
+   "result": "pass"
+  },
+  {
+   "id": "tf-controls",
+   "what": "No raw C0/C1 control, line separator or bidi mark in a Terraform string or comment",
+   "standard": "ASVS V5.3.1 · CWE-150",
+   "result": "fixed"
+  },
+  {
+   "id": "tf-cac-default",
+   "what": "Pack values never spliced into an HCL expression (Cloud App Control default action)",
+   "standard": "ASVS V5.3.1 · CWE-94",
+   "result": "fixed"
+  },
+  {
+   "id": "tf-ssl-unknown-keys",
+   "what": "Unknown SSL action keys from a pack stay in a one-line comment",
+   "standard": "ASVS V5.3.1 · CWE-117",
+   "result": "pass"
+  },
+  {
+   "id": "tf-round-trip",
+   "what": "Writer -> pack library reader keeps names, descriptions, patterns, phrases, expressions, engines, order and containment settings",
+   "standard": "ASVS V5.1.4 · CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "tf-round-trip-refs",
+   "what": "Writer -> reader keeps labels, notification template and pinned tenants",
+   "standard": "ASVS V5.1.4 · CWE-20",
+   "result": "open"
+  },
+  {
+   "id": "tf-write-links",
+   "what": "write_workspace never writes through a planted symlink; files 0600; the team's files, state, tfvars and links stay",
+   "standard": "ASVS V12.3.2 · CWE-59 · CWE-276",
+   "result": "fixed"
+  },
+  {
+   "id": "export-complete",
+   "what": "Every rule exported in tenant order by name (rule_order and rules.tf), 10,000 rules, odd orders tolerated",
+   "standard": "ASVS V5.1.4 · CWE-20 · CWE-755",
+   "result": "fixed"
+  },
+  {
+   "id": "export-scale",
+   "what": "10,000 rules: build + zip under 64 MB peak; Terraform under a second, no quadratic forecast or label scan",
+   "standard": "ASVS V11.1.4 · CWE-400 · CWE-407",
+   "result": "fixed"
+  },
+  {
+   "id": "formula",
+   "what": "Tenant text in policy, location and Client Connector workbooks never starts a cell as a formula; no <f> element (no CSV output in these files)",
+   "standard": "ASVS V5.3.10 · CWE-1236",
+   "result": "pass"
+  },
+  {
+   "id": "zcc-secrets",
+   "what": "Every ...Pass / password / token / key field of SDK 1.11.3's ZCC models is left out; logins counted",
+   "standard": "ASVS V8.3.4 · CWE-200 · CWE-359",
+   "result": "fixed"
+  },
+  {
+   "id": "framework-says-so",
+   "what": "The framework part leaves out users, groups and locations and says so, alone and with DLP parts",
+   "standard": "ASVS V8.3.1 · CWE-223",
+   "result": "fixed"
+  },
+  {
+   "id": "framework-cap",
+   "what": "Framework capture names the rules cut at 200 per area",
+   "standard": "ASVS V8.3.1 · CWE-223",
+   "result": "open"
+  },
+  {
+   "id": "filenames",
+   "what": "Download and zip member names are [a-z0-9_-] one folder deep, never a Windows device name; workbook names [A-Za-z0-9_-]",
+   "standard": "ASVS V12.3.1 · CWE-22 · CWE-67 · CWE-113",
+   "result": "fixed"
+  },
+  {
+   "id": "locations-paging",
+   "what": "A location list cut at the page cap is reported incomplete; a short page ends the read",
+   "standard": "ASVS V7.4.1 · CWE-392",
+   "result": "fixed"
+  },
+  {
+   "id": "locations-path",
+   "what": "A non-numeric location id never reaches the request path",
+   "standard": "ASVS V5.1.3 · CWE-22 · CWE-918",
+   "result": "fixed"
+  },
+  {
+   "id": "read-only",
+   "what": "Exports only GET / list; no write call (fakes refuse writes)",
+   "standard": "ASVS V4.1.3 · CWE-284",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-EXPORTS-01",
+   "title": "Client Connector passwords named ...Pass (exitPass, uninstallPass, ziaDisablePass ...) reached the Client Connector workbook",
+   "severity": "medium",
+   "cwe": "CWE-200",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "is_secret treats 'pass' (and 'passphrase') as a secret word, per SDK 1.11.3 zcc/models/manage_pass.py; bypass settings stay",
+   "test": "tests/test_c6_exports.py::test_a_client_connector_password_field_is_never_exported",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-02",
+   "title": "An uploaded pack's Cloud App Control default action (actions_by_verb '*') was spliced unquoted into the HCL actions expression",
+   "severity": "low",
+   "cwe": "CWE-94",
+   "asvs": "V5.3.1",
+   "status": "fixed",
+   "fix": "the default is written with hcl_str, so it stays one string literal",
+   "test": "tests/test_c6_exports.py::test_an_uploaded_cloud_app_default_action_is_quoted_never_spliced_into_the_expression",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-03",
+   "title": "write_workspace wrote through a symlink planted in the workspace folder (overwrote a file outside it)",
+   "severity": "low",
+   "cwe": "CWE-59",
+   "asvs": "V12.3.2",
+   "status": "fixed",
+   "fix": "a link is removed first and every file is opened with O_NOFOLLOW (owner-only as before)",
+   "test": "tests/test_c6_exports.py::test_writing_a_workspace_never_follows_a_link_planted_in_the_folder",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-04",
+   "title": "Terraform strings and comments carried raw control characters (ESC, NUL, C1, U+2028/2029) and the U+061C bidi mark from tenant names",
+   "severity": "low",
+   "cwe": "CWE-150",
+   "asvs": "V5.3.1",
+   "status": "fixed",
+   "fix": "hcl_str and hcl_template_str write them as \\uNNNN; hcl_comment replaces them with U+FFFD",
+   "test": "tests/test_c6_exports.py::test_a_quoted_terraform_string_never_carries_a_raw_control_character",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-05",
+   "title": "A 10,000-rule Terraform export took about a minute: load_pack ran the quadratic rate-limit forecast it never uses, and Slugger scanned every label",
+   "severity": "low",
+   "cwe": "CWE-407",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "load_pack reads pack.json directly (_pack_meta); Slugger keeps labels in a set; 10k rules now take under a second",
+   "test": "tests/test_c6_exports.py::test_a_10k_rule_export_is_complete_in_order_and_skips_the_rate_forecast",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-06",
+   "title": "A rule order, sub-rule order or proximity that is not a whole number ended Export from tenant with a ValueError",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "_whole() parses tenant numbers; an odd order sorts last, an odd proximity is dropped",
+   "test": "tests/test_c6_exports.py::test_a_rule_order_that_is_not_a_number_never_ends_the_read",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-07",
+   "title": "With DLP parts, the framework part's left-out list (users, groups, locations) was missing from pack.json and the job result",
+   "severity": "low",
+   "cwe": "CWE-223",
+   "asvs": "V8.3.1",
+   "status": "fixed",
+   "fix": "the framework's not_exported entries join meta.not_exported tagged part=framework; the count follows",
+   "test": "tests/test_c6_exports.py::test_a_framework_exported_with_rules_says_what_it_left_out",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-08",
+   "title": "The Terraform reader (pack_library.pack_from_terraform) drops rule labels, the notification template and pinned SaaS / email tenants that the writer emits as data-source references",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "pack_from_terraform reads tenant_name data sources and .tenant_id references, and maps labels / notification_template / *_tenants blocks back to names",
+   "test": "tests/test_c6_exports.py::test_the_reader_keeps_labels_notification_template_and_pinned_tenants",
+   "commit": "37a8f7c"
+  },
+  {
+   "id": "C6-EXPORTS-09",
+   "title": "zia_rate._simulate is O(n^2) (a list scan per request): every pack load of a 10k-rule pack (library, deploy, upload) spends tens of seconds on the forecast",
+   "severity": "low",
+   "cwe": "CWE-407",
+   "asvs": "V11.1.4",
+   "status": "fixed",
+   "fix": "zia_rate._simulate bisects the sorted request times with the same window test: identical answers (seeded oracle), O(n log n)",
+   "test": "tests/test_c6_open_low.py::test_the_rate_forecast_looks_at_log_n_requests_per_step",
+   "commit": "37a8f7c"
+  },
+  {
+   "id": "C6-EXPORTS-10",
+   "title": "ops_zia_baseline.capture cuts an area at 200 rules (MAX_FRAMEWORK_RULES) without saying which rules were left out",
+   "severity": "low",
+   "cwe": "CWE-223",
+   "asvs": "V8.3.1",
+   "status": "fixed",
+   "fix": "ops_zia_baseline.capture names every rule past MAX_FRAMEWORK_RULES in not_exported with the reason",
+   "test": "tests/test_c6_open_low.py::test_a_framework_capture_names_each_rule_past_the_cap",
+   "commit": "37a8f7c"
+  },
+  {
+   "id": "C6-EXPORTS-11",
+   "title": "A location list longer than the page cap (50 x 1000) was exported as if complete",
+   "severity": "low",
+   "cwe": "CWE-392",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "_read_list returns the cut as a reason; the workbook Summary and result errors say the list is incomplete (groups too)",
+   "test": "tests/test_c6_exports.py::test_a_location_list_cut_at_the_page_cap_says_so",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-12",
+   "title": "The sub-location read put the tenant-supplied location id into the request path unchecked ('1/../../adminUsers')",
+   "severity": "low",
+   "cwe": "CWE-22",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "only a numeric id is sent; another is named in errors and not read",
+   "test": "tests/test_c6_exports.py::test_a_location_id_that_is_not_a_number_never_reaches_the_request_path",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-13",
+   "title": "A pack named CON, NUL, AUX, COM1 or LPT1 downloaded as con.zip with a con/ folder (cannot be saved or unzipped on Windows)",
+   "severity": "info",
+   "cwe": "CWE-67",
+   "asvs": "V12.3.1",
+   "status": "fixed",
+   "fix": "folder_name() adds _pack to a Windows device name; zip_pack, zip_export and terraform_files use it",
+   "test": "tests/test_c6_exports.py::test_an_export_is_never_named_after_a_windows_device",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-14",
+   "title": "An Infinity rule order (policy exports) or child count (locations) raised OverflowError",
+   "severity": "info",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "OverflowError is caught with TypeError / ValueError",
+   "test": "tests/test_c6_exports.py::test_a_policy_rule_with_an_infinite_order_sorts_last_without_a_traceback",
+   "commit": "c134050"
+  },
+  {
+   "id": "C6-EXPORTS-15",
+   "title": "tools/quality_score.py refuses the wave-6 findings template: root keys 'files' and 'coverage' and the finding key 'proposed_patch' are unknown, so this record (and the score check) fail validation",
+   "severity": "info",
+   "cwe": "CWE-1068",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "Resolved at integration (bde03b1: files, coverage, notes, baseline, proposed_patch keys); completed here: multi-line patches, coverage context, finding files, commit lists",
+   "test": "tests/test_c6_open_low.py::test_the_wave_6_record_fields_are_accepted",
+   "commit": "bde03b1, 37a8f7c"
+  }
+ ],
+ "tests_added": 100
+}

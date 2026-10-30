@@ -7,6 +7,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page op-page">
   <div class="rp-page">
@@ -69,6 +71,8 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -81,6 +85,23 @@
     const FAMILY = { rule_state: 'rules', reorder: 'rules', url_categories: 'url_categories', zpa_domains: 'zpa_segments' };
     const S = { kind: 'rule_state', objects: {}, selected: new Set(), filter: '', policyFilter: '', order: null, orderPolicy: '', orderType: '',
       urlPick: new Set(), domPick: new Set(), assessor: '', preview: null, previewJob: null, spec: null, undoOf: null, write: null, busy: false, job: null, stopAsked: false, startToken: null };
+
+    // The typed confirmation, compared as the server does (security.typed_phrase_matches):
+    // surrounding spaces ignored, one character for one, case-insensitive only where the
+    // upper AND lower case forms agree, so a look-alike ('ı', 'ſ', full-width) never matches.
+    function phraseMatches(typed, phrase) {
+      const want = [...String(phrase || '').normalize('NFC').trim()], got = [...String(typed || '').normalize('NFC').trim()];
+      if (!want.length || got.length !== want.length) return false;
+      return got.every((a, i) => a === want[i] || (a.toUpperCase() === want[i].toUpperCase() && a.toLowerCase() === want[i].toLowerCase()));
+    }
+    // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+    function detailText(d, status) {
+      const x = d && d.detail;
+      if (typeof x === 'string' && x) return x;
+      if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+      if (Array.isArray(x) && x.length) return `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.`;
+      return `HTTP ${status}`;
+    }
 
     function newStartToken() {
       try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
@@ -138,11 +159,13 @@
 
     // ── Write mode, shown in the bar and in step 4 ──
     async function refreshWrite() {
+      const was = !!(S.write && S.write.enabled);
       try { const r = await fetch('/api/write-mode', { cache: 'no-store' }); S.write = r.ok ? await r.json() : null; } catch (e) { S.write = null; }
       const chip = $('opWrite'), on = !!(S.write && S.write.enabled);
       chip.textContent = on ? 'Write mode on' : 'Read-only';
       chip.className = 'df-chip ' + (on ? 'st-warn' : 'st-ok');
-      if (S.preview) renderApply();
+      // Coming back to the tab asks again; the apply form is redrawn only when the answer changed.
+      if (S.preview && on !== was) renderApply();
     }
     window.addEventListener('dlp:write-mode', refreshWrite);
     window.addEventListener('focus', refreshWrite);
@@ -172,7 +195,7 @@
       try {
         const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': S.startToken }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        if (!r.ok) throw new Error(detailText(d, r.status));
         S.job = d.job_id;
         if (S.stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(S.job)}/cancel`, { method: 'POST' }); } catch (e) { /* token */ } }
         let next = 0, misses = 0; const logs = [];
@@ -214,7 +237,7 @@
     (async function loadBuilders() {
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }
-      const box = $('opBuildKinds');
+      const box = $('opBuildKinds'), loaded = new Set();
       list.forEach(p => {
         if (!/^[a-z][a-z0-9_]{1,40}$/.test(p.type) || !/^[a-z][a-z0-9_]{1,40}$/.test(p.family)) return;
         FAMILY[p.type] = p.family;
@@ -223,7 +246,9 @@
         lab.innerHTML = `<input type="radio" name="opKind" value="${E(p.type)}"><span><strong>${E(p.label)}</strong><span class="df-hint">${E(p.hint)}</span></span>`;
         lab.querySelector('input').addEventListener('change', e => onKind(e.target));
         box.appendChild(lab);
-        if (/^ops_[a-z0-9_]{1,40}\.js$/.test(p.script || '')) {
+        // One script serves several types (ops_zpa.js has four): load each once.
+        if (/^ops_[a-z0-9_]{1,40}\.js$/.test(p.script || '') && !loaded.has(p.script)) {
+          loaded.add(p.script);
           const sc = document.createElement('script');
           sc.src = `/static/${p.script}`;
           document.body.appendChild(sc);
@@ -437,6 +462,8 @@
         renderPlan(res);
         const pdf = $('opPdf'); pdf.href = `/api/operations/jobs/${encodeURIComponent(S.previewJob)}/plan.pdf`; pdf.hidden = false;
         renderApply();
+        // An Undo starts from a button that the preview removes: focus goes to the plan it made.
+        if (undoOf) { const h = $('opH3'); h.tabIndex = -1; h.focus(); }
         say(`Preview ready: ${res.counts.change} to change, ${res.counts.noop} already as asked, ${res.counts.excluded} excluded.`);
       } catch (e) { S.preview = null; fail(where, 'The preview could not be made', e.message); say(`The preview could not be made: ${e.message}`); }
       finally { $('opPreview').disabled = !S.objects[FAMILY[S.kind]]; }
@@ -475,27 +502,49 @@
     // ── Step 4: apply ──
     function renderApply() {
       const p = S.preview, where = $('opApply');
-      if (!p) { where.innerHTML = ''; return; }
+      if (!p) { where.innerHTML = ''; delete where.dataset.plan; return; }
       const w = S.write || {}, on = !!w.enabled, ready = p.status === 'ready';
       const assessor = ($('opAssessor') || {}).value || S.assessor || openerAssessor();
+      // A redraw of the same plan keeps what was typed and ticked, and where the cursor was.
+      const same = where.dataset.plan === p.plan_hash && !!$('opPhrase') === !!p.confirm_phrase;
+      const kept = same ? { phrase: ($('opPhrase') || {}).value || '', agree: !!($('opAgree') || {}).checked, focus: where.contains(document.activeElement) ? document.activeElement.id : '' } : null;
+      where.dataset.plan = p.plan_hash;
       const gates = [];
       gates.push(on ? ['ok', 'Write mode is on.'] : ['no', w.can_toggle ? 'Write mode is off: turn it on in Deploy policy packs (you type the confirmation phrase), then come back.' : `Write mode is off${w.reason ? ': ' + w.reason : (w.how_to_enable ? ': ' + w.how_to_enable : '')}.`]);
       gates.push(ready ? ['ok', `${p.counts.change} change${p.counts.change === 1 ? '' : 's'} to apply.`] : ['no', p.status === 'blocked' ? 'The plan is blocked (see above).' : 'Nothing to change.']);
       where.innerHTML = `<ul class="op-gates">${gates.map(([s, t]) => `<li class="${s === 'ok' ? 'ok' : 'no'}"><span class="df-chip ${s === 'ok' ? 'st-ok' : 'st-warn'}">${s === 'ok' ? 'ready' : 'needed'}</span> ${E(t)}</li>`).join('')}</ul>
         <div class="op-row"><label class="df-ctl"><span class="lbl">Assessor's name</span><input id="opAssessor" value="${E(assessor)}" aria-label="Assessor's name" placeholder="Jane Doe, Zscaler DS Engineer"></label></div>
-        ${p.confirm_phrase ? `<div class="op-row"><label class="df-ctl"><span class="lbl">Type ${E(p.confirm_phrase)} to confirm</span><input id="opPhrase" autocomplete="off" aria-label="Type ${E(p.confirm_phrase)} to confirm"></label></div>` : ''}
+        ${p.confirm_phrase ? `<div class="op-row"><label class="df-ctl"><span class="lbl">Type <strong class="op-phrase">${E(p.confirm_phrase)}</strong> to confirm</span><input id="opPhrase" autocomplete="off" spellcheck="false" aria-label="Type ${E(p.confirm_phrase)} to confirm"></label></div>` : ''}
         <div class="op-row"><label class="df-ctl"><input type="checkbox" id="opAgree"><span>I reviewed this plan${S.undoOf ? ' (the Undo)' : ''} and the customer agreed to it.</span></label></div>
-        <div class="op-row"><button type="button" class="rp-btn primary" id="opGo"${on && ready ? '' : ' disabled'}>Apply ${E(p.counts.change)} change${p.counts.change === 1 ? '' : 's'}</button>
-          <span class="df-hint">Each item is read again right before its write; anything someone changed meanwhile is skipped, never overwritten.</span></div>`;
-      $('opAssessor').addEventListener('input', e => { S.assessor = e.target.value.trim(); });
-      const go = $('opGo'); if (go) go.addEventListener('click', apply);
+        <div class="op-row"><button type="button" class="rp-btn primary" id="opGo" disabled aria-describedby="opGoWhy">Apply ${E(p.counts.change)} change${p.counts.change === 1 ? '' : 's'}</button>
+          <span class="df-hint" id="opGoWhy" aria-live="polite"></span></div>
+        <div class="df-hint">Each item is read again right before its write; anything someone changed meanwhile is skipped, never overwritten.</div>`;
+      // Apply stays disabled until every gate on this page is met: write mode, a
+      // plan with changes, the assessor's name, the review box and the exact phrase.
+      const arm = () => {
+        const need = [];
+        if (!on) need.push('write mode');
+        if (!ready) need.push('a plan with changes');
+        if (!$('opAssessor').value.trim()) need.push("the assessor's name");
+        if (!$('opAgree').checked) need.push('the review box ticked');
+        if (p.confirm_phrase && !phraseMatches(($('opPhrase') || {}).value, p.confirm_phrase)) need.push(`${p.confirm_phrase} typed exactly`);
+        $('opGo').disabled = S.busy || need.length > 0;
+        $('opGoWhy').textContent = need.length ? `Still needed: ${need.join(', ')}.` : 'Ready to apply.';
+      };
+      $('opAssessor').addEventListener('input', e => { S.assessor = e.target.value.trim(); arm(); });
+      $('opAgree').addEventListener('change', arm);
+      const ph = $('opPhrase'); if (ph) ph.addEventListener('input', arm);
+      $('opGo').addEventListener('click', apply);
+      if (kept) { if (ph) ph.value = kept.phrase; $('opAgree').checked = kept.agree; }
+      arm();
+      if (kept && kept.focus && $(kept.focus)) $(kept.focus).focus();
     }
     async function apply() {
       if (S.busy || !S.preview) return;
       const where = $('opResult');
       if (!$('opAgree').checked) { say('Tick the box to confirm you reviewed the plan.'); $('opAgree').focus(); return; }
       const phrase = ($('opPhrase') || {}).value || '';
-      if (S.preview.confirm_phrase && phrase.trim().toUpperCase() !== S.preview.confirm_phrase) { say(`Type ${S.preview.confirm_phrase} to confirm.`); $('opPhrase').focus(); return; }
+      if (S.preview.confirm_phrase && !phraseMatches(phrase, S.preview.confirm_phrase)) { say(`Type ${S.preview.confirm_phrase} to confirm.`); $('opPhrase').focus(); return; }
       S.assessor = $('opAssessor').value.trim();
       if (!S.assessor) { say("Enter the assessor's name: the change record names who made it."); $('opAssessor').focus(); return; }
       const payload = body({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor });
@@ -512,7 +561,7 @@
       if (['refused', 'blocked'].includes(r.status)) { fail(where, 'Nothing was written', r.message || (r.blockers || []).join(' ')); return; }
       const c = r.counts_run || {}, v = r.verification || {}, act = r.activation;
       const head = { applied: ['Applied', 'info'], partial: ['Partly applied', 'warn'], failed: ['Not applied', 'risk'], stopped: ['Stopped', 'warn'], nothing_applied: ['Nothing applied', 'warn'], nothing_to_do: ['Nothing to change', 'info'] }[r.status] || [r.status, 'warn'];
-      where.innerHTML = `<div class="bp-card ${head[1]}" role="status"><div class="t">${E(head[0])}: ${E(r.title)}</div>
+      where.innerHTML = `<div class="bp-card ${head[1]}" role="status" tabindex="-1" id="opResultCard"><div class="t">${E(head[0])}: ${E(r.title)}</div>
           <div>${E(c.applied || 0)} applied, ${E(c.conflict || 0)} conflict${c.conflict === 1 ? '' : 's'}, ${E(c.failed || 0)} failed, ${E(c.skipped || 0)} not attempted, ${E(c.noop || 0)} already as asked, ${E(c.excluded || 0)} excluded.
           ${r.stopped ? ` ${E(r.stopped)}` : ''} Read back: ${E(v.confirmed || 0)} of ${E(v.checked || 0)} confirmed${(v.mismatched || []).length ? `; ${E(v.mismatched.join('; '))}` : ''}.
           ${act ? ` Activation: ${act.activated ? 'done' : E('not done: ' + (act.error || ''))}.` : r.product === 'zia' ? ' Nothing was activated (nothing was written).' : ''}
@@ -524,6 +573,8 @@
       const plugDone = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[r.type];
       if (plugDone && typeof plugDone.result === 'function') plugDone.result(r, where, H);   // e.g. a value shown once
       S.preview = null; renderApply();
+      // The Apply button just went away: keyboard focus moves to the outcome, not to the page top.
+      const card = $('opResultCard'); if (card) card.focus();
       say(`${head[0]}: ${c.applied || 0} applied, ${c.conflict || 0} conflicts, ${c.failed || 0} failed.`);
     }
 

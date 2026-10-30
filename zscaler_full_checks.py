@@ -12,7 +12,6 @@ These extend the DLP checks in dlp_assessment_full_auto.py.
 Import and append to REG to run a full platform assessment.
 """
 
-
 # Reuse the Result class and helpers from the main engine
 from dlp_assessment_full_auto import (R, _ls, _fv, _names, _enabled, _truthy, _cac_live, _cac_rules_all_types, _tenancy,
                                       _ssl_enabled, _ssl_action, _SSL_INSPECT, _SSL_DNI)
@@ -20,6 +19,13 @@ from dlp_assessment_full_auto import (R, _ls, _fv, _names, _enabled, _truthy, _c
 _FW_BP = " Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy"
 _POLICY_GUIDE = " Ref: https://help.zscaler.com/zscaler-deployments-operations/zia-policy-leading-practices-guide"
 _ZPA_GUIDE = " Ref: https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide"
+
+
+# ── A refused read is never judged ────────────────────────────────────
+# The guard (_ReadLog, permission_guarded, guard_registry) lives in the engine,
+# whose own registry runs through it too; it is re-exported here for the
+# platform, GenAI, automation, ZDX, ZIdentity and RBAC registries.
+from dlp_assessment_full_auto import _REFUSED, _ReadLog, _not_permitted, permission_guarded, guard_registry  # noqa: E402,F401
 
 
 def _items(cl, path):
@@ -58,12 +64,13 @@ def fw_1(cl):
 
 def fw_2(cl):
     """Firewall default rule action"""
-    d, c = cl.get("/zia/firewallFilteringRules")
-    r = _ls(d) if c in (200, 204) else []
-    default = [x for x in r if "default" in (x.get("name") or "").lower()]
+    r, c = _items(cl, "/zia/firewallFilteringRules")
+    # The predefined rule says so (defaultRule); a rule merely named "...default..." is a fallback.
+    default = [x for x in r if _truthy(_fv(x, "defaultRule"))] or [x for x in r if "default" in str(x.get("name") or "").lower()]
     if default:
-        act = default[0].get("action", "?")
-        if act.upper() in ("BLOCK_DROP", "BLOCK_RESET", "DROP"):
+        act = str(_fv(default[0], "action") or "?")
+        # Firewall filtering actions: ALLOW, BLOCK_DROP, BLOCK_RESET, BLOCK_ICMP, EVAL_NWAPP (ZIA API reference; assumed, the SDK does not list them).
+        if act.upper().startswith("BLOCK"):
             return R(R.PASS, f"Default rule action: {act}. Aligns with Zscaler best practice of deny-all default posture.")
         return R(R.WARN, f"Default rule action is {act}. Best Practice: Zscaler recommends enabling the Default Firewall Filtering Rule with the Block action and the lowest rule order, so anything no rule allows is dropped. Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy")
     return R(R.WARN, "No default firewall rule found. Best Practice: Enable the predefined Default Firewall Filtering Rule with the Block action at the lowest rule order, and keep the Recommended Firewall Rule as a narrow Allow for HTTP, HTTPS and DNS. Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy")
@@ -602,6 +609,8 @@ def zpa_8(cl):
     healthy = [x for x in r if _zpn_status(x) == _ZPN_UP]
     if not healthy:
         return R(R.FAIL, f"All {len(r)} service edges offline! Private brokering is down.")
+    if len(healthy) < len(r):
+        return R(R.WARN, f"{len(healthy)}/{len(r)} service edge(s) online. {len(r) - len(healthy)} offline — investigate to keep local brokering redundant.")
     return R(R.PASS, f"{len(healthy)}/{len(r)} service edge(s) online.")
 
 def zpa_9(cl):
@@ -714,7 +723,7 @@ def zcc_4(cl):
         return R(R.WARN, "No devices reporting to ZCC. Best Practice: All managed endpoints should have ZCC installed with Z-Tunnel 2.0 enabled, strict enforcement on, and tamper protection (disable/uninstall passwords) configured. Ref: Zscaler Client Connector Deployment and Operations Guide.")
     plat = {}
     for dv in devs[:500]:
-        o = (dv.get("osType") or dv.get("platform") or "?").lower()
+        o = str(dv.get("osType") or dv.get("platform") or "?").lower()   # the API reports osType as a number
         plat[o] = plat.get(o, 0) + 1
     return R(R.PASS, f"{len(devs)} device(s): {', '.join(f'{v}x{k}' for k,v in sorted(plat.items(), key=lambda x: -x[1]))}")
 
@@ -722,7 +731,8 @@ def zcc_5(cl):
     """Company info"""
     d, c = cl.get("/zcc/companyInfo")
     if c in (200, 204) and isinstance(d, dict):
-        name = d.get("companyName", d.get("name", "?"))
+        # getCompanyInfo names the company businessName (zscaler/zcc/models/company_info.py, SDK 1.11.3).
+        name = d.get("businessName") or d.get("companyName") or d.get("name") or "?"
         return R(R.PASS, f"Company: {name}")
     return R(R.WARN, "Cannot retrieve company info. Note: This may indicate the ZCC API scope is not enabled for this API client. Verify API role includes ZCC read permissions.")
 
@@ -1148,3 +1158,4 @@ PLATFORM_REG = [
     ("ZCC.25", "ZCC — Mobile Portal",    "ZPA group entitlements",              zcc_25),
     ("ZCC.26", "ZCC — Mobile Portal",    "Web app service exclusions",          zcc_26),
 ]
+PLATFORM_REG = guard_registry(PLATFORM_REG)

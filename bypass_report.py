@@ -60,16 +60,31 @@ def _rules_to_list(data: Any) -> List[Dict[str, Any]]:
 def _scope_summary(r: Dict[str, Any]) -> str:
     """Render a concise scope string for a rule."""
     parts = []
+    # Every "who / where from" condition the SDK models carry (as_dict is
+    # camelCase: zscaler/zia/models/ssl_inspection_rules.py,
+    # url_filtering_rules.py, cloud_firewall_rules.py, dlp_web_rules.py).
+    # A rule limited by any of them is not global, so it is not flagged as
+    # applying to everyone. destIpGroups narrows the destinations.
     for field, label in [
         ("users", "users"),
         ("groups", "groups"),
         ("departments", "depts"),
         ("locations", "locations"),
+        ("locationGroups", "locationGrps"),
         ("srcIpGroups", "srcIpGrps"),
+        ("sourceIpGroups", "srcIpGrps"),
         ("destIpGroups", "dstIpGrps"),
+        ("devices", "devices"),
+        ("deviceGroups", "deviceGrps"),
+        ("deviceTrustLevels", "trustLevels"),
+        ("platforms", "platforms"),
+        ("userAgentTypes", "userAgents"),
+        ("timeWindows", "timeWindows"),
+        ("workloadGroups", "workloadGrps"),
+        ("userRiskScoreLevels", "riskLevels"),
     ]:
         v = r.get(field)
-        if v:
+        if v and isinstance(v, (list, tuple)) and label not in {p.split(":")[0] for p in parts}:
             parts.append(f"{label}:{len(v)}")
     if not parts:
         return "global (unscoped)"
@@ -200,10 +215,23 @@ def _fetch_url_category_lookup(client) -> Dict[str, Dict[str, Any]]:
 
 # ── Section fetchers ─────────────────────────────────────────────────
 
+def _read_list(client, endpoint: str) -> tuple:
+    """(items, status) of a list endpoint. 204 is nothing there and 404 an
+    endpoint this tenant does not have (http_status says which); any other
+    status raises: an unreadable rule list (401, 403, 5xx) is "could not be
+    read", never "no bypass" (the section's diagnostic says why)."""
+    data, code = client.get(endpoint)
+    if code in (204, 404):
+        return [], code
+    if code != 200:
+        err = data.get("error") or data.get("message") if isinstance(data, dict) else ""
+        raise RuntimeError(f"HTTP {code} from {endpoint}" + (f": {str(err)[:160]}" if err else "") + "; the section could not be read")
+    return _rules_to_list(data), code
+
+
 def _fetch_ssl_bypass(client) -> Dict[str, Any]:
     """SSL inspection rules with non-decrypt action."""
-    data, code = client.get("/zia/sslInspectionRules")
-    rules = _rules_to_list(data) if code == 200 else []
+    rules, code = _read_list(client, "/zia/sslInspectionRules")
     non_inspect = [_normalize_rule(r, "ssl_inspection_rule")
                    for r in rules if _action_of(r) in BYPASS_ACTIONS]
     return {
@@ -222,12 +250,13 @@ def _fetch_ssl_exemptions(client) -> Dict[str, Any]:
         ("/zia/advancedSettings", "advanced"),
     ]
     for ep, label in candidates:
-        try:
-            data, code = client.get(ep)
-        except Exception:
-            continue
+        data, code = client.get(ep)
         out["endpoints_probed"].append({"endpoint": ep, "status": code})
-        if code != 200 or not isinstance(data, (dict, list)):
+        if code == 404:
+            continue
+        if code != 200:
+            raise RuntimeError(f"HTTP {code} from {ep}; the SSL exemption settings could not be read")
+        if not isinstance(data, (dict, list)):
             continue
         if isinstance(data, list):
             for item in data:
@@ -243,15 +272,16 @@ def _fetch_ssl_exemptions(client) -> Dict[str, Any]:
                                 "source": ep, "field": k,
                                 "value": item if isinstance(item, (str, int)) else json.dumps(item)[:300],
                             })
-                    else:
-                        out["items"].append({"source": ep, "field": k, "value": str(v)[:300]})
+                    elif isinstance(v, str) and v.strip():
+                        # A switch (enableEvaluatePolicyOnGlobalSSLBypass: false), a
+                        # number or nothing is a setting, not an exempted value.
+                        out["items"].append({"source": ep, "field": k, "value": v[:300]})
     out["count"] = len(out["items"])
     return out
 
 
 def _fetch_urlfilter_bypass(client) -> Dict[str, Any]:
-    data, code = client.get("/zia/urlFilteringRules")
-    rules = _rules_to_list(data) if code == 200 else []
+    rules, code = _read_list(client, "/zia/urlFilteringRules")
     allow = [_normalize_rule(r, "url_filtering_rule")
              for r in rules if _action_of(r) in BYPASS_ACTIONS]
     return {
@@ -264,8 +294,7 @@ def _fetch_urlfilter_bypass(client) -> Dict[str, Any]:
 
 
 def _fetch_firewall_bypass(client) -> Dict[str, Any]:
-    data, code = client.get("/zia/firewallFilteringRules")
-    rules = _rules_to_list(data) if code == 200 else []
+    rules, code = _read_list(client, "/zia/firewallFilteringRules")
     allow = [_normalize_rule(r, "firewall_rule")
              for r in rules if _action_of(r) in BYPASS_ACTIONS]
     return {
@@ -278,8 +307,7 @@ def _fetch_firewall_bypass(client) -> Dict[str, Any]:
 
 
 def _fetch_dlp_bypass(client) -> Dict[str, Any]:
-    data, code = client.get("/zia/webDlpRules")
-    rules = _rules_to_list(data) if code == 200 else []
+    rules, code = _read_list(client, "/zia/webDlpRules")
     allow = [_normalize_rule(r, "web_dlp_rule")
              for r in rules if _action_of(r) in BYPASS_ACTIONS]
     return {
@@ -451,8 +479,8 @@ def _aggregate_bypasses(sections: Dict[str, Any], url_cat_lookup: Optional[Dict[
         entry = bucket.setdefault(key, {"value": key, "count": 0, "rules": []})
         entry["count"] += 1
         # De-dup the rule list by (source, id) to avoid noise when the same rule has many items
-        sig = (ctx.get("source"), ctx.get("id"))
-        if sig not in {(r.get("source"), r.get("id")) for r in entry["rules"]}:
+        sig = (str(ctx.get("source")), str(ctx.get("id")))   # str: an id the tenant sends as a list or object is still a key
+        if sig not in {(str(r.get("source")), str(r.get("id"))) for r in entry["rules"]}:
             entry["rules"].append(ctx)
 
     for section_key in ("ssl_bypass_rules", "url_filter_allow", "firewall_allow", "dlp_allow"):
@@ -666,6 +694,13 @@ def generate_bypass_report(client, scope: Optional[Dict[str, Any]] = None) -> Di
             diagnostics.append({"section": key, "error": blocked[part], "error_type": "unmet_dependency"})
         elif part in read:
             sections[key] = _safe(key, lambda fetch=fetch: fetch(client))
+            if sections[key].get("error") and not sections[key].get("status"):
+                sections[key]["status"] = "unverified"
+            probed = sections[key].get("endpoints_probed") if key == "zcc" else None
+            if probed and not any(int(p.get("status") or 0) == 200 for p in probed):
+                sections[key]["status"] = "unverified"
+                diagnostics.append({"section": key, "error_type": "unreadable",
+                                    "error": "No Client Connector endpoint answered (" + ", ".join(f"{p.get('endpoint')}: {p.get('status')}" for p in probed)[:240] + ")"})
         else:
             not_in_scope[key] = why.get(part) or "Not in scope on the Scope page, so it was not read."
             sections[key] = {"not_in_scope": not_in_scope[key], "items": [], "count": 0}
@@ -971,20 +1006,23 @@ def to_markdown(report: Dict[str, Any]) -> str:
             db_urls = cat.get("db_urls") or []
             keywords = cat.get("keywords") or []
             ref = cat.get("referenced_by_rule", {}) or {}
-            out.append(f"### {cat.get('category')} [{typ}]")
-            out.append(f"_Referenced by `{ref.get('source','?')}#{ref.get('id','?')}` — **{ref.get('name','?')}** (action `{ref.get('action','?')}`)_")
+            # Category names, rule names, URLs and keywords are tenant text: inert.
+            out.append(f"### {md_safe.text(cat.get('category'))} [{md_safe.text(typ)}]")
+            where = f"{ref.get('source', '?')}#{ref.get('id', '?')}"
+            out.append(f"_Referenced by {md_safe.code(where)} — **{md_safe.text(ref.get('name', '?'))}** "
+                       f"(action {md_safe.code(ref.get('action', '?'))})_")
             if "note" in cat:
-                out.append(f"> {cat['note']}\n")
+                out.append(f"> {md_safe.text(cat['note'])}\n")
             if urls:
                 out.append(f"**URLs ({len(urls)}):**")
-                for u in urls[:200]: out.append(f"- `{u}`")
+                for u in urls[:200]: out.append(f"- {md_safe.code(u, 300)}")
                 if len(urls) > 200: out.append(f"- _...and {len(urls) - 200} more_")
             if db_urls:
                 out.append(f"\n**DB-Categorized URLs ({len(db_urls)}):**")
-                for u in db_urls[:200]: out.append(f"- `{u}`")
+                for u in db_urls[:200]: out.append(f"- {md_safe.code(u, 300)}")
                 if len(db_urls) > 200: out.append(f"- _...and {len(db_urls) - 200} more_")
             if keywords:
-                out.append(f"\n**Keywords ({len(keywords)}):** {', '.join(f'`{k}`' for k in keywords[:50])}")
+                out.append(f"\n**Keywords ({len(keywords)}):** {', '.join(md_safe.code(k, 120) for k in keywords[:50])}")
             out.append("")
         if len(cats) > 100:
             out.append(f"_...and {len(cats) - 100} more categories. See JSON export for the complete list._\n")

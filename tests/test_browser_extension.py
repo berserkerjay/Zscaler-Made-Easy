@@ -95,7 +95,8 @@ console.log(JSON.stringify(out));
                        capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
-    assert out["app"] == ["http://127.0.0.1:8001", "http://localhost:8000", "https://127.0.0.1", "http://[::1]:8000",
+    # https and [::1] are refused: the manifest's CSP connect-src and host_permissions allow neither (C6-UI-OPS-07).
+    assert out["app"] == ["http://127.0.0.1:8001", "http://localhost:8000", None, None,
                           None, None, None, None, None, None]
     assert out["url"] == ["https://drive.google.com/u/0/upload", "https://example.com", None, None, None, "http://10.0.0.5:8080/a"], \
         "query strings and fragments never travel"

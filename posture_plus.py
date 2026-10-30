@@ -42,6 +42,7 @@ documented heuristic (effort_for):
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import tempfile
@@ -255,7 +256,8 @@ def queued_fixes(requests: Iterable[Dict[str, Any]], failing_ids: Iterable[str])
             continue
         base = {"request": r.get("id"), "title": str(r.get("title") or "")[:200], "status": r.get("status"),
                 "tenant": r.get("tenant_label") or r.get("tenant"), "kind": r.get("kind")}
-        cid = str(((r.get("payload") or {}).get("check_id")) or "")
+        payload = r.get("payload") if isinstance(r.get("payload"), dict) else {}
+        cid = str(payload.get("check_id") or "")
         if r.get("kind") == "fix_recipe" and cid in failing:
             counted.append(dict(base, check_id=cid))
         elif r.get("kind") == "fix_recipe":
@@ -325,7 +327,9 @@ def diff(prev: Dict[str, Any], cur: Dict[str, Any], labels: Optional[Dict[str, s
         out["sentence"] = sentence(out)
         return out
     for cid in sorted(set(a) | set(b), key=_natural):
-        x, y = a.get(cid), b.get(cid)
+        # A state is one of the codes; anything else (a hand-edited or
+        # damaged history) reads as "not run", never an exception.
+        x, y = (v if isinstance(v, str) else None for v in (a.get(cid), b.get(cid)))
         if x == y:
             continue
         row = {"id": cid, "label": labels.get(cid, cid), "from": CODE_WORDS.get(x, "not run"), "to": CODE_WORDS.get(y, "not run")}
@@ -399,11 +403,14 @@ def settings() -> Dict[str, Any]:
 
 
 def normalise_settings(data: Dict[str, Any]) -> Dict[str, Any]:
+    """The two settings from whatever the file or request holds: anything
+    that is not a finite number is the default, never an exception."""
+    data = data if isinstance(data, dict) else {}
     try:
-        pts = int(float((data or {}).get("score_drop_points", DEFAULT_DROP_POINTS)))
-    except (TypeError, ValueError):
+        pts = int(float(data.get("score_drop_points", DEFAULT_DROP_POINTS)))
+    except (TypeError, ValueError, OverflowError):   # Infinity in a hand-edited file: no number
         pts = DEFAULT_DROP_POINTS
-    return {"score_drop_points": max(1, min(100, pts)), "notify_score_drop": (data or {}).get("notify_score_drop") is True}
+    return {"score_drop_points": max(1, min(100, pts)), "notify_score_drop": data.get("notify_score_drop") is True}
 
 
 def save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -425,7 +432,9 @@ def save_settings(data: Dict[str, Any]) -> Dict[str, Any]:
 def score_drop(prev_score: Any, cur_score: Any, threshold: Optional[int] = None) -> Optional[int]:
     """The points lost when the score fell by at least `threshold`, else None."""
     t = settings()["score_drop_points"] if threshold is None else int(threshold)
-    if not isinstance(prev_score, (int, float)) or not isinstance(cur_score, (int, float)):
+    # A score is a finite number (0-100); a hand-edited history may hold
+    # true, NaN or Infinity, which are no score (and int(inf) would raise).
+    if not all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in (prev_score, cur_score)):
         return None
     lost = prev_score - cur_score
     return int(lost) if lost >= t else None
@@ -460,7 +469,7 @@ def tenant_alerts(tenant: Dict[str, Any], history: Iterable[Dict[str, Any]], *, 
     a = latest_drop(history, t)
     if a and ("assessment", str(a["at"])) not in seen:
         out.append(a)
-    dr = (tenant or {}).get("drift") or {}
+    dr = (tenant or {}).get("drift") if isinstance((tenant or {}).get("drift"), dict) else {}
     lost = score_drop(dr.get("previous_score"), dr.get("score"), t)
     if lost is not None:
         out.append({"kind": "journey", "what": "Data governance journey score", "points": lost, "from": dr.get("previous_score"),
@@ -575,11 +584,13 @@ def coverage(report: Dict[str, Any], logs: Iterable[str] = ()) -> Dict[str, Any]
         if ep and ep not in g["endpoints"]:
             g["endpoints"].append(ep)
     # The Scope page: per channel left to another product or as a gap.
-    cc = report.get("channel_coverage") or {}
+    cc = report.get("channel_coverage") if isinstance(report.get("channel_coverage"), dict) else {}
     scoped = 0
     for kind, word in (("alternative", "covered by another product"), ("gaps", "not ticked (a gap)")):
-        for ch in cc.get(kind) or []:
-            n = int(ch.get("checks_not_in_scope") or 0)
+        for ch in cc.get(kind) if isinstance(cc.get(kind), list) else []:
+            if not isinstance(ch, dict):
+                continue
+            n = _count(ch.get("checks_not_in_scope"))
             if n:
                 scoped += n
                 groups[("scope", str(ch.get("name")))] = {
@@ -587,7 +598,7 @@ def coverage(report: Dict[str, Any], logs: Iterable[str] = ()) -> Dict[str, Any]
                     "checks": [], "count": n, "endpoints": [],
                     "why": f"The Scope page marks {ch.get('name') or ch.get('id')} as {word}, so its {n} check{'s' if n != 1 else ''} did not run.",
                     "fix": _fix_for("scope", "")}
-    hidden = int(report.get("hidden_checks") or cc.get("hidden") or 0)
+    hidden = _count(report.get("hidden_checks") or cc.get("hidden"))
     if hidden > scoped:
         n = hidden - scoped
         groups[("scope", "Other scopes")] = {"category": "scope", "category_label": CATEGORIES["scope"], "area": "Selected scopes",
@@ -619,6 +630,16 @@ def coverage(report: Dict[str, Any], logs: Iterable[str] = ()) -> Dict[str, Any]
             "sentence": (f"Coverage: {round(ran / total * 100)}% of checks ran ({ran} of {total})." if total else "Coverage: no assessment results yet.")
                         + (f" {not_ran} could not be checked; the list says why and how to fix it." if not_ran else ""),
             "by_category": {c: sum(int(g["count"] or 0) for g in items if g["category"] == c) for c in order}}
+
+
+def _count(v: Any) -> int:
+    """A count from the page's results (request data): a whole number from
+    0 to MAX_STATES; anything else is 0, never an exception."""
+    try:
+        n = int(v or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, min(MAX_STATES, n))
 
 
 def _endpoint_of(text: str) -> str:

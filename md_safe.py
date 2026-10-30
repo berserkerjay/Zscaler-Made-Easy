@@ -29,12 +29,34 @@ _BREAKS = re.compile(r"[\r\n\t\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u2028\u2029\u0085]+
 # itself. Emphasis characters (* _ ~) are left alone: at worst they change
 # how a name is styled, and identifiers such as FILE_TYPE stay readable.
 _SPECIAL = re.compile(r"([\\`\[\]|])")
+# What makes a line an ATX heading, a list item, a thematic break or a
+# setext underline when a value starts it ("- {name}" too: "- # x" is a
+# heading inside the item; > is already an entity). Its marker is
+# backslash-escaped, which every Markdown viewer shows as the character
+# itself; "-5" or a lone "-" is left as it is.
+_BLOCK_START = re.compile(r"^(?:#{1,6}(?=\s|$)|[-+*](?=\s)|([-*_])(?:\s*\1){2,}\s*$|=+\s*$|\d{1,9}(?=[.)](?:\s|$)))")
+
+
+# Explicit bidirectional embeddings, overrides and isolates (U+202A-U+202E,
+# U+2066-U+2069). A tenant name holding U+202E (right-to-left override)
+# turns the rest of its line around in a viewer, so a sentence such as
+# "rule X allows uploads" reads as something else (CWE-451). Names never
+# need them (right-to-left scripts display by the implicit algorithm);
+# each becomes U+FFFD so the oddity stays visible. Zero-width joiners and
+# spaces are left alone: some scripts need them.
+BIDI_CONTROLS = re.compile("[\u202a-\u202e\u2066-\u2069]")
+
+
+def no_bidi(value: Any) -> str:
+    """The value with every explicit bidirectional control shown as U+FFFD."""
+    return BIDI_CONTROLS.sub("\ufffd", "" if value is None else str(value))
 
 
 def one_line(value: Any) -> str:
     """The value as a single line: line and paragraph breaks and other
-    control characters become one space."""
-    return _BREAKS.sub(" ", "" if value is None else str(value)).strip()
+    control characters become one space, and a bidirectional control
+    U+FFFD (no_bidi)."""
+    return no_bidi(_BREAKS.sub(" ", "" if value is None else str(value))).strip()
 
 
 def text(value: Any, limit: Optional[int] = None) -> str:
@@ -45,7 +67,11 @@ def text(value: Any, limit: Optional[int] = None) -> str:
     # < and > as entities: no tag, no autolink. & stays: an entity in a
     # value can only ever decode to a character, never to markup.
     s = s.replace("<", "&lt;").replace(">", "&gt;")
-    return _SPECIAL.sub(r"\\\1", s)
+    s = _SPECIAL.sub(r"\\\1", s)
+    m = _BLOCK_START.match(s)
+    if m:
+        s = s[: m.end()] + "\\" + s[m.end():] if m.group(0)[0].isdigit() else "\\" + s
+    return s
 
 
 def code(value: Any, limit: Optional[int] = None) -> str:
@@ -71,9 +97,10 @@ def cell_code(value: Any, limit: Optional[int] = None) -> str:
 
 def url(value: Any) -> Optional[str]:
     """``value`` as a Markdown link target when it is an http(s) or mailto
-    URL without spaces or angle brackets; None otherwise (show it as text)."""
+    URL without spaces, angle brackets or a pipe (which would split a table
+    row); None otherwise (show it as text)."""
     s = one_line(value)
-    if not re.match(r"(?i)^(https?://|mailto:)[^\s<>()\[\]`]+$", s):
+    if not re.match(r"(?i)^(https?://|mailto:)[^\s<>()\[\]`|]+$", s):
         return None
     return s
 
@@ -90,10 +117,9 @@ def link(label: Any, target: Any) -> str:
 
 def escape_data(obj: Any) -> Any:
     """A copy of ``obj`` with every string value made inert by ``text``
-    (an http(s) or mailto URL without a pipe is kept as it is, so it still
-    links). Dict keys, numbers, booleans and None are unchanged."""
+    (an http(s) or mailto URL is kept as it is, so it still links). Dict keys, numbers, booleans and None are unchanged."""
     if isinstance(obj, str):
-        return obj if (url(obj) == obj and "|" not in obj) else text(obj)
+        return obj if url(obj) == obj else text(obj)
     if isinstance(obj, dict):
         return {k: escape_data(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple, set, frozenset)):

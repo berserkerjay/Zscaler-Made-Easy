@@ -73,6 +73,20 @@ ACTION_PRIORITY = {
     "DO_NOT_INSPECT": 50,
 }
 
+def _word(value: Any) -> str:
+    """A rule's action or state as an upper-case word; a value of another
+    type (an uploaded rule list is untrusted) reads as text, never a crash."""
+    return "" if value is None else str(value).strip().upper()
+
+
+def _text(value: Any) -> str:
+    return "" if value is None else str(value)
+
+
+def _count(value: Any) -> int:
+    return len(value) if isinstance(value, (list, tuple, dict, set)) else 1
+
+
 # How specific is a rule? Higher = more specific (should come first within tier)
 def _specificity_score(rule: Dict[str, Any]) -> int:
     """Score a rule's scope specificity. More specific rules fire first."""
@@ -80,13 +94,13 @@ def _specificity_score(rule: Dict[str, Any]) -> int:
     # Each scoping dimension adds points
     for field in ("users", "groups", "departments", "locations"):
         if rule.get(field):
-            score += 10 + len(rule.get(field, []))
+            score += 10 + _count(rule.get(field))
     for field in ("urlCategories", "cloudApplications", "fileTypes"):
         if rule.get(field):
-            score += 5 + len(rule.get(field, []))
+            score += 5 + _count(rule.get(field))
     for field in ("srcIpGroups", "destIpGroups", "srcIps", "destIps"):
         if rule.get(field):
-            score += 3 + len(rule.get(field, []))
+            score += 3 + _count(rule.get(field))
     if rule.get("dlpEngines") or rule.get("engines"):
         score += 5
     return score
@@ -94,7 +108,7 @@ def _specificity_score(rule: Dict[str, Any]) -> int:
 
 def _action_key(rule: Dict[str, Any]) -> int:
     """Get normalized action priority."""
-    action = (rule.get("action") or "").upper().replace(" ", "_")
+    action = _word(rule.get("action")).replace(" ", "_")
     return ACTION_PRIORITY.get(action, 30)
 
 
@@ -105,7 +119,8 @@ def _category_keys(rule: Dict[str, Any]) -> set:
     """A rule's URL categories as a set (a category given as an object is
     compared by its JSON text)."""
     out = set()
-    for c in rule.get("urlCategories") or []:
+    cats = rule.get("urlCategories") or []
+    for c in (cats if isinstance(cats, (list, tuple)) else [cats]):
         out.add(c if isinstance(c, (str, int, float, bool)) else json.dumps(c, sort_keys=True, default=str))
     return out
 
@@ -127,22 +142,23 @@ def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     # Index by name to detect duplicates
     by_name = {}
+    duplicate_names: set = set()
     engines_used = {}
     # Block rules by URL category, so each Allow rule is compared with the
     # Block rules that share a category, not with every rule (thousands of
     # uploaded rules otherwise take minutes); and the pairs listed are capped.
     blocks_by_cat: Dict[Any, List[int]] = {}
     for j, other in enumerate(rules):
-        if (other.get("action") or "").upper() in ("BLOCK", "BLOCK_DROP"):
+        if _word(other.get("action")) in ("BLOCK", "BLOCK_DROP"):
             for cat in _category_keys(other):
                 blocks_by_cat.setdefault(cat, []).append(j)
     overlaps, unlisted = 0, False
 
     for i, r in enumerate(rules):
         rid = str(r.get("id", i + 1))
-        name = (r.get("name") or f"Rule {rid}").strip()
-        state = (r.get("state") or "ENABLED").upper()
-        action = (r.get("action") or "?").upper()
+        name = _text(r.get("name") or f"Rule {rid}").strip()
+        state = _word(r.get("state")) or "ENABLED"
+        action = _word(r.get("action")) or "?"
         actions[action] = actions.get(action, 0) + 1
 
         if state != "ENABLED":
@@ -157,6 +173,7 @@ def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         # Duplicate names
         if name in by_name:
+            duplicate_names.add(name)
             issues.append({
                 "severity": "WARNING",
                 "rule_id": rid,
@@ -167,8 +184,11 @@ def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
         by_name[name] = rid
 
         # Engine reuse
-        for eng in (r.get("dlpEngines") or r.get("engines") or []):
+        engs = r.get("dlpEngines") or r.get("engines") or []
+        for eng in (engs if isinstance(engs, (list, tuple)) else [engs]):
             eid = eng.get("id") if isinstance(eng, dict) else eng
+            if not isinstance(eid, (str, int, float, bool, type(None))):
+                eid = json.dumps(eid, sort_keys=True, default=str)
             engines_used.setdefault(eid, []).append((rid, name))
 
         # Block rule without engines = overbroad
@@ -214,7 +234,7 @@ def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
                     "rule_id": rid,
                     "rule_name": name,
                     "type": "Conflicting Overlap",
-                    "message": f"Allows overlap with Block in rule '{(other.get('name') or '?')}' on categories: {', '.join(sorted(map(str, shared)))}. Under Evaluate All, block wins.",
+                    "message": f"Allows overlap with Block in rule '{_text(other.get('name') or '?')}' on categories: {', '.join(sorted(map(str, shared)))}. Under Evaluate All, block wins.",
                 })
 
     if unlisted:
@@ -233,7 +253,7 @@ def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
         "action_counts": actions,
         "global_scoped_rules": global_scoped,
         "specific_scoped_rules": specific_scoped,
-        "duplicate_names": sum(1 for v in by_name.values() if isinstance(v, list)),
+        "duplicate_names": len(duplicate_names),   # names carried by more than one rule
         "shared_engines": {eid: len(uses) for eid, uses in engines_used.items() if len(uses) > 1},
         "issues": issues,
         "issue_count": len(issues),
@@ -249,17 +269,18 @@ def reorder_for_eval_all(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
       4. Alert / Audit rules
       5. Allow / Bypass rules (least restrictive)
 
-    Within each tier, more specific rules come first. Disabled rules
-    go to the end to keep them out of the way.
+    Within each tier, more specific rules come first; rules with the same
+    action and specificity keep their current relative order (under
+    Evaluate All Rules order still matters between matching rules with the
+    same action, so the admin's order is kept, never re-sorted by name).
+    Disabled rules go to the end to keep them out of the way.
     """
-    enabled = [r for r in rules if (r.get("state") or "ENABLED").upper() == "ENABLED"]
-    disabled = [r for r in rules if (r.get("state") or "ENABLED").upper() != "ENABLED"]
+    enabled = [r for r in rules if (_word(r.get("state")) or "ENABLED") == "ENABLED"]
+    disabled = [r for r in rules if (_word(r.get("state")) or "ENABLED") != "ENABLED"]
 
-    # Sort enabled: (action_priority asc, specificity desc)
-    enabled_sorted = sorted(
-        enabled,
-        key=lambda r: (_action_key(r), -_specificity_score(r), (r.get("name") or "")),
-    )
+    # Sort enabled: (action_priority asc, specificity desc); sorted() is
+    # stable, so ties stay in their current order.
+    enabled_sorted = sorted(enabled, key=lambda r: (_action_key(r), -_specificity_score(r)))
 
     # Preserve order of disabled
     out = enabled_sorted + disabled
@@ -283,7 +304,7 @@ def generate_migration_plan(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
       - checklist: step-by-step migration checklist
     """
     analysis = analyze_rules(rules)
-    reordered = reorder_for_eval_all(list(rules))
+    reordered = reorder_for_eval_all([dict(r) for r in rules])   # copies: the caller's rules are not stamped
 
     # Build diff map: rule_id -> (old_pos, new_pos)
     orig_by_id = {str(r.get("id", i+1)): i+1 for i, r in enumerate(rules)}
@@ -295,7 +316,7 @@ def generate_migration_plan(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
             diff.append({
                 "rule_id": rid,
                 "rule_name": r.get("name", f"Rule {rid}"),
-                "action": (r.get("action") or "?").upper(),
+                "action": _word(r.get("action")) or "?",
                 "old_position": old_pos,
                 "new_position": new_pos,
                 "shift": (old_pos - new_pos) if old_pos else None,
@@ -417,13 +438,24 @@ def fetch_current_rules(client, rule_type: str = "web_dlp") -> List[Dict[str, An
     data, code = client.get(endpoint)
     if code not in (200, 204):
         return []
+    rows: List[Any] = []
     if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
+        rows = data
+    elif isinstance(data, dict):
         for k in ("list", "data", "items", "rules"):
             if k in data and isinstance(data[k], list):
-                return data[k]
-    return []
+                rows = data[k]
+                break
+    # In ZIA's evaluation order: the list's position is what every later step
+    # reads as the rule's order (the plan's diff, the backup a post restores),
+    # so a response not already sorted by `order` must not reorder the policy.
+    # Rules with no numeric order keep their place after the numbered ones.
+    rules = [r for r in rows if isinstance(r, dict)]
+
+    def _order(r: Dict[str, Any]):
+        o = r.get("order")
+        return (0, int(o)) if isinstance(o, int) and not isinstance(o, bool) else (0, int(o)) if isinstance(o, str) and o.strip().isdigit() else (1, 0)
+    return sorted(rules, key=_order)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -631,8 +663,14 @@ def assess_current_status(client) -> Dict[str, Any]:
                 feature_available = _is_truthy(match_value)
                 feature_source = path_str + " (capability flag — not the mode selector)"
             continue
-        # Mode-bearing endpoint → this is the actual current selection
-        evaluate_all = _is_truthy(match_value)
+        # Mode-bearing endpoint → this is the actual current selection.
+        # A key named for first match / rule order says the opposite of
+        # Evaluate All: true there means Rule Order.
+        mk = str(match_key).lower().replace("_", "").replace("-", "")
+        if isinstance(match_value, bool) and ("firstmatch" in mk or "ruleorder" in mk):
+            evaluate_all = not match_value
+        else:
+            evaluate_all = _is_truthy(match_value)
         found_via = path_str
         break
 
@@ -655,8 +693,10 @@ def assess_current_status(client) -> Dict[str, Any]:
                         real = sample_lower.get(fld.lower())
                         if real is not None:
                             # Per-rule: if any rule has it true, mode is Evaluate All
+                            # Read as the mode words are everywhere else: "BY_RULE_ORDER" is a
+                            # non-empty string, and it means Rule Order.
                             any_true = any(
-                                bool(r.get(real)) for r in rules_probe if isinstance(r, dict)
+                                _is_truthy(r.get(real)) for r in rules_probe if isinstance(r, dict)
                             )
                             evaluate_all = any_true
                             found_via = f"/zia/webDlpRules[*].{real} (per-rule field; any-true = {any_true})"
@@ -670,10 +710,10 @@ def assess_current_status(client) -> Dict[str, Any]:
 
     # Rule posture
     rules = fetch_current_rules(client, "web_dlp")
-    enabled = [r for r in rules if (r.get("state") or "ENABLED").upper() == "ENABLED"]
+    enabled = [r for r in rules if (_word(r.get("state")) or "ENABLED") == "ENABLED"]
     actions = {}
     for r in enabled:
-        a = (r.get("action") or "?").upper()
+        a = _word(r.get("action")) or "?"
         actions[a] = actions.get(a, 0) + 1
 
     # Is current order already safe for Evaluate All?
@@ -799,15 +839,18 @@ def optimize_for_eval_all_with_exceptions(
         "safe_to_import": bool,
       }
     """
-    exceptions = exceptions or {}
-    original = list(rules)
-    working = [dict(r) for r in rules]  # deep-ish copy
+    exceptions = exceptions if isinstance(exceptions, dict) else {}
+    original = [r for r in rules if isinstance(r, dict)]
+    # Copies: the caller's rules are never changed, and a rule kept in place
+    # by skip_rule_ids is the same copy the conversions changed.
+    working = [dict(r) for r in original]
 
     # 1. Apply audit-only conversions for specified actions
     conversions = []
-    audit_only = [a.upper() for a in (exceptions.get("audit_only_actions") or [])]
+    audit = exceptions.get("audit_only_actions") or []
+    audit_only = [_word(a) for a in (audit if isinstance(audit, (list, tuple)) else [audit])]
     for r in working:
-        act = (r.get("action") or "").upper()
+        act = _word(r.get("action"))
         if act in audit_only:
             r["_original_action"] = act
             r["action"] = "ALERT"  # audit-only without enforcement
@@ -824,9 +867,14 @@ def optimize_for_eval_all_with_exceptions(
 
     # 3. Apply pinned positions (force a specific rule to a specific position)
     pinned = exceptions.get("pinned") or {}
-    if pinned.get("rule_id") and pinned.get("position"):
+    pinned = pinned if isinstance(pinned, dict) else {}
+    try:
+        pin_pos = int(pinned.get("position") or 0)
+    except (TypeError, ValueError, OverflowError):
+        pin_pos = 0   # not a position: nothing is pinned (the response echoes what was given)
+    if pinned.get("rule_id") and pin_pos:
         target_id = str(pinned["rule_id"])
-        target_pos = max(1, int(pinned["position"])) - 1
+        target_pos = max(1, pin_pos) - 1
         idx = None
         for i, r in enumerate(reordered):
             if str(r.get("id")) == target_id:
@@ -837,10 +885,11 @@ def optimize_for_eval_all_with_exceptions(
             reordered.insert(min(target_pos, len(reordered)), rule)
 
     # 4. Honor skip list (leave these rules in their original position)
-    skip_ids = {str(x) for x in (exceptions.get("skip_rule_ids") or [])}
+    skip = exceptions.get("skip_rule_ids") or []
+    skip_ids = {str(x) for x in (skip if isinstance(skip, (list, tuple, set)) else [skip])}
     if skip_ids:
         # Build final: keep skipped at original positions, fill others around
-        skipped = [(i, r) for i, r in enumerate(original) if str(r.get("id")) in skip_ids]
+        skipped = [(i, r) for i, r in enumerate(working) if str(r.get("id")) in skip_ids]
         others = [r for r in reordered if str(r.get("id")) not in skip_ids]
         final = list(others)
         for orig_pos, rule in skipped:
@@ -862,7 +911,7 @@ def optimize_for_eval_all_with_exceptions(
             diff.append({
                 "rule_id": rid,
                 "rule_name": r.get("name", f"Rule {rid}"),
-                "action": (r.get("action") or "?").upper(),
+                "action": _word(r.get("action")) or "?",
                 "old_position": old_pos,
                 "new_position": new_pos,
             })
@@ -1081,8 +1130,11 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     ]
     # Write path probes MODE-BEARING endpoints only — NOT the feature-flag
     # capability endpoints (writing DLP_RULE_EVALUATE_ALL=True to
-    # /zia/featureFlags would not change the active mode).
+    # /zia/featureFlags would not change the active mode). The documented
+    # one first: GET/PUT /webDlpGlobalOptions, enableEvaluateAllDlpRules
+    # (zscaler-sdk-python 1.11.3 zia/web_dlp_global_options.py).
     candidate_endpoints = [
+        "/zia/webDlpGlobalOptions",
         "/zia/dlpAdvancedSettings", "/zia/advancedSettings",
         "/zia/security/advanced", "/zia/dlpEvaluateAllRulesSetting",
         "/zia/advancedSettings/dlp", "/zia/dlpSettings",
@@ -1138,10 +1190,20 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         # 'dlpRuleEvaluateAll' — they must match for the PUT to stick).
         def _norm(s): return s.lower().replace("_", "").replace("-", "")
         norm_keys = {_norm(k): k for k in current_data.keys()}
-        server_key = norm_keys.get(_norm(field), field)
+        server_key = norm_keys.get(_norm(field))
         rec["server_key"] = server_key
+        if server_key is None:
+            # Deny by default: a field the endpoint does not carry is never
+            # written into it (a guessed key on a settings object is a change
+            # nobody can predict).
+            rec["phase"] = "get"; rec["skip_reason"] = "field not on this endpoint"
+            return False, rec
 
-        for value in _values_for_field(field):
+        # The value keeps the type the endpoint answered with: a boolean
+        # setting is only ever sent True, never an enum word.
+        values = [True] if isinstance(current_data.get(server_key), bool) else list(_values_for_field(field))
+        changed = False
+        for value in values:
             sub: Dict[str, Any] = {"value": value, "server_key": server_key}
             new_body = dict(current_data)
             new_body[server_key] = value
@@ -1154,6 +1216,7 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             if put_code not in (200, 201, 204):
                 sub["put_error"] = (resp.get("error") if isinstance(resp, dict) else str(resp)[:200])
                 rec["values_tried"].append(sub); continue
+            changed = True
             # Verify via re-GET
             try:
                 client._c = type(client._c)()  # reset LRU cache
@@ -1178,7 +1241,18 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             last = rec["values_tried"][-1]
             rec["put_status"] = last.get("put_status")
             rec["verify_status"] = last.get("verify_status")
+        if changed:
+            # A value was accepted but none took effect: the object goes back
+            # exactly as it was read, so a failed enable changes nothing.
+            try:
+                _resp, rcode = client.put(endpoint, dict(current_data))
+                rec["restored"] = rcode in (200, 201, 204)
+            except Exception as e:  # noqa: BLE001 - recorded for the attempts list
+                rec["restored"] = False
+                rec["restore_error"] = str(e)[:150]
         return False, rec
+
+    def _norm_field(s): return str(s).lower().replace("_", "").replace("-", "")
 
     # Strategy 1: use found_via if available
     if found_via:
@@ -1222,6 +1296,8 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
                          "get_status": code, "keys_count": len(data),
                          "keys_sample": list(data.keys())[:15]})
         for field in candidate_fields:
+            if _norm_field(field) not in {_norm_field(k) for k in data}:
+                continue   # only a field this endpoint carries is written (see _try_put)
             ok, rec = _try_put(endpoint, field)
             attempts.append(rec)
             if ok:
@@ -1233,33 +1309,9 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
                     "message": f"✓ Evaluate All DLP Rules enabled via PUT {endpoint} → {field}=true (verified after blind-probe).",
                 }
 
-    # Strategy 3: last-resort — some tenants expose this only through a
-    # targeted sub-resource. Try POSTing / PATCHing with just the field
-    # and see if anything accepts it.
-    for endpoint in ("/zia/advancedSettings", "/zia/dlpSettings", "/zia/dlpAdvancedSettings"):
-        for field in candidate_fields:
-            rec = {"endpoint": endpoint, "field": field, "phase": "patch"}
-            try:
-                resp, code = client.put(endpoint, {field: True})
-                rec["put_status"] = code
-            except Exception as e:
-                rec["error"] = str(e)[:150]
-                attempts.append(rec); continue
-            if code in (200, 201, 204):
-                # Verify
-                try:
-                    client._c = type(client._c)()
-                    verified, vcode = client.get(endpoint)
-                    rec["verify_status"] = vcode
-                    rec["verify_value"] = verified.get(field) if isinstance(verified, dict) else None
-                    if isinstance(verified, dict) and bool(verified.get(field)) is True:
-                        attempts.append(rec)
-                        return {"status": "activated", "via": endpoint, "field": field,
-                                "attempts": attempts,
-                                "message": f"✓ Enabled via PATCH-style PUT {endpoint} (minimal body) → {field}=true."}
-                except Exception as e:
-                    rec["verify_error"] = str(e)[:150]
-            attempts.append(rec)
+    # There is no minimal-body PUT: ZIA's settings endpoints replace the
+    # whole object on PUT, so a body of one field would reset every other
+    # setting on it (/zia/advancedSettings carries dozens).
 
     return {
         "status": "failed",
@@ -1309,10 +1361,11 @@ def _wait_active_raw(client, seconds: float) -> Optional[str]:
     """Poll GET /zia/status through the raw client until ZIA reports
     ACTIVE, for at most `seconds`; the last status seen (None when the
     status could not be read)."""
-    import time as _t
-    deadline = _t.monotonic() + max(0.0, float(seconds or 0))
+    # Counted in polls three seconds apart rather than read off a clock, so
+    # the wait is the same on every machine and tests replace _sleep.
+    polls = max(1, int(max(0.0, float(seconds or 0)) // 3) + 1)
     status = None
-    while True:
+    for i in range(polls):
         try:
             data, code = _uncached_status(client)
         except Exception:
@@ -1320,9 +1373,10 @@ def _wait_active_raw(client, seconds: float) -> Optional[str]:
         if code not in (200, 204) or not isinstance(data, dict):
             return status
         status = str(data.get("status") or "").upper() or None
-        if status in (None, "ACTIVE") or _t.monotonic() >= deadline:
+        if status in (None, "ACTIVE") or i == polls - 1:
             return status
-        _t.sleep(3)
+        _sleep(3)
+    return status
 
 def _sleep(seconds: float) -> None:   # tests replace this
     import time as _t
@@ -1350,7 +1404,38 @@ def _delete_answering_403(client, path: str, activations: List[Dict[str, Any]]) 
     return data, code
 
 
-def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
+PLAN_CHANGED = ("The Inline Web DLP rules changed in the tenant since the dry run (a rule was added, removed or edited), so nothing "
+                "was written. Run the dry run again, review it, and apply that.")
+
+
+def rules_plan_hash(rules: List[Dict[str, Any]], extra: Any = None) -> str:
+    """sha256 over the tenant's Web DLP rules as read (every field, sorted by
+    id) and what the run will send (`extra`): the dry run hands it out and
+    the live run recomputes it from a fresh read, so a rule added, removed
+    or edited in between (someone else's change) stops the run."""
+    import hashlib
+    import json as _json
+    rows = sorted((r for r in rules if isinstance(r, dict)), key=lambda r: str(r.get("id")))
+    blob = _json.dumps({"rules": rows, "extra": extra}, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _rules_read(client) -> Tuple[Optional[List[Dict[str, Any]]], Optional[int]]:
+    """The Web DLP rules, or (None, status) when the read failed: a failed
+    read never counts as an empty tenant for the plan hash."""
+    data, code = client.get("/zia/webDlpRules")
+    if code not in (200, 204):
+        return None, code
+    if isinstance(data, list):
+        return data, code
+    if isinstance(data, dict):
+        for k in ("list", "data", "items", "rules"):
+            if isinstance(data.get(k), list):
+                return data[k], code
+    return [], code
+
+
+def delete_all_rules(client, dry_run: bool = True, plan_hash: Optional[str] = None) -> Dict[str, Any]:
     """
     Delete every Inline Web DLP rule in the tenant. Used when the
     migration plan is to wipe + repost a fresh optimized set under
@@ -1361,12 +1446,16 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
       - Real delete requires dry_run=False AND env var
         ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND.
       - Always run Step 2 (Download) first to keep a backup.
+      - `plan_hash` (the dry run's): the live run deletes only when the
+        rules are still the ones the dry run listed (plan_changed
+        otherwise). The API route requires it for a live run.
     """
     rules = fetch_current_rules(client, "web_dlp")
+    current_hash = rules_plan_hash(rules)
     plan = [
         {"rule_id": r.get("id"), "rule_name": r.get("name", f"Rule {r.get('id')}"),
-         "action": (r.get("action") or "?").upper(),
-         "state": (r.get("state") or "ENABLED").upper()}
+         "action": _word(r.get("action")) or "?",
+         "state": _word(r.get("state")) or "ENABLED"}
         for r in rules
     ]
 
@@ -1381,6 +1470,7 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
                 "Set dry_run=false (and ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND) to actually delete."
             ),
             "warning": "This is destructive and cannot be undone via API — restore requires re-posting from your backup.",
+            "plan_hash": current_hash,
         }
 
     if not __import__("security").writes_enabled():
@@ -1389,14 +1479,20 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
             "would_delete_count": len(plan),
         }
+    if plan_hash is not None and plan_hash != current_hash:
+        return {"status": "plan_changed", "message": PLAN_CHANGED, "expected_hash": plan_hash, "current_hash": current_hash,
+                "would_delete_count": len(plan), "deleted_count": 0, "failed_count": 0, "deleted": [], "failed": []}
 
     deleted, failed = [], []
+    # Every rule deleted, as it was read, in its order: the undo. Posting it
+    # back (post_new_rule_order, mode "create") re-creates the policy.
+    backup: List[Dict[str, Any]] = []
     activations_after_403: List[Dict[str, Any]] = []
     stopped = None
     for r in rules:
-        rid = r.get("id")
+        rid = _rule_id(r.get("id"))
         if rid is None:
-            failed.append({"rule_name": r.get("name"), "reason": "missing id"})
+            failed.append({"rule_id": r.get("id"), "rule_name": r.get("name"), "reason": "missing id" if r.get("id") is None else "not a ZIA rule id"})
             continue
         if stopped:
             failed.append({"rule_id": rid, "rule_name": r.get("name"), "reason": f"not attempted: {stopped}"})
@@ -1406,6 +1502,7 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             _, code = _delete_answering_403(client, f"/zia/webDlpRules/{rid}", activations_after_403)
             if code in (200, 204):
                 deleted.append({"rule_id": rid, "rule_name": r.get("name")})
+                backup.append({k: v for k, v in r.items() if not str(k).startswith("_")})
             else:
                 failed.append({"rule_id": rid, "rule_name": r.get("name"), "http_status": code})
                 if code == 403:
@@ -1439,6 +1536,8 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         "activation": activation,
         "activations_after_403": activations_after_403,
         "stopped": stopped,
+        "backup": backup,
+        "undo": "Post `backup` with mode create (Step 5) to re-create the deleted rules in their order.",
     }
 
 
@@ -1446,11 +1545,27 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
 # STEP 5 — Post New Rules
 # ════════════════════════════════════════════════════════════════════
 
+POST_MODES = ("auto", "create", "update")
+
+
+def _rule_id(value: Any) -> Optional[int]:
+    """A ZIA rule id as the whole number it is, or None: the id is written
+    into a request path, so nothing but digits may reach it."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.strip().isdigit() and len(value.strip()) <= 18:
+        return int(value.strip()) or None
+    return None
+
+
 def post_new_rule_order(
     client,
     proposed_rules: List[Dict[str, Any]],
     dry_run: bool = True,
     mode: str = "auto",
+    plan_hash: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Push the proposed rules back to Zscaler.
@@ -1461,23 +1576,40 @@ def post_new_rule_order(
       - "update" : always PUT (preserve ids — re-order existing rules in place)
 
     SAFETY: Requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var
-    AND dry_run=False to actually write. Default is dry-run.
+    AND dry_run=False to actually write. Default is dry-run. The dry run
+    reads the tenant's rules and returns `plan_hash` (rules_plan_hash over
+    them, the proposal and the mode); a live run given it writes only while
+    the tenant still holds those rules (plan_changed otherwise, and when
+    the rules cannot be read). The API route requires it for a live run.
     """
+    if mode not in POST_MODES:
+        # Deny by default: an unknown mode is not read as "update".
+        return {"status": "refused", "mode": mode, "reason": f"mode must be one of {', '.join(POST_MODES)}", "planned_updates": [], "total": 0}
+    proposed_rules = [r for r in proposed_rules if isinstance(r, dict)]
     plan = []
     for new_pos, r in enumerate(proposed_rules, 1):
         rid = r.get("id")
         action_op = "POST" if mode == "create" or (mode == "auto" and rid is None) else "PUT"
-        plan.append({
+        item = {
             "rule_id": rid,
             "rule_name": r.get("name", f"Rule {rid or new_pos}"),
             "new_order": new_pos,
-            "action": (r.get("action") or "?").upper(),
+            "action": _word(r.get("action")) or "?",
             "operation": action_op,
-        })
+        }
+        if action_op == "PUT" and _rule_id(rid) is None:
+            item["problem"] = "not a ZIA rule id (a whole number): this rule is not sent"
+        plan.append(item)
+
+    current_hash: Optional[str] = None
+    if dry_run or plan_hash is not None:
+        rules, _code = _rules_read(client)
+        current_hash = rules_plan_hash(rules, {"proposed": proposed_rules, "mode": mode}) if rules is not None else None
 
     if dry_run:
         return {
             "status": "dry_run",
+            "plan_hash": current_hash,
             "mode": mode,
             "planned_updates": plan,
             "total": len(plan),
@@ -1494,11 +1626,16 @@ def post_new_rule_order(
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
             "planned_updates": plan,
         }
+    if plan_hash is not None and (current_hash is None or plan_hash != current_hash):
+        return {"status": "plan_changed", "mode": mode, "message": PLAN_CHANGED if current_hash else
+                "The Inline Web DLP rules could not be read again, so nothing was written. Run the dry run again.",
+                "expected_hash": plan_hash, "current_hash": current_hash, "planned_updates": plan,
+                "succeeded_count": 0, "failed_count": 0, "succeeded": [], "failed": []}
 
     succeeded, failed = [], []
     for new_pos, r in enumerate(proposed_rules, 1):
         rid = r.get("id")
-        body = {k: v for k, v in r.items() if not k.startswith("_")}
+        body = {k: v for k, v in r.items() if not str(k).startswith("_")}
         body["order"] = new_pos
         try:
             if mode == "create" or (mode == "auto" and rid is None):
@@ -1507,7 +1644,13 @@ def post_new_rule_order(
                 data, code = client.post("/zia/webDlpRules", body)
                 op = "POST"
             else:
-                data, code = client.put(f"/zia/webDlpRules/{rid}", body)
+                num = _rule_id(rid)
+                if num is None:
+                    # The id goes into the request path: "1/../../adminUsers" must never become a PUT elsewhere.
+                    failed.append({"rule_id": rid, "rule_name": r.get("name"), "operation": "PUT", "error": "not a ZIA rule id (a whole number); not sent"})
+                    continue
+                body["id"] = num
+                data, code = client.put(f"/zia/webDlpRules/{num}", body)
                 op = "PUT"
             if code in (200, 201, 204):
                 succeeded.append({"rule_id": rid or (data or {}).get("id"),

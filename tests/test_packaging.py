@@ -153,7 +153,7 @@ def test_the_container_asks_the_github_api_with_an_optional_token_and_never_leak
     monkeypatch.delenv("DLP_CHECK_GITHUB_TOKEN", raising=False)
     sha, err = app_update.github_branch_head("main")
     assert sha is None and "DLP_CHECK_GITHUB_TOKEN" in err and "private" in err
-    assert seen["url"] == "https://api.github.com/repos/berserkerjay/DLP-Check/commits/main"
+    assert seen["url"] == "https://api.github.com/repos/berserkerjay/Zscaler-Made-Easy/commits/main"
     monkeypatch.setenv("DLP_CHECK_GITHUB_TOKEN", "ghp_secret_value")
     sha, err = app_update.github_branch_head("main")
     assert sha == "abcdef1" and err is None and seen["auth"] == "Bearer ghp_secret_value"

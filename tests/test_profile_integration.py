@@ -239,7 +239,7 @@ def test_live_endpoint_returns_linked_configuration_even_without_incidents(monke
     monkeypatch.setattr(srv, "_build_client", lambda req: _client())
     monkeypatch.setattr(srv, "_live_connector_cache", {})
     monkeypatch.setattr(srv, "_live_rule_actions", lambda *a: {})
-    monkeypatch.setattr(detection_health, "poll_incidents", lambda *a: {"incidents": [], "next_since": "2026-10-04T00:00:00Z", "read_at": "2026-10-04T00:00:00Z", "errors": []})
+    monkeypatch.setattr(detection_health, "poll_incidents", lambda *a, **k: {"incidents": [], "next_since": "2026-10-04T00:00:00Z", "read_at": "2026-10-04T00:00:00Z", "errors": []})
     creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret",
              "scopes": ["dlp", "zcc"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}, "from_page": True}
     response = TestClient(srv.app).post("/api/live-feed", json=creds)

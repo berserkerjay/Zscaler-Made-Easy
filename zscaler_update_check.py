@@ -170,6 +170,10 @@ ALLOWED_HOSTS = {
 }
 
 FETCH_TIMEOUT = 8  # seconds, both connect and read
+# The largest answer read into memory: a help page, a JSON index or an SDK
+# wheel (upstream_check.download_sdk) fits well under it; anything larger
+# is refused, not read (a server, a proxy or a CDN that sends without end).
+MAX_BODY_BYTES = 64 * 1024 * 1024
 MAX_REDIRECTS = 5  # each hop is checked against the allowlist before it is fetched
 USER_AGENT = "Mozilla/5.0 (compatible; Zscaler-Made-Easy/1.0; +localhost)"  # browser-compatible prefix: some CDNs refuse unknown agents
 
@@ -207,8 +211,24 @@ def data_dir() -> str:
     try:
         safe_files.private_makedirs(d)   # the per-user cache folder: owner-only (0700)
     except Exception:
-        d = os.path.dirname(os.path.abspath(__file__))  # fallback to app dir
+        return os.path.dirname(os.path.abspath(__file__))  # fallback to app dir
+    _narrow_to_owner(d)
     return d
+
+
+def _narrow_to_owner(folder: str) -> None:
+    """A per-user folder that already existed (made by an older version, or
+    the old name moved into place) is made owner-only too: makedirs leaves
+    an existing folder's mode alone. Only a real folder this user owns is
+    changed, never a link (POSIX; Windows uses the profile's own rules)."""
+    if os.name == "nt":
+        return
+    try:
+        st = os.lstat(folder)
+        if not os.path.islink(folder) and st.st_uid == os.getuid() and st.st_mode & 0o077:
+            os.chmod(folder, 0o700)
+    except OSError:
+        pass
 
 
 def _cache_path() -> str:
@@ -216,11 +236,17 @@ def _cache_path() -> str:
 
 
 def _load_cache() -> Dict[str, Any]:
+    """The cache, keeping only well-formed entries: a file that is damaged,
+    not an object, or has an entry that is not one is read as empty there
+    (the check then starts a new baseline), never a crash."""
     try:
         with open(_cache_path(), "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except Exception:
         return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, dict)}
 
 
 def _save_cache(data: Dict[str, Any]) -> None:
@@ -311,22 +337,28 @@ def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[byt
                 proxies=proxies,
                 verify=verify_tls,
                 allow_redirects=False,
+                stream=True,   # read through _read_capped, never more than MAX_BODY_BYTES
             )
             location = (r.headers or {}).get("Location") if getattr(r, "is_redirect", False) else None
             if not location:
-                return r.content, r.status_code, ""
+                body = _read_capped(r)
+                if body is None:
+                    return None, r.status_code, f"answer refused: larger than {MAX_BODY_BYTES // (1024 * 1024)} MB"
+                return body, r.status_code, ""
+            with _suppress():
+                r.close()
             url = urljoin(url, location)
             host, refusal = _allowed_url(url)
             if refusal:
                 return None, 0, f"redirect refused ({refusal})"
         return None, 0, f"more than {MAX_REDIRECTS} redirects"
     except requests.exceptions.SSLError as e:
-        return None, 0, (f"TLS error (corporate TLS inspection?): {str(e)[:200]}. "
+        return None, 0, (f"TLS error (corporate TLS inspection?): {redact_url_credentials(str(e))[:200]}. "
                          f"If a corporate proxy intercepts TLS, point REQUESTS_CA_BUNDLE at its root "
                          f"certificate (.pem), or put it in certs/ for the container. "
                          f"ZSCALER_UPDATE_VERIFY_TLS=0 is a last resort: it accepts any certificate.")
     except requests.exceptions.ProxyError as e:
-        return None, 0, (f"Proxy rejected the request: {str(e)[:200]}. "
+        return None, 0, (f"Proxy rejected the request: {redact_url_credentials(str(e))[:200]}. "
                          f"Set HTTPS_PROXY=http://user:pass@proxy:port or "
                          f"ZSCALER_UPDATE_PROXY to point at an allowed egress.")
     except requests.exceptions.ConnectTimeout:
@@ -337,7 +369,7 @@ def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[byt
     except requests.exceptions.Timeout:
         return None, 0, f"read timeout to {host} ({FETCH_TIMEOUT}s)"
     except requests.exceptions.ConnectionError as e:
-        msg = str(e)[:200]
+        msg = redact_url_credentials(str(e))[:200]
         hint = ""
         low = msg.lower()
         if "proxy" in low or "tunnel" in low or "403" in low or "407" in low:
@@ -348,7 +380,44 @@ def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[byt
             hint = " — DNS resolution failed; check network/DNS settings."
         return None, 0, f"connection error: {msg}{hint}"
     except Exception as e:
-        return None, 0, f"{type(e).__name__}: {str(e)[:200]}"
+        return None, 0, f"{type(e).__name__}: {redact_url_credentials(str(e))[:200]}"
+
+
+def _read_capped(r: Any) -> Optional[bytes]:
+    """The body of a streamed answer, or None when it is (or says it is)
+    larger than MAX_BODY_BYTES. A response whose body is already in memory
+    (no raw stream) is measured as it is."""
+    declared = str((r.headers or {}).get("Content-Length") or "").strip()
+    if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        with _suppress():
+            r.close()
+        return None
+    if getattr(r, "raw", None) is None:
+        body = r.content or b""
+        return body if len(body) <= MAX_BODY_BYTES else None
+    out = bytearray()
+    for chunk in r.iter_content(chunk_size=64 * 1024):
+        out += chunk
+        if len(out) > MAX_BODY_BYTES:
+            with _suppress():
+                r.close()
+            return None
+    return bytes(out)
+
+
+def _suppress():
+    import contextlib
+    return contextlib.suppress(Exception)
+
+
+_URL_USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@]*@")
+
+
+def redact_url_credentials(text: Any) -> str:
+    """`text` with the user name and password of every URL in it replaced
+    (http://user:pass@proxy:8080 -> http://[redacted]@proxy:8080): a proxy
+    setting or an error naming one is shown, its password never is."""
+    return _URL_USERINFO.sub(r"\1[redacted]@", str(text or ""))
 
 
 def _strip_volatile(html_bytes: bytes) -> bytes:
@@ -393,7 +462,10 @@ def _check_pypi(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Opti
     except Exception as e:
         return {**_base_result(source, cached), "status": "error", "error": f"parse: {e}"}
 
-    version = (data.get("info") or {}).get("version") or "unknown"
+    info = data.get("info") if isinstance(data, dict) else None
+    if not isinstance(info, dict) or not isinstance(info.get("version"), str):
+        return {**_base_result(source, cached), "status": "error", "error": "PyPI's answer is not a package description"}
+    version = info["version"][:64] or "unknown"
     released = None
     try:
         # pypi stores releases keyed by version
@@ -402,7 +474,7 @@ def _check_pypi(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Opti
             released = rel[0].get("upload_time_iso_8601") or rel[0].get("upload_time")
     except Exception:
         pass
-    summary = (data.get("info") or {}).get("summary") or ""
+    summary = str(info.get("summary") or "")
     url_readable = f"https://pypi.org/project/{pkg}/"
 
     prev = cached.get("version")
@@ -734,11 +806,15 @@ def check_for_updates(force: bool = False, only: Optional[List[str]] = None, ski
 
     # Surface proxy / env state so the user can diagnose mass-connection
     # failures (very common in corporate environments).
+    # A proxy URL can carry user:password; the page sees where it points, never the password.
+    def _proxy(*names: str) -> Optional[str]:
+        v = next((os.environ.get(n) for n in names if os.environ.get(n)), None)
+        return redact_url_credentials(v) if v else None
     network_diag = {
-        "HTTPS_PROXY":            os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or None,
-        "HTTP_PROXY":             os.environ.get("HTTP_PROXY")  or os.environ.get("http_proxy")  or None,
+        "HTTPS_PROXY":            _proxy("HTTPS_PROXY", "https_proxy"),
+        "HTTP_PROXY":             _proxy("HTTP_PROXY", "http_proxy"),
         "NO_PROXY":               os.environ.get("NO_PROXY")    or os.environ.get("no_proxy")    or None,
-        "ZSCALER_UPDATE_PROXY":   os.environ.get("ZSCALER_UPDATE_PROXY") or None,
+        "ZSCALER_UPDATE_PROXY":   _proxy("ZSCALER_UPDATE_PROXY"),
         "ZSCALER_UPDATE_VERIFY_TLS": os.environ.get("ZSCALER_UPDATE_VERIFY_TLS", "1"),
         "request_skipped_tls_verify": bool(skip_tls_verify),
     }

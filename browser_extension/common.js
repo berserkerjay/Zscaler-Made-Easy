@@ -8,14 +8,16 @@
 export const DEFAULT_APP = 'http://127.0.0.1:8000';
 const MAX_DEST = 2048;
 
-// The app's address: http on loopback only (127.0.0.1, localhost or [::1])
-// with an optional port, never anything else, so a mistyped or hostile
-// setting cannot send a destination off this computer.
+// The app's address: http on loopback only (127.0.0.1 or localhost) with an
+// optional port, never anything else, so a mistyped or hostile setting cannot
+// send a destination off this computer. The same two origins, and nothing
+// more, are the manifest's host_permissions and its CSP connect-src: an
+// address outside them would be saved and then never answer.
 export function normalizeAppUrl(input) {
   let u;
   try { u = new URL(String(input || '').trim()); } catch (e) { return null; }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-  if (!['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)) return null;
+  if (u.protocol !== 'http:') return null;
+  if (!['127.0.0.1', 'localhost'].includes(u.hostname)) return null;
   if (u.username || u.password) return null;
   return `${u.protocol}//${u.host}`;
 }
@@ -136,7 +138,7 @@ export function badgeLabel(o) {
   const top = findings.find(f => f.severity === sev);
   const c = o.counts || {};
   let label;
-  if (top && sev !== 'info') label = top.short || top.text.split(':')[0].split('.')[0].toLowerCase();
+  if (top && sev !== 'info') label = String(top.short || String(top.text || '').split(':')[0].split('.')[0].toLowerCase() || 'finding');
   else if (o.kind === 'dictionary') label = c.engines ? `${n(c.engines, 'engine')}, ${n(c.rules || 0, 'rule')}` : 'unused';
   else if (o.kind === 'engine') label = c.rules ? n(c.rules, 'rule') : 'unused';
   else if (o.kind === 'rule') label = String(o.state || '').toLowerCase() === 'disabled' ? 'disabled' : n(c.engines || 0, 'engine');

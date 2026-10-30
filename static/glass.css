@@ -1,0 +1,283 @@
+/* ── Glass effect: one shared material for the app's chrome and containers ──
+   The owner asked for Apple's Liquid Glass look. This file is the only place
+   it lives: every page loads it (GUI_ADDONS for the assessment page, the
+   @import at the top of reports.css for every other page), and every colour
+   comes from the theme tokens of app.css, mixed with color-mix(); no colour
+   literal is defined here.
+
+   The material: a translucent tint of the surface token, a backdrop blur and
+   saturation, a layered gradient sheen, a thin bright rim (inset shadow), a
+   soft drop shadow from the shadow tokens and concentric rounded corners.
+   Under the page sits a soft, low-contrast wash for the glass to show.
+
+   Three tiers, by what can be behind them (that decides how see-through a
+   tier may be and keep WCAG 2.2 AA text contrast; the numbers are checked by
+   tests/test_glass.py against the worst case behind each tier):
+     1 panel    cards, panels, frames, forms and capsule buttons in the page
+                flow: only the page wash (or a parent surface) is behind them.
+                No blur: the wash is already soft, so a blur pass would cost
+                without showing anything.
+     2 chrome   the hero, tab bars and banners: in the flow, blurred.
+     3 float    sticky and fixed bars, the sidebar, dialogs and pop-ups:
+                anything can scroll under them, so the worst case is pure
+                white or pure black behind, and they stay nearly opaque.
+   Dense data (tables) keeps a near-opaque surface and is never blurred.
+
+   Switches, in the order they win:
+     html.glass-off            the viewer turned it off (Advanced settings,
+                               static/glass.js): none of the rules below apply.
+     prefers-reduced-transparency, prefers-contrast: more, forced-colors,
+     print, no backdrop-filter support
+                               solid, unblurred surfaces (the --glass-solid-*
+                               switches and 100% alphas at the end).
+     prefers-reduced-motion    no pointer-follow highlight (no shimmer exists). */
+
+/* Registered so the browser resolves them to real values the tests can read. */
+@property --glass-surface { syntax: '<integer>'; inherits: false; initial-value: 0; }
+@property --glass-sheen { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --glass-lens { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --glass-lens-on { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --glass-amb-1 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --glass-amb-2 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --glass-amb-3 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+
+/* ── The material's tokens. On body, so they follow body.theme-light. ── */
+body {
+  --glass-blur: 20px;
+  --glass-saturate: 180%;
+  /* How opaque each tier's tint is (checked against its worst case). */
+  --glass-a-float: 95%;
+  --glass-a-chrome: 70%;
+  --glass-a-panel: 66%;
+  --glass-a-capsule: 55%;
+  --glass-a-tint: 90%;      /* a primary button's tinted glass, under white text */
+  --glass-a-dense: 97%;     /* tables and dense data */
+  --glass-tint: var(--card-solid);
+  --glass-float-bg: color-mix(in srgb, var(--glass-tint) var(--glass-a-float), transparent);
+  --glass-chrome-bg: color-mix(in srgb, var(--glass-tint) var(--glass-a-chrome), transparent);
+  --glass-panel-bg: color-mix(in srgb, var(--glass-tint) var(--glass-a-panel), transparent);
+  --glass-capsule-bg: color-mix(in srgb, var(--glass-tint) var(--glass-a-capsule), transparent);
+  --glass-capsule-hover: color-mix(in srgb, var(--glass-tint) var(--glass-a-float), transparent);   /* pressed into the glass: more opaque */
+  --glass-dense-bg: color-mix(in srgb, var(--card-solid) var(--glass-a-dense), transparent);
+  /* The sheen (top of the gradient) and the lens under the pointer. In the
+     dark theme a white sheen lowers text contrast, so it stays faint, and
+     floating surfaces get less of it than panels. */
+  --glass-sheen-panel: color-mix(in srgb, white 2%, transparent);
+  --glass-sheen-float: color-mix(in srgb, white 3%, transparent);
+  --glass-sheen-tint: color-mix(in srgb, black 18%, transparent);   /* primary: darker at the top, white text gains */
+  --glass-lens-on: color-mix(in srgb, white 4%, transparent);
+  /* The rim (specular edge), the hairline and the depth. */
+  --glass-rim: color-mix(in srgb, white 16%, transparent);
+  --glass-edge: color-mix(in srgb, var(--text) 14%, transparent);
+  --glass-depth-float: var(--shadow-lg);
+  --glass-depth-panel: var(--shadow-md);
+  --glass-depth-capsule: var(--shadow-sm);
+  /* Concentric corners: a bar's radius is its capsules' radius plus its padding. */
+  --glass-r-capsule: var(--r-pill);
+  --glass-r-bar: calc(var(--ctl-md) / 2 + var(--sp-2));
+  --glass-r-panel: var(--r-xl);
+  --glass-r-nested: calc(var(--r-xl) - var(--sp-1));
+  /* The page wash: three soft blobs, low contrast, behind everything. */
+  --glass-amb-1: color-mix(in srgb, var(--accent) 20%, var(--bg));
+  --glass-amb-2: color-mix(in srgb, var(--chip-purple) 14%, var(--bg));
+  --glass-amb-3: color-mix(in srgb, var(--chip-info) 12%, var(--bg));
+}
+body.theme-light {
+  --glass-a-float: 90%;
+  --glass-a-chrome: 62%;
+  --glass-a-panel: 58%;
+  --glass-a-capsule: 50%;
+  --glass-sheen-panel: color-mix(in srgb, white 55%, transparent);
+  --glass-sheen-float: color-mix(in srgb, white 55%, transparent);
+  --glass-lens-on: color-mix(in srgb, white 55%, transparent);
+  --glass-rim: color-mix(in srgb, white 90%, transparent);
+  /* In the light theme the wash is lighter than the page, never darker, so dark text keeps its contrast. */
+  --glass-amb-1: color-mix(in srgb, var(--accent) 12%, var(--card-solid));
+  --glass-amb-2: color-mix(in srgb, var(--chip-purple) 10%, var(--card-solid));
+  --glass-amb-3: color-mix(in srgb, var(--chip-info) 10%, var(--card-solid));
+}
+/* A branding portrait or logo behind the page can be anything: every tier is then as opaque as a floating one. */
+body.has-portrait, body.has-logo { --glass-a-chrome: var(--glass-a-float); --glass-a-panel: var(--glass-a-float); --glass-a-capsule: var(--glass-a-float); }
+
+/* ── Tints under accent text (a selected tab, a badge, a chosen card) are
+   mixed into the opaque card, as the status chips are in reports.css, so the
+   glass behind them cannot lower their contrast. ── */
+:root:not(.glass-off) body { --accent-tint: color-mix(in srgb, var(--accent) 14%, var(--card-solid)); }
+:root:not(.glass-off) body.theme-light { --accent-tint: color-mix(in srgb, var(--accent) 12%, var(--card-solid)); }
+
+/* ── The page wash ── body::before is the branding layer (opacity 0 unless a
+   portrait is dropped in); without a portrait it carries the wash, under all
+   content (body isolates its own stacking context, the wash sits at -1). */
+:root:not(.glass-off) body { isolation: isolate; }
+:root:not(.glass-off) body:not(.has-portrait)::before {
+  z-index: -1; opacity: 1;
+  background-image: var(--glass-solid-img,
+    radial-gradient(60vmax 45vmax at 8% 0%, var(--glass-amb-1), transparent 70%),
+    radial-gradient(50vmax 40vmax at 100% 35%, var(--glass-amb-2), transparent 70%),
+    radial-gradient(55vmax 40vmax at 40% 100%, var(--glass-amb-3), transparent 70%));
+}
+
+/* ── Tier 3, float: sticky and fixed chrome, dialogs and pop-ups ── */
+:root:not(.glass-off) :is(.rp-bar, #dbSidebar, #dbFooter, #dbMenuBtn, dialog.dlp-dlg, .fa-dlg, .db-modal-card, .sb-menu-pop) {
+  --glass-surface: 3;
+  --glass-sheen: var(--glass-sheen-float);
+  background-color: var(--glass-float-bg);
+  background-image: var(--glass-solid-img, linear-gradient(180deg, var(--glass-sheen) 0%, transparent 55%));
+  -webkit-backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), var(--glass-depth-float));
+}
+:root:not(.glass-off) .rp-bar { border-radius: var(--glass-r-bar); }
+:root:not(.glass-off) :is(dialog.dlp-dlg, .fa-dlg, .db-modal-card) { border-radius: var(--glass-r-panel); }
+/* The sidebar is not blurred: beside the page only the still wash is behind it, and a backdrop-filter would become the
+   containing block of its fixed drag-and-drop marker (sidebar_order.js). Opaque as floating glass for when it slides over the page. */
+:root:not(.glass-off) #dbSidebar { -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--glass-solid-shadow, inset -1px 0 0 var(--glass-rim)); }
+:root:not(.glass-off) #dbFooter { box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim)); }
+/* The theme switch floats over the page (its look is set inline by report_theme.js, hence !important). */
+:root:not(.glass-off) body > #themeToggleBtn {
+  --glass-surface: 3;
+  --glass-sheen: var(--glass-sheen-float);
+  background-color: var(--glass-float-bg) !important;
+  background-image: var(--glass-solid-img, linear-gradient(180deg, var(--glass-sheen) 0%, transparent 55%)) !important;
+  -webkit-backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  border-color: var(--glass-edge) !important;
+  border-radius: var(--glass-r-capsule) !important;
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), var(--glass-depth-panel));
+}
+/* Help on hover: the pop-up keeps its own inverted colours (hover_help.css) as the tint. */
+:root:not(.glass-off) .hh-tip {
+  --glass-surface: 3;
+  --glass-sheen: transparent;
+  background-color: color-mix(in srgb, var(--hh-bg) var(--glass-a-float), transparent);
+  -webkit-backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  border-radius: var(--r-lg);
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 color-mix(in srgb, var(--hh-bg) 60%, white), var(--glass-depth-float));
+}
+/* The assessment page's dialogs (their card is styled inline, hence !important). */
+:root:not(.glass-off) :is(#dlpEffModal, #permissionsModal, #bypassModal, #updateModal, #migrateModal, #remediationModal, #reviewModal, #wizardModal, #bestPracticesModal, #zccDiagModal, #terraformModal) > div {
+  --glass-surface: 3;
+  --glass-sheen: var(--glass-sheen-float);
+  background-color: var(--glass-float-bg) !important;
+  background-image: var(--glass-solid-img, linear-gradient(180deg, var(--glass-sheen) 0%, transparent 55%)) !important;
+  -webkit-backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), var(--glass-depth-float)) !important;
+  border-radius: var(--glass-r-panel) !important;
+}
+
+/* ── Tier 2, chrome in the page flow: the hero, tab bars, banners ── */
+:root:not(.glass-off) :is(.rp-hero, body.db-layout .container > header .hero, .rp-tabs, #dlpSafetyBanner .sb-row, #simpleBanner, #stepBar) {
+  --glass-surface: 2;
+  --glass-sheen: var(--glass-sheen-panel);
+  background-color: var(--glass-chrome-bg);
+  background-image: var(--glass-solid-img, linear-gradient(180deg, var(--glass-sheen) 0%, transparent 60%));
+  -webkit-backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  backdrop-filter: var(--glass-solid-filter, blur(var(--glass-blur)) saturate(var(--glass-saturate)));
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), var(--glass-depth-panel));
+}
+:root:not(.glass-off) .rp-hero { padding: var(--sp-5) var(--sp-6); border-radius: var(--glass-r-panel); }
+:root:not(.glass-off) body.db-layout .container > header .hero { padding: var(--sp-4) var(--sp-5); border-radius: var(--glass-r-panel); }
+:root:not(.glass-off) .rp-tabs { padding: var(--sp-2); border-radius: var(--glass-r-bar); }
+:root:not(.glass-off) #stepBar { background-color: var(--glass-chrome-bg) !important; border-color: var(--glass-edge) !important; border-radius: var(--glass-r-bar) !important; }
+:root:not(.glass-off) #simpleBanner { border-left: 4px solid var(--accent); border-radius: var(--glass-r-panel); }
+/* The safety and sample-tenant banner: its warning tint mixed into the glass; the strip behind the rows turns clear. */
+:root:not(.glass-off) #dlpSafetyBanner { background: transparent; border-bottom-color: transparent; gap: var(--sp-1); padding: var(--sp-1); }
+:root:not(.glass-off) #dlpSafetyBanner .sb-row { background-color: color-mix(in srgb, var(--warn) 16%, var(--glass-chrome-bg)); border-left: 4px solid var(--warn); border-radius: var(--r-lg); }
+
+/* ── Tier 1, panels: cards, panels, the Build new forms and the motion frames ── */
+:root:not(.glass-off) :is(.rp-card, .container .card, .container .tool-group, .xp-details, .db-tile, .db-pillar, .df-stat, .bp-card, .op-kind, .op-block,
+    .pm-wrap, .fa-motion .fa-stage, .fp-stage, .pa-flow, .pa-motion, .sf-flow-wrap, .df-flow-wrap) {
+  --glass-surface: 1;
+  --glass-sheen: var(--glass-sheen-panel);
+  background-color: var(--glass-panel-bg);
+  background-image: var(--glass-solid-img, linear-gradient(180deg, var(--glass-sheen) 0%, transparent 60%),
+    radial-gradient(220px circle at var(--glass-x, 50%) var(--glass-y, -240px), var(--glass-lens), transparent 70%));
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), var(--glass-depth-panel));
+}
+:root:not(.glass-off) :is(.rp-card, .container .card) { border-radius: var(--glass-r-panel); }
+:root:not(.glass-off) :is(.xp-details, .db-tile, .db-pillar, .df-stat, .bp-card, .op-kind, .op-block, .pm-wrap, .fa-motion .fa-stage, .fp-stage, .pa-flow, .pa-motion, .sf-flow-wrap, .df-flow-wrap) {
+  border-radius: var(--glass-r-nested);
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim));
+}
+/* A chosen Build new / operation card keeps its accent. */
+:root:not(.glass-off) .op-kind:has(input:checked) { background-color: var(--accent-tint); border-color: var(--accent); }
+/* A sticky side panel (the Deploy flow's details) is as opaque as the floating chrome. */
+:root:not(.glass-off) .rp-card.fl-side { --glass-surface: 3; --glass-sheen: var(--glass-sheen-float); background-color: var(--glass-float-bg); }
+
+/* ── Capsules: buttons and tabs ── */
+:root:not(.glass-off) :is(.rp-btn:not(.primary):not(.danger):not(.cq-danger):not([aria-pressed="true"]), .container .btn-ghost, .rp-more,
+    .rp-tabs [role="tab"]:not([aria-selected="true"]), .fa-tabs [role="tab"]:not([aria-selected="true"])) {
+  --glass-surface: 1;
+  --glass-sheen: var(--glass-sheen-panel);
+  background-color: var(--glass-capsule-bg);
+  background-image: var(--glass-solid-img, linear-gradient(180deg, var(--glass-sheen) 0%, transparent 70%),
+    radial-gradient(90px circle at var(--glass-x, 50%) var(--glass-y, -120px), var(--glass-lens), transparent 70%));
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), var(--glass-depth-capsule));
+}
+:root:not(.glass-off) :is(.rp-btn:not(.primary):not(.danger):not(.cq-danger):not([aria-pressed="true"]), .container .btn-ghost, .rp-more):hover {
+  background-color: var(--glass-capsule-hover); border-color: var(--border-strong); color: var(--text);
+}
+/* Primary: tinted glass. White text sits on at least 90% of the button fill, and the sheen darkens. */
+:root:not(.glass-off) :is(.rp-btn.primary, .container .btn-primary) {
+  --glass-surface: 1;
+  --glass-sheen: var(--glass-sheen-tint);
+  background-color: color-mix(in srgb, var(--btn) var(--glass-a-tint), transparent);
+  background-image: var(--glass-solid-img, linear-gradient(0deg, var(--glass-sheen) 0%, transparent 70%));
+  box-shadow: var(--glass-solid-shadow, inset 0 1px 0 var(--glass-rim), var(--glass-depth-capsule));
+}
+:root:not(.glass-off) :is(.rp-btn.primary, .container .btn-primary:not(:disabled)):hover { background-color: color-mix(in srgb, var(--btn-hover) var(--glass-a-tint), transparent); }
+:root:not(.glass-off) :is(.rp-btn, .container .btn, .rp-more, .rp-tabs [role="tab"], .fa-tabs [role="tab"]) { border-radius: var(--glass-r-capsule); }
+/* The lens shows only under the pointer (static/glass.js moves it). */
+:root:not(.glass-off) :is(.rp-card, .container .card, .xp-details, .db-tile, .db-pillar, .df-stat, .bp-card, .op-kind, .op-block, .rp-btn, .container .btn-ghost, .rp-more, .rp-tabs [role="tab"], .fa-tabs [role="tab"]):hover {
+  --glass-lens: var(--glass-lens-on);
+}
+
+/* ── Dense data stays legible: tables are near-opaque and never blurred. ── */
+:root:not(.glass-off) :is(.rp-page, .container) :is(table, .tw, .df-tablewrap) { background-color: var(--glass-dense-bg); }
+
+/* ── Focus stays visible on glass: the app's 3px ring, above the rim. ── */
+:root:not(.glass-off) :is(.rp-btn, .container .btn, .rp-more, .rp-tabs [role="tab"], .fa-tabs [role="tab"], #themeToggleBtn):focus-visible {
+  outline: 3px solid var(--accent-hover); outline-offset: 2px;
+}
+
+/* ── Solid fallbacks: the same shapes, opaque and unblurred. ── */
+@media (prefers-reduced-transparency: reduce) {
+  body, body.theme-light, body.has-portrait, body.has-logo {
+    --glass-solid-filter: none; --glass-solid-img: none;
+    --glass-a-float: 100%; --glass-a-chrome: 100%; --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-tint: 100%; --glass-a-dense: 100%;
+  }
+}
+@media (prefers-contrast: more) {
+  body, body.theme-light, body.has-portrait, body.has-logo {
+    --glass-solid-filter: none; --glass-solid-img: none; --glass-solid-shadow: none; --glass-edge: var(--border-strong);
+    --glass-a-float: 100%; --glass-a-chrome: 100%; --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-tint: 100%; --glass-a-dense: 100%;
+  }
+}
+@media (forced-colors: active) {
+  body, body.theme-light, body.has-portrait, body.has-logo {
+    --glass-solid-filter: none; --glass-solid-img: none; --glass-solid-shadow: none; --glass-edge: CanvasText;
+    --glass-a-float: 100%; --glass-a-chrome: 100%; --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-tint: 100%; --glass-a-dense: 100%;
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  body, body.theme-light, body.has-portrait, body.has-logo {
+    --glass-solid-filter: none; --glass-solid-img: none;
+    --glass-a-float: 100%; --glass-a-chrome: 100%; --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-tint: 100%; --glass-a-dense: 100%;
+  }
+}
+@media print {
+  body, body.theme-light, body.has-portrait, body.has-logo {
+    --glass-solid-filter: none; --glass-solid-img: none; --glass-solid-shadow: none;
+    --glass-a-float: 100%; --glass-a-chrome: 100%; --glass-a-panel: 100%; --glass-a-capsule: 100%; --glass-a-tint: 100%; --glass-a-dense: 100%;
+  }
+}
+/* No pointer-follow highlight under reduced motion (and no shimmer: nothing here animates). */
+@media (prefers-reduced-motion: reduce) {
+  body, body.theme-light { --glass-lens-on: transparent; }
+}

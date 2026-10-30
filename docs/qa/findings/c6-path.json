@@ -1,0 +1,512 @@
+{
+  "area": "path",
+  "title": "Path analyzer, Test a list, PAC evaluation, what-if and the Data Flow Map: regression, Secure by Design and functional QA (cloud wave 6)",
+  "files": [
+    "path_analyzer.py",
+    "zia_path_modules.py",
+    "workload_path.py",
+    "data_flow.py",
+    "bulk_test.py",
+    "pac_eval.py",
+    "path_whatif.py"
+  ],
+  "standards": [
+    "ASVS V1.4.4",
+    "ASVS V1.11.3",
+    "ASVS V4.1.3",
+    "ASVS V5.1.3",
+    "ASVS V5.1.4",
+    "ASVS V5.2.4",
+    "ASVS V5.3.3",
+    "ASVS V7.4.1",
+    "ASVS V8.3.4",
+    "OWASP Top 10 2021 A01",
+    "OWASP Top 10 2021 A03",
+    "OWASP Top 10 2021 A04",
+    "OWASP Top 10 2021 A05",
+    "CWE-20",
+    "CWE-176",
+    "CWE-209",
+    "CWE-407",
+    "CWE-636",
+    "CWE-682",
+    "CWE-697",
+    "CWE-704",
+    "CWE-770",
+    "CWE-775",
+    "CWE-863",
+    "CWE-1287",
+    "WSTG-INPV-01",
+    "WSTG-ERRH-01",
+    "WSTG-BUSL-01"
+  ],
+  "coverage": {
+    "before": 88.62,
+    "after": 95.55
+  },
+  "checks": [
+    {
+      "id": "FUNC-CONNECTOR-METHODS",
+      "what": "Every connector forward method the SDK documents (ZIA, ECSELF, ZPA, ECZPA, DIRECT, LOCAL_SWITCH, PROXYCHAIN, DROP, INVALID, unknown) ends where it says",
+      "standard": "ASVS V1.4.4",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-CONNECTOR-CRITERIA",
+      "what": "Connector group, source IP and groups, exclusion, destinations, ZPA pool, ZPA segments and groups, destination workload groups, unevaluated criteria",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-WORKLOAD-TAGS",
+      "what": "Workload group membership by tag: AND/OR within and across containers, tag types, untyped tags, any value, picked groups, empty and unreadable groups",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "FUNC-FW-SERVICES",
+      "what": "Firewall network services and service groups: port ranges, TCP/UDP, ANY, predefined names, unresolved groups, source ports",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-FW-APPS",
+      "what": "Firewall network applications and app groups: well-known ports, unnamed ports, unknown applications, unresolved groups",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-FW-ACTIONS",
+      "what": "Every firewall action and accessControl; no default rule read is unknown",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "FUNC-DNS-ACTIONS",
+      "what": "Every DNS Control action (ALLOW, BLOCK, BLOCK_WITH_RESPONSE, REDIR_REQ, REDIR_RES, REDIR_ZPA, REDIR_REQ_DOH, REDIR_REQ_KEEP_SENDER, REDIR_REQ_TCP, REDIR_REQ_UDP)",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "FUNC-DNS-CRITERIA",
+      "what": "DNS criteria incl. the DNS-over-HTTPS category, protocols in both spellings, query types, resolved categories, applications, destination groups",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-SANDBOX",
+      "what": "Sandbox per file type and protocol (HTTP, HTTPS, FTP, FOHTTP, ANY), first-time action, threat class and score, encrypted traffic",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-FTC",
+      "what": "File Type Control per file type, protocol and operation (UPLOAD, DOWNLOAD, UPLOAD_DOWNLOAD) and action",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-DFM-COUNTS",
+      "what": "Data Flow Map counts for every platform x network: one class per path, sums equal traces, recount equals summary, high weak points",
+      "standard": "ASVS V1.4.4",
+      "result": "pass"
+    },
+    {
+      "id": "FUNC-ZCC-PROFILES",
+      "what": "App profile choice: scoped profiles, rule order as numbers, IP bypasses, Z-Tunnel 2.0 packet tunnel lists, forwarding action shapes",
+      "standard": "ASVS V4.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-PAC-JS",
+      "what": "PAC string methods, operators, values and classification against JavaScript; refusals for constructs outside the subset",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "FUNC-WHATIF",
+      "what": "What-if identity normalisation, matching by id, name and login, search bounds and errors, depends-on ranking",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "FUNC-LIST",
+      "what": "Test a list: headers and notes, bad blocks and ranges, lookup retries / quota / cap / halving with injected sleep, recommendations by area, Fix selected, exports, ICMP and any",
+      "standard": "ASVS V5.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "FUNC-HAR-BATCH",
+      "what": "HAR batch: one read, lookup chunks of 100 matched by url or position, errors per host, Stop keeps what was analyzed, cap",
+      "standard": "ASVS V1.11.3",
+      "result": "pass"
+    },
+    {
+      "id": "REG-SNAPSHOTS",
+      "what": "Kept reads from earlier versions (DLP rules without flags, app profiles without users or tunnel lists) still trace",
+      "standard": "ASVS V5.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "SBD-INPUT-FUZZ",
+      "what": "Fixed-seed fuzz of wrong types in every firewall, DNS, Sandbox, ATP, connector, forwarding profile, app profile and identity field",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-UNICODE",
+      "what": "IDN entries, non-ASCII digits, full-width names, IPv4-mapped IPv6",
+      "standard": "ASVS V5.1.3",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-DOS-TIME",
+      "what": "One analysis of 5,000 rules (spread, and on shared groups) and 5,000 connector rules under 2 s CPU",
+      "standard": "ASVS V1.11.3",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-DOS-MEMORY",
+      "what": "Test a list memory per row; MAX_ROWS boundary; parse cache bounded",
+      "standard": "ASVS V1.11.3",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-ERRORS",
+      "what": "Every failed read is recorded with a reason (never an empty list), never a 500; ZPA read errors masked",
+      "standard": "ASVS V7.4.1",
+      "result": "fixed"
+    },
+    {
+      "id": "SBD-OUTPUT",
+      "what": "Markdown export escapes tenant strings; CSV export neutralises formulas",
+      "standard": "ASVS V5.3.3",
+      "result": "pass"
+    },
+    {
+      "id": "SBD-SSRF",
+      "what": "PAC evaluation never resolves or fetches; an injected resolver is the only DNS; identity search reaches one fixed endpoint",
+      "standard": "ASVS V5.2.6",
+      "result": "pass"
+    },
+    {
+      "id": "SBD-SECRETS",
+      "what": "Lookup and module errors in job results are covered by the existing token-echo canary (tests/test_secret_canaries.py); identity search never repeats exception text",
+      "standard": "ASVS V8.3.4",
+      "result": "pass"
+    },
+    {
+      "id": "SBD-SCOPE",
+      "what": "Nothing in scope, ZIA not in scope for a list, channel other than web: refused before any read",
+      "standard": "ASVS V4.1.3",
+      "result": "pass"
+    },
+    {
+      "id": "ACCEPTED-PAC-EXPONENT",
+      "what": "PAC number literals with an exponent (1e21) and the NaN name are refused, not evaluated (fail closed)",
+      "standard": "ASVS V5.2.4",
+      "result": "accepted"
+    },
+    {
+      "id": "ACCEPTED-NO-DNS",
+      "what": "Host names are never resolved: IP-based rules for a host name are unknown, or an assumption stated",
+      "standard": "ASVS V1.4.4",
+      "result": "accepted"
+    },
+    {
+      "id": "OPEN-SSL-FLOW-SHAPES",
+      "what": "ssl_flow._names / _sort_key on wrong-type rule fields (outside these files)",
+      "standard": "ASVS V5.1.3",
+      "result": "open"
+    }
+  ],
+  "findings": [
+    {
+      "id": "C6-PATH-01",
+      "title": "An IPv4 a-b range compared with an IPv6 address raised TypeError: the analysis (and a Test a list run) failed for an IPv6 destination or source",
+      "severity": "medium",
+      "cwe": "CWE-704",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Ranges compare only addresses of their own family (zia_path_modules._ip_rel, workload_path._ip_in)",
+      "test": "tests/test_c6_path.py::test_an_ipv6_destination_against_an_ipv4_firewall_range_is_no_match_not_a_crash",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-02",
+      "title": "A firewall network-application rule was a definite no match on a port no service names (SSH on TCP/2222): a definite allow ZIA would not give",
+      "severity": "medium",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "On an unnamed port a network application criterion is unknown (conditional), never no match",
+      "test": "tests/test_c6_path.py::test_a_network_application_on_an_unnamed_port_is_unknown_not_no_match",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-03",
+      "title": "DNS rule protocols in the SDK docstring's spelling (UDP, TCP, DOHTTPS) were not recognised: answers falsely conditional",
+      "severity": "low",
+      "cwe": "CWE-1287",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "UDP and UDP_RULE both match the assumed UDP lookup",
+      "test": "tests/test_c6_path.py::test_a_dns_rule_protocol_is_read_in_both_the_sdk_and_api_spelling",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-04",
+      "title": "A DNS rule on an IP destination group was always unknown, even with the group read by the Cloud Firewall",
+      "severity": "low",
+      "cwe": "CWE-754",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "DNS rules use the destination groups the firewall read (same /ipDestinationGroups list, same scope)",
+      "test": "tests/test_c6_path.py::test_a_dns_rule_on_a_destination_group_uses_the_groups_the_firewall_read",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-05",
+      "title": "Sandbox and FTC criteria took a bare extension (pdf) as a ZIA file category: a definite no match",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Only FTCATEGORY_* values are file types, as in data_flow.trace",
+      "test": "tests/test_c6_path.py::test_a_sandbox_file_type_is_compared_only_with_zia_file_categories",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-06",
+      "title": "A network service limited to a source port was a definite match on its destination port",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "Such a service is unknown when its destination port matches",
+      "test": "tests/test_c6_path.py::test_a_network_service_with_a_source_port_is_unknown_when_the_destination_port_matches",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-07",
+      "title": "A File Type Control rule for UPLOAD_DOWNLOAD did not apply to an upload or a download: a configured block reported as no rule",
+      "severity": "medium",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "UPLOAD_DOWNLOAD applies to UPLOAD and DOWNLOAD (the value pack_channels validates)",
+      "test": "tests/test_c6_path.py::test_a_file_type_rule_for_both_directions_applies_to_an_upload_and_a_download",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-08",
+      "title": "A connector rule restricted to destination workload groups (destWorkloadGroups) was evaluated as unrestricted: a definite DIRECT",
+      "severity": "medium",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "destWorkloadGroups is a criterion not evaluated: the rule is conditional",
+      "test": "tests/test_c6_path.py::test_a_forwarding_rule_on_destination_workload_groups_is_conditional_not_a_match",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-09",
+      "title": "sourceIpGroupExclusion was ignored: a rule for sources outside its groups was applied to sources inside them",
+      "severity": "medium",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "With sourceIpGroupExclusion the source must be outside every group (assumed from the SDK field); unknown members stay unknown",
+      "test": "tests/test_c6_path.py::test_a_forwarding_rule_that_excludes_source_groups_applies_only_outside_them",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-10",
+      "title": "A forwarding rule with method INVALID or an unknown one was reported as forwarded to ZIA (fail open)",
+      "severity": "medium",
+      "cwe": "CWE-636",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "An unknown forward method decides 'unknown' with an impact, never ZIA",
+      "test": "tests/test_c6_path.py::test_an_unknown_forward_method_is_unknown_never_assumed_to_be_zia",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-11",
+      "title": "A connector ZPA rule missed a renamed segment named by ZPA id; an empty segment-group name matched every groupless segment",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "All ids (id, externalId, zpaId) are compared; empty names and ids never match",
+      "test": "tests/test_c6_path.py::test_a_zpa_rule_on_a_nameless_segment_group_ref_never_matches_a_segment_without_a_group",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-12",
+      "title": "PAC string methods diverged from JavaScript (lastIndexOf fromIndex ignored, indexOf('', n), Infinity positions refused)",
+      "severity": "low",
+      "cwe": "CWE-682",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "ECMAScript ToIntegerOrInfinity and clamping for every position",
+      "test": "tests/test_c6_path.py::test_pac_string_methods_answer_as_ecmascript_does",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-13",
+      "title": "Test a list kept one answer per row: about 800 bytes a row, 201 MB for 250,000 rows",
+      "severity": "medium",
+      "cwe": "CWE-770",
+      "asvs": "V1.11.3",
+      "status": "fixed",
+      "fix": "Rows with the same answer share one kept evaluation, without another row's headline (36 MB for 250,000 rows)",
+      "test": "tests/test_c6_path.py::test_a_large_list_keeps_well_under_a_kilobyte_per_row",
+      "commit": "accd0a2"
+    },
+    {
+      "id": "C6-PATH-14",
+      "title": "A group- or user-scoped Client Connector app profile was taken as every user's (sample iOS profile is for Drivers): a definite path",
+      "severity": "medium",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "A scoped profile ahead of the first unscoped one that treats the destination differently makes the path depend on the user (unverified), naming each profile",
+      "test": "tests/test_c6_path.py::test_a_platform_whose_only_app_profile_is_for_one_group_is_unverified_for_any_user",
+      "commit": "adb74b1"
+    },
+    {
+      "id": "C6-PATH-15",
+      "title": "A connector rule, workload group or IP group list field of the wrong type raised TypeError (fixed-seed fuzz)",
+      "severity": "low",
+      "cwe": "CWE-1287",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "One list guard: a list is a list, one string is one item, anything else is nothing",
+      "test": "tests/test_c6_path.py::test_fuzz_hostile_connector_rules_never_crash_the_workload_evaluation",
+      "commit": "099aa89"
+    },
+    {
+      "id": "C6-PATH-16",
+      "title": "App profiles sorted by ruleOrder as text ('10' before '9': wrong profile); mixed types and odd systemProxyData raised errors",
+      "severity": "medium",
+      "cwe": "CWE-1287",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "ruleOrder is compared as a number (anything else sorts last); systemProxyData must be an object",
+      "test": "tests/test_c6_path.py::test_app_profiles_are_ordered_by_their_rule_order_as_numbers",
+      "commit": "06b7d27"
+    },
+    {
+      "id": "C6-PATH-17",
+      "title": "A URL lookup answer with categories of the wrong type raised TypeError (single, HAR batch, list); a string was split into letters",
+      "severity": "low",
+      "cwe": "CWE-1287",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "One shared parser (path_analyzer.labels / lookup_answer)",
+      "test": "tests/test_c6_path.py::test_a_url_lookup_answer_of_the_wrong_shape_is_read_defensively",
+      "commit": "758ea02"
+    },
+    {
+      "id": "C6-PATH-18",
+      "title": "5,000 firewall rules on shared groups took 3.4 s per analysis (indexes rebuilt and addresses re-parsed per rule)",
+      "severity": "medium",
+      "cwe": "CWE-407",
+      "asvs": "V1.11.3",
+      "status": "fixed",
+      "fix": "Indexes built once per evaluation; address entries parsed once (bounded cache, long strings never cached): 0.7 s",
+      "test": "tests/test_c6_path.py::test_5000_firewall_rules_on_shared_groups_analyze_in_under_two_seconds",
+      "commit": "392497a"
+    },
+    {
+      "id": "C6-PATH-19",
+      "title": "data_flow.load_packs opened each pack's policy file without closing it",
+      "severity": "info",
+      "cwe": "CWE-775",
+      "asvs": "V1.11.3",
+      "status": "fixed",
+      "fix": "Read with a context manager",
+      "test": "tests/test_c6_path.py::test_the_pack_library_is_read_with_every_file_closed",
+      "commit": "392497a"
+    },
+    {
+      "id": "C6-PATH-20",
+      "title": "5,000 connector forwarding rules on shared groups took 4 s (indexes, parses and lower-casing redone per rule)",
+      "severity": "medium",
+      "cwe": "CWE-407",
+      "asvs": "V1.11.3",
+      "status": "fixed",
+      "fix": "Built once per evaluation: 0.6 s",
+      "test": "tests/test_c6_path.py::test_5000_connector_rules_on_shared_groups_evaluate_in_under_two_seconds",
+      "commit": "0132b2e"
+    },
+    {
+      "id": "C6-PATH-21",
+      "title": "Test a list scanned every address entry for every row: 223 us a row against a 5,000-network group",
+      "severity": "medium",
+      "cwe": "CWE-407",
+      "asvs": "V1.11.3",
+      "status": "fixed",
+      "fix": "The address space is split at every range end; a row is one bisect and each stretch's entries are worked out once (39 us a row); a property test checks it against a full scan",
+      "test": "tests/test_c6_path.py::test_the_list_index_finds_exactly_the_entries_a_full_scan_finds",
+      "commit": "0aa4b33"
+    },
+    {
+      "id": "C6-PATH-22",
+      "title": "A list port of '²' raised a bare ValueError (HTTP 500 with a trace); '٣' was taken as a port and as the PAC number 3",
+      "severity": "medium",
+      "cwe": "CWE-209",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "Every digit check is ASCII only",
+      "test": "tests/test_c6_path.py::test_the_list_route_answers_a_superscript_port_without_a_500",
+      "commit": "6916f3b"
+    },
+    {
+      "id": "C6-PATH-23",
+      "title": "A tenant list entry written in Unicode never matched its IDN destination (placed in punycode): a Block rule reported as not applying",
+      "severity": "medium",
+      "cwe": "CWE-176",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Every list matcher (and Test a list's index) normalises entries with zia_path_modules.entry_host",
+      "test": "tests/test_c6_path.py::test_a_custom_category_entry_in_unicode_places_its_punycode_destination",
+      "commit": "e351849"
+    },
+    {
+      "id": "C6-PATH-24",
+      "title": "The app profile's IP bypasses were never compared with the destination: 10.1.2.3 (excluded 10.0.0.0/8) reported tunnelled and enforced",
+      "severity": "high",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "An IP destination inside one is bypassed with the entry named; a host name exclusion bypasses that host; public IP bypasses on a host name are stated as an assumption",
+      "test": "tests/test_c6_path.py::test_an_ip_destination_in_the_app_profiles_ip_bypass_never_reaches_zscaler",
+      "commit": "0ab2229"
+    },
+    {
+      "id": "C6-PATH-25",
+      "title": "Z-Tunnel 2.0 packet tunnel exclusions and inclusions were never read: an excluded address was reported tunnelled to ZIA",
+      "severity": "high",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "Read from the app profile and applied when the network's mode is Z-Tunnel 2.0; also counted when a scoped profile differs",
+      "test": "tests/test_c6_path.py::test_z_tunnel_2_packet_tunnel_lists_decide_whether_an_address_is_tunnelled",
+      "commit": "af9a6d7"
+    },
+    {
+      "id": "C6-PATH-26",
+      "title": "ssl_flow._names and _sort_key crash on rule fields of the wrong type: a hostile snapshot fails the Path analyzer and Data Flow Map",
+      "severity": "low",
+      "cwe": "CWE-1287",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "ssl_flow._names / _sort_key were fixed at integration; the same guard now covers data_flow._norm_generic actions and every zpa_reader list read (zpa_reader._items)",
+      "test": "tests/test_c6_open_low.py::test_a_list_field_of_the_wrong_type_never_stops_a_shared_normalizer",
+      "commit": "37a8f7c"
+    }
+  ],
+  "tests_added": 173
+}

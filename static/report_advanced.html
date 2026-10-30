@@ -7,6 +7,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page adv-page">
   <div class="rp-page">
@@ -21,7 +23,9 @@
       <a class="rp-btn" href="#formats">What the app accepts</a>
       <a class="rp-btn" href="#update">Update the app</a>
       <a class="rp-btn" href="#server">This server</a>
+      <a class="rp-btn" href="#appearance">Appearance</a>
       <a class="rp-btn" href="#sbd">This app's Secure by Design score</a>
+      <a class="rp-btn" href="#quality">Quality and security score</a>
       <a class="rp-btn" href="#upstream">Daily upstream check</a>
       <a class="rp-btn" href="#credits">Credits</a>
       <span class="sep"></span>
@@ -124,6 +128,13 @@
           <div class="tw"><table class="bp-table adv-table" id="advServer" aria-describedby="advSrvH"><tbody><tr><td class="dim">Loading…</td></tr></tbody></table></div>
         </section>
 
+        <section id="appearance" aria-labelledby="advLookH">
+          <h2 class="df-h" id="advLookH">Appearance</h2>
+          <p class="adv-lead">The glass effect makes the bars, cards, dialogs and buttons see-through, like frosted glass over a soft background. Turn it off for solid surfaces. The choice is kept in this browser only, and surfaces stay solid anyway when your system asks for less transparency or more contrast.</p>
+          <label class="adv-switch" for="advGlass"><input type="checkbox" id="advGlass" role="switch" checked aria-describedby="advGlassNote"><span>Glass effect</span></label>
+          <p class="adv-lead dim" id="advGlassNote" role="status" aria-live="polite"></p>
+        </section>
+
         <section id="sbd" aria-labelledby="advSbdH">
           <h2 class="df-h" id="advSbdH">CISA Secure by Design score — for this app, not the tenant</h2>
           <p class="adv-lead">How Zscaler Made Easy itself (the tool you are running) measures against CISA's <a href="https://www.cisa.gov/securebydesign" target="_blank" rel="noopener">Secure by Design</a> principles and the seven pledge goals, read live from this server and the app folder each time you open this page. It says nothing about the customer's Zscaler tenant; the assessment and the Regulatory &amp; compliance alignment report do that, and no framework there is a CISA one. Every control says what was found and, when it falls short, what to do. A pass counts 1, a warning 0.5, a failure 0; a control that does not apply to a local single-operator tool is shown but not scored.</p>
@@ -133,6 +144,36 @@
             <thead><tr><th scope="col">Control</th><th scope="col">Status</th><th scope="col">What was found</th><th scope="col">What to do</th></tr></thead>
             <tbody><tr><td colspan="4" class="dim">Measuring…</td></tr></tbody>
           </table></div>
+        </section>
+
+        <section id="quality" aria-labelledby="advQsH">
+          <h2 class="df-h" id="advQsH">Quality and security score</h2>
+          <p class="adv-lead">How well this app (not your tenant) is tested, and how many security findings are still open. It comes from the last full test run and the findings each QA check recorded. Read the score first, then the open findings: each one says why it is open and what to do.</p>
+          <div id="advQsBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Loading the score…</span></div>
+          <div id="advQsBody" hidden>
+            <h3 class="adv-qs-h" id="advQsAreasH">Scores by area</h3>
+            <div id="advQsChart" class="adv-qs-chart" aria-hidden="true"></div>
+            <p id="advQsText" class="adv-lead"></p>
+            <div class="df-tablewrap" tabindex="0" role="region" aria-labelledby="advQsAreasH"><table class="df-table" id="advQsAreas" aria-labelledby="advQsAreasH">
+              <thead><tr><th scope="col">Area</th><th scope="col">Score</th><th scope="col">Tests passed</th><th scope="col">Open findings</th><th scope="col">Standards covered</th><th scope="col">Based on</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+            <h3 class="adv-qs-h" id="advQsCountsH">Findings by severity and status</h3>
+            <div class="df-tablewrap" tabindex="0" role="region" aria-labelledby="advQsCountsH"><table class="df-table" id="advQsCounts" aria-labelledby="advQsCountsH">
+              <thead><tr><th scope="col">Severity</th><th scope="col">Open</th><th scope="col">Fixed</th><th scope="col">Accepted</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+            <h3 class="adv-qs-h" id="advQsOpenH">Open findings</h3>
+            <p id="advQsOpenNone" class="adv-lead" hidden></p>
+            <div class="df-tablewrap" tabindex="0" role="region" aria-labelledby="advQsOpenH"><table class="df-table" id="advQsOpen" aria-labelledby="advQsOpenH">
+              <thead><tr><th scope="col">Finding</th><th scope="col">Severity</th><th scope="col">CWE / ASVS</th><th scope="col">Area</th><th scope="col">Why it is open</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+            <h3 class="adv-qs-h" id="advQsStdH">Standards covered by tests</h3>
+            <div id="advQsStd" class="adv-qs-std"></div>
+            <p id="advQsRun" class="adv-lead dim"></p>
+          </div>
+          <div class="adv-actions"><a class="rp-btn" href="/api/quality-score/report.md" target="_blank" rel="noopener">Read the full report (QUALITY_SCORE.md)</a> <button type="button" class="rp-btn" id="advQsReload">Reload the score</button></div>
         </section>
 
         <section id="upstream" aria-labelledby="advUpH">
@@ -163,5 +204,8 @@
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
   <script src="/static/advanced.js"></script>
+  <script src="/static/quality_score.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
 </body>
 </html>

@@ -31,8 +31,8 @@ short version, for a Windows laptop with Git already installed:
 2. Install Git from git-scm.com.
 3. In a Command Prompt or PowerShell:
    ```
-   git clone https://github.com/berserkerjay/DLP-Check.git
-   cd DLP-Check
+   git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
+   cd Zscaler-Made-Easy
    .\INSTALL_Zscaler_Made_Easy.bat
    ```
 4. A **Zscaler Made Easy** shortcut appears on the desktop. Double-click it.

@@ -41,6 +41,7 @@ listener) or another proxy.
 """
 from __future__ import annotations
 
+import bisect
 import hashlib
 import ipaddress
 import math
@@ -130,6 +131,18 @@ _UNSUPPORTED_WORDS = {"for", "while", "do", "switch", "case", "default", "try", 
 _ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "0": "\0", "'": "'", '"': '"', "\\": "\\", "\n": ""}
 
 
+def _hex(digits: str) -> float:
+    """A hexadecimal literal as JavaScript reads it: too large for a
+    double is Infinity, never an OverflowError."""
+    try:
+        return float(int(digits or "0", 16))
+    except OverflowError:
+        return float("inf")
+
+
+_DIGITS = frozenset("0123456789")   # JavaScript's decimal digits: "٣" or "²" is no digit there
+
+
 def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
     """(kind, value, position) tokens; kind is id, num, str or p. Linear:
     every character is looked at a bounded number of times."""
@@ -159,15 +172,15 @@ def _tokenize(src: str) -> List[Tuple[str, Any, int]]:
             toks.append(("id", src[i:j], i))
             i = j
             continue
-        if c.isdigit() or (c == "." and i + 1 < n and src[i + 1].isdigit()):
+        if c in _DIGITS or (c == "." and i + 1 < n and src[i + 1] in _DIGITS):
             j = i
             if src.startswith(("0x", "0X"), i):
                 j = i + 2
                 while j < n and src[j] in "0123456789abcdefABCDEF":
                     j += 1
-                toks.append(("num", float(int(src[i + 2:j] or "0", 16)), i))
+                toks.append(("num", _hex(src[i + 2:j]), i))
             else:
-                while j < n and (src[j].isdigit() or src[j] == "."):
+                while j < n and (src[j] in _DIGITS or src[j] == "."):
                     j += 1
                 try:
                     toks.append(("num", float(src[i:j]), i))
@@ -238,6 +251,7 @@ class _Parser:
         self.toks = _tokenize(src)
         self.i = 0
         self.depth = 0
+        self._newlines: Optional[List[int]] = None
 
     # helpers
     def peek(self, k: int = 0) -> Tuple[str, Any, int]:
@@ -263,7 +277,11 @@ class _Parser:
             raise Unsafe(f"unexpected {self._desc(t)} where '{v}' was expected (line {self.line(t[2])})")
 
     def line(self, pos: int) -> int:
-        return self.src.count("\n", 0, pos) + 1
+        # Every call records its line: a binary search over the newline
+        # offsets (found once) keeps the parse linear in the source size.
+        if self._newlines is None:
+            self._newlines = [m.start() for m in re.finditer("\n", self.src)]
+        return bisect.bisect_left(self._newlines, pos) + 1
 
     @staticmethod
     def _desc(t) -> str:
@@ -595,6 +613,8 @@ def compile_pac(source: str) -> Dict[str, Any]:
         res = e
     except RecursionError:
         res = Unsafe(f"nesting deeper than {MAX_DEPTH} levels")
+    except Exception as e:  # noqa: BLE001 — fail closed: a parse that breaks is a refusal, never a crash
+        res = Unsafe(f"an internal error ({type(e).__name__})")
     with _CACHE_LOCK:
         while len(_CACHE) >= _CACHE_MAX:
             _CACHE.pop(next(iter(_CACHE)))
@@ -651,7 +671,7 @@ def _to_num(v: Any) -> float:
         if not s:
             return 0.0
         try:
-            return float(int(s[2:], 16)) if s[:2].lower() == "0x" else float(s)
+            return _hex(s[2:]) if s[:2].lower() == "0x" else float(s)
         except ValueError:
             return float("nan")
     return float("nan")
@@ -927,34 +947,35 @@ class _Interp:
             return obj.upper()
         if name == "trim":
             return obj.strip()
-        if name in ("indexOf", "lastIndexOf"):
-            needle = _to_str(a[0])
-            if name == "indexOf":
-                start = 0 if a[1] is UNDEF else max(0, int(_to_num(a[1]) if not math.isnan(_to_num(a[1])) else 0))
-                return float(obj.find(needle, start))
-            return float(obj.rfind(needle))
-        if name == "charAt":
-            i = _to_num(a[0]) if a[0] is not UNDEF else 0.0
-            i = 0 if math.isnan(i) else int(i)
-            return obj[i] if 0 <= i < len(obj) else ""
+        n = len(obj)
 
-        def clamp(v: Any, default: int) -> int:
+        def whole(v: Any, default: float) -> float:
+            # ECMAScript ToIntegerOrInfinity: NaN is 0, infinities stay, else truncated.
             if v is UNDEF:
                 return default
             x = _to_num(v)
-            if math.isnan(x):
-                return 0
-            return int(max(0, min(len(obj), x)))
+            return 0.0 if math.isnan(x) else x if math.isinf(x) else float(math.trunc(x))
+
+        def clamp(v: Any, default: float) -> int:
+            return int(max(0.0, min(float(n), whole(v, default))))
+        if name in ("indexOf", "lastIndexOf"):
+            needle = _to_str(a[0])
+            if name == "indexOf":
+                return float(obj.find(needle, clamp(a[1], 0.0)))
+            # lastIndexOf: a NaN (or missing) position searches the whole string.
+            pos = a[1] if a[1] is not UNDEF and not math.isnan(_to_num(a[1])) else UNDEF
+            return float(obj.rfind(needle, 0, clamp(pos, float(n)) + len(needle)))
+        if name == "charAt":
+            i = whole(a[0], 0.0)
+            return obj[int(i)] if 0 <= i < n else ""
         if name == "substring":
-            s, t = clamp(a[0], 0), clamp(a[1], len(obj))
+            s, t = clamp(a[0], 0.0), clamp(a[1], float(n))
             return obj[min(s, t):max(s, t)]
         if name == "substr":
-            x = _to_num(a[0]) if a[0] is not UNDEF else 0.0
-            x = 0 if math.isnan(x) else int(x)
-            if x < 0:
-                x = max(0, len(obj) + x)
-            ln = len(obj) - x if a[1] is UNDEF else max(0, int(_to_num(a[1]) if not math.isnan(_to_num(a[1])) else 0))
-            return obj[x:x + ln]
+            x = whole(a[0], 0.0)
+            x = max(0.0, n + x) if x < 0 else min(float(n), x)
+            ln = max(0.0, min(whole(a[1], float(n)), n - x))
+            return obj[int(x):int(x + ln)]
         raise Unsafe(f"the method '{name}'")
 
     # PAC helpers and helper functions
@@ -1226,6 +1247,24 @@ def inspect(source: str) -> Dict[str, Any]:
     flags = {"isinnet_on_host": False}
     budget = [0]
 
+    def returned(stmts) -> List[Any]:
+        """The expressions a helper function's body returns (any branch)."""
+        out, stack = [], list(stmts)
+        while stack and len(out) < 64:
+            st = stack.pop()
+            if st[0] == "return" and st[1] is not None:
+                out.append(st[1])
+            elif st[0] == "block":
+                stack.extend(st[1])
+            elif st[0] == "if":
+                stack.extend(body for _c, body, _ in st[1])
+                if st[2] is not None:
+                    stack.append(st[2])
+        return out
+    # A condition that calls a helper function (isCorp(host)) is that
+    # helper's returned conditions: a DIRECT behind it lists them too.
+    helpers = {name: returned(body) for name, (_params, body) in prog["functions"].items() if name != "FindProxyForURL"}
+
     def lit(e) -> Optional[str]:
         if e is None:
             return None
@@ -1242,6 +1281,7 @@ def inspect(source: str) -> Dict[str, Any]:
 
     def conds(e, positive: bool, out: List[Dict[str, Any]]) -> None:
         stack = [(e, positive)]
+        expanded: set = set()   # each helper once per condition: a recursive helper never loops
         while stack:
             budget[0] += 1
             if budget[0] > MAX_STEPS:
@@ -1265,6 +1305,9 @@ def inspect(source: str) -> Dict[str, Any]:
                         out.append({"fn": x[1], "value": "", "line": x[3]})
                     elif strings:
                         out.append({"fn": x[1], "value": strings[0], "line": x[3]})
+                if pos and x[1] in helpers and x[1] not in expanded:
+                    expanded.add(x[1])
+                    stack.extend((y, pos) for y in reversed(helpers[x[1]]))
             elif k == "cmp":
                 stack.extend([(x[2], pos), (x[3], pos)])
             elif k == "arith":

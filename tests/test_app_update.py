@@ -667,3 +667,77 @@ def test_the_in_app_update_refreshes_the_shortcuts_as_a_soft_step(repos, monkeyp
     res = au.update(app, install_deps=False)
     step = res["steps"][-1]
     assert calls == [app] and res["ok"] and step["name"] == "Refresh the desktop shortcuts" and step["soft"] and not step["ok"]
+
+
+# ── Wave 6 UI check: an update is confirmed first and leaves an audit record ──
+
+@pytest.mark.parametrize("script,handler", [("advanced.js", "async function runUpdate()"), ("guide.js", "async function _gdUpdateApp()")])
+def test_every_update_button_asks_before_it_changes_the_app(script, handler):
+    """WCAG 2.2 SC 3.3.4 · CWE-1188: table over both Update buttons (Advanced settings, the dashboard card): a confirmation names what happens before /api/app/update is called (one click updated, switched branch, stashed edits and installed packages)."""
+    js = open(os.path.join(ROOT, "static", script), encoding="utf-8").read()
+    body = js[js.index(handler):]
+    body = body[: body.index("\n}") if script == "guide.js" else body.index("\n  }")]
+    assert "window.confirm(" in body and body.index("window.confirm(") < body.index("/api/app/update")
+    assert "if (!window.confirm(" in body, "cancelling the dialog stops the update"
+    assert "git stash" in body and "restart" in body and "Nothing in the tenant changes" in body
+
+
+def test_an_app_update_is_recorded_in_the_audit_log(repos, monkeypatch, tmp_path):
+    """ASVS V7.1.3 · CWE-778: POST /api/app/update writes an app_update event (branch, builds, result) to the audit log."""
+    import json as _json
+    import dlp_api_server as srv
+    # Arrange
+    log = tmp_path / "audit.log"
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    monkeypatch.setattr(srv, "_APP_DIR", str(repos["app"]))
+    monkeypatch.setattr(au, "update", lambda app_dir, install_deps=True, python=None, branch=None: {
+        "ok": True, "updated": True, "before": "a" * 7, "after": "b" * 7, "steps": [], "error": None, "restart_required": True, "app_dir": app_dir, "branch": branch})
+    # Act
+    r = TestClient(srv.app).post("/api/app/update")
+    # Assert
+    assert r.status_code == 200
+    events = [_json.loads(x) for x in log.read_text().splitlines()]
+    hit = [e for e in events if e["event"] == "app_update"]
+    assert hit and hit[-1]["branch"] == "main" and hit[-1]["ok"] is True and hit[-1]["before"] == "a" * 7 and hit[-1]["after"] == "b" * 7
+
+
+def test_a_refused_update_writes_no_audit_event(repos, monkeypatch, tmp_path):
+    """ASVS V7.1.3 · CWE-778: negative case: an update refused before it runs (not bound to localhost) records nothing and changes nothing."""
+    import dlp_api_server as srv
+    log = tmp_path / "audit.log"
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    monkeypatch.setattr(srv, "_APP_DIR", str(repos["app"]))
+    monkeypatch.setattr(au, "update", lambda *a, **k: pytest.fail("the update must not run"))
+    monkeypatch.setenv("ZSCALER_BIND_HOST", "0.0.0.0")
+    assert TestClient(srv.app).post("/api/app/update").status_code == 403
+    assert not log.exists() or "app_update" not in log.read_text()
+
+
+
+@pytest.mark.parametrize("origin,trusted", [
+    ("https://github.com/berserkerjay/Zscaler-Made-Easy.git", True),
+    ("https://github.com/berserkerjay/DLP-Check.git", True),      # the same repository under its earlier name
+    ("https://github.com/someone-else/Zscaler-Made-Easy.git", False),
+    ("https://github.com/berserkerjay/Other.git", False),
+])
+def test_the_upstream_check_trusts_the_repository_under_both_its_names(tmp_path, monkeypatch, origin, trusted):
+    """SLSA v1.0 Source · SSDF PS.2.1 · CWE-494: after the GitHub rename, a clone naming the new or the old name of the same repository is vouched for; a fork or another repository is not (refused before any request)."""
+    import requests
+    monkeypatch.delenv("DLP_CHECK_GITHUB_REPO", raising=False)
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "remote", "add", "origin", origin)
+    calls = []
+
+    class R:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"sha": "a" * 40}
+    monkeypatch.setattr(requests, "get", lambda url, **kw: calls.append(url) or R())
+    v = au.verify_against_github_api(str(repo), "main", "a" * 40)
+    assert bool(v.get("checked")) is trusted and bool(calls) is trusted, v

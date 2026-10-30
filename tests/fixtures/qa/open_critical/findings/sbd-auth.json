@@ -1,0 +1,3 @@
+{"area": "Secure by design: auth", "title": "Fixture: auth checks",
+ "findings": [{"id": "SBD-AUTH-01", "title": "Fixture: a route answers without the token", "severity": "critical", "cwe": "CWE-306", "asvs": "V4.1.1",
+               "status": "open", "reason": "Fixture: no fix yet"}]}

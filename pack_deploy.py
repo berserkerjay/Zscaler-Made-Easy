@@ -66,7 +66,6 @@ from dlp_importer import (resolve_template, engine_limit_problems, heal_predefin
     ENGINE_DESCRIPTION_MAX,
     EMPTY_DICT_REASON,
     fit_description,
-    _load_json,
     _nx,
     _obj_to_dict,
     _resolve_configs,
@@ -194,7 +193,9 @@ def has_mark(desc: Any, *, pack_id: Optional[str] = None, kind: Optional[str] = 
             return True
         if not pm and m and m.group("by") != DEFAULT_BY and _counts(m, None):
             return False      # the description ends in another pack's tag
-        return any(f"{mk} {pack_id}" in d for mk in legacy)
+        # The legacy tag names the pack id whole: "[DLP-Check pack pci" is not
+        # a tag of pack "pci" when it reads "[DLP-Check pack pci_extended v1]".
+        return any(re.search(re.escape(f"{mk} {pack_id}") + r"(?=[\s\]]|$)", d) for mk in legacy)
     if m and (kind is None or m.group("kind") == kind) and _counts(m, None):
         return True
     return any(mk in d for mk in legacy)
@@ -357,19 +358,131 @@ def _norm_expr(expr: str) -> str:
 # Pack loading + merging
 # ---------------------------------------------------------------------------
 
+class PackFileError(ValueError):
+    """A pack file on disk that is not a pack: too large, not JSON, or not
+    a list of objects. The plan is refused with this plain message."""
+
+
+PACK_FILE_MAX_BYTES = 8 * 1024 * 1024     # the library's upload cap (pack_library.MAX_UPLOAD_BYTES)
+PACK_JSON_MAX_DEPTH = 32                   # a pack object needs about 5 levels
+
+
+def _depth_ok(value: Any, limit: int) -> bool:
+    stack = [(value, 1)]
+    while stack:
+        v, d = stack.pop()
+        if d > limit:
+            return False
+        if isinstance(v, dict):
+            stack.extend((x, d + 1) for x in v.values())
+        elif isinstance(v, list):
+            stack.extend((x, d + 1) for x in v)
+    return True
+
+
+def load_pack_file(configs: str, filename: str, pack_id: Any = "") -> List[Dict[str, Any]]:
+    """One pack config file as a list of objects, read as untrusted input:
+    size and nesting capped, JSON only, every entry an object with a text
+    name when it has one. A missing file is an empty list. PackFileError
+    otherwise (never a crash halfway through a plan or a deploy).
+    The app's one pack-file reader: deploy, removal, Terraform export, the
+    library (dlp_importer._load_json) and tools/fan_out_channels.py all read
+    through it, so a pack one of them takes is never refused by another."""
+    import os
+    path = os.path.join(configs, filename)
+    if not os.path.exists(path):
+        return []
+    where = f"pack '{pack_id}': {filename}" if pack_id else filename
+    try:
+        if os.path.getsize(path) > PACK_FILE_MAX_BYTES:
+            raise PackFileError(f"{where} is larger than {PACK_FILE_MAX_BYTES // (1024 * 1024)} MB")
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except PackFileError:
+        raise
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError) as e:
+        raise PackFileError(f"{where} is not readable JSON ({type(e).__name__})") from None
+    if data is None:
+        return []
+    if not isinstance(data, list) or not all(isinstance(x, dict) for x in data):
+        raise PackFileError(f"{where} must be a JSON list of objects")
+    if not _depth_ok(data, PACK_JSON_MAX_DEPTH):
+        raise PackFileError(f"{where} is nested more than {PACK_JSON_MAX_DEPTH} levels deep")
+    schema = _PACK_FIELDS.get(filename, {"name": _TEXT})
+    for x in data:
+        _check_fields(x, schema, where)
+        subs = x.get("sub_rules")
+        if subs is not None:
+            if not (isinstance(subs, list) and all(isinstance(s, dict) for s in subs)):
+                raise PackFileError(f"{where}: sub_rules must be a list of objects")
+            for s in subs:
+                _check_fields(s, schema, where)
+    return data
+
+
+# The type of every field the planner reads, per pack file. A field that is
+# absent or null is fine; any other type is refused (a pack edited by hand
+# or converted from elsewhere must not crash a plan halfway through).
+_TEXT = (str,)
+_INT = "int"           # an integer, or a string of digits ("0")
+_TEXTS = "texts"       # a list of strings
+_ITEMS = "items"       # a list of objects whose values are text (patterns, phrases)
+_IDS = "ids"           # a list of strings or integers (application ids)
+_POLICY_FIELDS = {"name": _TEXT, "engines": _TEXTS, "protocols": _TEXTS, "rank": _INT, "order": _INT, "action": (str, dict),
+                  "state": _TEXT, "channel": _TEXT, "severity": _TEXT, "description": _TEXT, "parent_rule": _TEXT,
+                  "endpoint_application_groups": _TEXTS, "target_action": (str, dict)}
+_PACK_FIELDS: Dict[str, Dict[str, Any]] = {
+    "dlp_dictionaries.json": {"name": _TEXT, "patterns": _ITEMS, "phrases": _ITEMS, "proximity": _INT, "description": _TEXT,
+                              "confidence_threshold": _TEXT, "custom_phrase_match_type": _TEXT, "dict_template_name": _TEXT,
+                              "predefined_clone": (bool,)},
+    "dlp_engines.json": {"name": _TEXT, "expression": _TEXT, "engine_expression": _TEXT, "description": _TEXT},
+    "dlp_policies.json": _POLICY_FIELDS,
+    "endpoint_application_groups.json": {"name": _TEXT, "description": _TEXT, "resources": _IDS},
+}
+
+
+def _check_fields(obj: Dict[str, Any], schema: Dict[str, Any], where: str) -> None:
+    for key, kind in schema.items():
+        if key not in obj:
+            continue
+        v = obj[key]
+        if v is None and kind not in (_TEXTS, _ITEMS, _IDS):
+            continue      # a null text or number reads as unset; a null list is refused below
+        if kind == _INT:
+            ok = (isinstance(v, int) and not isinstance(v, bool)) or (isinstance(v, str) and v.strip().isdigit())
+        elif kind == _TEXTS:
+            ok = isinstance(v, list) and all(isinstance(s, str) for s in v)
+        elif kind == _ITEMS:
+            ok = isinstance(v, list) and all(isinstance(s, dict) and all(isinstance(t, str) or t is None for t in s.values()) for s in v)
+        elif kind == _IDS:
+            ok = isinstance(v, list) and all(isinstance(s, (str, int)) and not isinstance(s, bool) for s in v)
+        else:
+            ok = isinstance(v, kind)
+        if not ok:
+            raise PackFileError(f"{where}: '{key}' of '{str(obj.get('name'))[:80]}' has the wrong type ({type(v).__name__})")
+
+
 def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict[str, Sequence[str]]] = None) -> List[Dict[str, Any]]:
     """Load every selected pack. `packs` items need `id` and `dir`.
     `channel_targets` (pack id → DLP channels) narrows or extends the
-    pack's rules per channel; see pack_channels.apply_channel_targets."""
+    pack's rules per channel; see pack_channels.apply_channel_targets.
+    A pack file that is not a pack raises PackFileError (load_pack_file)."""
     sources = []
     for p in packs:
         configs = _resolve_configs(p["dir"])
-        meta = load_pack_metadata(p["dir"])
+        files = {fn: load_pack_file(configs, fn, p.get("id")) for fn in
+                 ("dlp_dictionaries.json", "dlp_engines.json", "dlp_policies.json", "endpoint_application_groups.json")}
+        try:
+            meta = load_pack_metadata(p["dir"])
+        except Exception as e:  # noqa: BLE001 — the files above were checked; anything else is still a refused pack
+            raise PackFileError(f"pack '{p.get('id')}': its files could not be read ({type(e).__name__})") from None
+        if not isinstance(meta, dict):
+            meta = {}
         # Like ship_monitor for rules: a dictionary named like one of ZIA's
         # predefined display names is renamed here, once, so the plan, the
         # deploy, a removal, the journey and Terraform all see the same name.
-        dictionaries, engines, renamed = heal_predefined_names(_load_json(configs, "dlp_dictionaries.json"), _load_json(configs, "dlp_engines.json"))
-        policies = pc.ship_monitor(pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")))
+        dictionaries, engines, renamed = heal_predefined_names(files["dlp_dictionaries.json"], files["dlp_engines.json"])
+        policies = pc.ship_monitor(pc.expand_sub_rules(files["dlp_policies.json"]))
         targets = (channel_targets or {}).get(p["id"])
         baseline = baseline_meta(meta, p["id"])
         policies, note = pc.apply_channel_targets(
@@ -382,7 +495,7 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
             "dictionaries": dictionaries,
             "engines": engines,
             "policies": policies,
-            "app_groups": _load_json(configs, "endpoint_application_groups.json"),
+            "app_groups": files["endpoint_application_groups.json"],
             "tweaks": meta.get("confidence_tweaks"),
             "baseline": baseline,
             "version": str(meta.get("version") or ""),
@@ -1096,6 +1209,27 @@ def _policy_drift(p: Dict[str, Any], channel: str, existing: Dict[str, Any],
 _CAMEL_RE = re.compile(r"(?<!^)(?=[A-Z])")
 
 
+def _changed_since_plan(zia, did: Any, planned: Any) -> Optional[str]:
+    """Re-read a dictionary right before a whole-object PUT built from the
+    plan's snapshot (a confidence tweak): why it must not be sent (it
+    changed since the plan, is gone, or cannot be read), or None. The same
+    listing as the plan, so the two reads compare like for like."""
+    try:
+        rows, err = _nx(zia.dlp_dictionary.list_dicts())
+    except Exception as e:  # noqa: BLE001 — a failed read is no proof it is unchanged
+        rows, err = None, str(e)
+    if err or rows is None:
+        return f"not sent: it could not be read again right before the change ({str(err)[:120]}); preview again"
+    fresh = next((d for d in rows if str(_field(d, "id")) == str(did)), None)
+    if fresh is None:
+        return "not sent: it is no longer in the tenant"
+    canon = lambda d: json.dumps(dictionary_update_body(d), sort_keys=True, default=str)  # noqa: E731
+    if canon(fresh) != canon(planned):
+        return ("not sent: it changed in the tenant since the plan was approved (someone edited it), so it is left as it is and "
+                "their change is kept; preview again")
+    return None
+
+
 def dictionary_update_body(existing: Any, **changes: Any) -> Dict[str, Any]:
     """The whole dictionary as the tenant has it, with `changes` applied,
     for PUT /dlpDictionaries/{id}. A PUT replaces the object, so a body with
@@ -1475,15 +1609,28 @@ def _rate_detail(f: Dict[str, Any]) -> str:
 
 
 def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence[Dict[str, Any]], tenant: Dict[str, Any]) -> str:
+    """Binds an approval to the plan the user saw: what each item will do
+    and with what content (a pack file edited since the preflight changes
+    it), and which objects the tenant held (an object replaced, renamed or
+    moved since then changes it, not only a change in the counts)."""
+    def content(i: Dict[str, Any]) -> str:
+        d = i.get("definition")
+        return hashlib.sha256(_canonical(d if isinstance(d, (dict, list)) else str(d)).encode("utf-8")).hexdigest()
+
+    def ids(objs: Dict[str, Any]) -> List[List[str]]:
+        return sorted([str(n), str(_field(o, "id"))] for n, o in objs.items())
+
     core = {
         "packs": sorted(pack_ids),
         "options": options,
-        "items": sorted((i["kind"], i["name"], i["status"]) for i in items),
+        "items": sorted((i["kind"], i["name"], i["status"], content(i), str((i.get("tenant") or {}).get("current"))
+                         if i["kind"] == "tweak" else "") for i in items),
         "tenant": {
-            "dictionaries": len(tenant["dictionaries"]),
-            "engines": len(tenant["engines"]),
-            "rules": len(tenant["rules"]),
-            "channel_rules": {ch: len(rs) for ch, rs in tenant["channels"]["rules"].items()},
+            "dictionaries": ids(tenant["dictionaries"]),
+            "engines": ids(tenant["engines"]),
+            "rules": sorted([str(r.get("id")), str(r.get("name")), int(r.get("order") or 0)] for r in tenant["rules"]),
+            "channel_rules": {ch: sorted([str(r.get("id")), str(r.get("name"))] for r in rs)
+                              for ch, rs in tenant["channels"]["rules"].items()},
             "casb_tenants": sorted(t["name"] for t in (tenant["channels"].get("casb_tenants") or [])),
         },
     }
@@ -1686,7 +1833,12 @@ def preflight_plan(
                 "impacts": [], "summary": {}, "packs": [], "plan_hash": "", "tenant": {"reachable": False}}
 
     targets_norm = {pid: pc.normalize_targets(t) for pid, t in (channel_targets or {}).items() if pc.normalize_targets(t) is not None}
-    sources = load_sources(packs, targets_norm)
+    try:
+        sources = load_sources(packs, targets_norm)
+    except PackFileError as e:
+        # An untrusted pack file that is not a pack: refused before the tenant is read.
+        return {"status": "blocked", "blockers": [f"The pack cannot be used: {e}. Fix or re-upload it, then run the preflight again."],
+                "items": [], "warnings": [], "impacts": [], "summary": {}, "packs": [], "plan_hash": "", "tenant": {"reachable": False}}
     merged = merge_sources(sources)
     need = pc.needs(i["definition"] for i in merged["policy"].values())
     if read_scope is not None:
@@ -2185,11 +2337,15 @@ def apply(
     limits, whichever thread runs it. Every write and the run's summary
     go to the audit log (pack_ops.audited_run)."""
     import zia_rate
-    with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
-        run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
-                               writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
-                               activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor, cancel=cancel)
-        return run["result"]
+    with ops.tenant_run(client) as mine:
+        if not mine:
+            ops.audit_refusal("deploy", client, plan_hash=plan_hash, reason=ops.BUSY_REASON)
+            return ops.busy_result(plan_hash=plan_hash)
+        with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
+            run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
+                                   writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
+                                   activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor, cancel=cancel)
+            return run["result"]
 
 
 def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,
@@ -2204,7 +2360,8 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                        restore_drift=restore_drift, channel_targets=channel_targets, log=_log, cancel=cancel)
     if report.get("status") == "stopped":
         return {"status": "stopped", "stopped": report["stopped"], "results": [], "report": public_report(report)}
-    if writes_enabled is False:
+    if writes_enabled is not True:
+        # Deny by default: only an explicit True (the server's write gate) writes.
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs where the page "
                                                   "offers it; otherwise " + __import__("security").write_enable_hint() + ". Then deploy."],
                 "report": public_report(report), "results": []}
@@ -2499,12 +2656,20 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 continue  # no-ops were already explained in the plan; nothing to report
             t = item["tenant"]
             existing = tenant["dictionaries"][t["name"]]
+            why = _changed_since_plan(zia, t["id"], existing)
+            if why:   # the PUT carries the whole dictionary as planned: never send it over someone else's change
+                _log(f"[dictionary] {t['name']}: {why}")
+                record(item, "skipped", reason=why)
+                continue
             out = ops.update(zia, "dictionary", t["id"],
                              dictionary_update_body(existing, confidence_threshold=item["definition"]["target_confidence"]), log=_log)
             if not out.ok:
                 record(item, "failed", outcome=out)
             else:
-                record(item, "modified", outcome=out, id=t["id"])
+                # What Undo puts back: the dictionary's confidence before the
+                # tweak, while it still holds the value the tweak set.
+                record(item, "modified", outcome=out, id=t["id"], dictionary=t["name"], field="confidence_threshold",
+                       before=t.get("current"), after=item["definition"]["target_confidence"])
 
     counts: Dict[str, int] = {}
     for r in results:
@@ -2739,6 +2904,53 @@ def verify_pack(client, pack: Dict[str, Any]) -> Dict[str, Any]:
     return v
 
 
+def _undo_tweaks(client, record: Dict[str, Any], log: LogFn = None) -> List[Dict[str, Any]]:
+    """Put back the confidence of each existing tenant dictionary the
+    deployment's confidence tweaks changed (`record["other"]`, kind tweak):
+    read it again, and only while it still holds the value the tweak set
+    (a value someone changed since is theirs and is left alone). Returns
+    one result per tweak (restored / skipped / failed / gone)."""
+    _log = log or (lambda m: None)
+    out: List[Dict[str, Any]] = []
+    tweaks = [t for t in record.get("other") or []
+              if t.get("kind") == "tweak" and t.get("status") == "modified" and t.get("id") is not None and t.get("after")]
+    if not tweaks:
+        return out
+    # Read again right before the write, the same listing the deploy read the dictionary from.
+    try:
+        rows, err = _nx(client.zia.dlp_dictionary.list_dicts())
+    except Exception as e:  # noqa: BLE001
+        rows, err = None, str(e)
+    for t in tweaks:
+        res = {"kind": "tweak", "name": t.get("name"), "id": t.get("id"), "channel": None}
+        if err or rows is None:
+            out.append(dict(res, status="failed", error=f"could not read the dictionaries again: {str(err or 'no answer')[:160]}"))
+            continue
+        cur = next((d for d in rows if str(_field(d, "id")) == str(t["id"])), None)
+        if cur is None:
+            out.append(dict(res, status="gone", reason="the dictionary is no longer in the tenant"))
+            continue
+        now = _field(cur, "confidence_threshold", "confidenceThreshold")
+        before = t.get("before") or None
+        if now == before:
+            out.append(dict(res, status="gone", reason="already back at its earlier confidence"))
+            continue
+        if now != t["after"]:
+            out.append(dict(res, status="skipped", reason=f"its confidence was changed to {now} since the deployment; left as it is"))
+            continue
+        body = dictionary_update_body(cur, confidence_threshold=before)
+        if before is None:
+            body.pop("confidence_threshold", None)   # it had none: the PUT (a replace) leaves it unset again
+        result = ops.update(client.zia, "dictionary", t["id"], body, log=_log)
+        words = f"confidence back to {before}" if before else "confidence back to unset"
+        if result.ok:
+            _log(f"[tweak] {t.get('dictionary') or t.get('name')}: {words}")
+            out.append(dict(res, status="restored", reason=words))
+        else:
+            out.append(dict(res, status="failed", error=result.as_error()))
+    return out
+
+
 def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = None, log: LogFn = None,
          settle_seconds: float = 45.0) -> Dict[str, Any]:
     """Delete what a recorded deployment created, through the same executor
@@ -2749,10 +2961,40 @@ def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = Non
     that id under the name it was given; an id that now carries another
     name is skipped and said so, an object already gone is reported as
     gone. Returns the undo shape (undone / partial / nothing / failed /
-    blocked) older callers and the deployment store expect."""
+    blocked) older callers and the deployment store expect.
+
+    One write run per tenant (pack_ops.tenant_run): the confidence tweaks
+    it puts back and the removal run under the same hold, so while another
+    run holds the tenant nothing is read or written (busy, audited)."""
+    with ops.tenant_run(client) as mine:
+        if not mine:
+            ops.audit_refusal("undo", client, reason=ops.BUSY_REASON)
+            return ops.busy_result(complete=False, activation_required=False)
+        return _undo_held(client, record, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+
+
+def _undo_held(client, record: Dict[str, Any], *, writes_enabled: Optional[bool], log: LogFn, settle_seconds: float) -> Dict[str, Any]:
+    """undo() while it holds the tenant's write-run lock."""
     import pack_removal
-    out = pack_removal.remove_deployment(client, record, plan_hash="", writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
-    results = list(out.get("results") or [])
+    import zia_rate
+    tweaks: List[Dict[str, Any]] = []
+    if writes_enabled is True and any(t.get("kind") == "tweak" for t in record.get("other") or []):
+        # The tweak PUTs go out like every run's writes: the tenant's ZIA
+        # rate limits, run control (a fatal refusal stops the rest) and the audit log.
+        with zia_rate.using_client(client), ops.run_scope(None), ops.audited_run("undo", client) as run:
+            tweaks = _undo_tweaks(client, record, log)
+            tally: Dict[str, int] = {}
+            for t in tweaks:
+                tally[t["status"]] = tally.get(t["status"], 0) + 1
+            run["result"] = {"status": "tweaks_restored" if tally.get("restored") else "tweaks_unchanged", "summary": tally, "results": tweaks}
+    out = pack_removal.remove_deployment(client, record, plan_hash="", writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds,
+                                         tenant_held=True)
+    if any(t["status"] == "restored" for t in tweaks) and not (out.get("activation") or {}).get("activated") and out.get("status") not in ("blocked", "stale"):
+        _log = log or (lambda m: None)
+        _log("Activating the restored dictionary settings…")
+        with zia_rate.using_client(client):
+            out["activation"] = ops.activate_once(client.zia, _log)
+    results = list(out.get("results") or []) + tweaks
     for it in out.get("kept") or []:
         results.append({"kind": it["kind"], "name": it["name"], "id": it.get("id"), "channel": it.get("channel"), "status": "skipped",
                         "reason": f"{it.get('keep') or 'kept'}; left alone"})
@@ -2762,10 +3004,11 @@ def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = Non
     counts: Dict[str, int] = {}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+    deleted_or_restored = counts.get("deleted", 0) + counts.get("restored", 0)
     if out.get("status") in ("blocked", "stale"):
         return {**out, "status": "blocked" if out.get("status") == "blocked" else "failed", "results": results, "summary": counts}
     complete = not counts.get("failed") and not counts.get("skipped") and not counts.get("still_present")
-    deleted = counts.get("deleted", 0)
+    deleted = deleted_or_restored
     if complete and deleted:
         status = "undone"
     elif deleted:

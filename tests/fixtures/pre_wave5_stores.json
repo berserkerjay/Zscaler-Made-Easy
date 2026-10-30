@@ -1,0 +1,525 @@
+{
+ "made_by": "tools/pre_wave5_fixtures.py from commit 9b28a1c",
+ "stores": {
+  "change_requests.json": {
+   "requests": {
+    "cr-5794c971607c": {
+     "comments": [
+      {
+       "at": "2026-10-29T00:57:23+00:00",
+       "by": "sam",
+       "text": "no"
+      }
+     ],
+     "decided_at": "2026-10-29T00:57:23+00:00",
+     "decided_by": "sam",
+     "history": [
+      {
+       "action": "filed",
+       "at": "2026-10-29T00:57:23+00:00",
+       "by": "dana"
+      },
+      {
+       "action": "rejected",
+       "at": "2026-10-29T00:57:23+00:00",
+       "by": "sam",
+       "comment": "no"
+      }
+     ],
+     "id": "cr-5794c971607c",
+     "items": [],
+     "items_total": 0,
+     "kind": "fix_recipe",
+     "kind_label": "Fix recipe",
+     "payload": {},
+     "plan_hash": "gggggggggggggggg",
+     "requested_at": "2026-10-29T00:57:23+00:00",
+     "requested_by": "dana",
+     "status": "rejected",
+     "summary": {},
+     "tenant": "acme (zscalertwo)",
+     "tenant_label": "acme (zscalertwo)",
+     "title": "Second",
+     "updated_at": "2026-10-29T00:57:23+00:00"
+    },
+    "cr-c0d1287349d5": {
+     "comments": [
+      {
+       "at": "2026-10-29T00:57:23+00:00",
+       "by": "dana",
+       "text": "please"
+      },
+      {
+       "at": "2026-10-29T00:57:23+00:00",
+       "by": "sam",
+       "text": "looks fine"
+      }
+     ],
+     "history": [
+      {
+       "action": "filed",
+       "at": "2026-10-29T00:57:23+00:00",
+       "by": "dana"
+      },
+      {
+       "action": "commented",
+       "at": "2026-10-29T00:57:23+00:00",
+       "by": "sam"
+      }
+     ],
+     "id": "cr-c0d1287349d5",
+     "items": [
+      {
+       "what": "x"
+      }
+     ],
+     "items_total": 1,
+     "kind": "fix_recipe",
+     "kind_label": "Fix recipe",
+     "payload": {
+      "k": "v"
+     },
+     "plan_hash": "hhhhhhhhhhhhhhhh",
+     "requested_at": "2026-10-29T00:57:23+00:00",
+     "requested_by": "dana",
+     "status": "pending",
+     "summary": {
+      "n": 1
+     },
+     "tenant": "acme (zscalertwo)",
+     "tenant_label": "acme (zscalertwo)",
+     "title": "Enable rule",
+     "updated_at": "2026-10-29T00:57:23+00:00"
+    }
+   },
+   "version": 1
+  },
+  "deployments.json": {
+   "deployments": [
+    {
+     "at": "2025-02-01T00:00:00+00:00",
+     "created": [
+      {
+       "id": 5,
+       "kind": "rule",
+       "name": "x"
+      }
+     ],
+     "id": "dep-fixture1",
+     "packs": [
+      "hipaa"
+     ],
+     "status": "applied",
+     "tenant_label": "acme (zscalertwo)"
+    }
+   ],
+   "operations": [
+    {
+     "at": "2025-02-01T00:00:00+00:00",
+     "id": "op-fixture1",
+     "items": [],
+     "operation": {
+      "kind": "noop"
+     },
+     "tenant_label": "acme (zscalertwo)"
+    }
+   ],
+   "version": 1
+  },
+  "posture_settings.json": {
+   "notify_score_drop": true,
+   "score_drop_points": 7
+  },
+  "proposals.json": {
+   "tenants": {
+    "acme (zscalertwo)": {
+     "proposals": {
+      "p-9ca758aa6e40": {
+       "applies_via": "phase 3",
+       "change": {
+        "apply": "rule",
+        "channel": "web",
+        "field": "action",
+        "from": "ALLOW",
+        "rule_id": 11,
+        "to": "CONFIRM"
+       },
+       "channel": "web",
+       "created_at": "2026-10-29T00:57:23+00:00",
+       "decided_at": "2026-10-29T00:57:23+00:00",
+       "decided_by": "dana",
+       "evidence": {
+        "closed": null,
+        "engines": null,
+        "fp_rate_pct": 1.0,
+        "incidents": null,
+        "why": null,
+        "window_days": 30
+       },
+       "expected_effect": "Users hitting R1 are asked to justify instead of only logged; incident volume stays the same.",
+       "gate": "approve_double",
+       "history": [
+        {
+         "at": "2026-10-29T00:57:23+00:00",
+         "by": "dana",
+         "decision": "snooze",
+         "note": "later"
+        }
+       ],
+       "id": "p-9ca758aa6e40",
+       "kind": "promote_rule",
+       "label": "Promote rule",
+       "last_seen_at": "2026-10-29T00:57:23+00:00",
+       "note": "later",
+       "rollback": {
+        "field": "action",
+        "to": "ALLOW"
+       },
+       "rule": "R1",
+       "snoozed_until": "2026-11-05T00:57:23+00:00",
+       "source": "detection_health",
+       "status": "snoozed",
+       "target": "rule:web:R1",
+       "tenant": "acme (zscalertwo)",
+       "times_seen": 1,
+       "title": "Promote R1 from monitor to confirm"
+      },
+      "p-c7986e12b625": {
+       "applies_via": "phase 3",
+       "change": {
+        "apply": "rule",
+        "channel": "web",
+        "field": "state",
+        "from": null,
+        "rule_id": 11,
+        "to": "DISABLED"
+       },
+       "channel": "web",
+       "created_at": "2026-10-29T00:57:23+00:00",
+       "evidence": {
+        "dead_days": null,
+        "engines": null,
+        "last_incident_at": null,
+        "why": null
+       },
+       "expected_effect": "One rule fewer to evaluate and maintain; nothing that fires today is lost.",
+       "gate": "approve",
+       "history": [],
+       "id": "p-c7986e12b625",
+       "kind": "retire_rule",
+       "label": "Retire rule",
+       "last_seen_at": "2026-10-29T00:57:23+00:00",
+       "rollback": {
+        "field": "state",
+        "to": "ENABLED"
+       },
+       "rule": "R1",
+       "source": "detection_health",
+       "status": "open",
+       "target": "rule:web:R1",
+       "tenant": "acme (zscalertwo)",
+       "times_seen": 1,
+       "title": "Disable R1: no incident in None days"
+      }
+     },
+     "updated_at": "2026-10-29T00:57:23+00:00"
+    }
+   },
+   "version": 1
+  },
+  "self_heal_state.json": {
+   "history": [
+    {
+     "at": "2026-10-29T00:57:23+00:00",
+     "counts": {
+      "healed": 0,
+      "needs_you": 0,
+      "ok": 8
+     },
+     "healed": [],
+     "trigger": "manual"
+    }
+   ],
+   "last_run": {
+    "at": "2026-10-29T00:57:23+00:00",
+    "checks": [
+     {
+      "actions": [],
+      "id": "jobs",
+      "name": "Background jobs",
+      "next": "",
+      "status": "ok",
+      "status_label": "OK",
+      "summary": "No job is stuck (0 running)."
+     },
+     {
+      "actions": [],
+      "id": "stores",
+      "name": "Saved data",
+      "next": "",
+      "status": "ok",
+      "status_label": "OK",
+      "summary": "All 5 saved file(s) can be read."
+     },
+     {
+      "actions": [],
+      "id": "permissions",
+      "name": "File permissions",
+      "next": "",
+      "status": "ok",
+      "status_label": "OK",
+      "summary": "All 12 secret and data file(s) are private."
+     },
+     {
+      "actions": [],
+      "id": "locks",
+      "name": "Locks",
+      "next": "",
+      "status": "ok",
+      "status_label": "OK",
+      "summary": "No lock is held by a process that is gone."
+     },
+     {
+      "actions": [],
+      "id": "rate_holds",
+      "name": "ZIA rate-limit pauses",
+      "next": "",
+      "status": "ok",
+      "status_label": "OK",
+      "summary": "No pause is longer than ZIA's limit windows."
+     },
+     {
+      "actions": [],
+      "id": "sign_in",
+      "name": "Signing in to Zscaler",
+      "next": "",
+      "status": "ok",
+      "status_label": "OK",
+      "summary": "No repeated sign-in failures."
+     },
+     {
+      "actions": [],
+      "id": "disk",
+      "name": "Disk space",
+      "next": "",
+      "status": "ok",
+      "status_label": "OK",
+      "summary": "25,332 MB free where the app keeps its data."
+     },
+     {
+      "actions": [],
+      "id": "version",
+      "name": "App version",
+      "next": "",
+      "status": "ok",
+      "status_label": "OK",
+      "summary": "The server runs the files on disk."
+     }
+    ],
+    "counts": {
+     "healed": 0,
+     "needs_you": 0,
+     "ok": 8
+    },
+    "duration_ms": 10,
+    "trigger": "manual"
+   },
+   "tenants": {},
+   "version": 1
+  },
+  "tenant_profiles.json": {
+   "profiles": {
+    "acme-corp": {
+     "assessor": "Dana Analyst",
+     "auth_method": "oneapi",
+     "baseline_packs": [],
+     "channels": {
+      "endpoint": {
+       "choice": "gap",
+       "name": "endpoint",
+       "note": ""
+      },
+      "web": {
+       "choice": "zscaler",
+       "name": "web",
+       "note": ""
+      }
+     },
+     "client_id": "cid-acme",
+     "client_secret": "fixture-secret-not-real",
+     "cloud": "zscalertwo",
+     "created_at": "2026-10-29T00:57:23+00:00",
+     "customer_id": "",
+     "frameworks": [],
+     "history": [
+      {
+       "assessor": "Dana Analyst",
+       "at": "2026-10-29T00:57:23+00:00",
+       "checks": 2,
+       "critical": 1,
+       "journey": {
+        "baselines": [
+         {
+          "id": "b1",
+          "name": "B1",
+          "next_steps": [
+           "a",
+           "b"
+          ],
+          "score": 60,
+          "stage": 2,
+          "stage_name": null,
+          "state": "x"
+         }
+        ],
+        "score": 60,
+        "stage": 2,
+        "status": "ok"
+       },
+       "maturity": "Developing",
+       "score": 71,
+       "states": {
+        "DLP.1": "P",
+        "DLP.2": "F"
+       }
+      },
+      {
+       "assessor": "Dana Analyst",
+       "at": "2026-10-29T00:57:23+00:00",
+       "checks": 2,
+       "critical": 1,
+       "journey": {
+        "baselines": [
+         {
+          "id": "b1",
+          "name": "B1",
+          "next_steps": [
+           "a",
+           "b"
+          ],
+          "score": 60,
+          "stage": 2,
+          "stage_name": null,
+          "state": "x"
+         }
+        ],
+        "score": 60,
+        "stage": 2,
+        "status": "ok"
+       },
+       "maturity": "Developing",
+       "score": 64,
+       "states": {
+        "DLP.1": "F",
+        "DLP.2": "F"
+       }
+      },
+      {
+       "at": "2025-01-01T00:00:00+00:00",
+       "checks": 3,
+       "score": 50
+      }
+     ],
+     "id": "acme-corp",
+     "industry": "",
+     "name": "Acme Corp",
+     "notes": "",
+     "org_name": "",
+     "proposal_queue_migrated": true,
+     "scopes": [
+      "dlp",
+      "zia_extras"
+     ],
+     "updated_at": "2026-10-29T00:57:23+00:00",
+     "username": "",
+     "vanity_domain": "acme"
+    },
+    "bare": {
+     "assessor": "",
+     "auth_method": "oneapi",
+     "baseline_packs": [],
+     "channels": {},
+     "client_id": "",
+     "cloud": "production",
+     "created_at": "2026-10-29T00:57:23+00:00",
+     "customer_id": "",
+     "frameworks": [],
+     "history": [],
+     "id": "bare",
+     "industry": "",
+     "name": "Bare",
+     "notes": "",
+     "org_name": "",
+     "scopes": [],
+     "updated_at": "2026-10-29T00:57:23+00:00",
+     "username": "",
+     "vanity_domain": ""
+    },
+    "classic-tenant": {
+     "api_key": "fixturekey00",
+     "assessor": "",
+     "auth_method": "legacy",
+     "baseline_packs": [],
+     "channels": {},
+     "client_id": "",
+     "cloud": "zscloud",
+     "created_at": "2026-10-29T00:57:23+00:00",
+     "customer_id": "",
+     "frameworks": [],
+     "history": [],
+     "id": "classic-tenant",
+     "industry": "",
+     "name": "Classic Tenant",
+     "notes": "",
+     "org_name": "",
+     "password": "fixture-password-not-real",
+     "scopes": [],
+     "updated_at": "2026-10-29T00:57:23+00:00",
+     "username": "admin@example.com",
+     "vanity_domain": ""
+    }
+   },
+   "version": 1
+  },
+  "workspace_notes.json": {
+   "tenants": {
+    "acme (zscalertwo)": {
+     "notes": {
+      "74e889f8f39ffca45f9398444ffd45d7": {
+       "comments": [
+        {
+         "at": "2026-10-29T00:57:23+00:00",
+         "by": "dana",
+         "id": "7b6e64ac61b2a27a",
+         "text": "Customer asked about endpoints"
+        }
+       ],
+       "created_at": "2026-10-29T00:57:23+00:00",
+       "created_by": "dana",
+       "href": "",
+       "id": "74e889f8f39ffca45f9398444ffd45d7",
+       "kind": "check",
+       "label": "DLP.2 check",
+       "ref": "DLP.2",
+       "tags": [
+        "urgent"
+       ],
+       "todos": [
+        {
+         "at": "2026-10-29T00:57:23+00:00",
+         "by": "dana",
+         "done": false,
+         "id": "0beb71076a1f541e",
+         "text": "Call back"
+        }
+       ],
+       "updated_at": "2026-10-29T00:57:23+00:00",
+       "updated_by": "dana"
+      }
+     }
+    }
+   },
+   "version": 1
+  }
+ }
+}

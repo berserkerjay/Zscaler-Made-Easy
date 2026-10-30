@@ -48,6 +48,8 @@
   @media (max-width: 600px) { .sh-item { grid-template-columns: 1fr; } .sh-dl { grid-template-columns: 1fr; } .sh-controls > * { width: 100%; } }
   @media (prefers-reduced-motion: reduce) { .sh-page * { transition: none; animation: none; } }
 </style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page sh-page">
   <div class="rp-page">
@@ -94,6 +96,8 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

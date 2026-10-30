@@ -1,0 +1,173 @@
+{
+  "area": "regression",
+  "title": "Everything that worked before the Wave 5 merge (#95) still works after it",
+  "baseline": "9b28a1c (main, merge of #94; same tree as 2fe8144) compared with 53bdb1f (dev after #95)",
+  "standards": [
+    "SSDF PW.8.2",
+    "CWE-440",
+    "CWE-1068",
+    "CWE-754",
+    "CWE-362",
+    "ASVS V4.1.3",
+    "ASVS V4.2.1",
+    "ASVS V5.1.4",
+    "ASVS V14.5.3",
+    "A01:2021",
+    "CWE-862"
+  ],
+  "checks": [
+    {
+      "id": "REG-C01",
+      "what": "OpenAPI request contract of every released /api operation, old vs new: removed operation, parameter, body or field, narrowed type, new requirement, tighter limit, closed object (214 released operations, 36 added)",
+      "standard": "SSDF PW.8.2 · CWE-1068",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C02",
+      "what": "Committed contract snapshot test (tests/test_openapi_regression.py + tests/openapi_snapshot.json): fails CI on an incompatible change, allows additions; proven with a real removed field and narrowed type",
+      "standard": "SSDF PW.8.2 · CWE-1068",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C03",
+      "what": "Response shapes, old vs new on the same data: 44 parameterless GETs, every store read route, the waited Path analyzer (hops matched by key); only additions",
+      "standard": "SSDF PW.8.2 · CWE-1068",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C04",
+      "what": "_tenant_creds cloud fallback: 26,784 cases (every request model x body cloud x typed identity x profile x environment x tenant_config.json), old vs new; identical whenever the body names a cloud and whenever no source names one; differences only where a fallback source names the cloud (the intended fix)",
+      "standard": "ASVS V4.2.1 · CWE-440",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C05",
+      "what": "The pre-Wave-5 test suite run against the post-Wave-5 code: 8128 passed, 16 failed, every failure explained by a deliberate #95 edit of that test or its data (new routes in route tables, new scripts and toolbar button, wording allow-list, XSS allow-list entries, additive access key, release workflow)",
+      "standard": "SSDF PW.8.2 · CWE-440",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C06",
+      "what": "Rule migration end to end over HTTP on a stateful fake: status, fetch, analyze, plan, export JSON/CSV, post dry run, refused without each gate, applied in the planned order",
+      "standard": "SSDF PW.8.2 · ASVS V4.1.3 · CWE-862",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C07",
+      "what": "Remediation (one-click fixes): catalog, plan, dry run, refused without write mode or confirmation, then exactly the planned call",
+      "standard": "SSDF PW.8.2 · ASVS V4.1.3 · CWE-862",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C08",
+      "what": "Pack deploy through the gates, deployment record, undo back to the starting tenant; removal preview and removal through the gates",
+      "standard": "SSDF PW.8.2 · A01:2021 · CWE-440",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C09",
+      "what": "MCP server: four tools over the MCP tool API on a fake; full 206-check engine run old vs new identical except the intended Client Connector numeric device-state fix (old code raised on an integer state)",
+      "standard": "SSDF PW.8.2 · CWE-440",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C10",
+      "what": "Browser extension side-panel calls from its own origin: ping, profiles, console index, notes, export job, poll and download",
+      "standard": "ASVS V14.5.3 · A01:2021 · CWE-440",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C11",
+      "what": "Assessment run, export from tenant, self-heal, change queue, HAR batch, Simple mode wizards, Word/PDF/Excel exports: existing end-to-end HTTP tests confirmed (test_assess_stream, test_pack_export, test_self_heal, test_team_queue, test_har_import, test_simple_mode, test_exports_excel_pdf, test_export_integrity); report_docx/report_exports changes are additive",
+      "standard": "SSDF PW.8.2 · CWE-440",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C12",
+      "what": "Data migration: profiles (remembered secret, classic sign-in, history with and without per-check states), proposals, change queue, workspace notes, posture settings, deployments, bulk changes and self-heal state written by the pre-Wave-5 code (tools/pre_wave5_fixtures.py) load, resolve the same sign-in and keep their content when changed",
+      "standard": "SSDF PW.8.2 · CWE-440",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C13",
+      "what": "Damaged store files, old vs new: identical outcome for every variant except a non-object snapshots entry (new 500)",
+      "standard": "ASVS V5.1.4 · CWE-754",
+      "result": "fixed"
+    },
+    {
+      "id": "REG-C14",
+      "what": "Log analyzer PAC reading over a corpus of ten PAC styles, old vs new: answers, default, gateways, bypass inventory and findings",
+      "standard": "SSDF PW.8.2 · CWE-440",
+      "result": "fixed"
+    },
+    {
+      "id": "REG-C15",
+      "what": "Path analyzer destination acceptance, old parse vs new parse plus traffic check over 30 destinations",
+      "standard": "SSDF PW.8.2 · CWE-440",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C16",
+      "what": "Determinism: full suite in normal order and in a seeded shuffle of modules and tests (scratch plugin, seed 6095), plus a final reverse-order run; threads alive at each test start logged",
+      "standard": "SSDF PW.8.2 · CWE-362",
+      "result": "pass"
+    },
+    {
+      "id": "REG-C17",
+      "what": "Known flake test_tenant_pacing: root cause found and removed",
+      "standard": "SSDF PW.8.2 · CWE-362",
+      "result": "fixed"
+    }
+  ],
+  "findings": [
+    {
+      "id": "REGRESSION-01",
+      "title": "Log analyzer: a PAC the new evaluator refuses (regular expression, array, loop, switch) lost its whole reading (default, gateways, bypass inventory, fail-open/closed, hard-coded gateway), including a reference-style PAC",
+      "severity": "medium",
+      "cwe": "CWE-440",
+      "status": "fixed",
+      "fix": "log_analyzer reads such a PAC from its text again (never run, bounded to pac_eval.MAX_SOURCE) and still says it was not evaluated",
+      "test": "tests/test_regression_flows.py::test_a_pac_the_evaluator_refuses_is_still_read_from_its_text",
+      "commit": "2f59e76"
+    },
+    {
+      "id": "REGRESSION-02",
+      "title": "Log analyzer: a DIRECT condition written in a PAC helper function (isCorp(host)) was no longer listed as a bypass",
+      "severity": "low",
+      "cwe": "CWE-440",
+      "status": "fixed",
+      "fix": "pac_eval.inspect expands a helper's returned conditions once per condition (static, never run; recursion cannot loop)",
+      "test": "tests/test_regression_flows.py::test_a_bypass_written_in_a_helper_function_is_still_listed",
+      "commit": "2f59e76"
+    },
+    {
+      "id": "REGRESSION-03",
+      "title": "Tenant profiles: a store whose snapshots entry is not an object made the profile list and profile delete fail with 500 (the pre-Wave-5 code ignored the key)",
+      "severity": "low",
+      "cwe": "CWE-754",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "tenant_profiles._read treats a non-object snapshots entry as empty",
+      "test": "tests/test_regression_migration.py::test_a_snapshots_entry_of_the_wrong_type_is_ignored_not_a_crash",
+      "commit": "2f59e76"
+    },
+    {
+      "id": "REGRESSION-04",
+      "title": "Known flaky test_tenant_pacing: the 429-hold test asserted 19 s left of a 20 s hold on the wall clock, so a 1 s scheduling stall under load failed it (reproduced by injecting a 1.2 s stall)",
+      "severity": "info",
+      "cwe": "CWE-362",
+      "status": "fixed",
+      "fix": "the test freezes ZIA's rate clock at the moment the hold is published and asserts the exact 20 s",
+      "test": "tests/test_tenant_pacing.py::test_a_clients_429_holds_the_sdk_reads_of_the_same_tenant",
+      "commit": "2f59e76"
+    }
+  ],
+  "notes": [
+    "/api/path-analyzer/full/start is not on dev or main; it is listed as unreleased in the snapshot test and will not be held to a contract until it ships.",
+    "OpenAPI declares no response models, so response compatibility is checked by live answers (top-level keys of 28 local read endpoints in the snapshot) rather than by schema.",
+    "Upper-bound timing assertions remain elsewhere (test_readiness huge-token < 0.5 s, test_flow_scenario_evidence < 2 s, test_zpa_analysis < 2 s); none failed in three full runs, so they are not changed.",
+    "A profile store hand-edited so that profiles is a list or a profile is a string gives 500 in both the old and the new code; no version writes that shape.",
+    "tests/test_assess_stream.py leaves a deliberately stuck check thread sleeping 30 s after its test; it touches no shared clock or state."
+  ],
+  "tests_added": 487
+}

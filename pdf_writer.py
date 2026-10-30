@@ -161,8 +161,14 @@ def pdf_string(text: str) -> str:
 
 
 def _info_string(text: Any) -> str:
-    """A text string for the document information: UTF-16BE with BOM, as hex."""
-    return "<FEFF" + str(text or "").encode("utf-16-be", errors="replace").hex().upper() + ">"
+    """A text string for the document information: UTF-16BE with BOM, as hex.
+    A reader shows the title in its window bar: control characters and lone
+    surrogates are dropped, and an explicit bidirectional control (U+202E in
+    a tenant name, which turns the rest of the title around) is shown as
+    U+FFFD, as every export shows it (md_safe.no_bidi)."""
+    import md_safe
+    s = "".join(ch for ch in str(text or "") if unicodedata.category(ch) not in ("Cc", "Cs"))
+    return "<FEFF" + md_safe.no_bidi(s).encode("utf-16-be").hex().upper() + ">"
 
 
 def _num(v: float) -> str:
@@ -233,6 +239,7 @@ class PdfDocument:
         if self.y < self.height - self.top - 0.5:
             self.y -= before
         for ln in lines:
+            self._ensure(lead)   # a heading taller than a page goes on over the next, never off its bottom
             self._text(self.left, self.y - size, ln, size, bold=True)
             self.y -= lead
         self.y -= 3
@@ -317,6 +324,8 @@ class PdfDocument:
         across pages (a tall row is split line by line) and the header is
         repeated at the top of every page the table continues on."""
         columns = [winansi(c) for c in columns]
+        if not columns:
+            return   # a table with no column has nothing to draw
         cw = self._col_widths(columns, rows, size, widths)
         pad, lead = 3.0, size * 1.25
         x0, x1 = self.left, self.left + sum(cw)
@@ -388,8 +397,16 @@ class PdfDocument:
         lw = text_width(label, 8)
         foot = winansi(self.footer or self.title or "")
         room = self.content_width - lw - 16
-        while foot and text_width(foot, 8) > room:
-            foot = foot[:-2] + "…" if len(foot) > 2 else ""
+        if text_width(foot, 8) > room:
+            # One pass, not one width per character dropped (a long title
+            # made every page quadratic): keep what fits beside the ellipsis.
+            budget, used, cut = room - text_width("…", 8), 0.0, 0
+            for ch in foot:
+                used += _char_width(ch, False) * 8 / 1000.0
+                if used > budget:
+                    break
+                cut += 1
+            foot = foot[:cut] + "…" if cut else ""
         self._text(self.left, fy, foot, 8, grey=0.35)
         self._text(self.width - self.right - lw, fy, label, 8, grey=0.35)
         self.pages = saved

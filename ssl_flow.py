@@ -86,6 +86,13 @@ SCOPE_FIELDS = [
     ("time_windows", "time windows"), ("timeWindows", "time windows"),
     ("workload_groups", "workload groups"), ("workloadGroups", "workload groups"),
     ("zpa_app_segments", "ZPA app segments"), ("zpaAppSegments", "ZPA app segments"),
+    # URL filtering and Web DLP rules (zscaler-sdk-python 1.11.3 models):
+    # a user risk score condition, and Web DLP's exclusions (everyone in
+    # scope except these users, groups or departments).
+    ("user_risk_score_levels", "user risk score levels"), ("userRiskScoreLevels", "user risk score levels"),
+    ("excluded_users", "excluded users"), ("excludedUsers", "excluded users"),
+    ("excluded_groups", "excluded groups"), ("excludedGroups", "excluded groups"),
+    ("excluded_departments", "excluded departments"), ("excludedDepartments", "excluded departments"),
 ]
 TARGET_FIELDS = [
     ("url_categories", "urlCategories"), ("cloud_applications", "cloudApplications"),
@@ -103,8 +110,14 @@ def _f(r: Dict[str, Any], *names: str, default: Any = None) -> Any:
 
 
 def _names(items: Any) -> List[str]:
+    # One name sent bare is one name (never its characters); a number,
+    # bool or object where a list belongs names nothing.
+    if isinstance(items, str):
+        items = [items]
+    elif not isinstance(items, (list, tuple)):
+        items = []
     out: List[str] = []
-    for x in items or []:
+    for x in items:
         if isinstance(x, dict):
             v = x.get("name") or x.get("id") or x.get("url")
             if v is not None:
@@ -136,6 +149,10 @@ def _scope(r: Dict[str, Any]) -> List[str]:
         v = r.get(field)
         if isinstance(v, list) and v:
             seen[label] = max(seen.get(label, 0), len(v))
+    # A URL filtering rule that enforces its validity period applies only
+    # within it (enforceTimeValidity, validityStartTime, validityEndTime).
+    if _bool(_f(r, "enforce_time_validity", "enforceTimeValidity", default=False)):
+        seen["validity period"] = 1
     return [f"{label}: {n}" for label, n in seen.items()]
 
 
@@ -150,6 +167,45 @@ def _decision_of(action: str) -> str:
 
 
 # ── Rule normalisation ────────────────────────────────────────────────
+
+def tls_checks(r: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The certificate and TLS-version checks an SSL inspection rule's
+    action carries, from the rule already read (no extra call). Field
+    names as the SDK's SSLInspectionRuleAction models them
+    (zscaler/zia/models/ssl_inspection_rules.py): decryptSubActions
+    {serverCertificates, ocspCheck, blockSslTrafficWithNoSniEnabled,
+    minClientTLSVersion, minServerTLSVersion, blockUndecrypt} and
+    doNotDecryptSubActions {serverCertificates, ocspCheck,
+    blockSslTrafficWithNoSniEnabled, minTLSVersion}, camelCase or
+    snake_case. None when the rule's action carries no sub-actions:
+    "not in the rule data", never "off"."""
+    a = r.get("action")
+    if not isinstance(a, dict):
+        return None
+    sub = None
+    for k in ("decryptSubActions", "decrypt_sub_actions", "doNotDecryptSubActions", "do_not_decrypt_sub_actions"):
+        if isinstance(a.get(k), dict):
+            sub = a[k]
+            break
+    if sub is None:
+        return None
+
+    def text(*keys: str) -> Optional[str]:
+        v = _f(sub, *keys, default=None)
+        return str(v).upper()[:40] if v not in (None, "") else None
+
+    def flag(*keys: str) -> Optional[bool]:
+        v = _f(sub, *keys, default=None)
+        return None if v is None else _bool(v)
+    return {
+        "server_certificates": text("serverCertificates", "server_certificates"),
+        "ocsp_check": flag("ocspCheck", "ocsp_check"),
+        "block_no_sni": flag("blockSslTrafficWithNoSniEnabled", "block_ssl_traffic_with_no_sni_enabled"),
+        "min_client_tls": text("minClientTLSVersion", "minClientTlsVersion", "min_client_tls_version"),
+        "min_server_tls": text("minServerTLSVersion", "minServerTlsVersion", "min_server_tls_version", "minTLSVersion", "minTlsVersion", "min_tls_version"),
+        "block_undecrypt": flag("blockUndecrypt", "block_undecrypt"),
+    }
+
 
 def normalize_ssl_rule(r: Dict[str, Any]) -> Dict[str, Any]:
     cats = _upper(_names(_f(r, "url_categories", "urlCategories", default=[])))
@@ -186,6 +242,7 @@ def normalize_ssl_rule(r: Dict[str, Any]) -> Dict[str, Any]:
         "catch_all": not explicit and (any_cat or default_rule or not predefined),
         "zscaler_maintained": predefined and not explicit and not default_rule and not any_cat,
         "description": str(_f(r, "description", default="") or "")[:300],
+        "checks": tls_checks(r),
     }
 
 
@@ -232,14 +289,20 @@ def _ref_name(v: Any) -> Optional[str]:
     return (str(v) if v not in (None, "", 0) else None)
 
 
-def _sort_key(rule: Dict[str, Any]) -> Tuple[int, int, int]:
-    o = rule.get("order")
+def _int(v: Any, default: int) -> int:
+    """A whole number from tenant data, else `default`: an id or order the
+    API sends as text ("abc", "", 1.5e400) never stops the report."""
+    if isinstance(v, bool):
+        return default
     try:
-        o = int(o)
-    except (TypeError, ValueError):
-        o = 10 ** 6
+        return int(v)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _sort_key(rule: Dict[str, Any]) -> Tuple[int, int, int]:
     # The default rule is always evaluated last whatever its order says.
-    return (1 if rule.get("default_rule") else 0, o, int(rule.get("id") or 0))
+    return (1 if rule.get("default_rule") else 0, _int(rule.get("order"), 10 ** 6), _int(rule.get("id"), 0))
 
 
 # ── Tenant reads ─────────────────────────────────────────────────────
@@ -341,7 +404,7 @@ def _dlp_covers(rule: Dict[str, Any], klass: Dict[str, Any], cats: List[str], ap
 
 
 def _short(rule: Dict[str, Any], hit: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    d = {k: rule.get(k) for k in ("id", "name", "order", "action", "decision", "state", "scope", "predefined", "default_rule", "catch_all", "zscaler_maintained")}
+    d = {k: rule.get(k) for k in ("id", "name", "order", "action", "decision", "state", "scope", "predefined", "default_rule", "catch_all", "zscaler_maintained", "checks")}
     if hit is not None:
         d["matched_on"] = hit
     return d
@@ -358,7 +421,7 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
     catalogue = catalogue or {}
     read_errors = read_errors or {}
     ssl = sorted((normalize_ssl_rule(r) for r in ssl_rules), key=_sort_key)
-    dlp = sorted((normalize_dlp_rule(r) for r in dlp_rules), key=lambda r: (int(r["order"]) if str(r.get("order") or "").lstrip("-").isdigit() else 10 ** 6, int(r.get("id") or 0)))
+    dlp = sorted((normalize_dlp_rule(r) for r in dlp_rules), key=lambda r: (_int(r.get("order"), 10 ** 6), _int(r.get("id"), 0)))
     enabled_ssl = [r for r in ssl if r["enabled"]]
     enabled_dlp = [r for r in dlp if r["enabled"]]
     known_cats = set(category_lookup.keys()) if category_lookup else set()
@@ -515,6 +578,7 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
         "high": sum(1 for g in all_gaps if g["severity"] == "high"),
         "medium": sum(1 for g in all_gaps if g["severity"] == "medium"),
         "low": sum(1 for g in all_gaps if g["severity"] == "low"),
+        "info": sum(1 for g in all_gaps if g["severity"] == "info"),   # high + medium + low + info == gaps
         "ssl_rules": len(ssl), "ssl_rules_enabled": len(enabled_ssl),
         "ssl_decrypt_rules": sum(1 for r in enabled_ssl if r["decision"] == "inspected"),
         "ssl_exempt_rules": sum(1 for r in enabled_ssl if r["decision"] == "not_inspected"),
