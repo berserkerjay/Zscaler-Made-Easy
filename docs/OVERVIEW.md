@@ -570,6 +570,28 @@ what you get, what to do next.
   dependency order (policies, segments, server groups, segment groups,
   connector groups), keeping and naming anything still used by an object
   that is not being deleted; it needs `DELETE <PREFIX>` typed.
+  The same page carries the **day-to-day admin** types, each through the
+  same preview, plan hash, four gates, re-read, read-back, record, audit
+  log and (where one exists, which the preview always says) Undo, and each
+  only for a product ticked on the Scope page. ZPA (`ops_zpa_admin.py`):
+  App Connectors, Private Service Edges and their groups with their
+  health; rename, turn on or off, move an App Connector to another group,
+  set a group's update day, hour and version profile; turn PRA portals,
+  PRA consoles and user portals on or off; delete any of them, Browser
+  Access certificates and provisioning keys with the typed confirmation
+  naming what goes (anything connected or still used is kept); a new
+  provisioning key shown once; a Browser Access certificate uploaded with
+  its private key (held in memory ten minutes, sent to ZPA once, never
+  kept or logged) and applications pointed at it. Client Connector
+  (`ops_zcc_admin.py`): remove or force remove a user's devices, or a
+  pasted or uploaded list matched against one read of the fleet (ambiguous
+  and unmatched entries settled first), up to 2000 devices in batches
+  within Client Connector's 100 API calls an hour, with the plan and result
+  as CSV; custom IP-based bypass apps; the ZPA and ZDX entitlements. ZDX
+  (`ops_zdx_trace.py`): start, follow (a bounded number of reads) and stop
+  a deep trace on a user's device, rate-limited; read-only application
+  scores, user and device look-ups, device health and per-device
+  application performance.
   Under **Build new**, two AI Guard builders run through the same preview,
   gates, read-back and Undo (they need AI Guard ticked on the Scope page and
   a OneAPI API client). *AI Guard routing for GenAI apps* (ZIA platform

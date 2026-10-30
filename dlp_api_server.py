@@ -5667,9 +5667,10 @@ async def operations_devices_csv(job_id: str, counts_only: bool = False):
 class BaCertificateUpload(BaseModel):
     """A Browser Access certificate (PEM, the server certificate first) and
     its unencrypted private key (PEM). Sizes are checked in code, so a
-    refusal never echoes them."""
+    refusal never echoes them. The key's field is named private_key so the
+    audit log's request record redacts it (audit.redact: secret-named keys)."""
     cert_pem: str = ""
-    key_pem: str = ""
+    private_key: str = ""
 
 
 @app.post("/api/operations/zpa/ba-certificate")
@@ -5685,7 +5686,7 @@ async def operations_zpa_ba_certificate(req: BaCertificateUpload, request: Reque
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     try:
-        out = ops_zpa_admin.stash_upload(req.cert_pem, req.key_pem, _actor(request))
+        out = ops_zpa_admin.stash_upload(req.cert_pem, req.private_key, _actor(request))
     except ops_zpa_admin.CertificateError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})

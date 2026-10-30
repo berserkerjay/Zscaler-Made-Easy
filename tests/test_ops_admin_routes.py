@@ -51,15 +51,15 @@ def test_the_upload_needs_write_mode_and_never_answers_the_key(api, monkeypatch)
     """ASVS V8.3.4 · V4.1.3 · CWE-200 · CWE-525: refused (403) while write mode is off; on, it answers a token and facts with no-store, never the key."""
     pem, kp = make_cert()
     monkeypatch.setattr(security, "_write_override", False)
-    r = api.post("/api/operations/zpa/ba-certificate", json={"cert_pem": pem, "key_pem": kp})
+    r = api.post("/api/operations/zpa/ba-certificate", json={"cert_pem": pem, "private_key": kp})
     assert r.status_code == 403 and za._CERTS == {}
     monkeypatch.setattr(security, "_write_override", True)
-    r = api.post("/api/operations/zpa/ba-certificate", json={"cert_pem": pem, "key_pem": kp})
+    r = api.post("/api/operations/zpa/ba-certificate", json={"cert_pem": pem, "private_key": kp})
     assert r.status_code == 200 and "no-store" in r.headers["cache-control"] and r.json()["token"]
     assert all(ln not in r.text for ln in key_lines(kp)) and "PRIVATE" not in r.text
 
 
-@pytest.mark.parametrize("body", [{"cert_pem": "x", "key_pem": "y"}, {"cert_pem": ["a"], "key_pem": "b"}, {"cert_pem": "A" * 70000, "key_pem": "b"}])
+@pytest.mark.parametrize("body", [{"cert_pem": "x", "private_key": "y"}, {"cert_pem": ["a"], "private_key": "b"}, {"cert_pem": "A" * 70000, "private_key": "b"}])
 def test_a_bad_upload_is_refused_without_echoing_it(api, monkeypatch, body):
     """ASVS V5.1.3 · V7.4.1 · CWE-209 · CWE-20: a malformed, mistyped or oversized upload is refused and the answer never repeats it."""
     monkeypatch.setattr(security, "_write_override", True)
@@ -85,14 +85,14 @@ def test_an_undo_form_cannot_be_applied_as_an_ordinary_change(api, monkeypatch):
 
 def test_a_certificate_rotation_through_the_routes_and_its_undo(api, monkeypatch, tmp_path, caplog):
     """ASVS V8.3.4 · V7.1.1 · V1.4.1 · CWE-532 · CWE-841: upload, preview, apply as a job, record, Undo; the key is in no answer, job log,
-    record or audit entry."""
+    record or audit entry (the audit log's request record included)."""
     caplog.set_level(logging.DEBUG)
     c = ZpaClient()
     s = c.tenant.seed()
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: c)
     monkeypatch.setattr(security, "_write_override", True)
     pem, kp = make_cert(("wiki.example.com",))
-    up = api.post("/api/operations/zpa/ba-certificate", json={"cert_pem": pem, "key_pem": kp}).json()
+    up = api.post("/api/operations/zpa/ba-certificate", json={"cert_pem": pem, "private_key": kp}).json()
     op = {"type": "zpa_ba_certificate", "upload_token": up["token"], "name": "wiki-2027", "assign": [{"segment_id": s["seg"]["id"], "app_id": "6001"}]}
     prev = api.post("/api/operations/preview", json=dict(CREDS, **scope("zpa"), operation=op))
     assert prev.status_code == 200 and prev.json()["status"] == "ready", prev.text
@@ -108,8 +108,9 @@ def test_a_certificate_rotation_through_the_routes_and_its_undo(api, monkeypatch
     assert done.status_code == 200 and done.json()["status"] == "applied"
     history = api.get("/api/operations").text + api.get(f"/api/operations/{res['operation_id']}").text
     files = "".join((tmp_path / f).read_text(encoding="utf-8") for f in os.listdir(tmp_path) if (tmp_path / f).is_file())
-    blob = prev.text + snap.text + undo.text + done.text + history + files + caplog.text
-    assert all(ln not in blob for ln in key_lines(kp)) and "PRIVATE KEY" not in blob
+    parts = {"prev": prev.text, "snap": snap.text, "undo": undo.text, "done": done.text, "history": history, "files": files, "log": caplog.text}
+    leaks = {k: [ln for ln in key_lines(kp) if ln in v][:1] + (["PRIVATE KEY"] if "PRIVATE KEY" in v else []) for k, v in parts.items()}
+    assert not {k: v for k, v in leaks.items() if v}, sorted(k for k, v in leaks.items() if v)
 
 
 def test_a_deep_trace_lookup_and_a_bounded_follow_through_the_routes(api, monkeypatch):

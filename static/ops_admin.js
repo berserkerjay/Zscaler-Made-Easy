@@ -209,7 +209,7 @@
       const cert = certEl.value, key = keyEl.value;
       keyEl.value = '';   // the key leaves the page once, now
       try {
-        const r = await fetch('/api/operations/zpa/ba-certificate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ cert_pem: cert, key_pem: key }) });
+        const r = await fetch('/api/operations/zpa/ba-certificate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ cert_pem: cert, private_key: key }) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${r.status}`);
         A.upload = d; state.textContent = `Held for ten minutes: ${d.facts.subject}, valid to ${d.facts.valid_to}. Now pick the applications and preview.`;
