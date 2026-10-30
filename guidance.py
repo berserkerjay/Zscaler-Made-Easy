@@ -289,8 +289,10 @@ def evaluate(entries: Sequence[Dict[str, Any]], *, now: Optional[float] = None) 
 
 
 def _slug(url: str) -> str:
+    """A short, stable key for a URL (not a security use: on a FIPS-mode
+    OpenSSL a plain sha1() is refused, usedforsecurity=False is allowed)."""
     import hashlib
-    return hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha1(url.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
 
 # ── Approval: record the reference in the shipped config ─────────────

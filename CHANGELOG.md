@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### Static analysis (SAST) in every test run and in CI
+- **bandit, offline, in every test run.** The Python static analyser bandit (1.9.4, hash-pinned in `requirements-dev.lock` with its dependencies) checks the app's Python with every check on; `tests/test_sast.py` fails on any finding of medium severity or higher, so CI fails a pull request that adds one. Run it locally with `make sast` (after `make dev`). The configuration is `pyproject.toml` `[tool.bandit]`: no skipped checks, only `tests/` and local environments left out.
+- **CodeQL in CI.** `.github/workflows/codeql.yml` runs GitHub's security-extended queries over the Python and the JavaScript (web UI and browser extension) on pull requests to `dev`, `qa` and `main` that change code, and weekly: one Linux job, read-only token except `security-events: write` on that job, actions pinned by commit SHA, stale runs cancelled, 20-minute limit. It has not run yet (Actions minutes are used up); on a private repository code scanning needs GitHub Advanced Security.
+- **Every current finding triaged.** One fixed: two id hashes (guidance links, pack ids from non-Latin names) now say they are not a security use (`usedforsecurity=False`), so they also work on FIPS-mode OpenSSL; the ids are unchanged. Eleven false positives (an address compared, never bound; XML parsed only after DOCTYPE/ENTITY are refused; the standalone smoke test's own loopback requests and zip extraction; an update message that looked like SQL) are explained on their line, seven reviewed suppressions in all, and the test fails on any unlisted, unexplained or stale one. The 232 low-severity notes were read and recorded by kind in `docs/qa/findings/w7-sast.json`. This closes the QA check "no SAST in CI".
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

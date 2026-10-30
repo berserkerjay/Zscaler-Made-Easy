@@ -552,7 +552,7 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
         return _update(app_dir, install_deps, python, branch)
     except Exception as e:  # noqa: BLE001 - git vanished, timed out or the folder went away mid-update
         return {"ok": False, "updated": False, "before": None, "after": None, "error":
-                f"The update stopped unexpectedly ({type(e).__name__}). Nothing was deleted; edits set aside before the stop "
+                f"The update stopped unexpectedly ({type(e).__name__}). Nothing was deleted; edits put aside before the stop "
                 "are in git stash (run  git stash list  in the app folder). Run the update again.",
                 "steps": [{"name": "Update", "ok": False, "detail": type(e).__name__, "soft": False}], "deps_ok": None,
                 "restart_required": False, "preserved": [], "migrated": [], "recovered": None, "branch": None,

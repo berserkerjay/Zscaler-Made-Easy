@@ -210,9 +210,9 @@
   },
   {
    "id": "scorecard-sast",
-   "what": "A static analysis tool runs in CI. Open: none does; adding one (CodeQL or similar, on its own job with security-events: write and a SHA-pinned action) is an owner decision, recommended",
+   "what": "A static analysis tool runs in CI. Closed in Wave 7 (docs/qa/findings/w7-sast.json): bandit gates every test run at medium severity and up (tests/test_sast.py, make sast), and CodeQL security-extended scans Python and JavaScript on pull requests to dev, qa and main and weekly (.github/workflows/codeql.yml: its own job with security-events: write, SHA-pinned actions)",
    "standard": "Scorecard SAST · SSDF PW.7.2",
-   "result": "open"
+   "result": "fixed"
   }
  ],
  "findings": [

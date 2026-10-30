@@ -1,0 +1,69 @@
+name: CodeQL
+
+# Static analysis (SAST) of the app's Python and JavaScript with GitHub's
+# CodeQL and its security-extended query suite. The offline Python
+# analyser (bandit, `make sast`, tests/test_sast.py) runs in the Tests
+# workflow and on every machine; this adds CodeQL's data-flow queries
+# (injection, XSS, path traversal, SSRF) for both languages, results in the
+# repository's Security tab. See SECURITY.md "Static analysis".
+#
+# Kept cheap: one Linux job analyses both languages (both are interpreted,
+# so nothing is built), only when code or this file
+# changes on a pull request, the test suites and generated files are left
+# out, a newer push to the same pull request cancels the running scan, and
+# the job stops after 20 minutes. The weekly run scans the default branch.
+
+on:
+  pull_request:
+    branches: ["dev", "qa", "main"]
+    paths:
+      - "**/*.py"
+      - "**/*.js"
+      - "**/*.mjs"
+      - "**/*.ts"
+      - "static/**"
+      - "browser_extension/**"
+      - ".github/workflows/codeql.yml"
+  schedule:
+    - cron: "37 4 * * 1"   # weekly, Monday 04:37 UTC
+  workflow_dispatch:
+
+# Least privilege: read the code at the workflow level; only the analysis
+# job may write, and only the code-scanning results.
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (Python, JavaScript/TypeScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read           # check out the code
+      actions: read            # CodeQL reads this run's details (needed on a private repository)
+      security-events: write   # upload the results to code scanning
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false  # nothing here pushes: keep GITHUB_TOKEN out of .git/config
+
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
+        with:
+          # Both interpreted: CodeQL reads the source, nothing is built
+          # (build-mode is for one language per job, and none is the default here).
+          languages: python, javascript-typescript
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - tests
+              - docs
+              - terraform
+              - third_party_licenses
+
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
+        with:
+          upload-database: false   # the results are what code scanning needs; the database upload only costs time
