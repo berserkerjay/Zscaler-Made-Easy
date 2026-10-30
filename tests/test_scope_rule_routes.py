@@ -398,6 +398,17 @@ ROUTES: List[Route] = [
     Route("/api/zcc/install", {"app_profile_id": "21"}, partial=ZCC, out=ZCC_OUT),
     # The ZPA builder (ops_zpa): plugin types and their pick lists on the same routes
     Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
+    # Day-to-day admin (ops_zpa_admin, ops_zcc_admin, ops_zdx_trace): the picker, previews, lookups and the deep trace follow
+    Route("/api/operations/objects", {"family": "zpa_admin"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zpa_infra_update", "targets": [{"kind": "connector", "id": "1", "set": {"enabled": False}}]}},
+          partial=ZPA, out=ZPA_OUT),
+    Route("/api/operations/objects", {"family": "zcc_admin"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/lookup", {"family": "zcc_admin", "what": "devices", "user": "jdoe@acme.com"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zcc_entitlements", "service": "zpa", "enable_for_all": False}}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/objects", {"family": "zdx_trace"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/lookup", {"family": "zdx_trace", "what": "devices", "user": "jdoe@acme.com"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/lookup", {"family": "zdx_trace", "what": "health", "device_id": "1"}, partial=ZDX, out=ZDX_OUT),
+    Route("/api/operations/zdx/deeptrace/follow/start", {"device_id": "1", "trace_id": "2"}, partial=ZDX, out=ZDX_OUT),
     Route("/api/operations/preview/start", {"operation": {"type": "zpa_policies", "prefix": "pov1", "access": True}}, partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/preview", {"operation": {"type": "zpa_prefix_delete", "prefix": "pov1", "everything": True}}, partial=ZPA, out=ZPA_OUT),
     # Snapshots (offline_tenant): saving one, and comparing one with the live tenant

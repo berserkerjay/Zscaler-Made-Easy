@@ -5566,6 +5566,108 @@ async def operations_zpa_provisioning_key(req: OneTimeKeyRequest, request: Reque
     return JSONResponse(got, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 
+# ── Day-to-day admin (ops_zpa_admin, ops_zcc_admin, ops_zdx_trace) ──────
+# The writes are operation types on the same engine (preview, plan hash,
+# the four gates, re-read, read-back, Undo, audit). These routes are the
+# read-only lookups the forms search with, the bounded follow of a ZDX deep
+# trace, and the one place a Browser Access certificate's private key enters
+# the app (held in memory, sent to ZPA once, never logged or stored).
+
+class OperationLookupRequest(OperationCredsRequest):
+    """A read-only search for a day-to-day admin form: `family` (zcc_admin
+    or zdx_trace) and `what` (devices, apps, probes, traces, trace, results)."""
+    family: str = ""
+    what: str = ""
+    user: str = ""
+    device_id: str = ""
+    app_id: str = ""
+    trace_id: str = ""
+
+
+def _ops_lookup_fn(family: str):
+    import ops_zcc_admin
+    import ops_zdx_trace
+    fn = {ops_zcc_admin.FAMILY: ops_zcc_admin.lookup, ops_zdx_trace.FAMILY: ops_zdx_trace.lookup}.get(family)
+    if fn is None:
+        raise HTTPException(status_code=400, detail="Unknown lookup: the family must be zcc_admin or zdx_trace.")
+    return fn
+
+
+@app.post("/api/operations/lookup")
+async def operations_lookup(req: OperationLookupRequest):
+    """A user's Client Connector devices, or a user's ZDX devices, a device's
+    applications, probes and deep traces, one trace or its results.
+    Read-only; the family must be in scope on the Scope page (400 before
+    sign-in otherwise)."""
+    import admin_ops
+    fn = _ops_lookup_fn(req.family)
+    _ops_scope(req, req.family)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    query = {"user": req.user, "device_id": req.device_id, "app_id": req.app_id, "trace_id": req.trace_id}
+    try:
+        out = await asyncio.to_thread(_keyed, client, fn, client, req.what, query, None)
+    except admin_ops.OperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return dict(out, tenant_label=tenant_auth.record_label(creds))
+
+
+class DeepTraceFollowRequest(OperationCredsRequest):
+    """The ZDX deep trace to follow until it ends (read-only, bounded)."""
+    device_id: str = ""
+    trace_id: str = ""
+
+
+@app.post("/api/operations/zdx/deeptrace/follow/start")
+async def operations_zdx_trace_follow(req: DeepTraceFollowRequest, request: Request):
+    """Follow a ZDX deep trace as a job: at most ops_zdx_trace.MAX_POLLS reads,
+    at least MIN_INTERVAL seconds apart, its results when it completes; Stop
+    ends it. Read-only; ZDX must be in scope (400 before sign-in otherwise)."""
+    import admin_ops
+    import ops_zdx_trace
+    import pack_jobs
+    _ops_scope(req, ops_zdx_trace.FAMILY)
+    try:
+        dev, trace = ops_zdx_trace.check_id(req.device_id, "The device"), ops_zdx_trace.check_id(req.trace_id, "The deep trace")
+    except admin_ops.OperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+
+    def run(log, cancel):
+        return _keyed(client, lambda: ops_zdx_trace.follow(client, dev, trace, log=log, cancel=cancel))
+
+    job = pack_jobs.start("zdx_trace_follow", run, label=tenant_auth.record_label(creds)[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+class BaCertificateUpload(BaseModel):
+    """A Browser Access certificate (PEM, the server certificate first) and
+    its unencrypted private key (PEM). Sizes are checked in code, so a
+    refusal never echoes them."""
+    cert_pem: str = ""
+    key_pem: str = ""
+
+
+@app.post("/api/operations/zpa/ba-certificate")
+async def operations_zpa_ba_certificate(req: BaCertificateUpload, request: Request):
+    """Check a Browser Access certificate and its private key and hold them in
+    memory for ten minutes, for the person who uploaded them, for one ZPA
+    Browser Access certificate operation (ops_zpa_admin). Answers a token and
+    the certificate's facts (subject, names, expiry, fingerprint), never the
+    key. Reaches no tenant; nothing is logged or stored. Needs a writer and
+    write mode: a key is accepted only when it can be used."""
+    import ops_zpa_admin
+    _security.require_writer()
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    try:
+        out = ops_zpa_admin.stash_upload(req.cert_pem, req.key_pem, _actor(request))
+    except ops_zpa_admin.CertificateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
 @app.get("/api/operations/{op_id}")
 async def operations_get(op_id: str):
     """One recorded bulk change: every item with its before, after and status, and its inverse."""
