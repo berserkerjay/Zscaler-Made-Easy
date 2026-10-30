@@ -364,7 +364,7 @@
           throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
         }
         const blob = await r.blob();
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `dlp-check-${compiledBody.vendor}-migration-terraform.zip`; document.body.appendChild(a); a.click();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `zscaler-made-easy-${compiledBody.vendor}-migration-terraform.zip`; document.body.appendChild(a); a.click();
         setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
         status('vmStatus2', 'Terraform workspace downloaded.');
         announce('Terraform workspace downloaded.');

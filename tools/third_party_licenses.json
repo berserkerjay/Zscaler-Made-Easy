@@ -1,6 +1,6 @@
 {
   "_comment": "SPDX licence of every pinned third-party component, read from each package's metadata (License-Expression, or License / trove classifiers checked against the package's LICENSE file). tools/sbom_enrich.py refuses to build the SBOM while a locked package is missing here; tests/test_sbom_licences.py checks these against the installed metadata.",
-  "project": "LicenseRef-DLP-Check-Internal",
+  "project": "LicenseRef-Zscaler-Made-Easy-Internal",
   "terraform": {
     "registry.terraform.io/zscaler/zia": "MPL-2.0"
   },

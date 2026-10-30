@@ -236,7 +236,7 @@ def test_the_overview_states_its_exceptions_and_uses_the_apps_names():
     assert "Step 3b deletes every existing Inline Web DLP rule" in flat and "restore_drift" in flat, "the two ways something the customer has is overwritten"
     assert "a migrated rule carries the action approved in its decisions file" in flat
     assert "the switch is refused" in flat and "ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND" in flat, "write mode in the container"
-    assert "dlp_mcp_server.py" in flat and ".venv/bin/dlp-check-assess" in flat and "RUN_Continuous_Evaluation.bat" in flat
+    assert "dlp_mcp_server.py" in flat and ".venv/bin/zscaler-made-easy-assess" in flat and "RUN_Continuous_Evaluation.bat" in flat
     assert "SMTP relay or Teams/Slack webhook" in flat and "Microsoft Learn" in flat, "every host the app reaches"
     import json
     for pj in ("cjis_policy_pack", "fed_policy_pack", "global_banking_baseline", "healthcare_phi_baseline", "zbp_enterprise_baseline", "zbp_source_code_baseline"):
@@ -268,7 +268,7 @@ def test_the_container_option_says_how_to_install_docker_step_by_step():
     # A check that must pass before going on, the Compose version the compose file needs, the licence, TLS inspection.
     assert flat.count("docker run --rm hello-world") >= 2 and "Hello from Docker!" in flat and "2.24 or newer" in flat
     assert "fewer than 250 employees" in flat and "CERTIFICATE_VERIFY_FAILED" in flat and "Settings → Resources → Proxies" in flat
-    assert "services.dlp-check.env_file.0 must be a string" in INSTALL and "Cannot connect to the Docker daemon" in INSTALL, "troubleshooting rows"
+    assert "services.zscaler-made-easy.env_file.0 must be a string" in INSTALL and "Cannot connect to the Docker daemon" in INSTALL, "troubleshooting rows"
     # The compose file really needs 2.24: its env_file uses the long syntax.
     compose = _read("docker-compose.yml")
     assert "required: false" in compose
@@ -286,7 +286,7 @@ def test_a_fresh_container_install_is_spelled_out_for_windows_mac_and_linux():
     assert "Use `git clone`, not a ZIP" in flat and "Download ZIP" not in flat
     assert flat.count("git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git") >= 4, "short version for two shells, Step 2 on Windows and Mac"
     for piece in ("cd $HOME\\Documents","cd ~/Documents", "Git Credential Manager", "personal access token", "command line developer tools",
-                  "update_container.ps1 -Force", "./update_container.sh --force", "bash update_container.sh --force", "docker logs dlp-check"):
+                  "update_container.ps1 -Force", "./update_container.sh --force", "bash update_container.sh --force", "docker logs zscaler-made-easy"):
         assert piece in flat, piece
     everyday = INSTALL[INSTALL.index("**Everyday use:**"):]
     assert "docker compose down -v" in everyday and "cannot be undone" in everyday
@@ -308,7 +308,7 @@ def test_the_container_installs_with_docker_commands_only():
     assert part.count("--secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN") == 3 and part.count(url) == 3
     assert "Contents*: **Read-only**" in part.replace("\n", " ") and "Read-Host" in part and "read -rsp" in part
     assert "--build-context certs=$HOME\dlp-certs" in part and "--build-context certs=$HOME/dlp-certs" in part
-    assert "docker rm -f dlp-check" in part and "docker logs dlp-check" in part
+    assert "docker rm -f zscaler-made-easy" in part and "docker logs zscaler-made-easy" in part
     df = _read("Dockerfile")
     assert "FROM scratch AS certs\nCOPY certs/ /" in df.replace("\r\n", "\n") and "COPY --from=certs / /tmp/extra-ca/" in df
     assert "COPY certs/ /tmp/extra-ca/" not in df, "the certificates must come through the overridable stage"
@@ -317,14 +317,14 @@ def test_the_container_installs_with_docker_commands_only():
 def test_the_container_can_be_built_and_run_by_hand_with_the_same_settings_as_compose():
     guide = open(os.path.join(ROOT, "INSTALL.md")).read()
     part = guide.split("### Build and run it by hand")[1].split("## First run")[0]
-    for piece in ("docker build -t dlp-check:local .", "docker volume create dlpcheck-data", "-v dlpcheck-data:/data",
+    for piece in ("docker build -t zscaler-made-easy:local .", "docker volume create zscaler-made-easy-data", "-v zscaler-made-easy-data:/data",
                   "-p 127.0.0.1:8001:8000", "DLP_CHECK_HOST_PORT=8001", "DLP_CHECK_HOST_BIND=127.0.0.1", "--read-only", "--cap-drop ALL",
-                  "no-new-privileges:true", "--restart unless-stopped", "docker logs dlp-check"):
+                  "no-new-privileges:true", "--restart unless-stopped", "docker logs zscaler-made-easy"):
         assert piece in part, piece
     # The app judges exposure by DLP_CHECK_HOST_BIND in the container; the old override is gone.
     assert "ZSCALER_ALLOW_NONLOCAL_BIND" not in part
     compose = open(os.path.join(ROOT, "docker-compose.yml")).read()
-    assert "${DLP_CHECK_HOST_BIND:-127.0.0.1}:${DLP_CHECK_HOST_PORT:-8001}:8000" in compose and "dlpcheck-data:/data" in compose and "mem_limit: 1g" in compose
+    assert "${DLP_CHECK_HOST_BIND:-127.0.0.1}:${DLP_CHECK_HOST_PORT:-8001}:8000" in compose and "zscaler-made-easy-data:/data" in compose and "mem_limit: 1g" in compose
 
 
 def test_the_container_can_run_beside_a_local_install_on_another_host_port():

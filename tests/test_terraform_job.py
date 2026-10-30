@@ -70,7 +70,7 @@ def test_the_hand_off_runs_as_a_job_and_the_zip_comes_from_it(monkeypatch):
     assert r.status_code == 200 and r.json()["kind"] == "terraform", r.text
     snap = _wait(c, r.json()["job_id"])
     assert snap["status"] == "done" and snap["result"]["status"] == "ready" and snap["result"]["mode"] == "static"
-    assert snap["download"].endswith("/download") and snap["filename"].startswith("dlp-check-terraform-static-") and snap["bytes"] > 1000
+    assert snap["download"].endswith("/download") and snap["filename"].startswith("zscaler-made-easy-terraform-static-") and snap["bytes"] > 1000
     assert any(l.startswith("Static mode") for l in snap["logs"]) and not any("Reading the tenant" in l for l in snap["logs"])
     assert "artifact" not in snap["result"], "the zip is not in the JSON"
     z = c.get(snap["download"])

@@ -224,7 +224,7 @@ def test_every_action_and_scanner_image_is_pinned_immutably():
             assert re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", use), f"{name}: {use} is not pinned to a commit SHA"
     wf = _read(".github", "workflows", "tests.yml")
     assert "trivy:latest" not in wf and re.search(r"aquasec/trivy:[\d.]+@sha256:[0-9a-f]{64}", wf)
-    assert "ZSCALER_UI_AUTH=0 dlp-check:ci" not in wf, "the container smoke test keeps the token gate on"
+    assert "ZSCALER_UI_AUTH=0 zscaler-made-easy:ci" not in wf, "the container smoke test keeps the token gate on"
 
 
 def test_the_container_base_is_pinned_by_digest():

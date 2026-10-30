@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-30
+
+### The new name everywhere: Docker, downloads, commands and the install guide
+- **Docker names follow the app's name.** Container and compose service `zscaler-made-easy`, image `zscaler-made-easy:local`, data volume `zscaler-made-easy-data` (a fixed name, no longer tied to the folder name), compose project `zscaler-made-easy`. Upgrading loses nothing: the first `update_container.ps1` / `update_container.sh` run after this copies the old `dlpcheck-data` / `<folder>_dlpcheck-data` volume into the new one (owners, modes and timestamps kept, checked file by file), removes the old container so port 8001 is free, keeps the old volume as a backup and prints the command to remove it; later runs copy nothing; a failed copy stops before the new container starts. INSTALL.md, *Moving to the new name*, has the same steps by hand for Docker-only installs.
+- **Downloads and commands.** The browser extension downloads as `zscaler-made-easy-extension.zip`, Terraform downloads start with `zscaler-made-easy-`, and the commands are `zscaler-made-easy`, `zscaler-made-easy-assess` and `zscaler-made-easy-evaluate` (the `dlp-check` names still work). The in-app guide clones `berserkerjay/Zscaler-Made-Easy`; INSTALL.md uses the new folder names (`Zscaler-Made-Easy`, `Zscaler-Made-Easy-main`); the SBOM licence id is `LicenseRef-Zscaler-Made-Easy-Internal`.
+- **Unchanged on purpose.** `DLP_CHECK_*` settings, the `X-DLP-Check-*` headers, the `[DLP-Check …]` tags on tenant objects, cookie and browser-storage keys: they are what existing installs and tenants already use. A test now fails CI when an old name appears anywhere else.
+
 ## 2026-10-29
 
 ### Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score

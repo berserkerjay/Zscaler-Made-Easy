@@ -3,6 +3,8 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
+# The distribution keeps its first name, so an existing .venv updates in
+# place instead of holding two copies; only the commands are renamed.
 name = "dlp-check"
 version = "2026.9.13"
 description = "Zscaler DLP assessment and policy-pack deployment: 300+ automated checks, guided deploy / verify / remove of policy packs, reports and continuous evaluation."
@@ -42,6 +44,10 @@ dev = ["pytest==9.1.1", "pyflakes==4.0.1", "httpx==0.28.1"]
 # editable (pip install -e .) by install.sh; these commands then run the
 # same modules the container's CMD runs.
 [project.scripts]
+zscaler-made-easy = "dlp_api_server:main"
+zscaler-made-easy-assess = "dlp_assessment_full_auto:main"
+zscaler-made-easy-evaluate = "continuous_eval:main"
+# The names from before the rename keep working (cron jobs, scripts).
 dlp-check = "dlp_api_server:main"
 dlp-check-assess = "dlp_assessment_full_auto:main"
 dlp-check-evaluate = "continuous_eval:main"
