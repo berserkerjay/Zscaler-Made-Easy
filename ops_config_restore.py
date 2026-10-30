@@ -455,10 +455,12 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
         if err and not rows:
             unread[k] = err
             if k in {x["key"] for x in sel}:
-                p.blockers.append(f"{_label(t)}: the target could not be read ({str(err)[:160]}), so nothing of it is planned.")
+                p.warnings.append(f"{_label(t)}: the target could not be read ({str(err)[:160]}), so nothing of it is planned.")
             continue
         tgt[k] = rows
     sel = [t for t in sel if t["key"] in tgt]
+    if not sel and not p.blockers:
+        p.blockers.append("None of the chosen object types could be read in the target, so nothing was planned.")
     tgt_by_id = {k: {cb.rid(r): r for r in rows if cb.rid(r)} for k, rows in tgt.items()}
     tgt_by_name: Dict[str, Dict[str, Dict[str, Any]]] = {}
     for k, rows in tgt.items():

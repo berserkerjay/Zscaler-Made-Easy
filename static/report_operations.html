@@ -233,7 +233,8 @@
     // window.OPS_PLUGINS.register({type, render(res, where, S, H), spec(S, H)})
     // and then runs through the same read, preview, gates, apply and Undo.
     window.OPS_PLUGINS = { defs: {}, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
-    const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m) };
+    const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m), body: x => body(x),
+      runJob: (u, p, w, t) => runJob(u, p, w, t), fail: (w, t, m, f) => fail(w, t, m, f), preview: (u, p) => preview(u, p, null), detailText };
     (async function loadBuilders() {
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }
@@ -548,6 +549,9 @@
       S.assessor = $('opAssessor').value.trim();
       if (!S.assessor) { say("Enter the assessor's name: the change record names who made it."); $('opAssessor').focus(); return; }
       const payload = body({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor });
+      // A builder may hand the apply what must never be in the operation (a typed pre-shared key): only `secrets`, kept in memory server-side.
+      const plugApply = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[S.kind];
+      if (plugApply && typeof plugApply.applyExtra === 'function' && !S.undoOf) { const x = plugApply.applyExtra(S, H) || {}; if (x.secrets) payload.secrets = x.secrets; }
       $('opGo').disabled = true; say('Applying the change.');
       try {
         const snap = await runJob('/api/operations/apply/start', payload, where, 'Applying the change');
