@@ -142,7 +142,8 @@
               "c6-misc",
               "c6-reports",
               "c6-traffic-reports",
-              "sbd-input"
+              "sbd-input",
+              "w7-log-analysis"
             ]
           },
           "coverage": {
@@ -465,12 +466,12 @@
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 314,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8686
   },
   "findings": [
     {
@@ -10634,6 +10635,47 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-log-analysis",
+      "area": "Untrusted input and traffic analysis: traffic and session log upload and analysis (traffic_logs.py, siem_queries.py, the /api/traffic-logs routes, static/report_traffic_logs.html and static/traffic_logs.js, with links into the Path analyzer and Traffic insights)",
+      "title": "Wave 7 gap from the tool comparison closed: ZPA LSS and ZIA NSS logs read locally as untrusted input, analysed in memory, exported counts-only by default, saved only on request, with SIEM query templates",
+      "standards": [
+        "ASVS V1.14.1",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V5.1.5",
+        "ASVS V5.3.3",
+        "ASVS V5.3.4",
+        "ASVS V8.3.4",
+        "ASVS V8.3.5",
+        "ASVS V11.1.4",
+        "ASVS V12.1.1",
+        "ASVS V12.3.1",
+        "CWE-20",
+        "CWE-22",
+        "CWE-79",
+        "CWE-226",
+        "CWE-276",
+        "CWE-359",
+        "CWE-400",
+        "CWE-409",
+        "CWE-502",
+        "CWE-532",
+        "CWE-601",
+        "CWE-682",
+        "CWE-754",
+        "CWE-770",
+        "CWE-943",
+        "CWE-1236",
+        "CWE-1333",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.4.4",
+        "WCAG 2.2 SC 4.1.2"
+      ],
+      "checks": 11,
+      "findings": 0,
+      "tests_added": 84
     }
   ],
   "standards": {
@@ -10653,7 +10695,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -10887,7 +10929,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 57,
+    "wstg": 58,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",

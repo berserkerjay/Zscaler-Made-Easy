@@ -288,10 +288,12 @@ def test_a_bad_feed_format_is_refused(fmt, why):
 def test_a_hostile_line_against_a_pasted_format_takes_linear_time():
     """ASVS V5.1.5 · CWE-1333 · WSTG-INPV-13: each field of a pasted format stops at the next separator, so a long line of separators cannot make the matcher backtrack."""
     t = tl.FeedTemplate("\t".join(f"%s{{{f}}}" for f in ["time", "login", "url", "action", "urlcat"] * 8))
+    ends = tl.FeedTemplate("".join(f"%s{{{f}}}\t" for f in ["time", "login", "url", "action"] * 4) + "|end")
     start = time.monotonic()
     for line in ("\t" * 60000, "a\t" * 30000, "\t".join(["x" * 2000] * 39) + "\tz\tq"):
         t.read(line)
-    assert time.monotonic() - start < 2.0
+    assert ends.read("a\t" * 26) is None   # 26 separators, no "|end": lazy groups would try every split
+    assert time.monotonic() - start < 1.0
 
 
 def test_a_zip_bomb_member_is_not_inflated_past_the_cap(monkeypatch):
