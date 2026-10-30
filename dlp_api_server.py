@@ -5577,13 +5577,19 @@ async def operations_zpa_provisioning_key(req: OneTimeKeyRequest, request: Reque
 
 class OperationLookupRequest(OperationCredsRequest):
     """A read-only search for a day-to-day admin form: `family` (zcc_admin
-    or zdx_trace) and `what` (devices, apps, probes, traces, trace, results)."""
+    or zdx_trace) and `what` (devices, match; users, apps, app_scores,
+    app_score, health, device_app, probes, traces, trace, results). `text`
+    is a list of devices to match (at most 1 MB, checked in code), `mode`
+    remove or force and `domain` an optional user domain filter."""
     family: str = ""
     what: str = ""
     user: str = ""
     device_id: str = ""
     app_id: str = ""
     trace_id: str = ""
+    text: str = ""
+    mode: str = ""
+    domain: str = ""
 
 
 def _ops_lookup_fn(family: str):
@@ -5606,7 +5612,8 @@ async def operations_lookup(req: OperationLookupRequest):
     _ops_scope(req, req.family)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    query = {"user": req.user, "device_id": req.device_id, "app_id": req.app_id, "trace_id": req.trace_id}
+    query = {"user": req.user, "device_id": req.device_id, "app_id": req.app_id, "trace_id": req.trace_id, "text": req.text, "mode": req.mode,
+             "domain": req.domain}
     try:
         out = await asyncio.to_thread(_keyed, client, fn, client, req.what, query, None)
     except admin_ops.OperationError as e:

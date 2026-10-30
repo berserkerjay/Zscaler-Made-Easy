@@ -128,3 +128,15 @@ def test_a_deep_trace_lookup_and_a_bounded_follow_through_the_routes(api, monkey
     assert c.tenant.reads.count("trace") == zt.MAX_POLLS and c.tenant.writes == []
     bad = api.post("/api/operations/zdx/deeptrace/follow/start", json=dict(CREDS, **scope("zdx"), device_id="../1", trace_id="77"))
     assert bad.status_code == 400
+
+
+def test_a_list_is_matched_through_the_lookup_route(api, monkeypatch):
+    """ASVS V5.1.3 · CWE-20: the page's pasted list reaches the matcher; an oversized list is refused (400) before the devices are read."""
+    from admin_fakes import ZccClient
+    c = ZccClient()
+    c.tenant.seed()
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: c)
+    r = api.post("/api/operations/lookup", json=dict(CREDS, **scope("zcc"), family="zcc_admin", what="match", text="jdoe@acme.com\nNOPE-PC", mode="remove"))
+    assert r.status_code == 200 and r.json()["counts"]["planned"] == 1 and r.json()["not_found"] == [{"entry": "NOPE-PC"}]
+    big = api.post("/api/operations/lookup", json=dict(CREDS, **scope("zcc"), family="zcc_admin", what="match", text="a\n" * 600000))
+    assert big.status_code in (400, 413)

@@ -30,7 +30,7 @@
   }
   const errs = (H, res) => H.errorsHtml(res || {});
   const chip = (txt, cls) => `<span class="df-chip ${cls || ''}">${E(txt)}</span>`;
-  const health = h => chip(h, h === 'connected' ? 'st-ok' : h === 'disconnected' ? 'st-fail' : 'st-warn');
+  const health = h => chip(h, h === 'connected' || h === 'on' ? 'st-ok' : h === 'disconnected' ? 'st-fail' : 'st-warn');
   const table = (caption, head, rows, empty) => `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">${E(caption)}</caption>
     <thead><tr>${head.map(h => `<th scope="col">${E(h)}</th>`).join('')}</tr></thead>
     <tbody>${rows.join('') || `<tr><td colspan="${head.length}">${E(empty)}</td></tr>`}</tbody></table></div>`;
