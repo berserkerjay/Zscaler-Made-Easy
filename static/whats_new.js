@@ -9,7 +9,9 @@
 //
 // Only the features of the newest two releases are marked ("keep"): add the
 // next release to "releases", with its features, and the oldest set stops
-// showing (tests/test_new_marks.py checks this list against CHANGELOG.md).
+// showing. A CHANGELOG release with nothing to mark goes in "skipped" with
+// the reason, and pushes nothing out (tests/test_new_marks.py checks both
+// lists against CHANGELOG.md).
 //
 // How a mark reads: the * is drawn by CSS (the page's words stay as they
 // are) and hidden from screen readers; a control's name gets "(new)" (its
@@ -25,6 +27,9 @@ window.WHATS_NEW = {
   "releases": {
     "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score",
     "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
+  },
+  "skipped": {
+    "2026-10-30": "The new name everywhere, and these marks: nothing new to mark, so the two releases above stay marked"
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [

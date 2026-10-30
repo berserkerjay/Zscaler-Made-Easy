@@ -82,17 +82,24 @@ def _marks():
             yield f, mk
 
 
-def changelog_entries(n: int = 2) -> list[tuple[str, str]]:
-    """The newest n CHANGELOG entries as (date, text), newest first."""
+def changelog_entries() -> list[tuple[str, str]]:
+    """Every CHANGELOG entry as (date, text), newest first."""
     text = CHANGELOG.read_text(encoding="utf-8")
     parts = re.split(r"^## (\d{4}-\d{2}-\d{2})\s*$", text, flags=re.M)
     entries = list(zip(parts[1::2], parts[2::2]))
-    assert len(entries) >= n, "CHANGELOG.md has dated '## YYYY-MM-DD' entries"
-    return entries[:n]
+    assert len(entries) >= 2, "CHANGELOG.md has dated '## YYYY-MM-DD' entries"
+    return entries
+
+
+def marked_entries() -> list[tuple[str, str]]:
+    """The newest `keep` CHANGELOG entries with something to mark: a release
+    the manifest lists under "skipped" (nothing new to see) is passed over."""
+    return [e for e in changelog_entries() if e[0] not in MAN.get("skipped", {})][:MAN["keep"]]
 
 
 def changelog_phrases(body: str) -> set[str]:
     """The bold and italic phrases of an entry's bullets (the features it names)."""
+    body = re.sub(r"`[^`\n]*`", "", body)   # code spans: a literal * is not a name
     found = set(re.findall(r"\*\*([^*\n]+?)\*\*", body))
     found |= set(re.findall(r"(?<![*\w])\*(?!\*)([^*\n]+?)(?<!\*)\*(?![*\w])", re.sub(r"\*\*[^*\n]+?\*\*", "", body)))
     return {p.strip().rstrip(".").strip() for p in found if p.strip()}
@@ -122,8 +129,10 @@ def test_every_manifest_entry_is_complete_with_a_valid_date():
             if mk.get("page") not in PAGES or not str(mk.get("at", "")).strip() or set(mk) - {"page", "at", "control", "shown"}:
                 bad.append((f.get("id"), mk))
     assert not bad, bad
-    for d in MAN["releases"]:
+    for d in list(MAN["releases"]) + list(MAN.get("skipped", {})):
         date.fromisoformat(d)
+    assert all(str(why).strip() for why in MAN.get("skipped", {}).values()), "a skipped release says why"
+    assert not set(MAN["releases"]) & set(MAN.get("skipped", {}))
     assert MAN["keep"] == 2
 
 
@@ -134,13 +143,14 @@ def test_the_manifest_words_are_plain_text():
 
 
 def test_every_release_date_is_a_changelog_release_and_the_newest_two_are_listed():
-    """SSDF PW.1.2 · ASVS V1.14.1: each feature's date is a CHANGELOG.md release; the manifest lists the two newest releases."""
-    text = CHANGELOG.read_text(encoding="utf-8")
-    dates = re.findall(r"^## (\d{4}-\d{2}-\d{2})\s*$", text, flags=re.M)
-    stray = sorted(({f["release"] for f in MAN["features"]} | set(MAN["releases"])) - set(dates))
+    """SSDF PW.1.2 · ASVS V1.14.1: each date is a CHANGELOG.md release; every release newer than the marked ones is listed as skipped, with a reason."""
+    dates = [d for d, _ in changelog_entries()]
+    stray = sorted(({f["release"] for f in MAN["features"]} | set(MAN["releases"]) | set(MAN.get("skipped", {}))) - set(dates))
     assert not stray, f"not a CHANGELOG.md release: {stray}"
-    newest = [d for d, _ in changelog_entries(2)]
-    assert set(newest) <= set(MAN["releases"]), f"add the newest releases {newest} to whats_new.js"
+    marked = [d for d, _ in marked_entries()]
+    assert sorted(MAN["releases"], reverse=True) == marked, f"whats_new.js must list {marked} under releases"
+    newer = [d for d in dates if d > marked[-1] and d not in marked]
+    assert set(newer) <= set(MAN.get("skipped", {})), f"add {newer} to whats_new.js: its features under releases, or under skipped with why"
 
 
 @pytest.mark.parametrize("fid,page,sel", [(f["id"], mk["page"], s) for f, mk in _marks() for s in filter(None, (mk["at"], mk.get("control")))])
@@ -169,10 +179,10 @@ def test_every_marked_page_has_a_legend_place():
 
 
 def test_every_new_changelog_feature_with_a_ui_home_is_marked():
-    """SSDF PW.1.2 · WCAG 2.2 SC 3.2.4: each feature the two newest CHANGELOG entries name is in the manifest, or excluded above with a reason."""
+    """SSDF PW.1.2 · WCAG 2.2 SC 3.2.4: each feature the two newest CHANGELOG releases with something to mark name is in the manifest, or excluded above with a reason."""
     covered = {p for f in MAN["features"] for p in f["changelog"]}
     missing, phrases = [], set()
-    for d, body in changelog_entries(2):
+    for d, body in marked_entries():
         for phrase in sorted(changelog_phrases(body)):
             phrases.add(phrase)
             if phrase not in covered and phrase not in EXCLUDED:
@@ -185,7 +195,7 @@ def test_every_new_changelog_feature_with_a_ui_home_is_marked():
 
 def test_the_phrase_parser_reads_bold_and_italic_names():
     """CWE-20: the CHANGELOG reader finds bold and italic names and ignores the ** of bold ones (the coverage check relies on it)."""
-    got = changelog_phrases("- **Liquid Glass.** see *Test a list*, `a*b` and **Quality score** (x)")
+    got = changelog_phrases("- **Liquid Glass.** see *Test a list*, `a*b`, a `*` and **Quality score** (x)")
     assert got == {"Liquid Glass", "Test a list", "Quality score"}
 
 
@@ -266,7 +276,7 @@ console.log(JSON.stringify({ now, next, bad, real: W.releases(), words: W.words(
     assert out["now"] == ["a", "b"], "2026-10-26 is older than the newest two releases"
     assert out["next"] == ["a"], "a release on 2026-10-30 drops the 2026-10-28 set"
     assert out["bad"] == ["ok"], "a feature without a valid date is never marked"
-    assert out["real"] == [d for d, _ in changelog_entries(2)]
+    assert out["real"] == [d for d, _ in marked_entries()]
     assert out["words"] == "New in the 2026-10-29 update: q New in the 2026-10-28 update: p r"
 
 
