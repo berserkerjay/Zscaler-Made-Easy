@@ -85,9 +85,10 @@ and terminates TLS; do not publish port 8000 on a public interface.
 ## Running the tests and the checks
 
 ```bash
-make dev                                 # once: installs pytest and pyflakes into .venv
+make dev                                 # once: installs pytest, pyflakes and bandit into .venv
 make test                                # .venv/bin/python -m pytest -q tests
 make check                               # compile, pyflakes, pack conventions, Terraform freshness, offline upstream check (what CI runs)
+make sast                                # offline static analysis (bandit); fails on a medium+ finding (tests/test_sast.py runs it too)
 make upstream                            # the daily upstream check by hand: SDK, Terraform provider, API reference vs what the app sends
 ```
 
@@ -98,6 +99,10 @@ prerelease (whose ZIA service definition is machine-readable), the
 `zscaler/zia` Terraform provider's latest version, schema and docs, and
 Zscaler's API reference. Drift opens or updates one issue labelled
 `upstream-drift` with the report; a clean day closes it.
+
+CodeQL (`.github/workflows/codeql.yml`) scans the Python and the JavaScript
+with GitHub's security-extended queries on pull requests to `dev`, `qa` and
+`main` and weekly; see `SECURITY.md` "Static analysis (SAST)".
 
 The same watchers also run inside the app as **Beacon** (`beacon.py`, the
 Beacon tab, `/report/beacon`): the SDK, the ZIA API (service definition,
