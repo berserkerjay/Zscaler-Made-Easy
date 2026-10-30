@@ -277,8 +277,15 @@
     return out;
   }
 
+  // What a query names when it is a URL, a host name or an IP address
+  // (a dot and no space), else ''.
+  function lookupTarget(q) {
+    const t = String(q || '').trim();
+    if (t.length > 512 || /\s/.test(t) || t.indexOf('.') < 0) return '';
+    return /^(https?:\/\/)?(\[[0-9a-f:.]+\]|[a-z0-9-]+(\.[a-z0-9-]+)+|\d{1,3}(\.\d{1,3}){3})(:\d{1,5})?(\/\S*)?$/i.test(t) ? t : '';
+  }
   const core = { norm, osa, parseQuery, synonymsOf, search, prepare, pageItems, termItems, objectItems, findingItems, todoItems, objKey, SYNONYMS, STOP,
-    MAX_QUERY_CHARS, MAX_TERMS };
+    MAX_QUERY_CHARS, MAX_TERMS, lookupTarget };
   if (typeof window === 'undefined') {
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
     return;
@@ -596,6 +603,10 @@ button.fa-chip{cursor:pointer;font:inherit;font-size:var(--fs-footnote,0.75rem)}
       const byKey = {}; S.items.forEach(it => { if (it.type === 'Page') byKey[it.key] = it; });
       res = SUGGEST.map(k => byKey[k]).filter(Boolean);
     } else res = search(S.items, q, 50);
+    // A URL, host name or IP address: offer its categories and the rules
+    // that name them (the Path analyzer's Category lookup, filled in, not run).
+    const host = lookupTarget(q);
+    if (host) res = [{ type: 'Lookup', id: 'lookup:' + host, title: `Categories and rules for ${host}`, line: 'Category lookup: its ZIA categories and every rule that names them', target: host }].concat(res).slice(0, 50);
     S.results = res; S.active = res.length ? 0 : -1;
     listEl.replaceChildren(...res.map((it, i) => h('li', { id: `faOpt${i}`, class: 'fa-opt', role: 'option', 'aria-selected': String(i === 0),
       onclick: () => openItem(it), onmousemove: () => { if (S.active !== i) setActive(i); } },
@@ -637,6 +648,12 @@ button.fa-chip{cursor:pointer;font:inherit;font-size:var(--fs-footnote,0.75rem)}
 
   // ── Opening a result ───────────────────────────────────────────────
   function openItem(it) {
+    if (it.type === 'Lookup') {
+      close();
+      const href = '/report/path#categories=' + encodeURIComponent(it.target);
+      if (onHome()) { const w = window.open(href, '_blank'); if (!w) location.href = href; } else location.href = href;
+      return;
+    }
     if (it.type === 'Page') { if (it.key === 'find') return; close(); goPage(it.key); return; }
     if (it.type === 'Term') { showCard(termCard(it)); return; }
     if (it.type === 'Finding') { showCard(findingCard(it.check)); return; }

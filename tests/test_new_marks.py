@@ -190,7 +190,9 @@ def test_every_new_changelog_feature_with_a_ui_home_is_marked():
     assert not missing, "map these in static/whats_new.js or explain them in EXCLUDED: " + "; ".join(missing)
     unknown = sorted(covered - phrases)
     assert not unknown, f"manifest names CHANGELOG phrases that are not in the two newest entries: {unknown}"
-    assert len(covered) >= 10
+    # Each marked release has something marked (a count over both releases
+    # depended on how many features one release happened to bring).
+    assert all(covered & changelog_phrases(body) for _, body in marked_entries()), "a marked release with nothing marked"
 
 
 def test_the_phrase_parser_reads_bold_and_italic_names():

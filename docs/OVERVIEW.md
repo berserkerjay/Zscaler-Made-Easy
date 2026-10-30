@@ -218,7 +218,13 @@ what you get, what to do next.
   step has the same shape: its deciding rule and order, the other rules
   that also match, the earlier rules that could decide instead, and every
   criterion as match, no match or unknown (`zia_path_modules.py`,
-  `zpa_path.py`, drawn by `static/path_modules.js`). A protocol and port
+  `zpa_path.py`, drawn by `static/path_modules.js`). An unread condition
+  never matches: each module lists the rule fields it evaluates and the
+  ones known not to restrict a match, and any other non-empty field (one
+  a newer API adds, say) is an unknown criterion (`rule_fields.py`;
+  every field of the SDK 1.11.3 models is classified). Zscaler's
+  predefined UCaaS and Microsoft 365 one-click rules follow the one-click
+  switches, read with the Cloud Firewall (`ucaas_oneclick.py`). A protocol and port
   (UDP/443 is QUIC, TCP/22 is SSH) trace traffic that is not web.
   **Traffic from a workload** (Cloud & Branch Connector ticked) takes a
   source IP, tags, workload group and connector group: the connector's
@@ -260,6 +266,16 @@ what you get, what to do next.
   segments to change for ZPA), and CSV and Excel downloads.
   Fix selected opens Bulk changes with the picked destinations filled in
   as a URL category change; it writes nothing on its own.
+  **Category lookup** (the third tab, `category_lookup.py`): up to 25
+  URLs, hosts, IP addresses or categories; for each, its ZIA categories,
+  predefined and custom (ZIA's URL lookup and the tenant's own category
+  lists), the cloud application, any security alert, the custom
+  categories that list it, and every rule across URL filtering, Cloud App
+  Control (by application), SSL inspection, Cloud Firewall (directly or
+  through an IP destination group), DNS Control, File Type Control, Web
+  DLP and Sandbox that names each category, in evaluation order with
+  order, rank, action and state. A Test a list row's Categories button and
+  Find anything (for a host) open it. Read-only, only what is in scope.
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the
@@ -595,7 +611,10 @@ what you get, what to do next.
   (URL filtering, Cloud Firewall, SSL inspection, Sandbox, DNS Control
   with the Trusted Resolver, DoH inspection and geo-blocking, File Type
   Control, Cloud App Control and, only when picked, the Advanced Threat
-  Protection settings) from a Strict, Balanced, Permissive or Healthcare
+  Protection settings and UCaaS one-click: the Zoom, Microsoft Teams
+  (Microsoft 365 one-click), Webex, RingCentral, GoTo and Talkdesk
+  switches that make ZIA add its predefined one-click rules, pre-set on
+  for every tier but Strict) from a Strict, Balanced, Permissive or Healthcare
   zero trust tier or a saved framework, with optional compliance overlays
   (HIPAA, HITRUST, NIST 800-53 and 800-171, PCI DSS, CJIS, SOX, FERPA,
   GDPR) that cite each control's source; every rule can be switched off

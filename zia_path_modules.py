@@ -58,6 +58,8 @@ import ipaddress
 import re
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+import ucaas_oneclick
+
 # ── What is read ─────────────────────────────────────────────────────
 # Scope table entries (merged into data_flow.PATH_SECTIONS): label, the
 # scopes that put the section in scope, the Scope page channel (none: these
@@ -87,6 +89,10 @@ READS: Dict[str, List[Tuple[str, str, str, str]]] = {
         ("network_app_groups", "/zia/networkApplicationGroups", "Network application groups", "list"),
         ("ip_destination_groups", "/zia/ipDestinationGroups", "IP destination groups", "list"),
         ("ip_source_groups", "/zia/ipSourceGroups", "IP source groups", "list"),
+        # The UCaaS and Microsoft 365 one-click switches behind Zscaler's
+        # predefined one-click rules (ucaas_oneclick; SDK 1.11.3
+        # url_filtering.get_url_and_app_settings).
+        ("url_app_settings", "/zia/advancedUrlFilterAndCloudAppSettings", "URL and Cloud App Control advanced settings", "object"),
     ],
     "dns": [("rules", "/zia/firewallDnsRules", "DNS Control rules", "list")],
     "sandbox": [("rules", "/zia/sandboxRules", "Sandbox rules", "list")],
@@ -1140,8 +1146,8 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     sgroups = None if data.get("ip_source_groups") is None else {str(g.get("id")): g for g in data["ip_source_groups"]}
 
     def criteria(r):
-        return [_crit_source(r, sgroups, ctx.get("source_ip")), _crit_destination(r, ctx, dgroups), _crit_services(r, ctx, fw), _crit_network_apps(r, ctx, fw)] + \
-            unevaluated(r, module="firewall")
+        return [_crit_source(r, sgroups, ctx.get("source_ip")), _crit_destination(r, ctx, dgroups), _crit_services(r, ctx, fw), _crit_network_apps(r, ctx, fw),
+                ucaas_oneclick.criterion(r, ctx.get("oneclick"))] + unevaluated(r, module="firewall")
 
     def verdict_of(r):
         a = _action(r, "action", "accessControl")
@@ -1152,9 +1158,12 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
                ranking=ctx.get("ranking"))
     if res["verdict"] == "unknown" and res["certainty"] == "definite":
         res["certainty"] = "unknown"
-    missing = [READS["firewall"][i][2] for i, (p, _, _, _) in enumerate(READS["firewall"]) if p != "rules" and data.get(p) is None]
+    missing = [READS["firewall"][i][2] for i, (p, _, _, _) in enumerate(READS["firewall"]) if p not in ("rules", "url_app_settings") and data.get(p) is None]
     if missing:
         res["notes"].append(f"Not read: {', '.join(missing)}; criteria that refer to them are unknown.")
+    line = ucaas_oneclick.summary(ctx.get("oneclick"))
+    if line:
+        res["notes"].append(line)
     if ctx["traffic"]["web"]:
         res["notes"].append("Web traffic the firewall allows is handed to the web proxy modules below.")
     res["notes"].append("The Cloud Firewall sees non-web traffic only when it is forwarded by Z-Tunnel 2.0 or a GRE/IPsec site tunnel.")
@@ -1173,7 +1182,8 @@ def _dns(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
         # The IP destination groups are the Cloud Firewall's read (the same
         # /ipDestinationGroups list, in scope with it); without it unknown.
         out: List[Optional[Dict[str, str]]] = [_crit_source(r, ctx.get("src_groups"), ctx.get("source_ip")),
-                                               _crit_destination(r, ctx, ctx.get("dst_groups"), "Requested domain")]
+                                               _crit_destination(r, ctx, ctx.get("dst_groups"), "Requested domain"),
+                                               ucaas_oneclick.criterion(r, ctx.get("oneclick"))]
         # The SDK docstring writes TCP, UDP, DOHTTPS; the API answers TCP_RULE,
         # UDP_RULE, DOHTTPS_RULE (as every other ZIA rule's protocols).
         p = [x.upper() for x in _names(_f(r, "protocols"))]
@@ -1401,6 +1411,7 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
     given = list((context or {}).get("file_types") or []) + [(context or {}).get("file_type")]
     fw_groups = (((mods.get("firewall") or {}).get("parts") or {}).get("ip_destination_groups") or {})
     src_groups = (((mods.get("firewall") or {}).get("parts") or {}).get("ip_source_groups") or {})
+    oneclick = (((mods.get("firewall") or {}).get("parts") or {}).get("url_app_settings") or {})
     ctx = {"host": dest.get("host") or "", "ip": ip, "dest": dest, "traffic": traffic, "visible": None, "source_ip": src,
            "categories": sorted({str(c).upper() for c in rd.get("categories") or []}), "alerts": sorted({str(c).upper() for c in lookup.get("security_alerts") or []}),
            "applications": sorted({str(a).upper() for a in rd.get("applications") or []}), "app_classes": sorted({str(a).upper() for a in rd.get("app_classes") or []}),
@@ -1408,6 +1419,8 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
            "dst_groups": {str(g.get("id")): g for g in fw_groups.get("data") or [] if isinstance(g, dict)} if fw_groups.get("ok") else None,
            # The IP source groups (the Cloud Firewall's read) for DNS Control's source conditions.
            "src_groups": {str(g.get("id")): g for g in src_groups.get("data") or [] if isinstance(g, dict)} if src_groups.get("ok") else None,
+           # The one-click switches (ucaas_oneclick), read with the Cloud Firewall; None when not read.
+           "oneclick": ucaas_oneclick.values(oneclick.get("data")) if oneclick.get("ok") else None,
            # The recorded admin ranking setting (admin_rank): missing in an
            # older kept read, it is unknown, never off.
            "ranking": zia.get("admin_ranking") if isinstance(zia.get("admin_ranking"), dict) else None}

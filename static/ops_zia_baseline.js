@@ -22,7 +22,7 @@
 
   function state(S, res) {
     if (!S.zb) {
-      S.zb = { tier: 'balanced', overlays: new Set(), areas: null, prefix: 'BL', mode: 'tier', rules: {}, atp: {}, enable: false,
+      S.zb = { tier: 'balanced', overlays: new Set(), areas: null, prefix: 'BL', mode: 'tier', rules: {}, atp: {}, ucaas: {}, enable: false,
         profile: '', cert: '', framework: null, frameworkName: '', fileError: '' };
     }
     if (!S.zb.areas && res && res.areas) {
@@ -86,7 +86,7 @@
         <td>${(r.sources || []).map(s => `<a href="${E(httpsOnly(s.url))}" target="_blank" rel="noopener noreferrer">${E(s.title)}</a>`).join('<br>') || '<span class="df-hint">From the framework file</span>'}</td></tr>`;
     };
     const areaBlock = a => {
-      if (!picked(a) || a === 'atp') return '';
+      if (!picked(a) || a === 'atp' || a === 'ucaas') return '';
       const list = areaRules(a);
       const ctrls = controlsFor(a);
       return `<h3 class="op-h">${E((res.areas.find(x => x.key === a) || {}).label || a)}</h3>
@@ -106,6 +106,17 @@
           return `<label class="df-ctl"><input type="checkbox" data-zb-atp="${E(s.key)}"${v ? ' checked' : ''}><span>${E(s.label)}${def && !v ? ' <span class="df-chip st-warn">Weaker than the tier</span>' : ''}</span></label>`;
         }).join('')}</div>`;
     };
+    // UCaaS one-click (ucaas_oneclick.py): switches, pre-set per tier, live once ZIA activates.
+    const ucaasBlock = () => {
+      if (!picked('ucaas')) return '';
+      const src = (res.ucaas_sources || [])[0];
+      return `<h3 class="op-h" id="zbUcaasH">UCaaS one-click</h3>
+        <div class="df-hint" id="zbUcaasHow">Each switch makes ZIA add its predefined one-click rules for that service: its calls break out without SSL inspection and the Cloud Firewall allows them, for call quality. Microsoft Teams comes with the Microsoft 365 one-click configuration. Settings have no disabled state: a change is live as soon as ZIA activates it. Pre-set on for the Balanced, Permissive and Healthcare tiers, off for Strict (it inspects all TLS).${src ? ` Source: <a href="${E(httpsOnly(src.url))}" target="_blank" rel="noopener noreferrer">${E(src.title)}</a>.` : ''}</div>
+        <div class="op-row" role="group" aria-labelledby="zbUcaasH" aria-describedby="zbUcaasHow">${(res.ucaas || []).map(s => {
+          const def = (s.on_in || []).includes(z.tier); const v = z.ucaas[s.key] === undefined ? def : z.ucaas[s.key];
+          return `<label class="df-ctl"><input type="checkbox" data-zb-ucaas="${E(s.key)}"${v ? ' checked' : ''}><span>${E(s.label)}${v && !def ? ' <span class="df-chip st-warn">Not inspected</span>' : ''}</span></label>`;
+        }).join('')}</div>`;
+    };
     where.innerHTML = `${errorsHtml(res)}
       <p>Build a ZIA security baseline: pick a tier (or load a framework file saved from another tenant), the compliance frameworks to map it to and the areas, then check each rule below and preview. New rules arrive disabled; nothing is written until you apply.</p>
       <fieldset class="op-kinds"><legend class="df-h">Tier</legend>
@@ -119,7 +130,7 @@
         <div class="op-row">${(res.overlays || []).map(o => `<label class="df-ctl"><input type="checkbox" data-zb-ov="${E(o.key)}"${z.overlays.has(o.key) ? ' checked' : ''}><span>${E(o.label)}</span></label>`).join('')}</div>
       </fieldset>
       <fieldset class="op-kinds"><legend class="df-h">Areas</legend>
-        <div class="op-row">${(res.areas || []).map(a => `<label class="df-ctl"><input type="checkbox" data-zb-area="${E(a.key)}"${picked(a.key) ? ' checked' : ''}${inScope.has(a.key) ? '' : ' disabled'}><span>${E(a.label)}${a.key === 'atp' ? ' (only when picked)' : ''}</span></label>`).join('')}</div>
+        <div class="op-row">${(res.areas || []).map(a => `<label class="df-ctl"><input type="checkbox" data-zb-area="${E(a.key)}"${picked(a.key) ? ' checked' : ''}${inScope.has(a.key) ? '' : ' disabled'}><span>${E(a.label)}${a.key === 'atp' || a.key === 'ucaas' ? ' (only when picked)' : ''}</span></label>`).join('')}</div>
         ${(res.areas || []).filter(a => !inScope.has(a.key)).map(a => `<div class="df-hint">${E(a.label)}: ${E(nis[a.key] || 'Not in scope on the Scope page.')}</div>`).join('')}
       </fieldset>
       <div class="op-row">
@@ -134,15 +145,19 @@
       <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbEnable"${z.enable ? ' checked' : ''}><span>Create the rules enabled (off: every new rule arrives disabled, to be turned on after review)</span></label></div>
       <div class="op-row"><span class="df-chip">${rules.filter(r => picked(r.area) && effective(r, z).on).length} rules on</span>${weakCount ? `<span class="df-chip st-warn">${weakCount} weaker than the tier</span>` : ''}
         <span class="df-hint">Names are shortened to ZIA's 31 characters in the preview; categories, apps and profiles the tenant lacks are dropped there with a warning.</span></div>
-      ${(res.areas || []).map(a => areaBlock(a.key)).join('')}${atpBlock()}
+      ${(res.areas || []).map(a => areaBlock(a.key)).join('')}${atpBlock()}${ucaasBlock()}
       ${z.areas && z.areas.size ? '' : '<div class="df-hint">No area is picked: tick at least one area above.</div>'}`;
     const rerender = (focusId) => { renderBaseline(res, where, S, H); if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); } };
-    where.querySelectorAll('input[name="zbTier"]').forEach(r => r.addEventListener('change', () => { z.tier = r.value; z.rules = {}; z.atp = {}; rerender(); }));
+    where.querySelectorAll('input[name="zbTier"]').forEach(r => r.addEventListener('change', () => { z.tier = r.value; z.rules = {}; z.atp = {}; z.ucaas = {}; rerender(); }));
     where.querySelectorAll('input[data-zb-ov]').forEach(c => c.addEventListener('change', () => { c.checked ? z.overlays.add(c.dataset.zbOv) : z.overlays.delete(c.dataset.zbOv); rerender(); }));
     where.querySelectorAll('input[data-zb-area]').forEach(c => c.addEventListener('change', () => { c.checked ? z.areas.add(c.dataset.zbArea) : z.areas.delete(c.dataset.zbArea); rerender(); }));
     where.querySelectorAll('input[data-zb-on]').forEach(c => c.addEventListener('change', () => { const k = c.dataset.zbOn; z.rules[k] = Object.assign({}, z.rules[k], { on: c.checked }); rerender(c.id); }));
     where.querySelectorAll('select[data-zb-act]').forEach(c => c.addEventListener('change', () => { const k = c.dataset.zbAct; z.rules[k] = Object.assign({}, z.rules[k], { action: c.value }); rerender(); }));
     where.querySelectorAll('input[data-zb-atp]').forEach(c => c.addEventListener('change', () => { z.atp[c.dataset.zbAtp] = c.checked; rerender(); }));
+    where.querySelectorAll('input[data-zb-ucaas]').forEach(c => c.addEventListener('change', () => {
+      z.ucaas[c.dataset.zbUcaas] = c.checked; rerender();
+      const el = where.querySelector(`input[data-zb-ucaas="${c.dataset.zbUcaas}"]`); if (el) el.focus();
+    }));
     const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
     on('zbPrefix', 'change', e => { z.prefix = e.target.value.trim(); rerender('zbPrefix'); });
     on('zbMode', 'change', e => { z.mode = e.target.value; rerender('zbMode'); });
@@ -170,7 +185,7 @@
     if (!z || !z.areas || !z.areas.size) throw new Error('Pick at least one area.');
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,9}$/.test(z.prefix)) throw new Error('The rule name prefix is 1 to 10 letters, digits, - or _.');
     const spec = { type: 'zia_baseline', tier: z.framework ? undefined : z.tier, overlays: [...z.overlays], areas: [...z.areas], prefix: z.prefix,
-      mode: z.mode, rules: z.rules, atp: z.atp, enable_rules: !!z.enable, isolation_profile: z.profile, certificate: z.cert };
+      mode: z.mode, rules: z.rules, atp: z.atp, ucaas: z.ucaas || {}, enable_rules: !!z.enable, isolation_profile: z.profile, certificate: z.cert };
     if (z.framework) spec.framework = z.framework;
     return spec;
   }

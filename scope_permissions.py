@@ -102,7 +102,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/cyberThreatProtection/advancedThreatSettings", "/zia/cyberThreatProtection/securityExceptions",
             "/zia/cyberThreatProtection/maliciousUrls", "/zia/security/advanced", "/zia/sandboxRules",
             "/zia/networkServices", "/zia/networkServiceGroups", "/zia/networkApplicationGroups",
-            "/zia/ipDestinationGroups", "/zia/ipSourceGroups",
+            "/zia/ipDestinationGroups", "/zia/ipSourceGroups", "/zia/advancedUrlFilterAndCloudAppSettings",
         ],
         "license_required": "Standard ZIA license.",
         "customer_id_needed": False,
