@@ -720,7 +720,11 @@ summary { min-height: 24px; }
 .th-card { margin-bottom: 1rem; }
 .th-lead { margin: 0.25rem 0 0.6rem; }
 .th-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
-.th-ctl input[type="number"] { width: 5rem; }
+.th-ctl .df-ctl { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 0.35rem; width: auto; }
+.th-ctl input[type="number"] { width: 5rem !important; min-width: 0; flex: 0 0 auto; }
+.th-item .df-tablewrap { overflow-x: auto; }
+.th-item table { overflow-wrap: normal; min-width: 30rem; }
+.th-ctl [hidden] { display: none !important; }
 .th-err { color: var(--fail); font-weight: 600; }
 .th-sum { margin: 0.6rem 0; }
 .th-items { list-style: none; margin: 0; padding: 0; }
@@ -734,6 +738,11 @@ summary { min-height: 24px; }
 .th-steps ol { margin: 0.3rem 0 0 1.2rem; }
 .th-names { margin: 0.3rem 0 0 1.1rem; }
 /* API calls on Advanced settings (static/api_calls.js) */
-.adv-api-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.adv-api-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; max-width: 100%; }
+.adv-api-ctl .df-ctl { max-width: 100%; min-width: 0; }
+.adv-api-ctl .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.adv-api-ctl .adv-switch { max-width: 100%; overflow-wrap: anywhere; }
+#advApi { min-width: 46rem; }
 #advApi td code { overflow-wrap: anywhere; }
+#advApi td:nth-child(6), #advApi td:nth-child(8) { white-space: nowrap; }
 #advApi tr.adv-api-bad td { color: var(--fail); }

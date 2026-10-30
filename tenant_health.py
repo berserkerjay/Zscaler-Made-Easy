@@ -566,7 +566,9 @@ def evaluate(facts: Dict[str, Any], *, now: Optional[float] = None, warn: int = 
             so = ssl_order(facts["ssl_rules"]["body"])
             status = "ok" if so["state"] == "ok" else so["severity"]
             items.append({"key": "ssl_rule_order", "product": "ZIA", "label": label, "status": status, "rows": [],
-                          "problems": so["problems"], "steps": [s for p in so["problems"][:1] for s in p["steps"]],
+                          "problems": so["problems"],
+                          "steps": (SSL_STEPS_BASE + [x for p in so["problems"] for x in p["steps"] if x not in SSL_STEPS_BASE + SSL_STEPS_END]
+                                    + SSL_STEPS_END) if so["problems"] else [],
                           "summary": (f"{so['checked']} rule(s) read; the order lets every Inspect rule and every exemption apply."
                                       if not so["problems"] else " ".join(p["why"] for p in so["problems"]))})
         if not _ok(facts.get("zia_certs")):
@@ -650,9 +652,10 @@ def readiness_checks(activation_read: Optional[Dict[str, Any]], ssl_read: Option
         if it["key"] not in READINESS_KEYS:
             continue
         st = {"warning": "attention", "critical": "attention"}.get(it["status"], it["status"])
+        problems = it.get("problems") or []
         out.append({"key": it["key"], "label": it["label"], "product": it["product"], "kind": "check", "status": st,
-                    "severity": it["status"] if st == "attention" else None, "why": it["summary"], "steps": list(it.get("steps") or []),
-                    "notes": [p["why"] for p in it.get("problems") or []][1:]})
+                    "severity": it["status"] if st == "attention" else None, "why": problems[0]["why"] if problems else it["summary"],
+                    "steps": list(it.get("steps") or []), "notes": [p["why"] for p in problems[1:]]})
     return out
 
 

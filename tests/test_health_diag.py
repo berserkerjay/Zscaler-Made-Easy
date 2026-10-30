@@ -631,3 +631,12 @@ def test_what_is_verified_against_the_installed_sdk_and_what_stays_assumed():
     assert "/config/applications" not in sdk_text and "monitors" not in sdk_text, "the SDK gained a ZDX configuration service: verify ops_zdx"
     src = open(oz.__file__, encoding="utf-8").read()
     assert 'CONFIG = ZDX_BASE + "/config"      # ASSUMED' in src and "VERIFIED against the installed zscaler-sdk-python 1.11.3" in src
+
+
+def test_two_ssl_order_problems_give_each_reason_once_and_all_the_steps():
+    """ASVS V1.14.1 · CWE-696 · WCAG 2.2 SC 3.3.2: with two rule-order problems the readiness check says the first as its reason and the second as a note (never twice), and its steps fix both."""
+    rules = [rule(1, "Bypass all", "DO_NOT_DECRYPT"), dict(REC, order=2), rule(3, "Inspect finance", "DECRYPT", urlCategories=["FINANCE"]), DEFAULT_DNI]
+    chk = {c["key"]: c for c in readiness.run(Client(ssl=rules), ["dlp"], now=NOW)["checks"]}["ssl_rule_order"]
+    assert chk["why"].startswith("'Bypass all'") and len(chk["notes"]) == 1 and chk["notes"][0] not in chk["why"]
+    steps = " ".join(chk["steps"])
+    assert "Bypass all" in steps and "Inspect everything else" in steps and steps.count("SSL/TLS Inspection") == 1
