@@ -121,5 +121,5 @@
    "test": "tests/test_mcp_tools.py::test_loopback_http_refuses_a_foreign_host_or_origin"
   }
  ],
- "tests_added": 108
+ "tests_added": 110
 }

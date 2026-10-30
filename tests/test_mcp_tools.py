@@ -202,6 +202,17 @@ def test_oversized_or_malformed_arguments_are_refused_before_any_read(name, args
     assert out["read_only"] is True and "Traceback" not in _text(out)
 
 
+def test_text_arguments_are_capped_without_echoing_the_value():
+    """ASVS V5.1.4 · CWE-20 · CWE-117: a text argument one character over its cap, or with a control character, is refused, and the message does not repeat the value."""
+    assert mcp_tools.text("idp", "a" * 120, 120) == "a" * 120
+    for bad in ("b" * 121, "okta\r\nINJECTED"):
+        with pytest.raises(mcp_tools.Refused) as e:
+            mcp_tools.text("idp", bad, 120)
+        assert bad not in str(e.value) and e.value.code == "bad_input"
+    with pytest.raises(mcp_tools.Refused):
+        mcp_tools.text_list("groups", ["g"] * (mcp_tools.MAX_GROUPS + 1), mcp_tools.MAX_GROUPS)
+
+
 def test_an_argument_at_the_cap_is_accepted():
     """ASVS V5.1.4 · CWE-20: 50 destinations (the cap) are tested, not refused."""
     out = direct("test_list", destinations=[f"10.0.0.{i}" for i in range(1, mcp_tools.MAX_LIST_ROWS + 1)], source="sample", lookup=False)
@@ -470,6 +481,16 @@ def test_secrets_planted_in_the_tenant_and_the_environment_never_reach_a_result(
     rule = next(o for o in outs if o.get("tool") == "explain_dlp" and o["data"].get("rules") and o["data"]["rules"][0].get("description"))
     assert "Echo of the sign-in" in rule["data"]["rules"][0]["description"], "the description is kept, only the secret is masked"
     assert all(o.get("read_only") is True for o in outs)
+
+
+def test_secret_named_fields_are_replaced_in_any_answer():
+    """ASVS V8.3.4 · CWE-200 · CWE-312: a secret-named field (a token, a password, a pre-shared key) anywhere in an answer is replaced by set / not set, whatever a summary keeps."""
+    out = mcp_tools.clean({"profile": {"name": "Windows", "policyToken": TOKEN, "settings": [{"password": PASSWORD, "preSharedKey": ""}]},
+                           "sendDefaultPolicyForInvalidPolicyToken": True}, {})
+
+    assert TOKEN not in _text(out) and PASSWORD not in _text(out)
+    assert out["profile"]["policyToken"] == "(set)" and out["profile"]["settings"][0]["preSharedKey"] == "(not set)"
+    assert out["profile"]["name"] == "Windows" and out["sendDefaultPolicyForInvalidPolicyToken"] is True
 
 
 def test_a_failure_that_echoes_the_secret_is_masked(live_env):
