@@ -445,3 +445,30 @@ def test_the_route_refuses_an_apply_without_each_gate(live, monkeypatch, drop):
     # Assert
     assert r.status_code in (400, 403), r.text
     assert live["built"] == [] and live["st"].write_log() == []
+
+
+def test_a_new_provisioning_key_is_handed_over_once_by_token_never_in_the_result(monkeypatch):
+    """ASVS V8.3.1 · CWE-200 · CWE-312: the build's report carries only the single-use token of a new ZPA provisioning key; the key itself is fetched once from the in-memory store and is never in the result or the record."""
+    # Arrange
+    import ops_zpa
+    st, cl = tenant()
+    real = st.answer_write
+    key = "PK-pov-build-canary-0042"
+
+    def with_key(method, url, body=None):
+        status, out = real(method, url, body)
+        if method == "POST" and str(url).endswith("/provisioningKey") and isinstance(out, dict):
+            out = dict(out, provisioningKey=key)
+        return status, out
+    monkeypatch.setattr(st, "answer_write", with_key)
+    parts = pb.clean_parts(parts_for("zpa_connector_group"))
+    c = pb.plan(cl, parts, scope=ALL)
+    # Act
+    r = apply(cl, parts, c)
+    # Assert
+    step = r["steps"][0]
+    assert r["status"] == "applied" and step["one_time_secrets"], step
+    assert key not in json.dumps(r) and key not in json.dumps(deployments.get_operation(step["operation_id"]))
+    got = ops_zpa.reveal(step["one_time_secrets"][0]["token"], actor=None)
+    assert got and got["provisioning_key"] == key
+    assert ops_zpa.reveal(step["one_time_secrets"][0]["token"], actor=None) is None

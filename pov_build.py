@@ -372,7 +372,9 @@ def _step_summary(part: Dict[str, Any], status: str, message: str = "", result: 
             "message": message, "operation_id": operation_id, "undo_of": part.get("undo_of"),
             "counts": res.get("counts_run") or {}, "verification": res.get("verification") or {},
             "activation": res.get("activation"), "problems": failed, "title": part.get("title") or "",
-            "secrets": res.get("secrets") or res.get("provisioning_keys") or None}
+            # A new ZPA provisioning key: only its single-use token (ops_zpa.stash), never the key.
+            "one_time_secrets": [{"name": x.get("name"), "token": x.get("token"), "expires_in_seconds": x.get("expires_in_seconds")}
+                                 for x in res.get("one_time_secrets") or [] if isinstance(x, dict)] or None}
 
 
 def execute(client: Any, parts: Sequence[Tuple[str, Dict[str, Any]]], *, plan_hash: str, scope: Dict[str, Any], writes_enabled: Optional[bool],

@@ -730,6 +730,24 @@
     } catch (e) { B.result = { status: 'refused', message: e.message, steps: [] }; }
     finally { B.busy = false; renderBuild(); }
   }
+  // A new ZPA provisioning key, fetched once from the server's ten-minute store and never kept by the page.
+  function keyBox(sec) {
+    const out = h('div', { class: 'pv-row' });
+    const btn = h('button', { type: 'button', class: 'rp-btn pb-key', text: `Show the new provisioning key ${sec.name || ''} (once)` });
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const d = await api('/api/operations/zpa/provisioning-key', { token: sec.token });
+        const id = nid('pb');
+        const inp = h('input', { type: 'text', id, class: 'pb-key-value', readonly: true, autocomplete: 'off', spellcheck: 'false' });
+        inp.value = d.provisioning_key || '';
+        out.replaceChildren(h('label', { for: id, class: 'pv-field', style: 'flex: 1 1 16rem' }, `Provisioning key ${d.name || ''}: copy it now, it is shown this once`, inp));
+        say('The new provisioning key is shown once: copy it now.');
+      } catch (e) { out.replaceChildren(h('span', { class: 'pv-meta', role: 'status', text: `The key could not be shown: ${e.message}` })); }
+    });
+    out.append(btn);
+    return out;
+  }
   function renderBuildResult() {
     const out = $('pbResultOut'), r = B.result;
     if (!out) return;
@@ -743,8 +761,10 @@
       h('div', { class: 't', text: { applied: r.undo ? 'Undo applied' : 'Build applied', stopped: `Stopped at ${r.stopped_at || 'a part'}`, failed: 'Nothing was applied',
                                     plan_changed: 'The tenant changed since the preview', refused: 'Not applied', blocked: 'Blocked', nothing_to_do: 'Nothing to change' }[r.status] || r.status }),
       r.message ? h('div', { text: r.message }) : null,
-      h('ol', { class: 'pb-steps' }, (r.steps || []).map(s => h('li', {}, h('strong', { text: s.label }), `: ${words[s.status] || s.status}. `, s.message || '',
-        (s.problems || []).length ? h('ul', {}, s.problems.slice(0, 10).map(x => h('li', { text: `${x.object || ''} ${x.field || ''}: ${x.status}${x.reason ? ' — ' + x.reason : ''}` }))) : null))),
+      h('ol', { class: 'pb-steps' }, (r.steps || []).map(s => h('li', {}, h('strong', { text: s.label }), `: ${words[s.status] || s.status}.`,
+        ['applied', 'nothing_to_do'].includes(s.status) || !s.message ? '' : ` ${s.message}`,
+        (s.problems || []).length ? h('ul', {}, s.problems.slice(0, 10).map(x => h('li', { text: `${x.object || ''} ${x.field || ''}: ${x.status}${x.reason ? ' — ' + x.reason : ''}` }))) : null,
+        (s.one_time_secrets || []).map(keyBox)))),
       r.pov_error ? h('div', { class: 'pv-meta', text: `Not listed on the POV: ${r.pov_error}` }) : null, undo));
   }
 

@@ -5261,6 +5261,16 @@ window.HELP_CATALOG = {
     "input": "Needs write mode on, a named assessor, the review box and the typed phrase.",
     "effect": "write"
    },
+   "#pvBuild button.pb-key": {
+    "what": "Shows the provisioning key the build just created for the App Connectors. It is shown once and never kept by this app.",
+    "input": "Nothing to type. Just click it, then copy the key.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-key-value": {
+    "what": "The new provisioning key, to enroll the App Connectors with. Copy it now: it is not shown again.",
+    "input": "Read only. Select it and copy it.",
+    "effect": "local"
+   },
    "#pvBuild button.pb-undo-build": {
     "what": "Plans the Undo of what this build applied, latest part first, as one dry run. Nothing is written until you confirm it.",
     "input": "Nothing to type. Just click it.",
