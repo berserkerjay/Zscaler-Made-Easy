@@ -315,3 +315,16 @@ def test_the_what_if_never_settles_an_unknown_field():
     assert state is None and crit[-1]["state"] == "unknown" and NEW in crit[-1]["name"]
     state, crit = path_whatif.rule_criteria({"scope_items": {}, "unresolved": ["Size quota"]}, None)
     assert state is None and crit[0]["name"] == "unevaluated condition: Size quota"
+
+
+def test_dns_control_matches_its_source_ip_conditions_when_the_source_is_given():
+    """ASVS V1.1.2 · CWE-670: a DNS rule limited to a source address matches when the trace gives that source, and is unknown without it."""
+    rules = [dict(MODULE_ROUTES["/zia/firewallDnsRules"][0], srcIps=["10.9.9.0/24"])] + MODULE_ROUTES["/zia/firewallDnsRules"][1:]
+    t = lambda: Tenant(_routes(**{"/zia/firewallDnsRules": rules}))  # noqa: E731
+    given = mod(run("casino.example", tenant=t(), context={"source_ip": "10.9.9.7"}), "dns")
+    assert given["verdict"] == "block" and given["certainty"] == "definite"
+    assert {"name": "Source IP", "state": "match"}.items() <= given["criteria"][0].items()
+    other = mod(run("casino.example", tenant=t(), context={"source_ip": "192.0.2.1"}), "dns")
+    assert other["verdict"] == "allow" and other["certainty"] == "definite"
+    none = mod(run("casino.example", tenant=t()), "dns")
+    assert none["certainty"] == "conditional"
