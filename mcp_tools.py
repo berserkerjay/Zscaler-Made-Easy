@@ -786,15 +786,15 @@ def dlp_incidents(ctx: Ctx, minutes: int = 60) -> Dict[str, Any]:
     sc = a._dlp_read_scope(req)                    # the Scope rule, before sign-in
     if not sc["dlp"]:
         raise Refused(a.LIVE_NOTHING_IN_SCOPE, "not_in_scope")
+    if not sc["read_incidents"]:   # the incidents are Workflow Automation's: without it there is nothing to count
+        raise Refused("The DLP incidents are not in scope: they come from Workflow Automation, which is not marked Zscaler in this "
+                      "server's scope (workflow_automation). Nothing was read.", "not_in_scope")
     creds = a._tenant_creds(req)
     sdk = a._build_sdk_client(creds)
     now = datetime.now(timezone.utc)
     try:
-        if sc["read_incidents"]:
-            incs, errors = detection_health.fetch_incidents_window(sdk, now - timedelta(minutes=mins), now, max_pages=INCIDENT_PAGES)
-            errors = [tenant_auth.mask_secrets(str(e), creds) for e in errors]
-        else:
-            incs, errors = [], [a.DH_WA_ALTERNATIVE]
+        incs, errors = detection_health.fetch_incidents_window(sdk, now - timedelta(minutes=mins), now, max_pages=INCIDENT_PAGES)
+        errors = [tenant_auth.mask_secrets(str(e), creds) for e in errors]
         rules_by_name = a._live_rule_actions(sdk, tenant_fingerprint.proposal_key(creds, ctx.label), list(sc["pack_channels"]))
     finally:
         _close(sdk)

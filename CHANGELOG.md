@@ -5,6 +5,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### Ask an AI assistant about the tenant: read-only analysis tools and a skill
+- **The MCP server answers live questions with the app's engines.** Besides the assessment, `dlp_mcp_server.py` now has fifteen read-only tools (`mcp_tools.py`): `list_sources`, `path_check` (the Path analyzer for one destination, with what-if user, group, department, location, network and platform), `test_list` (up to 50 destinations), `rule_precedence` (rule order and shadowed rules), `explain_dlp` (a DLP engine or rule in plain words, a channel's rules, or an expression), `data_flow` (the Data Flow Map), `ssl_coverage`, `dlp_incidents` (the Live DLP feed counted by rule and enforcement; users counted, not named), `traffic_summary` (Traffic insights, no per-user rows), `zpa_path`, `fleet_health` (counts only), `snapshot_diff` (against the live tenant or another snapshot), `category_lookup` (up to 25 URLs), `readiness` and `compliance_map` (the last assessment's controls). Each works on the live tenant, the sample tenant or a saved snapshot.
+- **Read-only, twice over; no write tool at all.** Every client a tool builds refuses PUT, PATCH, DELETE and every POST but the URL lookup, and every HTTP request the server sends passes a guard that lets through only reads (GET, the sign-in token, the URL lookup, the Insights query, the incident search); the server process turns write mode off. Changes stay in the app's pages with their gates. The assessment tools run inside the same guard.
+- **Same sign-in and the Scope rule.** Credentials come from the server's environment only, as before. What is in scope is chosen where the server runs (`ZSCALER_MCP_PROFILE`, a saved profile's Scope page ticks, or `ZSCALER_MCP_SCOPES` and `ZSCALER_MCP_CHANNELS`), never by the assistant; with nothing chosen every live read is refused before sign-in. Answers are summaries of at most about 48,000 characters, masked for every credential and secret field, with tenant text marked as untrusted data (a rule name can carry instructions); one tenant read runs at a time.
+- **A skill for assistants.** `skills/zscaler-made-easy/` routes an admin's questions to the tools (a routing table), explains how to read each answer, gives plain answer templates, the data security flows and their walkbacks ("why didn't DLP catch it"), and SIEM query templates (Splunk and Sentinel, field names to check against the feed) to prove what happened. `docs/AI_ASSISTANT.md` says how to connect the server and the skill to Claude Code, Claude Desktop or another assistant.
+- Tests: tests/test_mcp_tools.py (schemas and caps of every tool, read-only guard and sealed clients, scope refusals before sign-in, secret canaries, people counted not named, the routing table names only real tools).
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

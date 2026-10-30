@@ -316,11 +316,12 @@ def _assess(client, checks, org_name: str, assessor: str, what: str) -> dict:
     """Sign in, run `checks`, and build the report. The client is closed
     whatever happens, a failed sign-in included."""
     try:
-        auth = client.auth()
-        if auth is not True:
-            return {"error": f"Authentication failed: {auth}"}
-        logger.info("Running %d checks (%s)...", len(checks), what)
-        results = _run_checks(client, checks)
+        with mcp_tools.read_only():   # an assessment only reads (GET; sign-in excepted)
+            auth = client.auth()
+            if auth is not True:
+                return {"error": f"Authentication failed: {auth}"}
+            logger.info("Running %d checks (%s)...", len(checks), what)
+            results = _run_checks(client, checks)
     finally:
         try:
             client.close()
@@ -702,4 +703,10 @@ def main(argv: Optional[list] = None) -> int:
 
 
 if __name__ == "__main__":
+    # The server process never writes: write mode is off whatever the
+    # environment says, and every HTTP request it sends, on any thread, is
+    # checked (GET, plus the POSTs that only read: sign-in, URL lookup,
+    # Insights, incident search; mcp_tools.request_allowed).
+    os.environ.pop("ENABLE_WRITE_ACTIONS", None)
+    mcp_tools.guard_process()
     sys.exit(main())

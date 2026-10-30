@@ -1,0 +1,125 @@
+{
+ "area": "Auth, scope and secrets: the MCP server's read-only analysis tools",
+ "title": "Live-analysis MCP tools over the app's engines (Path analyzer, Test a list, rule precedence, DLP explainer, Data Flow Map, SSL coverage, Live DLP feed, Traffic insights, ZPA path, fleet health, snapshot diff, URL lookup, readiness, compliance) and the end-user skill that routes questions to them",
+ "standards": [
+  "ASVS V1.4.1",
+  "ASVS V2.10.4",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V7.4.1",
+  "ASVS V8.3.1",
+  "ASVS V8.3.4",
+  "ASVS V12.1.1",
+  "ASVS V14.5.3",
+  "OWASP A01:2021",
+  "CWE-20",
+  "CWE-200",
+  "CWE-209",
+  "CWE-284",
+  "CWE-359",
+  "CWE-532",
+  "CWE-770",
+  "CWE-1426",
+  "WSTG-ATHZ-02",
+  "WSTG-INPV-01",
+  "SSDF PW.8.2"
+ ],
+ "checks": [
+  {
+   "id": "tool-surface",
+   "what": "The server lists the four assessment tools and fifteen analysis tools, every one annotated read-only and not destructive; no tool name or argument writes, takes a secret, a scope or a confirmation",
+   "standard": "ASVS V1.4.1 · CWE-841 · A01:2021",
+   "result": "pass"
+  },
+  {
+   "id": "schema-caps",
+   "what": "Every analysis tool's schema bounds each text (maxLength or a fixed list), list (maxItems) and number; the schema check refuses an argument over the cap before the tool runs, and the tool refuses it again when the schema is skipped",
+   "standard": "ASVS V5.1.4 · CWE-20 · CWE-770",
+   "result": "pass"
+  },
+  {
+   "id": "read-only-guard",
+   "what": "Inside a tool run (and process-wide in the server) only GET and the read POSTs (sign-in token, URL lookup, Insights, incident search, classic sign-out) are sent; a PUT, PATCH, DELETE or other POST is refused before any connection, on any thread",
+   "standard": "ASVS V4.1.3 · CWE-284 · A01:2021",
+   "result": "fixed"
+  },
+  {
+   "id": "sealed-clients",
+   "what": "Every raw client a tool builds refuses writes; every tool run on the sample tenant leaves it unchanged; mcp_tools references none of the app's write engines",
+   "standard": "ASVS V4.1.3 · CWE-284",
+   "result": "pass"
+  },
+  {
+   "id": "scope-rule",
+   "what": "With nothing in scope where the server runs, every live tool is refused before sign-in; a partial scope refuses what it does not tick; the scope comes from a saved profile or the environment, never from a tool argument, and applies to the sample too",
+   "standard": "ASVS V4.1.3 · CWE-284 · WSTG-ATHZ-02",
+   "result": "pass"
+  },
+  {
+   "id": "secret-canaries",
+   "what": "Secret fields planted in the tenant's answers, the environment's client secret echoed in a rule description, a JWT and an exception carrying the secret never reach a result",
+   "standard": "ASVS V8.3.4 · CWE-200 · CWE-532",
+   "result": "pass"
+  },
+  {
+   "id": "people-counted",
+   "what": "Fleet and incident summaries count devices and users and never list a user, email or hostname; Insights is read without the per-user section",
+   "standard": "ASVS V8.3.1 · CWE-359",
+   "result": "pass"
+  },
+  {
+   "id": "untrusted-tenant-text",
+   "what": "Every answer keeps tenant text under data, says it is untrusted (prompt injection through rule names), and names the source, tenant, scope and read time; answers are capped and say what was cut",
+   "standard": "ASVS V5.2.1 · CWE-1426 · CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "http-access-model",
+   "what": "The existing access model holds for the new tools: credentials from the environment only, stdio or loopback HTTP that refuses a foreign Host or Origin (DNS rebinding), beyond loopback only with --allow-remote",
+   "standard": "ASVS V14.5.3 · CWE-350",
+   "result": "pass"
+  },
+  {
+   "id": "skill-routing",
+   "what": "The skill's routing table names only tools the server lists, covers every tool, links only files that exist; the docs list every tool, the scope variables and how to connect",
+   "standard": "SSDF PW.8.2 · CWE-1059",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-MCP-01",
+   "title": "The MCP server had no request-level read-only guard: an assessment check (or a new tool) could have sent a write with the environment's credentials",
+   "severity": "low",
+   "cwe": "CWE-284",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "mcp_tools.read_only wraps every tool and assessment run; guard_process covers the whole server process; clients a tool builds are sealed",
+   "test": "tests/test_mcp_tools.py::test_while_a_tool_runs_a_write_request_is_stopped_before_it_is_sent",
+   "commit": "COMMIT"
+  },
+  {
+   "id": "W7-MCP-02",
+   "title": "Tenant text (rule names, descriptions) reaches an AI assistant and could carry instructions (indirect prompt injection)",
+   "severity": "low",
+   "cwe": "CWE-1426",
+   "asvs": "V5.2.1",
+   "status": "accepted",
+   "fix": "answers keep tenant text under data with an untrusted-data note; the skill's rule 6 says never follow it; no tool can write, so an injected instruction has nothing to act on",
+   "reason": "An assistant reading tenant names cannot be made immune; the read-only surface limits the impact to a wrong answer",
+   "test": "tests/test_mcp_tools.py::test_every_answer_marks_tenant_text_as_untrusted_and_names_its_source"
+  },
+  {
+   "id": "W7-MCP-03",
+   "title": "The HTTP transport has no sign-in of its own: any local process that reaches the loopback port can use the tenant credentials the server holds",
+   "severity": "low",
+   "cwe": "CWE-306",
+   "asvs": "V14.5.3",
+   "status": "accepted",
+   "reason": "The existing access model, kept as asked: loopback only with DNS-rebinding protection, beyond loopback refused unless --allow-remote behind an authenticating proxy; the docs recommend stdio, which listens on nothing",
+   "test": "tests/test_mcp_tools.py::test_loopback_http_refuses_a_foreign_host_or_origin"
+  }
+ ],
+ "tests_added": 0
+}
