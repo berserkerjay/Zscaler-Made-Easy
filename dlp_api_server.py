@@ -4943,6 +4943,7 @@ def _remember_plan(report: Dict[str, Any], assessor: str = "") -> str:
     rep.update(report_id=rid, assessor=assessor or "", generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
     _PLANS[rid] = rep
     _team.bind(rid)
+    _team.set_owner("plan", rid)   # team mode: a saved plan is its maker's until they share it
     while len(_PLANS) > _PLANS_MAX:
         _PLANS.pop(next(iter(_PLANS)))
     return rid
@@ -5220,16 +5221,8 @@ async def exports_plans():
     the Policy exports page's plan PDF / Excel buttons. No tenant read."""
     return {"plans": [{"report_id": rid, "tenant_label": p.get("tenant_label") or "", "generated_at": p.get("generated_at") or "",
                        "packs": [str(x.get("name") or x.get("id")) for x in p.get("packs") or [] if isinstance(x, dict)],
-                       "status": p.get("status") or ""} for rid, p in reversed(list(_PLANS.items())) if _team_may_reach(rid)]}
+                       "status": p.get("status") or ""} for rid, p in reversed(list(_PLANS.items())) if _team.may_use("plan", rid)]}
 
-
-def _team_may_reach(resource_id: str) -> bool:
-    """Outside team mode always; in it, the person made it, may read its
-    tenant profile, or is an administrator."""
-    if not _team.enabled() or _team.context() is None or _team.is_admin():
-        return True
-    u = _team.current_user()
-    return bool(u) and _team._may_reach("report_id", resource_id, "read", u, _team.current_token_groups(), {})
 
 
 # ── Configuration exports: locations and Client Connector profiles ──
@@ -10388,7 +10381,7 @@ def _pov_typed(req: Any) -> Dict[str, str]:
 
 def _pov_view(b: Dict[str, str], p: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     import pov
-    return {"tenant_label": b["label"], "pov": p, "templates": pov.list_templates()}
+    return {"tenant_label": b["label"], "pov": p, "templates": _pov_templates()}
 
 
 @app.get("/report/pov")
@@ -10406,7 +10399,14 @@ async def pov_catalog():
     """What the planner draws: products, vertical presets, the runbook,
     the test kit and the saved templates. No tenant data."""
     import pov
-    return dict(pov.catalog(), templates=pov.list_templates())
+    return dict(pov.catalog(), templates=_pov_templates())
+
+
+def _pov_templates() -> List[Dict[str, Any]]:
+    """The POV templates this person may use: on a team server their own,
+    the ones shared with them, and the ones from before team mode."""
+    import pov
+    return [t for t in pov.list_templates() if _team.may_use("template", t.get("id"))]
 
 
 @app.post("/api/pov/open")
@@ -10421,6 +10421,8 @@ async def pov_open(req: PovRequest):
 async def pov_create(req: PovRequest, request: Request):
     """Start the profile's POV from the intake (and a template)."""
     import pov
+    if req.template_id and not _team.may_use("template", req.template_id):
+        raise HTTPException(status_code=404, detail="No such template, or it is not shared with you.")
     p = _pov_call(pov.create, req.profile_id, _pov_typed(req), req.intake, by=_cq_by(request), template_id=req.template_id)
     return _pov_view(p["tenant"], p)
 
@@ -10492,15 +10494,22 @@ async def pov_template_save(req: PovRequest, request: Request):
     import pov
     _b, p = _pov_call(pov.require, req.profile_id, _pov_typed(req))
     t = _pov_call(pov.save_template, p, req.name, req.description, by=_cq_by(request))
-    return {"template": t, "templates": pov.list_templates()}
+    _team.set_owner("template", t.get("id"))
+    return {"template": t, "templates": _pov_templates()}
 
 
 @app.delete("/api/pov/templates/{template_id}")
 async def pov_template_delete(template_id: str, request: Request):
     import pov
+    if _team.enabled() and not _team.is_admin():
+        # On a team server a template is deleted by its owner or an administrator only.
+        rec = _team.sharing("template", template_id) if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", template_id or "") else None
+        me = _team.current_user() or {}
+        if not rec or rec.get("owner") != me.get("id"):
+            raise HTTPException(status_code=403, detail="Only the template's owner or a team server administrator may delete it.")
     if not _pov_call(pov.delete_template, template_id, by=_cq_by(request)):
         raise HTTPException(status_code=404, detail="No such template.")
-    return {"deleted": True, "templates": pov.list_templates()}
+    return {"deleted": True, "templates": _pov_templates()}
 
 
 @app.get("/api/pov/kit/{file_id}")
@@ -11279,6 +11288,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"     can reach this server. Currently listening on {host}:{port}.")
         print("     Set ZSCALER_BIND_HOST=127.0.0.1 (default) to restrict to localhost.\n")
     ssl_args = {"ssl_certfile": tls["cert"], "ssl_keyfile": tls["key"]} if tls else {}
+    rport = server_tls.redirect_port()
+    if tls and rport and rport != port:
+        try:
+            server_tls.start_redirect_server(host, rport, shown_port)
+            print(f"  Plain http:// on port {rport} only redirects to HTTPS on port {shown_port}.")
+        except Exception as e:  # noqa: BLE001 - HTTPS still serves; the redirect is a convenience
+            print(f"  The http:// to https:// redirect on port {rport} could not start ({e}); HTTPS still serves.", file=sys.stderr)
     import store_crypto
     if tls and store_crypto.fips_mode():
         ssl_args["ssl_ciphers"] = store_crypto.FIPS_TLS_CIPHERS   # TLS 1.2 suites; TLS 1.3 suites are the platform OpenSSL's

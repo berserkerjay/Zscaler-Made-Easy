@@ -103,6 +103,8 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/team/grants": ADMIN,
     "POST /api/team/scim-token": ADMIN,
     "POST /api/team/store-key/rotate": ADMIN,
+    "POST /api/team/share": SESSION,          # only the owner or an administrator may share (team_server.share)
+    "GET /api/team/share": SESSION,
     "DELETE /api/team/scim-token": ADMIN,
     "GET /api/scim/v2/ServiceProviderConfig": SCIM,
     "GET /api/scim/v2/ResourceTypes": SCIM,

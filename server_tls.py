@@ -180,3 +180,61 @@ def remember(info: Optional[Dict[str, Any]]) -> None:
 
 def status() -> Dict[str, Any]:
     return {"on": bool(_STATUS) or requested(), **_STATUS}
+
+
+# ── HTTP → HTTPS redirect (ZSCALER_TLS_REDIRECT_PORT) ───────────────────
+import re as _re
+
+_HOST_RE = _re.compile(r"^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9.-]{1,253})(:\d{1,5})?$")
+
+
+def redirect_port() -> Optional[int]:
+    """The plain-HTTP port that only redirects to HTTPS, when one is set
+    (ZSCALER_TLS_REDIRECT_PORT, e.g. 80 or 8080) and HTTPS is on."""
+    raw = os.environ.get("ZSCALER_TLS_REDIRECT_PORT", "").strip()
+    if not raw or not requested():
+        return None
+    try:
+        port = int(raw)
+    except ValueError:
+        return None
+    return port if 1 <= port <= 65535 else None
+
+
+def redirect_app(https_port: int):
+    """A tiny ASGI app: every plain-HTTP request gets a 308 to the same path
+    on https://<the host it asked for>:<https_port>. It serves nothing else,
+    sets no cookie, and a Host header that is not a host name gets 400 (no
+    redirect to whatever a caller wrote)."""
+    async def app(scope, receive, send):
+        if scope.get("type") != "http":
+            return
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
+        host = headers.get("host", "").strip()
+        m = _HOST_RE.match(host)
+        if not m:
+            await send({"type": "http.response.start", "status": 400, "headers": [(b"content-type", b"text/plain")]})
+            await send({"type": "http.response.body", "body": b"Bad Host header."})
+            return
+        name = m.group(1)
+        path = scope.get("raw_path") or scope.get("path", "/").encode("latin-1")
+        if isinstance(path, (bytes, bytearray)):
+            path = bytes(path).decode("latin-1")
+        if not path.startswith("/") or path.startswith("//"):
+            path = "/"
+        qs = (scope.get("query_string") or b"").decode("latin-1")
+        target = f"https://{name}{'' if https_port == 443 else f':{https_port}'}{path}" + (f"?{qs}" if qs else "")
+        await send({"type": "http.response.start", "status": 308,
+                    "headers": [(b"location", target.encode("latin-1")), (b"content-length", b"0"), (b"cache-control", b"no-store")]})
+        await send({"type": "http.response.body", "body": b""})
+    return app
+
+
+def start_redirect_server(host: str, port: int, https_port: int):
+    """Run the redirect app on host:port in a daemon thread; returns the thread."""
+    import threading
+    import uvicorn
+    server = uvicorn.Server(uvicorn.Config(redirect_app(https_port), host=host, port=port, log_level="warning", access_log=False))
+    t = threading.Thread(target=server.run, name="https-redirect", daemon=True)
+    t.start()
+    return t

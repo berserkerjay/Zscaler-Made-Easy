@@ -1486,6 +1486,8 @@ def _may_reach(name: str, value: str, action: str, user: Dict[str, Any], groups:
     hit = bound(value)
     if hit is not None:
         owner, prof = hit
+        if name == "report_id" and str(value).startswith("plan-"):
+            return may_use("plan", value)   # a saved plan: its owner, or whom it is shared with (and who may read its profile)
         return owner == user.get("id") or (bool(prof) and action in actions_on(user, prof, groups))
     fn = _RESOLVERS.get(name)
     if fn is None:
@@ -1497,6 +1499,95 @@ def _may_reach(name: str, value: str, action: str, user: Dict[str, Any], groups:
     if not profs:
         return False
     return any(action in actions_on(user, p, groups) for p in profs)
+
+
+# ── ownership and sharing (templates, saved plans) ──────────────────────
+SHARE_KINDS = ("template", "plan")
+
+
+def _share_key(kind: str, rid: Any) -> str:
+    if kind not in SHARE_KINDS or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", str(rid or "")):
+        raise TeamError("Share a template or a saved plan by its id.", 400)
+    return f"{kind}:{rid}"
+
+
+def set_owner(kind: str, rid: Any) -> None:
+    """Record the person making this request as the owner of a template or a
+    saved plan (team mode only)."""
+    if not enabled():
+        return
+    c = _CTX.get()
+    if not c or not c.get("user"):
+        return
+    key = _share_key(kind, rid)
+    with _LOCK:
+        data = _read()
+        shares = data.setdefault("shares", {})
+        shares[key] = {"owner": c["user"], "principals": [], "at": _now_iso()}
+        _write(data)
+
+
+def sharing(kind: str, rid: Any) -> Optional[Dict[str, Any]]:
+    s = (_read().get("shares") or {}).get(_share_key(kind, rid))
+    return dict(s) if isinstance(s, dict) else None
+
+
+def share(kind: str, rid: Any, principals: Any, *, by: str = "") -> Dict[str, Any]:
+    """Share a template or saved plan with these users and groups (the whole
+    list; empty: only the owner). Only its owner or an administrator may.
+    Sharing a plan never lets anyone past the tenant profile it was made
+    for: they must still be allowed to read that profile."""
+    key = _share_key(kind, rid)
+    if not isinstance(principals, list) or len(principals) > 200:
+        raise TeamError("principals is a list of user:<id> and group:<id>.")
+    with _LOCK:
+        data = _read()
+        for p in principals:
+            k, _, pid = str(p).partition(":")
+            if k not in ("user", "group") or pid not in (data["users"] if k == "user" else data["groups"]):
+                raise TeamError("Every principal is an existing user:<id> or group:<id>.", 400)
+        shares = data.setdefault("shares", {})
+        rec = shares.get(key)
+        owner = (rec or {}).get("owner")
+        if owner is None and kind == "plan":
+            hit = bound(rid)
+            owner = hit[0] if hit else None
+        me = current_user()
+        if not me or not (me.get("role") == "admin" or (owner and owner == me.get("id"))):
+            raise TeamError("Only its owner or an administrator may share this.", 403)
+        rec = {"owner": owner, "principals": sorted(set(str(p) for p in principals)), "at": _now_iso(), "by": by}
+        shares[key] = rec
+        _write(data)
+    _audit("team_shared", actor=by or None, item=key, principals=rec["principals"])
+    return rec
+
+
+def may_use(kind: str, rid: Any) -> bool:
+    """May the person making this request see and use this template or saved
+    plan? Outside team mode, an administrator, its owner, or someone it is
+    shared with; a template from before team mode (no owner) is everyone's.
+    A plan also needs read on its tenant profile, shared or not."""
+    if not enabled() or _CTX.get() is None or is_admin():
+        return True
+    u = current_user()
+    if not u:
+        return False
+    rec = sharing(kind, rid) or {}
+    owner = rec.get("owner")
+    hit = bound(rid) if kind == "plan" else None
+    if kind == "plan" and hit:
+        owner = owner or hit[0]
+    if owner is None:
+        return kind == "template"
+    if owner == u.get("id"):
+        return True
+    data = _read()
+    mine = {f"user:{u.get('id')}"} | {f"group:{g}" for g in _user_groups(data, str(u.get("id")), current_token_groups())}
+    if not mine & set(rec.get("principals") or []):
+        return False
+    if kind == "plan":
+        return bool(hit and hit[1]) and "read" in actions_on(u, hit[1], current_token_groups())
+    return True
 
 
 # ── the first administrator (command line) ──────────────────────────────

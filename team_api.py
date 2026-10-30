@@ -247,6 +247,31 @@ def register(app: FastAPI) -> None:
             _fail(e)
         return {"grant": rec}
 
+    @app.get("/api/team/share")
+    async def team_share_get(kind: str = "", id: str = ""):  # noqa: A002 - the query name the page uses
+        """Who owns a template or saved plan and whom it is shared with."""
+        _on()
+        try:
+            if not team.may_use(kind, id):
+                raise HTTPException(status_code=404, detail="Not found, or not yours to see.")
+            rec = team.sharing(kind, id) or {}
+        except team.TeamError as e:
+            _fail(e)
+        return {"kind": kind, "id": id, "owner": rec.get("owner"), "principals": rec.get("principals") or []}
+
+    @app.post("/api/team/share")
+    async def team_share_set(request: Request):
+        """Share a template or saved plan with users and groups (owner or
+        administrator only). A shared plan still opens only for people who
+        may read its tenant profile."""
+        _on()
+        data = await _body(request)
+        try:
+            rec = team.share(str(data.get("kind") or ""), data.get("id"), data.get("principals"), by=security.current_actor())
+        except team.TeamError as e:
+            _fail(e)
+        return {"sharing": rec}
+
     @app.post("/api/team/store-key/rotate")
     async def team_store_key_rotate():
         """Rotate the store encryption key: a new key, every store re-sealed
