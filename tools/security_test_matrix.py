@@ -27,6 +27,7 @@ QA_FILES = (
     "test_extension_security.py", "test_auth_session.py", "test_xss_sinks.py",
     "test_xss_render_sites.py", "test_files_paths.py", "test_secret_canaries.py",
     "test_supply_chain_qa.py", "test_outbound_ssrf.py", "test_dos_limits.py", "test_findings_reflow.py", "test_report_reflow.py", "test_ops_plugins.py", "test_ops_zcc.py", "test_ops_zdx.py", "test_ops_zpa.py", "test_ops_aiguard.py", "test_readiness.py", "test_offline_tenant.py", "test_pov.py", "test_standalone.py", "test_path_zia_modules.py", "test_path_zpa_workloads.py", "test_bulk_test.py", "test_pac_eval.py", "test_path_whatif.py", "test_ops_zia_baseline.py", "test_zcc_device_state.py", "test_connect_reflow.py", "test_sbd_writes.py", "test_sbd_offline_least_privilege.py", "test_sbd_untrusted_input.py", "test_sbd_canary_renderers.py", "test_openapi_regression.py", "test_regression_flows.py", "test_regression_migration.py", "test_qa_func_path.py", "test_qa6_builders_lifecycle.py", "test_qa6_verdicts_reports.py", "test_flow_motion_models.py", "test_flow_motion_browser.py", "test_path_live_motion.py", "test_path_live_motion_browser.py", "test_flow_pages.py", "test_quality_score.py", "test_sample_tenant_browser.py", "test_c6_open_low.py", "test_glass.py", "test_glass_browser.py", "test_docker_rename.py", "test_old_repo_name.py", "test_admin_rank.py",
+    "test_team_server.py", "test_team_server_extras.py",
 )
 
 STANDARDS = [
