@@ -156,12 +156,16 @@ def _criteria(rule: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[str, A
         if c.get("negated") and v is not None:
             v = not v
         out.append({"name": _condition_words(c, names), "state": "unknown" if v is None else ("match" if v else "nomatch")})
+    for f in rule.get("unknown_fields") or []:   # rule_fields: a field outside the conditions this tool does not evaluate
+        out.append({"name": f"{f.get('label')}: {f.get('why')}", "state": "unknown"})
     return out
 
 
 def unknown_operands(rule: Dict[str, Any]) -> List[str]:
-    """Operand types in `rule` this tool cannot evaluate."""
-    return sorted({o["type"] for c in rule.get("conditions") or [] for o in c.get("operands") or [] if o["type"] not in KNOWN_OPERANDS})
+    """Operand types in `rule` this tool cannot evaluate, and the rule's
+    other fields it does not evaluate (rule_fields, by label)."""
+    return sorted({o["type"] for c in rule.get("conditions") or [] for o in c.get("operands") or [] if o["type"] not in KNOWN_OPERANDS}
+                  | {str(f.get("label")) for f in rule.get("unknown_fields") or [] if isinstance(f, dict)})
 
 
 def first_match(rules: List[Dict[str, Any]], u: Dict[str, Any], seg: Optional[Dict[str, Any]], ix: Any,

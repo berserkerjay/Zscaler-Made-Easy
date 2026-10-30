@@ -498,14 +498,16 @@ def _pac_direct_hosts(content: str) -> List[str]:
 
 
 # ── ZIA readers ───────────────────────────────────────────────────────
-def _norm_generic(r: Dict[str, Any]) -> Dict[str, Any]:
-    """URL filtering / File Type Control / Cloud App Control rule → common shape."""
+def _norm_generic(r: Dict[str, Any], module: Optional[str] = None) -> Dict[str, Any]:
+    """URL filtering / File Type Control / Cloud App Control rule → common
+    shape. With `module` (url, cac, ftc) every condition the trace does not
+    evaluate is kept, generically (_guarded)."""
     action = r.get("action")
     if isinstance(action, dict):
         action = action.get("type") or action.get("name")
     actions = _upper(_names(r.get("actions")))   # one string is one action; a number or true is none (never a crash)
     state = str(r.get("state") or "ENABLED").upper()
-    return {
+    n = {
         "id": r.get("id"), "name": r.get("name") or f"rule {r.get('id')}", "order": r.get("order"), "rank": r.get("rank"),
         "state": state, "enabled": state == "ENABLED",
         "action": str(action or r.get("filteringAction") or r.get("filtering_action") or "").upper(), "actions": actions,
@@ -518,10 +520,30 @@ def _norm_generic(r: Dict[str, Any]) -> Dict[str, Any]:
         "request_methods": _upper(_names(r.get("requestMethods") or r.get("request_methods") or [])),
         "scope": _scope(r), "scoped": bool(_scope(r)), "scope_items": scope_items(r),
         "protocols": _upper(_names(r.get("protocols") or [])),
+    }
+    if module is None:
         # Conditions the Path analyzer cannot evaluate (time window, device
         # trust, risk score, ...), shown there as "unknown" criteria.
-        "conditions": _unevaluated(r),
-    }
+        n["conditions"] = _unevaluated(r)
+        return n
+    return _guarded(n, r, module)
+
+
+def _guarded(n: Dict[str, Any], raw: Dict[str, Any], module: str) -> Dict[str, Any]:
+    """A normalised rule with the generic unknown-condition guard
+    (zia_path_modules.unevaluated with its module): `conditions` are every
+    condition the trace does not evaluate, as unknown criteria; `unresolved`
+    names the ones that are not about who, where or when (a second
+    category set, a quota, a file property, a field this tool does not
+    know). A rule with any is never a definite match: it counts as scoped
+    (the trace treats it as could-apply, never as the decision), and its
+    scope says why (Web DLP reads the scope list, not the flag)."""
+    n["conditions"] = _unevaluated(raw, module=module)
+    n["unresolved"] = _zpm.unresolved_labels(raw, module)
+    if n["unresolved"]:
+        n["scoped"] = True
+        n["scope"] = list(n.get("scope") or []) + [f"unevaluated condition: {x}" for x in n["unresolved"]]
+    return n
 
 
 def read_zia(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = None) -> Dict[str, Any]:
@@ -554,11 +576,11 @@ def read_zia(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = No
         _stop_point(cancel)
         return _fetch_rules(client, endpoint, diagnostics, label)
 
-    z["ssl"] = sorted((dict(normalize_ssl_rule(r), conditions=_unevaluated(r)) for r in rules("ssl", "/zia/sslInspectionRules", "SSL inspection rules")), key=_sort_key)
-    z["dlp"] = [dict(normalize_dlp_rule(r), conditions=_unevaluated(r)) for r in rules("dlp", "/zia/webDlpRules", "Web DLP rules")]
-    z["url"] = [_norm_generic(r) for r in rules("url", "/zia/urlFilteringRules", "URL filtering rules")]
-    z["cac"] = [_norm_generic(r) for r in rules("cac", "/zia/cloudApplicationRules", "Cloud App Control rules")]
-    z["ftc"] = [_norm_generic(r) for r in rules("ftc", "/zia/fileTypeRules", "File Type Control rules")]
+    z["ssl"] = sorted((_guarded(normalize_ssl_rule(r), r, "ssl") for r in rules("ssl", "/zia/sslInspectionRules", "SSL inspection rules")), key=_sort_key)
+    z["dlp"] = [_guarded(normalize_dlp_rule(r), r, "dlp") for r in rules("dlp", "/zia/webDlpRules", "Web DLP rules")]
+    z["url"] = [_norm_generic(r, "url") for r in rules("url", "/zia/urlFilteringRules", "URL filtering rules")]
+    z["cac"] = [_norm_generic(r, "cac") for r in rules("cac", "/zia/cloudApplicationRules", "Cloud App Control rules")]
+    z["ftc"] = [_norm_generic(r, "ftc") for r in rules("ftc", "/zia/fileTypeRules", "File Type Control rules")]
     for key, ep, label in (("endpoint", "/zia/endPointDlpRules", "Endpoint DLP rules"), ("saas", "/zia/casbDlpRules/all", "SaaS Security API DLP rules"),
                            ("email", "/zia/emailDlpRules", "Outbound Email DLP rules")):
         z[key] = [{"id": r.get("id"), "name": r.get("name"), "state": str(r.get("state") or "ENABLED").upper(),

@@ -57,7 +57,7 @@ DIMENSIONS: List[Tuple[str, str, Tuple[str, ...]]] = [
     # A URL filtering rule's validity period (enforceTimeValidity): never given.
     ("validity", "validity period", ()),
 ]
-LABEL = {k: label for k, label, _ in DIMENSIONS}
+LABEL = dict({k: label for k, label, _ in DIMENSIONS}, other="unevaluated condition")
 WHO = ("users", "groups", "departments")
 WHERE = ("locations", "location_groups")
 EXCLUDED = {"excluded_users": "users", "excluded_groups": "groups", "excluded_departments": "departments"}
@@ -182,7 +182,13 @@ def rule_criteria(rule: Dict[str, Any], ident: Optional[Dict[str, Any]]) -> Tupl
     criteria [{dim, name, values, state: match|nomatch|unknown}], one per
     kind of criterion the rule has."""
     items = rule.get("scope_items") or {}
+    # A condition that is not about who or where (data_flow._guarded: a
+    # quota, a file property, a field this tool does not know) is settled by
+    # no identity: the rule stays open whatever is given.
+    other = [{"dim": "other", "name": f"unevaluated condition: {x}", "values": [], "state": "unknown"} for x in rule.get("unresolved") or []]
     if not items:
+        if other:
+            return None, other
         if rule.get("scope") or rule.get("scoped"):
             return None, [{"dim": "identity", "name": "identity: " + ", ".join(rule.get("scope") or []), "values": [], "state": "unknown"}]
         return True, []
@@ -200,6 +206,7 @@ def rule_criteria(rule: Dict[str, Any], ident: Optional[Dict[str, Any]]) -> Tupl
             state = ("nomatch" if hit else "match") if key in EXCLUDED else ("match" if hit else "nomatch")
         crit.append({"dim": key, "name": f"{label}: " + ", ".join(names[:5]) + (f" (+{len(names) - 5})" if len(names) > 5 else ""),
                      "values": names[:MAX_ITEMS], "state": state})
+    crit += other
 
     def any_of(keys) -> Optional[bool]:
         sts = [c["state"] for c in crit if c["dim"] in keys]
