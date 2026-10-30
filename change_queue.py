@@ -58,6 +58,10 @@ KINDS = {
     "pack_deploy": "Deploy policy packs",
     "pack_removal": "Remove selected rules",
     "fix_recipe": "Fix recipe",
+    # A Bulk changes plan (admin_ops) filed by a scheduled sync job (sync_jobs):
+    # applied through admin_ops.execute, which plans again and refuses a
+    # different plan_hash (the request is then marked stale).
+    "admin_operation": "Bulk change plan",
 }
 STATUSES = ("pending", "approved", "rejected", "applied", "failed", "stale", "withdrawn")
 OPEN_STATUSES = ("pending", "approved")
@@ -432,6 +436,22 @@ def withdraw(rid: str, *, by: str, comment: str = "") -> Dict[str, Any]:
 
     rec = _mutate(rid, fn)
     _audit("withdrawn", rec, by)
+    return rec
+
+
+def supersede(rid: str, *, by: str, reason: str) -> Optional[Dict[str, Any]]:
+    """Mark an open request stale because a newer plan replaces it (a sync
+    job planned the same target again). Never one being applied."""
+    def fn(rec: Dict[str, Any]) -> None:
+        if rec.get("status") not in OPEN_STATUSES or rec.get("applying"):
+            raise QueueError(f"this request is {rec.get('status')} and cannot be superseded")
+        rec["status"] = "stale"
+        _history(rec, "superseded", by or "app", note=_clean_text(reason, 300))
+    try:
+        rec = _mutate(rid, fn)
+    except QueueError:
+        return None
+    _audit("superseded", rec, by, reason=_clean_text(reason, 300))
     return rec
 
 
