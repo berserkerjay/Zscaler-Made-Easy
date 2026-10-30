@@ -349,7 +349,17 @@ await open('/report/pov');
 out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObserver(ms => { n += ms.length; }); mo.observe(document.body, { subtree: true, childList: true, attributes: true });
   setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
 // The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
+// Probes, so the checks below never depend on which release the Path analyzer's own marks came in: one of the
+// newest release on the List tab and the protocol control, one of the older marked release on the flow heading.
 await open('/report/path');
+await ev(`(() => { const W = window.WhatsNew, [newest, older] = W.releases();
+  W.manifest.features.push({ id: 'tab-probe', release: newest, label: 'Test a list', what: 'Probe: the List tab.', changelog: [],
+                             marks: [{ page: '/report/path', at: '#tab-list' }, { page: '/report/path', at: '#paProto' }] });
+  W.manifest.features.push({ id: 'heading-probe', release: older, label: 'Flow', what: 'Probe: the flow heading.', changelog: [],
+                             marks: [{ page: '/report/path', at: '#paFlowRefH' }] });
+  W.apply(); window.HoverHelp.scan(); return true; })()`);
+await frame();
+out.releases = await ev(`window.WhatsNew.releases()`);
 const hoverAt = async js => {
   const r = await ev(`(() => { const e = ${js}; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
@@ -384,8 +394,8 @@ out.rotate = await ev(`(() => {
   W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
   const before = { older: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH') };
-  W.manifest.releases['2026-10-30'] = 'next';
-  W.manifest.features.push({ id: 'next-probe', release: '2026-10-30', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
+  W.manifest.releases['2099-01-01'] = 'next';
+  W.manifest.features.push({ id: 'next-probe', release: '2099-01-01', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
   const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), proto: document.getElementById('paProto').getAttribute('aria-label') };
   return { before, after };
@@ -470,16 +480,19 @@ def test_each_page_with_marks_shows_the_legend_and_no_errors(marks_browser, page
 def test_the_star_opens_what_is_new_and_the_item_opens_nothing(marks_browser):
     """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a tab or a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
     h = marks_browser["hover"]
+    newest, older = [d for d, _ in marked_entries()]
+    assert marks_browser["releases"] == [newest, older]
     assert h["item"] is None, h["item"]
-    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-28 update: Test a list"), h["tab"]
-    assert h["heading"] and h["heading"]["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), h["heading"]
+    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith(f"New in the {newest} update: Probe: the List tab."), h["tab"]
+    assert h["heading"] and h["heading"]["text"].startswith(f"New in the {older} update: "), h["heading"]
+    assert "Probe: the flow heading." in h["heading"]["text"], h["heading"]
 
 
 def test_the_star_works_from_the_keyboard(marks_browser):
     """WCAG 2.2 SC 2.1.1 · SC 2.4.7 · SC 2.5.8 · SC 3.2.1: focus on the * opens nothing by itself; Enter opens it; it has a visible ring and a 24px target; the heading's name says it is new."""
     f = marks_browser["focus"]
     assert f["focusOnly"] is False, "focus alone opens nothing"
-    assert f["open"] and f["text"].startswith("New in the 2026-10-29 update") and f["expanded"] == "true", f
+    assert f["open"] and f["text"].startswith(f"New in the {marked_entries()[1][0]} update") and f["expanded"] == "true", f
     assert f["ring"], "a visible focus ring"
     assert f["w"] >= 24 and f["h"] >= 24, f
     assert "New in this version" in marks_browser["headingName"], marks_browser["headingName"]
@@ -493,10 +506,10 @@ def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
-    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks go."""
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a newer release is listed, the older marked release's marks go and the newest one's stay."""
     before, after = marks_browser["rotate"]["before"], marks_browser["rotate"]["after"]
     assert before == {"older": False, "tab": True, "live": True}, before
-    assert after["next"] and after["live"] and not after["tab"], after
+    assert after["next"] and after["tab"] and not after["live"], after
     assert after["tabName"] == "Test a list" and not str(after["proto"]).endswith("(new)"), after
 
 
