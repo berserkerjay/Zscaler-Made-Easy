@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plugin page — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  table.pg-t { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+  table.pg-t th, table.pg-t td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+  table.pg-t th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  .pg-dim { color: var(--dim); font-size: 0.85rem; }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page df-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1 id="pgH"><span class="accent">Plugin</span> page</h1>
+      <p>A read-only page added by a local plugin an admin approved in Advanced settings. The app shows the plugin's table as plain text; nothing on this page changes a tenant.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="/report/advanced#plugins">Local plugins</a>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <p class="pg-dim" id="pgStatus" role="status" aria-live="polite">Loading…</p>
+      <div style="overflow-x:auto;" tabindex="0" role="region" aria-labelledby="pgH"><table class="pg-t" id="pgTable"><thead></thead><tbody></tbody></table></div>
+      <ul class="pg-dim" id="pgNotes"></ul>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script>
+  (async function () {
+    // Every value from the plugin goes in as text (textContent), never as markup.
+    const $ = id => document.getElementById(id);
+    const slug = new URLSearchParams(location.search).get('page') || '';
+    const cell = (tag, text) => { const c = document.createElement(tag); c.textContent = String(text == null ? '' : text); if (tag === 'th') c.scope = 'col'; return c; };
+    if (!/^[a-z][a-z0-9-]{1,60}$/.test(slug)) { $('pgStatus').textContent = 'No plugin page named in the address.'; return; }
+    try {
+      const r = await fetch(`/api/plugins/pages/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      document.title = `${d.title} — Zscaler Made Easy`;
+      $('pgH').textContent = d.title;
+      const hr = document.createElement('tr'); (d.columns || []).forEach(c => hr.appendChild(cell('th', c)));
+      $('pgTable').tHead.appendChild(hr);
+      (d.rows || []).forEach(row => { const tr = document.createElement('tr'); row.forEach(v => tr.appendChild(cell('td', v))); $('pgTable').tBodies[0].appendChild(tr); });
+      (d.notes || []).forEach(n => $('pgNotes').appendChild(cell('li', n)));
+      $('pgStatus').textContent = d.error ? `The plugin ${d.plugin} failed: ${d.error}` : `From the local plugin ${d.plugin}: ${(d.rows || []).length} row(s).`;
+    } catch (e) { $('pgStatus').textContent = `Could not load the page: ${e.message}`; }
+  })();
+  </script>
+</body>
+</html>
