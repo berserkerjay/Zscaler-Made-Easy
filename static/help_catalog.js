@@ -4659,6 +4659,261 @@ window.HELP_CATALOG = {
     "what": "Starts an Undo of this change. It previews the Undo first. Nothing is written until you apply it.",
     "input": "Nothing to type. Just click it.",
     "effect": "read"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zia_directory\"]": {
+    "what": "Picks \"ZIA users, groups and departments\". It finds users and adds, changes or deletes users, groups and departments.",
+    "input": "Tick it, then click Read from the tenant to show the form. Needs ZIA platform ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zia_pac\"]": {
+    "what": "Picks \"ZIA PAC files\". It shows each hosted PAC file and its versions, validates a PAC and adds, clones, switches or deletes versions and files.",
+    "input": "Tick it, then click Read from the tenant to list the PAC files. Needs ZIA platform ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zid_users\"]": {
+    "what": "Picks \"ZIdentity users\". It finds users and adds, disables, enables or deletes them.",
+    "input": "Tick it, then click Read from the tenant to list the users. Needs ZIdentity ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#opAdminKinds input[name=\"opKind\"][value=\"zid_api_clients\"]": {
+    "what": "Picks \"ZIdentity API clients\". It lists the API clients and their scopes, and creates, rotates, disables, enables or deletes one.",
+    "input": "Tick it, then click Read from the tenant to list them. Needs ZIdentity ticked on the Scope page.",
+    "effect": "local"
+   },
+   "input[name=\"zdMode\"]": {
+    "what": "Picks what to do: change or delete users, add a user, or change groups and departments.",
+    "input": "Tick one. The form below changes to match.",
+    "effect": "local"
+   },
+   "#zdSearch": {
+    "what": "Finds ZIA users whose name starts with what you type.",
+    "input": "Optional. Up to 100 characters, like Sam. Empty lists the first users. Then click Search.",
+    "effect": "local"
+   },
+   "#zdSearchGo": {
+    "what": "Reads the users whose name starts with the search from the tenant. It only reads.",
+    "input": "Nothing to type here. Type the name in the box first.",
+    "effect": "read"
+   },
+   "input[data-zu]": {
+    "what": "Picks this user for the change below. Admin accounts cannot be picked.",
+    "input": "Tick it. Up to 100 changes per plan.",
+    "effect": "local"
+   },
+   "input[name=\"zdUserAct\"]": {
+    "what": "Picks what happens to the picked users: change their department or groups, or delete them.",
+    "input": "Tick one. A delete asks its name typed when you apply and cannot be undone.",
+    "effect": "local"
+   },
+   "#zdDept": {
+    "what": "Moves the picked users to this department.",
+    "input": "Optional. Pick one from the list, or leave No change.",
+    "effect": "local"
+   },
+   "#zdAdd": {
+    "what": "Adds the picked users to these groups.",
+    "input": "Optional. Pick one or more; hold Ctrl or Cmd to pick several.",
+    "effect": "local"
+   },
+   "#zdRemove": {
+    "what": "Takes the picked users out of these groups.",
+    "input": "Optional. Pick one or more; hold Ctrl or Cmd to pick several.",
+    "effect": "local"
+   },
+   "#zdNewName": {
+    "what": "Names the new ZIA user.",
+    "input": "Required. Up to 255 characters, like Sam Lee.",
+    "effect": "local"
+   },
+   "#zdNewEmail": {
+    "what": "The new user's email. It must be unique and its domain must belong to the organisation.",
+    "input": "Required. An address like sam.lee@example.com.",
+    "effect": "local"
+   },
+   "#zdNewDept": {
+    "what": "Puts the new user in this department.",
+    "input": "Required. Pick one from the list.",
+    "effect": "local"
+   },
+   "#zdNewGroups": {
+    "what": "Puts the new user in these groups.",
+    "input": "Optional. Pick one or more; hold Ctrl or Cmd to pick several.",
+    "effect": "local"
+   },
+   "input[name=\"zdGKind\"]": {
+    "what": "Picks whether to change groups or departments.",
+    "input": "Tick one. The list below changes to match.",
+    "effect": "local"
+   },
+   "#zdGName": {
+    "what": "Names a new group or department to add.",
+    "input": "Optional. Up to 255 characters, like Contractors.",
+    "effect": "local"
+   },
+   "#zdRename": {
+    "what": "Picks a group or department to rename.",
+    "input": "Optional. Pick one, then type its new name.",
+    "effect": "local"
+   },
+   "#zdRenameTo": {
+    "what": "The new name for the group or department picked to rename.",
+    "input": "Required when you pick one to rename. Up to 255 characters.",
+    "effect": "local"
+   },
+   "input[data-zg]": {
+    "what": "Deletes this group or department. It cannot be undone.",
+    "input": "Tick it. You type its name to confirm when you apply.",
+    "effect": "local"
+   },
+   "input[name=\"zpPick\"]": {
+    "what": "Picks this PAC file for the change below.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"zpAct\"]": {
+    "what": "Picks what to do with the PAC file: validate, add a staged version, switch the active version, clone, add a new file or delete it.",
+    "input": "Tick one. The fields below change to match.",
+    "effect": "local"
+   },
+   "#zpVer": {
+    "what": "Picks the PAC version to start from, or the one to make active.",
+    "input": "Required for this choice. Pick one from the list.",
+    "effect": "local"
+   },
+   "#zpText": {
+    "what": "The PAC text to check or save. It is parsed and checked, never run.",
+    "input": "Required for this choice. A PAC with FindProxyForURL(url, host), up to 256 KB.",
+    "effect": "local"
+   },
+   "#zpLoad": {
+    "what": "Copies the active version's text into the box, to edit it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#zpName": {
+    "what": "Names the new PAC file.",
+    "input": "Required for this choice. Up to 63 letters, digits, spaces and . _ ( ) -, like branch.pac.",
+    "effect": "local"
+   },
+   "#zpDomain": {
+    "what": "The organisation's domain the new PAC file applies to.",
+    "input": "Required for this choice. A domain like example.com.",
+    "effect": "local"
+   },
+   "#zpDesc": {
+    "what": "Describes the new PAC file.",
+    "input": "Optional. Up to 1024 characters.",
+    "effect": "local"
+   },
+   "#zpMsg": {
+    "what": "The commit message saved with the new version.",
+    "input": "Optional. Up to 255 characters, like Partner portal goes direct.",
+    "effect": "local"
+   },
+   "#opPlan .op-diff": {
+    "what": "The lines the change adds (+) and removes (-) in the PAC text.",
+    "input": "Nothing to type. Scroll it with the arrow keys.",
+    "effect": "local"
+   },
+   "input[name=\"zuMode\"]": {
+    "what": "Picks what to do: disable, enable or delete users, or add a user.",
+    "input": "Tick one. The form below changes to match.",
+    "effect": "local"
+   },
+   "#zuSearch": {
+    "what": "Finds ZIdentity users whose login name contains what you type.",
+    "input": "Optional. Up to 100 characters, like sam. Then click Search.",
+    "effect": "local"
+   },
+   "#zuSearchGo": {
+    "what": "Reads the users whose login name contains the search from the tenant. It only reads.",
+    "input": "Nothing to type here. Type the name in the box first.",
+    "effect": "read"
+   },
+   "input[data-zid-u]": {
+    "what": "Picks this user for the change below. Administrators and users from SCIM cannot be picked.",
+    "input": "Tick it. Up to 50 changes per plan.",
+    "effect": "local"
+   },
+   "input[name=\"zuAct\"]": {
+    "what": "Picks what happens to the picked users: disable, enable or delete.",
+    "input": "Tick one. A delete asks its name typed when you apply and cannot be undone.",
+    "effect": "local"
+   },
+   "#zuLogin": {
+    "what": "The new user's login name.",
+    "input": "Required. An address like sam.lee@example.com.",
+    "effect": "local"
+   },
+   "#zuDisplay": {
+    "what": "The new user's display name.",
+    "input": "Required. Up to 255 characters, like Sam Lee.",
+    "effect": "local"
+   },
+   "#zuFirst": {
+    "what": "The new user's first name.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#zuLast": {
+    "what": "The new user's last name.",
+    "input": "Optional. Up to 255 characters.",
+    "effect": "local"
+   },
+   "#zuEnable": {
+    "what": "Turns the new user on when it is made. Off by default, so the user is created disabled.",
+    "input": "Tick it to enable the user at once.",
+    "effect": "local"
+   },
+   "input[name=\"zkAct\"]": {
+    "what": "Picks what to do: rotate a secret, disable, enable or delete an API client, or make a new one.",
+    "input": "Tick one. The form below changes to match.",
+    "effect": "local"
+   },
+   "input[name=\"zkPick\"]": {
+    "what": "Picks this API client. The client this app signs in with cannot be picked.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "#zkKeepOld": {
+    "what": "Keeps the old secrets when the new one is made, so tools keep working until you delete them.",
+    "input": "Tick it to keep them. Off by default: the old secrets are deleted once the new one exists.",
+    "effect": "local"
+   },
+   "#zkName": {
+    "what": "Names the new API client.",
+    "input": "Required. Up to 128 letters, digits, spaces and . _ ( ) -, like Reporting export.",
+    "effect": "local"
+   },
+   "#zkDesc": {
+    "what": "Describes the new API client.",
+    "input": "Optional. Up to 500 characters.",
+    "effect": "local"
+   },
+   "#zkLife": {
+    "what": "How long each access token of the new client lasts, in seconds.",
+    "input": "Required. 300 to 86400 seconds; 3600 is one hour.",
+    "effect": "local"
+   },
+   "input[data-zk-scope]": {
+    "what": "Gives the new API client this scope. Tick only what the tool needs.",
+    "input": "Tick one or more. A full-access scope is flagged.",
+    "effect": "local"
+   },
+   "#zkEnable": {
+    "what": "Turns the new API client on when it is made. Off by default.",
+    "input": "Tick it to enable the client at once.",
+    "effect": "local"
+   },
+   ".zk-secret": {
+    "what": "Shows the new secret once. This app never keeps, logs or exports it.",
+    "input": "Nothing to type. Copy it now.",
+    "effect": "local"
+   },
+   ".zk-copy": {
+    "what": "Copies the new secret to the clipboard.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
    }
   },
   "/report/path": {

@@ -38,7 +38,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTM
 
 import tenant_auth
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ── Security hardening (secure-by-design controls) ───────────────────
 from security import (
@@ -5292,8 +5292,10 @@ class OperationCredsRequest(ScopedTenantCredsRequest):
 
 
 class OperationObjectsRequest(OperationCredsRequest):
-    """Body of the object picker: what to list (rules, url_categories or zpa_segments)."""
+    """Body of the object picker: what to list (rules, url_categories or zpa_segments)
+    and, for a family that searches (users), what to search for."""
     family: str = "rules"
+    query: str = Field("", max_length=100)
 
 
 class OperationRequest(OperationCredsRequest):
@@ -5353,12 +5355,12 @@ def _ops_assessor(req: Any) -> str:
         raise
 
 
-def _run_ops_objects(client, family: str, scope: Dict[str, Any], label: str, log, cancel) -> Dict[str, Any]:
+def _run_ops_objects(client, family: str, scope: Dict[str, Any], label: str, log, cancel, query: str = "") -> Dict[str, Any]:
     import admin_ops
     say = log or (lambda m: None)
     say(f"Reading {label}. Nothing is written to the tenant.")
     try:
-        out = admin_ops.read_objects(client, family, scope, log=say, cancel=cancel)
+        out = admin_ops.read_objects(client, family, scope, log=say, cancel=cancel, query=query)
     except admin_ops.Stopped as e:
         return {"status": "stopped", "stopped": str(e), "tenant_label": label}
     except admin_ops.OperationError as e:
@@ -5445,7 +5447,7 @@ async def operations_objects_start(req: OperationObjectsRequest, request: Reques
     _ops_zpa_gate(req.family, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
-    job = pack_jobs.start("ops_objects", lambda log, cancel: _keyed(client, _run_ops_objects, client, req.family, scope, label, log, cancel),
+    job = pack_jobs.start("ops_objects", lambda log, cancel: _keyed(client, _run_ops_objects, client, req.family, scope, label, log, cancel, req.query),
                           label=label[:80], actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
@@ -5457,7 +5459,8 @@ async def operations_objects(req: OperationObjectsRequest):
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.family, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(_keyed, client, _run_ops_objects, client, req.family, scope, tenant_auth.record_label(creds), None, None)
+    out = await asyncio.to_thread(_keyed, client, _run_ops_objects, client, req.family, scope, tenant_auth.record_label(creds), None, None,
+                                  req.query)
     if out.get("status") == "refused":
         raise HTTPException(status_code=400, detail=out["message"])
     return out
@@ -5563,6 +5566,21 @@ async def operations_zpa_provisioning_key(req: OneTimeKeyRequest, request: Reque
     if not got:
         raise HTTPException(status_code=404, detail="No key to show: a provisioning key is shown once, within ten minutes of the build, "
                                                     "to the person who ran it. Copy it from the ZPA Admin Portal instead.")
+    return JSONResponse(got, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+@app.post("/api/operations/zidentity/secret")
+async def operations_zidentity_secret(req: OneTimeKeyRequest, request: Request):
+    """The secret of a ZIdentity API client a bulk change (ops_zid) just made or
+    rotated, once: held in memory only, for ten minutes, for the person who ran
+    the apply, and gone after this answer. Reaches no tenant; never logged,
+    stored or exported."""
+    import ops_zid
+    _security.require_writer()
+    got = ops_zid.reveal(req.token, actor=_actor(request))
+    if not got:
+        raise HTTPException(status_code=404, detail="No secret to show: a new API client secret is shown once, within ten minutes of the "
+                                                    "change, to the person who made it. Rotate the secret again to get a new one.")
     return JSONResponse(got, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 

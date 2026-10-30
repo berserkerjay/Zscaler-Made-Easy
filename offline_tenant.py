@@ -299,6 +299,12 @@ class OfflineStore:
                 return 200, {"status": "ACTIVE"}
             if method == "POST" and path.endswith("/dlpEngines/validateDlpExpr"):
                 return 200, {"status": "VALID"}
+            if method == "POST" and path.endswith("/pacFiles/validate"):
+                # ZIA's PAC validator, as the sample answers it: text only, never run.
+                ok = isinstance(body, str) and "FindProxyForURL" in body
+                return 200, {"success": ok, "message": "" if ok else "FindProxyForURL is missing", "errorCount": 0 if ok else 1,
+                             "warningCount": 0, "messages": [] if ok else [{"line": 1, "column": 1, "severity": "ERROR",
+                                                                            "message": "FindProxyForURL is missing", "fatal": True}]}
             entry = self._lookup(path)
             items = _items(entry["body"]) if entry else None
             if method == "POST" and items is not None:

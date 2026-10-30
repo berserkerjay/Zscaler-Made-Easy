@@ -375,7 +375,20 @@ ZDX_DEVICES = [{"id": 3101, "name": "LKF-LT-0001", "userid": 41}, {"id": 3102, "
 ZID_USERS = [{"id": "u-41", "loginName": "avery.quinn@larkspur-freight.example", "displayName": "Avery Quinn", "status": True},
              {"id": "u-42", "loginName": "rowan.ellis@larkspur-freight.example", "displayName": "Rowan Ellis", "status": True}]
 ZID_GROUPS = [{"id": "g-33", "name": "Finance Team", "source": "SCIM"}, {"id": "g-34", "name": "Developers", "source": "SCIM"}]
-ZID_RESOURCE_SERVERS = [{"id": "rs-1", "name": "ZIA", "primaryAud": "https://api.zscaler.com"}]
+ZID_RESOURCE_SERVERS = [{"id": "rs-1", "name": "ZIA", "primaryAud": "https://api.zscaler.com", "defaultApi": True,
+                         "serviceScopes": [{"service": {"id": "svc-zia", "name": "ZIA", "displayName": "ZIA"},
+                                            "scopes": [{"id": "sc-zia-ro", "name": "zs:config:zia:larkspur:Read Only"},
+                                                       {"id": "sc-zia-sa", "name": "zs:config:zia:larkspur:Super Admin"}]}]}]
+# API clients (zscaler/zid/models/api_client.py); their secrets list carries ids and dates only, never a value.
+ZID_API_CLIENTS = [{"id": "ac-51", "name": "Larkspur reporting", "description": "Monthly report export", "status": True,
+                    "accessTokenLifeTime": 3600, "clientAuthentication": {"authType": "SECRET"},
+                    "clientResources": [{"id": "rs-1", "name": "ZIA", "defaultApi": True,
+                                         "selectedScopes": [{"id": "sc-zia-ro", "name": "zs:config:zia:larkspur:Read Only"}]}]}]
+# Earlier versions of the hosted PAC file (zscaler/zia/pac_files.py get_pac_file: every version).
+PAC_VERSIONS = [{"id": 31, "name": "larkspur.pac", "domain": "larkspur-freight.example", "pacVersion": 1, "pacVersionStatus": "LKG",
+                 "pacCommitMessage": "First version", "pacContent": 'function FindProxyForURL(url, host) {\n  return "PROXY ${GATEWAY_FX}:80; DIRECT";\n}\n'},
+                {"id": 31, "name": "larkspur.pac", "domain": "larkspur-freight.example", "pacVersion": 2, "pacVersionStatus": "STAGE",
+                 "pacCommitMessage": "Partner portal direct (staged)", "pacContent": None}]
 
 
 def responses() -> Dict[str, Any]:
@@ -477,6 +490,9 @@ def responses() -> Dict[str, Any]:
         f"{ZID}/users": {"records": ZID_USERS, "results_total": len(ZID_USERS)},
         f"{ZID}/groups": {"records": ZID_GROUPS, "results_total": len(ZID_GROUPS)},
         f"{ZID}/resource-servers": {"records": ZID_RESOURCE_SERVERS, "results_total": len(ZID_RESOURCE_SERVERS)},
+        f"{ZID}/api-clients": {"records": ZID_API_CLIENTS, "results_total": len(ZID_API_CLIENTS)},
+        f"{ZID}/api-clients/ac-51/secrets": [{"id": "sec-1", "createdAt": 1767225600, "expiresAt": 1798761600}],
+        f"{ZIA}/pacFiles/31/version": [dict(v, pacContent=v["pacContent"] or PAC_CONTENT) for v in PAC_VERSIONS] + [dict(PAC_FILES[0])],
     }
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
