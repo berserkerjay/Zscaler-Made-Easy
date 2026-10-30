@@ -357,7 +357,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 72,
+            "fixed": 73,
             "accepted": 2,
             "records": [
               "c6-tooltips",
@@ -436,7 +436,7 @@
     }
   ],
   "counts": {
-    "findings": 576,
+    "findings": 577,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -455,7 +455,7 @@
       },
       "low": {
         "open": 0,
-        "fixed": 334,
+        "fixed": 335,
         "accepted": 0
       },
       "info": {
@@ -465,12 +465,12 @@
       }
     },
     "checks": {
-      "pass": 303,
-      "fixed": 306,
+      "pass": 302,
+      "fixed": 307,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8568
+    "tests_added": 8570
   },
   "findings": [
     {
@@ -7002,6 +7002,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "C6-UI-CORE-09",
+      "title": "The Terraform hand-off dialog dropped keyboard focus to the page behind it whenever it redrew its body (packs loaded, a pack ticked with Space, the mode changed)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-684",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 2.4.3",
+      "fix": "static/deploy_studio.js: _tfRender puts focus back on the same control after it rebuilds the body, or on the dialog's Close button when that control is gone",
+      "test": "tests/test_c6_ui_core.py::test_the_terraform_dialog_keeps_focus_when_it_redraws",
+      "commit": "1766fb6",
+      "reason": "",
+      "slug": "c6-ui-core",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
       "id": "C6-UI-OPS-01",
       "title": "Bulk changes Apply was enabled before the typed phrase, the review box or the assessor were given, and the page's phrase check (toUpperCase) accepted look-alikes the server refuses",
       "severity": "low",
@@ -10171,8 +10187,8 @@
         "WCAG 2.2 SC 4.1.2"
       ],
       "checks": 11,
-      "findings": 8,
-      "tests_added": 27
+      "findings": 9,
+      "tests_added": 29
     },
     {
       "slug": "c6-ui-ops",
