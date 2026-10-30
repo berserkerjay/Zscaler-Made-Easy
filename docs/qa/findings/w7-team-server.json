@@ -129,7 +129,7 @@
    "status": "fixed",
    "fix": "team_server.may_use takes the caller explicitly; the middleware passes it",
    "test": "tests/test_team_server_extras.py::test_saved_plans_are_private_until_shared_and_sharing_never_crosses_a_tenant",
-   "commit": "pending"
+   "commit": "872d591"
   },
   {
    "id": "W7-TS-02",
@@ -140,7 +140,7 @@
    "status": "fixed",
    "fix": "On an approve route the approve right stands in for the writer check (security.may_write); change_queue.decide re-checks approve on the request's profile",
    "test": "tests/test_team_server.py::test_approver_must_differ_from_the_requester_and_be_entitled",
-   "commit": "pending"
+   "commit": "d270e4b"
   },
   {
    "id": "W7-TS-03",
@@ -151,7 +151,7 @@
    "status": "fixed",
    "fix": "self_heal._parse opens a sealed store before checking it",
    "test": "tests/test_team_server_extras.py::test_a_tampered_or_keyless_store_is_refused_and_self_healing_does_not_eat_sealed_stores",
-   "commit": "pending"
+   "commit": "d270e4b"
   },
   {
    "id": "W7-TS-04",
@@ -187,5 +187,5 @@
    "commit": ""
   }
  ],
- "tests_added": 50
+ "tests_added": 48
 }
