@@ -259,6 +259,7 @@ def normalize_dlp_rule(r: Dict[str, Any]) -> Dict[str, Any]:
         "id": r.get("id"),
         "name": name,
         "order": _f(r, "order", default=None),
+        "rank": _f(r, "rank", default=None),
         "state": state,
         "enabled": state == "ENABLED",
         "action": action,

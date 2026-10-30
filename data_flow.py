@@ -37,6 +37,7 @@ and the raw value is kept next to every interpretation.
 """
 from __future__ import annotations
 
+import admin_rank
 import md_safe
 import pac_eval
 import contextlib
@@ -580,6 +581,13 @@ def read_zia(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = No
             diagnostics.append({"section": "URL categories", "endpoint": "/zia/urlCategories", "error_type": type(e).__name__, "error": str(e)[:200]})
     else:
         z["categories"] = {}
+    # Admin ranking (admin_rank): read only when ZIA platform is in scope
+    # (scope None reads every section), never guessed when it is not.
+    _stop_point(cancel)
+    if scope is None or (admin_rank.in_scope(scope.get("scopes")) and any(k in (scope.get("read") or []) for k in admin_rank.RANKED)):
+        z["admin_ranking"] = admin_rank.read(client, list(SCOPE_KEYS) if scope is None else scope.get("scopes"))
+    else:
+        z["admin_ranking"] = {"state": admin_rank.OUT_OF_SCOPE, "why": admin_rank.NOT_IN_SCOPE_WHY, "source": admin_rank.SOURCE}
     _stop_point(cancel)   # a read cut short by Stop is never handed on as a finished one
     for r in z["dlp"] + z["url"] + z["cac"] + z["ftc"] + z["ssl"]:
         r.setdefault("order", None)
@@ -700,6 +708,48 @@ def _policy_order(rule: Dict[str, Any]) -> Tuple[int, str]:
     except (TypeError, ValueError):
         order = 10 ** 9
     return order, str(rule.get("id") or "")
+
+
+def _ssl_default(rule: Dict[str, Any]) -> bool:
+    return bool(rule.get("default_rule"))
+
+
+def _rank_compare(setting: Any, pick: Optional[Dict[str, Any]], rules: List[Dict[str, Any]], base: Any, is_default: Any,
+                  select: Any, outcome: Any) -> Dict[str, Any]:
+    """How admin ranking bears on one section's decision (admin_rank).
+    `pick` is the rule `select` chose from `rules` in the order the trace
+    uses; the same choice in the other order says whether rank decided
+    (ranking on) or could decide differently (ranking not known).
+    {by: rank | order | None, other, caution}."""
+    st = admin_rank.state_of(setting)
+    alt = admin_rank.alternative(st)
+    out: Dict[str, Any] = {"by": "order" if pick is not None else None, "other": None, "caution": None, "rule": pick}
+    if alt is None or pick is None:
+        return out
+    other = select(admin_rank.ordered(rules, base, alt, is_default))
+    if other is None or admin_rank.same_rule(pick, other):
+        return out
+    out["other"] = other
+    if st == admin_rank.ON:
+        out["by"] = "rank"
+    elif outcome(pick) != outcome(other):
+        out["caution"] = admin_rank.caution(setting, pick, other)
+    return out
+
+
+def _rank_note(h: Dict[str, Any], info: Optional[Dict[str, Any]], ranked: bool) -> None:
+    """Put admin ranking on a hop: the deciding rule's rank (when ranking is
+    on) and `by` (rank or order) in decided_by, and the sentence when rank,
+    not order, decided."""
+    dec = h.get("decided_by")
+    if not info or not isinstance(dec, dict) or not info.get("rule") or not admin_rank.same_rule(dec, info["rule"]):
+        return
+    if ranked:
+        dec["rank"] = admin_rank.shown_rank(info["rule"])
+    if info.get("by"):
+        dec["by"] = info["by"]
+    if info.get("by") == "rank" and info.get("other"):
+        h["detail"] = (str(h.get("detail") or "").rstrip() + " " + admin_rank.rank_decided(info["rule"], info["other"])).strip()
 
 
 FLOW_CONTROLS = (("cac", "Cloud App Control"), ("url", "URL filtering"),
@@ -974,6 +1024,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             hops.append(_hop("pac", "PAC file", "pass" if verified else "unknown", None,
                              (f"{len(pacs)} linked PAC file(s) read; no DIRECT pattern found for this destination" + (" (host-level check needs a hostname)." if not host else ".")) if verified else "The referenced PAC URL could not be linked to readable content. PAC routing is unverified.", None))
 
+    admin_ranking = admin_rank.recorded(zia.get("admin_ranking"))
     if not reaches_zscaler:
         hops.append(_hop("zia", "ZIA", "skipped", None, "Never reached: nothing below applies to this traffic.", None))
     else:
@@ -995,9 +1046,17 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # The SSL decision is known from the rules before it is applied:
         # it decides what the app and URL controls can see (domain only
         # until decryption) and whether content inspection is possible.
-        matching = [(r, _matches(r, klass, cats, apps)) for r in sorted(zia["ssl"], key=_sort_key) if r["enabled"]] if not plaintext else []
+        # Admin ranking (admin_rank): with it on, the ranked policies are
+        # evaluated by admin rank first, then by rule order.
+        rank_setting = zia.get("admin_ranking")
+        ranked = admin_rank.state_of(rank_setting) == admin_rank.ON
+        rank_info: Dict[str, Dict[str, Any]] = {}
+        matching = [(r, _matches(r, klass, cats, apps)) for r in admin_rank.ordered(zia["ssl"], _sort_key, ranked, _ssl_default) if r["enabled"]] if not plaintext else []
         matching = [(r, h) for r, h in matching if h]
         decided = next((r for r, h in matching if not r["scoped"]), None)
+        rank_info["ssl"] = _rank_compare(rank_setting, decided, [r for r, _ in matching], _sort_key, _ssl_default,
+                                         lambda rs: next((r for r in rs if not r["scoped"]), None), lambda r: r.get("decision"))
+        ssl_rank_caution = rank_info["ssl"]["caution"]
         exceptions = []
         for r, _ in matching:
             if r is decided:
@@ -1008,7 +1067,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # on who the user is only when it decides differently (no matching
         # rule leaves the traffic encrypted).
         everyone = decided["decision"] if decided else "not_inspected"
-        ssl_conditional = any(e["decision"] != everyone for e in exceptions)
+        ssl_conditional = any(e["decision"] != everyone for e in exceptions) or bool(ssl_rank_caution)
         decrypted = plaintext or (decided is not None and decided["decision"] == "inspected" and not ssl_conditional)
         ssl_out = "ssl" in nis and not plaintext
         ssl_unknown = decided is not None and decided["decision"] == "unknown"
@@ -1018,20 +1077,27 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # 5. Cloud App Control: evaluated with URL Filtering before SSL
         # inspection; when a rule matches the application, URL Filtering
         # is not applied.
-        cac = [(r, _cac_matches(r, dest)) for r in sorted(zia["cac"], key=_policy_order) if r["enabled"]]
+        cac = [(r, _cac_matches(r, dest)) for r in admin_rank.ordered(zia["cac"], _policy_order, ranked) if r["enabled"]]
         cac = [(r, m) for r, m in cac if m]
         cac_hit = cac[0][0] if cac else None
+        rank_info["cac"] = _rank_compare(rank_setting, cac_hit, [r for r, _ in cac], _policy_order, lambda r: False,
+                                         lambda rs: rs[0] if rs else None, lambda r: (tuple(r.get("actions") or []), r.get("action")))
         if "cac" in nis:
             hops.append(_hop("cac", "Cloud App Control", "out_of_scope", None,
                              nis["cac"] + " Whether an app control blocks or allows this application is not assessed; URL filtering is traced as if none matched.", None, why="not in scope"))
         elif ssl_conditional and cac:
             hops.append(_hop("cac", "Cloud App Control", "conditional", None,
-                             "Higher-precedence scoped SSL rules leave decryption conditional on identity; per-action application control is not established.",
+                             ("Admin ranking decides which SSL rule applies and it is not known (see SSL inspection); per-action application control is not established."
+                              if ssl_rank_caution else "Higher-precedence scoped SSL rules leave decryption conditional on identity; per-action application control is not established."),
                              None, candidate_rules=[r for r, _ in cac]))
         elif ssl_unknown and cac:
             hops.append(_hop("cac", "Cloud App Control", "unknown", None,
                              "An unrecognized SSL action leaves content visibility unresolved; per-action application controls are not established.",
                              None, candidate_rules=[r for r, _ in cac]))
+        elif cac and rank_info["cac"]["caution"]:
+            hops.append(_hop("cac", "Cloud App Control", "conditional", None, rank_info["cac"]["caution"], None,
+                             candidate_rules=[cac_hit, rank_info["cac"]["other"]], missing_context=["admin ranking"],
+                             rank_caution=rank_info["cac"]["caution"]))
         elif not decrypted and cac and not ssl_out:
             hops.append(_hop("cac", "Cloud App Control", "blind", {"name": cac[0][0]["name"], "id": cac[0][0]["id"]},
                              f"{len(cac)} rule(s) target this application ('{cac[0][0]['name']}' …) but without decryption Zscaler sees only the domain and cannot tell upload from browse: the per-action controls do not apply.",
@@ -1072,7 +1138,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             hops.append(_hop("url", "URL filtering", "out_of_scope", None,
                              nis["url"] + " Whether URL filtering blocks or cautions this destination is not assessed.", None, why="not in scope"))
         else:
-            url_rules = sorted([r for r in zia["url"] if r["enabled"] and proto_ok(r)], key=_policy_order)
+            url_rules = admin_rank.ordered([r for r in zia["url"] if r["enabled"] and proto_ok(r)], _policy_order, ranked)
             matching_url = [(r, m) for r in url_rules for m in [_generic_matches(r, dest)] if m
                             and (not request_method or not r["request_methods"] or request_method in r["request_methods"] or "ANY" in r["request_methods"])]
             unresolved = lambda r: r["scoped"] or (bool(r["request_methods"]) and "ANY" not in r["request_methods"] and not request_method)
@@ -1085,12 +1151,18 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             # Only a rule that would act differently makes the result depend on it.
             everyone_action = (hit[0]["action"] or "ALLOW") if hit else "ALLOW"
             scoped_before = [r for r in scoped_before if (r["action"] or "ALLOW") != everyone_action]
+            rank_info["url"] = _rank_compare(rank_setting, hit[0] if hit else None, [r for r, _ in matching_url], _policy_order, lambda r: False,
+                                             lambda rs: next((r for r in rs if not unresolved(r)), None), lambda r: r.get("action") or "ALLOW")
             if scoped_before:
                 hops.append(_hop("url", "URL filtering", "conditional", None,
                                  "Higher-precedence URL rules depend on an unverified identity or request method. No later global rule is treated as a confirmed decision.",
                                  None, candidate_rules=[r for r, _ in matching_url],
                                  missing_context=(["identity / rule scope"] if any(r["scoped"] for r in scoped_before) else [])
                                                  + (["request method"] if any(r["request_methods"] and "ANY" not in r["request_methods"] and not request_method for r in scoped_before) else [])))
+            elif hit and rank_info["url"]["caution"]:
+                hops.append(_hop("url", "URL filtering", "conditional", None, rank_info["url"]["caution"], None,
+                                 candidate_rules=[hit[0], rank_info["url"]["other"]], missing_context=["admin ranking"],
+                                 rank_caution=rank_info["url"]["caution"]))
             elif hit:
                 r, m = hit
                 if r["action"] in BLOCK_ACTIONS:
@@ -1115,6 +1187,9 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             elif ssl_out:
                 hops.append(_hop("ssl", "SSL inspection", "out_of_scope", None,
                                  nis["ssl"] + " Whether this traffic is decrypted, and so whether DLP can see its content, is not assessed.", None, why="not in scope"))
+            elif ssl_rank_caution and not any(e["decision"] != everyone for e in exceptions):
+                hops.append(_hop("ssl", "SSL inspection", "conditional", None, ssl_rank_caution, None,
+                                 candidate_rules=[decided, rank_info["ssl"]["other"]], missing_context=["admin ranking"], rank_caution=ssl_rank_caution))
             elif ssl_conditional:
                 hops.append(_hop("ssl", "SSL inspection", "conditional", None,
                                  "Higher-precedence scoped SSL rules require identity evidence. Whether this traffic is decrypted, passed encrypted or blocked is conditional.",
@@ -1145,10 +1220,12 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
 
         # 9. File Type Control
         if ends not in ("ssl", "url", "cac"):
-            ftc = [(r, _generic_matches(r, dest)) for r in sorted(zia["ftc"], key=_policy_order) if r["enabled"] and proto_ok(r)
+            ftc = [(r, _generic_matches(r, dest)) for r in admin_rank.ordered(zia["ftc"], _policy_order, ranked) if r["enabled"] and proto_ok(r)
                    and (not operation or r["operation"] in (operation, "", "ANY") or (r["operation"] == "UPLOAD_DOWNLOAD" and operation in ("UPLOAD", "DOWNLOAD")))
                    and (not file_types or not r["file_types"] or "ANY" in r["file_types"] or bool(file_types & set(r["file_types"])))]
             ftc = [(r, m) for r, m in ftc if m]
+            rank_info["ftc"] = _rank_compare(rank_setting, ftc[0][0] if ftc else None, [r for r, _ in ftc], _policy_order, lambda r: False,
+                                             lambda rs: rs[0] if rs else None, lambda r: r.get("action"))
             if "ftc" in nis:
                 hops.append(_hop("ftc", "File Type Control", "out_of_scope", None,
                                  nis["ftc"] + " Whether a file type rule limits uploads here is not assessed.", None, why="not in scope"))
@@ -1163,6 +1240,10 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             elif not decrypted:
                 hops.append(_hop("ftc", "File Type Control", "blind", None,
                                  "The traffic remains encrypted. File-type content inspection cannot be established.", None))
+            elif ftc and rank_info["ftc"]["caution"]:
+                hops.append(_hop("ftc", "File Type Control", "conditional", None, rank_info["ftc"]["caution"], None,
+                                 candidate_rules=[ftc[0][0], rank_info["ftc"]["other"]], missing_context=["admin ranking"],
+                                 rank_caution=rank_info["ftc"]["caution"]))
             elif ftc:
                 r, m = ftc[0]
                 missing = (["operation"] if not operation else []) + (["file type"] if not file_types else []) + (["identity / rule scope"] if r["scoped"] else [])
@@ -1182,7 +1263,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # 11. Inline Web DLP
         covering: List[Dict[str, Any]] = []
         if ends not in ("ssl", "url", "cac", "ftc"):
-            for r in zia["dlp"]:
+            for r in admin_rank.ordered(zia["dlp"], _policy_order, ranked):
                 if not r["enabled"] or not proto_ok(r):
                     continue
                 if r["catch_all"] or (set(r["url_categories"]) & set(cats)) or (set(r["cloud_applications"]) & set(apps)):
@@ -1220,6 +1301,8 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                                  _weak("medium", "Ungoverned", "Deploy a policy pack (Deploy Policy Packs) or scope a Web DLP rule to this traffic; start in monitor mode.")))
             else:
                 eligible = [r for r in covering if not r.get("scope")]
+                rank_info["dlp"] = _rank_compare(rank_setting, eligible[0] if eligible else None, covering, _policy_order, lambda r: False,
+                                                 lambda rs: next((r for r in rs if not r.get("scope")), None), lambda r: r.get("action"))
                 enforcing = [r for r in eligible if r["enforcing"]]
                 content = [r for r in eligible if not r["without_content_inspection"] and r.get("engines")]
                 status = "conditional" if not eligible else "metadata_only" if not content else "enforce" if enforcing else "monitor"
@@ -1259,6 +1342,22 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                                  None if forwarders or icap else _weak("medium", "No evidence forwarding configured", "Verify a supported Incident Receiver delivery integration and its storage/event configuration before relying on Workflow Automation incidents."),
                                  forwarders=[r["name"] for r in forwarders], icap_forwarders=[r["name"] for r in icap],
                                  delivery_status="unverified", observed=False, notifiers=[r["name"] for r in notifiers]))
+
+        # Admin ranking on each decision: the rank next to the order, and
+        # which of the two decided (admin_rank).
+        for h in hops:
+            info = rank_info.get(h.get("key"))
+            if not info:
+                continue
+            _rank_note(h, info, ranked)
+            if info.get("caution") and not h.get("rank_caution") and h.get("status") not in ("out_of_scope", "not_reached", "na", "unknown"):
+                h["rank_caution"] = info["caution"]
+                h["detail"] = (str(h.get("detail") or "").rstrip() + " " + info["caution"]).strip()
+            if ranked and isinstance(h.get("rules"), list):
+                for x in h["rules"]:
+                    src = next((r for r in zia.get(h["key"]) or [] if admin_rank.same_rule(r, x)), None)
+                    if isinstance(x, dict) and src is not None:
+                        x["rank"] = admin_rank.shown_rank(src)
 
     # These are separate-channel inventories, never tests of the web payload.
     channels = {}
@@ -1349,7 +1448,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             "weak_points": weak_points, "outcome": outcome, "reaches_zscaler": reaches_zscaler, "decrypted": decrypted,
             "not_in_scope": nis, "conditional": conditional, "plaintext": plaintext,
             "policy_conditional": any(h["status"] == "conditional" and h["key"] != "incident" for h in hops),
-            "tested_channel": "web", "evidence_mode": "configuration", "content_inspected": False,
+            "tested_channel": "web", "evidence_mode": "configuration", "content_inspected": False, "admin_ranking": admin_ranking,
             "content_inspection_possible": bool(decrypted and not ends and any(h.get("content_inspection_possible") for h in hops)),
             "connector_inventory": connector_references(zcc), "required_controls": zia.get("required_controls", (scope or {}).get("required_controls", []))}
 
@@ -1450,7 +1549,8 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
             "scope": ({"summary": scope.get("summary"), "read": list(scope.get("read") or []), "not_in_scope": dict(scope.get("not_in_scope") or {}),
                        "source": scope.get("source") or "", "required_controls": zia.get("required_controls", []), "read_blocked": dict(scope.get("read_blocked") or {})} if scope else None),
             "snapshot": {"zia": dict({k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue")},
-                                     not_in_scope=zia.get("not_in_scope") or {}, required_controls=zia.get("required_controls", [])),
+                                     not_in_scope=zia.get("not_in_scope") or {}, required_controls=zia.get("required_controls", []),
+                                     admin_ranking=admin_rank.recorded(zia.get("admin_ranking"))),
                          "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"), "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                         for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},
             "sources": {"client_connector": "/zcc/webPolicies, /zcc/forwardingProfiles, /zcc/trustedNetworks", "pac": "/zia/pacFiles",

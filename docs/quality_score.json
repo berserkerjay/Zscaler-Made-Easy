@@ -275,7 +275,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 119,
+            "fixed": 120,
             "accepted": 3,
             "records": [
               "c6-assessment",
@@ -436,7 +436,7 @@
     }
   ],
   "counts": {
-    "findings": 575,
+    "findings": 576,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -450,7 +450,7 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 157,
+        "fixed": 158,
         "accepted": 0
       },
       "low": {
@@ -3220,6 +3220,22 @@
       "fix": "The sharing fingerprint strips trailing dots, includes the address family and evaluates the PAC for the row's own URL",
       "test": "tests/test_qa_func_path.py::test_a_list_relates_rows_to_list_entries_written_with_a_trailing_dot",
       "commit": "fea4d7d",
+      "reason": "",
+      "slug": "func-path",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "FUNC-PATH-23",
+      "title": "Which rule applies ignored ZIA admin ranking: rules were taken by order alone even with Admin Ranking on",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-670",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "admin_rank orders ranked policies by admin rank, then order, when the setting is on; unknown or not in scope is cautioned, never guessed",
+      "test": "tests/test_admin_rank.py",
+      "commit": "",
       "reason": "",
       "slug": "func-path",
       "area": "functionality",
@@ -10331,7 +10347,7 @@
         "CWE-863"
       ],
       "checks": 25,
-      "findings": 22,
+      "findings": 23,
       "tests_added": 46
     },
     {

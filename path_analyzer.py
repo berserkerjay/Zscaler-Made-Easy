@@ -28,6 +28,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlsplit
 
+import admin_rank
 import zia_path_modules
 from data_flow import (NETWORKS, NOTHING_IN_SCOPE, PATH_SECTIONS, PLATFORMS, ReadStopped, full_path_scope, load_packs,  # noqa: F401
                        path_scope, read_client_connector, read_zia, resolve_destination, stop_on, stop_requested, trace, unread_sections)
@@ -173,6 +174,8 @@ def _snapshot_zia(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     zia = dict(snapshot["snapshot"]["zia"])
     zia["categories"] = snapshot["snapshot"].get("categories") or {}
     zia.setdefault("unread", unread_sections(snapshot.get("diagnostics")))
+    # A read kept from before admin ranking was recorded: unknown, never off.
+    zia["admin_ranking"] = admin_rank.recorded(zia.get("admin_ranking"))
     for r in zia.get("dlp", []):
         r.setdefault("enforcing", str(r.get("action", "")).upper() in ("BLOCK", "CONFIRM", "ICAP_RESPONSE"))
         r.setdefault("without_content_inspection", False)
@@ -317,14 +320,14 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
           "scopes": list(scope.get("scopes") or []), "channels": dict(scope.get("channels") or {})}
     assumptions = [a if traffic["web"] and traffic["encrypted"] or not a.startswith("Browser traffic over HTTPS") else
                    f"{traffic['label']} traffic from a managed device running Client Connector on the platform you chose, on the network you chose."
-                   for a in ASSUMPTIONS] + zia_path_modules.ASSUMPTIONS + traffic["notes"]
+                   for a in ASSUMPTIONS] + zia_path_modules.ASSUMPTIONS + [admin_rank.describe(zia.get("admin_ranking"))] + traffic["notes"]
     if ident:
         assumptions[0] = path_whatif.assumption(ident)
     if scope["not_in_scope"]:
         assumptions.append("Only what is in scope on the Scope page was read; these parts are not in scope and their hops are not assessed: "
                            + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
     out = {"required_controls": zia.get("required_controls", []), "destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
-           "zia_modules": zm,
+           "zia_modules": zm, "admin_ranking": admin_rank.recorded(zia.get("admin_ranking")),
            # The steps before ZIA in the shared hop shape (the evaluated PAC
            # file here; zpa_path.merge puts ZPA and the connector in front).
            "modules": [h["module_hop"] for h in t.get("hops") or [] if h.get("module_hop")],
@@ -337,7 +340,8 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     out["recent_traffic"] = insights.recent_traffic_for_host(d["host"], "insights" in (scope.get("scopes") or []))
     if snapshot is None:
         out["snapshot_for_cache"] = {"client_connector": zcc, "path_scope": scope["key"],
-                                     "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue", "not_in_scope", "required_controls", "modules")},
+                                     "snapshot": {"zia": dict({k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue", "not_in_scope", "required_controls", "modules")},
+                                                          admin_ranking=admin_rank.recorded(zia.get("admin_ranking"))),
                                                   "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"),
                                                                      "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                                                  for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},
@@ -590,7 +594,13 @@ def batch_row(host: str, res: Dict[str, Any], stats: Optional[Dict[str, Any]] = 
             "outcome": BATCH_OUTCOMES.get(outcome, outcome or "unverified"), "outcome_key": outcome,
             "stops_at": v.get("stops_at") or ("reaches the destination" if outcome not in ("bypassed", "blocked") else ""),
             "deciding_rule": deciding or "", "dlp_rules": rules, "headline": v.get("headline") or "",
-            "categories": list(v.get("categories") or [])}
+            "categories": list(v.get("categories") or []),
+            # Admin ranking (admin_rank): where rank, not order, decided, and
+            # where it would decide differently but could not be read.
+            "decided_by_rank": [m["module"] for m in (res.get("zia_modules") or {}).get("modules") or [] if m.get("decided_by") == "rank"]
+            + (["SSL inspection"] if ((res.get("zia_modules") or {}).get("modifier") or {}).get("decided_by") == "rank" else []),
+            "admin_rank_caution": next((m["admin_rank_caution"] for m in [((res.get("zia_modules") or {}).get("modifier") or {})]
+                                        + list((res.get("zia_modules") or {}).get("modules") or []) if m.get("admin_rank_caution")), "")}
 
 
 def analyze_batch(client, hosts: List[str], network: str = "off", platform: str = "windows", *,

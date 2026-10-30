@@ -283,9 +283,13 @@ def depends_on(zia: Dict[str, Any], dest: Dict[str, Any], ident: Optional[Dict[s
     section, action, otherwise, otherwise_rule. `zia` may be an
     apply_identity copy: conditions already met by the identity show as
     "match"; rules it excludes are not listed."""
+    import admin_rank
     from data_flow import _cac_matches, _generic_matches
     from ssl_flow import _matches, _sort_key
     nis = not_in_scope or {}
+    # Evaluation order: by admin rank first when admin ranking is on
+    # (admin_rank), else by rule order, as the trace orders them.
+    ranked = admin_rank.state_of(zia.get("admin_ranking")) == admin_rank.ON
     cats, apps = list(dest.get("categories") or []), list(dest.get("applications") or [])
     klass = {"catch_all": dest.get("kind") == "class" and dest.get("class") == "general"}
     entries: List[Dict[str, Any]] = []
@@ -294,22 +298,22 @@ def depends_on(zia: Dict[str, Any], dest: Dict[str, Any], ident: Optional[Dict[s
             continue
         rules = [r for r in zia.get(sec) or [] if isinstance(r, dict) and r.get("enabled")]
         if sec == "ssl":
-            rules = sorted(rules, key=_sort_key)
+            rules = admin_rank.ordered(rules, _sort_key, ranked, lambda r: bool(r.get("default_rule")))
             hit = lambda r: bool(_matches(r, klass, cats, apps))  # noqa: E731
             act = lambda r: str(r.get("action") or "")  # noqa: E731
             default = "not decrypted (no SSL rule matches)"
         elif sec == "cac":
-            rules = sorted(rules, key=_order)
+            rules = admin_rank.ordered(rules, lambda r: (_order(r), str(r.get("id") or "")), ranked)
             hit = lambda r: bool(_cac_matches(r, dest))  # noqa: E731
             act = lambda r: ", ".join(r.get("actions") or []) or str(r.get("action") or "")  # noqa: E731
             default = "no app rule (URL filtering decides)"
         elif sec == "dlp":
-            rules = sorted(rules, key=_order)
+            rules = admin_rank.ordered(rules, lambda r: (_order(r), str(r.get("id") or "")), ranked)
             hit = lambda r: bool(r.get("catch_all") or set(r.get("url_categories") or []) & set(cats) or set(r.get("cloud_applications") or []) & set(apps))  # noqa: E731
             act = lambda r: str(r.get("action") or "")  # noqa: E731
             default = "no DLP rule"
         else:
-            rules = sorted(rules, key=_order)
+            rules = admin_rank.ordered(rules, lambda r: (_order(r), str(r.get("id") or "")), ranked)
             hit = lambda r: bool(_generic_matches(r, dest))  # noqa: E731
             act = lambda r: str(r.get("action") or "ALLOW")  # noqa: E731
             default = "ALLOW (no rule matches; the default applies)" if sec == "url" else "no file type rule"
@@ -329,14 +333,15 @@ def depends_on(zia: Dict[str, Any], dest: Dict[str, Any], ident: Optional[Dict[s
                 continue
             entries.append({
                 "module": sec, "verdict": action,
-                "rule": {"name": r.get("name"), "order": r.get("order"), "id": r.get("id")},
+                "rule": dict({"name": r.get("name"), "order": r.get("order"), "id": r.get("id")},
+                             **({"rank": admin_rank.shown_rank(r)} if ranked and admin_rank.shown_rank(r) is not None else {})),
                 "overlaps": [],
                 "criteria": [{"name": c["name"], "state": c["state"]} for c in crit],
                 "notes": [f"Otherwise: {otherwise}" + (f" (rule '{fallback.get('name')}')" if fallback else "") + "."],
                 "section": SECTION_LABEL[sec], "action": action, "otherwise": otherwise,
                 "otherwise_rule": fallback.get("name") if fallback else None,
                 "conditions": [{"kind": LABEL.get(c["dim"], c["dim"]), "values": c["values"], "state": c["state"]} for c in crit],
-                "_rank": (_weight(sec, action, otherwise), SECTIONS.index(sec), _order(r)),
+                "_rank": (_weight(sec, action, otherwise), SECTIONS.index(sec), admin_rank.rank_of(r) if ranked else 0, _order(r)),
             })
     entries.sort(key=lambda e: e["_rank"])
     for e in entries:

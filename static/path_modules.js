@@ -28,7 +28,11 @@
 // catch-all or default rules also match), could_override ([{ name, order,
 // action, criteria, detail }]: earlier rules with an unknown criterion and
 // another outcome), modifier (true: it changes what later modules see, like
-// SSL inspection), position (its place in the order).
+// SSL inspection), position (its place in the order). Admin ranking
+// (admin_rank.py): rule and overlap entries may carry rank (shown before the
+// order), decided_by ('rank' | 'order') says which decided, and
+// admin_rank_caution is the sentence shown when ranking is not known and
+// would decide differently.
 //
 // API: PathModules.render(hops) -> HTML (an ordered list);
 //      PathModules.hop(hop) -> HTML for one hop;
@@ -58,7 +62,9 @@
   }
   function ruleText(r) {
     if (!r || !r.name) return '';
-    const where = r.default ? 'default rule' : (r.order != null && r.order !== '' ? `order ${r.order}` : '');
+    // The admin rank sits next to the order when admin ranking is on (admin_rank.py).
+    const ord = r.order != null && r.order !== '' ? `order ${r.order}` : '';
+    const where = r.default ? 'default rule' : (r.rank != null ? `rank ${r.rank}${ord ? `, ${ord}` : ''}` : ord);
     return `<code>${E(r.name)}</code>${where ? ` <span class="df-by">(${E(where)})</span>` : ''}${r.action ? ` <span class="df-by">${E(r.action)}</span>` : ''}`;
   }
   function criteriaTable(list, caption) {
@@ -68,8 +74,8 @@
   }
   function ruleRows(list) {
     return `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Rules</caption>
-      <thead><tr><th scope="col">Rule</th><th scope="col">Order</th><th scope="col">Action</th><th scope="col">Outcome</th></tr></thead>
-      <tbody>${list.map(o => `<tr><td><code>${E(o.name)}</code>${o.detail ? `<div class="df-hop-d">${E(o.detail)}</div>` : ''}</td><td>${E(o.order == null ? '' : o.order)}</td><td>${E(o.action || '')}</td><td>${o.differs ? 'different' : 'same'}</td></tr>`).join('')}</tbody></table></div>`;
+      <thead><tr><th scope="col">Rule</th><th scope="col">${list.some(o => o.rank != null) ? 'Rank, order' : 'Order'}</th><th scope="col">Action</th><th scope="col">Outcome</th></tr></thead>
+      <tbody>${list.map(o => `<tr><td><code>${E(o.name)}</code>${o.detail ? `<div class="df-hop-d">${E(o.detail)}</div>` : ''}</td><td>${E(o.rank != null ? `rank ${o.rank}, ` : '')}${E(o.order == null ? '' : o.order)}</td><td>${E(o.action || '')}</td><td>${o.differs ? 'different' : 'same'}</td></tr>`).join('')}</tbody></table></div>`;
   }
   // Overlaps, compressed to one line; the rules themselves on demand.
   function overlapsHtml(h) {
@@ -93,10 +99,11 @@
     const crit = h.criteria || [];
     const showRule = h.rule && h.rule.name;
     return `<li class="df-hop st-${E(cls)} pm-hop" data-module="${E(h.key || h.module)}">
-      <div class="df-hop-h">${h.position != null ? `<span class="df-by">${E(h.position)}.</span>` : ''}<strong>${E(h.module)}</strong>${chip(VERDICT, h.verdict)}${h.modifier ? '<span class="df-by">modifier</span>' : ''}${h.certainty === 'conditional' && h.verdict !== 'conditional' ? chip(VERDICT, 'conditional') : ''}</div>
+      <div class="df-hop-h">${h.position != null ? `<span class="df-by">${E(h.position)}.</span>` : ''}<strong>${E(h.module)}</strong>${chip(VERDICT, h.verdict)}${h.modifier ? '<span class="df-by">modifier</span>' : ''}${h.certainty === 'conditional' && h.verdict !== 'conditional' ? chip(VERDICT, 'conditional') : ''}${h.decided_by === 'rank' ? '<span class="df-by">decided by admin rank</span>' : ''}</div>
       ${h.detail ? `<div class="df-hop-d">${E(h.detail)}</div>` : ''}
       ${showRule ? `<div class="df-hop-d pm-rule"><strong>Deciding rule:</strong> ${ruleText(h.rule)}</div>` : ''}
       ${showRule ? (crit.length ? criteriaTable(crit, `Criteria of ${h.rule.name}`) : '<div class="df-hop-d">No conditions: this rule matches all traffic that reaches it.</div>') : ''}
+      ${h.admin_rank_caution && !String(h.detail || '').includes(h.admin_rank_caution) ? `<div class="df-hop-d pm-note"><strong>Admin ranking:</strong> ${E(h.admin_rank_caution)}</div>` : ''}
       ${overlapsHtml(h)}${couldHtml(h)}
       ${(h.notes || []).map(n => `<div class="df-hop-d pm-note">${E(n)}</div>`).join('')}
     </li>`;
