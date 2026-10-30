@@ -6,7 +6,7 @@ It scores this app (Zscaler Made Easy), not a customer tenant. The Advanced sett
 
 **Overall: 100 / 100, grade A (Strong).** Tests pass, no serious finding is open and the standards are well covered.
 
-Run: commit `1b0557d31af8`, 2026-10-30T04:59:58. 21678 passed, 0 failed, 0 errors, 14 skipped, 2555.3 s.
+Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 errors, 14 skipped, 2714.5 s.
 
 - No findings record yet for: Supply chain. Their scores leave the findings part out.
 
@@ -14,14 +14,14 @@ Run: commit `1b0557d31af8`, 2026-10-30T04:59:58. 21678 passed, 0 failed, 0 error
 
 | Area | Sub-area | Score | Tests | Findings (open) | Standards covered | Based on |
 |---|---|---|---|---|---|---|
-| Regression (100, weight 25) | Regression | **100** | 100 (21678 passed, 0 failed) | 100 (0) | 100 (4 of 4) | tests, findings, coverage |
+| Regression (100, weight 25) | Regression | **100** | 100 (21711 passed, 0 failed) | 100 (0) | 100 (4 of 4) | tests, findings, coverage |
 | Secure by design (100, weight 35) | Write paths | **100** | 100 (2477 passed, 0 failed) | 100 (0) | 100 (9 of 9) | tests, findings, coverage |
 | Secure by design (100, weight 35) | Untrusted input | **100** | 100 (2902 passed, 0 failed) | 100 (0) | 100 (13 of 13) | tests, findings, coverage |
 | Secure by design (100, weight 35) | Auth, scope and secrets | **100** | 100 (4212 passed, 0 failed) | 100 (0) | 100 (12 of 12) | tests, findings, coverage |
 | Secure by design (100, weight 35) | Supply chain | **100** | 100 (322 passed, 0 failed) | no record | 100 (13 of 13) | tests, coverage |
 | Functionality (100, weight 25) | Traffic analysis | **100** | 100 (3738 passed, 0 failed) | 100 (0) | 100 (5 of 5) | tests, findings, coverage |
 | Functionality (100, weight 25) | Builders | **100** | 100 (1723 passed, 0 failed) | 100 (1) | 100 (6 of 6) | tests, findings, coverage |
-| Functionality (100, weight 25) | UI and accessibility | **100** | 100 (2303 passed, 0 failed) | 100 (0) | 100 (11 of 11) | tests, findings, coverage |
+| Functionality (100, weight 25) | UI and accessibility | **100** | 100 (2336 passed, 0 failed) | 100 (0) | 100 (11 of 11) | tests, findings, coverage |
 | Motion (100, weight 15) | Motion | **100** | 100 (833 passed, 0 failed) | 100 (0) | 100 (6 of 6) | tests, findings, coverage |
 
 ## Findings
@@ -31,7 +31,7 @@ Run: commit `1b0557d31af8`, 2026-10-30T04:59:58. 21678 passed, 0 failed, 0 error
 | critical | 0 | 0 | 0 |
 | high | 0 | 13 | 0 |
 | medium | 0 | 158 | 0 |
-| low | 0 | 335 | 0 |
+| low | 0 | 337 | 0 |
 | info | 1 | 48 | 22 |
 
 ### Regression
@@ -580,6 +580,8 @@ Run: commit `1b0557d31af8`, 2026-10-30T04:59:58. 21678 passed, 0 failed, 0 error
 | GLASS-02 | Accent text on --accent-tint (the hero badge, a selected tab) dropped to 4.37 to 4.42:1 over translucent glass in the dark theme, because the tint is itself see-through | low | CWE-684 | V14.4 | fixed | UI and accessibility | static/glass.css: with the glass on, --accent-tint is mixed into the opaque card (14% dark, 12% light), as the status chips are | tests/test_glass.py::test_accent_text_on_its_tint_is_independent_of_the_glass |
 | GLASS-03 | The sticky details panel of the Deploy flow page (an rp-card) was panel-tier glass: with content able to pass behind a sticky surface, its text fell to 2.1:1 in the worst case | low | CWE-684 | V14.4 | fixed | UI and accessibility | static/glass.css: .rp-card.fl-side uses the floating tier (95% / 90% opaque) | tests/test_glass_browser.py::test_text_on_glass_meets_aa_against_the_worst_backdrop |
 | GLASS-04 | A backdrop-filter on the sidebar made it the containing block of the sidebar's fixed drag-and-drop marker (sidebar_order.js), so the marker would be placed against the scrolled sidebar instead of the window | low | CWE-684 | V14.4 | fixed | UI and accessibility | static/glass.css: the sidebar keeps the floating tint but no blur (only the still wash is behind it) | tests/test_glass_browser.py::test_blur_stays_on_a_few_chrome_layers |
+| GLASS-08 | Blurring every card made a card taller than the window (the Advanced settings card is about 11,000 px) a backdrop-filter render surface the size of the page: headless Chrome drew large black areas, and a GPU may refuse a surface that tall | low | CWE-400 | V14.4 | fixed | UI and accessibility | static/glass.js marks a card or dialog card that fits the window with .glass-fit (ResizeObserver, debounced MutationObserver for new cards); static/glass.css blurs only those | tests/test_glass_browser.py::test_short_cards_are_real_glass_and_tall_ones_are_not_blurred |
+| GLASS-09 | The extension's tokens.css said it carried the app's values but did not: white on its dark primary button (#0a84ff) was 3.6:1 and its light success green (#248a3d) 4.4:1 on white, so no backdrop could be added without text failing AA | low | CWE-684 | V14.4 | fixed | UI and accessibility | browser_extension/tokens.css: the app's accessible text and fill colours in both schemes | tests/test_glass.py::test_extension_white_on_a_primary_capsule_meets_aa |
 | REVIEW-UI-02 | Live path steps drawn as not reached, not in scope or pending faded their text to 1.5 to 3.6:1, yet they are focusable buttons | low | — | WCAG 2.2 SC 1.4.3 | fixed | UI and accessibility | static/flow_anim.css: only the outline fades (dotted or dashed); the title and line keep full --text and --dim | tests/test_accessibility.py::test_faded_path_steps_keep_their_text_at_aa_contrast |
 | REVIEW-UI-03 | The help line of every write control named three gates (no writer) and promised a typed confirmation that self-heal Undo does not ask for; heal and queue apply left out the writer or the assessor | low | CWE-1059 | V4.1.3 | fixed | UI and accessibility | static/hover_help.js names write mode, a writer, the named assessor and the confirmation; the heal, Undo and queue apply entries name their writer and assessor | tests/test_c6_tooltips.py::test_the_write_line_names_all_four_gates |
 | REVIEW-UI-04 | The confirmation-phrase help and the dialog's error said to type it with the underscores (I UNDERSTAND has a space), and the help called the consent step tenant-free | low | CWE-1059 | WCAG 2.2 SC 3.3.2 | fixed | UI and accessibility | help_catalog.js: Type the phrase shown above exactly as shown, with a new confirm effect line; ui_auth.js: Type it exactly as shown above | tests/test_c6_tooltips.py::test_the_confirmation_phrase_help_says_type_it_as_shown |
@@ -654,7 +656,7 @@ Run: commit `1b0557d31af8`, 2026-10-30T04:59:58. 21678 passed, 0 failed, 0 error
 | c6-zpa | zpa | ZPA builder, reader, analysis, overview and Path stage | 18 | 19 | 149 |
 | func-builders | Functional correctness of everything that builds or changes: the Build new plugins (ZIA baseline and SSL certificate manager, ZPA, Client Connector, ZDX, AI Guard), the classic Bulk changes types, pack deploy and remove, remediation, self-healing, POV, readiness, the sample tenant and snapshot compare | Every builder run through preview, apply, read-back, re-run, Undo and re-apply on a stateful fake tenant behind the real zscaler-sdk-python 1.11.3 services, with every request body checked against the SDK's models | 16 | 12 | 169 |
 | func-path | Functional correctness of traffic analysis: Path analyzer (ZIA modules, ZPA, workloads, PAC, what-if), Test a list, Data Flow Map, SSL flow and SSL coverage, ZPA diagnostics | Oracle, property, edge, wording and arithmetic checks of every traffic-analysis answer | 25 | 23 | 46 |
-| glass | UI and accessibility: the glass effect (static/glass.css, static/glass.js) on every page styled by the app's stylesheet, its solid fallbacks and the Advanced settings switch | Glass effect checked for WCAG 2.2 AA contrast against the worst case behind each surface, every solid fallback, reflow, focus, motion and blur cost, statically and in Chrome on the sample tenant | 9 | 7 | 308 |
+| glass | UI and accessibility: the glass effect (static/glass.css, static/glass.js, browser_extension/glass.css) on every page styled by the app's stylesheet and on the extension's pages, its living backdrop, its solid and still fallbacks and the Advanced settings switch | Glass effect checked for WCAG 2.2 AA contrast against the worst case behind each surface, every solid fallback, reflow, focus, motion and blur cost, statically and in Chrome on the sample tenant | 11 | 9 | 340 |
 | motion-zpa | Live motion: ZPA analysis, Traffic insights, Live DLP feed, Bypass report | Moving flows on four report pages, drawn on the Flow animator engine from each page's own result | 10 | 0 | 62 |
 | regression | regression | Everything that worked before the Wave 5 merge (#95) still works after it | 17 | 4 | 487 |
 | review-backend | Wave 6 review: backend fixes (scope, run lock, one IDN encoder, one pack reader, integration tidy-ups) | Backend items of the orchestrated Wave 6 review: change-queue fix recipes, deployment Undo, host-name encoding, pack-file reading, remediation and AI Guard wording | 7 | 7 | 18 |
