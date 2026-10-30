@@ -107,6 +107,10 @@ window.WHATS_NEW = {
         {
           "page": "/report/team",
           "at": "#tmShareH"
+        },
+        {
+          "page": "/report/team",
+          "at": "#tmShKind"
         }
       ]
     },
