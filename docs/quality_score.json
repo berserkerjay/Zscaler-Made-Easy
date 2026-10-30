@@ -317,12 +317,13 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 48,
-            "accepted": 0,
+            "fixed": 52,
+            "accepted": 1,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
-              "func-builders"
+              "func-builders",
+              "w7-rank-inherit"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 584,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -450,27 +451,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 158,
+        "fixed": 159,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 340,
         "accepted": 0
       },
       "info": {
         "open": 1,
         "fixed": 48,
-        "accepted": 22
+        "accepted": 23
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 314,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8662
   },
   "findings": [
     {
@@ -824,6 +825,22 @@
       "slug": "c6-zpa",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "RANKINH-05",
+      "title": "Review & remediate fix recipes (remediation.py) still create a rule with the order and rank typed in their form (rank 7 by default), not the inherited rank",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1188",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "The operator types the rule's order and admin rank in that form (with a hint), so the rank is the operator's explicit choice; the builders and packs that choose a place themselves now pick the rank too.",
+      "slug": "w7-rank-inherit",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "UI-18",
@@ -3240,6 +3257,22 @@
       "slug": "func-path",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "RANKINH-01",
+      "title": "Every builder and pack wrote rank 7 whatever the tenant's Admin Ranking: with it on, a rule asked for at order 1 (AI Guard's SSL Inspect, forwarding and allow rules, pack rules) was evaluated after every rule of rank 0-6, so it was not first and the preview did not say so",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-841",
+      "asvs": "V1.4.1",
+      "wcag": "",
+      "fix": "rank_inherit.place: the rank of the rule placed above (or just above, going last), never one the client cannot assign; used by ops_aiguard, ops_zia_baseline and pack_deploy; the preview lists each rule's rank and why",
+      "test": "tests/test_rank_inherit.py::test_ai_guard_ssl_inspect_rule_takes_the_rank_it_needs",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rank-inherit",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "REGRESSION-01",
@@ -8266,6 +8299,54 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "RANKINH-02",
+      "title": "When the API role's admin rank was too low for the rank a rule needed, nothing warned that the rule would land below higher-rank rules",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "V1.4.1",
+      "wcag": "",
+      "fix": "rank_inherit.caller infers the client's rank from accessControl (assumed, said); a rank above it is replaced by one it may assign, the order sent is where ZIA will keep it, and the preview warns it is not first",
+      "test": "tests/test_rank_inherit.py::test_ai_guard_warns_when_the_api_role_rank_is_too_low_for_order_1",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rank-inherit",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "RANKINH-03",
+      "title": "Read-back did not check the rank ZIA stored (AI Guard, baseline creates, certificate moves, reorders, pack deploys), so a rank ZIA changed or dropped went unreported",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V7.2.1",
+      "wcag": "",
+      "fix": "rank_inherit.stored compares the stored rank (and order where nothing else moves it) with what was sent; each builder's verify and the pack read-back report both values",
+      "test": "tests/test_rank_inherit.py::test_reorder_read_back_reports_a_rank_zia_did_not_keep",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rank-inherit",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "RANKINH-04",
+      "title": "A Bulk changes reorder moved a rule without the rank its new place needs (with Admin Ranking on ZIA keeps it with its own rank), and its Undo could not put a rank back",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-841",
+      "asvs": "V11.1.1",
+      "wcag": "",
+      "fix": "admin_ops._plan_reorder: rank_inherit.place_moves plans the rank change with the move (send_rank, conflict guard on the rank); inverse carries ranks; rule_rank handler for a rank-only Undo step",
+      "test": "tests/test_rank_inherit.py::test_reorder_undo_puts_back_order_and_rank",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rank-inherit",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "REGRESSION-02",
       "title": "Log analyzer: a DIRECT condition written in a PAC helper function (isCorp(host)) was no longer listed as a bypass",
       "severity": "low",
@@ -10634,6 +10715,32 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-rank-inherit",
+      "area": "Builders: the admin rank of the rules AI Guard routing, the ZIA security baseline, the SSL certificate move, a policy pack deploy and a Bulk changes reorder create or move (rank_inherit.py)",
+      "title": "New and moved rules take the admin rank they need with Admin Ranking on, never one the API client cannot assign; preview, read-back and Undo cover the rank",
+      "standards": [
+        "ASVS V1.4.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.3.3",
+        "ASVS V7.2.1",
+        "ASVS V7.4.1",
+        "ASVS V11.1.1",
+        "CWE-20",
+        "CWE-79",
+        "CWE-272",
+        "CWE-367",
+        "CWE-754",
+        "CWE-755",
+        "CWE-841",
+        "CWE-1188",
+        "WCAG 2.2 SC 1.3.1"
+      ],
+      "checks": 11,
+      "findings": 5,
+      "tests_added": 60
     }
   ],
   "standards": {
@@ -10653,7 +10760,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",

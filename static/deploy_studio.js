@@ -161,6 +161,10 @@ function _dzCreds() {
 function _dzScope() {
   try { return (typeof scopePageSelection === 'function') ? scopePageSelection() : {}; } catch (e) { return {}; }
 }
+// The ticked scopes go with the preflight, the deploy and an approval request:
+// with ZIA platform ticked the plan reads Admin Ranking, so each new rule takes
+// the admin rank it needs (not rank 7). The same list each time, or the plan changes.
+function _dzRankScopes() { const s = _dzScope().scopes; return Array.isArray(s) ? s : []; }
 const _dzE = s => escapeHtml(String(s == null ? '' : s));
 // A pack push (deploy or Terraform hand-off) names the assessor in every
 // object it creates, never Zscaler Made Easy, so it needs the name first.
@@ -689,7 +693,7 @@ async function _dzRunPreflight() {
   try {
     const r = await fetch('/api/dlp-packs/preflight', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), scopes: _dzRankScopes(), ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
@@ -706,9 +710,13 @@ async function _dzRunPreflight() {
 function _dzRow(i, statusKey, extra) {
   const st = DZ_STATUS[statusKey] || { label: statusKey, cls: 'st-reuse', icon: '•' };
   const reason = extra || i.reason || i.error || '';
+  // The admin rank a new rule takes and why (rank_inherit), and what the read-back found.
+  const rk = i.rank_plan;
+  const rankLine = rk ? `Admin rank ${rk.rank}${rk.order ? `, order ${rk.order}` : ''}: ${rk.why || ''}` : '';
+  const stored = i.stored ? `Read back: ${i.stored}.` : '';
   return `<div class="dz-row ${st.cls}">
     <span class="ic" aria-hidden="true">${st.icon}</span>
-    <div><div class="nm">${_dzE(i.name)}</div>${reason ? `<div class="rs">${_dzE(reason)}</div>` : ''}</div>
+    <div><div class="nm">${_dzE(i.name)}</div>${reason ? `<div class="rs">${_dzE(reason)}</div>` : ''}${rankLine ? `<div class="rs dz-rank">${_dzE(rankLine)}</div>` : ''}${rk && rk.warning ? `<div class="rs dz-rank-warn">${_dzE(rk.warning)}</div>` : ''}${stored ? `<div class="rs dz-rank-warn">${_dzE(stored)}</div>` : ''}</div>
     <div class="tags"><span class="dz-chip kind-${i.kind}" title="${_dzE(DZ_KIND_HELP[i.kind] || '')}">${DZ_KIND[i.kind] || i.kind}</span>${i.detail && i.detail.channel ? `<span class="dz-chip kind-channel" title="${_dzE(DZ_CHANNEL_HELP[i.detail.channel] || '')}">${_dzE(_dzChan(i.detail.channel))}</span>` : ''}${i.extension ? `<span class="dz-chip kind-baseline" title="Added by your channel selection: a monitor-only rule carrying the pack's engines on a channel the pack ships no rule for.">channel add-on</span>` : ''}${i.detail && i.detail.target_action ? `<span class="dz-chip" title="Ships monitor-only (${_dzE(i.detail.action)}) and DISABLED like every pack rule; it was designed to ${_dzE(i.detail.target_action)}. The journey card names it as the hardening step once incidents are reviewed.">target ${_dzE(i.detail.target_action)}</span>` : ''}<span class="dz-chip" title="${_dzE(st.help || '')}">${st.label}</span>${(i.packs || []).slice(0, 2).map(p => `<span class="dz-chip" title="Defined by pack ${_dzE(p)}">${_dzE(p)}</span>`).join('')}</div>
   </div>`;
 }
@@ -874,7 +882,7 @@ async function _dzRequestApproval(kind) {
   try {
     const body = removal
       ? { ..._dzRemovalScope(), plan_hash: R.plan_hash, ..._dzCreds() }
-      : { pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), plan_hash: R.plan_hash, ..._dzCreds() };
+      : { pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), scopes: _dzRankScopes(), plan_hash: R.plan_hash, ..._dzCreds() };
     const r = await fetch(removal ? '/api/change-queue/removal' : '/api/change-queue/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
@@ -1142,7 +1150,7 @@ async function _dzApply() {
   _dzRender();
   try {
     _dzNeedAssessor();
-    const body = { pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), plan_hash: DZ.report.plan_hash, confirm: true, verify: true, ..._dzCreds() };
+    const body = { pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), scopes: _dzRankScopes(), plan_hash: DZ.report.plan_hash, confirm: true, verify: true, ..._dzCreds() };
     const snap = await _dzRunJob('/api/dlp-packs/apply/start', body);
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The run ended without a result.');
     DZ.result = snap.result;

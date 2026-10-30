@@ -166,6 +166,7 @@
   .dz-row .ic { width: 26px; height: 26px; border-radius: var(--r-sm); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: var(--fs-subhead); }
   .dz-row .nm { font-weight: 600; font-size: var(--fs-callout); }
   .dz-row .rs { color: var(--dim); font-size: var(--fs-footnote); margin-top: 2px; line-height: 1.45; }
+  .dz-row .rs.dz-rank-warn { font-weight: 600; }
   .dz-row .tags { display: flex; gap: var(--sp-1); flex-wrap: wrap; justify-content: flex-end; }
   .st-create .ic { background: var(--accent-tint); color: var(--accent); }
   .st-modify .ic { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }

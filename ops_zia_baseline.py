@@ -68,6 +68,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 import admin_ops as ao
 import pack_channels as pc
 import pack_ops as ops
+import admin_rank
+import rank_inherit as ri
 
 LogFn = Optional[Callable[[str], None]]
 
@@ -1207,6 +1209,9 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
     zia = client.zia
     facts = _read_facts(zia, on_rows, areas, n, say, cancel)
     warnings += fit(on_rows, facts)
+    say("Reading whether admin ranking is on…")
+    rank_setting = ri.read_setting(client, scope.get("scopes"))
+    placements: List[Dict[str, Any]] = []
     items: List[Dict[str, Any]] = []
     groups: List[Dict[str, Any]] = []
     for area in [a for a in AREA_ORDER if a in areas and a != "atp"]:
@@ -1225,6 +1230,9 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
             continue
         creates = 0
         mine.sort(key=lambda r: 1 if r.get("catch_all") else 0)
+        # New rules go below the tenant's own rules: each takes the admin rank
+        # of the rule just above it (rank_inherit.place, order None = last).
+        last_at = _last_order(existing)
         for r in mine:
             rtype = r["fields"].get("type", "") if area == "cac" else ""
             gk = f"zb:{area}:{r['key']}"
@@ -1236,13 +1244,18 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
             cur = _match(existing, r["name"], rtype)
             if cur is None:
                 creates += 1
+                # Cloud App Control rules are ordered per rule type: the rank comes from the same type's rules.
+                same_type = [x for x in existing if not rtype or str(x.get("rule_type") or x.get("type") or "") == rtype]
+                pl = ri.place(same_type, None, rank_setting, name=r["name"])
+                pl.update(policy=AREAS[area]["label"], order=(_last_order(same_type) if rtype else last_at) + creates)
+                placements.append(pl)
                 summary = f"new rule, {_act_label(r['action']) if area not in ('ssl', 'sandbox') else str(r['action']).replace('_', ' ').lower()}, " \
-                          f"{'enabled' if n['enable_rules'] else 'disabled'}{', last' if r.get('catch_all') else ''}"
+                          f"{'enabled' if n['enable_rules'] else 'disabled'}{', last' if r.get('catch_all') else ''}, rank {pl['rank']}"
                 items.append(ao._unit(gk + ":rule", gk, "rule_create", _ref(area, None, name=r["name"], rule_type=rtype, key=r["key"]),
-                                      "rule", "absent", summary))
+                                      "rule", "absent", summary, reason=pl["why"]))
                 groups.append({"key": gk, "handler": "zb_create", "target": {"area": area, "name": r["name"], "rule_type": rtype,
                                                                              "payload": body, "catch_all": bool(r.get("catch_all")),
-                                                                             "managed": managed(body, n["enable_rules"])}})
+                                                                             "managed": managed(body, n["enable_rules"]), "rank": pl["rank"]}})
                 continue
             ref = _ref(area, cur, rule_type=rtype, key=r["key"])
             lock = ao.lock_reason(AREAS[area]["policy"] or "url_filtering", cur)
@@ -1264,6 +1277,15 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
                     units.append(ao._unit(f"{gk}:order", gk, "rule_field", ref, "order", cur.get("order"), "last"))
                     fields["order"] = "last"
                     expect["order"] = cur.get("order")
+                    # Going last with Admin Ranking on, it needs a rank no higher than the rule just above it.
+                    pl = ri.place(existing, None, rank_setting, name=r["name"], exclude=cur.get("id"))
+                    have_rank = admin_rank.rank_of(cur)
+                    if pl["state"] == ri.ON and have_rank < pl["rank"]:
+                        pl.update(policy=AREAS[area]["label"], before=have_rank, order=None)
+                        placements.append(pl)
+                        units.append(ao._unit(f"{gk}:rank", gk, "rule_field", ref, "rank", have_rank, pl["rank"], reason=pl["why"]))
+                        fields["rank"] = pl["rank"]
+                        expect["rank"] = cur.get("rank")
             if not units:
                 items.append(ao._unit(gk + ":rule", gk, "rule_field", ref, "rule", "as the baseline says", "as the baseline says",
                                       status="noop", reason="already as the baseline says"))
@@ -1302,6 +1324,9 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
     nspec["type"] = TYPE
     if n.get("areas"):
         nspec["areas"] = n["areas"]
+    if placements:
+        notes = ri.notes(rank_setting) + notes
+        warnings += [pl["warning"] for pl in placements if pl.get("warning")]
     created = sum(1 for g in groups if g["handler"] == "zb_create")
     notes.append("New rules are added below the tenant's own rules, in the baseline's order; the SSL catch-all and the firewall default "
                  "deny go last. Bulk changes can reorder them afterwards.")
@@ -1312,7 +1337,8 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
             "title": f"ZIA baseline ({tier_label}{', ' + ', '.join(OVERLAYS[o]['label'] for o in n['overlays']) if n['overlays'] else ''}): "
                      f"{created} new, {len(groups) - created} updated",
             "warnings": warnings, "notes": notes, "review": rev["rules"], "atp_review": rev["atp"] if "atp" in areas else [],
-            "atp_controls": rev["atp_controls"], "areas": areas, "confirm_always": _typed_every_time(items, groups)}
+            "atp_controls": rev["atp_controls"], "areas": areas, "confirm_always": _typed_every_time(items, groups),
+            "rank_plan": ri.summary(rank_setting, placements)}
 
 
 def _plan_revert(zia, n: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
@@ -1440,12 +1466,13 @@ def _h_create(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
         return
     body = copy.deepcopy(t["payload"])
     body["order"] = _last_order(rows) + 1
-    body["rank"] = 7
+    body["rank"] = t.get("rank", ri.LEGACY_RANK)   # planned by rank_inherit.place: 7 unless Admin Ranking is on
     out = ops.create(run.zia, "policy", body, channel=AREAS[area]["channel"], name=t["name"], log=run.log)
     if run.outcome(units, out, "create"):
         run.wrote_zia = True
         for u in units:
             u["object"]["id"] = out.id
+            u["sent_order"], u["sent_rank"] = body["order"], body["rank"]
         rows.append(dict(body, id=out.id, rule_type=t["rule_type"], type=t["rule_type"] or None))
         run.created.append({"type": "rule", "area": area, "id": out.id, "name": t["name"], "rule_type": t["rule_type"]})
         run.log(f"[{AREAS[area]['label']}] {t['name']}: created at order {body['order']} ({body.get('state', '').lower()})")
@@ -1567,6 +1594,9 @@ def _verify(run) -> Dict[str, Any]:
                 cache[k] = get_one(run.zia, "ssl", o["id"])
             row, err = cache[k]
             ok = row is not None and _cert_of(row)[0] == t.get("to_id")
+            where = ri.stored(t.get("keep") or {}, row) if row is not None else None
+            if where:
+                ok, u["stored"] = False, where
         else:
             area = o["area"]
             k = f"{area}:{o.get('id')}"
@@ -1578,6 +1608,13 @@ def _verify(run) -> Dict[str, Any]:
             elif u["kind"] == "rule_create":
                 have = _flat(row or {})
                 ok = row is not None and all(same(have.get(f), v) for f, v in (t.get("managed") or {}).items() if f != "state")
+                # The rank ZIA stored is the one sent (rank_inherit.stored). The order is shown, not compared: a later
+                # rule of the same run may move it down (Cloud App Control numbers its rules across types).
+                where = ri.stored({"rank": u.get("sent_rank")}, row) if row is not None else None
+                if row is not None:
+                    u["stored_order"], u["stored_rank"] = row.get("order"), row.get("rank")
+                if where:
+                    ok, u["stored"] = False, where
             elif u["field"] == "order":
                 ok = row is not None and (t["fields"]["order"] != "last" or same(row.get("order"), u.get("sent_order", row.get("order"))))
             else:
@@ -1590,7 +1627,7 @@ def _verify(run) -> Dict[str, Any]:
         if ok:
             out["confirmed"] += 1
         else:
-            out["mismatched"].append(f"{o.get('name')}: {u['field']} is not as written when read back")
+            out["mismatched"].append(f"{o.get('name')}: {u['field']} is not as written when read back" + (f" ({u['stored']})" if u.get("stored") else ""))
     return out
 
 
@@ -1718,9 +1755,14 @@ def _plan_cert(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel)
         elif str(cid) == str(to_id):
             items.append(ao._unit(gk, gk, "cert", ref, "certificate", cname, to_name, status="noop", reason="already uses it"))
         else:
-            items.append(ao._unit(gk, gk, "cert", ref, "certificate", cname, to_name, value=to_id))
+            # A certificate move changes neither the rule's admin rank nor its order: both are sent back as read
+            # and the read-back checks ZIA kept them.
+            keep = {"rank": admin_rank.shown_rank(r), "order": r.get("order")}
+            items.append(ao._unit(gk, gk, "cert", ref, "certificate", cname, to_name, value=to_id,
+                                  reason=f"keeps its {'rank ' + str(keep['rank']) + ' and ' if keep['rank'] is not None else ''}order "
+                                         f"{keep['order']}: a certificate move changes neither"))
             groups.append({"key": gk, "handler": "zb_cert", "target": {"id": r.get("id"), "name": r.get("name"), "from_id": cid,
-                                                                       "to_id": to_id, "to_name": to_name}})
+                                                                       "to_id": to_id, "to_name": to_name, "keep": keep}})
     if default is None and any(g["target"]["to_id"] == "default" for g in groups):
         warnings.append("No certificate is marked as the tenant's default; the rules will use ZIA's own default certificate.")
     n = len(groups)

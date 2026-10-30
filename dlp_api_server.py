@@ -1283,6 +1283,11 @@ class DLPPackDeployRequest(TenantCredsRequest):
     # channel (Endpoint DLP on removable media); a deselected channel is
     # skipped.
     channel_targets: Dict[str, List[str]] = {}
+    # The Scope page's ticked scopes: with ZIA platform among them the plan
+    # reads the tenant's Admin Ranking setting, so each new rule takes the
+    # admin rank it needs (rank_inherit). Empty: the saved profile's, else
+    # not read (rules keep rank 7 as before).
+    scopes: List[str] = []
     # Terraform hand-off only: "static" never reads the tenant (credentials
     # are ignored); "gap" needs them; "" decides by whether they are present.
     mode: str = ""
@@ -1767,7 +1772,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     report = await asyncio.to_thread(
         pack_deploy.preflight, client, packs,
         use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks, writes_enabled=writes_enabled(),
-        restore_drift=req.restore_drift, channel_targets=req.channel_targets or None,
+        restore_drift=req.restore_drift, channel_targets=req.channel_targets or None, rank_scopes=_rank_scopes(req),
     )
     out = pack_deploy.public_report(report)
     out["writes_enabled"] = writes_enabled()
@@ -2070,7 +2075,18 @@ def _cq_tenant(creds: Dict[str, str]) -> Tuple[str, str]:
 def _cq_deploy_params(req: Any) -> Dict[str, Any]:
     return {"pack_ids": sorted(req.pack_ids or []), "use_rank_0": bool(req.use_rank_0), "apply_tweaks": bool(req.apply_tweaks),
             "restore_drift": bool(req.restore_drift),
-            "channel_targets": {k: sorted(v or []) for k, v in sorted((req.channel_targets or {}).items())}}
+            "channel_targets": {k: sorted(v or []) for k, v in sorted((req.channel_targets or {}).items())},
+            "rank_scopes": _rank_scopes(req)}
+
+
+def _rank_scopes(req: Any) -> List[str]:
+    """The ticked Scope page keys a pack plan may read the Admin Ranking
+    setting under (rank_inherit.read_setting reads it only with ZIA
+    platform among them): the page's, else the saved profile's
+    (_scope_selection). Never reads a tenant."""
+    import data_flow
+    sc, _ch, _source = _scope_selection(req)
+    return sorted({s for s in sc if s in data_flow.SCOPE_KEYS})
 
 
 def _cq_removal_params(req: Any) -> Dict[str, Any]:
@@ -2183,7 +2199,7 @@ async def change_queue_file_deploy(req: ChangeRequestDeploy, request: Request):
         client = await asyncio.to_thread(_build_sdk_client, creds)
         report = pack_deploy.public_report(await asyncio.to_thread(
             pack_deploy.preflight, client, packs, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks, writes_enabled=writes_enabled(),
-            restore_drift=req.restore_drift, channel_targets=req.channel_targets or None))
+            restore_drift=req.restore_drift, channel_targets=req.channel_targets or None, rank_scopes=_rank_scopes(req)))
         if report.get("plan_hash") != req.plan_hash:
             raise HTTPException(status_code=409, detail="The tenant changed since your preflight: run the preflight again and request approval for the new plan.")
     if report.get("status") == "blocked":
@@ -2434,7 +2450,7 @@ async def change_queue_apply(rid: str, req: ChangeRequestApply, request: Request
                                     pack_ids=list(p.get("pack_ids") or []), use_rank_0=bool(p.get("use_rank_0")),
                                     apply_tweaks=bool(p.get("apply_tweaks", True)), restore_drift=bool(p.get("restore_drift")),
                                     verify=bool(p.get("verify", True)), channel_targets=p.get("channel_targets") or {},
-                                    plan_hash=rec["plan_hash"], confirm=True)
+                                    scopes=list(p.get("rank_scopes") or []), plan_hash=rec["plan_hash"], confirm=True)
         packs = _resolve_pack_ids(dreq.pack_ids)
         client = await asyncio.to_thread(_build_sdk_client, creds)
         job_kind, run = "deploy", (lambda log, cancel: _keyed(client, _run_apply, client, creds, dreq, packs, log, cancel))
@@ -4553,7 +4569,8 @@ def _run_apply(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, 
     by = _assessor(req)       # resolved once: the tags and the record name the same assessor
     result = pack_deploy.apply(client, packs, plan_hash=req.plan_hash, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
                                verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift,
-                               channel_targets=req.channel_targets or None, log=_log, cancel=cancel, assessor=by)
+                               channel_targets=req.channel_targets or None, log=_log, cancel=cancel, assessor=by,
+                               rank_scopes=_rank_scopes(req))
     result["logs"] = logs
     if result.get("status") in ("plan_changed", "blocked", "stopped"):
         return result
