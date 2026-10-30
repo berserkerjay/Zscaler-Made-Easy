@@ -606,6 +606,29 @@ what you get, what to do next.
   arrive disabled and re-runs update in place; and the **SSL certificate
   manager**, which lists the intermediate certificate each SSL inspection
   rule uses and moves picked Inspect rules to another ready-to-use one.
+  Under **Day-to-day admin** on the same page, through the same preview,
+  plan hash, four gates, re-read before each write, read-back, audit log
+  with the actor and Undo: **ZIA users, groups and departments** (ZIA
+  platform ticked; `ops_zia_directory.py`): find users by name, add a user
+  with a department and groups, change users' department and groups, add,
+  rename or delete groups and departments; admin accounts, predefined groups
+  and groups from the identity provider are left alone, no password is ever
+  set, and disabling a ZIA user is not offered (the SDK's user model has no
+  such field). **ZIA PAC files** (ZIA platform ticked; `ops_zia_pac.py`):
+  each hosted PAC file with its versions and active text, validate (parsed
+  by `pac_eval`, never run, and ZIA's validator), a new staged version,
+  create or clone a file, switch the active version, delete, with a line
+  diff in the preview. **ZIdentity users and API clients** (ZIdentity
+  ticked, OneAPI sign-in; `ops_zid.py`): find, add (disabled), disable,
+  enable or delete users (not administrators or SCIM users); the API clients
+  with their scopes, a new client with only the scopes ticked (none is
+  ticked for you), rotate a secret, disable, enable or delete a client
+  (never the one this app signs in with). A new secret is shown once, to
+  the person who applied, from memory (ten minutes, one view); it is never
+  stored, logged or exported. A delete asks the name typed (*DELETE
+  <name>*), a rotation *ROTATE <name>*, and the preview says what cannot be
+  undone. Password and MFA resets are not offered: Zscaler SDK 1.11.3 has
+  no call for them.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in

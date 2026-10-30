@@ -22,7 +22,7 @@ NOT_FOUND = '{"status": 404, "code": "RESOURCE_NOT_FOUND", "message": "Resource 
 
 class Resp:
     def __init__(self, body: Any):
-        self._body = body
+        self._body = copy.deepcopy(body)   # an SDK model built from the same dict may change it in place
 
     def get_body(self) -> Any:
         return copy.deepcopy(self._body)
