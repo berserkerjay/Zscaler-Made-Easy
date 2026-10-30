@@ -31,5 +31,5 @@
   {"id": "W7-MTP-07", "title": "The sample tenant has no network applications list, so a firewall import previewed on it excludes the rules that name an application", "severity": "info", "status": "accepted",
    "reason": "sample_tenant.py is shared by every page's answers; the import is exercised with fakes that carry the list, and the preview on the sample says why those rules are excluded"}
  ],
- "tests_added": 70
+ "tests_added": 63
 }
