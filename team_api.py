@@ -133,7 +133,9 @@ def register(app: FastAPI) -> None:
             acts = sorted(team.actions_on(u, p.get("id"), team.current_token_groups()), key=team.ACTIONS.index)
             if acts:
                 rows.append({"profile": p.get("id"), "name": p.get("name") or p.get("org_name") or p.get("id"), "actions": acts})
-        return {"user": team.public_user(u), "role_actions": list(team.ROLE_ACTIONS.get(str(u.get("role")), ())),
+        people = [{"principal": f"user:{x['id']}", "name": x["username"]} for x in team.list_users() if x["active"] and x["id"] != u.get("id")]
+        people += [{"principal": f"group:{g['id']}", "name": f"group: {g['display_name']}"} for g in team.list_groups()]
+        return {"user": team.public_user(u), "role_actions": list(team.ROLE_ACTIONS.get(str(u.get("role")), ())), "people": people,
                 "profiles": rows, "idle_minutes": team.idle_seconds() // 60, "session_hours": round(team.session_seconds() / 3600, 2)}
 
     @app.post("/api/team/me/password")

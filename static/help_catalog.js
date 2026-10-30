@@ -6418,6 +6418,31 @@ window.HELP_CATALOG = {
     "what": "Revokes the SCIM token, so provisioning stops until you make a new one.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#tmShKind": {
+    "what": "Picks what to share: one of your POV templates or one of your saved deploy plans.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#tmShItem": {
+    "what": "Picks which template or saved plan to share. Only its owner or an administrator may change who it is shared with.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#tmShWho input": {
+    "what": "Ticks the people and groups it is shared with. A shared plan still opens only for people who may read its tenant profile.",
+    "input": "Tick any. Untick all to keep it to yourself.",
+    "effect": "local"
+   },
+   "#tmShGo": {
+    "what": "Saves who this template or plan is shared with. It changes nothing in any tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tmStoreRotate": {
+    "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Only when store encryption is on.",
+    "input": "Nothing to type. You are asked to confirm.",
+    "effect": "local"
    }
   }
  }

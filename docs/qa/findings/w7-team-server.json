@@ -1,0 +1,191 @@
+{
+ "area": "Team server mode: accounts, roles, per-tenant-profile entitlements on every route, sign-in hardening, SCIM 2.0, built-in HTTPS (own, self-signed, ACME dns-01), four-eyes with real identities, audit scoping, sharing, encryption at rest and FIPS mode",
+ "title": "Wave 7: an optional multi-user team server, deny by default, with the single-user default unchanged",
+ "standards": [
+  "ASVS V2.1.1",
+  "ASVS V2.2.1",
+  "ASVS V2.4.1",
+  "ASVS V2.10.4",
+  "ASVS V3.2.1",
+  "ASVS V3.3.2",
+  "ASVS V3.4.1",
+  "ASVS V3.4.3",
+  "ASVS V4.1.3",
+  "ASVS V4.2.1",
+  "ASVS V4.2.2",
+  "ASVS V6.2.1",
+  "ASVS V6.4.1",
+  "ASVS V7.1.3",
+  "ASVS V9.1.1",
+  "ASVS V14.4.5",
+  "CWE-307",
+  "CWE-352",
+  "CWE-384",
+  "CWE-613",
+  "CWE-614",
+  "CWE-639",
+  "CWE-654",
+  "CWE-862",
+  "CWE-916",
+  "CWE-311",
+  "CWE-319",
+  "CWE-522",
+  "CWE-778",
+  "CWE-918",
+  "WSTG-ATHZ-02",
+  "WSTG-ATHZ-04",
+  "WSTG-ATHN-03",
+  "WSTG-SESS-02",
+  "WSTG-SESS-05",
+  "WSTG-CRYP-03"
+ ],
+ "checks": [
+  {
+   "id": "W7-TS-C01",
+   "what": "Every registered route (and mount) has a team access rule or is on the explicit public list; the public /api/ routes are only sign-in, liveness and status",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C02",
+   "what": "A route with no rule is 403 on a team server, even for an administrator; every protected route is 401 to an anonymous caller; every admin route is 403 to the other roles",
+   "standard": "CWE-862",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C03",
+   "what": "Per-tenant-profile entitlements: a viewer signs in only to granted profiles; no profile, another profile or typed details for another tenant are refused before any sign-in; roles cap grants; reports, jobs and records are bound to maker and profile",
+   "standard": "ASVS V4.2.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C04",
+   "what": "Lockout enforced even with the right password, unlocks by administrator or time; unknown names answer and lock the same; per-address sign-in limit",
+   "standard": "ASVS V2.2.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C05",
+   "what": "Session cookie HttpOnly, SameSite=Strict, Secure over HTTPS; new id at sign-in; idle and absolute timeouts; role change and disable end sessions; UI token refused in every form",
+   "standard": "ASVS V3.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C06",
+   "what": "Cross-site and Origin-less changes carrying the session cookie are refused",
+   "standard": "CWE-352",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C07",
+   "what": "SCIM: bearer token required, stored as SHA-256, shown once, revocable; a session is not the SCIM credential; SCIM cannot make an administrator; 404 outside team mode",
+   "standard": "ASVS V2.10.4",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C08",
+   "what": "A team server beyond loopback (local or container publish) refuses to start without HTTPS; the older ways start with a loud warning; HSTS only on a team server over HTTPS",
+   "standard": "ASVS V9.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C09",
+   "what": "Four-eyes on a team server: requester cannot approve (even admin, even with DLP_CHECK_FOUR_EYES=0); approver needs approve on the request's profile",
+   "standard": "CWE-654",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C10",
+   "what": "Audit entries carry the actor (jobs included) and the tenant profile; viewers see only entries of profiles they may read",
+   "standard": "ASVS V7.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C11",
+   "what": "Every local store sealed with AES-256-GCM when enabled, survives key rotation (old key forgotten), tampering detected, self-healing reads sealed stores",
+   "standard": "ASVS V6.2.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C12",
+   "what": "ACME dns-01 through Cloudflare against fakes: valid ES256 JWS and nonces, correct TXT value, record removed, certificate matches key and names; https and same-host directory only",
+   "standard": "CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "W7-TS-C13",
+   "what": "Single-user default unchanged: all existing auth, SSO, UI token and change-queue tests pass with team mode off",
+   "standard": "ASVS V14.1.1",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-TS-01",
+   "title": "The shared-plan check passed every caller inside the access middleware, because it read the request context before the middleware had set it",
+   "severity": "high",
+   "cwe": "CWE-639",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "team_server.may_use takes the caller explicitly; the middleware passes it",
+   "test": "tests/test_team_server_extras.py::test_saved_plans_are_private_until_shared_and_sharing_never_crosses_a_tenant",
+   "commit": "pending"
+  },
+  {
+   "id": "W7-TS-02",
+   "title": "Approve and reject on the change queue called the writer check, so an approver (who may not apply) could never approve on a team server",
+   "severity": "medium",
+   "cwe": "CWE-285",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "On an approve route the approve right stands in for the writer check (security.may_write); change_queue.decide re-checks approve on the request's profile",
+   "test": "tests/test_team_server.py::test_approver_must_differ_from_the_requester_and_be_entitled",
+   "commit": "pending"
+  },
+  {
+   "id": "W7-TS-03",
+   "title": "Self-healing would have moved encrypted stores aside as corrupt",
+   "severity": "high",
+   "cwe": "CWE-20",
+   "asvs": "V6.2.1",
+   "status": "fixed",
+   "fix": "self_heal._parse opens a sealed store before checking it",
+   "test": "tests/test_team_server_extras.py::test_a_tampered_or_keyless_store_is_refused_and_self_healing_does_not_eat_sealed_stores",
+   "commit": "pending"
+  },
+  {
+   "id": "W7-TS-04",
+   "title": "SAML sign-in is not built in: safe SAML needs an XML-signature library (xmlsec) that is not pinned",
+   "severity": "info",
+   "cwe": "CWE-347",
+   "asvs": "V2.10.1",
+   "status": "accepted",
+   "fix": "Documented in SECURITY.md and INSTALL.md; use the provider's OpenID Connect app",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "W7-TS-05",
+   "title": "Passkeys (WebAuthn) are not built in: no vetted WebAuthn library is in the hash-pinned lock",
+   "severity": "info",
+   "cwe": "CWE-308",
+   "asvs": "V2.2.3",
+   "status": "accepted",
+   "fix": "Documented; prefer SSO with the provider's MFA",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "W7-TS-06",
+   "title": "FIPS mode restricts the app's own algorithms but the Python and OpenSSL builds are not a FIPS 140-3 validated module; TLS 1.3 suites are the platform's",
+   "severity": "info",
+   "cwe": "CWE-327",
+   "asvs": "V6.2.2",
+   "status": "accepted",
+   "fix": "Said plainly in store_crypto.fips_status, the Team server page and SECURITY.md",
+   "test": "tests/test_team_server_extras.py::test_fips_mode_uses_pbkdf2_refuses_scrypt_and_non_approved_token_algorithms",
+   "commit": ""
+  }
+ ],
+ "tests_added": 50
+}

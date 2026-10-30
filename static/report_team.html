@@ -63,6 +63,17 @@
         </form>
       </section>
 
+      <section class="tm-sec" aria-labelledby="tmShareH">
+        <h2 id="tmShareH">Share a template or a saved plan</h2>
+        <p class="tm-status">What you save is yours. Share it with people or groups here; a shared plan still opens only for people who may read its tenant profile.</p>
+        <form class="tm-form" id="tmShare" novalidate>
+          <label for="tmShKind">What<select id="tmShKind"><option value="template">POV template</option><option value="plan">Saved deploy plan</option></select></label>
+          <label for="tmShItem">Which<select id="tmShItem"></select></label>
+          <fieldset id="tmShWho"><legend>Share with</legend></fieldset>
+          <button type="submit" class="rp-btn primary" id="tmShGo">Save sharing</button>
+        </form>
+      </section>
+
       <div id="tmAdmin" hidden>
         <section class="tm-sec" aria-labelledby="tmUsersH">
           <h2 id="tmUsersH">Accounts</h2>
@@ -105,6 +116,9 @@
         <section class="tm-sec" aria-labelledby="tmTlsH">
           <h2 id="tmTlsH">HTTPS and sessions</h2>
           <div class="tm-grid" id="tmTls"></div>
+          <div class="tm-row-actions" style="margin-top:0.6rem;">
+            <button type="button" class="rp-btn" id="tmStoreRotate">Rotate the store encryption key</button>
+          </div>
         </section>
       </div>
     </main>
@@ -121,7 +135,37 @@
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const say = (t, bad) => { $('tmStatus').textContent = t || ''; $('tmStatus').className = 'tm-status' + (bad ? ' bad' : ''); };
     const tile = (k, v) => `<div class="tm-tile"><div class="k">${E(k)}</div><div class="v">${E(v)}</div></div>`;
-    let data = null;
+    let data = null, people = [];
+    async function loadShare() {
+      const kind = $('tmShKind').value;
+      let items = [];
+      try {
+        if (kind === 'plan') items = ((await call('GET', '/api/exports/plans')).plans || []).map(p => ({ id: p.report_id, name: `${p.tenant_label || 'plan'} · ${p.generated_at || ''}` }));
+        else items = ((await call('GET', '/api/pov/catalog')).templates || []).map(t => ({ id: t.id, name: t.name || t.id }));
+      } catch (e) { items = []; }
+      $('tmShItem').innerHTML = items.map(i => `<option value="${E(i.id)}">${E(i.name)}</option>`).join('') || '<option value="">Nothing saved yet</option>';
+      $('tmShWho').innerHTML = '<legend>Share with</legend>' + (people.map((p, i) => `<label><input type="checkbox" class="tm-sh-p" value="${E(p.principal)}" id="tmShP${i}"> ${E(p.name)}</label>`).join('') || '<span class="tm-status">Nobody else yet.</span>');
+      await loadShareState();
+    }
+    async function loadShareState() {
+      const id = $('tmShItem').value; if (!id) return;
+      try { const s = await call('GET', `/api/team/share?kind=${encodeURIComponent($('tmShKind').value)}&id=${encodeURIComponent(id)}`);
+        $('tmShWho').querySelectorAll('input').forEach(i => { i.checked = (s.principals || []).includes(i.value); }); } catch (e) { /* not visible */ }
+    }
+    $('tmShKind').addEventListener('change', loadShare);
+    $('tmShItem').addEventListener('change', loadShareState);
+    $('tmShare').addEventListener('submit', async e => {
+      e.preventDefault();
+      const id = $('tmShItem').value; if (!id) return;
+      const principals = [...$('tmShWho').querySelectorAll('input:checked')].map(i => i.value);
+      try { await call('POST', '/api/team/share', { kind: $('tmShKind').value, id, principals }); say(principals.length ? 'Shared.' : 'Now only yours.'); }
+      catch (err) { say(err.message, true); }
+    });
+    $('tmStoreRotate').addEventListener('click', async () => {
+      if (!(await window.dlpDialog.ask({ title: 'Rotate the store key?', body: 'A new key is made, every store is encrypted again with it, then the old key is forgotten.', okLabel: 'Rotate' }))) return;
+      try { const j = await call('POST', '/api/team/store-key/rotate'); say(`Store key rotated: ${j.files} file(s) re-encrypted, key kept in the ${j.kept_in}.`); await load(); }
+      catch (err) { say(err.message, true); }
+    });
     async function call(method, url, body) {
       const r = await fetch(url, { method, credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
       let j = {}; try { j = await r.json(); } catch (e) { /* none */ }
@@ -137,6 +181,8 @@
         + tile('Session', `ends after ${me.idle_minutes} quiet minutes, at most ${me.session_hours} hours`);
       $('tmMine').querySelector('tbody').innerHTML = (me.profiles || []).map(p => `<tr><td>${E(p.name)}</td><td>${E(p.actions.join(', '))}</td></tr>`).join('')
         || '<tr><td colspan="2">No tenant profile yet. Ask an administrator for access.</td></tr>';
+      people = me.people || [];
+      await loadShare();
       if (me.user.role !== 'admin') { $('tmAdmin').hidden = true; say(''); return; }
       $('tmAdmin').hidden = false;
       data = await call('GET', '/api/team/overview');
@@ -166,7 +212,10 @@
       $('tmTls').innerHTML = tile('HTTPS', t.on ? (t.self_signed ? 'on, self-signed' : 'on, your certificate') : 'off (this computer only)')
         + (t.fingerprint ? tile('Certificate SHA-256', t.fingerprint) : '')
         + tile('Sessions', `end after ${st.idle_minutes} quiet minutes, at most ${st.session_hours} hours`)
-        + tile('Lockout', `${st.lockout_attempts} wrong passwords lock an account for ${st.lockout_minutes} minutes`);
+        + tile('Lockout', `${st.lockout_attempts} wrong passwords lock an account for ${st.lockout_minutes} minutes`)
+        + tile('Stores on disk', data.stores.enabled ? `encrypted (${data.stores.algorithm}), key ${data.stores.key || '—'} in the ${data.stores.kept_in}` : 'not encrypted (DLP_CHECK_STORE_ENCRYPTION is off)')
+        + tile('FIPS mode', data.fips.on ? 'on: FIPS-approved algorithms only' : 'off') + (data.fips.on ? `<div class="tm-note" style="grid-column:1/-1">${E(data.fips.honest_note)}</div>` : '');
+      $('tmStoreRotate').disabled = !data.stores.enabled;
     }
     $('tmUsers').addEventListener('change', async e => {
       const id = e.target.getAttribute('data-role'); if (!id) return;
