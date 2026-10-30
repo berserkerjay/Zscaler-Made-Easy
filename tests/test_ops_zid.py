@@ -93,8 +93,9 @@ def test_password_and_mfa_resets_are_not_possible_with_the_sdk_and_say_so(action
     """ASVS V2.5.1 · CWE-640: the installed SDK has no password or MFA call (checked on the SDK itself); asking for one is refused in words."""
     from zscaler.zid.users import UsersAPI
     from zscaler.zid.models.users import UserRecord as Model
-    methods = {m for m in dir(UsersAPI) if not m.startswith("_")}
+    methods = {m for m in vars(UsersAPI) if not m.startswith("_")}
     assert methods == {"list_users", "get_user", "add_user", "update_user", "delete_user", "list_user_group_details"}, methods
+    assert not [m for m in dir(UsersAPI) if "password" in m.lower() or "mfa" in m.lower()]
     assert not any("password" in k.lower() or "mfa" in k.lower() for k in Model({}).request_format())
     with pytest.raises(ao.OperationError, match="installed Zscaler SDK"):
         plan(Client(), {"type": "zid_users", "changes": [{"action": action, "id": "u-1"}]})

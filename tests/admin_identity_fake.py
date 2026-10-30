@@ -53,7 +53,7 @@ class UserManagementAPI(_Base):
             rows = [r for r in rows if str(r.get("name") or "").lower().startswith(needle)]
         size, page = int(q.get("page_size") or 100), int(q.get("page") or 1)
         rows = rows[(page - 1) * size: page * size]
-        return [model(r) for r in rows], Resp(rows), None
+        return [model(copy.deepcopy(r)) for r in rows], Resp(rows), None
 
     def _get(self, kind: str, model, oid):
         self.t.reads.append(("GET", kind, str(oid)))
@@ -139,21 +139,21 @@ class PacFilesAPI(_Base):
     def list_pac_files(self, query_params=None):
         self.t.reads.append(("GET", "pacFiles", dict(query_params or {})))
         rows = [r for r in self.t.pac if str(r.get("pacVersionStatus")) == "DEPLOYED"]
-        return [PacFiles(r) for r in rows], Resp(rows), None
+        return [PacFiles(copy.deepcopy(r)) for r in rows], Resp(rows), None
 
     def get_pac_file(self, pac_id, query_params=None):
         self.t.reads.append(("GET", "pacFiles/version", str(pac_id)))
         rows = [r for r in self.t.pac if str(r["id"]) == str(pac_id)]
         if not rows:
             return None, Resp(None), NOT_FOUND
-        return [PacFiles(r) for r in rows], Resp(rows), None
+        return [PacFiles(copy.deepcopy(r)) for r in rows], Resp(rows), None
 
     def validate_pac_file(self, pac_file_content):
         self.t.sent.append(("POST", "pacFiles/validate", len(pac_file_content)))
         ok = "FindProxyForURL" in pac_file_content and "SYNTAX ERROR" not in pac_file_content
         body = {"success": ok, "errorCount": 0 if ok else 1, "warningCount": 0,
                 "messages": [] if ok else [{"line": 3, "column": 1, "severity": "ERROR", "message": "Unexpected token", "fatal": True}]}
-        return PacFileValidationResponse(body), Resp(body), None
+        return PacFileValidationResponse(copy.deepcopy(body)), Resp(body), None
 
     def add_pac_file(self, **kwargs):
         body = wire(kwargs)
@@ -161,7 +161,7 @@ class PacFilesAPI(_Base):
         pid = self.t.new_id()
         row = dict(body, id=pid, pacVersion=1, pacUrl=f"https://pac.example.net/{pid}.pac", editable=True)
         self.t.pac.append(row)
-        return PacFiles(row), Resp(row), None
+        return PacFiles(copy.deepcopy(row)), Resp(row), None
 
     def clone_pac_file(self, pac_id, pac_version, pac_content, pac_version_status, pac_verification_status="VERIFY_NOERR",
                        pac_commit_message="", delete_version=None):
@@ -172,7 +172,7 @@ class PacFilesAPI(_Base):
         parent = next(r for r in rows if r["pacVersionStatus"] == "DEPLOYED")
         new = dict(parent, **body, pacVersion=max(r["pacVersion"] for r in rows) + 1)
         self.t.pac.append(new)
-        return PacFiles(new), Resp(new), None
+        return PacFiles(copy.deepcopy(new)), Resp(new), None
 
     def update_pac_file(self, pac_id, pac_version, pac_version_action, new_lkg_ver=None, **kwargs):
         body = wire(kwargs)
@@ -183,7 +183,7 @@ class PacFilesAPI(_Base):
                     r["pacVersionStatus"] = "DEPLOYED"
                 elif r["pacVersionStatus"] == "DEPLOYED":
                     r["pacVersionStatus"] = "LKG"
-        return PacFiles(body), Resp(body), None
+        return PacFiles(copy.deepcopy(body)), Resp(body), None
 
     def delete_pac_file(self, pac_id):
         self.t.sent.append(("DELETE", "pacFiles", str(pac_id)))
@@ -210,26 +210,26 @@ class ZidUsersAPI(_Base):
         if q.get("login_name[like]"):
             rows = [r for r in rows if q["login_name[like]"].lower() in r["loginName"].lower()]
         body = {"records": rows[int(q.get("offset") or 0):][: int(q.get("limit") or 100)], "results_total": len(rows)}
-        return Users(body), Resp(body), None
+        return Users(copy.deepcopy(body)), Resp(body), None
 
     def get_user(self, user_id):
         self.t.reads.append(("GET", "zid/user", str(user_id)))
         row = self.t.zid_users.get(str(user_id))
-        return (UserRecord(row), Resp(row), None) if row else (None, Resp(None), NOT_FOUND)
+        return (UserRecord(copy.deepcopy(row)), Resp(row), None) if row else (None, Resp(None), NOT_FOUND)
 
     def add_user(self, **kwargs):
         body = wire(kwargs)
         self.t.sent.append(("POST", "zid/users", body))
         uid = f"u-{self.t.new_id()}"
         self.t.zid_users[uid] = dict(body, id=uid, source="API")
-        return UserRecord(self.t.zid_users[uid]), Resp(self.t.zid_users[uid]), None
+        return UserRecord(copy.deepcopy(self.t.zid_users[uid])), Resp(self.t.zid_users[uid]), None
 
     def update_user(self, user_id, **kwargs):
         body = wire(kwargs)
         self.t.sent.append(("PUT", f"zid/users/{user_id}", body))
         row = dict(self.t.zid_users[str(user_id)], **body)
         self.t.zid_users[str(user_id)] = row
-        return UserRecord(row), Resp(row), None
+        return UserRecord(copy.deepcopy(row)), Resp(row), None
 
     def delete_user(self, user_id):
         self.t.sent.append(("DELETE", "zid/users", str(user_id)))
@@ -240,12 +240,12 @@ class ApiClientAPI(_Base):
     def list_api_clients(self, query_params=None):
         self.t.reads.append(("GET", "zid/api-clients", dict(query_params or {})))
         body = {"records": list(self.t.clients.values()), "results_total": len(self.t.clients)}
-        return APIClients(body), Resp(body), None
+        return APIClients(copy.deepcopy(body)), Resp(body), None
 
     def get_api_client(self, client_id):
         self.t.reads.append(("GET", "zid/api-client", str(client_id)))
         row = self.t.clients.get(str(client_id))
-        return (APIClientRecords(row), Resp(row), None) if row else (None, Resp(None), NOT_FOUND)
+        return (APIClientRecords(copy.deepcopy(row)), Resp(row), None) if row else (None, Resp(None), NOT_FOUND)
 
     def add_api_client(self, **kwargs):
         body = wire(kwargs)
@@ -256,13 +256,13 @@ class ApiClientAPI(_Base):
         self.t.secrets[cid] = []
         # An answer that carries a secret anyway (assumed shape): it must be dropped unread.
         answer = dict(row, clientSecret=CANARY_SECRET + "-create")
-        return APIClientRecords(answer), Resp(answer), None
+        return APIClientRecords(copy.deepcopy(answer)), Resp(answer), None
 
     def update_api_client(self, client_id, **kwargs):
         body = wire(kwargs)
         self.t.sent.append(("PUT", f"zid/api-clients/{client_id}", body))
         self.t.clients[str(client_id)] = dict(body, id=str(client_id))
-        return APIClientRecords(self.t.clients[str(client_id)]), Resp(self.t.clients[str(client_id)]), None
+        return APIClientRecords(copy.deepcopy(self.t.clients[str(client_id)])), Resp(self.t.clients[str(client_id)]), None
 
     def delete_api_client(self, client_id):
         self.t.sent.append(("DELETE", "zid/api-clients", str(client_id)))
@@ -272,7 +272,7 @@ class ApiClientAPI(_Base):
     def get_api_client_secret(self, client_id):
         self.t.reads.append(("GET", "zid/secrets", str(client_id)))
         rows = [dict(s, value=CANARY_SECRET + "-old") for s in self.t.secrets.get(str(client_id), [])]
-        return APIClientSecrets({}), Resp(rows), None
+        return APIClientSecrets(copy.deepcopy({})), Resp(rows), None
 
     def add_api_client_secret(self, client_id, **kwargs):
         self.t.sent.append(("POST", f"zid/api-clients/{client_id}/secrets", wire(kwargs)))
@@ -281,7 +281,7 @@ class ApiClientAPI(_Base):
         sid = f"s-{self.t.new_id()}"
         self.t.secrets.setdefault(str(client_id), []).append({"id": sid, "createdAt": 1, "expiresAt": 2})
         body = {"id": sid, "createdAt": 1, "expiresAt": 2, "value": CANARY_SECRET}
-        return APIClientSecrets(body), Resp(body), None
+        return APIClientSecrets(copy.deepcopy(body)), Resp(body), None
 
     def delete_api_client_secret(self, client_id, secret_id):
         self.t.sent.append(("DELETE", f"zid/api-clients/{client_id}/secrets", str(secret_id)))
@@ -293,7 +293,7 @@ class ResourceServersAPI(_Base):
     def list_resource_servers(self, query_params=None):
         self.t.reads.append(("GET", "zid/resource-servers", dict(query_params or {})))
         body = {"records": copy.deepcopy(self.t.servers), "results_total": len(self.t.servers)}
-        return ResourceServers(body), Resp(body), None
+        return ResourceServers(copy.deepcopy(body)), Resp(body), None
 
 
 class Zid:
