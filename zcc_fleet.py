@@ -581,13 +581,16 @@ def normalize_devices(raw: List[Dict[str, Any]], service_rows: List[Dict[str, An
         user = str(_v(d, "user", "userName", "owner", default="") or "").strip()
         host = str(_v(d, "machineHostname", "hostname", "deviceName", "machineName", default="") or "").strip()
         uid = _hash(_v(d, "udid", default=""))
-        seen = parse_time(_v(d, "last_seen_time", "lastSeenTime", "lastSeen", default=None)) or parse_time(_v(d, "keepAliveTime", default=None))
-        age = None if seen is None else max(0.0, (now - seen).total_seconds())
         row = by_udid.get(uid) if uid else None
         if row is None and user and host:
             row = by_user_host.get((user.lower(), host.lower()))
         if row is None and user and len(by_user.get(user.lower(), [])) == 1 and devices_of.get(user.lower()) == 1:
             row = by_user[user.lower()][0]
+        # The device record's last-seen time, else its keep-alive, else the service status file's last-seen column
+        # ("Last Seen Connected to ZIA", assumed from the portal's export) for the same device.
+        seen = (parse_time(_v(d, "last_seen_time", "lastSeenTime", "lastSeen", default=None)) or parse_time(_v(d, "keepAliveTime", default=None))
+                or (parse_time(row.get("last_seen")) if row is not None else None))
+        age = None if seen is None else max(0.0, (now - seen).total_seconds())
         services = {s: ("unread" if row is None else service_state(row.get(s)) if row.get(s) is not None else "unread") for s in SERVICES}
         raw_services = {s: (str(row.get(s))[:40] if row is not None and row.get(s) is not None else None) for s in SERVICES}
         for s in SERVICES:

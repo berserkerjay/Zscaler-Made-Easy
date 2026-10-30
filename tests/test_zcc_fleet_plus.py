@@ -588,3 +588,12 @@ def test_the_sample_tenant_fleet_now_has_service_status(monkeypatch):
     assert out["status"] == "read" and len(out["service"]["rows"]) == 3
     r = zf.analyze({"read_status": {}}, out, now=datetime(2026, 10, 28, 12, tzinfo=timezone.utc))
     assert r["mode"] == "full" and r["alerts"]["bypass_risk"]["count"] == 1
+
+
+def test_last_seen_falls_back_to_the_service_status_file():
+    """ASVS V11.1.4 · CWE-754: a device record without a last-seen time takes the service status file's last-seen column for the same device, so it is not counted as never seen."""
+    d = dev(1, seen="")
+    row = dict(svc_row(d, "Active", "Active", "Active"), last_seen=ago(hours=3) + " GMT")
+    n = normalized([d], [row])[0]
+    assert n["hours_since_seen"] == 3.0 and zf.last_seen_bucket(n) == "under_1d"
+    assert normalized([d], [])[0]["seconds_since_seen"] is None

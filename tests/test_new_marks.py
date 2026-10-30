@@ -288,7 +288,7 @@ console.log(JSON.stringify({ now, next, bad, real: W.releases(), words: W.words(
 # appear after a read or in a dialog: "shown" in the manifest).
 BROWSER_PAGES = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/report/fleet",
                  "/report/motion", "/report/live", "/simple"]
-NARROW = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/simple"]
+NARROW = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/operations", "/report/fleet", "/simple"]
 
 
 def _load_marks():
@@ -538,7 +538,8 @@ def test_no_sideways_scroll_at_320px(marks_browser, page):
     """WCAG 2.2 SC 1.4.10 (Reflow): at 320px the marks and the legend stay on screen and the page never scrolls sideways."""
     rec = marks_browser["narrow"][page]
     assert rec["overflow"] <= 0 and rec["off"] == [], rec
-    assert rec["marks"] >= 1
+    # A page whose marks all belong to a release that has rotated out has none left to check: only the reflow then.
+    assert rec["marks"] >= (1 if page in _load_marks() else 0), rec
 
 
 def test_placing_the_marks_settles(marks_browser):
