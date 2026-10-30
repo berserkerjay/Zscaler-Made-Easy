@@ -64,6 +64,16 @@ def _ls(payload: Any) -> List[Dict[str, Any]]:
     return []
 
 
+def _text(v: Any) -> str:
+    """A tenant field as text: "" for None, str() for a number or anything else."""
+    return "" if v is None else v if isinstance(v, str) else str(v)
+
+
+def _list(v: Any) -> List[Any]:
+    """A tenant list field: a list as is, anything else (a string, a number, an object) as no entries."""
+    return v if isinstance(v, list) else []
+
+
 def _safe_int(v: Any) -> Optional[int]:
     try:
         return int(v)
@@ -196,31 +206,48 @@ def read_collection(client, endpoint: str) -> Dict[str, Any]:
     evidence.update(status="verified", items=items, reason="Read successfully" if items else "Successful empty response")
     return evidence
 
-def _fetch_dictionaries(client) -> List[Dict[str, Any]]:
-    data, code = client.get("/zia/dlpDictionaries")
-    return _ls(data) if code in (200, 204) else []
+def _fetch(client, endpoint: str, errors: Optional[List[Dict[str, Any]]] = None) -> Optional[List[Dict[str, Any]]]:
+    """The objects at `endpoint` (a null, number or string in the list is
+    not a record), or None when the read failed; the failure is added to
+    `errors` so an unreadable collection is never shown as an empty one."""
+    try:
+        data, code = client.get(endpoint)
+    except Exception as exc:  # the exception text can contain credentials
+        if isinstance(exc, CorpusReadStopped):
+            raise
+        code, reason = None, "Read failed: " + type(exc).__name__
+    else:
+        if code in (200, 204):
+            return [x for x in _ls(data) if isinstance(x, dict)]
+        reason = {401: "Authentication failed", 403: "Permission denied", 404: "Route unavailable", 429: "Rate limited"}.get(code, "Read failed")
+    if errors is not None:
+        errors.append({"source": endpoint, "http_status": code, "reason": reason})
+    return None
 
 
-def _fetch_engines(client) -> List[Dict[str, Any]]:
-    data, code = client.get("/zia/dlpEngines")
-    return _ls(data) if code in (200, 204) else []
+def _fetch_dictionaries(client, errors=None) -> List[Dict[str, Any]]:
+    return _fetch(client, "/zia/dlpDictionaries", errors) or []
 
 
-def _fetch_rules(client) -> List[Dict[str, Any]]:
-    data, code = client.get("/zia/webDlpRules")
-    return _ls(data) if code in (200, 204) else []
+def _fetch_engines(client, errors=None) -> List[Dict[str, Any]]:
+    return _fetch(client, "/zia/dlpEngines", errors) or []
+
+
+def _fetch_rules(client, errors=None) -> List[Dict[str, Any]]:
+    return _fetch(client, "/zia/webDlpRules", errors) or []
 
 
 def _parse_engine_expression(expr: str) -> List[int]:
-    """Extract dictionary IDs from an engine expression.
-    Zscaler expressions look like: D(123456) AND D(789012).
+    """Extract the distinct dictionary IDs from an engine expression, in order.
+    ZIA writes them as ((D63.S > 1) AND (D38.S > 0)) (zscaler-sdk-python
+    zia/dlp_engine.py); the older D(123456) form is accepted too.
     Returns int IDs; silently skips unparseable tokens."""
     if not expr or not isinstance(expr, str):
         return []
     ids: List[int] = []
-    for m in re.findall(r"D\((\d+)\)", expr):
+    for m in re.findall(r"\bD\(?\s*(\d+)", expr):
         n = _safe_int(m)
-        if n is not None:
+        if n is not None and n not in ids:
             ids.append(n)
     return ids
 
@@ -274,14 +301,14 @@ def _nuance(direction: str, delta: int, driver: str, explanation: str) -> Dict[s
 
 def _phrase_text(p: Any) -> str:
     if isinstance(p, dict):
-        return (p.get("phrase") or p.get("action") or "") or ""
-    return str(p or "")
+        return _text(p.get("phrase") or p.get("action"))
+    return _text(p)
 
 
 def _pattern_text(p: Any) -> str:
     if isinstance(p, dict):
-        return p.get("pattern") or p.get("regex") or p.get("expression") or ""
-    return str(p or "")
+        return _text(p.get("pattern") or p.get("regex") or p.get("expression"))
+    return _text(p)
 
 
 def _score_dictionary(
@@ -301,16 +328,16 @@ def _score_dictionary(
     engine_refs: dict IDs referenced by ANY engine
     rule_reachable: dict IDs reachable via an engine used by a rule
     """
-    name = d.get("name", "?")
+    name = _text(d.get("name")) or "?"
     did = _safe_int(d.get("id"))
-    phrases = d.get("phrases") or []
-    patterns = d.get("patterns") or []
+    phrases = _list(d.get("phrases"))
+    patterns = _list(d.get("patterns"))
     confidence = d.get("confidence") or d.get("confidenceLevel")
     min_match = _safe_int(
         d.get("minMatchCount") or d.get("minimumMatchCount") or 1
     ) or 1
-    has_edm = bool(d.get("exactDataMatchDetails")) or "EDM" in (name or "").upper()
-    has_idm = bool(d.get("idmProfile")) or "IDM" in (name or "").upper()
+    has_edm = bool(d.get("exactDataMatchDetails")) or "EDM" in name.upper()
+    has_idm = bool(d.get("idmProfile")) or "IDM" in name.upper()
 
     base = {
         "id": did,
@@ -539,9 +566,9 @@ def _score_engine(
     rule_refs: Set[int],
     dict_by_id: Dict[int, Dict[str, Any]],
 ) -> Dict[str, Any]:
-    name = e.get("name", "?")
+    name = _text(e.get("name")) or "?"
     eid = _safe_int(e.get("id"))
-    expr = e.get("engineExpression") or e.get("expression") or ""
+    expr = _text(e.get("engineExpression") or e.get("expression"))
     dict_ids = _parse_engine_expression(expr)
 
     base = {
@@ -633,12 +660,12 @@ def _score_engine(
             d = dict_by_id.get(did)
             if not d:
                 continue
-            dn = d.get("name") or str(did)
-            if _is_custom_dict(d) and not (d.get("phrases") or d.get("patterns")):
+            dn = _text(d.get("name")) or str(did)
+            if _is_custom_dict(d) and not (_list(d.get("phrases")) or _list(d.get("patterns"))):
                 empty_refs.append(dn)
             elif _is_custom_dict(d):
                 # Inherit noise signal from the referenced dict
-                pats = d.get("patterns") or []
+                pats = _list(d.get("patterns"))
                 if any(_pattern_text(p).strip() in _BROAD_PATTERNS for p in pats):
                     weak_custom_refs.append(dn)
                 else:
@@ -715,9 +742,14 @@ def analyze(client, read_rules: bool = True) -> Dict[str, Any]:
         "engines":      [ per-engine score record ],
       }
     """
-    dicts = _fetch_dictionaries(client)
-    engines = _fetch_engines(client)
-    rules = _fetch_rules(client) if read_rules else []
+    errors: List[Dict[str, Any]] = []
+    dicts = _fetch_dictionaries(client, errors)
+    engines = _fetch_engines(client, errors)
+    rules = _fetch(client, "/zia/webDlpRules", errors) if read_rules else []
+    # Rules that could not be read are unknown, like rules not in scope: no
+    # dictionary or engine is called unused by rules on a refused read.
+    rules_known = rules is not None
+    rules = rules or []
 
     # Build reference graph
     engine_dict_refs: Set[int] = set()
@@ -729,14 +761,14 @@ def analyze(client, read_rules: bool = True) -> Dict[str, Any]:
 
     rule_engine_refs: Set[int] = set()
     for r in rules:
-        for ref in (r.get("dlpEngines") or r.get("engines") or []):
+        for ref in _list(r.get("dlpEngines") or r.get("engines")):
             eid = _safe_int(ref.get("id") if isinstance(ref, dict) else ref)
             if eid is not None:
                 rule_engine_refs.add(eid)
 
     # Dicts reachable through an engine that a rule uses
     rule_reachable_dicts: Set[int] = set()
-    for e in (engines if read_rules else []):
+    for e in (engines if read_rules and rules_known else []):
         eid = _safe_int(e.get("id"))
         if eid is None or eid not in rule_engine_refs:
             continue
@@ -752,16 +784,16 @@ def analyze(client, read_rules: bool = True) -> Dict[str, Any]:
             dict_by_id[did] = d
 
     dict_scores = [
-        _score_dictionary(d, engine_dict_refs, rule_reachable_dicts if read_rules else None) for d in dicts
+        _score_dictionary(d, engine_dict_refs, rule_reachable_dicts if read_rules and rules_known else None) for d in dicts
     ]
     engine_scores = [
-        _score_engine(e, rule_engine_refs if read_rules else None, dict_by_id) for e in engines
+        _score_engine(e, rule_engine_refs if read_rules and rules_known else None, dict_by_id) for e in engines
     ]
 
     # Sort worst-first by TP estimate (precision is the point of this
     # view) with health-score as a secondary sort key.
-    dict_scores.sort(key=lambda x: (x.get("tp_estimate", 0), x["score"], x["name"]))
-    engine_scores.sort(key=lambda x: (x.get("tp_estimate", 0), x["score"], x["name"]))
+    dict_scores.sort(key=lambda x: (x.get("tp_estimate", 0), x["score"], str(x["name"])))
+    engine_scores.sort(key=lambda x: (x.get("tp_estimate", 0), x["score"], str(x["name"])))
 
     custom_dicts = [x for x in dict_scores if x["type"] == "custom"]
     custom_engines = [x for x in engine_scores if x["type"] == "custom"]
@@ -779,19 +811,20 @@ def analyze(client, read_rules: bool = True) -> Dict[str, Any]:
         return out
 
     def _by_rules(xs: List[Dict[str, Any]]) -> Optional[List[str]]:
-        if not read_rules:
+        if not (read_rules and rules_known):
             return None
         return [x["name"] for x in xs if x.get("orphan_rule") and x["type"] == "custom"]
 
     return {
-        "rules_read": bool(read_rules),
+        "rules_read": bool(read_rules and rules_known),
         "rules_not_in_scope": None if read_rules else RULES_NOT_IN_SCOPE,
+        "read_errors": errors,
         "counts": {
             "dictionaries_total": len(dict_scores),
             "dictionaries_custom": len(custom_dicts),
             "engines_total": len(engine_scores),
             "engines_custom": len(custom_engines),
-            "rules": len(rules) if read_rules else None,
+            "rules": len(rules) if read_rules and rules_known else None,
         },
         "averages": {
             "custom_dictionary_efficacy": _avg(custom_dicts, "score"),
@@ -1078,7 +1111,13 @@ def export_markdown(analysis: Dict[str, Any]) -> bytes:
                f"of {c.get('dictionaries_total', 0)} total")
     out.append(f"- **Engines**: {c.get('engines_custom', 0)} custom "
                f"of {c.get('engines_total', 0)} total")
-    out.append(f"- **Rules referencing custom engines**: {c.get('rules') if c.get('rules') is not None else 'not read (Inline Web DLP not in scope)'}")
+    unread = 'not readable (see the read errors below)' if a.get("rules_not_in_scope") is None and a.get("read_errors") else 'not read (Inline Web DLP not in scope)'
+    out.append(f"- **Rules referencing custom engines**: {c.get('rules') if c.get('rules') is not None else unread}")
+    for err in a.get("read_errors") or []:
+        if isinstance(err, dict):
+            out.append(f"- **Not read**: {err.get('source', '?')}: {err.get('reason', 'read failed')}"
+                       + (f" (HTTP {err.get('http_status')})" if err.get("http_status") else "")
+                       + ". The analysis is incomplete, not empty.")
     out.append("")
     out.append(f"- **Avg TP% (dictionaries)**: {_fmt_pct(avg.get('custom_dictionary_tp_pct'))}")
     out.append(f"- **Avg TP% (engines)**: {_fmt_pct(avg.get('custom_engine_tp_pct'))}")

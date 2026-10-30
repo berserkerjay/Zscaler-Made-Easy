@@ -97,6 +97,27 @@ def _get_sections() -> dict:
     return sections
 
 
+# Tool arguments are text from the AI conversation: capped, so a call
+# cannot grow a report (or the log) without bound.
+MAX_ARG_LEN = 200
+
+
+class ToolInputError(ValueError):
+    """A tool argument or the environment was refused; the message is plain
+    and never holds a secret."""
+
+
+def _arg(name: str, value: Optional[str], limit: int = MAX_ARG_LEN) -> str:
+    """A tool argument as stripped text, refused when longer than `limit`
+    or holding control characters (the value is not echoed)."""
+    s = str(value or "").strip()
+    if len(s) > limit:
+        raise ToolInputError(f"{name} is too long: at most {limit} characters.")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in s):
+        raise ToolInputError(f"{name} holds control characters; use plain text.")
+    return s
+
+
 def _create_client(
     vanity_domain: Optional[str] = None,
     cloud: Optional[str] = None,
@@ -105,10 +126,22 @@ def _create_client(
     domain and cloud, which are not secrets, may be overridden by a tool
     argument. Client ID and secret, and the classic ZIA API sign-in
     (ZSCALER_AUTH_METHOD=legacy, ZSCALER_USERNAME, ZSCALER_PASSWORD,
-    ZSCALER_API_KEY), come from the environment alone; see tenant_auth."""
+    ZSCALER_API_KEY), come from the environment alone; see tenant_auth.
+
+    The cloud must be one zscaler_clouds knows: an unknown name is
+    refused (ToolInputError) rather than signed in to the commercial
+    cloud, so a typo never sends a government tenant's secret there."""
     import tenant_auth
-    env = tenant_auth.from_env()
-    c = tenant_auth.merge({"vanity_domain": vanity_domain or "", "cloud": cloud or ""}, env)
+    import zscaler_clouds
+    try:
+        env = tenant_auth.from_env()
+    except ValueError as e:   # an unknown ZSCALER_AUTH_METHOD; the message names the value, never a secret
+        raise ToolInputError(str(e)) from None
+    c = tenant_auth.merge({"vanity_domain": _arg("vanity_domain", vanity_domain), "cloud": _arg("cloud", cloud)}, env)
+    try:
+        zscaler_clouds.normalize(c["cloud"])
+    except ValueError as e:
+        raise ToolInputError(str(e)) from None
     return SdkClient(
         client_id=c["client_id"], client_secret=c["client_secret"], vanity_domain=c["vanity_domain"],
         cloud=c["cloud"] or "production", auth_method=c["auth_method"], username=c["username"],
@@ -117,13 +150,17 @@ def _create_client(
 
 
 def _run_checks(client, checks) -> list:
-    """Run a list of (id, section, label, fn) checks and return results."""
+    """Run a list of (id, section, label, fn) checks and return results.
+    A check that raises is an ERROR whose detail has every credential of
+    the client masked (an SDK error may echo the request it sent)."""
+    import tenant_auth
+    creds = getattr(client, "_creds", None) or {}
     results = []
     for check_id, sec, label, fn in checks:
         try:
             r = fn(client)
         except Exception as ex:
-            r = R(R.ERROR, str(ex))
+            r = R(R.ERROR, tenant_auth.mask_secrets(str(ex), creds))
         results.append({
             "id": check_id,
             "section": sec,
@@ -182,16 +219,12 @@ def run_assessment(
     Returns a scored maturity report with pass/fail/review for every check,
     section scores, overall score, and critical findings.
     """
-    client = _create_client(vanity_domain or None, cloud or None)
-    auth = client.auth()
-    if auth is not True:
-        return {"error": f"Authentication failed: {auth}"}
-
-    logger.info("Running full assessment (%d checks)...", len(REG))
-    results = _run_checks(client, REG)
-    client.close()
-
-    return _build_report(results, org_name, assessor, client._config.get("cloud", ""))
+    try:
+        org_name, assessor = _arg("org_name", org_name), _arg("assessor", assessor)
+        client = _create_client(vanity_domain or None, cloud or None)
+    except ToolInputError as e:
+        return {"error": str(e)}
+    return _assess(client, REG, org_name, assessor, "the full assessment")
 
 
 @mcp.tool()
@@ -217,24 +250,43 @@ def run_section(
     The section parameter is matched as a substring, so "SSL" matches
     both "4 — SSL Policy" and "7 — SSL Alignment".
     """
+    available = sorted(set(sec for _, sec, _, _ in REG))
+    try:
+        section, org_name = _arg("section", section, 80), _arg("org_name", org_name)
+    except ToolInputError as e:
+        return {"error": str(e), "available": available}
+    if not section:
+        # An empty section would match every section: say so instead.
+        return {"error": "Name a section (use run_assessment for every check).", "available": available}
     section_lower = section.lower()
     filtered = [(cid, sec, label, fn) for cid, sec, label, fn in REG
                 if section_lower in sec.lower()]
 
     if not filtered:
-        available = sorted(set(sec for _, sec, _, _ in REG))
         return {"error": f"No section matches '{section}'", "available": available}
 
-    client = _create_client(vanity_domain or None, cloud or None)
-    auth = client.auth()
-    if auth is not True:
-        return {"error": f"Authentication failed: {auth}"}
+    try:
+        client = _create_client(vanity_domain or None, cloud or None)
+    except ToolInputError as e:
+        return {"error": str(e)}
+    return _assess(client, filtered, org_name, "AI Agent", "one section")
 
-    logger.info("Running %d checks for section '%s'...", len(filtered), section)
-    results = _run_checks(client, filtered)
-    client.close()
 
-    return _build_report(results, org_name, "AI Agent", client._config.get("cloud", ""))
+def _assess(client, checks, org_name: str, assessor: str, what: str) -> dict:
+    """Sign in, run `checks`, and build the report. The client is closed
+    whatever happens, a failed sign-in included."""
+    try:
+        auth = client.auth()
+        if auth is not True:
+            return {"error": f"Authentication failed: {auth}"}
+        logger.info("Running %d checks (%s)...", len(checks), what)
+        results = _run_checks(client, checks)
+    finally:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001 - closing never hides the answer
+            pass
+    return _build_report(results, org_name, assessor, client._config.get("cloud", ""))
 
 
 @mcp.tool()
@@ -264,7 +316,11 @@ def get_health() -> dict:
     Does NOT make API calls to Zscaler.
     """
     import tenant_auth
-    env = tenant_auth.from_env()
+    try:
+        env = tenant_auth.from_env()
+    except ValueError as e:   # an unknown ZSCALER_AUTH_METHOD: say so instead of failing the health check
+        return {"status": "misconfigured", "engine_loaded": True, "total_checks": len(REG), "version": "3.0",
+                "credentials_configured": False, "error": str(e), "missing_environment_variables": [], "sdk": "zscaler-sdk-python"}
     missing = [tenant_auth.ENV[k] for k in tenant_auth.missing(env)]
     return {
         "status": "ok",
@@ -282,7 +338,14 @@ def get_health() -> dict:
 
 # ── Entrypoint ───────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def main(argv: Optional[list] = None) -> int:
+    """Parse the command line and run the server. An HTTP transport bound
+    beyond loopback is refused unless --allow-remote says so on purpose:
+    the server has no authentication of its own and holds the tenant's
+    credentials (deny by default)."""
     parser = argparse.ArgumentParser(description="DLP Assessment MCP Server")
     parser.add_argument("--transport", default="streamable-http",
                         choices=["streamable-http", "stdio", "sse"],
@@ -292,10 +355,17 @@ if __name__ == "__main__":
     parser.add_argument("--host", default=os.environ.get("ZSCALER_MCP_BIND_HOST", "127.0.0.1"),
                         help="Bind address for HTTP transports (default: 127.0.0.1, loopback only). The server holds "
                              "tenant credentials and has no authentication of its own, so expose it beyond this "
-                             "machine only behind an authenticating proxy.")
-    args = parser.parse_args()
+                             "machine only behind an authenticating proxy, with --allow-remote.")
+    parser.add_argument("--allow-remote", action="store_true",
+                        help="Allow an HTTP transport to bind beyond loopback (put an authenticating proxy in front of it).")
+    args = parser.parse_args(argv)
 
-    if args.transport in ("streamable-http", "sse") and args.host not in ("127.0.0.1", "localhost", "::1"):
+    if args.transport in ("streamable-http", "sse") and args.host not in LOOPBACK:
+        if not args.allow_remote:
+            print(f"Refused: binding the MCP server to {args.host} would let anyone who can reach port {args.port} run "
+                  "assessments with this process's tenant credentials. Bind to 127.0.0.1, or put an authenticating proxy "
+                  "in front of it and pass --allow-remote.", file=sys.stderr)
+            return 2
         print(f"WARNING: MCP server bound to {args.host}: anyone who can reach port {args.port} can run assessments "
               "with this process's tenant credentials. Put an authenticating proxy in front of it.", file=sys.stderr)
     if args.transport == "stdio":
@@ -305,3 +375,8 @@ if __name__ == "__main__":
     else:  # mcp 1.x reads it from settings
         mcp.settings.host, mcp.settings.port = args.host, args.port
         mcp.run(transport=args.transport)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

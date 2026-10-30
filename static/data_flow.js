@@ -194,7 +194,7 @@ function renderDataFlowOverview(report, container) {
     const [olab, ocls] = DF_OUTCOME[t.outcome] || [t.outcome, 'dim'];
     const net = (report.networks.find(n => n.key === t.network) || {}).label || t.network;
     const high = t.weak_points.filter(w => w.severity === 'high').length;
-    return `<tr class="df-row" data-i="${i}" tabindex="0"><td>${_dfE(t.destination.label)}</td><td>${_dfE(net)}</td><td><span class="df-chip st-${ocls}">${_dfE(olab)}</span></td><td>${t.hops.filter(h => h.status === 'bypass').length ? 'client / PAC' : (t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope', 'conditional'].includes(h.status)) ? 'unverified' : t.decrypted ? 'decrypted' : 'encrypted')}</td><td>${high ? `<span class="df-chip st-fail">${high} high</span>` : (t.weak_points.length ? `<span class="df-chip st-warn">${t.weak_points.length}</span>` : '<span class="df-chip st-ok">0</span>')}</td></tr>`;
+    return `<tr class="df-row" id="dfRow-${i}" data-i="${i}" tabindex="0"><td>${_dfE(t.destination.label)}</td><td>${_dfE(net)}</td><td><span class="df-chip st-${ocls}">${_dfE(olab)}</span></td><td>${t.hops.filter(h => h.status === 'bypass').length ? 'client / PAC' : (t.conditional || (t.hops || []).some(h => h.key === 'ssl' && ['unknown', 'out_of_scope', 'conditional'].includes(h.status)) ? 'unverified' : t.decrypted ? 'decrypted' : 'encrypted')}</td><td>${high ? `<span class="df-chip st-fail">${high} high</span>` : (t.weak_points.length ? `<span class="df-chip st-warn">${t.weak_points.length}</span>` : '<span class="df-chip st-ok">0</span>')}</td></tr>`;
   }).join('');
   container.innerHTML = `<div class="df-tablewrap"><table class="df-table"><thead><tr><th>Destination</th><th>Network</th><th>Outcome</th><th>Visibility</th><th>Weak points</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -279,6 +279,66 @@ function renderControlFishbones(report, container, network) {
     <div class="df-cat-grid">${cards}</div>`;
 }
 
+// ── Traffic flow motion (static/flow_anim.js) ─────────────────────
+// Every traced path as a packet stream through the hops the tracer
+// walked, each stream as wide as its share of the paths. Hover or focus a
+// stream for its count; its paths link to their rows in "Every
+// destination, every network". Built with DOM calls (textContent only):
+// destination names are tenant data. Returns the picture (play, pause,
+// running, destroy) or null without the motion module.
+function renderDataFlowMotion(report, container, onRow) {
+  const FA = window.FA;
+  container.textContent = '';
+  if (!FA || !FA.dataFlowModel) return null;
+  const m = FA.dataFlowModel(report);
+  if (!m || !m.total) { const p = document.createElement('p'); p.className = 'df-hop-d'; p.textContent = 'No path was traced, so there is no traffic to draw.'; container.appendChild(p); return null; }
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const wrap = el('div', 'fa-motion');
+  wrap.appendChild(el('p', 'fa-lead', `Each stream is one route through the hops, as wide as its share of the ${m.total} traced paths (every traffic class on every network); packets move along it, coloured by where their path ends (green: decrypted with a DLP rule that can block, amber: monitor only or unverified, red: bypassed, left encrypted or blocked; a cross marks where a bypass leaves the flow). Hover or focus a stream for its count, and press Enter to list its paths.`));
+  const bar = el('div', 'fa-motion-bar');
+  const btn = el('button', 'rp-btn'); btn.type = 'button'; btn.id = 'dfMotionPlay';
+  bar.appendChild(btn); wrap.appendChild(bar);
+  if (m.mismatch.length) wrap.appendChild(el('p', 'fa-warnline', `The picture and the summary disagree (${m.mismatch.join('; ')}); trust the summary numbers below.`));
+  const stage = el('div', 'fa-stage'); stage.id = 'dfMotionStage';
+  wrap.appendChild(stage);
+  const pick = el('div', 'fa-pick'); pick.id = 'dfMotionPick'; pick.setAttribute('role', 'status'); pick.setAttribute('aria-live', 'polite');
+  pick.textContent = 'Hover or focus a stream to see how many paths take it.';
+  wrap.appendChild(pick);
+  wrap.appendChild(el('h3', 'df-h', 'In words'));
+  container.appendChild(wrap);
+  FA.altList(wrap, m.alt, 'dfMotionAlt');
+  // The stream last opened with Enter or a click stays listed (its links
+  // keep focus) until another is opened.
+  let held = null, current = '';
+  const show = (l, list) => {
+    if (!l && held) { l = held; list = true; }
+    const now = l ? l.key + (list ? '+' : '') : '';
+    if (now === current) return;
+    current = now;
+    pick.textContent = '';
+    if (!l) { pick.textContent = 'Hover or focus a stream to see how many paths take it.'; return; }
+    pick.appendChild(el('strong', '', l.label));
+    if (!list) return;
+    const ul = el('ul', '');
+    l.items.forEach(it => {
+      const li = el('li', ''), a = el('a', '', it.name);
+      a.href = `#dfRow-${it.i}`;
+      a.addEventListener('click', ev => { ev.preventDefault(); if (onRow) onRow(it.i); });
+      li.appendChild(a); ul.appendChild(li);
+    });
+    pick.appendChild(ul);
+  };
+  const pic = FA.river(stage, m, {
+    height: 220,
+    onFocus: l => show(l, false),
+    onPick: l => { held = l; show(l, true); const a = pick.querySelector('a'); if (a) a.focus(); },
+  });
+  pic.svg.setAttribute('aria-describedby', 'dfMotionAlt');
+  FA.playButton(btn, () => [pic]);
+  return pic;
+}
+
+window.renderDataFlowMotion = renderDataFlowMotion;
 window.renderPolicyEnforcementFlow = renderPolicyEnforcementFlow;
 window.renderDataFlowTrace = renderDataFlowTrace;
 window.renderDataFlowOverview = renderDataFlowOverview;

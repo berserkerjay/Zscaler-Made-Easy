@@ -96,7 +96,7 @@ def load_history(path: Optional[str] = None) -> List[Dict[str, Any]]:
     try:
         with open(path or state_path(), "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return []
     snaps = data.get("snapshots") if isinstance(data, dict) else None
     kept = [s for s in snaps if isinstance(s, dict)] if isinstance(snaps, list) else []
@@ -387,13 +387,24 @@ def probe_endpoint(client: Any, ep: str, method: str = "GET") -> Dict[str, Any]:
     except PermissionError:
         raise
     except Exception as e:  # noqa: BLE001
-        return {"endpoint": ep, "status": "error", "http": 0, "items": None, "error": f"{type(e).__name__}: {str(e)[:150]}"}
-    code = int(code or 0)
+        return {"endpoint": ep, "status": "error", "http": 0, "items": None, "error": _kept_error(f"{type(e).__name__}: {e}", 150)}
+    try:
+        code = int(code or 0)
+    except (TypeError, ValueError):
+        code = 0
     st = _status_of(data, code)
     e: Dict[str, Any] = {"endpoint": ep, "status": st, "http": code, "items": _items(data) if st == "OK" else None}
     if st != "OK" and isinstance(data, dict) and data.get("error"):
-        e["error"] = str(data["error"])[:200]
+        e["error"] = _kept_error(data["error"], 200)
     return e
+
+
+def _kept_error(text: Any, limit: int) -> str:
+    """An error as the history keeps it: any access token, JSON Web Token
+    or session id it echoes masked (a gateway's error page may echo the
+    request's Authorization header), then cut to `limit`."""
+    import tenant_auth
+    return tenant_auth.redact_tokens(str(text))[:limit]
 
 
 def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, *, method: str = "GET",
@@ -839,7 +850,7 @@ def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any =
         except PermissionError:
             raise
         except Exception as e:  # noqa: BLE001
-            t = {"endpoints": [], "counts": {}, "requests": 0, "stopped": f"{type(e).__name__}: {str(e)[:200]}", "method": "GET", "failed": True}
+            t = {"endpoints": [], "counts": {}, "requests": 0, "stopped": _kept_error(f"{type(e).__name__}: {e}", 200), "method": "GET", "failed": True}
         import tenant_auth
         t["label"] = tenant_auth.scrub_classic_login(tenant_label) or "tenant"   # never a classic-API admin login (user rule 3)
         t["scope"] = beacon_scope.describe(tenant_scope, str(tenant_scope.get("source") or ""))

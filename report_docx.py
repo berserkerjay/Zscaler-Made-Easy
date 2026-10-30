@@ -15,7 +15,7 @@ Or standalone:
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     from docx import Document
@@ -572,13 +572,39 @@ def _xml_safe(obj):
     return obj
 
 
+def _now():
+    """The time the report is made, in UTC (a test injects its own)."""
+    return datetime.now(timezone.utc)
+
+
+def _text(value, default=""):
+    """A posted value as text: the report draws strings only (a number or
+    a list in the metadata made python-docx fail the whole report)."""
+    if value is None:
+        return default
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(v) for v in value if v is not None)
+    return str(value)
+
+
+def _row(r):
+    """A posted check as the fields the report reads, each text."""
+    out = dict(r)
+    for k in ("id", "label", "status", "detail"):
+        out[k] = _text(r.get(k))
+    for k in ("sec", "section"):
+        if k in r:
+            out[k] = _text(r.get(k))
+    return out
+
+
 def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None, template_path=None):
     """
     Generate a Word document report from assessment results.
 
     Args:
         results: List of check result dicts with id, sec, label, status, detail
-        cfg: Config dict with org_name, assessor, cloud
+        cfg: Config dict with org_name (or the report metadata's org), assessor, cloud
         output_path: Path for the .docx file
         compute_fn: Optional compute function (imported from engine)
         maturity_fn: Optional maturity function (imported from engine)
@@ -604,6 +630,12 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     # Tenant text (rule names in a detail) may carry characters XML cannot:
     # python-docx refuses them, so clean the inputs once, here.
     results, cfg = xlsx_writer.clean_tree(list(results or [])), xlsx_writer.clean_tree(dict(cfg or {}))
+    # The assessment page and Simple mode send the report's own metadata,
+    # which names the organisation `org` (the command line says `org_name`):
+    # either one is the organisation on the cover and in the summary.
+    if not str(cfg.get("org_name") or "").strip() and str(cfg.get("org") or "").strip():
+        cfg["org_name"] = cfg["org"]
+    results = [_row(r) for r in results if isinstance(r, dict)]
     results, dropped = channel_scope.visible(results)
     try:
         hidden = max(0, int((cfg or {}).get("hidden_checks") or 0)) + dropped
@@ -644,22 +676,22 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
 
     # ── Title Page ────────────────────────────────────────────────
     doc.add_paragraph()  # spacer
-    title = doc.add_heading("Zscaler Made Easy Report", level=0)
+    title = doc.add_heading("Zscaler Made Easy report", level=0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     doc.add_paragraph()
     meta_table = doc.add_table(rows=0, cols=2)
     meta_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     meta_data = [
-        ("Organization", cfg.get("org_name", "Unknown")),
-        ("Assessor", cfg.get("assessor", "Unknown")),
-        ("Cloud", cfg.get("cloud", "Unknown")),
-        ("Date", datetime.now().strftime("%B %d, %Y")),
-        ("Total Checks", str(len(results))),
+        ("Organization", _text(cfg.get("org_name"), "Unknown")),
+        ("Assessor", _text(cfg.get("assessor"), "Unknown")),
+        ("Cloud", _text(cfg.get("cloud"), "Unknown")),
+        ("Date", _now().strftime("%B %d, %Y")),
+        ("Total checks", str(len(results))),
         ("Assessed", (f"{cov['assessed']} of {cov['total']}"
                       + (f" ({cov['not_permitted']} not permitted)" if cov["not_permitted"] else "")) if cov else str(len(results))),
-        ("Overall Score", overall_text + (f" — {cov['configured']} configured of {cov['scored']} scoreable" if cov and cov["scored"] else "")),
-        ("Maturity Level", mat),
+        ("Overall score", overall_text + (f" — {cov['configured']} configured of {cov['scored']} scoreable" if cov and cov["scored"] else "")),
+        ("Maturity level", mat),
     ]
     for label, value in meta_data:
         row = meta_table.add_row()
@@ -669,7 +701,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     doc.add_page_break()
 
     # ── Executive Summary ─────────────────────────────────────────
-    doc.add_heading("Executive Summary", level=1)
+    doc.add_heading("Executive summary", level=1)
 
     counts = {"PASS": 0, "FAIL": 0, "REVIEW": 0, "INFO": 0}
     for r in results:
@@ -680,7 +712,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             counts["INFO"] += 1
 
     summary = doc.add_paragraph()
-    summary.add_run(f"The assessment of the Zscaler platform for {cfg.get('org_name', 'the organization')} "
+    summary.add_run(f"The assessment of the Zscaler platform for {_text(cfg.get('org_name'), 'the organization')} "
                     f"evaluated {len(results)} configuration checks across all deployed Zscaler services. ")
     summary.add_run(f"The overall maturity score is {overall_text} ({mat}). ").bold = True
     if cov:
@@ -709,7 +741,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     # Executive Summary (hidden_line), never a list.
     chcov = cfg.get("channel_coverage") if isinstance(cfg, dict) else None
     if isinstance(chcov, dict) and chcov.get("declared"):
-        doc.add_heading("Channel Coverage", level=2)
+        doc.add_heading("Channel coverage", level=2)
         doc.add_paragraph(str(chcov.get("note") or ""))
         rows = [r for r in (chcov.get("zscaler") or []) if isinstance(r, dict)]
         if rows:
@@ -726,14 +758,14 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                 p = pre.get(str(row.get("id")))
                 if p or row.get("prerequisite_of"):
                     cells[1].text = "Prerequisite: " + (str(p.get("note")) if p else "needed by a channel in scope")
-                    cells[2].text = " ".join(p.get("reasons") or []) if p else ""
+                    cells[2].text = " ".join(_text(x) for x in p.get("reasons")) if p and isinstance(p.get("reasons"), list) else _text((p or {}).get("reasons"))
                 else:
                     cells[1].text = "Ticked as Zscaler on the Scope page"
                     cells[2].text = str(row.get("note") or "")
         doc.add_paragraph()
 
     # ── Maturity Model Explanation ────────────────────────────────
-    doc.add_heading("Maturity Model & Scoring Methodology", level=2)
+    doc.add_heading("Maturity model & scoring methodology", level=2)
     doc.add_paragraph(
         "This assessment uses a five-tier maturity model adapted from the Zscaler "
         "Zero Trust Maturity Framework. The overall score is calculated as the "
@@ -799,7 +831,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         your_run.font.color.rgb = COLORS["FAIL"]
 
     # ── Status Definitions ────────────────────────────────────────
-    doc.add_heading("Finding Status Definitions", level=2)
+    doc.add_heading("Finding status definitions", level=2)
     sd_table = doc.add_table(rows=1, cols=4)
     sd_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
     sd_headers = ["Finding Name", "Best Practice", "Actual Configuration", "Why It Matters"]
@@ -865,7 +897,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     doc.add_page_break()
 
     # ── Score Summary Table ───────────────────────────────────────
-    doc.add_heading("Scorecard by Section", level=2)
+    doc.add_heading("Scorecard by section", level=2)
 
     score_table = doc.add_table(rows=1, cols=6)
     score_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
@@ -900,7 +932,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     # ── Critical Findings ─────────────────────────────────────────
     fails = [r for r in results if r["status"] == "FAIL"]
     if fails:
-        doc.add_heading("Critical Findings — Immediate Action Required", level=1)
+        doc.add_heading("Critical findings — immediate action required", level=1)
         for r in fails:
             p = doc.add_paragraph()
             run = p.add_run(f"{r['id']} — {r['label']}")
@@ -914,7 +946,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     # ── Review Items ──────────────────────────────────────────────
     reviews = [r for r in results if r["status"] == "REVIEW"]
     if reviews:
-        doc.add_heading("Items Requiring Review", level=1)
+        doc.add_heading("Items requiring review", level=1)
         doc.add_paragraph(
             f"The following {len(reviews)} item(s) were detected but require manual "
             f"verification or organizational context to determine if action is needed. "
@@ -981,7 +1013,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         doc.add_page_break()
 
     # ── Detailed Findings by Section ──────────────────────────────
-    doc.add_heading("Detailed Findings", level=1)
+    doc.add_heading("Detailed findings", level=1)
 
     current_sec = ""
     for r in results:
@@ -1031,7 +1063,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     infos = [r for r in results if r["status"] in ("INFO", "ERROR")]
     if infos:
         doc.add_page_break()
-        doc.add_heading("Features Not Configured or Not Licensed", level=1)
+        doc.add_heading("Features not configured or not licensed", level=1)
         p = doc.add_paragraph(
             f"The following {len(infos)} feature(s) were not accessible during the assessment. "
             f"This may indicate the feature is not licensed, not configured, or the API client "
@@ -1065,7 +1097,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         fw_summary = get_framework_summary(results)
         if fw_summary:
             doc.add_page_break()
-            doc.add_heading("Regulatory & Compliance Framework Alignment", level=1)
+            doc.add_heading("Regulatory & compliance framework alignment", level=1)
             doc.add_paragraph(
                 "The following compliance frameworks have controls addressed by this "
                 "Zscaler configuration assessment. Each framework's alignment status is "
@@ -1099,7 +1131,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
 
             # Detailed framework breakdown
             doc.add_paragraph()
-            doc.add_heading("Detailed Control Mapping by Framework", level=2)
+            doc.add_heading("Detailed control mapping by framework", level=2)
             for fw_key, summary in sorted(fw_summary.items()):
                 doc.add_heading(FRAMEWORK_DESCRIPTIONS.get(fw_key, fw_key), level=3)
                 p = doc.add_paragraph()
@@ -1128,14 +1160,14 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
 
     # ── Footer ────────────────────────────────────────────────────
     doc.add_page_break()
-    doc.add_heading("About This Assessment", level=1)
+    doc.add_heading("About this assessment", level=1)
     doc.add_paragraph(
         "This report was generated by the Zscaler Made Easy Automation Engine. "
         "All checks are performed via the Zscaler OneAPI using read-only API calls. "
         "No configuration changes were made during the assessment."
     )
     doc.add_paragraph(
-        f"Report generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        f"Report generated: {_now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
     )
     doc.add_paragraph(f"Engine version: 3.0 | Total checks: {len(results)}")
 

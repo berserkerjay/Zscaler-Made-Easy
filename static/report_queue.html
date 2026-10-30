@@ -10,7 +10,7 @@
 <style>
   .cq-sec { padding: 0.2rem 0.2rem 1rem; }
   .cq-sec h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
-  .cq-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.6rem; }
+  .cq-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 0.6rem; }
   .cq-tile { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
   .cq-tile .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
   .cq-tile .v { font-size: 1.05rem; font-weight: 700; overflow-wrap: anywhere; }
@@ -51,6 +51,8 @@
   @media (prefers-reduced-motion: reduce) { .cq-req, .cq-tab { transition: none; } }
   @media (max-width: 600px) { .cq-dl { grid-template-columns: 1fr; } }
 </style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page cq-page">
   <div class="rp-page">
@@ -99,6 +101,8 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -146,6 +150,35 @@
       }
       if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
       return {};
+    }
+    // The Scope page selection (user rule 1): a fix recipe is applied only
+    // when its rule policy is in scope. From the assessment tab that opened
+    // this page, else the ticks it last saved in this browser; nothing known
+    // sends nothing, and the server then uses the chosen profile's saved
+    // selection or refuses (deny by default).
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = opener();
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return {};
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
     }
 
     async function load(quiet) {
@@ -325,7 +358,7 @@
           const typed = dlg ? await dlg.phrase({ title: 'Apply this approved request?', body, phrase, okLabel: 'Apply' }) : window.prompt(`${body}\n\nType ${phrase} to continue:`, '');
           if (!typed) return;
           b.disabled = true;
-          const started = await post(`/api/change-queue/${encodeURIComponent(rid)}/apply`, { ...credBody(), confirm: typed });
+          const started = await post(`/api/change-queue/${encodeURIComponent(rid)}/apply`, { ...credBody(), ...scopeSelection(), confirm: typed });
           announce(`Applying ${rid}.`);
           const snap = await followJob(started.job_id, rid);
           const rec = (snap.result || {}).change_request;

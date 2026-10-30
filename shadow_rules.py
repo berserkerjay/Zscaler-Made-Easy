@@ -310,11 +310,16 @@ def normalize(policy: str, raw: Dict[str, Any]) -> Dict[str, Any]:
                 "default_rule": _bool(_f(raw, "default_rule", "defaultRule", default=False)), "hidden_criteria": False}
     known, unknown = _criteria(policy, raw)
     rule = {"policy": policy, "id": raw.get("id"), "name": n["name"], "order": n.get("order"), "state": n["state"], "enabled": n["enabled"],
-            "criteria": known, "unknown": unknown, "sub_rules": [_parent_id(x) for x in (_f(raw, "sub_rules", "subRules", default=[]) or [])]}
+            "criteria": known, "unknown": unknown, "sub_rules": [_parent_id(x) for x in _as_list(_f(raw, "sub_rules", "subRules", default=[]))]}
     rule.update(base)
     rule.setdefault("parent_rule", None)
     rule["sig"] = _signature(rule)
     return rule
+
+
+def _as_list(v: Any) -> List[Any]:
+    """A list field of a raw rule; anything else (untrusted tenant JSON) is empty."""
+    return list(v) if isinstance(v, (list, tuple)) else []
 
 
 def _parent_id(v: Any) -> Optional[str]:
@@ -540,19 +545,98 @@ def _o(rule: Dict[str, Any]) -> str:
     return f"order {rule.get('order')}" if rule.get("order") not in (None, "") else "no order"
 
 
+class _CoverIndex:
+    """For a rule B, the rules that can cover it at all (covers() or
+    is_catch_all() may be true), in their order. Thousands of rules then
+    cost a comparison per plausible pair, not per pair (n²).
+
+    Each criterion group (a "group" or "noany" spec, and the DLP content)
+    is a dimension. On a dimension, a rule A can only cover B when A leaves
+    the whole group empty (it is "wild" there) or A shares a token with B
+    in that group: a non-empty member of A must hold every token of the same
+    member of B, which must not be empty. covers() needs every dimension to
+    hold, so the candidates of any one dimension are a superset of the
+    rules that cover B; the smallest one is used. Rules with the same
+    criteria (sig) are always candidates (covers() accepts them whatever
+    the criteria mean). The DLP content dimension: a rule without content
+    inspection is wild; otherwise only the same non-empty engines can
+    cover (_content_covers); B without content inspection is covered only
+    by a wild rule."""
+
+    def __init__(self, rules: List[Dict[str, Any]]):
+        self.pos = {id(r): k for k, r in enumerate(rules)}
+        self.by_sig: Dict[str, List[Dict[str, Any]]] = {}
+        for r in rules:
+            self.by_sig.setdefault(r["sig"], []).append(r)
+        policy = rules[0]["policy"] if rules else ""
+        self.dims: List[Tuple[Callable[[Dict[str, Any]], List[Any]], List[Dict[str, Any]], Dict[Any, List[Dict[str, Any]]]]] = []
+        for mode, fields in SPECS.get(policy, []):
+            if mode in ("group", "noany"):
+                self._dim(rules, lambda r, fs=tuple(fields): [(f, t) for f in fs for t in _tokens(r["criteria"].get(f))])
+        if policy in DLP_POLICIES:
+            self._dim(rules, _content_keys, wild=lambda r: bool(r["criteria"].get("withoutcontentinspection")))
+        self.complete = bool(self.dims)
+
+    def _dim(self, rules, keys, wild=None) -> None:
+        wild_rules: List[Dict[str, Any]] = []
+        posting: Dict[Any, List[Dict[str, Any]]] = {}
+        for r in rules:
+            ks = keys(r)
+            if (wild(r) if wild else not ks):
+                wild_rules.append(r)
+            else:
+                for k in ks:
+                    posting.setdefault(k, []).append(r)
+        self.dims.append((keys, wild_rules, posting))
+
+    def candidates(self, b: Dict[str, Any], before: bool = False) -> List[Dict[str, Any]]:
+        """The rules that may cover `b` (only those above it with `before`)."""
+        best = None
+        for keys, wild_rules, posting in self.dims:
+            lists = [wild_rules] + [posting.get(k, ()) for k in keys(b)]
+            size = sum(len(x) for x in lists)
+            if best is None or size < best[0]:
+                best = (size, lists)
+        pool: Dict[int, Dict[str, Any]] = {}
+        for lst in (best[1] if best else []):
+            pool.update((id(a), a) for a in lst)
+        pool.update((id(a), a) for a in self.by_sig.get(b["sig"], ()))
+        limit = self.pos.get(id(b), len(self.pos)) if before else None
+        return sorted((a for a in pool.values() if a is not b and (limit is None or self.pos[id(a)] < limit)),
+                      key=lambda a: self.pos[id(a)])
+
+
+def _content_candidates(live: List[Dict[str, Any]]) -> Callable[[Dict[str, Any]], List[Dict[str, Any]]]:
+    """For a rule b under evaluate-all, the rules that can cover it at all,
+    in their order (_CoverIndex; every rule when the policy has no
+    dimension to index on)."""
+    index = _CoverIndex(live)
+    if not index.complete:
+        return lambda b: list(live)
+    return index.candidates
+
+
+def _content_keys(r: Dict[str, Any]) -> List[Any]:
+    """The DLP content dimension's key: the rule's engines when it inspects content."""
+    if r["criteria"].get("withoutcontentinspection"):
+        return []
+    eng = _tokens(r["criteria"].get("dlpengines"))
+    return [eng] if eng else []
+
+
 def _first_match(rules: List[Dict[str, Any]], mode_note: str = "") -> List[Dict[str, Any]]:
     """Rules evaluated top down, first match wins: each enabled rule below
     an enabled terminal rule that covers it is reported once, against the
-    first such rule."""
+    first such rule. Only the rules above it that can cover it at all
+    (_CoverIndex) are compared."""
     out: List[Dict[str, Any]] = []
-    above: List[Dict[str, Any]] = []
-    for b in rules:
-        if not b["enabled"]:
-            continue
+    live = [r for r in rules if r["enabled"]]
+    index = _CoverIndex(live)
+    for b in live:
         if b.get("default_rule"):
             # The Default rule is the fallback and cannot be removed or moved.
-            above.append(b)
             continue
+        above = index.candidates(b, before=True) if index.complete else live[:index.pos[id(b)]]
         for a in above:
             if not _terminal(a):
                 continue
@@ -577,33 +661,7 @@ def _first_match(rules: List[Dict[str, Any]], mode_note: str = "") -> List[Dict[
                                     f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) above it matches everything it does and {_verb(a)}{mode_note}.",
                                     f"Move '{b['name']}' above '{a['name']}' if it should apply, narrow '{a['name']}' so it no longer covers it, or delete '{b['name']}'.", a))
             break
-        above.append(b)
     return out
-
-
-def _content_candidates(live: List[Dict[str, Any]]) -> Callable[[Dict[str, Any]], List[Dict[str, Any]]]:
-    """For a DLP rule b, the rules that can cover it at all, in their order:
-    covers() needs the same criteria (sig) or the DLP content to cover
-    (_content_covers: A without content inspection, or the same non-empty
-    engines). Thousands of rules then cost a comparison per plausible pair,
-    not per pair."""
-    pos = {id(a): k for k, a in enumerate(live)}
-    no_ci = [a for a in live if a["criteria"].get("withoutcontentinspection")]
-    by_engines: Dict[frozenset, List[Dict[str, Any]]] = {}
-    by_sig: Dict[str, List[Dict[str, Any]]] = {}
-    for a in live:
-        eng = _tokens(a["criteria"].get("dlpengines"))
-        if eng:
-            by_engines.setdefault(eng, []).append(a)
-        by_sig.setdefault(a["sig"], []).append(a)
-
-    def candidates(b: Dict[str, Any]) -> List[Dict[str, Any]]:
-        pool = {id(a): a for a in no_ci}
-        if not b["criteria"].get("withoutcontentinspection"):
-            pool.update((id(a), a) for a in by_engines.get(_tokens(b["criteria"].get("dlpengines")), ()))
-        pool.update((id(a), a) for a in by_sig.get(b["sig"], ()))
-        return sorted(pool.values(), key=lambda a: pos[id(a)])
-    return candidates
 
 
 def _superseded(rules: List[Dict[str, Any]], *, ties: bool, mode_label: str) -> List[Dict[str, Any]]:

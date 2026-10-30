@@ -1,0 +1,294 @@
+{
+  "area": "assessment",
+  "title": "Assessment engine, DLP analysis footprint and efficacy analyzer",
+  "files": [
+    "dlp_assessment_full_auto.py",
+    "dlp_analysis.py",
+    "dlp_efficacy.py"
+  ],
+  "standards": [
+    "ASVS V1.14.1",
+    "ASVS V4.1.3",
+    "ASVS V5.1.4",
+    "ASVS V5.3.1",
+    "ASVS V5.3.10",
+    "ASVS V7.1.1",
+    "ASVS V7.4.1",
+    "ASVS V8.3.4",
+    "ASVS V12.1.1",
+    "ASVS V12.3.1",
+    "OWASP Top 10 2021 A01/A03/A04/A09",
+    "WSTG-INPV-01",
+    "WSTG-ERRH-01",
+    "WSTG-ATHZ-02",
+    "NIST SSDF PW.4"
+  ],
+  "coverage": {
+    "before": 85.0,
+    "after": 93.0
+  },
+  "checks": [
+    {
+      "id": "oracle-per-check",
+      "what": "Pass/fail/missing-field/denied oracle rows for 4.1, 4.3, 5.3, 6.1, 6.3, 8.5, 10.4, MC.12, 12.2, 12.8, 12.9, 2.3, 5.6, 12.13",
+      "standard": "ASVS V1.14.1",
+      "result": "fixed"
+    },
+    {
+      "id": "denied-every-check",
+      "what": "Every check of the engine with every read refused (403) is not permitted; with 401 never PASS",
+      "standard": "ASVS V7.4.1 / CWE-755",
+      "result": "fixed"
+    },
+    {
+      "id": "manual-checks",
+      "what": "Manual checks that read nothing (MC.6-MC.11, 11.x, 12.7, 12.10, 12.14, B.13, E.10, E.14) stay REVIEW: docs/SCORING.md defines REVIEW as 'a person has to judge it'; none is a PASS",
+      "standard": "ASVS V1.14.1",
+      "result": "accepted"
+    },
+    {
+      "id": "scoring",
+      "what": "Score arithmetic oracle, INFO/ERROR excluded, None when nothing scoreable, out-of-scope and malformed rows never passes, maturity boundaries, compute() agrees with permissions.assessment_summary",
+      "standard": "CWE-682",
+      "result": "fixed"
+    },
+    {
+      "id": "scope",
+      "what": "Alternative-channel checks hidden not run; ZCC/ZPA/ZDX/ZIdentity reads refused unless selected; efficacy never reads Web DLP rules out of scope",
+      "standard": "ASVS V4.1.3 / CWE-863",
+      "result": "fixed"
+    },
+    {
+      "id": "messy-data",
+      "what": "Nulls, numbers for strings, scalars for lists, non-objects, 50 000 devices, seeded fuzz (12 000 random tenants offline; 120 in the suite)",
+      "standard": "ASVS V5.1.4 / CWE-20",
+      "result": "fixed"
+    },
+    {
+      "id": "escaping",
+      "what": "CLI (Rich and plain), required-controls Markdown, efficacy CSV (formula), Markdown (HTML/table), DOCX (XML-illegal chars)",
+      "standard": "ASVS V5.3.1 / CWE-74 / CWE-1236",
+      "result": "fixed"
+    },
+    {
+      "id": "secrets",
+      "what": "Client read/write/sign-in errors and efficacy read errors carry no secret",
+      "standard": "ASVS V7.1.1 / CWE-532",
+      "result": "fixed"
+    },
+    {
+      "id": "files",
+      "what": "Report 0600, report name cannot traverse, config size/nesting/encoding caps",
+      "standard": "ASVS V8.3.4 / V12.3.1 / CWE-732 / CWE-22",
+      "result": "fixed"
+    },
+    {
+      "id": "redos",
+      "what": "Tenant regex runs in a bounded subprocess (CPU/AS rlimits, timeout); broad patterns are not simulated",
+      "standard": "CWE-1333",
+      "result": "pass"
+    },
+    {
+      "id": "sdk-verification",
+      "what": "Engine expression format ((D63.S > 1)) verified in zscaler-sdk-python 1.11.3 zia/dlp_engine.py; ZCC numeric device states per zscaler.utils.zcc_param_map",
+      "standard": "NIST SSDF PW.4",
+      "result": "pass"
+    },
+    {
+      "id": "zcc-evaluation-vacuous-pass",
+      "what": "Spliced zcc_evaluation checks pass on zero profiles (outside these files)",
+      "standard": "ASVS V7.4.1",
+      "result": "fixed"
+    }
+  ],
+  "findings": [
+    {
+      "id": "C6-ASSESSMENT-01",
+      "title": "Refused (401/403) reads reported as PASS by 11 checks and as REVIEW by about 40 more",
+      "severity": "high",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "Every read goes through _g, so a refused read is an INFO naming HTTP 403: not permitted, outside the score",
+      "test": "tests/test_c6_assessment.py::test_every_check_reports_a_refused_read_as_not_permitted",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-02",
+      "title": "Checks that read nothing, or found nothing to judge, counted as passes (10.4, MC.12, 8.5 with no enabled rule, 6.1 with no device)",
+      "severity": "medium",
+      "cwe": "CWE-682",
+      "asvs": "V1.14.1",
+      "status": "fixed",
+      "fix": "10.4 reads devices, MC.12 is informational, 8.5 with zero rules is REVIEW, 6.1 with no device is INFO",
+      "test": "tests/test_c6_assessment.py::test_check_oracle_table",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-03",
+      "title": "50+ checks raised on null, numeric or non-object tenant records (state None, numeric names, bool urlCategories, int fileTypes)",
+      "severity": "medium",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "_g keeps objects only; _s/_on/_lst read text and list fields defensively",
+      "test": "tests/test_c6_assessment.py::test_seeded_fuzz_never_raises_in_any_check",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-04",
+      "title": "Efficacy engine-expression parser ignored the SDK format ((D63.S > 1)), so every custom dictionary was flagged unused by engines",
+      "severity": "medium",
+      "cwe": "CWE-697",
+      "asvs": "V1.14.1",
+      "status": "fixed",
+      "fix": "Parse \\bD\\(?\\s*(\\d+) (SDK and legacy forms), distinct ids in order",
+      "test": "tests/test_c6_assessment.py::test_engine_expression_oracle_matches_the_sdk_format",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-05",
+      "title": "Efficacy hid refused reads: a 403 on rules flagged every engine unused, a 403 on dictionaries looked like an empty tenant",
+      "severity": "medium",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "read_errors lists each failed read; a refused rule read is unknown (None), never unused",
+      "test": "tests/test_c6_assessment.py::test_refused_rule_read_is_unknown_not_unused",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-06",
+      "title": "Rich markup and terminal escape injection from tenant text in the CLI report (OSC 8 hyperlink, styling, ESC sequences)",
+      "severity": "medium",
+      "cwe": "CWE-150",
+      "asvs": "V5.3.1",
+      "status": "fixed",
+      "fix": "_term strips control characters and escapes Rich markup for every tenant string printed",
+      "test": "tests/test_c6_assessment.py::test_cli_report_prints_a_malicious_detail_inertly",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-07",
+      "title": "Client read and write errors were not passed through the secret mask (exception text echoing the client secret)",
+      "severity": "low",
+      "cwe": "CWE-532",
+      "asvs": "V7.1.1",
+      "status": "fixed",
+      "fix": "Every error path uses Client._safe",
+      "test": "tests/test_c6_assessment.py::test_read_error_masks_the_client_secret",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-08",
+      "title": "Saved JSON report written with the process umask (world-readable) though it describes the tenant's security posture",
+      "severity": "low",
+      "cwe": "CWE-732",
+      "asvs": "V8.3.4",
+      "status": "fixed",
+      "fix": "Written with os.open(..., 0o600) and fchmod over an existing file",
+      "test": "tests/test_c6_assessment.py::test_saved_report_is_owner_only",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-09",
+      "title": "CLI default report name built from org_name could hold ../ or a drive path",
+      "severity": "low",
+      "cwe": "CWE-22",
+      "asvs": "V12.3.1",
+      "status": "fixed",
+      "fix": "report_basename keeps [A-Za-z0-9_-] only",
+      "test": "tests/test_c6_assessment.py::test_report_basename_cannot_traverse",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-10",
+      "title": "Configuration file read without a size or nesting cap; non-UTF-8 or deep nesting raised a traceback",
+      "severity": "low",
+      "cwe": "CWE-400",
+      "asvs": "V12.1.1",
+      "status": "fixed",
+      "fix": "64 KB cap; UnicodeDecodeError and RecursionError become ConfigError",
+      "test": "tests/test_c6_assessment.py::test_config_file_size_is_capped",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-11",
+      "title": "Analysis ScopedClient did not map /zid and /ziam reads to the ZIdentity scope",
+      "severity": "low",
+      "cwe": "CWE-863",
+      "asvs": "V4.1.3",
+      "status": "fixed",
+      "fix": "_SERVICE_SCOPE maps zid and ziam to zidentity",
+      "test": "tests/test_c6_assessment.py::test_analysis_client_refuses_services_outside_the_scope",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-12",
+      "title": "A token answer with expires_in as text made sign-in fail",
+      "severity": "low",
+      "cwe": "CWE-704",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "_expires_in reads a number or numeric text, else 3600",
+      "test": "tests/test_c6_assessment.py::test_token_lifetime_oracle",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-13",
+      "title": "compute() raised on a non-dict row or a row without status (saved files from earlier versions)",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Non-results are skipped; an unknown status is informational, never a pass",
+      "test": "tests/test_c6_assessment.py::test_not_run_and_out_of_scope_results_never_count_as_passes",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-14",
+      "title": "3.7 called a 403 'not licensed'; MC.3 scored a not-licensed 404 as REVIEW",
+      "severity": "low",
+      "cwe": "CWE-209",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "401/403 use _explain; 404 is informational",
+      "test": "tests/test_c6_assessment.py::test_browser_isolation_403_is_not_permitted_not_unlicensed",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-15",
+      "title": "Web DLP action given as an object crashed 5.3 (unhashable dict as a counter key)",
+      "severity": "low",
+      "cwe": "CWE-704",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Action read through _action",
+      "test": "tests/test_c6_assessment.py::test_web_dlp_action_object_is_counted_not_unhashable",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-16",
+      "title": "4.6 listed duplicate SSL rule names in set order (non-deterministic finding text)",
+      "severity": "info",
+      "cwe": "CWE-1023",
+      "asvs": "V1.14.1",
+      "status": "fixed",
+      "fix": "Sorted",
+      "test": "tests/test_c6_assessment.py::test_duplicate_ssl_rule_names_are_listed_in_a_stable_order",
+      "commit": "2a14105"
+    },
+    {
+      "id": "C6-ASSESSMENT-17",
+      "title": "zcc_evaluation (spliced into sections 1, 6, 12): 1.16-1.23 PASS on zero active app profiles ('all 0 profile(s)'), and 1.27/1.28 call a 403 'not readable' without the status, so it is not classed as not permitted. 1.24-1.26 also pass on zero forwarding profiles (same pattern, not in this patch).",
+      "severity": "medium",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "zcc_evaluation: zero active app profiles (1.15-1.23) or zero forwarding profiles (1.24-1.26) is INFO 'could not be assessed'; 1.27/1.28 name the HTTP status of an unreadable read (one read, not two). Also ...::test_an_unreadable_company_or_privacy_read_names_its_status",
+      "test": "tests/test_c6_assessment.py::test_a_client_connector_check_with_nothing_returned_is_not_a_pass",
+      "commit": "af5f0fc"
+    }
+  ],
+  "tests_added": 544
+}

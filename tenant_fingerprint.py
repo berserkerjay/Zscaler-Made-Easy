@@ -192,7 +192,9 @@ def same_tenant(rec: Dict[str, Any], creds: Dict[str, Any]) -> bool:
     fp = rec.get("tenant_fp")
     if fp:
         mine = fingerprint(c)
-        return bool(mine) and hmac.compare_digest(str(fp), mine)
+        # As bytes: compare_digest on a str with any non-ASCII character
+        # (a damaged or hand-edited record) raises TypeError.
+        return bool(mine) and hmac.compare_digest(str(fp).encode("utf-8", "surrogateescape"), mine.encode("ascii"))
     key = rec.get("tenant_key")
     if not key:
         return True

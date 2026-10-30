@@ -210,13 +210,16 @@ def test_remove_everything_covers_retired_packs_and_old_names(tmp_path, monkeypa
     by = {i["name"]: i for i in plan["items"]}
     assert plan["everything"] and "Customer Rule" not in by and "Customer Engine" not in by and "Hand-made Dict" not in by
     assert by["CUI-Monitor-All"]["match"] == "tag" and by["CUI-Detect-All"]["status"] == "remove" and by["CUI-Banner-Structural"]["status"] == "remove"
-    assert by["Z-Controlled Unclassified Information-Monitor"]["match"] == "name" and by["CUI Engine (Low Confidence)"]["status"] == "remove"
-    assert by["PCI - High"]["status"] == "remove"
-    assert by["CUI Category Phrase"]["status"] == "keep" and "outside" in by["CUI Category Phrase"]["keep"]
+    # Untagged objects under the app's historical names are listed by name and kept: a customer's own
+    # "PCI - High" carries the same name, so a name is never enough to delete (the rule picker removes them by hand).
+    assert by["Z-Controlled Unclassified Information-Monitor"]["match"] == "name"
+    assert by["Z-Controlled Unclassified Information-Monitor"]["status"] == "keep" and by["CUI Engine (Low Confidence)"]["status"] == "keep"
+    assert by["PCI - High"]["status"] == "keep" and "name only" in by["PCI - High"]["keep"]
+    assert by["CUI Category Phrase"]["status"] == "keep"
     res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True, everything=True)
     assert res["status"] == "removed" and res["verification"]["clean"]
-    assert {r.name for r in client.zia.dlp_web_rules.items} == {"Customer Rule"}
-    assert {e.name for e in client.zia.dlp_engine.items} == {"Customer Engine"}
+    assert {r.name for r in client.zia.dlp_web_rules.items} == {"Customer Rule", "Z-Controlled Unclassified Information-Monitor"}
+    assert {e.name for e in client.zia.dlp_engine.items} == {"Customer Engine", "CUI Engine (Low Confidence)", "PCI - High"}
     assert {d.name for d in client.zia.dlp_dictionary.items} == {"CUI Category Phrase", "Hand-made Dict"}
 
 
@@ -274,7 +277,9 @@ def test_name_only_match_is_flagged(tmp_path):
         engines=[Obj(id=5001, name="RM-Engine", engine_expression="D9001.S > 0", description="")],
         rules=[Obj(id=7001, name="RM-Web-Monitor", order=1, action="ALLOW", dlp_engines=[{"id": 5001}], description="")])
     rep = pr.plan_removal(client, [pack])
-    assert rep["remove_count"] == 3 and all(i["match"] == "name" for i in rep["items"])
+    # Flagged and KEPT: a name alone never proves the object is the app's (it may be the customer's own).
+    assert rep["remove_count"] == 0 and rep["status"] == "nothing" and all(i["match"] == "name" for i in rep["items"])
+    assert all(i["status"] == "keep" and "name only" in i["keep"] for i in rep["items"])
     assert any("matched by name only" in w for w in rep["warnings"])
 
 

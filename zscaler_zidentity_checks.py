@@ -16,6 +16,7 @@ Modules (from zscaler-sdk-python/zscaler/zid/):
 All checks are read-only.
 """
 
+from zscaler_full_checks import guard_registry
 from dlp_assessment_full_auto import R, _ls
 
 
@@ -86,3 +87,4 @@ ZID_REG = [
     ("ZID.4", "ZIdentity — Authorization","User entitlements",           zid_user_entitlements),
     ("ZID.5", "ZIdentity — Directory",    "Admin redundancy (BCP)",      zid_admin_coverage),
 ]
+ZID_REG = guard_registry(ZID_REG)   # a refused read (HTTP 401/403) is "Not permitted", never judged

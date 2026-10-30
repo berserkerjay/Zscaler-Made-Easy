@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import inspect
 import json
 import os
 import re
@@ -122,13 +123,36 @@ def register(type_name: str, *, family: str, product: str, label: str, hint: str
     `inverse(result)` is the operation that undoes it. `script` names the
     page's form for it under static/ (ops_<name>.js)."""
     for n in (type_name, family):
-        if not _PLUGIN_NAME.match(n) or n in TYPES or n in ("rules", "url_categories", "zpa_segments"):
+        if not isinstance(n, str) or not _PLUGIN_NAME.match(n) or n in TYPES or n in ("rules", "url_categories", "zpa_segments"):
             raise ValueError(f"invalid or reserved operation name: {n!r}")
+    # A type and a family share require_scope's namespace: one name, one meaning.
+    if type_name == family or type_name in PLUGIN_FAMILIES or family in PLUGINS:
+        raise ValueError(f"operation type and family names must differ from every other: {type_name!r} / {family!r}")
+    if not isinstance(product, str) or not _PLUGIN_NAME.match(product):
+        raise ValueError(f"invalid plugin product: {product!r}")
     if script and not re.fullmatch(r"ops_[a-z0-9_]{1,40}\.js", script):
         raise ValueError(f"invalid plugin script name: {script!r}")
-    for h in handlers:
+    for what, fn in (("in_scope", in_scope), ("plan", plan), ("read_objects", read_objects)):
+        if not callable(fn):
+            raise ValueError(f"plugin {type_name!r}: {what} must be callable")
+    for what, fn in (("verify", verify), ("inverse", inverse)):
+        if fn is not None and not callable(fn):
+            raise ValueError(f"plugin {type_name!r}: {what} must be callable or None")
+    if not isinstance(handlers, dict) or not handlers:
+        raise ValueError(f"plugin {type_name!r}: handlers must name at least one write handler")
+    for h, fn in handlers.items():
+        if not isinstance(h, str) or not _PLUGIN_NAME.match(h) or not callable(fn):
+            raise ValueError(f"invalid plugin handler: {h!r}")
         if h in HANDLERS or (h in PLUGIN_HANDLERS and PLUGIN_HANDLERS[h] is not handlers[h]):
             raise ValueError(f"handler name already taken: {h!r}")
+    # A second registration may not swap the scope gate or planner of a type
+    # or family another module registered (deny by default: same callables only).
+    old = PLUGINS.get(type_name)
+    if old is not None and (old["plan"] is not plan or old["in_scope"] is not in_scope):
+        raise ValueError(f"operation type already registered: {type_name!r}")
+    fam = PLUGIN_FAMILIES.get(family)
+    if fam is not None and (fam["in_scope"] is not in_scope or fam["read_objects"] is not read_objects):
+        raise ValueError(f"operation family already registered with another scope check or reader: {family!r}")
     PLUGINS[type_name] = {"type": type_name, "family": family, "product": product, "label": label, "hint": hint, "group": group,
                           "script": script, "in_scope": in_scope, "plan": plan, "verify": verify, "inverse": inverse}
     PLUGIN_FAMILIES[family] = {"in_scope": in_scope, "read_objects": read_objects}
@@ -154,6 +178,22 @@ def load_plugins() -> None:
 def types() -> Tuple[str, ...]:
     load_plugins()
     return TYPES + tuple(sorted(PLUGINS))
+
+
+def product_of(spec_or_family: Any) -> str:
+    """The product an operation type or a family (the classic ZPA types, a
+    plugin type, a plugin family) reads and changes: "zpa", "zcc", "zdx" or
+    "zia" (the default for the ZIA rule and URL category types)."""
+    load_plugins()
+    t = spec_or_family if isinstance(spec_or_family, str) else str((spec_or_family or {}).get("type") or "") if isinstance(spec_or_family, dict) else ""
+    if t in ("zpa_segments", "zpa_domains"):
+        return "zpa"
+    if t in PLUGINS:
+        return str(PLUGINS[t].get("product") or "zia")
+    for p in PLUGINS.values():
+        if p.get("family") == t:
+            return str(p.get("product") or "zia")
+    return "zia"
 
 
 def plugin_catalog() -> List[Dict[str, Any]]:
@@ -188,6 +228,7 @@ READ_RATE_STOP = ("ZIA refused a read for its rate limit while the change was ru
                   "already applied is kept and listed; wait a few minutes, then preview again to finish (or Undo).")
 REORDER_BROKEN = "the policy's rule order changed while the operation ran, so the remaining moves were not sent"
 NOT_IN_SCOPE = "Not in scope on the Scope page, so it is not read or changed here."
+LAST_DOMAIN = "ZPA needs at least one domain in a segment, so the last one is not removed"
 
 
 class OperationError(ValueError):
@@ -243,7 +284,8 @@ def require_scope(spec_or_family: Any, scope: Dict[str, Any]) -> None:
         if not scope["policies"]:
             raise OperationError("No rule policy is in scope: on the Scope page tick DLP or ZIA platform and mark the channels you run on Zscaler.")
         if isinstance(spec_or_family, dict):
-            pols = {str(x.get("policy")) for x in spec_or_family.get("targets") or [] if isinstance(x, dict)}
+            targets = spec_or_family.get("targets")
+            pols = {str(x.get("policy")) for x in (targets if isinstance(targets, list) else []) if isinstance(x, dict)}
             if spec_or_family.get("policy"):
                 pols.add(str(spec_or_family["policy"]))
             out = sorted(p for p in pols if p not in scope["policies"])
@@ -257,11 +299,26 @@ def require_scope(spec_or_family: Any, scope: Dict[str, Any]) -> None:
             raise OperationError(scope["not_in_scope"]["zpa_segments"])
     elif t in PLUGINS or t in PLUGIN_FAMILIES:
         reg = PLUGINS.get(t) or PLUGIN_FAMILIES[t]
-        why = reg["in_scope"](scope)
+        why = _plugin_in_scope(reg["in_scope"], scope, spec_or_family)
         if why:
             raise OperationError(str(why))
     else:
         raise OperationError(f"Unknown operation '{t}'. Use one of: {', '.join(types())}.")
+
+
+def _plugin_in_scope(fn: Callable[..., Optional[str]], scope: Dict[str, Any], spec: Any) -> Optional[str]:
+    """A plugin's scope check. One that takes the spec too (the ZIA
+    baseline: the areas it names, or its Undo touches) is given it, so what
+    is not ticked is refused here, before sign-in (deny by default)."""
+    if isinstance(spec, dict):
+        try:
+            params = [p for p in inspect.signature(fn).parameters.values()
+                      if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL)]
+        except (TypeError, ValueError):
+            params = []
+        if len(params) >= 2 or any(p.kind == p.VAR_POSITIONAL for p in params):
+            return fn(scope, spec)
+    return fn(scope)
 
 
 # ---------------------------------------------------------------------------
@@ -274,13 +331,11 @@ def _rows(ret: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
 
 
 def _one(ret: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """One object of a get call, with the fields the SDK's model leaves out
+    taken from the raw answer (pack_export.one_row): the re-read a PUT is
+    built from must not drop them."""
     import pack_export
-    data, err = pc._nx(ret)
-    if err:
-        return None, str(err)[:300]
-    if data is None:
-        return None, "no answer"
-    return pack_export._plain(data), None
+    return pack_export.one_row(ret)
 
 
 def _service(zia, policy: str):
@@ -397,6 +452,43 @@ def get_segment(zpa, sid: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]
 # ---------------------------------------------------------------------------
 # Field helpers
 # ---------------------------------------------------------------------------
+
+def _list_field(spec: Dict[str, Any], key: str, *, objects: bool = False, cap: Optional[int] = None) -> List[Any]:
+    """spec[key] as a list ([] when absent): a page or script that sends
+    another shape gets a plain refusal (400), never a crash. `objects`:
+    every entry must be an object; `cap`: at most that many entries."""
+    v = spec.get(key)
+    if v in (None, ""):
+        return []
+    if not isinstance(v, list):
+        raise OperationError(f"'{key}' must be a list.")
+    if objects and not all(isinstance(x, dict) for x in v):
+        raise OperationError(f"Every entry of '{key}' must be an object.")
+    if cap is not None and len(v) > cap:
+        raise OperationError(f"At most {cap} entries in '{key}' per operation; this one has {len(v)}. Split it.")
+    return v
+
+
+def _raw_entries(raw: Any) -> List[Any]:
+    """The non-blank entries of a URL or domain list (a list, or text split on spaces and commas)."""
+    vals = raw if isinstance(raw, list) else re.split(r"[\s,]+", str(raw or ""))
+    return [v for v in vals if str(v).strip()]
+
+
+_SUPER_CATEGORY = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
+
+
+def _object_name(raw: Any, what: str) -> str:
+    """A name for an object this operation creates: trimmed, at most 255
+    characters, no control characters (it is shown in the portal, the
+    audit log and every export)."""
+    name = str(raw or "").strip()
+    if _has_control(name):
+        raise OperationError(f"The {what} name contains a control character.")
+    if len(name) > 255:
+        raise OperationError(f"The {what} name is longer than 255 characters.")
+    return name
+
 
 def _truthy(v: Any) -> bool:
     return v is True or str(v).strip().lower() in ("true", "1", "yes")
@@ -536,6 +628,24 @@ def minimal_moves(current: Sequence[str], desired: Sequence[str], locked: Iterab
 _LABEL_RE = re.compile(r"^(?!-)[a-z0-9_-]{1,63}(?<!-)$")
 
 
+def _ascii_host(host: str) -> Optional[str]:
+    """An internationalised host name in its ASCII (punycode) form, as the
+    API stores it (assumed for ZIA and ZPA: the SDK passes names through),
+    through the app's one IDN encoder (zia_path_modules.ascii_host, UTS 46,
+    the form browsers send); None when it cannot be encoded."""
+    if host.isascii():
+        return host
+    import zia_path_modules
+    try:
+        return zia_path_modules.ascii_host(host)
+    except ValueError:
+        return None
+
+
+def _has_control(s: str) -> bool:
+    return any(ord(c) < 32 or 127 <= ord(c) < 160 for c in s)
+
+
 def _host_ok(host: str) -> bool:
     try:
         ipaddress.ip_address(host)
@@ -556,6 +666,8 @@ def normalize_url(raw: Any) -> Tuple[Optional[str], Optional[str]]:
         return None, "empty"
     if any(c.isspace() for c in s):
         return None, "contains a space"
+    if _has_control(s):
+        return None, "contains a control character"
     s = re.sub(r"^[a-z][a-z0-9+.-]*://", "", s, flags=re.I)
     if len(s) > URL_MAX_LEN:
         return None, f"longer than {URL_MAX_LEN} characters"
@@ -569,8 +681,8 @@ def normalize_url(raw: Any) -> Tuple[Optional[str], Optional[str]]:
         host, _, port = host.rpartition(":")
         if not port.isdigit() or not 0 < int(port) < 65536:
             return None, "has an invalid port"
-    host = host.lower().rstrip(".")
-    if not _host_ok(host):
+    host = _ascii_host(host.lower().rstrip("."))
+    if not host or not _host_ok(host):
         return None, "is not a valid host name or IP address"
     return f"{lead}{host}{':' + port if port else ''}{sep}{rest}", None
 
@@ -581,16 +693,19 @@ def normalize_domain(raw: Any) -> Tuple[Optional[str], Optional[str]]:
     s = str(raw or "").strip().lower().rstrip(".")
     if not s:
         return None, "empty"
+    if _has_control(s) or any(c.isspace() for c in s):
+        return None, "contains a space or a control character"
     if "/" in s:
         try:
             ipaddress.ip_network(s, strict=False)
             return s, None
         except ValueError:
             return None, "is not a valid domain, IP address or CIDR range"
-    body = s[2:] if s.startswith("*.") else s
-    if "*" in body or not _host_ok(body):
+    wild = "*." if s.startswith("*.") else ""
+    body = _ascii_host(s[len(wild):])
+    if not body or "*" in body or not _host_ok(body):
         return None, "is not a valid domain (FQDN, *.domain, IP address or CIDR range)"
-    return s, None
+    return wild + body, None
 
 
 def _ranges(row: Dict[str, Any], proto: str) -> List[Tuple[int, int]]:
@@ -686,6 +801,11 @@ def confirm_phrase(changes: int) -> str:
 
 
 def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, Any]:
+    # Every write must go through a known handler: a plan naming another is
+    # refused here, before anything is written (not a crash halfway through).
+    unknown = sorted({str(g.get("handler")) for g in prepared["groups"] if g.get("handler") not in HANDLERS and g.get("handler") not in PLUGIN_HANDLERS})
+    if unknown:
+        raise OperationError(f"This operation names a write step the app does not have ({', '.join(unknown[:5])}), so nothing was planned.")
     items = prepared["items"]
     n = lambda s: sum(1 for u in items if u["status"] == s)  # noqa: E731
     counts = {"change": n("change"), "noop": n("noop"), "excluded": n("excluded"), "total": len(items)}
@@ -698,7 +818,8 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     prepared["status"] = "blocked" if prepared["blockers"] else ("nothing_to_do" if counts["change"] == 0 else "ready")
     # A plugin may name its own typed confirmation (a profile's name), or ask for its
     # phrase whatever the count (`confirm_always`, a delete); upper case, compared case-insensitively.
-    own = str(prepared.get("confirm_phrase") or prepared.get("confirm_always") or "").strip().upper()
+    # A blank value never hides the other one, nor switches the phrase off.
+    own = next((str(v).strip().upper() for v in (prepared.get("confirm_phrase"), prepared.get("confirm_always")) if str(v or "").strip()), "")
     prepared["confirm_phrase"] = own if own and counts["change"] else confirm_phrase(counts["change"])
     prepared["needs_activation"] = prepared.get("product") == "zia"
     prepared["kind"] = KIND
@@ -756,7 +877,7 @@ def _norm_state(v: Any) -> str:
 
 
 def _plan_rule_state(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
-    targets = [t for t in spec.get("targets") or [] if isinstance(t, dict)]
+    targets = [t for t in _list_field(spec, "targets") if isinstance(t, dict)]
     if not targets:
         raise OperationError("Pick at least one rule.")
     if len(targets) > MAX_TARGETS:
@@ -830,7 +951,7 @@ def _plan_reorder(zia, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     rtype = str(spec.get("rule_type") or "").upper()
     if pol == "cloud_app_control" and not rtype:
         raise OperationError("Cloud App Control rules are ordered per application type: name the rule_type.")
-    desired_movable = [_rid(x) for x in spec.get("order") or []]
+    desired_movable = [_rid(x) for x in _list_field(spec, "order")]
     if not desired_movable:
         raise OperationError("Give the desired order (the rule ids, top first).")
     say(f"Reading the {_label(pol)} rules{' (' + rtype + ')' if rtype else ''}…")
@@ -984,7 +1105,7 @@ def _plan_urls(zia, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) ->
     deletes: List[Dict[str, Any]] = []
     move_pairs = False
     if action == "revert":
-        for d in spec.get("deltas") or []:
+        for d in _list_field(spec, "deltas", objects=True, cap=MAX_URLS):
             c = cat(d.get("category"), "")
             a, bad_a = _clean_urls(d.get("add") or [])
             r, bad_r = _clean_urls(d.get("remove") or [])
@@ -992,11 +1113,15 @@ def _plan_urls(zia, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) ->
             cid = _rid(pc._field(c, "id"))
             adds.setdefault(cid, []).extend(a)
             removes.setdefault(cid, []).extend(r)
-        for d in spec.get("delete_categories") or []:
-            deletes.append({"id": d.get("id"), "name": d.get("name"), "urls": [str(u) for u in d.get("urls") or []]})
+        for d in _list_field(spec, "delete_categories", objects=True, cap=MAX_TARGETS):
+            deletes.append({"id": d.get("id"), "name": d.get("name"), "urls": [str(u) for u in _list_field(d, "urls")]})
+        if sum(len(v) for v in adds.values()) + sum(len(v) for v in removes.values()) > MAX_URLS:
+            raise OperationError(f"At most {MAX_URLS} URLs per operation. Split it.")
         nspec.update(deltas=[{"category": k, "add": adds.get(k, []), "remove": removes.get(k, [])} for k in sorted(set(adds) | set(removes))],
                      delete_categories=deletes)
     else:
+        if len(_raw_entries(spec.get("urls"))) > MAX_URLS:
+            raise OperationError(f"At most {MAX_URLS} URLs per operation; this one lists {len(_raw_entries(spec.get('urls')))}. Split it.")
         urls, bad = _clean_urls(spec.get("urls") or [])
         excluded += bad
         if not urls and not bad:
@@ -1011,10 +1136,13 @@ def _plan_urls(zia, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) ->
         if action in ("add", "move", "copy"):
             new = spec.get("create_target") if isinstance(spec.get("create_target"), dict) else None
             if new and str(new.get("name") or "").strip():
-                name = str(new["name"]).strip()[:255]
+                name = _object_name(new["name"], "new category's")
                 if name.lower() in by_name:
                     blockers.append(f"A URL category named '{name}' already exists: pick it as the target instead of creating it.")
-                create = {"name": name, "super_category": str(new.get("super_category") or "USER_DEFINED").upper()}
+                sup = str(new.get("super_category") or "USER_DEFINED").strip().upper()
+                if not _SUPER_CATEGORY.match(sup):
+                    raise OperationError("The super category must be a ZIA super category name such as USER_DEFINED.")
+                create = {"name": name, "super_category": sup}
                 nspec["create_target"] = create
             else:
                 tgt = cat(spec.get("target"), "target")
@@ -1212,7 +1340,7 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
     deletes: List[Dict[str, Any]] = []
     excluded: List[Tuple[str, str]] = []
     if action == "revert":
-        for d in spec.get("deltas") or []:
+        for d in _list_field(spec, "deltas", objects=True, cap=MAX_DOMAINS):
             s = seg(d.get("segment"), "")
             a, ba = _clean_domains(d.get("add") or [])
             r, br = _clean_domains(d.get("remove") or [])
@@ -1220,11 +1348,15 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             sid = _rid(pc._field(s, "id"))
             adds.setdefault(sid, []).extend(a)
             removes.setdefault(sid, []).extend(r)
-        for d in spec.get("delete_segments") or []:
-            deletes.append({"id": d.get("id"), "name": d.get("name"), "domains": [str(x).lower() for x in d.get("domains") or []]})
+        for d in _list_field(spec, "delete_segments", objects=True, cap=MAX_TARGETS):
+            deletes.append({"id": d.get("id"), "name": d.get("name"), "domains": [str(x).lower() for x in _list_field(d, "domains")]})
+        if sum(len(v) for v in adds.values()) + sum(len(v) for v in removes.values()) > MAX_DOMAINS:
+            raise OperationError(f"At most {MAX_DOMAINS} domains per operation. Split it.")
         nspec.update(deltas=[{"segment": k, "add": adds.get(k, []), "remove": removes.get(k, [])} for k in sorted(set(adds) | set(removes))],
                      delete_segments=deletes)
     else:
+        if len(_raw_entries(spec.get("domains"))) > MAX_DOMAINS:
+            raise OperationError(f"At most {MAX_DOMAINS} domains per operation; this one lists {len(_raw_entries(spec.get('domains')))}.")
         doms, bad = _clean_domains(spec.get("domains") or [])
         excluded += bad
         if not doms and not bad:
@@ -1235,7 +1367,7 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
         sid = _rid(pc._field(src, "id"))
         nspec.update(source=sid, domains=doms)
         if action == "clone":
-            name = str(spec.get("name") or "").strip()[:255]
+            name = _object_name(spec.get("name"), "new segment's")
             if not name:
                 raise OperationError("Name the new segment.")
             if name.lower() in names:
@@ -1302,6 +1434,14 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
                                    reason="not in the source segment, so there is nothing to move"))
             else:
                 items.append(_unit(k, gkey, "domain", ref, "domain_names", True, False, value=d))
+        # ZPA keeps at least one domain in a segment: a removal that would
+        # empty it is excluded here, in the preview, not first found while
+        # writing (where the move would already have half happened).
+        if not (have - set(removes[sid])) and not adds.get(sid):
+            for d in removes[sid]:
+                u = next(x for x in items if x["key"] == remove_keys[(sid, d)])
+                if u["status"] == "change":
+                    u.update(status="excluded", reason=LAST_DOMAIN)
     if clone is not None:
         s = by_id[clone["source"]]
         gkey = "seg:new:" + clone["name"].lower()
@@ -1352,6 +1492,22 @@ def _plan_zpa(zpa, spec: Dict[str, Any], say, cancel) -> Dict[str, Any]:
             partner = next((x for x in items if x["kind"] == "domain" and x["value"] == d and x["after"] is True and x["key"] != k), None)
             if u["status"] == "change" and partner is not None and partner["status"] == "excluded":
                 u.update(status="excluded", reason=f"not moved: {partner['reason']}")
+            # ...and an addition whose removal cannot happen is not made
+            # either: a move never quietly becomes a copy.
+            if u["status"] == "excluded" and u["reason"] == LAST_DOMAIN:
+                for x in items:
+                    if x["kind"] == "domain" and x["value"] == d and x["after"] is True and x["status"] == "change":
+                        x.update(status="excluded", reason=f"not moved: {LAST_DOMAIN}")
+    # A step that waits for an excluded step is excluded too, so nothing
+    # is planned that would only be skipped (or half done) while writing.
+    changed = True
+    while changed:
+        changed = False
+        state = {x["key"]: x["status"] for x in items}
+        for x in items:
+            if x["status"] == "change" and any(state.get(dk) == "excluded" for dk in x["depends_on"]):
+                x.update(status="excluded", reason="not done: a step it waits for is excluded")
+                changed = True
     # The writes: one per segment (its additions and removals together), the
     # clone, the deletions; ordered so every step comes after the steps it
     # waits for.
@@ -1633,7 +1789,7 @@ def _h_zpa_update(run: _Run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> 
     body = segment_body(fresh)
     body["domain_names"] = [d for d in have if d not in rm] + [d for d in add if d not in have]
     if not body["domain_names"]:
-        run.mark(ok, "excluded", "ZPA needs at least one domain in a segment, so the last one is not removed")
+        run.mark(ok, "excluded", LAST_DOMAIN)
         return
     out = ops.update(run.zpa, "zpa_segment", t["id"], body, name=str(fresh.get("name") or t["name"]), log=run.log)
     if run.outcome(ok, out, "update"):
@@ -1659,6 +1815,10 @@ def _h_zpa_create(run: _Run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> 
         run.mark(units, "conflict", "the segment to clone is gone since the preview; nothing was created")
         return
     doms = [u["value"] for u in units if u["kind"] == "domain"]
+    if not doms:
+        # ZPA keeps at least one domain in a segment: no empty clone is made.
+        run.mark(units, "skipped", "not created: none of its domains could be put in it")
+        return
     body = segment_body(src)
     body.update(name=t["name"], domain_names=doms,
                 description=f"Clone of {pc._field(src, 'name')} by {run.assessor or 'the assessor'} with Bulk changes"[:255])
@@ -1813,10 +1973,22 @@ def inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
+def is_undo_only(spec: Any) -> bool:
+    """Is `spec` the form only an Undo uses (inverse()): a revert or undo
+    action, which deletes and restores objects by the ids a recorded run
+    gave? Such a spec is applied only as the Undo of that recorded
+    operation (undo_of, its inverse exactly), never as an ordinary
+    operation that could name objects this app never created."""
+    if not isinstance(spec, dict):
+        return False
+    return str(spec.get("action") or "").strip().lower() in ("revert", "undo") or spec.get("undo") is True
+
+
 def check_confirmation(prepared: Dict[str, Any], confirm_text: str) -> Optional[str]:
     """Why the typed confirmation does not match, or None."""
+    import security   # one rule for every typed phrase: case-insensitive, no look-alikes (no NFKC)
     phrase = prepared.get("confirm_phrase") or ""
-    if phrase and str(confirm_text or "").strip().upper() != phrase:
+    if phrase and not security.typed_phrase_matches(confirm_text, phrase):
         return f"This operation changes {prepared['counts']['change']} items: type {phrase} to confirm it."
     return None
 
@@ -1826,10 +1998,25 @@ def execute(client, spec: Dict[str, Any], *, plan_hash: str, scope: Dict[str, An
             cancel: Optional[threading.Event] = None, settle_seconds: float = 45.0) -> Dict[str, Any]:
     """Apply a previewed operation (see the module docstring). Returns
     {status, items (each with its run status), counts, activation,
-    verification, stopped, created, inverse, plan_hash, ...}."""
-    import zia_rate
+    verification, stopped, created, inverse, plan_hash, ...}. While another
+    write run holds the tenant (pack_ops.tenant_run) nothing is read or
+    written: status blocked, busy true."""
     if writes_enabled is not True:
         raise PermissionError("write mode is off: nothing was written")
+    if not str(assessor or "").strip():
+        # The route requires the named assessor too; the engine refuses on
+        # its own as well (defence in depth for every caller), before any read.
+        raise OperationError("A named assessor is required to apply a change: nothing was read or written.")
+    with ops.tenant_run(client) as mine:
+        if not mine:
+            ops.audit_refusal("operation", client, plan_hash=plan_hash, reason=ops.BUSY_REASON)
+            return ops.busy_result(type=(spec or {}).get("type") if isinstance(spec, dict) else None, plan_hash=plan_hash)
+        return _execute_audited(client, spec, plan_hash=plan_hash, scope=scope, confirm_text=confirm_text, assessor=assessor,
+                                tenant_label=tenant_label, log=log, cancel=cancel, settle_seconds=settle_seconds)
+
+
+def _execute_audited(client, spec, *, plan_hash, scope, confirm_text, assessor, tenant_label, log, cancel, settle_seconds) -> Dict[str, Any]:
+    import zia_rate
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("operation", client, plan_hash=plan_hash, cancel=cancel) as box:
         box["result"] = _execute(client, spec, plan_hash=plan_hash, scope=scope, confirm_text=confirm_text, assessor=assessor,
                                  tenant_label=tenant_label, log=log, cancel=cancel, settle_seconds=settle_seconds)

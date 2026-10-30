@@ -43,7 +43,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Say 'docker is no
 git rev-parse --is-inside-work-tree 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
   Say 'This folder is not a git clone (a ZIP download), so it cannot pull updates. Clone it once:'
-  Say '  git clone https://github.com/berserkerjay/DLP-Check.git; cd Zscaler Made Easy; powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force'
+  Say '  git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git; cd Zscaler-Made-Easy; powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force'
   exit 1
 }
 $dirty = git status --porcelain --untracked-files=no

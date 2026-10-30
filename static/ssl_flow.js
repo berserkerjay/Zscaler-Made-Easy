@@ -47,8 +47,8 @@ function _sfSvg(data) {
   {
     const y = TOP, cy = y + H / 2;
     const cls = zcc.available ? (zTotal ? 'bad' : 'ok') : 'mute';
-    const curve = (x1, x2, k) => { const dx = (x2 - x1) * 0.5; return `<path class="sf-edge ${k}" d="M${x1},${cy} C${x1 + dx},${cy} ${x2 - dx},${cy} ${x2},${cy}"/>`; };
-    edges += curve(xA + W.a, xB, zTotal ? 'bad' : 'mute') + curve(xB + W.b, xC, zTotal ? 'bad' : 'mute');
+    const curve = (x1, x2, k, seg) => { const dx = (x2 - x1) * 0.5; return `<path class="sf-edge ${k}" data-key="zcc" data-seg="${seg}" d="M${x1},${cy} C${x1 + dx},${cy} ${x2 - dx},${cy} ${x2},${cy}"/>`; };
+    edges += curve(xA + W.a, xB, zTotal ? 'bad' : 'mute', 'ab') + curve(xB + W.b, xC, zTotal ? 'bad' : 'mute', 'bc');
     const cc = zcc.counts || {};
     const out = !!zcc.not_in_scope;   // ZCC not in scope on the Scope page: not read, never "unknown"
     const meta = zcc.available ? `${cc.apps || 0} apps · ${cc.domains || 0} domains · ${cc.ips || 0} IPs · ${cc.trusted_networks || 0} trusted nets` : out ? 'not in scope on the Scope page' : 'Client Connector profiles not readable';
@@ -70,9 +70,9 @@ function _sfSvg(data) {
     const dlp = SF_DLP[c.dlp_status] || SF_DLP.unknown;
     const worst = _sfWorst(c);
     const sel = SF.selected === c.key ? ' is-sel' : '';
-    const curve = (x1, x2, cls) => { const dx = (x2 - x1) * 0.5; return `<path class="sf-edge ${cls}" d="M${x1},${cy} C${x1 + dx},${cy} ${x2 - dx},${cy} ${x2},${cy}"/>`; };
-    edges += curve(xA + W.a, xB, c.decision === 'inspected' ? 'flow' : c.decision === 'blocked' ? 'mute' : 'bad');
-    edges += curve(xB + W.b, xC, c.decision === 'inspected' ? (c.dlp_status === 'enforcing' ? 'flow' : 'flow warn') : c.decision === 'blocked' ? 'mute' : 'bad');
+    const curve = (x1, x2, cls, seg) => { const dx = (x2 - x1) * 0.5; return `<path class="sf-edge ${cls}" data-key="${E(c.key)}" data-seg="${seg}" d="M${x1},${cy} C${x1 + dx},${cy} ${x2 - dx},${cy} ${x2},${cy}"/>`; };
+    edges += curve(xA + W.a, xB, c.decision === 'inspected' ? 'flow' : c.decision === 'blocked' ? 'mute' : 'bad', 'ab');
+    edges += curve(xB + W.b, xC, c.decision === 'inspected' ? (c.dlp_status === 'enforcing' ? 'flow' : 'flow warn') : c.decision === 'blocked' ? 'mute' : 'bad', 'bc');
     const d = c.decided_by || {};
     const ruleLine = d.name ? `${_sfTrim(d.name, 30)}${d.order != null ? ` · order ${d.order}` : ''}` : 'nothing matched';
     const dlpLine = c.dlp_status === 'unknown' ? 'rule evidence unavailable' : c.dlp_status === 'blind' ? (c.dlp_rules.length ? `${c.dlp_rules.length} rule(s) cannot see content` : 'content is encrypted')
@@ -149,8 +149,79 @@ function _sfDetail(c) {
     <div class="bp-h">Gaps (${(c.gaps || []).length})</div>${gaps || '<div class="bp-none">Nothing to fix here.</div>'}`;
 }
 
+// ── Motion (static/flow_anim.js) ──────────────────────────────────
+// The diagram above is the one animated: packets run along each row,
+// stop where SSL inspection blocks, stay encrypted (red) where it does
+// not decrypt, peel off at a scoped exemption, and pass the deciding
+// rule's certificate and TLS-version checks (the gate marks). Below it,
+// the rule walk for the selected row. Built with DOM calls only.
+const SF_NS = 'http://www.w3.org/2000/svg';
+function _sfDiagramMotion(svg, data) {
+  const FA = window.FA;
+  if (!FA || !FA.streams || !svg) return null;
+  const seg = {};
+  svg.querySelectorAll('path.sf-edge[data-seg]').forEach(p => { seg[p.dataset.key + '|' + p.dataset.seg] = p; });
+  const edges = svg.querySelector('.sf-edges') || svg;
+  const routes = [];
+  const z = data.zcc || {};
+  if (z.total && seg['zcc|ab']) routes.push({ paths: [seg['zcc|ab'], seg['zcc|bc']], weight: 1, tone: 'stop' });
+  (data.classes || []).forEach(c => {
+    const ab = seg[c.key + '|ab'], bc = seg[c.key + '|bc'];
+    if (!ab || !bc) return;
+    const enc = c.decision === 'not_inspected' || c.decision === 'no_rule';
+    if (c.decision === 'blocked') routes.push({ paths: [ab], weight: 1, tone: 'block' });
+    else if (c.decision === 'unknown') routes.push({ paths: [ab], weight: 1, tone: 'idle' });
+    else routes.push({ paths: [ab, bc], weight: 2, tone: enc ? 'stop' : (c.dlp_status === 'enforcing' ? 'pass' : 'warn') });
+    // A scoped exemption that decides differently peels its packets off.
+    const start = bc.getPointAtLength ? bc.getPointAtLength(0) : null;
+    (c.exceptions || []).filter(e => e.decision !== c.decision && !(enc && e.decision !== 'inspected')).slice(0, 1).forEach(e => {
+      if (!start) return;
+      const p = document.createElementNS(SF_NS, 'path');
+      p.setAttribute('d', `M${start.x} ${start.y} C${start.x + 20} ${start.y} ${start.x + 26} ${start.y + 22} ${start.x + 40} ${start.y + 26}`);
+      p.setAttribute('class', 'sf-peel');
+      const t = document.createElementNS(SF_NS, 'title');
+      t.textContent = `${e.name}: ${e.decision === 'inspected' ? 'decrypts' : e.decision === 'blocked' ? 'blocks' : 'leaves encrypted'} for ${(e.scope || []).join(', ') || 'some users'}`;
+      p.appendChild(t); edges.appendChild(p);
+      routes.push({ paths: [ab, p], weight: 1, tone: e.decision === 'inspected' ? 'pass' : 'stop' });
+    });
+    // The deciding rule's certificate and TLS-version checks: a gate mark.
+    const gates = FA.sslWalkModel(data, c.key).gates;
+    if (gates.length && bc.getTotalLength) {
+      const L = bc.getTotalLength(), q = bc.getPointAtLength(L / 2), g = document.createElementNS(SF_NS, 'g');
+      g.setAttribute('class', 'sf-gates');
+      [-5, 5].forEach(dx => { const ln = document.createElementNS(SF_NS, 'line'); ln.setAttribute('x1', q.x + dx); ln.setAttribute('x2', q.x + dx); ln.setAttribute('y1', q.y - 9); ln.setAttribute('y2', q.y + 9); ln.setAttribute('class', 'sf-gate'); g.appendChild(ln); });
+      const t = document.createElementNS(SF_NS, 'title');
+      t.textContent = gates.map(x => `${x.label}: ${x.text}`).join('; ');
+      g.appendChild(t); edges.appendChild(g);
+    }
+  });
+  const s = FA.streams(svg, routes, { budget: 36, speed: 0.12 });
+  if (!window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches) s.play();
+  return s;
+}
+function _sfWalk(key) {
+  const FA = window.FA, stage = document.getElementById('sfWalkStage'), words = document.getElementById('sfWalkWords'), title = document.getElementById('sfWalkTitle');
+  if (!FA || !stage || !words) return;
+  if (SF.motion && SF.motion.walk) { SF.motion.walk.destroy(); SF.motion.walk = null; }
+  words.textContent = '';
+  if (key === 'zcc') {
+    stage.textContent = 'Traffic that bypasses Client Connector never reaches SSL inspection, so no rule is walked. Pick a traffic class row to walk its rules.';
+    title.textContent = 'Rule walk';
+  } else {
+    const m = FA.sslWalkModel(SF.data, key);
+    if (!m) { stage.textContent = 'No traffic class to walk.'; return; }
+    title.textContent = `Rule walk: ${m.label}`;
+    if (m.unknown) { stage.textContent = 'The SSL inspection rules could not be read, so the order they would be met in is not known.'; FA.altList(words, m.alt, 'sfWalkAlt'); return; }
+    SF.motion.walk = FA.ruleWalk(stage, m);
+    SF.motion.walk.svg.setAttribute('aria-describedby', 'sfWalkAlt');
+    FA.altList(words, m.alt, 'sfWalkAlt');
+  }
+  if (SF.motion.sync) SF.motion.sync();
+}
+
 function _sfSelect(key) {
   SF.selected = key;
+  if (SF.motion && (key !== 'zcc' || !SF.motion.walk)) _sfWalk(key);   // the bypass row has no rules to walk: keep the last walk
   const c = key === 'zcc' ? 'zcc' : (SF.data.classes || []).find(x => x.key === key);
   const det = document.getElementById('sfDetail');
   if (det) { det.innerHTML = _sfDetail(c); const b = document.getElementById('sfOpenBypass'); if (b) b.addEventListener('click', _sfOpenBypass); }
@@ -159,6 +230,7 @@ function _sfSelect(key) {
 
 window.renderSslFlow = function renderSslFlow(data, container) {
   const E = _sfE;
+  if (SF.motion) { ['diagram', 'walk'].forEach(k => { if (SF.motion[k]) SF.motion[k].destroy(); }); SF.motion = null; }
   SF.data = data; SF.container = container;
   const s = data.summary || {};
   const gaps = data.gaps || [];
@@ -188,9 +260,16 @@ window.renderSslFlow = function renderSslFlow(data, container) {
         <div class="sf-legend"><span><i class="sw ok"></i>decrypted, DLP sees content</span><span><i class="sw warn"></i>decrypted, DLP gap</span><span><i class="sw bad"></i>encrypted, DLP blind</span><span><i class="sw mute"></i>blocked</span></div>
         <div class="dim" style="font-size:0.75rem;">${E(s.ssl_rules_enabled)} of ${E(s.ssl_rules)} SSL rules enabled · ${E(s.dlp_rules_enabled)} of ${E(s.dlp_rules)} Web DLP rules enabled</div>
       </div>
+      <div class="fa-motion-bar"><button type="button" class="rp-btn" id="sfMotionPlay">Play motion</button></div>
       <div class="sf-flow-wrap" id="sfFlowWrap">${_sfSvg(data)}</div>
-      <div class="sf-hint">Top row: traffic that bypasses Client Connector and never reaches Zscaler (live from the app and forwarding profiles). Other rows are DLP-relevant traffic classes. Middle column: the first enabled SSL rule that matches (top-down, first match wins). Right column: what inline Web DLP can do with it. Click a row for the detail and the fix.</div>
+      <div class="sf-hint">Top row: traffic that bypasses Client Connector and never reaches Zscaler (live from the app and forwarding profiles). Other rows are DLP-relevant traffic classes. Middle column: the first enabled SSL rule that matches (top-down, first match wins). Right column: what inline Web DLP can do with it. Packets move along each row: green or amber are decrypted, red stay encrypted, and they stop where SSL inspection blocks; a dashed branch is a scoped exemption peeling packets off, and two bars mark the deciding rule's certificate and TLS-version checks. Click a row for the detail, the fix and its rule walk.</div>
     </div>
+    <section class="fa-motion" id="sfMotion" aria-labelledby="sfWalkTitle">
+      <h3 class="bp-h" id="sfWalkTitle">Rule walk</h3>
+      <p class="fa-lead">A request for the selected traffic meets the enabled SSL inspection rules top-down, and the first rule that matches decides. An exemption for some users peels their packets off; the deciding rule's certificate and TLS-version checks are gates before inline Web DLP.</p>
+      <div class="fa-stage" id="sfWalkStage"></div>
+      <div id="sfWalkWords"></div>
+    </section>
     <div class="sf-detail" id="sfDetail">${_sfDetail(null)}</div>
     <div class="bp-h">Gaps in relation to inline DLP (${gaps.length})</div>
     <ul class="bp-risks sf-gaps">${gapList}</ul>
@@ -199,6 +278,15 @@ window.renderSslFlow = function renderSslFlow(data, container) {
     <details class="bp-sec has-items"><summary>Inline Web DLP rules<span class="ct">${(data.dlp_rules || []).length}</span></summary><div><div class="max"><table class="bp-table"><thead><tr><th>Order</th><th>Rule</th><th>Action</th><th>State</th><th>Targets</th><th>Applies to</th></tr></thead><tbody>${dlpRows || ''}</tbody></table></div></div></details>
     <div class="bp-card info bp-guide"><div class="t">How to read this</div><ul>${(data.guidance || []).map(g => `<li>${E(g)}</li>`).join('')}</ul></div>`;
   const wrap = document.getElementById('sfFlowWrap');
+  if (window.FA && window.FA.streams) {
+    SF.motion = { diagram: _sfDiagramMotion(wrap.querySelector('svg'), data), walk: null, sync: null };
+    SF.motion.sync = window.FA.playButton(document.getElementById('sfMotionPlay'), () => SF.motion ? [SF.motion.diagram, SF.motion.walk] : []);
+    if (!SF.selected) _sfWalk(((data.gaps || []).find(g => g.severity === 'high' && g.class !== 'zcc') || {}).class || ((data.classes || [])[0] || {}).key);
+  } else {
+    const m = document.getElementById('sfMotion'), b = document.getElementById('sfMotionPlay');
+    if (m) m.hidden = true;
+    if (b) b.hidden = true;
+  }
   wrap.addEventListener('click', ev => { const n = ev.target.closest('.sf-node'); if (n) _sfSelect(n.dataset.key); });
   wrap.addEventListener('keydown', ev => { const n = ev.target.closest('.sf-node'); if (n && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); _sfSelect(n.dataset.key); } });
   container.querySelectorAll('.sf-gap-link').forEach(a => a.addEventListener('click', ev => { ev.preventDefault(); _sfSelect(a.dataset.class); document.getElementById('sfDetail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }));

@@ -16,7 +16,10 @@ Scopes covered:
 All checks read-only. None modify the tenant.
 """
 import time
+from zscaler_full_checks import guard_registry
 from dlp_assessment_full_auto import R, _ls
+
+_now = time.time   # the clock, injectable in tests
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -219,18 +222,27 @@ def rbac_zid_stale_admins(cl):
     users = _ls(d) if c == 200 else []
     if c in (401, 403) or not users:
         return R(R.INFO, "Cannot enumerate users for staleness check.")
-    now = time.time()
-    stale = 0
+    now = _now()
+    stale = reported = 0
     for u in users:
+        if not isinstance(u, dict):
+            continue
+        # UserRecord (zscaler-sdk-python 1.11.3 zid/models/users.py) has no
+        # last-login field; these names are read when an API reports them.
         last = u.get("lastLogin") or u.get("lastLoginTime") or u.get("lastSeen") or 0
-        if isinstance(last, (int, float)) and last > 0:
+        if isinstance(last, (int, float)) and not isinstance(last, bool) and last > 0:
+            reported += 1
             if last > 1e12:
                 last = last / 1000.0
             if now - last > 90 * 86400:
                 stale += 1
+    if not reported:
+        # No login time at all is no evidence: never "no stale accounts".
+        return R(R.INFO, f"The Authentication Service (formerly ZIdentity) user list ({len(users)} user(s)) reports no last-login time, so stale admin accounts "
+                         "cannot be found from the API. Review last sign-in under Administration > Authentication, or in your IdP.")
     if stale:
         return R(R.WARN, f"{stale} admin/user account(s) haven't logged in in 90+ days. Best Practice: Disable or remove — dormant admin accounts are the #1 path into a breach (no one notices when they're used). NIST 800-53 AC-2(3).")
-    return R(R.PASS, "No stale admin accounts detected in the last 90 days.")
+    return R(R.PASS, f"No stale accounts: all {reported} account(s) that report a last login signed in within the last 90 days.")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -251,3 +263,4 @@ RBAC_REG = [
     ("RBAC.11", "RBAC — ZIdentity", "Group-based entitlements (no per-user)",       rbac_zid_group_based),
     ("RBAC.12", "RBAC — ZIdentity", "Stale admin accounts (> 90 days no login)",    rbac_zid_stale_admins),
 ]
+RBAC_REG = guard_registry(RBAC_REG)   # a refused read (HTTP 401/403) is "Not permitted", never judged

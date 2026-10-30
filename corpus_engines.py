@@ -25,8 +25,14 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 # ── Validators ─────────────────────────────────────────────────────────
 
 def luhn_ok(digits: str) -> bool:
+    """The Luhn check for a card number (12 digits at least)."""
     d = [int(c) for c in digits if c.isdigit()]
-    if len(d) < 12:
+    return len(d) >= 12 and _luhn(d)
+
+
+def _luhn(d: List[int]) -> bool:
+    """The Luhn checksum of any length (a 9-digit Canadian SIN too)."""
+    if not d:
         return False
     total, parity = 0, len(d) % 2
     for i, n in enumerate(d):
@@ -73,9 +79,13 @@ def npi_ok(s: str) -> bool:
     return len(d) == 10 and luhn_ok("80840" + d)
 
 
+# The IRS issues ITINs with these middle (group) digits only.
+_ITIN_GROUPS = frozenset(list(range(50, 66)) + list(range(70, 89)) + [90, 91, 92] + list(range(94, 100)))
+
+
 def itin_ok(s: str) -> bool:
     d = re.sub(r"\D", "", s)
-    return len(d) == 9 and d[0] == "9" and 50 <= int(d[3:5]) <= 99
+    return len(d) == 9 and d[0] == "9" and int(d[3:5]) in _ITIN_GROUPS
 
 
 def mbi_ok(s: str) -> bool:
@@ -166,7 +176,7 @@ DETECTORS: List[Dict[str, Any]] = [
      "pattern": r"(?<!\d)\d{3}[ -]?\d{3}[ -]?\d{4}(?!\d)", "validate": lambda s: _mod11(s),
      "note": "NHS number with its mod-11 check digit."},
     {"key": "canada_sin", "match": r"social.?insurance|\bsin\b",
-     "pattern": r"(?<!\d)\d{3}[ -]?\d{3}[ -]?\d{3}(?!\d)", "validate": lambda s: luhn_ok(re.sub(r"\D", "", s)) and len(re.sub(r"\D", "", s)) == 9,
+     "pattern": r"(?<!\d)\d{3}[ -]?\d{3}[ -]?\d{3}(?!\d)", "validate": lambda s: _sin_ok(s),
      "note": "Canadian SIN, Luhn-checked."},
     {"key": "australia_tfn", "match": r"tax.?file|\btfn\b",
      "pattern": r"(?<!\d)\d{3}[ ]?\d{3}[ ]?\d{3}(?!\d)", "validate": lambda s: _tfn(s),
@@ -187,6 +197,13 @@ NOT_SIMULATED = [
     (r"\bedm\b|exact.?data|\bidm\b|index", "exact and indexed data match need the customer's index; nothing to run locally"),
     (r"\bml\b|machine.?learning|classif|ai.?generated|prompt", "machine-learning classifiers are not available offline"),
 ]
+
+
+def _sin_ok(s: str) -> bool:
+    """A Canadian SIN: nine digits passing the Luhn check (luhn_ok's card
+    minimum of 12 digits does not apply)."""
+    d = [int(c) for c in re.sub(r"\D", "", s)]
+    return len(d) == 9 and _luhn(d)
 
 
 def _mod11(s: str) -> bool:
@@ -375,10 +392,15 @@ def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Op
     if len(s) > MAX_EXPRESSION:
         return UNKNOWN, ids, [f"not evaluated: the expression is longer than {MAX_EXPRESSION} characters"]
     sums: Dict[str, Tuple[List[int], str, int]] = {}
+    # A Sum becomes one synthetic term, numbered above every real id in the
+    # expression so it can never be taken for a dictionary.
+    base = max([900000] + [int(x) + 1 for x in re.findall(r"D\(?\s*(\d+)", s, re.I)])
 
     def _sum(m):
-        sids = [int(x) for x in re.findall(r"D\(?\s*(\d+)", m.group(0).split(")")[0] + ")")]
-        key = f"D{900000 + len(sums)}.S"
+        # Every id in the group: all of "(D(1).S + D(2).S)", the older
+        # D(n) form included (its own parentheses are not the group's end).
+        sids = [int(x) for x in re.findall(r"D\(?\s*(\d+)", m.group(0), re.I)]
+        key = f"D{base + len(sums)}.S"
         sums[key] = (sids, m.group(1), int(m.group(2)))
         return f"{key} {m.group(1)} {m.group(2)}"
     s = _SUM_RE.sub(_sum, s)
@@ -398,7 +420,9 @@ def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Op
         elif m.group("not"):
             toks.append(("NOT", None))
         elif m.group("term"):
-            did = int(m.group("id")); ids.append(did)
+            did = int(m.group("id"))
+            if f"D{did}.S" not in sums:   # a Sum's synthetic term is not a dictionary
+                ids.append(did)
             toks.append(("T", (did, m.group("op"), int(m.group("n")))))
         elif m.group("bare"):
             did = int(m.group("bid")); ids.append(did)

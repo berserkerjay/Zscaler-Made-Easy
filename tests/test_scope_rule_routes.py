@@ -526,7 +526,8 @@ FACTORIES = {"_build_sdk_client", "_build_client", "_raw_client"}
 # each with why (CISA Secure by Design: every exception is written down).
 EXEMPT: Dict[str, str] = {
     "POST /api/tenant/check": "sign-in test only: lists and counts nothing (tenant_check docstring)",
-    "POST /api/remediation/execute": "one remediation of a check the operator picked; the write is gated by write mode",
+    "POST /api/remediation/execute": ("one remediation of a check the operator picked: a live fix is refused before sign-in unless its rule policy is "
+                                      "in scope (test_c6_admin_ops.py); a dry run plans without reading"),
     "POST /api/dlp-packs/{pack_id}/from-tenant": "Deploy Studio: rebuilds the pack the operator picked from its own dictionaries",
     "POST /api/dlp-packs/preflight": "Deploy Studio: plans the packs and channels the operator ticked on each pack card",
     "POST /api/dlp-packs/journey": "Deploy Studio: measures the pack the operator picked on the channels ticked on its card",
@@ -543,7 +544,9 @@ EXEMPT: Dict[str, str] = {
     "POST /api/dlp-packs/removal/apply/start": "a write: as /api/dlp-packs/removal/apply",
     "POST /api/change-queue/deploy": "files a deploy plan for approval (the Deploy Studio plan)",
     "POST /api/change-queue/removal": "files a removal plan for approval",
-    "POST /api/change-queue/{rid}/apply": "a write: applies an approved change request",
+    "POST /api/change-queue/{rid}/apply": ("a write: applies an approved change request; a fix recipe is scope-gated before sign-in "
+                                           "(_require_recipe_in_scope, as when it is filed: test_c6_admin_ops.py), a deploy or "
+                                           "removal applies the plan the operator picked"),
     "POST /api/proposals/{tenant}/{pid}/preview": "re-reads the one rule a proposal raised by an in-scope read names",
     "POST /api/proposals/{tenant}/{pid}/apply": "a write: applies an approved proposal",
     "POST /api/proposals/{tenant}/{pid}/rollback": "a write: rolls an applied proposal back",
@@ -609,6 +612,57 @@ def test_the_scope_table_names_only_routes_that_exist():
     stale = [k for k in stale if k not in reaching]
     # Assert
     assert not stale, stale
+
+
+# ── Derived from app.routes: every route, called with nothing in scope ──
+
+def _every_route():
+    from starlette.routing import Route as _StarletteRoute
+    return sorted({(m, r.path) for r in srv.app.routes if isinstance(r, _StarletteRoute) for m in (r.methods or set()) - {"HEAD"}})
+
+
+EVERY_ROUTE = _every_route()
+
+
+@pytest.mark.parametrize("method,path", EVERY_ROUTE, ids=[f"{m} {p}" for m, p in EVERY_ROUTE])
+def test_no_route_builds_a_client_or_reads_with_nothing_in_scope(tenant, monkeypatch, method, path):
+    """ASVS V4.1.3 · ASVS V4.1.5 · CWE-272 · CWE-862 · SSDF PW.8.2: every route in app.routes (none listed by hand), sent tenant details and an empty Scope page, builds no tenant client and reads nothing unless EXEMPT says why."""
+    # Arrange: nothing may restart or update the process
+    import subprocess
+
+    def refuse(*_a, **_k):
+        raise AssertionError("a process-level side effect was reached")
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    monkeypatch.setattr(os, "_exit", refuse)
+    url = re.sub(r"\{[^}]+\}", "x", path)
+    body = dict(CREDS, **NOTHING_TICKED)
+    c = TestClient(srv.app, raise_server_exceptions=False)
+    # Act
+    if method == "GET":
+        c.get(url, params={k: v for k, v in body.items() if isinstance(v, str)})
+    else:
+        c.request(method, url, json=body)
+    # Assert
+    if tenant.built or tenant.reads:
+        assert f"{method} {path}" in EXEMPT, (f"{method} {path} built a tenant client or read with nothing in scope", tenant.built, tenant.reads[:5])
+
+
+SINGLE_PRODUCT = {"zcc": ("zcc.", "/zcc/"), "zpa": ("zpa.", "/zpa/"), "insights": ("zins.",), "zdx": ("zdx.",), "ztw": ("ztw.",),
+                  "aiguard": ("aiguard.",)}
+UNTICKED = [r for r in ROUTES if r.partial is not None and any(s in SINGLE_PRODUCT for s in r.partial["scopes"])]
+
+
+@pytest.mark.parametrize("route", UNTICKED, ids=_ids)
+def test_a_product_left_unticked_is_never_read_while_everything_else_is_ticked(tenant, route):
+    """ASVS V4.1.3 · CWE-272 · CWE-285 · WSTG-ATHZ-02: the complement of the partial case: with every other scope ticked, the route reads nothing of the product it was asked about."""
+    # Arrange
+    own = [s for s in route.partial["scopes"] if s in SINGLE_PRODUCT]
+    sel = {"scopes": [s for s in ALL_SCOPES if s not in own], "channels": dict(ALL_CHANNELS), "from_page": True}
+    # Act
+    TestClient(srv.app).post(route.path, json=route.request(sel))
+    # Assert
+    leaked = sorted({x for x in tenant.reads if any(m in x for s in own for m in SINGLE_PRODUCT[s])})
+    assert not leaked, f"read a product that is not ticked: {leaked}"
 
 
 # ── The tenant is part of the scope: no read made for one tenant answers for another ──

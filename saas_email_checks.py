@@ -12,6 +12,7 @@ result (PASS / FAIL / REVIEW / INFO / ERROR).
 """
 from __future__ import annotations
 
+import functools
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 SAAS = "Ch.C — SaaS Security"
@@ -440,15 +441,28 @@ CHECKS: List[Tuple[str, str, str, Any]] = [
 ]
 
 
+def _guarded(fn: Any, label: str) -> Any:
+    """`fn` through zscaler_full_checks' permission guard: a check that also
+    reads a list the role was refused (D.6's tenants, C.3's rules) is "Not
+    permitted", never PASS. Imported when the check runs: the engine imports
+    this module while it is still being loaded."""
+    @functools.wraps(fn)
+    def check(cl):
+        import zscaler_full_checks as zf
+        return zf.permission_guarded(fn, label)(cl)
+    return check
+
+
 def splice(reg: List[Tuple[str, str, str, Any]]) -> List[Tuple[str, str, str, Any]]:
     """Insert the two sections after Ch.B — Endpoint (before Ch.E — GenAI)."""
     if any(r[0] == "C.1" for r in reg):
         return reg
+    guarded = [(cid, sec, label, _guarded(fn, label)) for cid, sec, label, fn in CHECKS]
     out, done = [], False
     for r in reg:
         if not done and str(r[1]).startswith("Ch.E"):
-            out.extend(CHECKS); done = True
+            out.extend(guarded); done = True
         out.append(r)
     if not done:
-        out.extend(CHECKS)
+        out.extend(guarded)
     return out

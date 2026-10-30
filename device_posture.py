@@ -89,11 +89,12 @@ def with_article(text: str) -> str:
 ENFORCES = {f: e for f, _, e in FAMILIES}
 
 # postureType keywords, first match wins (the type is uppercased and every
-# run of other characters becomes "_").
+# run of other characters becomes "_"). The short keywords (EDR, XDR,
+# ENTRA) must start a word, so CENTRAL_POLICY is not "Entra".
 TYPE_RULES: Tuple[Tuple[str, str], ...] = (
     ("marker", r"FILE_?PATH|FILE_CHECK|REGISTRY|REG_?KEY|OWNERSHIP|MARKER|OVERRIDE|VARIABLE"),
-    ("edr", r"CROWDSTRIKE|SENTINEL|CARBON_?BLACK|DEFENDER|EDR|XDR|ANTI_?VIRUS|ANTI_?MALWARE|CYLANCE|TANIUM|ZTA_?SCORE|RISK_?SCORE"),
-    ("domain_join", r"DOMAIN_?JOIN|AZURE_?AD|ENTRA|HYBRID_?JOIN"),
+    ("edr", r"CROWD_?STRIKE|SENTINEL|CARBON_?BLACK|DEFENDER|(?<![A-Z0-9])[EX]DR|ANTI_?VIRUS|ANTI_?MALWARE|CYLANCE|TANIUM|ZTA_?SCORE|RISK_?SCORE"),
+    ("domain_join", r"DOMAIN_?JOIN|AZURE_?AD|(?<![A-Z0-9])ENTRA|HYBRID_?JOIN"),
     ("certificate", r"CERT"),
     ("disk_hygiene", r"DISK|ENCRYPT|BITLOCKER|FILEVAULT|CLIENT_CONNECTOR_VERSION|ZCC_VERSION|SCREEN_?LOCK|PATCH|HYGIENE"),
     ("os_version", r"OS_VERSION|OPERATING_SYSTEM"),
@@ -571,7 +572,10 @@ def _uses(rule: Dict[str, Any], otype: str) -> List[Dict[str, Any]]:
             else:
                 via = ""
             others = [x for x in ops if x.get("type") != otype]
-            optional = ((c.get("operator") or "OR").upper() != "AND" and bool(others)) or \
+            # De Morgan, as _clause reads it: a negated condition flips its
+            # operator (NOT (A or B) needs both; NOT (A and B) needs either).
+            alternatives = ((c.get("operator") or "OR").upper() == "AND") == neg
+            optional = (alternatives and bool(others)) or \
                        ((rule.get("operator") or "AND").upper() == "OR" and len([x for x in rule.get("conditions") or [] if x.get("operands")]) > 1)
             out.append({"ref": o.get("lhs") or "", "sense": "must_pass" if sense else "must_fail", "via": via, "optional": optional,
                         "condition": ci})

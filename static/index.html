@@ -557,7 +557,7 @@
     font-size: var(--fs-subhead);
     padding: 0 var(--sp-3);
   }
-  .hero-toolbar { max-width: 980px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .hero-toolbar { max-width: 980px; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
   .tool-group { display: grid; gap: var(--sp-1); padding: var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); text-align: left; }
   .auth-status { font-size: var(--fs-subhead); color: var(--dim); }
   .auth-status.ok { color: var(--pass); } .auth-status.bad { color: var(--fail); }
@@ -1048,7 +1048,7 @@
             🔍 Diagnose ZCC access
           </button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(220px, 100%), 1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="scope-cb" value="dlp" checked style="width:auto;cursor:pointer;">
             DLP assessment <span style="color:var(--dim);font-size:0.75rem;">(188 checks)</span>
@@ -1103,7 +1103,7 @@
 
       <div class="field full" id="complianceFwField">
         <label>Compliance frameworks <span style="color:var(--dim);font-size:0.7rem;font-weight:normal;">(optional — pick any to include in report)</span></label>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(220px, 100%), 1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="fw-cb" value="NIST_800_53" checked style="width:auto;cursor:pointer;"> 🇺🇸 NIST 800-53 r5
           </label>
@@ -1169,7 +1169,7 @@
         <button class="btn btn-ghost" onclick="exportChecks('all','json')" style="padding:0.5rem 0.9rem;font-size:0.8rem;">JSON</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;" id="frameworksList"></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr));gap:0.6rem;" id="frameworksList"></div>
   </div>
 
   <!-- Inline DLP rule migration: opens as a modal from the Evaluate All Rules button (not inline on the page). -->
@@ -2197,7 +2197,7 @@ async function step3bDeleteAll(dryRun) {
   // banner accurate when the user re-runs the preview.
   clearPendingAction('step3b');
   body.dry_run = dryRun;
-  if (!dryRun) tenantWriteBody(body);
+  if (!dryRun) { tenantWriteBody(body); body.plan_hash = window._step3bPlanHash || ''; }   // deletes only what the dry run listed
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
   try {
@@ -2205,6 +2205,7 @@ async function step3bDeleteAll(dryRun) {
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     if (r.status === 'dry_run') {
+      window._step3bPlanHash = r.plan_hash || '';
       const list = (r.would_delete || []).slice(0, 30).map(x => `<li><code style="color:var(--dim);">${escapeHtml(String(x.rule_id ?? ''))}</code> · ${escapeHtml(x.rule_name)} (${escapeHtml(String(x.action ?? ''))})</li>`).join('');
       el.innerHTML = `
         <div style="color:#dc2626;font-weight:600;">DRY-RUN: would delete ${r.would_delete_count} rule(s).</div>
@@ -2228,6 +2229,9 @@ async function step3bDeleteAll(dryRun) {
       } else {
         clearPendingAction('step3b');
       }
+    } else if (r.status === 'plan_changed') {
+      clearPendingAction('step3b');
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">The rules changed since the dry run: nothing was deleted.</div><div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>`;
     } else if (r.status === 'blocked') {
       el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>
         <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">
@@ -2503,6 +2507,7 @@ async function step5Post(dryRun) {
   body.dry_run = !!dryRun;
   if (!dryRun) tenantWriteBody(body);
   body.mode = document.getElementById('step5Mode').value || 'auto';
+  if (!dryRun) body.plan_hash = window._step5PlanHash || '';   // writes only while the tenant holds what the dry run read
   if (!dryRun) {
     if (!confirm(`This will write ${sourceRules.length} rule(s) live to the tenant in mode="${body.mode}".\n\nDry-run first if you haven't. Continue?`)) return;
     if (window.zdRateGate && !(await window.zdRateGate({ write: sourceRules.length, activate: 1 }, migrateCredBody(), `Write ${sourceRules.length} rule(s) to the tenant.`))) return;
@@ -2516,6 +2521,7 @@ async function step5Post(dryRun) {
     let summary = '';
     let activatePrompt = '';
     if (r.status === 'dry_run') {
+      window._step5PlanHash = r.plan_hash || '';
       const posts = (r.planned_updates || []).filter(x=>x.operation==='POST').length;
       const puts  = (r.planned_updates || []).filter(x=>x.operation==='PUT').length;
       summary = `<div style="margin-top:0.4rem;">Planned: <strong>${r.total}</strong> rule(s) (${posts} POST · ${puts} PUT)</div>`;
@@ -2529,6 +2535,9 @@ async function step5Post(dryRun) {
       summary = `<div style="margin-top:0.4rem;color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">✓ Succeeded: ${r.succeeded_count} · Failed: ${r.failed_count}</div>`;
       if (r.failed_count) summary += `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>`;
       clearPendingAction('step5');
+    } else if (r.status === 'plan_changed') {
+      clearPendingAction('step5');
+      summary = `<div style="margin-top:0.4rem;color:var(--warn);font-weight:600;">The rules changed since the dry run: nothing was written. Run the dry run again.</div>`;
     } else if (r.status === 'blocked') {
       summary = `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">Relaunch via <code>START_Zscaler_Made_Easy_WRITES_ENABLED.bat</code> to enable write actions.</div>`;
     }
@@ -2717,12 +2726,14 @@ function saveConfig() {
     scopes: getSelectedScopes(),
     frameworks: getSelectedFrameworks(),
   };
-  localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+  // Storage can be blocked (private window, site data off, an embedded browser): say so instead of failing silently.
+  try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }
+  catch (e) { setStatus('Config not saved: this browser blocks site storage. Nothing else is affected.', 'error'); return; }
   setStatus('Config saved (secret not stored)', 'success');
 }
 
 function clearConfig() {
-  localStorage.removeItem(LS_KEY);
+  try { localStorage.removeItem(LS_KEY); } catch (e) { /* storage blocked: nothing saved to clear; the fields are still cleared */ }
   ['org','assessor','vd','cid','csec','custid'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('cloud').value = 'production';
   setSelectedScopes(['dlp','zia_extras','zcc','genai']);
@@ -3035,7 +3046,7 @@ function showResults(data) {
   }
 
   renderChecks(checks, 'all');
-  renderPermissions(data);
+  renderPartialScan(data);
   loadBenchmarks(data);
   loadCompliance(data);
   expandResultSections();
@@ -3068,11 +3079,31 @@ function rememberResults(data) {
   try { sessionStorage.setItem(RESULTS_KEY, JSON.stringify(data)); } catch (e) { /* too large or private mode: the page still works, the result is just not kept */ }
 }
 function forgetResults() { try { sessionStorage.removeItem(RESULTS_KEY); } catch (e) {} }
+// Stored results are read back as data, not trusted: every number the
+// summary, the tiles and the section bars print is coerced to a finite
+// number (or null, "not measured") before anything is drawn from it.
+function _restoredNumbers(data) {
+  const num = v => (v === null || v === undefined || v === '') ? null : (Number.isFinite(Number(v)) ? Number(v) : null);
+  const secs = data.sections && typeof data.sections === 'object' && !Array.isArray(data.sections) ? data.sections : {};
+  const clean = {};
+  for (const [k, d] of Object.entries(secs)) {
+    if (!d || typeof d !== 'object') continue;
+    const o = Object.assign({}, d);
+    for (const f of ['pct', 'pass', 'fail', 'warn', 'info', 'total', 'scored', 'error', 'not_permitted']) if (f in o) o[f] = num(o[f]);
+    clean[k] = o;
+  }
+  data.sections = clean;
+  if ('score' in data) data.score = num(data.score);
+  if (data.permissions && typeof data.permissions === 'object') data.permissions.blocked = num(data.permissions.blocked) || 0;
+  else delete data.permissions;
+  return data;
+}
 function restoreResults() {
   if (reportData) return false;
   let data = null;
   try { const raw = sessionStorage.getItem(RESULTS_KEY); data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
   if (!data || !Array.isArray(data.checks) || !data.checks.length) return false;
+  _restoredNumbers(data);
   data.__restored = true;
   reportData = data;
   if (window.GD) GD.lastReport = data;
@@ -3085,7 +3116,9 @@ function restoreResults() {
 document.addEventListener('DOMContentLoaded', () => { try { restoreResults(); } catch (e) { console.warn('restore', e); } });
 
 // ── Partial scan card: what the API client could not run ────────────
-function renderPermissions(data) {
+// (Its own name: the Required API access dialog has renderPermissions further
+// down, and a second function of the same name silently replaced this one.)
+function renderPartialScan(data) {
   const card = document.getElementById('permissionsCard');
   const body = document.getElementById('permissionsBody');
   if (!card || !body) return;
@@ -3095,7 +3128,7 @@ function renderPermissions(data) {
   const scopes = (p.needed_for_full_scan || []).filter(s => s.blocked_checks);
   body.innerHTML = `
     <p style="font-size:0.88rem;margin-bottom:0.6rem;"><strong style="color:var(--warn);">${p.blocked} check${p.blocked === 1 ? '' : 's'} could not run</strong> because the API client's role does not include their feature. Every other check ran, so the score above covers what was reachable. ${E(p.note)}</p>
-    ${scopes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0.6rem;">${scopes.map(s => `<div style="padding:0.7rem 0.9rem;border:1px solid var(--border);border-radius:10px;background:var(--well);">
+    ${scopes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(260px, 100%), 1fr));gap:0.6rem;">${scopes.map(s => `<div style="padding:0.7rem 0.9rem;border:1px solid var(--border);border-radius:10px;background:var(--well);">
         <div style="font-weight:700;">${E(s.label)} <span style="color:var(--dim);font-weight:500;font-size:0.8rem;">${E(s.service)} · ${s.blocked_checks} blocked</span></div>
         <div style="font-size:0.78rem;color:var(--dim);margin-top:0.2rem;">Grant (read): ${E((s.permissions || []).join(', '))}</div>
         ${s.license ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;">${E(s.license)}</div>` : ''}
@@ -3285,7 +3318,8 @@ async function openComplianceTab(fwKey) {
   function goToSsoLogin(url) {
     // A full navigation, not a fetch: this is an OpenID Connect redirect
     // to the identity provider, not an API call.
-    window.location.href = url || '/api/auth/sso/login';
+    // Only a path on this origin (never another site, //host or javascript:).
+    window.location.href = (typeof url === 'string' && /^\/(?![\/\\])[^\s\\]*$/.test(url)) ? url : '/api/auth/sso/login';
   }
   // The token is asked for in the app's own dialog (ui_auth.js, loaded as an
   // add-on before this runs at DOMContentLoaded); where that is missing the
@@ -3304,16 +3338,27 @@ async function openComplianceTab(fwKey) {
   // action (Authenticate) asks again through window.__dlpAskAgain().
   let declinedAt = 0;
   const DECLINE_QUIET_MS = 30000;
+  const UNLOCK_TRIES = 3;
+  const WRONG_TOKEN = 'That token was not accepted. Copy it again from ui_token.txt next to the app (or the window that runs the app), exactly as it is.';
   window.__dlpAskAgain = () => { declinedAt = 0; };
   async function unlock(message) {
     if (asking) return asking;
     if (Date.now() - declinedAt < DECLINE_QUIET_MS) return false;
     asking = (async () => {
-      const t = await askForToken(message);
-      if (t === null || t === undefined || !String(t).trim()) { declinedAt = Date.now(); return false; }
-      const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: String(t).trim() }) });
-      if (!r.ok) { try { setStatus('That token was not accepted. Read ui_token.txt again and retry.', 'error'); } catch (e) {} }
-      return r.ok;
+      // A token the server refuses is asked for again with the reason (a
+      // mistyped or stale paste), at most three times; then quiet, as a cancel.
+      let msg = message;
+      for (let attempt = 0; attempt < UNLOCK_TRIES; attempt++) {
+        const t = await askForToken(msg);
+        if (t === null || t === undefined || !String(t).trim()) { declinedAt = Date.now(); return false; }
+        const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: String(t).trim() }) });
+        if (r.ok) return true;
+        if (r.status !== 401) break;
+        msg = WRONG_TOKEN;
+      }
+      declinedAt = Date.now();
+      try { setStatus('That token was not accepted. Read ui_token.txt again and retry.', 'error'); } catch (e) {}
+      return false;
     })();
     try { return await asking; } catch (e) { return false; } finally { asking = null; }
   }
@@ -3535,6 +3580,7 @@ async function remediationPreview() {
         <div style="font-weight:600;margin-bottom:0.3rem;">✓ Plan ready</div>
         <div style="font-size:0.82rem;"><strong>Method:</strong> <code>${escapeHtml(data.method)}</code></div>
         <div style="font-size:0.82rem;"><strong>Endpoint:</strong> <code>${escapeHtml(data.endpoint)}</code></div>
+        ${data.note ? `<div style="font-size:0.82rem;margin-top:0.3rem;">${escapeHtml(data.note)}</div>` : ''}
         <div style="font-size:0.82rem;margin-top:0.4rem;"><strong>Body:</strong></div>
         <pre style="background:var(--well);padding:0.5rem;border-radius:4px;font-size:0.75rem;overflow-x:auto;margin-top:0.2rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
@@ -3558,6 +3604,7 @@ async function remediationActivate() {
   body.check_id = check_id;
   body.criteria = criteria;
   body.dry_run = false;
+  Object.assign(body, scopePageSelection());   // a live fix writes only a rule policy in scope on the Scope page
   tenantWriteBody(body);
   const resultEl = document.getElementById('remediationResult');
   resultEl.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Applying...</div>';
@@ -3820,6 +3867,7 @@ async function wizardPreview() {
     resultEl.innerHTML = `
       <div style="padding:0.5rem 0.7rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:6px;font-size:0.82rem;">
         <strong>Plan ready:</strong> <code>${escapeHtml(data.method)}</code> <code>${escapeHtml(data.endpoint)}</code>
+        ${data.note ? `<div style="margin-top:0.3rem;">${escapeHtml(data.note)}</div>` : ''}
         <pre style="background:var(--well);padding:0.4rem;border-radius:4px;font-size:0.72rem;overflow-x:auto;margin-top:0.3rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
       </div>`;
     _wizardPlanReady(true);
@@ -3839,6 +3887,7 @@ async function wizardApply() {
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();
   body.dry_run = false;
+  Object.assign(body, scopePageSelection());   // a live fix writes only a rule policy in scope on the Scope page
   tenantWriteBody(body);
   const resultEl = document.getElementById('wizardResult');
   resultEl.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">⏳ Applying…</div>';
@@ -3887,6 +3936,7 @@ async function wizardRequestApproval() {
   const body = migrateCredBody();
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();
+  Object.assign(body, scopePageSelection());   // a fix is filed only for a rule policy in scope on the Scope page
   const resultEl = document.getElementById('wizardResult');
   const btn = document.getElementById('wizardRequestBtn');
   if (btn) btn.disabled = true;
@@ -3987,9 +4037,10 @@ async function _fetchBestPractices() {
 async function openBestPracticesModal() {
   _ensureBestPracticesModal();
   const modal = document.getElementById('bestPracticesModal');
+  if (modal.style.display !== 'block') _lastFocus = document.activeElement;
   modal.style.display = 'block';
   document.body.style.overflow = 'hidden';
-  _lastFocus = document.activeElement;
+  _focusFirstInModal(modal);   // keyboard and screen-reader users land in the dialog, not behind it
   const host = document.getElementById('bestPracticesContent');
   // Always re-fetch on open so newly-added curated entries and any
   // server-side changes appear immediately. The payload is tiny (~40
@@ -4541,6 +4592,29 @@ function _focusFirstInModal(modalEl) {
   );
   if (focusable) focusable.focus();
 }
+// The trap itself, for every modal on this page (these dialogs, Deploy
+// policy packs, the Terraform hand-off, the score distribution): while one
+// is shown, Tab and Shift+Tab cycle through its own controls and never reach
+// the page behind it, as aria-modal="true" promises. A dialog that handles
+// Tab itself (Find anything) or a native <dialog> (which traps on its own)
+// is left alone.
+function _shownModal() {
+  const shown = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
+    .filter(m => m.getClientRects().length && getComputedStyle(m).display !== 'none' && getComputedStyle(m).visibility !== 'hidden');
+  return shown.length ? shown[shown.length - 1] : null;
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || document.querySelector('dialog[open]')) return;
+  const m = _shownModal();
+  if (!m) return;
+  const items = [...m.querySelectorAll('button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && !el.closest('[hidden], [inert]'));
+  if (!items.length) { e.preventDefault(); return; }
+  const first = items[0], last = items[items.length - 1], at = document.activeElement;
+  if (!m.contains(at)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+  else if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+});
 
 function openUpdateModal() {
   _lastFocus = document.activeElement;

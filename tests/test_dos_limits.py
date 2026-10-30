@@ -587,7 +587,7 @@ def test_upload_parsers_run_off_the_event_loop(monkeypatch, path, module, func, 
     monkeypatch.setattr(mod, func, probe)
     r = _client().post(path, json=body)
     assert seen == ["worker thread"], (path, r.status_code, r.text[:200])
-    if module not in ("compliance_mapping", "benchmarks"):
+    if module not in ("compliance_mapping", "benchmarks", "report_docx"):   # report_docx: a failed Word build echoes nothing of its error (CWE-209)
         assert "probe" in r.text   # an upload parser's error is answered in words, whatever its status
 
 

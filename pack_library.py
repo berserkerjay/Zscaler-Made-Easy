@@ -99,12 +99,16 @@ class HCLError(ValueError):
     pass
 
 
+# A string is any run of escapes and other characters up to its closing quote.
+# HCL's $${ and %%{ escapes are plain characters to the tokenizer (_unescape
+# reads them); naming them as alternatives here too made an unterminated
+# "$${$${... take time exponential in its length (CWE-1333).
 _TOKEN_RE = re.compile(r"""
     (?P<ws>[ \t\r]+)
   | (?P<nl>\n)
   | (?P<comment>\#[^\n]*|//[^\n]*|/\*.*?\*/)
   | (?P<heredoc><<-?(?P<hd>[A-Za-z_][A-Za-z0-9_]*)\n(?P<hdbody>.*?)\n[ \t]*(?P=hd)(?=\n|$))
-  | (?P<string>"(?:\\.|\$\$\{|%%\{|[^"\\])*")
+  | (?P<string>"(?:\\.|[^"\\])*")
   | (?P<number>-?\d+(?:\.\d+)?)
   | (?P<ident>[A-Za-z_][A-Za-z0-9_\-]*(?:\.[A-Za-z_*][A-Za-z0-9_\-*]*|\[[^\[\]]*\])*)
   | (?P<punct>==|!=|<=|>=|&&|\|\||[{}\[\]()=,:?+\-*/%!<>.])
@@ -118,6 +122,14 @@ def _unescape(s: str) -> str:
         c = s[i]
         if c == "\\" and i + 1 < len(s):
             n = s[i + 1]
+            # HCL's \uNNNN and \UNNNNNNNN (pack_terraform writes invisible
+            # and bidirectional characters that way).
+            width = {"u": 4, "U": 8}.get(n, 0)
+            digits = s[i + 2:i + 2 + width]
+            if width and len(digits) == width and all(x in "0123456789abcdefABCDEF" for x in digits) and int(digits, 16) <= 0x10FFFF:
+                out.append(chr(int(digits, 16)))
+                i += 2 + width
+                continue
             out.append({"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\"}.get(n, "\\" + n))
             i += 2
             continue
@@ -371,8 +383,18 @@ _ID_REF_RE = re.compile(r"D\$\{([^}]+)\}\.S")
 _NUMERIC_REF_RE = re.compile(r"\bD(\d+)\.S\b")
 
 
+PROVENANCE_TAIL = 400   # the provenance tag is short and always last: only this much of a description is searched
+
+
 def _strip_provenance(s: Any) -> str:
-    return _PROVENANCE_RE.sub("", str(s or "")).strip()
+    """The description without the trailing provenance tag this app's
+    Terraform export adds. Only the tail is searched: the pattern scanned
+    from every position of a long run of spaces or brackets costs time in
+    proportion to the square of its length (CWE-1333)."""
+    text = str(s or "")
+    start = max(0, len(text) - PROVENANCE_TAIL)
+    m = _PROVENANCE_RE.search(text, start)
+    return (text[:m.start()] if m else text).strip()
 
 
 def _plain(v: Any) -> Any:
@@ -446,10 +468,21 @@ def _ref_name(ref: Any, labels: Dict[Tuple[str, str], str]) -> Optional[str]:
     if not isinstance(ref, Ref):
         return None
     # tostring(x.y.group_id) and friends: look through the wrapper.
-    m = re.search(r"(?<![A-Za-z0-9_.])(data\.)?([a-z_]+)\.([A-Za-z0-9_\-]+)\.(id|rule_id|group_id|name)(?![A-Za-z0-9_.])", ref.text)
+    m = re.search(r"(?<![A-Za-z0-9_.])(data\.)?([a-z_]+)\.([A-Za-z0-9_\-]+)\.(id|rule_id|group_id|tenant_id|name)(?![A-Za-z0-9_.])", ref.text)
     if not m:
         return None
     return labels.get((("data." if m.group(1) else "") + m.group(2), m.group(3)))
+
+
+def _tf_int(value: Any, what: str) -> int:
+    """A whole number from a Terraform attribute, or ValueError in words
+    (a list, an object or text there is refused, not a TypeError)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"{what} must be a whole number")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be a whole number") from None
 
 
 def pack_from_terraform(files: Dict[str, str]) -> Tuple[Dict[str, Any], List[str]]:
@@ -469,8 +502,10 @@ def pack_from_terraform(files: Dict[str, str]) -> Tuple[Dict[str, Any], List[str
         for blk in _blocks(doc, "data"):
             lab = blk.get("_labels") or []
             if len(lab) >= 2:
-                if isinstance(blk.get("name"), str):
-                    labels[("data." + lab[0], lab[1])] = blk["name"]
+                # A data source looks its object up by name (zia_casb_tenant: by tenant_name).
+                looked_up = blk.get("name") if isinstance(blk.get("name"), str) else blk.get("tenant_name")
+                if isinstance(looked_up, str):
+                    labels[("data." + lab[0], lab[1])] = looked_up
                 if lab[0] == "zia_cloud_applications":
                     app_class_lookups[lab[1]] = [str(c) for c in (_plain(blk.get("app_class")) or [])]
         for blk in _blocks(doc, "resource"):
@@ -502,13 +537,13 @@ def pack_from_terraform(files: Dict[str, str]) -> Tuple[Dict[str, Any], List[str
                 if tpl_name:
                     d["dict_template_name"] = tpl_name
                 if tpl_id:
-                    d["dict_template_id"] = int(tpl_id)
-                    warnings.append(f"{d['name']}: clones predefined dictionary id {int(tpl_id)}; ids differ between tenants, name the template instead")
+                    d["dict_template_id"] = _tf_int(tpl_id, f"{fname}: dictionary '{str(d['name'])[:80]}': dict_template_id")
+                    warnings.append(f"{d['name']}: clones predefined dictionary id {d['dict_template_id']}; ids differ between tenants, name the template instead")
             for k in ("confidence_level_for_predefined_dict", "confidence_threshold"):
                 if isinstance(blk.get(k), str):
                     d[k] = blk[k]
             if blk.get("proximity"):
-                d["proximity"] = int(blk["proximity"])
+                d["proximity"] = _tf_int(blk["proximity"], f"{fname}: dictionary '{str(d['name'])[:80]}': proximity")
             for k in ("include_bin_numbers", "include_ssn_numbers"):
                 if blk.get(k) is True:
                     d[k] = True
@@ -556,6 +591,12 @@ def pack_from_terraform(files: Dict[str, str]) -> Tuple[Dict[str, Any], List[str
                 if k == "type" and channel == pc.SAAS:
                     p["saas_type"] = _plain(v)
                     continue
+                if k in ("labels", "notification_template", "cloud_app_tenants", "email_tenants"):
+                    # Blocks of data-source references (the writer looks each one up by name): the names travel.
+                    named = _ref_list(v, labels, warnings, owner, k.replace("_", " "))
+                    if named:
+                        p["tenants" if k.endswith("tenants") else k] = named[0] if k == "notification_template" else named
+                        continue
                 if isinstance(v, Ref):
                     # cloud_applications built from data.zia_cloud_applications lookups -> app classes
                     used = [lbl for lbl in app_class_lookups if f"data.zia_cloud_applications.{lbl}." in v.text]
@@ -626,10 +667,92 @@ def _looks_like(items: List[Any]) -> Optional[str]:
 
 
 def _decode(entry: Dict[str, Any]) -> bytes:
+    """The bytes of one uploaded file. The content is text (base64 for a
+    ZIP); anything else is refused, never handed to bytes() (an integer
+    there would allocate that many bytes)."""
     content = entry.get("content") or ""
+    if not isinstance(content, str):
+        raise ValueError(f"{os.path.basename(str(entry.get('name') or 'upload'))[:80]}: the file content must be text")
     if entry.get("encoding") == "base64":
-        return base64.b64decode(content)
-    return content.encode("utf-8") if isinstance(content, str) else bytes(content)
+        try:
+            return base64.b64decode(content, validate=True)
+        except ValueError as e:
+            raise ValueError(f"{os.path.basename(str(entry.get('name') or 'upload'))[:80]}: not valid base64") from e
+    return content.encode("utf-8")
+
+
+# An uploaded pack is untrusted JSON: every object the rest of the app reads
+# must have the shape it expects, or the upload is refused in words here
+# (never a TypeError deep in validation, the preview or the deploy).
+MAX_JSON_DEPTH = 32       # objects and lists nested deeper are refused (the built-in packs stay under 8)
+_TEXT_KEYS = ("name", "description", "expression", "engine_expression", "channel", "saas_type", "type", "custom_phrase_match_type",
+              "dictionary_type", "parent_rule", "state", "severity", "dict_template_name", "filtering_action", "operation",
+              "target_action", "data_transfer_method", "notification_template", "confidence_threshold",
+              "confidence_level_for_predefined_dict")
+_LIST_KEYS = ("patterns", "phrases", "engines", "sub_rules", "endpoint_application_groups", "resources", "file_types", "url_categories",
+              "labels", "protocols", "cloud_app_classes", "applications", "cloud_applications", "actions", "device_trust_levels",
+              "collaboration_scope", "components", "platforms", "request_methods", "hierarchical_identifiers", "user_agent_types",
+              "user_risk_score_levels")
+_NAME_LIST_KEYS = ("engines", "endpoint_application_groups", "resources", "file_types", "url_categories", "labels", "protocols",
+                   "cloud_app_classes", "applications", "cloud_applications", "actions", "device_trust_levels", "collaboration_scope",
+                   "components", "platforms", "request_methods", "user_agent_types", "user_risk_score_levels")
+
+
+def _json_depth_ok(obj: Any, limit: int = MAX_JSON_DEPTH) -> bool:
+    """True when no object or list in `obj` is nested deeper than `limit`
+    (walked without recursion, so a deep document cannot exhaust the stack)."""
+    stack = [(obj, 1)]
+    while stack:
+        cur, depth = stack.pop()
+        if isinstance(cur, (dict, list)):
+            if depth > limit:
+                return False
+            stack.extend((v, depth + 1) for v in (cur.values() if isinstance(cur, dict) else cur))
+    return True
+
+
+def _shape_problem(kind: str, item: Any, where: str) -> Optional[str]:
+    """Why one dictionary / engine / rule / application group cannot be
+    read, or None. Text fields must be text, list fields lists, the names
+    in a list plain names, a pattern or phrase an object or text."""
+    label = {"dictionaries": "dictionary", "engines": "engine", "policies": "rule", "app_groups": "application group"}[kind]
+    if not isinstance(item, dict):
+        return f"{where}: every {label} must be an object"
+    shown = str(item.get("name"))[:80] if isinstance(item.get("name"), str) else "(unnamed)"
+    for k in _TEXT_KEYS:
+        v = item.get(k)
+        if v is None or isinstance(v, str):
+            continue
+        if k == "type" and kind != "policies":
+            continue
+        if k == "notification_template" and isinstance(v, (int, dict)) and not isinstance(v, bool):
+            continue
+        return f"{where}: {label} '{shown}': '{k}' must be text"
+    action = item.get("action")
+    if kind == "policies" and action is not None and not isinstance(action, (str, dict)):
+        return f"{where}: rule '{shown}': 'action' must be text (or an object for SSL Inspection)"
+    if item.get("actions_by_verb") is not None and not (
+            isinstance(item["actions_by_verb"], dict) and all(isinstance(v, str) for v in item["actions_by_verb"].values())):
+        return f"{where}: rule '{shown}': 'actions_by_verb' must map verbs to ALLOW or BLOCK"
+    for k in _LIST_KEYS:
+        v = item.get(k)
+        if v is None:
+            continue
+        if not isinstance(v, list):
+            return f"{where}: {label} '{shown}': '{k}' must be a list"
+        if k in _NAME_LIST_KEYS and not all(isinstance(x, (str, int)) and not isinstance(x, bool) for x in v):
+            return f"{where}: {label} '{shown}': every entry of '{k}' must be a name"
+        if k in ("patterns", "phrases"):
+            field = k[:-1]
+            for x in v:
+                if not (isinstance(x, str) or (isinstance(x, dict) and isinstance(x.get(field, ""), str)
+                                               and isinstance(x.get("action", ""), str))):
+                    return f"{where}: {label} '{shown}': every entry of '{k}' must be text or an object with a text '{field}'"
+    for sr in item.get("sub_rules") or []:
+        why = _shape_problem("policies", sr, where)
+        if why:
+            return why.replace(": rule '", ": sub-rule '", 1)
+    return None
 
 
 def _expand(files: List[Dict[str, Any]]) -> List[Tuple[str, bytes]]:
@@ -688,9 +811,11 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
         if not low.endswith(".json"):
             continue   # README, tfvars examples and the like
         try:
-            obj = json.loads(data.decode("utf-8-sig"))
+            obj = safe_files.strict_json_loads(data.decode("utf-8-sig"))   # NaN / Infinity: refused, never kept in the pack
         except Exception as e:  # noqa: BLE001
-            raise ValueError(f"{base}: not valid JSON ({e})") from e
+            raise ValueError(f"{base}: not valid JSON ({str(e)[:200]})") from e
+        if not _json_depth_ok(obj):
+            raise ValueError(f"{base}: nested more than {MAX_JSON_DEPTH} levels deep, which no policy pack is")
         sources.append(path)
         formats.add("json")
         if low == "pack.json" and isinstance(obj, dict) and not any(k in obj for k in ("dictionaries", "engines", "policies")):
@@ -735,14 +860,32 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
     # Native Zscaler API exports (dlpDictionaries, dlpEngines, webDlpRules,
     # endpointDlpRules, casbDlpRules, emailDlpRules) are rewritten into the
     # pack schema: ids become names, D<id>.S becomes D:<name>.
+    for k, items in parts.items():
+        for x in items:
+            if not isinstance(x, dict):
+                raise ValueError(f"{_shape_problem(k, x, 'the upload')}")
+    for k in ("name", "description", "version"):
+        if meta.get(k) is not None and not isinstance(meta[k], str):
+            if k == "version" and isinstance(meta[k], (int, float)) and not isinstance(meta[k], bool):
+                meta[k] = str(meta[k])
+            else:
+                raise ValueError(f"the pack's '{k}' must be text")
     native_counts = {}
     if any(is_native(x) for part in parts.values() for x in part):
-        parts, nwarn, native_counts = convert_parts(parts, hints=native_hints)
+        try:
+            parts, nwarn, native_counts = convert_parts(parts, hints=native_hints)
+        except (TypeError, AttributeError, KeyError, IndexError) as e:   # a malformed export: refused in words, not a server error
+            raise ValueError(f"the Zscaler API export could not be read: a field has an unexpected type ({type(e).__name__})") from None
         warnings.extend(nwarn)
         formats.discard("json")
         formats.add("zscaler")
     if not any(parts.values()):
         raise ValueError("no dictionaries, engines or rules were found in the upload")
+    for k, items in parts.items():
+        for x in items:
+            why = _shape_problem(k, x, "the upload")
+            if why:
+                raise ValueError(why)
     # Proximity is a number of characters. Uploaded packs are untrusted, so
     # anything else is refused here rather than carried to the preview page.
     for d in parts["dictionaries"]:
@@ -1037,14 +1180,16 @@ def delete_pack(pack_id: str, root: Optional[str] = None) -> str:
 def pack_bundle(pack_dir: str) -> Dict[str, Any]:
     """A single-file JSON copy of a pack: the upload format, and the
     starting point for a customer's own pack."""
-    from dlp_importer import _load_json, _resolve_configs, load_pack_metadata
+    from dlp_importer import _resolve_configs, load_pack_metadata
+    from pack_deploy import load_pack_file   # the one pack-file reader
     meta = load_pack_metadata(pack_dir)
     configs = _resolve_configs(pack_dir)
+    pid = os.path.basename(os.path.normpath(pack_dir))
     out = {k: meta[k] for k in ("name", "version", "description", "references", "baseline") if meta.get(k) is not None}
-    out["dictionaries"] = _load_json(configs, "dlp_dictionaries.json")
-    out["engines"] = _load_json(configs, "dlp_engines.json")
-    out["policies"] = _load_json(configs, "dlp_policies.json")
-    groups = _load_json(configs, "endpoint_application_groups.json")
+    out["dictionaries"] = load_pack_file(configs, "dlp_dictionaries.json", pid)
+    out["engines"] = load_pack_file(configs, "dlp_engines.json", pid)
+    out["policies"] = load_pack_file(configs, "dlp_policies.json", pid)
+    groups = load_pack_file(configs, "endpoint_application_groups.json", pid)
     if groups:
         out["app_groups"] = groups
     return out

@@ -2,6 +2,8 @@
    bypass dialog. The tabs load /app.css first (the assessment page's own
    stylesheet), so every token, font, theme and button below is the app's;
    this file only adds the report layout and components. */
+/* The glass effect: one shared material for every page that loads this file (see glass.css). */
+@import url("/static/glass.css");
 .rp-page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 3.5rem; position: relative; z-index: 1; animation: fadeInUp 0.6s var(--ease, ease); }
 .rp-hero { text-align: center; margin-bottom: 1.4rem; padding: 0.5rem 0 0; }
 .rp-hero h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 0.5rem; }
@@ -48,7 +50,7 @@
   .bp-total.risk .n { color: var(--fail); }
   .bp-total.ok { background: color-mix(in srgb, var(--pass) 16%, transparent); border-color: color-mix(in srgb, var(--pass) 24%, transparent); }
   .bp-total.ok .n { color: var(--pass); }
-  .bp-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.6rem; }
+  .bp-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 0.6rem; }
   .bp-group { padding: 0.65rem 0.8rem; border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--well); }
   .bp-group .t { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-bottom: 0.4rem; }
   .bp-stats { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; }
@@ -243,7 +245,7 @@ body.flow-page .dz-flow-wrap { max-height: calc(100vh - 300px); min-height: 320p
 .df-node .dot.sev-high { fill: var(--fail); } .df-node .dot.sev-medium { fill: var(--warn); } .df-node .dot.sev-low, .df-node .dot.sev-info { fill: var(--dim); }
 .df-hint { color: var(--dim); font-size: 0.72rem; margin-top: 0.4rem; }
 .df-hops, .df-chans { display: grid; gap: 0.5rem; }
-.df-chans { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.df-chans { grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
 .df-hop, .df-chan, .df-pack { padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--r-md); background: var(--card-solid); font-size: 0.86rem; }
 .df-hop.st-ok, .df-chan.st-ok { border-left-color: var(--pass); } .df-hop.st-warn, .df-chan.st-warn { border-left-color: var(--warn); }
 .df-hop.st-fail, .df-chan.st-fail { border-left-color: var(--fail); } .df-hop.st-block { border-left-color: var(--accent); } .df-hop.st-dim, .df-chan.st-dim { border-left-color: var(--border-strong); }
@@ -271,7 +273,7 @@ body.theme-light .df-chip.st-ok, body.theme-light .fl-st.st-ok { color: var(--pa
 body.theme-light .df-chip.st-fail, body.theme-light .fl-st.st-fail, body.theme-light .sev-high .sev, body.theme-light .df-rule.st-fail { color: var(--fail); }
 body.theme-light .df-chip.st-warn, body.theme-light .fl-st.st-modify, body.theme-light .fl-st.st-differs { color: var(--warn); }
 body.theme-light .df-chip.st-block { color: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .rp-page { animation: none; } .rp-wait .spin { animation: none; } .sf-live i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .rp-page { animation: none; } .rp-wait .spin { animation: none; } .sf-live i { animation: none; } .sf-edge.flow { animation: none; } }
 
 /* ── Advanced settings tab ─────────────────────────────────────────── */
 .adv-page .rp-card section { margin-bottom: 2rem; }
@@ -313,7 +315,7 @@ body.theme-light .df-chip.st-block { color: var(--accent); }
 .adv-expr { display: block; white-space: pre-wrap; word-break: break-word; font-size: 0.72rem; color: var(--dim); margin-top: 0.1rem; }
 .adv-details { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.5rem 0.9rem; background: var(--well); }
 .adv-details summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; }
-.adv-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.8rem; margin-bottom: 0.9rem; }
+.adv-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 0.8rem; margin-bottom: 0.9rem; }
 .adv-cols .bp-card p { font-size: 0.82rem; line-height: 1.5; color: var(--dim); margin: 0.4rem 0 0; }
 .adv-cols .bp-card p:last-child { margin-top: 0.7rem; }
 .adv-page .chip { display: inline-block; white-space: nowrap; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; background: var(--accent-tint); color: var(--chip-info, var(--accent)); margin: 0.1rem 0.1rem 0.1rem 0; }
@@ -354,6 +356,29 @@ body.theme-light .df-chip.st-block { color: var(--accent); }
 .adv-sbd-group th { background: var(--well); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
 .adv-sbd-ev { font-size: 0.82rem; line-height: 1.45; max-width: 34ch; }
 
+/* Advanced settings: this app's quality and security score (static/quality_score.js) */
+.adv-qs-h { font-size: 0.95rem; font-weight: 700; color: var(--text); margin: 1rem 0 0.4rem; }
+.adv-qs-meaning { font-size: 0.88rem; line-height: 1.45; max-width: 48ch; }
+.adv-qs-cap { flex-basis: 100%; font-size: 0.85rem; line-height: 1.45; color: var(--chip-fail, var(--fail)); font-weight: 600; }
+.adv-qs-chart { display: grid; gap: 0.3rem; max-width: 42rem; margin: 0.2rem 0 0.5rem; }
+.adv-qs-row { display: grid; grid-template-columns: minmax(6.5rem, 12rem) minmax(0, 1fr) 2.6rem; gap: 0.5rem; align-items: center; font-size: 0.82rem; }
+.adv-qs-row.area .adv-qs-name { font-weight: 700; color: var(--text); }
+.adv-qs-row.sub .adv-qs-name { padding-left: 0.75rem; color: var(--dim); }
+.adv-qs-name { overflow-wrap: anywhere; }
+.adv-qs-track { display: block; height: 0.75rem; background: var(--well-2); border-radius: 0 4px 4px 0; overflow: hidden; }
+.adv-qs-row.area .adv-qs-track { height: 1rem; }
+.adv-qs-fill { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 0 4px 4px 0; }
+.adv-qs-val { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+.adv-qs-std { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.adv-qs-std .df-chip { text-transform: none; letter-spacing: 0; }
+#quality .df-tablewrap { overflow-x: auto; }
+#quality .df-tablewrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#quality .df-table th, #quality .df-table td { vertical-align: top; }
+#quality .df-table tbody th { text-transform: none; letter-spacing: 0; font-size: 0.84rem; font-weight: 600; color: var(--text); }
+#advQsAreas { min-width: 34rem; }
+#advQsOpen { min-width: 38rem; }
+#advQsOpen td:last-child { min-width: 12rem; }
+
 /* Data Flow: app/forwarding profile bar and cloud-app-category visibility */
 .df-profiles { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; margin: 0.5rem 0 0.8rem; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); }
 .df-prof { display: flex; flex-direction: column; gap: 0.1rem; }
@@ -393,7 +418,7 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .df-cat-h strong { font-size: 0.9rem; }
 
 /* Reference flow: how ZIA processes a policy (device → incident) */
-.df-steps { list-style: none; margin: 0.6rem 1.2rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.5rem; }
+.df-steps { list-style: none; margin: 0.6rem 1.2rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 0.5rem; }   /* min(): one column narrower than 280px at 320px, never past the edge */
 .df-step { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.55rem 0.7rem; background: var(--card); transition: box-shadow 0.2s, border-color 0.2s; }
 .df-step.sel { border-color: var(--accent); background: var(--accent-tint); }
 .df-step strong { font-size: 0.86rem; }
@@ -446,6 +471,8 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .pa-details { margin-top: 1rem; }
 /* WCAG 2.2 SC 2.5.8: every disclosure is a target at least 24px tall. */
 summary { min-height: 24px; }
+/* SC 2.5.8: a checkbox or radio alone in a table cell (Bulk changes' object picker) is a 24px target. */
+.df-table td > input[type="checkbox"], .df-table td > input[type="radio"] { width: 24px; height: 24px; min-height: 24px; margin: 0; accent-color: var(--accent); }
 .pa-details > summary { cursor: pointer; color: var(--dim); font-size: 0.82rem; }
 .pa-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 .pa-details .pa-log { margin-top: 0.5rem; }
@@ -590,7 +617,7 @@ summary { min-height: 24px; }
 .ex-cols { border-top: 1px solid var(--border); padding-top: 0.5rem; }
 .ex-cols summary { cursor: pointer; font-weight: 600; font-size: 0.86rem; }
 .ex-cols summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-md); }
-.ex-colgrid { border: 0; margin: 0.4rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.25rem 0.9rem; font-size: 0.82rem; }
+.ex-colgrid { border: 0; margin: 0.4rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(13rem, 100%), 1fr)); gap: 0.25rem 0.9rem; font-size: 0.82rem; }
 .ex-colgrid label { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; min-width: 0; overflow-wrap: anywhere; }
 .ex-colgrid input { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--accent); }
 .ex-colgrid input:disabled + span { color: var(--dim); }
@@ -609,7 +636,7 @@ summary { min-height: 24px; }
 /* ── Bulk changes (/report/operations) ────────────────────────────── */
 .op-page section { margin-bottom: 1.2rem; }
 .op-page .df-h { margin-left: 0; margin-right: 0; }
-.op-kinds { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.6rem; }
+.op-kinds { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 0.6rem; }
 .op-kind { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card-solid); cursor: pointer; }
 .op-kind:has(input:checked) { border-color: var(--accent); background: var(--accent-tint); }
 .op-kind input { margin-top: 0.2rem; accent-color: var(--accent); }
@@ -678,10 +705,13 @@ summary { min-height: 24px; }
 .pl-note { margin: 0.6rem 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: var(--r-md); background: var(--well); font-size: 0.86rem; line-height: 1.5; }
 
 /* Path analyzer what-if (static/path_whatif.js) */
-.pa-whatif .pa-wi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.6rem 1rem; margin: 0.6rem 0 0.2rem; }
+.pa-whatif .pa-wi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); gap: 0.6rem 1rem; margin: 0.6rem 0 0.2rem; }
 .pa-whatif .pa-wi-field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
 .pa-whatif .pa-wi-field .df-ctl input { width: 100%; min-width: 0; }
 .pa-wi-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; max-height: 14rem; overflow-y: auto; }
 .pa-wi-results .rp-btn { width: 100%; text-align: left; justify-content: flex-start; }
 .pa-whatif-out .df-table td { vertical-align: top; }
 .pa-whatif-out .df-table td > div + div { margin-top: 0.25rem; }
+/* Advanced settings: the Glass effect switch (static/glass.js keeps it in step with the page). */
+.adv-switch { display: inline-flex; align-items: center; gap: 0.6rem; min-height: var(--ctl-md); margin: 0.2rem 0; font-weight: 600; cursor: pointer; }
+.adv-switch input { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--accent); cursor: pointer; }

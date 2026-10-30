@@ -218,6 +218,8 @@
     catch (e) { updBox(`<span class="warn">Could not check: ${E(e.message)}</span>`); }
   }
   async function runUpdate() {
+    // The update changes this app's own code: say what happens and ask first (WCAG 3.3.4).
+    if (!window.confirm('Update Zscaler Made Easy now? The app fetches and pulls the latest code from GitHub for its branch, keeps any local edits in git stash, installs the locked requirements and then asks you to restart it. Nothing in the tenant changes.')) return;
     const btn = $('advUpdBtn'), steps = $('advUpdSteps');
     btn.disabled = true; btn.textContent = 'Updating…'; steps.hidden = false;
     const lines = [];

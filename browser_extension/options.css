@@ -1,0 +1,7 @@
+/* The options page's own rules (no inline style: the extension CSP's default-src 'self' blocks it). */
+body { width: auto; max-width: 560px; padding: 20px; }
+input { width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); font: inherit; }
+label { display: block; margin: 12px 0 4px; font-weight: 600; }
+.row { display: flex; gap: 8px; margin-top: 10px; }
+.row button { width: auto; }
+.opt-h { font-size: var(--fs-headline); margin: 22px 0 4px; }

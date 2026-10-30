@@ -168,14 +168,41 @@ def _preview(names: Sequence[Any], limit: int = 6) -> str:
 # ---------------------------------------------------------------------------
 # Endpoint DLP extras: application groups and sub-rules
 # ---------------------------------------------------------------------------
-# The SDK covers endpoint rules but not endpoint application groups
-# (/endPointApplicationGroups) or the sub-rule endpoints
-# (/endPointDlpRules/{parent}/subRule[/{id}]); those go through the SDK's
+# Endpoint application groups (/endPointApplicationGroups) and the sub-rule
+# endpoints (/endPointDlpRules/{parent}/subRule[/{id}]) go through the SDK's
 # own request executor so authentication and camelCase conversion are
-# shared. Tests replace raw_request().
+# shared. zscaler-sdk-python 1.11.3 also has services for both
+# (zia/endpoint_application_groups.py, zia/endpoint_dlp_sub_rules.py) at
+# these same paths; the raw request predates them. Every id put into one of
+# these paths is checked to be a number first (path_id). Tests replace
+# raw_request().
 
 ZIA_BASE = "/zia/api/v1"
 APP_GROUPS_PATH = "/endPointApplicationGroups"
+
+
+def path_id(value: Any) -> Optional[str]:
+    """`value` as a ZIA object id for a request path (a whole number), or
+    None. An id is put into the path of a raw request (application groups,
+    sub-rules), so anything else — '1/../../status', '7?x=1' — is refused
+    instead of changing which endpoint the request reaches."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return str(value) if value >= 0 else None
+    text = str(value if value is not None else "").strip()
+    return text if text.isascii() and text.isdigit() and len(text) <= 20 else None
+
+
+def _id_path(*ids: Any) -> List[str]:
+    """path_id() of each id, or ValueError (call() reports it as a failed write; nothing is sent)."""
+    out = []
+    for v in ids:
+        pid = path_id(v)
+        if pid is None:
+            raise ValueError(f"'{str(v)[:40]}' is not a ZIA id (a number); nothing was sent")
+        out.append(pid)
+    return out
 
 
 def activation_status(zia) -> Tuple[Optional[str], Optional[str]]:
@@ -237,6 +264,13 @@ def activate(zia) -> Dict[str, Any]:
     return {"activated": True, "status": str((data or {}).get("status") or "ACTIVE").upper(), "error": None}
 
 
+def _raw_error(err: Any) -> str:
+    """A raw request's error for a result or a log: an echoed access token
+    or session id masked (tenant_auth.redact_tokens), then cut to 200."""
+    import tenant_auth
+    return tenant_auth.redact_tokens(str(err)[:2000])[:200]
+
+
 def raw_request(zia, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Tuple[Any, Optional[str]]:
     """(payload, error) for a ZIA call the SDK has no method for."""
     svc = getattr(zia, "endpoint_dlp_rules", None) or getattr(zia, "dlp_web_rules", None)
@@ -246,10 +280,10 @@ def raw_request(zia, method: str, path: str, body: Optional[Dict[str, Any]] = No
     try:
         req, err = ex.create_request(method.upper(), f"{ZIA_BASE}{path}", body or {}, {}, params={})
         if err:
-            return None, str(err)[:200]
+            return None, _raw_error(err)
         resp, err = ex.execute(req)
         if err:
-            return None, str(err)[:200]
+            return None, _raw_error(err)
         data = resp.get_body() if hasattr(resp, "get_body") else resp
         if isinstance(data, (bytes, str)):
             import json as _json
@@ -259,7 +293,7 @@ def raw_request(zia, method: str, path: str, body: Optional[Dict[str, Any]] = No
                 pass
         return data, None
     except Exception as e:  # noqa: BLE001
-        return None, str(e)[:200]
+        return None, _raw_error(e)
 
 
 def raw_get(zia, path: str, *, via: str = "proxies") -> Tuple[Any, Optional[str]]:
@@ -273,10 +307,10 @@ def raw_get(zia, path: str, *, via: str = "proxies") -> Tuple[Any, Optional[str]
     try:
         req, err = ex.create_request("GET", f"{ZIA_BASE}{path}", {}, {}, params={})
         if err:
-            return None, str(err)[:200]
+            return None, _raw_error(err)
         resp, err = ex.execute(req)
         if err:
-            return None, str(err)[:200]
+            return None, _raw_error(err)
         data = resp.get_body() if hasattr(resp, "get_body") else resp
         if isinstance(data, (bytes, str)):
             import json as _json
@@ -286,7 +320,7 @@ def raw_get(zia, path: str, *, via: str = "proxies") -> Tuple[Any, Optional[str]
                 return None, "the answer was not JSON"
         return data, None
     except Exception as e:  # noqa: BLE001
-        return None, str(e)[:200]
+        return None, _raw_error(e)
 
 
 def list_app_groups(zia) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
@@ -316,21 +350,24 @@ def add_app_group(zia, definition: Dict[str, Any]):
 
 def update_app_group(zia, group_id: Any, definition: Dict[str, Any]):
     """Overwrite an endpoint application group. Called through pack_ops.update."""
+    (gid,) = _id_path(group_id)
     body = {"id": group_id, "name": definition["name"], "description": definition.get("description", ""),
             "resources": [str(x) for x in (definition.get("resources") or [])]}
-    return raw_request(zia, "PUT", f"{APP_GROUPS_PATH}/{group_id}", body)
+    return raw_request(zia, "PUT", f"{APP_GROUPS_PATH}/{gid}", body)
 
 
 def add_sub_rule(zia, parent_id: Any, payload: Dict[str, Any]):
     """Create an endpoint sub-rule under `parent_id`. Called through pack_ops.create."""
+    (pid,) = _id_path(parent_id)
     body = dict(payload)
     body.pop("order", None) if body.get("order") is None else None
-    return raw_request(zia, "POST", f"/endPointDlpRules/{parent_id}/subRule", body)
+    return raw_request(zia, "POST", f"/endPointDlpRules/{pid}/subRule", body)
 
 
 def update_sub_rule(zia, parent_id: Any, sub_id: Any, payload: Dict[str, Any]):
     """Overwrite an endpoint sub-rule. Called through pack_ops.update."""
-    return raw_request(zia, "PUT", f"/endPointDlpRules/{parent_id}/subRule/{sub_id}", dict(payload, id=sub_id))
+    pid, sid = _id_path(parent_id, sub_id)
+    return raw_request(zia, "PUT", f"/endPointDlpRules/{pid}/subRule/{sid}", dict(payload, id=sub_id))
 
 
 def is_sub_rule(policy_def: Dict[str, Any]) -> bool:
@@ -673,9 +710,11 @@ def is_enforcing(channel: str, action: Optional[str]) -> bool:
         # "BLOCK_..." actions or verb mappings with a BLOCK value enforce.
         return any(part.startswith("BLOCK_") or part.startswith("ISOLATE_") or part.endswith("=BLOCK") or part.endswith("=ISOLATE")
                    for part in action.split(","))
-    if spec["enforcing_actions"] is None:
-        return bool(action) and action not in spec["monitor_actions"]
-    return action in spec["enforcing_actions"]
+    # Deny by default: only the channel's monitor actions monitor. An action
+    # this table does not name, or one written in lower case, is treated as
+    # enforcing, so a pack rule carrying it ships monitor-only like a BLOCK.
+    a = action.strip().upper()
+    return bool(a) and a not in spec["monitor_actions"]
 
 
 def default_action(channel: str) -> str:
@@ -1214,7 +1253,7 @@ def resolve(channel: str, policy_def: Dict[str, Any], state: Dict[str, Any]) -> 
 
     # Notification template by name.
     tpl = policy_def.get("notification_template")
-    if tpl:
+    if tpl and channel != SAAS:   # a SaaS Security API rule has no template (build_payload never sends one)
         templates = state.get("templates") or {}
         if state.get("templates_error"):
             missing.append(f"notification templates could not be listed ({state['templates_error']})")
@@ -1413,6 +1452,9 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
         # resolved to this tenant's ids in preflight, as on every channel.
         p = dict(p, labels=list(resolved.get("labels") or []))
         payload = build_policy_payload(p, engine_ids, use_rank_0=use_rank_0)
+        payload["state"] = "DISABLED"
+        if is_enforcing(WEB, str(payload.get("action") or "")):   # monitor-only, whatever the pack wrote
+            payload["action"] = default_action(WEB)
         if resolved.get("notification_template") is not None:
             payload["notification_template"] = {"id": resolved["notification_template"]}
         return payload
@@ -1439,7 +1481,9 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
         body["file_types"] = list(p["file_types"])
     if resolved.get("labels"):
         body["labels"] = _ids(resolved["labels"])
-    if resolved.get("notification_template") is not None:
+    # The SaaS Security API rule has no notification template (zscaler-sdk-python
+    # 1.11.3 models/casb_dlp_rules.py: auditor_notification instead): never sent there.
+    if resolved.get("notification_template") is not None and channel != SAAS:
         body["notification_template"] = {"id": resolved["notification_template"]}
 
     if channel == ENDPOINT:

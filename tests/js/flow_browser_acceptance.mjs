@@ -413,7 +413,7 @@ try {
     const downloads=path.join(artifactDir,'scope-downloads');await fs.mkdir(downloads,{recursive:true});
     await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:downloads});
     await click('button[onclick="downloadJSON()"]');
-    let files=[];const until=Date.now()+10000;
+    let files=[];const until=Date.now()+30000;   // a busy macOS runner can take longer than 10 s to finish a download
     while(Date.now()<until){files=(await fs.readdir(downloads)).filter(n=>n.endsWith('.json'));if(files.length)break;await sleep(75);}
     assert.equal(files.length,1,'The production Download JSON control must produce a real file');
     const downloaded=JSON.parse(await fs.readFile(path.join(downloads,files[0]),'utf8'));

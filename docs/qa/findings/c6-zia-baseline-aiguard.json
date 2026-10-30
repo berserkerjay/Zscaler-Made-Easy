@@ -1,0 +1,410 @@
+{
+ "area": "zia-baseline-aiguard",
+ "title": "ZIA security baseline, AI Guard routing and detection policy, AI Guard readiness",
+ "files": [
+  "ops_zia_baseline.py",
+  "ops_aiguard.py",
+  "ai_guard.py"
+ ],
+ "standards": [
+  "ASVS V1.4.1",
+  "ASVS V4.1.3",
+  "ASVS V4.2.1",
+  "ASVS V5.1.3",
+  "ASVS V7.4.1",
+  "ASVS V11.1.1",
+  "OWASP A01:2021",
+  "OWASP A03:2021",
+  "OWASP A04:2021",
+  "WSTG-INPV-01",
+  "WSTG-BUSL-01",
+  "WSTG-ATHZ-02",
+  "SSDF PW.4.1"
+ ],
+ "coverage": {
+  "before": 81.7,
+  "after": 94.7
+ },
+ "checks": [
+  {
+   "id": "tiers",
+   "what": "every tier x mode x overlay set (4 x 3 x 11): names <= 31 and unique, locked rules on and Allow, DNS redirect locked, sources cited, overlays never change a rule",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "oracle",
+   "what": "oracle table of tier defaults per rule; ATP defaults per tier and every switch off flagged",
+   "standard": "WSTG-BUSL-01",
+   "result": "pass"
+  },
+  {
+   "id": "apply",
+   "what": "every tier x mode applies DISABLED, catch-alls last, re-run is a no-op (fakes and the offline sample through the SDK classes)",
+   "standard": "ASVS V1.4.1",
+   "result": "fixed"
+  },
+  {
+   "id": "framework",
+   "what": "framework files as untrusted input: format, version, areas, sizes, names, every field type",
+   "standard": "ASVS V5.1.3",
+   "result": "fixed"
+  },
+  {
+   "id": "undo",
+   "what": "Undo specs as untrusted input for the baseline and both AI Guard builders",
+   "standard": "ASVS V4.2.1",
+   "result": "fixed"
+  },
+  {
+   "id": "gates",
+   "what": "typed phrase for live changes (rules created or enabled, ATP, certificate moves, AI Guard writes)",
+   "standard": "ASVS V11.1.1",
+   "result": "fixed"
+  },
+  {
+   "id": "toctou",
+   "what": "re-read before each write; changed, renamed, created or deleted since the preview is a conflict",
+   "standard": "CWE-367",
+   "result": "fixed"
+  },
+  {
+   "id": "aiguard-order",
+   "what": "proxy chain order: certificate, proxy, destination group, QUIC block, SSL Inspect, forwarding rule",
+   "standard": "ASVS V1.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "aiguard-ssl",
+   "what": "SSL Inspect kept above every enabled Do Not Decrypt rule; Allow above Block, Caution or Isolate only when needed",
+   "standard": "ASVS V1.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "aiguard-policy",
+   "what": "detection policy per profile x mode oracle; Monitor default; entity lists valid and disjoint",
+   "standard": "ASVS V1.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "readiness",
+   "what": "readiness reads only, no secrets, fails closed on unreadable lists",
+   "standard": "CWE-636",
+   "result": "fixed"
+  },
+  {
+   "id": "ssrf",
+   "what": "AI Guard forwarder host allow-list (look-alikes, newline, long input)",
+   "standard": "CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "output-escaping",
+   "what": "the baseline and AI Guard page scripts escape every tenant and file string (E())",
+   "standard": "CWE-79",
+   "result": "pass"
+  },
+  {
+   "id": "secrets",
+   "what": "certificate lists keep id, name, type, status and dates only; readiness carries no key or PEM",
+   "standard": "CWE-200",
+   "result": "pass"
+  },
+  {
+   "id": "rerun-overwrites-same-name",
+   "what": "a framework rule whose name equals a customer rule updates that rule in place (by design, shown field by field in the preview)",
+   "standard": "CWE-694",
+   "result": "accepted"
+  },
+  {
+   "id": "sdk-verified",
+   "what": "VERIFIED against zscaler-sdk-python 1.11.3: URL filtering, Cloud Firewall, SSL inspection (TLS acronyms via helpers.to_lower_camel_case), Sandbox, DNS Control (REDIR_REQ_KEEP_SENDER), File Type Control, Cloud App Control fields and add_rule(rule_type); the 20 ATP switches (fileFormatVunerabilitesBlocked spelling); readers list_ready_to_use, list_isolation_profiles, dns_gatways.list_dns_gateways (natZtrGateway), list_categories_lite, list_network_apps, list_cloud_app_policy; proxies, proxy gateways (read only), IP destination groups (DSTN_DOMAIN), list_network_services, forwarding_control, url_categories lookup/add, URL and app settings, get_subscriptions; AI Guard policies, policy-match-rules and llm-providers at /aiguard/v1 with the policy and rule fields",
+   "standard": "SSDF PW.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "sdk-assumed",
+   "what": "ASSUMED (not in the SDK model or enum lists): Sandbox cbiProfile (commented out in the 1.11.3 model, sent as given), firewall BLOCK_DROP and BLOCK_ICMP, sandbox first-time operations other than ALLOW_SCAN, File Type Control UPLOAD_DOWNLOAD, matchCriteria.llmProviders, enableClaudePrompt / enableGrokPrompt / enableMistralAIPrompt, the root certificate path, detector and PII entity names",
+   "standard": "SSDF PW.4.1",
+   "result": "accepted"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-01",
+   "title": "A framework or captured rule that names nothing to match was created as a match-all rule",
+   "severity": "medium",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "fit() drops any non-catch-all rule with no match field (MATCH_FIELDS per area), with the reason",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_framework_rule_that_names_nothing_to_match_is_dropped_not_created",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-02",
+   "title": "AI Guard routing and detection policy applied live (enabled) changes without the typed phrase when 10 or fewer",
+   "severity": "medium",
+   "cwe": "CWE-841",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "both builders set confirm_always (APPLY n CHANGES) for every plan with a change, Undo included",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_routing_asks_for_the_typed_phrase_whatever_the_count",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-03",
+   "title": "A Sandbox rule re-read through the SDK 1.11.3 model lost its isolation profile: updates stripped it, read-back was a false mismatch",
+   "severity": "medium",
+   "cwe": "CWE-665",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "get_one merges every field the model leaves out from the raw answer, as list reads do",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_sandbox_update_keeps_the_isolation_profile_the_sdk_model_drops",
+   "commit": "e120140"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-04",
+   "title": "Other Bulk changes operations re-read rules with admin_ops._one, which drops fields the SDK model lacks (sandbox cbiProfile) before a PUT",
+   "severity": "medium",
+   "cwe": "CWE-665",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "Already fixed on integrate/w6: admin_ops._one now returns pack_export.one_row(ret), which backfills the raw answer's fields the SDK model drops (sandbox cbiProfile); no change needed",
+   "test": "tests/test_qa6_builders_lifecycle.py::test_a_single_read_keeps_what_the_model_drops",
+   "commit": "195005b"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-05",
+   "title": "Framework fields of the wrong shape raised AttributeError, a string list field was split into letters, values with a trailing newline, a non-boolean switch, any min_tls and format_version true were accepted",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "load_framework checks fields per type (list, name, boolean, TLS version) with fullmatch; format_version must be the integer 1",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_framework_fields_of_the_wrong_shape_are_refused_in_plain_words",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-06",
+   "title": "Undo steps were not validated: a list raised AttributeError and a restore could set a rule's name",
+   "severity": "low",
+   "cwe": "CWE-915",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "_check_step validates shape, ids and field paths, refuses id, name and rank and unknown ATP switches before any read",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_an_undo_step_of_the_wrong_shape_is_refused_before_anything_is_read",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-07",
+   "title": "ATP choices were coerced with bool(): the string \"false\" turned a switch on",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "atp values must be JSON booleans",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_atp_choices_must_be_booleans",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-08",
+   "title": "The same SSL rule picked twice was planned and written twice",
+   "severity": "low",
+   "cwe": "CWE-837",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "moves are de-duplicated by rule id; conflicting targets are refused; ids are short scalars",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_duplicate_certificate_moves_are_one_write",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-09",
+   "title": "Applying Permissive's ATP turned off a block the tenant had today without a warning",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "the plan warns for every ATP switch it turns off",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_tier_that_turns_off_a_block_the_tenant_has_says_so",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-10",
+   "title": "The ATP PUT was rebuilt from the SDK model, so a setting the model does not know could be reset",
+   "severity": "low",
+   "cwe": "CWE-665",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "read_atp keeps every raw field the model leaves out under its own name",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_the_atp_write_keeps_settings_the_sdk_model_does_not_know",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-11",
+   "title": "Cutting an untrusted title to its byte limit removed one character per pass (quadratic CPU)",
+   "severity": "low",
+   "cwe": "CWE-407",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "_fit_bytes cuts to the limit first, then trims multi-byte characters",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_cutting_a_long_title_takes_a_bounded_number_of_steps",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-12",
+   "title": "An unknown tier string was accepted when a framework was given",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "the tier is one of the four, or 'captured' with a framework",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_an_unknown_tier_is_refused_even_with_a_framework",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-13",
+   "title": "A capture over 200 rules per area was cut silently",
+   "severity": "info",
+   "cwe": "CWE-221",
+   "asvs": "V7.1.1",
+   "status": "fixed",
+   "fix": "not_exported names how many rules were left out",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_capture_over_200_rules_says_what_it_left_out",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-14",
+   "title": "An AI Guard Undo could delete any object whose name merely contained AIG-, and an Undo update did not check the object's name",
+   "severity": "low",
+   "cwe": "CWE-639",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "only exact builder names (optional prefix, AIG-, known suffix) may be deleted or put back; updates check the name; the settings object cannot be deleted",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_an_undo_cannot_touch_an_object_this_builder_did_not_name",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-15",
+   "title": "An AI Guard write did not re-check the object's name before updating it (renamed between re-plan and write)",
+   "severity": "low",
+   "cwe": "CWE-367",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "_h_step marks a renamed object as a conflict",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_an_object_renamed_between_preview_and_apply_is_a_conflict",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-16",
+   "title": "AI Guard ids were matched with a `$` regex that accepts a trailing newline (it reaches an SDK path)",
+   "severity": "low",
+   "cwe": "CWE-625",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "ids use fullmatch and refuse booleans",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_certificate_id_with_a_trailing_newline_is_refused",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-17",
+   "title": "Stop while reading the AI Guard routing page ended the job as failed (ai_guard.Stopped was not the engine's Stop)",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "ops_aiguard maps ai_guard.Stopped to admin_ops.Stopped",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_stop_while_listing_the_routing_objects_is_a_stop_not_a_failure",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-18",
+   "title": "AI Guard readiness said ready when the proxies, gateways or forwarding rules could not be read",
+   "severity": "low",
+   "cwe": "CWE-636",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "unreadable lists are warnings and ready needs every required check present and passing",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_readiness_is_not_ready_on_what_it_could_not_read",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-19",
+   "title": "A Gen AI SKU next to a numeric subscription id was not recognised",
+   "severity": "info",
+   "cwe": "CWE-697",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "both id and sku are matched",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_subscription_with_a_numeric_id_and_a_gen_ai_sku_counts",
+   "commit": "1d3b0ba"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-20",
+   "title": "Baseline areas or Undo areas not ticked were refused only after sign-in: the engine's pre-sign-in check does not pass the spec to a plugin",
+   "severity": "low",
+   "cwe": "CWE-863",
+   "asvs": "V4.1.3",
+   "status": "fixed",
+   "fix": "admin_ops.require_scope gives a plugin's in_scope the spec when its signature takes it (inspect.signature), so the baseline refuses unticked areas and Undo steps before sign-in. Also ...::test_the_engine_scope_check_before_sign_in_passes_the_spec_to_the_baseline",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_preview_naming_an_unticked_baseline_area_is_refused_before_sign_in",
+   "commit": "0ace940"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-21",
+   "title": "A detection policy threshold from the tenant such as 1.2.3 crashed the AI Guard plan (ValueError)",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "_det_sig compares a non-number threshold as none",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_policy_with_a_malformed_threshold_in_the_tenant_is_planned_as_an_update",
+   "commit": "55250e1"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-22",
+   "title": "A captured framework could not be loaded again when a tenant rule name had a less-than or greater-than sign or a value that is not a Zscaler name",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "capture leaves such a rule out with the reason; capture and load share one field check",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_a_captured_framework_always_loads_again",
+   "commit": "55250e1"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-23",
+   "title": "On a re-run the AI Guard SSL Inspect rule was kept above Do Not Decrypt rules only, not above SSL inspection Block rules",
+   "severity": "low",
+   "cwe": "CWE-696",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "enabled BLOCK rules count as stoppers too",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_ssl_inspect_is_kept_above_an_ssl_block_rule_too",
+   "commit": "dcda228"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-24",
+   "title": "Isolate in place of the tier's Block was not flagged as weaker",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "review flags Block -> Isolate (and Caution)",
+   "test": "tests/test_c6_zia_baseline_aiguard.py::test_isolating_a_category_the_tier_blocks_is_flagged_weaker",
+   "commit": "ddd28e6"
+  },
+  {
+   "id": "C6-ZIA-BASELINE-AIGUARD-25",
+   "title": "The baseline form's own weaker-than-the-tier chip does not flag Block -> Isolate (static/ops_zia_baseline.js mirrors the review)",
+   "severity": "info",
+   "cwe": "CWE-1188",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "effective() flags Block to Isolate or Caution as weaker, as the server's review does; a parity test compares every rule and choice",
+   "test": "tests/test_c6_open_low.py::test_the_baseline_form_flags_weaker_choices_exactly_as_the_server_review",
+   "commit": "37a8f7c"
+  }
+ ],
+ "tests_added": 449
+}

@@ -51,6 +51,6 @@
     "https://admin.zscalergov.us/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; connect-src http://127.0.0.1:* http://localhost:*"
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src http://127.0.0.1:* http://localhost:*"
   }
 }

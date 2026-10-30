@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -134,7 +135,10 @@ def test_over_the_host_cap_the_rest_are_listed_never_silently_dropped():
     assert out["hosts"][0]["host"] == "zz-upload.example.com", "a host that received an upload is always analyzed first"
     assert {h["host"] for h in out["hosts"]}.isdisjoint({m["host"] for m in out["more"]})
     page = open(os.path.join(ROOT, "static", "report_path.html"), encoding="utf-8").read()
-    assert "more host(s) not analyzed" in page and "Show the ${p.more.length} host(s) left out" in page
+    words = open(os.path.join(ROOT, "static", "har_parse.js"), encoding="utf-8").read()
+    # The note counts every host left out (HarParse.leftOut: more_total), and lists the ones kept.
+    assert "more host(s) not analyzed" in words and "host(s) left out" in words
+    assert "HarParse.leftOut(p)" in page and "<summary>${E(L.summary)}</summary>" in page
 
 
 def test_the_page_sends_only_host_names_and_counts():
@@ -146,6 +150,58 @@ def test_the_page_sends_only_host_names_and_counts():
     assert "never uploaded" in page and "<h3" not in page
     for needle in ("aria-sort", "/export?format=", "/host?host=", "Back to the HAR results", "Only hosts that received uploads"):
         assert needle in page, needle
+
+
+# What the page posts per host, and the words every privacy statement uses
+# for it. A key added to runHar's payload without words here fails the test,
+# and so does a statement that leaves one of these words out.
+HAR_SENT_WORDS = {"host": "host names", "requests": "request counts", "methods": "HTTP methods", "schemes": "schemes",
+                  "uploads": "upload amounts", "bytes_sent": "upload amounts"}
+HAR_KEPT_WORDS = "cookies, headers, URL paths and bodies"
+
+
+def _norm(text):
+    import html as _h
+    text = re.sub(r"<[^>]+>|\*\*|`", " ", _h.unescape(text))
+    return re.sub(r"\s+", " ", re.sub(r"(?m)^\s*#\s?", " ", text)).strip()
+
+
+def _har_statements():
+    """Every place that tells a person what leaves the browser on a HAR import."""
+    def read(*p):
+        return open(os.path.join(ROOT, *p), encoding="utf-8").read()
+    page = read("static", "report_path.html")
+    out = {
+        "report_path.html #paHarBtn title": re.search(r'id="paHarBtn"[^>]*title="([^"]+)"', page).group(1),
+        "report_path.html #paHarHow": re.search(r'<p[^>]*id="paHarHow"[^>]*>(.*?)</p>', page, re.S).group(1),
+        "report_path.html pre-run hint": re.search(r'<p class="df-hint">(Analyzing sends.*?)</p>', page, re.S).group(1),
+        "docs/OVERVIEW.md": read("docs", "OVERVIEW.md").split("**Import a HAR file**", 1)[1].split("**Test a list**", 1)[0],
+        "dlp_api_server.py comment": read("dlp_api_server.py").split("# ── Path analyzer: HAR import", 1)[1].split("_PATH_BATCHES:", 1)[0],
+        "static/explain.js": read("static", "explain.js").split("Import a HAR file analyzes", 1)[1].split("\n", 1)[0],
+        "c6-ui-ops.json HAR-LEAK": next(c["what"] for c in json.loads(read("docs", "qa", "findings", "c6-ui-ops.json"))["checks"]
+                                       if c["id"] == "HAR-LEAK"),
+    }
+    for base in ("static", "browser_extension"):
+        cat = json.loads(re.search(r"window\.HELP_CATALOG\s*=\s*(\{.*\})\s*;\s*$", read(base, "help_catalog.js"), re.S).group(1))
+        for sel in ("#paHarBtn", "#paHarGo"):
+            out[f"{base}/help_catalog.js {sel}"] = cat["pages"]["/report/path"][sel]["what"]
+    return out
+
+
+def test_runhar_posts_only_the_fields_the_privacy_words_name():
+    """ASVS V8.3.1 · CWE-359 · A04:2021: every key runHar posts per host has its plain words; a new key needs new words first."""
+    page = open(os.path.join(ROOT, "static", "report_path.html"), encoding="utf-8").read()
+    send = page.split("const hosts = p.hosts.map(h => (")[1].split("));")[0]
+    keys = re.findall(r"(\w+):", send)
+    assert keys and set(keys) == set(HAR_SENT_WORDS), keys
+
+
+@pytest.mark.parametrize("where", sorted(_har_statements()))
+def test_every_har_privacy_statement_names_everything_sent_and_kept(where):
+    """ASVS V8.3.1 · V1.8.1 · CWE-359 · CWE-1059: each statement of what a HAR import sends lists every posted field and says cookies, headers, URL paths and bodies stay in the browser."""
+    text = _norm(_har_statements()[where])
+    missing = [w for w in sorted(set(HAR_SENT_WORDS.values())) if w.lower() not in text.lower()]
+    assert not missing and HAR_KEPT_WORDS.lower() in text.lower(), (where, missing, text)
 
 
 # ---------------------------------------------------------------------------

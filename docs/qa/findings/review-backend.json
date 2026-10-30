@@ -1,0 +1,47 @@
+{
+  "area": "Wave 6 review: backend fixes (scope, run lock, one IDN encoder, one pack reader, integration tidy-ups)",
+  "title": "Backend items of the orchestrated Wave 6 review: change-queue fix recipes, deployment Undo, host-name encoding, pack-file reading, remediation and AI Guard wording",
+  "standards": [
+    "ASVS V4.1.3",
+    "ASVS V5.1.3",
+    "ASVS V5.1.4",
+    "ASVS V11.1.1",
+    "ASVS V11.1.6",
+    "OWASP Top 10 2021 A01",
+    "OWASP Top 10 2021 A04",
+    "WSTG-ATHZ-02",
+    "CWE-20",
+    "CWE-176",
+    "CWE-362",
+    "CWE-440",
+    "CWE-863",
+    "CWE-1287",
+    "CISA Secure by Design"
+  ],
+  "checks": [
+    {"id": "RB-C01", "what": "A fix recipe is scope-checked when filed in the change queue and when applied from it, before sign-in, as on the direct route (every recipe policy, RULE-DESC per rule type)", "standard": "ASVS V4.1.3 · CWE-863", "result": "fixed"},
+    {"id": "RB-C02", "what": "A deployment Undo takes the per-tenant write-run lock once for its confidence-tweak PUTs and its removal; busy means nothing read or written, audited", "standard": "ASVS V11.1.6 · CWE-362", "result": "fixed"},
+    {"id": "RB-C03", "what": "Every module that places a host name (Path analyzer, ZPA analysis, ZPA builder, Bulk changes) gives one ASCII form (UTS 46) for the same typed name", "standard": "ASVS V5.1.3 · CWE-176", "result": "fixed"},
+    {"id": "RB-C04", "what": "Deploy, Terraform export, the library and the fan-out tool give one verdict for the same pack file (BOM, wrong field type, oversize, deep nesting)", "standard": "ASVS V5.1.4 · CWE-20", "result": "fixed"},
+    {"id": "RB-C05", "what": "Every AI Guard plan with a change, Undo included, refuses an execute with a blank phrase and writes nothing", "standard": "ASVS V11.1.1 · CWE-841", "result": "pass"},
+    {"id": "RB-C06", "what": "NaN and Infinity HAR counts: exactly 422 json_invalid over HTTP, 0 in _batch_hosts", "standard": "ASVS V5.1.4 · CWE-1287", "result": "pass"},
+    {"id": "RB-C07", "what": "Fix recipes: no PATCH path (a merge recipe reads and PUTs the whole rule, fail closed); the plan and dry run say so", "standard": "ASVS V1.14.6 · CWE-440", "result": "fixed"}
+  ],
+  "findings": [
+    {"id": "REVIEW-BACKEND-01", "title": "The change queue's fix-recipe path (file, then apply) skipped the Scope check the direct remediation route enforces, so an approved fix could read and write a rule policy not in scope", "severity": "medium", "cwe": "CWE-863", "asvs": "V4.1.3", "status": "fixed",
+     "fix": "One helper (_require_recipe_in_scope) on the direct route, on /api/change-queue/recipe and on apply of a fix_recipe, before sign-in; the request models take the optional Scope fields and both pages send them", "test": "tests/test_c6_admin_ops.py::test_applying_an_approved_fix_whose_policy_is_out_of_scope_is_refused_before_sign_in", "commit": "d99cc7f"},
+    {"id": "REVIEW-BACKEND-02", "title": "Deployment Undo PUT dictionary confidence outside the per-tenant write lock and before the busy check, then reported that nothing was read or written", "severity": "medium", "cwe": "CWE-362", "asvs": "V11.1.6", "status": "fixed",
+     "fix": "pack_deploy.undo holds ops.tenant_run for the tweak PUTs (rate limits, run control, audited run) and the removal (remove_deployment tenant_held, _execute_locked); busy is refused and audited", "test": "tests/test_sbd_writes.py::test_a_deployment_undo_on_a_busy_tenant_puts_nothing_and_is_audited", "commit": "a5b9055"},
+    {"id": "REVIEW-BACKEND-03", "title": "Two IDN encodings: the ZPA analysis, ZPA builder and Bulk changes mapped deviation characters (straße to strasse) while the Path analyzer and browsers keep them (xn--strae-oqa)", "severity": "low", "cwe": "CWE-176", "asvs": "V5.1.3", "status": "fixed",
+     "fix": "zpa_analysis, ops_zpa.check_domain and admin_ops._ascii_host use zia_path_modules.ascii_host / entry_host (UTS 46); the dead fallback in parse_destination is gone", "test": "tests/test_sbd_untrusted_input.py::test_every_module_encodes_an_international_host_name_the_same_way", "commit": "6522e8c"},
+    {"id": "REVIEW-BACKEND-04", "title": "Two pack-file readers disagreed: a BOM pack deployed but failed the Terraform export and the library; a non-text name was refused by deploy but rendered by the export", "severity": "low", "cwe": "CWE-20", "asvs": "V5.1.4", "status": "fixed",
+     "fix": "pack_terraform, pack_library, dlp_importer and tools/fan_out_channels.py read through pack_deploy.load_pack_file", "test": "tests/test_sbd_untrusted_input.py::test_every_pack_reader_accepts_and_refuses_the_same_files", "commit": "f71779b"},
+    {"id": "REVIEW-BACKEND-05", "title": "remediation.execute kept a dead PATCH branch with a weaker read check, and the preview showed a description-only PUT body without saying the rule is read and sent back whole", "severity": "low", "cwe": "CWE-440", "asvs": "V1.14.6", "status": "fixed",
+     "fix": "PATCH branch removed (a PATCH recipe is refused, nothing sent); plan() and the dry run carry a merge note shown in the previews and the queue item", "test": "tests/test_c6_admin_ops.py::test_a_patch_recipe_on_a_raw_client_without_patch_sends_nothing", "commit": "a16a1d1"},
+    {"id": "REVIEW-BACKEND-06", "title": "Records and test names described superseded behaviour: an omitted remediation state 'refused' (it is planned DISABLED) and monitor-only AI Guard 'keeps the count rule' (it asks its phrase)", "severity": "info", "cwe": "CWE-1188", "asvs": "V11.1.1", "status": "fixed",
+     "fix": "SBD-WRITES-09/10 and the test wording corrected; AI Guard tests execute with a blank phrase (plan and Undo plan) and see a refusal with no write", "test": "tests/test_sbd_writes.py::test_an_ai_guard_undo_plan_asks_for_its_phrase_and_refuses_a_blank_one", "commit": "a16a1d1"},
+    {"id": "REVIEW-BACKEND-07", "title": "The HAR NaN/Infinity test accepted 400 or 422, so it did not pin the strict JSON parser, and the _batch_hosts guard was untested on its own", "severity": "info", "cwe": "CWE-1287", "asvs": "V5.1.4", "status": "fixed",
+     "fix": "The HTTP test asserts exactly 422 json_invalid; a direct _batch_hosts test shows NaN and infinite counts become 0", "test": "tests/test_sbd_untrusted_input.py::test_batch_host_counts_of_nan_or_infinity_count_as_nothing", "commit": "a16a1d1"}
+  ],
+  "tests_added": 18
+}

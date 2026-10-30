@@ -50,6 +50,7 @@ this module writes to a tenant.
 """
 from __future__ import annotations
 
+import bisect
 import csv
 import fnmatch
 import ipaddress
@@ -171,6 +172,12 @@ _BLOCK_WORDS = {"block", "blocked", "deny", "denied", "drop", "reject", "shouldb
 _ALLOW_WORDS = {"allow", "allowed", "permit", "permitted", "pass", "shouldallow", "good", "benign"}
 
 
+def _digits(s: str) -> bool:
+    """ASCII digits only: str.isdigit() also takes "²" (which int() refuses)
+    and "٣" (which no Zscaler field takes as a number)."""
+    return s.isascii() and s.isdigit()
+
+
 def _cell(v: Any, limit: int = MAX_CELL_CHARS) -> str:
     return _CONTROL.sub("", str(v or "")).strip()[:limit]
 
@@ -213,7 +220,7 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
     else:   # no header: destination[, port][, protocol]
         raw["destination"] = cells[0] if cells else ""
         for c in cells[1:3]:
-            if c.isdigit() and "port" not in raw:
+            if _digits(c) and "port" not in raw:
                 raw["port"] = c
             elif c.lower() in _PROTOCOLS and "protocol" not in raw:
                 raw["protocol"] = c
@@ -221,7 +228,7 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
     e: Dict[str, Any] = {"line": line_no, "input": raw.get("destination", "")}
     port = raw.get("port", "")
     if port:
-        if port.isdigit() and 0 < int(port) < 65536:
+        if _digits(port) and 0 < int(port) < 65536:
             e["port"] = int(port)
         else:
             notes.append(f"port '{port[:20]}' ignored: not 1-65535")
@@ -229,6 +236,8 @@ def _entry(cells: Sequence[str], columns: Optional[List[Optional[str]]], line_no
     if proto:
         if proto.lower() in _PROTOCOLS:
             e["protocol"] = _PROTOCOLS[proto.lower()]
+            if proto.lower() in _SCHEME_PROTO_PORTS:   # "http" is TCP/80, "https" TCP/443, unless a port is given
+                e["_proto_port"] = _SCHEME_PROTO_PORTS[proto.lower()]
         else:
             notes.append(f"protocol '{proto[:20]}' ignored: use TCP, UDP, ICMP or any")
     src = raw.get("source_ip", "")
@@ -279,7 +288,7 @@ def _ip_range(text: str) -> Optional[Tuple[int, int, int]]:
             first = ipaddress.ip_address(a)
         except ValueError:
             return None
-        if b.isdigit() and first.version == 4:
+        if _digits(b) and first.version == 4:
             if int(b) > 255:
                 raise ValueError("the range's last octet is over 255")
             last = ipaddress.ip_address(".".join(a.split(".")[:3] + [b]))
@@ -295,6 +304,7 @@ def _ip_range(text: str) -> Optional[Tuple[int, int, int]]:
 
 
 _SCHEME_PORTS = {"http": 80, "ftp": 21}
+_SCHEME_PROTO_PORTS = {"http": 80, "https": 443}
 
 
 def _destination(text: str) -> Tuple[str, str, Optional[str], Optional[int]]:
@@ -388,6 +398,9 @@ def parse(text: str) -> ParsedList:
         except ValueError as ex:
             out.skip(line_no, dest, str(ex).split(". Examples")[0][:160])
             continue
+        proto_port = e.pop("_proto_port", None)
+        if proto_port and "port" not in e:
+            e["port"] = proto_port
         idx = len(out.entries)
         if rng is not None:
             lo, hi, ver = rng
@@ -442,13 +455,13 @@ def blank_lookup(error: Optional[str] = None) -> Dict[str, Any]:
 
 
 def _answer(entry: Dict[str, Any]) -> Dict[str, Any]:
-    cats = entry.get("urlClassifications") or entry.get("url_classifications") or []
-    alerts = entry.get("urlClassificationsWithSecurityAlert") or entry.get("url_classifications_with_security_alert") or []
+    from path_analyzer import labels
     app = entry.get("application") or entry.get("app")
     if isinstance(app, dict):
         app = app.get("name") or app.get("id")
-    app = str(app).upper() if app and str(app).lower() not in ("none", "null") else None
-    return {"categories": sorted({str(c).upper() for c in cats if c})[:20], "security_alerts": sorted({str(c).upper() for c in alerts if c})[:20],
+    app = str(app).upper() if app and isinstance(app, (str, int)) and str(app).lower() not in ("none", "null") else None
+    return {"categories": labels(entry.get("urlClassifications") or entry.get("url_classifications"))[:20],
+            "security_alerts": labels(entry.get("urlClassificationsWithSecurityAlert") or entry.get("url_classifications_with_security_alert"))[:20],
             "application": app, "error": None}
 
 
@@ -468,7 +481,7 @@ def _post(client, chunk: List[str]) -> Tuple[Any, int, Optional[float]]:
             ra = float(ra) if ra is not None else None
         except (TypeError, ValueError):
             ra = None
-        return {"error": type(e).__name__}, int(status) if str(status).isdigit() else 0, ra
+        return {"error": type(e).__name__}, int(status) if _digits(str(status)) else 0, ra
 
 
 def _error_text(data: Any) -> str:
@@ -784,6 +797,12 @@ class _HostIndex:
         self.names: Dict[str, List[str]] = {}
         self.nets: List[Tuple[int, int, int, str]] = []
         self.globs: List[Tuple[str, str]] = []
+        # Every address between two consecutive range ends is in the same
+        # entries: one bisect finds that stretch, and its entries are worked
+        # out once (a list of 250,000 addresses against a group of thousands
+        # of networks is not 250,000 scans of every network).
+        self._ends: Dict[int, List[int]] = {}
+        self._in: Dict[Tuple[int, int], frozenset] = {}
         for raw in entries:
             self._add(str(raw or "").strip())
 
@@ -801,11 +820,13 @@ class _HostIndex:
         h = re.sub(r"^[a-z][a-z0-9+.-]*://", "", low).split("/", 1)[0]
         if h.count(":") == 1:
             h = h.split(":", 1)[0]
+        h = h.rstrip(".")   # "example.com." is example.com, as ZIA's lists read it
         body = h[2:] if h.startswith("*.") else h
         if any(ch in body for ch in "*?[]"):
             self.globs.append((h, raw))
             return
-        key = h.lstrip("*").lstrip(".")
+        from zia_path_modules import entry_host
+        key = entry_host(h.lstrip("*").lstrip("."))   # an IDN entry as rows hold it (punycode)
         if key:
             self.names.setdefault(key, []).append(raw)
 
@@ -813,9 +834,14 @@ class _HostIndex:
         out = set()
         if ip is not None and self.nets:
             ver, n = ip.version, int(ip)
-            for v, lo, hi, raw in self.nets:
-                if v == ver and lo <= n <= hi:
-                    out.add((raw, "in"))
+            ends = self._ends.get(ver)
+            if ends is None:
+                ends = self._ends[ver] = sorted({x for v, lo, hi, _ in self.nets if v == ver for x in (lo, hi + 1)})
+            stretch = (ver, bisect.bisect_right(ends, n))
+            hit = self._in.get(stretch)
+            if hit is None:
+                hit = self._in[stretch] = frozenset((raw, "in") for v, lo, hi, raw in self.nets if v == ver and lo <= n <= hi)
+            out |= hit
         if self.names:
             parts = host.split(".")
             for i in range(len(parts)):
@@ -951,7 +977,9 @@ class PathEvaluator:
         zcc = snap.get("client_connector") or {}
         dest: List[Any] = []
         for p in zcc.get("app_profiles") or []:
-            dest += list(((p or {}).get("bypass") or {}).get("domains") or [])
+            dest += list(((p or {}).get("bypass") or {}).get("domains") or []) + list(((p or {}).get("bypass") or {}).get("ips") or [])
+            tl = (p or {}).get("tunnel") or {}
+            dest += list(tl.get("exclude") or []) + list(tl.get("include") or [])
         pacs: List[str] = []
         for f in zcc.get("pac_files") or []:
             dest += list((f or {}).get("direct_hosts") or [])
@@ -999,18 +1027,25 @@ class PathEvaluator:
         return any(h.get("key") == "pac" and ("pac_outcomes" in h or h.get("status") in ("unknown", "out_of_scope"))
                    for h in (res.get("trace") or {}).get("hops") or [])
 
-    def _fingerprint(self, host: str, is_ip: bool) -> Tuple[Any, ...]:
+    def _fingerprint(self, host: str, is_ip: bool, protocol: Optional[str] = None, port: Optional[int] = None) -> Tuple[Any, ...]:
         """How `host` relates to the tenant's destination lists, and what
-        each PAC file answers for it (pac_eval: evaluated, never run)."""
+        each PAC file answers for it (pac_eval: evaluated, never run) for
+        the URL the browser would hand it on this row's protocol and port
+        (path_analyzer.pac_url, as the single-destination analyzer)."""
         import pac_eval
+        import path_analyzer
+        import zia_path_modules
         if self._index is None:
             self._index = self._build_index()
         dest, _src, names, pacs = self._index
         ip = ipaddress.ip_address(host) if is_ip else None
         named = host.upper() in names or host.upper().replace(" ", "_") in names
         pac: List[Any] = []
+        if pacs:
+            d = path_analyzer.parse_destination(host)
+            url = path_analyzer.pac_url(d, zia_path_modules.traffic_context(d, protocol, port))
         for src in pacs:
-            ev = pac_eval.evaluate(src, f"https://{host}/", host, dns="none" if pac_eval._is_ipv4(host) else "assume_public")
+            ev = pac_eval.evaluate(src, url, host, dns="none" if pac_eval._is_ipv4(host) else "assume_public")
             pac.append((ev.get("status"), ev.get("error"), tuple((o.get("kind"), o.get("result"), o.get("fallback_direct")) for o in ev.get("outcomes") or []),
                         tuple(ev.get("depends_on") or ()), tuple(ev.get("assumptions") or ())))
         return (dest.match(host, ip), host if named else None, tuple(pac))
@@ -1088,7 +1123,9 @@ class PathEvaluator:
         ident = _identity_raw(row)
         src = row.get("source_ip") or None
         l2 = lookup or {}
-        sig = (is_ip, bool(row.get("private")), self._fingerprint(host, is_ip), tuple(l2.get("categories") or ()), tuple(l2.get("security_alerts") or ()),
+        # The address family matters too: an IPv4 address is never in an IPv6
+        # group, while an IPv6 one depends on the group's members.
+        sig = (ipaddress.ip_address(host).version if is_ip else None, bool(row.get("private")), self._fingerprint(host, is_ip, p, port), tuple(l2.get("categories") or ()), tuple(l2.get("security_alerts") or ()),
                l2.get("application"), bool(l2.get("error")), p or "tcp", port, path_whatif.describe(path_whatif.normalize_identity(ident)),
                self._source_fp(src))
         hit = self._shared.get(sig)
@@ -1346,17 +1383,44 @@ def _row_key(host: str, e: Dict[str, Any]) -> Tuple[Any, ...]:
             e.get("location"))
 
 
+# Where each row was decided, for the page's live flow (static/flow_anim.js
+# listFlowModel): counts only, never a destination, user or rule name.
+_FLOW_AREA = {v: k for k, v in AREA_KEYS.items()}
+FLOW_EVERY = 40   # a tally at most about this many times a run, plus the last
+
+
+def _flow_tally(total: int) -> Dict[str, Any]:
+    return {"done": 0, "total": total, "phase": "trace", "results": {}, "at": {}}
+
+
+def _flow_add(tally: Dict[str, Any], r: Dict[str, Any]) -> None:
+    """Count one row's answer: its result, and the area that decided it."""
+    res = r.get("result") if r.get("result") in RESULTS else "unverified"
+    tally["results"][res] = tally["results"].get(res, 0) + 1
+    at = tally["at"].setdefault(_FLOW_AREA.get(r.get("area") or "", "none"), {})
+    at[res] = at.get(res, 0) + 1
+
+
+def _flow_copy(tally: Dict[str, Any], **kw: Any) -> Dict[str, Any]:
+    out = {"done": tally["done"], "total": tally["total"], "phase": tally["phase"], "results": dict(tally["results"]),
+           "at": {k: dict(v) for k, v in tally["at"].items()}}
+    out.update(kw)
+    return out
+
+
 def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "off", platform: str = "windows",
         snapshot: Optional[Dict[str, Any]] = None, tenant_label: str = "", lookup: bool = True,
         max_lookup_requests: int = DEFAULT_LOOKUP_REQUESTS, log: LogFn = None, cancel: Any = None,
         sleep: Callable[[float], None] = time.sleep, evaluators: Optional[Sequence[Callable[..., Any]]] = None,
-        zpa: Optional[Dict[str, Any]] = None) -> Run:
+        zpa: Optional[Dict[str, Any]] = None, progress: Optional[Callable[[Dict[str, Any]], None]] = None) -> Run:
     """Test every row. Reads only what `scope` (data_flow.path_scope) puts
     in scope, once; the URL lookup only when it is in scope and `lookup`.
     `zpa` is ZPA in scope (see PathEvaluator: a kept read, an SDK client
     to read it with, or why it cannot be read); None when ZPA is not
     ticked. Stop ends it between rows: the rows tested are kept, the rest
-    are marked not tested. Nothing is written."""
+    are marked not tested. Nothing is written. `progress` (optional) gets
+    the running tally of where rows were decided (counts only) as rows are
+    traced; the last one is also the summary's `flow`."""
     from data_flow import NOTHING_IN_SCOPE, stop_on
     say = log or (lambda m: None)
     if not scope or not (scope.get("read") or zpa):
@@ -1371,6 +1435,9 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
            for f in (evaluators if evaluators is not None else EVALUATORS)]
     say(f"Testing {n:,} row(s) from {p.lines:,} line(s)" + (f"; {p.skipped_count:,} line(s) skipped" if p.skipped_count else "") + ".")
     done = 0
+    tally = _flow_tally(n)
+    every = max(1, -(-n // FLOW_EVERY))   # ceil: at most FLOW_EVERY tallies while tracing
+    tell = progress or (lambda t: None)
     try:
         with stop_on(client, cancel):
             for ev in evs:
@@ -1380,6 +1447,7 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
             if _stopped(cancel):
                 raise Stopped(STOPPED_REASON)
             want = scope.get("lookup") and lookup
+            tell(_flow_copy(tally, phase="lookup" if want else "trace"))
             if want:
                 keys = [p.targets[i] for i in range(n) if not p.entries[p.entry_of[i]].get("category")]
                 if keys:
@@ -1390,6 +1458,7 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
                 say("ZIA's URL lookup is not in scope (no ZIA policy section is), so it was not asked.")
             say(f"Tracing {n:,} row(s) against the tenant read…")
             cache: Dict[Tuple[Any, ...], int] = {}
+            same: Dict[Tuple[Any, ...], int] = {}
             for i in range(n):
                 if i % STOP_EVERY == 0 and _stopped(cancel):
                     raise Stopped(STOPPED_REASON)
@@ -1409,17 +1478,22 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
                         a = ev.evaluate(ctx)
                         if a is not None:
                             answers.append((getattr(ev, "precedence", 100), a))
-                    rn.evals.append(combine(answers))
-                    idx = len(rn.evals) - 1
+                    idx = _keep_eval(rn.evals, same, combine(answers))
                     cache[key] = idx
                 rn.eval_of[i] = idx
                 done = i + 1
+                tally["done"] = done
+                _flow_add(tally, rn.evals[idx])
+                if done % every == 0 and done < n:
+                    tell(_flow_copy(tally))
                 if done % 10_000 == 0:
                     say(f"Traced {done:,} of {n:,} row(s).")
     except Stopped as e:
         stopped = str(e)
         say(f"STOPPED — you clicked Stop after {done:,} of {n:,} row(s); the rest were not tested. Nothing is ever written by this view.")
     rn.summary["not_tested_why"] = "not tested: you clicked Stop" if stopped else "not tested"
+    rn.summary["flow"] = _flow_copy(tally, phase="stopped" if stopped else "done")
+    tell(rn.summary["flow"])
     fresh = zfresh = None
     for ev in evs:
         fresh = fresh or getattr(ev, "fresh", None)
@@ -1434,6 +1508,26 @@ def run(client, parsed: ParsedList, *, scope: Dict[str, Any], network: str = "of
     if not stopped:
         say(f"Done: {n:,} row(s) tested with {rn.summary['traced']:,} trace(s).")
     return rn
+
+
+def _keep_eval(evals: List[Dict[str, Any]], same: Dict[Tuple[Any, ...], int], res: Dict[str, Any]) -> int:
+    """The index of `res` in `evals`, kept once however many rows give the
+    same answer: a 250,000-row list of a few hundred answers holds a few
+    hundred dicts, not one per row. The headline is not kept: it names the
+    destination of one row, and a row is shown from its own columns (Run.row)."""
+    res = {k: v for k, v in res.items() if k != "headline"}
+    try:
+        sig = tuple(sorted((k, tuple(v) if isinstance(v, list) else v) for k, v in res.items()))
+        hash(sig)
+    except TypeError:   # an evaluator's value that cannot be compared: kept on its own
+        sig = None
+    idx = same.get(sig) if sig is not None else None
+    if idx is None:
+        evals.append(res)
+        idx = len(evals) - 1
+        if sig is not None:
+            same[sig] = idx
+    return idx
 
 
 def _top(counter: Dict[Any, int], k: int = 15) -> List[Tuple[Any, int]]:

@@ -4,11 +4,13 @@ function _bpE(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 window.renderBypassReport = function renderBypassReport(data, container) {
-  const E = _bpE;
+  const E = _bpE, MAX_ROWS = 500, MAX_REFS = 6;
   const s = data.summary || {};
   const risks = data.risk_flags || [];
-  const total = s.total_bypass_items || 0;
-  const stat = (n, label, hot) => `<span class="bp-stat ${n ? (hot ? 'hot' : '') : 'zero'}"><b>${n || 0}</b>${E(label)}</span>`;
+  const total = Number(s.total_bypass_items) || 0;
+  // Counts come from the server but are still data: coerced to a number before they reach HTML.
+  const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const stat = (n, label, hot) => `<span class="bp-stat ${n ? (hot ? 'hot' : '') : 'zero'}"><b>${num(n)}</b>${E(label)}</span>`;
   const top = `
     <div class="bp-hero">
       <div class="bp-total ${risks.length ? 'risk' : (total ? '' : 'ok')}">
@@ -48,12 +50,12 @@ window.renderBypassReport = function renderBypassReport(data, container) {
   };
   const section = (label, count, body, extra = '') => {
     const n = count || 0;
-    return `<details class="bp-sec ${n ? 'has-items' : 'empty'}" ${n ? 'open' : ''}><summary>${E(label)}${extra}<span class="ct">${n}</span></summary><div>${body}</div></details>`;
+    return `<details class="bp-sec ${n ? 'has-items' : 'empty'}" ${n ? 'open' : ''}><summary>${E(label)}${extra}<span class="ct">${E(n)}</span></summary><div>${body}</div></details>`;
   };
   const secs = data.sections || {};
   const ruleCols = ['id', 'name', 'action', 'state', 'scope'];
   const ruleOpts = { mono: ['id'] };
-  const ofTotal = sec => (sec.total_rules || sec.total_ssl_rules) ? `<span class="ct" style="margin-left:0.5rem;">of ${sec.total_rules || sec.total_ssl_rules}</span>` : '';
+  const ofTotal = sec => (sec.total_rules || sec.total_ssl_rules) ? `<span class="ct" style="margin-left:0.5rem;">of ${E(sec.total_rules || sec.total_ssl_rules)}</span>` : '';
   let rulesHtml = '<div class="bp-h">Rules that skip inspection</div>';
   for (const [key, label] of [['ssl_bypass_rules', 'SSL inspection bypass rules'], ['url_filter_allow', 'URL Filtering allow rules'], ['firewall_allow', 'Firewall allow rules'], ['dlp_allow', 'DLP allow / bypass rules']]) {
     const sec = secs[key] || {};
@@ -70,7 +72,7 @@ window.renderBypassReport = function renderBypassReport(data, container) {
     zccHtml += section(label, sec.count, zcc.not_in_scope ? notRead(zcc) : table(sec.items, cols, { mono: ['value', 'path'] }));
   }
   if (zcc.endpoints_probed && zcc.endpoints_probed.length) {
-    const rows = zcc.endpoints_probed.map(p => `<tr><td class="mono">${E(p.endpoint)}</td><td style="color:${p.status === 200 ? 'var(--pass)' : (p.status === 0 ? 'var(--fail)' : 'var(--warn)')};font-weight:600;">${p.status}</td><td class="dim">${p.item_count != null ? p.item_count + ' profile(s)' : (p.error ? E(p.error) : '—')}</td></tr>`).join('');
+    const rows = zcc.endpoints_probed.map(p => `<tr><td class="mono">${E(p.endpoint)}</td><td style="color:${p.status === 200 ? 'var(--pass)' : (p.status === 0 ? 'var(--fail)' : 'var(--warn)')};font-weight:600;">${E(p.status)}</td><td class="dim">${p.item_count != null ? E(p.item_count) + ' profile(s)' : (p.error ? E(p.error) : '—')}</td></tr>`).join('');
     zccHtml += `<details class="bp-sec empty"><summary>Client Connector endpoints probed<span class="ct">${zcc.endpoints_probed.length}</span></summary><div><table class="bp-table"><thead><tr><th>Endpoint</th><th>Status</th><th>Response</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
   }
 
@@ -78,8 +80,13 @@ window.renderBypassReport = function renderBypassReport(data, container) {
   const aggBlock = (title, key, valueLabel) => {
     const items = (agg[key] || {}).items || [];
     if (!items.length) return section(title, 0, '<div class="bp-none">Nothing here.</div>');
-    const rows = items.map((it, i) => `<tr><td class="num">${i + 1}</td><td class="mono">${E(String(it.value || ''))}</td><td class="num">${it.count}</td><td>${(it.rules || []).map(r => `<span class="bp-ref" title="${E(r.name || '')}">${E(r.source || '')}#${r.id != null ? r.id : '?'}</span>`).join('')}</td></tr>`).join('');
-    return section(title, items.length, `<div class="max"><table class="bp-table"><thead><tr><th>#</th><th>${E(valueLabel)}</th><th>Refs</th><th>Referenced by</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+    // A category expanded into its URLs can list tens of thousands: the page draws the first
+    // MAX_ROWS (and MAX_REFS rule references each); the export keeps the full list.
+    const refs = rs => rs.slice(0, MAX_REFS).map(r => `<span class="bp-ref" title="${E(r.name || '')}">${E(r.source || '')}#${E(r.id != null ? r.id : '?')}</span>`).join('')
+      + (rs.length > MAX_REFS ? ` <span class="bp-none">+${rs.length - MAX_REFS}</span>` : '');
+    const rows = items.slice(0, MAX_ROWS).map((it, i) => `<tr><td class="num">${i + 1}</td><td class="mono">${E(String(it.value || ''))}</td><td class="num">${E(it.count)}</td><td>${refs(Array.isArray(it.rules) ? it.rules : [])}</td></tr>`).join('');
+    const more = items.length > MAX_ROWS ? `<div class="bp-none">…and ${items.length - MAX_ROWS} more (the export has the full list)</div>` : '';
+    return section(title, items.length, `<div class="max"><table class="bp-table"><thead><tr><th>#</th><th>${E(valueLabel)}</th><th>Refs</th><th>Referenced by</th></tr></thead><tbody>${rows}</tbody></table>${more}</div>`);
   };
   const aggHtml = `
     <div class="bp-h">Effective bypass universe</div>
@@ -101,15 +108,15 @@ window.renderBypassReport = function renderBypassReport(data, container) {
   let catHtml = '';
   const cats = agg.category_expansion || [];
   if (cats.length) {
-    const rows = cats.map(c => {
+    const rows = cats.slice(0, MAX_ROWS).map(c => {
       const urls = (c.urls || []).concat(c.db_urls || []);
       const chips = urls.slice(0, 50).map(u => `<span class="bp-code">${E(u)}</span>`).join(' ');
       const more = urls.length > 50 ? `<div class="bp-none">…and ${urls.length - 50} more (the export has the full list)</div>` : '';
       const note = c.note ? `<div style="color:var(--warn);font-size:0.8rem;margin-bottom:0.3rem;">${E(c.note)}</div>` : '';
       const rule = c.referenced_by_rule || {};
-      return `<details class="bp-sec has-items"><summary>${E(c.category || '?')} <span class="bp-chip">${E(c.type || '?')}</span> <span class="bp-ref">${E(rule.source || '?')}#${rule.id != null ? rule.id : '?'} ${E(rule.name || '')}</span><span class="ct">${urls.length} URLs</span></summary><div>${note}${chips || '<div class="bp-none">No enumerable URLs.</div>'}${more}</div></details>`;
+      return `<details class="bp-sec has-items"><summary>${E(c.category || '?')} <span class="bp-chip">${E(c.type || '?')}</span> <span class="bp-ref">${E(rule.source || '?')}#${E(rule.id != null ? rule.id : '?')} ${E(rule.name || '')}</span><span class="ct">${urls.length} URLs</span></summary><div>${note}${chips || '<div class="bp-none">No enumerable URLs.</div>'}${more}</div></details>`;
     }).join('');
-    catHtml = `<div class="bp-h">What each URL category contributes</div>${rows}`;
+    catHtml = `<div class="bp-h">What each URL category contributes</div>${rows}${cats.length > MAX_ROWS ? `<div class="bp-none">…and ${cats.length - MAX_ROWS} more categories (the export has them all)</div>` : ''}`;
   }
 
   const guidance = (data.guidance || []).length ? `<div class="bp-card info bp-guide" style="margin-top:1rem;"><div class="t">Guidance</div><ul>${data.guidance.map(g => `<li>${E(g)}</li>`).join('')}</ul></div>` : '';

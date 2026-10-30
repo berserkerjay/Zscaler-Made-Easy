@@ -95,6 +95,28 @@ what you get, what to do next.
   it once, read-only and only what is in scope. An object opens as a card:
   what it uses, what uses it, its findings, the pages that act on it and
   its tags, to-dos and comments.
+- **Help on hover** (every page, and the browser extension's popup,
+  options and side panel) — point at any control, or Tab to it, and a
+  small box says what it does, what input it expects (format, allowed
+  values, an example, required or optional) and whether it reads or
+  changes the tenant; a control that changes the tenant says it needs
+  write mode. Esc closes it without moving focus, the pointer can move
+  onto it, and on touch a long press or the ⓘ beside the control opens
+  it. Screen readers get the same words through `aria-describedby`. The
+  words live in one catalogue (`static/help_catalog.js`), keyed per page
+  by selector; a native tooltip is converted into it, not kept beside
+  it, and a test fails, naming the page and the selector, when a control
+  has no entry.
+- **Glass effect** (every page; on by default, switched off per browser
+  under Advanced settings → Appearance) — the bars, sidebar, cards,
+  dialogs, pop-ups, banners and buttons are one translucent material
+  (`static/glass.css`, driven by the theme tokens): a blurred, saturated
+  tint over a soft background, a light rim and a soft shadow. Text keeps
+  WCAG 2.2 AA contrast against the worst case behind each surface, tables
+  stay near-opaque, and surfaces turn solid and unblurred when the system
+  asks for reduced transparency, more contrast or forced colours, when
+  printing, and in browsers without `backdrop-filter`. The pointer-follow
+  highlight (`static/glass.js`) is off under reduced motion.
 - **Simple mode** (`/simple`, first item in the sidebar) — the same app
   as seven big tasks for someone with little Zscaler knowledge: connect,
   check how safe the data is, fix the top three problems, protect
@@ -209,7 +231,9 @@ what you get, what to do next.
   of scope says "not in scope"), writes nothing, and Stop ends the read
   at once. **Import a HAR file** there to analyze every host a browser
   session reached in one run: the file is read in the browser and only
-  host names and request counts are sent; the results table sorts,
+  host names, request counts, HTTP methods, schemes and upload amounts
+  are sent (cookies, headers, URL paths and bodies stay in the browser);
+  the results table sorts,
   filters, opens any host's full analysis and exports as CSV or JSON.
   **Test a list** (a tab on the same page) does it for a whole list: a
   CSV or pasted list of IP addresses, CIDR blocks (up to a /16 per row),
@@ -259,8 +283,22 @@ what you get, what to do next.
   certificate body or the people in the configuration, and says that the
   standalone Zscaler Enterprise Browser has no API. Read-only; Stop ends
   the read at once.
+- **Live motion on the Path analyzer** — under the verdict, packets travel
+  the analyzed path (device or workload, Client Connector or the
+  connector, ZPA turning to the App Connectors and the app when it carries
+  it, the PAC file, the Zero Trust Exchange, every ZIA module, the
+  destination), each step lit with its verdict and deciding rule, stopping
+  with a block, drop, isolate, caution or bypass marker where it is
+  decided and a dashed fork at a conditional step; a step opens its card.
+  The reference path idles before any result; Test a list streams its rows
+  to the step that decided them, the counts climbing from the job poll's
+  tally (counts only). One engine (`static/flow_anim.js`: trafficPathModel,
+  trafficPath, listFlowModel, listFlow), no tenant reads, reduced motion
+  honoured, paused while the tab is hidden, every step also in words.
 - **Flow animator** — the flows the app analyses, animated from your own
-  results: the last Path analyzer result hop by hop; inside DLP, the
+  results: the last Path analyzer result replayed step by step (ZPA, PAC
+  file, ZIA modules and the what-if; back, next, play, pause and speed) or
+  hop by hop; inside DLP, the
   dictionary match counts, each engine term against its threshold and the
   rules that act, with an engine that does not fire named as a near miss
   ("3 found, needs more than 4") or as having nothing to match; a policy
@@ -268,6 +306,26 @@ what you get, what to do next.
   as they land, enforced versus monitor-only per channel; and every flow
   of the Data Security Architect reference, with the steps people miss
   marked. Samples, labelled as such, until you have results. Read-only.
+  The same engine moves the traffic on three report pages, from the result
+  each already shows: the Data Flow Map (every traffic class on every
+  network as a stream through Client Connector, PAC, URL filtering and
+  Cloud App Control, SSL inspection, Web DLP and the incident receiver,
+  each as wide as its share of the traced paths, bypasses marked), the SSL
+  inspection flow (packets on its diagram, and a rule walk: the SSL rules
+  a request meets in order, scoped exemptions peeling packets off, the
+  deciding rule's certificate and TLS-version checks as gates) and SSL
+  coverage (a traffic river of SSL/TLS against HTTP from its Insights
+  numbers, and the causes as branches by their share). Each has Play and
+  Pause, starts still with reduced motion and says the same in words.
+  The same engine moves on four pages from the result each page already
+  has (`static/flow_pages.js`): ZPA analysis (users → ZPA cloud → App
+  Connector groups → app segments, links to down connectors stopped and to
+  outdated ones flickering; and each diagnosis walked rule by rule),
+  Traffic insights (Insights numbers as Sankey-style streams to allowed
+  and blocked), the Live DLP feed (each incident through channel, rule,
+  action and incident receiver) and the Bypass report (streams peeling off
+  where traffic skips the Zero Trust Exchange). Still under reduced motion
+  with a Play button, paused while the tab is hidden, said in words below.
 - **Browser extension (companion)** — a small Chrome and Edge extension
   for the app on your computer: its button or a right-click opens the Path
   analyzer with the site, a link or a selected hostname filled in, and the
@@ -606,6 +664,16 @@ what you get, what to do next.
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with
   its Secure by Design score.
+- **Quality and security score** — this app's own score from 0 to 100 on
+  Advanced settings: tests passed in the last full run, open QA findings
+  weighted by CVSS severity (an open critical caps it at 39, an open high
+  at 69, and any failed test at 79, grade C at best) and standards
+  coverage, per area. Built by tools/quality_score.py into
+  docs/QUALITY_SCORE.md and docs/quality_score.json; read-only at
+  GET /api/quality-score. The tests part needs a recorded full run,
+  docs/qa/test_run.json (written by `python tools/quality_score.py
+  --from-junit <pytest JUnit XML>`); until one is recorded the page says
+  "No score yet" and shows the findings and the standards coverage only.
 - **Best practices benchmark and frameworks** — the grade, the DLP
   programme stages and the framework coverage. Where: the Dashboard.
 - **Zscaler updates** — a check of PyPI and help.zscaler.com for SDK and
@@ -660,7 +728,9 @@ what you get, what to do next.
   every change of this app that will not work, with the plain steps to ask
   the admin for. On the Start page the same check shows as a short summary,
   greys out the scopes that will not work and stops a deploy or removal
-  the role cannot make. Where: the Connect to the tenant card (`/permissions`).
+  the role cannot make. Where: the Connect to the tenant card (`/permissions`;
+  the page opens without the UI token, so its live part is shown only to a
+  browser that has unlocked the app).
 
 ## The policy packs it ships with
 

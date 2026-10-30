@@ -39,6 +39,9 @@ def _read(*parts):
     (("static", "index.html"), r"\.field \.helper code\s*\{", r"overflow-wrap\s*:\s*anywhere\b"),
     (("static", "guide.css"), r"\.gd-prof-grid\s*\{", r"minmax\(min\(240px,\s*100%\),\s*1fr\)"),
     (("static", "guide.css"), r"\.gd-profiles code\s*\{", r"overflow-wrap\s*:\s*anywhere\b"),
+    # Wave 6: the update branch list (it names the checkout's branch) shrinks to the line at 320px.
+    (("static", "guide.css"), r"\.gd-upd-branch select\s*\{", r"max-width\s*:\s*100%"),
+    (("static", "guide.css"), r"\.gd-upd-branch\s*\{", r"flex-wrap\s*:\s*wrap\b"),
 ])
 def test_connect_step_rules_let_the_content_shrink(sheet, selector, declaration):
     """WCAG 2.2 SC 1.4.10: the step grid column can shrink below its content and the helper's sample URL breaks."""

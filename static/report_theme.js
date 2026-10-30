@@ -60,15 +60,26 @@
   // again through window.__dlpAskAgain().
   let declinedAt = 0;
   const DECLINE_QUIET_MS = 30000;
+  const UNLOCK_TRIES = 3;
+  const WRONG_TOKEN = 'That token was not accepted. Copy it again from ui_token.txt next to the app (or the window that runs the app), exactly as it is.';
   window.__dlpAskAgain = () => { declinedAt = 0; };
   async function unlock(message) {
     if (asking) return asking;
     if (Date.now() - declinedAt < DECLINE_QUIET_MS) return false;
     asking = (async () => {
-      const t = await askForToken(message);
-      if (t === null || t === undefined || !String(t).trim()) { declinedAt = Date.now(); return false; }
-      const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: String(t).trim() }) });
-      return r.ok;
+      // A token the server refuses is asked for again with the reason (a
+      // mistyped or stale paste), at most three times; then quiet, as a cancel.
+      let msg = message;
+      for (let attempt = 0; attempt < UNLOCK_TRIES; attempt++) {
+        const t = await askForToken(msg);
+        if (t === null || t === undefined || !String(t).trim()) { declinedAt = Date.now(); return false; }
+        const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: String(t).trim() }) });
+        if (r.ok) return true;
+        if (r.status !== 401) return false;
+        msg = WRONG_TOKEN;
+      }
+      declinedAt = Date.now();
+      return false;
     })();
     try { return await asking; } catch (e) { return false; } finally { asking = null; }
   }

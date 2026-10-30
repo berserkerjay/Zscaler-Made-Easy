@@ -94,6 +94,54 @@ every page in the dark theme and on most in the light one).
   Find anything results, sentence case on headings, buttons and labels,
   and Device posture's own explainer (it showed Improve my score's).
 
+## Functionality and accessibility audit on the sample tenant (2026-10-29, WCAG 2.2 AA)
+
+Every page the app serves (the assessment page, Simple mode, `/help`,
+`/permissions`, every `/report/*` page and the five reference pages) was
+opened in Chromium on the sample tenant (Larkspur Freight), with the
+assessment run from the Scope page, in both themes with reduced motion on,
+and measured with axe-core 4.10 (`wcag2a` to `wcag22aa`). Every button, tab
+and disclosure was clicked; every Analyze, Read, Preview and Export ran;
+every download was opened (Word with python-docx, Excel and PDF parsed);
+the seven Simple mode tasks ran end to end; and the sample's change counter
+stayed at zero with write mode off.
+
+The checks are now tests, each a table over the route list the app itself
+serves, so a new page is measured too:
+
+| Check | WCAG 2.2 SC | Test |
+|---|---|---|
+| Loads with no script, console or HTTP error | 4.1.2 | `tests/test_accessibility.py::test_every_page_loads_without_errors_on_the_sample` |
+| Every control has a name (Chrome's accessibility tree) | 4.1.2, 1.3.1 | `test_every_control_has_an_accessible_name` |
+| Keyboard walk: focus visible at every stop, never stuck | 2.1.1, 2.1.2, 2.4.7 | `test_keyboard_focus_is_visible_and_never_trapped` |
+| 24 px targets (inline and spacing exceptions) | 2.5.8 | `test_every_target_is_at_least_24px` |
+| Text contrast against what is painted under it, both themes | 1.4.3 | `test_text_contrast_meets_aa_in_both_themes` |
+| No control inside another; scrolling regions reachable | 4.1.2, 2.1.1 | `test_no_control_holds_another_control`, `test_every_scrolling_region_is_reachable_by_keyboard` |
+| Job progress in a live region; title, language, h1 | 4.1.3, 2.4.2, 3.1.1 | `test_pages_with_jobs_announce_progress_in_a_live_region` |
+| Nothing animates under reduced motion | 2.3.3, 2.2.2 | `test_nothing_animates_under_reduced_motion` |
+| Results of the job pages render, reflow and keep contrast | 1.4.10, 1.4.3 | `test_every_result_renders_accessibly_and_reflows` |
+| No sideways scroll at 320, 390, 640 (200% zoom) and 1280 px | 1.4.10, 1.4.4 | `tests/test_report_reflow.py::test_no_report_page_scrolls_sideways` |
+| The sample tenant, Simple mode and the builder hand-offs work | 3.3.1, 3.2.4 | `tests/test_sample_tenant_browser.py` |
+| Help text: every entry has its `/help` card, no dead link, every builder named | 2.4.4, 3.3.2 | `tests/test_explain.py` |
+
+What was found and fixed: Run assessment on the Scope page refused the
+sample tenant (it asked for sign-in details the sample does not need);
+Find anything's notes were refused on the sample; seven functions had no
+card on `/help`, so "Every function explained" on Beacon and How a
+deployment works landed nowhere; the Bulk changes, Advanced settings,
+Client Connector fleet, Live DLP feed and Path analyzer explainers did not
+name sections those pages have (the thirteen builders among them); four
+glyphs stayed colour emoji; `/help`, `/permissions` and the Path
+analyzer's result scrolled sideways at 320 px (every auto-fit grid now caps
+its track at the line width); the Word report said "Unknown" for the
+organisation and used Title Case headings; the object picker's checkboxes
+were 13 px targets; and the reference pages failed contrast, language,
+nested controls, keyboard scrolling, 24 px targets, dialog names and
+reflow, and linked a CSV file that is not served. The reference documents
+are bundled as built elsewhere, so the app serves them with an
+accessibility layer (`static/reference/reference_a11y.js`) instead of
+editing their content.
+
 ## What was changed
 
 * **Landmarks**: every report tab has a `header`, a `nav` for its actions
@@ -129,6 +177,14 @@ every page in the dark theme and on most in the light one).
 * Automated tools cannot judge reading order, meaning of link text or
   the usefulness of alternative text. Those were checked by hand on the
   states listed above and should be rechecked when a new page is added.
+
+* On the Data Security Portfolio Framework, a technique card of a
+  channel the reader switched off is drawn at 20% opacity and cannot be
+  focused or clicked. Its text is below 4.5:1 on purpose; SC 1.4.3 exempts
+  inactive components, so it is accepted, not repaired.
+* The reference documents' colour repair runs in the browser: it keeps
+  each colour's hue and moves only its lightness until the text reaches
+  AA, so a page printed without scripts shows the original colours.
 
 ## Reporting a problem
 

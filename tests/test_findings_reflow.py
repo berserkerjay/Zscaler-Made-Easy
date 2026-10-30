@@ -195,6 +195,11 @@ def run_in_browser(tmp_dir, driver, *args, timeout=180):
     mp.setenv("ZSCALER_UI_AUTH", "0")
     mp.setenv("ENABLE_WRITE_ACTIONS", "")
     mp.setattr(srv, "_latest_remote_commit", lambda branch="main": None)
+    # A page toured in the browser may click "Update now" or "Restart": they
+    # must never run git against this checkout or relaunch the process.
+    import app_update
+    mp.setattr(app_update, "update", lambda *a, **k: {"ok": False, "updated": False, "message": "disabled in tests"})
+    mp.setattr(app_update, "schedule_restart", lambda *a, **k: {"ok": False, "message": "disabled in tests"})
     server = uvicorn.Server(uvicorn.Config(srv.app, host="127.0.0.1", port=0, lifespan="off", log_level="warning", access_log=False))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()

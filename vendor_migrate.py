@@ -44,6 +44,7 @@ import os
 import re
 import sys
 import xml.etree.ElementTree as ET
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -309,6 +310,12 @@ def crossref(vendor_id: str) -> Dict[str, Any]:
 def decode_upload(f: Dict[str, Any]) -> bytes:
     """The bytes of an uploaded file ({name, content, encoding})."""
     content = f.get("content") or ""
+    if not isinstance(content, str):
+        raise ValueError(f"{f.get('name') or 'file'}: the file content must be text")
+    # Refused before decoding: base64 carries 3 bytes in 4 characters, so the
+    # text alone says whether the file is past the limit (no 32 MiB copy first).
+    if len(content) > (MAX_EXPORT_BYTES // 3 + 1) * 4 + 4096:
+        raise ValueError(f"{f.get('name') or 'file'}: larger than {MAX_EXPORT_BYTES // (1024 * 1024)} MiB")
     if str(f.get("encoding") or "").lower() == "base64":
         try:
             data = base64.b64decode(content, validate=False)
@@ -760,14 +767,20 @@ def _thresholds_of(obj: Dict[str, Any]) -> List[str]:
 # Order matters: the specific families first, so an endpoint "Network
 # share" is endpoint, not web, and webmail is web, not email.
 _CHANNEL_WORDS = (
-    (("endpoint", "removable", "usb", "print", "clipboard", "network share", "network drive", "local drive", "device", "screen", "lan"), "endpoint"),
+    (("endpoint", "removable", "usb", "print", "clipboard", "network share", "network drive", "local drive", "device", "screen", "screenshot", "lan"), "endpoint"),
     (("webmail",), "web"),
-    (("smtp", "email", "e-mail", "mail", "exchange", "outlook", "gmail"), "email"),
+    (("smtp", "email", "e-mail", "mail", "mailbox", "exchange", "outlook", "gmail"), "email"),
     (("api", "saas", "cloud storage", "casb", "at rest", "api-enabled", "api enabled"), "saas-api"),
     (("download", "view", "preview"), "cloud-download"),
-    (("ftp",), "ftp"),
-    (("http", "https", "web", "browser", "upload", "post", "share", "form", "proxy"), "web"),
+    (("ftp", "sftp", "ftps"), "ftp"),
+    (("http", "https", "web", "website", "browser", "upload", "post", "share", "sharing", "form", "proxy"), "web"),
 )
+# Whole words (with their plural and -ed / -ing / -er forms), never
+# substrings: "Capital One" is not an API, "fingerprint" not a printer,
+# "Atlanta" not a LAN, "information" not a form.
+_CHANNEL_RES = tuple((re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
+                                 + r")(?:s|es|d|ed|ing|er|ers)?(?![a-z0-9])"), kind) for words, kind in _CHANNEL_WORDS)
+_DOWNLOAD_RE = next(rx for rx, kind in _CHANNEL_RES if kind == "cloud-download")
 
 
 def _norm_channel(text: str, default: Optional[str] = None) -> str:
@@ -776,8 +789,8 @@ def _norm_channel(text: str, default: Optional[str] = None) -> str:
     cloud-download, with the source's own word kept in parentheses."""
     t = str(text).strip()
     low = t.lower()
-    for words, kind in _CHANNEL_WORDS:
-        if any(w in low for w in words):
+    for rx, kind in _CHANNEL_RES:
+        if rx.search(low):
             return f"{kind} ({t})"
     return f"{default} ({t})" if default else t
 
@@ -787,7 +800,13 @@ def _policy_id(obj: Dict[str, Any], name: str, prefix: str, keys=("policy_id", "
         for kk, v in obj.items():
             if _norm_key(kk) == k and isinstance(v, (str, int)) and not isinstance(v, bool) and str(v).strip():
                 return str(v).strip()
-    return f"{prefix}-{slug(name)}"
+    return _NameId(f"{prefix}-{slug(name)}")
+
+
+class _NameId(str):
+    """A policy id made from the policy's name (the export carries none):
+    two names that slug alike are told apart by _finish, where two equal
+    ids the export itself carries are refused."""
 
 
 def _policy_name(obj: Dict[str, Any], keys=("policy_name", "policyname", "name", "title", "rule_group_name")) -> Optional[str]:
@@ -834,9 +853,19 @@ def _find_policies(obj: Any, is_policy, list_keys=("policies", "policy", "data",
 def _finish(policies: List[Dict[str, Any]], data: bytes, source_name: str, default_name: str, what: str) -> Dict[str, Any]:
     if not policies:
         raise ValueError(f"No {what} found in {os.path.basename(str(source_name or default_name))}; check the export and its file type")
+    # Ids made from names: the first keeps its id (as earlier versions wrote
+    # it, so saved decisions still match), later ones get -2, -3, ...
+    taken = {str(p["id"]) for p in policies if not isinstance(p["id"], _NameId)}
+    for p in policies:
+        if isinstance(p["id"], _NameId):
+            base, n, new = str(p["id"]), 2, str(p["id"])
+            while new in taken:
+                new, n = f"{base}-{n}", n + 1
+            taken.add(new)
+            p["id"] = new
     ids = [p["id"] for p in policies]
-    if len(set(ids)) != len(ids):
-        raise ValueError("Duplicate policy IDs in export: " + ", ".join(sorted({i for i in ids if ids.count(i) > 1})[:5]))
+    if len(set(ids)) != len(ids):   # counted once (a count per id is quadratic on a large export)
+        raise ValueError("Duplicate policy IDs in export: " + ", ".join(sorted(i for i, n in Counter(ids).items() if n > 1)[:5]))
     return {"source_file": os.path.basename(str(source_name or default_name)), "sha256": hashlib.sha256(data).hexdigest(),
             "policies": sorted(policies, key=lambda x: x["id"])}
 
@@ -1030,7 +1059,7 @@ def _nsk_special(dicts: Dict[str, Dict[str, Any]], profiles: Dict[str, Any], rul
             vals = re.split(r"[,;|]\s*", v) if isinstance(v, str) else _scalars(v)
             default = "web" if kl != "policy_type" else None
             kind = "cloud-download" if kl in ("activities", "activity") else None
-            fx.add("channel", texts=[_norm_channel(x, default) if not kind or not any(w in x.lower() for w in ("download", "view", "preview")) else f"cloud-download ({x})" for x in vals if str(x).strip()])
+            fx.add("channel", texts=[_norm_channel(x, default) if not kind or not _DOWNLOAD_RE.search(x.lower()) else f"cloud-download ({x})" for x in vals if str(x).strip()])
             if isinstance(v, (dict, list)):
                 _walk_json(v, fx, special, _NSK_OVERRIDES, _NSK_IGNORE, inherit="channel")
             return True
@@ -1385,7 +1414,9 @@ def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str,
 
 
 # ── Compile (vendor-agnostic) ──────────────────────────────────────────
-from dlp_importer import DICT_DESCRIPTION_MAX, ENGINE_DESCRIPTION_MAX, fit_description  # noqa: E402
+from dlp_importer import (DICT_DESCRIPTION_MAX, ENGINE_DESCRIPTION_MAX, dictionary_limit_problems,  # noqa: E402
+                          engine_limit_problems, fit_description, name_problems)
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")   # a line break in a name breaks the HCL string it lands in
 
 
 def _fit(text: str, limit: int) -> str:
@@ -1423,6 +1454,10 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     referenced object was generated; the Terraform is deployable only then."""
     if not isinstance(decisions, dict):
         raise ValueError("Decisions must be a JSON object")
+    for k in ("dictionaries", "engines", "policies"):
+        v = decisions.get(k)
+        if v is not None and (not isinstance(v, list) or not all(isinstance(x, dict) for x in v)):
+            raise ValueError(f"Decisions: {k} must be a list of objects")
     if decisions.get("source_sha256") != snapshot["sha256"]:
         raise ValueError("Decision file source_sha256 does not match export; review source changes")
     by_id = {p["id"]: p for p in snapshot["policies"]}
@@ -1431,7 +1466,7 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     # web and email is two entries); a disposition is one entry on its own.
     pairs = [(str(p.get("source_id", "")), str(p.get("channel") or "") if p.get("disposition") not in ("retired", "out_of_scope") else "disposition") for p in selected]
     if len(set(pairs)) != len(pairs):
-        dup = sorted({f"{s} ({c})" for s, c in pairs if pairs.count((s, c)) > 1})
+        dup = sorted(f"{s} ({c})" for (s, c), n in Counter(pairs).items() if n > 1)[:20]
         raise ValueError("Duplicate decision for the same source_id and channel: " + ", ".join(dup))
     per_source: Dict[str, int] = {}
     for s, _c in pairs:
@@ -1469,6 +1504,14 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if any(not isinstance(x, str) or not 0 < len(x) <= 128 for x in phrases) or any(not isinstance(x, str) or not 0 < len(x) <= 256 for x in patterns):
             question(d.get("id", "?"), "Dictionary phrase/pattern length invalid")
             continue
+        # The same checks a pack dictionary passes before it reaches ZIA:
+        # names ZIA accepts, item lengths in UTF-8 bytes, every pattern a
+        # regular expression with no lookaround and no nested repeat (ReDoS).
+        problems = name_problems(d["name"], "dictionary") + dictionary_limit_problems(
+            {"name": d["name"], "patterns": patterns, "phrases": phrases, "custom_phrase_match_type": d.get("match_type")})
+        if problems:
+            question(d.get("id", "?"), "Dictionary refused: " + "; ".join(problems[:5]))
+            continue
         obj: Dict[str, Any] = {"name": _lit(d["name"]), "description": _lit(_fit(d.get("description") or default_desc, DICT_DESCRIPTION_MAX)),
                                "dictionary_type": "PATTERNS_AND_PHRASES",
                                "custom_phrase_match_type": d.get("match_type", "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY")}
@@ -1499,6 +1542,10 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         expr2 = re.sub(r"\{\{dict:([A-Za-z0-9_-]+)\}\}", sub, expr)
         if missing or "{{" in expr2 or "${" in expr or "%{" in expr:   # %{ is a Terraform template directive (if/for), as live as ${
             question(e.get("id", "?"), "Unresolved dictionary reference or unsafe interpolation: " + ", ".join(missing))
+            continue
+        problems = name_problems(e["name"], "engine") + engine_limit_problems(expr)
+        if problems:
+            question(e.get("id", "?"), "Engine refused: " + "; ".join(problems[:5]))
             continue
         res["zia_dlp_engines"][key] = {"name": _lit(e["name"]), "description": _lit(_fit(e.get("description") or default_desc, ENGINE_DESCRIPTION_MAX)),
                                        "engine_expression": expr2, "custom_dlp_engine": True}
@@ -1544,6 +1591,9 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
             question(source_id, "target_name must be the rule's name as text")
             continue
         name = name.strip()
+        if _CONTROL_RE.search(name):
+            question(source_id, "target_name must not contain line breaks or other control characters")
+            continue
         if spec["name_max"] and len(name) > spec["name_max"]:
             question(source_id, f"{spec['label']} rule name '{name}' is {len(name)} characters; ZIA allows {spec['name_max']}. Set a shorter target_name")
             continue
@@ -1635,7 +1685,7 @@ def _channel_fields(channel: str, p: Dict[str, Any], key: str, rule: Dict[str, A
     if channel == "email":
         if str(p.get("designed_action") or "") == "CUSTOMHEADERINSERTION":
             header = p.get("custom_header")
-            if not isinstance(header, str) or not header.strip() or len(header) > 128:
+            if not isinstance(header, str) or not header.strip() or len(header) > 128 or _CONTROL_RE.search(header):
                 return "designed_action CUSTOMHEADERINSERTION needs custom_header (the header text, up to 128 characters)"
         return _tenants(p, key, rule, "email_tenants", "email", data_blocks, variables)
     return f"Channel {channel!r} has no target adapter"
@@ -1663,7 +1713,7 @@ def _tenants(p: Dict[str, Any], key: str, rule: Dict[str, Any], block: str, what
                                                 "error_message": f"Rule {rule['name']}: set {kind}_tenant_ids[{name_lit}] or {kind}_tenant_ids_default to the ids "
                                                                  f"of the onboarded {what} tenants (Administration > SaaS Application Tenants)."}]}]
         return None
-    if isinstance(want, list) and want and all(isinstance(x, str) and x.strip() for x in want):
+    if isinstance(want, list) and want and all(isinstance(x, str) and x.strip() and not _CONTROL_RE.search(x) for x in want):
         ids = []
         lookups = data_blocks.setdefault("zia_casb_tenant", {})
         for n in dict.fromkeys(x.strip() for x in want):
@@ -1723,9 +1773,10 @@ def compile_upload(vendor_id: str, export_file: Dict[str, Any], decisions: Any) 
     data = decode_upload(export_file)
     snapshot = inventory_export(v["id"], data, export_file.get("name") or "")
     if isinstance(decisions, dict) and "content" in decisions and "policies" not in decisions:
+        raw = decode_upload(decisions)   # a size refusal is said as such, not as "not valid JSON"
         try:
-            decisions = json.loads(decode_upload(decisions).decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            decisions = json.loads(_text(raw, "decisions"))   # a byte-order mark (Notepad) is read, not refused
+        except (ValueError, json.JSONDecodeError) as e:
             raise ValueError(f"Decisions file is not valid JSON: {e}")
         except RecursionError:
             raise ValueError(f"Decisions file is nested more than {MAX_NESTING} levels deep") from None
@@ -1765,15 +1816,18 @@ def fetch_export(url: str, token: str, out, header: str = "Authorization: Bearer
     if len(data) > MAX_EXPORT_BYTES or not data.lstrip().startswith((b"<", b"{", b"[")):
         raise ValueError("Response exceeds the size limit or is not XML or JSON")
     out = Path(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(data)
-    out.chmod(0o600)
+    safe_files.private_makedirs(str(out.parent))
+    # Created owner-only (0600) from the first byte: a chmod after the write
+    # left the customer's policy export readable by others in between.
+    with safe_files.private_open(str(out), "wb") as fh:
+        fh.write(data)
     return 0
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+    """An inventory, decisions template, report or Terraform file: the
+    customer's policy names and detection terms, so owner-only (0600)."""
+    safe_files.write_private_atomic(str(path), json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
 
 
 def main(argv=None) -> int:
@@ -1830,6 +1884,9 @@ def main(argv=None) -> int:
         return 2
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr)
+        return 1
+    except RecursionError:   # a decisions file nested past what the JSON reader walks: refused in words
+        print(f"ERROR: the decisions file is nested more than {MAX_NESTING} levels deep", file=sys.stderr)
         return 1
 
 

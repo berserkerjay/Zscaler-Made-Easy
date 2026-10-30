@@ -127,7 +127,7 @@ WEB_DLP_RULES = [
      "fileTypes": [], "severity": "RULE_SEVERITY_MEDIUM", "zscalerIncidentReceiver": True, "withoutContentInspection": False, "matchOnly": False},
     {"id": 103, "order": 3, "rank": 7, "name": "Shipping documents to file shares", "description": "Manifests uploaded to file sharing sites.",
      "state": "ENABLED", "action": "ALLOW", "protocols": ["HTTPS_RULE", "HTTP_RULE"], "dlpEngines": [_ref(71, "Larkspur Shipping Documents")],
-     "urlCategories": ["FILE_HOST", "ONLINE_STORAGE"], "fileTypes": [], "severity": "RULE_SEVERITY_LOW", "zscalerIncidentReceiver": False,
+     "urlCategories": [{"id": "FILE_HOST"}, {"id": "ONLINE_STORAGE"}], "fileTypes": [], "severity": "RULE_SEVERITY_LOW", "zscalerIncidentReceiver": False,
      "withoutContentInspection": False, "matchOnly": False},
     {"id": 104, "order": 4, "rank": 7, "name": "Health data - block (draft)", "description": "Draft rule, never switched on.",
      "state": "DISABLED", "action": "BLOCK", "protocols": ["ANY_RULE"], "dlpEngines": [_ref(61, "HIPAA")], "fileTypes": [],
@@ -139,11 +139,11 @@ WEB_DLP_RULES = [
 
 ENDPOINT_DLP_RULES = [
     {"id": 201, "order": 1, "rank": 7, "name": "Customer data to USB - monitor", "state": "ENABLED", "action": "ALLOW",
-     "dlpEngines": [_ref(70, "Larkspur Customer Data")], "severity": "RULE_SEVERITY_MEDIUM", "zscalerIncidentReceiver": True,
-     "endpointDlpDestinations": ["REMOVABLE_MEDIA"], "fileTypes": []},
+     "dlpEngines": [_ref(70, "Larkspur Customer Data")], "severity": "RULE_SEVERITY_MEDIUM", "receiver": _ref(3, "Larkspur incident receiver"),
+     "fileTypes": []},
     {"id": 202, "order": 2, "rank": 7, "name": "Card data to printers", "state": "DISABLED", "action": "BLOCK",
-     "dlpEngines": [_ref(60, "PCI")], "severity": "RULE_SEVERITY_HIGH", "zscalerIncidentReceiver": True,
-     "endpointDlpDestinations": ["PRINTER"], "fileTypes": []},
+     "dlpEngines": [_ref(60, "PCI")], "severity": "RULE_SEVERITY_HIGH", "receiver": _ref(3, "Larkspur incident receiver"),
+     "fileTypes": []},
 ]
 
 EMAIL_DLP_RULES = [
@@ -190,7 +190,8 @@ SSL_RULES = [
     {"id": 702, "order": 2, "rank": 7, "name": "Do not decrypt webmail", "state": "ENABLED",
      "action": {"type": "DO_NOT_DECRYPT", "doNotDecryptSubActions": {"bypassOtherPolicies": True}}, "urlCategories": ["WEB_MAIL"]},
     {"id": 703, "order": 3, "rank": 7, "name": "Decrypt everything else", "state": "ENABLED", "defaultRule": True,
-     "action": {"type": "DECRYPT", "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minTLSVersion": "SERVER_TLS_1_2"}},
+     "action": {"type": "DECRYPT", "decryptSubActions": {"serverCertificates": "BLOCK", "ocspCheck": True, "minClientTLSVersion": "CLIENT_TLS_1_2",
+                                                     "minServerTLSVersion": "SERVER_TLS_1_2"}},
      "urlCategories": ["ANY"]},
 ]
 FIREWALL_RULES = [
@@ -213,9 +214,14 @@ CAC_RULES = {
     "WEBMAIL": [{"id": 903, "order": 1, "rank": 7, "name": "Personal webmail: no attachments", "state": "ENABLED", "type": "WEBMAIL",
                  "applications": ["GMAIL"], "actions": ["ALLOW_WEBMAIL_VIEW", "BLOCK_WEBMAIL_ATTACHMENT_SEND"]}],
 }
+# Every Cloud App Control rule type the readers list (dlp_assessment_full_auto._CAC_TYPES):
+# a type with no rule answers an empty list, as the API does.
+CAC_RULE_TYPES = ("AI_ML", "BUSINESS_PRODUCTIVITY", "CONSUMER", "CUSTOM_CAPP", "DNS_OVER_HTTPS", "ENTERPRISE_COLLABORATION", "FILE_SHARE",
+                  "FINANCE", "HEALTH_CARE", "HOSTING_PROVIDER", "HUMAN_RESOURCES", "INSTANT_MESSAGING", "IT_SERVICES", "LEGAL",
+                  "SALES_AND_MARKETING", "SOCIAL_NETWORKING", "STREAMING_MEDIA", "SYSTEM_AND_DEVELOPMENT", "WEBMAIL")
 FILE_TYPE_RULES = [
     {"id": 951, "order": 1, "rank": 7, "name": "Block archives to file shares", "state": "ENABLED", "filteringAction": "BLOCK",
-     "operation": "UPLOAD", "fileTypes": ["FTCATEGORY_ZIP", "FTCATEGORY_RAR"], "cloudAppClasses": ["FILE_SHARE"], "protocols": ["ANY_RULE"]},
+     "operation": "UPLOAD", "fileTypes": ["FTCATEGORY_ZIP", "FTCATEGORY_RAR"], "cloudApplications": ["DROPBOX", "WETRANSFER"], "protocols": ["ANY_RULE"]},
 ]
 PAC_CONTENT = ('function FindProxyForURL(url, host) {\n'
                '  if (isPlainHostName(host) || dnsDomainIs(host, ".larkspur-freight.example")) { return "DIRECT"; }\n'
@@ -234,7 +240,10 @@ LOCATIONS = [
 ADVANCED_SETTINGS = {"enableDnsResolutionOnTransparentProxy": False, "enableOffice365": True, "logInternalIp": True,
                      "enforceSurrogateIpForWindowsApp": True, "trackHttpTunnelOnHttpPorts": True, "blockHttpTunnelOnNonHttpPorts": True,
                      "blockDomainFrontingOnHostHeader": True, "zscalerClientConnector1AndPacRoadWarriorInFirewall": True,
-                     "cascadeUrlFiltering": True, "enablePolicyForUnauthenticatedTraffic": False, "dlpEvaluateAllRules": False}
+                     "cascadeUrlFiltering": True, "enablePolicyForUnauthenticatedTraffic": False}
+# Evaluate All Rules is a DLP global option (zscaler/zia/models/web_dlp_global_options.py), off here.
+WEB_DLP_GLOBAL_OPTIONS = {"enableEvaluateAllDlpRules": False, "enableInlineDlpOcr": False, "enableEmailDlpOcr": False, "enableCasbOcr": False,
+                          "exemptUrlEncodedData": False}
 AUTH_SETTINGS = {"orgAuthType": "SAFECHANNEL_DIR", "oneTimeAuth": "OTP_DISABLED", "samlEnabled": True, "kerberosEnabled": False,
                  "authFrequency": "DAILY_COOKIE", "autoProvision": True, "directorySyncMigrateToScimEnabled": True}
 ADMIN_ROLES = [{"id": 1, "name": "Super Admin", "rank": 7, "roleType": "ORG_ADMIN", "policyAccess": "READ_WRITE"},
@@ -253,17 +262,24 @@ NSS_FEEDS = [{"id": 61, "name": "Web logs to SIEM", "feedStatus": "ENABLED", "ns
 ISOLATION_PROFILES = [{"id": "iso-1", "name": "Larkspur isolation", "url": "https://isolation.example/larkspur", "defaultProfile": True}]
 
 # ── Client Connector ──────────────────────────────────────────────────
+# As the Client Connector API answers an app profile (zscaler/zcc/models/webpolicy.py):
+# the platform is device_type (1 iOS, 3 Windows, 4 macOS), the certificate switch
+# install_ssl_certs sits in the platform policy, and Install Endpoint DLP
+# (enableZdpService) and the destination exclusions (packetTunnelExcludeList,
+# comma-separated) in policyExtension. strictEnforcement is not in the SDK's
+# WebPolicy model (assumed: the readers ask for it, and a device reports it).
 APP_PROFILES = [
-    {"id": 1201, "name": "Windows - Corporate", "deviceType": 3, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
-     "strictEnforcement": 1, "installEndpointDlp": 1, "sslCertInstall": 1, "disableLoopBackRestriction": 0, "logLevel": 0,
-     "hostnameBypassForIpv4": [".larkspur-freight.example"], "ipExclusions": ["10.0.0.0/8"], "groups": [], "users": []},
-    {"id": 1202, "name": "macOS - Corporate", "deviceType": 4, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
-     "strictEnforcement": 1, "installEndpointDlp": 0, "sslCertInstall": 1, "groups": [], "users": []},
-    {"id": 1203, "name": "Windows - Contractors", "deviceType": 3, "active": 1, "ruleOrder": 2, "forwardingProfileId": 1302,
-     "strictEnforcement": 0, "installEndpointDlp": 0, "sslCertInstall": 1, "hostnameBypassForIpv4": ["*.dropbox.com"],
-     "appBypassCustom": [{"name": "Freight tracker", "path": "tracker.exe"}], "groups": [_ref(32, "Drivers")], "users": []},
-    {"id": 1204, "name": "iOS - Drivers", "deviceType": 1, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
-     "strictEnforcement": 0, "sslCertInstall": 1, "groups": [_ref(32, "Drivers")], "users": []},
+    {"id": 1201, "name": "Windows - Corporate", "device_type": 3, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
+     "strictEnforcement": 1, "logLevel": 0, "windowsPolicy": {"install_ssl_certs": 1, "disableLoopBackRestriction": 0},
+     "policyExtension": {"enableZdpService": "1", "packetTunnelExcludeList": "10.0.0.0/8"}, "groups": [], "users": []},
+    {"id": 1202, "name": "macOS - Corporate", "device_type": 4, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
+     "strictEnforcement": 1, "macPolicy": {"installCerts": 1}, "policyExtension": {"enableZdpService": "0"}, "groups": [], "users": []},
+    {"id": 1203, "name": "Windows - Contractors", "device_type": 3, "active": 1, "ruleOrder": 2, "forwardingProfileId": 1302,
+     "strictEnforcement": 0, "windowsPolicy": {"install_ssl_certs": 1},
+     "policyExtension": {"enableZdpService": "0", "packetTunnelExcludeList": "10.0.0.0/8,192.0.2.0/24"},
+     "bypassCustomAppIds": ["5001"], "groups": [_ref(32, "Drivers")], "users": []},
+    {"id": 1204, "name": "iOS - Drivers", "device_type": 1, "active": 1, "ruleOrder": 1, "forwardingProfileId": 1301,
+     "strictEnforcement": 0, "groups": [_ref(32, "Drivers")], "users": []},
 ]
 FORWARDING_PROFILES = [
     {"id": 1301, "name": "Corporate tunnel", "active": "1", "trustedNetworkIds": [1401], "forwardingProfileActions": [
@@ -290,7 +306,12 @@ DEVICES = [
 ]
 FAIL_OPEN = [{"id": 1, "enableFailOpen": 1, "enableCaptivePortalDetection": 1, "captivePortalWebSecDisableMinutes": 10,
               "enableStrictEnforcementPrompt": 0, "tunnelFailureRetryCount": 25}]
-COMPANY_INFO = {"orgName": COMPANY, "companyId": "lkf-001", "zdxEnabled": True, "zpaEnabled": True}
+# zscaler/zcc/models/company_info.py: zpnEnabled is ZPA, upmEnabled is ZDX, proxyEnabled is ZIA.
+COMPANY_INFO = {"businessName": COMPANY, "orgId": 7200001, "proxyEnabled": 1, "zpnEnabled": 1, "upmEnabled": 1, "dlpEnabled": 1,
+                "zadEnabled": 0, "enableGlobalZCCTelemetry": 1}
+WEB_PRIVACY_INFO = {"id": 1, "active": "1", "collectUserInfo": "1", "collectMachineHostname": "1", "collectZdxLocation": "1",
+                    "enablePacketCapture": "0", "disableCrashlytics": "0", "exportLogsForNonAdmin": "0"}
+DEVICE_CLEANUP = {"id": 1, "active": 1, "autoRemovalDays": 30, "autoPurgeDays": 60, "deviceExceedLimit": 16}
 
 # ── ZPA ───────────────────────────────────────────────────────────────
 SEGMENT_GROUPS = [{"id": "2101", "name": "Finance apps", "enabled": True, "applications": [{"id": "2201", "name": "Freight billing"}]},
@@ -336,13 +357,18 @@ ACCESS_RULES = [
      "conditions": [{"id": "c4", "operator": "OR", "operands": [{"id": "o4", "objectType": "APP_GROUP", "lhs": "id", "rhs": "2102", "name": "All internal (broad)"}]}]},
     {"id": "2903", "name": "Default deny", "ruleOrder": "3", "priority": "3", "action": "DENY", "policyType": "1", "conditions": []},
 ]
+# A ZPA admin role (zscaler/zpa/models/role_controller.py), as the readiness check reads it.
+ZPA_ROLES = [{"id": "2991", "name": "ZPA read only", "classPermissionGroups": [{"classPermissions": [
+    {"classType": {"friendlyName": "Application Segment"}, "permission": {"type": "VIEW_ONLY"}},
+    {"classType": {"friendlyName": "Policy"}, "permission": {"type": "VIEW_ONLY"}}]}]}]
 TIMEOUT_RULES = [{"id": "2951", "name": "Re-authenticate daily", "ruleOrder": "1", "action": "RE_AUTH", "reauthTimeout": "86400",
                   "reauthIdleTimeout": "1800", "policyType": "2", "conditions": []}]
 
 # ── ZDX and ZIdentity ─────────────────────────────────────────────────
-ZDX_APPS = [{"id": 3001, "name": "Microsoft 365", "score": 82.0, "mostImpactedRegion": {"id": "us-west", "name": "US West"}, "totalUsers": 140},
-            {"id": 3002, "name": "Freight billing", "score": 64.0, "mostImpactedRegion": {"id": "us-west", "name": "US West"}, "totalUsers": 35},
-            {"id": 3003, "name": "Salesforce", "score": 91.0, "totalUsers": 60}]
+# The ZDX API answers in snake_case (zscaler/zdx/models/applications.py).
+ZDX_APPS = [{"id": 3001, "name": "Microsoft 365", "score": 82.0, "most_impacted_region": {"id": "us-west", "country": "United States"}, "total_users": 140},
+            {"id": 3002, "name": "Freight billing", "score": 64.0, "most_impacted_region": {"id": "us-west", "country": "United States"}, "total_users": 35},
+            {"id": 3003, "name": "Salesforce", "score": 91.0, "total_users": 60}]
 ZDX_DEVICES = [{"id": 3101, "name": "LKF-LT-0001", "userid": 41}, {"id": 3102, "name": "LKF-MBP-0002", "userid": 42}]
 ZID_USERS = [{"id": "u-41", "loginName": "avery.quinn@larkspur-freight.example", "displayName": "Avery Quinn", "status": True},
              {"id": "u-42", "loginName": "rowan.ellis@larkspur-freight.example", "displayName": "Rowan Ellis", "status": True}]
@@ -377,6 +403,14 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/pacFiles": PAC_FILES,
         f"{ZIA}/locations": LOCATIONS,
         f"{ZIA}/advancedSettings": ADVANCED_SETTINGS,
+        f"{ZIA}/webDlpGlobalOptions": WEB_DLP_GLOBAL_OPTIONS,
+        f"{ZIA}/security/advanced": {"blacklistUrls": ["malware-drop.example"]},
+        f"{ZIA}/security": {"whitelistUrls": ["portal.harborline-logistics.example"]},
+        f"{ZIA}/cyberThreatProtection/maliciousUrls": {"maliciousUrls": ["malware-drop.example"]},
+        f"{ZIA}/cyberThreatProtection/securityExceptions": {"bypassUrls": []},
+        f"{ZIA}/networkServiceGroups": [], f"{ZIA}/networkApplicationGroups": [], f"{ZIA}/locations/groups": [],
+        f"{ZIA}/browserControlSettings": {"pluginCheckFrequency": "DAILY", "bypassAllBrowsers": False, "allowAllBrowsers": True,
+                                          "enableWarnings": True, "enableSmartBrowserIsolation": False, "blockedChromeVersions": []},
         f"{ZIA}/authSettings": AUTH_SETTINGS,
         f"{ZIA}/adminRoles": ADMIN_ROLES,
         f"{ZIA}/adminUsers": ADMIN_USERS,
@@ -390,7 +424,7 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/tenancyRestrictionProfile": [], f"{ZIA}/greTunnels": [], f"{ZIA}/staticIP": [], f"{ZIA}/vpnCredentials": [],
         f"{ZIA}/status": {"status": "ACTIVE"},
         f"{ZIA}/cyberThreatProtection/advancedThreatSettings": {"riskTolerance": 40, "cmdCtlServerBlocked": True, "malwareSitesBlocked": True,
-                                                                "phishingSiteBlocked": True, "suspectAdwareSpywareSitesBlocked": True},
+                                                                "knownPhishingSitesBlocked": True, "suspectAdwareSpywareSitesBlocked": True},
         f"{ZIA}/cyberThreatProtection/malwareSettings": {"virusBlocked": True, "unwantedApplicationsBlocked": True, "trojanBlocked": True,
                                                          "wormBlocked": True, "ransomwareBlocked": True, "spywareBlocked": True},
         # Client Connector (first candidate of each short endpoint, see dlp_assessment_full_auto._ZCC_MAP)
@@ -401,6 +435,9 @@ def responses() -> Dict[str, Any]:
         f"{ZCC}/getDevices": DEVICES,
         f"{ZCC}/webFailOpenPolicy/listByCompany": FAIL_OPEN,
         f"{ZCC}/getCompanyInfo": COMPANY_INFO,
+        f"{ZCC}/getWebPrivacyInfo": WEB_PRIVACY_INFO, f"{ZCC}/getDeviceCleanupInfo": DEVICE_CLEANUP,
+        f"{ZCC}/getAdminUsersSyncInfo": {"id": 1, "ziaInitialSyncDone": 1, "ziaLastSyncTime": "2026-10-28 02:00:00", "ziaSyncErrorCode": 0, "ziaSyncStatus": 1,
+                                             "zpaInitialSyncDone": 1, "zpaLastSyncTime": "2026-10-28 02:00:00", "zpaSyncErrorCode": 0, "zpaSyncStatus": 1},
         f"{ZCC}/getPacFiles": [], f"{ZCC}/webAppService/listByCompany": [], f"{ZCC}/webBypassAppConfig/listByCompany": [],
         f"{ZCC}/getAdminUsers": [], f"{ZCC}/getAdminRoles": [], f"{ZCC}/webDeviceGroups/listByCompany": [],
         f"{ZCC}/getZpaGroupEntitlements": {"zpaEnableForAll": True}, f"{ZCC}/getZdxGroupEntitlements": {"zdxEnableForAll": True},
@@ -416,7 +453,11 @@ def responses() -> Dict[str, Any]:
         f"{ZPA2}/posture": _zpa(POSTURE_PROFILES),
         f"{ZPA2}/network": _zpa(ZPA_TRUSTED_NETWORKS),
         f"{ZPA1}/machineGroup": _zpa(MACHINE_GROUPS),
-        f"{ZPA1}/certificate": _zpa([]), f"{ZPA2}/lssConfig": _zpa([]),
+        f"{ZPA1}/certificate": _zpa([]), f"{ZPA2}/lssConfig": _zpa([]), f"{ZPA2}/clientlessCertificate/issued": _zpa([]),
+        f"{ZPA1}/inspectionProfile": _zpa([]), f"{ZPA1}/isolation/profiles": _zpa([]), f"{ZPA1}/browserProtectionProfile": _zpa([]),
+        f"{ZPA1}/praConsole": _zpa([]), f"{ZPA1}/praPortal": _zpa([]), f"{ZPA1}/userPortal": _zpa([]),
+        f"{ZPA1}/associationType/CONNECTOR_GRP/provisioningKey": _zpa([]),
+        f"{ZPA1}/roles": _zpa(ZPA_ROLES),
         f"{ZPA1}/policySet/rules/policyType/ACCESS_POLICY": _zpa(ACCESS_RULES),
         f"{ZPA1}/policySet/rules/policyType/TIMEOUT_POLICY": _zpa(TIMEOUT_RULES),
         f"{ZPA1}/policySet/rules/policyType/CLIENT_FORWARDING_POLICY": _zpa([]),
@@ -426,13 +467,17 @@ def responses() -> Dict[str, Any]:
         f"{ZDX}/apps": ZDX_APPS, f"{ZDX}/devices": {"devices": ZDX_DEVICES, "next_offset": None},
         f"{ZDX}/administration/departments": [{"id": 21, "name": "Operations"}, {"id": 22, "name": "Finance"}],
         f"{ZDX}/administration/locations": [{"id": 1101, "name": "Larkspur HQ (Portland)"}],
+        f"{ZDX}/alerts/ongoing": {"alerts": [], "next_offset": None},
+        f"{ZDX}/inventory/software": {"software": [{"software_key": "zscaler-client-connector", "software_name": "Zscaler Client Connector",
+                                                    "vendor": "Zscaler", "software_group": "Security", "software_install_type": "MSI",
+                                                    "user_total": 3, "device_total": 3}], "next_offset": None},
         # ZIdentity
         f"{ZID}/users": {"records": ZID_USERS, "results_total": len(ZID_USERS)},
         f"{ZID}/groups": {"records": ZID_GROUPS, "results_total": len(ZID_GROUPS)},
         f"{ZID}/resource-servers": {"records": ZID_RESOURCE_SERVERS, "results_total": len(ZID_RESOURCE_SERVERS)},
     }
-    for rule_type, rules in CAC_RULES.items():
-        r[f"{ZIA}/webApplicationRules/{rule_type}"] = rules
+    for rule_type in CAC_RULE_TYPES:
+        r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
     return copy.deepcopy(r)
 
 

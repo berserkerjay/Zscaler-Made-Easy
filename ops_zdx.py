@@ -93,7 +93,7 @@ URL_MAX = 1024
 NAME_RE = re.compile(r"^[\w .()\-:/&+]{1,64}$")
 PREFIX_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", re.I)
 _LABEL_RE = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$", re.I)
-_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+_ID_RE = re.compile(r"^(?!\.+$)[A-Za-z0-9_.-]{1,80}$")
 
 CUSTOM_COLLECTION = {"name": "Custom Apps Collection", "description": "Custom applications"}
 PREDEFINED_COLLECTION = {"name": "Predefined Apps Collection", "description": "Predefined applications"}
@@ -231,6 +231,9 @@ def _items(body: Any) -> List[Dict[str, Any]]:
     return []
 
 
+_DOT_SEGMENT = re.compile(r"(?:^|/)\.{1,2}(?:/|$)")
+
+
 def _seg(v: Any) -> str:
     return quote(str(v), safe="")
 
@@ -251,6 +254,9 @@ class ZdxApi:
         """(payload, None) or (None, {status, code, message})."""
         if self.ex is None:
             return None, {"status": None, "code": None, "message": "this sign-in has no ZDX access (ZDX needs a OneAPI API client)"}
+        if _DOT_SEGMENT.search(path):
+            # An id of "." or ".." would move the request to another path (CWE-22): refused, never sent.
+            return None, {"status": None, "code": None, "message": "an application or probe id is not an id; nothing was sent"}
         if method == "GET":
             import zia_rate
             self.reads += 1
@@ -523,14 +529,53 @@ def clean_url(raw: Any) -> Tuple[Optional[str], Optional[str]]:
     if not host:
         return None, "the URL has no host name."
     try:
-        ipaddress.ip_address(host)
+        ip = ipaddress.ip_address(host.split("%", 1)[0])
     except ValueError:
+        ip = None
+    if ip is not None:
+        why = _unprobeable_ip(ip)
+        if why:
+            return None, f"{host} is {why}, not the address of an app a device can be probed against. Use the app's host name or address."
+    else:
+        if not host.isascii():
+            try:
+                ascii_host = host.encode("idna").decode("ascii")
+            except UnicodeError:
+                return None, f"'{host}' is not a valid host name."
+            # ZDX gets the host in its ASCII (punycode) form, as DNS resolves it.
+            s = u._replace(netloc=ascii_host + (f":{port}" if port is not None else "")).geturl()
+            host = ascii_host
         labels = host.rstrip(".").split(".")
         if len(host) > 253 or len(labels) < 2 or not all(_LABEL_RE.match(x) for x in labels):
             return None, f"'{host}' is not a valid host name."
+        if re.fullmatch(r"\d+|0x[0-9a-f]*", labels[-1]):
+            # A last label that is a number makes the whole name an IPv4 address to a browser (0x7f.1 is 127.0.0.1).
+            return None, f"'{host}' is not a valid host name (it ends in a number; write an IP address as a.b.c.d)."
+        if labels[-1] == "localhost":
+            return None, f"{host} is the device itself, not the address of an app a device can be probed against."
     if port is not None and not 0 < port < 65536:
         return None, "the URL's port is out of range."
     return s, None
+
+
+def _unprobeable_ip(ip: Any) -> str:
+    """Why an IP address names no app a probe can measure ("" when it can):
+    loopback, link-local (also the cloud metadata address 169.254.169.254),
+    unspecified, multicast or reserved. Private (RFC 1918, ULA) addresses
+    are allowed: an internal app is a normal ZDX target, and the probe runs
+    on the devices, never from this app."""
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    if ip.is_loopback:
+        return "a loopback address"
+    if ip.is_link_local:
+        return "a link-local address (such as a cloud metadata address)"
+    if ip.is_unspecified:
+        return "the unspecified address"
+    if ip.is_multicast:
+        return "a multicast address"
+    if ip.is_reserved:
+        return "a reserved address"
+    return ""
 
 
 def _clean_setup(spec: Dict[str, Any]) -> Dict[str, Any]:
@@ -1066,15 +1111,25 @@ def _app_exists(api: ZdxApi, *, name: str = "", provider: str = "") -> Tuple[Opt
     return False, None
 
 
-def _rollback(run: Any, app_id: Any, name: str, made: List[Tuple[str, Any, str]]) -> Dict[str, Any]:
+def _rollback(run: Any, app_id: Any, name: str, made: List[Tuple[str, Any, str]], sent: Sequence[Tuple[str, str]] = ()) -> Dict[str, Any]:
     """Remove what this run created for a custom app whose setup failed
-    half way: the CloudPath probe, the Web probe, then the app."""
+    half way: the CloudPath probe, the Web probe, then the app. `sent` are
+    the (kind, name) of probes ZDX accepted without answering an id: they
+    are looked up on the app by name, so they are removed too."""
     api = api_for(run.client)
     res = {"app": name, "removed": [], "left": []}
     if ops.stop_reason():
         # The run stopped (a refusal no later write gets past): nothing more is sent, so the app is reported, not removed.
         res["left"].append(f"'{name}' (id {app_id}) was not removed: {ops.stop_reason()}")
+        run.log(f"NOT removed: {res['left'][0]}. Undo, or the ZDX portal, removes it.")
         return res
+    made = [m for m in made if m[1] is not None]
+    if sent:
+        mons, _err = api.app_monitors(app_id)
+        known = {str(m[1]) for m in made}
+        for m in (norm_probe(x) for x in mons or []):
+            if m["id"] is not None and str(m["id"]) not in known and (m["kind"], m["name"]) in set(sent):
+                made.append((m["kind"], m["id"], m["name"]))
     for kind, pid, pname in sorted(made, key=lambda m: 0 if m[0] == "cloudpath" else 1):
         o = ops.delete(api, {"kind": "zdx_probe", "id": pid, "parent_id": app_id, "name": pname}, log=run.log)
         (res["removed"] if o.ok else res["left"]).append(pname if o.ok else f"{pname} (id {pid}): {o.error}")
@@ -1114,10 +1169,12 @@ def _h_custom_app(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> N
     made: List[Tuple[str, Any, str]] = []
     rest = [u for u in (web_u, path_u, on_u) if u is not None]
 
+    sent: List[Tuple[str, str]] = []
+
     def give_up(failed: Dict[str, Any], o: Any, verb: str) -> None:
         _ok(run, [failed], o, verb)
         run.mark([u for u in rest if u["status"] == "change"], "skipped", "not attempted: an earlier step for this app failed")
-        rb = _rollback(run, app_id, t["name"], made)
+        rb = _rollback(run, app_id, t["name"], made, sent)
         if not rb["left"]:
             for u in units:
                 if u["status"] == "applied":
@@ -1129,6 +1186,8 @@ def _h_custom_app(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> N
         wb = _fill(run, t["web_body"], uc)
         o = ops.create(api, "zdx_probe", wb, parent_id=app_id, name=wb["name"], log=run.log)
         if not o.ok or o.id is None:
+            if o.ok:
+                sent.append(("web", wb["name"]))
             return give_up(web_u, o if not o.ok else ops.Outcome(False, error="ZDX accepted the Web probe but returned no id"), "create")
         uc["web"] = o.id
         made.append(("web", o.id, wb["name"]))
@@ -1137,8 +1196,10 @@ def _h_custom_app(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> N
     if path_u is not None and t.get("cloudpath_body"):
         pb = _fill(run, t["cloudpath_body"], uc)
         o = ops.create(api, "zdx_probe", pb, parent_id=app_id, name=pb["name"], log=run.log)
-        if not o.ok:
-            return give_up(path_u, o, "create")
+        if not o.ok or o.id is None:
+            if o.ok:
+                sent.append(("cloudpath", pb["name"]))
+            return give_up(path_u, o if not o.ok else ops.Outcome(False, error="ZDX accepted the CloudPath probe but returned no id"), "create")
         made.append(("cloudpath", o.id, pb["name"]))
         path_u["object"]["probe"] = o.id
         run.outcome([path_u], o, "create")

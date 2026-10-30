@@ -272,22 +272,40 @@ def is_prerelease(v: str) -> bool:
     return bool(re.search(r"[a-zA-Z]", v))
 
 
+# A release version as PyPI spells it (PEP 440 public and local versions).
+# It becomes a URL path segment and a folder name, so nothing else is used:
+# no slash, no "..", no drive or space can come from the index's answer.
+_VERSION_RE = re.compile(r"[0-9][0-9A-Za-z]*(?:[.+!_-][0-9A-Za-z]+)*")
+# What an unpacked wheel may hold (the 1.x SDK is about 16 MB in some 600 files).
+MAX_WHEEL_MEMBERS = 20000
+MAX_WHEEL_UNPACKED = 512 * 1024 * 1024
+
+
+def valid_version(v: Any) -> bool:
+    return isinstance(v, str) and len(v) <= 64 and bool(_VERSION_RE.fullmatch(v))
+
+
 def pypi_releases(fetch: Fetch) -> Tuple[Optional[Dict[str, Any]], str]:
     text, err = fetch(f"https://pypi.org/pypi/{SDK_PACKAGE}/json")
     if not text:
         return None, err or "no answer"
     try:
         d = json.loads(text)
-    except ValueError as e:
-        return None, f"PyPI answered something that is not JSON: {e}"
-    rel = d.get("releases") or {}
+    except (ValueError, RecursionError) as e:
+        return None, f"PyPI answered something that is not JSON: {str(e)[:120]}"
+    rel = d.get("releases") if isinstance(d, dict) else None
+    if not isinstance(rel, dict):
+        return None, "PyPI's answer has no release list"
+    # Only well-formed versions with a list of files: anything else in the
+    # answer is ignored, never used as a path or a URL.
+    rel = {v: [f for f in files if isinstance(f, dict)] for v, files in rel.items() if valid_version(v) and isinstance(files, list)}
     versions = sorted((v for v in rel if rel[v]), key=_version_key)
     stable = [v for v in versions if not is_prerelease(v)]
     pre = [v for v in versions if is_prerelease(v)]
 
     def uploaded(v: str) -> Optional[str]:
         files = rel.get(v) or []
-        return max((f.get("upload_time_iso_8601") or f.get("upload_time") or "" for f in files), default=None) or None
+        return max((str(f.get("upload_time_iso_8601") or f.get("upload_time") or "") for f in files), default=None) or None
     return {"latest": stable[-1] if stable else None, "latest_uploaded": uploaded(stable[-1]) if stable else None,
             "latest_prerelease": pre[-1] if pre else None, "prerelease_uploaded": uploaded(pre[-1]) if pre else None,
             "newest_on_index": versions[-1] if versions else None}, ""
@@ -303,28 +321,38 @@ def download_sdk(version: str, dest: str, get: Optional[Callable[[str], Tuple[Op
     must work there as it does on a local install."""
     import hashlib
     import io
+    if not valid_version(version):
+        return None, f"{str(version)[:40]!r} is not a release version; nothing was downloaded"
     if get is None:
         from zscaler_update_check import _safe_get as get
     body, status, err = get(f"https://pypi.org/pypi/{SDK_PACKAGE}/{version}/json")
     if err or status != 200 or not body:
         return None, err or f"PyPI answered HTTP {status} for {SDK_PACKAGE} {version}"
     try:
-        files = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body).get("urls") or []
-    except ValueError as e:
-        return None, f"PyPI answered something that is not JSON: {e}"
+        doc = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body)
+    except (ValueError, RecursionError) as e:
+        return None, f"PyPI answered something that is not JSON: {str(e)[:120]}"
+    files = doc.get("urls") if isinstance(doc, dict) else None
+    files = [f for f in files if isinstance(f, dict)] if isinstance(files, list) else []
     wheels = [f for f in files if f.get("packagetype") == "bdist_wheel" and str(f.get("filename", "")).endswith(".whl")]
     if not wheels:
         return None, f"PyPI lists no wheel for {SDK_PACKAGE} {version}"
     whl = wheels[0]
-    data, status, err = get(whl.get("url") or "")
+    data, status, err = get(str(whl.get("url") or ""))
     if err or status != 200 or not data:
         return None, err or f"the wheel download answered HTTP {status}"
     want = (whl.get("digests") or {}).get("sha256")
     if not want or hashlib.sha256(data).hexdigest() != want:
         return None, f"{whl.get('filename')}: SHA-256 does not match what PyPI publishes; not unpacked"
     out_dir = os.path.join(dest, version)
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        z.extractall(out_dir)
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            members = z.infolist()
+            if len(members) > MAX_WHEEL_MEMBERS or sum(m.file_size for m in members) > MAX_WHEEL_UNPACKED:
+                return None, f"{whl.get('filename')}: larger unpacked than any SDK release ({len(members)} files); not unpacked"
+            z.extractall(out_dir)   # zipfile drops absolute paths and ".." from member names
+    except (zipfile.BadZipFile, OSError, ValueError, EOFError, RuntimeError) as e:
+        return None, f"{whl.get('filename')}: could not be unpacked ({type(e).__name__})"
     return out_dir, ""
 
 
@@ -466,9 +494,14 @@ def registry_latest(fetch: Fetch) -> Tuple[Optional[Dict[str, Any]], str]:
         return None, err or "no answer"
     try:
         d = json.loads(text)
-    except ValueError as e:
-        return None, f"the registry answered something that is not JSON: {e}"
-    return {"latest": d.get("version"), "published": d.get("published_at"), "versions": len(d.get("versions") or [])}, ""
+    except (ValueError, RecursionError) as e:
+        return None, f"the registry answered something that is not JSON: {str(e)[:120]}"
+    if not isinstance(d, dict):
+        return None, "the registry's answer is not a provider description"
+    latest = d.get("version")
+    versions = d.get("versions")
+    return {"latest": latest if valid_version(latest) else None, "published": str(d.get("published_at") or "") or None,
+            "versions": len(versions) if isinstance(versions, list) else 0}, ""
 
 
 def emitted_attributes(tf_dir: str = TERRAFORM_DIR) -> Dict[str, Set[str]]:

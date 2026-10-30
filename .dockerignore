@@ -33,6 +33,7 @@ launcher.log
 server.pid
 proposals.json
 proposals.json.tmp
+proposals.json.lock
 workspace_notes.json
 workspace_notes.json.lock
 povs/

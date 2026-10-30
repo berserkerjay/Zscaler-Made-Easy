@@ -651,12 +651,13 @@ def workbook(snap: Dict[str, Any], analysis: Dict[str, Any], *, tenant_label: st
     ws.append(["Note", "Read-only: Zscaler Made Easy read the ZPA configuration once and wrote nothing. A value of \"unknown\" means the list was not read; it is not zero."])
     for k in kpis(m):
         ws.append([k["text"], "unknown" if k["value"] is None else k["value"]])
+    tabs = tables(m)
     for key in TABLE_ORDER:
         title, cols = TABLES[key]
         sh = wb.add_sheet(title, columns=[l for _, l in cols] + ["Status", "Flags", "Findings"])
-        rows = tables(m)[key]["rows"]
+        rows = tabs[key]["rows"]
         if not rows:
-            sh.append([tables(m)[key]["empty"]])
+            sh.append([tabs[key]["empty"]])
         for r in rows:
             sh.append([r.get(k) for k, _ in cols] + [STATUS_WORDS.get(r["_status"], r["_status"]),
                                                      [FLAG_LABELS.get(f, f) for f in r["_flags"]], r["_issues"]])

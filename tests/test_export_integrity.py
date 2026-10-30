@@ -424,3 +424,48 @@ def test_a_pipe_in_a_tenant_name_is_escaped_exactly_once_in_markdown(writer):
     md = writer("Allow | Finance")
     # Assert
     assert "Allow \\| Finance" in md and "\\\\|" not in md
+
+
+# ── Wave 6 UI check: the Word report names the organisation ──────────────
+
+@pytest.mark.parametrize("meta,shown", [
+    ({"org": "Larkspur Freight"}, "Larkspur Freight"),                        # what the assessment page and Simple mode send
+    ({"org_name": "Larkspur Freight"}, "Larkspur Freight"),                   # what the command line sends
+    ({"org": "Other", "org_name": "Larkspur Freight"}, "Larkspur Freight"),   # the explicit setting wins
+    ({}, "Unknown"),                                                          # boundary: nothing named
+])
+def test_the_word_report_cover_names_the_organisation(meta, shown):
+    """WCAG 2.2 SC 2.4.2, 3.3.2 · CWE-684: the Word report from the assessment page shows its organisation on the cover and in the summary (it said "Unknown" and "the organization")."""
+    from fastapi.testclient import TestClient
+    import docx
+    import dlp_api_server as srv
+    # Arrange
+    body = {"checks": [{"id": "dlp_1", "sec": "DLP", "section": "DLP", "label": "Rule", "status": "FAIL", "detail": "d", "severity": "high"}],
+            "metadata": dict(meta, assessor="Synthetic Assessor")}
+    # Act
+    r = TestClient(srv.app).post("/api/report/docx", json=body)
+    # Assert
+    assert r.status_code == 200, r.text[:300]
+    doc = docx.Document(io.BytesIO(r.content))
+    cover = {row.cells[0].text: row.cells[1].text for row in doc.tables[0].rows}
+    assert cover["Organization"] == shown
+    summary = next(p.text for p in doc.paragraphs if p.text.startswith("The assessment of the Zscaler platform"))
+    assert (shown in summary) == (shown != "Unknown")
+
+
+def test_the_word_report_headings_use_sentence_case(tmp_path):
+    """WCAG 2.2 SC 3.2.4 (consistent identification) · interface guide: every fixed heading and cover label of the Word report is in sentence case (they were Title Case)."""
+    import docx
+    from test_accessibility import _title_case_words
+    # Arrange
+    checks = [{"id": "dlp_1", "sec": "1 - DLP", "section": "1 - DLP", "label": "Rule", "status": "FAIL", "detail": "d", "severity": "high"},
+              {"id": "dlp_2", "sec": "1 - DLP", "section": "1 - DLP", "label": "Rule two", "status": "REVIEW", "detail": "d", "severity": "low"}]
+    out = tmp_path / "r.docx"
+    # Act
+    report_docx.generate_report(checks, {"org": "Synthetic Org", "assessor": "Synthetic Assessor"}, str(out))
+    # Assert
+    doc = docx.Document(str(out))
+    heads = [p.text for p in doc.paragraphs if p.style.name.startswith(("Heading", "Title")) and not p.text.startswith("1 - ")]
+    labels = [row.cells[0].text for row in doc.tables[0].rows]
+    assert len(heads) >= 6, heads
+    assert [h for h in heads + labels if _title_case_words(h)] == []

@@ -30,7 +30,7 @@ def normalize_input(raw):
     out = {"channel": channel, "network": network, "platform": platform}
     for key, limit in (("destination", 2048), ("operation", 80), ("file_type", 120), ("scenario_id", 100)):
         value = raw.get(key) or ""
-        if not isinstance(value, str) or len(value) > limit or any(ord(c) < 32 for c in value):
+        if not isinstance(value, str) or len(value) > limit or any(ord(c) < 32 or 127 <= ord(c) < 160 for c in value):  # C0, DEL, C1
             raise ValueError("Invalid " + key)
         out[key] = value.strip()
     corpus = raw.get("corpus") or ""

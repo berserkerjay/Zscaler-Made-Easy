@@ -41,7 +41,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from zcc_evaluation import (ZCC_SUPPORTED_REF, _truthy, _v, device_platform, flatten_profile, version_tuple,
+from zcc_evaluation import (ZCC_SUPPORTED_REF, _truthy, _v, code_text, device_platform, field_index, flatten_profile, version_tuple,
                             zcc_unsupported)
 
 # ── thresholds (each is part of a definition the page shows) ──────────
@@ -270,10 +270,11 @@ def registration(raw: Any) -> str:
     unknown. Numbers follow the SDK's registration filter codes
     (utils.zcc_param_map["reg_type"]: 1 registered, 3 removal pending,
     4 unregistered, 5 removed, 6 quarantined)."""
-    s = str(raw if raw is not None else "").strip().lower().replace("_", " ").replace("-", " ")
+    s = code_text(raw).replace("_", " ").replace("-", " ")
     codes = {"1": "registered", "3": "removal_pending", "4": "unregistered", "5": "removed", "6": "quarantined"}
     if s in codes:
         return codes[s]
+    s = s.replace(" ", "")   # "Removal Pending", "UN-REGISTERED", "De registered" read as one word
     if "quarantin" in s:
         return "quarantined"
     if "pending" in s:
@@ -301,7 +302,7 @@ def service_state(raw: Any) -> str:
     cell. The CSV's wording is not documented in the SDK: unrecognised text
     is "unknown" (counted apart, never as healthy) and the page lists every
     value seen with its reading."""
-    s = re.sub(r"\s+", " ", str(raw if raw is not None else "")).strip().lower()
+    s = re.sub(r"\s+", " ", code_text(raw))
     if _NOT_APPLICABLE.match(s):
         return "not_applicable"
     if _ACTIVE.match(s):
@@ -505,6 +506,7 @@ def normalize_devices(raw: List[Dict[str, Any]], service_rows: List[Dict[str, An
     by_user_host: Dict[Tuple[str, str], Dict[str, Any]] = {}
     by_user: Dict[str, List[Dict[str, Any]]] = {}
     devices_of: Dict[str, int] = {}
+    raw = [field_index(d) for d in raw]
     for d in raw:
         u = str(_v(d, "user", "userName", "owner", default="") or "").strip().lower()
         devices_of[u] = devices_of.get(u, 0) + 1
@@ -705,6 +707,10 @@ def is_secret_key(key: Any) -> bool:
 _PRIVATE_CIDR = re.compile(r"^(10\.0\.0\.0/8|172\.16\.0\.0/12|192\.168\.0\.0/16|100\.64\.0\.0/10|169\.254\.0\.0/16|127\.0\.0\.0/8|224\.0\.0\.0/4|fc00::/7|fe80::/10)$", re.I)
 
 
+def _mask_value(v: Any) -> str:
+    return v if v in ("(set)", "(not set)") else "(set)" if str(v if v is not None else "").strip() else "(not set)"
+
+
 def mask_settings(obj: Any) -> Any:
     """A copy of a profile with every password, secret, OTP or token value
     replaced by "(set)" or "(not set)": the drift view shows whether it is
@@ -713,7 +719,9 @@ def mask_settings(obj: Any) -> Any:
         out = {}
         for k, v in obj.items():
             if is_secret_key(k) and not isinstance(v, (dict, list)):
-                out[k] = v if v in ("(set)", "(not set)") else "(set)" if str(v if v is not None else "").strip() else "(not set)"
+                out[k] = _mask_value(v)
+            elif is_secret_key(k) and isinstance(v, list):
+                out[k] = [mask_settings(x) if isinstance(x, (dict, list)) else _mask_value(x) for x in v]
             else:
                 out[k] = mask_settings(v)
         return out

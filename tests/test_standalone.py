@@ -100,6 +100,54 @@ def test_the_launcher_starts_read_only_and_outside_container_mode(tmp_path, monk
     assert security.writes_enabled() is False
 
 
+@pytest.mark.parametrize("where", ["environment", "settings file"])
+def test_write_mode_is_off_at_every_start_whatever_the_environment_or_settings_file_say(tmp_path, monkeypatch, where):
+    """ASVS V1.14.1 · ASVS V14.1.3 · CWE-1188 · CWE-15 · A05:2021 · SSDF PW.9.1: ENABLE_WRITE_ACTIONS, from the shell or a local_settings.env any program of this user can write, does not start the standalone edition with writes on."""
+    # Arrange
+    import security
+    env = {}
+    if where == "environment":
+        env["ENABLE_WRITE_ACTIONS"] = security.WRITE_CONFIRM_PHRASE
+    else:
+        (tmp_path / "local_settings.env").write_text(f"ENABLE_WRITE_ACTIONS={security.WRITE_CONFIRM_PHRASE}\n", encoding="utf-8")
+    monkeypatch.setattr(security, "_write_override", None)
+    monkeypatch.delenv("ENABLE_WRITE_ACTIONS", raising=False)
+    # Act
+    notes = sm.configure(env, str(tmp_path))
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    # Assert
+    assert "ENABLE_WRITE_ACTIONS" not in env and security.writes_enabled() is False
+    assert any("ENABLE_WRITE_ACTIONS is ignored" in n for n in notes)
+
+
+@pytest.mark.parametrize("where", ["environment", "settings file"])
+def test_a_fixed_ui_token_is_ignored_so_every_start_mints_a_new_one(tmp_path, monkeypatch, where):
+    """ASVS V3.3.1 · ASVS V2.10.2 · CWE-798 · CWE-1391 · SSDF PW.9.1: ZSCALER_UI_TOKEN (a never-rotated, possibly weak token) cannot pin the standalone edition's UI token."""
+    # Arrange
+    import security
+    env = {}
+    if where == "environment":
+        env["ZSCALER_UI_TOKEN"] = "a"
+    else:
+        (tmp_path / "local_settings.env").write_text("ZSCALER_UI_TOKEN=a\n", encoding="utf-8")
+    # Act
+    notes = sm.configure(env, str(tmp_path))
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(security, "_ui_token", None)
+    # Assert
+    assert "ZSCALER_UI_TOKEN" not in env and any("ZSCALER_UI_TOKEN is ignored" in n for n in notes)
+    assert security.ui_token() != "a" and len(security.ui_token()) >= 32
+    monkeypatch.setattr(security, "_ui_token", None)
+
+
+def test_the_launcher_says_nothing_when_no_setting_needed_ignoring(tmp_path):
+    """CWE-1188 · SSDF PW.9.1: boundary: with nothing to ignore there is no notice (an empty token setting counts as unset)."""
+    env = {"ZSCALER_UI_TOKEN": "  "}
+    assert sm.configure(env, str(tmp_path)) == [] and "ZSCALER_UI_TOKEN" not in env
+
+
 # Every store the app writes, and the function that says where it is.
 STORES = [
     ("audit", "path"), ("deployments", "store_path"), ("tenant_profiles", "store_path"), ("proposals", "store_path"),
@@ -326,6 +374,7 @@ def test_the_write_mode_hint_fits_the_standalone_edition(frozen):
     import security
     hint = security.write_enable_hint()
     assert "switch in the app" in hint and "start.sh" not in hint and ".bat" not in hint
+    assert "ignores ENABLE_WRITE_ACTIONS" in hint, "the hint must not offer a setting the edition ignores"
 
 
 # ── What the build ships ───────────────────────────────────────────────
@@ -413,9 +462,10 @@ def test_the_smoke_test_reads_the_line_the_server_prints():
 
 
 def test_the_smoke_test_runs_with_the_loosening_settings_set_and_its_own_home(tmp_path):
-    """SSDF PW.8.2 · CWE-1327 · CWE-306: the binary is started with ZSCALER_UI_AUTH=0 and ZSCALER_BIND_HOST=0.0.0.0 to prove it ignores both."""
+    """SSDF PW.8.2 · CWE-1327 · CWE-306 · CWE-1188: the binary is started with ZSCALER_UI_AUTH=0, ZSCALER_BIND_HOST=0.0.0.0, ENABLE_WRITE_ACTIONS and a fixed ZSCALER_UI_TOKEN to prove it ignores all four."""
     env, data = smoke.isolated_env(str(tmp_path))
     assert env["ZSCALER_UI_AUTH"] == "0" and env["ZSCALER_BIND_HOST"] == "0.0.0.0" and env["ZSCALER_OPEN_BROWSER"] == "0"
+    assert env["ENABLE_WRITE_ACTIONS"] == "YES_I_UNDERSTAND" and env["ZSCALER_UI_TOKEN"], "writes on and a fixed token must be ignored too"
     assert data.startswith(str(tmp_path)) and not any(k.startswith("DLP_CHECK_") for k in env)
 
 

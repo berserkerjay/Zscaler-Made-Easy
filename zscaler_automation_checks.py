@@ -29,6 +29,7 @@ project the check supports. All read-only. No writes.
 """
 
 import re
+from zscaler_full_checks import guard_registry
 from dlp_assessment_full_auto import R, _ls
 
 
@@ -45,7 +46,7 @@ def auto_sdk_1(cl):
     """OneAPI auth is working (required by every Zscaler SDK)"""
     # If we got this far, auth succeeded — surface as explicit PASS so
     # the automation section always has at least one positive data point.
-    if cl.token and cl.base:
+    if getattr(cl, "token", None) and getattr(cl, "base", None):
         return R(R.PASS,
                  f"OneAPI authentication successful against {cl.base}. "
                  f"Compatible with zscaler-sdk-python/go/java/ruby "
@@ -58,7 +59,7 @@ def auto_sdk_1(cl):
 
 def auto_sdk_2(cl):
     """Token TTL ≥ 30 minutes (SDK token cache assumption)"""
-    if not cl.exp or not cl.token:
+    if not getattr(cl, "exp", None) or not getattr(cl, "token", None):
         return R(R.INFO, "Token expiry not observable on this client.")
     import time
     ttl = max(0, int(cl.exp - time.time()))
@@ -471,3 +472,4 @@ AUTOMATION_REG = [
     ("AUTO-IAC-02", "Automation — IaC Hygiene",   "Rule labels available for IaC tagging",         auto_iac_2),
     ("AUTO-IAC-03", "Automation — IaC Hygiene",   "Sandbox API reachable (IaC dry-runs)",          auto_iac_3),
 ]
+AUTOMATION_REG = guard_registry(AUTOMATION_REG)   # a refused read (HTTP 401/403) is "Not permitted", never judged
