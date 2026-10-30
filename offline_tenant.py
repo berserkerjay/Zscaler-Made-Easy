@@ -247,7 +247,7 @@ class OfflineStore:
         if items is None:
             return None, None, -1
         for i, x in enumerate(items):
-            if isinstance(x, dict) and str(x.get("id", x.get("tenantId", ""))) == last:
+            if isinstance(x, dict) and str(x.get("id", x.get("instanceId", x.get("tenantId", "")))) == last:   # instanceId: cloud app instances
                 return x, items, i
         return None, items, -1
 
@@ -307,6 +307,8 @@ class OfflineStore:
                 ids = [int(x.get("id")) for x in items if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
                 new_id = max(ids + [90000]) + 1
                 obj["id"] = str(new_id) if path.startswith("/zpa/") else new_id
+                if path.endswith("/cloudApplicationInstances"):
+                    obj["instanceId"] = new_id      # a cloud app instance's id is instanceId (zia/models/cloud_app_instances.py)
                 items.append(obj)
                 self.writes += 1
                 return 200, copy.deepcopy(obj)

@@ -11,8 +11,8 @@ Operation types (`spec["type"]`):
 
   rule_state      enable or disable up to MAX_TARGETS ZIA rules (URL
                   filtering, SSL inspection, Cloud Firewall, Cloud App
-                  Control, File Type Control and the four DLP channels);
-                  one field (`state`) per operation.
+                  Control, File Type Control, the four DLP channels, DNS
+                  Control and IPS); one field (`state`) per operation.
   reorder         put one policy's rules in a desired order with the
                   fewest moves (the rules outside a longest increasing
                   subsequence move; the others keep their place). Locked
@@ -216,6 +216,12 @@ POLICIES: Dict[str, Dict[str, Any]] = {
     "endpoint_dlp": {"label": "Endpoint DLP", "channel": pc.ENDPOINT, "ordered": True},
     "email_dlp": {"label": "Outbound Email DLP", "channel": pc.EMAIL, "ordered": True},
     "saas_dlp": {"label": "SaaS Security API DLP", "channel": pc.SAAS, "ordered": False},
+    # DNS Control and IPS (Cloud Firewall) rules: ZIA platform settings, in
+    # scope when ZIA platform is ticked (zscaler-sdk-python 1.11.3
+    # zia/cloud_firewall_dns.py and zia/cloud_firewall_ips.py: list_rules,
+    # get_rule, update_rule; models with state, order and rank).
+    "dns_control": {"label": "DNS Control", "channel": "dns", "ordered": True, "platform": True},
+    "firewall_ips": {"label": "IPS (Cloud Firewall)", "channel": "ips", "ordered": True, "platform": True},
 }
 # Rules naming URL categories: the policies read for a URL category change's impact.
 CATEGORY_POLICIES = ("url_filtering", "ssl_inspection", "web_dlp", "file_type_control", "firewall")
@@ -253,8 +259,12 @@ def scope_for(scopes: Any, channels: Any) -> Dict[str, Any]:
     sr = shadow_rules.scope_for(scopes, channels)
     ps = data_flow.path_scope(scopes, channels)
     read, nis = [], {}
+    given = {str(s) for s in (scopes or [])}
     for key in POLICIES:
-        if key == "file_type_control":
+        if POLICIES[key].get("platform"):
+            ok = "zia_extras" in given
+            why = f"Not in scope: ZIA platform is not ticked on the Scope page, so the {POLICIES[key]['label']} rules are not read or changed."
+        elif key == "file_type_control":
             ok = "ftc" in ps["read"]
             why = ps["not_in_scope"].get("ftc") or (ps.get("read_blocked") or {}).get("ftc")
         else:
@@ -264,7 +274,6 @@ def scope_for(scopes: Any, channels: Any) -> Dict[str, Any]:
             read.append(key)
         else:
             nis[key] = why or NOT_IN_SCOPE
-    given = {str(s) for s in (scopes or [])}
     zpa = "zpa" in given
     urls = "url_filtering" in read
     if not urls:
@@ -2179,7 +2188,10 @@ def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = Non
         for pol in scope["policies"]:
             _check_stop(cancel)
             say(f"Reading the {_label(pol)} rules…")
-            rows, err = read_rules(client.zia, pol, cancel=cancel)
+            try:
+                rows, err = read_rules(client.zia, pol, cancel=cancel)
+            except OperationError as e:   # this sign-in's SDK has no such service: say so, read the others
+                rows, err = [], str(e)
             if err:
                 out["errors"][pol] = err
                 say(f"{_label(pol)} rules could not be read: {err}")

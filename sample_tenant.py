@@ -205,6 +205,17 @@ FIREWALL_DNS_RULES = [{"id": 811, "order": 1, "rank": 7, "name": "Block DNS tunn
                        "applications": ["DNS_TUNNELS"]}]
 FIREWALL_IPS_RULES = [{"id": 821, "order": 1, "rank": 7, "name": "Default IPS rule", "state": "ENABLED", "action": "ALLOW",
                        "defaultRule": True, "threatCategories": []}]
+# Proxy chaining, forwarding and cloud app instances (the rule editor: ops_rule_editor, ops_zia_objects).
+FORWARDING_RULES = [{"id": 841, "order": 1, "rank": 7, "name": "Partner portal direct", "state": "ENABLED", "type": "FORWARDING",
+                     "forwardMethod": "DIRECT", "destAddresses": ["portal.harborline-logistics.example"]}]
+PROXIES = [{"id": 851, "name": "Harborline egress proxy", "type": "PROXYCHAIN", "address": "proxy.larkspur-freight.example", "port": 8080,
+            "insertXauHeader": False, "base64EncodeXauHeader": False, "description": "Partner egress"}]
+PROXY_GATEWAYS = [{"id": 861, "name": "Harborline gateway", "type": "PROXYCHAIN", "primaryProxy": {"id": 851, "name": "Harborline egress proxy"},
+                   "failClosed": True}]
+CLOUD_APP_INSTANCES = [{"instanceId": 871, "instanceName": "Larkspur SharePoint", "instanceType": "SHAREPOINTONLINE",
+                        "instanceIdentifiers": [{"instanceIdentifier": "larkspurfreight.sharepoint.com", "identifierType": "URL",
+                                                 "instanceIdentifierName": "larkspurfreight.sharepoint.com"}]}]
+TIME_WINDOWS = [{"id": 881, "name": "Work hours", "startTime": 480, "endTime": 1080, "dayOfWeek": ["MON", "TUE", "WED", "THU", "FRI"]}]
 NETWORK_SERVICES = [{"id": 41, "name": "QUIC", "type": "PREDEFINED", "destUdpPorts": [{"start": 443, "end": 443}]}]
 CAC_RULES = {
     "AI_ML": [{"id": 901, "order": 1, "rank": 7, "name": "GenAI: allow use, block uploads", "state": "ENABLED", "type": "AI_ML",
@@ -400,6 +411,8 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/firewallDnsRules": FIREWALL_DNS_RULES,
         f"{ZIA}/firewallIpsRules": FIREWALL_IPS_RULES,
         f"{ZIA}/networkServices": NETWORK_SERVICES,
+        f"{ZIA}/forwardingRules": FORWARDING_RULES, f"{ZIA}/proxies": PROXIES, f"{ZIA}/proxyGateways": PROXY_GATEWAYS,
+        f"{ZIA}/cloudApplicationInstances": CLOUD_APP_INSTANCES, f"{ZIA}/timeWindows": TIME_WINDOWS,
         f"{ZIA}/ipDestinationGroups": [], f"{ZIA}/ipSourceGroups": [],
         f"{ZIA}/fileTypeRules": FILE_TYPE_RULES,
         f"{ZIA}/pacFiles": PAC_FILES,

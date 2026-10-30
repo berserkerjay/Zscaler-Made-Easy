@@ -88,8 +88,8 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 134,
-            "accepted": 8,
+            "fixed": 139,
+            "accepted": 11,
             "records": [
               "c6-admin-ops",
               "c6-deploy",
@@ -97,7 +97,8 @@
               "c6-packs",
               "c6-update-heal",
               "review-backend",
-              "sbd-writes"
+              "sbd-writes",
+              "w7-rule-editor"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 587,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -455,22 +456,22 @@
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 339,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 48,
-        "accepted": 22
+        "fixed": 51,
+        "accepted": 25
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 317,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8691
   },
   "findings": [
     {
@@ -824,6 +825,54 @@
       "slug": "c6-zpa",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "RE-6",
+      "title": "The SDK cannot create or change a proxy gateway, a root certificate, or read an API client's own admin rank",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1059",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "Proxy chaining reports the gateway and certificate as portal steps; the placement warns when the neighbour rule is read-only (its rank may be above the client's)",
+      "slug": "w7-rule-editor",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "RE-7",
+      "title": "Some enumerations and limits are assumed, not in an SDK source: URL, DNS, File Type Control and Web DLP protocol names, Web DLP severity names, the 31-character name limit for forwarding and IPS rules, Caution for downloads only",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1059",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "Marked assumed in rule_editor.py; the tenant refuses what it does not take and the apply reports ZIA's answer",
+      "slug": "w7-rule-editor",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "RE-8",
+      "title": "Web DLP URL categories are not offered: the SDK sends them as id objects and whether ZIA takes category names there is not documented",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1059",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "An edit keeps them as the tenant has them; the form can add them once the id type is confirmed",
+      "slug": "w7-rule-editor",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
     },
     {
       "id": "UI-18",
@@ -8266,6 +8315,38 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "RE-1",
+      "title": "An edit's plan hash covered only the changed fields, so a change to another field of the same rule after the preview did not stop the apply (the preview sentence could describe a rule that no longer was)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-367",
+      "asvs": "V11.1.6",
+      "wcag": "",
+      "fix": "ops_rule_editor: the update group carries the whole rule as previewed, so any change to it moves the plan hash and nothing is written",
+      "test": "tests/test_rule_editor.py::test_a_tenant_change_after_the_preview_changes_the_plan_hash",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rule-editor",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "RE-2",
+      "title": "The Bulk changes rule picker stopped reading every policy when one rule type's SDK service was missing on the sign-in",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "wcag": "",
+      "fix": "admin_ops.read_objects: a missing service is that policy's read error; the others are still read",
+      "test": "tests/test_c6_admin_ops.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rule-editor",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
       "id": "REGRESSION-02",
       "title": "Log analyzer: a DIRECT condition written in a PAC helper function (isCorp(host)) was no longer listed as a bypass",
       "severity": "low",
@@ -9626,6 +9707,54 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "RE-3",
+      "title": "SDK 1.11.3: proxies.list_proxy_gateways returns None instead of a (result, response, error) tuple on an error",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-252",
+      "asvs": "",
+      "wcag": "",
+      "fix": "ops_zia_objects.read_gateways: None is the read error 'the proxy gateways could not be read'",
+      "test": "",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rule-editor",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "RE-4",
+      "title": "SDK 1.11.3: the DLPWebRules model has no time_windows although the add_rule docstring lists it; the SSL and firewall models differ on labels",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "",
+      "wcag": "",
+      "fix": "rule_editor: each form offers only fields its model keeps; the payload oracle test fails on any field a model drops",
+      "test": "tests/test_rule_editor.py::test_every_form_field_is_a_field_of_the_sdk_model",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rule-editor",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
+      "id": "RE-5",
+      "title": "The sample tenant could not find a cloud app instance by its instanceId, and a created one had none",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "",
+      "wcag": "",
+      "fix": "offline_tenant: an item is also found by instanceId and a created cloud app instance gets one",
+      "test": "",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-rule-editor",
+      "area": "secure_by_design",
+      "sub_area": "write_paths"
+    },
+    {
       "id": "REGRESSION-04",
       "title": "Known flaky test_tenant_pacing: the 429-hold test asserted 19 s left of a 20 s hold on the wall clock, so a 1 s scheduling stall under load failed it (reproduced by injecting a 1.2 s stall)",
       "severity": "info",
@@ -10634,6 +10763,42 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-rule-editor",
+      "area": "Bulk changes, Build new: the rule editor (create, edit, duplicate, delete one ZIA rule of ten types), DNS Control and IPS in Enable or disable rules, ZPA segment edits, cloud app instances and tenancy restriction profiles, proxy chaining (rule_editor.py, ops_rule_editor.py, ops_zia_objects.py)",
+      "title": "A free-form rule editor on the Bulk changes engine: forms from the SDK 1.11.3 models, validation, rank-aware placement, plain-language preview, conflict guard, read-back, stronger delete confirmation and exact Undo",
+      "standards": [
+        "ASVS V1.4.4",
+        "ASVS V2.8.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V5.3.3",
+        "ASVS V7.1.3",
+        "ASVS V7.2.1",
+        "ASVS V11.1.1",
+        "ASVS V11.1.6",
+        "CWE-20",
+        "CWE-79",
+        "CWE-284",
+        "CWE-285",
+        "CWE-306",
+        "CWE-362",
+        "CWE-367",
+        "CWE-639",
+        "CWE-694",
+        "CWE-778",
+        "CWE-840",
+        "CWE-841",
+        "CWE-1188",
+        "WCAG 2.2 SC 3.3.2",
+        "WCAG 2.2 SC 4.1.2",
+        "WCAG 2.2 SC 1.4.10"
+      ],
+      "checks": 14,
+      "findings": 8,
+      "tests_added": 89
     }
   ],
   "standards": {
@@ -10653,7 +10818,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",

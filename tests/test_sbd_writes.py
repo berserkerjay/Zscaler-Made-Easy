@@ -814,6 +814,13 @@ def _aiguard_policy_default():
     return p["status"] == "ready" and "Monitor" in p["title"]
 
 
+def _rule_edit_default():
+    import ops_rule_editor
+    n = ops_rule_editor.normalize({"type": "rule_edit", "action": "create", "policy": "url_filtering",
+                                   "fields": {"name": "QA", "action": "BLOCK", "url_categories": ["GAMBLING"]}})
+    return n["enabled"] is False
+
+
 # How each type that creates or changes enforcement keeps it off unless the
 # operator chose it; or why "off" does not apply. A new type must be listed.
 DEFAULT_OFF: Dict[str, Any] = {
@@ -834,6 +841,10 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zcc_profile_delete": "deletes profiles only; creates and enables nothing",
     "zdx_probe_delete": "deletes apps and probes (or turns them off) only",
     "zpa_prefix_delete": "deletes the prefixed objects only; creates and enables nothing",
+    "rule_edit": _rule_edit_default,
+    "zpa_segment_edit": "edits one existing segment; the operator picks enabled or not, and any change to an enabled segment needs the typed phrase",
+    "app_object_edit": "cloud app instances and tenancy profiles decide nothing until a Cloud App Control rule uses them",
+    "proxy_chain_edit": "a proxy forwards nothing until a gateway and a forwarding rule (created disabled) use it",
 }
 
 
