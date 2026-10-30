@@ -56,6 +56,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 import safe_files
+import store_crypto
 
 try:  # POSIX
     import fcntl  # type: ignore
@@ -613,8 +614,8 @@ def _read_file(path: str) -> Optional[Dict[str, Any]]:
         if os.path.getsize(path) > MAX_POV_BYTES * 2:
             return None
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
+            data = store_crypto.load_json(f)
+    except (OSError, ValueError, store_crypto.StoreLocked):
         return None
     return data if isinstance(data, dict) else None
 
@@ -626,7 +627,7 @@ def _write_file(path: str, data: Dict[str, Any]) -> None:
     with contextlib.suppress(Exception):   # a last-good copy for self_heal; never stops a write
         import self_heal
         self_heal.keep_last_good(path)
-    safe_files.write_private_atomic(path, text)
+    safe_files.write_private_atomic(path, store_crypto.seal_text(text))
 
 
 def _audit(action: str, label: str, by: str, **extra: Any) -> None:

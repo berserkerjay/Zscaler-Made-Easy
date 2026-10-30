@@ -182,6 +182,13 @@ app.add_middleware(OriginCheckMiddleware)
 import security as _security
 import audit as _audit
 app.add_middleware(_audit.AuditMiddleware, writes_enabled=writes_enabled)   # innermost: sees the final status of every write call
+# Team server mode (team_server.py, off by default): every route's access
+# rule (team_routes.py), the tenant profile and the stored records a request
+# names, checked against the signed-in person. Inside the UI gate, which
+# has turned the session cookie into the caller; outside the audit log,
+# which then records the tenant profile with each call.
+import team_server as _team
+app.add_middleware(_team.TeamAccessMiddleware, routes=lambda: app.router.routes)
 app.add_middleware(_security.UIAuthMiddleware)   # inside the headers layer: a 401 still carries the security headers
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -653,6 +660,9 @@ async def auth_status(request: Request):
     """Whether this server asks for a UI token, whether this browser has
     it, and whether sign-in is through SSO instead (then also who is
     signed in and whether they may change the tenant)."""
+    if _team.enabled():
+        import team_api
+        return team_api.status_fields(request)
     if not _sso.sso_enabled():
         return {"required": _security.ui_auth_enabled(), "unlocked": _security.ui_request_ok(request),
                 "token_file": _security.UI_TOKEN_FILE if _security.ui_auth_enabled() else None,
@@ -669,6 +679,8 @@ async def auth_unlock(req: UnlockRequest, request: Request):
     """Exchange the UI token for the cookie the page uses from then on.
     Refused when SSO is enabled: the cookie is only minted by a
     completed identity-provider login, never by a pasted token."""
+    if _team.enabled():
+        raise HTTPException(status_code=403, detail="This is a team server: sign in with your account (the Sign in page), not a pasted token.")
     if not _security.ui_auth_enabled():
         return {"ok": True, "required": False}
     if _sso.sso_enabled():
@@ -726,6 +738,23 @@ async def sso_callback(request: Request, code: str = "", state: str = "", error:
             "to add you to one of the groups in ZSCALER_SSO_ALLOWED_GROUPS"
             + ("" if has_groups else f", and to have the identity provider send the '{_html.escape(_sso.groups_claim())}' claim") + ".</p>",
             status_code=403)
+    if _team.enabled():
+        # A team server: the sign-in must belong to an account here (linked by
+        # subject, or matched once by a VERIFIED email); none, or one turned
+        # off, is refused. The account's role and grants decide what it may do.
+        member = _team.link_oidc(claims)
+        if member is None:
+            _audit.record("sso_login_refused", actor=who, email=claims.get("email"), subject=claims.get("sub"),
+                          reason="no active team server account for this identity-provider sign-in")
+            return HTMLResponse(f"<p>Sign-in refused: {_html.escape(who)} has no account on this team server (or it is turned off). "
+                                "Ask a team server administrator to add you, or to provision you through SCIM.</p>", status_code=403)
+        session_id = _team.start_session(member, via="oidc", previous_sid=request.cookies.get(_security.SSO_SESSION_COOKIE),
+                                         token_groups=_sso.claim_groups(claims))
+        resp = RedirectResponse("/", status_code=303)
+        _security.set_session_cookie(resp, request, session_id)
+        _security.clear_login_cookie(resp, request)
+        _audit.record("team_login", actor=member.get("username"), via="oidc", role=member.get("role"), subject=claims.get("sub"))
+        return resp
     session_id = _sso.create_session(claims)
     resp = RedirectResponse("/", status_code=303)
     _security.set_session_cookie(resp, request, session_id)
@@ -739,14 +768,20 @@ async def auth_logout(request: Request):
     """Sign out (SSO only): end this browser's session on the server and
     clear its cookie. Audited. Works even after the session has expired,
     so the cookie is always cleared."""
-    if not _sso.sso_enabled():
+    if not _sso.sso_enabled() and not _team.enabled():
         raise HTTPException(status_code=404, detail="Sign out is only used with SSO; this server uses the UI token.")
+    actor = _security.current_actor()
     ended = _sso.end_session(request.cookies.get(_security.SSO_SESSION_COOKIE))
-    _audit.record("sso_logout", actor=_security.current_actor() if ended else "not signed in",
+    _audit.record("team_logout" if _team.enabled() else "sso_logout", actor=actor if ended else "not signed in",
                   ended=bool(ended), client=request.client.host if request.client else "?")
-    resp = JSONResponse({"ok": True, "signed_out": bool(ended), "sso_login_url": "/api/auth/sso/login"})
+    resp = JSONResponse({"ok": True, "signed_out": bool(ended), "sso_login_url": "/login" if _team.enabled() else "/api/auth/sso/login"})
     _security.clear_session_cookie(resp, request)
     return resp
+
+
+import team_api as _team_api   # the team server's sign-in, administration and SCIM routes (404 unless team mode is on)
+_team_api.register(app)
+_team_api.register_resolvers()
 
 
 @app.get("/")
@@ -1327,6 +1362,8 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     if off is not None:
         return off
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
+    if _team.enabled():
+        _team_tenant_gate(req, creds)
     # A cloud the body did not send is the model's default ("production"),
     # not a typed value: the profile, environment or tenant_config.json
     # names the cloud, and the default applies only when none does.
@@ -1359,6 +1396,25 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     if not creds["cloud"] and default_cloud:
         creds["cloud"] = default_cloud
     return creds
+
+
+def _team_tenant_gate(req: Any, typed: Dict[str, str]) -> None:
+    """Team server: a tenant is reached only through a saved tenant profile
+    the person may use for this route's action (team_server), and nothing
+    typed beside it may name another tenant than the profile's (a typed
+    vanity domain, client id or admin login of another tenant is refused,
+    never used). 403 otherwise."""
+    pid = str(getattr(req, "profile_id", "") or "").strip()
+    _team.require_tenant_profile(pid)
+    if _team.context() is None:
+        return
+    import tenant_profiles
+    prof = tenant_profiles.get(pid, with_secret=False)
+    if not prof:
+        raise HTTPException(status_code=404, detail="No such tenant profile.")
+    if not _same_sign_in(typed, tenant_profiles.creds_from(prof)):
+        raise HTTPException(status_code=403, detail="The sign-in details sent name another tenant than the tenant profile; on a team server "
+                                                    "only the profile's own tenant is used.")
 
 
 def _assessor(req: Any) -> str:
@@ -2281,8 +2337,13 @@ async def change_queue_list(request: Request, tenant: str = "", status: str = ""
     and whether write mode is on."""
     import change_queue
     statuses = [s for s in (status or "").split(",") if s in change_queue.STATUSES] or None
-    items = change_queue.list_requests(tenant, statuses)
-    return {"items": items, "counts": change_queue.counts(tenant), "settings": change_queue.settings(),
+    items = _team.visible(change_queue.list_requests(tenant, statuses))
+    counts = change_queue.counts(tenant)
+    if _team.enabled():
+        counts = {}
+        for r in _team.visible(change_queue.list_requests(tenant)):
+            counts[r.get("status")] = counts.get(r.get("status"), 0) + 1
+    return {"items": items, "counts": counts, "settings": change_queue.settings(),
             "viewer": {"actor": _cq_by(request), "may_write": _security.may_write(), "sso": _sso.sso_enabled()},
             "writes_enabled": writes_enabled(), "statuses": list(change_queue.STATUSES)}
 
@@ -2293,7 +2354,7 @@ async def change_queue_export(tenant: str = "", format: str = "markdown"):
     items, approvals, comments, history; change_queue.rows is the shared row
     shape). `tenant` narrows every format to that tenant's requests."""
     import change_queue
-    items = change_queue.list_requests(tenant)
+    items = _team.visible(change_queue.list_requests(tenant))
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if format == "xlsx":
         import report_exports
@@ -3710,7 +3771,14 @@ async def tenant_profiles_list():
     """Saved tenant profiles (secrets never returned; has_secret says
     whether one is remembered) with each tenant's last assessment."""
     import tenant_profiles
-    return {"profiles": tenant_profiles.list_profiles(), "store": os.path.basename(tenant_profiles.store_path()),
+    profiles = tenant_profiles.list_profiles()
+    if _team.enabled() and not _team.is_admin():
+        # A team server lists only the profiles this person may read.
+        allowed = _team.profiles_with(_team.current_user(), "read", _team.current_token_groups())
+        if allowed is not None:
+            profiles = [p for p in profiles if p.get("id") in allowed]
+        return {"profiles": profiles, "store": os.path.basename(tenant_profiles.store_path()), "unfiled_snapshots": []}
+    return {"profiles": profiles, "store": os.path.basename(tenant_profiles.store_path()),
             "unfiled_snapshots": tenant_profiles.list_snapshots("")}
 
 
@@ -3896,6 +3964,7 @@ async def snapshot_open_file(req: SnapshotFileRequest, request: Request):
         st = await asyncio.to_thread(_offline.open_document, req.content)
     except _offline.OfflineError as e:
         raise HTTPException(status_code=e.status, detail=str(e))
+    _team.bind(st.id)   # team mode: a file someone opened is theirs (Compare names it by this id)
     return _offline_answer(request, st.describe(), st.id)
 
 
@@ -4603,7 +4672,7 @@ async def dlp_deployments_list(tenant_label: Optional[str] = None):
     """Deployments made from this app (newest first): what was created,
     in which tenant, and whether it was undone."""
     import deployments
-    return {"deployments": deployments.list_all(tenant_label), "writes_enabled": writes_enabled()}
+    return {"deployments": _team.visible(deployments.list_all(tenant_label)), "writes_enabled": writes_enabled()}
 
 
 @app.post("/api/deployments/{dep_id}/undo")
@@ -4872,6 +4941,7 @@ def _remember_plan(report: Dict[str, Any], assessor: str = "") -> str:
     rep = copy.deepcopy(report)
     rep.update(report_id=rid, assessor=assessor or "", generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
     _PLANS[rid] = rep
+    _team.bind(rid)
     while len(_PLANS) > _PLANS_MAX:
         _PLANS.pop(next(iter(_PLANS)))
     return rid
@@ -5149,7 +5219,16 @@ async def exports_plans():
     the Policy exports page's plan PDF / Excel buttons. No tenant read."""
     return {"plans": [{"report_id": rid, "tenant_label": p.get("tenant_label") or "", "generated_at": p.get("generated_at") or "",
                        "packs": [str(x.get("name") or x.get("id")) for x in p.get("packs") or [] if isinstance(x, dict)],
-                       "status": p.get("status") or ""} for rid, p in reversed(list(_PLANS.items()))]}
+                       "status": p.get("status") or ""} for rid, p in reversed(list(_PLANS.items())) if _team_may_reach(rid)]}
+
+
+def _team_may_reach(resource_id: str) -> bool:
+    """Outside team mode always; in it, the person made it, may read its
+    tenant profile, or is an administrator."""
+    if not _team.enabled() or _team.context() is None or _team.is_admin():
+        return True
+    u = _team.current_user()
+    return bool(u) and _team._may_reach("report_id", resource_id, "read", u, _team.current_token_groups(), {})
 
 
 # ── Configuration exports: locations and Client Connector profiles ──
@@ -5536,7 +5615,7 @@ async def operations_apply(req: OperationRequest, request: Request):
 async def operations_list(tenant_label: Optional[str] = None):
     """Bulk changes applied from this app (newest first), with Undo where offered."""
     import deployments
-    return {"operations": deployments.list_operations(tenant_label), "writes_enabled": writes_enabled()}
+    return {"operations": _team.visible(deployments.list_operations(tenant_label)), "writes_enabled": writes_enabled()}
 
 
 @app.get("/api/operations/plugins")
@@ -5879,6 +5958,8 @@ async def workspace_notes_get(tenant: str = "", profile_id: str = "", vanity_dom
     every tenant, for the To-do list. Read-only, local."""
     import workspace_notes as wn
     if all_tenants:
+        if not _team.is_admin():
+            raise HTTPException(status_code=403, detail="Every tenant's notes at once are for a team server administrator; pick a tenant profile.")
         return {"tenant": None, "notes": _notes_call(wn.list_notes, None, tag=tag), "tenants": wn.tenants(), "limits": _notes_limits()}
     label = _notes_call(_notes_tenant, tenant, profile_id, vanity_domain, cloud, auth_method)
     if kind or ref:
@@ -8389,6 +8470,7 @@ def _remember_report(kind: str, report: Dict[str, Any], label: str = "") -> str:
     if label:
         report["tenant_label"] = label
     _REPORTS[rid] = report
+    _team.bind(rid)   # team mode: only its maker, or someone with the same right on its tenant profile, opens it
     while len(_REPORTS) > _REPORTS_MAX:
         _REPORTS.pop(next(iter(_REPORTS)))
     return rid
@@ -9290,8 +9372,8 @@ def _run_audit_timeline(client, win: Dict[str, Any], include_zia: bool, label: s
         if zia.get("error"):
             log(zia["error"])
     log("Reading Zscaler Made Easy's deployment records and its own audit log…")
-    deps = deployments.list_all()
-    entries = _audit.tail(50000)
+    deps = _team.visible(deployments.list_all())
+    entries = _team.filter_audit_entries(_audit.tail(50000))   # team mode: only the entries of tenant profiles this person may read
     out = at.build(window_=win, zia=zia, deployments=deps, audit_entries=entries, labels=labels, known_packs=pack_deploy.library_ids(),
                    tenant_label=label, zia_requested=include_zia,
                    zia_reason="" if include_zia else "The ZIA admin audit log was not read (you chose Zscaler Made Easy's own records only).")
@@ -11129,10 +11211,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     address cannot be bound, the token file cannot be written), with the
     reason printed in plain words instead of a traceback."""
     import uvicorn
+    import server_tls
 
     host = get_bind_host()
     port = get_port()
     print("\n  Zscaler Made Easy")
+    try:
+        tls = server_tls.ensure()
+    except (RuntimeError, OSError, ValueError) as e:
+        print(f"\n  Could not start: {e}\n", file=sys.stderr)
+        return 2
+    server_tls.remember(tls)
     problem = _port_problem(host, port)
     if problem:
         print(f"\n  Could not start: {problem}\n", file=sys.stderr)
@@ -11149,8 +11238,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         hp = os.environ.get("DLP_CHECK_HOST_PORT", "").strip()
         if hp.isdigit() and 0 < int(hp) < 65536:
             shown_port = int(hp)
-    open_url = f"http://{('localhost' if host == '127.0.0.1' or (in_container and host == '0.0.0.0') else host)}:{shown_port}/"
-    if _sso.sso_enabled():
+    open_url = f"{'https' if tls else 'http'}://{('localhost' if host == '127.0.0.1' or (in_container and host == '0.0.0.0') else host)}:{shown_port}/"
+    if tls:
+        print(f"  HTTPS: {'a self-signed certificate' + (' (made just now)' if tls.get('generated') else '') if tls.get('self_signed') else 'your certificate'}")
+        print(f"  Certificate SHA-256 fingerprint: {tls['fingerprint']}")
+        if tls.get("self_signed"):
+            print("  (check that your browser shows this same fingerprint before you accept the certificate)")
+    if _team.enabled():
+        print("  Team server: each person signs in with their own account" + (" or through your identity provider (SSO)" if _sso.sso_enabled() else "")
+              + "; the UI token is not used.")
+        if _team.bootstrap_needed():
+            print("  No administrator yet. Create the first one with:  python team_server.py add-admin <user name>")
+        open_url += "login"
+    elif _sso.sso_enabled():
         # Each person signs in at the identity provider; the static UI token
         # is refused, so it is neither printed nor written to ui_token.txt.
         print("  Sign-in: through your identity provider (SSO); the UI token is not used.")
@@ -11177,12 +11277,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")
         print(f"     can reach this server. Currently listening on {host}:{port}.")
         print("     Set ZSCALER_BIND_HOST=127.0.0.1 (default) to restrict to localhost.\n")
+    ssl_args = {"ssl_certfile": tls["cert"], "ssl_keyfile": tls["key"]} if tls else {}
     try:
         if not is_debug():
             # Suppress access log spam in production mode (one line per request)
-            uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
+            uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False, **ssl_args)
         else:
-            uvicorn.run(app, host=host, port=port, log_level="info")
+            uvicorn.run(app, host=host, port=port, log_level="info", **ssl_args)
     except OSError as e:
         if getattr(e, "errno", None) in (48, 98, 10048) or "address already in use" in str(e).lower():
             print(f"\n  Could not start: port {port} on {host} is already in use.\n"

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team server — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .tm-sec { padding: 0.2rem 0.2rem 1rem; }
+  .tm-sec h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
+  .tm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 0.6rem; }
+  .tm-tile { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
+  .tm-tile .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+  .tm-tile .v { font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; }
+  .tm-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 0.5rem 0.8rem; align-items: end; margin: 0.6rem 0; }
+  .tm-form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: var(--dim); }
+  .tm-form input, .tm-form select { font: inherit; font-size: 0.88rem; min-height: 2.2rem; background: var(--well); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.3rem 0.5rem; min-width: 0; }
+  .tm-form fieldset { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.3rem 0.6rem; margin: 0; display: flex; gap: 0.7rem; flex-wrap: wrap; font-size: 0.85rem; }
+  .tm-form fieldset label { flex-direction: row; align-items: center; color: var(--text); }
+  .tm-form legend { font-size: 0.78rem; color: var(--dim); }
+  input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  table.tm-t { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  table.tm-t th, table.tm-t td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+  table.tm-t th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  .tm-wrap { overflow-x: auto; }
+  .tm-status { font-size: 0.86rem; color: var(--dim); min-height: 1.3em; }
+  .tm-status.bad { color: var(--fail); }
+  .tm-secret { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; background: var(--well); border: 1px solid var(--warn); border-radius: var(--r-md); padding: 0.5rem 0.7rem; overflow-wrap: anywhere; }
+  .tm-note { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0.6rem 0; font-size: 0.86rem; }
+  .tm-row-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+  .tm-row-actions .rp-btn { font-size: 0.78rem; padding: 0.15rem 0.5rem; }
+  @media (max-width: 600px) { .tm-form { grid-template-columns: 1fr; } }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page tm-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Team</span> server</h1>
+      <p>Who may use this server and what each person may do on each tenant profile. A role is the most a person may ever do (viewer reads, operator plans and applies, approver approves someone else's change, administrator does everything and manages this page); a grant says on which tenant profiles they may do it. Nothing is allowed until it is granted.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <button type="button" class="rp-btn" id="tmRefresh">↻ Refresh</button>
+      <button type="button" class="rp-btn" id="tmSignOut">Sign out</button>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div class="tm-status" id="tmStatus" role="status" aria-live="polite">Loading…</div>
+      <div id="tmOff" class="tm-note" hidden>This server is not a team server. To share it with a team, start it with <code>ZSCALER_TEAM_MODE=1</code> and HTTPS (see INSTALL.md, "Team server"). Until then it is the single-person app, guarded by its UI token on this computer only.</div>
+
+      <section class="tm-sec" aria-labelledby="tmMeH">
+        <h2 id="tmMeH">You</h2>
+        <div class="tm-grid" id="tmMe"></div>
+        <div class="tm-wrap"><table class="tm-t" id="tmMine"><caption class="sr-only">What you may do on each tenant profile</caption><thead><tr><th scope="col">Tenant profile</th><th scope="col">You may</th></tr></thead><tbody></tbody></table></div>
+        <form class="tm-form" id="tmPwForm" novalidate>
+          <label for="tmPwCur">Current password<input id="tmPwCur" type="password" autocomplete="current-password" maxlength="1024"></label>
+          <label for="tmPwNew">New password<input id="tmPwNew" type="password" autocomplete="new-password" minlength="12" maxlength="1024"></label>
+          <button type="submit" class="rp-btn" id="tmPwGo">Change my password</button>
+        </form>
+      </section>
+
+      <div id="tmAdmin" hidden>
+        <section class="tm-sec" aria-labelledby="tmUsersH">
+          <h2 id="tmUsersH">Accounts</h2>
+          <div class="tm-wrap"><table class="tm-t" id="tmUsers"><caption class="sr-only">Accounts on this server</caption><thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">State</th><th scope="col">From</th><th scope="col">Actions</th></tr></thead><tbody></tbody></table></div>
+          <form class="tm-form" id="tmNewUser" novalidate>
+            <label for="tmNuName">User name<input id="tmNuName" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="100"></label>
+            <label for="tmNuEmail">Email (optional)<input id="tmNuEmail" type="email" autocomplete="off" maxlength="200"></label>
+            <label for="tmNuRole">Role<select id="tmNuRole"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="approver">Approver</option><option value="admin">Administrator</option></select></label>
+            <label for="tmNuPass">Password (blank: SSO only)<input id="tmNuPass" type="password" autocomplete="new-password" maxlength="1024"></label>
+            <button type="submit" class="rp-btn primary" id="tmNuGo">Add account</button>
+          </form>
+        </section>
+
+        <section class="tm-sec" aria-labelledby="tmAccessH">
+          <h2 id="tmAccessH">Access to tenant profiles</h2>
+          <form class="tm-form" id="tmGrant" novalidate>
+            <label for="tmGrWho">User or group<select id="tmGrWho"></select></label>
+            <label for="tmGrProf">Tenant profile<select id="tmGrProf"></select></label>
+            <fieldset id="tmGrActs"><legend>May</legend>
+              <label><input type="checkbox" value="read" id="tmGrRead"> read</label>
+              <label><input type="checkbox" value="plan" id="tmGrPlan"> plan</label>
+              <label><input type="checkbox" value="apply" id="tmGrApply"> apply</label>
+              <label><input type="checkbox" value="approve" id="tmGrApprove"> approve</label>
+            </fieldset>
+            <button type="submit" class="rp-btn primary" id="tmGrGo">Save access</button>
+          </form>
+          <div class="tm-wrap"><table class="tm-t" id="tmGrants"><caption class="sr-only">Grants</caption><thead><tr><th scope="col">User or group</th><th scope="col">Tenant profile</th><th scope="col">May</th><th scope="col">Given by</th></tr></thead><tbody></tbody></table></div>
+        </section>
+
+        <section class="tm-sec" aria-labelledby="tmScimH">
+          <h2 id="tmScimH">Provisioning (SCIM 2.0)</h2>
+          <div class="tm-grid" id="tmScim"></div>
+          <div class="tm-row-actions" style="margin-top:0.6rem;">
+            <button type="button" class="rp-btn" id="tmScimNew">Make a new SCIM token</button>
+            <button type="button" class="rp-btn" id="tmScimRevoke">Revoke the SCIM token</button>
+          </div>
+          <div id="tmScimShown" hidden><p>Copy this token into your identity provider now. It is shown once and kept here only as a hash.</p><div class="tm-secret" id="tmScimToken"></div></div>
+        </section>
+
+        <section class="tm-sec" aria-labelledby="tmTlsH">
+          <h2 id="tmTlsH">HTTPS and sessions</h2>
+          <div class="tm-grid" id="tmTls"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script>
+  (function () {
+    const $ = id => document.getElementById(id);
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const say = (t, bad) => { $('tmStatus').textContent = t || ''; $('tmStatus').className = 'tm-status' + (bad ? ' bad' : ''); };
+    const tile = (k, v) => `<div class="tm-tile"><div class="k">${E(k)}</div><div class="v">${E(v)}</div></div>`;
+    let data = null;
+    async function call(method, url, body) {
+      const r = await fetch(url, { method, credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+      let j = {}; try { j = await r.json(); } catch (e) { /* none */ }
+      if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : `HTTP ${r.status}`);
+      return j;
+    }
+    async function load() {
+      say('Loading…');
+      let me;
+      try { me = await call('GET', '/api/team/me'); }
+      catch (e) { if (/404/.test(e.message) || /not a team server/i.test(e.message)) { $('tmOff').hidden = false; say(''); } else say(e.message, true); return; }
+      $('tmMe').innerHTML = tile('Signed in as', me.user.username) + tile('Role', me.user.role) + tile('Your role allows', (me.role_actions || []).join(', ') || 'nothing')
+        + tile('Session', `ends after ${me.idle_minutes} quiet minutes, at most ${me.session_hours} hours`);
+      $('tmMine').querySelector('tbody').innerHTML = (me.profiles || []).map(p => `<tr><td>${E(p.name)}</td><td>${E(p.actions.join(', '))}</td></tr>`).join('')
+        || '<tr><td colspan="2">No tenant profile yet. Ask an administrator for access.</td></tr>';
+      if (me.user.role !== 'admin') { $('tmAdmin').hidden = true; say(''); return; }
+      $('tmAdmin').hidden = false;
+      data = await call('GET', '/api/team/overview');
+      render(); say('');
+    }
+    function nameOf(principal) {
+      const [kind, id] = String(principal).split(':');
+      if (kind === 'user') { const u = data.users.find(x => x.id === id); return u ? u.username : '(gone)'; }
+      const g = data.groups.find(x => x.id === id); return g ? `group: ${g.display_name}` : '(gone)';
+    }
+    function render() {
+      $('tmUsers').querySelector('tbody').innerHTML = data.users.map(u => `<tr><td>${E(u.username)}${u.display_name ? `<br><span class="tm-status">${E(u.display_name)}</span>` : ''}</td>
+        <td><select data-role="${E(u.id)}" aria-label="Role of ${E(u.username)}">${data.roles.map(r => `<option value="${E(r.id)}"${r.id === u.role ? ' selected' : ''}>${E(r.id)}</option>`).join('')}</select></td>
+        <td>${u.active ? 'on' : 'turned off'}${u.locked ? ' · locked' : ''}</td><td>${E(u.source)}${u.sso_linked ? ' · SSO' : ''}</td>
+        <td class="tm-row-actions"><button type="button" class="rp-btn" data-act="${u.active ? 'off' : 'on'}" data-id="${E(u.id)}">${u.active ? 'Turn off' : 'Turn on'}</button>
+        ${u.locked ? `<button type="button" class="rp-btn" data-act="unlock" data-id="${E(u.id)}">Unlock</button>` : ''}
+        <button type="button" class="rp-btn" data-act="pw" data-id="${E(u.id)}">Set password</button>
+        <button type="button" class="rp-btn" data-act="del" data-id="${E(u.id)}">Delete</button></td></tr>`).join('');
+      $('tmGrWho').innerHTML = data.users.map(u => `<option value="user:${E(u.id)}">${E(u.username)}</option>`).join('')
+        + data.groups.map(g => `<option value="group:${E(g.id)}">group: ${E(g.display_name)}</option>`).join('');
+      $('tmGrProf').innerHTML = '<option value="*">Every tenant profile</option>' + data.profiles.map(p => `<option value="${E(p.id)}">${E(p.name)}</option>`).join('');
+      $('tmGrants').querySelector('tbody').innerHTML = data.grants.map(g => `<tr><td>${E(nameOf(g.principal))}</td><td>${E(g.profile === '*' ? 'every tenant profile' : (data.profiles.find(p => p.id === g.profile) || {}).name || g.profile)}</td><td>${E(g.actions.join(', '))}</td><td>${E(g.by || '')}</td></tr>`).join('')
+        || '<tr><td colspan="4">No access given yet: only administrators can do anything.</td></tr>';
+      const s = data.scim;
+      $('tmScim').innerHTML = tile('SCIM token', s.configured ? `made ${s.created || ''} by ${s.created_by || ''}` : 'none') + tile('SCIM base address', location.origin + s.base_path);
+      const t = data.tls, st = data.settings;
+      $('tmTls').innerHTML = tile('HTTPS', t.on ? (t.self_signed ? 'on, self-signed' : 'on, your certificate') : 'off (this computer only)')
+        + (t.fingerprint ? tile('Certificate SHA-256', t.fingerprint) : '')
+        + tile('Sessions', `end after ${st.idle_minutes} quiet minutes, at most ${st.session_hours} hours`)
+        + tile('Lockout', `${st.lockout_attempts} wrong passwords lock an account for ${st.lockout_minutes} minutes`);
+    }
+    $('tmUsers').addEventListener('change', async e => {
+      const id = e.target.getAttribute('data-role'); if (!id) return;
+      try { await call('POST', `/api/team/users/${encodeURIComponent(id)}`, { role: e.target.value }); say('Role saved; that person signs in again.'); await load(); } catch (err) { say(err.message, true); await load(); }
+    });
+    $('tmUsers').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      const id = encodeURIComponent(b.getAttribute('data-id')), act = b.getAttribute('data-act');
+      try {
+        if (act === 'off' || act === 'on') await call('POST', `/api/team/users/${id}`, { active: act === 'on' });
+        else if (act === 'unlock') await call('POST', `/api/team/users/${id}/unlock`);
+        else if (act === 'del') { if (!(await window.dlpDialog.ask({ title: 'Delete this account?', body: 'Its access goes with it and its sessions end.', okLabel: 'Delete', tone: 'bad' }))) return; await call('DELETE', `/api/team/users/${id}`); }
+        else if (act === 'pw') {
+          const pw = await window.dlpDialog.phrase({ title: 'Set a password', body: 'At least 12 characters. The person’s sessions end; tell them the new password in person.', phrase: '', label: 'New password', okLabel: 'Set' });
+          if (!pw) return; await call('POST', `/api/team/users/${id}/password`, { password: pw });
+        }
+        say('Saved.'); await load();
+      } catch (err) { say(err.message, true); }
+    });
+    $('tmNewUser').addEventListener('submit', async e => {
+      e.preventDefault();
+      try { await call('POST', '/api/team/users', { username: $('tmNuName').value.trim(), email: $('tmNuEmail').value.trim(), role: $('tmNuRole').value, password: $('tmNuPass').value || null });
+        $('tmNuName').value = ''; $('tmNuEmail').value = ''; $('tmNuPass').value = ''; say('Account added. Give it access below.'); await load(); }
+      catch (err) { say(err.message, true); }
+    });
+    $('tmGrant').addEventListener('submit', async e => {
+      e.preventDefault();
+      const actions = [...$('tmGrActs').querySelectorAll('input:checked')].map(i => i.value);
+      try { await call('POST', '/api/team/grants', { principal: $('tmGrWho').value, profile: $('tmGrProf').value, actions }); say(actions.length ? 'Access saved.' : 'Access taken away.'); await load(); }
+      catch (err) { say(err.message, true); }
+    });
+    $('tmScimNew').addEventListener('click', async () => {
+      try { const j = await call('POST', '/api/team/scim-token'); $('tmScimToken').textContent = j.token; $('tmScimShown').hidden = false; say('New SCIM token made; the one before no longer works.'); data = await call('GET', '/api/team/overview'); render(); }
+      catch (err) { say(err.message, true); }
+    });
+    $('tmScimRevoke').addEventListener('click', async () => {
+      try { await call('DELETE', '/api/team/scim-token'); $('tmScimShown').hidden = true; $('tmScimToken').textContent = ''; say('SCIM token revoked.'); await load(); } catch (err) { say(err.message, true); }
+    });
+    $('tmPwForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      try { await call('POST', '/api/team/me/password', { current: $('tmPwCur').value, new: $('tmPwNew').value }); window.location.href = '/login'; }
+      catch (err) { say(err.message, true); } finally { $('tmPwCur').value = ''; $('tmPwNew').value = ''; }
+    });
+    $('tmSignOut').addEventListener('click', async () => { try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) { /* gone */ } window.location.href = '/login'; });
+    $('tmRefresh').addEventListener('click', load);
+    load();
+  })();
+  </script>
+</body>
+</html>

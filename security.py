@@ -30,6 +30,13 @@ Optional hardening (env-toggled):
                                                sso.py) instead of the
                                                static UI token, which is
                                                then refused in every form
+  ZSCALER_TEAM_MODE    (default 0)          — the multi-user team server
+                                               (team_server.py): named
+                                               accounts, roles, per-tenant
+                                               entitlements; the UI token is
+                                               refused. Beyond loopback it
+                                               needs built-in TLS
+                                               (server_tls.py)
   ZSCALER_ALLOW_NONLOCAL_BIND                — must equal "YES_I_UNDERSTAND"
                                                to start a local install
                                                bound beyond loopback without
@@ -293,8 +300,17 @@ def require_safe_bind() -> None:
     with ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND because they already
     have their own authenticating reverse proxy in front of it. Called
     once at server startup; a variable changed afterwards takes effect
-    on the next restart, the same as ENABLE_WRITE_ACTIONS."""
+    on the next restart, the same as ENABLE_WRITE_ACTIONS.
+
+    Team mode (ZSCALER_TEAM_MODE) is the supported way to serve a team:
+    beyond loopback it starts only with the server's own HTTPS on
+    (server_tls.py), whatever else is set. Without team mode, the older
+    ways above still start, with a loud warning on stderr."""
     host = get_bind_host()
+    import team_server as _team
+    if _team.enabled():
+        _require_team_bind(host)
+        return
     if host not in _LOCAL_HOSTS and not ui_auth_enabled() and not _sso_ready():
         # Checked first, container included: inside the container the server
         # listens on 0.0.0.0, so with the token gate off any process that can
@@ -308,7 +324,10 @@ def require_safe_bind() -> None:
         )
     if os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1":
         published = os.environ.get("DLP_CHECK_HOST_BIND", "").strip() or "127.0.0.1"
-        if host in _LOCAL_HOSTS or published in _LOCAL_HOSTS or _sso_ready():
+        if host in _LOCAL_HOSTS or published in _LOCAL_HOSTS:
+            return
+        if _sso_ready():
+            warn_shared_without_team(host)
             return
         raise RuntimeError(
             f"Refusing to start: the container is published on {published} (DLP_CHECK_HOST_BIND), so other computers "
@@ -325,6 +344,7 @@ def require_safe_bind() -> None:
             "or bind to 127.0.0.1 (ZSCALER_BIND_HOST, the default)."
         )
     if (os.environ.get("ZSCALER_ALLOW_NONLOCAL_BIND", "").strip() == NONLOCAL_BIND_CONFIRM_PHRASE):
+        warn_shared_without_team(host)
         return
     if not _sso_ready():
         raise RuntimeError(
@@ -334,6 +354,54 @@ def require_safe_bind() -> None:
             "ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND if you understand the risk and already have your own "
             "authenticating reverse proxy (with TLS) in front of this server."
         )
+    warn_shared_without_team(host)
+
+
+def _reachable_beyond_loopback(host: str) -> bool:
+    """Will other computers reach this server? Outside the container: a
+    bind beyond loopback. In it: a publish beyond the host's loopback."""
+    if os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1":
+        published = os.environ.get("DLP_CHECK_HOST_BIND", "").strip() or "127.0.0.1"
+        return host not in _LOCAL_HOSTS and published not in _LOCAL_HOSTS
+    return host not in _LOCAL_HOSTS
+
+
+def _require_team_bind(host: str) -> None:
+    """Team mode: reachable beyond this computer only over the server's own
+    HTTPS (ZSCALER_TLS_CERT and ZSCALER_TLS_KEY, or ZSCALER_TLS=self-signed)."""
+    import server_tls
+    errors = server_tls.config_errors()
+    if errors:
+        raise RuntimeError("Refusing to start: HTTPS is configured but cannot start: " + "; ".join(errors) + ".")
+    if _reachable_beyond_loopback(host) and not server_tls.requested():
+        raise RuntimeError(
+            f"Refusing to start: this team server would be reachable beyond this computer ({host}) without HTTPS, so "
+            "passwords and session cookies would cross the network in clear text. Set ZSCALER_TLS_CERT and "
+            "ZSCALER_TLS_KEY to your certificate and key, or ZSCALER_TLS=self-signed to make one now, or bind to "
+            "127.0.0.1 (ZSCALER_BIND_HOST, the default).")
+
+
+def warn_shared_without_team(host: str) -> Optional[str]:
+    """The loud warning for a server other computers can reach that is not
+    a team server with HTTPS (SSO or a reverse proxy instead). Printed to
+    stderr; returned for the tests. None when there is nothing to say."""
+    import team_server as _team
+    import server_tls
+    if not _reachable_beyond_loopback(host) or (_team.enabled() and server_tls.requested()):
+        return None
+    msg = ("\n  " + "!" * 72 + "\n"
+           f"  WARNING: this server is reachable beyond this computer ({host}) but is not a team server with HTTPS.\n"
+           "  The supported way to share it is ZSCALER_TEAM_MODE=1 with ZSCALER_TLS_CERT/ZSCALER_TLS_KEY (or\n"
+           "  ZSCALER_TLS=self-signed): named accounts, roles, per-tenant access, lockout and HTTPS. Without it,\n"
+           "  everyone who signs in has the same access to every tenant, and only your proxy or identity provider\n"
+           "  stands between the network and the API. See INSTALL.md, \"Team server\".\n"
+           "  " + "!" * 72 + "\n")
+    try:
+        import sys
+        print(msg, file=sys.stderr, flush=True)
+    except Exception:  # noqa: BLE001
+        pass
+    return msg
 
 
 def set_write_mode(enable: bool, confirm: str = "") -> dict:
@@ -479,6 +547,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # only (covers the SVG favicon and the /static/branding/ files).
         # connect-src 'self' = API calls scoped to the same origin.
         h.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        # A team server answering over its own HTTPS tells the browser to
+        # use nothing else for a year (RFC 6797). Never on plain HTTP, where
+        # the header means nothing and could pin a name to a dead port.
+        if request.url.scheme == "https" and _team_on():
+            import server_tls
+            h.setdefault("Strict-Transport-Security", server_tls.HSTS_VALUE)
         # Don't cache API responses — they may carry assessment data
         if request.url.path.startswith("/api/"):
             h["Cache-Control"] = "no-store"
@@ -532,6 +606,12 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
                             {"detail": f"Referer not allowed: {base}"},
                             status_code=403,
                         )
+                elif _team_on() and request.cookies.get(SSO_SESSION_COOKIE):
+                    # A team server's session rides on a cookie: a change
+                    # carrying it must say where it came from (every browser
+                    # sends Origin on a POST); a script uses no cookie.
+                    return JSONResponse({"detail": "This change carries a sign-in cookie but no Origin: refused (cross-site request protection)."},
+                                        status_code=403)
         return await call_next(request)
 
 
@@ -667,6 +747,10 @@ _ui_token: "str | None" = None
 # its assets, the standalone report pages (they then call the API with the
 # cookie) and the unlock/status/ping calls.
 _UI_AUTH_EXEMPT_PREFIXES = ("/static/", "/report/")
+# Team mode adds its own sign-in page and call, and the SCIM endpoint (which
+# checks its own bearer token in team_server.TeamAccessMiddleware).
+_TEAM_EXEMPT_PATHS = {"/login", "/api/auth/team/login"}
+_TEAM_EXEMPT_PREFIX = "/api/scim/v2/"
 _UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/help", "/api/auth/status", "/api/auth/unlock", "/api/ping", "/favicon.ico",
                           "/api/auth/sso/login", "/api/auth/sso/callback", "/api/auth/logout"}
 # Who is making the request being handled, set by UIAuthMiddleware and
@@ -739,26 +823,42 @@ def _token_from_request(request: Request) -> Optional[str]:
     return request.cookies.get(UI_TOKEN_COOKIE)
 
 
+def _team_on() -> bool:
+    import team_server as _team
+    return _team.enabled()
+
+
 def _gate_on() -> bool:
-    """The gate is on unless ZSCALER_UI_AUTH=0; SSO on always means sign-in first."""
+    """The gate is on unless ZSCALER_UI_AUTH=0; SSO or team mode on always means sign-in first."""
     import sso as _sso
-    return ui_auth_enabled() or _sso.sso_enabled()
+    return ui_auth_enabled() or _sso.sso_enabled() or _team_on()
 
 
 def sso_session(request: Request) -> Optional[dict]:
-    """With SSO on: this browser's live session (sso.get_session), or None."""
+    """With SSO or team mode on: this browser's live session
+    (sso.get_session), or None. A team server takes only sessions bound to
+    a live account (team_server.start_session); a plain SSO server never
+    takes one of those."""
     import sso as _sso
-    if not _sso.sso_enabled():
+    team = _team_on()
+    if not (_sso.sso_enabled() or team):
         return None
-    return _sso.get_session(request.cookies.get(SSO_SESSION_COOKIE))
+    s = _sso.get_session(request.cookies.get(SSO_SESSION_COOKIE))
+    if s is None or bool(s.get("team_user")) != team:
+        return None
+    if team:
+        import team_server as _team
+        if _team.session_user(s) is None:
+            return None
+    return s
 
 
 def ui_request_ok(request: Request) -> bool:
-    """Is this request allowed through the gate? With SSO on only a live
-    signed-in session counts: the static UI token is refused in every
-    form. Otherwise the UI token (header, Bearer or cookie)."""
+    """Is this request allowed through the gate? With SSO or team mode on
+    only a live signed-in session counts: the static UI token is refused in
+    every form. Otherwise the UI token (header, Bearer or cookie)."""
     import sso as _sso
-    if _sso.sso_enabled():
+    if _sso.sso_enabled() or _team_on():
         return sso_session(request) is not None
     return (not ui_auth_enabled()) or ui_token_ok(_token_from_request(request))
 
@@ -773,11 +873,23 @@ def set_ui_cookie(response, request: Request) -> None:
     response.set_cookie(UI_TOKEN_COOKIE, ui_token(), httponly=True, samesite="strict", secure=_https(request), path="/", max_age=12 * 3600)
 
 
+def _session_samesite() -> str:
+    """Strict on a team server (the cookie set at the identity provider's
+    redirect back is still kept; it is just not sent on that one cross-site
+    navigation, and the page's own requests carry it); Lax for plain SSO, as before."""
+    return "strict" if _team_on() else "lax"
+
+
 def set_session_cookie(response, request: Request, session_id: str) -> None:
-    """Attach an SSO session cookie: only the random session id, HttpOnly,
-    SameSite=Lax (the browser arrives from the identity provider), Secure
-    over HTTPS."""
-    response.set_cookie(SSO_SESSION_COOKIE, session_id, httponly=True, samesite="lax", secure=_https(request), path="/", max_age=12 * 3600)
+    """Attach a session cookie: only the random session id, HttpOnly,
+    Secure over HTTPS, SameSite=Lax for SSO (the browser arrives from the
+    identity provider) and SameSite=Strict on a team server, which also
+    ends it with the session's own absolute limit."""
+    max_age = 12 * 3600
+    if _team_on():
+        import team_server as _team
+        max_age = _team.session_seconds()
+    response.set_cookie(SSO_SESSION_COOKIE, session_id, httponly=True, samesite=_session_samesite(), secure=_https(request), path="/", max_age=max_age)
 
 
 def set_login_cookie(response, request: Request, binding: str) -> None:
@@ -795,7 +907,7 @@ def clear_login_cookie(response, request: Request) -> None:
 
 
 def clear_session_cookie(response, request: Request) -> None:
-    response.delete_cookie(SSO_SESSION_COOKIE, path="/", httponly=True, samesite="lax", secure=_https(request))
+    response.delete_cookie(SSO_SESSION_COOKIE, path="/", httponly=True, samesite=_session_samesite(), secure=_https(request))
 
 
 def current_actor(request: Optional[Request] = None) -> Optional[str]:
@@ -814,6 +926,10 @@ def current_actor(request: Optional[Request] = None) -> Optional[str]:
 
 def _caller_for(request: Request, session: Optional[dict]) -> dict:
     import sso as _sso
+    if _team_on():
+        import team_server as _team
+        user = _team.session_user(session)
+        return {"actor": str(user.get("username")) if user else NOT_SIGNED_IN, "session": session if user else None}
     if _sso.sso_enabled():
         who = (session or {}).get("email") or (session or {}).get("sub")
         return {"actor": str(who) if who else NOT_SIGNED_IN, "session": session}
@@ -825,6 +941,19 @@ def may_write() -> bool:
     without SSO or without ZSCALER_SSO_WRITERS; otherwise only the
     listed groups and email addresses."""
     import sso as _sso
+    if _team_on():
+        # A team server: the role must allow applying, and on the tenant
+        # profile this request named (checked again where its credentials
+        # are resolved, team_server.require_tenant_profile).
+        import team_server as _team
+        ctx = _team.context()
+        if ctx is None:
+            return True   # the app's own background work
+        prof = _team.current_profile()
+        # On an approve route (four-eyes) the approve right stands in for the
+        # writer check; change_queue.decide checks it on the request's profile.
+        need = "approve" if ctx.get("action") == "approve" else "apply"
+        return _team.may(need, prof) if prof else _team.may(need)
     if not _sso.sso_enabled() or not _sso.writers():
         return True
     return _sso.is_writer((_CALLER.get() or {}).get("session"))
@@ -835,6 +964,11 @@ def require_writer() -> None:
     (sso.is_writer). Called by every endpoint that writes to the tenant,
     before its write-mode check."""
     if not may_write():
+        if _team_on():
+            raise HTTPException(status_code=403, detail=(
+                f"You are signed in as {current_actor()}, who may not change this tenant on this team server: changing a tenant "
+                "needs the operator or administrator role and the apply right on its tenant profile. You can still read and "
+                "preview what you have access to. Ask a team server administrator."))
         raise HTTPException(status_code=403, detail=(
             f"You are signed in as {current_actor()}, who may not change the tenant on this server: only the users and "
             "groups listed in ZSCALER_SSO_WRITERS may turn on write mode, deploy, remove, import, undo, or apply and roll "
@@ -937,7 +1071,8 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         import sso as _sso
         path = request.url.path
-        if path == "/" and request.query_params.get("token") and not _sso.sso_enabled():
+        team = _team_on()
+        if path == "/" and request.query_params.get("token") and not _sso.sso_enabled() and not team:
             from fastapi.responses import RedirectResponse
             if ui_token_ok(request.query_params.get("token")):
                 resp = RedirectResponse("/", status_code=303)
@@ -946,7 +1081,8 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
             _audit_denied(request, "auth_denied", "the UI token in the address was not valid")
             return JSONResponse({"detail": "That UI token is not valid for this server. Read ui_token.txt next to the app (or the console) and try again.",
                                  "token_required": True}, status_code=401)
-        if path in _UI_AUTH_EXEMPT_PATHS or any(path.startswith(p) for p in _UI_AUTH_EXEMPT_PREFIXES):
+        if (path in _UI_AUTH_EXEMPT_PATHS or any(path.startswith(p) for p in _UI_AUTH_EXEMPT_PREFIXES)
+                or (team and (path in _TEAM_EXEMPT_PATHS or path.startswith(_TEAM_EXEMPT_PREFIX)))):
             resp = await call_next(request)
             if path == "/api/auth/sso/callback" and resp.status_code == 401:
                 # A GET, so AuditMiddleware skips it; a failed sign-in is still a security event.
@@ -956,8 +1092,11 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         offered = _token_from_request(request)
         _audit_denied(request, "auth_denied",
-                      ("a UI token was offered, but this server requires SSO sign-in" if _sso.sso_enabled() else "invalid UI token")
+                      ("a UI token was offered, but this server requires sign-in" if (_sso.sso_enabled() or team) else "invalid UI token")
                       if offered else "no UI token or sign-in")
+        if team:
+            return JSONResponse({"detail": "Sign in required.", "token_required": True, "sso_required": True,
+                                 "sso_login_url": "/login"}, status_code=401)
         if _sso.sso_enabled():
             return JSONResponse({"detail": "Sign in required.", "token_required": True, "sso_required": True,
                                  "sso_login_url": "/api/auth/sso/login"}, status_code=401)
