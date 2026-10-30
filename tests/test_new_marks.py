@@ -61,7 +61,6 @@ EXCLUDED = {
     # Team server (2026-10-31): a dialog shown only before an idle sign-out,
     # a server rule with no new control, and what is not built.
     "Still there?": "a dialog that appears only before an idle sign-out: no control to mark",
-    "Four-eyes with real people": "a rule the server enforces on the change queue's existing Approve button",
     "Not built in": "says what the change does not add",
 }
 

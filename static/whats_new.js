@@ -36,7 +36,8 @@ window.WHATS_NEW = {
       "label": "Team server",
       "what": "The team server page: who you are and what you may do on each tenant profile, and for an administrator the accounts, roles and access per tenant profile.",
       "changelog": [
-        "Team server"
+        "Team server",
+        "Four-eyes with real people"
       ],
       "marks": [
         {

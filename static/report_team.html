@@ -174,9 +174,13 @@
     }
     async function load() {
       say('Loading…');
+      // Off team mode there is nothing to ask the team API: say how to turn it on.
+      let st = null;
+      try { st = await call('GET', '/api/auth/status'); } catch (e) { st = null; }
+      if (!st || !st.team) { $('tmOff').hidden = false; say(''); return; }
       let me;
       try { me = await call('GET', '/api/team/me'); }
-      catch (e) { if (/404/.test(e.message) || /not a team server/i.test(e.message)) { $('tmOff').hidden = false; say(''); } else say(e.message, true); return; }
+      catch (e) { say(e.message, true); return; }
       $('tmMe').innerHTML = tile('Signed in as', me.user.username) + tile('Role', me.user.role) + tile('Your role allows', (me.role_actions || []).join(', ') || 'nothing')
         + tile('Session', `ends after ${me.idle_minutes} quiet minutes, at most ${me.session_hours} hours`);
       $('tmMine').querySelector('tbody').innerHTML = (me.profiles || []).map(p => `<tr><td>${E(p.name)}</td><td>${E(p.actions.join(', '))}</td></tr>`).join('')
