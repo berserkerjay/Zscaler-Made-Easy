@@ -5,6 +5,11 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### A saved profile's cloud is never replaced by a default
+- **Fix.** The request bodies behind the Path analyzer, data flow, migration, flow scenario, assessment and remediation routes no longer default their cloud to "production": a request naming only a saved profile signs in on the profile's own cloud, also when the request is rebuilt from every field, and production still applies when nothing (typed, profile, environment or `tenant_config.json`) names one. The assessment report names the cloud it signed in on. The POV planner's *Prove it* no longer needs its own workaround. A test now fails when a request model that takes a profile gets a cloud default again.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

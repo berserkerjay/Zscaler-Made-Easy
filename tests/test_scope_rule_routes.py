@@ -466,6 +466,112 @@ def test_part_in_scope_of_a_saved_profile_reads_only_that_part(tenant, route):
     assert not leaked, f"read out of scope: {leaked}"
 
 
+# ── A saved profile's cloud is never replaced by a request model's default ──
+
+def _ten_profile(**extra: Any) -> str:
+    """A saved profile on a non-production cloud (zscalerten), with its secret remembered."""
+    import tenant_profiles
+    return tenant_profiles.upsert(dict({"name": "Ten", "cloud": "zscalerten", "vanity_domain": "acme", "client_id": CREDS["client_id"]}, **extra),
+                                  client_secret=CREDS["client_secret"], remember_secret=True)["id"]
+
+
+def _ten_pov(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """The zscalerten profile with a POV, for Prove it."""
+    import pov
+    pid = _ten_profile(scopes=WEB["scopes"], channels=WEB["channels"])
+    pov.create(pid, None, {"customer": "Acme", "vertical": "general"}, by="qa")
+    return {"profile_id": pid}
+
+
+PROFILE_ONLY = [
+    Route("/api/path-analyzer/start", DEST),
+    Route("/api/path-analyzer", DEST),
+    Route("/api/report/data-flow"),
+    Route("/api/migrate/status"),
+    Route("/api/flow/scenario", {"scenario_id": "web_upload", "destination": "example.com"}),
+    Route("/api/remediation/execute", {"check_id": "DLP-01", "dry_run": True}),
+    Route("/api/pov/prove/start", {"test_id": "url-block"}, setup=_ten_pov),
+    # Newer routes on the TenantCredsRequest family (their cloud was always blank): kept that way.
+    Route("/api/readiness/start"),
+    Route("/api/tenant-profiles/snapshots/save/start"),
+    Route("/api/operations/objects", {"family": "rules"}),
+    Route("/api/path-analyzer/batch/start", {"har_hosts": ["example.com"]}),
+]
+
+
+@pytest.mark.parametrize("route", PROFILE_ONLY, ids=_ids)
+def test_a_profile_only_request_signs_in_on_the_profiles_cloud(tenant, monkeypatch, route):
+    """ASVS V4.2.1 · CWE-639: a body naming only a saved profile on another cloud signs in on that cloud, never the request model's default (regression: production was used)."""
+    # Arrange: a profile on zscalerten; the page (report_path.html's credBody) sends only its id.
+    body = route.request({}) if route.setup else dict(route.body, profile_id=_ten_profile(scopes=WEB["scopes"], channels=WEB["channels"]))
+    clouds: List[str] = []
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda c: clouds.append(c["cloud"]) or FakeSdk(tenant))
+    monkeypatch.setattr(srv, "_raw_client", lambda c: clouds.append(c["cloud"]) or FakeRaw(tenant))
+    # Act
+    r = TestClient(srv.app).post(route.path, json=body)
+    # Assert
+    assert r.status_code == 200, r.text[:400]
+    assert clouds and set(clouds) == {"zscalerten"}, clouds
+
+
+# Every request model that signs in with a saved profile, and what its typed
+# sign-in with no cloud resolved to before the fix (kept identical).
+CRED_MODELS = {"MigrateRequest": "production", "PathAnalyzerRequest": "production", "PovProveRequest": "production",
+               "AssessRequest": "production", "RemediationExecuteRequest": "production",
+               "TenantCredsRequest": "", "ScopedTenantCredsRequest": "", "OperationRequest": "", "ReadinessRequest": "", "PovRequest": ""}
+
+
+@pytest.mark.parametrize("model", list(CRED_MODELS))
+def test_a_rebuilt_profile_only_request_keeps_the_profiles_cloud(tenant, model):
+    """ASVS V4.2.1 · CWE-639: boundary: a request rebuilt from every field (cloud now counts as sent) still takes the profile's cloud; nothing named still falls back to production."""
+    # Arrange
+    import tenant_auth
+    M = getattr(srv, model)
+    pid = _ten_profile()
+    rebuilt = M(**M(profile_id=pid).model_dump())
+    copied = M(profile_id=pid).model_copy()
+    # Act
+    creds, copy_creds = srv._tenant_creds(rebuilt), srv._tenant_creds(copied)
+    typed = srv._tenant_creds(M(**CREDS))
+    # Assert
+    assert creds["cloud"] == copy_creds["cloud"] == "zscalerten" and tenant_auth.record_label(creds) == "acme (zscalerten)"
+    assert typed["cloud"] == CRED_MODELS[model] and srv._validate_creds(typed)["cloud"] == "production"
+
+
+def test_no_request_model_that_takes_a_profile_defaults_its_cloud():
+    """ASVS V4.2.1 · CWE-1188 · CWE-639: guard: every request model with a profile_id leaves its cloud blank by default, so a saved profile's cloud is never overridden by a default."""
+    # Arrange
+    from pydantic import BaseModel
+    models = [m for m in vars(srv).values() if isinstance(m, type) and issubclass(m, BaseModel) and m is not BaseModel
+              and "cloud" in m.model_fields]
+    # Act
+    defaulted = sorted(m.__name__ for m in models if m.model_fields["cloud"].default and "profile_id" in m.model_fields)
+    # Assert
+    assert len(models) >= len(CRED_MODELS) and not defaulted, defaulted
+
+
+def test_the_assessment_report_names_the_profiles_cloud(tenant, monkeypatch):
+    """ASVS V4.2.1 · CWE-639 · CWE-684: a profile-only assessment on another cloud signs in there and its report names that cloud, not the request model's default."""
+    # Arrange
+    import security
+    from test_assess_stream import _events
+    pid = _ten_profile()
+    clouds: List[str] = []
+    monkeypatch.setattr(srv, "_raw_client", lambda c: clouds.append(c["cloud"]) or FakeRaw(tenant))
+    monkeypatch.setattr(srv, "_journey_packs", lambda ids: [])
+    monkeypatch.setattr(srv, "CHECK_TIMEOUT", 20)
+    c = TestClient(srv.app)
+    c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    # Act
+    with c.stream("POST", "/api/assess", json=dict(WEB, profile_id=pid)) as r:
+        assert r.status_code == 200, r.read()[:300]
+        ev = _events(r)
+    # Assert
+    complete = next(d for k, d in ev if k == "complete")
+    assert set(clouds) == {"zscalerten"}, clouds
+    assert complete["metadata"]["cloud"] == "zscalerten", complete["metadata"]
+
+
 # ── Negative and boundary cases ────────────────────────────────────────
 
 EXPLICIT_PICKS = [
