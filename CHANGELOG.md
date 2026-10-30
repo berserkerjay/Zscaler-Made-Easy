@@ -12,6 +12,9 @@ lists what each batch of changes did, newest first.
 - **Downloads and commands.** The browser extension downloads as `zscaler-made-easy-extension.zip`, Terraform downloads start with `zscaler-made-easy-`, and the commands are `zscaler-made-easy`, `zscaler-made-easy-assess` and `zscaler-made-easy-evaluate` (the `dlp-check` names still work). The in-app guide clones `berserkerjay/Zscaler-Made-Easy`; INSTALL.md uses the new folder names (`Zscaler-Made-Easy`, `Zscaler-Made-Easy-main`); the SBOM licence id is `LicenseRef-Zscaler-Made-Easy-Internal`.
 - **Unchanged on purpose.** `DLP_CHECK_*` settings, the `X-DLP-Check-*` headers, the `[DLP-Check …]` tags on tenant objects, cookie and browser-storage keys: they are what existing installs and tenants already use. A test now fails CI when an old name appears anywhere else.
 
+### ZIA admin ranking decides which rule applies
+- **Admin ranking is no longer ignored.** With Admin Ranking on (ZIA advanced settings, `enableAdminRankAccess`), the Path analyzer, its what-if, Test a list, workload traffic into ZIA and the shadowed-rule analysis evaluate URL filtering, Cloud App Control, SSL inspection, File Type Control, Web DLP, Cloud Firewall, DNS Control and Sandbox rules by admin rank first (0 highest), then rule order; the default rule stays last and a rank tie falls back to order. When rank, not order, picked the rule, the step says so (`decided_by: "rank"`) and shows "rank R, order N". The setting is read only when ZIA platform is ticked; not read or not readable (or missing from an older kept read or snapshot), it is never guessed: rule order is kept and a module where rank would decide differently is marked conditional with a plain caution naming both rules. The sample tenant carries the setting (off).
+
 ## 2026-10-29
 
 ### Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score
