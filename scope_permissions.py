@@ -87,7 +87,10 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "Admin Roles",
             "Admin Users",
         ],
-        "permissions_write": [],
+        "permissions_write": [
+            "Only with write mode on and a confirmed Bulk changes plan (Fix rows from Test a list, IP destination group change, ATP allow "
+            "and deny lists): IP destination groups, Cloud Firewall and DNS Control rules, and the security policy allow and deny lists",
+        ],
         "endpoints_used": [
             "/zia/firewallFilteringRules", "/zia/firewallDnsRules",
             "/zia/urlFilteringRules", "/zia/urlCategories",

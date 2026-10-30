@@ -317,12 +317,13 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 48,
+            "fixed": 52,
             "accepted": 0,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
-              "func-builders"
+              "func-builders",
+              "w7-fix-selected"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 583,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -450,27 +451,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 158,
+        "fixed": 159,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 338,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 48,
+        "fixed": 50,
         "accepted": 22
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 311,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8641
   },
   "findings": [
     {
@@ -3576,6 +3577,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-FS-01",
+      "title": "Fix selected wrote only URL category changes: Cloud Firewall, DNS Control and ATP rows ended in lists to paste by hand, with no preview, conflict guard or Undo",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.4.1",
+      "wcag": "",
+      "fix": "ops_list_fix.py (list_fix, ip_group_edit, atp_list_edit on the Bulk changes engine), pack_ops security_denylist / security_allowlist kinds, bulk_test.fix_handoff sections and prove, /api/bulk-test/fix/{id}/prove/start, static/ops_list_fix.js",
+      "test": "tests/test_ops_list_fix.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-fix-selected",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -8970,6 +8987,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-FS-02",
+      "title": "The security policy list write methods (add_urls_to_blacklist, replace_whitelist, ...) were not on the shared-path guard's list, so a module could have called them outside pack_ops unnoticed",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-284",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "tests/test_shared_path.py WRITE_CALL names them; pack_ops is the only caller",
+      "test": "tests/test_shared_path.py::test_no_module_writes_to_the_tenant_outside_the_shared_path",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-fix-selected",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -9736,6 +9769,38 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-FS-03",
+      "title": "The new-marks browser test was tied to the 2026-10-28 marks (#tab-list, #paProto), so any newer release broke its whole fixture",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "tests/test_new_marks.py: the item-with-both probe is added for the newest release, the rotation uses a release after the newest, the 320px check expects a mark only on pages that have one, and the settle check uses Advanced settings (a page that still has marks)",
+      "test": "tests/test_new_marks.py",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-fix-selected",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-FS-04",
+      "title": "The sample tenant answered NOT_MODELLED to the security policy list writes, so the ATP part of a fix could not be tried on it",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.4.1",
+      "wcag": "",
+      "fix": "offline_tenant.answer_write models ADD_TO_LIST / REMOVE_FROM_LIST on /security/advanced/blacklistUrls and PUT /security",
+      "test": "tests/test_ops_list_fix.py::test_on_the_sample_tenant_the_sdk_sends_the_wire_fields_and_undo_restores_them",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-fix-selected",
+      "area": "functionality",
+      "sub_area": "builders"
     }
   ],
   "records": [
@@ -10634,6 +10699,31 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-fix-selected",
+      "area": "Builders: Fix selected, wider (ops_list_fix.py, bulk_test.fix_handoff and prove, the Bulk changes page and static/ops_list_fix.js)",
+      "title": "Test a list rows that missed their expected outcome fixed as previewable Bulk changes operations: IP destination groups, Cloud Firewall and DNS Control rules, the ATP security policy lists, with Prove it; the group and list changes also as operations of their own",
+      "standards": [
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V7.2.1",
+        "ASVS V11.1.1",
+        "ASVS V11.1.3",
+        "ASVS V12.1.1",
+        "CWE-20",
+        "CWE-272",
+        "CWE-362",
+        "CWE-367",
+        "CWE-770",
+        "CWE-841",
+        "CWE-1188",
+        "WCAG 2.2 SC 3.3.2",
+        "WCAG 2.2 SC 4.1.2"
+      ],
+      "checks": 8,
+      "findings": 4,
+      "tests_added": 39
     }
   ],
   "standards": {
@@ -10653,7 +10743,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 106,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",

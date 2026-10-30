@@ -53,7 +53,10 @@ WRITE_CALL = re.compile(r"\.(add_dict|add_dlp_engine|add_rule|add_sub_rule|updat
 
                         # AI Guard builders (ops_aiguard): AI Guard policies, ZIA proxies, destination groups, prompt capture.
                         r"add_policy|update_policy|delete_policy|add_proxy|update_proxy|delete_proxy|update_url_and_app_settings|"
-                        r"add_ip_destination_group|update_ip_destination_group|delete_ip_destination_group)\(|\bclient\.(post|put|patch|delete)\(")
+                        r"add_ip_destination_group|update_ip_destination_group|delete_ip_destination_group|"
+                        # Fix selected (ops_list_fix): the security policy allow and deny lists.
+                        r"add_urls_to_blacklist|delete_urls_from_blacklist|replace_blacklist|erase_blacklist|add_urls_to_whitelist|"
+                        r"delete_urls_from_whitelist|replace_whitelist|erase_whitelist)\(|\bclient\.(post|put|patch|delete)\(")
 # The only files allowed to name an SDK write method, and why.
 ALLOWED = {
     "pack_ops.py": "the shared execution path itself",

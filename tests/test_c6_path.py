@@ -1480,14 +1480,14 @@ def test_the_recommended_area_follows_the_deciding_module(row, area):
 
 
 def test_fix_selected_takes_only_rows_of_this_run_and_areas_with_a_custom_category():
-    """ASVS V4.1.3 · CWE-20 · CWE-841: Fix selected takes row numbers of this run only and refuses areas not changed through a URL category; it writes nothing."""
+    """ASVS V4.1.3 · CWE-20 · CWE-841: Fix selected takes row numbers of this run only and refuses areas not changed from Bulk changes (Client Connector, ZPA); it writes nothing."""
     rn = bt.run(Tenant(), bt.parse("a.example,block\n10.0.0.1,block\n"), scope=FULL, lookup=False, sleep=lambda s: None)
     with pytest.raises(bt.ListError, match="not a row of this run"):
         bt.fix_handoff(rn, rows=[3])
     with pytest.raises(bt.ListError, match="not a row of this run"):
         bt.fix_handoff(rn, rows=[True])
-    with pytest.raises(bt.ListError, match="is not changed through a custom URL category"):
-        bt.fix_handoff(rn, area="firewall")
+    with pytest.raises(bt.ListError, match="is not changed from here"):
+        bt.fix_handoff(rn, area="client_connector")
     with pytest.raises(bt.ListError, match="Unknown area"):
         bt.fix_handoff(rn, area="moon")
     rec = bt.fix_handoff(rn, rows=[1, 1], now=1000.0)

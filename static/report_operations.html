@@ -233,11 +233,13 @@
     // window.OPS_PLUGINS.register({type, render(res, where, S, H), spec(S, H)})
     // and then runs through the same read, preview, gates, apply and Undo.
     window.OPS_PLUGINS = { defs: {}, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
-    const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m) };
+    const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m),
+      runJob: (url, payload, where, title) => runJob(url, payload, where, title), body: extra => body(extra) };
     (async function loadBuilders() {
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }
-      const box = $('opBuildKinds'), loaded = new Set();
+      const box = $('opBuildKinds'), main = document.querySelector('fieldset.op-kinds'), loaded = new Set();
+      let builders = 0;
       list.forEach(p => {
         if (!/^[a-z][a-z0-9_]{1,40}$/.test(p.type) || !/^[a-z][a-z0-9_]{1,40}$/.test(p.family)) return;
         FAMILY[p.type] = p.family;
@@ -245,7 +247,8 @@
         lab.className = 'op-kind';
         lab.innerHTML = `<input type="radio" name="opKind" value="${E(p.type)}"><span><strong>${E(p.label)}</strong><span class="df-hint">${E(p.hint)}</span></span>`;
         lab.querySelector('input').addEventListener('change', e => onKind(e.target));
-        box.appendChild(lab);
+        // A change to existing objects sits with the other changes; a builder under Build new.
+        if (p.group === 'Change' && main) main.appendChild(lab); else { box.appendChild(lab); builders++; }
         // One script serves several types (ops_zpa.js has four): load each once.
         if (/^ops_[a-z0-9_]{1,40}\.js$/.test(p.script || '') && !loaded.has(p.script)) {
           loaded.add(p.script);
@@ -254,12 +257,13 @@
           document.body.appendChild(sc);
         }
       });
-      box.hidden = !list.length;
+      box.hidden = !builders;
+      pickHandoffKind();
       // ?build=<type> (a finding's or another page's link) picks that
       // builder once, for every registered type: it only selects the form.
       // A ?fix= hand-off picks its own operation, so it wins.
       const q = new URLSearchParams(location.search), want = q.get('build') || '';
-      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && box.querySelector(`input[name="opKind"][value="${want}"]`);
+      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && document.querySelector(`input[name="opKind"][value="${want}"]`);
       if (pick && !pick.checked) { pick.checked = true; onKind(pick); }
     })();
 
@@ -474,7 +478,7 @@
       preview('/api/operations/preview/start', body({ operation: spec }), null);
     });
 
-    const fmt = (v, field) => v == null ? '' : field === 'urls' || field === 'domain_names' ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist') : String(v);
+    const fmt = (v, field) => v == null ? '' : ['urls', 'domain_names', 'addresses', 'dest_ip_groups', 'nw_services'].includes(field) ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist') : String(v);
     const chip = st => { const [l, c] = STATUS[st] || [st, '']; return `<span class="df-chip ${c}">${E(l)}</span>`; };
     function objName(u) { const o = u.object || {}; return `${E(o.name || o.id || '')}${o.policy_label ? ` <span class="df-by">${E(o.policy_label)}${o.rule_type ? ' · ' + E(o.rule_type) : ''}</span>` : o.type === 'url_category' ? ' <span class="df-by">URL category</span>' : o.type === 'zpa_segment' ? ' <span class="df-by">ZPA segment</span>' : ''}`; }
     function itemsTable(items, caption) {
@@ -497,6 +501,8 @@
         <div class="df-hint">Plan ${E(String(p.plan_hash).slice(0, 16))}… · ${E(p.tenant_label)} · ${E(p.writes)} write${p.writes === 1 ? '' : 's'}${p.needs_activation ? ', then one ZIA activation' : ''}</div>
         ${listCard('Blocked', p.blockers, 'risk')}${listCard('Check before applying', p.warnings, 'warn')}${listCard('How this is applied', p.notes, 'info')}
         ${impact}${order}<h3 class="op-h">Items</h3>${itemsTable(p.items || [], 'Planned items')}`;
+      const plug = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[p.type];
+      if (plug && typeof plug.plan === 'function') plug.plan(p, $('opPlan'), H);   // e.g. each change in plain words
     }
 
     // ── Step 4: apply ──
@@ -598,9 +604,17 @@
     }
 
     // ── A hand-off from the Path analyzer's Test a list view (?fix=<id>):
-    // the URL category change is picked and its "add" list filled in. It
-    // only fills the form: reading, the preview and the four write gates
-    // are the same as for any change typed here.
+    // the Cloud Firewall, DNS Control and ATP rows fill "Fix rows from Test
+    // a list" (picked first), the URL filtering rows the URL category
+    // change's "add" list. It only fills the forms: reading, the preview and
+    // the four write gates are the same as for any change typed here.
+    function pickHandoffKind() {
+      const h = S.handoff;
+      if (!h) return;
+      const want = (h.fixes || []).length ? 'list_fix' : 'url_categories';
+      const radio = document.querySelector(`input[name="opKind"][value="${want}"]`);
+      if (radio && !radio.checked) { radio.checked = true; onKind(radio); }
+    }
     async function takeHandoff() {
       const id = new URLSearchParams(location.search).get('fix') || '';
       if (!/^[a-f0-9]{24}$/.test(id)) return;
@@ -610,13 +624,16 @@
       note.className = h ? 'bp-card' : 'bp-card warn';
       note.setAttribute('role', 'status');
       if (!h || !Array.isArray(h.urls)) { note.innerHTML = '<div class="t">The list from the Path analyzer is no longer kept</div><div>Pick the rows again on the Path analyzer\'s Test a list view, then Fix selected.</div>'; $('opH1').after(note); return; }
-      S.handoff = h;
-      const radio = document.querySelector('input[name="opKind"][value="url_categories"]');
-      if (radio) { radio.checked = true; S.kind = 'url_categories'; }
-      note.innerHTML = `<div class="t">${E(h.urls.length)} destination(s) from the Path analyzer's Test a list view</div><div>${E(h.note)}${(h.excluded || []).length ? ` ${E(h.excluded.length)} could not go into a URL category and were left out.` : ''}${h.over_limit ? ` ${E(h.over_limit)} more were over the limit of one operation.` : ''} Click Read from the tenant, pick the category in To, then preview.</div>`;
+      S.handoff = h; S.handoffId = id;
+      const fixes = h.fixes || [], nf = fixes.reduce((a, f) => a + (f.destinations || []).length, 0);
+      const parts = [];
+      if (fixes.length) parts.push(`${nf} for ${fixes.map(f => `${f.area_label} (${f.purpose === 'block' ? 'to block' : 'to allow'})`).join(', ')}: Fix rows from Test a list is picked`);
+      if (h.urls.length) parts.push(`${h.urls.length} for a custom URL category: ${fixes.length ? 'pick URL category change after this one' : 'URL category change is picked; pick the category in To'}`);
+      note.innerHTML = `<div class="t">Rows from the Path analyzer's Test a list view</div><div>${E(parts.join('; '))}. ${E(h.note)}${(h.excluded || []).length ? ` ${E(h.excluded.length)} row(s) were left out (each with the reason in the Path analyzer's recommendation).` : ''}${h.over_limit ? ` ${E(h.over_limit)} more URLs were over the limit of one operation.` : ''} Click Read from the tenant, then preview.</div>`;
       $('opH1').after(note);
+      pickHandoffKind();
       renderObjects();
-      say(`${h.urls.length} destinations from the Path analyzer are ready to add to a URL category. Read from the tenant, pick the category, then preview.`);
+      say(`Rows from the Path analyzer are ready: ${parts.join('; ')}. Read from the tenant, then preview.`);
     }
 
     tenantChoices(); refreshWrite(); renderObjects(); loadHistory(); takeHandoff();

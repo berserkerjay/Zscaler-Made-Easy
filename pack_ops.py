@@ -928,7 +928,13 @@ def _audited(action: str) -> Callable[[Callable[..., Outcome]], Callable[..., Ou
 # settings (zia/atp_policy.py update_atp_settings, PUT
 # /cyberThreatProtection/advancedThreatSettings).
 ADMIN_RULE_SERVICES = {"firewall": "cloud_firewall_rules", "sandbox": "sandbox_rules", "dns": "cloud_firewall_dns"}
-ADMIN_KINDS = ("url_category", "zpa_segment", "atp_settings")  # and the ZPA builder kinds in ZPA_KINDS below
+ADMIN_KINDS = ("url_category", "zpa_segment", "atp_settings", "security_denylist", "security_allowlist")  # and ZPA_KINDS below
+# Fix selected (ops_list_fix) changes the security policy lists the Path
+# analyzer's ATP step reads: zscaler-sdk-python 1.11.3
+# zia/security_policy_settings.py add_urls_to_blacklist / delete_urls_from_blacklist
+# (POST /security/advanced/blacklistUrls?action=ADD_TO_LIST|REMOVE_FROM_LIST) and
+# replace_whitelist (PUT /security: the allowlist has no incremental call, so
+# the payload is the whole list, built from a read right before the write).
 # ZDX probe setup (ops_zdx): for these kinds the first argument is the ZDX
 # configuration API (ops_zdx.ZdxApi), not client.zia. ZDX has no activation,
 # so a 403 gets no activate-and-retry.
@@ -1097,6 +1103,17 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(pc.update_rule, zia, channel, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if kind == "url_category":
         return call(zia.url_categories.update_url_category, oid, action, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind in ("security_denylist", "security_allowlist"):
+        svc = getattr(zia, "security_policy_settings", None)
+        if svc is None:
+            return Outcome(False, error="security_policy_settings is not available in the installed zscaler-sdk-python")
+        urls = [str(u) for u in (payload.get("urls") or [])]
+        if kind == "security_allowlist":
+            return call(svc.replace_whitelist, urls, op="update", kind=kind, name=name, log=log, zia=zia)
+        fn = {"ADD_TO_LIST": svc.add_urls_to_blacklist, "REMOVE_FROM_LIST": svc.delete_urls_from_blacklist}.get(str(action or ""))
+        if fn is None:
+            return Outcome(False, error="the denylist is changed with ADD_TO_LIST or REMOVE_FROM_LIST only; nothing was sent")
+        return call(fn, urls, op="update", kind=kind, name=name, log=log, zia=zia)
     if kind == "atp_settings":
         svc = getattr(zia, "atp_policy", None)
         if svc is None:

@@ -395,7 +395,25 @@
   "GET /api/console-index/cached": {
    "body": null,
    "params": {
+    "query:auth_method": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:cloud": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
     "query:profile_id": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:vanity_domain": {
      "required": false,
      "schema": {
       "type": "string"
@@ -823,6 +841,14 @@
      }
     }
    }
+  },
+  "GET /api/quality-score": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/quality-score/report.md": {
+   "body": null,
+   "params": {}
   },
   "GET /api/readiness/catalog": {
    "body": null,
@@ -1332,6 +1358,24 @@
     "required": true
    },
    "params": {}
+  },
+  "POST /api/bulk-test/fix/{fix_id}/prove/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BulkProveRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:fix_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
   },
   "POST /api/bulk-test/start": {
    "body": {
@@ -2157,7 +2201,7 @@
    "body": {
     "content": {
      "application/json": {
-      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+      "$ref": "#/components/schemas/OperationCredsRequest"
      }
     },
     "required": true
@@ -2175,7 +2219,7 @@
    "body": {
     "content": {
      "application/json": {
-      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+      "$ref": "#/components/schemas/OperationCredsRequest"
      }
     },
     "required": true
@@ -3441,6 +3485,57 @@
    },
    "type": "object"
   },
+  "BulkProveRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
   "BulkTestRequest": {
    "properties": {
     "api_key": {
@@ -3635,6 +3730,10 @@
     "auth_method": {
      "type": "string"
     },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
     "client_id": {
      "type": "string"
     },
@@ -3647,11 +3746,20 @@
     "confirm": {
      "type": "string"
     },
+    "from_page": {
+     "type": "boolean"
+    },
     "password": {
      "type": "string"
     },
     "profile_id": {
      "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "username": {
      "type": "string"
@@ -3761,6 +3869,10 @@
     "auth_method": {
      "type": "string"
     },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
     "check_id": {
      "type": "string"
     },
@@ -3777,6 +3889,9 @@
      "additionalProperties": true,
      "type": "object"
     },
+    "from_page": {
+     "type": "boolean"
+    },
     "note": {
      "type": "string"
     },
@@ -3785,6 +3900,12 @@
     },
     "profile_id": {
      "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "title": {
      "type": "string"
@@ -4263,6 +4384,9 @@
      "type": "boolean"
     },
     "password": {
+     "type": "string"
+    },
+    "plan_hash": {
      "type": "string"
     },
     "profile_id": {
@@ -4911,6 +5035,57 @@
    },
    "type": "object"
   },
+  "OperationCredsRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
   "OperationObjectsRequest": {
    "properties": {
     "api_key": {
@@ -4933,6 +5108,9 @@
      "type": "string"
     },
     "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
      "type": "string"
     },
     "family": {
@@ -4990,6 +5168,9 @@
      "type": "boolean"
     },
     "confirm_text": {
+     "type": "string"
+    },
+    "customer_id": {
      "type": "string"
     },
     "from_page": {
@@ -5603,6 +5784,9 @@
     "password": {
      "type": "string"
     },
+    "plan_hash": {
+     "type": "string"
+    },
     "profile_id": {
      "type": "string"
     },
@@ -6103,6 +6287,10 @@
     "assessor": {
      "type": "string"
     },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
     "check_id": {
      "type": "string"
     },
@@ -6128,8 +6316,17 @@
     "dry_run": {
      "type": "boolean"
     },
+    "from_page": {
+     "type": "boolean"
+    },
     "profile_id": {
      "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "vanity_domain": {
      "type": "string"
