@@ -235,7 +235,7 @@
   };
   X.operations = {
     group: 'Close the gaps', name: 'Bulk changes', href: '/report/operations',
-    what: 'Changes many things at once, safely: enables or disables up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control and the four DLP channels; puts one policy\'s rules in a new order with the fewest moves; adds, removes, moves or copies URLs between custom URL categories; and moves ZPA domains between application segments or clones a segment. Its builders (Build new) create named, disabled-by-default objects from a template: the ZIA security baseline, a ZPA App Connector group, ZPA application segments and ZPA policy rules, Client Connector profiles, ZDX probe setup, AI Guard routing for GenAI apps and an AI Guard detection policy, and the SSL certificate manager; and they take a build back: delete ZPA objects by prefix, delete a Client Connector profile, delete ZDX apps and probes, or turn ZDX apps and probes on or off.',
+    what: 'Changes many things at once, safely: enables or disables up to 100 rules across URL filtering, SSL inspection, Cloud Firewall, Cloud App Control, File Type Control and the four DLP channels; puts one policy\'s rules in a new order with the fewest moves; adds, removes, moves or copies URLs between custom URL categories; and moves ZPA domains between application segments or clones a segment. Its builders (Build new) create named, disabled-by-default objects from a template: the ZIA security baseline, a ZPA App Connector group, ZPA application segments and ZPA policy rules, Client Connector profiles, ZDX probe setup, AI Guard routing for GenAI apps and an AI Guard detection policy, the SSL certificate manager, and the Firewall import from Palo Alto Networks (the groups, services and disabled Cloud Firewall rules of a migration plan); and they take a build back: delete ZPA objects by prefix, delete a Client Connector profile, delete ZDX apps and probes, or turn ZDX apps and probes on or off.',
     why: 'Clean-ups found by the assessment and Shadowed rules usually mean dozens of clicks in the portal, one rule at a time, with no record of what each rule was before. Here the whole change is one reviewed plan, with the value before and after for every item and a way back.',
     when: 'After Shadowed rules or the assessment name rules to disable, reorder or clean up, when a customer asks to move URLs or ZPA domains between categories or segments, when a POV or a finding needs objects built (a finding\'s "Build" link opens the right builder), and whenever a change touches more than a handful of objects.',
     get: 'A preview of every item (before, after, already as asked, excluded and why, the rules that use each URL category), a plan PDF for change approval, the apply with a per-item result (a conflict when someone changed an item since the preview, never overwritten), the read-back, and a record with Undo.',
@@ -393,6 +393,14 @@
     get: 'An inventory of every source policy with the detection facets recognised in it, a decisions template to fill in, then a migration report (converted, blocked with the question to answer, retired), an efficacy mapping that says what share of each policy\'s recognised detection the translation carries with the arithmetic behind every number, and, only when nothing is blocked, the Terraform with every rule DISABLED: a workspace (.zip, the same file layout as the pack hand-off, terraform fmt-clean, with a README, variables and outputs) or the same configuration as main.tf.json.',
     next: 'Review the decisions with the customer, compile until the report says ready, then hand the Terraform to the platform team or run it against a test tenant; enabling rules and ordering them with the existing policy are separate change-control steps. For a firewall plan: open it in Bulk changes (Firewall import from Palo Alto Networks), preview against the tenant and apply through the usual gates; every rule arrives disabled.',
   };
+  X.plugin = {
+    group: 'Close the gaps', name: 'Plugin pages', href: '/report/plugin',
+    what: 'A read-only page added by a local plugin an admin approved in Advanced settings (Local plugins): a title and a table, shown as plain text. Local plugins are off by default and load only when their exact SHA-256 is on the allow-list.',
+    why: 'A team can add a view of its own (a count, a list, a check) without changing the app, while the app keeps control of what the page can show.',
+    when: 'Only when an admin has switched local plugins on and approved a plugin that adds a page; the link comes with the plugin.',
+    get: 'The plugin\'s table and notes. Nothing on the page changes a tenant.',
+    next: 'Ask the admin who approved the plugin what its table means; revoke the plugin in Advanced settings to remove the page at once.',
+  };
   X.help = {
     group: 'Start', name: 'What does everything do?', href: '/help',
     what: 'This page: every function of the app explained in plain English, in the order you will need them on a first engagement.',
@@ -441,7 +449,7 @@
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
-      '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
+      '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
@@ -492,7 +500,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
-    'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
+    'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
     'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

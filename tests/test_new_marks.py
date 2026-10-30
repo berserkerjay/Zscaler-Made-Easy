@@ -133,7 +133,7 @@ def test_every_manifest_entry_is_complete_with_a_valid_date():
         date.fromisoformat(d)
     assert all(str(why).strip() for why in MAN.get("skipped", {}).values()), "a skipped release says why"
     assert not set(MAN["releases"]) & set(MAN.get("skipped", {}))
-    assert MAN["keep"] == 2
+    assert MAN["keep"] == 3, "the newest three releases are marked since 2026-10-31 (2026-10-28 is only three days older)"
 
 
 def test_the_manifest_words_are_plain_text():
