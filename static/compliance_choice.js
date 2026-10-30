@@ -63,7 +63,7 @@
     if (!s) return '';
     const https = u => (/^https:\/\//.test(String(u || '')) ? String(u) : '#');
     return `<div class="bp-card" role="region" aria-label="What ${E(s.label)} will do"><div class="t">What ${E(s.label)} will do</div>
-      <ul>${(s.lines || []).map(l => `<li>${E(l)}</li>`).join('')}</ul>
+      <ul style="padding-left:1.2rem">${(s.lines || []).map(l => `<li>${E(l)}</li>`).join('')}</ul>
       <div class="df-hint">${E(s.reuses)}${s.assumed_profile ? ` Assumed: ${E(s.assumed_profile)}` : ''}</div>
       ${(s.sources || []).length ? `<div class="df-hint">Sources: ${s.sources.map(x => `<a href="${E(https(x.url))}" target="_blank" rel="noopener noreferrer">${E(x.title)}</a>`).join('; ')}</div>` : ''}
       ${(s.assumed_controls || []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(s.assumed_controls.join(', '))}</div>` : ''}</div>`;

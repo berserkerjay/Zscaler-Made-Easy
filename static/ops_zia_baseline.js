@@ -143,7 +143,7 @@
         <div class="op-row"><label class="df-ctl" style="max-width:100%"><span class="lbl">Compliance profile</span><select id="zbCompliance" aria-label="Compliance profile" style="max-width:100%">
           <option value="">None (no compliance profile)</option>${Object.keys(groups).map(g => `<optgroup label="${E(g)}">${groups[g].map(p => `<option value="${E(p.key)}"${z.compliance === p.key ? ' selected' : ''}>${E(p.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${z.cpSaved ? `<span class="df-chip" role="status">${E(z.cpSaved)}</span>` : ''}</div>
-        ${cps ? `<div class="bp-card" id="zbCpSummary"><div class="t">What ${E(cps.label)} will do</div><ul>${(cps.lines || []).map(l => `<li>${E(l)}</li>`).join('')}</ul>
+        ${cps ? `<div class="bp-card" id="zbCpSummary"><div class="t">What ${E(cps.label)} will do</div><ul style="padding-left:1.2rem">${(cps.lines || []).map(l => `<li>${E(l)}</li>`).join('')}</ul>
           <div class="df-hint">${E(cps.reuses)}${cps.assumed_profile ? ` Assumed: ${E(cps.assumed_profile)}` : ''}</div>
           ${(cps.sources || []).length ? `<div class="df-hint">Sources: ${cps.sources.map(x => `<a href="${E(https(x.url))}" target="_blank" rel="noopener noreferrer">${E(x.title)}</a>`).join('; ')}</div>` : ''}
           ${(cps.assumed_controls || []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(cps.assumed_controls.join(', '))}</div>` : ''}

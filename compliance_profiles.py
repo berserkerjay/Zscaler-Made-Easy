@@ -632,7 +632,7 @@ def summary(profile_key: str) -> Dict[str, Any]:
         lines.append("Baseline tier: unchanged (your choice).")
     lines.append(f"Overlay: {zb.OVERLAYS[p['overlay']]['label']} (each rule also shows the controls of this profile).")
     for a in adds:
-        lines.append(f"Adds {a['title']} ({a['action'].lower()}): {a['why']} ({a['control']}).")
+        lines.append(f"Adds the rule {zb.CATALOG_BY_KEY[a['key']]['suffix']} ({a['action'].lower()}): {a['why']} ({a['control']}).")
     for r in req:
         lines.append(f"Requires {r['title']} (always on, {r['control']}).")
     for f in forbid:
