@@ -1,10 +1,12 @@
 """The app is called Zscaler Made Easy. Its name before that appears in no
 tracked file except where an existing install needs it.
 
-This file is the one place that spells the old name out, because it is
-what the guard looks for. The other exceptions are listed in COMPAT below,
-each with the reason, and are exact strings in named files: anything else
-that matches fails the guard, wherever it is added.
+This file and tests/test_old_repo_name.py (the guard for the repository's
+first name, which forbids this one too) are the places that spell the old
+name out, because it is what the guards look for. The other exceptions are
+listed in COMPAT below, each with the reason, and are exact strings in
+named files: anything else that matches fails the guard, wherever it is
+added.
 """
 from __future__ import annotations
 
@@ -19,6 +21,8 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 THIS = "tests/test_product_name.py"
+# The other guard: it must name what it forbids, as this file does.
+OTHER_GUARD = "tests/test_old_repo_name.py"
 
 # Every spelling: any case, with a space, underscore, hyphen, line break or
 # nothing between the words, and the longer "Platform" form.
@@ -32,7 +36,7 @@ SHIMS = {
     "UPDATE_Zscaler_Assessment.bat": "UPDATE_Zscaler_Made_Easy.bat",
 }
 # History: entries describe what was true when they were written.
-WHOLE_FILE = set(SHIMS) | {"CHANGELOG.md", THIS}
+WHOLE_FILE = set(SHIMS) | {"CHANGELOG.md", THIS, OTHER_GUARD}
 
 OLD_SHORTCUT = "Zscaler Assessment.lnk"
 OLD_DATA_DIRS = {"ZscalerAssessment", "zscaler_assessment"}

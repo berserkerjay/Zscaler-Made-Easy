@@ -363,7 +363,8 @@ def test_stop_ends_the_read_before_the_next_request():
             stop.set()
     with pytest.raises(sr.Stopped, match="You clicked Stop"):
         sr.run(c, sr.scope_for(**ALL), log=log, cancel=stop)
-    assert [e for _, e in c.calls] == ["/zia/webDlpGlobalOptions"], c.calls
+    # The evaluation settings (Web DLP mode, admin ranking) come before the rules.
+    assert [e for _, e in c.calls] == ["/zia/webDlpGlobalOptions", "/zia/advancedSettings"], c.calls
 
 
 # ── API ─────────────────────────────────────────────────────────────────

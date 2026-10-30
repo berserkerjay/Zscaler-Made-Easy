@@ -1,6 +1,8 @@
-"""Help on hover: every control on every page explains what it does and what
-input it expects (static/hover_help.js, static/hover_help.css and the
-catalogue static/help_catalog.js; the browser extension carries copies).
+"""Help marks: a superscript "?" after a page title, a sidebar item or a
+control whose label does not say it all opens what it does and what input it
+expects (static/hover_help.js, static/hover_help.css and the catalogue
+static/help_catalog.js; the browser extension carries copies). Pointing at,
+or tabbing to, an ordinary control opens nothing.
 
 Two halves:
 
@@ -12,10 +14,12 @@ Two halves:
   tests/test_findings_reflow.py; skipped without node or Chrome): every page
   is loaded on the made-up sample tenant and toured (tabs, folded sections,
   dialogs, Analyze / Read / Preview), every visible control is enumerated
-  after each step and must have a catalogue entry whose pop-up opens on
-  focus; then the WCAG 2.2 behaviours (hover, Esc, hoverable, persistent,
-  aria-describedby, 24px touch target, contrast, reflow at 320px, reduced
-  motion) and escaping are checked with real input events.
+  after each step and must have a catalogue entry and a "?" mark that opens
+  its words, or one of the recorded reasons it needs none; then the WCAG 2.2
+  behaviours (hover and focus on a control open nothing; hover, click, tap,
+  Enter and Space on the mark open it; Esc and a click elsewhere close it;
+  one at a time; names, aria-expanded, 24px target, contrast, reflow at
+  320px, reduced motion) and escaping are checked with real input events.
 
 No real tenant is contacted: the sample tenant is served from memory and the
 suite's offline guard stays on. A control without help fails the coverage
@@ -409,31 +413,36 @@ const sample = await ev(`fetch('/api/offline/sample', { method: 'POST', headers:
 // Everything ticked on the Scope page, so every page reads (the sample) and shows its results.
 const SET_SCOPES = `localStorage.setItem('zassess_scopes_live_v1', JSON.stringify({ scopes: ${JSON.stringify(SCOPES)} })), 1`;
 await ev(SET_SCOPES);
-// One pass over the visible controls: each gets focused (the pop-up must
-// open with its entry's words, beside the control and inside the viewport,
-// and the control's aria-describedby must carry the same words).
+// One pass over the visible controls: a control that needs explanation has
+// a "?" mark; opening it shows its entry's words beside the mark, inside the
+// viewport, and the mark's aria-describedby carries the same words. A
+// control without a mark says why (skipReason).
 const AUDIT = `(() => { const H = window.HoverHelp; window.__hhSeen = window.__hhSeen || new WeakSet();
-  const rows = H.audit(), out = [];
+  H.scan(); const out = [];
   const els = H.controls(document).filter(e => H.isVisible(e));
   for (const el of els) {
-    const row = { control: H.describe(el), key: (H.entryFor(el) || {}).sel || null, title: H.titleHost(el).getAttribute('data-hh-title') || '', focus: null };
-    if (row.key && !window.__hhSeen.has(el)) {
+    const item = H.entryFor(el), mark = H.markOf(el), help = mark && mark.getAttribute('data-hh-mark') === 'help' ? mark : null;
+    const row = { control: H.describe(el), key: item ? item.sel : null, mark: !!help, skip: item ? H.skipReason(el, item) : 'no entry',
+      title: H.titleHost(el).getAttribute('data-hh-title') || '', focus: null };
+    if (help && !window.__hhSeen.has(el)) {
       window.__hhSeen.add(el);
-      const e = H.entryFor(el).e, prev = document.activeElement;
-      H.hide(); H.show(el);
+      const e = item.e;
+      H.hide(); H.open(help, true);
       const tip = H.tip(), vw = document.documentElement.clientWidth, vh = window.innerHeight;
-      const t = tip.getBoundingClientRect(), c = el.getBoundingClientRect();
-      const ids = (el.getAttribute('aria-describedby') || '').split(/\\s+/).filter(i => /^hh-/.test(i));
-      const desc = ids.map(i => (document.getElementById(i) || {}).textContent || '').join(' ');
+      const t = tip.getBoundingClientRect(), c = help.getBoundingClientRect();
+      const desc = (document.getElementById(help.getAttribute('aria-describedby') || '') || {}).textContent || '';
       const overlap = Math.max(0, Math.min(t.right, c.right) - Math.max(t.left, c.left)) * Math.max(0, Math.min(t.bottom, c.bottom) - Math.max(t.top, c.top));
-      const problems = [];
-      if (tip.hidden || !tip.textContent.includes(e.what.replace(/\\s+/g, ' ').trim())) problems.push('pop-up missing or wrong words');
-      if (!desc.includes(e.what.replace(/\\s+/g, ' ').trim())) problems.push('aria-describedby does not carry the words');
-      if (overlap > 1 && c.top >= 0 && c.bottom <= vh) problems.push('covers the control');
+      const words = e.what.replace(/\\s+/g, ' ').trim(), problems = [];
+      if (tip.hidden || !tip.textContent.includes(words)) problems.push('pop-up missing or wrong words');
+      if (!desc.includes(words)) problems.push('the mark\\'s aria-describedby does not carry the words');
+      if (help.getAttribute('aria-expanded') !== 'true' || help.getAttribute('aria-controls') !== tip.id) problems.push('aria-expanded or aria-controls wrong');
+      if (!/^Help: \\S/.test(help.getAttribute('aria-label') || '')) problems.push('the mark is not named Help: <item>');
+      if (overlap > 1 && c.top >= 0 && c.bottom <= vh) problems.push('covers the mark');
       if (t.left < -0.5 || t.right > vw + 0.5) problems.push('outside the viewport sideways');
       if (H.titleHost(el).hasAttribute('title')) problems.push('a native title is still there');
-      row.focus = problems.join('; ');
       H.hide();
+      if (help.getAttribute('aria-expanded') !== 'false') problems.push('aria-expanded stays true after closing');
+      row.focus = problems.join('; ');
     }
     out.push(row);
   }
@@ -442,7 +451,8 @@ async function audit(page, state, acc) {
   const rows = await ev(AUDIT).catch(e => [{ control: 'AUDIT FAILED ' + String(e).slice(0, 200), key: null }]);
   for (const r of rows) {
     const k = r.control;
-    if (!acc.controls[k]) acc.controls[k] = { key: r.key, state, title: r.title };
+    if (!acc.controls[k]) acc.controls[k] = { key: r.key, state, title: r.title, mark: r.mark, skip: r.skip };
+    else if (r.mark) acc.controls[k].mark = true;
     if (r.key) acc.used[r.key] = 1;
     if (r.focus) acc.focus.push(`${k}: ${r.focus} (${state})`);
   }
@@ -575,19 +585,44 @@ def _page(tour, page):
     return tour["pages"][page]
 
 
+# Why a control may have no "?" mark (hover_help.js, skipReason): each one
+# is a label or a place that already says what the control is.
+SKIP_REASONS = {
+    "the label says it all",
+    "a tab names its panel",
+    "a step in a diagram: the picture and its words name it",
+    'part of the page\'s own "What is this page" box',
+    "one row of a table: its column says what it is",
+    "a link inside a sentence",
+    "an option with its own description",
+    "a tile that carries its own description",
+    "the first of the same kind in this list carries the mark",
+}
+
+
 @pytest.mark.parametrize("page", sorted(PAGES))
 def test_every_visible_control_has_help(tour, page):
-    """WCAG 2.2 SC 3.3.2 · SC 4.1.2 · ASVS V1.14.1: after every tour step, each visible control has a catalogue entry (failures name page and selector)."""
+    """WCAG 2.2 SC 3.3.2 · SC 4.1.2 · ASVS V1.14.1: after every tour step, each visible control has a catalogue entry and a "?" mark, or a recorded reason it needs none (failures name page and selector)."""
     acc = _page(tour, page)
     missing = [f"{page} {c}  (seen {v['state']})" for c, v in acc["controls"].items() if not v["key"]]
     assert not missing, "controls without help:\n" + "\n".join(missing)
+    unmarked = [f"{page} {c}: {v['skip'] or 'no reason'}" for c, v in acc["controls"].items() if not v["mark"] and v["skip"] not in SKIP_REASONS]
+    assert not unmarked, "controls that need a ? mark:\n" + "\n".join(unmarked)
 
 
 @pytest.mark.parametrize("page", sorted(PAGES))
-def test_every_control_opens_its_help_on_focus(tour, page):
-    """WCAG 2.2 SC 1.4.13 · SC 1.3.1 · SC 4.1.2: focus opens the pop-up with the entry's words, aria-describedby carries them, it never covers the control."""
+def test_every_help_mark_opens_its_words(tour, page):
+    """WCAG 2.2 SC 1.4.13 · SC 1.3.1 · SC 4.1.2: each "?" mark opens the entry's words beside it, names its item, sets aria-expanded, and its aria-describedby carries the words."""
     acc = _page(tour, page)
     assert not acc["focus"], "\n".join(acc["focus"][:20])
+
+
+def test_most_controls_with_help_have_a_mark_and_the_skips_are_recorded(tour):
+    """WCAG 2.2 SC 3.3.2 · ASVS V1.14.1: the coverage list stays honest: every page toured has marks, and each skipped control carries one of the recorded reasons."""
+    for page, acc in tour["pages"].items():
+        rows = list(acc["controls"].values())
+        assert all(v["mark"] or v["skip"] in SKIP_REASONS for v in rows if v["key"]), page
+    assert sum(1 for acc in tour["pages"].values() for v in acc["controls"].values() if v["mark"]) >= 150
 
 
 @pytest.mark.parametrize("page", sorted(PAGES))
@@ -644,15 +679,51 @@ async function open(url, width, reduce) {
 }
 const tipState = `(() => { const t = window.HoverHelp.tip(); return !!t && !t.hidden; })()`;
 const mouse = (type, x, y) => send('Input.dispatchMouseEvent', { type, x, y, button: 'none' });
-const key = async k => { const c = { Escape: 27, Tab: 9 }[k]; await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: c }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k, windowsVirtualKeyCode: c }); };
-const centre = sel => ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); el.scrollIntoView({ block: 'center', behavior: 'instant' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+const clickAt = async (x, y) => { await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 }); await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }); };
+const key = async k => { const c = { Escape: 27, Tab: 9, Enter: 13, ' ': 32 }[k]; await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k === ' ' ? 'Space' : k, windowsVirtualKeyCode: c, text: k === 'Enter' ? '\r' : k === ' ' ? ' ' : undefined }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k === ' ' ? 'Space' : k, windowsVirtualKeyCode: c }); };
+const centre = js => ev(`(() => { const el = ${js}; el.scrollIntoView({ block: 'center', behavior: 'instant' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 const out = {};
 const page = pages[0], sel = pages[1];
+const CTL = `document.querySelector(${JSON.stringify(sel)})`, MARK = `window.HoverHelp.markOf(${CTL})`;
+const state = () => ev(`(() => { const m = ${MARK}, t = window.HoverHelp.tip(); return { open: !!t && !t.hidden, expanded: m.getAttribute('aria-expanded'), active: document.activeElement === m ? 'mark' : document.activeElement === ${CTL} ? 'control' : (document.activeElement || {}).id || '' }; })()`);
 
-// Hover opens it; the pointer can move onto it and it stays; leaving both closes it.
+// An ordinary control opens nothing: not on hover, not on keyboard focus.
 await open(page, 1280, false);
 await mouse('mouseMoved', 2, 1190);
-let c = await centre(sel);
+let c = await centre(CTL);
+await mouse('mouseMoved', c.x, c.y);
+await wait(700);
+out.controlHover = await ev(tipState);
+await ev(`(${CTL}.blur(), document.body.focus(), 1)`);
+await ev(`(() => { const el = ${CTL}; const all = [...document.querySelectorAll('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(e => !e.disabled && e.getClientRects().length); const i = all.indexOf(el); all[Math.max(0, i - 1)].focus(); return 1; })()`);
+await key('Tab');
+await wait(600);
+out.controlFocus = { open: await ev(tipState), focused: await ev(`document.activeElement === ${CTL}`) };
+// The mark: next in the tab order, named, a 24px target beside the control, never over it.
+await key('Tab');
+out.markInfo = await ev(`(() => { const m = ${MARK}, el = ${CTL}; const r = m.getBoundingClientRect(), c = el.getBoundingClientRect(), t = window.HoverHelp.tip();
+  return { isMark: document.activeElement === m, tag: m.tagName, type: m.type, label: m.getAttribute('aria-label'), expanded: m.getAttribute('aria-expanded'), controls: m.getAttribute('aria-controls'),
+    tipId: t.id, role: t.getAttribute('role'), w: r.width, h: r.height, glyph: getComputedStyle(m, '::before').content,
+    covers: Math.max(0, Math.min(r.right, c.right) - Math.max(r.left, c.left)) * Math.max(0, Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top)),
+    desc: (document.getElementById(m.getAttribute('aria-describedby') || '') || {}).textContent || '' }; })()`);
+await wait(600);
+out.markFocusAlone = await ev(tipState);
+// Keyboard: Enter opens it, Esc closes it and focus stays on the mark; Space opens it again.
+await key('Enter'); await frames(2);
+out.enter = await state();
+await key('Escape'); await frames(2);
+out.esc = await state();
+await key(' '); await frames(2);
+out.space = await state();
+await key('Escape'); await frames(2);
+out.entry = await ev(`window.HoverHelp.entryFor(${CTL}).e`);
+out.tipText = await ev(`(window.HoverHelp.open(${MARK}, true), window.HoverHelp.tip().textContent)`);
+await ev(`(window.HoverHelp.hide(), 1)`);
+
+// Pointer: hovering the mark opens it; the pointer can move onto the pop-up; leaving both closes it.
+await open(page, 1280, false);
+await mouse('mouseMoved', 2, 1190);
+c = await centre(MARK);
 await mouse('mouseMoved', c.x, c.y);
 out.hoverOpens = !!(await until(() => ev(tipState), 'hover pop-up', 5000).catch(() => false));
 const tr = await ev(`(() => { const r = window.HoverHelp.tip().getBoundingClientRect(); return { x: r.left + 10, y: r.top + 5 }; })()`);
@@ -661,67 +732,73 @@ await wait(700);
 out.hoverable = await ev(tipState);
 await mouse('mouseMoved', 2, 1190);
 out.leaveCloses = !!(await until(async () => !(await ev(tipState)), 'closed', 5000).catch(() => false));
-out.describedby = await ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); const ids = (el.getAttribute('aria-describedby') || '').split(' ');
-  return ids.map(i => (document.getElementById(i) || {}).textContent || '').join(' '); })()`);
-out.entry = await ev(`window.HoverHelp.entryFor(document.querySelector(${JSON.stringify(sel)})).e`);
-
-// Keyboard: Tab focus opens it, it persists, Esc closes it without moving focus.
-await open(page, 1280, false);
-await ev(`document.querySelector(${JSON.stringify(sel)}).focus(), 1`);
-await key('Tab');
-out.tabbed = await ev(`window.HoverHelp.describe(document.activeElement)`);
-out.focusOpens = !!(await until(() => ev(tipState), 'focus pop-up', 5000).catch(() => false));
-await wait(1500);
-out.persists = await ev(tipState);
-const before = await ev(`window.HoverHelp.describe(document.activeElement)`);
-await key('Escape');
-out.escCloses = !(await ev(tipState));
-out.focusKept = (await ev(`window.HoverHelp.describe(document.activeElement)`)) === before;
-await wait(400);
-out.staysClosed = !(await ev(tipState));
+// A click keeps it open after the pointer leaves; a click elsewhere closes it; the control is not pressed.
+c = await centre(MARK);
+await ev(`(window.__ctlClicks = 0, ${CTL}.addEventListener('click', () => window.__ctlClicks++), 1)`);
+await clickAt(c.x, c.y);
+await mouse('mouseMoved', 2, 1190);
+await wait(700);
+out.clickKeeps = await state();
+await clickAt(640, 1180);
+await frames(2);
+out.outsideCloses = !(await ev(tipState));
+out.controlPressed = await ev(`window.__ctlClicks`);
+// One at a time: opening another mark closes the first.
+out.oneAtATime = await ev(`(() => { const H = window.HoverHelp, ms = H.marks().filter(m => !m.hidden).slice(0, 2); H.open(ms[0], true); H.open(ms[1], true);
+  const r = { first: ms[0].getAttribute('aria-expanded'), second: ms[1].getAttribute('aria-expanded'), forSecond: H.current() === ms[1] }; H.hide(); return r; })()`);
+// A sidebar item's mark opens help and the item itself still opens its page.
+await open('/', 1280, false);
+out.sidebar = await ev(`(() => { const item = document.querySelector('#dbSidebar button[onclick="openPathAnalyzerTab()"]'), H = window.HoverHelp, m = H.markOf(item);
+  let opened = 0; const real = window.openPathAnalyzerTab; window.openPathAnalyzerTab = () => { opened++; };
+  m.click(); const tip = !H.tip().hidden && H.tip().textContent.includes(H.entryFor(item).e.what.replace(/\\s+/g, ' ').trim()); H.hide();
+  item.click(); window.openPathAnalyzerTab = real;
+  return { markLabel: m.getAttribute('aria-label'), tip, opened, sibling: item.nextElementSibling && item.nextElementSibling.classList.contains('hh-mark'), sameRow: Math.abs(m.getBoundingClientRect().top + m.getBoundingClientRect().height / 2 - item.getBoundingClientRect().top - item.getBoundingClientRect().height / 2) < item.getBoundingClientRect().height / 2 }; })()`);
 
 // Motion: a short fade normally, none at all with reduced motion.
-out.motion = await ev(`(() => { window.HoverHelp.show(document.querySelector(${JSON.stringify(sel)})); return getComputedStyle(window.HoverHelp.tip()).transitionDuration; })()`);
+await open(page, 1280, false);
+out.motion = await ev(`(() => { window.HoverHelp.open(${MARK}, true); return getComputedStyle(window.HoverHelp.tip()).transitionDuration; })()`);
 await open(page, 1280, true);
-out.reduced = await ev(`(() => { window.HoverHelp.show(document.querySelector(${JSON.stringify(sel)})); return getComputedStyle(window.HoverHelp.tip()).transitionDuration; })()`);
+out.reduced = await ev(`(() => { window.HoverHelp.open(${MARK}, true); return getComputedStyle(window.HoverHelp.tip()).transitionDuration; })()`);
 
-// Contrast in the dark (default) and light themes.
+// Contrast in the dark (default) and light themes: the pop-up's lines, and the marks against the page.
 const CONTRAST = `(() => { const lum = c => { const v = c.match(/[\\d.]+/g).slice(0, 3).map(Number).map(x => /^color\\(srgb/.test(c) ? x * 255 : x).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
-  const H = window.HoverHelp; H.show(document.querySelector(${JSON.stringify(sel)})); const t = H.tip(); const bg = lum(getComputedStyle(t).backgroundColor);
+  const H = window.HoverHelp; H.open(${MARK}, true); const t = H.tip(); const bg = lum(getComputedStyle(t).backgroundColor);
   return Math.min(...[t, ...t.querySelectorAll('p, strong')].map(n => { const f = lum(getComputedStyle(n).color); return (Math.max(f, bg) + 0.05) / (Math.min(f, bg) + 0.05); })); })()`;
 await ev(`document.body.classList.remove('theme-light'), 1`);
-out.themes = [await ev(`getComputedStyle((window.HoverHelp.show(document.querySelector(${JSON.stringify(sel)})), window.HoverHelp.tip())).backgroundColor`)];
+out.themes = [await ev(`getComputedStyle((window.HoverHelp.open(${MARK}, true), window.HoverHelp.tip())).backgroundColor`)];
 out.contrastDark = await ev(CONTRAST);
 await ev(`document.body.classList.add('theme-light'), 1`);
 out.contrastLight = await ev(CONTRAST);
 out.themes.push(await ev(`getComputedStyle(window.HoverHelp.tip()).backgroundColor`));
 
-// Touch: the ⓘ target is at least 24px and opens it; a long press opens it too.
+// Touch: a tap on the mark opens it; a tap on the control does not.
 await open(page, 390, false);
-c = await centre(sel);
-await ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', bubbles: true })); el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true })); return 1; })()`);
-out.info = await ev(`(() => { const i = window.HoverHelp.info(); const r = i.getBoundingClientRect(); const c = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect();
-  return { w: r.width, h: r.height, visible: !i.hidden, label: i.getAttribute('aria-label'), covers: Math.max(0, Math.min(r.right, c.right) - Math.max(r.left, c.left)) * Math.max(0, Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top)) }; })()`);
-await ev(`window.HoverHelp.info().click(), 1`);
-out.infoOpens = await ev(tipState);
-await ev(`window.HoverHelp.hide(), 1`);
-await ev(`document.querySelector(${JSON.stringify(sel)}).dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', bubbles: true })), 1`);
-out.longPress = !!(await until(() => ev(tipState), 'long press', 5000).catch(() => false));
+await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+const tap = async (x, y) => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
+c = await centre(CTL);
+await tap(c.x, c.y); await wait(700);
+out.tapControl = await ev(tipState);
+await ev(`(document.activeElement && document.activeElement.blur && document.activeElement.blur(), 1)`);
+c = await centre(MARK);
+await tap(c.x, c.y);
+out.tapMark = !!(await until(() => ev(tipState), 'tap pop-up', 5000).catch(() => false));
+await send('Emulation.setTouchEmulationEnabled', { enabled: false });
 
-// Reflow at 320px: every visible control's pop-up stays inside the viewport and the page never scrolls sideways.
+// Reflow at 320px: every visible mark's pop-up stays inside the viewport and the page never scrolls sideways.
 out.reflow = {};
 for (const p of pages.slice(2)) {
   await open(p, 320, false);
   out.reflow[p] = await ev(`(() => { const H = window.HoverHelp, bad = []; const vw = document.documentElement.clientWidth; H.hide(); const base = Math.max(vw, document.documentElement.scrollWidth);
-    for (const el of H.controls(document).filter(e => H.isVisible(e)).slice(0, 80)) { if (!H.show(el)) continue;
+    if (base > vw + 0.5) bad.push('the page scrolls sideways with the marks: ' + base);
+    for (const m of H.marks().filter(m => !m.hidden && m.getClientRects().length).slice(0, 80)) { if (!H.open(m, true)) continue;
       const r = H.tip().getBoundingClientRect(), sw = document.documentElement.scrollWidth;
-      if (r.left < 0 || r.right > vw + 0.5 || sw > base + 0.5) bad.push(H.describe(el) + ' tip ' + Math.round(r.left) + '..' + Math.round(r.right) + ' page ' + sw); H.hide(); }
-    return { vw, base, bad: bad.slice(0, 10) }; })()`);
+      if (r.left < 0 || r.right > vw + 0.5 || sw > base + 0.5) bad.push(m.getAttribute('aria-label') + ' tip ' + Math.round(r.left) + '..' + Math.round(r.right) + ' page ' + sw); H.hide(); }
+    return { vw, base, bad: bad.slice(0, 10), marks: H.marks().length }; })()`);
 }
 
 // Escaping: hostile catalogue words and a hostile native title stay text.
 await open(page, 1280, false);
-out.xss = await ev(`(() => { const H = window.HoverHelp, el = document.querySelector(${JSON.stringify(sel)}); const key = H.entryFor(el).sel;
+out.xss = await ev(`(() => { const H = window.HoverHelp, el = ${CTL}; const key = H.entryFor(el).sel;
   const evil = '<img src=x onerror="window.__xss=1"><b>bold</b>';
   window.HELP_CATALOG.pages[H.pageKey()][key] = { what: evil, input: evil, effect: 'write' };
   el.setAttribute('title', '<svg onload="window.__xss=1">'); H.reset(); H.show(el); const t = H.tip();
@@ -751,35 +828,60 @@ def a11y(tmp_path_factory):
     return _run(tmp_path_factory.mktemp("hh-a11y"), A11Y_JS, json.dumps([A11Y_PAGE, A11Y_CONTROL] + REFLOW_PAGES))
 
 
-def test_hover_opens_the_help(a11y):
-    """WCAG 2.2 SC 1.4.13 (Content on Hover or Focus): a real mouse hover opens the pop-up."""
-    assert a11y["hoverOpens"]
+def test_pointing_at_or_tabbing_to_an_ordinary_control_opens_nothing(a11y):
+    """WCAG 2.2 SC 1.4.13 · SC 3.2.1 (On Focus): resting the pointer on a control, or Tab focus landing on it, opens no help; only its mark does."""
+    assert a11y["controlHover"] is False
+    assert a11y["controlFocus"] == {"open": False, "focused": True}, a11y["controlFocus"]
 
 
-def test_the_help_is_hoverable(a11y):
-    """WCAG 2.2 SC 1.4.13 (hoverable): the pointer can move from the control onto the pop-up without it closing."""
-    assert a11y["hoverable"]
+def test_the_mark_is_a_named_button_beside_its_item(a11y):
+    """WCAG 2.2 SC 4.1.2 · SC 2.5.8 · SC 1.3.1: the mark is a real button named "Help: <item>", next in the tab order, 24px, beside the control and never over it, with aria-expanded and aria-controls the tooltip."""
+    m = a11y["markInfo"]
+    assert m["isMark"] and m["tag"] == "BUTTON" and m["type"] == "button", m
+    assert m["label"] == "Help: Destination" and m["expanded"] == "false" and m["controls"] == m["tipId"] == "hhTip" and m["role"] == "tooltip", m
+    assert m["w"] >= 24 and m["h"] >= 24 and m["covers"] == 0 and m["glyph"] == '"?"', m
+    assert a11y["markFocusAlone"] is False, "focus alone opens nothing: Enter or Space does"
 
 
-def test_the_help_closes_when_hover_leaves(a11y):
-    """WCAG 2.2 SC 1.4.13 (persistent until hover leaves): moving away from both closes it."""
-    assert a11y["leaveCloses"]
+def test_the_keyboard_opens_and_closes_the_mark(a11y):
+    """WCAG 2.2 SC 2.1.1 · SC 1.4.13 (dismissible): Enter opens the mark's help, Esc closes it with focus kept on the mark, Space opens it again."""
+    assert a11y["enter"] == {"open": True, "expanded": "true", "active": "mark"}, a11y["enter"]
+    assert a11y["esc"] == {"open": False, "expanded": "false", "active": "mark"}, a11y["esc"]
+    assert a11y["space"]["open"] is True and a11y["space"]["expanded"] == "true", a11y["space"]
 
 
-def test_keyboard_focus_opens_the_help_and_it_persists(a11y):
-    """WCAG 2.2 SC 1.4.13 · SC 2.1.1: Tab focus opens it and it stays while focus stays."""
-    assert a11y["focusOpens"] and a11y["persists"], a11y["tabbed"]
-
-
-def test_escape_dismisses_without_moving_focus(a11y):
-    """WCAG 2.2 SC 1.4.13 (dismissible): Esc closes the pop-up, focus stays on the control, and it does not reopen by itself."""
-    assert a11y["escCloses"] and a11y["focusKept"] and a11y["staysClosed"]
-
-
-def test_aria_describedby_carries_the_same_words(a11y):
-    """WCAG 2.2 SC 1.3.1 · SC 4.1.2: screen readers get the pop-up's words through aria-describedby."""
+def test_the_mark_opens_the_entrys_words(a11y):
+    """WCAG 2.2 SC 3.3.2 · SC 1.3.1: the pop-up and the mark's aria-describedby carry the entry's words: what it does and what input it expects."""
     e = a11y["entry"]
-    assert e["what"] in a11y["describedby"] and e["input"] in a11y["describedby"]
+    assert e["what"] in a11y["tipText"] and e["input"] in a11y["tipText"]
+    assert e["what"] in a11y["markInfo"]["desc"] and e["input"] in a11y["markInfo"]["desc"]
+
+
+def test_hovering_the_mark_opens_the_help_and_it_is_hoverable(a11y):
+    """WCAG 2.2 SC 1.4.13 (hoverable, persistent): pointing at the mark opens it, the pointer can move onto it, and leaving both closes it."""
+    assert a11y["hoverOpens"] and a11y["hoverable"] and a11y["leaveCloses"]
+
+
+def test_a_click_keeps_it_open_and_a_click_elsewhere_closes_it(a11y):
+    """WCAG 2.2 SC 1.4.13 · SC 2.5.2: a click on the mark keeps the help open after the pointer leaves; a click elsewhere closes it; the control itself is never pressed."""
+    assert a11y["clickKeeps"]["open"] and a11y["clickKeeps"]["expanded"] == "true", a11y["clickKeeps"]
+    assert a11y["outsideCloses"] and a11y["controlPressed"] == 0
+
+
+def test_one_help_is_open_at_a_time(a11y):
+    """WCAG 2.2 SC 1.4.13: opening another mark closes the first."""
+    assert a11y["oneAtATime"] == {"first": "false", "second": "true", "forSecond": True}, a11y["oneAtATime"]
+
+
+def test_a_sidebar_mark_never_hijacks_the_item(a11y):
+    """WCAG 2.2 SC 2.5.2 · SC 3.2.2: in the sidebar the mark opens help and the item's own words still open its page; the mark sits on the item's row."""
+    sb = a11y["sidebar"]
+    assert sb["markLabel"] == "Help: Path analyzer" and sb["tip"] and sb["opened"] == 1 and sb["sibling"] and sb["sameRow"], sb
+
+
+def test_a_tap_on_the_mark_opens_the_help_and_a_tap_on_the_control_does_not(a11y):
+    """WCAG 2.2 SC 2.5.8 · SC 1.4.13: on touch a tap on the mark opens the help; tapping the control opens nothing."""
+    assert a11y["tapMark"] and a11y["tapControl"] is False
 
 
 def test_reduced_motion_shows_the_help_without_animation(a11y):
@@ -794,21 +896,9 @@ def test_the_help_text_has_enough_contrast(a11y, theme):
     assert a11y["themes"][0] != a11y["themes"][1], "the pop-up follows the page theme"
 
 
-def test_touch_info_target_is_at_least_24px_and_opens_the_help(a11y):
-    """WCAG 2.2 SC 2.5.8 (Target Size, Minimum) · SC 1.4.13: on touch the ⓘ target is 24px or more, labelled, beside the control, and opens it."""
-    i = a11y["info"]
-    assert i["visible"] and i["w"] >= 24 and i["h"] >= 24 and i["label"] and i["covers"] == 0, i
-    assert a11y["infoOpens"]
-
-
-def test_a_long_press_opens_the_help(a11y):
-    """WCAG 2.2 SC 1.4.13 · SC 2.5.1: a long press on touch opens the pop-up."""
-    assert a11y["longPress"]
-
-
 @pytest.mark.parametrize("page", REFLOW_PAGES)
 def test_the_help_stays_inside_320px_and_never_scrolls_sideways(a11y, page):
-    """WCAG 2.2 SC 1.4.10 (Reflow): at 320px every pop-up stays inside the viewport and never makes the page scroll sideways."""
+    """WCAG 2.2 SC 1.4.10 (Reflow): at 320px the marks never make the page scroll sideways and every mark's pop-up stays inside the viewport."""
     assert not a11y["reflow"][page]["bad"], a11y["reflow"][page]
 
 
@@ -902,12 +992,13 @@ def ext(tmp_path_factory):
 
 @pytest.mark.parametrize("key", sorted(EXT_PAGES))
 def test_every_extension_control_has_help(ext, key):
-    """WCAG 2.2 SC 3.3.2 · SC 4.1.2: the extension's popup, options and side panel controls each have an entry (failures name page and selector)."""
+    """WCAG 2.2 SC 3.3.2 · SC 4.1.2: the extension's popup, options and side panel controls each have an entry, and a "?" mark or a recorded reason they need none (failures name page and selector)."""
     page = ext[key]
     assert page["page"] == key
     missing = [f"{key} {r['control']}" for r in page["rows"] if not r["key"]]
     assert page["rows"] and not missing, missing
-    assert all(r["describedby"] for r in page["rows"]), "aria-describedby on every control"
+    unmarked = [f"{key} {r['control']}: {r['skip']}" for r in page["rows"] if not r["mark"] and r["skip"] not in SKIP_REASONS]
+    assert not unmarked, unmarked
 
 
 def test_the_engine_is_exercised_by_these_tests(a11y):
@@ -971,8 +1062,8 @@ const frames = n => ev(`new Promise(r => { let k = ${n}; const f = () => (--k <=
 const wait = ms => ev(`new Promise(r => setTimeout(() => r(true), ${ms}))`);
 const tipState = `(() => { const t = window.HoverHelp.tip(); return !!t && !t.hidden; })()`;
 const mouse = (x, y) => send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
-const key = async k => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: 27 }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k, windowsVirtualKeyCode: 27 }); };
-const centre = sel => ev(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+const key = async (k, vk) => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: vk || 27 }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k, windowsVirtualKeyCode: vk || 27 }); };
+const centre = js => ev(`(() => { const r = (${js}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 const out = {};
 async function load() {
@@ -980,50 +1071,49 @@ async function load() {
   await until(() => ev(`document.readyState === 'complete' && !!window.HoverHelp && !!window.dlpDialog && !!window.DLP_FIND`), 'the page', 30000);
   await frames(2); await mouse(2, 890);
 }
+async function probe(name, fieldId, openJs, isOpenJs, cancelledJs) {
+  await load();
+  await ev(openJs);
+  await until(() => ev(`(document.activeElement || {}).id === ${JSON.stringify(fieldId)}`), 'focus in ' + fieldId);
+  await ev(`window.HoverHelp.scan(), 1`); await frames(2);
+  await wait(600);
+  const r = out[name] = { autoOpen: await ev(tipState) };
+  let c = await centre(`document.getElementById(${JSON.stringify(fieldId)})`);
+  await mouse(c.x, c.y); await wait(700);
+  r.fieldHover = await ev(tipState);
+  const MARK = `window.HoverHelp.markOf(document.getElementById(${JSON.stringify(fieldId)}))`;
+  r.mark = await ev(`(() => { const m = ${MARK}; return m ? { label: m.getAttribute('aria-label'), inDialog: !!m.closest('dialog, [role="dialog"]') } : null; })()`);
+  c = await centre(MARK);
+  await mouse(c.x, c.y);
+  r.hoverOpens = !!(await until(() => ev(tipState), 'hover pop-up', 5000).catch(() => false));
+  await key('Escape');
+  await frames(2);
+  r.tipClosed = !(await ev(tipState));
+  r.dialogOpen = await ev(isOpenJs);
+  r.result = await ev(`window.__res`);
+  r.focus = await ev(`(document.activeElement || {}).id || ''`);
+  // Opened by hover, it closes when the pointer leaves.
+  await mouse(2, 890); await wait(300);
+  await mouse(c.x, c.y);
+  const again = !!(await until(() => ev(tipState), 'hover again', 5000).catch(() => false));
+  await mouse(2, 890);
+  r.leave = { again, closes: !!(await until(async () => !(await ev(tipState)), 'closed', 5000).catch(() => false)) };
+  await key('Escape');
+  r.secondEscCancels = !!(await until(() => ev(cancelledJs), 'cancel', 5000).catch(() => false));
+}
 // The shared typed-confirmation dialog (ui_auth.js), opened as a write would open it.
-await load();
-await ev(`(window.__res = 'open', window.dlpDialog.phrase({ title: 'Apply this approved request?', body: 'It changes the tenant.', phrase: 'I UNDERSTAND', okLabel: 'Apply' }).then(v => { window.__res = v; }), 1)`);
-await until(() => ev(`(document.activeElement || {}).id === 'dlpPhraseInput'`), 'focus in the phrase field');
-await wait(600);
-out.phrase = { autoOpen: await ev(tipState) };
-let c = await centre('#dlpPhraseInput');
-await mouse(c.x, c.y);
-out.phrase.hoverOpens = !!(await until(() => ev(tipState), 'hover pop-up', 5000).catch(() => false));
-await key('Escape');
-await frames(2);
-out.phrase.tipClosed = !(await ev(tipState));
-out.phrase.dialogOpen = await ev(`!!document.querySelector('dialog.dlp-dlg[open]')`);
-out.phrase.result = await ev(`window.__res`);
-out.phrase.focus = await ev(`(document.activeElement || {}).id || ''`);
-await key('Escape');
-out.phrase.secondEscCancels = !!(await until(() => ev(`window.__res === null && !document.querySelector('dialog.dlp-dlg[open]')`), 'cancel', 5000).catch(() => false));
+await probe('phrase', 'dlpPhraseInput',
+  `(window.__res = 'open', window.dlpDialog.phrase({ title: 'Apply this approved request?', body: 'It changes the tenant.', phrase: 'I UNDERSTAND', okLabel: 'Apply' }).then(v => { window.__res = v; }), 1)`,
+  `!!document.querySelector('dialog.dlp-dlg[open]')`, `window.__res === null && !document.querySelector('dialog.dlp-dlg[open]')`);
 // Find anything (find_anything.js): a combobox in an aria-modal dialog.
-await load();
-await ev(`window.DLP_FIND.open(), 1`);
-await until(() => ev(`(document.activeElement || {}).id === 'faInput'`), 'focus in Find anything');
-await wait(600);
-out.find = { autoOpen: await ev(tipState) };
-c = await centre('#faInput');
-await mouse(c.x, c.y);
-out.find.hoverOpens = !!(await until(() => ev(tipState), 'hover pop-up', 5000).catch(() => false));
-await key('Escape');
-await frames(2);
-out.find.tipClosed = !(await ev(tipState));
-out.find.dialogOpen = await ev(`window.DLP_FIND.isOpen()`);
-out.find.focus = await ev(`(document.activeElement || {}).id || ''`);
-await key('Escape');
-out.find.secondEscCancels = !!(await until(() => ev(`!window.DLP_FIND.isOpen()`), 'close', 5000).catch(() => false));
-// A button in a dialog still opens its help on keyboard focus (only text fields wait for hover).
+await probe('find', 'faInput', `(window.__res = 'open', window.DLP_FIND.open(), 1)`, `window.DLP_FIND.isOpen()`, `!window.DLP_FIND.isOpen()`);
+// Tab to a dialog's button opens nothing either.
 await load();
 await ev(`(window.dlpDialog.phrase({ title: 'Confirm', body: 'Body', phrase: 'I UNDERSTAND' }), 1)`);
 await until(() => ev(`(document.activeElement || {}).id === 'dlpPhraseInput'`), 'focus in the phrase field');
-c = await centre('#dlpPhraseInput');
-await mouse(c.x, c.y);
-const hovered = !!(await until(() => ev(tipState), 'hover pop-up', 5000).catch(() => false));
-await mouse(2, 890);
-out.leave = { hovered, closes: !!(await until(async () => !(await ev(tipState)), 'closed', 5000).catch(() => false)) };
-await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
-out.buttonFocus = { el: await ev(`(document.activeElement || {}).id || ''`), opens: !!(await until(() => ev(tipState), 'focus pop-up', 5000).catch(() => false)) };
+for (let i = 0; i < 4 && (await ev(`(document.activeElement || {}).id`)) !== 'dlpPhraseCancel'; i++) await key('Tab', 9);
+await wait(600);
+out.buttonFocus = { el: await ev(`(document.activeElement || {}).id || ''`), opens: await ev(tipState) };
 fs.writeFileSync(path.join(dir, 'hh-out.json'), JSON.stringify(out));
 console.log(JSON.stringify({ file: path.join(dir, 'hh-out.json') }));
 ws.close(); p.kill(); process.exit(0);
@@ -1038,10 +1128,11 @@ def dialogs(tmp_path_factory):
 
 
 @pytest.mark.parametrize("which", ["phrase", "find"])
-def test_focus_in_a_dialog_text_field_does_not_open_the_help_over_it(dialogs, which):
-    """WCAG 2.2 SC 1.4.13 · SC 2.4.11 (Focus Not Obscured): the phrase field and Find anything open with no pop-up over the dialog; hover still opens it."""
+def test_focus_or_hover_on_a_dialog_field_opens_nothing_and_its_mark_does(dialogs, which):
+    """WCAG 2.2 SC 1.4.13 · SC 2.4.11 (Focus Not Obscured): the phrase field and Find anything open with no pop-up over the dialog, pointing at the field opens nothing, and its mark, inside the dialog, opens the help."""
     d = dialogs[which]
-    assert d["autoOpen"] is False and d["hoverOpens"] is True, d
+    assert d["autoOpen"] is False and d["fieldHover"] is False and d["hoverOpens"] is True, d
+    assert d["mark"] and d["mark"]["inDialog"] and d["mark"]["label"].startswith("Help: "), d
 
 
 @pytest.mark.parametrize("which", ["phrase", "find"])
@@ -1050,8 +1141,7 @@ def test_esc_closes_only_the_help_and_keeps_the_dialog(dialogs, which):
     d = dialogs[which]
     assert d["tipClosed"] and d["dialogOpen"], d
     assert d["focus"] == ("dlpPhraseInput" if which == "phrase" else "faInput"), d
-    if which == "phrase":
-        assert d["result"] == "open", d
+    assert d["result"] == "open", d
 
 
 @pytest.mark.parametrize("which", ["phrase", "find"])
@@ -1060,11 +1150,12 @@ def test_esc_without_the_help_still_closes_the_dialog(dialogs, which):
     assert dialogs[which]["secondEscCancels"], dialogs[which]
 
 
-def test_a_button_in_a_dialog_still_opens_its_help_on_focus(dialogs):
-    """WCAG 2.2 SC 1.4.13 · SC 2.1.1: only text fields in a dialog wait for hover; Tab to the dialog's button opens its help."""
-    assert dialogs["buttonFocus"] == {"el": "dlpPhraseCancel", "opens": True}, dialogs["buttonFocus"]
+def test_tab_to_a_dialog_button_opens_nothing(dialogs):
+    """WCAG 2.2 SC 3.2.1 (On Focus) · SC 2.4.11: Tab to the dialog's Cancel button opens no help over the dialog."""
+    assert dialogs["buttonFocus"] == {"el": "dlpPhraseCancel", "opens": False}, dialogs["buttonFocus"]
 
 
-def test_a_hover_opened_help_in_a_dialog_field_closes_when_hover_leaves(dialogs):
-    """WCAG 2.2 SC 1.4.13 · SC 2.4.11: in a dialog's text field the pop-up follows hover, so it does not stay over the buttons while the person types."""
-    assert dialogs["leave"] == {"hovered": True, "closes": True}, dialogs["leave"]
+@pytest.mark.parametrize("which", ["phrase", "find"])
+def test_a_hover_opened_help_in_a_dialog_closes_when_hover_leaves(dialogs, which):
+    """WCAG 2.2 SC 1.4.13 · SC 2.4.11: opened by pointing at the mark, the pop-up follows the pointer, so it does not stay over the dialog's buttons."""
+    assert dialogs[which]["leave"] == {"again": True, "closes": True}, dialogs[which]["leave"]

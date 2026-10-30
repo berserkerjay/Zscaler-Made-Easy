@@ -11,7 +11,7 @@ dependencies, the Python packages and the Terraform provider:
   it pulls in (`pywin32-ctypes`, the `jaraco` packages, `more-itertools`);
 - the Terraform provider the policy packs use (`zscaler/zia`, pinned in
   `terraform/*/.terraform.lock.hcl`), with its licence (MPL-2.0);
-- Zscaler Made Easy itself as the root component (`LicenseRef-DLP-Check-Internal`,
+- Zscaler Made Easy itself as the root component (`LicenseRef-Zscaler-Made-Easy-Internal`,
   the terms in `LICENSE`).
 
 It holds the dependency graph too. The root depends on the packages
@@ -35,9 +35,9 @@ It uploads that SBOM as the `image-sbom` artifact. To produce the same file
 for a local image:
 
 ```sh
-docker build -t dlp-check:local .
+docker build -t zscaler-made-easy:local .
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" \
-  aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --format cyclonedx --output /out/image-sbom.cdx.json dlp-check:local
+  aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --format cyclonedx --output /out/image-sbom.cdx.json zscaler-made-easy:local
 ```
 
 `THIRD_PARTY_NOTICES.md` ends with a "Container image" section that names

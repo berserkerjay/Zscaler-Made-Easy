@@ -309,7 +309,8 @@ def normalize(policy: str, raw: Dict[str, Any]) -> Dict[str, Any]:
         base = {"action": n["action"] or _action_type(raw), "actions": n["actions"], "type": n["type"],
                 "default_rule": _bool(_f(raw, "default_rule", "defaultRule", default=False)), "hidden_criteria": False}
     known, unknown = _criteria(policy, raw)
-    rule = {"policy": policy, "id": raw.get("id"), "name": n["name"], "order": n.get("order"), "state": n["state"], "enabled": n["enabled"],
+    rule = {"policy": policy, "id": raw.get("id"), "name": n["name"], "order": n.get("order"), "rank": _f(raw, "rank", default=None),
+            "state": n["state"], "enabled": n["enabled"],
             "criteria": known, "unknown": unknown, "sub_rules": [_parent_id(x) for x in _as_list(_f(raw, "sub_rules", "subRules", default=[]))]}
     rule.update(base)
     rule.setdefault("parent_rule", None)
@@ -331,6 +332,13 @@ def _parent_id(v: Any) -> Optional[str]:
 def _sort_key(rule: Dict[str, Any]) -> Tuple[int, int, str]:
     # The Default rule is always evaluated last, whatever its order says.
     return (1 if rule.get("default_rule") else 0, _int_order(rule.get("order")), str(rule.get("id") or ""))
+
+
+def _rank_sort_key(rule: Dict[str, Any]) -> Tuple[Any, ...]:
+    """Evaluation order with admin ranking on (admin_rank): the Default rule
+    last, then admin rank (0 first), then rule order."""
+    import admin_rank
+    return admin_rank.key(lambda r: _sort_key(r)[1:], True, lambda r: bool(r.get("default_rule")))(rule)
 
 
 # ── Coverage: does rule A match everything rule B matches? ───────────
@@ -533,16 +541,30 @@ def _ref(rule: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _finding(rule: Dict[str, Any], kind: str, severity: str, reason: str, fix: str,
-             by: Optional[Dict[str, Any]] = None, **extra) -> Dict[str, Any]:
+             by: Optional[Dict[str, Any]] = None, ranked: bool = False, **extra) -> Dict[str, Any]:
+    import admin_rank
     f = {"policy": rule["policy"], "policy_label": POLICIES[rule["policy"]]["label"], "rule": rule["name"], "rule_id": rule.get("id"),
          "order": rule.get("order"), "kind": kind, "shadowed_by": {"name": by["name"], "order": by.get("order")} if by else None,
          "reason": reason, "severity": severity, "fix": fix}
+    if ranked:
+        # Admin ranking is on: the rank decides before the order (admin_rank).
+        f["rank"] = admin_rank.shown_rank(rule)
+        if f["shadowed_by"] is not None:
+            f["shadowed_by"]["rank"] = admin_rank.shown_rank(by)
     f.update(extra)
     return f
 
 
-def _o(rule: Dict[str, Any]) -> str:
-    return f"order {rule.get('order')}" if rule.get("order") not in (None, "") else "no order"
+def _o(rule: Dict[str, Any], ranked: bool = False) -> str:
+    import admin_rank
+    o = f"order {rule.get('order')}" if rule.get("order") not in (None, "") else "no order"
+    if ranked:
+        rk = admin_rank.shown_rank(rule)
+        return (f"rank {rk}" if rk is not None else f"no rank, taken as {admin_rank.DEFAULT_RANK}") + ", " + o
+    return o
+
+
+_finding_ranked, _o_ranked = _finding, _o
 
 
 class _CoverIndex:
@@ -624,12 +646,21 @@ def _content_keys(r: Dict[str, Any]) -> List[Any]:
     return [eng] if eng else []
 
 
-def _first_match(rules: List[Dict[str, Any]], mode_note: str = "") -> List[Dict[str, Any]]:
+def _first_match(rules: List[Dict[str, Any]], mode_note: str = "", ranked: bool = False) -> List[Dict[str, Any]]:
     """Rules evaluated top down, first match wins: each enabled rule below
     an enabled terminal rule that covers it is reported once, against the
     first such rule. Only the rules above it that can cover it at all
-    (_CoverIndex) are compared."""
+    (_CoverIndex) are compared. `rules` are in evaluation order; `ranked`:
+    that order is admin rank first (admin ranking on), and the sentences
+    name the rank."""
     out: List[Dict[str, Any]] = []
+    above_it = "evaluated before it (admin rank first, then rule order)" if ranked else "above it"
+
+    def _o(r: Dict[str, Any]) -> str:
+        return _o_ranked(r, ranked)
+
+    def _finding(*a: Any, **k: Any) -> Dict[str, Any]:
+        return _finding_ranked(*a, ranked=ranked, **k)
     live = [r for r in rules if r["enabled"]]
     index = _CoverIndex(live)
     for b in live:
@@ -645,7 +676,7 @@ def _first_match(rules: List[Dict[str, Any]], mode_note: str = "") -> List[Dict[
             if is_catch_all(a, b):
                 sev = _severity(a, b)
                 out.append(_finding(b, "after_catch_all", sev,
-                                    f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) above it matches all traffic and {_verb(a)}{mode_note}.",
+                                    f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) {above_it} matches all traffic and {_verb(a)}{mode_note}.",
                                     f"Move the rules that should apply above the catch-all rule '{a['name']}' and keep it last, or delete '{b['name']}'.", a))
                 break
             ok, _why = covers(a, b)
@@ -654,11 +685,11 @@ def _first_match(rules: List[Dict[str, Any]], mode_note: str = "") -> List[Dict[
             same_action = (a.get("action") == b.get("action")) if b["policy"] != "cloud_app_control" else (_activities(a) == _activities(b))
             if a["sig"] == b["sig"] and same_action:
                 out.append(_finding(b, "duplicate", "low",
-                                    f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) above it has the same criteria and the same action{mode_note}.",
+                                    f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) {above_it} has the same criteria and the same action{mode_note}.",
                                     f"Delete '{b['name']}'; '{a['name']}' already does the same thing.", a))
             else:
                 out.append(_finding(b, "shadowed", _severity(a, b),
-                                    f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) above it matches everything it does and {_verb(a)}{mode_note}.",
+                                    f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) {above_it} matches everything it does and {_verb(a)}{mode_note}.",
                                     f"Move '{b['name']}' above '{a['name']}' if it should apply, narrow '{a['name']}' so it no longer covers it, or delete '{b['name']}'.", a))
             break
     return out
@@ -791,21 +822,75 @@ def _web_dlp_note(mode: str) -> Tuple[str, str]:
             "Rules, choose it under Evaluation mode and run the analysis again.")
 
 
+def _ranked_first_match(policy: str, rules: List[Dict[str, Any]], mode_note: str, setting: Any) -> List[Dict[str, Any]]:
+    """First-match findings in the order ZIA evaluates `rules` (admin_rank):
+    a rule is only shadowed by a rule evaluated before it. Admin ranking on:
+    admin rank first, then rule order. Off: rule order. Not known (not read,
+    not in scope, or `setting` None): rule order, and a finding that holds
+    in only one of the two orders says so (never asserted)."""
+    import admin_rank
+    st = admin_rank.state_of(setting)
+    if policy not in admin_rank.RANKED or st == admin_rank.OFF:
+        return _first_match(rules, mode_note)
+    by_rank = sorted(rules, key=_rank_sort_key)
+    if st == admin_rank.ON:
+        return _first_match(by_rank, mode_note, ranked=True)
+    plain = _first_match(rules, mode_note)
+    if [id(r) for r in by_rank] == [id(r) for r in rules]:
+        return plain
+    ranked = _first_match(by_rank, mode_note)
+    key = lambda f: (str(f.get("rule_id")), f["rule"], f["kind"])  # noqa: E731
+    in_plain, in_rank = {key(f) for f in plain}, {key(f) for f in ranked}
+    by_id = {str(r.get("id")): r for r in rules}
+    why = (setting or {}).get("why") if isinstance(setting, dict) else ""
+    head = ("Admin ranking was not read" if st == admin_rank.OUT_OF_SCOPE else "Admin ranking could not be read") + (f" ({why})" if why else "")
+
+    def caution(f: Dict[str, Any], holds_when: str) -> Dict[str, Any]:
+        f = dict(f)
+        b = by_id.get(str(f.get("rule_id"))) or {}
+        a = next((r for r in rules if r["name"] == (f.get("shadowed_by") or {}).get("name")), {})
+        rel = "after" if holds_when == "off" else "before"
+        text = (f"{head}: this holds only if admin ranking is {holds_when}. With it on, rule '{a.get('name')}' ({_o(a, True)}) is evaluated {rel} "
+                f"'{b.get('name', f['rule'])}' ({_o(b, True)}).")
+        f["admin_rank"] = "depends"
+        f["admin_rank_caution"] = text
+        f["reason"] = f"{f['reason']} {text}"
+        return f
+    return [f if key(f) in in_rank else caution(f, "off") for f in plain] + [caution(f, "on") for f in ranked if key(f) not in in_plain]
+
+
+def _rank_note(setting: Any, policy: str, found: List[Dict[str, Any]]) -> str:
+    """The note on how admin ranking was taken for a ranked policy: when it
+    is on, and when it is not known and a finding depends on it."""
+    import admin_rank
+    st = admin_rank.state_of(setting)
+    if policy not in admin_rank.RANKED or POLICIES[policy]["eval"] not in ("first_match", "web_dlp"):
+        return ""
+    if st == admin_rank.ON:
+        return " Admin ranking is on, so a rule is compared only with the rules evaluated before it by admin rank first, then rule order."
+    if st == admin_rank.OFF or not any(f.get("admin_rank") == "depends" for f in found):
+        return ""
+    return (" Admin ranking " + ("was not read" if st == admin_rank.OUT_OF_SCOPE else "could not be read")
+            + ", so rule order is used; a finding that depends on it says so.")
+
+
 def analyse(rules_by_policy: Dict[str, List[Dict[str, Any]]], *, web_dlp_mode: str = MODE_UNKNOWN,
-            engines: Optional[Iterable[Any]] = None, categories: Optional[Iterable[Any]] = None) -> Dict[str, Any]:
+            engines: Optional[Iterable[Any]] = None, categories: Optional[Iterable[Any]] = None,
+            admin_ranking: Any = None) -> Dict[str, Any]:
     """Pure: raw rules per policy key (POLICIES) → {findings, counts_by_policy,
     notes}. `engines` / `categories`: the tenant's DLP engines and URL
     categories (dicts or ids) when they were read completely, else None
-    (no missing-reference claim). Never reads a tenant."""
+    (no missing-reference claim). `admin_ranking`: the admin ranking
+    setting (admin_rank.read), None when it was not read. Never reads a tenant."""
     _MEMO.tokens = {}
     try:
-        return _analyse(rules_by_policy, web_dlp_mode, engines, categories)
+        return _analyse(rules_by_policy, web_dlp_mode, engines, categories, admin_ranking)
     finally:
         _MEMO.tokens = None
 
 
 def _analyse(rules_by_policy: Dict[str, List[Dict[str, Any]]], web_dlp_mode: str, engines: Optional[Iterable[Any]],
-             categories: Optional[Iterable[Any]]) -> Dict[str, Any]:
+             categories: Optional[Iterable[Any]], admin_ranking: Any = None) -> Dict[str, Any]:
     eng = _lookup(engines) if engines is not None else None
     cats = set(_lookup(categories).keys()) if categories is not None else None
     findings: List[Dict[str, Any]] = []
@@ -827,16 +912,16 @@ def _analyse(rules_by_policy: Dict[str, List[Dict[str, Any]]], web_dlp_mode: str
             for r in top:
                 by_type.setdefault(r.get("type") or "", []).append(r)
             for group in by_type.values():
-                found += _first_match(group)
+                found += _ranked_first_match(policy, group, "", admin_ranking)
             notes[policy] = "Cloud App Control rules are ordered per application type; a rule covers another only for the activities it names."
         elif ev == "first_match":
-            found += _first_match(top)
+            found += _ranked_first_match(policy, top, "", admin_ranking)
         elif ev == "web_dlp":
             suffix, notes[policy] = _web_dlp_note(web_dlp_mode)
             if web_dlp_mode == MODE_EVAL_ALL:
                 found += _superseded(top, ties=True, mode_label="Evaluate All Rules")
             else:
-                found += _first_match(top, suffix)
+                found += _ranked_first_match(policy, top, suffix, admin_ranking)
         elif ev == "evaluate_all":
             notes[policy] = ("Endpoint DLP evaluates every rule and the most restrictive action wins (a tie runs the lower order), so no rule "
                              "is shadowed by its position; rules whose action never wins are reported as superseded.")
@@ -851,8 +936,11 @@ def _analyse(rules_by_policy: Dict[str, List[Dict[str, Any]]], web_dlp_mode: str
             found += _duplicates_only(top)
         # Child rules (exceptions) are first match among their siblings.
         for kids in children.values():
-            found += _first_match(sorted(kids, key=_sort_key))
+            found += _ranked_first_match(policy, sorted(kids, key=_sort_key), "", admin_ranking)
         found = _dedupe(found)
+        rn = "" if policy == "web_dlp" and web_dlp_mode == MODE_EVAL_ALL else _rank_note(admin_ranking, policy, found)
+        if rn:
+            notes[policy] = (notes.get(policy, "") + rn).strip()
         findings += found
         by_kind = {k: sum(1 for f in found if f["kind"] == k) for k in KINDS}
         by_sev = {s: sum(1 for f in found if f["severity"] == s) for s in SEVERITIES}
@@ -988,6 +1076,16 @@ def read_policies(client, scope: Dict[str, Any], *, declared_mode: str = "", log
                     source = "read" if mode != MODE_UNKNOWN else "unread"
                     say(detail)
             out["mode"] = {"web_dlp": mode, "source": source, "detail": detail}
+            # Admin ranking decides the evaluation order of the ranked
+            # policies (admin_rank); read only when ZIA platform is ticked.
+            import admin_rank
+            if any(k in admin_rank.RANKED for k in read) and admin_rank.in_scope(scope.get("scopes")):
+                say("Reading whether admin ranking is on (ZIA advanced settings)…")
+                stop_point()
+                out["admin_ranking"] = admin_rank.read(client, scope.get("scopes"))
+                say(admin_rank.describe(out["admin_ranking"]))
+            else:
+                out["admin_ranking"] = {"state": admin_rank.OUT_OF_SCOPE, "why": admin_rank.NOT_IN_SCOPE_WHY, "source": admin_rank.SOURCE}
             for key in read:
                 p = POLICIES[key]
                 say(f"Reading the {p['label']} rules…")
@@ -1039,11 +1137,12 @@ def run(client, scope: Dict[str, Any], *, declared_mode: str = "", log: Optional
     say = log or (lambda m: None)
     got = read_policies(client, scope, declared_mode=declared_mode, log=log, cancel=cancel)
     mode = got.get("mode") or {"web_dlp": MODE_UNKNOWN, "source": "not_in_scope", "detail": ""}
-    res = analyse(got["rules"], web_dlp_mode=mode["web_dlp"], engines=got.get("engines"), categories=got.get("categories"))
+    res = analyse(got["rules"], web_dlp_mode=mode["web_dlp"], engines=got.get("engines"), categories=got.get("categories"),
+                  admin_ranking=got.get("admin_ranking"))
     n = len(res["findings"])
     say(f"Done: {n} finding{'s' if n != 1 else ''} across {len(res['counts_by_policy'])} polic{'ies' if len(res['counts_by_policy']) != 1 else 'y'}.")
     return {"findings": res["findings"], "counts_by_policy": res["counts_by_policy"], "read_errors": got["read_errors"],
-            "not_in_scope": got["not_in_scope"], "mode": mode, "notes": res["notes"],
+            "not_in_scope": got["not_in_scope"], "mode": mode, "notes": res["notes"], "admin_ranking": got.get("admin_ranking"),
             "policy_labels": {k: p["label"] for k, p in POLICIES.items()},
             "missing_checked": {"engines": got.get("engines") is not None, "categories": got.get("categories") is not None},
             "scope": {"read": list(scope.get("read") or []), "summary": scope.get("summary", ""), "source": scope.get("source", "")}}

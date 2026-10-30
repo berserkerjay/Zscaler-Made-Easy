@@ -1,5 +1,5 @@
 # One set of targets for both delivery modes; both build from this tree.
-#   make install    local install (.venv + hash-pinned dependencies + dlp-check command)
+#   make install    local install (.venv + hash-pinned dependencies + zscaler-made-easy command)
 #   make run        start the web app locally
 #   make test       the test suite
 #   make check      compile, lint (pyflakes), pack conventions, Terraform freshness: what CI runs
@@ -42,7 +42,7 @@ upstream:
 	$(PY) upstream_check.py --md upstream_report.md
 
 docker:
-	docker build -t dlp-check .
+	docker build -t zscaler-made-easy:local .
 
 docker-run:
 	docker compose up --build

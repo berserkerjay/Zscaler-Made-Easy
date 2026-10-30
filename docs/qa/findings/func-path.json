@@ -410,6 +410,16 @@
       "fix": "The headline names each earlier rule and the fact it needs, or the VPN On-Net question",
       "test": "tests/test_qa_func_path.py::test_a_conditional_zpa_answer_names_what_it_depends_on",
       "commit": "fea4d7d"
+    },
+    {
+      "id": "FUNC-PATH-23",
+      "title": "Which rule applies ignored ZIA admin ranking: rules were taken by order alone even with Admin Ranking on",
+      "severity": "medium",
+      "cwe": "CWE-670",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "admin_rank orders ranked policies by admin rank, then order, when the setting is on; unknown or not in scope is cautioned, never guessed",
+      "test": "tests/test_admin_rank.py"
     }
   ],
   "notes": [

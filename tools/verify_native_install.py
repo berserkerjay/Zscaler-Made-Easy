@@ -174,8 +174,14 @@ import dlp_api_server, dlp_mcp_server, scenario_flow, tenant_profiles
 assert sys.prefix != sys.base_prefix
 assert pathlib.Path(dlp_api_server.__file__).resolve().parent.samefile(pathlib.Path.cwd())
 assert sys.version_info[:2] == tuple(map(int, os.environ['NATIVE_EXPECTED_PYTHON'].split('.')))
-commands = {e.name for e in m.distribution('dlp-check').entry_points}
-assert {'dlp-check','dlp-check-assess','dlp-check-evaluate'} <= commands
+commands = set()
+for dist_name in ('zscaler-made-easy', 'dlp-check'):   # the distribution under either name
+    try:
+        commands |= {e.name for e in m.distribution(dist_name).entry_points}
+    except m.PackageNotFoundError:
+        pass
+assert {'zscaler-made-easy','zscaler-made-easy-assess','zscaler-made-easy-evaluate'} <= commands
+assert {'dlp-check','dlp-check-assess','dlp-check-evaluate'} <= commands   # the names from before the rename still work
 if sys.platform == 'win32':
     import win32api, win32cred, colorama, keyring
     from keyring.backends.Windows import WinVaultKeyring

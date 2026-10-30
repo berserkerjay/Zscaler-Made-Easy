@@ -240,7 +240,9 @@ LOCATIONS = [
 ADVANCED_SETTINGS = {"enableDnsResolutionOnTransparentProxy": False, "enableOffice365": True, "logInternalIp": True,
                      "enforceSurrogateIpForWindowsApp": True, "trackHttpTunnelOnHttpPorts": True, "blockHttpTunnelOnNonHttpPorts": True,
                      "blockDomainFrontingOnHostHeader": True, "zscalerClientConnector1AndPacRoadWarriorInFirewall": True,
-                     "cascadeUrlFiltering": True, "enablePolicyForUnauthenticatedTraffic": False}
+                     "cascadeUrlFiltering": True, "enablePolicyForUnauthenticatedTraffic": False,
+                     # Admin ranking off: rules are evaluated by rule order (admin_rank).
+                     "enableAdminRankAccess": False}
 # Evaluate All Rules is a DLP global option (zscaler/zia/models/web_dlp_global_options.py), off here.
 WEB_DLP_GLOBAL_OPTIONS = {"enableEvaluateAllDlpRules": False, "enableInlineDlpOcr": False, "enableEmailDlpOcr": False, "enableCasbOcr": False,
                           "exemptUrlEncodedData": False}

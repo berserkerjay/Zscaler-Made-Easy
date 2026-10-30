@@ -121,7 +121,7 @@ def test_sbom_md_does_not_claim_to_cover_the_container_base_image():
 
 def test_ci_builds_an_image_sbom_artifact():
     ci = _read(".github", "workflows", "tests.yml")
-    assert re.search(r"image\b.*--format cyclonedx.*dlp-check:ci", ci), "no CycloneDX image SBOM step"
+    assert re.search(r"image\b.*--format cyclonedx.*zscaler-made-easy:ci", ci), "no CycloneDX image SBOM step"
     assert re.search(r"name:\s*image-sbom\b", ci)
 
 

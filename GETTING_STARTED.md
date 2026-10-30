@@ -104,8 +104,8 @@ ID or client secret" means the credentials themselves.
 `docker compose up --build` in the app folder builds an image with
 hash-pinned dependencies and runs it as a non-root user on a read-only
 filesystem, published on `127.0.0.1:8000` only. Profiles, deployments,
-the audit log and the UI token live on the `dlpcheck-data` volume
-(`docker compose exec dlp-check cat /data/ui_token.txt` prints the token;
+the audit log and the UI token live on the `zscaler-made-easy-data` volume
+(`docker compose exec zscaler-made-easy cat /data/ui_token.txt` prints the token;
 `docker compose logs` shows it too). Put `ZSCALER_*` credentials in a
 `.env` file next to `docker-compose.yml` if you do not want to type them.
 The in-app **Update app** button does not apply inside a container:

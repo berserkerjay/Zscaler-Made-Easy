@@ -540,6 +540,7 @@ GUI_ADDONS = [
     ("tool_tabs.js", "script"),
     ("simple_entry.js", "script"),   # the "Try Simple mode" banner and the deep links from /simple
     ("posture_banner.js", "script"),  # the coverage line and the score-drop banner on the results (posture_plus)
+    ("whats_new.js", "script"),     # the * after each new feature's label (the newest two releases), with its legend
     ("help_catalog.js", "script"),  # the words of Help on hover, per page and control
     ("hover_help.js", "script"),    # Help on hover: a pop-up for every control (watches for new ones)
     ("sidebar_order.js", "script"),  # drag / Alt+arrow reordering of the sidebar; dashboard.js starts it
@@ -4328,7 +4329,7 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
         workspaces[p["id"]] = files
         _log(f"  {len(files)} files" + (", imports.tf included" if "imports.tf" in files else "") + ".")
     data = pack_terraform.zip_workspaces(workspaces)
-    name = f"dlp-check-terraform-{mode}-{'-'.join(req.pack_ids)[:60]}.zip"
+    name = f"zscaler-made-easy-terraform-{mode}-{'-'.join(req.pack_ids)[:60]}.zip"
     _log(f"Ready: {name} ({len(data) // 1024} KB).")
     return {"status": "ready", "mode": mode, "filename": name, "bytes": len(data), "packs": list(workspaces), "gap": gap,
             "tenant_label": tenant_auth.record_label(creds) if client is not None else "", "logs": logs,
@@ -5666,7 +5667,7 @@ def browser_extension_zip() -> bytes:
                 if name.startswith(".") or os.path.islink(full):
                     continue
                 rel = os.path.relpath(full, BROWSER_EXTENSION_DIR).replace(os.sep, "/")
-                z.write(full, f"dlp-check-extension/{rel}")
+                z.write(full, f"zscaler-made-easy-extension/{rel}")
     return buf.getvalue()
 
 
@@ -5679,7 +5680,7 @@ async def browser_extension_download():
         raise HTTPException(status_code=404, detail="The browser extension is not part of this install.")
     data = await asyncio.to_thread(browser_extension_zip)
     return Response(content=data, media_type="application/zip",
-                    headers={"Content-Disposition": 'attachment; filename="dlp-check-extension.zip"'})
+                    headers={"Content-Disposition": 'attachment; filename="zscaler-made-easy-extension.zip"'})
 
 
 class ConsoleIndexRequest(ScopedTenantCredsRequest):
@@ -7415,7 +7416,7 @@ async def vendor_migrate_workspace(req: VendorMigrateCompileRequest):
                                                      "report": out.get("report")})
     data = vendor_migrate.workspace_zip(out)
     return Response(content=data, media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="dlp-check-{out["vendor"]}-migration-terraform.zip"'})
+                    headers={"Content-Disposition": f'attachment; filename="zscaler-made-easy-{out["vendor"]}-migration-terraform.zip"'})
 
 
 @app.get("/report/vendor")
@@ -11119,7 +11120,7 @@ def _port_problem(host: str, port: int) -> Optional[str]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     """Start the web server the way the launchers, the installer's
-    `dlp-check` command and the container do.
+    `zscaler-made-easy` command and the container do.
 
     Configuration is read from the environment (ZSCALER_BIND_HOST,
     ZSCALER_PORT, ZSCALER_UI_AUTH, ZSCALER_OPEN_BROWSER, ZSCALER_DEBUG;

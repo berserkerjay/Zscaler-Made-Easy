@@ -256,8 +256,10 @@ it installed once, the same way it needs a PDF reader to open a PDF.
    A window titled **Connect to GitHub** opens the first time: choose
    **Sign in with your browser**, sign in to GitHub, and come back. The
    Command Prompt then prints a few lines and stops. You now have a folder
-   `Documents\DLP-Check`.
-4. Open that folder in File Explorer (type `explorer Zscaler Made Easy` in the same
+   `Documents\Zscaler-Made-Easy`. (Installed before the app was renamed, in
+   a `DLP-Check` folder? That install keeps working where it is; nothing
+   needs moving.)
+4. Open that folder in File Explorer (type `explorer Zscaler-Made-Easy` in the same
    window and press Enter).
 
 *Option B: a ZIP.*
@@ -267,10 +269,10 @@ it installed once, the same way it needs a PDF reader to open a PDF.
 2. Click the green **Code** button, then **Download ZIP**.
 3. Find the downloaded ZIP (usually in Downloads), right-click it, choose
    **Extract All…**, then **Extract**. Windows creates a folder named
-   `DLP-Check-main`; open it, and open the `DLP-Check-main` folder
+   `Zscaler-Made-Easy-main`; open it, and open the `Zscaler-Made-Easy-main` folder
    **inside** it (the ZIP has a folder within a folder).
 4. Move that inner folder somewhere you will remember, for example
-   `Documents`, so its path is `Documents\DLP-Check-main`.
+   `Documents`, so its path is `Documents\Zscaler-Made-Easy-main`.
 
 Either way you should now see a file called `INSTALL_Zscaler_Made_Easy`
 (Windows may hide the `.bat` ending; its type shows as "Windows Batch
@@ -303,8 +305,10 @@ describes. The installer reads it.
    double-click the installer again; it is safe to rerun.
 
 The installer creates a private `.venv` in the app folder on Windows, Mac
-and Linux. It installs the hash-pinned dependencies and the `dlp-check`,
-`dlp-check-assess` and `dlp-check-evaluate` commands there. It does not
+and Linux. It installs the hash-pinned dependencies and the `zscaler-made-easy`,
+`zscaler-made-easy-assess` and `zscaler-made-easy-evaluate` commands there
+(the names from before the rename, `dlp-check`, `dlp-check-assess` and
+`dlp-check-evaluate`, still work). It does not
 change your system Python packages. Rerunning the installer repairs an
 incomplete environment and keeps your existing local settings. If that
 incomplete environment is activated, run `deactivate` first; the installer
@@ -379,12 +383,12 @@ again. GitHub asks you to sign in: a browser window or a username and
 password prompt. (For the password, GitHub wants a *personal access
 token*, not your account password; GitHub's own help page "Creating a
 personal access token" walks you through it.) You now have a folder
-`Documents/DLP-Check`.
+`Documents/Zscaler-Made-Easy`.
 
 *Option B: a ZIP.* In your browser, sign in to GitHub, go to
 `github.com/berserkerjay/Zscaler-Made-Easy`, click the green **Code** button, then
 **Download ZIP**. Safari extracts it into Downloads as a folder named
-`DLP-Check-main`; double-click the ZIP if it did not. Move that folder
+`Zscaler-Made-Easy-main`; double-click the ZIP if it did not. Move that folder
 into Documents.
 
 **Step 3 — Install and start, from Terminal.**
@@ -473,7 +477,7 @@ When `git clone` asks `Username for 'https://github.com':`, type your
 GitHub username; when it asks `Password for …:`, paste the **token**, not
 your password (nothing is shown while you paste; press Enter). If you
 would rather not use git, download the ZIP from the repository's **Code →
-Download ZIP** button, extract it (`unzip DLP-Check-main.zip`), and `cd`
+Download ZIP** button, extract it (`unzip Zscaler-Made-Easy-main.zip`), and `cd`
 into the extracted folder.
 
 **Step 3 — Install and start.**
@@ -518,7 +522,7 @@ folder you want the app in):
 git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
 cd Zscaler-Made-Easy
 powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
-docker logs dlp-check
+docker logs zscaler-made-easy
 ```
 
 ```bash
@@ -526,7 +530,7 @@ docker logs dlp-check
 git clone https://github.com/berserkerjay/Zscaler-Made-Easy.git
 cd Zscaler-Made-Easy
 ./update_container.sh --force
-docker logs dlp-check
+docker logs zscaler-made-easy
 ```
 
 Then open the `http://localhost:8001/?token=…` address that
@@ -756,7 +760,7 @@ minutes while it downloads and builds everything. If it stops with
 at the end of Step 1. When the prompt comes back, run:
 
 ```bash
-docker logs dlp-check
+docker logs zscaler-made-easy
 ```
 
 The last lines it prints are:
@@ -772,8 +776,8 @@ Open that address in your browser on the same machine. The app keeps
 running in the background, also after a restart of the computer, until
 you stop it; you can close the terminal.
 
-**Finding the UI token again:** run `docker logs dlp-check`, or
-`docker compose exec dlp-check cat /data/ui_token.txt` in the app folder.
+**Finding the UI token again:** run `docker logs zscaler-made-easy`, or
+`docker compose exec zscaler-made-easy cat /data/ui_token.txt` in the app folder.
 
 **On a shared server (no desktop on it):** Steps 2 and 3 are the same
 over SSH (the Linux commands). The container starts again by itself
@@ -806,7 +810,7 @@ hand: the app only knows where it is published from `DLP_CHECK_HOST_BIND`.
 - Update it: from the app folder run the update script. It pulls the
   latest code from GitHub and rebuilds the container only when there is
   something new; saved data stays, and the app restarts with a new UI
-  token (`docker logs dlp-check`). The folder must be a `git clone`.
+  token (`docker logs zscaler-made-easy`). The folder must be a `git clone`.
 
   ```
   powershell -ExecutionPolicy Bypass -File .\update_container.ps1     # Windows
@@ -845,7 +849,7 @@ hand: the app only knows where it is published from `DLP_CHECK_HOST_BIND`.
 What the app saves (tenant profiles, deployment records, the audit log,
 uploaded packs, digests, proposals, the guidance state and the token
 file) lives outside the container in a Docker-managed storage area
-called `dlpcheck-data`, so it survives rebuilds and updates. To
+called `zscaler-made-easy-data`, so it survives rebuilds and updates. To
 deploy from the container, click **Enable write mode** in Deploy policy
 packs and type the confirmation phrase, as on a laptop: the switch is
 offered because the container is published on this machine's loopback
@@ -853,6 +857,51 @@ only (`DLP_CHECK_HOST_BIND`, `127.0.0.1` unless you change it). If you
 publish it beyond loopback the switch is refused; then put
 `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in a `.env` file next to
 `docker-compose.yml` and run `docker compose up -d` again.
+
+### Moving to the new name
+
+Installs from before the rename used the container `dlp-check`, the image
+`dlp-check:local` and the data volume `dlpcheck-data` (with Docker Compose
+it is called `<folder>_dlpcheck-data`, for example
+`dlp-check_dlpcheck-data`). The new names are `zscaler-made-easy`,
+`zscaler-made-easy:local` and `zscaler-made-easy-data`. Nothing is lost:
+
+- **The update script does it for you.** The first run of
+  `update_container.ps1` / `update_container.sh` after the rename builds
+  the new image, stops the old container, **copies** everything from the
+  old volume into `zscaler-made-easy-data` (owners, modes and timestamps
+  kept, then checked file by file), removes the old container so port
+  8001 is free, and starts the new one. It never moves or deletes the old
+  volume: it prints one line saying the old volume is kept as a backup
+  and the exact `docker volume rm …` command to remove it once you are
+  happy. It records the move in a small file in the new volume
+  (`.zscaler-made-easy-moved-from`), so later runs copy nothing. If the
+  copy fails it stops and says so, the old container runs as before, and
+  the new one is not started. If more than one old volume exists it lists
+  them and asks which one: run it again with `-OldVolume <name>`
+  (Windows) or `--old-volume <name>` (Mac, Linux), or set
+  `ZME_OLD_VOLUME=<name>`. If the new volume already holds files the
+  script did not copy, it copies nothing and says how to go on.
+- **The first update after the rename may stop on port 8001.** That run
+  is still the previous script (the update replaces it while it runs),
+  which knows nothing of the new names: the new container cannot start
+  while the old one holds the port. Nothing is lost; run the update once
+  more, and the new script moves the data as above.
+- **Docker-only installs** ([below](#install-with-docker-commands-only-no-git-nothing-to-download)):
+  build the image with the new name first (step 2 there, with
+  `-t zscaler-made-easy:local`), then:
+
+  ```
+  docker stop dlp-check
+  docker volume create zscaler-made-easy-data
+  docker run --rm --user 0 --entrypoint sh -v dlpcheck-data:/from:ro -v zscaler-made-easy-data:/to zscaler-made-easy:local -c "cp -a /from/. /to/"
+  docker rm dlp-check
+  ```
+
+  and run the new `docker run` line from
+  [Build and run it by hand](#build-and-run-it-by-hand-without-docker-compose)
+  (step 3). Once the app shows your profiles and history, remove the old
+  volume with `docker volume rm dlpcheck-data`.
 
 ---
 
@@ -876,7 +925,7 @@ you type in credentials and click **Authenticate**.
 by side with a local install, which uses 8000. Each has its own UI token
 and its own saved data. For another port, put `DLP_CHECK_HOST_PORT=8002`
 (or any free port) in a file named `.env` in the app folder and run
-`docker compose up -d` again; `docker logs dlp-check` prints the address.
+`docker compose up -d` again; `docker logs zscaler-made-easy` prints the address.
 
 ### Install with Docker commands only (no git, nothing to download)
 
@@ -904,7 +953,7 @@ read -rsp "GitHub token: " GIT_AUTH_TOKEN; export GIT_AUTH_TOKEN; echo   # Mac, 
 (`#main` is the branch; `#qa` or `#dev` for those):
 
 ```
-docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
+docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t zscaler-made-easy:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 *Behind TLS inspection (Zscaler or another proxy)* the build stops with
@@ -916,29 +965,31 @@ own and hand that folder to the build with `--build-context certs=…`:
 New-Item -ItemType Directory -Force $HOME\dlp-certs | Out-Null
 $c = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root | Where-Object { $_.Subject -like "*Zscaler Root CA*" } | Select-Object -First 1
 "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n" | Set-Content -Encoding ascii -NoNewline $HOME\dlp-certs\zscaler-root.crt
-docker build --build-context certs=$HOME\dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
+docker build --build-context certs=$HOME\dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t zscaler-made-easy:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 ```bash
 # Mac, for Zscaler (Linux: copy the .crt file IT gave you into ~/dlp-certs instead)
 mkdir -p ~/dlp-certs && security find-certificate -c "Zscaler Root CA" -p > ~/dlp-certs/zscaler-root.crt
-docker build --build-context certs=$HOME/dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
+docker build --build-context certs=$HOME/dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t zscaler-made-easy:local "https://github.com/berserkerjay/Zscaler-Made-Easy.git#main"
 ```
 
 The build log then says `extra root certificates added: 1`.
 
 **3. Create the storage volume and run it:** steps 2 and 3 of
 [Build and run it by hand](#build-and-run-it-by-hand-without-docker-compose)
-below, exactly as written (`docker volume create dlpcheck-data`, then the
-`docker run` line for your system). Then `docker logs dlp-check` prints
+below, exactly as written (`docker volume create zscaler-made-easy-data`, then the
+`docker run` line for your system). Then `docker logs zscaler-made-easy` prints
 the `http://localhost:8001/?token=…` address to open.
 
 **Update it:** in a new terminal, step 1 (the token) and step 2 (the
 build) again, which fetch the latest code, then replace the container;
-the volume keeps your data:
+the volume keeps your data. (Installed before the rename, with a
+container called `dlp-check`? Follow [Moving to the new name](#moving-to-the-new-name)
+once instead.)
 
 ```
-docker rm -f dlp-check
+docker rm -f zscaler-made-easy
 ```
 
 and run the `docker run` line again. The *update available* notice in
@@ -956,35 +1007,35 @@ Run every command from the app folder (the one that holds `Dockerfile`).
 **1. Build the image** from the `Dockerfile`:
 
 ```bash
-docker build -t dlp-check:local .
+docker build -t zscaler-made-easy:local .
 ```
 
 **2. Create the storage volume** once. Everything the app saves lives in
 it, mounted at `/data` inside the container:
 
 ```bash
-docker volume create dlpcheck-data
+docker volume create zscaler-made-easy-data
 ```
 
 **3. Run the container.** Mac and Linux:
 
 ```bash
-docker run -d --name dlp-check \
+docker run -d --name zscaler-made-easy \
   -p 127.0.0.1:8001:8000 \
-  -v dlpcheck-data:/data \
+  -v zscaler-made-easy-data:/data \
   -e DLP_CHECK_HOST_PORT=8001   -e DLP_CHECK_HOST_BIND=127.0.0.1 \
   -e DLP_CHECK_USER_PACKS=/data/user_packs \
   --read-only --tmpfs /tmp:size=256m \
   --cap-drop ALL --security-opt no-new-privileges:true \
   --pids-limit 256 --memory 1g \
   --restart unless-stopped \
-  dlp-check:local
+  zscaler-made-easy:local
 ```
 
 Windows (PowerShell or Command Prompt), the same command on one line:
 
 ```
-docker run -d --name dlp-check -p 127.0.0.1:8001:8000 -v dlpcheck-data:/data -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped dlp-check:local
+docker run -d --name zscaler-made-easy -p 127.0.0.1:8001:8000 -v zscaler-made-easy-data:/data -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped zscaler-made-easy:local
 ```
 
 What each part does:
@@ -992,43 +1043,43 @@ What each part does:
 | Part | Why |
 |---|---|
 | `-p 127.0.0.1:8001:8000` | Publishes the app on port 8001 of this machine only (the local install uses 8000). Keep the `127.0.0.1:`; see the warning above about `0.0.0.0`. |
-| `-v dlpcheck-data:/data` | Mounts the storage volume, so profiles, deployment records, the audit log, uploaded packs and the token survive rebuilds. |
+| `-v zscaler-made-easy-data:/data` | Mounts the storage volume, so profiles, deployment records, the audit log, uploaded packs and the token survive rebuilds. |
 | `-e DLP_CHECK_HOST_BIND=127.0.0.1` | Tells the app it is published on this machine's loopback only (match the `-p 127.0.0.1:` part), so **Enable write mode** is offered in the browser. Leave it out and the switch is refused. Set it to anything other than loopback and the app refuses to start unless SSO is configured. |
 | `--read-only --tmpfs /tmp` | The app folder stays read-only; only `/data` and a small `/tmp` are writable. |
 | `--cap-drop ALL --security-opt no-new-privileges:true` | The container gets no extra Linux privileges. |
 | `--restart unless-stopped` | Starts again after a reboot until you stop it. |
 
 Credentials or other settings from a file: add `--env-file .env` before
-`dlp-check:local`. To allow deploys, click **Enable write mode** in the
+`zscaler-made-easy:local`. To allow deploys, click **Enable write mode** in the
 app, or put `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in that `.env` file.
 
 **4. Open it.** Read the UI token and open the address it prints:
 
 ```bash
-docker logs dlp-check
+docker logs zscaler-made-easy
 ```
 
 **Checks and everyday use:**
 
 ```bash
-docker ps --filter name=dlp-check          # STATUS should say "healthy" after about 30 seconds
-docker exec dlp-check cat /data/ui_token.txt   # the UI token again
-docker stop dlp-check                      # stop it
-docker start dlp-check                     # start it again
+docker ps --filter name=zscaler-made-easy               # STATUS should say "healthy" after about 30 seconds
+docker exec zscaler-made-easy cat /data/ui_token.txt    # the UI token again
+docker stop zscaler-made-easy                           # stop it
+docker start zscaler-made-easy                          # start it again
 ```
 
 **Update it** after getting the latest code: build again, then replace
 the container. The volume keeps your data.
 
 ```bash
-docker build -t dlp-check:local .
-docker rm -f dlp-check
+docker build -t zscaler-made-easy:local .
+docker rm -f zscaler-made-easy
 ```
 
 Then run the step 3 command again.
 
-**Remove it completely**, data included: `docker rm -f dlp-check`, then
-`docker volume rm dlpcheck-data`, then `docker image rm dlp-check:local`.
+**Remove it completely**, data included: `docker rm -f zscaler-made-easy`, then
+`docker volume rm zscaler-made-easy-data`, then `docker image rm zscaler-made-easy:local`.
 
 ---
 
@@ -1046,8 +1097,8 @@ page ever asks for it, here is where it is:
   `server.log` in the same folder.
 - **Mac / Linux:** the line `UI token: …` in the terminal window that runs
   the app, and the same `ui_token.txt` file in the app folder.
-- **Container:** `docker logs dlp-check`, or
-  `docker compose exec dlp-check cat /data/ui_token.txt`.
+- **Container:** `docker logs zscaler-made-easy`, or
+  `docker compose exec zscaler-made-easy cat /data/ui_token.txt`.
 
 Paste it into the page when asked. Your browser keeps it for 12 hours, or
 until the app restarts: a restart mints a new token, so after one, open
@@ -1146,12 +1197,12 @@ Path analyzer for any site. It talks only to this app on your own computer.
 1. Start the app and open it once (for the container, the
    `http://localhost:8001/?token=…` link the start or update script prints).
 2. Go to **Advanced settings → Browser extension → Download the extension**.
-   This saves `dlp-check-extension.zip`.
+   This saves `zscaler-made-easy-extension.zip`.
 3. Unzip it somewhere it can stay (for example your Documents folder). Chrome
    and Edge load it from that folder every time, so do not delete it.
 4. Open `chrome://extensions` (Edge: `edge://extensions`) and turn on
    **Developer mode** (top right).
-5. Click **Load unpacked** and choose the unzipped `dlp-check-extension` folder.
+5. Click **Load unpacked** and choose the unzipped `zscaler-made-easy-extension` folder.
 6. Pin it (the puzzle-piece icon, then the pin).
 7. **Container or another port:** the extension expects the app at
    `http://127.0.0.1:8000`. The container listens on port **8001**, so open the
@@ -1211,7 +1262,7 @@ app** button or `UPDATE_Zscaler_Made_Easy.bat`), renames the shortcut to
 | `Cannot connect to the Docker daemon` or `error during connect` | Docker Desktop is not running (Windows, Mac), or the Docker service is stopped (Linux) | Start Docker Desktop and wait for **Engine running**; on Linux `sudo systemctl start docker` |
 | `WSL 2 installation is incomplete` or `Virtualization support not detected` (Windows) | WSL 2 is not set up, or virtualization is off in the computer's firmware | Run `wsl --install --no-distribution` in an administrator PowerShell and restart; if virtualization is off, ask IT to turn on Intel VT-x or AMD-V in the BIOS/UEFI |
 | `You are not allowed to use Docker, you must be in the docker-users group` (Windows) | Your Windows account is not in the docker-users group | Container Step 1, Windows step 5 |
-| `services.dlp-check.env_file.0 must be a string` | Docker Compose is older than 2.24 | Update Docker Desktop (*Check for updates*), or on Linux install Docker from Docker's repository as in container Step 1 |
+| `services.zscaler-made-easy.env_file.0 must be a string` | Docker Compose is older than 2.24 | Update Docker Desktop (*Check for updates*), or on Linux install Docker from Docker's repository as in container Step 1 |
 | `CERTIFICATE_VERIFY_FAILED` during `docker compose up --build` (step `[6/8]`, `pip install`) | The build's downloads go through TLS inspection | Put the company root certificate in the `certs` folder and build again: *On a work network with TLS inspection* under container Step 1 has the one-line export |
 | Asked for a UI token you don't have | You opened the address by hand, or the app restarted | Find it as described in [First run](#first-run-the-ui-token) |
 | `That UI token is not valid for this server` | The app restarted and minted a new token | Open the app from the shortcut again, or read the new token from `ui_token.txt` |

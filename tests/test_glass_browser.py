@@ -5,11 +5,12 @@ One Chrome opens the sample tenant and runs the assessment (so the dashboard
 and its cards are full), then visits every page styled by the app's own
 stylesheet, in the dark and the light theme, and measures:
   - the glass layer is applied (the material on its surfaces, the blur on
-    the chrome, the soft background behind);
+    the chrome, the backdrop of colour fields behind);
   - text on every glass surface keeps WCAG 2.2 AA contrast against the worst
     case behind it (pure white and pure black behind floating chrome; the
-    brightest and darkest point of the page wash behind surfaces in the flow;
-    with and without the sheen and the pointer lens);
+    brightest and darkest point of the backdrop's colour fields behind
+    surfaces in the flow and behind the sidebar where it sits beside the
+    page; with and without the sheen and the pointer lens);
   - no fixed element sits inside a blurred one (backdrop-filter makes its
     element the containing block of fixed descendants), the number of blurred
     layers stays small and no table is blurred;
@@ -19,7 +20,11 @@ and print (Emulation.setEmulatedMedia) turn every surface solid and remove
 the blur; the "Glass effect" switch in Advanced settings turns it off and the
 choice survives a reload and reaches other pages; the pointer lens follows
 the pointer and is off under prefers-reduced-motion; the focus ring stays
-visible on a glass button. Skips without node or Chrome. No real tenant."""
+visible on a glass button; the backdrop drifts, stands still under
+prefers-reduced-motion, pauses while the tab is hidden, and is gone when the
+glass is off, under reduced transparency and forced colours; it never makes
+the page scroll sideways at 320 px. Skips without node or Chrome. No real
+tenant."""
 from __future__ import annotations
 
 import json
@@ -68,16 +73,31 @@ AUDIT = r"""(() => {
   out.blurred = blurred.map(desc);
   out.opaque = surfaces.filter(e => { const c = rgba(getComputedStyle(e).backgroundColor); return c && c.a >= 0.999; }).length;
   out.wash = getComputedStyle(document.body, '::before').backgroundImage;
+  out.wash2 = getComputedStyle(document.body, '::after').backgroundImage;
+  out.cardsBlurred = blurred.filter(e => e.matches('.rp-card, .container .card, .xp-details')).length;
   // A fixed element inside a blurred one is positioned against it, not the window.
-  out.fixedInBlur = all.filter(e => getComputedStyle(e).position === 'fixed' && blurred.some(b => b !== e && b.contains(e))).map(desc).slice(0, 6);
+  // (A fixed element that is not drawn is left out: the sidebar's drop marker shows only while an item is dragged, and the
+  // sidebar drops its blur for that; checked on its own below.)
+  out.fixedInBlur = all.filter(e => getComputedStyle(e).position === 'fixed' && getComputedStyle(e).display !== 'none' && blurred.some(b => b !== e && b.contains(e))).map(desc).slice(0, 6);
+  const sb = document.getElementById('dbSidebar');
+  if (sb) { const was = getComputedStyle(sb).backdropFilter; sb.classList.add('sb-dragging'); out.sidebarDrag = { resting: was, dragging: getComputedStyle(sb).backdropFilter }; sb.classList.remove('sb-dragging'); }
   out.tallBlur = blurred.filter(e => e.getBoundingClientRect().height > innerHeight + 1).map(desc).slice(0, 6);
   out.tables = [...document.querySelectorAll('table')].filter(vis).filter(t => { const s = getComputedStyle(t); const c = rgba(s.backgroundColor); return /blur\(/.test(s.backdropFilter || '') || (surfaces.some(g => g.contains(t)) && c && c.a > 0 && c.a < 0.95); }).map(desc).slice(0, 6);
-  // The page wash: the page colour, each blob's peak, and each pair half and half.
+  // The backdrop: the page colour, each colour field's peak, and each pair half and half.
   const bs = getComputedStyle(document.body), bg = rgba(bs.backgroundColor);
-  const peaks = [1, 2, 3].map(i => rgba(bs.getPropertyValue('--glass-amb-' + i))).filter(c => c && c.a > 0);
-  const washOn = out.wash && out.wash !== 'none';
+  const peaks = [1, 2, 3, 4, 5].map(i => rgba(bs.getPropertyValue('--glass-amb-' + i))).filter(c => c && c.a > 0);
+  const washOn = (out.wash && out.wash !== 'none') || (out.wash2 && out.wash2 !== 'none');
+  out.fields = peaks.length;
+  // A fixed surface beside the page (the sidebar on a wide screen): no other content shares its columns, so only the
+  // backdrop is ever behind it (the page scrolls up and down, never under it).
+  const besideCache = new Map();
+  const beside = n => { if (!besideCache.has(n)) { const r = n.getBoundingClientRect();
+    besideCache.set(n, !all.some(o => { if (o === n || n.contains(o) || o.contains(n)) return false; const q = o.getBoundingClientRect();
+      // (an element above the top of the document, a skip link waiting for focus, can never scroll behind it)
+      return q.width > 0 && q.height > 0 && q.bottom + scrollY > 0 && q.left < r.right - 1 && q.right > r.left + 1 && getComputedStyle(o).visibility !== 'hidden'; })); }
+    return besideCache.get(n); };
   const ambient = [bg].concat(washOn ? peaks.map(p => over(p, bg)).concat(peaks.flatMap((a, i) => peaks.slice(i + 1).map(b => over(mix(a, b, 0.5), bg)))) : []);
-  out.ambient = ambient.map(hex);
+  out.ambient = ambient.length;
   // Text on glass: the layers from the text up to what is behind the glass.
   out.contrast = []; out.measured = 0; out.lowest = 99;
   const texts = all.filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim()) && vis(e) && !e.closest('svg, option, [disabled], [aria-disabled="true"], .sr-only'));
@@ -96,6 +116,7 @@ AUDIT = r"""(() => {
                const lens = rgba(s.getPropertyValue('--glass-lens-on')); if (lens && lens.a > 0 && /radial-gradient/.test(s.backgroundImage)) extras.push(lens); }
       layers.push({ c, extras });
       if (c.a >= 0.999 && !g) { bases = [{ r: 0, g: 0, b: 0, a: 0 }]; break; }
+      if (g && g < 3 && s.position === 'fixed' && beside(n)) { bases = ambient; break; }
       if (g >= 3 || s.position === 'fixed' || s.position === 'sticky' || n.tagName === 'DIALOG') { bases = [WHITE, BLACK]; break; }
     }
     if (!glass || image || !bases) continue;
@@ -125,11 +146,22 @@ SOLID = r"""(() => {
     blurred: all.filter(e => /blur\(/.test(getComputedStyle(e).backdropFilter || '')).length,
     clear: surfaces.filter(e => alpha(getComputedStyle(e).backgroundColor) < 0.999).map(e => e.tagName + '.' + String(e.className).split(' ')[0]).slice(0, 6),
     sheen: surfaces.filter(e => getComputedStyle(e).backgroundImage !== 'none').length,
-    wash: getComputedStyle(document.body, '::before').backgroundImage };
+    wash: getComputedStyle(document.body, '::before').backgroundImage, wash2: getComputedStyle(document.body, '::after').backgroundImage };
+})()"""
+
+# The backdrop: its layers, its colour fields and the state of its drift.
+BACKDROP = r"""(() => {
+  const b = document.body, s1 = getComputedStyle(b, '::before'), s2 = getComputedStyle(b, '::after');
+  const anims = document.getAnimations().filter(a => a.effect && /^::(before|after)$/.test(a.effect.pseudoElement || ''));
+  const n = s => (String(s.backgroundImage).match(/radial-gradient/g) || []).length;
+  return { fields: n(s1) + n(s2), before: s1.backgroundImage !== 'none', after: s2.backgroundImage !== 'none',
+    running: anims.filter(a => a.playState === 'running').length, paused: anims.filter(a => a.playState === 'paused').length,
+    still: document.documentElement.classList.contains('glass-still'),
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
 })()"""
 
 DRIVER = CDP_PRELUDE + "process.env.UI_DEADLINE_MS = process.env.UI_DEADLINE_MS || '840000';\n" + EVENTS + "%SETUP%" + r"""
-const [routesJson, themesJson, auditJs, solidJs] = args;
+const [routesJson, themesJson, auditJs, solidJs, backdropJs] = args;
 // A page load may take a while on a busy machine: 60 s, not the shared 20 s.
 const load = async url => { await send('Page.navigate', { url: base + url }); await until(() => ev(`document.readyState === 'complete'`), url + ' load', 60000); };
 const routes = JSON.parse(routesJson);
@@ -218,16 +250,47 @@ for (let i = 0; i < 6; i++) {
     return { d: e.tagName + '.' + String(e.className).split(' ')[0], glass: (parseInt(s.getPropertyValue('--glass-surface'), 10) || 0) > 0, outline: s.outlineStyle, width: parseFloat(s.outlineWidth) }; })()`);
   if (f) out.focus.push(f);
 }
+// 7. The backdrop: drifting with nothing asked, still under reduced motion, paused while the tab is hidden, gone when
+//    the glass is off or the system asks for less transparency or forced colours; never wider than the window.
+const back = out.backdrop = {};
+for (const route of ['/', '/report/path']) {
+  await media([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+  await load(route); await settle(route, 3000); await frames();
+  back['moving ' + route] = await ev(backdropJs);
+  await ev(`(Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }), document.dispatchEvent(new Event('visibilitychange')), true)`);
+  await frames();
+  back['hidden ' + route] = await ev(backdropJs);
+  await ev(`(delete document.visibilityState, document.dispatchEvent(new Event('visibilitychange')), true)`);
+  await frames();
+  back['shown ' + route] = await ev(backdropJs);
+  for (const [name, features] of [['reduced-motion', [{ name: 'prefers-reduced-motion', value: 'reduce' }]], ['transparency', [{ name: 'prefers-reduced-transparency', value: 'reduce' }]], ['forced', [{ name: 'forced-colors', value: 'active' }]]]) {
+    await media(features); await frames();
+    back[name + ' ' + route] = await ev(backdropJs);
+  }
+  await media([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+  await ev(`(localStorage.setItem('zassess_glass', 'off'), true)`);
+  await load(route); await settle(route, 3000);
+  back['off ' + route] = await ev(backdropJs);
+  await ev(`(localStorage.removeItem('zassess_glass'), true)`);
+  await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 720, deviceScaleFactor: 1, mobile: false });
+  await load(route); await settle(route, 3000);
+  const at320 = [];
+  for (let i = 0; i < 4; i++) { at320.push(await ev(backdropJs)); await sleep(400); }
+  back['320 ' + route] = at320;
+  await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+}
+await media([]);
 out.errors = seen.errors.splice(0);
-console.log(JSON.stringify(out));
-ws.close(); p.kill(); process.exit(0);
+// The record is larger than a pipe's buffer: exit only once it is all written.
+ws.close(); p.kill();
+process.stdout.write(JSON.stringify(out) + '\n', () => process.exit(0));
 """
 
 
 @pytest.fixture(scope="module")
 def glass(tmp_path_factory):
     driver = DRIVER.replace("%SETUP%", sample_setup())
-    return run_in_browser(tmp_path_factory.mktemp("glass"), driver, json.dumps(ROUTES), json.dumps(THEMES), AUDIT, SOLID, timeout=900)
+    return run_in_browser(tmp_path_factory.mktemp("glass"), driver, json.dumps(ROUTES), json.dumps(THEMES), AUDIT, SOLID, BACKDROP, timeout=900)
 
 
 def _page(glass, theme, route):
@@ -241,7 +304,7 @@ def test_the_glass_layer_is_applied_on_every_page(glass, route):
     for theme in THEMES:
         rec = _page(glass, theme, route)
         assert rec["on"] and rec["surfaces"] >= 2 and len(rec["blurred"]) >= 1, (theme, route, rec["surfaces"], rec["blurred"])
-        assert "radial-gradient" in rec["wash"], (theme, route, rec["wash"])
+        assert "radial-gradient" in rec["wash"] and "radial-gradient" in rec["wash2"] and rec["fields"] == 5, (theme, route, rec["wash"], rec["wash2"])
         assert rec["surfaces"] > rec["opaque"], (theme, route, "some glass is translucent")
 
 
@@ -273,7 +336,7 @@ def test_no_horizontal_scroll_at_320_and_390_px(glass, route):
 def test_reduced_transparency_removes_the_blur(glass, route):
     """WCAG 2.2 SC 1.4.3, 1.4.8 · CSS Media Queries 5 prefers-reduced-transparency (emulated): table over every page: no blur, no sheen, no background wash, every glass surface opaque."""
     rec = glass["solid"]["transparency " + route]
-    assert rec["surfaces"] >= 2 and rec["blurred"] == 0 and rec["clear"] == [] and rec["sheen"] == 0 and rec["wash"] == "none", rec
+    assert rec["surfaces"] >= 2 and rec["blurred"] == 0 and rec["clear"] == [] and rec["sheen"] == 0 and rec["wash"] == rec["wash2"] == "none", rec
 
 
 @pytest.mark.parametrize("pref", ["contrast", "forced", "print"])
@@ -291,7 +354,7 @@ def test_the_advanced_settings_switch_turns_it_off_and_the_choice_persists(glass
     assert sw["initially"]["checked"] and sw["initially"]["on"] and sw["initially"]["note"].startswith("On")
     a = sw["afterSpace"]
     assert not a["checked"] and a["off"] and a["stored"] == "off" and a["note"].startswith("Off"), a
-    assert a["solid"]["blurred"] == 0 and a["solid"]["surfaces"] == 0 and a["solid"]["wash"] == "none", a["solid"]
+    assert a["solid"]["blurred"] == 0 and a["solid"]["surfaces"] == 0 and a["solid"]["wash"] == a["solid"]["wash2"] == "none", a["solid"]
     assert sw["afterReload"]["off"] and not sw["afterReload"]["checked"] and sw["afterReload"]["solid"]["blurred"] == 0
     assert sw["otherPage"]["off"] and sw["otherPage"]["solid"]["blurred"] == 0
     assert sw["home"] == {"off": True, "headScript": True}
@@ -317,3 +380,58 @@ def test_the_focus_ring_stays_visible_on_glass_buttons(glass):
 def test_the_glass_run_left_no_script_errors(glass):
     """WCAG 2.2 SC 4.1.2 · CWE-754: switching the glass, the preferences and the lens raise no script or console error."""
     assert glass["errors"] == [], glass["errors"]
+
+
+def test_short_cards_are_real_glass_and_tall_ones_are_not_blurred(glass):
+    """Performance (no render surface taller than the window) · WCAG 2.2 SC 1.4.3: table over every page: some pages show blurred cards (a card that fits the window is real glass), and no blurred layer anywhere is taller than the window."""
+    blurred = {route: _page(glass, "dark", route)["cardsBlurred"] for route in ROUTES}
+    assert sum(1 for n in blurred.values() if n) >= 5, blurred
+    assert all(_page(glass, theme, route)["tallBlur"] == [] for theme in THEMES for route in ROUTES)
+
+
+@pytest.mark.parametrize("route", ["/", "/report/path"])
+def test_the_backdrop_is_drawn_and_drifts_when_the_glass_is_on(glass, route):
+    """WCAG 2.2 SC 1.4.3 (the colour behind the glass is the one measured above) · ASVS V14.4: with nothing asked, both backdrop layers are drawn with their five colour fields, and both drift (two running animations)."""
+    rec = glass["backdrop"]["moving " + route]
+    assert rec["before"] and rec["after"] and rec["fields"] == 5, rec
+    assert rec["running"] == 2 and not rec["still"], rec
+
+
+@pytest.mark.parametrize("route", ["/", "/report/path"])
+def test_the_drift_pauses_while_the_tab_is_hidden_and_resumes(glass, route):
+    """WCAG 2.2 SC 2.2.2 · performance: hiding the tab (visibilitychange) pauses both layers' drift (html.glass-still); showing it again resumes them."""
+    hidden, shown = glass["backdrop"]["hidden " + route], glass["backdrop"]["shown " + route]
+    assert hidden["still"] and hidden["paused"] == 2 and hidden["running"] == 0, hidden
+    assert not shown["still"] and shown["running"] == 2, shown
+
+
+@pytest.mark.parametrize("route", ["/", "/report/path"])
+def test_the_backdrop_stands_still_under_reduced_motion(glass, route):
+    """WCAG 2.2 SC 2.3.3, 2.2.2 · prefers-reduced-motion (emulated): the colour fields stay, the drift stops (no animation at all)."""
+    rec = glass["backdrop"]["reduced-motion " + route]
+    assert rec["fields"] == 5 and rec["running"] == 0 and rec["paused"] == 0, rec
+
+
+@pytest.mark.parametrize("pref", ["transparency", "forced", "off"])
+@pytest.mark.parametrize("route", ["/", "/report/path"])
+def test_the_backdrop_is_gone_when_off_or_solid(glass, pref, route):
+    """WCAG 2.2 SC 1.4.3, 1.4.11 · prefers-reduced-transparency, forced-colors (emulated) and the viewer's switch: no colour field and no animation is left."""
+    rec = glass["backdrop"][pref + " " + route]
+    assert not rec["before"] and not rec["after"] and rec["fields"] == 0 and rec["running"] == 0, (pref, rec)
+
+
+@pytest.mark.parametrize("route", ["/", "/report/path"])
+def test_the_drifting_backdrop_never_scrolls_sideways_at_320_px(glass, route):
+    """WCAG 2.2 SC 1.4.10 (Reflow): at 320 CSS px, sampled while the backdrop drifts, the page never scrolls sideways (the layers are fixed and larger than the window, never part of the page's width)."""
+    recs = glass["backdrop"]["320 " + route]
+    assert all(r["overflow"] == 0 and r["running"] == 2 for r in recs), recs
+
+
+def test_the_sidebar_drops_its_blur_while_an_item_is_dragged(glass):
+    """WCAG 2.2 SC 2.1.1, 2.5.7 (dragging movements) · CSS Filter Effects 2 (a backdrop-filter is the containing block of fixed descendants): the sidebar is glass at rest and drops its blur while an item is dragged, so the fixed drop marker (shown only then) is placed against the window; sidebar_order.js sets the class before it shows the marker."""
+    for theme in THEMES:
+        drag = _page(glass, theme, "/")["sidebarDrag"]
+        assert "blur(" in drag["resting"] and drag["dragging"] == "none", (theme, drag)
+    js = open(os.path.join(STATIC, "sidebar_order.js"), encoding="utf-8").read()
+    move = js[js.index("function onMove(e)"):]
+    assert move.index("root.classList.add('sb-dragging')") < move.index("showLine(")
