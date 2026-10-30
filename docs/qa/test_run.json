@@ -1,11 +1,11 @@
 {
-  "passed": 21678,
+  "passed": 21711,
   "failed": 0,
   "skipped": 14,
   "errors": 0,
-  "duration_s": 2555.3,
-  "commit": "1b0557d31af8",
-  "date": "2026-10-30T04:59:58",
+  "duration_s": 2714.5,
+  "commit": "d568741bfef8",
+  "date": "2026-10-30T06:34:19",
   "files": {
     "tests/test_accessibility.py": {
       "passed": 682,
@@ -483,12 +483,12 @@
       "skipped": 0
     },
     "tests/test_glass.py": {
-      "passed": 85,
+      "passed": 102,
       "failed": 0,
       "skipped": 0
     },
     "tests/test_glass_browser.py": {
-      "passed": 223,
+      "passed": 239,
       "failed": 0,
       "skipped": 0
     },
