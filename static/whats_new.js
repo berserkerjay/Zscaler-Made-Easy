@@ -23,8 +23,7 @@ window.WHATS_NEW = {
   "keep": 2,
   "releases": {
     "2026-10-31": "Wave 7: gaps closed from the comparison with other public Zscaler tools",
-    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score",
-    "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
+    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score"
   },
   "skipped": {
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
@@ -34,13 +33,13 @@ window.WHATS_NEW = {
     {
       "id": "rules-csv", "release": "2026-10-31", "label": "Rules from a spreadsheet",
       "what": "Rules from a spreadsheet on Bulk changes: export Cloud Firewall, URL filtering or ZPA access policy rules as CSV, edit them offline and import the file as a previewed plan of adds, updates, moves and (only if you tick it) deletes, with the write gates, read-back and Undo.",
-      "changelog": ["Rules from a spreadsheet"],
+      "changelog": ["Rules from a spreadsheet", "Read from the tenant", "Download the rules as CSV", "Preview", "Remove rules not in the file", "Create new rules enabled"],
       "marks": [{ "page": "/report/operations", "at": "#rcExport", "shown": "after Read from the tenant, with Rules from a spreadsheet picked" }]
     },
     {
       "id": "scheduled-sync", "release": "2026-10-31", "label": "Scheduled sync",
       "what": "Scheduled sync on the change queue: a job keeps target tenants' rules in step with a source by filing a plan per target for four-eyes approval; nothing is applied until a named writer applies it.",
-      "changelog": ["Scheduled sync"],
+      "changelog": ["Scheduled sync", "Run now", "Bulk change plan"],
       "marks": [{ "page": "/report/queue", "at": "#syH" }]
     },
     {
