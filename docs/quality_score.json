@@ -275,7 +275,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 120,
+            "fixed": 123,
             "accepted": 3,
             "records": [
               "c6-assessment",
@@ -283,7 +283,8 @@
               "c6-path",
               "c6-posture",
               "c6-zpa",
-              "func-path"
+              "func-path",
+              "w7-o365-endpoints"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 582,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -450,12 +451,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 158,
+        "fixed": 160,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 338,
         "accepted": 0
       },
       "info": {
@@ -465,12 +466,12 @@
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 312,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8717
   },
   "findings": [
     {
@@ -3576,6 +3577,38 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-O365-01",
+      "title": "The Office 365 One Click rule's app service group (OFFICE365) was always 'unknown': the Path analyzer, its what-if, DNS Control, workload forwarding and Test a list reported Microsoft 365 traffic the rule allows as conditional, and Shadowed rules could not compare it",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "app_services.criterion matches it by host name and address against Microsoft's published Microsoft 365 endpoint list (m365_endpoints), with unknown kept for everything the list cannot settle; shadow_rules compares it with a later rule's destinations and ports",
+      "test": "tests/test_m365_app_services.py::test_the_one_click_rule_decides_a_microsoft_365_host_in_the_path_analyzer",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-o365-endpoints",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7-O365-02",
+      "title": "Found while building, never released: Test a list shared one trace between destinations its host index saw alike, so an address outside Microsoft 365 took a Microsoft 365 address's One Click allow",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-697",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "bulk_test.PathEvaluator's fingerprint includes the Microsoft 365 endpoint sets that hold the destination whenever a firewall or DNS rule names an app service",
+      "test": "tests/test_m365_app_services.py::test_test_a_list_decides_microsoft_365_rows_with_the_one_click_rule",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-o365-endpoints",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -8970,6 +9003,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-O365-03",
+      "title": "Test a list counted a rule unknown only on its app service group as 'blocks in some contexts' (a user, a time), although it is the destination that is not known",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-697",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "bulk_test._context_only leaves app service criteria out of the context labels",
+      "test": "tests/test_m365_app_services.py::test_an_app_service_unknown_is_about_the_destination_not_the_context",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-o365-endpoints",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -10634,6 +10683,36 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-o365-endpoints",
+      "area": "Traffic analysis: ZIA app services and app service groups (the Office 365 One Click rule's OFFICE365) matched with Microsoft's published Microsoft 365 endpoint list in the Path analyzer, its what-if, DNS Control, workload forwarding, Test a list and Shadowed rules (app_services.py, m365_endpoints.py), and the optional, off-by-default fetch of that list (Advanced settings)",
+      "title": "Microsoft 365 app service groups matched by host name and address, with the list treated as untrusted and every gap left unknown",
+      "standards": [
+        "ASVS V1.4.4",
+        "ASVS V5.1.3",
+        "ASVS V12.1.1",
+        "ASVS V12.6.1",
+        "ASVS V9.2.1",
+        "ASVS V8.3.4",
+        "ASVS V7.2.1",
+        "ASVS V14.1.1",
+        "CWE-20",
+        "CWE-176",
+        "CWE-345",
+        "CWE-400",
+        "CWE-561",
+        "CWE-672",
+        "CWE-697",
+        "CWE-754",
+        "CWE-918",
+        "WSTG-INPV-19",
+        "WCAG 2.2 SC 3.3.2",
+        "WCAG 2.2 SC 4.1.2"
+      ],
+      "checks": 9,
+      "findings": 3,
+      "tests_added": 115
     }
   ],
   "standards": {

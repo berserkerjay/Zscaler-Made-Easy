@@ -2377,6 +2377,36 @@ window.HELP_CATALOG = {
     "input": "Tick it or clear it. The choice is kept in this browser only and every open tab follows it.",
     "effect": "local"
    },
+   "#advM365On": {
+    "what": "Lets this app fetch Microsoft's list of Microsoft 365 sites and addresses from endpoints.office.com. It sends nothing about your tenant.",
+    "input": "Tick it or clear it. Off by default. On, the app checks for a new version at most once a day when you analyze.",
+    "effect": "local"
+   },
+   "#advM365Fetch": {
+    "what": "Fetches Microsoft's Microsoft 365 list now. The Path analyzer, Test a list and Shadowed rules then match the OFFICE365 app service group with it.",
+    "input": "Nothing to type. Turn on fetching first. A list that fails the checks is refused and the old one stays.",
+    "effect": "local"
+   },
+   "#advM365Remove": {
+    "what": "Forgets the Microsoft 365 list. Rules on Microsoft 365 app service groups show as unknown again.",
+    "input": "Nothing to type. Just click it, then confirm.",
+    "effect": "local"
+   },
+   "#advM365File": {
+    "what": "Picks a saved copy of Microsoft's Microsoft 365 list, for a machine that cannot reach endpoints.office.com.",
+    "input": "Required to import. The JSON file that endpoints.office.com/endpoints/worldwide gives, up to 2 MB.",
+    "effect": "local"
+   },
+   "#advM365Ver": {
+    "what": "Names the version of the list you import, so results can say which list they used.",
+    "input": "Optional. Ten digits, like 2026100100, as endpoints.office.com/version/worldwide gives it.",
+    "effect": "local"
+   },
+   "#advM365Import": {
+    "what": "Checks the chosen file and keeps it as the Microsoft 365 list. A file that is not Microsoft's list is refused whole.",
+    "input": "Choose the file first. The version is optional. Nothing touches the tenant.",
+    "effect": "local"
+   },
    "#advAssessor": {
     "what": "Names the assessor in every Terraform download. Each object's description is tagged with this name, never Zscaler Made Easy.",
     "input": "Required for Terraform downloads. A person's name, up to 40 letters, like Alex Morgan. Not the tool's name.",

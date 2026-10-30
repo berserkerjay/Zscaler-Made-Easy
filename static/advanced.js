@@ -304,6 +304,75 @@
   $('advUpCheck').addEventListener('click', () => loadUp(true));
   loadUp(false);
 
+  // ---- Microsoft 365 endpoint list (app service groups) ---------------------
+  // Off by default; fetching contacts endpoints.office.com only after the
+  // switch is on and then only through this server (m365_endpoints.py).
+  async function m365(method, path, body) {
+    const opt = { method, cache: 'no-store' };
+    if (body) { opt.headers = { 'Content-Type': 'application/json' }; opt.body = JSON.stringify(body); }
+    const r = await fetch(path, opt);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((data && data.detail) || `Error ${r.status}`);
+    return data;
+  }
+  const day = iso => String(iso || '').slice(0, 10) || 'an unknown date';
+  function renderM365(st, said) {
+    const box = $('advM365Box');
+    const c = st.counts || {};
+    const rows = [];
+    if (!st.present) {
+      rows.push('<strong>No list is kept.</strong> Rules on Microsoft 365 app service groups show as unknown.');
+    } else {
+      const from = st.source === 'imported' ? `imported ${E(day(st.fetched_at))}` : `fetched ${E(day(st.fetched_at))}`;
+      rows.push(`<strong>Version ${E(st.version || 'not stated')}</strong>, ${from}${st.checked_at && st.checked_at !== st.fetched_at ? `, last confirmed ${E(day(st.checked_at))}` : ''}: `
+        + `${E(c.sets || 0)} endpoint sets, ${E(c.urls || 0)} host names, ${E(c.ipv4 || 0)} IPv4 and ${E(c.ipv6 || 0)} IPv6 ranges.`);
+      rows.push(st.stale ? `<span class="warn">Stale: last confirmed ${E(st.age_days)} days ago, more than ${E(st.max_age_days)}. It settles nothing until it is refreshed or imported again.</span>`
+                         : '<span class="chip ok">In use</span>');
+    }
+    rows.push(`Fetching from <code>${E(st.host)}</code>: ${st.enabled ? '<span class="chip warn">On</span>' : '<span class="chip ok">Off</span>'}`
+      + (st.last_error ? ` <span class="warn">Last try failed: ${E(st.last_error)}</span>` : ''));
+    if (said) rows.push(`<span>${E(said)}</span>`);
+    box.innerHTML = rows.map(r => `<div>${r}</div>`).join('');
+    $('advM365On').checked = !!st.enabled;
+    $('advM365Fetch').disabled = !st.enabled;
+    $('advM365Remove').disabled = !st.present;
+  }
+  async function loadM365(said) {
+    try { renderM365(await m365('GET', '/api/m365-endpoints'), said); }
+    catch (e) { $('advM365Box').innerHTML = `<span class="warn">Could not read the setting: ${E(e.message)}</span>`; }
+  }
+  $('advM365On').addEventListener('change', async e => {
+    try { renderM365(await m365('PUT', '/api/m365-endpoints/settings', { enabled: e.target.checked }),
+                     e.target.checked ? 'Fetching is on. Click Fetch now, or the app checks when you next analyze.' : 'Fetching is off. A list already kept is still used.'); }
+    catch (err) { e.target.checked = !e.target.checked; loadM365(`Not changed: ${err.message}`); }
+  });
+  $('advM365Fetch').addEventListener('click', async () => {
+    $('advM365Fetch').disabled = true;
+    $('advM365Box').insertAdjacentHTML('beforeend', '<div class="dim">Fetching from endpoints.office.com…</div>');
+    try { renderM365(await m365('POST', '/api/m365-endpoints/refresh'), 'Fetched: the list is current.'); }
+    catch (e) { loadM365(e.message); }
+  });
+  $('advM365Import').addEventListener('click', () => {
+    const f = ($('advM365File').files || [])[0];
+    if (!f) { loadM365('Choose the file first: the JSON Microsoft\'s address answers.'); $('advM365File').focus(); return; }
+    if (f.size > 2 * 1024 * 1024) { loadM365('That file is larger than 2 MB, so it is not Microsoft\'s list (about 100 KB).'); return; }
+    const r = new FileReader();
+    r.onload = async () => {
+      try { renderM365(await m365('POST', '/api/m365-endpoints/import', { content: String(r.result || ''), version: $('advM365Ver').value.trim() }), 'Imported.'); }
+      catch (e) { loadM365(e.message); }
+    };
+    r.onerror = () => loadM365('The file could not be read.');
+    r.readAsText(f);
+  });
+  $('advM365Remove').addEventListener('click', async () => {
+    const ok = window.dlpDialog ? await window.dlpDialog.ask({ title: 'Remove the Microsoft 365 endpoint list?', body: 'Rules on Microsoft 365 app service groups will show as unknown again until you fetch or import the list.', okLabel: 'Remove', tone: 'bad' })
+                                : window.confirm('Remove the Microsoft 365 endpoint list?');
+    if (!ok) return;
+    try { renderM365(await m365('DELETE', '/api/m365-endpoints'), 'Removed.'); }
+    catch (e) { loadM365(e.message); }
+  });
+  loadM365();
+
   // ---- wiring ---------------------------------------------------------------
   $('advUpdCheck').addEventListener('click', checkUpdate);
   $('advUpdBtn').addEventListener('click', runUpdate);

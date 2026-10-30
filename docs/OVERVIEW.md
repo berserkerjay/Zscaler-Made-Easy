@@ -218,7 +218,12 @@ what you get, what to do next.
   step has the same shape: its deciding rule and order, the other rules
   that also match, the earlier rules that could decide instead, and every
   criterion as match, no match or unknown (`zia_path_modules.py`,
-  `zpa_path.py`, drawn by `static/path_modules.js`). A protocol and port
+  `zpa_path.py`, drawn by `static/path_modules.js`). An app service group
+  (the Office 365 One Click rule's OFFICE365, whose members the ZIA API
+  never returns) is matched by host name and address against Microsoft's
+  published Microsoft 365 endpoint list when one is kept and current
+  (`app_services.py`, `m365_endpoints.py`), saying which set, version and
+  date decided; otherwise it stays unknown. A protocol and port
   (UDP/443 is QUIC, TCP/22 is SSH) trace traffic that is not web.
   **Traffic from a workload** (Cloud & Branch Connector ticked) takes a
   source IP, tags, workload group and connector group: the connector's
@@ -667,7 +672,12 @@ what you get, what to do next.
 - **Advanced settings** — add your own policy packs (JSON, Terraform,
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with
-  its Secure by Design score.
+  its Secure by Design score. The **Microsoft 365 endpoint list** lives
+  here too: off by default; turned on, it is fetched from
+  `endpoints.office.com` (the version first, at most daily when you
+  analyze, or on Fetch now); or import the saved file on an offline
+  machine. It is checked as untrusted (2 MB, every field) and kept with
+  its version and date; a list not confirmed for 30 days settles nothing.
 - **Quality and security score** — this app's own score from 0 to 100 on
   Advanced settings: tests passed in the last full run, open QA findings
   weighted by CVSS severity (an open critical caps it at 39, an open high
@@ -797,8 +807,10 @@ These rules hold on every page, and the tests enforce them:
   blog and developer portal (the update and library checks), a fixed list
   of integration-partner documentation sites (Microsoft Learn, AWS,
   Splunk, CrowdStrike, Okta, Ping, Zscaler Community) for the library and
-  guidance checks, and, only if you configure the digest, your SMTP relay
-  or Teams/Slack webhook. Reports, profiles, deployment records and the
+  guidance checks, only if you configure the digest, your SMTP relay
+  or Teams/Slack webhook, and, only if you turn it on in Advanced settings,
+  `endpoints.office.com` for Microsoft's published Microsoft 365 endpoint
+  list (off by default; the file can be imported by hand instead). Reports, profiles, deployment records and the
   audit log stay on the machine it runs on; the Log analyzer and DLP
   efficacy read what you give them locally and store nothing.
 - **It listens on this machine only** (`127.0.0.1`), behind a per-start

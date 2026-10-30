@@ -23,6 +23,7 @@
       <a class="rp-btn" href="#formats">What the app accepts</a>
       <a class="rp-btn" href="#update">Update the app</a>
       <a class="rp-btn" href="#server">This server</a>
+      <a class="rp-btn" href="#m365">Microsoft 365 endpoint list</a>
       <a class="rp-btn" href="#appearance">Appearance</a>
       <a class="rp-btn" href="#sbd">This app's Secure by Design score</a>
       <a class="rp-btn" href="#quality">Quality and security score</a>
@@ -126,6 +127,23 @@
         <section id="server" aria-labelledby="advSrvH">
           <h2 class="df-h" id="advSrvH">This server</h2>
           <div class="tw"><table class="bp-table adv-table" id="advServer" aria-describedby="advSrvH"><tbody><tr><td class="dim">Loading…</td></tr></tbody></table></div>
+        </section>
+
+        <section id="m365" aria-labelledby="advM365H">
+          <h2 class="df-h" id="advM365H">Microsoft 365 endpoint list</h2>
+          <p class="adv-lead">ZIA's Office 365 One Click rule names the app service group OFFICE365, and Zscaler's API never says which sites and addresses it holds. With Microsoft's published list of Microsoft 365 endpoints, the Path analyzer, Test a list and Shadowed rules can say whether a destination is in it, and why; without the list they say "unknown", as before. A list older than 30 days is not trusted until it is refreshed.</p>
+          <p class="adv-lead">Fetching contacts <code>endpoints.office.com</code> (Microsoft) over HTTPS and sends nothing about your tenant. It is off until you turn it on here; with it on, the app checks for a new version at most once a day when you analyze. On a machine without internet access, save <code>https://endpoints.office.com/endpoints/worldwide?clientrequestid=</code> followed by any GUID on another machine and import the file here.</p>
+          <div id="advM365Box" class="adv-sbd adv-m365-box" role="status" aria-live="polite"><span class="dim">Loading…</span></div>
+          <label class="adv-switch" for="advM365On"><input type="checkbox" id="advM365On" role="switch" aria-describedby="advM365Box"><span>Fetch Microsoft's list</span></label>
+          <div class="adv-actions">
+            <button type="button" class="rp-btn" id="advM365Fetch">Fetch now</button>
+            <button type="button" class="rp-btn danger" id="advM365Remove">Remove the list</button>
+          </div>
+          <div class="adv-m365-import">
+            <label class="adv-field" for="advM365File"><span>Import the list from a file</span><input type="file" id="advM365File" accept=".json,application/json"></label>
+            <label class="adv-field" for="advM365Ver"><span>Its version <small>(optional, ten digits)</small></span><input type="text" id="advM365Ver" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="2026100100"></label>
+            <div class="adv-actions"><button type="button" class="rp-btn" id="advM365Import">Import</button></div>
+          </div>
         </section>
 
         <section id="appearance" aria-labelledby="advLookH">

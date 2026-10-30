@@ -197,7 +197,12 @@ SSL_RULES = [
 FIREWALL_RULES = [
     {"id": 801, "order": 1, "rank": 7, "name": "Block QUIC to force inspection", "state": "ENABLED", "action": "BLOCK_DROP",
      "nwServices": [_ref(41, "QUIC")], "destCountries": []},
-    {"id": 802, "order": 2, "rank": 7, "name": "Allow office traffic", "state": "ENABLED", "action": "ALLOW", "nwServices": [], "destCountries": []},
+    # ZIA's predefined Office 365 One Click rule (advanced settings
+    # enableOffice365): its only criterion is the Zscaler-managed app
+    # service group OFFICE365, whose members the API never returns.
+    {"id": 804, "order": 2, "rank": 7, "name": "Office 365 One Click Rule", "state": "ENABLED", "action": "ALLOW", "predefined": True,
+     "appServiceGroups": [_ref(361, "OFFICE365")]},
+    {"id": 802, "order": 3, "rank": 7, "name": "Allow office traffic", "state": "ENABLED", "action": "ALLOW", "nwServices": [], "destCountries": []},
     {"id": 803, "order": 127, "rank": 7, "name": "Default Firewall Filtering Rule", "state": "ENABLED", "action": "ALLOW", "defaultRule": True,
      "predefined": True},
 ]
@@ -205,6 +210,34 @@ FIREWALL_DNS_RULES = [{"id": 811, "order": 1, "rank": 7, "name": "Block DNS tunn
                        "applications": ["DNS_TUNNELS"]}]
 FIREWALL_IPS_RULES = [{"id": 821, "order": 1, "rank": 7, "name": "Default IPS rule", "state": "ENABLED", "action": "ALLOW",
                        "defaultRule": True, "threatCategories": []}]
+# A short excerpt of Microsoft's published Microsoft 365 endpoint list
+# (the Office 365 IP Address and URL web service, worldwide instance), in
+# its own format, so the sample's Office 365 One Click rule can be matched
+# (app_services.sample_list). Used only for the sample tenant and only when
+# no real list is kept; it is not complete and may be out of date. A real
+# tenant is matched only with the list fetched or imported in Advanced
+# settings.
+M365_ENDPOINTS_EXCERPT = [
+    {"id": 1, "serviceArea": "Exchange", "serviceAreaDisplayName": "Exchange Online", "category": "Optimize", "required": True, "expressRoute": True,
+     "urls": ["outlook.cloud.microsoft", "outlook.office.com", "outlook.office365.com"],
+     "ips": ["13.107.6.152/31", "13.107.18.10/31", "13.107.128.0/22", "23.103.160.0/20", "40.96.0.0/13", "40.104.0.0/15", "52.96.0.0/14",
+             "131.253.33.215/32", "132.245.0.0/16", "150.171.32.0/22", "204.79.197.215/32", "2603:1006::/40", "2603:1016::/36",
+             "2603:1026::/36", "2603:1036::/36", "2603:1046::/36", "2603:1056::/36", "2620:1ec:4::152/128", "2620:1ec:4::153/128"],
+     "tcpPorts": "80,443", "udpPorts": "443"},
+    {"id": 31, "serviceArea": "SharePoint", "serviceAreaDisplayName": "SharePoint Online and OneDrive for Business", "category": "Optimize",
+     "required": True, "expressRoute": True, "urls": ["<tenant>.sharepoint.com", "<tenant>-my.sharepoint.com"],
+     "ips": ["13.107.136.0/22", "40.108.128.0/17", "52.104.0.0/14", "104.146.128.0/17", "150.171.40.0/22", "2603:1061:1300::/40",
+             "2620:1ec:8f8::/46", "2620:1ec:908::/46"], "tcpPorts": "443,80"},
+    {"id": 12, "serviceArea": "Skype", "serviceAreaDisplayName": "Skype for Business Online and Microsoft Teams", "category": "Allow",
+     "required": True, "expressRoute": True, "urls": ["*.lync.com", "*.teams.microsoft.com", "teams.microsoft.com"],
+     "ips": ["13.107.64.0/18", "52.112.0.0/14", "52.122.0.0/15", "2603:1063::/38"], "tcpPorts": "443,80"},
+    {"id": 56, "serviceArea": "Common", "serviceAreaDisplayName": "Microsoft 365 Common and Office Online", "category": "Allow",
+     "required": True, "expressRoute": True,
+     "urls": ["*.auth.microsoft.com", "*.msftidentity.com", "*.msidentity.com", "account.activedirectory.windowsazure.com",
+              "graph.microsoft.com", "login.microsoft.com", "login.microsoftonline.com", "login.windows.net"],
+     "ips": ["20.20.32.0/19", "20.190.128.0/18", "20.231.128.0/19", "40.126.0.0/18", "2603:1006:2000::/48", "2603:1007:200::/48"],
+     "tcpPorts": "443,80"},
+]
 NETWORK_SERVICES = [{"id": 41, "name": "QUIC", "type": "PREDEFINED", "destUdpPorts": [{"start": 443, "end": 443}]}]
 CAC_RULES = {
     "AI_ML": [{"id": 901, "order": 1, "rank": 7, "name": "GenAI: allow use, block uploads", "state": "ENABLED", "type": "AI_ML",

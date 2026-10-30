@@ -307,6 +307,11 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
     import path_whatif
     ident = path_whatif.normalize_identity(identity)
     zia_t, wcounts = path_whatif.apply_identity(zia, ident)
+    # Microsoft's published Microsoft 365 endpoint list, for the rules that
+    # name app services (app_services): the one kept, or for the sample
+    # tenant its excerpt; None leaves those criteria unknown.
+    import app_services
+    zia_t = dict(zia_t, _app_service_list=app_services.current(client))
     if ident:
         _log(f"Evaluating rules scoped to the identity you gave: {wcounts['applies']} apply, {wcounts['skipped']} are for others, {wcounts['open']} still depend on something not given.")
     _log("Tracing the path hop by hop…")
@@ -328,6 +333,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                            + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
     out = {"required_controls": zia.get("required_controls", []), "destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
            "zia_modules": zm, "admin_ranking": admin_rank.recorded(zia.get("admin_ranking")),
+           "app_service_list": zm.get("app_service_list"),
            # The steps before ZIA in the shared hop shape (the evaluated PAC
            # file here; zpa_path.merge puts ZPA and the connector in front).
            "modules": [h["module_hop"] for h in t.get("hops") or [] if h.get("module_hop")],

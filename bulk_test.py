@@ -668,7 +668,8 @@ def _context_only(o: Dict[str, Any]) -> bool:
     some contexts. A rule unknown on the destination itself (no category
     known, a host name against address ranges) is not counted."""
     from zia_path_modules import UNEVALUATED
-    ctx = {label for _, label, _ in UNEVALUATED} | {"Source IP"}
+    # App services name destinations (app_services), not a context.
+    ctx = ({label for _, label, _ in UNEVALUATED} | {"Source IP"}) - {"App services", "App service groups", "App services and groups"}
     unknown = [c for c in o.get("criteria") or [] if c.get("state") == "unknown"]
     return bool(unknown) and all(c.get("name") in ctx for c in unknown)
 
@@ -1056,7 +1057,25 @@ class PathEvaluator:
             ev = pac_eval.evaluate(src, url, host, dns="none" if pac_eval._is_ipv4(host) else "assume_public")
             pac.append((ev.get("status"), ev.get("error"), tuple((o.get("kind"), o.get("result"), o.get("fallback_direct")) for o in ev.get("outcomes") or []),
                         tuple(ev.get("depends_on") or ()), tuple(ev.get("assumptions") or ())))
-        return (dest.match(host, ip), host if named else None, tuple(pac))
+        return (dest.match(host, ip), host if named else None, tuple(pac), self._app_service_fp(host, ip))
+
+    def _app_service_fp(self, host: str, ip: Any) -> Any:
+        """Which Microsoft 365 endpoint sets hold the destination, when a
+        Cloud Firewall or DNS Control rule names an app service and a list is
+        in use (app_services): two destinations in different sets, or one in
+        a set and one in none, are traced apart."""
+        if not hasattr(self, "_m365"):
+            import app_services
+            from zia_path_modules import _f
+            mods = (((self.snapshot or {}).get("snapshot") or {}).get("zia") or {}).get("modules") or {}
+            rules = [r for sec in ("firewall", "dns") for r in ((((mods.get(sec) or {}).get("parts") or {}).get("rules") or {}).get("data") or [])
+                     if isinstance(r, dict)]
+            named = any(app_services.named(r) for r in rules) or any(_f(r, "appServiceGroups") or _f(r, "appServices") for r in rules)
+            self._m365 = app_services.current(self.client) if named else None
+        if self._m365 is None:
+            return None
+        hits = self._m365.lookup_ip(ip) if ip is not None else self._m365.lookup_host(host)
+        return tuple(sorted({(s["id"], e) for s, e in hits}))
 
     def _source_fp(self, src: Optional[str]) -> Any:
         if not src:

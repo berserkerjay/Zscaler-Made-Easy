@@ -306,6 +306,11 @@ body.theme-light .df-chip.st-block { color: var(--accent); }
 .adv-field input { width: 100%; box-sizing: border-box; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid var(--border); background: var(--well); color: var(--text); font: inherit; font-size: 0.85rem; }
 .adv-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .adv-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.3rem; }
+.adv-m365-import { display: grid; gap: 0.6rem; max-width: 34rem; margin-top: 0.9rem; }
+.adv-m365-import .adv-field input[type="file"] { padding: 0.4rem 0.5rem; }
+.adv-sbd.adv-m365-box { display: block; }
+.adv-m365-box > div + div { margin-top: 0.3rem; }
+.adv-m365-box code { overflow-wrap: anywhere; }
 .adv-preview { margin-top: 1rem; display: grid; gap: 0.8rem; }
 .adv-verdict { font-weight: 700; font-size: 1rem; }
 .adv-verdict.ok { color: var(--pass); }

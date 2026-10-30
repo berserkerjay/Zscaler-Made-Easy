@@ -38,7 +38,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTM
 
 import tenant_auth
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ── Security hardening (secure-by-design controls) ───────────────────
 from security import (
@@ -8996,6 +8996,7 @@ async def path_analyzer_batch_start(req: PathBatchRequest, request: Request):
     creds = _tenant_creds(req)
     snapshot = _kept_path_read(req.report_id, scope, creds, req.platform)
     client = await asyncio.to_thread(_build_client, req)
+    _m365_refresh()
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("path-batch", lambda log, cancel: _run_path_batch(client, req, hosts, stats, skipped, snapshot, label, log, cancel, scope),
                           label=f"{len(hosts)} host(s) from a HAR file", actor=_actor(request), start_token=_start_token(request))
@@ -9163,6 +9164,7 @@ async def bulk_test_start(req: BulkTestRequest, request: Request):
         raise HTTPException(status_code=400, detail=PATH_NOTHING)
     creds = _tenant_creds(req)
     zpa_on, zpa_problem, zpa_kept = _bulk_zpa_inputs(req, creds)
+    _m365_refresh()
     if not scope["read"] and zpa_problem:
         raise HTTPException(status_code=400, detail=zpa_problem.replace("ZPA was not read: ", "ZPA cannot be read: ") + " Nothing was read.")
     snapshot = _kept_path_read(req.report_id, scope, creds, req.platform) if scope["read"] else None
@@ -9447,6 +9449,7 @@ async def shadow_rules_start(req: ShadowRulesRequest, request: Request):
     scope = _shadow_inputs(req)   # before signing in: nothing in scope reads nothing
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_client, req)
+    _m365_refresh()
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("shadow", lambda log, cancel: _run_shadow_rules(client, req, scope, label, log, cancel),
                           label=label[:80], actor=_actor(request), start_token=_start_token(request))
@@ -9672,6 +9675,89 @@ async def posture_settings_put(req: PostureSettings, request: Request):
     saved = await asyncio.to_thread(pp.save_settings, req.model_dump())
     _audit.record("posture_settings", actor=_actor(request) or _security.current_actor(), **saved)
     return saved
+# ── Microsoft 365 endpoint list (app service groups) ─────────────────
+# Optional outbound fetch, off by default: https://endpoints.office.com
+# (m365_endpoints). The list is also importable by hand. Server-wide
+# settings, so under SSO only a listed writer may change them; nothing
+# here touches a tenant.
+def _m365_refresh() -> None:
+    """With fetching on and the list due a check, start one in the
+    background (the run in progress uses the list already kept)."""
+    try:
+        import m365_endpoints
+        m365_endpoints.refresh_in_background()
+    except Exception:  # noqa: BLE001 - never in the way of an analysis
+        pass
+
+
+class M365Settings(BaseModel):
+    """Fetch Microsoft's published Microsoft 365 endpoint list (off by default)."""
+    enabled: bool = False
+
+
+class M365Import(BaseModel):
+    """Microsoft's endpoints JSON (the answer of https://endpoints.office.com/endpoints/worldwide), saved by hand, and optionally its version."""
+    content: str = Field("", max_length=2 * 1024 * 1024 + 1024)
+    version: str = Field("", max_length=20)
+
+
+@app.get("/api/m365-endpoints")
+async def m365_endpoints_status():
+    """The setting, the list kept (version, where from, when, stale or not) and the last error. Reads nothing remote."""
+    import m365_endpoints
+    return await asyncio.to_thread(m365_endpoints.status)
+
+
+@app.put("/api/m365-endpoints/settings")
+async def m365_endpoints_settings(req: M365Settings, request: Request):
+    """Turn fetching Microsoft's list on or off. Turning it on fetches nothing by itself."""
+    import m365_endpoints
+    _security.require_writer()
+    out = await asyncio.to_thread(m365_endpoints.set_enabled, req.enabled)
+    _audit.record("m365_endpoints_settings", actor=_actor(request) or _security.current_actor(), enabled=bool(req.enabled))
+    return out
+
+
+@app.post("/api/m365-endpoints/refresh")
+async def m365_endpoints_refresh(request: Request):
+    """Fetch now (only when fetching is on): the version, then the list when it changed. 409 when off, 502 when refused."""
+    import m365_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(m365_endpoints.fetch)
+    except m365_endpoints.FetchDisabled as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except m365_endpoints.ListError as e:
+        _audit.record("m365_endpoints_fetch", actor=_actor(request) or _security.current_actor(), ok=False, error=str(e)[:200])
+        raise HTTPException(status_code=502, detail=f"The list was not updated: {e} The list kept before is still used.")
+    _audit.record("m365_endpoints_fetch", actor=_actor(request) or _security.current_actor(), ok=True, version=out.get("version"))
+    return out
+
+
+@app.post("/api/m365-endpoints/import")
+async def m365_endpoints_import(req: M365Import, request: Request):
+    """Keep a list saved by hand (offline or air-gapped). Checked as untrusted: refused whole (400) when it is not Microsoft's list."""
+    import m365_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(m365_endpoints.import_file, req.content, req.version)
+    except m365_endpoints.ListError as e:
+        raise HTTPException(status_code=400, detail=f"The list was not imported: {e}")
+    _audit.record("m365_endpoints_import", actor=_actor(request) or _security.current_actor(), version=out.get("version"),
+                  sets=(out.get("counts") or {}).get("sets"))
+    return out
+
+
+@app.delete("/api/m365-endpoints")
+async def m365_endpoints_remove(request: Request):
+    """Forget the kept list: Microsoft 365 app services are unknown again."""
+    import m365_endpoints
+    _security.require_writer()
+    out = await asyncio.to_thread(m365_endpoints.remove)
+    _audit.record("m365_endpoints_remove", actor=_actor(request) or _security.current_actor())
+    return out
+
+
 @app.get("/api/self-heal")
 async def self_heal_status():
     """The last self-healing run (each check: ok / healed / needs you, what
@@ -10678,7 +10764,9 @@ def _run_path(inp: Dict[str, Any], req: PathAnalyzerRequest, raw_client, sdk_cli
         if zsnap is not None:
             sm = zpa_analysis.match_segment(zsnap, d)
             seg = zpa_analysis._Index(zsnap).segments.get(sm["match"]["id"]) if sm["match"] else None
-        wl = workload_path.evaluate(ztw, w, d, seg, zsnap is not None)
+        import app_services   # Microsoft 365 app service groups on forwarding rules
+        wl = workload_path.evaluate(dict(ztw, _app_service_list=app_services.current(raw_client)) if isinstance(ztw, dict) else ztw,
+                                    w, d, seg, zsnap is not None)
         mods, hops, impacts = list(wl["modules"]), list(wl["hops"]), list(wl["impacts"])
         assumptions = list(workload_path.ASSUMPTIONS)
         rule = (wl.get("rule") or {}).get("name")
@@ -10775,6 +10863,7 @@ async def path_analyzer_start(req: PathAnalyzerRequest, request: Request):
     import pack_jobs
     inp = _path_inputs(req)
     raw_client, sdk_client = await _path_clients(inp, req)
+    _m365_refresh()
     job = pack_jobs.start("path", lambda log, cancel: _run_path(inp, req, raw_client, sdk_client, log, cancel), label=req.destination[:80],
                           actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
@@ -10785,6 +10874,7 @@ async def path_analyzer_run(req: PathAnalyzerRequest):
     """The same analysis, waited for (for scripts)."""
     inp = _path_inputs(req)
     raw_client, sdk_client = await _path_clients(inp, req)
+    _m365_refresh()
     return await asyncio.to_thread(_run_path, inp, req, raw_client, sdk_client, None, None)
 
 
