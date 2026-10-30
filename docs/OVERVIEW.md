@@ -101,7 +101,7 @@ what you get, what to do next.
   does, what input it expects (format, allowed values, an example,
   required or optional) and whether it reads or changes the tenant; a
   control that changes the tenant says it needs write mode. A `*` after
-  an item from the newest two releases opens "New in the <date> update"
+  an item from the newest three releases opens "New in the <date> update"
   and what it is (`static/whats_new.js`; *Hide new marks* in Advanced
   settings). Each mark is a 24px button named "Help: <item>" or "New in
   this version: <item>": pointing at it, a click, a tap, or Enter or
