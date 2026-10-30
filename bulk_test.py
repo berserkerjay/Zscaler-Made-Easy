@@ -988,6 +988,14 @@ class PathEvaluator:
             dest += list(((p or {}).get("bypass") or {}).get("domains") or []) + list(((p or {}).get("bypass") or {}).get("ips") or [])
             tl = (p or {}).get("tunnel") or {}
             dest += list(tl.get("exclude") or []) + list(tl.get("include") or [])
+            # VPN gateways and Z-Tunnel 2.0's domain lists (zcc_bypass.profile_lists).
+            lists = (p or {}).get("lists") or {}
+            dest += list(((p or {}).get("bypass") or {}).get("vpn_gateways") or []) + list(lists.get("dns_exclude") or []) + list(lists.get("dns_include") or [])
+        # The addresses and host names of the IP-based applications the profiles name.
+        for defs in (((zcc.get("ip_apps") or {}).get("apps")) or {}).values():
+            for app in (defs or {}).values():
+                for e in (app or {}).get("entries") or []:
+                    dest += list(e.get("ips") or []) + list(e.get("fqdns") or [])
         pacs: List[str] = []
         for f in zcc.get("pac_files") or []:
             dest += list((f or {}).get("direct_hosts") or [])

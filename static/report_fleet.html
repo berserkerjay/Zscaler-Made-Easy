@@ -60,6 +60,10 @@
   .zf-legend { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; font-size: 0.78rem; }
   .zf-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
   .zf-page .rp-bar .df-ctl select { max-width: min(320px, calc(100vw - 7rem)); }
+  .zf-otp-list { list-style: none; padding: 0; margin: 0.5rem 0; display: grid; gap: 0.4rem; }
+  .zf-otp-list li { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.45rem 0.6rem; background: var(--well); min-width: 0; }
+  .zf-otp-list .k { font-size: 0.82rem; color: var(--dim); min-width: 0; }
+  .zf-otp-list code { font-family: var(--mono); font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; min-width: 0; }
   @media (prefers-reduced-motion: reduce) { .pa-live .spin { animation: none; } }
 </style>
 <link rel="stylesheet" href="/static/hover_help.css">
@@ -96,7 +100,7 @@
             <li><strong>Read the alerts.</strong> Blind spots, bypass risk, ghost devices, registration anomalies, multi-device users and version drift, each with its exact definition beside it.</li>
             <li><strong>Fix in order.</strong> The remediation plan ranks every gap by its impact times the devices it affects, with the fix in plain words. Export it as CSV, or everything as one Excel workbook; tick counts only to leave every user and device name out.</li>
           </ol>
-          <p class="zf-dim">Device and user names are shown on this page because you need them to act; they are never written to a log. If the API client may not read devices, the page says so and shows the configuration only: never zeros as if the fleet were healthy.</p>
+          <p class="zf-dim">Device and user names are shown on this page because you need them to act; they are never written to a log, except that a one-time password request names its device (never the password) in the audit log. If the API client may not read devices, the page says so and shows the configuration only: never zeros as if the fleet were healthy.</p>
           <div class="zf-status" id="zfStatus" aria-live="polite"></div>
         </section>
       </div>
@@ -119,6 +123,21 @@
         </div>
         <div class="zf-status" id="zfInstStatus" role="status" aria-live="polite"></div>
         <pre class="zf-pre" id="zfInstCmd" aria-label="Install command" tabindex="0" hidden></pre>
+      </section>
+      <section class="zf-sec" id="zfOtp" aria-labelledby="zfOtpH">
+        <h2 id="zfOtpH">One-time passwords for a device</h2>
+        <p class="zf-dim">For the help desk: a device's Client Connector one-time passwords (to uninstall it, turn a service off or exit it, as the tenant provides them). Only someone allowed to change the tenant may ask, with ZCC ticked on the Scope page, the assessor's name and the confirmation typed. They are shown here once for 60 seconds and never kept: not logged, saved or cached. The audit log records who asked, when and for which device, never a password.</p>
+        <div class="zf-row">
+          <label>Enrolled user <input type="search" id="zfOtpUser" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Enrolled user name" placeholder="jdoe@acme.example"></label>
+          <label>Device <input type="search" id="zfOtpDevice" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Device host name or UDID" placeholder="Host name or UDID"></label>
+          <label>Assessor's name <input type="search" id="zfOtpAssessor" maxlength="80" autocomplete="off" aria-label="Assessor's name" placeholder="Jane Doe"></label>
+        </div>
+        <div class="zf-row">
+          <label><span id="zfOtpPhraseLbl">Type SHOW OTP and the device to confirm</span> <input type="text" id="zfOtpPhrase" maxlength="220" autocomplete="off" spellcheck="false" aria-labelledby="zfOtpPhraseLbl"></label>
+          <button type="button" class="rp-btn primary" id="zfOtpShow" disabled aria-disabled="true" aria-describedby="zfOtpStatus">Show the one-time passwords</button>
+        </div>
+        <div class="zf-status" id="zfOtpStatus" role="status" aria-live="polite"></div>
+        <div id="zfOtpOut" hidden></div>
       </section>
     </main>
   </div>

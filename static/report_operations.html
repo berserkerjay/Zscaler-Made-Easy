@@ -232,7 +232,10 @@
     // (admin_ops.register). Each ships static/ops_<name>.js, which calls
     // window.OPS_PLUGINS.register({type, render(res, where, S, H), spec(S, H)})
     // and then runs through the same read, preview, gates, apply and Undo.
-    window.OPS_PLUGINS = { defs: {}, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
+    window.OPS_PLUGINS = { defs: {}, state: S, register(def) { if (def && def.type) { this.defs[def.type] = def; if (S.kind === def.type) renderObjects(); } } };
+    // A builder's typed secrets (the Client Connector tamper passwords): sent
+    // beside the operation for its preview and apply, never part of S.spec.
+    const plugSecrets = type => { const d = window.OPS_PLUGINS.defs[type]; return d && typeof d.secrets === 'function' ? (d.secrets(S) || {}) : {}; };
     const H = { E, $, S, lines: t => lines(t), errorsHtml: r => errorsHtml(r), say: m => say(m) };
     (async function loadBuilders() {
       let list = [];
@@ -471,7 +474,7 @@
     $('opPreview').addEventListener('click', () => {
       let spec;
       try { spec = buildSpec(); } catch (e) { fail($('opPlan'), 'Nothing to preview yet', e.message, true); say(e.message); return; }
-      preview('/api/operations/preview/start', body({ operation: spec }), null);
+      preview('/api/operations/preview/start', body(Object.assign({ operation: spec }, plugSecrets(spec.type))), null);
     });
 
     const fmt = (v, field) => v == null ? '' : field === 'urls' || field === 'domain_names' ? (v ? 'listed' : 'not listed') : field === 'exists' ? (v ? 'exists' : 'does not exist') : String(v);
@@ -547,7 +550,8 @@
       if (S.preview.confirm_phrase && !phraseMatches(phrase, S.preview.confirm_phrase)) { say(`Type ${S.preview.confirm_phrase} to confirm.`); $('opPhrase').focus(); return; }
       S.assessor = $('opAssessor').value.trim();
       if (!S.assessor) { say("Enter the assessor's name: the change record names who made it."); $('opAssessor').focus(); return; }
-      const payload = body({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor });
+      const payload = body(Object.assign({ operation: S.spec, plan_hash: S.preview.plan_hash, confirm: true, confirm_text: phrase, undo_of: S.undoOf || '', assessor: S.assessor },
+        S.undoOf ? {} : plugSecrets(S.spec && S.spec.type)));
       $('opGo').disabled = true; say('Applying the change.');
       try {
         const snap = await runJob('/api/operations/apply/start', payload, where, 'Applying the change');
