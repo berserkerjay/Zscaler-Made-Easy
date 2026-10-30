@@ -357,7 +357,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 73,
+            "fixed": 75,
             "accepted": 2,
             "records": [
               "c6-tooltips",
@@ -436,7 +436,7 @@
     }
   ],
   "counts": {
-    "findings": 577,
+    "findings": 579,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -455,7 +455,7 @@
       },
       "low": {
         "open": 0,
-        "fixed": 335,
+        "fixed": 337,
         "accepted": 0
       },
       "info": {
@@ -465,12 +465,12 @@
       }
     },
     "checks": {
-      "pass": 302,
-      "fixed": 307,
+      "pass": 303,
+      "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8570
+    "tests_added": 8602
   },
   "findings": [
     {
@@ -8234,6 +8234,38 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "GLASS-08",
+      "title": "Blurring every card made a card taller than the window (the Advanced settings card is about 11,000 px) a backdrop-filter render surface the size of the page: headless Chrome drew large black areas, and a GPU may refuse a surface that tall",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-400",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 1.4.3",
+      "fix": "static/glass.js marks a card or dialog card that fits the window with .glass-fit (ResizeObserver, debounced MutationObserver for new cards); static/glass.css blurs only those",
+      "test": "tests/test_glass_browser.py::test_short_cards_are_real_glass_and_tall_ones_are_not_blurred",
+      "commit": "",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
+      "id": "GLASS-09",
+      "title": "The extension's tokens.css said it carried the app's values but did not: white on its dark primary button (#0a84ff) was 3.6:1 and its light success green (#248a3d) 4.4:1 on white, so no backdrop could be added without text failing AA",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-684",
+      "asvs": "V14.4",
+      "wcag": "WCAG 2.2 SC 1.4.3",
+      "fix": "browser_extension/tokens.css: the app's accessible text and fill colours in both schemes",
+      "test": "tests/test_glass.py::test_extension_white_on_a_primary_capsule_meets_aa",
+      "commit": "",
+      "reason": "",
+      "slug": "glass",
+      "area": "functionality",
+      "sub_area": "ui_a11y"
+    },
+    {
       "id": "REGRESSION-02",
       "title": "Log analyzer: a DIRECT condition written in a PAC helper function (isCorp(host)) was no longer listed as a bypass",
       "severity": "low",
@@ -10368,7 +10400,7 @@
     },
     {
       "slug": "glass",
-      "area": "UI and accessibility: the glass effect (static/glass.css, static/glass.js) on every page styled by the app's stylesheet, its solid fallbacks and the Advanced settings switch",
+      "area": "UI and accessibility: the glass effect (static/glass.css, static/glass.js, browser_extension/glass.css) on every page styled by the app's stylesheet and on the extension's pages, its living backdrop, its solid and still fallbacks and the Advanced settings switch",
       "title": "Glass effect checked for WCAG 2.2 AA contrast against the worst case behind each surface, every solid fallback, reflow, focus, motion and blur cost, statically and in Chrome on the sample tenant",
       "standards": [
         "WCAG 2.2 SC 1.4.3",
@@ -10385,9 +10417,9 @@
         "CWE-248",
         "CWE-684"
       ],
-      "checks": 9,
-      "findings": 7,
-      "tests_added": 308
+      "checks": 11,
+      "findings": 9,
+      "tests_added": 340
     },
     {
       "slug": "motion-zpa",
