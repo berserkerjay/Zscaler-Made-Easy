@@ -22,6 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
+    "2026-10-31": "Wave 7: gaps closed from the comparison with other public Zscaler tools",
     "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score",
     "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
   },
@@ -30,6 +31,18 @@ window.WHATS_NEW = {
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [
+    {
+      "id": "rules-csv", "release": "2026-10-31", "label": "Rules from a spreadsheet",
+      "what": "Rules from a spreadsheet on Bulk changes: export Cloud Firewall, URL filtering or ZPA access policy rules as CSV, edit them offline and import the file as a previewed plan of adds, updates, moves and (only if you tick it) deletes, with the write gates, read-back and Undo.",
+      "changelog": ["Rules from a spreadsheet"],
+      "marks": [{ "page": "/report/operations", "at": "#rcExport", "shown": "after Read from the tenant, with Rules from a spreadsheet picked" }]
+    },
+    {
+      "id": "scheduled-sync", "release": "2026-10-31", "label": "Scheduled sync",
+      "what": "Scheduled sync on the change queue: a job keeps target tenants' rules in step with a source by filing a plan per target for four-eyes approval; nothing is applied until a named writer applies it.",
+      "changelog": ["Scheduled sync"],
+      "marks": [{ "page": "/report/queue", "at": "#syH" }]
+    },
     {
       "id": "build-new", "release": "2026-10-28", "label": "Build new",
       "what": "Build new on Bulk changes: builders for a ZIA security baseline, the SSL certificate manager, ZPA, Client Connector profiles, ZDX probes and AI Guard, with the same preview, write gates, read-back and Undo.",

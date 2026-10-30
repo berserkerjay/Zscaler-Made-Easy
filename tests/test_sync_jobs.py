@@ -223,7 +223,7 @@ def test_only_writers_manage_jobs_and_every_group_must_be_in_scope(monkeypatch, 
     alice, _bob, reader = _team(monkeypatch)
     assert reader.post("/api/sync-jobs", json={**_job(), **SCOPE_BODY}).status_code == 403
     r = alice.post("/api/sync-jobs", json={**_job(), "scopes": ["dlp"], "from_page": True})
-    assert r.status_code == 400 and "Nothing was read" in r.json()["detail"], r.text
+    assert r.status_code == 400 and "Cloud Firewall rules were not read" in r.json()["detail"], r.text
     for bad, needle in ((_job(targets=["src"]), "cannot also be a target"), (_job(targets=["nobody"]), "does not exist"),
                         (_job(groups=["everything"]), "Pick what to keep"), (_job(interval_hours=3), "How often"),
                         (_job(source={"kind": "template", "id": "t1"}), "Templates are not available"),

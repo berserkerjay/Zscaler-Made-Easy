@@ -32,7 +32,7 @@
   function columnsHtml(H, docs, policy) {
     const d = docs && docs.policies && docs.policies[policy];
     if (!d) return '';
-    return `<details class="pa-details" id="rcCols"><summary>The columns of a ${H.E(d.label)} file</summary>
+    return `<details class="rc-cols" id="rcCols"><summary>The columns of a ${H.E(d.label)} file</summary>
       <p class="df-hint">${H.E(docs.format)} At most ${H.E(docs.limits.rows)} rules and ${H.E(Math.round(docs.limits.bytes / 1000))} kB per file. A blank list or text cell empties it; a blank order, rank, state, action or true/false cell keeps the rule's value.</p>
       <div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Columns of the file</caption><thead><tr><th scope="col">Column</th><th scope="col">What it holds</th></tr></thead>
       <tbody>${d.columns.map(c => `<tr><td><code>${H.E(c.name)}</code></td><td>${H.E(c.help)}</td></tr>`).join('')}</tbody></table></div></details>`;

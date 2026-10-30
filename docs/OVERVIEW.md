@@ -480,6 +480,12 @@ what you get, what to do next.
   whose plan no longer matches is marked stale and nothing is written.
   Every step is in the audit log with who did it; the queue exports as JSON,
   Markdown or Excel (requests, items, approvals, comments, history).
+  **Scheduled sync** (same page) keeps rules of target tenant profiles in
+  step with a source profile or snapshot (Cloud Firewall, URL filtering,
+  ZPA access policy; by rule label or name prefix; by hand or every 1 to
+  168 hours). A run only reads and files one plan per target here, in the
+  job owner's name, for another writer to approve; it never applies
+  anything. Deletes only when the job asks (`sync_jobs.py`).
   Every step is in the audit log with who did it; the queue exports as JSON
   or Markdown.
 - **Self-healing** — two layers on one page (`/report/self-heal`, toolbar
@@ -525,6 +531,13 @@ what you get, what to do next.
   records the change with an Undo that is itself previewed. Cloud
   application sanction is not offered: the SDK cannot read an
   application's current state.
+  **Rules from a spreadsheet** (two types, ZIA and ZPA access policy)
+  exports Cloud Firewall, URL filtering or ZPA access policy rules as CSV
+  (names, not ids, with the order and rank; formula-safe cells) and
+  imports the edited file: choosing it only checks it, the preview plans
+  adds, updates, moves and, only with *Remove rules not in the file* and
+  the typed `DELETE <n> RULES`, deletes; new ZIA rules arrive disabled;
+  apply, read-back and Undo as above (`rule_csv.py`, `ops_rule_csv.py`).
   Under **Build new** the same page builds Client Connector profiles
   (needs ZCC ticked): pick Windows or macOS, a forwarding profile (best
   practice: tunnel on every network type, the listening-proxy redirect,
