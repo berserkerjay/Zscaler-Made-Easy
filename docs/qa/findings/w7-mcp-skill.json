@@ -97,7 +97,7 @@
    "status": "fixed",
    "fix": "mcp_tools.read_only wraps every tool and assessment run; guard_process covers the whole server process; clients a tool builds are sealed",
    "test": "tests/test_mcp_tools.py::test_while_a_tool_runs_a_write_request_is_stopped_before_it_is_sent",
-   "commit": "COMMIT"
+   "commit": "b52bed9"
   },
   {
    "id": "W7-MCP-02",
@@ -121,5 +121,5 @@
    "test": "tests/test_mcp_tools.py::test_loopback_http_refuses_a_foreign_host_or_origin"
   }
  ],
- "tests_added": 0
+ "tests_added": 108
 }
