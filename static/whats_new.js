@@ -2,10 +2,9 @@
 // The manifest below is the one list of what is new. Each feature names the
 // CHANGELOG.md release it came in ("release", the heading's date), a short
 // plain label, what it is (the words after "New in the <date> update: "),
-// the CHANGELOG phrases it covers, and where it shows ("marks": the page,
-// the element the * goes after, and the control whose help says it, when
-// that is not the element itself or the control around it). "shown" says
-// when a mark's element appears later (after a read, in a dialog).
+// the CHANGELOG phrases it covers, and where it shows ("marks": the page and
+// the item: a control, a sidebar item, a page title or a heading). "shown"
+// says when a mark's item appears later (after a read, in a dialog).
 //
 // Only the features of the newest two releases are marked ("keep"): add the
 // next release to "releases", with its features, and the oldest set stops
@@ -13,15 +12,13 @@
 // the reason, and pushes nothing out (tests/test_new_marks.py checks both
 // lists against CHANGELOG.md).
 //
-// How a mark reads: the * is drawn by CSS (the page's words stay as they
-// are) and hidden from screen readers; a control's name gets "(new)" (its
-// aria-label, made from its label when it had none, comes back when the mark
-// goes), and its help on hover (hover_help.js) opens with "New in the <date>
-// update: …".
-// A mark on a heading or other text is a small button with that help. The
-// legend "* New in this version" goes in the page header (on the home page,
-// the sidebar foot). Advanced settings has "Hide new marks", kept in this
-// browser only. Every word is set with textContent, never as HTML.
+// This file only says which item is new: it puts the words on the item
+// (data-wn-new). The help marks (hover_help.js) draw the superscript * after
+// it, a button of its own named "New in this version: <item>", whose pop-up
+// says "New in the <date> update: …", beside the item's ? help mark. It also
+// puts the legend "* New in this version" in the page header (the sidebar
+// foot on the home page), and "Hide new marks" in Advanced settings, kept in
+// this browser only. Every word is set with textContent, never as HTML.
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
@@ -29,7 +26,7 @@ window.WHATS_NEW = {
     "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
   },
   "skipped": {
-    "2026-10-30": "The new name everywhere, and these marks: nothing new to mark, so the two releases above stay marked"
+    "2026-10-30": "The new name everywhere, and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [
@@ -58,13 +55,13 @@ window.WHATS_NEW = {
       "id": "path-any-protocol", "release": "2026-10-28", "label": "Any protocol and port",
       "what": "Every ZIA module on the path, for web traffic or any protocol and port.",
       "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/report/path", "at": "label:has(#paProto) > .lbl", "control": "#paProto" }]
+      "marks": [{ "page": "/report/path", "at": "#paProto" }]
     },
     {
       "id": "path-workload", "release": "2026-10-28", "label": "Traffic from a workload",
       "what": "Traffic from a workload, through Cloud and Branch Connector.",
       "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/report/path", "at": "label:has(#paSource) > .lbl", "control": "#paSource" }]
+      "marks": [{ "page": "/report/path", "at": "#paSource" }]
     },
     {
       "id": "path-whatif", "release": "2026-10-28", "label": "What-if",
@@ -94,7 +91,7 @@ window.WHATS_NEW = {
       "marks": [
         { "page": "/", "at": ".db-item[data-db=\"configure\"]" },
         { "page": "/", "at": "#zoTitle", "shown": "on Connect to the tenant" },
-        { "page": "/simple", "at": ".sm-opt:has(> input[name=\"smHow\"][value=\"sample\"]) .sm-ot", "control": "input[name=\"smHow\"][value=\"sample\"]", "shown": "in the Connect task" }
+        { "page": "/simple", "at": "input[name=\"smHow\"][value=\"sample\"]", "shown": "in the Connect task" }
       ]
     },
     {
@@ -112,7 +109,7 @@ window.WHATS_NEW = {
       "what": "Export from tenant can save the ZIA policy framework (URL, firewall, SSL, Sandbox, DNS and File Type Control rules) for the baseline builder to load into another tenant.",
       "changelog": ["ZIA policy framework export"],
       "marks": [
-        { "page": "/", "at": "#dlpDeployModal label.dz-chk:has(input[onchange^=\"_dzExportPart('framework'\"])", "control": "#dlpDeployModal input[onchange^=\"_dzExportPart('framework'\"]", "shown": "in Deploy policy packs, Export from tenant" }
+        { "page": "/", "at": "#dlpDeployModal input[onchange^=\"_dzExportPart('framework'\"]", "shown": "in Deploy policy packs, Export from tenant" }
       ]
     },
     {
@@ -142,7 +139,7 @@ window.WHATS_NEW = {
       "marks": [
         { "page": "/", "at": "button[onclick=\"openAdvancedTab()\"]" },
         { "page": "/report/advanced", "at": "a.rp-btn[href=\"#appearance\"]" },
-        { "page": "/report/advanced", "at": "label[for=\"advGlass\"] > span", "control": "#advGlass" }
+        { "page": "/report/advanced", "at": "#advGlass" }
       ]
     },
     {
@@ -165,8 +162,6 @@ window.WHATS_NEW = {
   const M = window.WHATS_NEW || {};
   const KEY = 'zme_hide_new_marks';
   const DATE = /^\d{4}-\d{2}-\d{2}$/;
-  const CONTROL = 'button, a[href], input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="tab"], ' +
-    '[role="checkbox"], [role="switch"], [role="radio"], [role="menuitem"], [role="option"][tabindex]';
   const norm = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 
   // ── Which features are marked ───────────────────────────────────────
@@ -218,91 +213,22 @@ window.WHATS_NEW = {
     try { return Array.from(document.querySelectorAll(sel)); } catch (e) { return []; }
   }
 
-  // ── Placing a mark ──────────────────────────────────────────────────
-  // The marks on this page: element → {control, features}.
+  // ── Saying which item is new ────────────────────────────────────────
+  // The items on this page: element → the features it shows.
   function plan() {
     const page = pageKey(), out = new Map();
     active().forEach(f => f.marks.forEach(mk => {
       if (!mk || mk.page !== page || typeof mk.at !== 'string') return;
-      all(mk.at).forEach(host => {
-        if (host.closest('[data-hh-ui]')) return;
-        let control = null;
-        if (mk.control) control = all(mk.control)[0] || null;
-        if (!control) { try { control = host.closest(CONTROL); } catch (e) { control = null; } }
-        const rec = out.get(host) || { control, features: [] };
-        if (!rec.control) rec.control = control;
-        if (rec.features.indexOf(f) < 0) rec.features.push(f);
-        out.set(host, rec);
+      all(mk.at).forEach(el => {
+        if (el.closest('[data-hh-ui]')) return;
+        const list = out.get(el) || [];
+        if (list.indexOf(f) < 0) list.push(f);
+        out.set(el, list);
       });
     }));
     return out;
   }
-  function placeOne(host, rec) {
-    const text = words(rec.features);
-    const ids = rec.features.map(f => f.id).join(' ');
-    let mark = Array.from(host.children).find(c => c.classList.contains('wn-mark'));
-    if (mark && mark.getAttribute('data-wn-ids') === ids) return false;
-    if (mark) unmarkHost(host);
-    const control = rec.control;
-    // The * itself is drawn by CSS (.wn-mark::before), so the words of the
-    // label, heading or button (their textContent) stay exactly as they were.
-    if (control) {
-      // In (or the label of) a control: the * is decoration; the name says "new".
-      mark = make('span', 'wn-mark');
-      mark.setAttribute('aria-hidden', 'true');
-      mark.setAttribute('data-wn-ids', ids);
-      host.appendChild(mark);
-      if (!control.hasAttribute('data-wn-for')) {
-        const had = control.hasAttribute('aria-label');
-        const name = had ? norm(control.getAttribute('aria-label')) : nameOf(control);
-        if (name && !control.hasAttribute('aria-labelledby')) {
-          control.setAttribute('data-wn-aria', had ? control.getAttribute('aria-label') : '');
-          if (!had) control.setAttribute('data-wn-noaria', '');
-          control.setAttribute('aria-label', name + ' (new)');
-        }
-        control.setAttribute('data-wn-for', '');
-      }
-      if (control.getAttribute('data-wn-new') !== text) control.setAttribute('data-wn-new', text);
-    } else {
-      // On a heading or other words: a small button, so pointer, keyboard
-      // and touch can open the help that says what is new.
-      mark = make('button', 'wn-mark');
-      mark.type = 'button';
-      mark.setAttribute('aria-label', 'New in this version');
-      mark.setAttribute('data-wn-ids', ids);
-      mark.setAttribute('data-wn-new', text);
-      mark.addEventListener('click', ev => {
-        ev.preventDefault(); ev.stopPropagation();
-        const hh = window.HoverHelp;
-        if (!hh) return;
-        if (hh.current() === mark && hh.tip() && !hh.tip().hidden) hh.hide(); else hh.show(mark);
-      });
-      host.appendChild(mark);
-    }
-    return true;
-  }
-  // The words a control is named by, when it has no aria-label: its labels,
-  // or its own text, without what is hidden from screen readers or other fields.
-  function textOf(node) {
-    let t = '';
-    node.childNodes.forEach(n => {
-      if (n.nodeType === 3) t += n.nodeValue;
-      else if (n.nodeType === 1 && n.getAttribute('aria-hidden') !== 'true' && !n.matches('input, select, textarea, .wn-mark')) t += ' ' + textOf(n);
-    });
-    return t;
-  }
-  function nameOf(control) {
-    const labels = Array.from(control.labels || []);
-    return norm(labels.length ? labels.map(textOf).join(' ') : textOf(control));
-  }
-  function restore(c) {
-    if (c.hasAttribute('data-wn-noaria')) c.removeAttribute('aria-label');
-    else if (c.hasAttribute('data-wn-aria')) c.setAttribute('aria-label', c.getAttribute('data-wn-aria'));
-    ['data-wn-aria', 'data-wn-noaria', 'data-wn-new', 'data-wn-for'].forEach(a => c.removeAttribute(a));
-  }
-  function unmarkHost(host) {
-    Array.from(host.children).forEach(c => { if (c.classList.contains('wn-mark')) c.remove(); });
-  }
+  function unmark(el) { el.removeAttribute('data-wn-new'); el.removeAttribute('data-wn-for'); }
   function legendFor() {
     const anchors = (M.legend && (M.legend[pageKey()] || M.legend['*'])) || [];
     for (const sel of anchors) { const a = all(sel)[0]; if (a) return a; }
@@ -321,18 +247,20 @@ window.WHATS_NEW = {
     if (at.id === 'dbFoot') at.insertBefore(p, at.firstChild); else at.appendChild(p);
   }
 
-  // Take every mark, hidden word, name change and legend off the page.
+  // Take every "new" and the legend off the page.
   function clear() {
-    all('.wn-mark, .wn-legend').forEach(n => n.remove());
-    all('[data-wn-for]').forEach(restore);
+    all('.wn-legend').forEach(n => n.remove());
+    all('[data-wn-for]').forEach(unmark);
   }
   function apply() {
     if (isHidden()) { clear(); return 0; }
     const want = plan();
-    // A mark whose element no longer wants it (the page changed): take it off.
-    all('.wn-mark').forEach(m => { if (!want.has(m.parentElement)) { const h = m.parentElement; unmarkHost(h); } });
-    all('[data-wn-for]').forEach(c => { if (!Array.from(want.values()).some(r => r.control === c)) restore(c); });
-    want.forEach((rec, host) => placeOne(host, rec));
+    all('[data-wn-for]').forEach(el => { if (!want.has(el)) unmark(el); });
+    want.forEach((features, el) => {
+      const text = words(features);
+      if (el.getAttribute('data-wn-new') !== text) el.setAttribute('data-wn-new', text);
+      if (!el.hasAttribute('data-wn-for')) el.setAttribute('data-wn-for', '');
+    });
     if (want.size) placeLegend(); else all('.wn-legend').forEach(n => n.remove());
     return want.size;
   }
@@ -351,7 +279,7 @@ window.WHATS_NEW = {
     if (!after) return;
     let box = document.getElementById('advWnHide');
     if (!box) {
-      const lead = make('p', 'adv-lead', 'A * after a name marks a feature from the newest two updates. Point at it, or focus it, to read what is new. Hide the marks if you do not need them; the choice is kept in this browser only.');
+      const lead = make('p', 'adv-lead', 'A * after a name marks a feature from the newest two updates. Point at it, or click it, to read what is new. Hide the marks if you do not need them; the choice is kept in this browser only.');
       lead.id = 'advWnLead';
       const lab = make('label', 'adv-switch');
       lab.htmlFor = 'advWnHide';

@@ -1,32 +1,49 @@
-// ── Help on hover ─────────────────────────────────────────────────────
-// One pop-up for every control on every page: what it does, what input it
-// expects, and whether it reads or changes the tenant. The words live in
-// help_catalog.js (window.HELP_CATALOG), keyed per page by CSS selector;
-// this file only finds the controls, wires them and shows the words.
+// ── Help marks: a superscript ? (help) and * (new) after an item ──────
+// Help opens only from a small superscript mark after a page title, a
+// sidebar item or a control whose meaning or expected input the label does
+// not say by itself. Pointing at, or tabbing to, an ordinary control, title
+// or menu item opens nothing. The words for a control live in
+// help_catalog.js (window.HELP_CATALOG), keyed per page by CSS selector:
+// what it does, what input it expects, and whether it reads or changes the
+// tenant. A page title's words are the page's own "What it is" (explain.js).
 //
-// WCAG 2.2: the pop-up opens on hover and on keyboard focus (1.4.13), a
-// long press or the ⓘ target opens it on touch (2.5.8: the target is 28px),
-// Esc closes it without moving focus (and only it: the dialog or search
-// behind it stays open; with no pop-up shown Esc reaches them as before),
-// a text field inside an open dialog or a combobox does not open it on
-// focus (it would cover the dialog's buttons or the result list, 2.4.11):
-// there hover or the ⓘ opens it. The pointer can move onto it without
-// it closing, and it stays until Esc or until focus and hover leave. Each
-// control's aria-describedby points at the same words (1.3.1, 4.1.2). The
-// pop-up is placed beside the control, never over it, and inside the
-// viewport down to 320px. Every word is set with textContent, never HTML.
-// A native title on a described control (or on the label around it) is
-// taken off (two tooltips would stack) and kept as the pop-up's "Note" line
-// when it says more than the entry: a state ("Needs write mode") or the
-// words for one item of a list that shares an entry.
-// A control marked as new (static/whats_new.js sets data-wn-new on it) gets
-// one more line first: "New in the <date> update: <what it is>".
+// Two marks, always in this order, each its own button and its own pop-up:
+//   *  New in this version: "New in the <date> update: <what it is>". The
+//      words come from whats_new.js (data-wn-new on the item).
+//   ?  Help: the catalogue entry.
+// Keeping them apart means the "new" line can go (Hide new marks, or the
+// next release) without touching the help, and each mark's name says what
+// it opens.
+//
+// How a mark works (WCAG 2.2): a real button, named "Help: <item>" or
+// "New in this version: <item>", with aria-expanded and aria-controls the
+// pop-up (role="tooltip"); its aria-describedby carries the same words, so
+// a screen reader hears them on focus. Pointing at the mark opens the
+// pop-up and it stays while the pointer is on the mark or the pop-up
+// (1.4.13 hoverable); a click, a tap, or Enter or Space on the focused mark
+// opens it and keeps it open; Esc, a click elsewhere, or opening another
+// mark closes it (one at a time); focus never moves into it. The mark is
+// 24 by 24 px (2.5.8) with negative margins, so it does not push the line
+// apart; the ? or * is drawn by CSS, so the page's own words are unchanged.
+// The pop-up is placed beside the mark, never over it, inside the viewport
+// down to 320px. Every word is set with textContent, never as HTML.
+//
+// Which items get no "?" (skipReason): the label says it all (Close,
+// Cancel, OK, Back, Help, Skip to …, Download as CSV …), a tab (it names
+// its panel), a step in a diagram (no button fits inside a picture), the page's own "What is this page" box (it is the
+// explanation), one row of a table (the column says what it is), a link
+// inside a sentence, an option or tile that carries its own description, and
+// the second and later controls of the same kind in one list (the first
+// carries the mark).
+// Section headings get none: the page's "What is this page" box explains
+// them. A native title on a described control is taken off (it would open
+// its own tooltip on hover) and kept as the pop-up's "Note" line when it
+// says more than the entry.
 (function () {
   'use strict';
   if (window.HoverHelp) return;
 
-  // What counts as a control: everything a person can press, type into or
-  // pick. Links count too (the catalogue explains where they go).
+  // What counts as a control: everything a person can press, type into or pick.
   const CONTROL = [
     'button', 'a[href]', 'input:not([type="hidden"])', 'select', 'textarea', 'summary',
     '[role="button"]', '[role="tab"]', '[role="checkbox"]', '[role="switch"]', '[role="radio"]',
@@ -41,10 +58,16 @@
     download: 'Saves a file on this computer. It changes nothing in your tenant.',
     nav: 'Opens a page. It changes nothing by itself.',
   };
-  const HOVER_DELAY = 300;   // ms before a hover opens it (moving across a toolbar stays quiet)
-  const LEAVE_GRACE = 200;   // ms to move the pointer from the control onto the pop-up
-  const LONG_PRESS = 550;    // ms of a touch before it counts as a long press
-  const GAP = 6;             // px between the control and the pop-up
+  // Labels that say it all: no "?" after them (compared without icons,
+  // arrows or punctuation, case ignored).
+  const OBVIOUS = new Set(['close', 'cancel', 'ok', 'okay', 'done', 'back', 'yes', 'no', 'next', 'previous', 'stop', 'reload',
+    'refresh', 'find', 'search', 'copy', 'clear', 'reset', 'print', 'more', 'less', 'show more', 'show less', 'play', 'pause',
+    'step', 'csv', 'json', 'pdf', 'xlsx', 'excel', 'word', 'markdown', 'download', 'dismiss', 'got it', 'not now', 'later',
+    'no thanks', 'skip', 'light mode', 'dark mode', 'x', 'help']);
+  const OBVIOUS_RE = /^(back to .+|skip to .+|download( as)? (csv|json|pdf|excel|word|markdown|xlsx)|(csv|json|pdf|excel|word|markdown) download)$/;
+  const HOVER_DELAY = 250;   // ms of pointing at a mark before it opens (moving across a row stays quiet)
+  const LEAVE_GRACE = 200;   // ms to move the pointer from the mark onto the pop-up
+  const GAP = 6;             // px between the mark and the pop-up
   const EDGE = 8;            // px kept free at the viewport's edges
 
   const norm = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
@@ -74,13 +97,27 @@
     compiled = { page: pageKey(), list };
     return compiled;
   }
+  // Remembered per element until its attributes or its parent change (a
+  // page rescans on every change, and matching every key is the costly part).
+  let memo = new WeakMap();
+  const sigOf = el => Array.from(el.attributes).filter(a => !/^(data-hh|aria-describedby$|aria-expanded$)/.test(a.name)).map(a => a.name + '=' + a.value).join('|');
+  function remembered(el) {
+    const m = memo.get(el), sig = sigOf(el);
+    if (m && m.sig === sig && m.parent === el.parentElement && m.page === pageKey() && m.cat === catalogue()) return m;
+    const fresh = { sig, parent: el.parentElement, page: pageKey(), cat: catalogue(), item: undefined, skip: undefined, words: undefined };
+    memo.set(el, fresh);
+    return fresh;
+  }
   function entryFor(el) {
+    const m = remembered(el);
+    if (m.item !== undefined) return m.item;
+    m.item = null;
     for (const item of catalogue().list) {
       let hit = false;
       try { hit = el.matches(item.sel); } catch (err) { hit = false; }
-      if (hit) return item;
+      if (hit) { m.item = item; break; }
     }
-    return null;
+    return m.item;
   }
 
   // ── Which elements are controls ─────────────────────────────────────
@@ -99,14 +136,6 @@
   function controls(root) {
     return Array.from((root || document).querySelectorAll(CONTROL)).filter(el => !ours(el));
   }
-  function controlFrom(node) {
-    let el = node && node.nodeType === 1 ? node : node && node.parentElement;
-    while (el && el !== document.body) {
-      if (isControl(el)) return el;
-      el = el.parentElement;
-    }
-    return null;
-  }
   // A short CSS selector that names the control, for the coverage report.
   function describe(el) {
     if (el.id) return '#' + el.id;
@@ -121,10 +150,65 @@
     return (host ? '#' + host.id + ' ' : '') + s + (text ? ` "${text}"` : '');
   }
 
+  // ── Names ───────────────────────────────────────────────────────────
+  // The words that name an item on screen: its labels or its own text,
+  // without what is hidden from screen readers, other fields or our marks.
+  function textOf(node) {
+    let t = '';
+    node.childNodes.forEach(n => {
+      if (n.nodeType === 3) t += n.nodeValue;
+      else if (n.nodeType === 1 && n.getAttribute('aria-hidden') !== 'true' && !n.matches('input, select, textarea, [data-hh-ui]')) t += ' ' + textOf(n);
+    });
+    return t;
+  }
+  function nameOf(el) {
+    const labels = el.matches && el.matches('input, select, textarea') ? Array.from(el.labels || []) : [];
+    let n = norm(labels.length ? labels.map(textOf).join(' ') : textOf(el));
+    if (!n) n = norm(el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('data-hh-title') || el.getAttribute('title') || el.value || '');
+    return n.length > 80 ? n.slice(0, 79) + '…' : n;
+  }
+  const plain = s => norm(s).toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+
+  // ── Which controls get a "?" ────────────────────────────────────────
+  // Why an item gets no "?", or '' when it gets one. Kept short and in one
+  // place; the coverage test lists every skipped control with this reason.
+  function skipReason(el, item) {
+    item = item === undefined ? entryFor(el) : item;
+    if (!item) return 'no entry';
+    const m = remembered(el), words = plain(nameOf(el));
+    if (m.skip !== undefined && m.words === words) return m.skip;
+    m.words = words;
+    m.skip = whySkip(el, item, words);
+    return m.skip;
+  }
+  function whySkip(el, item, words) {
+    if (!words || OBVIOUS.has(words) || OBVIOUS_RE.test(words) || words.length < 2) return 'the label says it all';
+    if (el.closest('svg')) return 'a step in a diagram: the picture and its words name it';
+    if (el.matches('[role="tab"]')) return 'a tab names its panel';
+    if (el.closest('#xpBox')) return 'part of the page\'s own "What is this page" box';
+    if (el.closest('tbody tr, [role="row"]') && !el.closest('thead')) return 'one row of a table: its column says what it is';
+    if (el.matches('a[href]') && getComputedStyle(el).display === 'inline' && el.parentElement
+        && norm(el.parentElement.textContent).length > norm(el.textContent).length + 20) return 'a link inside a sentence';
+    if (el.matches('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]')
+        && (el.hasAttribute('aria-describedby') || Array.from(el.labels || []).some(l => l.querySelector('.df-hint, .hint, small'))))
+      return 'an option with its own description';
+    if (el.matches('button, a[href], [role="button"], summary') && (norm(textOf(el)).length > 60 || el.querySelector('.df-hint, .hint, small, p')))
+      return 'a tile that carries its own description';
+    const box = el.parentElement && el.parentElement.closest('ul, ol, table, fieldset, [role="list"], [role="listbox"], [role="group"], [role="radiogroup"], .rp-bar') || el.parentElement;
+    if (box) {
+      for (const other of box.querySelectorAll(CONTROL)) {
+        if (other === el) break;
+        if (!ours(other) && entryFor(other) === item) return 'the first of the same kind in this list carries the mark';
+      }
+    }
+    return '';
+  }
+
   // ── Descriptions for screen readers ─────────────────────────────────
   // One hidden description per catalogue entry (per open dialog, so a
-  // modal's inert background never hides it), shared by every control the
-  // entry matches; a control with its own "Note" line gets its own.
+  // modal's inert background never hides it), shared by every mark of that
+  // entry; a mark with its own words (a Note line, a title, what is new)
+  // gets its own.
   let serial = 0;
   function descHost(el) {
     const dlg = el.closest('dialog');
@@ -140,29 +224,27 @@
     }
     return host;
   }
-  // The "New in the … update" line whats_new.js puts on a control marked as new.
-  function newsOf(el) { return norm(el.getAttribute('data-wn-new')); }
-  function sentence(item, note, news) {
-    const e = item.e;
-    const parts = [norm(e.what), 'Input: ' + norm(e.input)];
-    if (news) parts.unshift(news);
+  function lines(content) {
+    if (content.news) return [content.news];
+    const e = content.e;
+    const parts = [norm(e.what)];
+    if (e.input) parts.push('Input: ' + norm(e.input));
     if (EFFECTS[e.effect]) parts.push(EFFECTS[e.effect]);
-    if (note) parts.push('Note: ' + note);
-    return parts.join(' ');
+    if (content.note) parts.push('Note: ' + content.note);
+    return parts;
   }
-  function descFor(el, item, note, news) {
-    const host = descHost(el);
-    const own = !!(note || news);
-    const id = own ? 'hh-n-' + (++serial) : `hh-d-${item.idx}-${host.dataset.hhScope}`;
-    let span = own ? null : document.getElementById(id);
-    if (!span) {
-      span = document.createElement('span');
-      span.id = id;
-      host.appendChild(span);
-    }
-    span.textContent = sentence(item, note, news);
-    return id;
+  function describeMark(mark, content) {
+    const host = descHost(mark);
+    const shared = content.item && !content.note;
+    const id = shared ? `hh-d-${content.item.idx}-${host.dataset.hhScope}` : (mark.__hhDesc || 'hh-n-' + (++serial));
+    let span = document.getElementById(id);
+    if (!span) { span = document.createElement('span'); span.id = id; host.appendChild(span); }
+    span.textContent = lines(content).join(' ');
+    if (!shared) mark.__hhDesc = id;
+    mark.setAttribute('aria-describedby', id);
   }
+
+  // ── Native titles ───────────────────────────────────────────────────
   // The element whose native title describes the control: the control, or
   // the <label> around it (a label's title would open a second tooltip too).
   function titleHost(el) {
@@ -177,35 +259,130 @@
     const known = norm(item.e.what + ' ' + item.e.input).toLowerCase();
     return known.includes(t.toLowerCase()) ? '' : t;
   }
-  function wire(el) {
-    if (!isControl(el)) return null;
-    const item = entryFor(el);
-    if (!item) return null;
-    // A native title would open a second tooltip: keep its words, drop it.
+  function untitle(el) {
     const host = titleHost(el);
     if (host.hasAttribute('title')) {
       host.setAttribute('data-hh-title', host.getAttribute('title'));
       host.removeAttribute('title');
     }
-    const note = noteOf(el, item);
-    const mine = (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
-    const others = mine.filter(id => !/^hh-[dn]-/.test(id));
-    const old = mine.find(id => /^hh-n-/.test(id));
-    if (old) { const s = document.getElementById(old); if (s) s.remove(); }   // its own Note line, rebuilt below if still needed
-    const id = descFor(el, item, note, newsOf(el));
-    el.setAttribute('aria-describedby', others.concat(id).join(' '));
-    el.setAttribute('data-hh', item.sel);
-    return item;
   }
+
+  // ── The page title's words ──────────────────────────────────────────
+  function titleEl() {
+    return document.querySelector('.rp-hero h1, .hero h1, header h1, main h1') || null;
+  }
+  function pageWords() {
+    const X = window.DLP_EXPLAIN, key = typeof window.DLP_EXPLAIN_KEY === 'function' ? window.DLP_EXPLAIN_KEY() : '';
+    const x = X && key && X[key];
+    return x && x.what ? { what: x.what, input: '', effect: '' } : null;
+  }
+
+  // ── Placing the marks ───────────────────────────────────────────────
+  // After a control (a field wrapped in its label: after the label; a
+  // checkbox or radio with its own label: after that label); inside a
+  // title, heading, legend or <summary> (at the end of its words).
+  function anchorOf(el) {
+    if (!isControl(el) || el.matches('summary')) return { node: el, inside: true };
+    const wrap = el.closest('label');
+    if (wrap && wrap !== el) return { node: wrap, inside: false };
+    if (el.matches('input[type="radio"], input[type="checkbox"]')) {
+      const lab = Array.from(el.labels || [])[0];
+      if (lab && !lab.contains(el)) return { node: lab, inside: true };
+    }
+    return { node: el, inside: false };
+  }
+  function makeMark(kind) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = kind === 'new' ? 'hh-mark hh-mark-new' : 'hh-mark';
+    b.setAttribute('data-hh-ui', '');
+    b.setAttribute('data-hh-mark', kind);
+    b.setAttribute('aria-expanded', 'false');
+    b.setAttribute('aria-controls', 'hhTip');
+    return b;
+  }
+  // Put the marks right after the anchor (or at its end), * before ?.
+  function seat(anchor, marks) {
+    if (anchor.inside) {
+      // Already the last children, in order: leave them (moving them would
+      // be a change that asks for another scan).
+      const tail = Array.from(anchor.node.children).slice(-marks.length);
+      if (tail.length !== marks.length || tail.some((m, i) => m !== marks[i])) marks.forEach(m => anchor.node.appendChild(m));
+    } else {
+      let prev = anchor.node;
+      marks.forEach(m => { if (prev.nextElementSibling !== m) prev.insertAdjacentElement('afterend', m); prev = m; });
+    }
+  }
+  const items = new Map();   // item element → { help, news, anchor }
+  let ro = null;
+  function watchSize(el) {
+    if (!ro && 'ResizeObserver' in window) ro = new ResizeObserver(entries => entries.forEach(en => sync(en.target)));
+    if (ro) ro.observe(el);
+  }
+  // A mark shows only while its item is on the page.
+  function sync(el) {
+    const rec = items.get(el);
+    if (!rec) return;
+    const on = el.isConnected && el.getClientRects().length > 0 && !el.closest('[hidden]');
+    [rec.help, rec.news].forEach(m => { if (m && m.hidden === on) m.hidden = !on; });
+  }
+  function drop(el) {
+    const rec = items.get(el);
+    if (!rec) return;
+    [rec.help, rec.news].forEach(m => { if (m) { if (m === current) hide(); m.remove(); } });
+    if (ro) ro.unobserve(el);
+    items.delete(el);
+  }
+  function markItem(el, help, news) {
+    let rec = items.get(el);
+    if (!help && !news) { if (rec) drop(el); return; }
+    if (!rec) { rec = { help: null, news: null }; items.set(el, rec); watchSize(el); }
+    const name = nameOf(el) || 'this item';
+    if (news) {
+      if (!rec.news) { rec.news = makeMark('new'); rec.news.__hhFor = el; }
+      rec.news.__hhContent = { news };
+      rec.news.setAttribute('aria-label', 'New in this version: ' + name);
+      describeMark(rec.news, rec.news.__hhContent);
+    } else if (rec.news) { if (rec.news === current) hide(); rec.news.remove(); rec.news = null; }
+    if (help) {
+      if (!rec.help) { rec.help = makeMark('help'); rec.help.__hhFor = el; }
+      rec.help.__hhContent = help;
+      rec.help.setAttribute('aria-label', 'Help: ' + name);
+      describeMark(rec.help, help);
+    } else if (rec.help) { if (rec.help === current) hide(); rec.help.remove(); rec.help = null; }
+    rec.anchor = anchorOf(el);
+    seat(rec.anchor, [rec.news, rec.help].filter(Boolean));
+    sync(el);
+  }
+
+  // ── Scanning the page ───────────────────────────────────────────────
   let pending = false;
   function scan() {
     pending = false;
+    const want = new Map();
     controls(document).forEach(el => {
-      const sig = () => { const h = titleHost(el); return (h.getAttribute('data-hh-title') || '') + '|' + (h.getAttribute('title') || '') + '|' + (el.getAttribute('data-wn-new') || ''); };
-      if (el.__hhSig === sig() && el.hasAttribute('data-hh')) return;
-      wire(el);
-      el.__hhSig = sig();
+      const item = entryFor(el);
+      if (item) untitle(el);
+      const news = norm(el.getAttribute('data-wn-new'));
+      const help = item && !skipReason(el, item) ? { item, e: item.e, note: noteOf(el, item) } : null;
+      if (help || news) want.set(el, { help, news });
+      if (item) el.setAttribute('data-hh', item.sel); else el.removeAttribute('data-hh');
     });
+    // Titles and headings marked as new, and the page title's help.
+    document.querySelectorAll('[data-wn-new]').forEach(el => {
+      if (ours(el) || isControl(el) || want.has(el)) return;
+      want.set(el, { help: null, news: norm(el.getAttribute('data-wn-new')) });
+    });
+    const h1 = titleEl(), words = h1 && pageWords();
+    if (h1 && words) {
+      const rec = want.get(h1) || { help: null, news: norm(h1.getAttribute('data-wn-new')) };
+      rec.help = { e: words, title: true };
+      want.set(h1, rec);
+    }
+    Array.from(items.keys()).forEach(el => { if (!want.has(el) || !el.isConnected) drop(el); });
+    want.forEach((w, el) => markItem(el, w.help, w.news));
+    // A mark left behind by an item that was re-rendered.
+    document.querySelectorAll('.hh-mark').forEach(m => { if (!m.__hhFor || !items.has(m.__hhFor) || ![items.get(m.__hhFor).help, items.get(m.__hhFor).news].includes(m)) m.remove(); });
   }
   function soon() {
     if (pending) return;
@@ -214,9 +391,9 @@
   }
 
   // ── The pop-up ──────────────────────────────────────────────────────
-  let tip = null, info = null, current = null, dismissed = null;
-  let hoverTimer = null, leaveTimer = null, pressTimer = null;
-  const hovering = { control: false, tip: false };
+  let tip = null, current = null, pinned = false;
+  let hoverTimer = null, leaveTimer = null;
+  const hovering = { mark: false, tip: false };
   function make(tag, cls, text) {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -236,25 +413,25 @@
     document.body.appendChild(tip);
     return tip;
   }
-  function fill(el, item) {
-    const e = item.e;
-    const note = noteOf(el, item);
+  function fill(content) {
+    if (content.news) { tip.replaceChildren(make('p', 'hh-new', content.news)); return; }
+    const e = content.e;
     const rows = [make('p', 'hh-what', norm(e.what))];
-    const news = newsOf(el);
-    if (news) rows.unshift(make('p', 'hh-new', news));
-    const inp = make('p', 'hh-input');
-    inp.append(make('strong', null, 'Input: '), document.createTextNode(norm(e.input)));
-    rows.push(inp);
+    if (e.input) {
+      const inp = make('p', 'hh-input');
+      inp.append(make('strong', null, 'Input: '), document.createTextNode(norm(e.input)));
+      rows.push(inp);
+    }
     if (EFFECTS[e.effect]) rows.push(make('p', 'hh-effect hh-' + e.effect, EFFECTS[e.effect]));
-    if (note) {
+    if (content.note) {
       const n = make('p', 'hh-now');
-      n.append(make('strong', null, 'Note: '), document.createTextNode(note));
+      n.append(make('strong', null, 'Note: '), document.createTextNode(content.note));
       rows.push(n);
     }
     tip.replaceChildren(...rows);
   }
-  // Beside the control, never over it: below when it fits, else above,
-  // else whichever side has more room (the pop-up then scrolls).
+  // Beside the mark, never over it: below when it fits, else above, else
+  // whichever side has more room (the pop-up then scrolls).
   function place(el) {
     const vw = document.documentElement.clientWidth || window.innerWidth;
     const vh = window.innerHeight;
@@ -292,181 +469,145 @@
       else if (tip.matches(':popover-open')) tip.hidePopover();
     } catch (err) { /* not supported or not connected: the fixed position still works */ }
   }
-  function show(el) {
-    const item = wire(el) || entryFor(el);
-    if (!item || dismissed === el) return false;
+  function isMark(el) { return !!(el && el.nodeType === 1 && el.classList.contains('hh-mark')); }
+  // Open a mark's pop-up. Given an item instead, its "?" (or its "*").
+  function markOf(el) {
+    if (isMark(el)) return el;
+    const rec = items.get(el);
+    return rec ? (rec.help || rec.news) : null;
+  }
+  function open(mark, keep) {
+    if (!isMark(mark) || !mark.__hhContent || mark.hidden) return false;
     build();
-    clock.clear(leaveTimer);
-    current = el;
-    adopt(tip, el);
-    fill(el, item);
+    clock.clear(leaveTimer); clock.clear(hoverTimer);
+    if (current && current !== mark) current.setAttribute('aria-expanded', 'false');
+    current = mark;
+    pinned = !!keep;
+    adopt(tip, mark);
+    fill(mark.__hhContent);
     tip.hidden = false;
     topLayer(true);
-    place(el);
-    tip.setAttribute('data-for', el.getAttribute('data-hh') || '');
+    place(mark);
+    tip.setAttribute('data-for', mark.getAttribute('data-hh-mark') + ':' + ((mark.__hhFor && mark.__hhFor.getAttribute('data-hh')) || ''));
+    mark.setAttribute('aria-expanded', 'true');
     return true;
   }
+  // Open help for an item or a mark (the tests and other add-ons call it).
+  function show(el) { return open(markOf(el), true); }
   function hide() {
     clock.clear(hoverTimer); clock.clear(leaveTimer);
     if (tip) { topLayer(false); tip.hidden = true; }
-    hideInfo();
+    if (current) current.setAttribute('aria-expanded', 'false');
     current = null;
-    hovering.tip = false;
+    pinned = false;
+    hovering.tip = false; hovering.mark = false;
   }
   function leaveSoon() {
     clock.clear(leaveTimer);
     leaveTimer = clock.set(() => {
-      if (hovering.control || hovering.tip) return;
-      // Focus keeps it open, except in a dialog's text field (it opened on hover there, so it closes with hover).
-      if (current && current === document.activeElement && current.matches(':focus-visible') && !quietOnFocus(current)) return;
+      if (pinned || hovering.mark || hovering.tip) return;
       hide();
     }, LEAVE_GRACE);
   }
 
-  // ── The ⓘ target for touch ──────────────────────────────────────────
-  function showInfo(el) {
-    if (!info || !info.isConnected) {
-      info = make('button', 'hh-info', 'ⓘ');
-      info.type = 'button';
-      info.tabIndex = -1;
-      info.setAttribute('data-hh-ui', '');
-      info.setAttribute('aria-label', 'What this control does');
-      if ('popover' in info) info.setAttribute('popover', 'manual');
-      info.addEventListener('click', ev => {
-        ev.preventDefault(); ev.stopPropagation();
-        const target = info.__for;
-        if (!target) return;
-        if (current === target && tip && !tip.hidden) hide();
-        else { dismissed = null; show(target); showInfo(target); }
-      });
-      document.body.appendChild(info);
-    }
-    info.__for = el;
-    adopt(info, el);
-    info.hidden = false;
-    try { if ('popover' in info) { if (info.matches(':popover-open')) info.hidePopover(); info.showPopover(); } } catch (err) { /* fixed position still works */ }
-    const r = el.getBoundingClientRect();
-    const vw = document.documentElement.clientWidth || window.innerWidth;
-    const size = info.offsetWidth || 28;
-    let left = r.right + 4;
-    if (left + size > vw - 2) left = Math.max(2, r.left - 4 - size);
-    info.style.left = Math.round(left) + 'px';
-    info.style.top = Math.round(Math.max(2, r.top + (r.height - size) / 2)) + 'px';
+  // ── Events: only the marks open anything ────────────────────────────
+  function markFrom(node) {
+    const el = node && node.nodeType === 1 ? node : node && node.parentElement;
+    return el && el.closest ? el.closest('.hh-mark') : null;
   }
-  function hideInfo() {
-    if (!info) return;
-    try { if (info.matches(':popover-open')) info.hidePopover(); } catch (err) { /* ignore */ }
-    info.hidden = true;
-  }
-
-  // ── Events ──────────────────────────────────────────────────────────
   function onOver(ev) {
     if (ev.pointerType === 'touch') return;
-    const el = controlFrom(ev.target);
-    if (!el) return;
-    hovering.control = true;
+    const m = markFrom(ev.target);
+    if (!m) return;
+    hovering.mark = true;
     clock.clear(leaveTimer);
-    if (current === el) return;
+    if (current === m) return;
     clock.clear(hoverTimer);
-    hoverTimer = clock.set(() => { if (hovering.control) show(el); }, HOVER_DELAY);
+    hoverTimer = clock.set(() => { if (hovering.mark) open(m, false); }, HOVER_DELAY);
   }
   function onOut(ev) {
-    const el = controlFrom(ev.target);
-    if (!el || (ev.relatedTarget && el.contains(ev.relatedTarget))) return;
-    hovering.control = false;
+    const m = markFrom(ev.target);
+    if (!m || (ev.relatedTarget && m.contains(ev.relatedTarget))) return;
+    hovering.mark = false;
     clock.clear(hoverTimer);
-    if (dismissed === el) dismissed = null;
-    leaveSoon();
+    if (current === m) leaveSoon();
   }
-  // A text field in an open dialog or a combobox: focus lands there by
-  // itself when the dialog opens, and the pop-up would cover the dialog's
-  // buttons or the result list while the person types.
-  const TEXT_FIELD = 'textarea, [contenteditable="true"], [role="combobox"], input:not([type]), ' +
-    'input[type="text"], input[type="search"], input[type="password"], input[type="email"], input[type="url"], input[type="number"], input[type="tel"]';
-  function quietOnFocus(el) {
-    try {
-      if (!el.matches(TEXT_FIELD)) return false;
-      return el.matches('[role="combobox"]') || !!el.closest('dialog[open], [role="dialog"][aria-modal="true"], [role="alertdialog"]');
-    } catch (err) { return false; }
+  function onClick(ev) {
+    const m = markFrom(ev.target);
+    if (!m) return;
+    // The mark is its own button: it never presses the item, the label or the summary around it.
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (current === m && pinned) hide(); else open(m, true);
   }
-  function onFocus(ev) {
-    const el = controlFrom(ev.target);
-    if (!el || el !== ev.target) return;
-    if (quietOnFocus(el)) return;
-    let visible = true;
-    try { visible = el.matches(':focus-visible'); } catch (err) { visible = true; }
-    if (visible) show(el);
-  }
-  function onBlur(ev) {
-    const el = controlFrom(ev.target);
-    if (!el) return;
-    if (dismissed === el) dismissed = null;
-    if (current === el && !(ev.relatedTarget && tip && tip.contains(ev.relatedTarget))) {
-      if (hovering.control || hovering.tip) return;
-      hide();
-    }
+  function onDown(ev) {
+    if (!tip || tip.hidden) return;
+    const t = ev.target;
+    if (tip.contains(t) || markFrom(t)) return;
+    hide();   // a click or tap anywhere else closes it
   }
   function onKey(ev) {
     if (ev.key !== 'Escape' && ev.key !== 'Esc') return;
     if (!tip || tip.hidden) return;   // no pop-up: Esc goes on to the dialog or search behind it
     // The pop-up is open: this Esc is its own. A dialog's cancel, Find
-    // anything's close or a sheet's Esc must not also run (they are behind
-    // the pop-up, in the bubble phase or the dialog's default action).
+    // anything's close or a sheet's Esc must not also run.
     ev.preventDefault();
     ev.stopImmediatePropagation();
-    dismissed = current;
     hide();   // focus stays where it is
   }
-  function onDown(ev) {
-    clock.clear(pressTimer);
-    if (ev.pointerType !== 'touch') return;
-    const el = controlFrom(ev.target);
-    if (!el) return;
-    showInfo(el);
-    pressTimer = clock.set(() => { dismissed = null; show(el); }, LONG_PRESS);
+  function onBlur(ev) {
+    const m = markFrom(ev.target);
+    if (m && m === current && !pinned && !hovering.mark && !hovering.tip) hide();
   }
-  function onUp() { clock.clear(pressTimer); }
-  function reposition() { if (current && tip && !tip.hidden) { if (current.isConnected) place(current); else hide(); } }
+  function reposition() { if (current && tip && !tip.hidden) { if (current.isConnected && !current.hidden) place(current); else hide(); } }
 
   function start() {
     if (!document.body) { document.addEventListener('DOMContentLoaded', start, { once: true }); return; }
+    build();
     document.addEventListener('mouseover', onOver, true);
     document.addEventListener('mouseout', onOut, true);
-    document.addEventListener('focusin', onFocus, true);
-    document.addEventListener('focusout', onBlur, true);
-    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('click', onClick, true);
     document.addEventListener('pointerdown', onDown, true);
-    document.addEventListener('pointerup', onUp, true);
-    document.addEventListener('pointercancel', onUp, true);
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('focusout', onBlur, true);
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
-    new MutationObserver(soon).observe(document.body, {
+    // Changes inside our own marks and pop-up, or inside a picture (an
+    // animated SVG redraws every frame), never ask for a rescan.
+    const quiet = m => m.type === 'childList' && m.target.closest && !!m.target.closest('[data-hh-ui], svg');
+    new MutationObserver(muts => { if (muts.some(m => !quiet(m))) soon(); }).observe(document.body, {
       subtree: true, childList: true, attributes: true, attributeFilter: ['title', 'id', 'class', 'role', 'type', 'hidden', 'data-wn-new'],
     });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan, { once: true });
     scan();
   }
 
   // ── The coverage audit the tests (and anyone curious) can call ──────
+  // One row per control: its entry, whether it has a "?", and if not why.
   function audit(opts) {
     const all = !!(opts && opts.all);
     scan();
     return controls(document).filter(el => all || isVisible(el)).map(el => {
       const item = entryFor(el);
       const e = item ? item.e : {};
+      const rec = items.get(el) || {};
       return {
         page: pageKey(), control: describe(el), key: item ? item.sel : null,
         what: norm(e.what), input: norm(e.input), effect: e.effect || '',
-        describedby: (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => /^hh-/.test(id)),
+        mark: !!rec.help, news: !!rec.news, skip: item ? skipReason(el, item) : '',
+        name: rec.help ? rec.help.getAttribute('aria-label') : '',
         title: titleHost(el).getAttribute('data-hh-title') || '',
         nativeTitle: titleHost(el).getAttribute('title') || '',
       };
     });
   }
+  function marks() { return Array.from(document.querySelectorAll('.hh-mark')); }
 
   window.HoverHelp = {
-    CONTROL, EFFECTS, clock, pageKey, entryFor, titleHost, isControl, isVisible, controls, describe, audit, show, hide, scan,
-    reset() { compiled = null; scan(); },
-    tip: () => tip, info: () => info, current: () => current,
+    CONTROL, EFFECTS, OBVIOUS, clock, pageKey, entryFor, titleHost, isControl, isVisible, controls, describe, audit, skipReason,
+    nameOf, markOf, marks, open, show, hide, scan,
+    reset() { compiled = null; memo = new WeakMap(); scan(); },
+    tip: () => tip, current: () => current, pinned: () => pinned,
   };
   start();
 })();

@@ -229,22 +229,24 @@ def test_every_page_loads_the_marks():
             assert '<script src="/static/report_theme.js"></script>' in (STATIC / name).read_text(encoding="utf-8"), page
 
 
-def test_the_marks_take_the_colour_of_their_words():
-    """WCAG 2.2 SC 1.4.3 · SC 1.4.11: the * and the legend inherit the colour of the words they follow, so they keep those words' contrast in every theme."""
+def test_the_star_is_a_superscript_button_in_the_accent_colour():
+    """WCAG 2.2 SC 1.4.3 · SC 2.5.8 · SC 2.4.7: the * is drawn by CSS in the accent text token (4.5:1 on the page, card and well in both themes), on a 24px target with a visible focus ring; the legend's * matches."""
     css = (STATIC / "hover_help.css").read_text(encoding="utf-8")
-    assert re.search(r"\.wn-mark \{[^}]*color: inherit", css)
-    assert re.search(r"button\.wn-mark \{[^}]*color: inherit[^}]*", css) and re.search(r"button\.wn-mark \{[^}]*background: transparent", css)
-    assert re.search(r"\.wn-legend \{[^}]*color: inherit", css)
-    assert re.search(r"button\.wn-mark \{[^}]*min-width: 24px; min-height: 24px", css), "SC 2.5.8: 24px target"
-    assert "button.wn-mark:focus-visible" in css, "SC 2.4.7: a visible focus ring"
+    assert re.search(r"\.hh-mark\.hh-mark-new \{[^}]*color: var\(--accent", css)
+    assert re.search(r'\.hh-mark\.hh-mark-new::before \{ content: "\*"; \}', css)
+    assert re.search(r"\.hh-mark, [^{]*\{[^}]*width: 24px !important; height: 24px !important", css), "SC 2.5.8: 24px target"
+    assert ".hh-mark:focus-visible" in css, "SC 2.4.7: a visible focus ring"
+    assert re.search(r"\.wn-legend \.wn-legend-mark \{[^}]*color: var\(--accent", css)
 
 
-def test_the_help_line_comes_from_the_mark():
-    """WCAG 2.2 SC 1.4.13 · SC 4.1.2: hover help reads data-wn-new into its first line and the control's description, and re-reads it when it changes."""
+def test_the_star_comes_from_the_item_and_is_its_own_trigger():
+    """WCAG 2.2 SC 1.4.13 · SC 4.1.2: whats_new.js only puts the words on the item (data-wn-new); the help marks draw the * as its own button named "New in this version: <item>", re-read when the words change."""
     js = (STATIC / "hover_help.js").read_text(encoding="utf-8")
-    assert "getAttribute('data-wn-new')" in js and "make('p', 'hh-new', news)" in js
-    assert "'data-wn-new']" in js, "the observer re-reads a control when its mark changes"
-    assert "parts.unshift(news)" in js
+    assert "getAttribute('data-wn-new')" in js and "'New in this version: ' + name" in js and "makeMark('new')" in js
+    assert "'data-wn-new']" in js, "the observer re-reads an item when its words change"
+    wn = re.sub(r"//[^\n]*", "", _engine())
+    assert "setAttribute('data-wn-new', text)" in wn
+    assert "aria-label" not in wn, "whats_new.js never renames a control"
 
 
 def _node():
@@ -290,14 +292,14 @@ NARROW = ["/", "/report/path", "/report/pov", "/report/advanced", "/report/opera
 
 
 def _load_marks():
-    """{page: [{at, control, releases}]}: one record per marked element (two features can share one)."""
+    """{page: [{at, releases}]}: one record per marked item (two features can share one)."""
     out = {}
     for f, mk in _marks():
         if mk["page"] in BROWSER_PAGES and not mk.get("shown"):
             recs = out.setdefault(mk["page"], [])
             rec = next((r for r in recs if r["at"] == mk["at"]), None)
             if rec is None:
-                recs.append({"at": mk["at"], "control": mk.get("control"), "releases": [f["release"]]})
+                recs.append({"at": mk["at"], "releases": [f["release"]]})
             elif f["release"] not in rec["releases"]:
                 rec["releases"].append(f["release"])
     return out
@@ -311,7 +313,7 @@ await send('DOM.enable'); await send('Accessibility.enable');
 await go('/');
 await ev(`(localStorage.setItem('zsimple_mode', 'expert'), localStorage.removeItem('zme_hide_new_marks'), true)`);
 const frame = () => ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
-const open = async url => { await go(url); await settle(url, 5000); await until(() => ev(`!!window.WhatsNew && !!window.HoverHelp`), url + ' marks loaded'); await frame(); };
+const open = async url => { await go(url); await settle(url, 5000); await until(() => ev(`!!window.WhatsNew && !!window.HoverHelp`), url + ' marks loaded'); await ev(`(window.HoverHelp.scan(), 1)`); await frame(); };
 // Chrome's accessible name for the element the selector finds.
 const axName = async sel => {
   const root = (await send('DOM.getDocument', { depth: 0 })).result.root.nodeId;
@@ -321,47 +323,63 @@ const axName = async sel => {
   const n = ((t.result || {}).nodes || [])[0];
   return n && n.name ? String(n.name.value) : '';
 };
+// The * mark of an item.
+const STAR = sel => `window.HoverHelp.marks().find(m => m.__hhFor === document.querySelector(${JSON.stringify(sel)}) && m.getAttribute('data-hh-mark') === 'new')`;
 const PROBE = `((m, i) => {
   const host = document.querySelector(m.at); if (!host) return { at: m.at, host: false };
-  const mark = [...host.children].find(c => c.classList.contains('wn-mark'));
-  const ctl = m.control ? document.querySelector(m.control) : (mark && mark.tagName === 'BUTTON' ? mark : host.closest('button, a[href], input, select, textarea, summary, [role=tab]'));
-  if (ctl) ctl.setAttribute('data-wn-probe', String(i));
-  const desc = ctl ? (ctl.getAttribute('aria-describedby') || '').split(/\\s+/).map(id => (document.getElementById(id) || {}).textContent || '').join(' ') : '';
-  return { at: m.at, releases: m.releases, host: true, mark: !!mark, tag: mark ? mark.tagName : '', star: mark ? getComputedStyle(mark, '::before').content : '', words: host.textContent,
-    ariaHidden: mark ? mark.getAttribute('aria-hidden') : null, news: ctl ? ctl.getAttribute('data-wn-new') || '' : '', desc };
+  const star = window.HoverHelp.marks().find(k => k.__hhFor === host && k.getAttribute('data-hh-mark') === 'new');
+  if (star) star.setAttribute('data-wn-probe', String(i));
+  const r = star ? star.getBoundingClientRect() : null, h = host.getBoundingClientRect();
+  return { at: m.at, releases: m.releases, host: true, star: !!star, tag: star ? star.tagName : '', glyph: star ? getComputedStyle(star, '::before').content : '',
+    words: host.textContent, news: host.getAttribute('data-wn-new') || '', expanded: star ? star.getAttribute('aria-expanded') : '',
+    desc: star ? (document.getElementById(star.getAttribute('aria-describedby') || '') || {}).textContent || '' : '',
+    beside: !!(star && host.getClientRects().length && r.width >= 24 && r.height >= 24 && Math.abs((r.top + r.bottom) / 2 - (h.top + h.bottom) / 2) <= Math.max(h.height, 24)) };
 })`;
 for (const [page, marks] of Object.entries(MARKS)) {
   await open(page);
   const rec = await ev(`${JSON.stringify(marks)}.map(${PROBE})`);
   for (let i = 0; i < rec.length; i++) rec[i].name = await axName(`[data-wn-probe="${i}"]`);
-  out.pages[page] = { marks: rec, legend: await ev(`(() => { const l = document.querySelector('.wn-legend'); return l ? { text: l.textContent, name: l.innerText, star: l.querySelector('[aria-hidden="true"]') ? l.querySelector('[aria-hidden="true"]').textContent : '' } : null; })()`),
+  out.pages[page] = { marks: rec, legend: await ev(`(() => { const l = document.querySelector('.wn-legend'); return l ? { text: l.textContent, star: l.querySelector('[aria-hidden="true"]') ? l.querySelector('[aria-hidden="true"]').textContent : '' } : null; })()`),
                       errors: seen.errors.splice(0) };
   trace('page', page);
 }
 
-// Help on hover: a real pointer over a marked control and a heading's mark, and keyboard focus on the mark.
+// Once the marks are placed the page goes quiet: placing them never asks for another pass.
+await open('/report/pov');
+out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObserver(ms => { n += ms.length; }); mo.observe(document.body, { subtree: true, childList: true, attributes: true });
+  setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
+// The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
 await open('/report/path');
-const hoverAt = async sel => {
-  const r = await ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+const hoverAt = async js => {
+  const r = await ev(`(() => { const e = ${js}; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
   await ev(`(window.HoverHelp.hide(), true)`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y, button: 'none' });
-  await until(() => ev(`(() => { const t = document.getElementById('hhTip'); return !!t && !t.hidden; })()`), 'the help for ' + sel, 4000).catch(() => null);
+  await until(() => ev(`(() => { const t = document.getElementById('hhTip'); return !!t && !t.hidden; })()`), 'the help', 2000).catch(() => null);
   return ev(`(() => { const t = document.getElementById('hhTip'); if (!t || t.hidden) return null; const first = t.querySelector('p'); return { first: first.className, text: first.textContent, all: t.textContent }; })()`);
 };
-out.hover = { tab: await hoverAt('#tab-list'), heading: await hoverAt('#paFlowRefH button.wn-mark') };
+out.hover = { item: await hoverAt(`document.getElementById('tab-list')`), tab: await hoverAt(STAR('#tab-list')), heading: await hoverAt(STAR('#paFlowRefH')) };
 await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
 await ev(`(window.HoverHelp.hide(), true)`);
+// Keyboard: focus alone opens nothing; Enter opens it.
 await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 });
 await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Shift', code: 'ShiftLeft', windowsVirtualKeyCode: 16 });
-await ev(`(document.querySelector('#paFlowRefH button.wn-mark').focus(), true)`);
+await ev(`(${STAR('#paFlowRefH')}.focus(), true)`);
 await frame();
-out.focus = await ev(`(() => { const t = document.getElementById('hhTip'); const b = document.activeElement; const s = getComputedStyle(b); return { open: !!t && !t.hidden, text: t ? t.textContent : '', ring: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0, w: b.getBoundingClientRect().width, h: b.getBoundingClientRect().height }; })()`);
+const focusOnly = await ev(`!document.getElementById('hhTip').hidden`);
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+await frame();
+out.focus = await ev(`(() => { const t = document.getElementById('hhTip'); const b = document.activeElement; const s = getComputedStyle(b); return { focusOnly: ${focusOnly}, open: !!t && !t.hidden, text: t ? t.textContent : '', ring: s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0, w: b.getBoundingClientRect().width, h: b.getBoundingClientRect().height, expanded: b.getAttribute('aria-expanded') }; })()`);
+await ev(`(window.HoverHelp.hide(), true)`);
 out.headingName = await axName('#paFlowRefH');
+// An item with both: * then ?, each its own button.
+out.both = await ev(`(() => { const el = document.getElementById('paProto'), ms = window.HoverHelp.marks().filter(m => m.__hhFor === el); return ms.map(m => m.getAttribute('data-hh-mark') + ':' + (m.getAttribute('aria-label') || '')); })()`);
 
 // An older release is not marked; the next release pushes the oldest set out.
 out.rotate = await ev(`(() => {
-  const W = window.WhatsNew, has = sel => { const e = document.querySelector(sel); return !!e && (!!e.querySelector('.wn-mark') || e.hasAttribute('data-wn-new')); };
+  const W = window.WhatsNew, H = window.HoverHelp;
+  const has = sel => { const e = document.querySelector(sel); H.scan(); return !!e && (e.hasAttribute('data-wn-new') || H.marks().some(m => m.__hhFor === e && m.getAttribute('data-hh-mark') === 'new')); };
   W.manifest.releases['2026-10-26'] = 'older';
   W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
@@ -373,16 +391,16 @@ out.rotate = await ev(`(() => {
   return { before, after };
 })()`);
 
-// The * keeps the colour of its words: both themes, glass on and off.
+// The marks and the legend keep AA contrast: both themes, glass on and off.
 const PAINT = `(() => {
   const rgba = s => { const m = String(s).match(/rgba?\\(([^)]+)\\)/); if (!m) return null; const v = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return { r: v[0], g: v[1], b: v[2], a: v.length > 3 ? v[3] : 1 }; };
   const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
   const lum = c => { const f = x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
   const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
   const behind = e => { const chain = []; for (let n = e; n; n = n.parentElement) chain.push(n); let c = rgba(getComputedStyle(document.documentElement).backgroundColor) || { r: 255, g: 255, b: 255, a: 0 }; c = over(c, { r: 255, g: 255, b: 255, a: 1 }); for (const n of chain.reverse()) { const b = rgba(getComputedStyle(n).backgroundColor); if (b && b.a > 0) c = over(b, c); } return c; };
-  return [...document.querySelectorAll('.wn-mark, .wn-legend')].filter(e => e.getClientRects().length).map(e => {
-    const s = getComputedStyle(e), host = getComputedStyle(e.parentElement), fg = rgba(s.color), bg = behind(e);
-    return { what: e.className + ' in ' + e.parentElement.tagName.toLowerCase() + (e.parentElement.id ? '#' + e.parentElement.id : ''), same: s.color === host.color, ratio: Math.round(ratio(over(fg, bg), bg) * 100) / 100, bgClear: e.tagName !== 'BUTTON' || (rgba(s.backgroundColor) || { a: 0 }).a === 0 };
+  return [...document.querySelectorAll('.hh-mark-new, .hh-mark, .wn-legend, .wn-legend-mark')].filter(e => e.getClientRects().length && !e.hidden).map(e => {
+    const s = getComputedStyle(e), fg = rgba(s.color), bg = behind(e);
+    return { what: e.className + ' in ' + e.parentElement.tagName.toLowerCase() + (e.parentElement.id ? '#' + e.parentElement.id : ''), ratio: Math.round(ratio(over(fg, bg), bg) * 100) / 100, bgClear: !e.classList.contains('hh-mark') || (rgba(s.backgroundColor) || { a: 0 }).a === 0 };
   });
 })()`;
 for (const theme of ['dark', 'light']) for (const glass of ['on', 'off']) {
@@ -392,9 +410,9 @@ for (const theme of ['dark', 'light']) for (const glass of ['on', 'off']) {
 }
 await ev(`(localStorage.removeItem('zassess_glass'), localStorage.setItem('zassess_theme', 'dark'), true)`);
 
-// Hide new marks (Advanced settings): off by default, hides every mark, is remembered, and brings them back.
+// Hide new marks (Advanced settings): off by default, hides every *, is remembered, and brings them back; the ? marks stay.
 await open('/report/advanced');
-const count = () => ev(`({ marks: document.querySelectorAll('.wn-mark').length, legend: document.querySelectorAll('.wn-legend').length, news: document.querySelectorAll('[data-wn-new]').length, ticked: (document.getElementById('advWnHide') || {}).checked, glassName: document.getElementById('advGlass') ? document.getElementById('advGlass').labels[0].textContent.trim() : '' })`);
+const count = () => ev(`(window.HoverHelp.scan(), { marks: document.querySelectorAll('.hh-mark-new:not([hidden])').length, help: document.querySelectorAll('.hh-mark:not(.hh-mark-new)').length, legend: document.querySelectorAll('.wn-legend').length, news: document.querySelectorAll('[data-wn-new]').length, ticked: (document.getElementById('advWnHide') || {}).checked, glassName: document.getElementById('advGlass') ? document.getElementById('advGlass').labels[0].textContent.trim() : '' })`);
 const hide = { start: await count() };
 await ev(`(document.getElementById('advWnHide').click(), true)`); await frame();
 hide.hidden = await count();
@@ -409,8 +427,8 @@ await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 800, devi
 for (const page of JSON.parse(narrowJson)) {
   await open(page);
   out.narrow[page] = await ev(`(() => { const W = document.documentElement.clientWidth;
-    const off = [...document.querySelectorAll('.wn-mark, .wn-legend')].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right > W + 1; }).map(e => e.className + ' in ' + e.parentElement.tagName);
-    return { overflow: document.documentElement.scrollWidth - W, off, marks: document.querySelectorAll('.wn-mark').length }; })()`);
+    const off = [...document.querySelectorAll('.hh-mark, .wn-legend')].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right > W + 1; }).map(e => e.className + ' in ' + e.parentElement.tagName);
+    return { overflow: document.documentElement.scrollWidth - W, off, marks: document.querySelectorAll('.hh-mark-new').length }; })()`);
 }
 out.errors = seen.errors.splice(0);
 console.log(JSON.stringify(out));
@@ -429,21 +447,16 @@ def _browser_marks():
 
 @pytest.mark.parametrize("page,at", _browser_marks())
 def test_each_mark_renders_with_a_name_that_says_new(marks_browser, page, at):
-    """WCAG 2.2 SC 1.3.1 · SC 4.1.2 · SC 1.1.1: the * is on screen after the label, hidden from screen readers, and the accessible name says "new"."""
+    """WCAG 2.2 SC 1.3.1 · SC 4.1.2 · SC 1.1.1: a superscript * button sits beside the item, named "New in this version: <item>", with the words on it; the page's own words are unchanged."""
     rec = next(r for r in marks_browser["pages"][page]["marks"] if r["at"] == at)
     assert rec["host"], f"{at} is not on {page}"
-    assert rec["mark"] and rec["star"] == '"*"', rec
+    assert rec["star"] and rec["tag"] == "BUTTON" and rec["glyph"] == '"*"' and rec["beside"], rec
+    assert (rec["name"] or "").startswith("New in this version: ") and len(rec["name"]) > len("New in this version: "), rec
     assert "*" not in rec["words"] and "(new)" not in rec["words"], "the page's own words (textContent) stay as they were"
-    if rec["tag"] == "BUTTON":
-        assert rec["name"] == "New in this version", rec
-    else:
-        assert rec["ariaHidden"] == "true", "screen readers must not hear 'asterisk'"
-        assert re.search(r"\(new\)$", rec["name"] or ""), rec
-        assert "*" not in (rec["name"] or ""), rec
     newest = sorted(rec["releases"], reverse=True)
     assert rec["news"].startswith(f"New in the {newest[0]} update: "), rec
     assert all(f"New in the {d} update: " in rec["news"] for d in newest), rec
-    assert rec["news"] in rec["desc"], "the description screen readers hear carries the same words"
+    assert rec["news"] in rec["desc"] and rec["expanded"] == "false", "the description screen readers hear carries the same words"
 
 
 @pytest.mark.parametrize("page", sorted(_load_marks()))
@@ -454,47 +467,55 @@ def test_each_page_with_marks_shows_the_legend_and_no_errors(marks_browser, page
     assert rec["errors"] == [], rec["errors"]
 
 
-def test_the_help_on_hover_opens_with_what_is_new(marks_browser):
-    """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at a marked control, or at a heading's *, opens the help with "New in the <date> update: <what>" first."""
-    tab, heading = marks_browser["hover"]["tab"], marks_browser["hover"]["heading"]
-    assert tab and tab["first"] == "hh-new" and tab["text"].startswith("New in the 2026-10-28 update: Test a list"), tab
-    assert heading and heading["first"] == "hh-new" and heading["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), heading
-    assert "Marks something that is new in this version" in heading["all"]
+def test_the_star_opens_what_is_new_and_the_item_opens_nothing(marks_browser):
+    """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a tab or a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
+    h = marks_browser["hover"]
+    assert h["item"] is None, h["item"]
+    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-28 update: Test a list"), h["tab"]
+    assert h["heading"] and h["heading"]["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), h["heading"]
 
 
-def test_the_heading_mark_works_from_the_keyboard(marks_browser):
-    """WCAG 2.2 SC 2.1.1 · SC 2.4.7 · SC 2.5.8: the * on a heading takes focus with a visible ring, opens its help, is a 24px target, and the heading's name says it is new."""
+def test_the_star_works_from_the_keyboard(marks_browser):
+    """WCAG 2.2 SC 2.1.1 · SC 2.4.7 · SC 2.5.8 · SC 3.2.1: focus on the * opens nothing by itself; Enter opens it; it has a visible ring and a 24px target; the heading's name says it is new."""
     f = marks_browser["focus"]
-    assert f["open"] and f["text"].startswith("New in the 2026-10-29 update"), f
+    assert f["focusOnly"] is False, "focus alone opens nothing"
+    assert f["open"] and f["text"].startswith("New in the 2026-10-29 update") and f["expanded"] == "true", f
     assert f["ring"], "a visible focus ring"
     assert f["w"] >= 24 and f["h"] >= 24, f
-    assert marks_browser["headingName"].endswith("New in this version"), marks_browser["headingName"]
+    assert "New in this version" in marks_browser["headingName"], marks_browser["headingName"]
+
+
+def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
+    """WCAG 2.2 SC 1.3.2 (Meaningful Sequence) · SC 4.1.2: an item that is new and needs help gets two buttons, * then ?, each reachable on its own."""
+    both = marks_browser["both"]
+    assert [b.split(":")[0] for b in both] == ["new", "help"], both
+    assert both[0].startswith("new:New in this version: ") and both[1].startswith("help:Help: "), both
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
-    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks and their "(new)" go."""
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks go."""
     before, after = marks_browser["rotate"]["before"], marks_browser["rotate"]["after"]
     assert before == {"older": False, "tab": True, "live": True}, before
     assert after["next"] and after["live"] and not after["tab"], after
-    assert after["tabName"] == "Test a list" and not after["proto"].endswith("(new)"), after
+    assert after["tabName"] == "Test a list" and not str(after["proto"]).endswith("(new)"), after
 
 
 @pytest.mark.parametrize("combo", ["dark on", "dark off", "light on", "light off"])
 def test_the_marks_keep_aa_contrast_in_both_themes_with_glass_on_and_off(marks_browser, combo):
-    """WCAG 2.2 SC 1.4.3 · SC 1.4.11: in each theme, with the glass on and off, the * has the colour of its words and it and the legend keep at least 4.5:1."""
+    """WCAG 2.2 SC 1.4.3 · SC 1.4.11: in each theme, with the glass on and off, the * and ? marks and the legend keep at least 4.5:1, and a mark has no box of its own."""
     rec = marks_browser["themes"][combo]
     assert rec["light"] == combo.startswith("light") and rec["glassOff"] == combo.endswith("off"), rec
     assert len(rec["marks"]) >= 4, rec
-    bad = [m for m in rec["marks"] if (m["what"].startswith("wn-mark") and not m["same"]) or not m["bgClear"] or m["ratio"] < 4.5]
+    bad = [m for m in rec["marks"] if not m["bgClear"] or m["ratio"] < 4.5]
     assert not bad, bad
 
 
 def test_hide_new_marks_hides_them_everywhere_and_is_remembered(marks_browser):
-    """WCAG 2.2 SC 3.2.1 · ASVS V7.4.1: "Hide new marks" is off by default, takes every mark and "(new)" off on every page, survives a reload, and brings them back."""
+    """WCAG 2.2 SC 3.2.1 · ASVS V7.4.1: "Hide new marks" is off by default, takes every * off on every page (the ? marks stay), survives a reload, and brings them back."""
     h = marks_browser["hide"]
-    assert h["start"]["ticked"] is False and h["start"]["marks"] >= 4 and h["start"]["legend"] == 1
+    assert h["start"]["ticked"] is False and h["start"]["marks"] >= 3 and h["start"]["legend"] == 1
     for k in ("hidden", "otherPage", "reloaded"):
-        assert h[k]["marks"] == 0 and h[k]["legend"] == 0 and h[k]["news"] == 0, (k, h[k])
+        assert h[k]["marks"] == 0 and h[k]["legend"] == 0 and h[k]["news"] == 0 and h[k]["help"] > 0, (k, h[k])
     assert h["reloaded"]["ticked"] is True and h["reloaded"]["glassName"] == "Glass effect"
     assert h["shown"]["marks"] == h["start"]["marks"] and h["shown"]["ticked"] is False
 
@@ -505,6 +526,11 @@ def test_no_sideways_scroll_at_320px(marks_browser, page):
     rec = marks_browser["narrow"][page]
     assert rec["overflow"] <= 0 and rec["off"] == [], rec
     assert rec["marks"] >= 1
+
+
+def test_placing_the_marks_settles(marks_browser):
+    """CWE-835 (loop with unreachable exit) · ASVS V11.1.4: on a page with a * and a ? in one title, nothing changes the page once the marks are placed (no rescan loop)."""
+    assert marks_browser["quiet"] == 0, marks_browser["quiet"]
 
 
 def test_the_tour_left_no_script_errors(marks_browser):
