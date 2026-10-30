@@ -467,6 +467,22 @@ what you get, what to do next.
   guided change with a before/after view, applied only in write mode
   after approval. Where: the Dashboard, beside each finding that has a
   scripted fix.
+- **Team server** (`/report/team`; optional, off unless `ZSCALER_TEAM_MODE=1`)
+  — several people on one server. Each signs in with their own account
+  (`/login`, or SSO matched to the account) and has a role (viewer,
+  operator, approver, administrator) and access per tenant profile (read,
+  plan, apply, approve) that an administrator gives on this page; nothing is
+  allowed until it is given, every route has an access rule
+  (`team_routes.py`) and a person sees only their tenant profiles, their
+  reports and their audit entries. Wrong passwords lock an account; sessions
+  end after a quiet spell (with a warning) and after 8 hours. Your identity
+  provider can manage accounts and groups through SCIM 2.0. The server
+  serves HTTPS itself (your certificate, a self-signed one, or Let's Encrypt
+  through Cloudflare DNS) and will not serve other computers without it.
+  POV templates and saved plans belong to who saved them and are shared from
+  this page. On a team server the change queue's four-eyes is always on.
+  Optional in any mode: encryption of the app's stores on disk, with key
+  rotation, and FIPS mode. See INSTALL.md and SECURITY.md, "Team server".
 - **Change queue** — the team's shared queue of changes prepared but not
   applied: a policy-pack deploy plan (Deploy policy packs, preflight step),
   a selective removal plan (the rule picker's review) or a fix recipe

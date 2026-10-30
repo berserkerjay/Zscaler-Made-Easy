@@ -45,7 +45,7 @@ window.WHATS_NEW = {
         },
         {
           "page": "/report/team",
-          "at": "#tmAccessH"
+          "at": ".rp-hero h1"
         }
       ]
     },
@@ -75,7 +75,7 @@ window.WHATS_NEW = {
       "marks": [
         {
           "page": "/report/team",
-          "at": "#tmScimH"
+          "at": ".rp-hero h1"
         }
       ]
     },
@@ -91,7 +91,7 @@ window.WHATS_NEW = {
       "marks": [
         {
           "page": "/report/team",
-          "at": "#tmTlsH"
+          "at": ".rp-hero h1"
         }
       ]
     },
