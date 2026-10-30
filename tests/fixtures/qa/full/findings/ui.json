@@ -1,0 +1,4 @@
+{"area": "Functionality: UI and accessibility", "title": "Fixture: UI checks", "standards": ["WCAG SC 1.4.10"],
+ "checks": [{"id": "reflow", "what": "No page scrolls sideways at 320px", "standard": "WCAG SC 1.4.10", "result": "pass"}],
+ "findings": [{"id": "UI-01", "title": "Fixture: a label was title case", "severity": "info", "wcag": "SC 2.4.6", "status": "fixed",
+               "fix": "Fixture fix", "test": "tests/test_example.py::test_ui"}]}

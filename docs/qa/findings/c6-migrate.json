@@ -1,0 +1,515 @@
+{
+  "area": "migrate",
+  "title": "Migration slice: vendor DLP import, Evaluate All Rules wizard, pack importer",
+  "files": [
+    "vendor_migrate.py",
+    "rule_migrator.py",
+    "dlp_importer.py"
+  ],
+  "standards": [
+    "ASVS 4.0.3 L2",
+    "OWASP Top 10 2021 A01/A03/A04/A05/A10",
+    "CWE",
+    "OWASP WSTG",
+    "CISA Secure by Design",
+    "CVSS v3.1"
+  ],
+  "coverage": {
+    "before": 77.0,
+    "after": 91.0
+  },
+  "checks": [
+    {
+      "id": "xml-dtd-utf16",
+      "what": "DOCTYPE/ENTITY refused in UTF-8, UTF-16 LE/BE (BOM or declaration), Latin-1 declared, inside zips",
+      "standard": "ASVS V5.5.2 · CWE-611/776",
+      "result": "pass"
+    },
+    {
+      "id": "json-xml-depth",
+      "what": "JSON and XML nested past 64 levels refused in words",
+      "standard": "ASVS V5.1.4 · CWE-674",
+      "result": "pass"
+    },
+    {
+      "id": "zip-caps",
+      "what": "member count cap, password-protected, damaged CRC, expansion cap",
+      "standard": "ASVS V12.1.2 · CWE-409",
+      "result": "pass"
+    },
+    {
+      "id": "upload-size",
+      "what": "upload refused from its length before decoding",
+      "standard": "ASVS V12.1.1 · CWE-400",
+      "result": "fixed"
+    },
+    {
+      "id": "regex-validation",
+      "what": "every imported/pack regex parsed, lookaround and ReDoS shapes refused before ZIA",
+      "standard": "ASVS V5.1.3 · CWE-1333",
+      "result": "fixed"
+    },
+    {
+      "id": "csv-formula",
+      "what": "rule CSV export neutralises = + - @ cells; vendor data is never re-exported as CSV",
+      "standard": "ASVS V5.3.10 · CWE-1236",
+      "result": "pass"
+    },
+    {
+      "id": "terraform-injection",
+      "what": "${ and %{ escaped in reviewed text, refused in engine expressions; HCL strings escaped",
+      "standard": "ASVS V5.3.1 · CWE-94",
+      "result": "pass"
+    },
+    {
+      "id": "wrong-types",
+      "what": "decisions, rules, exceptions, pack files of the wrong type answered in words",
+      "standard": "ASVS V5.1.4 · CWE-20/755",
+      "result": "fixed"
+    },
+    {
+      "id": "mapping-oracles",
+      "what": "channel words, Symantec facets, Forcepoint/Skyhigh classifiers, rule labels, efficacy arithmetic",
+      "standard": "ASVS V1.4.4 · CWE-697",
+      "result": "fixed"
+    },
+    {
+      "id": "write-gates",
+      "what": "server write gates on enable/delete-all/post (shared route tests) and the module's own writes_enabled gate",
+      "standard": "ASVS V4.1.3 · CWE-841",
+      "result": "pass"
+    },
+    {
+      "id": "dry-run",
+      "what": "every dry run issues only GETs, with writes enabled",
+      "standard": "ASVS V1.4.4 · CWE-841",
+      "result": "pass"
+    },
+    {
+      "id": "rule-order",
+      "what": "proposed order sent as order n; ties keep admin order; fetched rules in ZIA order",
+      "standard": "ASVS V1.4.4 · CWE-840",
+      "result": "fixed"
+    },
+    {
+      "id": "undo",
+      "what": "Step 2 backup restores a reorder; delete-all backup re-creates the policy; failed enable restores the object",
+      "standard": "ASVS V1.4.4 · CWE-460",
+      "result": "fixed"
+    },
+    {
+      "id": "path-injection",
+      "what": "rule ids reach request paths only as whole numbers",
+      "standard": "ASVS V5.1.3 · CWE-22",
+      "result": "fixed"
+    },
+    {
+      "id": "file-permissions",
+      "what": "fetched export and CLI outputs 0600 from creation",
+      "standard": "ASVS V8.1.1 · CWE-276/367",
+      "result": "fixed"
+    },
+    {
+      "id": "ssrf",
+      "what": "fetcher: HTTPS only, no redirects, plain header names, size-capped",
+      "standard": "ASVS V12.6.1 · CWE-918/113",
+      "result": "pass"
+    },
+    {
+      "id": "secrets",
+      "what": "no token or credential in results, errors or files (fetch token only in the request header)",
+      "standard": "ASVS V8.3.4 · CWE-200/532",
+      "result": "pass"
+    },
+    {
+      "id": "algorithmic-dos",
+      "what": "duplicate detection linear",
+      "standard": "ASVS V11.1.4 · CWE-407",
+      "result": "fixed"
+    },
+    {
+      "id": "regression-shapes",
+      "what": "rule labels and name-derived ids unchanged from earlier versions; built-in packs pass all new checks",
+      "standard": "ASVS V1.14.4 · CWE-694",
+      "result": "pass"
+    },
+    {
+      "id": "server-routes",
+      "what": "migrate/reorder 500, migrate/export empty file, migrate/post mode before sign-in (outside owned files)",
+      "standard": "ASVS V7.4.1 · CWE-755",
+      "result": "open"
+    },
+    {
+      "id": "security-matrix-doc",
+      "what": "docs/SECURITY_TESTING.md is regenerated from test docstrings and is stale after the new mapped tests; the integrator runs python tools/security_test_matrix.py (file and tool are not editable here)",
+      "standard": "NIST SSDF PW.8.2",
+      "result": "open"
+    }
+  ],
+  "findings": [
+    {
+      "id": "C6-MIGRATE-01",
+      "title": "Evaluate All enable step could PUT a one-field body to /zia/advancedSettings, resetting every other advanced setting",
+      "severity": "high",
+      "cwe": "CWE-1188",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Removed the minimal-body PUT; only GET-modify-PUT of the whole object remains",
+      "test": "tests/test_c6_migrate.py::test_enable_never_puts_a_minimal_body_that_would_reset_other_settings",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-02",
+      "title": "Rule id from an uploaded rule list was written into the PUT/DELETE request path (path steering to other ZIA endpoints)",
+      "severity": "medium",
+      "cwe": "CWE-22",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "A rule id reaches the path only as a positive whole number; anything else is reported and not sent",
+      "test": "tests/test_c6_migrate.py::test_a_rule_id_cannot_steer_the_put_path",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-03",
+      "title": "Imported vendor regexes reached ZIA unvalidated (ReDoS shapes, invalid syntax, lookaround)",
+      "severity": "medium",
+      "cwe": "CWE-1333",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "compile_export runs every dictionary through dictionary_limit_problems, which now parses each pattern and refuses nested unbounded repeats",
+      "test": "tests/test_c6_migrate.py::test_an_imported_regex_is_validated_before_it_reaches_zia",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-04",
+      "title": "Pack dictionary patterns were never parsed or checked for catastrophic backtracking",
+      "severity": "medium",
+      "cwe": "CWE-1333",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "New dlp_importer.pattern_problems (parse + nested-repeat check, PCRE-only escapes tolerated); all 270 shipped patterns pass",
+      "test": "tests/test_c6_migrate.py::test_a_nested_unbounded_repeat_is_refused_as_redos",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-05",
+      "title": "Duplicate-id detection counted each id with list.count (quadratic): one duplicate in a large export pinned the CPU",
+      "severity": "medium",
+      "cwe": "CWE-407",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "collections.Counter in _finish and in the duplicate-decision check",
+      "test": "tests/test_c6_migrate.py::test_a_duplicate_id_in_a_large_export_is_refused_in_linear_time",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-06",
+      "title": "An unknown post mode was treated as update and wrote to the tenant",
+      "severity": "medium",
+      "cwe": "CWE-841",
+      "asvs": "V4.1.5",
+      "status": "fixed",
+      "fix": "post_new_rule_order refuses any mode but auto/create/update before planning or writing",
+      "test": "tests/test_c6_migrate.py::test_an_unknown_post_mode_is_refused_without_writing",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-07",
+      "title": "Fetched rules kept the API's list order, so a backup posted back (undo) could restore a different order",
+      "severity": "medium",
+      "cwe": "CWE-840",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "fetch_current_rules returns rules sorted by ZIA order (stable; unnumbered last), non-objects dropped",
+      "test": "tests/test_c6_migrate.py::test_undo_after_a_reorder_restores_the_original_order",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-08",
+      "title": "Delete-all returned no copy of the deleted rules, so the destructive step had no undo",
+      "severity": "medium",
+      "cwe": "CWE-221",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "The real run returns `backup` (every deleted rule, in order) that Step 5 create re-posts",
+      "test": "tests/test_c6_migrate.py::test_delete_all_hands_back_the_backup_and_posting_it_undoes_the_delete",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-09",
+      "title": "A failed enable left the setting at the last enum word tried",
+      "severity": "medium",
+      "cwe": "CWE-460",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "When a value was accepted but none verified, the object is PUT back exactly as read",
+      "test": "tests/test_c6_migrate.py::test_a_failed_enable_puts_the_setting_back_as_it_was",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-10",
+      "title": "Enable wrote guessed keys onto settings objects and enum words into boolean fields",
+      "severity": "medium",
+      "cwe": "CWE-704",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Only fields the endpoint carries are written, booleans only ever get True; documented /webDlpGlobalOptions tried first (SDK 1.11.3)",
+      "test": "tests/test_c6_migrate.py::test_a_boolean_setting_is_never_sent_an_enum_word",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-11",
+      "title": "Rules with the same action and scope were re-sorted by name, changing same-action precedence",
+      "severity": "low",
+      "cwe": "CWE-840",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Ties keep their current order (stable sort without a name key)",
+      "test": "tests/test_c6_migrate.py::test_rules_with_the_same_action_and_scope_keep_the_admins_order",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-12",
+      "title": "duplicate_names in the analysis was always 0",
+      "severity": "low",
+      "cwe": "CWE-682",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Counted from a set of names seen more than once",
+      "test": "tests/test_c6_migrate.py::test_duplicate_rule_names_are_counted",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-13",
+      "title": "Analysis, plan and optimiser crashed (500) on uploaded rules or exceptions of the wrong type",
+      "severity": "low",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "Fields read through _word/_text/_count; exceptions type-checked; position parsed safely",
+      "test": "tests/test_c6_migrate.py::test_exceptions_of_the_wrong_type_do_not_crash_the_optimiser",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-14",
+      "title": "skip_rule_ids kept the unconverted original (dropping its audit-only conversion) and stamped the caller's dicts",
+      "severity": "low",
+      "cwe": "CWE-471",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Skipped rules come from the working copies; the plan copies its input",
+      "test": "tests/test_c6_migrate.py::test_a_rule_kept_in_place_keeps_its_audit_only_conversion",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-15",
+      "title": "Per-rule mode field read with bool(): BY_RULE_ORDER read as Evaluate All",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Read with _is_truthy like every other mode field",
+      "test": "tests/test_c6_migrate.py::test_the_per_rule_mode_field_is_read_as_the_mode_words",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-16",
+      "title": "Heuristic first-match / rule-order keys were read with Evaluate-All polarity",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "A boolean on such a key is inverted",
+      "test": "tests/test_c6_migrate.py::test_the_mode_is_found_one_level_deep_and_by_its_heuristic_name",
+      "commit": "ee001d0"
+    },
+    {
+      "id": "C6-MIGRATE-17",
+      "title": "Decisions whose lists were not lists of objects raised AttributeError (500)",
+      "severity": "low",
+      "cwe": "CWE-755",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Structure checked up front; plain ValueError -> 400",
+      "test": "tests/test_c6_migrate.py::test_the_compile_api_answers_400_for_decisions_of_the_wrong_type",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-18",
+      "title": "Phrase/pattern limits counted characters, and names/engine counts ZIA refuses compiled as ready",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Shared byte-based limits, name_problems and engine_limit_problems in compile",
+      "test": "tests/test_c6_migrate.py::test_phrase_limits_are_counted_in_utf8_bytes",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-19",
+      "title": "Control characters in rule names, tenant names and custom headers reached HCL/Terraform strings",
+      "severity": "low",
+      "cwe": "CWE-74",
+      "asvs": "V5.3.1",
+      "status": "fixed",
+      "fix": "Refused with a question",
+      "test": "tests/test_c6_migrate.py::test_a_rule_name_with_control_characters_is_refused",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-20",
+      "title": "Channel words matched as substrings (Capital -> API, fingerprint -> printer, Atlanta -> LAN)",
+      "severity": "low",
+      "cwe": "CWE-697",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Whole-word matching with plural/-ed/-ing forms",
+      "test": "tests/test_c6_migrate.py::test_channel_words_oracle",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-21",
+      "title": "Id-less policies whose names slug alike made the whole export refused as duplicates",
+      "severity": "low",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "status": "fixed",
+      "fix": "Name-derived ids disambiguated (-2, -3); first keeps its earlier id; real duplicate ids still refused",
+      "test": "tests/test_c6_migrate.py::test_policies_whose_names_slug_alike_are_told_apart",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-22",
+      "title": "Uploads were decoded before the size check; non-text content was stringified",
+      "severity": "low",
+      "cwe": "CWE-400",
+      "asvs": "V12.1.1",
+      "status": "fixed",
+      "fix": "Length-based refusal before decoding; non-text refused",
+      "test": "tests/test_c6_migrate.py::test_an_oversized_upload_is_refused_before_it_is_decoded",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-23",
+      "title": "Fetched export and CLI outputs were created with default permissions (chmod after write)",
+      "severity": "low",
+      "cwe": "CWE-276",
+      "asvs": "V8.1.1",
+      "status": "fixed",
+      "fix": "safe_files.private_open / write_private_atomic (0600 from the first byte)",
+      "test": "tests/test_c6_migrate.py::test_a_fetched_export_is_created_owner_only_from_the_first_byte",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-24",
+      "title": "CLI printed a traceback for a too-deep decisions file",
+      "severity": "low",
+      "cwe": "CWE-209",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "RecursionError answered in words, exit 1",
+      "test": "tests/test_c6_migrate.py::test_the_cli_answers_a_too_deep_decisions_file_in_words",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-25",
+      "title": "One malformed pack file broke pack discovery (every page listing packs) and the pack detail page",
+      "severity": "low",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "_load_json validates list-of-objects; broken packs listed with `error`",
+      "test": "tests/test_c6_migrate.py::test_one_broken_pack_is_listed_with_its_reason_and_does_not_break_discovery",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-26",
+      "title": "Engine counts of thousands of digits raised ValueError (int digit limit)",
+      "severity": "low",
+      "cwe": "CWE-400",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Length compared before int()",
+      "test": "tests/test_c6_migrate.py::test_an_engine_count_of_thousands_of_digits_is_a_problem_not_a_crash",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-27",
+      "title": "build_dict_kwargs crashed on a text proximity, a pattern without action, a non-numeric template id",
+      "severity": "low",
+      "cwe": "CWE-755",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Each answered as a refusal or converted",
+      "test": "tests/test_c6_migrate.py::test_a_proximity_written_as_text_is_sent_as_a_number",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-28",
+      "title": "A pack web rule with an unrecognised action word was created with that action instead of monitor-only",
+      "severity": "low",
+      "cwe": "CWE-1188",
+      "asvs": "V1.4.4",
+      "status": "fixed",
+      "fix": "Every pack web rule is created DISABLED with ALLOW",
+      "test": "tests/test_c6_migrate.py::test_every_pack_web_rule_is_created_disabled_and_monitor_only",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-29",
+      "title": "A decisions file with a UTF-8 byte-order mark was refused as invalid JSON",
+      "severity": "info",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.4",
+      "status": "fixed",
+      "fix": "Read through the BOM-aware text reader",
+      "test": "tests/test_c6_migrate.py::test_a_decisions_file_saved_with_a_byte_order_mark_is_read",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-30",
+      "title": "Activation wait used the real clock and time.sleep (not injectable)",
+      "severity": "info",
+      "cwe": "CWE-835",
+      "asvs": "V11.1.4",
+      "status": "fixed",
+      "fix": "Bounded by poll count with the module's _sleep",
+      "test": "tests/test_c6_migrate.py::test_waiting_for_activation_uses_the_injectable_sleep_and_a_bounded_poll",
+      "commit": "016cf21"
+    },
+    {
+      "id": "C6-MIGRATE-31",
+      "title": "POST /api/migrate/reorder answers 500 for an order token that is an object or list (outside owned files)",
+      "severity": "low",
+      "cwe": "CWE-755",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "Resolved at integration (API server QA, 8f2dca7): an order token that is not text or a number, or a rule name that is not text, is a 400",
+      "test": "tests/test_c6_api_server.py::test_a_reorder_token_or_rule_name_that_cannot_be_a_key_is_a_400",
+      "commit": "8f2dca7"
+    },
+    {
+      "id": "C6-MIGRATE-32",
+      "title": "POST /api/migrate/export with a format other than json or csv answered 200 with an empty text/csv file",
+      "severity": "low",
+      "cwe": "CWE-754",
+      "asvs": "V7.4.1",
+      "status": "fixed",
+      "fix": "The route refuses any format but json and csv with a 400 before reading the body",
+      "test": "tests/test_c6_open_low.py::test_a_migration_export_in_an_unknown_format_is_a_400",
+      "commit": "37a8f7c"
+    },
+    {
+      "id": "C6-MIGRATE-33",
+      "title": "POST /api/migrate/post validates mode only after sign-in (module now refuses without writing; route should 400 first)",
+      "severity": "low",
+      "cwe": "CWE-841",
+      "asvs": "V4.1.5",
+      "status": "fixed",
+      "fix": "The route refuses a mode outside rule_migrator.POST_MODES with a 400 before the write gates and before sign-in",
+      "test": "tests/test_c6_open_low.py::test_an_unknown_post_mode_is_refused_by_the_route_before_any_gate_or_sign_in",
+      "commit": "37a8f7c"
+    }
+  ],
+  "tests_added": 242
+}

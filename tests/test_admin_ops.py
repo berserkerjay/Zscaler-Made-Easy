@@ -450,10 +450,10 @@ def test_execute_refuses_without_write_mode_or_matching_plan_hash():
     p = preview(t, spec)
     with pytest.raises(PermissionError):
         ao.execute(t, spec, plan_hash=p["plan_hash"], scope=FULL_SCOPE, writes_enabled=False)
-    res = ao.execute(t, spec, plan_hash="0" * 64, scope=FULL_SCOPE, writes_enabled=True)
+    res = ao.execute(t, spec, plan_hash="0" * 64, scope=FULL_SCOPE, writes_enabled=True, assessor="Jane Doe")
     assert res["status"] == "plan_changed" and t.writes == []
     t.zia.url_filtering._find(101)["name"] = "Renamed"     # the tenant moved after the preview
-    res = ao.execute(t, spec, plan_hash=p["plan_hash"], scope=FULL_SCOPE, writes_enabled=True)
+    res = ao.execute(t, spec, plan_hash=p["plan_hash"], scope=FULL_SCOPE, writes_enabled=True, assessor="Jane Doe")
     assert res["status"] == "plan_changed" and res["current_hash"] != p["plan_hash"] and t.writes == []
 
 
@@ -784,7 +784,9 @@ def test_zpa_move_between_segments_that_share_ports_removes_first_and_keeps_the_
 
 
 def test_zpa_move_without_shared_ports_adds_first():
-    t = Tenant()
+    # s3 keeps a second domain: moving its only one is excluded (ZPA keeps one domain per segment).
+    segs = [dict(s, domain_names=s["domain_names"] + ["bastion.corp.example"]) if s["id"] == "s3" else s for s in SEGMENTS]
+    t = Tenant(segments=segs)
     p = preview(t, {"type": "zpa_domains", "action": "move", "source": "s3", "target": "s1", "domains": ["jump.corp.example"]})
     assert [g["target"]["id"] for g in p["groups"]] == ["s1", "s3"]
 

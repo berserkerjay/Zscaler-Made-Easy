@@ -48,6 +48,13 @@ jobs:
       - name: Unit tests
         run: python -m pytest -q tests
 
+      - name: Standards mapping and quality score are current
+        run: |
+          # tests/test_security_test_matrix.py and tests/test_quality_score.py run these in the step above too;
+          # named here so a stale docs/SECURITY_TESTING.md, docs/QUALITY_SCORE.md or docs/quality_score.json is obvious.
+          python tools/security_test_matrix.py --check
+          python tools/quality_score.py --check
+
       - name: Smoke-test API server and Deploy Studio injection
         run: |
           python - <<'EOF'

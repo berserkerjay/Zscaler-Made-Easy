@@ -346,6 +346,18 @@
   }
   // Which tenant a note belongs to: the loaded index's, else the sign-in on
   // the assessment page (no secret), else the server's own tenant.
+  // The tenant the page is signed in to, for the kept index (no secret and
+  // no admin login: a classic-API sign-in sends only its method and cloud).
+  function signInRef() {
+    const h = home();
+    try {
+      const b = (h && h.migrateCredBody()) || {};
+      if (b.profile_id) return { profile_id: b.profile_id };
+      if (b.auth_method === 'legacy') return { auth_method: 'legacy', cloud: b.cloud || '' };
+      if (b.vanity_domain) return { vanity_domain: b.vanity_domain, cloud: b.cloud || '', auth_method: b.auth_method || '' };
+    } catch (e) { /* below */ }
+    return { profile_id: profileId() };
+  }
   function tenantRef() {
     if (S.index && S.index.tenant_label) return { tenant: S.index.tenant_label };
     const h = home();
@@ -390,7 +402,7 @@
     if (S.cachedAsked) return;
     S.cachedAsked = true;
     try {
-      const d = await getJson('/api/console-index/cached?' + qs({ profile_id: profileId() }));
+      const d = await getJson('/api/console-index/cached?' + qs(signInRef()));
       if (d && d.index) { S.index = d.index; }
     } catch (e) { /* no index kept */ }
     noteIndex();

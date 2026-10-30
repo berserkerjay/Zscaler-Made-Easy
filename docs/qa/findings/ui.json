@@ -1,0 +1,339 @@
+{
+ "area": "Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs",
+ "title": "Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list",
+ "standards": [
+  "WCAG 2.2 SC 1.4.3",
+  "WCAG 2.2 SC 1.4.4",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 2.1.1",
+  "WCAG 2.2 SC 2.1.2",
+  "WCAG 2.2 SC 2.3.3",
+  "WCAG 2.2 SC 2.4.4",
+  "WCAG 2.2 SC 2.4.7",
+  "WCAG 2.2 SC 2.5.8",
+  "WCAG 2.2 SC 3.1.1",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 4.1.2",
+  "WCAG 2.2 SC 4.1.3",
+  "WCAG 2.2 SC 3.3.4",
+  "CWE-684",
+  "CWE-1059",
+  "CWE-778",
+  "ASVS V4.1.5",
+  "ASVS V7.1.3",
+  "ASVS V11.1.1"
+ ],
+ "checks": [
+  {
+   "id": "UI-C01",
+   "what": "Every page (/, /simple, /help, /permissions, 32 /report/* pages, 5 reference pages) loads on the sample tenant with no script error, console error or unexpected HTTP error",
+   "standard": "WCAG 2.2 SC 4.1.2",
+   "result": "pass"
+  },
+  {
+   "id": "UI-C02",
+   "what": "Every button, tab and disclosure clicked on every report page and /help, /permissions (34 pages, 387 clicks); every Analyze, Read, Preview and Export run on the sample",
+   "standard": "WCAG 2.2 SC 3.3.1",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C03",
+   "what": "Downloads well-formed: 44 files opened (Word with python-docx, Excel workbooks and sheets, PDF header/xref/EOF/text, ZIPs and their inner files, JSON, CSV, Markdown)",
+   "standard": "CWE-684",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C04",
+   "what": "Nothing written while write mode is off: the sample's change counter stayed 0 after every click, preview and wizard; a forced apply was refused",
+   "standard": "ASVS V4.1.5",
+   "result": "pass"
+  },
+  {
+   "id": "UI-C05",
+   "what": "Simple mode: the seven tasks run end to end on the sample",
+   "standard": "WCAG 2.2 SC 3.3.2",
+   "result": "pass"
+  },
+  {
+   "id": "UI-C06",
+   "what": "axe-core 4.10 (wcag2a..wcag22aa, best-practice) on every page, both themes, reduced motion, before and after results",
+   "standard": "WCAG 2.2 AA",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C07",
+   "what": "Keyboard only: Tab walk on every page, focus ring at every stop, never stuck",
+   "standard": "WCAG 2.2 SC 2.1.1, 2.1.2, 2.4.7",
+   "result": "pass"
+  },
+  {
+   "id": "UI-C08",
+   "what": "Targets at least 24 px (inline and spacing exceptions)",
+   "standard": "WCAG 2.2 SC 2.5.8",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C09",
+   "what": "Text contrast in the dark and the light theme",
+   "standard": "WCAG 2.2 SC 1.4.3",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C10",
+   "what": "Reflow at 320 and 390 px, zoom 200% (640 px), desktop 1280 px, page and result states",
+   "standard": "WCAG 2.2 SC 1.4.10, 1.4.4",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C11",
+   "what": "Accessible name for every control (Chrome accessibility tree)",
+   "standard": "WCAG 2.2 SC 4.1.2",
+   "result": "pass"
+  },
+  {
+   "id": "UI-C12",
+   "what": "Live regions on pages that run jobs; title and language on every page",
+   "standard": "WCAG 2.2 SC 4.1.3, 3.1.1",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C13",
+   "what": "prefers-reduced-motion: no running animation or transition",
+   "standard": "WCAG 2.2 SC 2.3.3",
+   "result": "pass"
+  },
+  {
+   "id": "UI-C14",
+   "what": "Help text matches the pages: explain.js entries, /help cards, glossary terms of Wave 5, every builder named",
+   "standard": "WCAG 2.2 SC 3.3.2",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C15",
+   "what": "No dead internal link or anchor; every ?build= hand-off opens its builder; the ?fix= hand-off fills Bulk changes",
+   "standard": "WCAG 2.2 SC 2.4.4",
+   "result": "fixed"
+  },
+  {
+   "id": "UI-C16",
+   "what": "No mouse-only control, no control inside a control, scrolling regions reachable by keyboard",
+   "standard": "WCAG 2.2 SC 2.1.1, 4.1.2",
+   "result": "fixed"
+  }
+ ],
+ "findings": [
+  {
+   "id": "UI-01",
+   "title": "With the sample tenant open, Run assessment on the Scope page asked for a vanity domain, client ID and secret and sent the user back to Connect: the sample could not be assessed from the sidebar",
+   "severity": "medium",
+   "cwe": "CWE-684",
+   "asvs": "V11.1.1",
+   "wcag": "WCAG 2.2 SC 3.3.1",
+   "status": "fixed",
+   "fix": "static/dashboard.js: the sample tenant or an opened snapshot needs no sign-in fields and counts as signed in (the rule missingSignInFields already had)",
+   "test": "tests/test_sample_tenant_browser.py::test_the_sample_tenant_runs_the_assessment_from_the_scope_page",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-02",
+   "title": "Find anything's tags, comments and to-dos were refused (400 'pick a tenant first') while the sample tenant or a snapshot was open",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V11.1.1",
+   "wcag": "WCAG 2.2 SC 3.3.1",
+   "status": "fixed",
+   "fix": "_notes_tenant keeps notes under the open offline tenant's own label (never a profile's or the server's)",
+   "test": "tests/test_offline_tenant.py::test_find_anything_notes_on_the_sample_are_kept_under_the_sample",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-03",
+   "title": "Seven functions (Beacon, How a deployment works, the five reference pages) had no card on /help: 'Every function explained' on /report/beacon and /report/deploy-flow pointed at /help#beacon and /help#deployflow, anchors that did not exist",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.1.1",
+   "wcag": "WCAG 2.2 SC 2.4.4",
+   "status": "fixed",
+   "fix": "every catalogue key is in DLP_EXPLAIN_ORDER, which /help draws",
+   "test": "tests/test_explain.py::test_every_catalogue_entry_has_its_card_on_the_help_page",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-04",
+   "title": "Help text did not match the pages: the Bulk changes explainer named none of the thirteen builders; Advanced settings, Client Connector fleet, Live DLP feed and Path analyzer explainers missed sections those pages show (app updates, Secure by Design score, upstream check, install command builder, forwarding profiles and PAC files, HAR import)",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.1.1",
+   "wcag": "WCAG 2.2 SC 3.3.2",
+   "status": "fixed",
+   "fix": "explain.js entries name every builder and section; a table test pins builder labels and page sections",
+   "test": "tests/test_explain.py::test_the_bulk_changes_explainer_names_every_builder",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-05",
+   "title": "/help (an unbroken setting name in the glossary) and /permissions (a permission path in a 1fr grid column) scrolled sideways at 320 px, /permissions also at 390 px",
+   "severity": "low",
+   "wcag": "WCAG 2.2 SC 1.4.10",
+   "status": "fixed",
+   "fix": "long tokens break (overflow-wrap: anywhere) and grid columns are minmax(0, 1fr); the reflow test now covers /, /help, /permissions and the reference pages at 320, 390, 640 and 1280 px",
+   "test": "tests/test_report_reflow.py::test_no_report_page_scrolls_sideways",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-06",
+   "title": "The Path analyzer's result scrolled 9-24 px sideways at 320 px: its channel cards were an auto-fit grid with a fixed 280 px track; 20 such grids across the interface could do the same",
+   "severity": "low",
+   "wcag": "WCAG 2.2 SC 1.4.10",
+   "status": "fixed",
+   "fix": "every auto-fit/auto-fill track of 200 px or more is minmax(min(Npx, 100%), 1fr); result states of nine job pages are measured at 320 and 390 px",
+   "test": "tests/test_accessibility.py::test_every_result_renders_accessibly_and_reflows",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-07",
+   "title": "The Word report from the assessment page and Simple mode said Organization 'Unknown' and 'for the organization': the page sends metadata.org, the writer read org_name only",
+   "severity": "low",
+   "cwe": "CWE-684",
+   "asvs": "V11.1.1",
+   "wcag": "WCAG 2.2 SC 2.4.2",
+   "status": "fixed",
+   "fix": "report_docx takes the report metadata's org when org_name is not given",
+   "test": "tests/test_export_integrity.py::test_the_word_report_cover_names_the_organisation",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-08",
+   "title": "The Word report's headings and cover labels were in Title Case (interface guide: sentence case)",
+   "severity": "info",
+   "wcag": "WCAG 2.2 SC 3.2.4",
+   "status": "fixed",
+   "fix": "sentence case for the 13 fixed headings and 3 cover labels",
+   "test": "tests/test_export_integrity.py::test_the_word_report_headings_use_sentence_case",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-09",
+   "title": "Four glyphs stayed colour emoji (Flow animator, Beacon, Pause, Export Terraform): icons.js had no symbol for them",
+   "severity": "info",
+   "wcag": "WCAG 2.2 SC 3.2.4",
+   "status": "fixed",
+   "fix": "film, satellite and pause symbols added and the four glyphs mapped; a table test scans every page and script",
+   "test": "tests/test_icons.py::test_every_emoji_in_a_page_has_a_symbol",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-10",
+   "title": "Bulk changes' object picker checkboxes were 13 px wide targets next to other targets",
+   "severity": "low",
+   "wcag": "WCAG 2.2 SC 2.5.8",
+   "status": "fixed",
+   "fix": "a checkbox or radio alone in a table cell is 24 by 24 px (reports.css)",
+   "test": "tests/test_accessibility.py::test_every_result_renders_accessibly_and_reflows",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-11",
+   "title": "The bundled reference pages failed text contrast: 268 elements on first view (light scheme) across the three framework pages, the Framework Machine and the Data Security Architect, as low as 1.98:1, more on the other tabs",
+   "severity": "medium",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "fixed",
+   "fix": "static/reference/reference_a11y.js, served with every reference page, moves each failing colour's lightness (same hue) until it reaches AA, measured at rest",
+   "test": "tests/test_accessibility.py::test_text_contrast_meets_aa_in_both_themes",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-12",
+   "title": "Reference pages were not keyboard operable in places: the channel toggles and stat cards were mouse-only (the portfolio matrix stayed dimmed for keyboard users) and 24 scrolling regions (the architect timelines, the framework figure, the playbook) could not be reached",
+   "severity": "medium",
+   "wcag": "WCAG 2.2 SC 2.1.1",
+   "status": "fixed",
+   "fix": "the layer makes click-only elements buttons (Enter, Space, aria-pressed, focus kept after a redraw) and scrolling regions focusable and named",
+   "test": "tests/test_accessibility.py::test_nothing_is_clickable_only_with_a_mouse",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-13",
+   "title": "Reference pages: 95 technique cards were role=button holding a select button (nested controls), the phase dialog had no name, and the select buttons were 18 px targets",
+   "severity": "low",
+   "wcag": "WCAG 2.2 SC 4.1.2",
+   "status": "fixed",
+   "fix": "the card gets its own Open button instead of the button role; dialogs are named from their heading; select buttons are 24 px",
+   "test": "tests/test_accessibility.py::test_no_control_holds_another_control",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-14",
+   "title": "The Framework Machine page had no language (no html lang)",
+   "severity": "low",
+   "wcag": "WCAG 2.2 SC 3.1.1",
+   "status": "fixed",
+   "fix": "the layer sets lang=en when a document states none",
+   "test": "tests/test_accessibility.py::test_pages_with_jobs_announce_progress_in_a_live_region",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-15",
+   "title": "Reference pages scrolled sideways: the three framework pages by 61-348 px at 320 and 390 px (their tab bar and 320 px grid tracks), the portfolio page also at 640 px (200% zoom), the Framework Machine by 76 px at 320 px",
+   "severity": "low",
+   "wcag": "WCAG 2.2 SC 1.4.10",
+   "status": "fixed",
+   "fix": "the layer wraps the tab bar, caps the fixed tracks and lets long words and code break on narrow screens",
+   "test": "tests/test_report_reflow.py::test_no_report_page_scrolls_sideways",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-16",
+   "title": "'Download CSV' on the GenAI and Data Security Portfolio framework pages (and the embedded Copilot readiness page) linked pov-use-cases.csv, which the app does not serve (404), and fetched it on load",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.1.1",
+   "wcag": "WCAG 2.2 SC 2.4.4",
+   "status": "fixed",
+   "fix": "the button downloads the catalogue the page embeds, as the AI security framework page already did; nothing is fetched",
+   "test": "tests/test_reference.py::test_no_reference_document_links_or_fetches_a_file_that_is_not_served",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-17",
+   "title": "The Connect step scrolled sideways at 320 px when the checkout's branch name is long: the Update app branch list could not shrink below its longest option",
+   "severity": "low",
+   "wcag": "WCAG 2.2 SC 1.4.10",
+   "status": "fixed",
+   "fix": "guide.css lets the branch label wrap and the list shrink to the line",
+   "test": "tests/test_connect_reflow.py::test_connect_step_never_scrolls_sideways",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-18",
+   "title": "On the Data Security Portfolio Framework, technique cards of channels the reader has not switched on are drawn at 20% opacity (about 1.2:1)",
+   "severity": "info",
+   "wcag": "WCAG 2.2 SC 1.4.3",
+   "status": "accepted",
+   "fix": "accepted: the cards are inactive (not focusable, pointer-events none) until a channel is chosen, and SC 1.4.3 exempts inactive components; documented in docs/ACCESSIBILITY.md",
+   "test": "tests/test_accessibility.py::test_text_contrast_meets_aa_in_both_themes",
+   "commit": "40f879c"
+  },
+  {
+   "id": "UI-19",
+   "title": "One click on 'Update now' (Advanced settings) or 'Update app' (the dashboard card) fetched and pulled new code, switched the install's branch, stashed local edits and installed packages, with no confirmation and no audit record (seen when the click sweep pressed it: the checkout moved to main and the locked msgpack 1.2.3 was installed)",
+   "severity": "low",
+   "cwe": "CWE-778",
+   "asvs": "V7.1.3",
+   "wcag": "WCAG 2.2 SC 3.3.4",
+   "status": "fixed",
+   "fix": "both buttons say what happens and ask first; POST /api/app/update records an app_update audit event (who, branch, builds, result); the API is unchanged",
+   "test": "tests/test_app_update.py::test_an_app_update_is_recorded_in_the_audit_log",
+   "commit": "33213c9"
+  }
+ ],
+ "notes": [
+  "Expected refusals seen while clicking, each shown to the user in words: Traffic insights and the AI Guard builders need scopes the sample does not serve (400 'not in scope'); Self-healing's tenant scan needs an approved policy pack (400); Find anything's notes with no tenant at all (400 'pick a tenant first').",
+  "The POV planner and Simple mode's 'what changed' work per saved tenant profile; the sample tenant has none, and both pages say so.",
+  "Simple mode's Connect task shows 'Step 1 of 6' before the way to connect is chosen and 'Step 2 of 3' after it (the steps that apply are counted once the choice is made).",
+  "axe-core 4.10.2 was used from an npm tarball on disk whose sha1 matched the registry; CI uses the committed checks, which need no axe.",
+  "tests_added counts collected test cases (38 new test functions, most of them tables over the page routes, themes, builders and links).",
+  "While clicking every button, the sweep pressed 'Update now' (finding UI-19): the app's updater switched this worktree from its branch to main (the same tree) and installed the locked msgpack 1.2.3 into the shared test environment. The commits were moved back onto qa6-ui from origin/dev."
+ ],
+ "tests_added": 958
+}

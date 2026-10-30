@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import csv
 import io
+import ipaddress
 import re
 import secrets
 import threading
@@ -64,6 +65,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import admin_ops as ao
 import pack_ops as ops
+import zia_path_modules
 import zpa_reader as zr
 
 FAMILY = "zpa_objects"
@@ -203,12 +205,25 @@ def _overlap(a: Sequence[Sequence[int]], b: Sequence[Sequence[int]]) -> bool:
     return any(max(x[0], y[0]) <= min(x[1], y[1]) for x in a for y in b)
 
 
+# The widest subnet the builder puts in a segment: anything wider is what the
+# analysis reports as over-broad at high severity (ZPA-AS-04), so it is refused.
+WIDEST_PREFIX = {4: 9, 6: 33}
+
+
 def check_domain(v: Any, what: str, *, wildcard_ok: bool = True) -> str:
-    d, why = ao.normalize_domain(v)
+    raw = str(v or "").strip()
+    if not raw.isascii():   # an IDN in the punycode form ZPA stores: the app's one encoder (UTS 46), "*." kept
+        raw = zia_path_modules.entry_host(raw)
+    d, why = ao.normalize_domain(raw)
     if why:
         raise _err(f"{what}: '{str(v)[:60]}' {why}.")
     if not wildcard_ok and (d.startswith("*.") or "/" in d):
         raise _err(f"{what}: enter one server name or IP address, not a wildcard or a range.")
+    if "/" in d:
+        net = ipaddress.ip_network(d, strict=False)
+        if net.prefixlen < WIDEST_PREFIX[net.version]:
+            raise _err(f"{what}: '{d}' covers {net.num_addresses:,} addresses, far more than one application; "
+                       f"give its own subnet (/{WIDEST_PREFIX[net.version]} or narrower).")
     return d
 
 
@@ -312,6 +327,9 @@ def _zpa(client: Any):
     z = getattr(client, "zpa", None)
     if z is None:
         raise _err("This sign-in has no ZPA API: ZPA needs a OneAPI API client and the ZPA customer ID.")
+    problem = zr.customer_id_problem(client)
+    if problem:
+        raise _err(problem.replace("nothing was read from ZPA", "nothing was read from or written to ZPA"))
     return z
 
 
@@ -346,11 +364,16 @@ LIST_LABELS = {"connector_group": "App Connector groups", "provisioning_key": "p
 def list_kind(zpa: Any, kind: str, gate: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Every object of a kind, scrubbed; (rows, error)."""
     try:
-        rows, _complete = zr.list_all(_lister(zpa, kind), gate)
+        rows, complete = zr.list_all(_lister(zpa, kind), gate, zr.MAX_PAGES)
     except zr.Stopped:
         raise ao.Stopped("You clicked Stop: nothing more was read and nothing was written.")
     except Exception as e:  # noqa: BLE001 — reported as the read error
         return [], zr._err_text(e)
+    if not complete:
+        # A partial list would plan duplicates (a name not seen is created
+        # again) and miss objects to delete: refused, never used.
+        return [], (f"the list is longer than {zr.MAX_PAGES * zr.PAGE_SIZE:,} objects, so it could not be read completely "
+                    "and is not used")
     return [_scrub(r) for r in rows if isinstance(r, dict)], None
 
 
@@ -731,6 +754,33 @@ def _by_name(rows: List[Dict[str, Any]], name: str) -> Optional[Dict[str, Any]]:
     return next((r for r in rows if _name(r) == name), None)
 
 
+# The names the builder gives one object of these kinds per prefix. A name
+# "<q>-<suffix>" in such a list, where q is longer than the prefix p and
+# starts with "<p>-", is another build's prefix: its objects start with
+# "<p>-" too ("pov" and "pov-2"), and they are never p's.
+PREFIX_ANCHORS = {"connector_group": "connector-group", "provisioning_key": "provisioning-key", "segment_group": "segment-group",
+                  "server_group": "server-group", "access_rule": "access", "timeout_rule": "timeout", "inspection_rule": "inspection",
+                  "isolation_rule": "isolation", "inspection_profile": "owasp-inspection"}
+
+
+def other_prefixes(p: str, data: Dict[str, List[Dict[str, Any]]]) -> Set[str]:
+    """The longer prefixes of other builds found in `data` ({kind: rows})."""
+    out: Set[str] = set()
+    for kind, suffix in PREFIX_ANCHORS.items():
+        for r in data.get(kind) or []:
+            n = _name(r)
+            q = n[:-len(suffix) - 1] if n.endswith("-" + suffix) else ""
+            if q != p and q.startswith(p + "-") and PREFIX_RE.match(q):
+                out.add(q)
+    return out
+
+
+def owned(p: str, name: str, others: Iterable[str]) -> bool:
+    """Whether `name` is one of prefix p's objects: it starts with "<p>-" and
+    not with the "<q>-" of another build's longer prefix q."""
+    return name.startswith(p + "-") and not any(name.startswith(q + "-") for q in others)
+
+
 def _ref_or_id(p: _Plan, key: str, rows: List[Dict[str, Any]], name: str) -> Any:
     """The id an object has now, else a reference to the unit that creates it."""
     row = _by_name(rows, name)
@@ -958,11 +1008,12 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
     nspec = {"type": "zpa_policies", "prefix": p, "access": want_access, "timeout": want_timeout, "inspection": want_insp,
              "isolation_profile_id": iso, "reauth_timeout": rt, "reauth_idle_timeout": it}
     zpa = _zpa(client)
-    kinds = ["segment"] + [k for k, on in (("access_rule", want_access), ("timeout_rule", want_timeout), ("inspection_rule", want_insp),
+    kinds = ["segment", "segment_group"] + [k for k, on in (("access_rule", want_access), ("timeout_rule", want_timeout), ("inspection_rule", want_insp),
                                             ("inspection_profile", want_insp), ("isolation_rule", bool(iso))) if on]
     data, errors = read(zpa, kinds, say, cancel, optional=["isolation_profiles"] if iso else [])
     plan = _Plan(p)
-    apps = sorted(_oid(s) for s in data["segment"] if _name(s).startswith(p + "-"))
+    others = other_prefixes(p, data)
+    apps = sorted(_oid(s) for s in data["segment"] if owned(p, _name(s), others))
     if not apps:
         plan.blockers.append(f"No application segment named '{p}-…' in ZPA: build the application segments first (Build new: ZPA application segments).")
     shown = f"{len(apps)} application segment{'s' if len(apps) != 1 else ''} named {p}-…"
@@ -1054,13 +1105,14 @@ def plan_prefix_delete(client: Any, spec: Dict[str, Any], scope: Dict[str, Any],
     data, _ = read(zpa, DELETE_ORDER, say, cancel)
     plan = _Plan(p)
     rows = {(k, _oid(r)): r for k in DELETE_ORDER for r in data[k]}
+    others = other_prefixes(p, data)
     st = {key: state(key[0], r) for key, r in rows.items()}
     # An Undo first puts back what the build changed: the states below are those after it.
     restore_units: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
     for e in restore:
         key = (e["kind"], e["id"])
         r = rows.get(key)
-        if r is None or not _name(r).startswith(p + "-"):
+        if r is None or not owned(p, _name(r), others):
             plan.items.append(ao._unit(f"restore:{e['kind']}:{e['id']}", f"restore:{e['kind']}:{e['id']}", e["kind"], plan.obj(e["kind"], e["name"], e["id"]),
                                        "exists", False, False, status="noop", reason="no longer in ZPA with this prefix, so there is nothing to put back"))
             continue
@@ -1078,7 +1130,10 @@ def plan_prefix_delete(client: Any, spec: Dict[str, Any], scope: Dict[str, Any],
                                        _show(e["after"][f], {}), _show(e["before"][f], {}), reason="put back as it was before the build"))
         plan.groups.append({"key": gkey, "handler": "zpa_b_update", "target": {"kind": e["kind"], "id": e["id"], "name": _name(r), "prefix": p,
                                                                               "desired": dict(e["before"]), "before": dict(e["after"])}})
-    inventory = {key for key, r in rows.items() if _name(r).startswith(p + "-")}
+    inventory = {key for key, r in rows.items() if owned(p, _name(r), others)}
+    if others:
+        plan.warnings.append(f"Objects of the build{'s' if len(others) > 1 else ''} named {', '.join(sorted(others))}-… also start with {p}-; "
+                             "they belong to that prefix and are never deleted here.")
     if select:
         chosen = {s for s in select if s in inventory}
         gone = [s for s in select if s not in rows]
@@ -1141,7 +1196,7 @@ def plan_prefix_delete(client: Any, spec: Dict[str, Any], scope: Dict[str, Any],
                     label = f"{KINDS[u[0]]['label']} '{_name(rows[u])}'"
                     if u in blocked:
                         why.append(f"{label}, which is kept too")
-                    elif _name(rows[u]).startswith(p + "-"):
+                    elif owned(p, _name(rows[u]), others):
                         why.append(f"{label}, which is not selected")
                     else:
                         why.append(f"{label}, which was not made with the prefix {p}-")
@@ -1184,10 +1239,11 @@ def _halt_or_fail(run: Any, units: List[Dict[str, Any]], err: Optional[str], wha
 
 
 def _actor() -> Optional[str]:
+    """Who runs this build: the job's actor, or on the synchronous route the
+    actor its audit scope names (dlp_api_server._as_actor). A key is bound
+    to that person, so another writer holding the token cannot reveal it."""
     try:
-        import pack_jobs
-        job = pack_jobs.current()
-        return job.actor if job is not None else None
+        return ops.audit_context().get("actor") or None
     except Exception:  # noqa: BLE001
         return None
 

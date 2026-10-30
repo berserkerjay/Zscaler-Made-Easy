@@ -1,0 +1,7159 @@
+{
+ "operations": {
+  "DELETE /api/pov/templates/{template_id}": {
+   "body": null,
+   "params": {
+    "path:template_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "DELETE /api/tenant-profiles/{profile_id}": {
+   "body": null,
+   "params": {
+    "path:profile_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "DELETE /api/workspace/notes": {
+   "body": null,
+   "params": {
+    "query:auth_method": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:cloud": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:kind": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:profile_id": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:ref": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:tenant": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:vanity_domain": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/app/update/status": {
+   "body": null,
+   "params": {
+    "query:branch": {
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "query:refresh": {
+     "required": false,
+     "schema": {
+      "type": "boolean"
+     }
+    }
+   }
+  },
+  "GET /api/audit-timeline/{job_id}/export": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/auth/sso/callback": {
+   "body": null,
+   "params": {
+    "query:code": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:error": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:error_description": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:state": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/auth/sso/login": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/auth/status": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/beacon": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/beacon/status": {
+   "body": null,
+   "params": {
+    "query:refresh": {
+     "required": false,
+     "schema": {
+      "type": "boolean"
+     }
+    }
+   }
+  },
+  "GET /api/best-practices": {
+   "body": null,
+   "params": {
+    "query:service": {
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "GET /api/best-practices/crawl/status": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/branding": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/browser-extension.zip": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/browser-security/report/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/browser-security/report/{report_id}/export": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/bulk-test/fix/{fix_id}": {
+   "body": null,
+   "params": {
+    "path:fix_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/bulk-test/{job_id}/export": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:rows": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/bulk-test/{job_id}/list": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:area": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:purpose": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/change-queue": {
+   "body": null,
+   "params": {
+    "query:status": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:tenant": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/change-queue/export": {
+   "body": null,
+   "params": {
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:tenant": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/change-queue/{rid}": {
+   "body": null,
+   "params": {
+    "path:rid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/checks": {
+   "body": null,
+   "params": {
+    "query:scope": {
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "GET /api/checks/export": {
+   "body": null,
+   "params": {
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:scope": {
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "GET /api/compliance/export/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/compliance/report/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/console-index/cached": {
+   "body": null,
+   "params": {
+    "query:profile_id": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/deployments": {
+   "body": null,
+   "params": {
+    "query:tenant_label": {
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "GET /api/detection-health/export/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/detection-health/schedule": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/detection-health/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/device-posture/report/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/device-posture/report/{report_id}/export": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/digests": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/digests/{digest_id}": {
+   "body": null,
+   "params": {
+    "path:digest_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/dlp-packs": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/dlp-packs/jobs/{job_id}": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:since": {
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    }
+   }
+  },
+  "GET /api/dlp-packs/jobs/{job_id}/download": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:file": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/dlp-packs/plan/{report_id}/export": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:page": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/dlp-packs/{pack_id}": {
+   "body": null,
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/dlp-packs/{pack_id}/terraform": {
+   "body": null,
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/exports/columns": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/exports/plans": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/frameworks": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/guidance/sources": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/health": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/insights/export/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/logs/catalogue": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/offline/status": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/operations": {
+   "body": null,
+   "params": {
+    "query:tenant_label": {
+     "required": false,
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "GET /api/operations/jobs/{job_id}/plan.pdf": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:page_size": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/operations/jobs/{job_id}/request": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/operations/plugins": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/operations/{op_id}": {
+   "body": null,
+   "params": {
+    "path:op_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/pack-library": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/pack-library/{pack_id}/bundle": {
+   "body": null,
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/pack-library/{pack_id}/terraform.zip": {
+   "body": null,
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:assessor": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:profile_id": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/path-analyzer/batch/{job_id}/export": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/path-analyzer/batch/{job_id}/host": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:host": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/permissions/required": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/ping": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/posture/settings": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/pov/catalog": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/pov/kit/{file_id}": {
+   "body": null,
+   "params": {
+    "path:file_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/proposals": {
+   "body": null,
+   "params": {
+    "query:include_closed": {
+     "required": false,
+     "schema": {
+      "type": "boolean"
+     }
+    },
+    "query:tenant": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/proposals/export": {
+   "body": null,
+   "params": {
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:tenant": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/readiness/catalog": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/readiness/latest": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/reference": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/remediation/catalog": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/report/bypass/export/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/report/bypass/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/report/data-flow/export/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/report/data-flow/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/report/ssl-flow/export/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/report/ssl-flow/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/saas-apps": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/scope/prerequisites": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/secure-by-design": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/self-heal": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/shadow-rules/jobs/{job_id}/export": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/ssl-coverage/export/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/ssl-coverage/history": {
+   "body": null,
+   "params": {
+    "query:tenant": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/ssl-coverage/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/tenant-profiles": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/tenant-profiles/snapshots/{snapshot_id}/download": {
+   "body": null,
+   "params": {
+    "path:snapshot_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/tenant-profiles/{profile_id}": {
+   "body": null,
+   "params": {
+    "path:profile_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/updates/sources": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/upstream-check": {
+   "body": null,
+   "params": {
+    "query:refresh": {
+     "required": false,
+     "schema": {
+      "type": "boolean"
+     }
+    }
+   }
+  },
+  "GET /api/vendor-migrate/vendors": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/vertical-scope": {
+   "body": null,
+   "params": {
+    "query:industry": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:profile_id": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/workspace/notes": {
+   "body": null,
+   "params": {
+    "query:all_tenants": {
+     "required": false,
+     "schema": {
+      "type": "boolean"
+     }
+    },
+    "query:auth_method": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:cloud": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:kind": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:profile_id": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:ref": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:tag": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:tenant": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:vanity_domain": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/write-mode": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/zcc/fleet/{job_id}/diff": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:a": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:b": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/zcc/fleet/{job_id}/export": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:counts_only": {
+     "required": false,
+     "schema": {
+      "type": "boolean"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:what": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/zcc/install/catalog": {
+   "body": null,
+   "params": {}
+  },
+  "GET /api/zpa/report/{report_id}": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "GET /api/zpa/report/{report_id}/export": {
+   "body": null,
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:severity": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/app/restart": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/app/update": {
+   "body": {
+    "content": {
+     "application/json": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AppUpdateRequest"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": false
+   },
+   "params": {}
+  },
+  "POST /api/assess": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/AssessRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/audit-timeline/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/AuditTimelineRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/auth/logout": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/auth/unlock": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/UnlockRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/beacon/run": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BeaconRunRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/beacon/scope": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BeaconScopeRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/beacon/stop": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/benchmarks": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/benchmarks/export": {
+   "body": null,
+   "params": {
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/best-practices/crawl": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BPCrawlRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/browser-security/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BrowserSecurityRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/bulk-test/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BulkTestRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/bulk-test/{job_id}/fix": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BulkFixRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/change-queue/deploy": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ChangeRequestDeploy"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/change-queue/recipe": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ChangeRequestRecipe"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/change-queue/removal": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ChangeRequestRemoval"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/change-queue/{rid}/apply": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ChangeRequestApply"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:rid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/change-queue/{rid}/approve": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ChangeRequestDecision"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:rid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/change-queue/{rid}/comment": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ChangeRequestDecision"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:rid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/change-queue/{rid}/reject": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ChangeRequestDecision"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:rid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/change-queue/{rid}/withdraw": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ChangeRequestDecision"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:rid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/compliance": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/compliance/drilldown": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/compliance/report": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/console-index": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConsoleIndexRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/deployments/{dep_id}/undo": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DeploymentUndoRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:dep_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/detection-health": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DetectionHealthRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/device-posture/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ZpaAnalysisRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/diagnose/zcc": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/MigrateRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/digests/run": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DigestRunRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/apply": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackDeployRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/apply/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackDeployRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/baseline-status": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackDeployRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/export/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PackExportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/inventory/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/jobs/stop-before-start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/StopBeforeStartRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/jobs/{job_id}/cancel": {
+   "body": null,
+   "params": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/dlp-packs/journey": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackDeployRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/preflight": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackDeployRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/removal/apply": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PackRemovalRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/removal/apply/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PackRemovalRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/removal/inventory": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/removal/preflight": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PackRemovalRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/terraform": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackDeployRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/terraform/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackDeployRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/upload": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackUploadRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp-packs/{pack_id}/from-tenant": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PackFromTenantRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/dlp-packs/{pack_id}/import": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DLPPackImportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/dlp-packs/{pack_id}/verify": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/TenantCredsRequest"
+     }
+    },
+    "required": false
+   },
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/dlp/efficacy": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/MigrateRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp/efficacy/export": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DlpEfficacyExportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/dlp/efficacy/test": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DlpEfficacyCorpusRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/exports/client-connector/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigExportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/exports/locations/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ConfigExportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/exports/policies/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PolicyExportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/exports/url-categories/analyze/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/CategoryAnalyzerRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/exports/urls/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/flow/scenario": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/FlowScenarioRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/insights": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/InsightsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/insights/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/InsightsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/live-feed": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/LiveFeedRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/logs/analyze": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/LogAnalyzeRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/analyze": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/migrate/delete-all": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DeleteAllRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/enable": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/EnableRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/export": {
+   "body": null,
+   "params": {
+    "query:format": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/migrate/fetch": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/MigrateRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/optimize": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OptimizeRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/plan": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/migrate/post": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PostRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/reorder": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ReorderRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/status": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/MigrateRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/status/manual": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ManualModeRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/migrate/upload": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/UploadRulesRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/offline/leave": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/offline/sample": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OfflineSampleRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/operations/apply": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OperationRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/operations/apply/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OperationRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/operations/objects": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OperationObjectsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/operations/objects/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OperationObjectsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/operations/preview": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OperationRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/operations/preview/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OperationRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/operations/zpa/provisioning-key": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/OneTimeKeyRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/operations/{op_id}/undo/preview": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:op_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/operations/{op_id}/undo/preview/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:op_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/pack-library/preview": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PackLibraryUploadRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pack-library/upload": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PackLibraryUploadRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pack-library/{pack_id}/remove": {
+   "body": null,
+   "params": {
+    "path:pack_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/path-analyzer": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PathAnalyzerRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/path-analyzer/batch/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PathBatchRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/path-analyzer/identities": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PathIdentityRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/path-analyzer/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PathAnalyzerRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/posture/analyze": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PostureRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/posture/project": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PostureRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/posture/summary": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PostureRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/create": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/delete": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/export": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/import": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/insights/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovInsightsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/open": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/prove/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovProveRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/report": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/templates": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/pov/update": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PovRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/proposals/{tenant}/{pid}/apply": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ProposalApplyRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:pid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "path:tenant": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/proposals/{tenant}/{pid}/decide": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ProposalDecision"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:pid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "path:tenant": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/proposals/{tenant}/{pid}/preview": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ProposalApplyRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:pid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "path:tenant": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "query:direction": {
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/proposals/{tenant}/{pid}/rollback": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ProposalApplyRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:pid": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    "path:tenant": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/rate-check": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/RateCheckRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/readiness/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ReadinessRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/remediation/execute": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/RemediationExecuteRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/remediation/plan": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/RemediationPlanRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/report/bypass": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedReportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/report/bypass/export": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BypassExportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/report/data-flow": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DataFlowRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/report/data-flow/{report_id}/trace": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/DataFlowTraceRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:report_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/report/docx": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/report/findings-csv": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/report/ssl-flow": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedReportRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/report/xlsx": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/self-heal/run": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/self-heal/tenant/accept": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/SelfHealAcceptRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/self-heal/tenant/auto-apply": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/self-heal/tenant/heal": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/SelfHealHealRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/self-heal/tenant/scan": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/SelfHealScanRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/self-heal/tenant/view": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/shadow-rules": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ShadowRulesRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/shadow-rules/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ShadowRulesRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/ssl-coverage/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/SslCoverageRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/tenant-profiles": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/TenantProfileRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/tenant-profiles/snapshots/compare/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/SnapshotCompareRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/tenant-profiles/snapshots/open-file": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/SnapshotFileRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/tenant-profiles/snapshots/save/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ScopedTenantCredsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/tenant-profiles/snapshots/{snapshot_id}/delete": {
+   "body": null,
+   "params": {
+    "path:snapshot_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/tenant-profiles/snapshots/{snapshot_id}/open": {
+   "body": null,
+   "params": {
+    "path:snapshot_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "POST /api/tenant/check": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/TenantCredsRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/updates/check": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/UpdateCheckRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/updates/reset-cache": {
+   "body": null,
+   "params": {}
+  },
+  "POST /api/vendor-migrate/compile": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/VendorMigrateCompileRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/vendor-migrate/inventory": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/VendorMigrateInventoryRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/vendor-migrate/workspace": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/VendorMigrateCompileRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/workspace/notes": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/WorkspaceNoteRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/write-mode": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/WriteModeRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/zcc/fleet/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ZccFleetRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/zcc/install": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ZccInstallRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/zpa/analysis/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ZpaAnalysisRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "POST /api/zpa/diagnose": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/ZpaDiagnoseRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  },
+  "PUT /api/posture/settings": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/PostureSettings"
+     }
+    },
+    "required": true
+   },
+   "params": {}
+  }
+ },
+ "responses": {
+  "/api/auth/status": {
+   "required": "boolean",
+   "sso": "boolean",
+   "token_file": "null",
+   "unlocked": "boolean"
+  },
+  "/api/change-queue": {
+   "counts": "object",
+   "items": "array",
+   "settings": "object",
+   "statuses": "array",
+   "viewer": "object",
+   "writes_enabled": "boolean"
+  },
+  "/api/checks": {
+   "": "array"
+  },
+  "/api/deployments": {
+   "deployments": "array",
+   "writes_enabled": "boolean"
+  },
+  "/api/detection-health/schedule": {
+   "enabled": "boolean",
+   "interval_hours": "null",
+   "interval_seconds": "null",
+   "last_run_at": "null",
+   "last_status": "null",
+   "next_run_at": "null",
+   "profiles": "object",
+   "runs_while": "string",
+   "setting": "string"
+  },
+  "/api/digests": {
+   "checks_config": "object",
+   "digests": "array",
+   "guidance_queue": "object",
+   "notifications": "object",
+   "schedule": "object",
+   "sources": "object"
+  },
+  "/api/dlp-packs": {
+   "packs": "array"
+  },
+  "/api/exports/columns": {
+   "columns": "object",
+   "defaults": "object",
+   "identity": "array",
+   "layouts": "array",
+   "separators": "array"
+  },
+  "/api/exports/plans": {
+   "plans": "array"
+  },
+  "/api/frameworks": {
+   "": "array"
+  },
+  "/api/guidance/sources": {
+   "sources": "array",
+   "stale_days": "number",
+   "topics": "array"
+  },
+  "/api/logs/catalogue": {
+   "accepts": "array",
+   "checked": "array",
+   "max_body_mb": "number"
+  },
+  "/api/operations": {
+   "operations": "array",
+   "writes_enabled": "boolean"
+  },
+  "/api/pack-library": {
+   "bind_host": "string",
+   "env": "object",
+   "max_upload_mb": "number",
+   "packs": "array",
+   "packs_root": "string",
+   "ui_auth": "boolean",
+   "user_packs_dir": "string",
+   "writes_allowed": "boolean",
+   "writes_to_tenant": "boolean"
+  },
+  "/api/permissions/required": {
+   "global_notes": "array",
+   "partial_note": "string",
+   "portal_url": "string",
+   "readiness": "object",
+   "scopes": "object",
+   "write_permissions": "array"
+  },
+  "/api/ping": {
+   "ok": "boolean"
+  },
+  "/api/posture/settings": {
+   "notify_score_drop": "boolean",
+   "score_drop_points": "number"
+  },
+  "/api/reference": {
+   "pages": "array"
+  },
+  "/api/remediation/catalog": {
+   "catalog": "array"
+  },
+  "/api/saas-apps": {
+   "applications": "array",
+   "new_since_seed": "null",
+   "path": "string",
+   "refreshed_from_pages": "boolean",
+   "source": "string",
+   "types": "object",
+   "updated_at": "string"
+  },
+  "/api/scope/prerequisites": {
+   "names": "object",
+   "prerequisites": "object",
+   "required_dlp_note": "string"
+  },
+  "/api/secure-by-design": {
+   "checks": "array",
+   "counts": "object",
+   "grade": "string",
+   "note": "string",
+   "principles": "array",
+   "reference": "string",
+   "score": "number"
+  },
+  "/api/ssl-coverage/history": {
+   "history": "array",
+   "tenant": "string"
+  },
+  "/api/tenant-profiles": {
+   "profiles": "array",
+   "store": "string",
+   "unfiled_snapshots": "array"
+  },
+  "/api/updates/sources": {
+   "": "array"
+  },
+  "/api/vendor-migrate/vendors": {
+   "max_body_mb": "number",
+   "provider_version": "string",
+   "vendors": "array"
+  },
+  "/api/vertical-scope": {
+   "frameworks": "array",
+   "industries": "array",
+   "industry": "string",
+   "industry_packs": "array",
+   "pack_names": "array",
+   "packs": "array",
+   "packs_from": "string",
+   "reason": "string",
+   "scoped": "boolean"
+  },
+  "/api/write-mode": {
+   "bind_host": "string",
+   "can_toggle": "boolean",
+   "confirm_phrase": "string",
+   "enabled": "boolean",
+   "how_to_enable": "string",
+   "reason": "string",
+   "source": "string"
+  }
+ },
+ "schemas": {
+  "AppUpdateRequest": {
+   "properties": {
+    "branch": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "type": "object"
+  },
+  "AssessRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "org_name": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scope": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AuditTimelineRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "days": {
+     "type": "integer"
+    },
+    "end": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "include_zia": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "start": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BPCrawlRequest": {
+   "properties": {
+    "force": {
+     "type": "boolean"
+    },
+    "skip_tls_verify": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "BeaconRunRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "online": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "tenant_watch": {
+     "type": "boolean"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BeaconScopeRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BrowserSecurityRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BulkFixRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "area": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "purpose": {
+     "type": "string"
+    },
+    "rows": {
+     "items": {
+      "type": "integer"
+     },
+     "type": "array"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BulkTestRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "lookup": {
+     "type": "boolean"
+    },
+    "max_lookup_requests": {
+     "type": "integer"
+    },
+    "network": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "platform": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "report_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "text": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "zpa_report_id": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BypassExportRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "format": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "CategoryAnalyzerRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "categories": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "max_urls": {
+     "type": "integer"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ChangeRequestApply": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ChangeRequestDecision": {
+   "properties": {
+    "by": {
+     "type": "string"
+    },
+    "comment": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ChangeRequestDeploy": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "apply_tweaks": {
+     "type": "boolean"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channel_targets": {
+     "additionalProperties": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "mode": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "pack_ids": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "password": {
+     "type": "string"
+    },
+    "plan_hash": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "restore_drift": {
+     "type": "boolean"
+    },
+    "title": {
+     "type": "string"
+    },
+    "use_rank_0": {
+     "type": "boolean"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "verify": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ChangeRequestRecipe": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "check_id": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "criteria": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "note": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ChangeRequestRemoval": {
+   "properties": {
+    "all": {
+     "type": "boolean"
+    },
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "deployment_id": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "pack_ids": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "password": {
+     "type": "string"
+    },
+    "plan_hash": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rules": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "title": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigExportRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "columns": {
+     "additionalProperties": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "type": "object"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "layout": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "separator": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConsoleIndexRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "refresh": {
+     "type": "boolean"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DLPPackDeployRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "apply_tweaks": {
+     "type": "boolean"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channel_targets": {
+     "additionalProperties": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "mode": {
+     "type": "string"
+    },
+    "pack_ids": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "password": {
+     "type": "string"
+    },
+    "plan_hash": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "restore_drift": {
+     "type": "boolean"
+    },
+    "use_rank_0": {
+     "type": "boolean"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "verify": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "DLPPackImportRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "apply_tweaks": {
+     "type": "boolean"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "plan_hash": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "use_rank_0": {
+     "type": "boolean"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "verify": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "DLPPackUploadRequest": {
+   "properties": {
+    "dictionaries": {
+     "anyOf": [
+      {
+       "items": {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "engines": {
+     "anyOf": [
+      {
+       "items": {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "pack_name": {
+     "type": "string"
+    },
+    "policies": {
+     "anyOf": [
+      {
+       "items": {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "pack_name"
+   ],
+   "type": "object"
+  },
+  "DataFlowRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "destinations": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "platform": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DataFlowTraceRequest": {
+   "properties": {
+    "destination": {
+     "type": "string"
+    },
+    "network": {
+     "type": "string"
+    },
+    "platform": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DeleteAllRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "dry_run": {
+     "type": "boolean"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DeploymentUndoRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DetectionHealthRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "days": {
+     "type": "integer"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "settings": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DigestRunRequest": {
+   "properties": {
+    "notify": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "DlpEfficacyCorpusRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "corpus": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "max_dicts": {
+     "type": "integer"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DlpEfficacyExportRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "format": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "EnableRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "dry_run": {
+     "type": "boolean"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "FlowScenarioRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channel": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "corpus": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "destination": {
+     "type": "string"
+    },
+    "file_type": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "network": {
+     "type": "string"
+    },
+    "operation": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "platform": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scenario_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "HTTPValidationError": {
+   "properties": {
+    "detail": {
+     "items": {
+      "$ref": "#/components/schemas/ValidationError"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "InsightsRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "end_ms": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "include_users": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "start_ms": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "traffic_unit": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "window": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "LiveFeedRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "since": {
+     "type": "string"
+    },
+    "stats": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "LogAnalyzeRequest": {
+   "properties": {
+    "files": {
+     "items": {
+      "$ref": "#/components/schemas/PackUploadFile"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "files"
+   ],
+   "type": "object"
+  },
+  "ManualModeRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "mode": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "MigrateRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "OfflineSampleRequest": {
+   "properties": {
+    "reset": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "OneTimeKeyRequest": {
+   "properties": {
+    "token": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "OperationObjectsRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "family": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "OperationRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "confirm_text": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "operation": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "password": {
+     "type": "string"
+    },
+    "plan_hash": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "undo_of": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "OptimizeRequest": {
+   "properties": {
+    "exceptions": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "rules": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "PackExportRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "dictionaries": {},
+    "engines": {},
+    "format": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "include_dependencies": {
+     "type": "boolean"
+    },
+    "pack_name": {
+     "type": "string"
+    },
+    "parts": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rules": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PackFromTenantRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "html_threshold": {
+     "type": "integer"
+    },
+    "name_filter": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "prefix": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "threshold": {
+     "type": "integer"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PackLibraryUploadRequest": {
+   "properties": {
+    "description": {
+     "type": "string"
+    },
+    "files": {
+     "items": {
+      "$ref": "#/components/schemas/PackUploadFile"
+     },
+     "type": "array"
+    },
+    "pack_id": {
+     "type": "string"
+    },
+    "pack_name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "files"
+   ],
+   "type": "object"
+  },
+  "PackRemovalRequest": {
+   "properties": {
+    "all": {
+     "type": "boolean"
+    },
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "deployment_id": {
+     "type": "string"
+    },
+    "pack_ids": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "password": {
+     "type": "string"
+    },
+    "plan_hash": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rules": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PackUploadFile": {
+   "properties": {
+    "content": {
+     "type": "string"
+    },
+    "encoding": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "content",
+    "name"
+   ],
+   "type": "object"
+  },
+  "PathAnalyzerRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "destination": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "identity": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "network": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "platform": {
+     "type": "string"
+    },
+    "port": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "protocol": {
+     "type": "string"
+    },
+    "report_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "source": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "workload": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "zpa_report_id": {
+     "type": "string"
+    },
+    "ztw_report_id": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PathBatchRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "har_hosts": {
+     "items": {},
+     "type": "array"
+    },
+    "network": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "platform": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "report_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PathIdentityRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "kind": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "query": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PolicyExportRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "columns": {
+     "additionalProperties": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "type": "object"
+    },
+    "format": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "layout": {
+     "type": "string"
+    },
+    "page": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "policies": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "separator": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PostRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "dry_run": {
+     "type": "boolean"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "mode": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "proposed_rules": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PostureRequest": {
+   "properties": {
+    "channel_coverage": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "checks": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "hidden_checks": {
+     "type": "integer"
+    },
+    "include_queue": {
+     "type": "boolean"
+    },
+    "limit": {
+     "type": "integer"
+    },
+    "logs": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "queue_tenant": {
+     "type": "string"
+    },
+    "selected": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "PostureSettings": {
+   "properties": {
+    "notify_score_drop": {
+     "type": "boolean"
+    },
+    "score_drop_points": {
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "PovInsightsRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "end_ms": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "include_users": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "start_ms": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "traffic_unit": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "window": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PovProveRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "destination": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "identity": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "network": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "platform": {
+     "type": "string"
+    },
+    "port": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "protocol": {
+     "type": "string"
+    },
+    "report_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "source": {
+     "type": "string"
+    },
+    "test_id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "workload": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "zpa_report_id": {
+     "type": "string"
+    },
+    "ztw_report_id": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PovRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "changes": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "content": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "format": {
+     "type": "string"
+    },
+    "intake": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "name": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "replace": {
+     "type": "boolean"
+    },
+    "rev": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "template_id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ProposalApplyRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "by": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ProposalDecision": {
+   "properties": {
+    "by": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "string"
+    },
+    "days": {
+     "type": "integer"
+    },
+    "decision": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "decision"
+   ],
+   "type": "object"
+  },
+  "RateCheckRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "counts": {
+     "additionalProperties": {
+      "type": "integer"
+     },
+     "type": "object"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ReadinessRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "RemediationExecuteRequest": {
+   "properties": {
+    "assessor": {
+     "type": "string"
+    },
+    "check_id": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "boolean"
+    },
+    "criteria": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "dry_run": {
+     "type": "boolean"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "RemediationPlanRequest": {
+   "properties": {
+    "check_id": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "criteria": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ReorderRequest": {
+   "properties": {
+    "order": {
+     "items": {},
+     "type": "array"
+    },
+    "rules": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "ScopedReportRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ScopedTenantCredsRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "SelfHealAcceptRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "id": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "SelfHealHealRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "confirm": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "ids": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "SelfHealScanRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "days": {
+     "type": "integer"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "include_who": {
+     "type": "boolean"
+    },
+    "pack_ids": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ShadowRulesRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "web_dlp_mode": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "SnapshotCompareRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "snapshot_id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "SnapshotFileRequest": {
+   "properties": {
+    "content": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "content"
+   ],
+   "type": "object"
+  },
+  "SslCoverageRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "include_volume": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    },
+    "window": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "StopBeforeStartRequest": {
+   "properties": {
+    "start_token": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "start_token"
+   ],
+   "type": "object"
+  },
+  "TenantCredsRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "TenantProfileRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "baseline_packs": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "frameworks": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "id": {
+     "type": "string"
+    },
+    "industry": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "notes": {
+     "type": "string"
+    },
+    "org_name": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "remember_secret": {
+     "type": "boolean"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "UnlockRequest": {
+   "properties": {
+    "token": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "UpdateCheckRequest": {
+   "properties": {
+    "only": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "reset": {
+     "type": "boolean"
+    },
+    "skip_tls_verify": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "UploadRulesRequest": {
+   "properties": {
+    "rules": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "ValidationError": {
+   "properties": {
+    "ctx": {
+     "type": "object"
+    },
+    "input": {},
+    "loc": {
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       }
+      ]
+     },
+     "type": "array"
+    },
+    "msg": {
+     "type": "string"
+    },
+    "type": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "loc",
+    "msg",
+    "type"
+   ],
+   "type": "object"
+  },
+  "VendorMigrateCompileRequest": {
+   "properties": {
+    "decisions": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "export": {
+     "$ref": "#/components/schemas/PackUploadFile"
+    },
+    "vendor": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "decisions",
+    "export"
+   ],
+   "type": "object"
+  },
+  "VendorMigrateInventoryRequest": {
+   "properties": {
+    "export": {
+     "$ref": "#/components/schemas/PackUploadFile"
+    },
+    "vendor": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "export"
+   ],
+   "type": "object"
+  },
+  "WorkspaceNoteRequest": {
+   "properties": {
+    "action": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "done": {
+     "type": "boolean"
+    },
+    "href": {
+     "type": "string"
+    },
+    "item_id": {
+     "type": "string"
+    },
+    "kind": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "ref": {
+     "type": "string"
+    },
+    "tag": {
+     "type": "string"
+    },
+    "tags": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "tenant": {
+     "type": "string"
+    },
+    "text": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "WriteModeRequest": {
+   "properties": {
+    "confirm": {
+     "type": "string"
+    },
+    "enable": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ZccFleetRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ZccInstallRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "app_profile_id": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "installer": {
+     "type": "string"
+    },
+    "installer_name": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    },
+    "platform": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "reveal": {
+     "type": "boolean"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "values": {
+     "additionalProperties": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "type": "object"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ZpaAnalysisRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ZpaDiagnoseRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "destination": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "port": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
+    },
+    "protocol": {
+     "type": "string"
+    },
+    "report_id": {
+     "type": "string"
+    },
+    "rule_type": {
+     "type": "string"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "user": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  }
+ }
+}

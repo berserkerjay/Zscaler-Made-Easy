@@ -10,12 +10,13 @@ secure defaults, and three of them cannot be switched off here:
   - loopback only: the server listens on 127.0.0.1, whatever
     ZSCALER_BIND_HOST or local_settings.env say (a copy that should be
     reachable from the network is the container's job, behind SSO);
-  - the UI token gate stays on (ZSCALER_UI_AUTH=0 is ignored); the browser
-    is opened with the token the way the launchers open it, and the token
-    file is written to the per-user data folder, owner-only;
-  - read-only: nothing here turns writes on. Writing to a tenant needs
-    the in-app switch and its gates, or ENABLE_WRITE_ACTIONS set to the
-    confirmation phrase by the person starting it, exactly as elsewhere.
+  - the UI token gate stays on (ZSCALER_UI_AUTH=0 is ignored), with a
+    fresh random token every start (a fixed ZSCALER_UI_TOKEN is ignored);
+    the browser is opened with the token the way the launchers open it,
+    and the token file is written to the per-user data folder, owner-only;
+  - read-only at every start: ENABLE_WRITE_ACTIONS (from the environment or
+    local_settings.env) is ignored. Writing to a tenant needs the in-app
+    write-mode switch, with its typed confirmation, and every other gate.
 
 The bundled app folder is replaced by every new download and may be
 read-only, so everything the app writes (tenant profiles, audit log,
@@ -46,6 +47,7 @@ LOOPBACK = "127.0.0.1"
 FIRST_PORT = 8000
 PORT_TRIES = 100
 SETTINGS_FILE = "local_settings.env"
+MAX_SETTINGS_BYTES = 256 * 1024
 BUILD_INFO_FILE = "standalone_build.json"
 # Set for the lifetime of a standalone server. A process that starts with
 # it already set was spawned by the app itself (a subprocess that reached
@@ -87,10 +89,16 @@ def load_settings_file(path: str, env: MutableMapping[str, str]) -> List[str]:
     environment wins. Returns the keys it set."""
     added: List[str] = []
     try:
-        with open(path, encoding="utf-8") as f:
-            lines = f.read().splitlines()
-    except OSError:
+        # utf-8-sig: Notepad's "UTF-8 with BOM" must not glue the BOM to the
+        # first key. A file that is not text, or far larger than any settings
+        # file, is not read: the app starts with its defaults instead.
+        with open(path, encoding="utf-8-sig") as f:
+            text = f.read(MAX_SETTINGS_BYTES + 1)
+    except (OSError, ValueError):
         return added
+    if len(text) > MAX_SETTINGS_BYTES:
+        return added
+    lines = text.splitlines()
     for line in lines:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -117,6 +125,13 @@ def configure(env: MutableMapping[str, str], data: str) -> List[str]:
     if (env.get("ZSCALER_UI_AUTH") or "").strip().lower() in _OFF:
         notes.append("ZSCALER_UI_AUTH=0 is ignored: the standalone edition always asks for the UI token.")
     env["ZSCALER_UI_AUTH"] = "1"
+    # A fixed token would never rotate and may be short; a settings file in
+    # the data folder (which any program run as this user can write) must
+    # not pin it, nor switch writes on before anyone has typed the phrase.
+    if (env.pop("ZSCALER_UI_TOKEN", None) or "").strip():
+        notes.append("ZSCALER_UI_TOKEN is ignored: the standalone edition makes a new random UI token every start.")
+    if env.pop("ENABLE_WRITE_ACTIONS", None) is not None:
+        notes.append("ENABLE_WRITE_ACTIONS is ignored: the standalone edition starts read-only; turn on write mode with the switch in the app.")
     # Not a container: the container's exposure rules (DLP_CHECK_HOST_BIND)
     # must not apply to a process on this machine's own network stack.
     env.pop("DLP_CHECK_IN_CONTAINER", None)

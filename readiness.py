@@ -247,6 +247,10 @@ def _clean_text(v: Any, limit: int = 120) -> str:
 def _iso(ts: Any) -> Optional[str]:
     if isinstance(ts, bool) or not isinstance(ts, (int, float)):
         return None
+    # Bounded before any arithmetic: a JSON integer has no size limit, and
+    # one too large for a float would raise OverflowError in the division.
+    if not 0 < ts < 32503680000 * 1000:
+        return None
     if ts > 1e11:   # milliseconds
         ts = ts / 1000.0
     if not 0 < ts < 32503680000:
@@ -459,7 +463,9 @@ def parse_subscriptions(body: Any, now: Optional[float] = None) -> List[Dict[str
         active = s.get("subscribed") is not False and not re.search(r"EXPIRED|CANCEL", status, re.I)
         end = s.get("endDate")
         end_ts = None
-        if isinstance(end, (int, float)) and not isinstance(end, bool):
+        # Bounded before any arithmetic, as in _iso: a JSON integer has no size
+        # limit, and one too large for a float raises OverflowError.
+        if isinstance(end, (int, float)) and not isinstance(end, bool) and 0 < end < 32503680000 * 1000:
             end_ts = end / 1000.0 if end > 1e11 else float(end)
         area, name = SKU_INFO.get(sid, ("", ""))
         if not name and sid.startswith("ZIA_ISO_"):
@@ -499,7 +505,10 @@ def _zia_level(role: Optional[Dict[str, Any]], alternatives: Iterable[str]) -> O
 
 
 def _find_by(rows: Any, name: str, rid: str, name_keys=("name",)) -> Optional[Dict[str, Any]]:
-    for r in rows if isinstance(rows, list) else []:
+    if isinstance(rows, dict):
+        # ZPA lists in an envelope: {"totalPages": "1", "list": [...]} (zpa.role_controller.list_roles's body).
+        rows = rows.get("list")
+    for r in (rows if isinstance(rows, list) else [])[:1000]:
         if not isinstance(r, dict):
             continue
         if rid and str(r.get("id", "")) == rid:
@@ -837,8 +846,11 @@ def _feature(key: str, label: str, product: str, facts: Dict[str, Any], products
     out = {"key": key, "label": label, "kind": kind, "product": product, "status": "ok", "why": "", "steps": [], "notes": []}
     if extra:
         out.update(extra)
-    if p["access"] == "not_in_scope" and kind == "scope":
-        out.update(status="not_in_scope", why=f"{p['label']} is not in scope, so it was not checked.")
+    if p["access"] == "not_in_scope" and kind in ("scope", "write"):
+        # A builder for a product that is not in scope was not checked (and
+        # refuses to run until it is): never "Will work" on no evidence.
+        out.update(status="not_in_scope", why=f"{p['label']} is not in scope, so it was not checked." +
+                   (" Tick it on the Scope page to use this." if kind == "write" else ""))
         return out
     if p["access"] == "none":
         out.update(status="blocked", why=p["why"], steps=p["steps"] or _steps_product(product))
@@ -912,6 +924,9 @@ def evaluate(facts: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if spec.get("product") == "ZPA":
             f = _feature(key, spec["label"], "ZPA", facts, products, needs=[], optional=[], level=2, kind="write")
+            if "ZPA" in (facts.get("in_scope") or []) and not facts.get("customer_id_given") and f["status"] in ("ok", "unknown", "read_only"):
+                # as the zpa scope: every ZPA call names the customer ID, so nothing here can run without it
+                f.update(status="blocked", why="The ZPA customer ID is empty: every ZPA read and change needs it.", steps=_steps_customer_id())
             classes = ((facts.get("probes") or {}).get("ZPA") or {}).get("classes") or {}
             weak = [n for n, t in classes.items() if any(c.lower() in n.lower() for c in spec.get("zpa_classes", ())) and t != "FULL"]
             if weak and f["status"] in ("ok", "read_only"):
@@ -1037,13 +1052,21 @@ def scope_badge(f: Optional[Dict[str, Any]]) -> str:
             f'{_steps_html(f.get("steps"))}</div>')
 
 
-def html_section(results: List[Dict[str, Any]]) -> str:
+LOCKED_NOTE = ("The live answers are shown only to a browser that has unlocked this app with its UI token (or signed in): open the app "
+               "from the launcher, or paste the token from ui_token.txt, then reload this page. The minimum access per scope is listed below.")
+
+
+def html_section(results: List[Dict[str, Any]], locked: bool = False) -> str:
     """The live readiness block of /permissions, from the latest answers
-    (newest first). Every value is escaped; an empty state says why."""
+    (newest first). Every value is escaped; an empty state says why.
+    `locked`: the caller has not passed the UI token or sign-in gate, so no
+    answer is shown (they name a tenant, its roles and its licences)."""
     head = ('<section class="rd" aria-labelledby="rdH"><h2 id="rdH">What this API client can do now</h2>'
             '<p class="lead">Checked right after you click Authenticate on the Start page: the products and roles in the access token '
             '(read without checking its signature, for display only) and a few reads for what is in scope (licences, the API role). '
             'Click Authenticate again to refresh, then reload this page.</p>')
+    if locked:
+        return head + f'<p class="rd-empty">{_e(LOCKED_NOTE)}</p></section>'
     if not results:
         return head + ('<p class="rd-empty">No readiness check has run on this server yet, so there is nothing live to show. Sign in with '
                        'Authenticate on the Start page; the check runs by itself and its answer appears here. The minimum access per scope is listed below.</p></section>')

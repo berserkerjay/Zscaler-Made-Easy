@@ -53,9 +53,11 @@ def test_check_6_3_state_zero_is_not_hidden_by_status():
     assert r.status == R.WARN and r.detail.startswith("1 orphaned device(s).") and "1 device(s) report" in r.detail
 
 
-def test_check_6_3_unreadable_devices_pass_without_error():
-    """ASVS V5.1.4 · CWE-754: an unreadable device list (HTTP 403) does not raise."""
-    assert c_6_3(FakeCl({"error": "forbidden"}, 403)).status == R.PASS
+def test_check_6_3_unreadable_devices_are_not_permitted_not_pass():
+    """ASVS V5.1.4 · CWE-754: an unreadable device list (HTTP 403) does not raise and is "not permitted", never a pass."""
+    import permissions
+    r = c_6_3(FakeCl({"error": "forbidden"}, 403))
+    assert r.status == R.INFO and permissions.classify({"status": r.status, "detail": r.detail}) == "not_permitted"
 
 
 def test_device_fleet_excludes_numeric_removed_devices():

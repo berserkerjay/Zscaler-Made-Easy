@@ -157,8 +157,22 @@ _FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M:%S", "%Y/%m/%
             "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %I:%M %p", "%B %d, %Y %I:%M:%S %p", "%b %d, %Y %I:%M:%S %p", "%B %d, %Y %H:%M:%S",
             "%b %d, %Y %H:%M:%S", "%a %b %d %H:%M:%S %Y", "%d %b %Y %H:%M:%S", "%d-%b-%Y %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y")
 _ZONE_WORD = re.compile(r"(?<!\s)\s+(UTC|GMT|Z)$", re.I)
-_OTHER_ZONE = re.compile(r"(?<!\s)\s+[A-Z]{2,5}$")
+_OTHER_ZONE = re.compile(r"(?<!\s)\s+([A-Z]{2,5})$")
+_MID_ZONE = re.compile(r"(?<=\d)\s+([A-Z]{2,5})\s+(\d{4})$")   # "Tue Oct 20 10:15:30 PDT 2026"
 MAX_TIME_TEXT = 64   # no time ZIA or this app writes is longer; longer text is not a time (and is never pattern-matched)
+# Zone abbreviations that name one fixed offset (hours from UTC). One that
+# names several zones (IST: India, Ireland or Israel) or none listed here is
+# never guessed: the time is unreadable (listed last, as written) rather
+# than read as UTC and shifted by hours, which would also break the
+# CORRELATE_SECONDS match with Zscaler Made Easy's own writes. Assumed: CST
+# and BST are US Central and British Summer Time, the forms a ZIA admin
+# portal set to a US or UK time zone writes.
+ZONE_OFFSETS = {
+    "UTC": 0, "GMT": 0, "UT": 0, "WET": 0, "WEST": 1, "BST": 1, "CET": 1, "CEST": 2, "MET": 1, "MEST": 2, "EET": 2, "EEST": 3,
+    "MSK": 3, "EST": -5, "EDT": -4, "CST": -6, "CDT": -5, "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AKST": -9, "AKDT": -8,
+    "HST": -10, "NST": -3.5, "NDT": -2.5, "AST": -4, "ADT": -3, "JST": 9, "KST": 9, "HKT": 8, "SGT": 8, "AWST": 8, "ACST": 9.5,
+    "ACDT": 10.5, "AEST": 10, "AEDT": 11, "NZST": 12, "NZDT": 13,
+}
 
 
 def parse_time(value: Any) -> Optional[datetime]:
@@ -181,13 +195,20 @@ def parse_time(value: Any) -> Optional[datetime]:
             return datetime.strptime(t, fmt)
         except ValueError:
             pass
-    t2 = _OTHER_ZONE.sub("", t) if not re.search(r"\b(AM|PM)$", t, re.I) else t
-    for cand in (t, t2):
-        for fmt in _FORMATS:
-            try:
-                return datetime.strptime(cand, fmt).replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
+    tz, cand = timezone.utc, t
+    m = _OTHER_ZONE.search(t) if not re.search(r"\b(AM|PM)$", t, re.I) else None
+    mid = None if m else _MID_ZONE.search(t)
+    if m or mid:
+        off = ZONE_OFFSETS.get((m or mid).group(1))
+        if off is None:
+            return None   # a zone this page cannot place: never read as UTC
+        tz = timezone(timedelta(hours=off))
+        cand = t[:m.start()] if m else t[:mid.start()] + " " + mid.group(2)
+    for fmt in _FORMATS:
+        try:
+            return datetime.strptime(cand, fmt).replace(tzinfo=tz)
+        except ValueError:
+            continue
     return None
 
 
@@ -520,10 +541,20 @@ def read_zia_audit(client, start_ms: int, end_ms: int, *, log: LogFn = None, can
 # ── Zscaler Made Easy's own records ─────────────────────────────────────────────
 
 def _tenant_ok(value: Any, labels: Optional[Iterable[str]]) -> bool:
+    """With a tenant chosen (`labels`), only records that name it. A record
+    that names no tenant is left out (deny by default, as deployments.
+    list_all and self_heal match): it could be another customer's write."""
     if not labels:
         return True
     v = str(value or "")
-    return not v or v in set(labels)
+    return bool(v) and v in set(labels)
+
+
+def _unlabelled(deployments: List[Dict[str, Any]], entries: List[Dict[str, Any]]) -> int:
+    """How many tenant records name no tenant (left out when one is chosen)."""
+    n = sum(1 for r in deployments or [] if isinstance(r, dict) and not str(r.get("tenant_label") or ""))
+    return n + sum(1 for a in entries or [] if isinstance(a, dict) and str(a.get("event") or "") in ("object_write", "job_finished", "run_finished")
+                   and not str(a.get("tenant") or ""))
 
 
 def _ev(source: str, when: Optional[datetime], **fields: Any) -> Dict[str, Any]:
@@ -743,6 +774,9 @@ def build(*, window_: Dict[str, Any], zia: Optional[Dict[str, Any]], deployments
         notes.append(f"Only the newest {MAX_EVENTS} events are shown; {cut} older one(s) were left out. Choose a shorter window.")
     if labels:
         notes.append("Zscaler Made Easy's own records are shown for this tenant only (" + ", ".join(labels[:2]) + ").")
+        nolabel = _unlabelled(deployments, audit_entries)
+        if nolabel:
+            notes.append(f"{nolabel} of Zscaler Made Easy's record(s) name no tenant, so they are not shown here: they may belong to another tenant.")
     untimed = sum(1 for e in events if e.get("ts") is None)
     if untimed:
         notes.append(f"{untimed} event(s) have a time this page could not read; they are listed last with the time as written.")

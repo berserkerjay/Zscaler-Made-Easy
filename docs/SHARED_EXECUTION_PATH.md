@@ -51,7 +51,12 @@ the reference this path is measured against. The app never runs it.
    nothing it did not write.
 3. **ZIA's limits are handled the same way for every kind.** A rate
    limit (429), a busy tenant (502/503/504) or a timeout is retried up to
-   three times with backoff inside `call()`. Inside a run, a 403 on a
+   three times with backoff inside `call()`; a create answered by a
+   timeout or a 5xx may have been applied all the same, so it is sent
+   again only after a read by name shows it is not there (`name_check`),
+   and otherwise reported as not sent again. One write run per tenant at
+   a time (`tenant_run`): a second one is refused as busy, nothing read or
+   written. Inside a run, a 403 on a
    create, update or delete ("Resource Access Blocked", "Forbidden": ZIA
    blocking the client after a burst, or a pending change being applied)
    is answered inside `call()` by an activation of the tenant's pending

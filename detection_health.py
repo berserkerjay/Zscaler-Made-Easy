@@ -27,6 +27,7 @@ be overridden per request; nothing here writes to the tenant.
 """
 from __future__ import annotations
 
+import math
 import md_safe
 import re
 from datetime import datetime, timedelta, timezone
@@ -50,12 +51,56 @@ DEFAULTS: Dict[str, Any] = {
     # at or above this share.
     "dest_min_incidents": 3,
     "dest_fp_pct": 80,
-    "telemetry_patterns": None,  # None = TELEMETRY_PATTERNS below
+    "telemetry_patterns": None,  # None = TELEMETRY_PATTERNS below; an override is plain text (see clean_settings)
     "recent_limit": 40,          # the latest transactions listed with who / trigger / where
 }
 MONITOR_ACTIONS = {"ALLOW", "OFLCASB_DLP_REPORT_INCIDENT", "OFLCASB_DLP_ALLOW", "REPORT"}
 MAX_PAGES = 50           # 50 x 100 incidents per run
 PAGE_SIZE = 100
+# The incident search stopped at MAX_PAGES with more still to read: the
+# report is built on part of the window, so an absence proves nothing.
+TRUNCATED_NOTE = ("Only the first {n:,} incidents of the window were read ({pages} pages of {size}); the rest were not, so the "
+                  "counts are a lower bound and no rule is called dead.")
+NOT_FORWARDED_WHY = ("this rule does not send its matches to an Incident Receiver, so they never become Workflow Automation "
+                     "incidents and its activity was not measured")
+TRUNCATED_WHY = "only part of the window's incidents was read, so a rule without incidents was not measured"
+UNKNOWN_USER = "(unknown user)"
+UNKNOWN_DESTINATION = "(unknown destination)"
+
+# Overrides a request may send (DetectionHealthRequest.settings): whole
+# numbers within these bounds. Anything else is left at its default and
+# said in `settings_notes`; it never reaches int() or re.compile().
+INT_SETTINGS: Dict[str, Tuple[int, int]] = {
+    "days": (1, 180), "fp_window_days": (1, 180), "fp_rate_pct": (0, 100), "fp_min_incidents": (1, 1_000_000),
+    "dead_days": (1, 180), "promote_window_days": (1, 180), "promote_fp_pct": (0, 100), "promote_min_incidents": (1, 1_000_000),
+    "dest_min_incidents": (1, 1_000_000), "dest_fp_pct": (0, 100), "recent_limit": (0, 500)}
+LIST_MAX, ITEM_MAX = 50, 120
+
+
+def clean_settings(settings: Any) -> Tuple[Dict[str, Any], List[str]]:
+    """DEFAULTS with the valid overrides in `settings` applied, and a note
+    for each override left out. Whole numbers within INT_SETTINGS; not_real
+    a list of short texts; telemetry_patterns a list of short host or path
+    fragments matched as plain text (re.escape), never a regular
+    expression the request wrote (CWE-1333). Unknown keys are ignored."""
+    s = dict(DEFAULTS)
+    notes: List[str] = []
+    for k, v in (settings.items() if isinstance(settings, dict) else []):
+        if k in INT_SETTINGS:
+            lo, hi = INT_SETTINGS[k]
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or int(v) != v or not lo <= v <= hi:
+                notes.append(f"Setting {k} ignored: it must be a whole number from {lo} to {hi}; the default {DEFAULTS[k]} was used.")
+                continue
+            s[k] = int(v)
+        elif k in ("not_real", "telemetry_patterns"):
+            items = [str(x).strip()[:ITEM_MAX] for x in v if isinstance(x, str) and x.strip()][:LIST_MAX] if isinstance(v, (list, tuple)) else None
+            if not items:
+                notes.append(f"Setting {k} ignored: it must be a list of texts; the default was used.")
+                continue
+            if k == "telemetry_patterns":
+                items = [("^" + re.escape(x)) if x.startswith("/") else re.escape(x.lower()) for x in items]
+            s[k] = items
+    return s, notes
 
 
 # ── helpers ────────────────────────────────────────────────────────────
@@ -77,6 +122,23 @@ def _g(obj: Any, *names: str, default: Any = None) -> Any:
     return default
 
 
+def _whole(v: Any) -> int:
+    """A count from an incident record: a whole number, else 0 (text, NaN,
+    an infinity or a bool is no count)."""
+    if isinstance(v, bool):
+        return 0
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0
+    return int(f) if f == f and abs(f) != float("inf") and f >= 0 else 0
+
+
+def _items(v: Any) -> List[Any]:
+    """A list from an incident record; anything else (a number, a text) is none."""
+    return list(v) if isinstance(v, (list, tuple)) else []
+
+
 def _snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
@@ -88,11 +150,16 @@ def _both(name: str) -> Tuple[str, str]:
 def _parse_time(v: Any) -> Optional[datetime]:
     if v in (None, ""):
         return None
+    if isinstance(v, bool):
+        return None
     if isinstance(v, (int, float)):
         ts = float(v)
         if ts > 1e12:
             ts /= 1000.0
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        try:
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+        except (ValueError, OverflowError, OSError):   # NaN, an infinity, a year past 9999
+            return None
     s = str(v).strip()
     try:
         if s.endswith("Z"):
@@ -185,10 +252,10 @@ def verdict(status: Any, resolution: Any, closed_code: Any, not_real: Iterable[s
 def normalize_incident(inc: Any, not_real: Iterable[str]) -> Dict[str, Any]:
     d = inc.as_dict() if hasattr(inc, "as_dict") else inc
     mp = _g(d, *_both("matchingPolicies"), default={}) or {}
-    rules = [str(_g(r, "name", default="")) for r in (_g(mp, "rules", default=[]) or []) if _g(r, "name")]
-    engines = [str(_g(e, "name", default="")) for e in (_g(mp, "engines", default=[]) or []) if _g(e, "name")]
-    dicts = [{"name": str(_g(x, "name", default="")), "count": int(_g(x, *_both("matchCount"), default=0) or 0)}
-             for x in (_g(mp, "dictionaries", default=[]) or []) if _g(x, "name")]
+    rules = [str(_g(r, "name", default="")) for r in _items(_g(mp, "rules", default=[])) if _g(r, "name")]
+    engines = [str(_g(e, "name", default="")) for e in _items(_g(mp, "engines", default=[])) if _g(e, "name")]
+    dicts = [{"name": str(_g(x, "name", default="")), "count": _whole(_g(x, *_both("matchCount"), default=0))}
+             for x in _items(_g(mp, "dictionaries", default=[])) if _g(x, "name")]
     app = _g(d, *_both("applicationInfo"), default={}) or {}
     user = _g(d, *_both("userInfo"), default={}) or {}
     net = _g(d, *_both("networkInfo"), default={}) or {}
@@ -216,6 +283,7 @@ def normalize_incident(inc: Any, not_real: Iterable[str]) -> Dict[str, Any]:
         "_created": created,
         "status": str(status or ""),
         "resolution": str(resolution or closed_code or ""),
+        "closed_code": str(closed_code or ""),
         "severity": str(_g(d, "severity", default="") or ""),
         "channel": channel_of_incident(source_type, sub_type, integration),
         "source_type": str(source_type or ""),
@@ -230,15 +298,17 @@ def normalize_incident(inc: Any, not_real: Iterable[str]) -> Dict[str, Any]:
         "actions": [str(a) for a in actions if a],
         "file": str(_g(content, *_both("fileName"), default="") or ""),
         "rules": rules, "engines": engines, "dictionaries": dicts,
-        "match_count": int(_g(d, *_both("matchCount"), default=0) or 0),
+        "match_count": _whole(_g(d, *_both("matchCount"), default=0)),
         "real": verdict(status, resolution, closed_code, not_real),
     }
 
 
-def fetch_incidents(client, days: int = 30, log=None, *, max_pages: int = MAX_PAGES) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Every Workflow Automation incident created in the last `days`,
-    normalised. Errors are returned, never raised."""
-    end = datetime.now(timezone.utc)
+def fetch_incidents(client, days: int = 30, log=None, *, max_pages: int = MAX_PAGES,
+                    now: Optional[datetime] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Every Workflow Automation incident created in the last `days`
+    (ending `now`, default the current time), normalised. Errors are
+    returned, never raised."""
+    end = now or datetime.now(timezone.utc)
     start = end - timedelta(days=max(1, int(days)))
     return fetch_incidents_window(client, start, end, log, max_pages=max_pages)
 
@@ -285,6 +355,8 @@ def fetch_incidents_window(client, start: datetime, end: datetime, log=None, *, 
         if new == 0 or len(items) < PAGE_SIZE:
             break
         page += 1
+    else:
+        errors.append(TRUNCATED_NOTE.format(n=len(out), pages=max_pages, size=PAGE_SIZE))
     return out, errors
 
 
@@ -323,17 +395,24 @@ def rule_actions(client, channels: Optional[Iterable[str]] = None) -> Dict[str, 
     return actions
 
 
-def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datetime] = None, log=None) -> Dict[str, Any]:
+def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datetime] = None, log=None,
+                   scrub: Optional[Any] = None) -> Dict[str, Any]:
     """One live-feed poll: every incident created since `since` (default:
     two minutes ago, for the first call). Returns the normalised
     incidents (oldest first), `next_since` (pass this back next poll) and
     any read errors. Never raises."""
     now = now or datetime.now(timezone.utc)
+    if since is not None and since.tzinfo is None:   # a time without a zone is UTC, as the API's are
+        since = since.replace(tzinfo=timezone.utc)
+    if since is not None and since > now:            # a cursor from the future (a skewed clock) starts now
+        since = now
     if since is None:
         since = now - timedelta(seconds=LIVE_FIRST_LOOKBACK_SECONDS)
     elif since < now - timedelta(seconds=LIVE_POLL_CLAMP_SECONDS):
         since = now - timedelta(seconds=LIVE_POLL_CLAMP_SECONDS)
     incs, errors = fetch_incidents_window(client, since, now, log)
+    if scrub is not None:
+        errors = [scrub(str(e)) for e in errors]
     incs.sort(key=lambda i: i["_created"] or now)
     next_since = max((i["_created"] for i in incs if i.get("_created")), default=now)
     for i in incs:
@@ -359,13 +438,19 @@ def incident_action(inc: Dict[str, Any], rules_by_name: Dict[str, str]) -> str:
     return "monitor" if all(a in MONITOR_ACTIONS for a in found) else "enforced"
 
 
+_LIVE_COUNTERS = ("seen", "enforced", "monitor", "unknown_action", "open", "real", "not_real")
+
+
 def live_stats(prev: Optional[Dict[str, Any]], batch: List[Dict[str, Any]], rules_by_name: Dict[str, str]) -> Dict[str, Any]:
     """Roll a poll's incidents into the running session tally: seen,
     enforced (blocked/confirmed) vs monitor-only vs unknown (by the
     matched rule's configured action, not a guess), and the FP/TP split
     among the ones already closed. `prev` is the tally returned by the
     previous call, or None to start one."""
-    t = dict(prev) if prev else {"seen": 0, "enforced": 0, "monitor": 0, "unknown_action": 0, "open": 0, "real": 0, "not_real": 0}
+    # `prev` comes back from the browser: only the known counters, each a
+    # whole number (anything else counts from zero), never a KeyError.
+    t = {k: (v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 10 ** 12 else 0)
+         for k, v in ((k, (prev or {}).get(k) if isinstance(prev, dict) else None) for k in _LIVE_COUNTERS)}
     for i in batch:
         t["seen"] += 1
         t[{"enforced": "enforced", "monitor": "monitor", "unknown": "unknown_action"}[incident_action(i, rules_by_name)]] += 1
@@ -388,7 +473,7 @@ def _flatten(result: Any) -> List[Any]:
     if items is None and isinstance(result, list):
         items = result
     leaves: List[Any] = []
-    for it in items or []:
+    for it in _items(items):
         inner = _g(it, "incidents", default=None)
         if isinstance(inner, list) and inner and not _g(it, *_both("matchingPolicies")):
             leaves.extend(inner)
@@ -419,7 +504,7 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
     the findings they imply. `rules` is the tenant's DLP rule inventory
     (name, channel, state, action, engines) so dead and monitor-only rules
     can be judged; rules seen only in incidents are reported too."""
-    s = dict(DEFAULTS, **(settings or {}))
+    s = clean_settings(settings)[0]
     now = now or datetime.now(timezone.utc)
     fp_win = _window(incidents, now, int(s["fp_window_days"]))
     pr_win = _window(incidents, now, int(s["promote_window_days"]))
@@ -503,8 +588,8 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
     # Who is transacting, and where it was going. A destination whose
     # incidents are never real (telemetry / public content) is marked for
     # exclusion: that is a policy scope fix, not a dictionary fix.
-    user_key = lambda i: i.get("user") or "(unknown user)"  # noqa: E731
-    host_key = lambda i: i.get("host") or i.get("destination") or "(unknown destination)"  # noqa: E731
+    user_key = lambda i: i.get("user") or UNKNOWN_USER  # noqa: E731
+    host_key = lambda i: i.get("host") or i.get("destination") or UNKNOWN_DESTINATION  # noqa: E731
     users = group(lambda i: [user_key(i)], incidents, fp_win)
     by_user: Dict[str, List[Dict[str, Any]]] = {}
     for i in incidents:
@@ -587,7 +672,9 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
     fp, tp = total["not_real"], total["real"]
     summary = {**total, "fp_rate_pct": _rate(_tally(fp_win)["closed"], _tally(fp_win)["not_real"]),
                "fp": fp, "tp": tp, "fp_tp_ratio": _ratio(fp, tp), "fp_share_pct": (round(fp * 100 / (fp + tp)) if (fp + tp) else None),
-               "users": len(users), "destinations": len(destinations), "excludable_destinations": sum(1 for h in destinations if h["exclude"]),
+               # Distinct known users and destinations: the "(unknown ...)" rows gather the incidents without one.
+               "users": sum(1 for u in users if u["name"] != UNKNOWN_USER),
+               "destinations": sum(1 for h in destinations if h["name"] != UNKNOWN_DESTINATION), "excludable_destinations": sum(1 for h in destinations if h["exclude"]),
                "rules": len(rule_rows), "noisy_rules": sum(1 for r in rule_rows if r["status"] == "noisy"),
                "dead_rules": sum(1 for r in rule_rows if r["status"] == "dead"),
                "promotable_rules": sum(1 for r in rule_rows if r["status"] == "promotable"),
@@ -602,7 +689,7 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
 
 
 def _ratio(fp: int, tp: int) -> str:
-    """FP:TP in lowest terms ("6:1", "3:2", "0:4"); "–" when nothing closed."""
+    """FP:TP in lowest terms ("6:1", "3:2", "0:1", "1:0"); "–" when nothing closed."""
     if fp + tp == 0:
         return "–"
     import math
@@ -742,7 +829,8 @@ def dictionary_why(name: str, incs: List[Dict[str, Any]], definition: Optional[D
 
 # ── report ─────────────────────────────────────────────────────────────
 def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = None, log=None,
-             channels: Optional[Iterable[str]] = None, read_incidents: bool = True) -> Dict[str, Any]:
+             channels: Optional[Iterable[str]] = None, read_incidents: bool = True, now: Optional[datetime] = None,
+             scrub: Optional[Any] = None) -> Dict[str, Any]:
     """The Detection Health report for one tenant: incidents from
     Workflow Automation, rules from the tenant inventory, metrics and
     findings. Never raises; read problems are listed in `errors`.
@@ -751,16 +839,28 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
     DLP channels: only their rules are read, incidents on other channels
     are left out, and the incident delivery (Web DLP rules and receivers)
     is read only when web is one of them. None reads every channel.
-    `read_incidents=False` leaves Workflow Automation's incidents unread."""
+    `read_incidents=False` leaves Workflow Automation's incidents unread.
+    `scrub` (text -> text, e.g. tenant_auth.mask_secrets with the sign-in)
+    is applied to every read problem: an SDK error that echoes a secret
+    never reaches the report."""
     _log = log or (lambda m: None)
-    s = dict(DEFAULTS, **(settings or {}))
+    s, settings_notes = clean_settings(settings)
     days = int(days or s["days"])
+    # A window longer than the incidents read would claim what was never
+    # observed ("no incident in 30 days" from 7 days of incidents): each is
+    # at most the days read, and the report says the windows it used.
+    s["days"] = days
+    for k in ("fp_window_days", "dead_days", "promote_window_days"):
+        s[k] = min(int(s[k]), days)
     scoped = None if channels is None else [str(c) for c in channels]
     errors: List[str] = []
     if read_incidents:
         _log(f"Reading Workflow Automation incidents for the last {days} days…")
-        incidents, errs = fetch_incidents(client, days, _log)
+        incidents, errs = fetch_incidents(client, days, _log, **({"now": now} if now is not None else {}))
         errors.extend(errs)
+        if [str(x).strip().lower() for x in s["not_real"]] != DEFAULTS["not_real"]:
+            for i in incidents:   # the verdicts follow the not-real resolutions this run was given
+                i["real"] = verdict(i.get("status"), i.get("resolution"), i.get("closed_code"), s["not_real"])
     else:
         _log("Workflow Automation is not in scope: incidents are not read.")
         incidents = []
@@ -783,14 +883,22 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
     except Exception as e:  # noqa: BLE001
         errors.append(f"rule inventory failed: {str(e)[:200]}")
     _log(f"{len(incidents)} incident(s), {len(rules)} rule(s); evaluating…")
-    ev = evaluate(incidents, rules, s, definitions=definitions)
+    ev = evaluate(incidents, rules, s, now=now, definitions=definitions)
     if scoped is None or "web" in scoped:
         delivery = incident_delivery(client)
     else:   # Inline Web DLP is not in scope: its rules and the receivers are not read
         delivery = {"path": None, "rules_enabled": 0, "rules_cloud": 0, "rules_icap": 0, "rules_silent": [], "receivers": [], "icap_servers": [],
                     "misconfigured": [], "errors": [], "explain": "Not read: Inline Web DLP is not in scope, so its incident forwarding was not checked."}
     errors.extend(delivery.pop("errors", []))
+    silent = set(delivery.pop("silent_all", None) or delivery.get("rules_silent") or [])
     ev["delivery"] = delivery
+    # A Web DLP rule that forwards no match cannot have an incident, and a
+    # read that stopped at MAX_PAGES did not see the whole window: neither
+    # absence makes a rule dead.
+    if any(e.startswith(TRUNCATED_NOTE.split("{")[0]) for e in errors):
+        _not_dead(ev, lambda r: True, TRUNCATED_WHY)
+    elif silent:
+        _not_dead(ev, lambda r: r.get("channel") == "web" and r.get("name") in silent, NOT_FORWARDED_WHY)
     if delivery["path"] == "none" and not incidents:
         ev["findings"].insert(0, {"kind": "no_incident_delivery", "severity": "medium", "name": "Incident delivery", "channel": "web",
                                   "text": delivery["explain"] + " Enable 'Zscaler Incident Receiver' (cloud-to-cloud) or an ICAP server on the rules.",
@@ -800,10 +908,12 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
                                   "channel": "web", "text": m["text"], "proposal": "enable_incident_forwarding"})
     for i in incidents:
         i.pop("_created", None)
+    if scrub is not None:
+        errors = [scrub(str(e)) for e in errors]
     incidents_read = read_incidents and not any("incident search" in e or "Workflow Automation" in e for e in errors)
     if not incidents_read:
         _not_measured(ev)
-    ev.update({"days": days, "incident_count": len(incidents), "errors": errors,
+    ev.update({"days": days, "incident_count": len(incidents), "errors": errors, "settings_notes": settings_notes,
                "read": {"incidents": incidents_read, "rules": bool(rules)},
                "sources": {"incidents": "Workflow Automation: POST /zwa/dlp/v1/incidents/search",
                            "rules": "ZIA: /webDlpRules, /endpointDlpRules, /casbDlpRules, /emailDlpRules"}})
@@ -814,6 +924,20 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
 # they would be built on an absence that was never observed.
 INCIDENT_FINDINGS = ("dead_rule", "noisy_rule", "promotable_rule", "noisy_dictionary", "noisy_destination")
 NOT_MEASURED_WHY = "Workflow Automation incidents were not read, so this rule's activity was not measured"
+
+
+def _not_dead(ev: Dict[str, Any], which: Any, why: str) -> None:
+    """Rules `which` picks that evaluate called dead were not measured:
+    their status says why and no dead-rule finding (or "Disable" proposal)
+    is built on them."""
+    gone = set()
+    for r in ev.get("rules") or []:
+        if r.get("status") == "dead" and which(r):
+            r["status"], r["why"] = "not_measured", why
+            gone.add(r.get("name"))
+    if gone:
+        ev["findings"] = [f for f in ev.get("findings") or [] if not (f.get("kind") == "dead_rule" and f.get("name") in gone)]
+        ev.setdefault("summary", {})["dead_rules"] = sum(1 for r in ev.get("rules") or [] if r.get("status") == "dead")
 
 
 def _not_measured(ev: Dict[str, Any]) -> None:
@@ -928,7 +1052,8 @@ def incident_delivery(client) -> Dict[str, Any]:
     out["rules_enabled"] = len(enabled)
     out["rules_cloud"] = sum(1 for r in enabled if r.get("incident_receiver") and not r.get("icap_server"))
     out["rules_icap"] = sum(1 for r in enabled if r.get("icap_server"))
-    out["rules_silent"] = [r["name"] for r in enabled if not r.get("incident_receiver") and not r.get("icap_server")][:40]
+    silent_all = [r["name"] for r in enabled if not r.get("incident_receiver") and not r.get("icap_server")]
+    out["rules_silent"] = silent_all[:40]
     res = getattr(zia, "dlp_resources", None)
     for attr, key, label in (("list_dlp_incident_receiver", "receivers", "incident receivers"), ("list_dlp_icap_servers", "icap_servers", "ICAP servers")):
         fn = getattr(res, attr, None) if res is not None else None
@@ -973,4 +1098,5 @@ def incident_delivery(client) -> Dict[str, Any]:
             "text": f"{out['rules_icap']} rule(s) point at an on-premises Incident Receiver over ICAP, but "
                     + ("no ICAP server object exists in the tenant" if not out["icap_servers"] else "every configured ICAP server is disabled or unhealthy")
                     + ". These rules match but deliver nothing until that server is configured and reachable."})
+    out["silent_all"] = silent_all
     return out

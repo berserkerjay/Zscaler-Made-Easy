@@ -44,7 +44,7 @@ import contextvars
 import os
 import re
 import time
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional
 from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request
@@ -186,6 +186,28 @@ def writes_enabled() -> bool:
     return os.environ.get("ENABLE_WRITE_ACTIONS") == WRITE_CONFIRM_PHRASE
 
 
+def typed_phrase_matches(typed: object, phrase: object) -> bool:
+    """Is `typed` the confirmation `phrase` a write asks for? Surrounding
+    spaces are ignored and letters compare case-insensitively, one character
+    for one character: a character matches only when it is the same, or its
+    upper AND lower case forms are the same (so 'e' matches 'E', 'é' 'É').
+    Deliberately no NFKC or other compatibility folding: a look-alike that
+    str.upper() alone would turn into the phrase (dotless 'ı', long 'ſ',
+    the 'ﬁ' ligature) or that NFKC would (full-width letters and digits,
+    the Kelvin sign) is refused, so the phrase is typed as it is shown.
+    Only canonical composition (NFC) is applied, so an accent typed as a
+    combining mark is the same character. An empty, blank or non-text
+    phrase or answer never matches: there is no way past by sending nothing."""
+    import unicodedata
+    if not isinstance(typed, str) or not isinstance(phrase, str):
+        return False
+    want = unicodedata.normalize("NFC", phrase).strip()
+    got = unicodedata.normalize("NFC", typed).strip()
+    if not want or len(got) != len(want):
+        return False
+    return all(a == b or (a.upper() == b.upper() and a.lower() == b.lower()) for a, b in zip(got, want))
+
+
 def write_enable_hint() -> str:
     """How to start the server with writes on, for where it runs: the
     container (a .env setting), Windows (the start script) or Mac/Linux."""
@@ -195,8 +217,8 @@ def write_enable_hint() -> str:
                 "and run it again to go back to read-only)")
     import sys
     if getattr(sys, "frozen", False):
-        return (f"turn on write mode with the switch in the app, or start the standalone app with ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} "
-                "set in its environment or in local_settings.env in your data folder")
+        return (f"turn on write mode with the switch in the app (type {WRITE_CONFIRM_PHRASE} to confirm): the standalone edition starts "
+                "read-only every time and ignores ENABLE_WRITE_ACTIONS")
     if os.name == "nt":
         return "start the server with START_Zscaler_Made_Easy_WRITES_ENABLED.bat"
     return f"start the server with: ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} ./start.sh"
@@ -387,16 +409,24 @@ def mask_secret(value: Optional[str], keep: int = 3) -> str:
 
 
 def scrub_dict(d: dict, secret_keys: Iterable[str] = ("client_secret", "secret", "password", "token", "api_key")) -> dict:
-    """Return a copy of d with secret values masked. Use before logging."""
+    """Return a copy of d with secret values replaced by '[redacted]'. Use
+    before logging. No character and no length of a secret is kept
+    (mask_secret's partial form is for identifiers such as a client id),
+    and dicts inside lists are scrubbed too."""
     secret_keys = {k.lower() for k in secret_keys}
+
+    def one(v):
+        if isinstance(v, dict):
+            return scrub_dict(v, secret_keys)
+        if isinstance(v, (list, tuple)):
+            return [one(x) for x in v]
+        return v
     out = {}
     for k, v in (d or {}).items():
-        if isinstance(v, dict):
-            out[k] = scrub_dict(v, secret_keys)
-        elif k.lower() in secret_keys:
-            out[k] = mask_secret(v)
+        if str(k).lower() in secret_keys:
+            out[k] = "[redacted]" if v not in (None, "") else v
         else:
-            out[k] = v
+            out[k] = one(v)
     return out
 
 
@@ -416,16 +446,30 @@ CONTENT_SECURITY_POLICY = (
 )
 
 
+# The hardening headers every response carries (SecurityHeadersMiddleware),
+# and the refusals answered outside it (BodySizeLimitMiddleware) carry too.
+HARDENING_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), usb=()",
+}
+
+
+def refusal_headers() -> Dict[str, str]:
+    """Headers for a response written by a layer outside the headers
+    middleware: the hardening headers, the CSP and no caching."""
+    return {**HARDENING_HEADERS, "Content-Security-Policy": CONTENT_SECURITY_POLICY, "Cache-Control": "no-store", "Pragma": "no-cache"}
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Apply hardening headers to every response."""
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         h = response.headers
-        h.setdefault("X-Content-Type-Options", "nosniff")
-        h.setdefault("X-Frame-Options", "DENY")
-        h.setdefault("Referrer-Policy", "no-referrer")
-        h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), usb=()")
+        for k, v in HARDENING_HEADERS.items():
+            h.setdefault(k, v)
         # Content-Security-Policy — prevents inline-script injection from
         # taking over the GUI and blocks every external network fetch.
         # 'unsafe-inline' on style + script is required because the app
@@ -520,7 +564,8 @@ class BodySizeLimitMiddleware:
                           client=str(client[0]), bytes=size, limit=self.max_bytes)
         except Exception:  # noqa: BLE001 — logging never blocks the refusal
             pass
-        return JSONResponse({"detail": f"Request body too large (max {self.max_bytes} bytes)."}, status_code=413)
+        # This layer is outside the headers middleware too: its refusal sets them itself.
+        return JSONResponse({"detail": f"Request body too large (max {self.max_bytes} bytes)."}, status_code=413, headers=refusal_headers())
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
@@ -530,7 +575,7 @@ class BodySizeLimitMiddleware:
         declared = headers.get(b"content-length", b"").decode("latin-1").strip()
         if declared:
             if not declared.isdigit():
-                await JSONResponse({"detail": "Invalid Content-Length."}, status_code=400)(scope, receive, send)
+                await JSONResponse({"detail": "Invalid Content-Length."}, status_code=400, headers=refusal_headers())(scope, receive, send)
                 return
             if int(declared) > self.max_bytes:
                 await self._too_large(scope, int(declared))(scope, receive, send)
@@ -560,6 +605,9 @@ class BodySizeLimitMiddleware:
                 await self._too_large(scope, seen)(scope, receive, send)
 
 
+_monotonic = time.monotonic   # the rate limiter's clock (tests replace it)
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     Tiny in-process token-bucket per client IP. Defends against runaway
@@ -578,11 +626,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
         ip = request.client.host if request.client else "unknown"
-        now = time.time()
+        now = _monotonic()
         tokens, last = self.buckets.get(ip, (float(self.burst), now))
-        # Refill
-        tokens = min(self.burst, tokens + (now - last) * self.rps)
+        # Refill. A monotonic clock, and never a negative refill: with the wall
+        # clock, setting it back a day refused every call for a day (429).
+        tokens = min(self.burst, tokens + max(0.0, now - last) * self.rps)
         if tokens < 1:
+            self.buckets[ip] = (tokens, now)   # a "last" ahead of the clock is moved back to it
             return JSONResponse(
                 {"detail": "Rate limit exceeded. Slow down."},
                 status_code=429,
@@ -656,6 +706,7 @@ def write_ui_token_file(app_dir: str) -> Optional[str]:
     if not ui_auth_enabled():
         return None
     path = os.path.join(app_dir, UI_TOKEN_FILE)
+    tmp = None
     try:
         import tempfile
         fd, tmp = tempfile.mkstemp(prefix=".ui_token_", dir=app_dir)
@@ -666,9 +717,16 @@ def write_ui_token_file(app_dir: str) -> Optional[str]:
         except OSError:
             pass
         os.replace(tmp, path)
+        tmp = None
         return path
     except OSError:
         return None
+    finally:
+        if tmp is not None:   # a failed write leaves no copy of the token behind (CWE-459)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
 
 def _token_from_request(request: Request) -> Optional[str]:

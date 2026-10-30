@@ -304,17 +304,30 @@ def _quant(op: str, n: int) -> Tuple[str, bool]:
 
 
 def _cmp_phrase(node: tuple, names: Mapping[str, str]) -> str:
-    """'more than one SSN match'; a Sum: 'at least one match of A and B combined'."""
-    q, plural = _quant(node[2], node[3])
+    """'more than one SSN match'; a Sum: 'at least one match of A and B combined'.
+    A count is never negative, so `>= 0` holds for any content and `< 0`
+    for none: said as such, never as "at least one" or "no" match."""
+    op, n = node[2], node[3]
+    if op == "!=" and n == 0:
+        op = ">"   # a count other than zero is at least one
     left = node[1]
-    word = "matches" if plural else "match"
     if left[0] == "term":
         name = _term_name(left[1], names)[0]
         what = f"unique {name}" if left[1]["suffix"] == "U" else name
+    else:
+        parts = [_term_name(t[1], names)[0] for t in left[1]]
+        what = (", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]) + " combined"
+    if op == ">=" and n <= 0:
+        return f"any number of {what} matches, even none (always true)"
+    if op == "<" and n <= 0:
+        return f"fewer than zero {what} matches (never true)"
+    if op == "!=":
+        return f"a number of {what} matches other than {_n(n)}"
+    q, plural = _quant(op, n)
+    word = "matches" if plural else "match"
+    if left[0] == "term":
         return f"{q} {what} {word}"
-    parts = [_term_name(t[1], names)[0] for t in left[1]]
-    what = ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]
-    return f"{q} {word} of {what} combined"
+    return f"{q} {word} of {what}"
 
 
 def _join(parts: List[str], word: str) -> str:

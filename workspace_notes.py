@@ -131,14 +131,30 @@ def _locked() -> Iterator[None]:
 
 
 def _read() -> Dict[str, Any]:
+    """The store, with anything not of the store's shape left out (a
+    hand-edited or damaged file never breaks a read): tenants map to
+    buckets, buckets hold notes, notes are objects with list fields."""
     try:
         with open(store_path(), "r", encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict) and isinstance(data.get("tenants"), dict):
+            data["tenants"] = {t: _bucket_shape(b) for t, b in data["tenants"].items() if isinstance(t, str) and isinstance(b, dict)}
             return data
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         pass
     return {"version": 1, "tenants": {}}
+
+
+def _bucket_shape(bucket: Dict[str, Any]) -> Dict[str, Any]:
+    notes = bucket.get("notes")
+    kept = {}
+    for nid, note in (notes.items() if isinstance(notes, dict) else []):
+        if isinstance(note, dict):
+            for key in ("tags", "comments", "todos"):
+                items = note.get(key)
+                note[key] = [x for x in items if isinstance(x, (str if key == "tags" else dict))] if isinstance(items, list) else []
+            kept[nid] = note
+    return dict(bucket, notes=kept)
 
 
 def _write(data: Dict[str, Any]) -> None:
@@ -167,10 +183,17 @@ def _write(data: Dict[str, Any]) -> None:
 
 
 # ── validation ──────────────────────────────────────────────────────────
+# Never kept in a note: C1 control characters, the line and paragraph
+# separators, and the bidirectional overrides and isolates that can make
+# text read differently from what it is (CWE-451, "Trojan Source").
+_INVISIBLE = {chr(c) for c in range(0x80, 0xA0)} | {"\u2028", "\u2029"} | {chr(c) for c in range(0x202A, 0x202F)} | {chr(c) for c in range(0x2066, 0x206A)}
+
+
 def _clean(text: Any, limit: int, *, multiline: bool = False) -> str:
     """Printable text only (a newline kept where `multiline`), trimmed;
     longer than `limit` is refused rather than silently cut."""
-    s = "".join(ch for ch in str(text if text is not None else "") if (multiline and ch == "\n") or (ch >= " " and ch != "\x7f"))
+    s = "".join(ch for ch in str(text if text is not None else "")
+                if (multiline and ch == "\n") or (ch >= " " and ch != "\x7f" and ch not in _INVISIBLE))
     s = s.strip()
     if len(s) > limit:
         raise NotesError(f"too long: at most {limit} characters")

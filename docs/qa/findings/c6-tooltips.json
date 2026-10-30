@@ -1,0 +1,217 @@
+{
+ "area": "tooltips",
+ "title": "Help on hover: a pop-up for every control on every page (what it does, what input it expects, whether it reads or changes the tenant), with its catalogue and coverage tests",
+ "files": [
+  "static/hover_help.js",
+  "static/hover_help.css",
+  "static/help_catalog.js",
+  "browser_extension/hover_help.js",
+  "browser_extension/hover_help.css",
+  "browser_extension/help_catalog.js",
+  "browser_extension/popup.html",
+  "browser_extension/options.html",
+  "browser_extension/panel.html",
+  "static/*.html (script tags only)",
+  "dlp_api_server.py (GUI_ADDONS only)",
+  "static/explain.js (one glossary entry)",
+  "docs/OVERVIEW.md",
+  "tests/test_c6_tooltips.py",
+  "tests/test_gui_addons.py"
+ ],
+ "standards": [
+  "WCAG 2.2 SC 1.4.13",
+  "WCAG 2.2 SC 1.3.1",
+  "WCAG 2.2 SC 4.1.2",
+  "WCAG 2.2 SC 2.5.8",
+  "WCAG 2.2 SC 1.4.3",
+  "WCAG 2.2 SC 1.4.10",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 2.3.3",
+  "ASVS V5.3.3",
+  "ASVS V5.1.3",
+  "ASVS V1.14.1",
+  "CWE-79",
+  "CWE-20",
+  "OWASP A03:2021",
+  "WSTG-CLNT-01",
+  "NIST SSDF PW.8",
+  "SLSA v1.0"
+ ],
+ "coverage": {
+  "before": 0.0,
+  "after": 0.981,
+  "after_functions": 0.97,
+  "how": "V8 block coverage of static/hover_help.js across the browser tests (the file is new; 0 before). The catalogue is data: 1,236 entries, every one matched or checked for orphans."
+ },
+ "checks": [
+  {
+   "id": "C6-TOOLTIPS-C01",
+   "what": "Every visible control on all 35 pages, toured on the sample tenant (tabs, folded sections, dialogs, Analyze / Read / Preview, the Build new forms, stored reports), has an entry with non-empty what and input",
+   "standard": "WCAG 2.2 SC 3.3.2",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C02",
+   "what": "Focus on every such control opens the pop-up with its entry's words, beside the control, inside the viewport; aria-describedby carries the same words; no native title remains",
+   "standard": "WCAG 2.2 SC 1.4.13, SC 4.1.2",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C03",
+   "what": "Real mouse hover opens it; it is hoverable; leaving both closes it; Tab focus opens it and it persists; Esc closes it without moving focus",
+   "standard": "WCAG 2.2 SC 1.4.13",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C04",
+   "what": "Touch: a long press opens it; the info target is 28x28 px, labelled, beside the control",
+   "standard": "WCAG 2.2 SC 2.5.8",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C05",
+   "what": "Contrast of every line of the pop-up, dark and light theme, at least 4.5:1",
+   "standard": "WCAG 2.2 SC 1.4.3",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C06",
+   "what": "At 320 px on every page, every pop-up stays inside the viewport and adds no sideways scroll",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C07",
+   "what": "Reduced motion: no transition; normal: a 120 ms fade",
+   "standard": "WCAG 2.2 SC 2.3.3",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C08",
+   "what": "Hostile catalogue text and a hostile native title render as text and never run; the engine has no HTML sink; the repo's sink scanner passes",
+   "standard": "ASVS V5.3.3, CWE-79",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C09",
+   "what": "No orphan catalogue keys: every id, class and attribute value a key uses exists in that page's sources",
+   "standard": "ASVS V1.14.1",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C10",
+   "what": "A new control without help fails CI with its page and selector named",
+   "standard": "NIST SSDF PW.8",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C11",
+   "what": "The extension's popup, options and side panel load local, byte-identical copies; their controls all have entries; the catalogue holds no remote address or credential-shaped text",
+   "standard": "OpenSSF Scorecard, SLSA v1.0",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C12",
+   "what": "Write controls say they need write mode; the pop-up adds the four gates line",
+   "standard": "ASVS V4.1.3, CWE-841",
+   "result": "pass"
+  },
+  {
+   "id": "C6-TOOLTIPS-C13",
+   "what": "Plain words: average sentence length and Flesch-Kincaid grade of the catalogue bounded; long sentences only where the page's own wording is reused",
+   "standard": "WCAG 2.2 SC 3.1.5 (applied as guidance)",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-TOOLTIPS-01",
+   "title": "No control explained what it does or what input it expects on hover or focus (the owner's request)",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "Shared Help on hover engine and a catalogue entry for every control on every page and the extension",
+   "test": "tests/test_c6_tooltips.py::test_every_visible_control_has_help",
+   "commit": "d6c4018"
+  },
+  {
+   "id": "C6-TOOLTIPS-02",
+   "title": "Native title tooltips (about 150 controls) did not open on keyboard focus or touch and could not be dismissed with Esc",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "Titles converted into catalogue entries word for word; the engine removes the native title so one pop-up shows",
+   "test": "tests/test_c6_tooltips.py::test_a_converted_title_keeps_its_words",
+   "commit": "d6c4018"
+  },
+  {
+   "id": "C6-TOOLTIPS-03",
+   "title": "A field inside a label with a title (Client Connector installer options on /report/fleet) would show two tooltips at once",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "The engine also converts the title of the label around a control",
+   "test": "tests/test_c6_tooltips.py::test_every_control_opens_its_help_on_focus",
+   "commit": "d6c4018"
+  },
+  {
+   "id": "C6-TOOLTIPS-04",
+   "title": "/help scrolls sideways at 320 px: the .xp-dl grid's 1fr column takes its longest word's width (362 px page)",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "Resolved at integration (UI check, 40f879c): minmax(0, 1fr) column and overflow-wrap on /help; checked: the test fails at /help 320px with that CSS reverted",
+   "test": "tests/test_report_reflow.py::test_no_report_page_scrolls_sideways",
+   "commit": "40f879c"
+  },
+  {
+   "id": "C6-TOOLTIPS-05",
+   "title": "/report/fleet scrolls sideways at 320 px: installer option labels are inline-flex rows that never wrap (343 px page)",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "Resolved at integration (UI ops, de7653a): installer labels wrap and shrink; browser check: 320 px page with the options of both platforms drawn",
+   "test": "tests/test_report_reflow.py::test_no_report_page_scrolls_sideways",
+   "commit": "de7653a"
+  },
+  {
+   "id": "C6-TOOLTIPS-06",
+   "title": "The shared browser-test harness (test_findings_reflow.run_in_browser) leaves the in-app updater and restart live: a test that clicks Update now runs git against the developer's checkout (seen in this QA: a crawl switched the clone to main and stashed local edits)",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "asvs": "V14.1.1",
+   "status": "fixed",
+   "fix": "run_in_browser replaces app_update.update and schedule_restart for the served app, so a toured Update now or Restart never touches the checkout",
+   "test": "tests/test_c6_open_low.py::test_the_browser_harness_never_runs_the_updater_or_a_restart",
+   "commit": "37a8f7c"
+  },
+  {
+   "id": "C6-TOOLTIPS-07",
+   "title": "Some controls have no stable hook of their own (offline_tenant.js snapshot buttons, find_anything.js card buttons, pov.js intake fields and report buttons, flow_pages.js walk buttons, panel.js detail buttons, zcc_fleet.js details) so their entries use structural selectors or one entry per family",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "asvs": "V1.14.1",
+   "status": "accepted",
+   "fix": "Entries exist and pass; adding ids would edit files owned by other areas. Suggested hooks are in this record's checks",
+   "test": "tests/test_c6_tooltips.py::test_every_catalogue_key_names_a_real_control",
+   "commit": "d6c4018"
+  },
+  {
+   "id": "C6-TOOLTIPS-08",
+   "title": "docs/SECURITY_TESTING.md must be regenerated for the new test file (tools/security_test_matrix.py --check fails until it is)",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "Resolved at integration: docs/SECURITY_TESTING.md was regenerated with python tools/security_test_matrix.py after the merges and is regenerated again on this branch",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "9e0d276"
+  }
+ ],
+ "tests_added": 320
+}

@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
 <link rel="stylesheet" href="/static/flow_anim.css">
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page fa-page">
   <div class="rp-page">
@@ -54,7 +56,22 @@
       <section class="fa-view" id="v-path" role="tabpanel" aria-labelledby="tab-path" hidden>
         <h2>Traffic path</h2><p class="df-hint">Run the shared scenario above. URL Filtering, SSL Inspection and File Type Control stay visible, including stops, unknowns and channel-specific applicability. The graph ends with evidence delivery and Workflow Automation, with configuration distinguished from observation.</p>
         <a class="rp-btn" href="/report/dataflow">Traffic flow &amp; gaps overview</a>
-
+        <h2 class="fa-sub-h" id="tpH">Replay the last analyzed path</h2>
+        <div class="fa-src" id="tpSrc"></div>
+        <div class="fa-ctl">
+          <label class="df-ctl"><span class="lbl">Picture</span><select id="tpView" aria-label="Picture to replay">
+            <option value="path">Every step (ZPA, PAC, ZIA)</option><option value="hops">Hop by hop to Web DLP</option></select></label>
+          <button type="button" class="rp-btn" id="tpReload" title="Read the result the Path analyzer last kept in this browser">↻ Load the last result</button>
+          <button type="button" class="rp-btn" id="tpSample">Show sample</button>
+        </div>
+        <div id="tpHost" aria-labelledby="tpH" role="region"></div>
+        <div id="tpHopWrap" hidden>
+          <div class="fa-ctl"><button type="button" class="rp-btn primary" id="tpHopPlay">Play</button><button type="button" class="rp-btn" id="tpHopStep">Step</button><button type="button" class="rp-btn" id="tpHopReset">Restart</button></div>
+          <div class="fa-stage" id="tpHopHost"></div>
+          <ol class="fa-log" id="tpHopLog" aria-label="Hops reached so far"></ol>
+        </div>
+        <div class="fa-verdict" id="tpVerdict"></div>
+        <div id="tpWhatif"></div>
       </section>
 
       <section class="fa-view" id="v-dlp" role="tabpanel" aria-labelledby="tab-dlp" hidden>
@@ -121,6 +138,8 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/flow_anim.js"></script>
   <script src="/static/flow_scenario.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = FA.E, FS = FlowScenario;
@@ -271,7 +290,48 @@
         if (scenarioSession.current(token, currentContext())) { $('scenarioRun').disabled = false; $('scenarioTrace').disabled = false; $('scenarioCancel').hidden = true; scenarioAbort = null; scenarioSession.stop(); }
       }
     }
-    function initPath() {}
+    // ── Replay: the Path analyzer's last result, kept in this browser by
+    // the analyzer (zassess_path_last). A configuration prediction replayed
+    // step by step; never joined to the scenario above or to live evidence.
+    const T = { player: null, hops: null, res: null, sample: false };
+    function tpLoad(sample) {
+      const kept = sample ? null : readJson('zassess_path_last', null);
+      const res = kept && kept.result && typeof kept.result === 'object' ? kept.result : null;
+      T.res = res || FA.SAMPLE.traffic; T.sample = !res;
+      const m = FA.trafficPathModel(T.res);
+      $('tpSrc').innerHTML = T.sample
+        ? `${SAMPLE_TAG}No Path analyzer result in this browser yet: this is sample data. Analyze a destination on the Path analyzer page (its Animate button opens this view) and click Load the last result.`
+        : `From the Path analyzer: ${E(m.traffic)} to ${E(m.dest || 'the destination')}${kept.at ? ', analyzed ' + E(when(kept.at)) : ''}. A configuration prediction, not an observed transaction.`;
+      $('tpVerdict').className = 'fa-verdict ' + (m.verdict.tone || '');
+      $('tpVerdict').textContent = m.verdict.text || '';
+      const w = m.whatif || {};
+      $('tpWhatif').innerHTML = m.mode !== 'result' ? '' : `<h3 class="fa-sub">What-if</h3><p class="df-hint">${E(w.identity ? `Evaluated for ${w.identity}${w.counts ? `: ${w.counts.applies || 0} scoped rule(s) apply, ${w.counts.skipped || 0} are for others, ${w.counts.open || 0} still depend on something not given` : ''}.` : 'Evaluated for any user: no identity was given.')}</p>`
+        + (w.depends && w.depends.length ? `<ul class="fa-log">${w.depends.map(d => `<li>${E(d)}</li>`).join('')}${w.more ? `<li>${E(`and ${w.more} more`)}</li>` : ''}</ul>` : `<p class="df-hint">${E(w.empty || 'Nothing else changes the action.')}</p>`);
+      tpShow();
+    }
+    function tpShow() {
+      if (T.player) T.player.destroy(); T.player = null;
+      if (T.hops) T.hops.destroy(); T.hops = null;
+      const hopsView = $('tpView').value === 'hops';
+      $('tpHost').hidden = hopsView; $('tpHopWrap').hidden = !hopsView;
+      if (!hopsView) { T.player = FA.trafficPath($('tpHost'), FA.trafficPathModel(T.res), { stepper: true, openSteps: true }); return; }
+      const pm = FA.pathModel(T.res);
+      $('tpHopLog').innerHTML = '';
+      if (!pm) { $('tpHopLog').innerHTML = '<li>This result has no hop-by-hop trace.</li>'; return; }
+      T.hops = FA.hopPlayer($('tpHopHost'), pm, {
+        onReset() { $('tpHopLog').innerHTML = ''; },
+        onHop(h) { const li = document.createElement('li'); li.textContent = `${h.label}: ${h.sub}${h.note ? ' (' + h.note + ')' : ''}`; $('tpHopLog').appendChild(li); },
+      });
+    }
+    function initPath() {
+      $('tpView').addEventListener('change', tpShow);
+      $('tpReload').addEventListener('click', () => tpLoad(false));
+      $('tpSample').addEventListener('click', () => tpLoad(true));
+      $('tpHopPlay').addEventListener('click', () => T.hops && T.hops.play());
+      $('tpHopStep').addEventListener('click', () => T.hops && T.hops.step());
+      $('tpHopReset').addEventListener('click', () => T.hops && T.hops.reset());
+      tpLoad(false);
+    }
     $('scenarioRun').addEventListener('click', () => runScenario('simulated'));
     $('scenarioTrace').addEventListener('click', () => runScenario('configuration'));
     $('scenarioCancel').addEventListener('click', () => clearScenario('Test cancelled; no result accepted.'));
@@ -453,6 +513,7 @@
     window.addEventListener('storage', ev => {
       if (ev.key === 'zassess_scopes_live_v1' || ev.key === 'zassess_channels_v1') { clearScenario(); resetLive(); }
       if (ev.key === 'zassess_flow_last' && shown.deploy) loadDeploy(false);
+      if (ev.key === 'zassess_path_last' && shown.path) tpLoad(false);
     });
     window.addEventListener('hashchange', () => show(location.hash.slice(1)));
     tenantChoices();

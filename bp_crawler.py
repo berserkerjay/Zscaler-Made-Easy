@@ -107,9 +107,19 @@ def _load_cache() -> Dict[str, Any]:
     try:
         with open(_cache_path(), "r", encoding="utf-8") as f:
             data = json.load(f)
-            return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+    if not isinstance(data, dict):
+        return {}
+    # The cache is a file on disk: a field of the wrong type is dropped, not trusted.
+    if not isinstance(data.get("timestamp"), (int, float)) or isinstance(data.get("timestamp"), bool):
+        data.pop("timestamp", None)
+    for key, kind in (("last_attempt", dict), ("per_source", list), ("discovered", list), ("new_entries", list)):
+        if key in data and not isinstance(data[key], kind):
+            data.pop(key)
+    if isinstance(data.get("per_source"), list):
+        data["per_source"] = [r for r in data["per_source"] if isinstance(r, dict)]
+    return data
 
 
 def _save_cache(data: Dict[str, Any]) -> None:
@@ -174,8 +184,11 @@ def _titleize_from_slug(url: str) -> str:
 _TITLE_SUFFIX = re.compile(r"\s*[|\-–—:]\s*(Zscaler(\s+Help)?|Zscaler Blog|Zscaler Community|Microsoft Learn|AWS Prescriptive Guidance|Okta|Splunk Lantern|CrowdStrike)\s*$", re.I)
 
 
+MAX_TITLE_CHARS = 300   # a title from a fetched page is untrusted text: bounded before it is stored
+
+
 def _clean_title(text: str) -> str:
-    t = " ".join(htmllib.unescape(text or "").split()).strip()
+    t = " ".join(htmllib.unescape(str(text or "")[:20_000]).split()).strip()[:MAX_TITLE_CHARS]
     t = re.sub(r"\s*[›»→]\s*$", "", t)
     t = _TITLE_SUFFIX.sub("", t).strip()
     return t
@@ -279,15 +292,40 @@ def page_title(html: str) -> str:
 # ── Sitemaps ──────────────────────────────────────────────────────────
 
 _LOC_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
-_SITEMAP_CHILD_RE = re.compile(r"<sitemap>.*?<loc>\s*([^<\s]+)\s*</loc>.*?</sitemap>", re.I | re.S)
+_SITEMAP_TAG_RE = re.compile(r"<(/?)sitemap>", re.I)
 
 
 def parse_sitemap(xml_text: str) -> Tuple[List[str], List[str]]:
-    """Return (child_sitemaps, page_urls) from a sitemap or sitemap index."""
-    text = xml_text[:MAX_SITEMAP_BYTES]
-    children = [htmllib.unescape(u) for u in _SITEMAP_CHILD_RE.findall(text)]
+    """Return (child_sitemaps, page_urls) from a sitemap or sitemap index.
+
+    One linear pass: the <loc> of a <sitemap> … </sitemap> block is a child
+    sitemap, every other <loc> a page. (A single regex with two lazy
+    wildcards around the <loc> backtracked cubically on unclosed <sitemap>
+    tags: 18 KB took seconds, a hostile 8 MB sitemap hung the crawl.)"""
+    text = str(xml_text or "")[:MAX_SITEMAP_BYTES]
+    children: List[str] = []
+    depth = 0
+    child_spans: List[Tuple[int, int]] = []
+    start = 0
+    for m in _SITEMAP_TAG_RE.finditer(text):
+        if not m.group(1):
+            if depth == 0:
+                start = m.end()
+            depth += 1
+        elif depth:
+            depth -= 1
+            if depth == 0:
+                child_spans.append((start, m.start()))
+    for a, b in child_spans:
+        loc = _LOC_RE.search(text, a, b)
+        if loc:
+            children.append(htmllib.unescape(loc.group(1)))
     child_set = set(children)
-    pages = [htmllib.unescape(u) for u in _LOC_RE.findall(text) if htmllib.unescape(u) not in child_set]
+    pages = []
+    for m in _LOC_RE.finditer(text):
+        u = htmllib.unescape(m.group(1))
+        if u not in child_set:
+            pages.append(u)
     return children, pages
 
 

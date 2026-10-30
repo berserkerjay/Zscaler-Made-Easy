@@ -129,6 +129,8 @@
     'ip group': { term: 'IP group', def: 'An IP group is a list of addresses you make in Zscaler. A firewall rule can name the group to block or allow them all.' },
     'allowed but blockable': { term: 'allowed but blockable', def: 'Allowed but blockable means a site gets through today. A rule could block it, but that rule is only for some people or places.' },
     'threat category': { term: 'threat category', def: 'A threat category is a group of sites Zscaler knows are bad, like phishing or malware. Threat protection blocks them for everyone.' },
+    'zero trust exchange': { term: 'Zero Trust Exchange', def: 'The Zero Trust Exchange is the Zscaler cloud in the middle. Your traffic goes in, the checks run one by one, and then it goes on or stops.' },
+    'caution page': { term: 'caution page', def: 'A caution page warns you before you go to a site. You can read it and then choose to go on.' },
     'what-if': { term: 'what-if', def: 'A what-if asks what would happen for one person. You type a user, a group, a team or a place, and the app checks the rules for them.' },
     'department': { term: 'department', def: 'A department is a team in your company, like Sales or Finance. A rule can name a department to act only on its people.' },
     'time window': { term: 'time window', def: 'A time window is a set of days and hours, like work hours. A rule with one only acts at those times.' },
@@ -140,6 +142,13 @@
     'framework file': { term: 'framework file', def: 'A framework file is a saved copy of web rules from one tenant. You can load it to build the same rules in another.' },
     'intermediate certificate': { term: 'intermediate certificate', def: 'Zscaler uses this certificate to open locked web traffic. Your computers must trust it, or sites show a warning.' },
     'trusted resolver': { term: 'Trusted Resolver', def: 'The Trusted Resolver is the Zscaler service that looks up web names. It keeps people off bad sites.' },
+    'traffic river': { term: 'traffic river', def: 'A traffic river is a moving picture of your web traffic. Each stream is as wide as its share, and dots show the traffic going by.' },
+    'rule walk': { term: 'rule walk', def: 'A rule walk shows one web request meeting the SSL rules in order. The first rule that fits decides what happens to it.' },
+    'packet': { term: 'packet', def: 'A packet is a small piece of traffic. The moving dots in a picture show packets on their way.' },
+    'incident receiver': { term: 'incident receiver', def: 'The incident receiver gets a copy of what a DLP rule caught. It puts it where Workflow Automation can see it.' },
+    'quality score': { term: 'quality score', def: 'The quality score shows how well this app itself is tested. It goes from 0 to 100. Open problems pull it down.' },
+    'severity': { term: 'severity', def: 'Severity says how bad a problem is. It goes from info and low up to medium, high and critical.' },
+    'glass effect': { term: 'glass effect', def: 'The glass effect makes bars, cards and buttons see-through, like frosted glass. You can turn it off in Advanced settings.' },
   };
   // GLOSSARY-END
   window.SIMPLE_GLOSSARY = G;

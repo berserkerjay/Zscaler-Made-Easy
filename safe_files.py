@@ -6,7 +6,8 @@ uploaded packs and their Terraform) may hold tenant or customer data, so a
 file is created owner-only (0600) and a folder the app creates is 0700,
 whatever the process umask says.
 
-  private_open(path, mode)          open() for writing, the file 0600
+  private_open(path, mode)          open() for writing, the file 0600,
+                                    never through a link at `path`
   private_makedirs(path)            os.makedirs, every folder it creates 0700
   write_private_atomic(path, text)  a unique 0600 temporary file beside
                                     `path`, flushed, then moved over it
@@ -19,10 +20,18 @@ stored and deflate members (what Client Connector bundles, Terraform and
 vendor exports use; deny by default), refuses encrypted ones, and reads in
 bounded steps, refusing anything past `limit` and any member whose data
 does not match its header (fail closed).
+
+Parsing uploads: strict_json_loads is json.loads as RFC 8259 defines JSON.
+Python's json module also reads NaN, Infinity and numbers too large for a
+double (as inf); kept and sent back, any of them makes every answer that
+carries it invalid JSON (a 500 on each request, and a stored file that no
+longer opens). An upload reader refuses them with a ValueError.
 """
 from __future__ import annotations
 
 import contextlib
+import json
+import math
 import os
 import tempfile
 import zipfile
@@ -39,8 +48,34 @@ class ArchiveRefused(ValueError):
     """An archive member this app will not open; the message says why."""
 
 
+def _no_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not a JSON number")
+
+
+def _finite_float(text: str) -> float:
+    v = float(text)
+    if not math.isfinite(v):
+        raise ValueError("a number too large for JSON")
+    return v
+
+
+def strict_json_loads(text: Any) -> Any:
+    """json.loads that refuses NaN, Infinity, -Infinity and a number too
+    large for a double (ValueError), as JSON itself does. Nesting too deep
+    for the parser is a ValueError too, not a RecursionError (CWE-674)."""
+    try:
+        return json.loads(text, parse_constant=_no_constant, parse_float=_finite_float)
+    except RecursionError:
+        raise ValueError("JSON nested too deeply") from None
+
+
+# Never write through a symbolic link planted at the name (CWE-59): the
+# file the app means is replaced or created, not the link's target.
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
 def _opener(path: str, flags: int) -> int:
-    fd = os.open(path, flags, FILE_MODE)
+    fd = os.open(path, flags | _NOFOLLOW, FILE_MODE)
     with contextlib.suppress(OSError):   # a file that already existed keeps no wider mode
         os.chmod(fd if os.chmod in os.supports_fd else path, FILE_MODE)
     return fd
@@ -108,7 +143,11 @@ def zip_member(z: zipfile.ZipFile, info: zipfile.ZipInfo, limit: int) -> bytes:
                 out += chunk
                 if len(out) > limit:
                     raise ArchiveRefused(f"{name}: expands past its limit")
-    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError) as e:
-        # A damaged member (a CRC that does not match, a size that lies) is refused, not a server error.
+    except ArchiveRefused:
+        raise   # a ValueError itself: its own words, not "damaged"
+    except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError, ValueError, OSError) as e:
+        # A damaged member (a CRC that does not match, a size that lies, a
+        # header offset that points before the file: "negative seek value")
+        # is refused, not a server error.
         raise ArchiveRefused(f"{name}: damaged or not what it claims ({str(e)[:80]})") from None
     return bytes(out)

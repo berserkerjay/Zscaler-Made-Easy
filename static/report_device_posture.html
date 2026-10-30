@@ -69,6 +69,8 @@
   }
   @media (prefers-reduced-motion: reduce) { .dv-tabs [role="tab"], .dv-rule > summary { transition: none; } .pa-live .spin { animation: none; } }
 </style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page dv-page">
   <div class="rp-page">
@@ -127,9 +129,14 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+    const errText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+      return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
     const $ = id => document.getElementById(id);
     const live = $('liveRegion');
     const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
@@ -269,7 +276,7 @@
       try {
         const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        if (!r.ok) throw new Error(errText(d, r.status));
         job = d.job_id;
         if (stopAsked) {
           try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }

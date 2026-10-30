@@ -318,12 +318,13 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
         profiles = []
     for p in profiles:
         try:
-            digest["tenants"].append(_evaluate_tenant(p, build_client, days=days, log=_log))
+            t = _evaluate_tenant(p, build_client, days=days, log=_log)
         except Exception as e:  # noqa: BLE001  # one malformed profile must not stop the others or the digest
             pid = str(p.get("id") or "?")
-            digest["tenants"].append({"profile_id": pid, "name": p.get("name") or pid, "tenant": tenant_label(p, pid),
-                                      "detection_health": None, "proposals": None, "tenants": None, "drift": None, "skipped": [],
-                                      "errors": [f"profile: {type(e).__name__}: {str(e)[:200]}"]})
+            t = {"profile_id": pid, "name": p.get("name") or pid, "tenant": tenant_label(p, pid),
+                 "detection_health": None, "proposals": None, "tenants": None, "drift": None, "skipped": [],
+                 "errors": [f"profile: {type(e).__name__}: {str(e)[:200]}"]}
+        digest["tenants"].append(_without_profile_secrets(t, p))
 
     # Score-drop alerts (posture_plus): a journey score this run measured, or
     # the latest assessment score, lower than the one before by at least the
@@ -338,8 +339,12 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
         seen = _alerts_seen()
         for t in digest["tenants"]:
             full = tenant_profiles.get(str(t.get("profile_id") or "")) or {}
-            t["score_alerts"] = posture_plus.tenant_alerts(t, full.get("history") or [], cfg=cfg,
-                                                           seen={(k, a) for p, k, a in seen if p == t.get("profile_id")})
+            mine = {(k, a) for p, k, a in seen if p == t.get("profile_id")}
+            t["score_alerts"] = posture_plus.tenant_alerts(t, full.get("history") or [], cfg=cfg, seen=mine)
+            # Carried forward, so a drop this run leaves out as already
+            # reported is still known as reported to the next run.
+            t["score_alerts_reported"] = sorted({a for k, a in mine if k == "assessment"}
+                                                | {str(x.get("at")) for x in t["score_alerts"] if x.get("kind") == "assessment"})[-ALERTS_KEPT:]
         digest["score_drop_points"] = cfg["score_drop_points"]
     except Exception as e:  # noqa: BLE001
         digest["errors"].append(f"score alerts: {type(e).__name__}: {str(e)[:200]}")
@@ -361,6 +366,27 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
     except Exception:  # noqa: BLE001
         pass
     return digest
+
+
+def _without_profile_secrets(t: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, Any]:
+    """The tenant's section with the profile's own secrets (client secret,
+    password, API key, in every encoding an echoed request shows) taken out
+    of its error texts: a sign-in or read error can echo the request, and
+    the digest is kept on disk, returned by the API and may be sent. Fail
+    closed: when the secrets cannot be looked up, no error detail is kept."""
+    errors = t.get("errors") or []
+    if not errors:
+        return t
+    try:
+        import tenant_profiles
+        full = tenant_profiles.get(str(profile.get("id") or ""), with_secret=True) or {}
+        secrets = [str(full.get(f) or "") for f in tenant_profiles.SECRET_FIELDS]
+        secrets = [x for x in secrets if x and x != tenant_profiles.KEYRING_MARK]
+    except Exception:  # noqa: BLE001
+        t["errors"] = ["an error was recorded, but its detail is withheld (the profile's secrets could not be checked)" for _ in errors]
+        return t
+    t["errors"] = [_scrub_secrets(str(e), secrets) for e in errors]
+    return t
 
 
 def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -> Dict[str, Any]:
@@ -653,9 +679,14 @@ def _sync_reauthorise(tenant_key: str, not_active: List[Dict[str, Any]]) -> None
     proposals.merge(tenant_key, fresh, source="continuous_evaluation")
 
 
+ALERTS_KEPT = 20   # assessment drops remembered per tenant as already reported
+
+
 def _alerts_seen() -> set:
-    """(profile id, kind, at) of the assessment score drops the previous
-    digest already reported, so one drop is reported once."""
+    """(profile id, kind, at) of the assessment score drops an earlier
+    digest already reported (the previous digest's alerts and the ones it
+    carried forward as reported), so one drop is reported once, not again
+    every other run."""
     try:
         last = list_digests(1)
         prev = get_digest(str(last[0]["id"])) if last else None
@@ -664,8 +695,10 @@ def _alerts_seen() -> set:
     out = set()
     for t in (prev or {}).get("tenants") or []:
         for a in t.get("score_alerts") or []:
-            if a.get("kind") == "assessment":
+            if isinstance(a, dict) and a.get("kind") == "assessment":
                 out.add((t.get("profile_id"), "assessment", str(a.get("at"))))
+        for at in t.get("score_alerts_reported") or []:
+            out.add((t.get("profile_id"), "assessment", str(at)))
     return out
 
 
@@ -854,11 +887,22 @@ def notification_settings() -> Dict[str, Any]:
     host = urlparse(webhook).hostname if webhook else None
     return {"mode": (env.get("DLP_CHECK_NOTIFY") or "noteworthy").strip().lower(),
             "email": {"configured": bool(env.get("DLP_CHECK_SMTP_HOST") and env.get("DLP_CHECK_DIGEST_TO")), "host": env.get("DLP_CHECK_SMTP_HOST") or None,
-                      "port": int(env.get("DLP_CHECK_SMTP_PORT") or 587), "to": env.get("DLP_CHECK_DIGEST_TO") or None, "from": env.get("DLP_CHECK_DIGEST_FROM") or env.get("DLP_CHECK_SMTP_USER") or None,
+                      "port": _smtp_port(env.get("DLP_CHECK_SMTP_PORT")), "to": env.get("DLP_CHECK_DIGEST_TO") or None, "from": env.get("DLP_CHECK_DIGEST_FROM") or env.get("DLP_CHECK_SMTP_USER") or None,
                       "tls": env.get("DLP_CHECK_SMTP_TLS", "1") not in ("0", "false", "no")},
             "webhook": {"configured": bool(webhook and webhook.startswith("https://")), "host": host,
                         "kind": "teams" if host and ("webhook.office.com" in host or "logic.azure.com" in host or "powerautomate" in host) else ("slack" if host and "hooks.slack.com" in host else ("generic" if host else None))},
             "interval_hours": interval_hours(warn=False)}   # logged once, when the server decides the timer
+
+
+def _smtp_port(raw: Any) -> int:
+    """DLP_CHECK_SMTP_PORT as a TCP port; unset, not a number or out of
+    range is 587 (submission), so a typo never ends a run that has
+    already read the tenants before its digest is written."""
+    try:
+        port = int(str(raw or "").strip() or 587)
+    except ValueError:
+        return 587
+    return port if 1 <= port <= 65535 else 587
 
 
 def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -867,6 +911,7 @@ def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:
     if mode == "never" or (mode != "always" and not d.get("noteworthy")):
         return [{"channel": "none", "sent": False, "why": f"mode {mode}, digest {'noteworthy' if d.get('noteworthy') else 'quiet'}"}]
     out = []
+    d = for_notification(d)
     md = to_markdown(d)
     s = d.get("summary") or {}
     subject = f"Zscaler Made Easy digest: {s.get('proposals_new', 0)} new proposal(s), {s.get('guidance_new', 0)} new guidance, {s.get('drift_changed', 0)} pack(s) moved"
@@ -876,6 +921,20 @@ def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:
         out.append(_send_webhook(subject, md, os.environ.get("DLP_CHECK_DIGEST_WEBHOOK", "").strip()))
     if not out:
         out.append({"channel": "none", "sent": False, "why": "no e-mail or webhook configured (DLP_CHECK_SMTP_HOST + DLP_CHECK_DIGEST_TO, or DLP_CHECK_DIGEST_WEBHOOK)"})
+    return out
+
+
+def for_notification(d: Dict[str, Any]) -> Dict[str, Any]:
+    """The digest as it may leave the machine: a score drop is sent only
+    when score-drop alerts are turned on (posture_plus notify_score_drop).
+    Off, a drop stays in the digest file and on the page, and an e-mail or
+    webhook sent for something else does not carry it."""
+    tenants = []
+    for t in d.get("tenants") or []:
+        alerts = [a for a in t.get("score_alerts") or [] if isinstance(a, dict) and a.get("notify")]
+        tenants.append(dict(t, score_alerts=alerts) if isinstance(t, dict) else t)
+    out = dict(d, tenants=tenants)
+    out["summary"] = summarise(out)
     return out
 
 

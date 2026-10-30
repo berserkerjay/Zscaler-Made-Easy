@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import safe_files
 
 
-from pack_deploy import _field, _items_set  # tenant object readers (snake/camel case)
+from pack_deploy import _field, _items_set, load_pack_file, PackFileError  # tenant object readers (snake/camel case), pack files
 
 ROLE_RE = re.compile(r"(?i)\b(anchor|signal)s?\b")
 SEP_RE = re.compile(r"[\s_\-:/]+")
@@ -65,7 +65,10 @@ def read_custom_dictionaries(client) -> Tuple[List[Dict[str, Any]], Optional[str
             "patterns": [{"action": a, "pattern": p} for a, p in patterns],
             "phrases": [{"action": a, "phrase": p} for a, p in phrases],
         }
-        prox = int(_field(t, "proximity", default=0) or 0)
+        try:
+            prox = int(_field(t, "proximity", default=0) or 0)
+        except (TypeError, ValueError):
+            prox = 0     # a tenant value that is not a number is not carried into the pack
         if prox:
             d["proximity"] = prox
         out.append(d)
@@ -84,19 +87,47 @@ def _language_key(name: str) -> Tuple[str, str, str]:
     return label.lower(), label, (role.group(1).lower() if role else "")
 
 
+def _usable_name(name: str) -> bool:
+    """A tenant dictionary name that stays one `D:<name>` term in the
+    engine expression built from it: no control characters, and the
+    expression reader (dlp_importer.find_refs) reads exactly this name
+    back. A name such as "Py) OR (D:CREDIT_CARD Signal" would otherwise
+    rewrite the engine's logic in every tenant the pack is deployed to."""
+    if not name or name != name.strip() or any(ord(ch) < 32 or ord(ch) == 127 for ch in name):
+        return False
+    return _refs(f"((D:{name} > 0) AND (D:{name} > 0))") == [name, name]
+
+
+def _filter_matches(name_filter: str, name: str) -> bool:
+    """Whether `name` passes the literal filter (see pair_anchor_signal)."""
+    flt = str(name_filter or "")
+    if not flt:
+        return True
+    starts, ends = flt.startswith("^"), len(flt) > 1 and flt.endswith("$")
+    core = flt[1 if starts else 0:len(flt) - (1 if ends else 0)].casefold()
+    low = name.casefold()
+    if starts and ends:
+        return low == core
+    if starts:
+        return low.startswith(core)
+    if ends:
+        return low.endswith(core)
+    return core in low
+
+
 def pair_anchor_signal(dicts: Sequence[Dict[str, Any]], name_filter: str = "") -> Dict[str, Any]:
     """Group dictionaries into {language: {anchor, signal}} pairs.
-    `name_filter` (case-insensitive substring or regex) narrows the set."""
-    flt = None
-    if name_filter:
-        try:
-            flt = re.compile(name_filter, re.I)
-        except re.error:
-            flt = re.compile(re.escape(name_filter), re.I)
+    `name_filter` (a case-insensitive substring, matched literally, with
+    an optional leading ^ for "starts with" and trailing $ for "ends
+    with": no regular expression is ever run against tenant names, so a
+    filter cannot hang the server) narrows the set."""
     groups: Dict[str, Dict[str, Any]] = {}
     ignored: List[str] = []
     for d in dicts:
-        if flt and not flt.search(d["name"]):
+        if not _filter_matches(name_filter, d["name"]):
+            continue
+        if not _usable_name(d["name"]):
+            ignored.append(f"{d['name']!r} (the name cannot be used in an engine expression)")
             continue
         key, label, role = _language_key(d["name"])
         if not role or not key:
@@ -146,7 +177,7 @@ def build_configs(pairs: Dict[str, Dict[str, Any]], *, prefix: str = "SRC-", thr
 def _refs(expr: str) -> List[str]:
     """Dictionary names an engine expression references (D:<name> terms)."""
     from dlp_importer import find_refs
-    return [r.strip() for r in find_refs(expr or "") if r.strip()]
+    return [r.strip() for r in find_refs(expr if isinstance(expr, str) else "") if r.strip()]
 
 
 def _is_language_engine(engine: Dict[str, Any], dicts: List[Dict[str, Any]]) -> bool:
@@ -161,16 +192,13 @@ def write_pack(pack_dir: str, dicts: List[Dict[str, Any]], engines: List[Dict[st
     else and now reference every new engine. Returns what was replaced."""
     cfg = os.path.join(pack_dir, "configs")
     safe_files.private_makedirs(cfg)
-    before = {"dictionaries": [], "engines": []}
-    old: Dict[str, List[Dict[str, Any]]] = {"dictionaries": [], "engines": []}
-    for kind in ("dictionaries", "engines"):
-        path = os.path.join(cfg, f"dlp_{kind}.json")
-        if os.path.exists(path):
-            try:
-                old[kind] = json.load(open(path, encoding="utf-8"))
-                before[kind] = [x["name"] for x in old[kind]]
-            except Exception:  # noqa: BLE001
-                pass
+    # The pack's current files are untrusted (load_pack_file: size, nesting,
+    # shape); one that is not a pack stops the rebuild before anything is written.
+    old: Dict[str, List[Dict[str, Any]]] = {kind: [x for x in load_pack_file(cfg, f"dlp_{kind}.json", os.path.basename(pack_dir))
+                                                   if isinstance(x.get("name"), str)]
+                                            for kind in ("dictionaries", "engines")}
+    policies = load_pack_file(cfg, "dlp_policies.json", os.path.basename(pack_dir))
+    before = {kind: [x["name"] for x in old[kind]] for kind in old}
     # Engines that are not language engines (Private Keys, say) and the
     # dictionaries only they use are kept: the rebuild replaces the language
     # coverage, not the rest of the pack.
@@ -183,22 +211,20 @@ def write_pack(pack_dir: str, dicts: List[Dict[str, Any]], engines: List[Dict[st
     kept_dicts = [d for d in old["dictionaries"] if d["name"] in kept_refs and d["name"] not in lang_dicts]
     engines = list(engines) + kept_engines
     dicts = list(dicts) + kept_dicts
-    # The tenant's own dictionaries and engines: owner-only (0600).
-    with safe_files.private_open(os.path.join(cfg, "dlp_dictionaries.json"), "w", encoding="utf-8") as f:
-        json.dump(dicts, f, indent=2, ensure_ascii=False)
-    with safe_files.private_open(os.path.join(cfg, "dlp_engines.json"), "w", encoding="utf-8") as f:
-        json.dump(engines, f, indent=2, ensure_ascii=False)
     pol_path = os.path.join(cfg, "dlp_policies.json")
     rewired = []
+    kept_names = {k["name"] for k in kept_engines}
+    names = [e["name"] for e in engines if e["name"] not in kept_names]
+    for p in policies:
+        engs = p.get("engines")
+        if isinstance(engs, list) and engs and not ({str(x) for x in engs} & kept_names):
+            p["engines"] = names; rewired.append(str(p.get("name") or ""))
+    # The tenant's own dictionaries and engines: owner-only (0600), each file
+    # replaced whole (a crash never leaves half a pack file).
+    safe_files.write_private_atomic(os.path.join(cfg, "dlp_dictionaries.json"), json.dumps(dicts, indent=2, ensure_ascii=False))
+    safe_files.write_private_atomic(os.path.join(cfg, "dlp_engines.json"), json.dumps(engines, indent=2, ensure_ascii=False))
     if os.path.exists(pol_path):
-        policies = json.load(open(pol_path, encoding="utf-8"))
-        names = [e["name"] for e in engines if e["name"] not in {k["name"] for k in kept_engines}]
-        kept_names = {k["name"] for k in kept_engines}
-        for p in policies:
-            if p.get("engines") and not (set(p["engines"]) & kept_names):
-                p["engines"] = names; rewired.append(p["name"])
-        with safe_files.private_open(pol_path, "w", encoding="utf-8") as f:
-            json.dump(policies, f, indent=2, ensure_ascii=False)
+        safe_files.write_private_atomic(pol_path, json.dumps(policies, indent=2, ensure_ascii=False))
     return {"removed_dictionaries": [n for n in before["dictionaries"] if n not in {d["name"] for d in dicts}],
             "removed_engines": [n for n in before["engines"] if n not in {e["name"] for e in engines}],
             "rules_rewired": rewired}
@@ -227,7 +253,10 @@ def rebuild_from_tenant(client, pack_dir: str, *, name_filter: str = "", prefix:
             ". Names must contain 'Anchor' or 'Signal' with the language as the rest of the name."
         return out
     if not dry_run:
-        out.update(write_pack(pack_dir, new_dicts, engines))
+        try:
+            out.update(write_pack(pack_dir, new_dicts, engines))
+        except PackFileError as e:
+            return dict(out, status="error", error=f"The pack was not rewritten: {e}.")
     return out
 
 

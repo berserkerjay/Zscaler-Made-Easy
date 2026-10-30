@@ -43,12 +43,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import math
 import os
 import secrets
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import jwt
 import requests
@@ -59,7 +60,21 @@ _DISCOVERY_CACHE: Dict[str, Dict[str, Any]] = {}
 _JWKS_CACHE: Dict[str, Dict[str, Any]] = {}
 _CACHE_TTL_SECONDS = 3600
 _PENDING_LOGINS: Dict[str, Dict[str, Any]] = {}   # state -> {nonce, verifier, at, binding}
+_PENDING_LOCK = threading.Lock()
 _PENDING_TTL_SECONDS = 600
+# /api/auth/sso/login needs no sign-in, so every call to it would otherwise
+# add a pending login for ten minutes, without bound (CWE-770): past this
+# many, the oldest is dropped.
+MAX_PENDING_LOGINS = 1000
+# The ID token must be signed with a public-key algorithm the identity
+# provider's key set publishes. Never 'none', and never a shared-secret
+# algorithm (HS256...) that a public key could be fed to (CWE-347).
+ID_TOKEN_ALGORITHMS = ("RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA")
+_KEY_TYPES = ("RSA", "EC", "OKP")
+# The claims OpenID Connect Core 3.1.3.7 makes an ID token carry; one
+# without an expiry would be a sign-in that never ends.
+REQUIRED_CLAIMS = ("iss", "aud", "sub", "exp", "iat")
+CLOCK_SKEW_SECONDS = 60
 _HTTP_TIMEOUT = 10
 _SESSIONS: Dict[str, Dict[str, Any]] = {}          # session id -> {sub, email, groups, created, last_seen, expires}
 _SESSIONS_LOCK = threading.Lock()
@@ -76,11 +91,25 @@ def config_errors() -> List[str]:
         return []
     errors = [f"{name} is not set" for name in REQUIRED_ENV if not os.environ.get(name, "").strip()]
     issuer = os.environ.get("ZSCALER_SSO_ISSUER", "").strip()
-    if issuer and not issuer.startswith("https://") and not any(
-        issuer.startswith(f"http://{h}") for h in ("127.0.0.1", "localhost", "[::1]")
-    ):
+    if issuer and not secure_url(issuer):
         errors.append("ZSCALER_SSO_ISSUER must be https:// (a plain http:// identity provider can be spoofed on the network)")
     return errors
+
+
+_LOOPBACK_NAMES = ("127.0.0.1", "localhost", "::1")
+
+
+def secure_url(url: Any) -> bool:
+    """https://, or plain http:// to this computer's loopback only: the host
+    itself is compared, so http://localhost.attacker.example is not loopback."""
+    try:
+        u = urlparse(str(url or "").strip())
+        host = (u.hostname or "").lower()
+    except ValueError:
+        return False
+    if not host:
+        return False
+    return u.scheme == "https" or (u.scheme == "http" and host in _LOOPBACK_NAMES)
 
 
 def require_configured() -> None:
@@ -118,9 +147,17 @@ def discovery() -> Dict[str, Any]:
     r = requests.get(f"{issuer}/.well-known/openid-configuration", timeout=_HTTP_TIMEOUT)
     r.raise_for_status()
     doc = r.json()
+    if not isinstance(doc, dict):
+        raise RuntimeError("The identity provider's discovery document is not a JSON object.")
     missing = [k for k in ("authorization_endpoint", "token_endpoint", "jwks_uri") if k not in doc]
     if missing:
         raise RuntimeError(f"The identity provider's discovery document is missing {', '.join(missing)}.")
+    # OpenID Connect Discovery 4.3: the document is the configured issuer's own.
+    if doc.get("issuer") is not None and str(doc["issuer"]).rstrip("/") != issuer:
+        raise RuntimeError("The identity provider's discovery document names another issuer than ZSCALER_SSO_ISSUER.")
+    insecure = [k for k in ("authorization_endpoint", "token_endpoint", "jwks_uri") if not secure_url(doc[k])]
+    if insecure:
+        raise RuntimeError(f"The identity provider's discovery document gives a plain http:// address for {', '.join(insecure)}.")
     _DISCOVERY_CACHE[issuer] = {"value": doc, "at": time.time()}
     return doc
 
@@ -144,9 +181,15 @@ def _pkce_pair() -> Tuple[str, str]:
 
 
 def _sweep_pending() -> None:
+    """Drop expired pending logins, then the oldest past MAX_PENDING_LOGINS.
+    Called with _PENDING_LOCK held."""
     cutoff = time.time() - _PENDING_TTL_SECONDS
     for state in [s for s, v in _PENDING_LOGINS.items() if v["at"] < cutoff]:
         _PENDING_LOGINS.pop(state, None)
+    extra = len(_PENDING_LOGINS) - (MAX_PENDING_LOGINS - 1)
+    if extra > 0:
+        for state in sorted(_PENDING_LOGINS, key=lambda k: _PENDING_LOGINS[k]["at"])[:extra]:
+            _PENDING_LOGINS.pop(state, None)
 
 
 def new_login_binding() -> str:
@@ -163,11 +206,13 @@ def start_login(binding: Optional[str] = None) -> str:
     bound to `binding` (the browser's login cookie) when given.
     Returns the URL to send the browser to."""
     require_configured()
-    _sweep_pending()
+    endpoint = discovery()["authorization_endpoint"]
     state = secrets.token_urlsafe(24)
     nonce = secrets.token_urlsafe(24)
     verifier, challenge = _pkce_pair()
-    _PENDING_LOGINS[state] = {"nonce": nonce, "verifier": verifier, "at": time.time(), "binding": binding}
+    with _PENDING_LOCK:
+        _sweep_pending()
+        _PENDING_LOGINS[state] = {"nonce": nonce, "verifier": verifier, "at": time.time(), "binding": binding}
     params = {
         "response_type": "code",
         "client_id": os.environ["ZSCALER_SSO_CLIENT_ID"],
@@ -178,7 +223,7 @@ def start_login(binding: Optional[str] = None) -> str:
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
-    return discovery()["authorization_endpoint"] + "?" + urlencode(params)
+    return endpoint + ("&" if "?" in endpoint else "?") + urlencode(params)
 
 
 def complete_login(state: str, code: str, binding: Optional[str] = None) -> Dict[str, Any]:
@@ -188,8 +233,9 @@ def complete_login(state: str, code: str, binding: Optional[str] = None) -> Dict
     the verified claims (sub, email, ...) on success. Raises on any failure —
     every failure here means the login did not happen; nothing is granted."""
     require_configured()
-    _sweep_pending()
-    pending = _PENDING_LOGINS.pop(state, None)
+    with _PENDING_LOCK:
+        _sweep_pending()
+        pending = _PENDING_LOGINS.pop(str(state or ""), None)
     if pending is None:
         raise RuntimeError("This sign-in attempt was not recognised (it may have expired — try again).")
     expected = pending.get("binding")
@@ -208,15 +254,46 @@ def complete_login(state: str, code: str, binding: Optional[str] = None) -> Dict
     id_token = resp.json().get("id_token")
     if not id_token:
         raise RuntimeError("The identity provider did not return an ID token.")
-    header = jwt.get_unverified_header(id_token)
-    key = next((k for k in jwks() if k.get("kid") == header.get("kid")), None)
+    return verify_id_token(id_token, pending["nonce"])
+
+
+def verify_id_token(id_token: str, nonce: str) -> Dict[str, Any]:
+    """The claims of an ID token from the configured identity provider, or a
+    RuntimeError. Checked: the algorithm (a public-key one from
+    ID_TOKEN_ALGORITHMS, the same as its key's), the signature against the
+    provider's published key, the issuer, the audience (and `azp` when it
+    names several), the expiry and issue time (REQUIRED_CLAIMS, with
+    CLOCK_SKEW_SECONDS of leeway) and the nonce of this sign-in."""
+    client_id = os.environ["ZSCALER_SSO_CLIENT_ID"]
+    try:
+        header = jwt.get_unverified_header(id_token)
+    except jwt.PyJWTError:
+        raise RuntimeError("The identity provider's ID token is not a signed JSON Web Token.") from None
+    alg = header.get("alg")
+    if alg not in ID_TOKEN_ALGORITHMS:
+        raise RuntimeError(f"The ID token is signed with an algorithm this server does not accept ({str(alg)[:20]!r}): "
+                           "only a public-key signature from the identity provider's key set is.")
+    key = next((k for k in jwks() if isinstance(k, dict) and k.get("kid") == header.get("kid")), None)
     if key is None:
         raise RuntimeError("The ID token's signing key is not in the identity provider's published key set.")
-    claims = jwt.decode(
-        id_token, jwt.PyJWK(key).key, algorithms=[header.get("alg", "RS256")],
-        audience=os.environ["ZSCALER_SSO_CLIENT_ID"], issuer=_issuer(),
-    )
-    if claims.get("nonce") != pending["nonce"]:
+    if key.get("kty") not in _KEY_TYPES or (key.get("alg") and key.get("alg") != alg) or key.get("use", "sig") != "sig":
+        raise RuntimeError("The ID token's algorithm does not match the signing key the identity provider published.")
+    try:
+        claims = jwt.decode(
+            id_token, jwt.PyJWK(key, algorithm=alg).key, algorithms=[alg],
+            audience=client_id, issuer=_issuer(), leeway=CLOCK_SKEW_SECONDS,
+            options={"require": list(REQUIRED_CLAIMS), "verify_signature": True, "verify_exp": True,
+                     "verify_iat": True, "verify_aud": True, "verify_iss": True},
+        )
+    except jwt.ExpiredSignatureError:
+        raise RuntimeError("The ID token has expired; sign in again.") from None
+    except jwt.PyJWTError as e:
+        raise RuntimeError(f"The ID token could not be verified ({type(e).__name__}).") from None
+    aud = claims.get("aud")
+    several = isinstance(aud, list) and len(aud) > 1
+    if (several or "azp" in claims) and claims.get("azp") != client_id:
+        raise RuntimeError("The ID token was issued to another client (its authorized party is not this server).")
+    if not isinstance(claims.get("nonce"), str) or not secrets.compare_digest(claims["nonce"].encode(), str(nonce).encode()):
         raise RuntimeError("The ID token's nonce does not match this sign-in attempt.")
     return claims
 
@@ -229,7 +306,9 @@ def idle_seconds() -> int:
         minutes = float(os.environ.get("ZSCALER_SSO_IDLE_MINUTES", "30") or 30)
     except ValueError:
         minutes = 30
-    return int(max(1.0, minutes) * 60)
+    if not math.isfinite(minutes):
+        minutes = 30   # 'inf' or 'nan' is a typo, not a session that never idles out (and int(inf) raises)
+    return int(min(max(1.0, minutes), SESSION_MAX_SECONDS / 60) * 60)
 
 
 def _csv_env(name: str) -> List[str]:

@@ -37,7 +37,7 @@
   table.la-t { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
   table.la-t th, table.la-t td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
   table.la-t th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
-  .la-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.6rem; }
+  .la-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 0.6rem; }
   .la-fact { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
   .la-fact .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
   .la-fact .v { font-size: 0.9rem; word-break: break-word; }
@@ -46,6 +46,8 @@
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   @media (prefers-reduced-motion: reduce) { .la-drop { transition: none; } }
 </style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page df-page">
   <div class="rp-page">
@@ -105,6 +107,8 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -236,39 +240,57 @@
       setEnabled('laDownload', true); setEnabled('laCopy', true);
     }
 
+    // Upload-controlled text (file and PAC names, users, notes, bypass values,
+    // log lines and what is quoted from them) is made inert as md_safe.text
+    // does on the server: one line, bidirectional controls shown as U+FFFD,
+    // < and > as entities (no tag, no autolink), and link brackets, code
+    // backticks, table pipes and the backslash escaped. Evidence goes in a
+    // fence longer than any backtick run it holds, so a line cannot close it.
+    const MD_BREAKS = /[\r\n\t\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u2028\u2029\u0085]+/g;
+    const MD_BIDI = /[\u202a-\u202e\u2066-\u2069]/g;
+    const mdLine = s => String(s == null ? '' : s).replace(MD_BREAKS, ' ').replace(MD_BIDI, '\ufffd').trim();
+    const M = s => mdLine(s).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/([\\`\[\]|])/g, '\\$1');
+    const mdFence = lines => {
+      let run = 0;
+      for (const l of lines) for (const r of (String(l).match(/`+/g) || [])) run = Math.max(run, r.length);
+      return '`'.repeat(Math.max(3, run + 1));
+    };
+    const mdBlock = lines => { const ls = lines.map(mdLine); const f = mdFence(ls); return [f, ...ls, f]; };
     function markdown(d) {
       const out = [];
       const v = d.verdict || {};
-      out.push('# Log analyzer findings', '', `**${v.headline || ''}** ${v.detail || ''}`, '');
+      out.push('# Log analyzer findings', '', `**${M(v.headline)}** ${M(v.detail)}`, '');
       const L = d.logs;
       if (L) {
         out.push('## What we read', '');
-        out.push(`- Period: ${L.period && L.period.first ? `${L.period.first} → ${L.period.last}` : 'no timestamps'}`);
+        out.push(`- Period: ${L.period && L.period.first ? `${M(L.period.first)} → ${M(L.period.last)}` : 'no timestamps'}`);
         const f = L.facts || {};
-        out.push(`- Client Connector: ${(f.client_versions || []).join(', ') || 'unknown'}; OS: ${(f.operating_systems || []).join(', ') || 'unknown'}; user: ${(f.users || []).join(', ') || 'unknown'}; cloud: ${(f.clouds || []).join(', ') || 'unknown'}`);
-        out.push(`- Files: ${(L.files || []).map(x => `${x.name} (${x.lines} lines)`).join(', ')}`, '');
+        const list = xs => (xs || []).map(M).join(', ');
+        out.push(`- Client Connector: ${list(f.client_versions) || 'unknown'}; OS: ${list(f.operating_systems) || 'unknown'}; user: ${list(f.users) || 'unknown'}; cloud: ${list(f.clouds) || 'unknown'}`);
+        out.push(`- Files: ${(L.files || []).map(x => `${M(x.name)} (${M(x.lines)} lines)`).join(', ')}`, '');
         out.push('## Findings', '');
         for (const x of L.findings || []) {
-          out.push(`### [${x.severity.toUpperCase()}] ${x.title} (${x.count} lines${x.first ? `, ${x.first} → ${x.last}` : ''})`, '');
-          out.push(`**What happened.** ${x.what}`, '', `**What it means.** ${x.means}`, '', '**What to do next.**');
-          (x.do || []).forEach((s, i) => out.push(`${i + 1}. ${s}`));
-          if (x.context) out.push('', `> ${x.context}`);
-          if ((x.evidence || []).length) { out.push('', '```'); x.evidence.forEach(ev => out.push(`${ev.file}${ev.ts ? ' ' + ev.ts : ''}: ${ev.line}`)); out.push('```'); }
+          out.push(`### [${M(String(x.severity || '').toUpperCase())}] ${M(x.title)} (${M(x.count)} lines${x.first ? `, ${M(x.first)} → ${M(x.last)}` : ''})`, '');
+          out.push(`**What happened.** ${M(x.what)}`, '', `**What it means.** ${M(x.means)}`, '', '**What to do next.**');
+          (x.do || []).forEach((st, i) => out.push(`${i + 1}. ${M(st)}`));
+          if (x.context) out.push('', `> ${M(x.context)}`);
+          if ((x.evidence || []).length) out.push('', ...mdBlock(x.evidence.map(ev => `${ev.file}${ev.ts ? ' ' + ev.ts : ''}: ${ev.line}`)));
           out.push('');
         }
-        if ((L.top_errors || []).length) { out.push('## Most repeated error lines', '', '```'); L.top_errors.forEach(t => out.push(`x${t.count} ${t.message}`)); out.push('```', ''); }
+        if ((L.top_errors || []).length) out.push('## Most repeated error lines', '', ...mdBlock(L.top_errors.map(t => `x${t.count} ${t.message}`)), '');
       }
       for (const p of d.pac || []) {
         const s = p.summary || {};
-        out.push(`## PAC file: ${p.name}`, '', `- Default: ${s.default}; gateways: ${(s.gateways || []).join(', ') || 'none'}; macros: ${(s.macros || []).join(', ') || 'none'}; bypasses: ${s.bypass_count || 0}`, '');
+        const list = xs => (xs || []).map(M).join(', ');
+        out.push(`## PAC file: ${M(p.name)}`, '', `- Default: ${M(s.default)}; gateways: ${list(s.gateways) || 'none'}; macros: ${list(s.macros) || 'none'}; bypasses: ${M(s.bypass_count || 0)}`, '');
         for (const x of p.findings || []) {
-          out.push(`### [${x.severity.toUpperCase()}] ${x.title}`, '', `**What happened.** ${x.what}`, '', `**What it means.** ${x.means}`, '', '**What to do next.**');
-          (x.do || []).forEach((st, i) => out.push(`${i + 1}. ${st}`));
+          out.push(`### [${M(String(x.severity || '').toUpperCase())}] ${M(x.title)}`, '', `**What happened.** ${M(x.what)}`, '', `**What it means.** ${M(x.means)}`, '', '**What to do next.**');
+          (x.do || []).forEach((st, i) => out.push(`${i + 1}. ${M(st)}`));
           out.push('');
         }
-        if ((s.bypasses || []).length) { out.push('| Line | Test | Value | Risk |', '|---|---|---|---|'); s.bypasses.forEach(b => out.push(`| ${b.line} | ${b.kind} | ${b.value} | ${b.risk} |`)); out.push(''); }
+        if ((s.bypasses || []).length) { out.push('| Line | Test | Value | Risk |', '|---|---|---|---|'); s.bypasses.forEach(b => out.push(`| ${M(b.line)} | ${M(b.kind)} | ${M(b.value)} | ${M(b.risk)} |`)); out.push(''); }
       }
-      if ((d.notes || []).length) out.push('## Skipped', '', ...d.notes.map(n => `- ${n}`), '');
+      if ((d.notes || []).length) out.push('## Skipped', '', ...d.notes.map(n => `- ${M(n)}`), '');
       return out.join('\n');
     }
     $('laDownload').addEventListener('click', () => {

@@ -90,6 +90,9 @@
     'arrow-left': 'M19 12H5M11 6l-6 6 6 6',
     'print': 'M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z',
     'party': 'M4 20l4-12 8 8zM14 4l1 2M19 5l-2 2M20 11l-2-.5M12 2l.5 2',
+    'film': 'M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4',
+    'satellite': 'M9 13l2 2-3 3-2-2zM10 10l4 4M8.5 8.5l-4-4 3-3 4 4zM15.5 15.5l4 4 3-3-4-4M15 21a6 6 0 0 0 6-6',
+    'pause': 'M8 5v14M16 5v14',
   };
   // Every emoji (and dingbat) the pages use as an icon, by symbol name.
   const EMOJI = {
@@ -101,6 +104,7 @@
     '🩺': 'stethoscope', '📖': 'book', '📚': 'books', '⚙': 'gear', '✨': 'sparkles', '🏗': 'hammer', '🧪': 'flask', '🇺🇸': 'flag', '🇪🇺': 'flag',
     '🏥': 'cross-case', '💳': 'credit-card', '🏦': 'bank', '💡': 'lightbulb', '🎨': 'palette', '🌙': 'moon', '☀': 'sun', '⚡': 'bolt', '⏳': 'hourglass',
     '🗑': 'trash', '🔧': 'wrench', '☰': 'menu', '⤢': 'expand', '✎': 'pencil', '🖨': 'print',
+    '🎞': 'film', '🛰': 'satellite', '⏸': 'pause', '⬇': 'download',
   };
   // Dingbats the pages use as glyphs get the same treatment.
   Object.assign(EMOJI, { '✕': 'x', '✗': 'x', '✓': 'check', '↻': 'refresh', '↺': 'refresh', '↗': 'arrow-up-right', '←': 'arrow-left', '▾': 'chevron-down', '▴': 'chevron-up', '▲': 'chevron-up', '▼': 'chevron-down' });

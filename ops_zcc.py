@@ -64,6 +64,7 @@ import copy
 import json
 import re
 import threading
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -909,9 +910,18 @@ def read_app_services(sdk: Any, cancel=None) -> Tuple[List[Dict[str, Any]], Opti
     return _read_all(_zcc(sdk).web_app_service.list_by_company, {}, cancel)
 
 
+def _ref(v: Any) -> str:
+    """An id as text, the same however the API spelled it: 123, "123",
+    " 123 " and 123.0 are all "123" (so an in-use check never misses a link)."""
+    if v is None or isinstance(v, bool):
+        return ""
+    s = str(v).strip()
+    m = re.fullmatch(r"(\d+)\.0*", s)
+    return m.group(1) if m else s
+
+
 def _id(row: Dict[str, Any]) -> str:
-    v = _get(row, "id")
-    return "" if v is None else str(v)
+    return _ref(_get(row, "id"))
 
 
 def _name(row: Dict[str, Any]) -> str:
@@ -929,7 +939,7 @@ def profile_summary(row: Dict[str, Any], kind: str, platform: str = "") -> Dict[
         out["platform"] = platform
         out["rule_order"] = _get(row, "ruleOrder")
         fid = _get(row, "forwardingProfileId")
-        out["forwarding_profile_id"] = "" if fid in (None, 0, "0") else str(fid)
+        out["forwarding_profile_id"] = "" if _ref(fid) in ("", "0") else _ref(fid)
     return out
 
 
@@ -1291,7 +1301,7 @@ def verify_build(run: Any) -> Dict[str, Any]:
         elif u["kind"] == "zcc_app_profile":
             fwd = gapp["target"].get("forwarding") or {}
             fid = str((run.units.get("fwd") or {}).get("object", {}).get("id") or fwd.get("id") or "")
-            u["verified"] = str(_get(row, "forwardingProfileId") or "") == fid and _active(row) == bool(spec.get("enable"))
+            u["verified"] = _ref(_get(row, "forwardingProfileId")) == fid and _active(row) == bool(spec.get("enable"))
         else:
             u["verified"] = True
         out["checked"] += 1
@@ -1349,7 +1359,7 @@ def _target_check(t: Dict[str, Any], fwds: List[Dict[str, Any]], ferr: Optional[
     if aerr:
         return "blocked", "the app profiles could not all be read, so it cannot be shown to be unused"
     users = [(p, _name(a)) for p, rs in apps.items() for a in rs
-             if str(_get(a, "forwardingProfileId") or "") == t["id"] and _id(a) not in deleting_apps]
+             if _ref(_get(a, "forwardingProfileId")) == t["id"] and _id(a) not in deleting_apps]
     if users:
         return "blocked", "it is in use by " + ", ".join(f"{n} ({p})" for p, n in users[:5]) + (" and more" if len(users) > 5 else "")
     return "change", ""
@@ -1515,6 +1525,15 @@ INSTALL_PARAMS: List[_P] = [
 ]
 INSTALLER_TYPES = {"windows": ("msi", "exe"), "macos": ("app",)}
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9 ._()\-\\/:]{1,200}$")
+# What an installer value may not hold (CWE-78): quotes, including the
+# typographic ones PowerShell treats as quotes (U+2018-U+201F), cmd.exe's
+# % ^ & | < >, PowerShell's ` and $, line breaks and NUL. Control, format
+# and line/paragraph separator characters are refused by category.
+_UNSAFE_VALUE = re.compile("[\"\r\n\x00%`$<>|&^\u2018-\u201f]")
+_UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp"})
+# A value left unquoted on a Windows command line: nothing cmd.exe or PowerShell reads specially (; , ' @ # { } ( ) and
+# spaces are quoted; * is left bare, as neither shell expands it for a program's argument, so the mask stays ********).
+_BARE_ARG = re.compile(r"[A-Za-z0-9._*\-\\/:]+")
 MASK = "********"
 
 
@@ -1541,11 +1560,15 @@ def _collect(platform: str, installer: str, values: Dict[str, Any]) -> Tuple[Lis
             if raw is False or raw == "0":
                 out.append((flag, "0", False))
             continue
+        if raw is not None and (isinstance(raw, bool) or not isinstance(raw, (str, int))):
+            errors.append(f"{label}: give it as text.")
+            continue
         val = "" if raw is None else str(raw).strip()
         if not val:
             continue
-        if len(val) > 256 or re.search(r"[\"\r\n\x00%`$<>|&^]", val):
-            errors.append(f"{label}: quotes, line breaks and the characters % ` $ < > | & ^ cannot be passed to the installer.")
+        if len(val) > 256 or _UNSAFE_VALUE.search(val) or any(unicodedata.category(ch) in _UNSAFE_CATEGORIES for ch in val):
+            errors.append(f"{label}: quotes (also typographic ones), line breaks, control characters and the characters "
+                          "% ` $ < > | & ^ cannot be passed to the installer.")
             continue
         if typ == "cloud":
             v = val.lower()
@@ -1576,7 +1599,11 @@ def _check_rules(platform: str, values: Dict[str, Any], params: List[Tuple[str, 
 
 
 def _win_quote(v: str) -> str:
-    return f'"{v}"' if (not v or re.search(r"[\s()]", v)) else v
+    """A value for the cmd.exe or PowerShell command line: left bare only
+    when every character is one neither shell gives a meaning to, else in
+    double quotes (the values never hold a quote, % ` $ or a typographic
+    quote PowerShell would close the string on; _collect refuses them)."""
+    return v if _BARE_ARG.fullmatch(v) else f'"{v}"'
 
 
 def _sh_quote(v: str) -> str:

@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/flow_anim.css">
 <style>
   .zp-tabs { display: flex; gap: 0.4rem; margin: 0 0 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 0.6rem; }
   .zp-tabs [role="tab"] { min-height: 34px; padding: 0.3rem 0.9rem; border-radius: var(--r-md); border: 1px solid var(--border); background: transparent; color: var(--dim); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
@@ -30,11 +31,11 @@
   .sev-chip.high { background: color-mix(in srgb, var(--fail) 18%, transparent); color: var(--fail); }
   .sev-chip.medium { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
   .sev-chip.low { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-  .zp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.7rem 1rem; margin: 0 0 1rem; }
+  .zp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 0.7rem 1rem; margin: 0 0 1rem; }
   .zp-form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--dim); }
   .zp-form :is(input, select, textarea) { font: inherit; font-size: 0.88rem; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.4rem 0.55rem; min-height: 34px; max-width: 100%; box-sizing: border-box; }
   .zp-form textarea { min-height: 64px; resize: vertical; }
-  .zp-form fieldset { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.7rem 1rem; }
+  .zp-form fieldset { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.6rem 0.8rem; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 0.7rem 1rem; }
   .zp-form legend { font-size: 0.8rem; font-weight: 600; color: var(--text); padding: 0 0.3rem; }
   .zp-actions { grid-column: 1 / -1; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
   .zp-hops { list-style: none; margin: 0 0 1rem; padding: 0; border-left: 2px solid var(--border); }
@@ -103,6 +104,8 @@
   .zo-flags .df-chip { text-transform: none; letter-spacing: 0; font-weight: 600; }
   @media (prefers-reduced-motion: reduce) { .zp-tpl > summary, .zp-tabs [role="tab"], .zo-edge, .zo-node { transition: none; } }
 </style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
 </head>
 <body class="report-page zp-page">
   <div class="rp-page">
@@ -180,6 +183,10 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/flow_anim.js"></script>
+  <script src="/static/flow_pages.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -485,6 +492,11 @@
         ${res.readable === false ? failHtml('Nothing could be read', 'No ZPA list could be read with this sign-in: check that the API client has a ZPA role and that the customer ID is right.') : ''}
         <h2 class="df-h" id="zoKpiH">At a glance</h2>
         <ul class="zo-kpis" aria-labelledby="zoKpiH">${kpis}</ul>
+        <section aria-labelledby="zoFlowH">
+          <h2 class="df-h" id="zoFlowH">Live connections</h2>
+          <p class="zp-meta">How a user's connection travels: from the IdP through the ZPA cloud to an App Connector group, and on to the app segments it serves. Packets move on healthy links; a link to a group whose App Connectors are all down stops in red, and one with a connector down or on an outdated version flickers red. The list under the picture says the same in words.</p>
+          <div id="zoFlow"></div>
+        </section>
         <section aria-labelledby="zoMapH">
           <h2 class="df-h" id="zoMapH">Infrastructure map</h2>
           <p class="zp-meta" id="zoMapHow">Who may reach what, from left to right: users and IdPs, access rules, segment groups, app segments, server groups, connector groups and App Connectors. Red boxes need attention, amber boxes have a warning, dashed boxes are disabled or not read. Click a box, or press Enter on it, to show only what is connected to it in the tables below; the arrow keys move between boxes and Escape shows everything again.</p>
@@ -510,6 +522,20 @@
       }));
       wireMap();
       renderTables(null);
+      drawFlow(g);
+    }
+    // The live connections picture (static/flow_pages.js): drawn from the
+    // map above, nothing read again. If it cannot draw, the page still works.
+    let flow = null, walkPic = null, flowMotion = null;   // the viewer's Play / Pause choice survives a new analysis
+    function drawFlow(g) {
+      if (flow) { flow.destroy(); flow = null; }
+      const host = $('zoFlow'); if (!host) return;
+      try {
+        const m = FP.zpaInfraModel(g);
+        if (!m) { host.textContent = 'Nothing to draw: the map has no boxes.'; return; }
+        flow = FP.mountStream(host, FP.zpaInfraSpec(m), { region: 'Live ZPA connections', summary: m.summary, motion: flowMotion, onMotion: v => { flowMotion = v; },
+          moving: 'Packets move from users through the ZPA cloud to App Connector groups and app segments; red dashed links have stopped, flickering ones have a connector down or outdated.' });
+      } catch (e) { host.textContent = 'This browser cannot draw the moving picture; the map and tables below have the same facts.'; }
     }
 
     // ── the SVG ──
@@ -738,6 +764,9 @@
           <h2 id="zpHeadline" class="pa-headline">${E(v.headline)}</h2>
           <p class="pa-summary">${E(v.summary)}</p>
         </section>
+        <h2 class="df-h" id="zpWalkH">The decision, step by step</h2>
+        <p class="zp-meta">A packet walks the path ZPA takes for this request: the app segment, its segment group, then every access rule in order. A rule that does not match says why; the rule that decides lights up, then the server groups and App Connectors. Play the walk again, step through it, or stop it.</p>
+        <div id="zpWalk"></div>
         <h2 class="df-h">The path, hop by hop</h2>
         <ol class="zp-hops">${(d.hops || []).map(h => `<li><div class="df-hop-h">${chip(HOP_STATUS, h.status)}<strong>${E(h.label)}</strong></div><div class="df-hop-d">${E(h.detail)}</div></li>`).join('')}</ol>
         ${rows ? `<h2 class="df-h">Access rules, in order, up to the one that decides</h2>
@@ -745,6 +774,11 @@
         ${other ? `<h2 class="df-h">Other ZPA policies for this request</h2><ul class="pa-assume">${other}</ul>` : ''}
         <h2 class="df-h">Assumptions</h2>
         <ul class="pa-assume">${(d.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>`;
+      if (walkPic) { walkPic.destroy(); walkPic = null; }
+      try {
+        const m = FP.zpaDiagModel(d);
+        if (m) walkPic = FP.mountWalk($('zpWalk'), m, { region: `How ZPA decides for ${dst.host || 'this destination'}` });
+      } catch (e) { $('zpWalk').textContent = 'This browser cannot draw the walk; the hops and the rules table below have the same facts.'; }
     }
 
     $('zpRun').addEventListener('click', analyze);

@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import os
+import math
 import re
 import tempfile
 import threading
@@ -196,6 +197,15 @@ def _bypass_other_policies(raw: Mapping[str, Any]) -> bool:
     return ssl_flow._bool(_f(sub, "bypassOtherPolicies", "bypass_other_policies"))
 
 
+def _seq(v: Any) -> List[Any]:
+    """A list from the Client Connector reading; anything else is none."""
+    return list(v) if isinstance(v, (list, tuple)) else []
+
+
+def _map(v: Any) -> Mapping[str, Any]:
+    return v if isinstance(v, Mapping) else {}
+
+
 def _cat_name(cat: str, lookup: Mapping[str, Any]) -> str:
     e = (lookup or {}).get(cat) or {}
     return str(e.get("configured_name") or cat)
@@ -326,7 +336,7 @@ def zcc_causes(cc: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
     app-profile bypass lists, forwarding profiles that send a network
     direct, PAC files that return DIRECT. Traffic sent this way never
     reaches Zscaler at all. Pure."""
-    if not cc:
+    if not cc or not isinstance(cc, Mapping):
         return []
     out: List[Dict[str, Any]] = []
     kinds = (("domains", "Client Connector domain bypass", "domains"), ("ips", "Client Connector IP bypass", "IP addresses or subnets"),
@@ -334,8 +344,8 @@ def zcc_causes(cc: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
              ("vpn_gateways", "Client Connector VPN gateway bypass", "VPN gateways"))
     for key, label, noun in kinds:
         vals: Dict[str, set] = {}
-        for p in cc.get("app_profiles") or []:
-            for v in ((p.get("bypass") or {}).get(key) or []):
+        for p in map(_map, _seq(cc.get("app_profiles"))):
+            for v in _seq(_map(p.get("bypass")).get(key)):
                 vals.setdefault(str(v), set()).add(str(p.get("name") or p.get("id")))
         if not vals:
             continue
@@ -371,9 +381,9 @@ def zcc_causes(cc: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
                           recovery=recovery, console=ZCC_APP_CONSOLE, safe=safe, safe_note=safe_note, values=values[:VALUES_MAX],
                           apps=values[:VALUES_MAX] if key in ("apps", "processes") else []))
     net_label = {"off": "off a trusted network (remote)", "on": "on a trusted network (office)", "vpn": "on VPN", "any": "on every network"}
-    for fp in cc.get("forwarding_profiles") or []:
-        for net, act in sorted((fp.get("actions") or {}).items()):
-            if (act or {}).get("mode_kind") != "none":
+    for fp in map(_map, _seq(cc.get("forwarding_profiles"))):
+        for net, act in sorted(_map(fp.get("actions")).items(), key=lambda kv: str(kv[0])):
+            if _map(act).get("mode_kind") != "none":
                 continue
             office = net == "on"
             out.append(_cause(id=f"fwd-{fp.get('id')}-{net}", kind="forwarding_none", kind_label="Forwarding profile sends traffic direct",
@@ -386,8 +396,8 @@ def zcc_causes(cc: Optional[Mapping[str, Any]]) -> List[Dict[str, Any]]:
                               recovery=("Confirm the office forwards web traffic to Zscaler through a GRE or IPsec tunnel; if not, set the forwarding action to Tunnel."
                                         if office else "Set the forwarding action for this network to Tunnel (Z-Tunnel 2.0) so the traffic reaches Zscaler."),
                               console=ZCC_FWD_CONSOLE, safe="test", safe_note="Change it for a pilot group of devices first and check sign-in and VPN behaviour."))
-    for pf in cc.get("pac_files") or []:
-        hosts = [str(h) for h in (pf.get("direct_hosts") or [])]
+    for pf in map(_map, _seq(cc.get("pac_files"))):
+        hosts = [str(h) for h in _seq(pf.get("direct_hosts"))]
         if not hosts:
             continue
         external = [h for h in hosts if not _internal(h)]
@@ -477,13 +487,13 @@ def protocol_split(rows: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
     unrecognised: Dict[str, float] = {}
     by_name: List[Dict[str, Any]] = []
     for r in rows or []:
-        if not isinstance(r, Mapping):
+        if not isinstance(r, Mapping) or isinstance(r.get("total"), bool):   # True is not a count of 1
             continue
         try:
             total = float(r.get("total"))
         except (TypeError, ValueError):
             continue
-        if total != total or total < 0:
+        if not math.isfinite(total) or total < 0:   # NaN, an infinity or a negative count is not a volume
             continue
         bucket, known = bucket_of(r.get("name"))
         b[bucket] += total
@@ -494,6 +504,8 @@ def protocol_split(rows: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
     ssl_total = b["ssl_inspected"] + b["ssl_not_inspected"]
     inspected = b["ssl_inspected"] + b["http"]
     return {"buckets": b, "ssl_total": ssl_total, "http_total": b["http"], "other_total": b["other"],
+            # The part of other_total this table does not know: listed in `unrecognised`, never in a bucket of its own guessing.
+            "unrecognised_total": sum(unrecognised.values()),
             "ssl_pct": _pct(b["ssl_inspected"], ssl_total),
             "http_pct": 100.0 if b["http"] else None,
             "total_pct": _pct(inspected, ssl_total + b["http"]),
@@ -511,7 +523,7 @@ def _trend_rows(entries: Any) -> List[Dict[str, Any]]:
             continue
         try:
             start = int(t.get("trend_start_time"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):   # OverflowError: an infinity
             continue
         vals = t.get("trend_values") if isinstance(t.get("trend_values"), list) else []
         for i, v in enumerate(vals[:120]):
@@ -562,7 +574,8 @@ def attach_app_volume(causes: List[Dict[str, Any]], apps: List[Mapping[str, Any]
 
 
 def read_volume(zins: Any, window_key: str, *, log: Callable[[str], None], cancel: Any = None,
-                scrub: Optional[Callable[[str], str]] = None, pace: Optional[float] = None) -> Dict[str, Any]:
+                scrub: Optional[Callable[[str], str]] = None, pace: Optional[float] = None,
+                now_ms: Optional[int] = None, sleep: Optional[Callable[[float], Any]] = None) -> Dict[str, Any]:
     """Ask Z-Insights, one query at a time and paced: protocols in
     transactions and in bytes, all web traffic per day (bytes), and Shadow
     IT applications. Stop raises Stopped. One failing query never fails
@@ -570,7 +583,7 @@ def read_volume(zins: Any, window_key: str, *, log: Callable[[str], None], cance
     import insights
     from data_flow import stop_requested
     _scrub = scrub or (lambda s: s)
-    win = insights.window(window_key)
+    win = insights.window(window_key, now_ms=now_ms)
     s, e = win["start_ms"], win["end_ms"]
     gap = insights.PACE_SECONDS if pace is None else max(0.0, float(pace))
     asked = {"n": 0}
@@ -580,7 +593,7 @@ def read_volume(zins: Any, window_key: str, *, log: Callable[[str], None], cance
             raise Stopped(STOPPED_REASON)
         if asked["n"] and gap:
             w = getattr(cancel, "wait", None)
-            w(gap) if callable(w) else time.sleep(gap)
+            w(gap) if callable(w) else (sleep or time.sleep)(gap)
             if stop_requested(cancel):
                 raise Stopped(STOPPED_REASON)
         asked["n"] += 1

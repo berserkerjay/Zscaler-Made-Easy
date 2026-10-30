@@ -28,7 +28,8 @@ import lzma
 import re
 import tarfile
 import zipfile
-from collections import Counter
+import zlib
+from collections import Counter, deque
 from typing import Any, Dict, List, Tuple
 
 import safe_files
@@ -40,6 +41,7 @@ MAX_EVIDENCE = 4
 EVIDENCE_WIDTH = 240
 TOP_ERRORS = 6
 MAX_LINE_CHARS = 4096   # a log or PAC line longer than this is read up to here
+MAX_NOTES = 50          # notes about skipped members kept; the rest are counted
 
 ARCHIVE_EXT = (".zip", ".tar", ".tgz", ".tar.gz", ".gz")
 PAC_EXT = (".pac", ".dat", ".js")
@@ -47,7 +49,19 @@ LOG_EXT = (".log", ".txt", ".out", ".err")
 
 
 # ── Redaction ────────────────────────────────────────────────────────
-_SECRET_KV = re.compile(r"(?i)\b(password|passwd|pwd|secret|client[_-]?secret|token|bearer|cookie|authorization|api[_-]?key|session[_-]?id|otp)\b(\s*[:=]\s*|\s+)(\S+)")
+# A key names a credential when it ends in one of these words, whatever
+# prefixes it (access_token, refresh-token, JSESSIONID, provisioning_key,
+# "password" in JSON). Every key pattern starts only at the beginning of a
+# run of key characters and its prefix is bounded, so a long run costs a
+# linear scan.
+_SECRET_WORDS = (r"password|passwd|passphrase|pwd|secret|token|bearer|api[_-]?key|apikey|session[_-]?id|sessionid|sessid"
+                 r"|otp|provisioning[_-]?key|private[_-]?key|credentials?")
+_SECRET_KV = re.compile(r"(?i)(?<![\w.-])([\"']?)([\w.-]{0,40}?(?:" + _SECRET_WORDS + r")[\w-]{0,20})\1(\s*[:=]\s*|\s+)"
+                        r"(\"[^\"\n]*\"|'[^'\n]*'|[^\s\"',;&}]+)")
+# Authorization headers keep their scheme (Bearer, Basic...) and lose the value.
+_AUTH_HEADER = re.compile(r"(?i)(?<![\w-])((?:proxy-)?authori[sz]ation)([\"']?\s*[:=]\s*[\"']?)(?:(bearer|basic|negotiate|ntlm|digest)\s+)?([^\s\"',;]+)")
+# A cookie header carries many name=value pairs: everything after it goes.
+_COOKIE_HEADER = re.compile(r"(?i)(?<![\w-])((?:set-)?cookie)(\s*[:=]\s*)\S.*")
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
 _LONG_TOKEN = re.compile(r"\b[A-Za-z0-9+/_-]{48,}={0,2}\b")
 
@@ -55,7 +69,9 @@ _LONG_TOKEN = re.compile(r"\b[A-Za-z0-9+/_-]{48,}={0,2}\b")
 def redact(line: str) -> str:
     """Drop anything that looks like a credential before a line is shown back."""
     s = _JWT.sub("[jwt-redacted]", line)
-    s = _SECRET_KV.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", s)
+    s = _AUTH_HEADER.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(3) + ' ' if m.group(3) else ''}[redacted]", s)
+    s = _COOKIE_HEADER.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", s)
+    s = _SECRET_KV.sub(lambda m: m.group(0) if m.group(4) == "[redacted]" else f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}[redacted]", s)
     s = _LONG_TOKEN.sub("[token-redacted]", s)
     if len(s) > EVIDENCE_WIDTH:
         s = s[:EVIDENCE_WIDTH - 1] + "…"
@@ -96,15 +112,37 @@ def _to_text(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+class _NoteList(list):
+    """The notes about what was skipped, at most MAX_NOTES of them: an
+    archive of a hundred thousand entries must not come back as a hundred
+    thousand notes. The rest are counted in one closing note."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dropped = 0
+
+    def append(self, note: str) -> None:  # type: ignore[override]
+        if len(self) < MAX_NOTES:
+            super().append(note)
+        else:
+            self.dropped += 1
+
+    def closed(self) -> List[str]:
+        return list(self) + ([f"… and {self.dropped} more notes like these"] if self.dropped else [])
+
+
 class _Budget:
     def __init__(self) -> None:
         self.members = 0
         self.total = 0
-        self.notes: List[str] = []
+        self.full = False
+        self.notes = _NoteList()
 
     def take(self, name: str, size: int) -> bool:
         if self.members >= MAX_MEMBERS:
-            self.notes.append(f"stopped after {MAX_MEMBERS} files; the rest of the archive was not read")
+            if not self.full:
+                self.notes.append(f"stopped after {MAX_MEMBERS} files; the rest of the archive was not read")
+            self.full = True
             return False
         if size > MAX_MEMBER_BYTES:
             self.notes.append(f"{name}: skipped, larger than {MAX_MEMBER_BYTES // (1024 * 1024)} MB")
@@ -162,7 +200,7 @@ def expand(files: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, bytes]], List[s
         name = _basename(str(f.get("name") or "file"))
         data = _decode_upload(f)
         _expand_one(name, data, out, budget, depth=0)
-    return out, budget.notes
+    return out, budget.notes.closed()
 
 
 def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _Budget, depth: int) -> None:
@@ -174,6 +212,8 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as z:
                 for info in z.infolist():
+                    if budget.full:
+                        break
                     if info.is_dir():
                         continue
                     member = _basename(info.filename)
@@ -184,11 +224,13 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
                     except safe_files.ArchiveRefused as e:
                         budget.notes.append(f"{member}: skipped, {str(e).split(': ', 1)[-1]}")
                         continue
-                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError, OSError, EOFError) as e:
-                        budget.notes.append(f"{member}: could not be read ({e})")
+                    except (RuntimeError, zipfile.BadZipFile, NotImplementedError, OSError, EOFError, ValueError, zlib.error) as e:
+                        # ValueError: a local header offset that lies ("negative seek value")
+                        budget.notes.append(f"{member}: could not be read ({str(e)[:120]})")
                         continue
                     _expand_one(member, payload, out, budget, depth + 1)
-        except zipfile.BadZipFile:
+        except (zipfile.BadZipFile, NotImplementedError, ValueError, OSError, EOFError):
+            # NotImplementedError: a central directory claiming a ZIP version Python does not read
             budget.notes.append(f"{name}: not a valid ZIP file")
         return
     if low.endswith((".tar", ".tgz", ".tar.gz")) or (len(data) > 262 and data[257:262] == b"ustar"):
@@ -202,8 +244,7 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         try:
             with tarfile.open(fileobj=stream, mode="r|") as t:
                 for info in t:
-                    if budget.members >= MAX_MEMBERS:
-                        budget.notes.append(f"stopped after {MAX_MEMBERS} files; the rest of the archive was not read")
+                    if budget.full or (budget.members >= MAX_MEMBERS and not budget.take(info.name, 0)):
                         break
                     if not info.isfile():
                         continue
@@ -229,7 +270,7 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data)) as g:
                 inner = g.read(MAX_MEMBER_BYTES + 1)
-        except (OSError, EOFError) as e:
+        except (OSError, EOFError, zlib.error) as e:   # zlib.error: a damaged deflate stream behind a good header
             budget.notes.append(f"{name}: could not gunzip ({e})")
             return
         if len(inner) > MAX_MEMBER_BYTES:
@@ -589,7 +630,7 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
     """texts: [(name, text)] for every log file. Findings, facts, top errors."""
     hits: Dict[str, Dict[str, Any]] = {}
     facts: Dict[str, Any] = {"versions": Counter(), "os": Counter(), "users": Counter(), "clouds": Counter(),
-                             "tunnel": Counter(), "states": []}
+                             "tunnel": Counter(), "states": deque(maxlen=400)}   # the latest 400: the last state is the one that counts
     top_errors: Counter = Counter()
     error_example: Dict[str, str] = {}
     files_out: List[Dict[str, Any]] = []
@@ -641,7 +682,7 @@ def analyze_logs(texts: List[Tuple[str, str]]) -> Dict[str, Any]:
                 elif _FACT_T1.search(msg):
                     facts["tunnel"]["Z-Tunnel 1.0"] += 1
                 sm = _FACT_STATE.search(msg)
-                if sm and len(facts["states"]) < 400:
+                if sm:
                     facts["states"].append((ts, (sm.group(1) or sm.group(2) or "").strip()))
             # signatures
             for sig, rx, ex in _COMPILED:
@@ -740,6 +781,48 @@ _BROAD = re.compile(r"^\*?\.?(\*|\*\.\w{2,3}|\w{2,3})$")
 PAC_SAMPLES = ("https://drive.google.com/", "https://www.dropbox.com/", "https://mail.google.com/", "https://chatgpt.com/",
                "https://www.example.com/", "http://intranet/", "https://10.1.2.3/")
 
+# A PAC pac_eval refuses (a regular expression, an array, a loop, switch...)
+# is still read from its text, as before pac_eval: its string returns and
+# the conditions in the lines just above each DIRECT. Text only, never run.
+_PAC_RETURN = re.compile(r"return\s*(['\"])(.*?)\1", re.I | re.S)
+_PAC_COND_FN = re.compile(r"\b(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet|isPlainHostName)\s*\(([^()]*)\)", re.I)
+_PAC_ISINNET = re.compile(r"isInNet\s*\(((?:[^()]|\([^()]*\))*)\)", re.I)
+_PAC_STR = re.compile(r"['\"]([^'\"]+)['\"]")
+_PAC_FN_NAMES = {"shexpmatch": "shExpMatch", "dnsdomainis": "dnsDomainIs", "localhostordomainis": "localHostOrDomainIs",
+                 "isinnet": "isInNet", "isplainhostname": "isPlainHostName"}
+
+
+def _pac_text_reading(body: str) -> Dict[str, Any]:
+    """The text reading of a PAC pac_eval could not evaluate, in
+    pac_eval.inspect's shape (returns, direct_rules, isinnet_on_host,
+    calls): every literal answer in order, and every condition within four
+    lines above a `return "DIRECT"`. Bounded as the evaluator is: the first
+    pac_eval.MAX_SOURCE characters, each line up to MAX_LINE_CHARS."""
+    import pac_eval
+    lines = [ln[:MAX_LINE_CHARS] for ln in body[:pac_eval.MAX_SOURCE].splitlines()]
+    returns = [m.group(2).strip() for m in _PAC_RETURN.finditer("\n".join(lines))]
+    rules: List[Dict[str, Any]] = []
+    seen = set()
+    for i, line in enumerate(lines):
+        if not re.search(r"return\s*['\"]\s*DIRECT\s*['\"]", line, re.I):
+            continue
+        window = "\n".join(lines[max(0, i - 4): i + 1])
+        found = [("isInNet", s[0]) for s in (_PAC_STR.findall(a) for a in _PAC_ISINNET.findall(window)) if s]
+        for fn, args in _PAC_COND_FN.findall(window):
+            fn = _PAC_FN_NAMES[fn.lower()]
+            if fn == "isPlainHostName":
+                found.append((fn, ""))
+            elif fn != "isInNet":
+                found += [(fn, s) for s in _PAC_STR.findall(args)]
+        for fn, value in found:
+            if (fn, value) not in seen:
+                seen.add((fn, value))
+                rules.append({"fn": fn, "value": value, "line": i + 1})
+    text = "\n".join(lines)
+    calls = {c for c in ("myIpAddress", "isResolvable") if re.search(rf"\b{c}\s*\(", text)}
+    return {"returns": returns, "direct_rules": rules, "isinnet_on_host": bool(re.search(r"isInNet\s*\(\s*host\s*,", text, re.I)),
+            "calls": calls}
+
 
 def analyze_pac(name: str, text: str) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
@@ -761,15 +844,17 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                                 "Test in a browser: about:policies or the OS proxy settings show a PAC parse error."], "evidence": []})
     import pac_eval
     info = pac_eval.inspect(body)
-    if not info["ok"]:
+    text_only = not info["ok"]
+    if text_only:
         findings.append({"severity": "medium", "title": "The PAC could not be evaluated safely",
                          "what": f"The app {info['error']}.",
-                         "means": "PAC files are read here without running them, and only the subset PAC files normally use is understood. This file uses something outside it, so its bypasses were not listed and its answers were not checked.",
+                         "means": "PAC files are read here without running them, and only the subset PAC files normally use is understood. This file uses something outside it, so its answers were not checked for any destination; its answers and bypasses below were read from the text only.",
                          "do": ["Test the PAC in a browser (or Client Connector) and read its bypasses by hand.",
                                 "Prefer plain if / else with shExpMatch, dnsDomainIs and isInNet: they are easier to review and faster for the browser."], "evidence": []})
+        info = dict(_pac_text_reading(body), ok=False, error=info["error"])
     returns = [r for r in info["returns"]]
     literal = [r.strip() for r in returns if r is not None]
-    if info["ok"] and not returns:
+    if not returns and (info["ok"] or not re.search(r"\breturn\b", body)):
         findings.append({"severity": "critical", "title": "No return statement: the PAC decides nothing",
                          "what": "FindProxyForURL never returns a proxy string.",
                          "means": "Every request gets an undefined answer and the browser goes direct.",
@@ -834,7 +919,7 @@ def analyze_pac(name: str, text: str) -> Dict[str, Any]:
                          "do": ["Ask why each one exists; most were added years ago for a problem that a Zscaler SSL exemption or a cloud-app policy now solves without a full bypass.",
                                 "Prefer narrower fixes: an SSL inspection exemption for a pinned app, a Cloud App Control rule, or a ZCC app-profile bypass limited to the exact host."],
                          "evidence": [f"line {b['line']}: {b['kind']}({b['value']}) [{b['risk']}]" for b in risky[:8]]})
-    if info["ok"] and not any(b["kind"] == "plain host names" for b in bypasses) and not any(b["kind"] == "isInNet" and _PRIVATE_NET.match(b["value"]) for b in bypasses):
+    if not any(b["kind"] == "plain host names" for b in bypasses) and not any(b["kind"] == "isInNet" and _PRIVATE_NET.match(b["value"]) for b in bypasses):
         findings.append({"severity": "low", "title": "No bypass for private addresses or plain host names",
                          "what": "The PAC does not send RFC 1918 ranges or single-label intranet names DIRECT.",
                          "means": "Intranet sites and printers would be sent to Zscaler, which cannot reach them, so they break. Zscaler's reference PAC starts with these bypasses.",
@@ -930,6 +1015,8 @@ def _verdict(result: Dict[str, Any]) -> Dict[str, str]:
         return {"level": "medium", "headline": "The client was working, with things worth tuning.", "detail": "Nothing here stops the user; each medium finding says what to improve."}
     if findings or (logs.get("top_errors")):
         return {"level": "info", "headline": "The client looks healthy. Only context and unrecognised errors are listed.", "detail": "Read the top repeated errors; if the user reports a problem, ask for a fresh bundle taken while it happens."}
+    if pac_sev.get("low"):
+        return {"level": "info", "headline": "The PAC file works; a few things in it are worth tidying.", "detail": "Read the low findings below; none changes what is protected today."}
     if result.get("pac") and not logs:
         return {"level": "ok", "headline": "The PAC file passes every check here.", "detail": "Its bypass list is shown below so you can confirm each one is intended."}
     return {"level": "ok", "headline": "Nothing wrong was found in these logs.", "detail": "If the user still has a problem, the logs may not cover the time it happened: ask for Export Logs taken right after the problem."}

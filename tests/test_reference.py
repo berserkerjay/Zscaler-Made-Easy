@@ -93,3 +93,47 @@ def test_the_data_security_architect_page_carries_its_diagrams_and_tables_offlin
     for flow in ("/report/dataflow", "/report/path", "/report/sslflow", "/report/bypass"):
         t = c.get(flow).text
         assert 'href="/reference/data-security-architect#inline"' in t and "Reference architecture" in t, flow
+
+
+# ── Wave 6 UI check: the reference documents are accessible and have no dead links ──
+import pytest
+
+_EMBEDS = sorted(srv._REFERENCE_EMBEDS)
+
+
+@pytest.mark.parametrize("slug", [p["slug"] for p in srv.REFERENCE_PAGES])
+def test_every_reference_page_is_served_with_the_accessibility_layer(slug):
+    """WCAG 2.2 SC 1.4.3, 1.4.10, 2.1.1, 2.4.7, 2.5.8, 3.1.1, 4.1.2 · table over the reference pages: each is served with static/reference/reference_a11y.js after its own scripts."""
+    html = TestClient(srv.app).get(f"/reference/{slug}").text
+    assert '<script src="/static/reference/reference_a11y.js"></script>' in html
+    assert html.rindex("reference_a11y.js") > html.rindex("<script>") if "<script>" in html else True
+
+
+@pytest.mark.parametrize("slug", _EMBEDS)
+def test_every_embedded_reference_is_served_with_the_accessibility_layer(slug):
+    """WCAG 2.2 SC 1.4.3, 4.1.2 · table over the documents embedded in a reference page: each gets the same layer."""
+    r = TestClient(srv.app).get(f"/reference/embed/{slug}")
+    assert r.status_code == 200 and '<script src="/static/reference/reference_a11y.js"></script>' in r.text
+
+
+def test_the_accessibility_layer_is_served_and_reads_nothing_from_the_network():
+    """WCAG 2.2 SC 4.1.2 · CWE-829: the layer is a same-origin static script with no fetch, XHR, import or external URL."""
+    r = TestClient(srv.app).get("/static/reference/reference_a11y.js")
+    assert r.status_code == 200
+    assert not re.search(r"\bfetch\(|XMLHttpRequest|import\(|https?://|eval\(|innerHTML", r.text)
+
+
+def _reference_documents():
+    folder = os.path.join(ROOT, "static", "reference")
+    return sorted(n for n in os.listdir(folder) if n.endswith(".html"))
+
+
+@pytest.mark.parametrize("name", _reference_documents())
+def test_no_reference_document_links_or_fetches_a_file_that_is_not_served(name):
+    """WCAG 2.2 SC 2.4.4 · CWE-1059: table over every bundled document: each relative link or fetch answers 200 (Download CSV pointed at pov-use-cases.csv, a 404)."""
+    html = open(os.path.join(ROOT, "static", "reference", name), encoding="utf-8").read()
+    rel = set(re.findall(r"""(?:href|src)="(?!https?:|/|#|data:|mailto:|\$\{|javascript:)([^"]+)\"""", html))
+    rel |= set(re.findall(r"""fetch\(['"](?!https?:|/|data:)([^'"]+)['"]""", html))
+    c = TestClient(srv.app)
+    dead = [u for u in sorted(rel) if c.get("/reference/" + u).status_code != 200]
+    assert dead == [], (name, dead)

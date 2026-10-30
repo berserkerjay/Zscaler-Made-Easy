@@ -1,0 +1,1201 @@
+{
+  "passed": 21327,
+  "failed": 0,
+  "skipped": 133,
+  "errors": 0,
+  "duration_s": 2130.3,
+  "commit": "c054f3df0793",
+  "date": "2026-10-29T17:05:01",
+  "files": {
+    "tests/test_accessibility.py": {
+      "passed": 681,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_admin_ops.py": {
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_api_contracts.py": {
+      "passed": 539,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_api_paths.py": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_app_update.py": {
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_assess_stream.py": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_assessor_attribution.py": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_assessor_attribution_r2.py": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_assessor_not_tool.py": {
+      "passed": 40,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_assessor_required.py": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_audit_timeline.py": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_auth_session.py": {
+      "passed": 879,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_banking_baseline.py": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_baselines.py": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_beacon.py": {
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_beacon_scope.py": {
+      "passed": 107,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_benchmarks.py": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_best_practice_review.py": {
+      "passed": 65,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_bp_crawler.py": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_browser_extension.py": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_browser_security.py": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_bulk_test.py": {
+      "passed": 90,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_admin_ops.py": {
+      "passed": 206,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_api_server.py": {
+      "passed": 1074,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_assessment.py": {
+      "passed": 544,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_auth.py": {
+      "passed": 194,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_checks.py": {
+      "passed": 1264,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_deploy.py": {
+      "passed": 101,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_exports.py": {
+      "passed": 100,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_migrate.py": {
+      "passed": 243,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_misc.py": {
+      "passed": 395,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_open_low.py": {
+      "passed": 82,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_packs.py": {
+      "passed": 362,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_path.py": {
+      "passed": 489,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_posture.py": {
+      "passed": 243,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_reports.py": {
+      "passed": 149,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_scope_offline.py": {
+      "passed": 337,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_tooltips.py": {
+      "passed": 337,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_traffic_reports.py": {
+      "passed": 163,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_ui_core.py": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 120
+    },
+    "tests/test_c6_ui_ops.py": {
+      "passed": 79,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_update_heal.py": {
+      "passed": 136,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_zcc_zdx.py": {
+      "passed": 283,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_zia_baseline_aiguard.py": {
+      "passed": 449,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_c6_zpa.py": {
+      "passed": 290,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_channel_scope.py": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_channel_targets_undo.py": {
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ci_pinning.py": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ci_smoke_contract.py": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_classic_api_run_gate.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_classic_fingerprint.py": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_classic_profile_isolation_r2.py": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_clouds.py": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_compliance_tab.py": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_connect_reflow.py": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_console_index.py": {
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_container_parity.py": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_continuous_eval.py": {
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_continuous_eval_scope_reads.py": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_continuous_eval_unread_and_classic.py": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_control_channels.py": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_corpus_engines.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_csv_injection.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_dashboard.py": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_data_flow.py": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_deploy_clarity.py": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_detection_health.py": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_device_posture.py": {
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_dos_limits.py": {
+      "passed": 236,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_dsa_reference_player.py": {
+      "passed": 379,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_endpoint_baseline.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_engine_explain.py": {
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_engine_pruning.py": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_entrypoints.py": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_explain.py": {
+      "passed": 195,
+      "failed": 0,
+      "skipped": 4
+    },
+    "tests/test_export_filter_keeps_focus.py": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_export_injection.py": {
+      "passed": 55,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_export_integrity.py": {
+      "passed": 114,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_exports_excel_pdf.py": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_extension_security.py": {
+      "passed": 418,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_files_paths.py": {
+      "passed": 121,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_find_anything.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_findings.py": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_findings_reflow.py": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_flow_animator.py": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_flow_browser_acceptance.py": {
+      "passed": 41,
+      "failed": 0,
+      "skipped": 1
+    },
+    "tests/test_flow_control_contract.py": {
+      "passed": 147,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_flow_motion_browser.py": {
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_flow_motion_models.py": {
+      "passed": 77,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_flow_pages.py": {
+      "passed": 62,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_flow_player_evidence.py": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_flow_scenario.py": {
+      "passed": 233,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_flow_scenario_evidence.py": {
+      "passed": 166,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_glass.py": {
+      "passed": 85,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_glass_browser.py": {
+      "passed": 223,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_gui_addons.py": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_guidance.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_har_import.py": {
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_hardening.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_help_center.py": {
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_icons.py": {
+      "passed": 82,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_insights.py": {
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_install_guide.py": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_job_audit.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_keyring_pinned.py": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_legacy_api.py": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_legacy_send_rate_stop.py": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_lock_platforms.py": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_log_analyzer.py": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_monitoring_clarity.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_native_install_contracts.py": {
+      "passed": 31,
+      "failed": 0,
+      "skipped": 2
+    },
+    "tests/test_native_tls_proxy.py": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_native_zscaler.py": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_navigation.py": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_no_implicit_reads.py": {
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_offline_network_guard.py": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_offline_tenant.py": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_openapi_regression.py": {
+      "passed": 266,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ops_aiguard.py": {
+      "passed": 50,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ops_plugins.py": {
+      "passed": 50,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ops_zcc.py": {
+      "passed": 84,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ops_zdx.py": {
+      "passed": 43,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ops_zia_baseline.py": {
+      "passed": 58,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ops_zpa.py": {
+      "passed": 53,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_outbound_ssrf.py": {
+      "passed": 354,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pac_eval.py": {
+      "passed": 95,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_channels.py": {
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_conventions.py": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_deploy.py": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_export.py": {
+      "passed": 58,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_export_parts.py": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_from_tenant.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_library.py": {
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_regression.py": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_removal.py": {
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_stop_rate_wait.py": {
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pack_terraform.py": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 3
+    },
+    "tests/test_packaging.py": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_page_layout.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_page_stop_is_final.py": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_path_analyzer.py": {
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_path_live_motion.py": {
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_path_live_motion_browser.py": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_path_motion_evidence.py": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_path_scope_stop.py": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_path_whatif.py": {
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_path_zia_modules.py": {
+      "passed": 55,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_path_zpa_workloads.py": {
+      "passed": 96,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pause_countdown.py": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pdf_writer.py": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 2
+    },
+    "tests/test_permissions.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_plain_english.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_policy_exports.py": {
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_polish.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_posture_checks.py": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_posture_plus.py": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_pov.py": {
+      "passed": 71,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_product_name.py": {
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_profile_integration.py": {
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_proposal_apply.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_proposals.py": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_qa6_builders_lifecycle.py": {
+      "passed": 118,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_qa6_verdicts_reports.py": {
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_qa_func_path.py": {
+      "passed": 218,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_quality_score.py": {
+      "passed": 325,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_rate_forecast.py": {
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_readiness.py": {
+      "passed": 80,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_reference.py": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_reference_embeds.py": {
+      "passed": 228,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_regression_flows.py": {
+      "passed": 205,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_regression_migration.py": {
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_release_docs_export_and_assessor.py": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_remediation.py": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_report_reflow.py": {
+      "passed": 293,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_report_scope_reads.py": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_reports.py": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_required_dlp_ci_triggers.py": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_required_dlp_controls.py": {
+      "passed": 113,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_required_dlp_review_regressions.py": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_rules_labels_scope_stop.py": {
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_run_control.py": {
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_saas_email_checks.py": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_safety_banner.py": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sample_tenant_browser.py": {
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sbd_canary_renderers.py": {
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sbd_offline_least_privilege.py": {
+      "passed": 59,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sbd_untrusted_input.py": {
+      "passed": 241,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sbd_writes.py": {
+      "passed": 500,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sbom_graph.py": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sbom_licences.py": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_scope_integration_regression.py": {
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_scope_prerequisites.py": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_scope_rule_routes.py": {
+      "passed": 829,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_scoring.py": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_secret_canaries.py": {
+      "passed": 303,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_secure_by_design.py": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_secure_defaults.py": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_security_hardening_review.py": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_security_test_matrix.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_self_heal.py": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_shadow_rules.py": {
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_shared_path.py": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sidebar_order.py": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sidebar_pass.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_simple_mode.py": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ssl_coverage.py": {
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ssl_flow.py": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_sso.py": {
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_standalone.py": {
+      "passed": 112,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_static_js_parses.py": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_static_round2_fixes.py": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_suite_stability.py": {
+      "passed": 76,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_supply_chain_qa.py": {
+      "passed": 219,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_team_queue.py": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_template_aliases.py": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_tenant_pacing.py": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_tenant_profiles.py": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_tenant_read_stops.py": {
+      "passed": 50,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_terraform_job.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_tools_read_only_in_scope.py": {
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_ui_auth.py": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_upstream_check.py": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_url_tools.py": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_vendor_migrate.py": {
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_vertical.py": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_workspace_notes.py": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_write_safety_gates.py": {
+      "passed": 804,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_xlsx_writer.py": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 1
+    },
+    "tests/test_xss_render_sites.py": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_xss_sinks.py": {
+      "passed": 108,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zcc_device_state.py": {
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zcc_evaluation.py": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zcc_fleet.py": {
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zcc_fleet_xlsx.py": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zcc_paths.py": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zia_contract.py": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zpa_analysis.py": {
+      "passed": 54,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tests/test_zpa_overview.py": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    }
+  }
+}

@@ -17,6 +17,7 @@ import json
 import os
 import secrets
 import tempfile
+import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +26,9 @@ import safe_files
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LIMIT = 200
 UNDOABLE_KINDS = ("policy", "app_group", "engine", "dictionary")
+# One read-modify-write of the store at a time: two runs finishing together
+# (a deploy and an undo, two background jobs) must not lose a record.
+_LOCK = threading.RLock()
 
 
 def store_path() -> str:
@@ -44,8 +48,15 @@ def _read() -> Dict[str, Any]:
             data = json.load(f) or {}
     except Exception:
         return {"version": 1, "deployments": []}
+    # A file of another shape (hand-edited, truncated, an older layout) is
+    # read as far as it is records, never as a crash of every page using it.
+    if not isinstance(data, dict):
+        return {"version": 1, "deployments": []}
     data.setdefault("version", 1)
-    data.setdefault("deployments", [])
+    for key in ("deployments", "operations"):
+        rows = data.get(key)
+        if key in data or key == "deployments":
+            data[key] = [r for r in rows if isinstance(r, dict) and r.get("id") is not None] if isinstance(rows, list) else []
     return data
 
 
@@ -79,6 +90,9 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
         if r.get("status") == "created" and r.get("id") is not None and r.get("kind") in UNDOABLE_KINDS:
             created.append(entry)
         elif r.get("status") in ("restored", "modified", "reused"):
+            if r.get("kind") == "tweak":
+                # what Undo needs to put an existing dictionary's confidence back
+                entry.update({k: r.get(k) for k in ("dictionary", "field", "before", "after")})
             other.append(entry)
     if not created:
         return None
@@ -109,10 +123,13 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
 
 
 def add(record: Dict[str, Any]) -> Dict[str, Any]:
-    data = _read()
-    data["deployments"].append(record)
-    data["deployments"] = data["deployments"][-LIMIT:]
-    _write(data)
+    if not isinstance(record, dict) or not record.get("id"):
+        raise ValueError("not a deployment record")
+    with _LOCK:
+        data = _read()
+        data["deployments"].append(record)
+        data["deployments"] = data["deployments"][-LIMIT:]
+        _write(data)
     return record
 
 
@@ -132,13 +149,13 @@ def get(dep_id: str) -> Optional[Dict[str, Any]]:
 
 
 def summary(r: Dict[str, Any]) -> Dict[str, Any]:
-    created = r.get("created") or []
+    created = [c for c in (r.get("created") or []) if isinstance(c, dict)]
     remaining = [c for c in created if not c.get("undone")]
     by_kind: Dict[str, int] = {}
     for c in created:
-        by_kind[c["kind"]] = by_kind.get(c["kind"], 0) + 1
+        by_kind[str(c.get("kind"))] = by_kind.get(str(c.get("kind")), 0) + 1
     return {
-        "id": r["id"], "at": r.get("at"), "tenant_label": r.get("tenant_label"), "by": r.get("by") or "", "packs": r.get("packs") or [],
+        "id": r.get("id"), "at": r.get("at"), "tenant_label": r.get("tenant_label"), "by": r.get("by") or "", "packs": r.get("packs") or [],
         "channel_targets": r.get("channel_targets") or {}, "status": r.get("status"),
         "created": len(created), "created_by_kind": by_kind, "remaining": len(remaining),
         "undone_at": r.get("undone_at"), "undo": r.get("undo"),
@@ -149,19 +166,20 @@ def summary(r: Dict[str, Any]) -> Dict[str, Any]:
 def mark_undo(dep_id: str, results: List[Dict[str, Any]], *, complete: bool) -> Optional[Dict[str, Any]]:
     """Store the outcome of an undo: each created item that was deleted is
     flagged so a second undo only retries what is left."""
-    data = _read()
-    for r in data["deployments"]:
-        if r.get("id") != dep_id:
-            continue
-        deleted = {(x.get("kind"), str(x.get("id"))) for x in results if x.get("status") in ("deleted", "gone")}
-        for c in r.get("created") or []:
-            if (c.get("kind"), str(c.get("id"))) in deleted:
-                c["undone"] = True
-        r["undo"] = {"at": _now(), "results": results, "complete": complete}
-        if complete:
-            r["undone_at"] = _now()
-        _write(data)
-        return r
+    with _LOCK:
+        data = _read()
+        for r in data["deployments"]:
+            if r.get("id") != dep_id:
+                continue
+            deleted = {(x.get("kind"), str(x.get("id"))) for x in results if isinstance(x, dict) and x.get("status") in ("deleted", "gone")}
+            for c in r.get("created") or []:
+                if isinstance(c, dict) and (c.get("kind"), str(c.get("id"))) in deleted:
+                    c["undone"] = True
+            r["undo"] = {"at": _now(), "results": results, "complete": complete}
+            if complete:
+                r["undone_at"] = _now()
+            _write(data)
+            return r
     return None
 
 
@@ -181,11 +199,12 @@ OPERATION_LIMIT = 200
 
 
 def add_operation(record: Dict[str, Any]) -> Dict[str, Any]:
-    data = _read()
-    ops = data.setdefault("operations", [])
-    ops.append(record)
-    data["operations"] = ops[-OPERATION_LIMIT:]
-    _write(data)
+    with _LOCK:
+        data = _read()
+        ops = data.setdefault("operations", [])
+        ops.append(record)
+        data["operations"] = ops[-OPERATION_LIMIT:]
+        _write(data)
     return record
 
 
@@ -212,15 +231,16 @@ def list_operations(tenant_label: Optional[str] = None) -> List[Dict[str, Any]]:
 def mark_operation_undone(op_id: str, undo_id: str, *, complete: bool) -> Optional[Dict[str, Any]]:
     """The operation `op_id` was reversed by the operation `undo_id` (in full
     when `complete`; otherwise the undo is recorded and Undo stays offered)."""
-    data = _read()
-    for r in data.get("operations") or []:
-        if r.get("id") != op_id:
-            continue
-        r.setdefault("undo_runs", []).append({"at": _now(), "operation": undo_id, "complete": complete})
-        if complete:
-            r["undone_by"], r["undone_at"] = undo_id, _now()
-        _write(data)
-        return r
+    with _LOCK:
+        data = _read()
+        for r in data.get("operations") or []:
+            if r.get("id") != op_id:
+                continue
+            r.setdefault("undo_runs", []).append({"at": _now(), "operation": undo_id, "complete": complete})
+            if complete:
+                r["undone_by"], r["undone_at"] = undo_id, _now()
+            _write(data)
+            return r
     return None
 
 

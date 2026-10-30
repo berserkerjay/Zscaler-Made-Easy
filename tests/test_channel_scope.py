@@ -178,7 +178,7 @@ def test_the_word_report_prints_the_channel_coverage():
         doc = Document(path)
         text = "\n".join(p.text for p in doc.paragraphs) + "\n" + "\n".join(c.text for t in doc.tables for row in t.rows for c in row.cells)
     assert "1 of 1" in text and text.count("1 check is outside the selected scope and is not shown.") == 1
-    assert "Channel Coverage" in text and "SSL/TLS Inspection: included because Inline Web DLP needs it." in text
+    assert "Channel coverage" in text and "SSL/TLS Inspection: included because Inline Web DLP needs it." in text
     # Nothing that was left out has a row: not the alternative, not the gap, not the check.
     for gone in ("Not in scope", "Alternative solution", "Purview", "Email DLP", "Endpoint DLP"):
         assert gone not in text, gone

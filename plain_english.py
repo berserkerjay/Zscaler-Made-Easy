@@ -34,9 +34,11 @@ OUTCOMES: List[Tuple[Tuple[str, ...], str]] = [
     (("ssl", "4.", "7."), "Encrypted traffic is inspected, so the DLP and threat controls see what users actually send."),
     (("genai", "ch.e", "e.", "ai."), "Employees use AI tools without leaking customer data, source code or secrets, and the business can prove it."),
     (("ch.a", "a.", "inline web"), "Sensitive data cannot be uploaded to the web without being seen, and the right rule wins every time."),
+    # Before Ch.B's "endpoint": section "5 — Endpoint DLP" (rules,
+    # dictionaries, EDM, IDM) would otherwise read as the endpoint channel.
+    (("endpoint dlp", "5."), "Sensitive data is detected accurately before it leaves, with few false alarms and every incident worth an analyst's time."),
     (("ch.b", "b.", "endpoint"), "Sensitive data cannot leave through USB, print, shares or personal cloud without being seen."),
     (("multi-channel", "mc."), "The same protection on every channel, so a gap on one is not a way around the others."),
-    (("endpoint dlp", "5."), "Sensitive data is detected accurately before it leaves, with few false alarms and every incident worth an analyst's time."),
     (("cc portal", "app profile", "versions", "macos", "zcc", "1.", "3.", "6.", "10."), "Every device is protected wherever it works, and nobody can switch that protection off."),
     (("firewall",), "Non-web traffic is controlled too, so nothing slips out over a port the web policy never sees."),
     (("url filtering", "cloud apps"), "Risky destinations and applications are controlled before content inspection is even needed."),

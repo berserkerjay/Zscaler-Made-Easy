@@ -294,7 +294,8 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
                              "Not checked: the running server's middleware could not be inspected from here, so whether audit.log is being written is unknown.",
                              "Open this page from the running app."))
     elif "AuditMiddleware" in have:
-        audit_path = os.path.join(APP_DIR, "audit.log")
+        import audit as _audit
+        audit_path = _audit.path()   # DLP_CHECK_AUDIT (the container's /data), else beside the app
         size = os.path.getsize(audit_path) if os.path.exists(audit_path) else 0
         checks.append(_check("audit", "Every write call is recorded for later investigation", P_OPEN, "evidence", "pass",
                              "Every non-GET API call goes to audit.log (owner-only, rotated at 20 MB) with time, path, status, caller, write-mode state and a redacted body; deployments are also recorded for undo. "

@@ -24,7 +24,8 @@ function browser(options) {
   const html = fs.readFileSync(path.join(ROOT, 'static/report_motion.html'), 'utf8');
   const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)[1];
   const doc = new El('#document');
-  parse(html.split('<script')[0], doc);
+  // The markup up to the body's first script (the head's glass.js runs before paint and holds no markup).
+  parse(html.slice(0, html.indexOf('<script', html.indexOf('<body'))), doc);
   const all = () => doc.all();
   const nativeMatches = El.prototype.matches;
   const listeners = {};
@@ -90,7 +91,7 @@ function browser(options) {
       clear() { record.pushed = []; }, push(m) { record.pushed.push(m); },
     };
   }
-  ['drill', 'hopPlayer', 'live', 'graph', 'steps'].forEach(kind => { FA[kind] = (host, model, opts) => player(kind, host, model, opts); });
+  ['drill', 'hopPlayer', 'live', 'graph', 'steps', 'trafficPath', 'listFlow'].forEach(kind => { FA[kind] = (host, model, opts) => player(kind, host, model, opts); });
   const storage = Object.assign({}, options.storage || {});
   const location = {hash: options.hash || '#live', search: ''};
   const success = data => ({ok: true, status: 200, json: async () => clone(data)});
@@ -450,6 +451,14 @@ test('CONFIG-08-definition-graph-does-not-claim-synthetic-content',async()=>{con
 
 test('CORPUS-16-disabled-applicability-overrides-unknown-state',()=>{const m=models().corpusModel(corpus(),{rules:[{id:42,channel:'web',name:'DisabledFlag',action:'BLOCK',state:'UNKNOWN',applicability:'disabled'}]});assert(!models().drillSummary(m).includes('Rule candidates:'));});
 test('LIVE-22-stop-destroys-pending-lane-playback',async()=>{const b=await page();b.queue('/api/live-feed',liveResponse([incident()]));await b.click('liveStart');const lane=b.newest('live','liveHost');await b.click('liveStop');assert.equal(lane.destroyed,true);assert.equal(b.get('liveFeed').children.length,1);await b.click('liveStart');assert.notEqual(b.newest('live','liveHost'),lane);});
+
+// The Path analyzer's kept result replayed in the #path view: its own player,
+// never the scenario's, escaped, with the hop-by-hop chain as the second picture.
+const keptPath=()=>({zassess_path_last:JSON.stringify({at:'2026-01-01T00:00:00Z',result:models().SAMPLE.traffic})});
+test('PATHREPLAY-01-kept-result-replays-with-step-controls',async()=>{const b=await page({hash:'#path',storage:keptPath()});const p=b.newest('trafficPath','tpHost');assert(p);assert.equal(p.opts.stepper,true);assert.equal(p.model.mode,'result');assert.equal(p.model.nodes[p.model.stop].key,'url');assert.match(b.get('tpSrc').textContent,/From the Path analyzer/);assert(!displayed(b));assert.equal(b.get('scenarioPlay').disabled,true);});
+test('PATHREPLAY-02-no-result-shows-a-labelled-sample',async()=>{const b=await page({hash:'#path'});const p=b.newest('trafficPath','tpHost');assert(p);assert.match(b.get('tpSrc').textContent,/Sample/);assert.match(b.get('tpSrc').textContent,/sample data/);});
+test('PATHREPLAY-03-hop-by-hop-is-the-second-picture',async()=>{const b=await page({hash:'#path',storage:keptPath()});const first=b.newest('trafficPath','tpHost');await b.change('tpView','hops');assert.equal(first.destroyed,true);assert(b.newest('hopPlayer','tpHopHost'));assert.equal(b.get('tpHopWrap').hidden,false);await b.change('tpView','path');assert(b.newest('trafficPath','tpHost')!==first);});
+test('PATHREPLAY-04-tenant-strings-are-escaped',async()=>{const r=clone(models().SAMPLE.traffic);r.destination.host='<img src=x onerror=alert(1)>';r.whatif.identity_label='<script>alert(1)</script>';r.verdict.headline='<b>x</b>';const b=await page({hash:'#path',storage:{zassess_path_last:JSON.stringify({at:'2026-01-01',result:r})}});assert.equal(b.get('tpSrc').querySelectorAll('img').length,0);assert.equal(b.get('tpWhatif').querySelectorAll('script').length,0);assert(b.get('tpWhatif').textContent.includes('<script>'));assert(b.get('tpSrc').textContent.includes('<img'));});
 
 async function main() {
   const choice = process.argv[2];

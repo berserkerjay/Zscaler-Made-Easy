@@ -540,3 +540,43 @@ def test_the_sample_answers_a_url_lookup_from_its_own_table():
     body, code = ot.OfflineRawClient(ot.sample_store(), {}).post("/zia/urlLookup", ["https://chat.openai.com/x", "unknown.example"])
     # Assert
     assert code == 200 and body[0]["urlClassifications"] == ["AI_ML_APPS"] and body[1]["urlClassifications"] == ["OTHER_MISCELLANEOUS"]
+
+
+# ── Wave 6 UI check: Find anything's tags and to-dos work on the sample ──
+
+@pytest.mark.parametrize("query", ["", "?profile_id=", "?vanity_domain=&cloud=production"])
+def test_find_anything_notes_on_the_sample_are_kept_under_the_sample(app, tmp_path, monkeypatch, query):
+    """WCAG 2.2 SC 3.3.1 · CWE-754: with the sample open, Find anything's notes load (they were refused with 400 "pick a tenant first")."""
+    # Arrange
+    monkeypatch.setenv("DLP_CHECK_WORKSPACE_NOTES", str(tmp_path / "notes.json"))
+    _sample(app)
+    # Act
+    r = app.get("/api/workspace/notes" + query)
+    # Assert
+    assert r.status_code == 200, r.text
+    assert r.json()["tenant"] == sample_tenant.LABEL and r.json()["notes"] == []
+
+
+def test_a_to_do_on_the_sample_is_saved_under_the_sample_never_a_profile(app, tmp_path, monkeypatch):
+    """WCAG 2.2 SC 3.3.1 · CWE-472: a to-do written on a sample object is kept under the sample's label, even when a profile id is sent."""
+    # Arrange
+    monkeypatch.setenv("DLP_CHECK_WORKSPACE_NOTES", str(tmp_path / "notes.json"))
+    import tenant_profiles
+    p = tenant_profiles.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": "acmeclientid0001"})
+    _sample(app)
+    # Act
+    r = app.post("/api/workspace/notes", json={"profile_id": p["id"], "kind": "dlp_rule", "ref": "101", "label": "Rule",
+                                               "action": "add_todo", "text": "Review this rule"})
+    # Assert
+    assert r.status_code == 200, r.text
+    assert r.json()["tenant"] == sample_tenant.LABEL
+
+
+def test_without_the_sample_notes_still_need_a_tenant(app, tmp_path, monkeypatch):
+    """WCAG 2.2 SC 3.3.1 · CWE-754: negative case: with no tenant at all the notes are refused in words, as before."""
+    # Arrange
+    monkeypatch.setenv("DLP_CHECK_WORKSPACE_NOTES", str(tmp_path / "notes.json"))
+    # Act
+    r = app.get("/api/workspace/notes")
+    # Assert
+    assert r.status_code == 400 and "pick a tenant first" in r.text

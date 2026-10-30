@@ -38,7 +38,10 @@ class _Idp:
         }
 
     def make_id_token(self, *, nonce, aud=CLIENT_ID, iss=ISSUER, kid="k1", sign_key=None, **extra):
-        claims = {"iss": iss, "aud": aud, "sub": "user-1", "email": "person@example.com", "nonce": nonce}
+        # exp and iat are required (OpenID Connect Core 3.1.3.7): fixed
+        # moments, an issue time long past and an expiry far ahead.
+        claims = {"iss": iss, "aud": aud, "sub": "user-1", "email": "person@example.com", "nonce": nonce,
+                  "iat": 1_700_000_000, "exp": 4_102_444_800}
         claims.update(extra)
         return jwt.encode(claims, sign_key or self.key, algorithm="RS256", headers={"kid": kid})
 

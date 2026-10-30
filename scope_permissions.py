@@ -276,6 +276,31 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         "note": "ZIdentity scope is meta — the API client itself lives in ZIdentity. You'll need 'ZIdentity Admin' to read the directory it's a member of.",
     },
 
+    "rbac": {
+        "label": "RBAC",
+        "description": "Role-based access control hygiene: ZIA admin roles and admins, Client Connector portal admins and roles, ZPA access policy bound to groups, ZIdentity admin redundancy.",
+        "service": "ZIA + ZCC + ZPA + ZIdentity",
+        "permissions_read": [
+            "Admin Roles",
+            "Admin Users",
+            "Authentication Settings",
+            "ZCC Admin Users",
+            "ZCC Admin Roles",
+            "Access Policy",
+            "Users",
+        ],
+        "permissions_write": [],
+        "endpoints_used": [
+            "/zia/adminRoles", "/zia/adminUsers", "/zia/authSettings",
+            "/zcc/adminRoles", "/zcc/adminUsers", "/zcc/adminUsersSyncInfo",
+            "/zpa/policySet/rules/ACCESS_POLICY",
+            "/zid/users",
+        ],
+        "license_required": "Standard ZIA license; the ZCC, ZPA and ZIdentity checks need those products.",
+        "customer_id_needed": True,
+        "customer_id_note": "One RBAC check reads the ZPA access policy, which needs the ZPA customer ID.",
+    },
+
     "insights": {
         "label": "ZIA Insights (traffic data)",
         "description": "Traffic insights page: web traffic by action and location, cloud applications (Shadow IT), SaaS security (CASB) by application, firewall traffic by action, and the users with the most security incidents. Traffic numbers, not configuration; no assessment check reads them.",

@@ -28,6 +28,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SEED_FILE = os.path.join(ROOT, "saas_apps.json")
 LOCAL_FILE = os.path.join(ROOT, "saas_apps.local.json")
 TENANT_LIMIT = 16
+MAX_PAGE_CHARS = 2_000_000   # a help page larger than this is read up to here (untrusted input)
 PAGES = [
     "https://help.zscaler.com/zia/adding-saas-application-tenants",
     "https://help.zscaler.com/zia/understanding-saas-security-supported-capabilities",
@@ -104,7 +105,10 @@ def parse_matrix(html: str) -> List[Dict[str, Any]]:
     application column and at least one capability column; a cell that
     reads yes / ✓ / supported counts as supported."""
     p = _Tables()
-    p.feed(html)
+    try:
+        p.feed(str(html or "")[:MAX_PAGE_CHARS])
+    except Exception:  # noqa: BLE001 — a page that does not parse adds nothing
+        return []
     apps: Dict[str, Dict[str, Any]] = {}
     for table in p.tables:
         if len(table) < 2:
@@ -124,7 +128,7 @@ def parse_matrix(html: str) -> List[Dict[str, Any]]:
             name = row[app_col]
             rec = apps.setdefault(name, {"name": name, "type": None, "capabilities": []})
             for i, cap in cap_cols.items():
-                if i < len(row) and re.search(r"yes|✓|✔|supported|available|x$", row[i].strip().lower()):
+                if i < len(row) and _supported(row[i]):
                     if cap not in rec["capabilities"]:
                         rec["capabilities"].append(cap)
             if type_col is not None and type_col < len(row):
@@ -134,6 +138,30 @@ def parse_matrix(html: str) -> List[Dict[str, Any]]:
                         rec["type"] = t
                         break
     return list(apps.values())
+
+
+def _supported(cell: str) -> bool:
+    """A capability cell that says yes. "Not supported", "Unavailable", "No"
+    and a cross are no, though they contain "supported" or "available"."""
+    low = str(cell or "").strip().lower()
+    if not low or re.match(r"(no\b|not\b|un(supported|available)|n/?a\b|✗|✘|-|—)", low):
+        return False
+    return bool(re.search(r"\byes\b|✓|✔|\bsupported\b|\bavailable\b|^x$", low))
+
+
+def _words(s: str) -> List[str]:
+    return re.findall(r"[a-z0-9]+", str(s or "").lower())
+
+
+def _contains(words: Sequence[str], part: Sequence[str]) -> bool:
+    """`part` appears in `words` as a run of whole words."""
+    n = len(part)
+    return bool(n) and any(list(words[i:i + n]) == list(part) for i in range(len(words) - n + 1))
+
+
+def _status_active(status: Any) -> bool:
+    """The tenant's status list holds ACTIVE itself ("INACTIVE" contains the word)."""
+    return "ACTIVE" in [w.strip().upper() for w in str(status or "").replace(";", ",").split(",")]
 
 
 def refresh(safe_get, *, pages: Sequence[str] = PAGES) -> Dict[str, Any]:
@@ -237,12 +265,13 @@ def tenant_findings(tenants: Sequence[Dict[str, Any]], *, pack_channels: Sequenc
     by_app: Dict[str, List[Dict[str, Any]]] = {}
     for t in tenants:
         by_app.setdefault(t.get("app") or "?", []).append(t)
-    not_active = [t for t in tenants if t.get("status") and "ACTIVE" not in t["status"]]
+    not_active = [t for t in tenants if t.get("status") and not _status_active(t["status"])]
     at_limit = [app for app, ts in by_app.items() if len(ts) >= TENANT_LIMIT]
-    onboarded = {(t.get("app") or "").lower() for t in tenants} | {t["name"].lower() for t in tenants}
+    onboarded = [w for w in ([_words(t.get("app")) for t in tenants] + [_words(t.get("name")) for t in tenants]) if w]
     def _is_onboarded(app_name: str) -> bool:
-        key = app_name.lower()
-        return any(key in o or o in key for o in onboarded if o)
+        # Whole words, both ways: a Box tenant is not Dropbox, an ONEDRIVE tenant is Microsoft OneDrive.
+        key = _words(app_name)
+        return any(_contains(o, key) or _contains(key, o) or "".join(o) == "".join(key) for o in onboarded)
     candidates = [{"name": a["name"], "type": a.get("type"), "type_label": (m.get("types") or {}).get(a.get("type"), a.get("type"))}
                   for a in apps if "DLP" in (a.get("capabilities") or []) and not _is_onboarded(a["name"])]
     types_present = {t.get("type") for t in tenants if t.get("type")}

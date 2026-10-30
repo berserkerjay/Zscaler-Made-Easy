@@ -1,6 +1,8 @@
 """Read complete Client Connector profile inventories without hiding failures."""
 from __future__ import annotations
 
+from zcc_evaluation import code_text
+
 APP_ENDPOINT = "/zcc/papi/public/v1/application-profiles"
 FORWARDING_ENDPOINT = "/zcc/papi/public/v1/webForwardingProfile/listByCompany"
 PAGE_SIZE = 100
@@ -25,7 +27,7 @@ def read_app_profiles(get, *, cancel=None):
             if os_type is None:
                 p["deviceType"] = device_type
                 os_type = device_type
-            os_key = str(os_type).lower().removeprefix("device_type_")
+            os_key = code_text(os_type)
             os_key = {"win": "windows", "mac": "macos", "osx": "macos"}.get(os_key, os_key)
             os_key = {str(v): k for k, v in PLATFORM_TYPES.items()}.get(os_key, os_key)
             key = (os_key, str(p["id"])) if p.get("id") is not None else (os_key, json.dumps(p, sort_keys=True))

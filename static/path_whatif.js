@@ -15,6 +15,9 @@
 // click, never a bulk listing. Nothing here writes to the tenant.
 (function () {
   'use strict';
+  // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+  const errText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+    return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const FIELDS = ['user', 'group', 'department', 'location'];
   const STATE = { match: ['met', 'ok'], nomatch: ['not met', 'fail'], unknown: ['depends', 'warn'] };
@@ -68,7 +71,7 @@
       const r = await fetch('/api/path-analyzer/identities', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({}, page.credBody(), page.scopeSelection(), { kind, query: q })) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(errText(d, r.status));
       found[kind] = d.results || [];
       list.hidden = false;
       if (d.error) { list.innerHTML = `<li class="df-hint">ZIA could not answer: ${E(d.error)}</li>`; live.textContent = `The lookup failed: ${d.error}`; return; }

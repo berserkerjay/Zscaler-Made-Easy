@@ -1,0 +1,357 @@
+{
+ "area": "deploy",
+ "title": "Deploy and remove policy packs, build packs from a tenant, apply proposals",
+ "files": [
+  "pack_deploy.py",
+  "pack_removal.py",
+  "pack_from_tenant.py",
+  "deployments.py",
+  "proposal_apply.py"
+ ],
+ "standards": [
+  "OWASP ASVS 4.0.3 L2",
+  "OWASP Top 10 2021",
+  "CWE",
+  "OWASP WSTG",
+  "CISA Secure by Design",
+  "NIST SSDF"
+ ],
+ "coverage": {
+  "before": 89.6,
+  "after": 91.9
+ },
+ "checks": [
+  {
+   "id": "write-gates",
+   "what": "Every deploy, removal, undo and proposal write needs an explicit True write gate; the server checks writer, confirmation, assessor and write mode before sign-in",
+   "standard": "ASVS V4.1.3 / CWE-841",
+   "result": "fixed"
+  },
+  {
+   "id": "monitor-only",
+   "what": "Every pack rule is created DISABLED with a non-enforcing action",
+   "standard": "ASVS V1.4.1 / CWE-276",
+   "result": "pass"
+  },
+  {
+   "id": "create-order",
+   "what": "Create order is dictionary, engine, application group, rule",
+   "standard": "CWE-696",
+   "result": "pass"
+  },
+  {
+   "id": "remove-order",
+   "what": "Remove/undo order is rule, application group, engine, dictionary; one activation at the end",
+   "standard": "CWE-696",
+   "result": "pass"
+  },
+  {
+   "id": "plan-stability",
+   "what": "A tenant or pack that changed between plan and apply refuses the apply (deploy, removal, proposal)",
+   "standard": "ASVS V11.1.1 / CWE-367",
+   "result": "fixed"
+  },
+  {
+   "id": "partial-failure",
+   "what": "A failure part-way reports partial, skips dependents and records exactly what was created",
+   "standard": "ASVS V7.4.1 / CWE-755",
+   "result": "pass"
+  },
+  {
+   "id": "removal-targeting",
+   "what": "Removal deletes only tagged objects (or a record's id+name), never name-only lookalikes or another pack's tag",
+   "standard": "ASVS V4.2.1 / CWE-863",
+   "result": "fixed"
+  },
+  {
+   "id": "idempotence",
+   "what": "Deploying the same pack twice creates nothing the second time",
+   "standard": "CWE-837",
+   "result": "pass"
+  },
+  {
+   "id": "audit",
+   "what": "Every write leaves an object_write audit entry (with run and tenant); no secret in the audit log",
+   "standard": "ASVS V7.1.1 / CWE-778 / CWE-532",
+   "result": "fixed"
+  },
+  {
+   "id": "untrusted-pack-files",
+   "what": "Pack files on disk: size, nesting, shape and field types checked; plain blocked plan on failure",
+   "standard": "ASVS V5.1.4 / CWE-20 / CWE-400",
+   "result": "fixed"
+  },
+  {
+   "id": "from-tenant-redos",
+   "what": "Name filter never compiled as a regex",
+   "standard": "ASVS V5.1.5 / CWE-1333",
+   "result": "fixed"
+  },
+  {
+   "id": "from-tenant-injection",
+   "what": "Tenant dictionary names cannot inject terms into engine expressions",
+   "standard": "ASVS V5.3.10 / CWE-74",
+   "result": "fixed"
+  },
+  {
+   "id": "file-permissions",
+   "what": "deployments.json and rebuilt pack files are 0600 and written atomically",
+   "standard": "ASVS V8.3.4 / CWE-732",
+   "result": "pass"
+  },
+  {
+   "id": "concurrency",
+   "what": "deployments.json read-modify-write is serialised",
+   "standard": "CWE-362",
+   "result": "fixed"
+  },
+  {
+   "id": "secrets",
+   "what": "Tenant fingerprint kept out of summaries; CLI never prints the client secret",
+   "standard": "ASVS V8.3.1 / CWE-200",
+   "result": "pass"
+  },
+  {
+   "id": "error-handling",
+   "what": "Plain-language errors on every failure path; no traceback reaches a response",
+   "standard": "ASVS V7.4.1 / CWE-209",
+   "result": "fixed"
+  },
+  {
+   "id": "ssrf",
+   "what": "These modules reach the tenant only through the injected SDK client; no URL is built from input",
+   "standard": "CWE-918",
+   "result": "pass"
+  },
+  {
+   "id": "path-traversal",
+   "what": "Pack directories come from the library resolver (server validates pack ids); the rebuild writes only under the pack's configs folder",
+   "standard": "CWE-22",
+   "result": "pass"
+  },
+  {
+   "id": "regression",
+   "what": "Older deployment records, BOM-prefixed pack files, digit-string ranks and control-channel dict actions still load",
+   "standard": "CWE-20",
+   "result": "pass"
+  },
+  {
+   "id": "sdk-verification",
+   "what": "SDK calls used (dlp_dictionary.list_dicts/add_dict/update_dict/delete_dict, dlp_engine.*, dlp_web_rules.*) are unchanged by this work; no new Zscaler API detail was introduced",
+   "standard": "NIST SSDF PW.4",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "C6-DEPLOY-01",
+   "title": "Removal deleted untagged customer objects that only shared a pack or legacy name (e.g. a customer's own 'PCI - High' engine)",
+   "severity": "high",
+   "cwe": "CWE-863",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "A name-only match is kept with a plain reason; only objects carrying the app's provenance tag (or a deployment record's id+name) are removed; the rule picker removes the rest by hand",
+   "test": "tests/test_c6_deploy.py::test_a_customer_rule_named_like_a_pack_rule_is_never_deleted",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-02",
+   "title": "Legacy tag check was a substring test: removing pack 'x' also matched objects tagged '[DLP-Check pack x_more v1]'",
+   "severity": "medium",
+   "cwe": "CWE-1023",
+   "asvs": "V4.2.1",
+   "status": "fixed",
+   "fix": "The legacy tag must name the pack id whole (followed by space, ']' or end)",
+   "test": "tests/test_c6_deploy.py::test_removing_one_pack_never_matches_a_longer_pack_ids_legacy_tag",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-03",
+   "title": "A pack or pick-mode removal with an empty plan_hash skipped the stale-plan check and deleted an unreviewed plan (including 'remove everything')",
+   "severity": "medium",
+   "cwe": "CWE-367",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "remove() and remove_selected() refuse an empty plan_hash; a deployment undo stays bound to its record",
+   "test": "tests/test_c6_deploy.py::test_a_removal_without_the_previewed_plan_hash_is_refused",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-04",
+   "title": "Module write gates failed open: writes_enabled=None (the default) let deploy, removal and proposal apply write",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "Deny by default: only writes_enabled is True writes (the server always passes True after its own four gates)",
+   "test": "tests/test_c6_deploy.py::test_deploy_without_an_explicit_write_gate_writes_nothing",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-05",
+   "title": "plan_hash bound only item statuses and tenant object counts: a pack file edited after preflight, or a tenant rule swapped for another, still applied",
+   "severity": "medium",
+   "cwe": "CWE-367",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "The hash covers each item's definition content and the tenant's object names, ids and rule orders",
+   "test": "tests/test_c6_deploy.py::test_a_pack_file_edited_after_the_preflight_refuses_the_apply",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-06",
+   "title": "Pack files read from disk were trusted: a non-list, scalar entries, wrong field types, deep nesting or a huge file crashed preflight and removal (HTTP 500 with a Python error)",
+   "severity": "medium",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.4",
+   "status": "fixed",
+   "fix": "pack_deploy.load_pack_file: 8 MB cap, nesting cap, list-of-objects shape and a per-file field schema; a bad file is a plain blocked plan before the tenant is read",
+   "test": "tests/test_c6_deploy.py::test_a_pack_field_of_the_wrong_type_is_a_blocked_plan_not_a_crash",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-07",
+   "title": "Proposal apply re-read the rule before writing but did not compare it with the preview: a change made in between was overwritten",
+   "severity": "medium",
+   "cwe": "CWE-367",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "The write is refused when the field (or the rule id behind the name) changed since the preview",
+   "test": "tests/test_c6_deploy.py::test_a_proposal_rule_changed_between_preview_and_write_is_not_overwritten",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-08",
+   "title": "A rollback with no recorded value (or a proposal with no target) normalised None to '' and would send an empty action/state to ZIA",
+   "severity": "medium",
+   "cwe": "CWE-754",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "A missing value stays None and the preview refuses the step",
+   "test": "tests/test_c6_deploy.py::test_a_rollback_without_a_recorded_value_writes_nothing",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-09",
+   "title": "Proposal rule writes were audited without the run or tenant",
+   "severity": "low",
+   "cwe": "CWE-778",
+   "asvs": "V7.1.3",
+   "status": "fixed",
+   "fix": "The write runs inside pack_ops.audit_scope(run=proposal_<direction>, tenant=<opaque key>)",
+   "test": "tests/test_c6_deploy.py::test_a_proposal_rule_write_is_audited_with_its_run_and_tenant",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-10",
+   "title": "deployments.json read-modify-write had no lock: two runs finishing together lost a record (and with it the undo)",
+   "severity": "medium",
+   "cwe": "CWE-362",
+   "asvs": "V11.1.6",
+   "status": "fixed",
+   "fix": "One module lock around every read-modify-write of the store",
+   "test": "tests/test_c6_deploy.py::test_two_records_written_at_once_are_both_kept",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-11",
+   "title": "A deployments store of another shape ({'deployments': null}, a list, non-object records) or an older record without 'kind' crashed the list and undo pages",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "The store is read as far as it is records; summaries use .get; add() refuses a non-record",
+   "test": "tests/test_c6_deploy.py::test_a_store_of_another_shape_reads_as_empty_not_a_crash",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-12",
+   "title": "The from-tenant name filter was compiled as a regular expression and run on tenant names: '(a+)+$' hung the worker (ReDoS)",
+   "severity": "medium",
+   "cwe": "CWE-1333",
+   "asvs": "V5.1.5",
+   "status": "fixed",
+   "fix": "Literal, case-folded substring with optional ^prefix / suffix$; no regex is ever compiled from it",
+   "test": "tests/test_c6_deploy.py::test_the_name_filter_is_never_run_as_a_regular_expression",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-13",
+   "title": "A tenant dictionary name such as 'Py) OR (D:CREDIT_CARD Signal' was pasted into the rebuilt engine expression, rewriting its logic in every tenant the pack is deployed to",
+   "severity": "medium",
+   "cwe": "CWE-74",
+   "asvs": "V5.3.10",
+   "status": "fixed",
+   "fix": "Only names that read back as exactly one D:<name> term (dlp_importer.find_refs) and hold no control characters are used; others are listed as ignored",
+   "test": "tests/test_c6_deploy.py::test_a_dictionary_name_that_would_rewrite_the_engine_expression_is_ignored",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-14",
+   "title": "The from-tenant rebuild crashed on a malformed rules file after rewriting the dictionaries and engines (half-rewritten pack), leaked file handles and wrote non-atomically",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "Every current pack file is validated first; the three files are written whole with safe_files.write_private_atomic (0600)",
+   "test": "tests/test_c6_deploy.py::test_a_rebuild_refuses_a_pack_whose_rules_file_is_not_a_pack",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-15",
+   "title": "Untrusted values of the wrong type crashed two reads: a non-numeric tenant 'proximity' (rebuild) and a non-object entry in a deployment record (undo preview)",
+   "severity": "low",
+   "cwe": "CWE-20",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "The value is dropped or the entry skipped",
+   "test": "tests/test_c6_deploy.py::test_a_tenant_dictionary_with_a_non_numeric_proximity_is_read_without_a_crash",
+   "commit": "172f6c6"
+  },
+  {
+   "id": "C6-DEPLOY-16",
+   "title": "POST /api/dlp-packs/{pack_id}/import records a deployment only when the status is 'applied': objects created by a partial deploy are never recorded, so they cannot be undone",
+   "severity": "low",
+   "cwe": "CWE-755",
+   "asvs": "V7.4.1",
+   "status": "fixed",
+   "fix": "The single-pack import records any deploy that created objects (applied or partial), as Deploy Policy Packs does; from_apply gives None when nothing was created",
+   "test": "tests/test_c6_open_low.py::test_a_single_pack_deploy_that_created_objects_is_recorded_for_undo",
+   "commit": "37a8f7c"
+  },
+  {
+   "id": "C6-DEPLOY-17",
+   "title": "PackFromTenantRequest.name_filter is still documented as 'substring/regex' after the filter became literal",
+   "severity": "info",
+   "cwe": "CWE-1116",
+   "asvs": "V1.1.2",
+   "status": "fixed",
+   "fix": "The name_filter comment says literal, case-insensitive text with ^ and $ anchors, never a regex",
+   "test": "tests/test_c6_open_low.py::test_the_rebuild_name_filter_is_documented_and_matched_as_literal_text",
+   "commit": "37a8f7c"
+  },
+  {
+   "id": "C6-DEPLOY-18",
+   "title": "In 'remove everything' mode an assessor-style tag at the very end of a customer's own description ('[Bob pack q3 v2]') is indistinguishable from a deploy tag",
+   "severity": "info",
+   "cwe": "CWE-1023",
+   "asvs": "V4.2.1",
+   "status": "accepted",
+   "fix": "Accepted: the operator reviews every object in the preview (plan_hash-bound) before confirming; a tag needs the deploy's exact shape and position",
+   "test": "",
+   "commit": ""
+  },
+  {
+   "id": "C6-DEPLOY-19",
+   "title": "docs/SECURITY_TESTING.md is stale once this branch's mapped tests land (tests/test_security_test_matrix.py fails until it is regenerated)",
+   "severity": "info",
+   "cwe": "CWE-1059",
+   "asvs": "V1.1.2",
+   "status": "fixed",
+   "fix": "Resolved at integration: docs/SECURITY_TESTING.md was regenerated with python tools/security_test_matrix.py after the merges and is regenerated again on this branch",
+   "test": "tests/test_security_test_matrix.py::test_the_standards_document_is_current",
+   "commit": "9e0d276"
+  }
+ ],
+ "tests_added": 63
+}

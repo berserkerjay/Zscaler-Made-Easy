@@ -379,6 +379,12 @@ ATP_SETTINGS: List[Tuple[str, str]] = [
     ("dga_domains_blocked", "Block domains made by domain generation algorithms"),
 ]
 ATP_KEYS = {k for k, _ in ATP_SETTINGS}
+# What a rule matches on, per area: a rule other than a catch-all that names
+# none of these would match all traffic, so it is dropped (fit).
+MATCH_FIELDS: Dict[str, Tuple[str, ...]] = {
+    "firewall": ("nw_applications", "dest_countries", "source_countries"), "url": ("url_categories",), "ssl": ("url_categories",),
+    "sandbox": ("file_types",), "dns": ("applications", "dest_ip_categories", "dest_countries", "trusted_resolver"),
+    "ftc": ("file_types",), "cac": ("type",)}
 ATP_TIER_OFF = {"permissive": {"ssh_tunnelling_blocked"}}
 
 # Cloud App Control action bases that take DENY_ rather than BLOCK_ (the
@@ -485,6 +491,10 @@ def _fit_bytes(text: str, limit: int = DESC_MAX) -> str:
     t = " ".join(str(text or "").split())
     if len(t.encode("utf-8")) <= limit:
         return t
+    # Every character is at least one byte: nothing past `limit` characters
+    # can fit, so cut there first and the loop below stays bounded (an
+    # uploaded framework's title may be megabytes long).
+    t = t[:limit]
     while len((t + "…").encode("utf-8")) > limit:
         t = t[:-1]
     return t.rstrip() + "…"
@@ -582,12 +592,25 @@ def areas_in_scope(scope: Dict[str, Any]) -> Tuple[List[str], Dict[str, str]]:
     return read, why
 
 
-def _in_scope(scope: Dict[str, Any]) -> Optional[str]:
+def _in_scope(scope: Dict[str, Any], spec: Any = None) -> Optional[str]:
+    """Why the baseline is out of scope, or None. Given the spec (the
+    engine's check before sign-in), also every area it names explicitly
+    (or its Undo touches) must be in scope: deny by default."""
     read, _ = areas_in_scope(scope)
-    if read:
+    if not read:
+        return ("Nothing the ZIA baseline builds is in scope on the Scope page: tick ZIA platform (Cloud Firewall, Sandbox, DNS Control, "
+                "Advanced Threat Protection) or DLP (URL filtering, File Type Control; mark SSL inspection and Cloud App Control as Zscaler).")
+    if not isinstance(spec, dict):
         return None
-    return ("Nothing the ZIA baseline builds is in scope on the Scope page: tick ZIA platform (Cloud Firewall, Sandbox, DNS Control, "
-            "Advanced Threat Protection) or DLP (URL filtering, File Type Control; mark SSL inspection and Cloud App Control as Zscaler).")
+    if spec.get("action") == "revert":
+        steps = spec.get("steps") if isinstance(spec.get("steps"), list) else []
+        want = ["atp" if s.get("op") == "restore_atp" else s.get("area") for s in steps if isinstance(s, dict)]
+    else:
+        want = spec.get("areas") if isinstance(spec.get("areas"), list) else []
+    out = [AREAS[a]["label"] for a in AREA_ORDER if a in want and a not in read]
+    if out:
+        return f"Not in scope on the Scope page: {', '.join(out)}. Leave them out of the baseline or tick their scope. Nothing was read."
+    return None
 
 
 def _cert_in_scope(scope: Dict[str, Any]) -> Optional[str]:
@@ -616,6 +639,30 @@ def _norm_list(v: Any, what: str) -> List[str]:
     return [str(x) for x in v]
 
 
+_FIELD_PATH = re.compile(r"[a-z][a-z0-9_]{0,63}(\.[a-z][a-z0-9_]{0,63}){0,4}")
+_STEP_ID = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
+
+
+def _check_step(st: Any) -> None:
+    """An undo step is untrusted (it comes back from the page): its shape,
+    and only fields a baseline sets (never a rule's id, name or rank)."""
+    if not isinstance(st, dict) or st.get("op") not in ("delete", "restore", "restore_atp"):
+        raise ao.OperationError("An undo step must be delete, restore or restore_atp.")
+    if st["op"] != "restore_atp" and (isinstance(st.get("id"), bool) or not _STEP_ID.fullmatch(str(st.get("id") or ""))
+                                      or not isinstance(st.get("name", ""), str) or len(st.get("name") or "") > 128
+                                      or not isinstance(st.get("rule_type") or "", str) or len(st.get("rule_type") or "") > 64):
+        raise ao.OperationError("An undo step names a rule by its id and name.")
+    for k in ("fields", "expect"):
+        if not isinstance(st.get(k) if st.get(k) is not None else {}, dict):
+            raise ao.OperationError(f"An undo step's {k} must be an object.")
+    for f in list((st.get("fields") or {})) + list((st.get("expect") or {})):
+        if st["op"] == "restore_atp":
+            if f not in ATP_KEYS:
+                raise ao.OperationError(f"{str(f)[:60]!r} is not an Advanced Threat Protection setting.")
+        elif not isinstance(f, str) or not _FIELD_PATH.fullmatch(f) or f in ("id", "name", "rank"):
+            raise ao.OperationError(f"An undo may put back only the fields a baseline sets ({str(f)[:60]!r} is not one).")
+
+
 def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
     """The baseline spec checked: tier, overlays, areas, prefix, choices.
     Raises OperationError for anything that cannot be built."""
@@ -626,11 +673,13 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
         steps = spec.get("steps")
         if not isinstance(steps, list) or not steps or len(steps) > 600:
             raise ao.OperationError("An undo names the steps to reverse.")
+        for st in steps:
+            _check_step(st)
         return {"type": TYPE, "action": "revert", "steps": steps}
     framework = spec.get("framework")
     out["tier"] = str(spec.get("tier") or ("captured" if framework else "balanced")).lower()
-    if not framework and out["tier"] not in TIERS:
-        raise ao.OperationError(f"Unknown tier '{spec.get('tier')}'. Use one of: {', '.join(TIERS)}.")
+    if out["tier"] not in TIERS and not (framework and out["tier"] == "captured"):
+        raise ao.OperationError(f"Unknown tier '{str(spec.get('tier'))[:40]}'. Use one of: {', '.join(TIERS)}.")
     out["overlays"] = [o for o in _norm_list(spec.get("overlays"), "overlays")]
     bad = [o for o in out["overlays"] if o not in OVERLAYS]
     if bad:
@@ -641,7 +690,7 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
         raise ao.OperationError(f"Unknown area(s): {', '.join(bad)}.")
     out["areas"] = [a for a in AREA_ORDER if a in areas] if areas else None
     prefix = str(spec.get("prefix") or "BL").strip()
-    if not _PREFIX_RE.match(prefix):
+    if not _PREFIX_RE.fullmatch(prefix):
         raise ao.OperationError("The name prefix is 1 to 10 letters, digits, '-' or '_' (it starts every rule name).")
     out["prefix"] = prefix
     mode = str(spec.get("mode") or "tier").lower()
@@ -661,9 +710,9 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
         choices[str(k)] = {"on": v.get("on") is not False, "action": act}
     out["rules"] = choices
     atp = spec.get("atp") or {}
-    if not isinstance(atp, dict) or any(k not in ATP_KEYS for k in atp):
+    if not isinstance(atp, dict) or any(k not in ATP_KEYS or not isinstance(v, bool) for k, v in atp.items()):
         raise ao.OperationError("atp names Advanced Threat Protection settings with true or false.")
-    out["atp"] = {k: bool(v) for k, v in atp.items()}
+    out["atp"] = dict(atp)
     out["enable_rules"] = spec.get("enable_rules") is True
     for k in ("isolation_profile", "certificate"):
         out[k] = str(spec.get(k) or "")[:120]
@@ -723,6 +772,8 @@ def review(spec: Dict[str, Any]) -> Dict[str, Any]:
             weakened = "switched off"
         elif _is_restrictive(default) and not _is_restrictive(action):
             weakened = f"{_act_label(default)} → {_act_label(action)}"
+        elif str(default).startswith("BLOCK") and action in ("ISOLATE", "CAUTION"):
+            weakened = f"{_act_label(default)} → {_act_label(action)}"   # isolation and a caution page both let the user in
         domains = list(meta["domain"])
         if area == "ftc" and r["fields"].get("operation") == "DOWNLOAD":
             domains = ["malware_threat"]
@@ -899,21 +950,53 @@ def read_area(zia, area: str, *, types: Sequence[str] = (), cancel=None) -> Tupl
 
 
 def get_one(zia, area: str, rid: Any, rule_type: str = "") -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    pol = AREAS[area]["policy"]
-    if pol:
-        row, err = ao.get_rule(zia, pol, rid, rule_type)
-        return (_deep_snake(row) if row else None), err
+    """One rule, read fresh, with every field the tenant sent: a field the
+    SDK model leaves out (SDK 1.11.3's sandbox model has no cbiProfile) is
+    taken from the raw answer, as the list reads do (pack_export._rows), so
+    the update body written back from it keeps it and read-back sees it."""
     try:
-        row, err = ao._one(_svc(zia, area).get_rule(rid))
-        return (_deep_snake(row) if row else None), err
+        svc = _svc(zia, area)
+        ret = svc.get_rule(rule_type, rid) if area == "cac" else svc.get_rule(rid)
+        row, err = ao._one(ret)
     except Exception as e:  # noqa: BLE001
         return None, f"{type(e).__name__}: {str(e)[:200]}"
+    if not row:
+        return None, err
+    import pack_export
+    row = _deep_snake(row)
+    for k, v in _deep_snake(pack_export._plain(_raw_body(ret) or {})).items():
+        if row.get(k) in (None, "", [], {}) and v not in (None, "", [], {}):
+            row[k] = v
+    if area == "cac":
+        row["rule_type"] = str(row.get("type") or rule_type)
+    return row, err
+
+
+def _raw_body(ret: Any) -> Optional[Dict[str, Any]]:
+    """The JSON object the tenant sent (also the fields the SDK model leaves out), or None."""
+    getter = getattr(ret[1], "get_body", None) if isinstance(ret, tuple) and len(ret) >= 3 else None
+    try:
+        body = getter() if callable(getter) else None
+        body = json.loads(body) if isinstance(body, (bytes, str)) and body else body
+    except Exception:  # noqa: BLE001 — the model's fields are used alone
+        return None
+    return body if isinstance(body, dict) else None
 
 
 def read_atp(zia) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """The ATP settings as the SDK model reads them, plus every other field
+    the tenant sent, kept under its own (camelCase) name: _h_atp writes the
+    whole object back, and a field left out of that PUT could be reset."""
     try:
-        row, err = ao._one(_svc(zia, "atp").get_atp_settings())
-        return (_deep_snake(row) if row is not None else None), err
+        ret = _svc(zia, "atp").get_atp_settings()
+        row, err = ao._one(ret)
+        if row is None:
+            return None, err
+        row = _deep_snake(row)
+        for k, v in (_raw_body(ret) or {}).items():
+            if isinstance(k, str) and _snake(k) not in row and k not in row:
+                row[k] = v
+        return row, err
     except Exception as e:  # noqa: BLE001
         return None, f"{type(e).__name__}: {str(e)[:200]}"
 
@@ -1045,6 +1128,10 @@ def fit(rows: List[Dict[str, Any]], facts: Dict[str, Any]) -> List[str]:
             trim(r, "nw_applications", facts.get("network_apps"), "network applications", "network_apps")
         elif a == "cac":
             trim(r, "applications", facts.get("cloud_apps"), "cloud applications", "cloud_apps")
+        if not r.get("dropped") and not r.get("catch_all") and not any(r["fields"].get(k) for k in MATCH_FIELDS.get(a, ())):
+            # A framework rule (untrusted, or captured from a rule that matched
+            # only users or locations) that names nothing would match all traffic.
+            r["dropped"] = "it names nothing to match (no categories, applications, countries or file types), so it would match all traffic"
         if r["action"] == "ISOLATE" and not facts.get("isolation_profile"):
             warns.append(f"{r['name']}: this tenant has no usable Cloud Browser Isolation profile, so the rule shows a Caution page instead of isolating.")
             r["action"] = "CAUTION"
@@ -1207,6 +1294,10 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
                     fields[s["key"]], expect[s["key"]] = s["value"], before
             if fields:
                 groups.append({"key": gk, "handler": "zb_atp", "target": {"fields": fields, "expect": expect}})
+            lowered = [s["label"] for s in rev["atp"] if s["key"] in fields and not fields[s["key"]]]
+            if lowered:
+                warnings.append("Advanced Threat Protection: the baseline turns off what this tenant blocks today: " + "; ".join(lowered)
+                                + ". Pick the setting on in the review to keep it.")
     nspec = {k: v for k, v in n.items() if v not in (None, "", [], {})}
     nspec["type"] = TYPE
     if n.get("areas"):
@@ -1567,10 +1658,18 @@ def _plan_cert(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel)
         moves = [{"id": i, "certificate": target} for i in ids]
     if not isinstance(moves, list) or not moves or len(moves) > ao.MAX_TARGETS:
         raise ao.OperationError(f"Move 1 to {ao.MAX_TARGETS} rules at a time.")
-    norm = []
+    norm: List[Dict[str, Any]] = []
+    seen: Dict[str, Any] = {}
     for m in moves:
-        if not isinstance(m, dict) or m.get("id") in (None, "") or m.get("certificate") in (None, ""):
+        if not isinstance(m, dict) or not all(isinstance(m.get(k), (int, str)) and not isinstance(m.get(k), bool)
+                                              and _STEP_ID.fullmatch(str(m.get(k))) for k in ("id", "certificate")):
             raise ao.OperationError("Each move names a rule id and a certificate (an id, or 'default').")
+        rid = str(m["id"])
+        if rid in seen:
+            if str(seen[rid]) != str(m["certificate"]):
+                raise ao.OperationError(f"Rule {rid} is moved to two different certificates: pick one.")
+            continue   # the same move twice is one move
+        seen[rid] = m["certificate"]
         norm.append({"id": m["id"], "certificate": m["certificate"]})
     zia = client.zia
     say("Reading the ready-to-use intermediate certificates…")
@@ -1703,6 +1802,10 @@ def _read_certs(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
 # Framework capture (Export from tenant, "ZIA policy framework") and load
 # ---------------------------------------------------------------------------
 CAPTURE_AREAS = ("url", "firewall", "ssl", "sandbox", "dns", "ftc")
+# A framework field's shape: a list of Zscaler names, one name, or true/false.
+_LIST_FIELDS = {"url_categories", "protocols", "nw_applications", "dest_countries", "source_countries", "file_types", "applications",
+                "dest_ip_categories"}
+_BOOL_FIELDS = {"ml_action_enabled", "password_protected", "trusted_resolver"}
 _CAPTURE_FIELDS = {
     "url": ("url_categories", "protocols"),
     "firewall": ("nw_applications", "dest_countries", "source_countries"),
@@ -1724,6 +1827,10 @@ _ACTIONS = {
 def _capture_rule(area: str, r: Dict[str, Any], n: int, skipped: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     import pack_export
     name = str(r.get("name") or "")
+    if not _name_ok(" ".join(name.split())[:MAX_NAME]):
+        skipped.append({"name": name[:MAX_NAME], "area": AREAS[area]["label"],
+                        "reason": "its name is empty or has characters a framework file does not carry (<, > or control characters)"})
+        return None
     if area == "ssl":
         a = r.get("action") or {}
         action = str(a.get("type") or "")
@@ -1748,6 +1855,12 @@ def _capture_rule(area: str, r: Dict[str, Any], n: int, skipped: List[Dict[str, 
         v = r.get(k)
         if v not in (None, "", []):
             fields[k] = v
+    bad = [k for k, v in fields.items() if not _field_ok(k, [c for c in v if not str(c).upper().startswith("CUSTOM_")]
+                                                        if k == "url_categories" and isinstance(v, list) else v)]
+    if bad:   # leaving one match field out would widen the rule: the rule is left out
+        skipped.append({"name": name, "area": AREAS[area]["label"], "field": ", ".join(bad),
+                        "reason": f"its {', '.join(bad)} cannot be carried in a framework file (not a list of Zscaler names); the rule is not captured"})
+        return None
     if "url_categories" in fields:
         custom = [c for c in fields["url_categories"] if str(c).upper().startswith("CUSTOM_")]
         if custom:
@@ -1815,11 +1928,39 @@ def capture(client, areas: Sequence[str], *, name: str = "", tenant_label: str =
             c = _capture_rule(area, r, len(out) + 1, fw["not_exported"])
             if c:
                 out.append(c)
+        if len(out) > MAX_FRAMEWORK_RULES:
+            # A framework holds MAX_FRAMEWORK_RULES rules per area (load_framework
+            # refuses more): each rule cut is named, so it can be recreated by hand.
+            for c in out[MAX_FRAMEWORK_RULES:]:
+                fw["not_exported"].append({"name": c["name"], "area": AREAS[area]["label"],
+                                           "reason": f"only the first {MAX_FRAMEWORK_RULES} of {len(out)} rules fit in a framework; "
+                                                     "recreate this one in the target tenant"})
+            out = out[:MAX_FRAMEWORK_RULES]
         if out:
-            fw["areas"][area] = out[:MAX_FRAMEWORK_RULES]
-        _log(f"Reading the tenant: {AREAS[area]['label']}: {len(out)} rule(s) captured.")
+            fw["areas"][area] = out
+        _log(f"Reading the tenant: {AREAS[area]['label']}: {len(fw['areas'].get(area) or [])} rule(s) captured.")
     fw["counts"] = {a: len(v) for a, v in fw["areas"].items()}
     return {"status": "ready", "framework": fw}
+
+
+_UNSAFE_TEXT = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
+_UNSAFE_NAME = re.compile("[<>\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
+
+
+def _name_ok(name: str) -> bool:
+    return bool(name) and not _UNSAFE_NAME.search(name)
+
+
+def _field_ok(k: str, v: Any) -> bool:
+    """A framework field's value as load_framework accepts it: a list of
+    Zscaler names, one name, a TLS version or true/false."""
+    if k in _BOOL_FIELDS:
+        return isinstance(v, bool)
+    if k == "min_tls":
+        return isinstance(v, str) and re.fullmatch(r"TLS_1_[0-3]", v) is not None
+    if k in _LIST_FIELDS:
+        return isinstance(v, list) and len(v) <= 500 and all(isinstance(x, str) and _ENUM_RE.fullmatch(x) for x in v)
+    return isinstance(v, str) and _ENUM_RE.fullmatch(v) is not None
 
 
 def load_framework(fw: Any) -> Dict[str, Any]:
@@ -1827,8 +1968,10 @@ def load_framework(fw: Any) -> Dict[str, Any]:
     every value; returns {name, rules}. Raises OperationError."""
     if not isinstance(fw, dict) or fw.get("format") != FRAMEWORK_FORMAT:
         raise ao.OperationError(f"Not a ZIA policy framework (expected format '{FRAMEWORK_FORMAT}').")
-    if fw.get("format_version") != FRAMEWORK_VERSION:
-        raise ao.OperationError("This framework file is from a newer version of the app.")
+    ver = fw.get("format_version")
+    if type(ver) is not int or ver != FRAMEWORK_VERSION:
+        raise ao.OperationError("This framework file is from a newer version of the app." if type(ver) is int and ver > FRAMEWORK_VERSION
+                                else f"This framework file has no usable format_version (expected {FRAMEWORK_VERSION}).")
     areas = fw.get("areas")
     if not isinstance(areas, dict) or not areas:
         raise ao.OperationError("The framework has no rules.")
@@ -1842,26 +1985,35 @@ def load_framework(fw: Any) -> Dict[str, Any]:
         for i, r in enumerate(rows):
             if not isinstance(r, dict):
                 raise ao.OperationError("Each framework rule must be an object.")
-            name = " ".join(str(r.get("name") or "").split())[:MAX_NAME]
-            if not name or re.search(r"[<>\x00-\x1f]", name):
+            # Deny by default: a name and a title are text, the fields an
+            # object; a name carries no markup, control, bidirectional or
+            # invisible character (it becomes a rule name in the tenant).
+            if not isinstance(r.get("name"), str) or not isinstance(r.get("title", ""), (str, type(None))) \
+                    or not isinstance(r.get("fields", {}), (dict, type(None))):
+                raise ao.OperationError(f"Framework rule {i + 1} in {area}: name and title are text and fields an object.")
+            name = " ".join(r["name"].split())[:MAX_NAME]
+            if not name or _UNSAFE_NAME.search(name):
                 raise ao.OperationError(f"Framework rule {i + 1} in {area} has no usable name.")
             action = str(r.get("default") or "")
             if action not in _ACTIONS[area]:
                 raise ao.OperationError(f"{name}: action {action[:40]!r} is not allowed for {AREAS[area]['label']}.")
+            raw = r.get("fields")
+            if raw is None:
+                raw = {}
+            if not isinstance(raw, dict):
+                raise ao.OperationError(f"{name}: fields must be an object.")
+            allowed = _CAPTURE_FIELDS[area] + (("min_tls",) if area == "ssl" else ()) + (("trusted_resolver",) if area == "dns" else ())
             fields: Dict[str, Any] = {}
-            for k, v in (r.get("fields") or {}).items():
-                if k not in _CAPTURE_FIELDS[area] + ("min_tls", "trusted_resolver"):
+            for k, v in raw.items():
+                if k not in allowed:
                     continue
-                if isinstance(v, bool):
-                    fields[k] = v
-                elif isinstance(v, str) and _ENUM_RE.match(v):
-                    fields[k] = v
-                elif isinstance(v, list) and len(v) <= 500 and all(isinstance(x, str) and _ENUM_RE.match(x) for x in v):
-                    fields[k] = list(v)
-                else:
-                    raise ao.OperationError(f"{name}: the value of {k} is not a list of Zscaler names.")
+                if not _field_ok(k, v):
+                    raise ao.OperationError(f"{name}: the value of {k} is not "
+                                            + ("true or false." if k in _BOOL_FIELDS else "a list of Zscaler names." if k in _LIST_FIELDS
+                                               else "a Zscaler name."))
+                fields[k] = list(v) if isinstance(v, list) else v
             rules.append({"key": f"{area}.c{i + 1}", "area": area, "name": name, "suffix": name, "default": action, "fields": fields,
-                          "title": _fit_bytes(str(r.get("title") or name), 200), "sources": [], "locked": "", "action_locked": "",
+                          "title": _fit_bytes(_UNSAFE_TEXT.sub(" ", r.get("title") or name), 200), "sources": [], "locked": "", "action_locked": "",
                           "catch_all": area == "ssl" and not fields.get("url_categories"), "default_on": True, "risky": ""})
     return {"name": str(fw.get("name") or "Framework")[:120], "rules": rules}
 
