@@ -26,7 +26,7 @@ window.WHATS_NEW = {
     "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
   },
   "skipped": {
-    "2026-10-30": "The new name everywhere, and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
+    "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [
