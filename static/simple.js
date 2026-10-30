@@ -196,6 +196,11 @@
         q: 'What kind of work does your company do?',
         intro: 'We use this to pick the right rules for you.',
       },
+      profile: {
+        q: 'Which rules does your company have to follow?',
+        intro: 'Pick the [[compliance]] rules you must follow. This one choice picks the rule sets on the next page. The expert pages use it too.',
+        none: 'None of these, or not sure',
+      },
       pack: {
         q: 'Pick a rule set',
         intro: 'A ready-made rule set is called a [[policy pack]]. These fit your kind of work.',
@@ -708,14 +713,29 @@
         load: async st => { if (!st.industries) { try { st.industries = (await getJSON('/api/vertical-scope')).industries || []; } catch (e) { st.industries = []; st.loadError = String(e.message || e); } } },
         render: st => (st.loadError ? errBox(st.loadError) : '') + `<p>${rich(CP.kind.intro)}</p>` + choices('smKind', CP.kind.q, (st.industries || []).map(i => ({ value: i, title: i })), false, st.kind),
         check: st => { st.kind = picked('smKind'); return st.kind ? '' : COPY.ui.pickOne; } },
+      // The one compliance choice (compliance_profiles.py), offered as the industry's preset.
+      { id: 'profile', q: () => CP.profile.q,
+        load: async st => {
+          if (st.cpFor === st.kind) return;
+          const sc = await getJSON(`/api/vertical-scope?industry=${encodeURIComponent(st.kind)}`);
+          let cat = {}; try { cat = await getJSON('/api/compliance-profiles'); } catch (e) { cat = {}; }
+          st.cpChoices = (sc.compliance_profiles || []).map(k => (cat.profiles || []).find(p => p.key === k)).filter(Boolean);
+          st.cpSum = cat.summaries || {};
+          st.cpFor = st.kind;
+          if (!st.cpChoices.some(p => p.key === st.cp)) st.cp = st.cpChoices.length ? st.cpChoices[0].key : 'none';
+        },
+        render: st => `<p>${rich(CP.profile.intro)}</p>` + choices('smProfile', CP.profile.q, (st.cpChoices || []).map(p => ({ value: p.key, title: p.label, sub: E(p.what) }))
+          .concat([{ value: 'none', title: CP.profile.none }]), false, st.cp),
+        check: st => { st.cp = picked('smProfile'); return st.cp ? '' : COPY.ui.pickOne; } },
       { id: 'pack', q: () => CP.pack.q,
         load: async st => {
-          if (st.scopeFor === st.kind) return;
+          if (st.scopeFor === `${st.kind}|${st.cp}`) return;
           const sc = await getJSON(`/api/vertical-scope?industry=${encodeURIComponent(st.kind)}`);
           let all = []; try { all = (await getJSON('/api/dlp-packs')).packs || []; } catch (e) { all = []; }
-          const ids = (sc.industry_packs && sc.industry_packs.length ? sc.industry_packs : sc.packs) || [];
+          const fromProfile = st.cp && st.cp !== 'none' ? ((st.cpSum || {})[st.cp] || {}).packs || [] : [];
+          const ids = [...new Set(fromProfile.filter(p => p.available).map(p => p.id).concat((sc.industry_packs && sc.industry_packs.length ? sc.industry_packs : sc.packs) || []))];
           st.packs = ids.map(id => all.find(p => p.id === id) || { id, name: id }).filter(Boolean);
-          st.scopeFor = st.kind;
+          st.scopeFor = `${st.kind}|${st.cp}`;
           if (!st.packs.some(p => p.id === st.pack)) st.pack = st.packs.length ? st.packs[0].id : '';
         },
         render: st => `<p>${rich(CP.pack.intro)}</p>` + choices('smPack', CP.pack.q, (st.packs || []).map((p, i) => ({

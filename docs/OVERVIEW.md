@@ -422,7 +422,11 @@ what you get, what to do next.
 - **Regulatory & compliance alignment** — the findings mapped to the
   frameworks the customer answers to (HIPAA, PCI DSS, NIST, CMMC, SOC 2,
   ISO 27001, GDPR, CIS, GLBA), scoped to the industry on the profile.
-  Where: the Dashboard, under the findings.
+  Where: the Dashboard, under the findings. Its own tab can also read the
+  assessment against a compliance profile (FedRAMP Moderate or High, CMMC
+  Level 2, Federal Zero Trust, IRS Publication 1075, GovRAMP or a
+  framework profile): each of the profile's controls met, partially met,
+  not met or not tested, from the checks behind it, with a CSV.
 
 ### Close the gaps
 
@@ -584,7 +588,8 @@ what you get, what to do next.
   proxy gateway cannot be created through the API: the preview says how to
   make it in the ZIA portal and adds the forwarding rule once it exists.
   *AI Guard detection policy* turns a compliance profile (HIPAA, HITRUST,
-  PCI, GDPR, CJIS, FERPA, SOX or general) into an AI Guard detection policy
+  PCI, GDPR, CJIS, FERPA, SOX, NIST SP 800-53, NIST SP 800-171 / CMMC,
+  IRS Publication 1075 or general) into an AI Guard detection policy
   and a match rule for the apps' LLM providers, Monitor (detect only) by
   default. The read-only readiness check behind both (`ai_guard.readiness`:
   licensed and reachable, existing proxy and gateway, the portal step) is
@@ -606,6 +611,29 @@ what you get, what to do next.
   arrive disabled and re-runs update in place; and the **SSL certificate
   manager**, which lists the intermediate certificate each SSL inspection
   rule uses and moves picked Inspect rules to another ready-to-use one.
+- **Compliance profiles and the compliance pack** (`compliance_profiles.py`,
+  `compliance_pack.py`) — one compliance choice, made in the ZIA security
+  baseline builder and remembered for the saved tenant profile, drives the
+  baseline's tier and overlay, the rules the profile adds or requires, the
+  policy packs offered, the AI Guard profile and the compliance pack. The
+  federal profiles each carry a control catalogue with its cited source:
+  FedRAMP Moderate and High (NIST SP 800-53 Rev. 5, SP 800-53B baselines),
+  CMMC Level 2 (NIST SP 800-171 Rev. 2 as CMMC practices), Federal Zero
+  Trust (OMB M-22-09, CISA ZTMM v2.0), IRS Publication 1075 (with 26 U.S.C.
+  6103(p)(4)) and GovRAMP Moderate (which reuses FedRAMP Moderate). They
+  build on Strict and change a rule only where the source says why (FedRAMP
+  High requires the SSL catch-all, the QUIC block and the password-protected
+  archive block; CMMC Level 2 and IRS 1075 block public translation
+  services; Federal Zero Trust requires DoH inspection and the Trusted
+  Resolver). Every rule the baseline or an offered pack creates maps to the
+  profile's controls through an objective, or carries a reason code; a
+  control not verified against its source is marked assumed. The compliance
+  pack is local files only, downloaded through the app's authenticated
+  routes: a control mapping report (HTML, CSV, Excel), a policy export of
+  what would be built or was built, a test plan by control and one synthetic
+  DLP test file per DLP rule (reserved example SSNs, published test card
+  numbers, the markings themselves). The POV planner's intake and Simple
+  mode's Protect task offer the same profiles as presets.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in
@@ -746,6 +774,7 @@ what you get, what to do next.
 | Global Banking Policy Pack | Banks, card issuers, payment processors, wealth managers |
 | Fed Policy Pack | US federal agencies and contractors (contains the enterprise pack) |
 | CJIS Policy Pack | Law enforcement, courts, CJI handlers |
+| IRS 1075 FTI Pack | Agencies and contractors receiving federal tax information (IRS Publication 1075) |
 
 Your own packs go in through Advanced settings and are treated exactly
 like the shipped ones. Every pack ships each rule **DISABLED** and

@@ -1,0 +1,17 @@
+{
+  "name": "IRS 1075 FTI Pack",
+  "version": "1.0",
+  "description": "DLP detection for federal tax information (FTI) under IRS Publication 1075 and 26 U.S.C. 6103: an FTI markings dictionary (the IRC 6103 warning and the words Federal Tax Information on labelled documents) and return data (tax form and transcript names near a Social Security or taxpayer identification number). All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
+  "deploy_note": "Install one channel at a time. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify and avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).",
+  "references": [
+    "IRS Publication 1075 (Rev. 11-2021), Tax Information Security Guidelines for Federal, State and Local Agencies",
+    "26 U.S.C. 6103 (confidentiality and disclosure of returns and return information)"
+  ],
+  "audience": "State revenue, human services, child support and workforce agencies, and their contractors, that receive federal tax information from the IRS.",
+  "when_to_use": "The customer receives FTI under an IRS data exchange agreement and must keep the Publication 1075 safeguards, or the compliance profile is IRS Publication 1075.",
+  "notes": [
+    "The markings dictionary looks for the IRC 6103 citation and the words Federal Tax Information. Publication 1075 asks agencies to label FTI; the exact label text an agency uses is its own, so add its wording to FTI-Markings before enabling (assumed: the label carries one of these two forms).",
+    "Return data needs a tax form or transcript name AND, within 500 characters, a Social Security or taxpayer identification number: a form name alone (a public instructions page) does not fire.",
+    "US PII outside FTI is covered by the ZBP Enterprise baseline, which this pack is offered beside; it adds no dictionary that pack has."
+  ]
+}

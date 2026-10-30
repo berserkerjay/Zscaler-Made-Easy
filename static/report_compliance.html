@@ -58,6 +58,14 @@
       <div id="rpBody" class="bp-body" style="padding:0;">
         <div class="rp-wait"><div class="spin"></div>Loading the assessment's compliance mapping…</div>
       </div>
+      <section class="cp-drill" id="cpProfile" aria-labelledby="cpProfileH" hidden>
+        <h2 class="df-h" id="cpProfileH">Read against a compliance profile</h2>
+        <p class="df-hint">The same checks mapped to a federal profile (FedRAMP Moderate or High, CMMC Level 2, Federal Zero Trust, IRS Publication 1075, GovRAMP) or a framework profile. A control no check reaches is listed as not assessed, never as met. Controls marked assumed are not verified against their source.</p>
+        <div class="op-row"><label class="df-ctl" style="max-width:100%"><span class="lbl">Compliance profile</span><span id="cpProfileSel" style="max-width:100%;display:inline-block"></span></label>
+          <a class="rp-btn" id="cpProfileCsv" hidden>Download (CSV)</a></div>
+        <div id="cpProfileSum"></div>
+        <div id="cpProfileOut"></div>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -66,6 +74,7 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/compliance_choice.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>
@@ -141,6 +150,39 @@
       if (want && (data.summary || {})[want]) current = want;
       history.replaceState(null, '', `/report/compliance?id=${encodeURIComponent(id)}`);
       render();
+      profilePanel(id);
+    }
+    // The assessment read against a compliance profile (compliance_profiles.assessment_view).
+    async function profilePanel(id) {
+      const C = window.ZMECompliance, host = document.getElementById('cpProfile');
+      if (!C) return;
+      try { await C.catalog(); } catch (e) { return; }
+      host.hidden = false;
+      const selHost = document.getElementById('cpProfileSel');
+      selHost.innerHTML = C.selectHtml('cpProfilePick', '', 'Compliance profile to read the assessment against');
+      const sel = document.getElementById('cpProfilePick'), out = document.getElementById('cpProfileOut'), csv = document.getElementById('cpProfileCsv');
+      const col = { 'Met': 'var(--pass)', 'Partially met': 'var(--warn)', 'Not met': 'var(--fail)', 'Not tested': 'var(--info)' };
+      sel.addEventListener('change', async () => {
+        const k = sel.value;
+        document.getElementById('cpProfileSum').innerHTML = k ? C.summaryHtml(k) : '';
+        csv.hidden = !k;
+        if (!k) { out.innerHTML = ''; return; }
+        csv.href = `/api/compliance/report/${encodeURIComponent(id)}/profile/${encodeURIComponent(k)}?format=csv`;
+        out.innerHTML = '<div class="rp-wait"><div class="spin"></div>Reading the checks against the profile…</div>';
+        try {
+          const r = await fetch(`/api/compliance/report/${encodeURIComponent(id)}/profile/${encodeURIComponent(k)}`, { cache: 'no-store' });
+          const v = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(typeof v.detail === 'string' ? v.detail : `HTTP ${r.status}`);
+          const c = v.counts || {};
+          out.innerHTML = `<div class="df-hint" role="status">${E(v.label)}: ${c['Met'] || 0} met · ${c['Partially met'] || 0} partially met · ${c['Not met'] || 0} not met · ${c['Not tested'] || 0} not tested · ${(v.not_assessed || []).length} not assessed by these checks.</div>
+            <div class="df-hint">${E(v.note)}</div>
+            ${(v.controls || []).map(x => `<div class="cp-control"><div class="head"><span style="font-weight:600;">${E(x.control)} ${E(x.title)}${x.assumed ? ' <span class="df-chip st-warn">assumed</span>' : ''}</span>
+              <span class="cp-status" style="color:${col[x.status] || 'var(--dim)'};border-color:${col[x.status] || 'var(--dim)'};">${E(x.status)}</span></div>
+              <div class="sum">${x.passing} passing · ${x.failing} failing · ${x.review} review${x.assumed ? ` · ${E(x.assumed_why)}` : ''}</div>
+              ${(x.evidence || []).slice(0, 8).map(e => `<div class="cp-ev" style="border-left-color:${evColor(e.status)};"><span style="color:${evColor(e.status)};font-weight:700;">${evMark(e.status)}</span><code>[${E(e.check_id)}]</code><span>${E(e.label)}</span></div>`).join('')}</div>`).join('')}
+            ${(v.not_assessed || []).length ? `<div class="df-hint">Not assessed by these checks: ${E(v.not_assessed.join(', '))}.</div>` : ''}`;
+        } catch (e) { out.innerHTML = `<div class="bp-card risk"><div class="t">Could not read the assessment against the profile</div><div>${E(e.message)}</div></div>`; }
+      });
     }
     if (q.get('error')) { fail('The compliance view could not be generated', q.get('error')); return; }
     const id = q.get('id');

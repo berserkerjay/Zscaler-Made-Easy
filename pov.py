@@ -162,8 +162,22 @@ VERTICALS: Dict[str, Dict[str, Any]] = {
                      "Malware and phishing are blocked on student and staff devices.",
                      "Learning platforms keep working with inspection on."],
     },
+    "federal": {
+        "label": "Federal and public sector",
+        "description": "Federal agency, contractor or state agency: CUI or federal tax information, a federal compliance profile "
+                       "(FedRAMP, CMMC, zero trust, IRS 1075), strict inspection and DNS controls.",
+        "products": ["url_filtering", "threat", "ssl", "dlp", "cloud_apps", "firewall", "dns", "zpa"],
+        "criteria": ["Documents marked CUI (or labelled federal tax information) leaving through the web, webmail or generative AI are "
+                     "detected and logged.",
+                     "Traffic is denied by default and only approved applications leave; the firewall log names the rule.",
+                     "All web traffic is inspected (no privacy exemptions under FedRAMP High) and QUIC is blocked so it stays inspectable.",
+                     "DNS goes to the protective resolver and DNS tunnels and risky DNS over HTTPS lookups are blocked.",
+                     "Every rule the build creates is mapped to a control of the compliance profile, or says why none applies."],
+    },
 }
 DEFAULT_VERTICAL = "general"
+# The one compliance choice (compliance_profiles.py) each vertical starts with.
+VERTICAL_COMPLIANCE = {"healthcare": "HIPAA", "financial": "PCI", "general": "", "education": "FERPA", "federal": "FEDRAMP_MOD"}
 
 # Checks a "Prove it" verdict is compared with (path_analyzer.derive_verdict):
 CHECKS: Dict[str, str] = {
@@ -282,11 +296,17 @@ RUNBOOK: List[Dict[str, Any]] = [
 RUNBOOK_BY_ID: Dict[str, Dict[str, Any]] = {t["id"]: t for t in RUNBOOK}
 
 
+def _compliance_choices() -> List[Dict[str, str]]:
+    import compliance_profiles as cp
+    return [{"key": p["key"], "label": p["label"], "group": p["group"]} for p in cp.catalog()["profiles"]]
+
+
 def catalog() -> Dict[str, Any]:
     """What the page needs to draw the planner (no tenant data)."""
     return {"products": [{"key": k, "label": v} for k, v in PRODUCTS.items()],
             "verticals": [{"key": k, "label": v["label"], "description": v["description"], "products": list(v["products"]),
-                           "criteria": list(v["criteria"])} for k, v in VERTICALS.items()],
+                           "criteria": list(v["criteria"]), "compliance_profile": VERTICAL_COMPLIANCE.get(k, "")} for k, v in VERTICALS.items()],
+            "compliance_profiles": _compliance_choices(),
             "runbook": RUNBOOK, "checks": CHECKS, "test_statuses": list(TEST_STATUSES), "criterion_statuses": list(CRITERION_STATUSES),
             "pov_statuses": list(POV_STATUSES), "status_words": STATUS_WORDS, "kit": kit_catalog(),
             "limits": {"criteria": MAX_CRITERIA, "notes": MAX_NOTES, "follow_ups": MAX_FOLLOW_UPS, "text": MAX_TEXT, "short": MAX_SHORT,
@@ -383,7 +403,14 @@ def clean_intake(raw: Any) -> Dict[str, Any]:
     products = [p for p in PRODUCTS if p in products]
     if not products:
         raise PovError("pick at least one product for the POV")
-    return {"customer": customer, "domain": domain, "prefix": prefix, "vertical": vertical, "products": products}
+    import compliance_profiles as cp
+    raw_cp = d.get("compliance_profile")
+    try:
+        compliance = cp.key_of(raw_cp) if raw_cp is not None else VERTICAL_COMPLIANCE.get(vertical, "")
+    except cp.ProfileError:
+        raise PovError("pick a compliance profile from the list") from None
+    return {"customer": customer, "domain": domain, "prefix": prefix, "vertical": vertical, "products": products,
+            "compliance_profile": compliance}
 
 
 def _clean_criteria(raw: Any) -> List[Dict[str, Any]]:
@@ -1115,6 +1142,9 @@ KIT_FILES: Dict[str, Dict[str, str]] = {
                           "why": "Card-network test card numbers with expiry, a test routing number, account numbers, specimen IBANs and reserved SSNs."},
     "dlp-education.csv": {"vertical": "education", "label": "Education: student records (FERPA)",
                           "why": "Student IDs, dates of birth, grades, accommodations and reserved SSNs."},
+    "dlp-federal.csv": {"vertical": "federal", "label": "Federal and public sector: CUI and federal tax information",
+                        "why": "Documents with CUI banner and category markings and the federal tax information label, with names, "
+                               "reserved SSNs and dates of birth."},
     "dlp-general.csv": {"vertical": "general", "label": "General enterprise: personal data (PII)",
                         "why": "Names with reserved SSNs, dates of birth, addresses, test card numbers, phone numbers and e-mail addresses."},
     "eicar.com.txt": {"vertical": "", "label": "EICAR antivirus test file",
@@ -1171,6 +1201,11 @@ def dlp_rows(vertical: str, rng: Optional[random.Random] = None, n: int = 12) ->
         rows = [[s("name", i), f"STU-TEST-{r.randint(100000, 999999)}", f"{r.randint(2004, 2012)}-{r.randint(1, 12):02d}-{r.randint(1, 28):02d}",
                  s("ssn", i), f"{r.randint(150, 400) / 100:.2f}", r.choice(("MATH-101", "BIO-210", "HIST-150", "ENG-120")),
                  r.choice(("A", "B+", "C", "F")), r.choice(("None", "Extended time", "Reader")), s("email", i + 3)] for i in range(n)]
+    elif vertical == "federal":
+        header = ["Name", "SSN", "Date of birth", "Marking", "Document"]
+        marks = ("CUI//SP-PRVCY", "CUI", "CONTROLLED UNCLASSIFIED INFORMATION", "FEDERAL TAX INFORMATION - IRC 6103")
+        docs = ("Personnel record (synthetic)", "Form W-2 (synthetic)", "Account Transcript (synthetic)", "Case file (synthetic)")
+        rows = [[s("name", i), s("ssn", i), s("date_of_birth", i), marks[i % len(marks)], docs[i % len(docs)]] for i in range(n)]
     elif vertical == "general":
         header = ["Name", "SSN", "Date of birth", "Street", "City", "Card number", "Phone", "E-mail"]
         rows = [[s("name", i), s("ssn", i), s("date_of_birth", i), r.choice(_STREETS), r.choice(_CITIES), s("credit_card", i),

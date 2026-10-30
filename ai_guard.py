@@ -123,6 +123,21 @@ PROFILES: Dict[str, Dict[str, Any]] = {
               "block": ["US_SSN", "DATE_OF_BIRTH"], "detect": ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "STREET_ADDRESS"], "deep": True},
     "SOX": {"name": "SOX (financial data)", "why": "Financial account and taxpayer identifiers.",
             "block": ["CREDIT_CARD", "US_BANK_NUMBER", "IBAN_CODE", "SWIFT_CODE", "US_ITIN", "US_SSN"], "detect": ["PERSON"], "deep": False},
+    # Federal profiles (driven by the one compliance choice, compliance_profiles.py). AI Guard has no detector
+    # for CUI or FTI markings: those are caught by the Fed and FTI policy packs' DLP rules; these cover the
+    # personal identifiers such records carry.
+    "NIST_800_53": {"name": "NIST SP 800-53 (federal personal data)", "why": "Federal systems (FedRAMP, GovRAMP, zero trust): the "
+                    "identifiers of personally identifiable information agencies protect. CUI markings are left to the Fed policy pack.",
+                    "block": ["US_SSN", "US_PASSPORT", "US_DRIVER_LICENSE", "DATE_OF_BIRTH", "US_ITIN", "CREDIT_CARD", "US_BANK_NUMBER"],
+                    "detect": ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "STREET_ADDRESS", "IP_ADDRESS"], "deep": True},
+    "NIST_800_171": {"name": "NIST SP 800-171 / CMMC (CUI)", "why": "Contractors handling CUI: the identifiers in the CUI Privacy "
+                     "category. CUI banner and category markings are left to the Fed policy pack's DLP rules.",
+                     "block": ["US_SSN", "US_PASSPORT", "US_DRIVER_LICENSE", "DATE_OF_BIRTH", "US_ITIN", "US_BANK_NUMBER"],
+                     "detect": ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "STREET_ADDRESS"], "deep": True},
+    "IRS_1075": {"name": "IRS Publication 1075 (federal tax information)", "why": "FTI: taxpayer identifiers (SSN, ITIN), bank "
+                 "account numbers and the names and addresses in return information. FTI markings are left to the FTI policy pack.",
+                 "block": ["US_SSN", "US_ITIN", "US_BANK_NUMBER", "DATE_OF_BIRTH", "STREET_ADDRESS", "CREDIT_CARD"],
+                 "detect": ["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS"], "deep": True},
     "GENERAL": {"name": "General (high-risk personal data)", "why": "Card, bank and government IDs every organisation protects.",
                 "block": ["US_SSN", "CREDIT_CARD", "US_BANK_NUMBER", "US_PASSPORT", "US_DRIVER_LICENSE", "US_ITIN"], "detect": ["PERSON"], "deep": False},
 }
