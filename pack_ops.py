@@ -949,6 +949,11 @@ def _zdx_write(api, method: str, *args: Any, op: str, kind: str, name: str, log:
 # through the raw request (POST/DELETE /rootCertificates, an assumed path).
 AIGUARD_KINDS = ("aiguard_policy", "aiguard_rule")
 AIGUARD_ZIA_KINDS = ("root_certificate", "zia_proxy", "ip_destination_group", "forwarding_rule", "url_app_settings")
+# The firewall import (ops_fw_import, PAN-OS migration) adds IP source groups
+# and network services: zscaler-sdk-python 1.11.3 zia/cloud_firewall.py
+# add_/update_/delete_ip_source_group (POST/PUT/DELETE /ipSourceGroups) and
+# add_/update_/delete_network_service (/networkServices).
+FIREWALL_OBJECT_KINDS = ("ip_source_group", "network_service")
 ROOT_CERTS_PATH = "/rootCertificates"
 
 
@@ -1035,6 +1040,10 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
         return call(zia.proxies.add_proxy, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "ip_destination_group":
         return call(zia.cloud_firewall.add_ip_destination_group, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "ip_source_group":
+        return call(zia.cloud_firewall.add_ip_source_group, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "network_service":
+        return call(zia.cloud_firewall.add_network_service, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "forwarding_rule":
         return call(zia.forwarding_control.add_rule, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind in AIGUARD_KINDS:
@@ -1080,6 +1089,10 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(pc.update_app_group, zia, oid, payload, op="update", kind=kind, name=name, log=log, zia=zia)
     if kind == "ip_destination_group":
         return call(zia.cloud_firewall.update_ip_destination_group, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "ip_source_group":
+        return call(zia.cloud_firewall.update_ip_source_group, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
+    if kind == "network_service":
+        return call(zia.cloud_firewall.update_network_service, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "forwarding_rule":
         return call(zia.forwarding_control.update_rule, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "url_app_settings":
@@ -1149,6 +1162,10 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         return call(zia.proxies.delete_proxy, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "ip_destination_group":
         return call(zia.cloud_firewall.delete_ip_destination_group, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "ip_source_group":
+        return call(zia.cloud_firewall.delete_ip_source_group, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
+    if kind == "network_service":
+        return call(zia.cloud_firewall.delete_network_service, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "forwarding_rule":
         return call(zia.forwarding_control.delete_rule, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind in AIGUARD_KINDS:

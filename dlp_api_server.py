@@ -7371,7 +7371,32 @@ async def vendor_migrate_vendors():
     """The source vendors the page offers, and the upload limit."""
     import vendor_migrate
     return {"vendors": vendor_migrate.vendors(), "max_body_mb": get_max_body_bytes() // (1024 * 1024),
-            "provider_version": vendor_migrate.PROVIDER_VERSION}
+            "provider_version": vendor_migrate.PROVIDER_VERSION,
+            # Firewall and private access (panos_migrate): a plan for Bulk changes, not Terraform.
+            "firewall": {"id": "panos", "name": "Palo Alto Networks (PAN-OS firewall and GlobalProtect)",
+                         "export": "The configuration export (XML) from the firewall or Panorama",
+                         "accepts": [".xml"]}}
+
+
+class PanosPlanRequest(BaseModel):
+    """A PAN-OS configuration export (untrusted XML) and the mapping options:
+    prefix, the GlobalProtect zone names, whether to carry disabled rules."""
+    export: PackUploadFile
+    options: Dict[str, Any] = {}
+
+
+@app.post("/api/vendor-migrate/panos/plan")
+async def vendor_migrate_panos_plan(req: PanosPlanRequest):
+    """Map a PAN-OS export to a migration plan for Bulk changes: Cloud
+    Firewall rules with their IP groups and network services, ZPA segments
+    for GlobalProtect access, and every unmappable item with its reason.
+    Parsed with defusedxml (no DTD, entities or external references),
+    size, depth and element capped. Reads no tenant and writes nothing."""
+    import panos_migrate
+    try:
+        return await asyncio.to_thread(panos_migrate.plan_upload, req.export.model_dump(), req.options)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/vendor-migrate/inventory")
