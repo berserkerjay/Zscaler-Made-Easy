@@ -18,6 +18,13 @@ Where the facts come from
   (user rule 1): ZIA `/subscriptions` and the API role
   (`/adminRoles/{id}`), Client Connector company info and admin roles, ZPA
   roles, one ZDX and one Z-Insights call to see whether they answer.
+* Two tenant checks, with plain steps to fix each (tenant_health): ZIA
+  changes saved but not activated (`zia.activate.status()`, GET
+  /zia/api/v1/status, for any ZIA scope) and the SSL inspection rule
+  order (`zia.ssl_inspection_rules.list_rules()`, only when DLP or ZIA
+  platform is ticked): a broad Do Not Inspect rule above Inspect rules, a
+  broad Inspect rule above the exemptions, and nothing inspecting what
+  reaches the Default rule. Only the verdict is returned.
 * The permission catalogue of scope_permissions.py (labels, minimum read
   permissions, licence text) and permissions.WRITE_PERMISSIONS (what a
   change needs). This module adds the machine-readable needs on top: the
@@ -561,6 +568,7 @@ def read(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", cus
     probes: Dict[str, Dict[str, Any]] = {}
     roles = {p["product"]: p for p in claims.get("products") or []}
 
+    sc = {str(s) for s in scopes or []}
     if "ZIA" in wanted:
         _stop(cancel)
         say("ZIA: reading the licences (subscriptions)…")
@@ -597,6 +605,18 @@ def read(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", cus
             if res["state"] == "ok":
                 zia["responds"] = True
             say(f"ZIA role: {'read' if zia['role'] else _state_words(res)}.")
+        # Two tenant checks before anything runs (tenant_health): changes
+        # saved but not activated, and the SSL inspection rule order (read
+        # only when DLP or ZIA platform, which read SSL inspection, is ticked).
+        _stop(cancel)
+        say("ZIA: reading the activation status (changes saved but not activated)…")
+        zia["activation"] = _ask(lambda: client.zia.activate.status())
+        say(f"ZIA activation status: {'read' if zia['activation']['state'] == 'ok' else _state_words(zia['activation'])}.")
+        if sc & {"dlp", "zia_extras"}:
+            _stop(cancel)
+            say("ZIA: reading the SSL inspection rules (their order only)…")
+            zia["ssl_rules"] = _ask(lambda: client.zia.ssl_inspection_rules.list_rules())
+            say(f"ZIA SSL inspection rules: {'read' if zia['ssl_rules']['state'] == 'ok' else _state_words(zia['ssl_rules'])}.")
         probes["ZIA"] = zia
 
     if "ZCC" in wanted:
@@ -964,13 +984,26 @@ def evaluate(facts: Dict[str, Any]) -> Dict[str, Any]:
                 "zcc_flags": ((facts.get("probes") or {}).get("ZCC") or {}).get("flags") or {}}
     claims = facts.get("claims") or {}
     blocked = [f for f in scopes + writes if f["status"] in ("blocked", "not_licensed")]
-    return {"products": list(products.values()), "licences": licences, "scopes": scopes, "writes": writes,
+    checks = tenant_checks(facts)   # only the verdict is returned: the bodies read for it are not
+    return {"products": list(products.values()), "licences": licences, "scopes": scopes, "writes": writes, "checks": checks,
+            "attention_count": sum(1 for c in checks if c["status"] == "attention"),
             "write_kinds": list(kinds.values()), "in_scope": list(facts.get("in_scope") or []),
             "token": {"ok": claims.get("ok", False), "why": claims.get("why", ""), "source": claims.get("source", ""),
                       "scopes": claims.get("scopes", []), "expires_at": claims.get("expires_at"), "products_listed": claims.get("products_listed", False),
                       "verified": False},
-            "summary": summary_line(list(products.values()), blocked),
+            "summary": summary_line(list(products.values()), blocked)
+            + "".join(f" {c['label']}: needs attention." for c in checks if c["status"] == "attention"),
             "blocked_count": len(blocked)}
+
+
+def tenant_checks(facts: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """ZIA pending activation and the SSL inspection rule order
+    (tenant_health.readiness_checks), from the reads above."""
+    import tenant_health
+    zia = (facts.get("probes") or {}).get("ZIA")
+    if not isinstance(zia, dict) or "activation" not in zia:
+        return []
+    return tenant_health.readiness_checks(zia.get("activation"), zia.get("ssl_rules"), zia=True, ssl="ssl_rules" in zia)
 
 
 def summary_line(products: List[Dict[str, Any]], blocked: List[Dict[str, Any]]) -> str:
@@ -1025,7 +1058,8 @@ def catalog() -> Dict[str, Any]:
 
 # ── Required API access (/permissions): the live part ──────────────────
 STATUS_WORDS = {"ok": "Will work", "partial": "Works in part", "read_only": "Can read, cannot change", "blocked": "Will not work",
-                "not_licensed": "Not licensed", "unknown": "Not checked", "not_in_scope": "Not in scope", "info": "For information"}
+                "not_licensed": "Not licensed", "unknown": "Not checked", "not_in_scope": "Not in scope", "info": "For information",
+                "attention": "Needs attention"}
 ACCESS_WORDS = {"write": "Can read and change", "read": "Can read", "none": "No access", "unknown": "Not checked", "not_in_scope": "Not in scope"}
 _PROBLEM = ("blocked", "not_licensed", "read_only", "partial")
 
@@ -1107,6 +1141,14 @@ def _one_result(r: Dict[str, Any], i: int) -> str:
     flags = lic.get("zcc_flags") or {}
     if flags:
         lic_html += '<p class="rd-flags">Client Connector says: ' + "; ".join(f"{_e(k)}: {'yes' if v else 'no'}" for k, v in flags.items()) + ".</p>"
+    checks = r.get("checks") or []
+    chk_html = ""
+    if checks:
+        chk_html = '<h4>Tenant checks</h4><ul class="rd-gaps">' + "".join(
+            f'<li><strong>{_e(c.get("label"))}</strong> <span class="rd-chip {_e(c.get("severity") or c.get("status"))}">'
+            f'{_e(STATUS_WORDS.get(c.get("status"), c.get("status")))}</span><div>{_e(c.get("why"))}</div>'
+            + "".join(f'<div class="rd-note">{_e(n)}</div>' for n in c.get("notes") or [])
+            + f'{_steps_html(c.get("steps"))}</li>' for c in checks) + "</ul>"
     feats = (r.get("scopes") or []) + (r.get("writes") or [])
     gaps = [f for f in feats if f.get("status") in _PROBLEM]
     good = [f for f in feats if f.get("status") == "ok"]
@@ -1126,4 +1168,4 @@ def _one_result(r: Dict[str, Any], i: int) -> str:
     tnote = "" if tok.get("ok") else f'<p class="rd-flags">{_e(tok.get("why"))}</p>'
     return (f'<article class="rd-card" aria-labelledby="{tid}"><h3 id="{tid}">{_e(r.get("tenant_label") or "Tenant")} '
             f'<span class="service">· checked {_e((r.get("checked_at") or "").replace("T", " ").replace("Z", " UTC"))}</span></h3>'
-            f'<p>{_e(r.get("summary"))}</p>{tnote}{prod}{lic_html}{gaps_block}{tail}</article>')
+            f'<p>{_e(r.get("summary"))}</p>{tnote}{prod}{lic_html}{chk_html}{gaps_block}{tail}</article>')

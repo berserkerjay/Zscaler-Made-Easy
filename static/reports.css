@@ -715,3 +715,25 @@ summary { min-height: 24px; }
 /* Advanced settings: the Glass effect switch (static/glass.js keeps it in step with the page). */
 .adv-switch { display: inline-flex; align-items: center; gap: 0.6rem; min-height: var(--ctl-md); margin: 0.2rem 0; font-weight: 600; cursor: pointer; }
 .adv-switch input { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
+
+/* Tenant health on /report/health (static/tenant_health.js) */
+.th-card { margin-bottom: 1rem; }
+.th-lead { margin: 0.25rem 0 0.6rem; }
+.th-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.th-ctl input[type="number"] { width: 5rem; }
+.th-err { color: var(--fail); font-weight: 600; }
+.th-sum { margin: 0.6rem 0; }
+.th-items { list-style: none; margin: 0; padding: 0; }
+.th-item { border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: var(--r-md, 8px); padding: 0.55rem 0.75rem; margin: 0 0 0.55rem; overflow-wrap: anywhere; }
+.th-item.th-critical { border-left-color: var(--fail); }
+.th-item.th-warning { border-left-color: var(--warn); }
+.th-item.th-ok { border-left-color: var(--pass); }
+.th-h { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: baseline; margin-bottom: 0.2rem; }
+.th-steps summary { cursor: pointer; color: var(--accent); }
+.th-steps summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.th-steps ol { margin: 0.3rem 0 0 1.2rem; }
+.th-names { margin: 0.3rem 0 0 1.1rem; }
+/* API calls on Advanced settings (static/api_calls.js) */
+.adv-api-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+#advApi td code { overflow-wrap: anywhere; }
+#advApi tr.adv-api-bad td { color: var(--fail); }

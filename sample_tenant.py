@@ -326,6 +326,22 @@ CONNECTOR_GROUPS = [{"id": "2401", "name": "Portland connectors", "enabled": Tru
                      "versionProfileName": "Default", "connectors": [{"id": "2501", "name": "pdx-conn-1"}, {"id": "2502", "name": "pdx-conn-2"}]},
                     {"id": "2402", "name": "Reno connectors", "enabled": True, "location": "Reno, NV", "upgradeDay": "SUNDAY",
                      "versionProfileName": "Default", "connectors": [{"id": "2503", "name": "rno-conn-1"}]}]
+# Tenant health (tenant_health.py): the SSL inspection intermediate CA
+# certificates (certExpDate, epoch seconds) and the ZPA enrollment
+# certificates (validToInEpochSec), all far from expiry so the sample stays
+# healthy whatever the date; names and dates only, no certificate body.
+ZIA_CA_CERTIFICATES = [
+    {"id": 1, "name": "Zscaler Intermediate CA Certificate", "type": "ZSCALER", "region": "GLOBAL", "status": "ENABLED",
+     "defaultCertificate": False, "certStartDate": 1735689600, "certExpDate": 2082758400},
+    {"id": 2, "name": "Larkspur SSL Inspection CA", "type": "CUSTOM_SW", "region": "GLOBAL", "status": "ENABLED",
+     "defaultCertificate": True, "certStartDate": 1767225600, "certExpDate": 2019686400},
+]
+ZPA_ENROLLMENT_CERTIFICATES = [
+    {"id": "2601", "name": "Root", "validFromInEpochSec": "1609459200", "validToInEpochSec": "2240611200"},
+    {"id": "2602", "name": "Connector", "validFromInEpochSec": "1609459200", "validToInEpochSec": "2082758400"},
+    {"id": "2603", "name": "Service Edge", "validFromInEpochSec": "1609459200", "validToInEpochSec": "2082758400"},
+    {"id": "2604", "name": "Client", "validFromInEpochSec": "1609459200", "validToInEpochSec": "2082758400"},
+]
 CONNECTORS = [
     {"id": "2501", "name": "pdx-conn-1", "enabled": True, "appConnectorGroupId": "2401", "appConnectorGroupName": "Portland connectors",
      "controlChannelStatus": "ZPN_STATUS_AUTHENTICATED", "currentVersion": "24.302.1", "expectedVersion": "24.302.1", "upgradeStatus": "COMPLETE"},
@@ -425,6 +441,7 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/sandboxRules": [], f"{ZIA}/bandwidthClasses": [], f"{ZIA}/bandwidthControlRules": [],
         f"{ZIA}/tenancyRestrictionProfile": [], f"{ZIA}/greTunnels": [], f"{ZIA}/staticIP": [], f"{ZIA}/vpnCredentials": [],
         f"{ZIA}/status": {"status": "ACTIVE"},
+        f"{ZIA}/intermediateCaCertificate": ZIA_CA_CERTIFICATES,
         f"{ZIA}/cyberThreatProtection/advancedThreatSettings": {"riskTolerance": 40, "cmdCtlServerBlocked": True, "malwareSitesBlocked": True,
                                                                 "knownPhishingSitesBlocked": True, "suspectAdwareSpywareSitesBlocked": True},
         f"{ZIA}/cyberThreatProtection/malwareSettings": {"virusBlocked": True, "unwantedApplicationsBlocked": True, "trojanBlocked": True,
@@ -460,6 +477,8 @@ def responses() -> Dict[str, Any]:
         f"{ZPA1}/praConsole": _zpa([]), f"{ZPA1}/praPortal": _zpa([]), f"{ZPA1}/userPortal": _zpa([]),
         f"{ZPA1}/associationType/CONNECTOR_GRP/provisioningKey": _zpa([]),
         f"{ZPA1}/roles": _zpa(ZPA_ROLES),
+        f"{ZPA2}/enrollmentCert": _zpa(ZPA_ENROLLMENT_CERTIFICATES),
+        f"{ZPA1}/clientSetting": {"enrollmentCertId": "2604", "enrollmentCertName": "Client", "singningCertExpiryInEpochSec": "2082758400"},
         f"{ZPA1}/policySet/rules/policyType/ACCESS_POLICY": _zpa(ACCESS_RULES),
         f"{ZPA1}/policySet/rules/policyType/TIMEOUT_POLICY": _zpa(TIMEOUT_RULES),
         f"{ZPA1}/policySet/rules/policyType/CLIENT_FORWARDING_POLICY": _zpa([]),

@@ -317,12 +317,13 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 48,
-            "accepted": 0,
+            "fixed": 54,
+            "accepted": 1,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
-              "func-builders"
+              "func-builders",
+              "w7-health-diag"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 586,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -450,27 +451,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 158,
+        "fixed": 161,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 340,
         "accepted": 0
       },
       "info": {
         "open": 1,
         "fixed": 48,
-        "accepted": 22
+        "accepted": 23
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 311,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8718
   },
   "findings": [
     {
@@ -824,6 +825,22 @@
       "slug": "c6-zpa",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "HD-07",
+      "title": "The ZDX configuration API paths, bodies, intervals and step order cannot be verified: zscaler-sdk-python 1.11.3 has no ZDX configuration service",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1357",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "tests/test_health_diag.py::test_what_is_verified_against_the_installed_sdk_and_what_stays_assumed",
+      "commit": "",
+      "reason": "Nothing to verify against without a live tenant; the /zdx/v1 prefix, routing and body handling are verified, the rest stays marked ASSUMED in ops_zdx.py and on the page, and a test fails when the SDK gains the service",
+      "slug": "w7-health-diag",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "UI-18",
@@ -3240,6 +3257,54 @@
       "slug": "func-path",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "HD-01",
+      "title": "Readiness did not say when ZIA changes were saved but not activated, although a deploy from this app ends with an activation that makes every pending change live, someone else's too",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "readiness.read reads zia.activate.status() for any ZIA scope; tenant_health.readiness_checks turns PENDING into a check with steps, shown on Start and /permissions",
+      "test": "tests/test_health_diag.py::test_readiness_says_changes_wait_for_activation_with_the_steps_to_fix_it",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-health-diag",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "HD-02",
+      "title": "Readiness and tenant health did not call out an SSL inspection rule order that keeps rules from applying (a broad Do Not Inspect rule above Inspect rules, an Inspect-all rule above the exemptions)",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-696",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "tenant_health.ssl_order, with plain steps naming the rules; read only when DLP or ZIA platform is ticked",
+      "test": "tests/test_health_diag.py::test_a_broad_do_not_inspect_rule_above_inspect_rules_is_critical_with_steps",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-health-diag",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "HD-03",
+      "title": "No warning before a ZIA SSL inspection intermediate CA certificate or a ZPA enrollment, web server or client signing certificate expired",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-298",
+      "asvs": "V9.1.2",
+      "wcag": "",
+      "fix": "tenant_health certificate items with warning and critical thresholds (30/7 days, settable), on /report/health and as assessment checks HLT.2 and HLT.3",
+      "test": "tests/test_health_diag.py::test_expiry_thresholds_at_the_boundary_days",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-health-diag",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "REGRESSION-01",
@@ -8266,6 +8331,54 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "HD-04",
+      "title": "App Connector groups with no connector were not reported",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "tenant_health.empty_groups and assessment check HLT.4",
+      "test": "tests/test_health_diag.py::test_the_assessment_checks_carry_the_health_signals",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-health-diag",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "HD-05",
+      "title": "No view of the Zscaler API calls the app made (status, timing, retries, rate-limit waits) to diagnose a failed or slow run",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-778",
+      "asvs": "V7.1.1",
+      "wcag": "",
+      "fix": "api_calls.py: a bounded in-memory log hooked at the paced session and the SDK executor, secret-free, per run, with CSV and JSON export (Advanced settings)",
+      "test": "tests/test_health_diag.py::test_the_api_calls_view_and_exports_hold_no_secret_after_real_sdk_calls",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-health-diag",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "HD-06",
+      "title": "ZDX probe setup used one interval for every customer, whatever the protection tier chosen",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "ops_zdx.TIERS (strict, balanced, permissive, healthcare): apps, interval and CloudPath per tier; looser choices are preview warnings",
+      "test": "tests/test_health_diag.py::test_each_tier_plans_the_oracle_payloads",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-health-diag",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "REGRESSION-02",
       "title": "Log analyzer: a DIRECT condition written in a PAC helper function (isCorp(host)) was no longer listed as a bypass",
       "severity": "low",
@@ -10634,6 +10747,42 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-health-diag",
+      "area": "Tenant health, readiness tenant checks, API call diagnostics and ZDX probes fitted to the tier: tenant_health.py, readiness.py, api_calls.py (hooked in zia_rate.attach, zia_rate.wait and the SDK's RequestExecutor and HTTPClient), ops_zdx.py, the HLT assessment checks, /report/health, Advanced settings and the Bulk changes result",
+      "title": "Wave 7 gaps from the tool comparison closed: pending activation and SSL rule order in readiness, tenant health with certificate expiry thresholds, a bounded secret-free API call log, and tier-fitted ZDX probes with verified and assumed parts said apart",
+      "standards": [
+        "ASVS V1.14.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V7.1.1",
+        "ASVS V7.4.1",
+        "ASVS V8.3.4",
+        "ASVS V9.1.2",
+        "CWE-20",
+        "CWE-200",
+        "CWE-209",
+        "CWE-272",
+        "CWE-298",
+        "CWE-324",
+        "CWE-400",
+        "CWE-532",
+        "CWE-696",
+        "CWE-770",
+        "CWE-778",
+        "CWE-841",
+        "CWE-1188",
+        "CWE-1357",
+        "SSDF PW.4.1",
+        "WCAG 2.2 SC 1.3.1",
+        "WCAG 2.2 SC 3.3.2",
+        "WCAG 2.2 SC 4.1.2"
+      ],
+      "checks": 8,
+      "findings": 7,
+      "tests_added": 116
     }
   ],
   "standards": {
@@ -10653,7 +10802,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -10738,10 +10887,12 @@
       "CWE-287",
       "CWE-290",
       "CWE-295",
+      "CWE-298",
       "CWE-306",
       "CWE-307",
       "CWE-312",
       "CWE-319",
+      "CWE-324",
       "CWE-327",
       "CWE-330",
       "CWE-345",
@@ -10887,7 +11038,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 57,
+    "wstg": 58,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",

@@ -107,6 +107,7 @@ _ZPA_MAP = {
     "postureProfile":                 ("v2", "posture"),
     "samlAttribute":                  ("v2", "samlAttribute"),
     "lssConfig":                      ("v2", "lssConfig"),
+    "enrollmentCert":                 ("v2", "enrollmentCert"),   # zpa/enrollment_certificates.list_enrolment (SDK 1.11.3)
     "applicationSegments":            ("v1", "application"),
     "appConnectors":                  ("v1", "connector"),
     "policySet/rules/ACCESS_POLICY":  ("v1", "policySet/rules/policyType/ACCESS_POLICY"),

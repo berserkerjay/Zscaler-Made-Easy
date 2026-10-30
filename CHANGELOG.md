@@ -5,6 +5,14 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### Tenant health, API call diagnostics and ZDX probes fitted to the tier
+- **Readiness: pending activation and SSL rule order.** Right after Authenticate, readiness also reads ZIA's activation status (`zia.activate.status()`, GET `/status`) and, when DLP or ZIA platform is ticked, the SSL inspection rules. It says, with plain steps, when changes are saved but not activated (a deploy from this app activates them too) and when the rule order stops rules from applying: a broad Do Not Inspect rule above Inspect rules, a broad Inspect rule above the exemptions (Zscaler Recommended Exemptions included), or nothing inspecting what reaches the Default rule. Shown on Start and on Required API access.
+- **Tenant health** (on the FP/TP detection ratio page, `/report/health`): ZIA activation, the SSL rule order, certificate expiry (ZIA SSL inspection intermediate CA certificates, ZPA enrollment certificates with the connectors and service edges enrolled with each, ZPA web server and client signing certificates) with **certificate expiry thresholds** you set: a warning and a critical one (30 and 7 days; `DLP_CHECK_CERT_WARN_DAYS`, `DLP_CHECK_CERT_CRIT_DAYS`, or per check), and App Connector groups with no connector. Read-only, only what the Scope page ticks. Four new assessment checks carry the same signals: HLT.1 to HLT.4.
+- **API calls** (Advanced settings): every Zscaler API call this app made since it started, with the time, product, method, the path with every id shown as `{id}`, the answer, the time taken, how often it was sent again and how long it waited for a rate limit, and an error class. Never a body, header, token, secret, query or tenant name. Kept in memory only (the newest 1,000, `DLP_CHECK_API_CALLS_MAX`), empty after a restart; filter by run or product; **export as CSV or JSON**. A builder's result links to the **API calls of this run**.
+- **ZDX probes fitted to the tier.** ZDX probe setup now starts from a tier (the ZIA security baseline's): Strict monitors the most apps every 5 minutes with CloudPath probes, Balanced the Microsoft 365 core every 10 minutes, Permissive sign-in only every 15 minutes with Web probes, Healthcare adds Zoom every 5 minutes. Anything looser than the tier is a warning in the preview. What is verified against SDK 1.11.3 (the `/zdx/v1` prefix, the request routing and the bodies sent as given) is now said apart from what stays assumed (the configuration API itself, which the SDK does not have).
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

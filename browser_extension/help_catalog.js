@@ -2362,6 +2362,36 @@ window.HELP_CATALOG = {
    }
   },
   "/report/advanced": {
+   "#advApiJob": {
+    "what": "Shows only the API calls one run made, like a deploy, a builder or a readiness check. Every call shows all of them.",
+    "input": "Optional. Pick a run from the list; each says its kind, its id and how many calls it made.",
+    "effect": "local"
+   },
+   "#advApiProduct": {
+    "what": "Shows only the API calls made to one Zscaler product, like ZIA or ZPA.",
+    "input": "Optional. Pick a product. Every product shows all of them.",
+    "effect": "local"
+   },
+   "#advApiFailed": {
+    "what": "Shows only the calls that failed or had to be sent again, for example after a rate limit.",
+    "input": "Tick it to show only those. Clear it to show every call.",
+    "effect": "local"
+   },
+   "#advApiReload": {
+    "what": "Reads the list of API calls again from this server. It calls nothing at Zscaler.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#advApiCsv": {
+    "what": "Saves the API calls shown, with the same filters, as a CSV spreadsheet file. No body, token, secret or tenant name is in it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#advApiJson": {
+    "what": "Saves the API calls shown, with the same filters, as a JSON data file. No body, token, secret or tenant name is in it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
    "#advRefresh": {
     "what": "Re-read the library from disk. The pack list then shows the packs saved on this computer now.",
     "input": "Nothing to type. Just click it.",
@@ -3405,6 +3435,26 @@ window.HELP_CATALOG = {
    }
   },
   "/report/health": {
+   "#thWarn": {
+    "what": "Sets how many days before expiry a certificate is flagged as needing attention soon.",
+    "input": "Optional. A whole number of days from 1 to 365, like 30. Empty uses the server's setting (30 unless changed). It must be more than the critical days.",
+    "effect": "local"
+   },
+   "#thCrit": {
+    "what": "Sets how many days before expiry a certificate is flagged as needing attention now.",
+    "input": "Optional. A whole number of days from 1 to 365, like 7. Empty uses the server's setting (7 unless changed). It must be fewer than the warning days.",
+    "effect": "local"
+   },
+   "#thRun": {
+    "what": "Checks the tenant's health: changes waiting for activation, the SSL inspection rule order, certificates close to expiry and App Connector groups with no connector. It only reads.",
+    "input": "Nothing to type. Just click it. Sign in on the assessment page first; only what the Scope page ticks is read.",
+    "effect": "read"
+   },
+   "#thCalls": {
+    "what": "Opens the list of API calls this check made, in Advanced settings.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#dhDays": {
     "what": "Picks how many days of incidents the report looks back over. Changing it reads the tenant again.",
     "input": "Pick one: 7, 14, 30, 60 or 90 days. 30 days is the usual choice. Needs the assessment tab that opened this page.",
@@ -4025,6 +4075,11 @@ window.HELP_CATALOG = {
     "input": "Read from the tenant and pick the objects first. Then click it.",
     "effect": "read"
    },
+   "#opApiCalls": {
+    "what": "Opens the API calls this run made, in Advanced settings: each call's path, answer, time taken, retries and waits.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#opPdf": {
     "what": "Saves the previewed plan as a PDF, for a change ticket or the customer.",
     "input": "Nothing to type. Just click it.",
@@ -4298,6 +4353,11 @@ window.HELP_CATALOG = {
    "input[name=\"zcDel\"]": {
     "what": "Picks this profile to delete. A profile in use cannot be picked.",
     "input": "Pick one. You type the profile's name to confirm when you apply.",
+    "effect": "local"
+   },
+   "input[name=\"zdxTier\"]": {
+    "what": "Picks how closely ZDX watches: Strict monitors the most apps every 5 minutes, Balanced the Microsoft 365 core every 10, Permissive sign-in only every 15, Healthcare adds Zoom every 5. It fills in the apps, the interval and the CloudPath probes below.",
+    "input": "Tick one: Strict, Balanced, Permissive or Healthcare. It starts on the tier picked for the ZIA security baseline, else Balanced.",
     "effect": "local"
    },
    "input[name=\"zdxTpl\"]": {

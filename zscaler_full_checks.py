@@ -674,6 +674,86 @@ def zpa_15(cl):
     return R(R.PASS, f"{len(r)} machine group(s).") if r else R(R.INFO, "No machine groups. Machine groups are needed only for machine tunnels: pre-Windows-logon access from Client Connector devices to internal apps such as Active Directory. Zscaler recommends one machine group per machine provisioning key. Ref: https://help.zscaler.com/zpa/about-machine-groups")
 
 # ═══════════════════════════════════════════════════════════════════════
+# TENANT HEALTH (tenant_health.py): activation, certificate expiry, empty groups
+# ═══════════════════════════════════════════════════════════════════════
+
+def _health():
+    import time as _t
+    import tenant_health as th
+    warn, crit = th.thresholds()
+    return th, _t.time(), warn, crit
+
+
+def _cert_result(th, certs, warn, crit, what, steps, ref):
+    """One certificate list as a result: FAIL for an expired or critical
+    one, WARN within the warning threshold, PASS otherwise."""
+    if not certs:
+        return R(R.INFO, f"No {what} in the tenant." + ref)
+    item = th._cert_item("x", "", what, certs, warn, crit, steps)
+    fix = (" Fix: " + " ".join(steps[:2])) if item["status"] != "ok" else ""
+    status = {"critical": R.FAIL, "warning": R.WARN}.get(item["status"], R.PASS)
+    return R(status, f"{len(certs)} {what}: {item['summary']}{fix}" + ref)
+
+
+def hlt_1(cl):
+    """ZIA changes saved but not activated (GET /status)"""
+    import tenant_health as th
+    d, c = cl.get("/zia/status")
+    if c not in (200, 204):
+        return R(R.INFO, f"The activation status could not be read (HTTP {c}).")
+    a = th.activation(d)
+    if a["state"] == "active":
+        return R(R.PASS, "Every saved change is activated (ZIA reports ACTIVE).")
+    if a["state"] in ("pending", "in_progress"):
+        return R(R.WARN, ("Changes are saved in ZIA but not activated (PENDING): they are not live. " if a["state"] == "pending"
+                          else "ZIA is activating changes right now (INPROGRESS). ") + th.ACTIVATION_DEPLOY_NOTE
+                 + " Fix: in the ZIA Admin Portal open Activation, review the pending changes (the audit log names who made them), then Activate.")
+    return R(R.INFO, "ZIA answered with an activation status this app does not know.")
+
+
+def hlt_2(cl):
+    """SSL inspection intermediate CA certificates expiring (certExpDate)"""
+    th, now, warn, crit = _health()
+    r, c = _items(cl, "/zia/intermediateCaCertificate")
+    if c not in (200, 204):
+        return R(R.INFO, f"The SSL inspection certificates could not be read (HTTP {c}).")
+    return _cert_result(th, th.zia_certificates(r, now, warn, crit), warn, crit, "SSL inspection intermediate certificate(s)",
+                        th.ZIA_CERT_STEPS, " Ref: https://help.zscaler.com/zia/about-intermediate-ca-certificates")
+
+
+def hlt_3(cl):
+    """ZPA enrollment certificates expiring (App Connectors and Service Edges enroll with them)"""
+    th, now, warn, crit = _health()
+    r, c = _items(cl, "/zpa/enrollmentCert")
+    if c not in (200, 204):
+        return R(R.INFO, f"The ZPA enrollment certificates could not be read (HTTP {c}).")
+    certs = th.zpa_certificates(r, now, warn, crit)
+    if any(x["state"] != "ok" for x in certs):
+        conns, _c1 = _items(cl, "/zpa/connector")
+        groups, _c2 = _items(cl, "/zpa/appConnectorGroup")
+        used = th.enrolled_counts(conns, [], groups, certs)
+        for x in certs:
+            x.update(used.get(x["name"], {}))
+    return _cert_result(th, certs, warn, crit, "ZPA enrollment certificate(s)", th.ZPA_ENROLL_STEPS,
+                        " Ref: https://help.zscaler.com/zpa/about-enrollment-certificates")
+
+
+def hlt_4(cl):
+    """App Connector groups with no connector"""
+    import tenant_health as th
+    r, c = _items(cl, "/zpa/appConnectorGroup")
+    if not r:
+        return R(R.INFO, "No App Connector groups to check.")
+    empty = th.empty_groups(r)
+    if empty:
+        return R(R.WARN, f"{len(empty)} of {len(r)} App Connector group(s) have no connector: {', '.join(empty[:5])}"
+                         f"{' and more' if len(empty) > 5 else ''}. An application served only by them cannot be reached. "
+                         "Fix: enroll at least two connectors into each (N+1), move its server groups to a group with connectors, "
+                         "or delete it if nothing uses it." + _ZPA_GUIDE)
+    return R(R.PASS, f"Every one of the {len(r)} App Connector group(s) has at least one connector.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ZCC — DEVICE MANAGEMENT (extended)
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -1113,6 +1193,10 @@ PLATFORM_REG = [
     ("CA.4", "ZIA — Cloud Apps", "DNS over HTTPS blocked", capp_4),
     ("CA.5", "ZIA — Cloud Apps", "Cascading to URL Filtering off", capp_5),
 
+    # ZIA — Tenant health (tenant_health.py)
+    ("HLT.1", "ZIA — Tenant health", "Changes waiting for activation", hlt_1),
+    ("HLT.2", "ZIA — Tenant health", "SSL inspection certificate expiry", hlt_2),
+
     # ZPA — Application Access
     ("ZPA.1", "ZPA — App Access", "Application segments", zpa_1),
     ("ZPA.2", "ZPA — App Access", "Segment groups", zpa_2),
@@ -1129,6 +1213,10 @@ PLATFORM_REG = [
     ("ZPA.13", "ZPA — App Access", "Trusted networks", zpa_13),
     ("ZPA.14", "ZPA — App Access", "Log streaming (LSS)", zpa_14),
     ("ZPA.15", "ZPA — App Access", "Machine groups", zpa_15),
+
+    # ZPA — Tenant health (tenant_health.py)
+    ("HLT.3", "ZPA — Tenant health", "Enrollment certificate expiry", hlt_3),
+    ("HLT.4", "ZPA — Tenant health", "App Connector groups with no connector", hlt_4),
 
     # ZCC — Device Management / Mobile Portal
     ("ZCC.1",  "ZCC — Devices",          "Trusted networks",                    zcc_1),

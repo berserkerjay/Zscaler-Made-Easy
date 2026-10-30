@@ -551,11 +551,11 @@
       $('opGo').disabled = true; say('Applying the change.');
       try {
         const snap = await runJob('/api/operations/apply/start', payload, where, 'Applying the change');
-        renderResult(snap.result || {}, snap.logs || []);
+        renderResult(snap.result || {}, snap.logs || [], snap.job_id);
       } catch (e) { fail(where, 'The change could not be applied', e.message); say(`The change could not be applied: ${e.message}`); }
       finally { loadHistory(); }
     }
-    function renderResult(r, logs) {
+    function renderResult(r, logs, jobId) {
       const where = $('opResult');
       if (r.status === 'plan_changed') { where.innerHTML = `<div class="bp-card warn" role="alert"><div class="t">The tenant changed since the preview</div><div>${E(r.message)} Preview again.</div></div>`; say('The tenant changed since the preview; nothing was written.'); return; }
       if (['refused', 'blocked'].includes(r.status)) { fail(where, 'Nothing was written', r.message || (r.blockers || []).join(' ')); return; }
@@ -568,7 +568,8 @@
           ${r.operation_id ? ` Recorded as ${E(r.operation_id)}.` : ''}${r.record_error ? ` ${E(r.record_error)}` : ''}</div>
           ${r.operation_id && r.inverse ? `<div class="op-row"><button type="button" class="rp-btn" data-undo="${E(r.operation_id)}">Undo this change (preview first)</button></div>` : ''}</div>
         ${itemsTable(r.items || [], 'Result per item')}
-        <details class="pa-details"><summary>What was done (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
+        <details class="pa-details"><summary>What was done (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>
+        ${jobId && /^[A-Za-z0-9_-]{1,40}$/.test(jobId) ? `<div class="op-row"><a class="rp-btn" id="opApiCalls" href="/report/advanced?job=${E(jobId)}#apicalls" target="_blank" rel="noopener">API calls of this run</a></div>` : ''}`;
       where.querySelectorAll('button[data-undo]').forEach(b => b.addEventListener('click', () => undo(b.dataset.undo)));
       const plugDone = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[r.type];
       if (plugDone && typeof plugDone.result === 'function') plugDone.result(r, where, H);   // e.g. a value shown once

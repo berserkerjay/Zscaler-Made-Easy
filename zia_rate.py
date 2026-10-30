@@ -615,6 +615,8 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
                 if bucket != "read" or len(t.sent[bucket]) % 25 == 0:
                     _save()
                 _ctx.prepaced = now    # the session does not pace the request this wait was for again
+                if total > 0:
+                    _note_wait(total)
                 return total
         if held > 0:
             if log and not told_hold:
@@ -644,6 +646,13 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
                 step = min(step, CANCEL_STEP)
         _sleep(step)
         total += step
+
+
+def _note_wait(seconds: float) -> None:
+    """The seconds a request waited here, for the API calls log (api_calls.note_wait)."""
+    with contextlib.suppress(Exception):
+        import api_calls
+        api_calls.note_wait(seconds)
 
 
 def full_reset(bucket: str, key: Optional[str] = None) -> float:
@@ -868,7 +877,12 @@ def attach(session: Any, key: str) -> Any:
     """Pace and count every ZIA request `session` sends for tenant `key`
     (_pace_session), and see ZIA's answers with a response hook, so only
     this tenant's session is observed. The body of a 403/429 is read only
-    for a request that was not streamed."""
+    for a request that was not streamed. Every request it sends is also
+    timed for the API calls log (api_calls.attach: method, path template,
+    status, duration; never a body, header or query)."""
+    with contextlib.suppress(Exception):
+        import api_calls
+        api_calls.attach(session)   # inside the pacing, so a pacing wait is a wait, not call time
     with contextlib.suppress(Exception):
         _pace_session(session, key)
     def hook(resp, *args, **kwargs):
