@@ -192,7 +192,7 @@ class Certificates(_ZSvc):
         self.t.writes.append(("create", "certificate", "", copy.deepcopy(kw)))
         if self._fail("create"):
             # an error answer that quotes the request it refused (as a gateway might)
-            return None, None, f"HTTP 400: invalid certificate in request {json.dumps(kw)} {CANARY_ECHO}"
+            return None, None, f"HTTP 400: {CANARY_ECHO} invalid certificate, the request ended: {kw.get('cert_blob', '')[-400:]}"
         r = self.t.add("certificate", {"name": kw.get("name"), "description": kw.get("description"), "cName": "wiki.example.com",
                                        "validToInEpochSec": "4102444800", "san": ["wiki.example.com", "*.example.com"]})
         # ZPA echoes the blob back in the create's answer
