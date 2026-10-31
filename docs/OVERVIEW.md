@@ -456,6 +456,19 @@ what you get, what to do next.
   no pack. Where: Deploy policy
   packs, under the pack list; also Step 2 of the Evaluate All Rules
   migration wizard, for its Inline Web DLP rules.
+- **Export from tenant as Terraform (whole tenant)** — every object the
+  Scope page puts in scope, from ZIA, ZPA, Cloud & Branch Connector and
+  Client Connector, as one Terraform workspace per product for the official
+  `zscaler/zia`, `zscaler/zpa`, `zscaler/ztc` and `zscaler/zcc` providers.
+  *Adopt* (the default) writes an import block for every object and keeps
+  its state, so the platform team's first apply brings the tenant into
+  state without recreating or changing anything; *Clone* writes new objects
+  for another tenant with every rule disabled (and ZPA segments disabled)
+  unless asked otherwise, and leaves settings and tenant-bound objects out.
+  References between exported objects are Terraform addresses, the rest are
+  looked up by name; no secret is ever written (sensitive variables
+  instead), users are never exported, and each workspace's README says what
+  was not exported and why. Read-only. Where: Policy exports.
 - **Deploy flow diagram** — the plan a preflight produced as a picture:
   which dictionaries feed which engines, which engines feed which rules,
   on which channels. Where: inside Deploy policy packs, on the review step.
