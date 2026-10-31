@@ -25,7 +25,7 @@ TOOLBAR = {
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openShadowRulesTab()": "shadow",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openZpaTab()": "zpa", "openDevicePostureTab()": "deviceposture",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openZpaTab()": "zpa",
-    "openBrowserSecurityTab()": "browser", "openCloudConnectorTab()": "ztw",
+    "openBrowserSecurityTab()": "browser", "openCloudConnectorTab()": "ztw", "openOtherProductsTab()": "otherproducts",
     "openAiGuardTab()": "aiguard",
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path", "openFlowAnimatorTab()": "motion", "openSimpleMode()": "simple",
     "openToolTab('efficacy')": "efficacy", "openDetectionHealthTab()": "health", "openDlpPacksModal()": "packs",

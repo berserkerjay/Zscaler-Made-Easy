@@ -141,6 +141,12 @@ def _recognised(cols: Dict[str, Optional[str]]) -> int:
     return sum(1 for k in keys if cols.get(k))
 
 
+# A cell longer than this is refused as malformed. The csv module's own field
+# limit (131,072 by default) is process-wide and another module may raise it
+# (audit_timeline does), so the cap is checked here, independent of it.
+MAX_RAW_CELL = 131072
+
+
 def read_table(text: str, what: str) -> Tuple[List[str], Dict[str, Optional[str]], List[Dict[str, str]]]:
     """(headers, columns used, rows) of one export. The header row is the
     first of the first HEADER_SCAN_ROWS lines in which at least two known
@@ -154,6 +160,8 @@ def read_table(text: str, what: str) -> Tuple[List[str], Dict[str, Optional[str]
             row = next(reader, None)
             if row is None:
                 break
+            if any(len(x) > MAX_RAW_CELL for x in row):
+                raise csv.Error("field larger than the import's cell cap")
             if len(row) > MAX_COLUMNS:
                 raise ImportRefused(f"The {what} file has more than {MAX_COLUMNS} columns; it is not a Client Connector export.")
             c = zf.service_columns(row)
@@ -171,6 +179,8 @@ def read_table(text: str, what: str) -> Tuple[List[str], Dict[str, Optional[str]
         for r in reader:
             if not r or not any(x.strip() for x in r):
                 continue
+            if any(len(x) > MAX_RAW_CELL for x in r):
+                raise csv.Error("field larger than the import's cell cap")
             if len(rows) >= MAX_ROWS:
                 raise ImportRefused(f"The {what} file has more than {MAX_ROWS} rows; it was not read.")
             rows.append({k: (r[i].strip()[:zf.MAX_CELL_CHARS] if i < len(r) else "") for k, i in idx.items()})

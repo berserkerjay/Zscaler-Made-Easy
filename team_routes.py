@@ -80,6 +80,9 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /report/bypass": PUBLIC,
     "GET /report/plugin": PUBLIC,
     "GET /report/traffic-logs": PUBLIC,
+    "GET /report/ztw": PUBLIC,
+    "GET /report/other-products": PUBLIC,
+    "GET /report/aiguard": PUBLIC,
     "GET /report/dataflow": PUBLIC,
     "GET /report/live": PUBLIC,
     "GET /report/audit": PUBLIC,
@@ -194,6 +197,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/tenant-terraform/catalogue": SESSION,
     "GET /api/traffic-logs/info": SESSION,              # the formats and limits
     "GET /api/traffic-logs/siem": SESSION,              # query templates built from what the page sends
+    "GET /api/aiguard/prompts": SESSION,                # the made-up test prompts
     "POST /api/migrate/export": SESSION,
     "GET /api/scope/prerequisites": SESSION,
     "POST /api/report/docx": SESSION,
@@ -351,6 +355,20 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/traffic-logs/report/{report_id}/export": READ,
     "GET /api/traffic-logs/saved": READ,
     "POST /api/traffic-logs/saved/{name}/open": READ,
+    "POST /api/ztw/start": READ,
+    "GET /api/ztw/report/{report_id}": READ,
+    "GET /api/ztw/report/{report_id}/export": READ,
+    "POST /api/other-products/start": READ,
+    "GET /api/other-products/report/{report_id}": READ,
+    "GET /api/other-products/report/{report_id}/export": READ,
+    "POST /api/zwa/incident": READ,                     # one incident's metadata (never its evidence)
+    "POST /api/zwa/audit-log": READ,
+    "POST /api/aiguard/inventory": READ,
+    "POST /api/aiguard/test-prompt": READ,              # one made-up prompt to AI Guard's detection API; nothing is kept
+    "POST /api/zdx/cloudpath": READ,
+    "POST /api/zdx/analysis/status": READ,
+    "POST /api/zcc/device-details": READ,
+    "POST /api/zcc/disable-reasons": READ,
 
     # ── prepare a change, or edit the app's own notes about a tenant ──
     "POST /api/remediation/plan": PLAN,
@@ -417,6 +435,8 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/self-heal/tenant/heal": APPLY,
     "POST /api/pov/build/apply/start": APPLY,
     "POST /api/pov/build/undo/apply/start": APPLY,
+    "POST /api/zdx/analysis/start": APPLY,              # starts a ZDX score analysis on the tenant (a write; typed phrase)
+    "POST /api/zdx/analysis/stop": APPLY,
     # (wave 7) secrets held in memory for, or revealed by, a change: only for those who may change the tenant
     "POST /api/operations/zpa/ba-certificate": APPLY,
     "POST /api/operations/zidentity/secret": APPLY,

@@ -424,7 +424,8 @@ def test_zwa_index_and_browser_checks_on_the_sample():
     r = _results(full.DLP_EXTRA_REG + full.PLATFORM_REG[-4:], _raw())
     got = {k: v.status for k, v in r.items()}
     assert got == {"DLP.IDX1": "FAIL", "DLP.IDX2": "REVIEW", "DLP.IDX3": "REVIEW", "ZWA.1": "PASS", "ZWA.2": "REVIEW", "ZWA.3": "INFO",
-                   "ZWA.4": "PASS", "ZPA.BA1": "INFO", "ZPA.BA2": "INFO", "ZPA.BA3": "REVIEW", "ZPA.BA4": "REVIEW"}
+                   "ZWA.4": "PASS", "ZPA.BA1": "PASS", "ZPA.BA2": "INFO", "ZPA.BA3": "REVIEW", "ZPA.BA4": "REVIEW"}
+    # ZPA.BA1 is PASS: the sample tenant's Browser Access segment (cloud8/zpa-policy) is reached by an access rule.
 
 
 def test_incident_checks_read_nothing_when_workflow_automation_is_another_product():

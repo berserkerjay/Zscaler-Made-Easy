@@ -112,11 +112,12 @@ _TOKEN_LIFETIME = re.compile(r"(expiry|expiration|lifetime|validity)(_?time)?(_?
 # (zid/models/api_client.py), an LLM provider's apiCredentials
 # (aiguard/models/llm_provider_credentials.py), an encrypted session key
 # (zpa/models/enrollment_certificates.py). Any value type is masked.
-# A Cloud & Branch Connector provisioning URL (it enrols a connector) and an
+# A Cloud & Branch Connector provisioning URL (it enrols a connector; its
+# provUrlData block is configuration, kept for the Terraform export) and an
 # admin's mobile app tokens (zscaler/ztw/models/provisioning_url.py,
 # admin_users.py execMobileAppTokens) are masked the same way.
 _OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key|"
-                      r"prov(isioning)?_?url(_?data)?$|mobile_?app_?tokens$", re.I)
+                      r"prov(isioning)?_?url$|mobile_?app_?tokens$", re.I)
 # Settings whose names say "password" but hold no secret: the admin password
 # expiry switch and its number of days (zia/models/admin_roles.py
 # PasswordExpiry). Kept only as a true/false or a whole number; any text

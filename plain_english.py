@@ -24,6 +24,8 @@ from typing import Any, Dict, List, Tuple
 # against the check's section and id prefix; the first hit wins, so the
 # more specific entries come first.
 OUTCOMES: List[Tuple[Tuple[str, ...], str]] = [
+    (("ai guard", "aig."), "Prompts and answers to GenAI applications are inspected and risky ones blocked, with every application's credentials kept safe."),
+    (("edm and idm", "dlp.idx"), "The exact data and document fingerprints DLP matches against stay current, so leaks of your own records are caught."),
     (("tenant health", "hlt."), "Saved changes are activated and certificates are renewed before they expire, so the policy that runs is the policy you configured."),
     (("insights", "ins."), "Every cloud application in use has an owner's decision, risky ones are stopped, and sanctioned ones holding company data are scanned."),
     (("cloud & branch connector", "ztw."), "Workload traffic from clouds and branches reaches Zscaler through healthy, redundant connectors and is inspected, never sent around it."),

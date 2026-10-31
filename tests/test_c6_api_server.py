@@ -399,7 +399,7 @@ def test_the_check_catalog_scopes_add_up_to_the_registries(client):
             assert {c["id"] for c in got} == {c[0] for c in srv.PLATFORM_REG if c[1].startswith(scope.upper())}
     everything = client.get("/api/checks").json()
     assert len(everything) == sum(len(r) for r in (srv.REG, srv.PLATFORM_REG, srv.GENAI_REG, srv.AUTOMATION_REG, srv.ZDX_REG, srv.ZID_REG, srv.RBAC_REG,
-                                                   srv.OTHER_REG))
+                                                   srv.OTHER_REG, srv.AIGUARD_REG))
 
 
 @pytest.mark.parametrize("scope", sorted(s for s in CATALOG if s))

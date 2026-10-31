@@ -77,7 +77,7 @@ PRODUCTS: "OrderedDict[str, Dict[str, Any]]" = OrderedDict([
              "portal": "the ZIA Admin Portal"}),
     ("ZPA", {"label": "ZPA (Private Access)", "scopes": ("zpa",), "codes": ("ZPA",), "portal": "the ZPA Admin Portal"}),
     ("ZCC", {"label": "Client Connector", "scopes": ("zcc",), "codes": ("ZCC",), "portal": "the Client Connector Portal"}),
-    ("ZDX", {"label": "ZDX (Digital Experience)", "scopes": ("zdx",), "codes": ("ZDX",), "portal": "the ZDX Admin Portal"}),
+    ("ZDX", {"label": "ZDX (digital experience)", "scopes": ("zdx",), "codes": ("ZDX",), "portal": "the ZDX Admin Portal"}),
     ("ZINSIGHTS", {"label": "Z-Insights (traffic data)", "scopes": ("insights",), "codes": ("ZINSIGHTS",), "portal": "ZIdentity"}),
     ("ZGUARD", {"label": "AI Guard", "scopes": ("aiguard", "ai_guard"), "codes": ("ZGUARD", "AIGUARD"), "portal": "the AI Guard console"}),
     ("ZIDENTITY", {"label": "ZIdentity", "scopes": ("zidentity",), "codes": ("ZIAM", "ZIDENTITY"), "portal": "ZIdentity"}),
