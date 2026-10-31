@@ -56,6 +56,8 @@ def _sdk_class(product: str, svc: str):
     cls = [c for n, c in inspect.getmembers(mod, inspect.isclass) if n.lower().startswith(product) and n.endswith("Service")][0]
     prop = getattr(cls, svc)
     ann = inspect.signature(prop.fget).return_annotation
+    if isinstance(ann, str) and hasattr(mod, ann):
+        return getattr(mod, ann)   # a forward reference to a class the service module imports at the top
     if isinstance(ann, str) or ann is inspect._empty:
         m = re.search(r"from (zscaler\.[\w.]+) import (\w+)", inspect.getsource(prop.fget))
         ann = getattr(importlib.import_module(m.group(1)), m.group(2))
@@ -68,7 +70,7 @@ def test_every_catalogue_call_exists_in_the_installed_sdk():
     missing = []
     for t in cb.TYPES:
         cls = _sdk_class(t["product"], t["svc"])
-        for role in ("ls", "get", "add", "upd", "rm"):
+        for role in ("ls", "get", "add", "upd", "rm", "check"):
             m = t[role]
             if m and m != "raw" and not callable(getattr(cls, m, None)):
                 missing.append(f"{t['key']}: {t['svc']}.{m}")
@@ -81,7 +83,10 @@ def test_coverage_lists_each_product_and_what_is_written():
     cov = cb.coverage()
     assert set(cov["products"]) == {"zia", "zpa", "zcc"}
     levels = {r["key"]: r["level"] for p in cov["products"].values() for r in p}
-    assert levels["zia.url_filtering_rules"] == "full" and levels["zia.advanced_settings"] == "update" and levels["zia.locations"] == "read"
+    assert levels["zia.url_filtering_rules"] == "full" and levels["zia.advanced_settings"] == "update" and levels["zia.org_info"] == "read"
+    bound = {r["key"] for p in cov["products"].values() for r in p if r["tenant_bound"]}
+    assert bound == {"zia.locations", "zia.static_ips", "zia.gre_tunnels"}
+    assert not any(cb.writable(cb.BY_KEY[k]) for k in bound) and all(cb.writable(cb.BY_KEY[k], tenant_bound=True) for k in bound)
     assert all(r["why"] for p in cov["products"].values() for r in p if r["level"] == "read")
     assert sum(len(v) for v in cov["products"].values()) >= 80 and cov["not_covered"]
 

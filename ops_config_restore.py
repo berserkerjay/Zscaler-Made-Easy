@@ -74,6 +74,12 @@ CONFLICT_STOP = ("someone changed it in the tenant since the preview, so it was 
                  "Preview again")
 NOT_IN_SCOPE = "Not in scope: tick on the Scope page what this restore reads (ZIA platform or DLP for ZIA, ZPA, or Client Connector)."
 SECRET_TTL = 900.0
+ZPA_NEW_NEEDS_TICK = ("not created: a ZPA policy rule cannot be created disabled (the SDK's add calls have no such field), so it is "
+                      "created only when you tick 'keep each rule's state from the source' (it is then active at once)")
+TENANT_BOUND_WORDS = ("Tenant-bound objects (static IP addresses, GRE tunnels, locations) are created only because you included "
+                      "them: each static IP address was checked with the target first, and GRE tunnels and locations use only "
+                      "static IP addresses the target has or this plan adds. They are never updated or deleted here; Undo "
+                      "removes the ones this run created.")
 
 
 class _Unresolved(Exception):
@@ -94,9 +100,14 @@ def _label(t: Dict[str, Any]) -> str:
 
 def _deps(t: Dict[str, Any]) -> Set[str]:
     out = set()
-    for _f, target in cb.refs_of(t).items():
+    targets = list(cb.refs_of(t).values()) + list(t["after"])
+    for spec in (cb.OPERAND_REFS.values() if t["conditions"] else ()):
+        targets.extend(spec[1])
+    for nested in t["nested_refs"].values():
+        targets.extend(nested.values())
+    for target in targets:
         tt = cb.BY_KEY.get(target)
-        if tt is not None and tt["key"] != t["key"] and cb.writable(tt) and tt["product"] == t["product"]:
+        if tt is not None and tt["key"] != t["key"] and cb.writable(tt, tenant_bound=True) and tt["product"] == t["product"]:
             out.add(target)
     if t["expr"]:
         out.add(t["expr"][1])
@@ -115,7 +126,7 @@ def _tiers() -> Dict[str, int]:
         tier[k] = d
         return d
     for t in cb.TYPES:
-        if cb.writable(t):
+        if cb.writable(t, tenant_bound=True):
             depth(t["key"])
     return tier
 
@@ -126,7 +137,7 @@ TIER = _tiers()
 def ordered_types(product: str) -> List[Dict[str, Any]]:
     """The writable types of a product in dependency order (catalogue order within a tier)."""
     pos = {t["key"]: i for i, t in enumerate(cb.TYPES)}
-    return sorted((t for t in cb.types_for(product) if cb.writable(t)), key=lambda t: (TIER[t["key"]], pos[t["key"]]))
+    return sorted((t for t in cb.types_for(product) if cb.writable(t, tenant_bound=True)), key=lambda t: (TIER[t["key"]], pos[t["key"]]))
 
 
 # ---------------------------------------------------------------------------
@@ -203,11 +214,23 @@ def check_spec(spec: Dict[str, Any], product: str) -> Dict[str, Any]:
         raise _err("The target profile id is not one this app made.")
     if target == "other" and not pid:
         raise _err("Cloning or applying a template writes to another tenant: open that tenant's saved profile (Tenant, in the bar) first.")
+    tenant_bound = spec.get("include_tenant_bound") is True
+    if tenant_bound and product != "zia":
+        raise _err("Only ZIA has tenant-bound objects (locations, static IP addresses, GRE tunnels).")
+    if tenant_bound and kind == "template":
+        raise _err("A template never carries tenant-bound objects.")
+
+    def check_type(k: Any) -> Dict[str, Any]:
+        t = cb.BY_KEY.get(str(k))
+        if t is None or t["product"] != product or not cb.writable(t, tenant_bound=True):
+            raise _err(f"{str(k)[:60]} is not an object type this restore writes for {cb.PRODUCT_LABELS[product]}.")
+        if t["tenant_bound"] and not tenant_bound:
+            raise _err(f"{t['key']} is a tenant-bound object type: tick 'Include tenant-bound objects' (its own confirmation) to "
+                       "create it.")
+        return t
     types = _str_list(spec.get("types"), "types", 200)
     for k in types:
-        t = cb.BY_KEY.get(k)
-        if t is None or t["product"] != product or not cb.writable(t):
-            raise _err(f"{k[:60]} is not an object type this restore writes for {cb.PRODUCT_LABELS[product]}.")
+        check_type(k)
     picks = spec.get("objects") or []
     if not isinstance(picks, list) or len(picks) > MAX_PICKS:
         raise _err(f"'objects' must be a list of at most {MAX_PICKS} objects.")
@@ -215,10 +238,19 @@ def check_spec(spec: Dict[str, Any], product: str) -> Dict[str, Any]:
     for p in picks:
         if not isinstance(p, dict) or set(p) - {"type", "name"} or not isinstance(p.get("name"), str) or len(p["name"]) > 255:
             raise _err("Every picked object is {type, name}.")
-        t = cb.BY_KEY.get(str(p.get("type")))
-        if t is None or t["product"] != product or not cb.writable(t):
-            raise _err(f"{str(p.get('type'))[:60]} is not an object type this restore writes for {cb.PRODUCT_LABELS[product]}.")
+        t = check_type(p.get("type"))
         objects.append({"type": t["key"], "name": p["name"]})
+    sel_raw = spec.get("select") or {}
+    if not isinstance(sel_raw, dict) or set(sel_raw) - {"label", "prefix"}:
+        raise _err("'select' names a rule label and / or a name prefix.")
+    select = {}
+    for k in ("label", "prefix"):
+        v = sel_raw.get(k)
+        if v in (None, ""):
+            continue
+        if not isinstance(v, str) or len(v) > 128 or re.search(r"[\x00-\x1f\x7f]", v):
+            raise _err("The label and the prefix are at most 128 characters, with no control characters.")
+        select[k] = v
     prefix = str(spec.get("prefix") or "")
     if kind != "template" and prefix:
         raise _err("A prefix is for templates only.")
@@ -241,7 +273,7 @@ def check_spec(spec: Dict[str, Any], product: str) -> Dict[str, Any]:
             "types": sorted(set(types)), "objects": sorted(objects, key=lambda o: (o["type"], o["name"])), "prefix": prefix,
             "keep_state": spec.get("keep_state") is True, "activate": spec.get("activate") is not False, "psk": psk,
             "settings_keys": settings_keys, "licence_ack": spec.get("licence_ack") is True,
-            "rollback_on_stop": spec.get("rollback_on_stop") is True}
+            "rollback_on_stop": spec.get("rollback_on_stop") is True, "include_tenant_bound": tenant_bound, "select": select}
 
 
 def _check_undo(spec: Dict[str, Any], product: str) -> Dict[str, Any]:
@@ -253,7 +285,7 @@ def _check_undo(spec: Dict[str, Any], product: str) -> Dict[str, Any]:
         if not isinstance(s, dict) or s.get("op") not in ("create", "update", "delete"):
             raise _err("An Undo step is create, update or delete.")
         t = cb.BY_KEY.get(str(s.get("type")))
-        if t is None or t["product"] != product or not cb.writable(t):
+        if t is None or t["product"] != product or not cb.writable(t, tenant_bound=True):
             raise _err("An Undo step names an object type this restore does not write.")
         step = {"op": s["op"], "type": t["key"], "name": str(s.get("name") or "")[:255], "id": str(s.get("id") or "")[:128],
                 "rule_type": str(s.get("rule_type") or "")[:60]}
@@ -287,6 +319,26 @@ class LiveReader:
         ao._check_stop(self.cancel)
         return cb.read_type(self.client, t, self.cancel)
 
+    def check(self, t: Dict[str, Any], value: str) -> Tuple[Optional[bool], str]:
+        """Ask the tenant whether a new object may be added (static IPs:
+        traffic_static_ip.check_static_ip, POST /staticIP/validate, read-only).
+        (True, "") may be added; (False, why) may not; (None, why) unknown."""
+        ao._check_stop(self.cancel)
+        svc = getattr(getattr(self.client, t["product"], None), t["svc"], None)
+        fn = getattr(svc, t["check"] or "", None) if svc is not None else None
+        if not callable(fn):
+            return None, f"the installed zscaler-sdk-python has no {t['svc']}.{t['check']}"
+        try:
+            ok, _resp, err = fn(value)
+        except Exception as e:  # noqa: BLE001 - an unknown answer is not a yes
+            return None, f"{type(e).__name__}"
+        if err:
+            text = str(err)[:200]
+            if re.search(r"409|exist|duplicate|already", text, re.I):
+                return False, "the address is already in use by an organisation (the target cannot add it: it must own it)"
+            return None, text
+        return (True, "") if ok else (False, "the tenant refused the address")
+
 
 class DocReader:
     """Reads a backup document's objects instead of a tenant: a rehearsal
@@ -303,19 +355,33 @@ class DocReader:
             return [], "not in the target backup"
         return copy.deepcopy(self.types[t["key"]]), None
 
+    def check(self, t: Dict[str, Any], value: str) -> Tuple[Optional[bool], str]:
+        return None, "a rehearsal reads no tenant, so the target cannot be asked whether it may add the address"
+
 
 # ---------------------------------------------------------------------------
 # Payloads and comparable forms
 # ---------------------------------------------------------------------------
 
+def _clean(v: Any) -> Any:
+    """A nested value without secret-named fields or masked values (an app
+    profile's platform policies carry its passwords as "(set)")."""
+    if isinstance(v, dict):
+        return {k: _clean(x) for k, x in v.items() if not cb.is_secret_key(k) and not (isinstance(x, str) and x in cb.MASKS)}
+    if isinstance(v, list):
+        return [_clean(x) for x in v if not (isinstance(x, str) and x in cb.MASKS)]
+    return v
+
+
 def payload(t: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
     """What a write sends for an object: no id, no volatile, stripped or
-    derived field, and never a secret-named field or a masked value."""
+    derived field, and never a secret-named field or a masked value (at any
+    depth)."""
     out = {}
     for k, v in row.items():
         if k in ("id", "$stub") or k in t["strip"] or cb._volatile(k) or cb.is_secret_key(k) or v in cb.MASKS:
             continue
-        out[k] = copy.deepcopy(v)
+        out[k] = _clean(copy.deepcopy(v))
     return out
 
 
@@ -325,12 +391,14 @@ def raw_form(t: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
     refs = cb.refs_of(t)
     out = {}
     for k, v in (row or {}).items():
-        if k in ("id", "$stub") or k in t["strip"] or cb._volatile(k) or v in cb.MASKS:
+        if k in ("id", "$stub") or k in t["strip"] or cb._volatile(k) or v in cb.MASKS or cb.is_secret_key(k):
             continue
-        if k in refs:
+        if t["conditions"] and k == "conditions":
+            out[k] = cb.condition_canon(v)
+        elif k in refs:
             out[k] = sorted(i for i, _n in cb.ref_items(v)[0])
         else:
-            out[k] = cb._norm_value(v, k, ())
+            out[k] = cb._norm_value(_clean(v), k, ())
     return out
 
 
@@ -412,7 +480,10 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
     picks: Dict[str, Set[str]] = {}
     for o in nspec["objects"]:
         picks.setdefault(o["type"], set()).add(o["name"])
-    sel = [t for t in ordered_types(product) if (not nspec["types"] or t["key"] in nspec["types"]) and (not picks or t["key"] in picks)]
+    include_tb = bool(nspec.get("include_tenant_bound"))
+    select = nspec.get("select") or {}
+    sel = [t for t in ordered_types(product) if (include_tb or not t["tenant_bound"])
+           and (not nspec["types"] or t["key"] in nspec["types"]) and (not picks or t["key"] in picks)]
     in_scope = []
     for t in sel:
         if reader.allowed(t):
@@ -435,7 +506,11 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
     # and (with deletes) what refers to them.
     need: Dict[str, Dict[str, Any]] = {t["key"]: t for t in sel}
     for t in sel:
-        for target in list(cb.refs_of(t).values()) + ([t["expr"][1]] if t["expr"] else []):
+        targets = list(cb.refs_of(t).values()) + ([t["expr"][1]] if t["expr"] else []) + list(t["after"])
+        if t["conditions"]:
+            targets += [k for spec_ in cb.OPERAND_REFS.values() for k in spec_[1]] + ["zpa.idps"]
+        targets += [k for nested in t["nested_refs"].values() for k in nested.values()]
+        for target in targets:
             tt = cb.BY_KEY.get(target)
             if tt is not None and tt["product"] == product:
                 need.setdefault(target, tt)
@@ -496,6 +571,90 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
         return ("unresolved", f"it uses {_label(tt)} '{nm or '#' + src_id}', which the target tenant does not have"
                               + ("" if tt["key"] in {x["key"] for x in sel} or not cb.writable(tt) else " (restore that type too)"))
 
+    def resolve_alt(target_key: str, value: str, keyf: str, hint: str) -> Tuple[str, Any]:
+        """A reference by another identifying field (a posture profile's
+        UDID, a trusted network's network id): matched by name across tenants."""
+        tt = cb.BY_KEY[target_key]
+        if target_key not in tgt:
+            if same:
+                return ("id", value)
+            return ("unresolved", f"{_label(tt)} could not be read in the target, so '{hint or value}' cannot be matched by name")
+        if same and any(str(r.get(keyf)) == value for r in tgt[target_key]):
+            return ("id", value)
+        srow = next((r for r in source.get(target_key) or [] if str(r.get(keyf)) == value), None)
+        nm = cb.name_of(tt, srow) if srow else hint
+        hit = tgt_by_name[target_key].get(nm) if nm else None
+        if hit is not None and hit.get(keyf) not in (None, ""):
+            return ("id", str(hit[keyf]))
+        return ("unresolved", f"it uses {_label(tt)} '{nm or value}', which the target tenant does not have")
+
+    def resolve_any(keys: Sequence[str], value: str, keyf: str, hint: str) -> Tuple[str, Any]:
+        """The first of several types that resolves (an APP operand may be a
+        plain, Browser Access, PRA or inspection segment)."""
+        first: Optional[Tuple[str, Any]] = None
+        for k in keys:
+            got = resolve(k, value, hint) if keyf == "id" else resolve_alt(k, value, keyf, hint)
+            if got[0] in ("id", "new"):
+                return got
+            first = first or got
+        return first or ("unresolved", "it names an object no backup type carries")
+
+    def resolve_scim_group(value: str, idp: str) -> Tuple[str, Any]:
+        k = "zpa.scim_groups"
+        tt = cb.BY_KEY[k]
+        if k not in tgt:
+            return ("id", value) if same else ("unresolved", f"{_label(tt)} could not be read in the target")
+        if same and value in tgt_by_id[k]:
+            return ("id", value)
+        srow = next((r for r in source.get(k) or [] if cb.rid(r) == value), None)
+        nm = cb.name_of(tt, srow) if srow else ""
+        hit = next((r for r in tgt[k] if nm and cb.name_of(tt, r) == nm and (not idp or str(r.get("idp_id") or "") == idp)), None)
+        if hit is not None:
+            return ("id", cb.rid(hit))
+        return ("unresolved", f"it uses the SCIM group '{nm or value}', which the target's identity provider does not have")
+
+    def remap_conditions(conds: List[Any], why: List[str], waits: List[str]) -> List[Any]:
+        """Every operand of a ZPA rule's conditions pointed at the target's
+        object (by name across tenants); literals kept; an operand of a kind
+        no backup carries is kept on the same tenant and blocks a clone."""
+        def put(o: Dict[str, Any], side: str, got: Tuple[str, Any]) -> None:
+            kind, val = got
+            if kind == "new":
+                o[side] = f"@new:{val}"
+                waits.append(val)
+            elif kind == "id":
+                o[side] = str(val)
+            else:
+                why.append(val if kind == "unresolved" else f"a condition uses an object that is not restored: {val}")
+        out = []
+        for b in conds:
+            if not isinstance(b, dict):
+                continue
+            nb, ops = dict(b), []
+            for o in b.get("operands") or []:
+                if not isinstance(o, dict):
+                    continue
+                o = dict(o)
+                ty = str(o.get("object_type") or o.get("objectType") or "").upper()
+                spec_ = cb.OPERAND_REFS.get(ty)
+                f = cb.OPERAND_IDP.get(ty)
+                if f and o.get(f) not in (None, "", "0") and not (spec_ and f == spec_[0]):
+                    put(o, f, resolve_any(("zpa.idps",), str(o[f]), "id", str(o.get("idp_name") or "")))
+                if spec_:
+                    side, keys, keyf = spec_
+                    v = str(o.get(side) or "")
+                    if ty == "SCIM_GROUP":
+                        put(o, side, resolve_scim_group(v, str(o.get("lhs") or "")))
+                    elif v:
+                        put(o, side, resolve_any(keys, v, keyf, str(o.get("name") or "")))
+                elif ty not in cb.OPERAND_LITERAL and not same:
+                    why.append(f"a condition names {ty.lower().replace('_', ' ')} objects, which backups do not carry, so it cannot be "
+                               "matched in another tenant")
+                ops.append(o)
+            nb["operands"] = ops
+            out.append(nb)
+        return out
+
     def typed(v: Any) -> Any:
         """An id as the product's API takes it: ZIA and Client Connector
         ids are numbers, ZPA ids stay strings; a CUSTOM_ category id is text."""
@@ -529,7 +688,76 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 why.append(val if kind == "unresolved" else f"it uses a dictionary that is not restored: {val}")
                 return m.group(0)
             out[t["expr"][0]] = cb.EXPR_ID.sub(sub, out[t["expr"][0]])
+        if t["conditions"] and isinstance(out.get("conditions"), list):
+            out["conditions"] = remap_conditions(out["conditions"], why, waits)
+        for f, refmap in t["nested_refs"].items():
+            if not isinstance(out.get(f), list):
+                continue
+            items = []
+            for a in out[f]:
+                if isinstance(a, dict):
+                    a = dict(a)
+                    for rf, target in refmap.items():
+                        if a.get(rf) in (None, "", 0, "0"):
+                            continue
+                        kind, val = resolve(target, str(a[rf]), str(a.get(rf[:-3] + "_name") or "") if rf.endswith("_id") else "")
+                        if kind == "id":
+                            a[rf] = typed(val)
+                        elif kind == "new":
+                            a[rf] = f"@new:{val}"
+                            waits.append(val)
+                        else:
+                            why.append(val)
+                items.append(a)
+            out[f] = items
         return out, why, waits
+
+    def selected(t: Dict[str, Any], r: Dict[str, Any], idx: Dict[str, Dict[str, str]]) -> bool:
+        """The job's selection (a sync): a name prefix and / or a rule label."""
+        pre, lab = select.get("prefix") or "", select.get("label") or ""
+        if pre and not cb.name_of(t, r).startswith(pre):
+            return False
+        if lab:
+            if "labels" not in cb.refs_of(t):
+                return False
+            return lab.casefold() in {n.casefold() for n in cb._ref_names(r.get("labels"), "zia.rule_labels", idx)}
+        return True
+
+    target_ips = {str(r.get("ip_address")) for r in tgt.get("zia.static_ips") or [] if r.get("ip_address")}
+    planned_ips: Dict[str, str] = {}
+    tb_report: List[str] = []
+
+    def tenant_bound_check(t: Dict[str, Any], r: Dict[str, Any], body: Dict[str, Any]) -> Tuple[Optional[str], List[str]]:
+        """Before a tenant-bound object is created: a static IP the target may
+        add (asked of the tenant), a GRE tunnel from a static IP the target
+        has (or this plan adds), a location whose addresses are such static
+        IPs. (why not, the creates it waits for)."""
+        waits_: List[str] = []
+
+        def own(ip: str) -> Optional[str]:
+            if ip in target_ips:
+                return None
+            if ip in planned_ips:
+                waits_.append(planned_ips[ip])
+                return None
+            return (f"{ip} is not a static IP address of the target: the target must own it (include static IP addresses, or add "
+                    "it in the portal first)")
+        if t["key"] == "zia.static_ips":
+            ok, why_ = reader.check(t, str(r.get("ip_address") or ""))
+            if ok is not True:
+                return f"the target could not confirm it may add this address ({why_})", []
+            return None, []
+        if t["key"] == "zia.gre_tunnels":
+            return own(str(r.get("source_ip") or "")), waits_
+        if t["key"] == "zia.locations":
+            for ip in body.get("ip_addresses") or []:
+                ip = str(ip)
+                if "/" in ip or "-" in ip:
+                    return f"its address {ip} is a range: a location's own addresses are single static IP addresses", []
+                why_ = own(ip)
+                if why_:
+                    return why_, []
+        return None, waits_
 
     matched: Dict[str, Set[str]] = {}
     changes = 0
@@ -537,6 +765,8 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
         key = t["key"]
         matched[key] = set()
         rows = [r for r in source.get(key) or [] if not r.get("$stub")]
+        if select:
+            rows = [r for r in rows if selected(t, r, src_idx)]
         if picks:
             rows = [r for r in rows if cb.name_of(t, r) in picks[key]]
             missing = picks[key] - {cb.name_of(t, r) for r in rows}
@@ -555,7 +785,10 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 counterpart = tgt_by_name[key].get(name)
             if counterpart is not None:
                 matched[key].add(cb.rid(counterpart) or "(settings)")
-            why_not = (t["exclude_if"](r) if t["exclude_if"] else None) or (t["clone_why"] if not same and t["clone_why"] else None)
+            why_not = ((t["exclude_if"](r) if t["exclude_if"] else None)
+                       or (t["clone_why"] if not same and t["clone_why"] and not (t["tenant_bound"] and include_tb) else None)
+                       or (t["clone_exclude_if"](r) if not same and t["clone_exclude_if"] else None)
+                       or cb.zpa_rule_problem(t, r))
             if why_not:
                 p.exclude(t, name, f"not {'cloned' if not same else 'restored'}: {why_not}")
                 state[(key, sid)] = ("excluded", why_not) if counterpart is None else ("id", cb.rid(counterpart))
@@ -576,6 +809,17 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                     p.exclude(t, name, f"the target has no such object and it is not created here: {t['why'] or 'the SDK cannot create it'}")
                     state[(key, sid)] = ("excluded", "it is not created here")
                     continue
+                if t["zpa_policy"] and not nspec["keep_state"]:
+                    p.exclude(t, name, ZPA_NEW_NEEDS_TICK)
+                    state[(key, sid)] = ("excluded", "ZPA rules are created only with the tick")
+                    continue
+                if t["tenant_bound"]:
+                    tb_why, tb_waits = tenant_bound_check(t, r, body)
+                    if tb_why:
+                        p.exclude(t, name, f"not created: {tb_why}")
+                        state[(key, sid)] = ("excluded", tb_why)
+                        continue
+                    waits = list(waits) + tb_waits
                 if t["secret_prompt"] and name not in nspec["psk"]:
                     p.exclude(t, name, "needs its pre-shared key, which no backup holds: type it on the page, or leave it out "
                                        "(the credential is then not created)")
@@ -592,6 +836,10 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 p.groups.append({"key": gkey, "handler": "cfg_create", "target": {"type": key, "name": name, "src_id": sid,
                                                                                    "desired": body, "rule_type": str(r.get("type") or "") if t["per_type"] else "",
                                                                                    "clamp_order": not same}})
+                if key == "zia.static_ips":
+                    planned_ips[name] = gkey
+                if t["tenant_bound"]:
+                    tb_report.append(_tenant_bound_step(t, name, body))
                 changes += 1
                 continue
             tid = cb.rid(counterpart)
@@ -607,6 +855,12 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             fd = cb.field_diff(cb.normal(t, have, idx), cb.normal(t, dict(body, id=tid), idx))
             if t["singleton"]:
                 fd = [d for d in fd if d["path"].split(".", 1)[0] in body]   # a key-level merge: keys the source lacks stay as they are
+            if t["keep_nested"]:
+                kept = [d for d in fd if d["path"].split(".", 1)[0] in t["keep_nested"]]
+                fd = [d for d in fd if d["path"].split(".", 1)[0] not in t["keep_nested"]]
+                if kept:
+                    p.warnings.append(f"{_label(t)} '{name}': its applications differ from the source; an update sends the target's own "
+                                      "applications back as they are (change them in the ZPA Admin Portal).")
             if not fd:
                 p.items.append(ao._unit(p.key("n"), p.key("n"), "object", p.obj(t, name, tid), "object", "as in the source", "as in the source",
                                         status="noop", reason="already the same (ignoring ids, change times and counters)"))
@@ -625,9 +879,10 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             changes += 1
     _licence_check(p, source, reader, nspec, product, same)
     manual = sorted({t["manual"] for t in cb.types_for(product) if t["manual"] and (source.get(t["key"]) or [])
-                     and (not same or cb.writable(t))})
+                     and (not same or cb.writable(t)) and not (t["tenant_bound"] and include_tb)})
     if manual and not same:
         p.manual_steps.extend(manual)
+    p.manual_steps.extend(tb_report)
     # Deletes: the target's own objects the source does not have (full mode).
     if full:
         idx = cb.index(tgt)
@@ -638,6 +893,10 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             for r in tgt.get(t["key"]) or []:
                 if (t["keep"] and not t["keep"](r)) or cb.rid(r) in matched.get(t["key"], set()):
                     continue
+                if t["exclude_if"] and t["exclude_if"](r):
+                    continue   # managed as another type (a special segment) or never written (a sub-location)
+                if select and not selected(t, r, idx):
+                    continue   # outside the selection (a sync's label or prefix)
                 if t["no_delete"] or not t["rm"]:
                     p.exclude(t, cb.name_of(t, r), f"not deleted: {t['no_delete'] or 'it is never deleted here'}", cb.rid(r))
                     continue
@@ -751,6 +1010,18 @@ def _users(tgt: Dict[str, List[Dict[str, Any]]]) -> Dict[Tuple[str, str], List[T
     return users
 
 
+def _tenant_bound_step(t: Dict[str, Any], name: str, body: Dict[str, Any]) -> str:
+    """The manual step after a tenant-bound object is created on the target."""
+    if t["key"] == "zia.static_ips":
+        return (f"static IP {name}: check its city and coordinates in the ZIA Admin Portal (they are worked out from the address "
+                "unless the source overrode them)")
+    if t["key"] == "zia.gre_tunnels":
+        return (f"GRE tunnel from {name}: ZIA picked the closest data-centre VIPs and the internal addresses; read them from the "
+                "target and configure the tunnel on the site's router")
+    return (f"location {name}: add its sub-locations, check its bandwidth and authentication settings, and point the site's "
+            "tunnels or VPN at the target tenant")
+
+
 def _why_create(t: Dict[str, Any], same: bool, nspec: Dict[str, Any]) -> str:
     bits = ["the target does not have it"]
     if t["state"] and not nspec["keep_state"]:
@@ -765,6 +1036,8 @@ def _finish_plan(p: _Plan, nspec: Dict[str, Any], changes: int) -> Dict[str, Any
     phrase for deletes, and the words around it."""
     product = p.product
     deletes = sum(1 for g in p.groups if g["handler"] == "cfg_delete")
+    bound = sum(1 for g in p.groups if g["handler"] == "cfg_create" and nspec.get("action") != "undo"
+                and (cb.BY_KEY.get(str(g["target"].get("type"))) or {}).get("tenant_bound"))
     if changes:
         bkey = "backup:0"
         types = sorted({g["target"]["type"] for g in p.groups})
@@ -793,10 +1066,19 @@ def _finish_plan(p: _Plan, nspec: Dict[str, Any], changes: int) -> Dict[str, Any
         p.warnings.append("Manual steps after this clone (the app never makes these): " + "; ".join(p.manual_steps) + ".")
     prepared = {"product": product, "items": p.items, "groups": p.groups, "warnings": p.warnings, "blockers": p.blockers, "notes": p.notes,
                 "activation_step": product == "zia", "manual_steps": list(p.manual_steps)}
+    phrases = []
     if deletes:
-        prepared["confirm_always"] = f"DELETE {deletes} OBJECT{'S' if deletes != 1 else ''}"
+        phrases.append(f"DELETE {deletes} OBJECT{'S' if deletes != 1 else ''}")
         p.warnings.insert(0, f"This plan deletes {deletes} object{'s' if deletes != 1 else ''} from the target. A fresh backup is saved first; "
                              f"type DELETE {deletes} OBJECT{'S' if deletes != 1 else ''} to confirm.")
+    if bound:
+        # Its own confirmation, whatever else the plan does: the person types that tenant-bound objects are created.
+        phrases.append(f"CREATE {bound} TENANT-BOUND OBJECT{'S' if bound != 1 else ''}")
+        p.warnings.insert(0, f"This plan creates {bound} tenant-bound object{'s' if bound != 1 else ''} (static IP addresses, GRE tunnels, "
+                             "locations) on the target. " + TENANT_BOUND_WORDS)
+        prepared["tenant_bound"] = bound
+    if phrases:
+        prepared["confirm_always"] = " AND ".join(phrases)
     return prepared
 
 
@@ -1059,13 +1341,17 @@ def _h_create(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
     if any(cb.name_of(t, r) == tg["name"] for r in rows):
         _stop(run, units, "conflict", f"an object named '{tg['name']}' is in the target now (made since the preview); {CONFLICT_STOP}")
         return
-    if tg.get("clamp_order") and "order" in body:
+    of = t["order_field"]
+    if tg.get("clamp_order") and of in body:
         try:
-            count = sum(1 for r in rows if int(r.get("order") or 0) > 0)
-            body["order"] = max(1, min(int(body["order"]), count + 1))
+            count = sum(1 for r in rows if int(r.get(of) or 0) > 0)
+            clamped = max(1, min(int(body[of]), count + 1))
+            body[of] = str(clamped) if isinstance(body[of], str) else clamped
         except (TypeError, ValueError):
-            body.pop("order", None)
-    sent = copy.deepcopy(body)
+            body.pop(of, None)
+    sent = {k: v for k, v in copy.deepcopy(body).items() if k not in t["keep_nested"]}
+    if t["app_kind"]:
+        tg["sent_apps"] = sorted({str(a.get("domain") or "") for a in cb.segment_apps(t, body)} - {""})
     if t["secret_prompt"]:
         secret = (ctx.get("secrets") or {}).get(tg["name"])
         if not secret:
@@ -1114,7 +1400,13 @@ def _h_update(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
     body = copy.deepcopy(want) if tg.get("replace") else dict(before, **want)
     if t["per_type"]:
         body["type"] = tg.get("rule_type") or fresh.get("type")
-    tg["undo_before"], tg["sent"] = before, copy.deepcopy(want)
+    for f in t["keep_nested"]:
+        # ZPA's own applications are sent back as the target holds them (a Browser Access segment's clientless apps),
+        # or not sent (PRA and inspection: ZPA keeps them unless they are listed for deletion, assumed).
+        body.pop(f, None)
+        if t["app_kind"] == "ba" and f in before:
+            body[f] = copy.deepcopy(before[f])
+    tg["undo_before"], tg["sent"] = before, {k: v for k, v in copy.deepcopy(want).items() if k not in t["keep_nested"]}
     out = ops.update(_root(run, t), f"cfg:{t['key']}", tg["id"], body, name=tg["name"], log=run.log)
     out.data = None
     if _after_write(run, units, out, "update"):
@@ -1188,6 +1480,9 @@ def verify(run: Any) -> Dict[str, Any]:
                 continue
             else:
                 ok = _subset_equal(t, tg.get("sent") or {}, row)
+                if ok and tg.get("sent_apps"):
+                    have = {str(a.get("domain") or "") for a in cb.segment_apps(t, row)}
+                    ok = set(tg["sent_apps"]) <= have
         for u in applied:
             u["verified"] = bool(ok)
         if ok:

@@ -96,7 +96,7 @@ MIN_EVERY_HOURS, MAX_EVERY_HOURS = 1, 168
 PREFIX_TOKEN = "{{prefix}}"
 PREFIX_RE = re.compile(r"\A[A-Za-z0-9 _.\-]{0,20}\Z")
 MASKS = ("(set)", "(not set)")
-KINDS = ("manual", "scheduled", "pre-restore", "snapshot", "sample")
+KINDS = ("manual", "scheduled", "pre-restore", "snapshot", "sample", "sync")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 # A DLP engine's expression names dictionaries by id: "((D63.S > 1) AND (D64.S > 0))".
 EXPR_ID = re.compile(r"\bD(\d+)\.")
@@ -130,11 +130,41 @@ ZIA_REFS = {
     "cbi_profile": "zia.isolation_profiles", "cloud_app_instances": "zia.cloud_app_instances",
     "tenancy_restriction_profile": "zia.tenancy_restriction_profiles", "proxy_gateway": "zia.proxy_gateways",
     "zpa_gateway": "zia.zpa_gateways", "zpa_app_segments": "zia.zpa_app_segments",
+    "bandwidth_classes": "zia.bandwidth_classes", "vpn_credentials": "zia.vpn_credentials",
 }
 ZPA_REFS = {
     "segment_group_id": "zpa.segment_groups", "server_groups": "zpa.server_groups",
     "app_connector_groups": "zpa.connector_groups", "servers": "zpa.servers",
+    # policy rules (read form of policies.list_rules: PolicySetControllerV1)
+    "app_server_groups": "zpa.server_groups", "service_edge_groups": "zpa.service_edge_groups",
+    "zpn_isolation_profile_id": "zpa.isolation_profiles", "zpn_inspection_profile_id": "zpa.inspection_profiles",
+    "credential": "zpa.pra_credentials", "credential_pool": "zpa.pra_credential_pools",
 }
+ZPA_RULE_USES = ("app_connector_groups", "app_server_groups", "service_edge_groups", "zpn_isolation_profile_id",
+                 "zpn_inspection_profile_id", "credential", "credential_pool")
+# A ZPA condition operand points at an object by its lhs or rhs: (side, the types it may be, the field
+# of that object the value equals). Verified against zscaler/zpa/policies.py (_create_conditions_v1 /
+# _v2 object types) and the ZPA policy API's operand conventions; the posture and trusted network
+# operands carry the profile's UDID and the network's network id (assumed from the portal's payloads).
+OPERAND_REFS: Dict[str, Tuple[str, Tuple[str, ...], str]] = {
+    "APP": ("rhs", ("zpa.application_segments", "zpa.ba_segments", "zpa.pra_segments", "zpa.inspection_segments"), "id"),
+    "APP_GROUP": ("rhs", ("zpa.segment_groups",), "id"),
+    "IDP": ("rhs", ("zpa.idps",), "id"),
+    "SAML": ("lhs", ("zpa.saml_attributes",), "id"),
+    "SCIM": ("lhs", ("zpa.scim_attributes",), "id"),
+    "SCIM_GROUP": ("rhs", ("zpa.scim_groups",), "id"),
+    "POSTURE": ("lhs", ("zpa.posture_profiles",), "posture_udid"),
+    "TRUSTED_NETWORK": ("lhs", ("zpa.trusted_networks",), "network_id"),
+    "MACHINE_GRP": ("rhs", ("zpa.machine_groups",), "id"),
+    "CONSOLE": ("rhs", ("zpa.pra_consoles",), "id"),
+    "USER_PORTAL": ("rhs", ("zpa.user_portals",), "id"),
+}
+# Operands whose values are words, the same in every tenant.
+OPERAND_LITERAL = ("CLIENT_TYPE", "PLATFORM", "COUNTRY_CODE", "RISK_FACTOR_TYPE", "CHROME_ENTERPRISE")
+# The identity provider an operand names besides its value (SCIM: idp_id; SCIM_GROUP: lhs).
+OPERAND_IDP = {"SCIM": "idp_id", "SCIM_GROUP": "lhs"}
+# Fields that also identify an object (a reference may carry them instead of the id).
+ALT_KEYS = {"zpa.posture_profiles": ("posture_udid",), "zpa.trusted_networks": ("network_id",)}
 ZCC_REFS = {"trusted_network_ids": "zcc.trusted_networks"}
 REFS = {"zia": ZIA_REFS, "zpa": ZPA_REFS, "zcc": ZCC_REFS}
 
@@ -143,7 +173,8 @@ REFS = {"zia": ZIA_REFS, "zpa": ZPA_REFS, "zcc": ZCC_REFS}
 VOLATILE = ("id", "last_modified_time", "last_modified_by", "modified_time", "modified_by", "creation_time", "created_time",
             "created_by", "creation_date", "last_modified_date", "edited_by", "edited_timestamp", "last_updated*", "last_sync*",
             "*_count", "num_*", "access_control", "config_space", "microtenant_name", "read_only", "zscaler_managed",
-            "segment_group_name", "inconsistent_config_details", "company_id", "guid", "val", "is_deletable", "is_editable")
+            "segment_group_name", "inconsistent_config_details", "company_id", "guid", "val", "is_deletable", "is_editable",
+            "app_id", "policy_set_id", "certificate_name", "zpn_inspection_profile_name", "idp_name")
 WORDS_VOLATILE = "ids, change times, who changed it, counters and read-only markers"
 
 
@@ -152,7 +183,24 @@ def _t(key: str, label: str, svc: str, ls: Optional[str], get: Optional[str] = N
     t = {"key": key, "product": key.split(".", 1)[0], "label": label, "svc": svc, "ls": ls, "get": get, "add": add, "upd": upd,
          "rm": rm, "q": None, "name": "name", "keep": None, "level": "full", "why": "", "clone_why": "", "singleton": False,
          "state": None, "scopes": (), "policy": "", "per_type": False, "add_pos": (), "upd_body": False, "add_via_upd": False,
-         "strip": (), "uses": None, "expr": None, "raw": "", "flat": False, "manual": "", "global_id": None, "secret_prompt": "", "no_delete": "", "exclude_if": None, "zpa_paged": False}
+         "strip": (), "uses": None, "expr": None, "raw": "", "flat": False, "manual": "", "global_id": None, "secret_prompt": "", "no_delete": "", "exclude_if": None, "zpa_paged": False,
+         # Added for the wider restore (each optional):
+         #   tenant_bound  written only in the separately confirmed "include tenant-bound objects" mode
+         #   after         types this one is ordered after although no reference field names them (an address match)
+         #   check         the SDK call that validates a new object before it is planned (static IPs)
+         #   zpa_policy    the ZPA policy type of a policy rule type (its list, get and delete take it first)
+         #   v2            the rule is written through the SDK's _v2 call (conditions as tuples, checked to round-trip)
+         #   conditions    the ZPA rule's conditions are compared, remapped and sent operand by operand
+         #   per_idp       listed once per identity provider (SCIM attributes and groups)
+         #   project       keeps only these fields of each row (a device inventory without people)
+         #   nested_refs   {list field: {ref field: type}} references inside a list of objects (a segment's applications)
+         #   keep_nested   list fields an update sends back as the target holds them (ZPA's own applications)
+         #   app_kind      ba / pra / inspection: how a create sends a special segment's applications
+         #   raw_zcc       the Client Connector request path an update PUTs (the SDK's update sends no body)
+         #   order_field   the field that holds a rule's position
+         #   clone_exclude_if  why a row is never cloned to another tenant (it names that tenant's own appliances)
+         "tenant_bound": False, "after": (), "check": None, "zpa_policy": "", "v2": False, "conditions": False, "per_idp": False,
+         "project": None, "nested_refs": {}, "keep_nested": (), "app_kind": "", "raw_zcc": "", "order_field": "order", "clone_exclude_if": None}
     t.update(kw)
     if t["level"] == "read":
         t["add"] = t["upd"] = t["rm"] = None
@@ -195,9 +243,77 @@ def _custom_rule(row: Dict[str, Any]) -> bool:
 def _zpa_special_segment(row: Dict[str, Any]) -> Optional[str]:
     for f in ("clientless_apps", "pra_apps", "inspection_apps", "common_apps_dto"):
         if row.get(f):
-            return ("a Browser Access, Privileged Remote Access or inspection segment carries application objects the SDK's "
-                    "segment call cannot rebuild exactly: restore it in the ZPA Admin Portal")
+            return ("a Browser Access, Privileged Remote Access or inspection segment carries its applications: it is restored "
+                    "as its own type (Browser Access, PRA or inspection segments), not as a plain segment")
     return None
+
+
+def _custom_zpa_rule(row: Dict[str, Any]) -> bool:
+    """A ZPA policy rule the customer made: not the policy's default rule,
+    not read-only or managed by Zscaler."""
+    return not (_truthy(row.get("default_rule")) or _truthy(row.get("read_only")) or _truthy(row.get("zscaler_managed")))
+
+
+def _zpa_microtenant(row: Dict[str, Any]) -> Optional[str]:
+    if str(row.get("microtenant_id") or "0") not in ("", "0"):
+        return "it belongs to a microtenant, which the SDK's write calls here do not name: restore it in the ZPA Admin Portal"
+    return None
+
+
+def _ba_segment(row: Dict[str, Any]) -> bool:
+    return bool(row.get("clientless_apps"))
+
+
+def _pra_segment(row: Dict[str, Any]) -> bool:
+    return bool(row.get("pra_apps")) or any(isinstance(a, dict) and "SECURE_REMOTE_ACCESS" in (a.get("app_types") or [])
+                                            for a in ((row.get("common_apps_dto") or {}).get("apps_config") or []))
+
+
+def _inspection_segment(row: Dict[str, Any]) -> bool:
+    return bool(row.get("inspection_apps")) and not _ba_segment(row) and not _pra_segment(row)
+
+
+def _custom_bw_class(row: Dict[str, Any]) -> bool:
+    """A bandwidth class the customer made (assumed: Zscaler's own classes are
+    flagged is_name_l10n_tag, or have a BANDWIDTH_CAT_ type other than
+    BANDWIDTH_CAT_CUSTOM)."""
+    if _truthy(row.get("is_name_l10n_tag")):
+        return False
+    typ = str(row.get("type") or "").upper()
+    if typ.startswith("BANDWIDTH_CAT_") and typ != "BANDWIDTH_CAT_CUSTOM":
+        return False
+    return _custom(row)
+
+
+def _sub_location(row: Dict[str, Any]) -> Optional[str]:
+    if str(row.get("parent_id") or "0") not in ("", "0"):
+        return "a sub-location is not created here: add it under its parent location in the ZIA Admin Portal"
+    if _truthy(row.get("ec_location")) or _truthy(row.get("non_editable")):
+        return "a Cloud or Branch Connector location is created by its connector, never here"
+    return None
+
+
+def _location_clone_why(row: Dict[str, Any]) -> Optional[str]:
+    for f, what in (("virtual_zens", "Virtual Service Edges"), ("virtual_zen_clusters", "Virtual Service Edge clusters"),
+                    ("extranet", "an extranet"), ("extranet_ip_pool", "an extranet IP pool"), ("extranet_dns", "an extranet DNS server")):
+        if row.get(f) not in (None, "", [], {}, 0, "0", False):
+            return f"it uses {what} of the source tenant, which another tenant does not have: add the location in the portal"
+    return None
+
+
+# A device inventory without people: only these fields of an enrolled device are kept.
+DEVICE_FIELDS = ("id", "type", "os_type", "os_version", "agent_version", "registration_state", "policy_name", "device_policy_name",
+                 "state", "active", "tunnel_version", "zcc_tunnel_version", "upm_version", "vpn_state", "zia_enabled", "zpa_enabled",
+                 "zdx_enabled", "zapp_arch", "expected_zcc_version", "vdi")
+
+
+def _device_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: row[k] for k in DEVICE_FIELDS if k in row}
+
+
+def _metadata_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """A certificate or credential as metadata: no PEM blocks or requests."""
+    return {k: v for k, v in row.items() if k not in ("certificate", "csr", "public_key", "private_key", "certificate_chain")}
 
 
 _Z = ("zia_extras",)
@@ -205,9 +321,23 @@ _DLP = ("dlp", "genai")
 _WEB = ("dlp", "zia_extras", "genai")
 _ID_READ = "identity comes from the identity provider (SCIM or SAML), so it is never written here"
 _TENANT_BOUND = "it is bound to the tenant's own IP addresses, tunnels or credentials, so it is never written or cloned here"
+_TENANT_BOUND_OPT = ("it is bound to the tenant's own IP addresses, tunnels or credentials: it is created only in the separately "
+                     "confirmed 'include tenant-bound objects' mode, after the target's own addresses are checked, and never "
+                     "updated or deleted here")
 _ZPA_POLICY = ("ZPA policy conditions are sent to the SDK as simple tuples, which cannot carry every nested AND / OR / NOT "
                "block exactly; restoring one could change who gets access. Rebuild it in the ZPA Admin Portal")
 _ADMIN = "administrators and their roles are never changed from here"
+_SEG_STRIP = ("tcp_port_range", "udp_port_range", "tcp_ports", "udp_ports", "segment_group_name", "shared_micro_tenant_details",
+              "shared_microtenant_details")
+
+
+def _zrule(key: str, label: str, policy: str, add: str, upd: str, v2: bool = False) -> Dict[str, Any]:
+    return _t(key, label, "policies", "list_rules", "get_rule", add, upd, "delete_rule", scopes=("zpa",), zpa_paged=True,
+              q={"__arg": policy}, zpa_policy=policy, v2=v2, conditions=True, keep=_custom_zpa_rule, exclude_if=_zpa_microtenant,
+              uses=ZPA_RULE_USES, order_field="rule_order",
+              after=("zpa.application_segments", "zpa.ba_segments", "zpa.pra_segments", "zpa.inspection_segments", "zpa.segment_groups"),
+              strip=("priority", "policy_type", "action_id", "operator", "version", "restriction_type", "desktop_policy_mappings",
+                     "extranet_dto", "extranet_enabled", "microtenant_id", "privileged_portal_capabilities", "post_actions"))
 
 TYPES: List[Dict[str, Any]] = [
     # ── ZIA: objects that rules use ──
@@ -265,12 +395,16 @@ TYPES: List[Dict[str, Any]] = [
        why="an Endpoint DLP rule carries sub-rules and application groups the restore plan does not rebuild"),
     _t("zia.saas_dlp_rules", "SaaS Security API DLP rules", "casb_dlp_rules", "list_all_rules", level="read", policy="saas_dlp",
        why="a SaaS Security API rule is bound to the tenant's SaaS tenants and needs its rule type on every write"),
-    _t("zia.forwarding_rules", "Forwarding control rules", "forwarding_control", "list_rules", level="read", scopes=_Z,
-       why="forwarding rules name the tenant's gateways and ZPA segments; change them in the portal"),
-    _t("zia.bandwidth_classes", "Bandwidth classes", "bandwidth_classes", "list_classes", level="read", scopes=_Z,
-       why="bandwidth control is sized to the tenant's links"),
-    _t("zia.bandwidth_control_rules", "Bandwidth control rules", "bandwidth_control_rules", "list_rules", level="read", scopes=_Z,
-       why="bandwidth control is sized to the tenant's links"),
+    _t("zia.forwarding_rules", "Forwarding control rules", "forwarding_control", "list_rules", "get_rule", "add_rule", "update_rule",
+       "delete_rule", scopes=_Z, keep=_custom_rule, state="state"),
+    _t("zia.bandwidth_classes", "Bandwidth classes", "bandwidth_classes", "list_classes", "get_class", "add_class", "update_class",
+       "delete_class", scopes=_Z, keep=_custom_bw_class, uses=()),
+    _t("zia.bandwidth_control_rules", "Bandwidth control rules", "bandwidth_control_rules", "list_rules", "get_rule", "add_rule",
+       "update_rule", "delete_rule", scopes=_Z, keep=_custom_rule, state="state"),
+    _t("zia.nat_control_rules", "NAT control rules", "nat_control_policy", "list_rules", "get_rule", "add_rule", "update_rule",
+       "delete_rule", scopes=_Z, keep=_custom_rule, state="state"),
+    _t("zia.traffic_capture_rules", "Traffic capture rules", "traffic_capture", "list_rules", "get_rule", "add_rule", "update_rule",
+       "delete_rule", scopes=_Z, keep=_custom_rule, state="state"),
     # ── ZIA: settings (one object each) ──
     _t("zia.advanced_settings", "Advanced settings", "advanced_settings", None, "get_advanced_settings", None, "update_advanced_settings",
        singleton=True, level="update", scopes=_Z),
@@ -285,18 +419,35 @@ TYPES: List[Dict[str, Any]] = [
     _t("zia.auth_settings", "Authentication settings", "authentication_settings", None, "get_authentication_settings", singleton=True,
        level="read", scopes=_Z, why="sign-in settings are never changed from here"),
     # ── ZIA: tenant-bound, identity and reference lists (read only) ──
+    _t("zia.zpa_gateways", "ZPA gateways", "zpa_gateway", "list_gateways", level="read", scopes=_Z,
+       why="a ZPA gateway names the tenant's own ZPA server groups; forwarding rules find it by name"),
+    _t("zia.proxy_gateways", "Proxy gateways", "proxies", "list_proxy_gateways", level="read", scopes=_Z,
+       why="a gateway is set up in the portal; forwarding rules find it by name"),
     _t("zia.vpn_credentials", "VPN credentials", "traffic_vpn_credentials", "list_vpn_credentials", "get_vpn_credential",
        "add_vpn_credential", None, None, scopes=_Z, name="fqdn", level="full", secret_prompt="pre_shared_key", strip=("location", "managed_by"),
        no_delete="a location may depend on it, so a VPN credential is never deleted here",
        why="created only with a pre-shared key you type (the backup never holds one); never updated or deleted here", uses=()),
-    _t("zia.static_ips", "Static IP addresses", "traffic_static_ip", "list_static_ips", level="read", scopes=_Z, name="ip_address",
-       why=_TENANT_BOUND, clone_why="a static IP address belongs to one organisation",
+    _t("zia.static_ips", "Static IP addresses", "traffic_static_ip", "list_static_ips", "get_static_ip", "add_static_ip", None,
+       "delete_static_ip",
+       scopes=_Z, name="ip_address", tenant_bound=True, check="check_static_ip", strip=("city", "managed_by", "last_modification_time"),
+       why=_TENANT_BOUND_OPT, clone_why="a static IP address belongs to one organisation",
+       no_delete="a static IP address is never deleted here (only an Undo removes one this app created)", uses=(),
        manual="add the target's own static IP addresses in the ZIA Admin Portal"),
-    _t("zia.gre_tunnels", "GRE tunnels", "gre_tunnel", "list_gre_tunnels", level="read", scopes=_Z, name="source_ip",
-       why=_TENANT_BOUND, clone_why="a GRE tunnel is bound to the tenant's static IP address",
+    _t("zia.gre_tunnels", "GRE tunnels", "gre_tunnel", "list_gre_tunnels", "get_gre_tunnel", "add_gre_tunnel", None, "delete_gre_tunnel",
+       scopes=_Z,
+       name="source_ip", tenant_bound=True, after=("zia.static_ips",), uses=(),
+       strip=("primary_dest_vip", "secondary_dest_vip", "internal_ip_range", "virtual_ip", "datacenter", "sub_cloud",
+              "private_service_edge", "managed_by", "last_modification_time"),
+       why=_TENANT_BOUND_OPT, clone_why="a GRE tunnel is bound to the tenant's static IP address",
+       no_delete="a GRE tunnel is never deleted here (only an Undo removes one this app created)",
        manual="set up GRE tunnels from the target's own static IP addresses"),
-    _t("zia.locations", "Locations", "locations", "list_locations", level="read", scopes=_Z, why=_TENANT_BOUND,
+    _t("zia.locations", "Locations", "locations", "list_locations", "get_location", "add_location", None, "delete_location", scopes=_Z,
+       tenant_bound=True, after=("zia.static_ips", "zia.gre_tunnels"), uses=("vpn_credentials",), exclude_if=_sub_location,
+       clone_exclude_if=_location_clone_why, why=_TENANT_BOUND_OPT,
+       strip=("child_count", "static_location_groups", "dynamic_location_groups", "dynamiclocation_groups", "match_in_child",
+              "sub_loc_acc_ids", "city_name", "state_name", "country_name", "continent_code"),
        clone_why="a location is bound to the tenant's IP addresses and VPN credentials",
+       no_delete="a location is never deleted here (only an Undo removes one this app created)",
        manual="add the target's locations and sub-locations with their own IP addresses and VPN credentials"),
     _t("zia.location_groups", "Location groups", "locations", "list_location_groups", level="read", scopes=_Z, why=_TENANT_BOUND),
     _t("zia.groups", "Groups", "user_management", "list_groups", level="read", scopes=_Z, why=_ID_READ),
@@ -306,12 +457,12 @@ TYPES: List[Dict[str, Any]] = [
        why=_ADMIN),
     _t("zia.isolation_profiles", "Browser isolation profiles", "cloud_browser_isolation", "list_isolation_profiles", level="read", scopes=_Z,
        why="isolation profiles are made in the Cloud Browser Isolation portal"),
-    _t("zia.cloud_app_instances", "Cloud application instances", "cloud_app_instances", "list_cloud_app_instances", level="read", scopes=_Z,
-       why="instances name the customer's own SaaS tenants"),
+    _t("zia.cloud_app_instances", "Cloud application instances", "cloud_app_instances", "list_cloud_app_instances",
+       "get_cloud_app_instances", "add_cloud_app_instances", "update_cloud_app_instances", "delete_cloud_app_instances", scopes=_Z, uses=()),
     _t("zia.tenancy_restriction_profiles", "Tenancy restriction profiles", "tenancy_restriction_profile", "list_restriction_profile",
-       level="read", scopes=_Z, why="restriction profiles name the customer's own SaaS tenants"),
-    _t("zia.workload_groups", "Workload groups", "workload_groups", "list_groups", level="read", scopes=_Z,
-       why="workload groups describe the tenant's own cloud workloads"),
+       "get_restriction_profile", "add_restriction_profile", "update_restriction_profile", "delete_restriction_profile", scopes=_Z, uses=()),
+    _t("zia.workload_groups", "Workload groups", "workload_groups", "list_groups", "get_group", "add_group", "update_group", "delete_group",
+       scopes=_Z, uses=()),
     _t("zia.pac_files", "PAC files", "pac_files", "list_pac_files", level="read", scopes=_WEB,
        why="PAC files are versioned and verified in the portal"),
     _t("zia.nss_feeds", "Cloud NSS feeds", "cloud_nss", "list_nss_feed", level="read", scopes=_Z,
@@ -338,17 +489,36 @@ TYPES: List[Dict[str, Any]] = [
        scopes=("zpa",), state="enabled", zpa_paged=True, strip=("applications",), uses=()),
     _t("zpa.application_segments", "Application segments", "application_segment", "list_segments", "get_segment", "add_segment",
        "update_segment", "delete_segment", scopes=("zpa",), state="enabled", zpa_paged=True, exclude_if=_zpa_special_segment,
-       strip=("tcp_port_range", "udp_port_range", "tcp_ports", "udp_ports", "segment_group_name", "clientless_apps", "pra_apps",
-              "inspection_apps", "common_apps_dto", "shared_micro_tenant_details", "shared_microtenant_details"), uses=("segment_group_id", "server_groups")),
+       strip=_SEG_STRIP + ("clientless_apps", "pra_apps", "inspection_apps", "common_apps_dto"), uses=("segment_group_id", "server_groups")),
+    # Browser Access, PRA and inspection segments are the same /application resource with their applications: each kind is
+    # its own type here, so a create sends the applications the way the SDK's own call for that kind takes them, and an
+    # update sends the target's applications back as read (the approach of ops_zpa_fields).
+    _t("zpa.ba_segments", "Browser Access segments", "app_segments_ba", "list_segments_ba", "get_segment_ba", "add_segment_ba",
+       "update_segment_ba", "delete_segment_ba", scopes=("zpa",), state="enabled", zpa_paged=True, keep=_ba_segment, strip=_SEG_STRIP,
+       uses=("segment_group_id", "server_groups"), nested_refs={"clientless_apps": {"certificate_id": "zpa.certificates"}},
+       keep_nested=("clientless_apps",), app_kind="ba"),
+    _t("zpa.pra_segments", "Privileged Remote Access segments", "app_segments_pra", "list_segments_pra", "get_segment_pra",
+       "add_segment_pra", "update_segment_pra", "delete_segment_pra", scopes=("zpa",), state="enabled", zpa_paged=True, keep=_pra_segment,
+       strip=_SEG_STRIP, uses=("segment_group_id", "server_groups"), keep_nested=("pra_apps", "common_apps_dto"), app_kind="pra"),
+    _t("zpa.inspection_segments", "Inspection segments", "app_segments_inspection", "list_segment_inspection", "get_segment_inspection",
+       "add_segment_inspection", "update_segment_inspection", "delete_segment_inspection", scopes=("zpa",), state="enabled",
+       zpa_paged=True, keep=_inspection_segment, strip=_SEG_STRIP, uses=("segment_group_id", "server_groups"),
+       nested_refs={"inspection_apps": {"certificate_id": "zpa.certificates"}}, keep_nested=("inspection_apps", "common_apps_dto"),
+       app_kind="inspection"),
     _t("zpa.connectors", "App Connectors", "app_connectors", "list_connectors", level="read", scopes=("zpa",), zpa_paged=True,
        why="an App Connector enrols itself with a provisioning key; it is never created here"),
     _t("zpa.service_edge_groups", "Service Edge groups", "service_edge_group", "list_service_edge_groups", level="read", scopes=("zpa",),
        zpa_paged=True, why="Private Service Edges are enrolled on the customer's own hosts"),
+    _t("zpa.service_edges", "Private Service Edges", "service_edges", "list_service_edges", level="read", scopes=("zpa",), zpa_paged=True,
+       why="a Private Service Edge enrols itself on the customer's own host; switch one on or off in Bulk changes"),
     _t("zpa.provisioning_keys", "Provisioning keys", "provisioning", "list_provisioning_keys", level="read", scopes=("zpa",),
        q={"__arg": "connector"}, why="a provisioning key is a secret: the backup keeps only whether one is set"),
     _t("zpa.idps", "Identity providers", "idp", "list_idps", level="read", scopes=("zpa",), zpa_paged=True, why=_ID_READ),
     _t("zpa.saml_attributes", "SAML attributes", "saml_attributes", "list_saml_attributes", level="read", scopes=("zpa",), zpa_paged=True,
        why=_ID_READ),
+    _t("zpa.scim_attributes", "SCIM attributes", "scim_attributes", "list_scim_attributes", level="read", scopes=("zpa",), per_idp=True,
+       why=_ID_READ),
+    _t("zpa.scim_groups", "SCIM groups", "scim_groups", "list_scim_groups", level="read", scopes=("zpa",), per_idp=True, why=_ID_READ),
     _t("zpa.posture_profiles", "Posture profiles", "posture_profiles", "list_posture_profiles", level="read", scopes=("zpa",),
        zpa_paged=True, why="posture profiles are made in the Client Connector Portal"),
     _t("zpa.trusted_networks", "ZPA trusted networks", "trusted_networks", "list_trusted_networks", level="read", scopes=("zpa",),
@@ -356,25 +526,44 @@ TYPES: List[Dict[str, Any]] = [
     _t("zpa.machine_groups", "Machine groups", "machine_groups", "list_machine_groups", level="read", scopes=("zpa",), zpa_paged=True,
        why="machine groups are made with machine tunnels"),
     _t("zpa.certificates", "Browser Access certificates", "certificates", "list_issued_certificates", level="read", scopes=("zpa",),
-       zpa_paged=True, why="a certificate's private key never leaves ZPA"),
+       zpa_paged=True, project=_metadata_row, why="a certificate's private key never leaves ZPA"),
+    _t("zpa.enrollment_certificates", "Enrollment certificates (metadata)", "enrollment_certificates", "list_enrolment", level="read",
+       scopes=("zpa",), zpa_paged=True, project=_metadata_row,
+       why="a certificate's private key never leaves ZPA: the backup keeps its name, issuer, subject and expiry only"),
     _t("zpa.lss_configs", "Log streaming (LSS)", "lss", "list_configs", level="read", scopes=("zpa",), zpa_paged=True,
        why="log streaming names the customer's own receivers"),
+    _t("zpa.user_portals", "User portals", "user_portal_controller", "list_user_portals", level="read", scopes=("zpa",), zpa_paged=True,
+       why="a user portal is bound to the customer's own domain and certificate"),
     _t("zpa.pra_portals", "PRA portals", "pra_portal", "list_portals", level="read", scopes=("zpa",), zpa_paged=True,
        why="a portal is bound to the customer's own certificate and domain"),
     _t("zpa.pra_consoles", "PRA consoles", "pra_console", "list_consoles", level="read", scopes=("zpa",), zpa_paged=True,
        why="consoles follow their PRA segments"),
+    _t("zpa.pra_credentials", "PRA credentials (metadata)", "pra_credential", "list_credentials", level="read", scopes=("zpa",),
+       zpa_paged=True, project=_metadata_row,
+       why="a credential's secret never leaves ZPA: the backup keeps its name, type and user name only"),
+    _t("zpa.pra_credential_pools", "PRA credential pools", "pra_credential_pool", "list_credential_pool", level="read", scopes=("zpa",),
+       zpa_paged=True, why="a pool groups credentials whose secrets never leave ZPA"),
+    _t("zpa.isolation_profiles", "Isolation profiles (ZPA)", "cbi_zpa_profile", "list_isolation_profiles", level="read", scopes=("zpa",),
+       why="isolation profiles are made in the Cloud Browser Isolation portal; isolation rules find them by name"),
+    _t("zpa.inspection_profiles", "Inspection profiles", "app_protection", "list_profiles", level="read", scopes=("zpa",), zpa_paged=True,
+       why="an inspection profile is built with its controls in the portal; inspection rules find it by name"),
     _t("zpa.microtenants", "Microtenants", "microtenants", "list_microtenants", level="read", scopes=("zpa",), zpa_paged=True,
        why="microtenants are arranged with Zscaler"),
-    _t("zpa.access_rules", "Access policy rules", "policies", "list_rules", level="read", scopes=("zpa",), zpa_paged=True,
-       q={"__arg": "access"}, why=_ZPA_POLICY),
-    _t("zpa.timeout_rules", "Timeout policy rules", "policies", "list_rules", level="read", scopes=("zpa",), zpa_paged=True,
-       q={"__arg": "timeout"}, why=_ZPA_POLICY),
-    _t("zpa.forwarding_rules", "Client forwarding policy rules", "policies", "list_rules", level="read", scopes=("zpa",), zpa_paged=True,
-       q={"__arg": "client_forwarding"}, why=_ZPA_POLICY),
-    _t("zpa.inspection_rules", "Inspection policy rules", "policies", "list_rules", level="read", scopes=("zpa",), zpa_paged=True,
-       q={"__arg": "inspection"}, why=_ZPA_POLICY),
-    _t("zpa.isolation_rules", "Isolation policy rules", "policies", "list_rules", level="read", scopes=("zpa",), zpa_paged=True,
-       q={"__arg": "isolation"}, why=_ZPA_POLICY),
+    # Policy rules. Conditions are sent back block by block (operator, negated, every operand), each operand's
+    # object remapped by name in another tenant. The v1 calls take the blocks as dicts and copy them as they are
+    # (policies._create_conditions_v1); the _v2 calls take tuples, so a rule is written through one only when
+    # the SDK's own _create_conditions_v2 rebuilds its blocks exactly (else it is left out with the reason).
+    _zrule("zpa.access_rules", "Access policy rules", "access", "add_access_rule", "update_access_rule"),
+    _zrule("zpa.timeout_rules", "Timeout policy rules", "timeout", "add_timeout_rule", "update_timeout_rule"),
+    _zrule("zpa.forwarding_rules", "Client forwarding policy rules", "client_forwarding", "add_client_forwarding_rule",
+           "update_client_forwarding_rule"),
+    _zrule("zpa.inspection_rules", "Inspection policy rules", "inspection", "add_app_protection_rule", "update_app_protection_rule"),
+    _zrule("zpa.isolation_rules", "Isolation policy rules", "isolation", "add_isolation_rule", "update_isolation_rule"),
+    _zrule("zpa.redirection_rules", "Redirection policy rules", "redirection", "add_redirection_rule_v2", "update_redirection_rule_v2", v2=True),
+    _zrule("zpa.credential_rules", "Privileged credential policy rules", "credential", "add_privileged_credential_rule_v2",
+           "update_privileged_credential_rule_v2", v2=True),
+    _zrule("zpa.capabilities_rules", "Privileged capabilities policy rules", "capabilities", "add_capabilities_rule_v2",
+           "update_capabilities_rule_v2", v2=True),
     # ── Client Connector ──
     _t("zcc.trusted_networks", "Trusted networks", "trusted_networks", "list_by_company", None, "add_trusted_network",
        "update_trusted_network", "delete_trusted_network", scopes=("zcc",), name="network_name", upd_body=True, uses=()),
@@ -387,12 +576,33 @@ TYPES: List[Dict[str, Any]] = [
        level="update", scopes=("zcc",)),
     _t("zcc.device_cleanup", "Device cleanup settings", "devices", None, "get_device_cleanup_info", None, "update_device_cleanup_info",
        singleton=True, level="update", scopes=("zcc",)),
-    _t("zcc.app_profiles", "App profiles", "web_policy", "list_by_company", level="read", scopes=("zcc",),
-       why="an app profile carries passwords and a policy token the backup never holds; build one in Bulk changes → Build new"),
-    _t("zcc.zpa_entitlements", "ZPA entitlements", "entitlements", None, "get_zpa_group_entitlements", singleton=True, level="read",
-       scopes=("zcc",), why="the SDK's entitlement update takes no settings"),
-    _t("zcc.zdx_entitlements", "ZDX entitlements", "entitlements", None, "get_zdx_group_entitlements", singleton=True, level="read",
-       scopes=("zcc",), why="the SDK's entitlement update takes no settings"),
+    _t("zcc.app_profiles", "App profiles", "web_policy", "list_by_company", None, None, "web_policy_edit", None, scopes=("zcc",),
+       level="update", upd_body=True, uses=(),
+       why="updated only, never created or deleted here; its passwords and policy token are never read back or sent (an update "
+           "leaves them as they are: assumed)",
+       clone_why="an app profile names the tenant's own user groups, device groups and forwarding profile by id"),
+    _t("zcc.zpa_entitlements", "ZPA entitlements", "entitlements", None, "get_zpa_group_entitlements", None, "raw", singleton=True,
+       level="update", scopes=("zcc",), raw_zcc="/updateZpaGroupEntitlement",
+       why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)",
+       clone_why="entitlements name the tenant's own user and device groups"),
+    _t("zcc.zdx_entitlements", "ZDX entitlements", "entitlements", None, "get_zdx_group_entitlements", None, "raw", singleton=True,
+       level="update", scopes=("zcc",), raw_zcc="/updateZdxGroupEntitlement",
+       why="the SDK's entitlement update sends no body: restored with a PUT of the entitlement (assumed body, as Bulk changes does)",
+       clone_why="entitlements name the tenant's own user and device groups"),
+    _t("zcc.application_profiles", "Application profiles (newer API)", "application_profiles", "get_application_profiles", level="read",
+       scopes=("zcc",), q={"page_size": "1000"},
+       why="the same app profiles through the newer API, compared only; restored as App profiles"),
+    _t("zcc.custom_ip_apps", "Custom IP-based apps", "custom_ip_base_apps", "get_custom_ip_base_apps", level="read", scopes=("zcc",),
+       why="the SDK can only read them: change them in Bulk changes → Client Connector bypass apps"),
+    _t("zcc.predefined_ip_apps", "Predefined IP-based apps", "predefined_ip_based_apps", "get_predefined_ip_based_apps", level="read",
+       scopes=("zcc",), why="predefined by Zscaler"),
+    _t("zcc.process_apps", "Process-based apps", "process_based_apps", "get_process_based_apps", level="read", scopes=("zcc",),
+       why="the SDK can only read them"),
+    _t("zcc.admin_users", "Client Connector admin users", "admin_user", "list_admin_users", level="read", scopes=("zcc",), name="user_name",
+       why=_ADMIN),
+    _t("zcc.devices", "Enrolled devices (no personal data)", "devices", "list_devices", level="read", scopes=("zcc",),
+       q={"page_size": "5000"}, project=_device_row,
+       why="an inventory, kept without user names, host names, addresses or hardware ids; never written"),
     _t("zcc.web_app_services", "Web app services", "web_app_service", "list_by_company", level="read", scopes=("zcc",),
        why="the SDK can only list them"),
     _t("zcc.company_info", "Company information", "company", None, "get_company_info", singleton=True, level="read", scopes=("zcc",),
@@ -403,11 +613,8 @@ BY_KEY: Dict[str, Dict[str, Any]] = {t["key"]: t for t in TYPES}
 # What the other tools' lists name that is deliberately not backed up here.
 NOT_COVERED = [
     ("zia.users", "ZIA users", "identity comes from the identity provider, and a backup of every user is personal data"),
-    ("zia.proxy_gateways", "Proxy gateways", "a gateway is set up in the portal (a manual step the clone report names)"),
-    ("zpa.scim_groups", "SCIM groups", "identity comes from the identity provider"),
-    ("zpa.enrollment_certs", "Enrollment certificates", "a certificate's private key never leaves ZPA"),
-    ("zcc.devices", "Client Connector devices", "an inventory of devices and people, not configuration"),
-    ("zcc.ip_apps", "IP-based and process-based app bypasses", "the SDK can read them one by one only"),
+    ("zia.sub_locations", "Sub-locations", "listed per location only; a clone report names them as a manual step"),
+    ("zpa.scim_users", "SCIM users", "identity comes from the identity provider, and a backup of every user is personal data"),
 ]
 
 
@@ -415,8 +622,10 @@ def types_for(product: str) -> List[Dict[str, Any]]:
     return [t for t in TYPES if t["product"] == product]
 
 
-def writable(t: Dict[str, Any]) -> bool:
-    return t["level"] in ("full", "update")
+def writable(t: Dict[str, Any], tenant_bound: bool = False) -> bool:
+    """Can a restore write this type? A tenant-bound type (locations, static
+    IPs, GRE tunnels) only in the separately confirmed mode that includes them."""
+    return t["level"] in ("full", "update") and (tenant_bound or not t["tenant_bound"])
 
 
 def allowed(t: Dict[str, Any], scope: Dict[str, Any]) -> bool:
@@ -432,7 +641,7 @@ def coverage() -> Dict[str, Any]:
     out = {}
     for p in PRODUCTS:
         out[p] = [{"key": t["key"], "label": t["label"], "level": t["level"], "why": t["why"], "clone": not t["clone_why"],
-                   "clone_why": t["clone_why"], "singleton": t["singleton"]} for t in types_for(p)]
+                   "clone_why": t["clone_why"], "singleton": t["singleton"], "tenant_bound": t["tenant_bound"]} for t in types_for(p)]
     return {"products": out, "not_covered": [{"key": k, "label": lab, "why": w} for k, lab, w in NOT_COVERED],
             "volatile": WORDS_VOLATILE}
 
@@ -553,8 +762,39 @@ def _list_zpa(fn: Callable[..., Any], args: Tuple[Any, ...], q: Dict[str, Any], 
 
 
 def read_type(client: Any, t: Dict[str, Any], cancel: Any = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """Every object of one type as plain snake_case dicts, secrets masked.
+    """Every object of one type as plain snake_case dicts, secrets masked
+    (and, for a type with a projection, only the fields it keeps).
     (rows, error). Read-only."""
+    rows, err = _read_type(client, t, cancel)
+    if t["project"] is not None:
+        rows = [t["project"](r) for r in rows]
+    return rows, err
+
+
+def _read_per_idp(client: Any, t: Dict[str, Any], fn: Callable[..., Any], cancel: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """A list the SDK serves per identity provider (SCIM attributes and
+    groups): the identity providers first, then each one's list, every row
+    tagged with its identity provider."""
+    idps, err = _read_type(client, BY_KEY["zpa.idps"], cancel)
+    if err and not idps:
+        return [], f"the identity providers could not be read ({_text(err, 120)})"
+    rows: List[Dict[str, Any]] = []
+    for idp in idps:
+        if _stopped(cancel) or len(rows) > MAX_ROWS_PER_TYPE:
+            break
+        iid = rid(idp)
+        if not iid:
+            continue
+        got, gerr = _list_zpa(fn, (iid,), dict(t["q"] or {}), cancel)
+        if gerr and not got:
+            continue   # an identity provider without SCIM answers with an error: nothing of it
+        for r in got:
+            r.setdefault("idp_id", iid)
+        rows.extend(got)
+    return rows, None
+
+
+def _read_type(client: Any, t: Dict[str, Any], cancel: Any = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     svc, err = _service(client, t)
     if err:
         return [], err
@@ -595,6 +835,8 @@ def read_type(client: Any, t: Dict[str, Any], cancel: Any = None) -> Tuple[List[
                 for r in got:
                     r["type"] = str(r.get("type") or rt)
                 rows.extend(got)
+        elif t["per_idp"]:
+            rows, err = _read_per_idp(client, t, fn, cancel)
         elif t["zpa_paged"]:
             rows, err = _list_zpa(fn, args, q, cancel)
         else:
@@ -624,11 +866,19 @@ def get_one(client: Any, t: Dict[str, Any], oid: Any, rule_type: str = "") -> Tu
         return hit, None if hit else "not found"
     try:
         fn = getattr(svc, t["get"])
-        row, err = _one(fn(rule_type, oid) if t["per_type"] else fn(oid))
+        if t["per_type"]:
+            ret = fn(rule_type, oid)
+        elif t["zpa_policy"]:
+            ret = fn(t["zpa_policy"], oid)
+        else:
+            ret = fn(oid)
+        row, err = _one(ret)
     except Exception as e:  # noqa: BLE001
         return None, f"{type(e).__name__}: {str(e)[:200]}"
     if row is not None and t["per_type"]:
         row["type"] = str(row.get("type") or rule_type)
+    if row is not None and t["project"] is not None:
+        row = t["project"](row)
     return (mask(row) if row is not None else None), err
 
 
@@ -638,7 +888,7 @@ def write_call(root: Any, key: str, op: str, oid: Any = None, body: Optional[Dic
     (fn, args, kwargs, error). Used by pack_ops (create / update / delete),
     which runs it with its retries, rate-limit handling, Stop and audit."""
     t = BY_KEY.get(key)
-    if t is None or not writable(t):
+    if t is None or not writable(t, tenant_bound=True):
         return None, (), {}, f"'{str(key)[:60]}' is not an object type a restore writes"
     if root is None:
         return None, (), {}, f"this sign-in has no {PRODUCT_LABELS[t['product']]} service"
@@ -648,6 +898,8 @@ def write_call(root: Any, key: str, op: str, oid: Any = None, body: Optional[Dic
         method = t["upd"]
     if not method:
         return None, (), {}, f"{t['label']} cannot be {op}d here"
+    if method == "raw" and t["raw_zcc"]:
+        return _zcc_put, (root, t["raw_zcc"], body), {}, None
     if method == "raw":
         import pack_channels as pc
         if op == "create":
@@ -659,6 +911,15 @@ def write_call(root: Any, key: str, op: str, oid: Any = None, body: Optional[Dic
     fn = getattr(svc, method, None) if svc is not None else None
     if not callable(fn):
         return None, (), {}, f"the installed zscaler-sdk-python has no {t['svc']}.{method}"
+    if t["zpa_policy"]:
+        if op == "delete":
+            return fn, (t["zpa_policy"], oid), {}, None
+        kw, err = zpa_rule_kwargs(t, body)
+        if err:
+            return None, (), {}, err
+        return (fn, (oid,), kw, None) if op == "update" else (fn, (), kw, None)
+    if t["app_kind"] and op == "create":
+        body = segment_create_body(t, body)
     lead: Tuple[Any, ...] = (rule_type or str(body.pop("type", "") or ""),) if t["per_type"] else ()
     if op == "delete":
         return fn, lead + (oid,), {}, None
@@ -670,6 +931,245 @@ def write_call(root: Any, key: str, op: str, oid: Any = None, body: Optional[Dic
         return fn, lead + (oid,), body, None
     args = tuple(body.pop(k, None) for k in t["add_pos"])
     return fn, lead + args, body, None
+
+
+# ---------------------------------------------------------------------------
+# Writers that need more than "the fields as read" (verified against
+# zscaler-sdk-python 1.11.3: zpa/policies.py, zpa/app_segments_*.py)
+# ---------------------------------------------------------------------------
+
+def _camel(k: str) -> str:
+    head, *rest = str(k).split("_")
+    return head + "".join(x[:1].upper() + x[1:] for x in rest)
+
+
+def _camel_keys(v: Any) -> Any:
+    if isinstance(v, dict):
+        return {_camel(k): _camel_keys(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_camel_keys(x) for x in v]
+    return v
+
+
+def _zcc_put(root: Any, path: str, body: Dict[str, Any]) -> Tuple[Any, Any, Any]:
+    """PUT a Client Connector entitlement as read, through the signed-in
+    client's request executor (the SDK's update_*_group_entitlement sends an
+    empty body; Bulk changes → ZPA and ZDX entitlements makes the same PUT).
+    Keys go in camel case as the GET answers them (assumed)."""
+    ex = getattr(getattr(root, "entitlements", None), "_request_executor", None)
+    if ex is None:
+        return None, None, "this sign-in has no Client Connector request executor"
+    try:
+        made = ex.create_request("PUT", "/zcc/papi/public/v1" + path, _camel_keys(dict(body)), {}, params={})
+        req, err = (made[0], made[1]) if isinstance(made, tuple) else (made, None)
+        if err:
+            return None, None, err
+        got = ex.execute(req)
+        resp, err = (got[0], got[1]) if isinstance(got, tuple) else (got, None)
+        if err:
+            return None, resp, err
+    except Exception as e:  # noqa: BLE001 - reported as the write's error
+        return None, None, f"{type(e).__name__}: {str(e)[:200]}"
+    data = resp.get_body() if resp is not None and hasattr(resp, "get_body") else resp
+    return (data if isinstance(data, dict) else {}), resp, None
+
+
+def condition_blocks(conds: Any) -> List[Dict[str, Any]]:
+    """A ZPA rule's conditions as plain blocks: {operator, negated, operands:
+    [{object_type, lhs, rhs, idp_id?}]} (read form, snake or camel case)."""
+    out = []
+    for b in conds or []:
+        if not isinstance(b, dict):
+            continue
+        ops = []
+        for o in b.get("operands") or []:
+            if not isinstance(o, dict):
+                continue
+            x = {"object_type": str(o.get("object_type") or o.get("objectType") or "").upper(),
+                 "lhs": "" if o.get("lhs") is None else str(o.get("lhs")), "rhs": "" if o.get("rhs") is None else str(o.get("rhs"))}
+            idp = o.get("idp_id", o.get("idpId"))
+            if idp not in (None, "", "0"):
+                x["idp_id"] = str(idp)
+            ops.append(x)
+        out.append({"operator": str(b.get("operator") or "OR").upper(), "negated": _truthy(b.get("negated")), "operands": ops})
+    return out
+
+
+def condition_canon(conds: Any) -> List[Any]:
+    """The comparable form of a ZPA rule's conditions (order of blocks and
+    operands does not matter; ids and display names are left out)."""
+    blocks = []
+    for b in condition_blocks(conds):
+        ops = sorted(canonical(o) for o in b["operands"])
+        blocks.append(canonical({"operator": b["operator"] if len(ops) > 1 else "OR", "negated": b["negated"], "operands": ops}))
+    return sorted(blocks)
+
+
+def _v1_blocks(conds: Any) -> List[Dict[str, Any]]:
+    """Blocks as the SDK's v1 calls take them (camel case objectType; the
+    template copies operator, negated and each operand's lhs, rhs, idp_id)."""
+    out = []
+    for b in condition_blocks(conds):
+        ops = []
+        for o in b["operands"]:
+            x = {"objectType": o["object_type"], "lhs": o["lhs"], "rhs": o["rhs"]}
+            if o.get("idp_id"):
+                x["idp_id"] = o["idp_id"]
+            ops.append(x)
+        out.append({"operator": b["operator"], "negated": b["negated"], "operands": ops})
+    return out
+
+
+_V2_ENTRY = ("POSTURE", "TRUSTED_NETWORK", "COUNTRY_CODE", "PLATFORM", "RISK_FACTOR_TYPE", "SAML", "SCIM", "SCIM_GROUP")
+_V2_SINGLE = ("CONSOLE", "LOCATION", "MACHINE_GRP", "CLIENT_TYPE", "USER_PORTAL")
+
+
+def v2_conditions(conds: Any) -> Tuple[Optional[List[Any]], Optional[str]]:
+    """A rule's conditions as the tuples the SDK's _v2 calls take, or the
+    reason they cannot be sent exactly. Checked by running the SDK's own
+    _create_conditions_v2 on the tuples and comparing its blocks with the
+    rule's: a negated block, an operand with an identity provider, or blocks
+    the SDK would merge differently are refused (nothing is approximated)."""
+    tuples: List[Any] = []
+    for b in condition_blocks(conds):
+        if b["negated"]:
+            return None, "it has a NOT block, which the SDK's v2 call cannot send"
+        types = {o["object_type"] for o in b["operands"]}
+        if any(o.get("idp_id") for o in b["operands"]):
+            return None, "an operand names an identity provider, which the SDK's v2 call cannot send"
+        if types <= {"APP", "APP_GROUP"}:
+            for ty in sorted(types):
+                tuples.append((ty.lower(), [o["rhs"] for o in b["operands"] if o["object_type"] == ty]))
+        elif len(types) == 1 and next(iter(types)) in _V2_SINGLE:
+            ty = next(iter(types))
+            tuples.append((b["operator"], (ty.lower(), [o["rhs"] for o in b["operands"]])))
+        elif len(types) == 1 and next(iter(types)) in _V2_ENTRY:
+            ty = next(iter(types))
+            tuples.append((b["operator"], (ty.lower(), [(o["lhs"], o["rhs"]) for o in b["operands"]])))
+        else:
+            return None, f"a block mixes {', '.join(sorted(types))}, which the SDK's v2 call cannot send as one block"
+    try:
+        from zscaler.zpa.policies import PolicySetControllerAPI
+        built = PolicySetControllerAPI._create_conditions_v2(None, copy.deepcopy(tuples))
+    except Exception as e:  # noqa: BLE001 - not sendable exactly
+        return None, f"the SDK's v2 condition builder refused it ({type(e).__name__})"
+    back = []
+    for blk in built:
+        ops = []
+        for o in blk.get("operands") or []:
+            ty = str(o.get("objectType") or "").upper()
+            for v in o.get("values") or []:
+                ops.append({"object_type": ty, "lhs": "id", "rhs": str(v)})
+            for ev in o.get("entryValues") or []:
+                ops.append({"object_type": ty, "lhs": str(ev.get("lhs")), "rhs": str(ev.get("rhs"))})
+        back.append({"operator": str(blk.get("operator") or "OR").upper(), "negated": False, "operands": ops})
+    if condition_canon(back) != condition_canon(conds):
+        return None, "the SDK's v2 call would group its conditions differently, which could change who it applies to"
+    return tuples, None
+
+
+_CAPS = {"CLIPBOARD_COPY": "clipboard_copy", "CLIPBOARD_PASTE": "clipboard_paste", "FILE_DOWNLOAD": "file_download",
+         "FILE_UPLOAD": "file_upload", "INSPECT_FILE_DOWNLOAD": "inspect_file_download", "INSPECT_FILE_UPLOAD": "inspect_file_upload",
+         "MONITOR_SESSION": "monitor_session", "RECORD_SESSION": "record_session", "SHARE_SESSION": "share_session"}
+
+
+def _ids(v: Any) -> List[str]:
+    return [i for i, _n in ref_items(v)[0]]
+
+
+def zpa_rule_problem(t: Dict[str, Any], row: Dict[str, Any]) -> Optional[str]:
+    """Why this ZPA rule cannot be written exactly through the SDK, or None."""
+    if not t["zpa_policy"]:
+        return None
+    if _truthy(row.get("disabled")):
+        return "it is disabled, and the SDK's add and update calls cannot send a rule's disabled state"
+    if t["v2"]:
+        _tuples, why = v2_conditions(row.get("conditions"))
+        if why:
+            return why
+    if t["zpa_policy"] == "isolation" and not any(o["object_type"] == "CLIENT_TYPE" for b in condition_blocks(row.get("conditions"))
+                                                   for o in b["operands"][:1]):
+        return "it has no client type block, so the SDK's call would add one"
+    if t["zpa_policy"] == "capabilities":
+        caps = (row.get("privileged_capabilities") or {}).get("capabilities") or []
+        if any(str(c).upper() not in _CAPS for c in caps):
+            return "it names a capability the SDK's call cannot send"
+    if t["zpa_policy"] == "credential" and not (_ids(row.get("credential")) or _ids(row.get("credential_pool"))):
+        return "it names neither a credential nor a credential pool"
+    return None
+
+
+def zpa_rule_kwargs(t: Dict[str, Any], body: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+    """The keyword arguments of the SDK call that writes this ZPA rule, from
+    its read form (every reference already an id of the target)."""
+    pol = t["zpa_policy"]
+    why = zpa_rule_problem(t, body)
+    if why:
+        return {}, why
+    kw: Dict[str, Any] = {"name": str(body.get("name") or ""), "description": body.get("description") or ""}
+    if body.get("rule_order") not in (None, ""):
+        kw["rule_order"] = str(body["rule_order"])
+    if t["v2"]:
+        kw["conditions"], _w = v2_conditions(body.get("conditions"))
+    else:
+        kw["conditions"] = _v1_blocks(body.get("conditions"))
+    action = str(body.get("action") or "").upper()
+    if pol == "access":
+        kw.update(action=action or "ALLOW", custom_msg=body.get("custom_msg") or "",
+                  app_connector_group_ids=_ids(body.get("app_connector_groups")), app_server_group_ids=_ids(body.get("app_server_groups")))
+    elif pol == "timeout":
+        kw.update(action=action or "RE_AUTH", custom_msg=body.get("custom_msg") or "")
+        for f in ("reauth_timeout", "reauth_idle_timeout"):
+            if body.get(f) not in (None, ""):
+                kw[f] = body[f]
+    elif pol == "client_forwarding":
+        kw["action"] = action or "INTERCEPT"
+    elif pol == "isolation":
+        kw.update(action=action or "ISOLATE", zpn_isolation_profile_id=(_ids(body.get("zpn_isolation_profile_id")) or [None])[0])
+    elif pol == "inspection":
+        kw.update(action=action or "INSPECT", zpn_inspection_profile_id=(_ids(body.get("zpn_inspection_profile_id")) or [None])[0])
+    elif pol == "redirection":
+        kw.update(action=action or "REDIRECT_DEFAULT", service_edge_group_ids=_ids(body.get("service_edge_groups")))
+    elif pol == "credential":
+        cred, pool = _ids(body.get("credential")), _ids(body.get("credential_pool"))
+        if cred:
+            kw["credential_id"] = cred[0]
+        else:
+            kw["credential_pool_id"] = pool[0]
+    elif pol == "capabilities":
+        caps = [str(c).upper() for c in (body.get("privileged_capabilities") or {}).get("capabilities") or []]
+        kw["privileged_capabilities"] = {_CAPS[c]: True for c in caps}
+    return kw, None
+
+
+_APP_FIELDS = ("name", "description", "domain", "application_port", "application_protocol", "certificate_id", "enabled",
+               "connection_security", "trust_untrusted_cert", "allow_options", "cname", "hidden", "local_domain", "path",
+               "ext_domain", "ext_label", "ext_domain_name", "protocols")
+_APP_LIST = {"ba": "clientless_apps", "pra": "pra_apps", "inspection": "inspection_apps"}
+
+
+def segment_apps(t: Dict[str, Any], row: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """A special segment's applications as read (Browser Access, PRA or inspection)."""
+    got = row.get(_APP_LIST.get(t["app_kind"], "")) or []
+    if not got and t["app_kind"] in ("pra", "inspection"):
+        got = (row.get("common_apps_dto") or {}).get("apps_config") or []
+    return [a for a in got if isinstance(a, dict)]
+
+
+def segment_create_body(t: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    """A special segment as the SDK's add call for its kind takes it: a
+    Browser Access segment's clientless_apps without the source's ids; a PRA
+    or inspection segment's applications as common_apps_dto.apps_config with
+    their app type (app_segments_pra.add_segment_pra adds SECURE_REMOTE_ACCESS
+    when missing; INSPECT for inspection: assumed)."""
+    out = {k: v for k, v in body.items() if k not in ("clientless_apps", "pra_apps", "inspection_apps", "common_apps_dto")}
+    apps = [{k: a[k] for k in _APP_FIELDS if k in a} for a in segment_apps(t, body)]
+    if t["app_kind"] == "ba":
+        out["clientless_apps"] = apps
+    else:
+        kind = "SECURE_REMOTE_ACCESS" if t["app_kind"] == "pra" else "INSPECT"
+        out["common_apps_dto"] = {"apps_config": [dict(a, app_types=[kind]) for a in apps]}
+    return out
 
 
 def capture(client: Any, products: Iterable[str], scope: Dict[str, Any], log: Optional[Callable[[str], None]] = None,
@@ -1070,7 +1570,37 @@ def index(types: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, str]]:
         if t is None:
             continue
         out[k] = {rid(r): name_of(t, r) for r in rows if rid(r)}
+        for f in ALT_KEYS.get(k, ()):
+            for r in rows:
+                if r.get(f) not in (None, ""):
+                    out[k].setdefault(str(r[f]), name_of(t, r))
     return out
+
+
+def operand_names(conds: Any, idx: Dict[str, Dict[str, str]]) -> List[Any]:
+    """The comparable form of a ZPA rule's conditions across tenants: every
+    operand's object by name (what it points at), literals as they are."""
+    def nm(keys: Sequence[str], v: str) -> str:
+        for k in keys:
+            got = (idx.get(k) or {}).get(v)
+            if got:
+                return got
+        return f"#{v}"
+    blocks = []
+    for b in condition_blocks(conds):
+        ops = []
+        for o in b["operands"]:
+            x = dict(o)
+            spec = OPERAND_REFS.get(o["object_type"])
+            if spec:
+                x[spec[0]] = nm(spec[1], o[spec[0]])
+            f = OPERAND_IDP.get(o["object_type"])
+            if f and o.get(f) and not (spec and f == spec[0]):
+                x[f] = nm(("zpa.idps",), str(o[f]))
+            ops.append(canonical(x))
+        ops.sort()
+        blocks.append(canonical({"operator": b["operator"] if len(ops) > 1 else "OR", "negated": b["negated"], "operands": ops}))
+    return sorted(blocks)
 
 
 def ref_items(value: Any) -> Tuple[List[Tuple[str, str]], str]:
@@ -1125,13 +1655,29 @@ def normal(t: Dict[str, Any], row: Dict[str, Any], idx: Dict[str, Dict[str, str]
     for k, v in row.items():
         if k in t["strip"] or _volatile(k, ignore):
             continue
-        if k in refs:
+        if t["conditions"] and k == "conditions":
+            out[k] = operand_names(v, idx)
+        elif k in t["nested_refs"] and isinstance(v, list):
+            out[k] = _norm_value(_nested_names(t, k, v, idx), k, ignore)
+        elif k in refs:
             out[k] = _ref_names(v, refs[k], idx)
         elif t["expr"] and k == t["expr"][0] and isinstance(v, str):
             names = idx.get(t["expr"][1]) or {}
             out[k] = EXPR_ID.sub(lambda m: f"D[{names.get(m.group(1), '#' + m.group(1))}].", v)
         else:
             out[k] = _norm_value(v, k, ignore)
+    return out
+
+
+def _nested_names(t: Dict[str, Any], field: str, items: List[Any], idx: Dict[str, Dict[str, str]]) -> List[Any]:
+    out = []
+    for a in items:
+        if isinstance(a, dict):
+            a = dict(a)
+            for rf, target in t["nested_refs"][field].items():
+                if a.get(rf) not in (None, "", 0, "0"):
+                    a[rf] = _ref_names(a[rf], target, idx)
+        out.append(a)
     return out
 
 
@@ -1222,6 +1768,14 @@ def diff(old: Dict[str, Any], new: Dict[str, Any], *, ignore: Sequence[str] = ()
 # Templates: selected objects, ids removed, names parameterised
 # ---------------------------------------------------------------------------
 
+def templatable(t: Dict[str, Any]) -> bool:
+    """Can objects of this type go into a portable template? Only objects
+    that can be cloned whose references are all named fields (a ZPA rule's
+    conditions and a special segment's applications are not)."""
+    return (t["level"] == "full" and not t["singleton"] and not t["clone_why"] and not t["secret_prompt"] and not t["tenant_bound"]
+            and not t["conditions"] and not t["app_kind"])
+
+
 def _closure(types: Dict[str, List[Dict[str, Any]]], picks: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     """The picked objects (type, id) and every writable object they refer
     to, transitively."""
@@ -1235,7 +1789,7 @@ def _closure(types: Dict[str, List[Dict[str, Any]]], picks: List[Tuple[str, str]
         t = BY_KEY[k]
         for f, target in refs_of(t).items():
             tt = BY_KEY.get(target)
-            if tt is None or tt["level"] != "full" or f not in by_id[(k, i)]:
+            if tt is None or not templatable(tt) or f not in by_id[(k, i)]:
                 continue
             for ref_id, _n in ref_items(by_id[(k, i)][f])[0]:
                 ref = by_id.get((target, ref_id))
@@ -1267,7 +1821,7 @@ def make_template(doc: Dict[str, Any], picks: Sequence[Dict[str, Any]], *, name:
             continue
         k, n = str(p.get("type") or ""), str(p.get("name") or "")
         t = BY_KEY.get(k)
-        if t is None or t["level"] != "full" or t["singleton"] or t["clone_why"] or t["secret_prompt"]:
+        if t is None or not templatable(t):
             raise BackupError(f"{_text(k, 60)} cannot go into a template: only objects that can be cloned can.")
         hit = next((r for r in types.get(k) or [] if name_of(t, r) == n), None)
         if hit is None:
@@ -1357,7 +1911,7 @@ def parse_template(raw: Any) -> Dict[str, Any]:
     total = 0
     for k, rows in objs.items():
         t = BY_KEY.get(k)
-        if t is None or t["level"] != "full" or t["singleton"] or t["clone_why"] or t["secret_prompt"]:
+        if t is None or not templatable(t):
             raise BackupError(f"The template names an object type that templates cannot carry ({_text(k, 40)}); it was not opened.")
         if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
             raise BackupError("The template's objects are not in the expected form; it was not opened.")
@@ -1650,7 +2204,8 @@ def object_hash(t: Dict[str, Any], row: Dict[str, Any]) -> str:
     """The hash an object is tracked by: its comparable form (no ids, change
     times or counters; references by id), so an unchanged object keeps it."""
     refs = refs_of(t)
-    form = {k: (sorted(i for i, _n in ref_items(v)[0]) if k in refs else _norm_value(v, k, ()))
+    form = {k: (condition_canon(v) if t["conditions"] and k == "conditions" else
+                sorted(i for i, _n in ref_items(v)[0]) if k in refs else _norm_value(v, k, ()))
             for k, v in row.items() if k not in t["strip"] and not _volatile(k)}
     return digest(form)[:32]
 
