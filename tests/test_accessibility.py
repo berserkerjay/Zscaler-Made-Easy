@@ -410,7 +410,7 @@ def _browser_routes():
 BROWSER_ROUTES = _browser_routes()
 BROWSER_THEMES = ("dark", "light")
 # Pages that start a job or a read: their progress and result are announced.
-JOB_PAGES = {"/report/audit", "/report/browser", "/report/device-posture", "/report/digest", "/report/fleet", "/report/insights",
+JOB_PAGES = {"/report/audit", "/report/browser", "/report/ztw", "/report/device-posture", "/report/digest", "/report/fleet", "/report/insights",
              "/report/live", "/report/logs", "/report/operations", "/report/path", "/report/pov", "/report/shadow",
              "/report/sslcoverage", "/report/zpa", "/report/exports", "/report/self-heal", "/report/posture", "/simple"}
 
@@ -605,6 +605,7 @@ RESULT_STATES = [
     ("ssl-coverage", "/report/sslcoverage", "document.getElementById('scRun').click() === undefined", "!!document.querySelector('#scBody table, main table')"),
     ("device-posture", "/report/device-posture", "document.getElementById('dvRun').click() === undefined", "!document.getElementById('expXlsx').hidden"),
     ("browser-security", "/report/browser", "document.getElementById('bwRun').click() === undefined", "!document.getElementById('expXlsx').hidden"),
+    ("cloud-connector", "/report/ztw", "document.getElementById('ztRun').click() === undefined", "!document.getElementById('expXlsx').hidden"),
     ("fleet", "/report/fleet", "document.getElementById('zfRun').click() === undefined", "!!document.querySelector('main table')"),
     ("operations-objects", "/report/operations", "document.getElementById('opRead').click() === undefined", "document.querySelectorAll('#opObjects input[type=checkbox]').length > 0"),
 ]
