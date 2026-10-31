@@ -151,7 +151,7 @@
       <div id="zfOut"></div>
       <section class="zf-sec" id="zfDns" aria-labelledby="zfDnsH">
         <h2 id="zfDnsH">DNS records for client hostnames</h2>
-        <p class="zf-dim">For ZPA client-to-client access: one DNS name per enrolled device (<code>&lt;hostname&gt;.&lt;domain&gt;</code>), sent to the client-to-client resolver you name. Built from the fleet read above, so read the fleet first. You get the text to download for Unbound, BIND (forward zones and a zone file) and a CSV of every name: the app sends nothing to any DNS server and applies nothing. Hostnames become valid DNS labels (letters, digits and '-'); renames, duplicates and collisions are listed.</p>
+        <p class="zf-dim">For ZPA client-to-client access: one DNS name per enrolled device (<code>&lt;hostname&gt;.&lt;domain&gt;</code>), sent to the client-to-client resolver you name. Built from the fleet read above, so read the fleet first. You get the text to download for Unbound, BIND (forward zones and a zone file), Windows DNS Server (PowerShell or dnscmd conditional forwarders) and a CSV of every name: the app sends nothing to any DNS server and applies nothing. Hostnames become valid DNS labels (letters, digits and '-'); renames, duplicates and collisions are listed.</p>
         <div class="zf-dns-grid">
           <div class="zf-dns-cell"><label for="zfDnsDomain">Domain <input type="text" id="zfDnsDomain" maxlength="240" autocomplete="off" spellcheck="false" placeholder="corp.example.com"></label></div>
           <div class="zf-dns-cell"><label for="zfDnsResolvers">Resolver addresses <input type="text" id="zfDnsResolvers" maxlength="400" autocomplete="off" spellcheck="false" placeholder="10.0.0.12, 10.0.0.13"></label></div>
@@ -179,6 +179,8 @@
             <button type="button" class="rp-btn" id="zfDnsUnbound" disabled aria-disabled="true">Unbound</button>
             <button type="button" class="rp-btn" id="zfDnsNamed" disabled aria-disabled="true">BIND named.conf</button>
             <button type="button" class="rp-btn" id="zfDnsZone" disabled aria-disabled="true">BIND zone file</button>
+            <button type="button" class="rp-btn" id="zfDnsWinPs" disabled aria-disabled="true">Windows PowerShell</button>
+            <button type="button" class="rp-btn" id="zfDnsWinCmd" disabled aria-disabled="true">Windows dnscmd</button>
             <button type="button" class="rp-btn" id="zfDnsCsv" disabled aria-disabled="true">CSV</button>
           </span>
         </div>

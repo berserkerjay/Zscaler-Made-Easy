@@ -16,6 +16,9 @@ scope on the Scope page) into that configuration:
 * BIND: ``named.conf`` forward zones (``type forward; forward only;``) and a
   zone file fragment for ``$INCLUDE`` in the parent domain's zone that
   delegates each name (NS) to the resolvers (glue A/AAAA records);
+* Windows DNS Server: a PowerShell script of
+  ``Add-DnsServerConditionalForwarderZone`` lines (a name that already has a
+  zone is skipped) and the same as ``dnscmd /ZoneAdd ... /Forwarder`` lines;
 * a plain CSV of every device considered: the hostname as the tenant has
   it, the DNS label made from it, the full name, and what happened to it.
 
@@ -283,6 +286,8 @@ def build(devices: Iterable[Dict[str, Any]], *, domain: Any, resolvers: Any, pla
         "unbound": render_unbound(zones, res, meta, local_zone=unbound_local_zone, insecure=unbound_insecure),
         "bind_forward": render_bind_forward(zones, res, meta),
         "bind_zone": render_bind_zone(zones, res, meta),
+        "windows_ps": render_windows_powershell(zones, res, meta),
+        "windows_dnscmd": render_windows_dnscmd(zones, res, meta),
         "csv": render_csv(rows),
     }
     warnings = []
@@ -362,6 +367,58 @@ def render_bind_zone(zones: List[Tuple[str, str]], resolvers: List[str], meta: D
     return "\n".join(out) + "\n"
 
 
+# Windows DNS Server. Every name and address is checked again right here
+# (defence in depth): a name is LDH labels joined by '.', an address is what
+# ipaddress prints. Nothing else (no tenant text) reaches a command line, so
+# no quote, ';', '`', '$', '|', '&', space or newline can start a second
+# command in PowerShell or cmd.exe.
+_WIN_NAME = re.compile(r"\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
+
+
+def _win_safe(zones: List[Tuple[str, str]], resolvers: List[str]) -> Tuple[List[str], List[str]]:
+    names = [f"{lab}.{t}" for t, lab in zones]
+    for n in names:
+        if len(n) > 253 or not _WIN_NAME.match(n):
+            raise DnsInputError("A name could not be written safely for Windows DNS.")
+    addrs = []
+    for ip in resolvers:
+        addrs.append(str(ipaddress.ip_address(ip)))   # ValueError for anything that is not an address
+    return names, addrs
+
+
+def render_windows_powershell(zones: List[Tuple[str, str]], resolvers: List[str], meta: Dict[str, Any]) -> str:
+    """PowerShell for a Windows DNS Server (DnsServer module): one
+    Add-DnsServerConditionalForwarderZone a name (-Name, -MasterServers),
+    skipped when a zone of that name exists already (Get-DnsServerZone).
+    File-backed zones; add -ReplicationScope Forest yourself for
+    AD-integrated ones. Source: Microsoft's DnsServer module reference
+    (Add-DnsServerConditionalForwarderZone, Get-DnsServerZone)."""
+    names, addrs = _win_safe(zones, resolvers)
+    out = _header(meta, zones, "#")
+    out += ["# Run it in an elevated PowerShell on the DNS server (DnsServer module), after reading it. It changes nothing that exists:",
+            "# a name that already has a zone is skipped and listed. Check with Get-DnsServerZone afterwards.",
+            "$ErrorActionPreference = 'Stop'",
+            "$servers = @(" + ", ".join(f"'{a}'" for a in addrs) + ")"]
+    for n in names:
+        out.append(f"if (Get-DnsServerZone -Name '{n}' -ErrorAction SilentlyContinue) {{ Write-Output 'exists, skipped: {n}' }} "
+                   f"else {{ Add-DnsServerConditionalForwarderZone -Name '{n}' -MasterServers $servers }}")
+    return "\r\n".join(out) + "\r\n"
+
+
+def render_windows_dnscmd(zones: List[Tuple[str, str]], resolvers: List[str], meta: Dict[str, Any]) -> str:
+    """dnscmd lines (Windows Server's command-line DNS tool): one
+    `dnscmd /ZoneAdd <name> /Forwarder <addresses>` a name. Source:
+    Microsoft's dnscmd reference (/zoneadd, /forwarder)."""
+    names, addrs = _win_safe(zones, resolvers)
+    out = ["REM " + ln[2:] for ln in _header(meta, zones, "#")]
+    out += ["REM Run it in an elevated command prompt on the DNS server (or add /? to check the options of your Windows version).",
+            "REM A name that already has a zone fails with an error and is left as it is."]
+    fwd = " ".join(addrs)
+    for n in names:
+        out.append(f"dnscmd /ZoneAdd {n} /Forwarder {fwd}")
+    return "\r\n".join(out) + "\r\n"
+
+
 CSV_COLUMNS = ("hostname", "label", "fqdn", "domain", "platform", "status", "note")
 
 
@@ -378,5 +435,7 @@ FILES = {
     "unbound": ("zcc_client_zones_unbound.conf", "text/plain; charset=utf-8"),
     "bind_forward": ("zcc_client_zones_named.conf", "text/plain; charset=utf-8"),
     "bind_zone": ("zcc_client_zones.db", "text/plain; charset=utf-8"),
+    "windows_ps": ("zcc_client_zones_windows.ps1", "text/plain; charset=utf-8"),
+    "windows_dnscmd": ("zcc_client_zones_dnscmd.cmd", "text/plain; charset=utf-8"),
     "csv": ("zcc_client_names.csv", "text/csv; charset=utf-8"),
 }
