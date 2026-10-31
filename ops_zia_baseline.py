@@ -73,6 +73,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import admin_ops as ao
 import compliance_profiles as cp
+import editions
 import pack_channels as pc
 import pack_ops as ops
 import ucaas_oneclick
@@ -1292,6 +1293,13 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
     zia = client.zia
     facts = _read_facts(zia, on_rows, areas, n, say, cancel)
     warnings += fit(on_rows, facts)
+    # The licensed Cloud Firewall and Cloud Sandbox editions (editions.py, from the ZIA licence list): rules the
+    # edition does not allow are left out or downgraded, with a warning; an unknown edition leaves every rule.
+    ed_products = [p for p in ("firewall", "sandbox") if any(r["area"] == p for r in on_rows)]
+    eds = editions.read(client, scope, say) if ed_products else None
+    if eds is not None:
+        warnings += editions.fit_baseline(on_rows, eds)
+        notes += editions.notes(eds, ed_products)
     say("Reading whether admin ranking is on…")
     rank_setting = ri.read_setting(client, scope.get("scopes"))
     placements: List[Dict[str, Any]] = []
@@ -1425,6 +1433,7 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
             "warnings": warnings, "notes": notes, "review": rev["rules"], "atp_review": rev["atp"] if "atp" in areas else [],
             "ucaas_review": rev["ucaas"] if "ucaas" in areas else [],
             "atp_controls": rev["atp_controls"], "areas": areas, "confirm_always": _typed_every_time(items, groups),
+            "editions": eds,
             "rank_plan": ri.summary(rank_setting, placements)}
 
 
@@ -2026,6 +2035,13 @@ def _read_catalog(client, scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
         out["certificates"], err = read_certificates(zia)
         if err:
             out.setdefault("errors", {})["certificates"] = err
+    if "firewall" in read or "sandbox" in read:
+        # The licensed editions, so the form marks the rules the edition leaves out (editions.py).
+        ao._check_stop(cancel)
+        eds = editions.read(client, scope, say)
+        out["editions"] = dict(eds, notes=editions.notes(eds, [p for p in ("firewall", "sandbox") if p in read]),
+                               limits={r["key"]: (lim.get("drop") or lim.get("why")) for r in CATALOG
+                                       for lim in [editions.baseline_limit(r["key"], eds)] if lim})
     return out
 
 

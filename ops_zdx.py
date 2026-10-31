@@ -95,6 +95,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote, urlsplit
 
 import admin_ops as ao
+import editions
 import pack_ops as ops
 
 ZDX_BASE = "/zdx/v1"                # verified: zscaler-sdk-python 1.11.3 zdx/*.py _zdx_base_endpoint
@@ -536,6 +537,7 @@ def read_objects(client: Any, scope: Dict[str, Any], say: Callable[[str], None],
     templates and the choices. Read-only."""
     say("Reading ZDX applications and probes. Nothing is written.")
     state = read_state(api_for(client), say=say, cancel=cancel)
+    eds = editions.read(client, scope, say)
     apps = sorted(state["apps"], key=lambda a: (a["type"] != "PREDEFINED", a["name"].lower()))
     for a in apps:
         a["deletable"] = a["type"] != "PREDEFINED"
@@ -549,6 +551,10 @@ def read_objects(client: Any, scope: Dict[str, Any], say: Callable[[str], None],
                     "tiers": [dict(tier_template(k), label=t["label"], interval_minutes=t["interval_minutes"], cloudpath=t["cloudpath"])
                               for k, t in TIERS.items()],
                     "default_tier": DEFAULT_TIER,
+                    "edition": {"zdx": eds["zdx"], "label": editions.label("zdx", eds["zdx"]), "notes": editions.notes(eds, ["zdx"]),
+                                "limits": {pv: editions.zdx_limit(eds["zdx"], provider=pv) for pv in PREDEFINED
+                                           if editions.zdx_limit(eds["zdx"], provider=pv)},
+                                "custom_limit": editions.zdx_limit(eds["zdx"], custom=True)},
                     "assumed": ASSUMED_NOTE},
             "errors": {f"zdx_{k}": v for k, v in state["errors"].items()}}
 
@@ -827,6 +833,13 @@ def plan_setup(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, ca
     state = _read_or_block(client, P, say, cancel, catalogue=bool(spec["predefined"]))
     interval, proto = spec["interval_minutes"], spec["protocol"]
     _tier_notes(P, spec)
+    # The licensed ZDX edition (editions.py, from the ZIA licence list when a ZIA scope is ticked): apps the
+    # edition does not allow are left out with the reason; an unknown edition leaves every app.
+    eds = editions.read(client, scope, say)
+    zed = eds["zdx"]
+    P.notes.extend(editions.notes(eds, ["zdx"]))
+    if zed == "lite":
+        P.warnings.append("ZDX Lite has no configurable probes (assumed): nothing in this setup is created.")
     supported = {s["provider"]: s for s in state["supported"]}
     cols = {"custom": _collection(state["collections"], "custom"), "predefined": _collection(state["collections"], "predefined")}
     col_items: Dict[str, str] = {}
@@ -847,6 +860,11 @@ def plan_setup(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, ca
         prov = p["provider"]
         sup = supported.get(prov)
         label = PREDEFINED.get(prov, {}).get("label") or (sup or {}).get("name") or prov
+        why_ed = editions.zdx_limit(zed, provider=prov)
+        if why_ed:
+            P.item(None, "zdx_app", _obj(label, "predefined"), "exists", None, True, status="excluded",
+                   reason=f"left out: {why_ed} (assumed, from the licensed edition)")
+            continue
         if sup is None:
             if "supported" not in state["errors"] and not P.blockers:
                 P.item(None, "zdx_app", _obj(label, "predefined"), "exists", None, True, status="excluded",
@@ -898,6 +916,11 @@ def plan_setup(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say, ca
             P.blockers.append(f"Custom app '{name}' is listed twice.")
             continue
         seen.add(name.lower())
+        why_ed = editions.zdx_limit(zed, custom=True)
+        if why_ed:
+            P.item(None, "zdx_app", _obj(name, "custom", url=c["url"]), "exists", None, True, status="excluded",
+                   reason=f"left out: {why_ed} (assumed, from the licensed edition)")
+            continue
         url, why = clean_url(c["url"])
         if why:
             P.blockers.append(f"Custom app '{name}': {why}")

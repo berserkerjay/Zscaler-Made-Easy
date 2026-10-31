@@ -88,6 +88,10 @@
     const areaRules = a => rules.filter(r => r.area === a);
     const controlsFor = a => ((res.area_controls || {})[a] || []).filter(c => z.overlays.has(c.overlay));
     const choiceLabel = { TIER: 'Tier default', ALLOW: 'Allow', BLOCK: 'Block', ISOLATE: 'Isolate' };
+    // The licensed Cloud Firewall and Sandbox editions (editions.py): rules the edition leaves out or downgrades in the preview.
+    const eds = res.editions || null;
+    const edLimit = k => (eds && eds.limits && !z.framework ? eds.limits[k] || '' : '');
+    const edBlock = eds && (eds.notes || []).length ? `<div class="bp-card info" id="zbEditions" role="note"><div class="t">Licensed editions</div><ul style="padding-left:1.2rem">${eds.notes.map(x => `<li>${E(x)}</li>`).join('')}</ul></div>` : '';
     const weakCount = rules.filter(r => picked(r.area) && effective(r, z).weakened).length;
     const ruleRow = r => {
       const e = effective(r, z);
@@ -100,7 +104,7 @@
         <td>${opts.length > 1 ? `<select data-zb-act="${E(r.key)}" aria-label="Action for ${E(r.name)}">${opts.map(o => `<option value="${E(o)}"${e.choice === o ? ' selected' : ''}>${E(choiceLabel[o])}</option>`).join('')}</select>` : '<span class="df-hint">Tier default</span>'}</td>
         <td>${r.locked ? `<span class="df-chip">Locked</span> <span class="df-hint">${E(r.locked)}</span>` : ''}${r.action_locked ? `<span class="df-chip">Action locked</span> <span class="df-hint">${E(r.action_locked)}</span>` : ''}
           ${r.catch_all ? '<span class="df-chip">Goes last</span>' : ''}${e.weakened ? ` <span class="df-chip st-warn">Weaker than the tier: ${E(e.weakened)}</span>` : ''}
-          ${r.profileNote ? `<div class="df-hint">${E(r.profileNote)}</div>` : ''}</td>
+          ${r.profileNote ? `<div class="df-hint">${E(r.profileNote)}</div>` : ''}${edLimit(r.key) ? ` <span class="df-chip st-warn">Edition: ${E(edLimit(r.key))}</span>` : ''}</td>
         <td>${(r.sources || []).map(s => `<a href="${E(httpsOnly(s.url))}" target="_blank" rel="noopener noreferrer">${E(s.title)}</a>`).join('<br>') || '<span class="df-hint">From the framework file</span>'}</td></tr>`;
     };
     const areaBlock = a => {
@@ -175,7 +179,7 @@
       <div class="op-row"><label class="df-ctl"><span class="lbl">Or load a framework file (from Export from tenant, ZIA policy framework)</span><input type="file" id="zbFile" accept="application/json,.json" aria-label="Framework file"></label>
         ${z.framework ? `<span class="df-chip st-ok">Framework: ${E(z.frameworkName)}</span> <button type="button" class="rp-btn" id="zbClearFw">Use a tier instead</button>` : ''}
         ${z.fileError ? `<span class="df-chip st-fail" role="alert">${E(z.fileError)}</span>` : ''}</div>
-      ${cpBlock}
+      ${cpBlock}${edBlock}
       <fieldset class="op-kinds"><legend class="df-h">Compliance overlays</legend>
         <div class="df-hint">An overlay adds the controls of that framework to each rule it fits, with the document they come from. It does not change the rules.</div>
         <div class="op-row">${(res.overlays || []).map(o => `<label class="df-ctl"><input type="checkbox" data-zb-ov="${E(o.key)}"${z.overlays.has(o.key) ? ' checked' : ''}><span>${E(o.label)}</span></label>`).join('')}</div>
