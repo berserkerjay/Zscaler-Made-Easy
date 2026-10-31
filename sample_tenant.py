@@ -24,8 +24,15 @@ What it covers, on purpose with the gaps an assessment should find:
   - ZPA: application segments (one with a wildcard domain), segment,
     server and connector groups, App Connectors (one disconnected), an
     IdP, posture profiles, access and timeout policies;
-  - ZDX: monitored applications, devices, departments, locations;
-  - ZIdentity: users, groups, resource servers.
+  - ZDX: monitored applications, devices, departments, locations, the alert
+    history with affected devices, a week of application scores and metrics
+    (one application never reaches a good score) and one CloudPath;
+  - ZIdentity: users (one disabled account still holds an admin
+    entitlement), groups with members, resource servers, per-admin
+    entitlements (one Super Admin on four services);
+  - Client Connector bypass apps: process-based (one with a wildcard and
+    interpreters) and custom IP-based (one bypasses a /8 and every port),
+    device details per device and a disable-reason report.
 
 The fixtures in tests/ (test_data_flow.py, test_pack_channels.py) gave the
 shapes; the values are new.
@@ -372,10 +379,105 @@ ZDX_APPS = [{"id": 3001, "name": "Microsoft 365", "score": 82.0, "most_impacted_
             {"id": 3002, "name": "Freight billing", "score": 64.0, "most_impacted_region": {"id": "us-west", "country": "United States"}, "total_users": 35},
             {"id": 3003, "name": "Salesforce", "score": 91.0, "total_users": 60}]
 ZDX_DEVICES = [{"id": 3101, "name": "LKF-LT-0001", "userid": 41}, {"id": 3102, "name": "LKF-MBP-0002", "userid": 42}]
-ZID_USERS = [{"id": "u-41", "loginName": "avery.quinn@larkspur-freight.example", "displayName": "Avery Quinn", "status": True},
-             {"id": "u-42", "loginName": "rowan.ellis@larkspur-freight.example", "displayName": "Rowan Ellis", "status": True}]
+ZID_USERS = [{"id": "u-41", "loginName": "avery.quinn@larkspur-freight.example", "displayName": "Avery Quinn", "status": True,
+              "adminEntitlementEnabled": True, "serviceEntitlementEnabled": True},
+             {"id": "u-42", "loginName": "rowan.ellis@larkspur-freight.example", "displayName": "Rowan Ellis", "status": True,
+              "adminEntitlementEnabled": True, "serviceEntitlementEnabled": True},
+             # A disabled account that still holds an admin entitlement: the stale-admin check finds it.
+             {"id": "u-43", "loginName": "casey.morgan@larkspur-freight.example", "displayName": "Casey Morgan", "status": False,
+              "adminEntitlementEnabled": True, "serviceEntitlementEnabled": False}]
 ZID_GROUPS = [{"id": "g-33", "name": "Finance Team", "source": "SCIM"}, {"id": "g-34", "name": "Developers", "source": "SCIM"}]
 ZID_RESOURCE_SERVERS = [{"id": "rs-1", "name": "ZIA", "primaryAud": "https://api.zscaler.com"}]
+
+
+def _ent(service: str, role: str, scope: str = "Organization") -> Dict[str, Any]:
+    """One admin entitlement as ZIdentity answers it (zscaler/zid/models/user_entitlement.py Entitlement)."""
+    return {"roles": [{"id": f"r-{role.lower().replace(' ', '-')}", "name": role, "displayName": role}],
+            "service": {"id": f"s-{service.lower()}", "serviceName": service, "cloudName": "zscalertwo.net", "orgName": COMPANY},
+            "scope": {"id": f"sc-{scope.lower()}", "name": scope, "displayName": scope}}
+
+
+# Per-admin entitlements (GET /users/{id}/admin-entitlements): one admin is
+# Super Admin on four services (broad), one is a read-only auditor on ZIA.
+ZID_ADMIN_ENTITLEMENTS = {
+    "u-41": [_ent("ZIA", "Super Admin"), _ent("ZPA", "Super Admin"), _ent("ZDX", "Super Admin"), _ent("ZCC", "Super Admin")],
+    "u-42": [_ent("ZIA", "Auditor")],
+    "u-43": [_ent("ZIA", "Policy Admin")],
+}
+ZID_GROUP_MEMBERS = {"g-33": ["u-42"], "g-34": ["u-41"]}
+
+# ── ZDX history, scores, metrics, cloud path ─────────────────────────
+ZDX_ALERTS_HISTORY = [
+    {"id": "7401", "rule_name": "Freight billing score below 50", "severity": "critical", "alert_type": "APP_SCORE", "alert_status": "ENDED",
+     "application": {"id": 3002, "name": "Freight billing"}, "started_on": 1792915200, "ended_on": 1792929600,
+     "locations": [{"id": 1101, "name": "Larkspur HQ (Portland)"}], "departments": [], "geolocations": []},
+    {"id": "7402", "rule_name": "Wi-Fi signal weak", "severity": "warning", "alert_type": "DEVICE_WIFI", "alert_status": "ENDED",
+     "started_on": 1793001600, "ended_on": 1793008800, "locations": [], "departments": [], "geolocations": []},
+]
+ZDX_AFFECTED_DEVICES = {"7401": [{"id": 3101, "name": "LKF-LT-0001", "userid": 41}, {"id": 3102, "name": "LKF-MBP-0002", "userid": 42}],
+                        "7402": [{"id": 3102, "name": "LKF-MBP-0002", "userid": 42}]}
+
+
+def _trend(values: List[float], metric: str = "score", unit: str = "") -> Dict[str, Any]:
+    start = 1792540800   # one point a day for a week (made-up epoch seconds)
+    return {"metric": metric, "unit": unit, "datapoints": [{"timestamp": start + i * 86400, "value": v} for i, v in enumerate(values)]}
+
+
+# Freight billing never reaches 66 all week (the score check finds it);
+# its availability and page fetch time are poor too (the metrics check).
+ZDX_SCORES = {3001: _trend([80, 84, 79, 83, 82, 81, 85]), 3002: _trend([61, 63, 58, 64, 60, 62, 65]), 3003: _trend([90, 92, 91, 89, 93, 90, 91])}
+ZDX_METRICS = {3001: [_trend([1800, 1700, 1900, 1750, 1820, 1780, 1690], "pft", "ms"), _trend([100, 100, 99.9, 100, 100, 100, 100], "availability", "%")],
+               3002: [_trend([6100, 5900, 6400, 5800, 6200, 6000, 5950], "pft", "ms"), _trend([97, 98, 96, 98, 97, 99, 97], "availability", "%")],
+               3003: [_trend([1200, 1100, 1250, 1180, 1220, 1150, 1170], "pft", "ms"), _trend([100, 100, 100, 100, 100, 100, 100], "availability", "%")]}
+# The CloudPath probe of Freight billing on one device, and the path it measured
+# (zscaler/zdx/models/devices.py DeviceCloudPathProbesHopData / CloudPath / Hops).
+ZDX_CLOUDPATH_PROBES = [{"id": 9101, "name": "Freight billing CloudPath", "num_probes": 24,
+                         "avg_latencies": [{"leg_src": "client", "leg_dst": "egress", "latency": 4.1}]}]
+ZDX_CLOUDPATH = [{"timestamp": 1793001600, "cloudpath": [
+    {"src": "client", "dst": "egress", "num_hops": 2, "latency": 4.1, "loss": 0.0, "num_unresp_hops": 0, "tunnel_type": "",
+     "hops": [{"ip": "192.168.1.1", "gw_mac": "00:00:5e:00:53:01", "gw_mac_vendor": "Example Networks", "pkt_sent": 10, "pkt_rcvd": 10,
+               "latency_min": 1.2, "latency_max": 3.0, "latency_avg": 1.9, "latency_diff": 1.9},
+              {"ip": "198.51.100.1", "pkt_sent": 10, "pkt_rcvd": 10, "latency_min": 3.0, "latency_max": 5.4, "latency_avg": 4.1, "latency_diff": 2.2}]},
+    {"src": "egress", "dst": "zen", "num_hops": 4, "latency": 18.6, "loss": 0.0, "num_unresp_hops": 1, "tunnel_type": "ZTUNNEL_2_0",
+     "hops": [{"ip": "198.51.100.9", "pkt_sent": 10, "pkt_rcvd": 10, "latency_avg": 9.8},
+              {"ip": "203.0.113.70", "pkt_sent": 10, "pkt_rcvd": 10, "latency_avg": 18.6}]},
+    {"src": "zen", "dst": "app", "num_hops": 9, "latency": 96.3, "loss": 2.5, "num_unresp_hops": 3, "tunnel_type": "",
+     "hops": [{"ip": "203.0.113.80", "pkt_sent": 10, "pkt_rcvd": 10, "latency_avg": 21.0},
+              {"ip": "203.0.113.141", "pkt_sent": 10, "pkt_rcvd": 9, "latency_avg": 96.3}]}]}]
+
+# ── Client Connector: process-based and custom IP-based bypass apps ───
+# One narrow process bypass and one broad one (a wildcard and interpreters);
+# one narrow custom IP app and one that bypasses a /8 on every port.
+ZCC_PROCESS_APPS = {"appIdentities": [
+    {"id": 6001, "appName": "Depot scanner agent", "fileNames": ["scanagent.exe"], "filePaths": ["C:\\Program Files\\Depot Scan\\"],
+     "matchingCriteria": 1},
+    {"id": 6002, "appName": "Contractor tools", "fileNames": ["powershell.exe", "python.exe", "*.exe"], "filePaths": [], "matchingCriteria": 1}]}
+ZCC_CUSTOM_IP_APPS = {"customAppContracts": [
+    {"id": 5001, "appName": "Depot printers", "active": True, "uid": "c-5001",
+     "appDataBlob": [{"proto": "TCP", "port": "9100", "ipaddr": "10.20.30.0/24", "fqdn": ""}]},
+    {"id": 5002, "appName": "Legacy partner network", "active": True, "uid": "c-5002",
+     "appDataBlob": [{"proto": "", "port": "", "ipaddr": "10.0.0.0/8", "fqdn": ""}, {"proto": "UDP", "port": "1-65535", "ipaddr": "0.0.0.0/0", "fqdn": ""}]}]}
+# getDeviceDetails per udid (zscaler/zcc/models/devices.py DeviceDetails); the OTPs
+# and identifiers are invented and are never shown by the app.
+ZCC_DEVICE_DETAILS = {
+    "LKF-WIN-0001": {"id": 1, "internal_model": "Latitude 7440", "serialNumber": "SN-INVENTED-0001", "externalDeviceId": "ext-0001",
+                     "ziaEnabled": 1, "ziaHealth": "Active", "zpaEnabled": 1, "zpaHealth": "Active", "zpaLastSeenTime": "2026-10-27 18:05:11",
+                     "zdxEnabled": 1, "zdxHealth": "Active", "zdxLastSeenTime": "2026-10-27 18:04:00", "zdEnabled": 0, "zdpEnabled": 1,
+                     "zdpHealth": "Active", "zdpVersion": "4.5.0.12", "strictEnforcement": 1, "antiTamperingStatus": "ON", "vdi": 0,
+                     "zccTunnelVersion": "Z-Tunnel 2.0", "zccUpgradeStatus": "UP_TO_DATE", "expectedZCCVersion": "4.5.0.334",
+                     "zccLoggedInUserType": "USER", "deviceTrust": "HIGH", "deviceOtpArray": ["000000", "111111"]},
+    "LKF-WIN-0003": {"id": 3, "internal_model": "ThinkPad T14", "serialNumber": "SN-INVENTED-0003", "ziaEnabled": 1, "ziaHealth": "Inactive",
+                     "zpaEnabled": 0, "zdxEnabled": 1, "zdxHealth": "Error", "strictEnforcement": 0, "antiTamperingStatus": "OFF",
+                     "zccTunnelVersion": "Z-Tunnel 1.0", "zccUpgradeStatus": "PENDING", "expectedZCCVersion": "4.5.0.334",
+                     "deviceTrust": "LOW", "deviceOtpArray": ["222222"]},
+}
+# downloadDisableReasons (CSV; the header the SDK checks for begins "User","Device type").
+ZCC_DISABLE_REASONS_CSV = (
+    '"User","Device type","Device model","Disable reason","Disable time","Service"\r\n'
+    '"avery.quinn@larkspur-freight.example","Windows","Latitude 7440","Troubleshooting a site","2026-10-21 09:12:00","ZIA"\r\n'
+    '"jordan.blake@larkspur-freight.example","Windows","ThinkPad T14","VPN conflict","2026-10-22 14:30:00","ZIA"\r\n'
+    '"jordan.blake@larkspur-freight.example","Windows","ThinkPad T14","VPN conflict","2026-10-25 08:02:00","ZPA"\r\n'
+    '"rowan.ellis@larkspur-freight.example","macOS","MacBook Pro","Slow network","2026-10-26 16:45:00","ZIA"\r\n')
 
 
 def responses() -> Dict[str, Any]:
@@ -477,7 +579,30 @@ def responses() -> Dict[str, Any]:
         f"{ZID}/users": {"records": ZID_USERS, "results_total": len(ZID_USERS)},
         f"{ZID}/groups": {"records": ZID_GROUPS, "results_total": len(ZID_GROUPS)},
         f"{ZID}/resource-servers": {"records": ZID_RESOURCE_SERVERS, "results_total": len(ZID_RESOURCE_SERVERS)},
+        # ZDX alert history (14 days) and the application scores and metrics of the week
+        f"{ZDX}/alerts/historical": {"alerts": ZDX_ALERTS_HISTORY, "next_offset": None},
+        f"{ZDX}/analysis": [],
+        # Client Connector bypass apps
+        f"{ZCC}/process-based-apps": ZCC_PROCESS_APPS,
+        f"{ZCC}/custom-ip-based-apps": ZCC_CUSTOM_IP_APPS,
     }
+    for aid, devs in ZDX_AFFECTED_DEVICES.items():
+        r[f"{ZDX}/alerts/{aid}/affected_devices"] = {"devices": devs, "next_offset": None}
+    for app_id, trend in ZDX_SCORES.items():
+        r[f"{ZDX}/apps/{app_id}/score"] = trend
+        r[f"{ZDX}/apps/{app_id}/metrics"] = ZDX_METRICS.get(app_id, [])
+    for dev in ZDX_DEVICES:
+        r[f"{ZDX}/devices/{dev['id']}/apps/3002/cloudpath-probes"] = ZDX_CLOUDPATH_PROBES
+        r[f"{ZDX}/devices/{dev['id']}/apps/3002/cloudpath-probes/9101/cloudpath"] = ZDX_CLOUDPATH
+    for uid, ents in ZID_ADMIN_ENTITLEMENTS.items():
+        r[f"{ZID}/users/{uid}/admin-entitlements"] = ents
+    users = {u["id"]: u for u in ZID_USERS}
+    for gid, members in ZID_GROUP_MEMBERS.items():
+        recs = [{k: users[m][k] for k in ("id", "loginName", "displayName", "status")} for m in members]
+        r[f"{ZID}/groups/{gid}/users"] = {"records": recs, "results_total": len(recs)}
+    # getDeviceDetails answers one device per udid query (offline_tenant picks it from this list).
+    r[f"{ZCC}/getDeviceDetails"] = [dict(det, udid=udid) for udid, det in ZCC_DEVICE_DETAILS.items()]
+    r[f"{ZCC}/downloadDisableReasons"] = ZCC_DISABLE_REASONS_CSV
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
     return copy.deepcopy(r)

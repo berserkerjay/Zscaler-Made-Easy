@@ -156,7 +156,7 @@ def _items(body: Any) -> Optional[List[Any]]:
     if isinstance(body, list):
         return body
     if isinstance(body, dict):
-        for key in ("list", "records", "devices", "trustedNetworkContracts", "items", "policies"):
+        for key in ("list", "records", "devices", "trustedNetworkContracts", "items", "policies", "alerts", "appIdentities", "customAppContracts"):
             if isinstance(body.get(key), list):
                 return body[key]
     return None
@@ -167,7 +167,7 @@ def _empty_page(body: Any) -> Any:
         return []
     if isinstance(body, dict):
         out = dict(body)
-        for key in ("list", "records", "devices", "trustedNetworkContracts", "items", "policies"):
+        for key in ("list", "records", "devices", "trustedNetworkContracts", "items", "policies", "alerts", "appIdentities", "customAppContracts"):
             if isinstance(out.get(key), list):
                 out[key] = []
         return out
@@ -267,6 +267,11 @@ class OfflineStore:
                     page = 1
                 if page > 1:
                     return status, _empty_page(body)
+                if path.endswith("/getDeviceDetails") and isinstance(body, list):
+                    # One device per udid (zscaler/zcc/devices.py get_device_details): the sample keeps them as a list.
+                    want = str(params.get("udid") or "")
+                    hit = next((x for x in body if isinstance(x, dict) and want and str(x.get("udid")) == want), None)
+                    return (200, hit) if hit is not None else (404, {"code": "NOT_FOUND", "message": self._missing(f"{path}?udid")})
                 dt = params.get("deviceType")
                 items = _items(body)
                 # The platform is device_type on an app profile (zscaler/zcc/models/webpolicy.py), deviceType on older answers.
