@@ -545,8 +545,10 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
             tgt_by_name[k].setdefault(cb.name_of(t, r), r)
     src_idx = cb.index(source)
     state: Dict[Tuple[str, str], Tuple[str, Any]] = {}
+    asked: Set[str] = set()   # the types a source object referred to (an unread one is worth a warning)
 
     def resolve(target_key: str, src_id: str, hint: str) -> Tuple[str, Any]:
+        asked.add(target_key)
         tt = cb.BY_KEY.get(target_key)
         if tt is not None and tt["global_id"] and tt["global_id"](src_id):
             return ("id", src_id)
@@ -574,6 +576,7 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
     def resolve_alt(target_key: str, value: str, keyf: str, hint: str) -> Tuple[str, Any]:
         """A reference by another identifying field (a posture profile's
         UDID, a trusted network's network id): matched by name across tenants."""
+        asked.add(target_key)
         tt = cb.BY_KEY[target_key]
         if target_key not in tgt:
             if same:
@@ -601,6 +604,7 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
 
     def resolve_scim_group(value: str, idp: str) -> Tuple[str, Any]:
         k = "zpa.scim_groups"
+        asked.add(k)
         tt = cb.BY_KEY[k]
         if k not in tgt:
             return ("id", value) if same else ("unresolved", f"{_label(tt)} could not be read in the target")
@@ -934,7 +938,7 @@ def build_plan(source: Dict[str, List[Dict[str, Any]]], reader: Any, nspec: Dict
                 changes += 1
         del idx
     for k, err in sorted(unread.items()):
-        if k not in {t["key"] for t in sel}:
+        if k not in {t["key"] for t in sel} and (k in asked or not cb.BY_KEY[k]["product"] == "zpa"):
             p.warnings.append(f"{_label(cb.BY_KEY[k])} could not be read in the target ({str(err)[:120]}): references to it are "
                               + ("kept as they are" if same else "not matched, so what uses them is not cloned") + ".")
     if changes > MAX_CHANGES:
@@ -1144,6 +1148,11 @@ def plan_undo(reader: Any, nspec: Dict[str, Any], product: str, say=None) -> Dic
         name = s["name"]
         if s["op"] == "delete":
             cur = by_id.get(s["id"])
+            if not t["rm"]:
+                # (a VPN credential: the SDK has no delete, so the Undo says so instead of failing halfway)
+                p.exclude(t, name, f"not deleted: {t['no_delete'] or 'the SDK cannot delete it'}; remove it in the portal if it is not "
+                                   "wanted", s["id"])
+                continue
             if cur is None:
                 p.exclude(t, name, "already gone, so there is nothing to delete", s["id"], status="noop")
                 continue
