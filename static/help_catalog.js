@@ -3385,6 +3385,26 @@ window.HELP_CATALOG = {
     "what": "Shows or hides the rest of the page introduction.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#zfDevUdid": {
+    "what": "The device to look at, by its device id (UDID).",
+    "input": "Required. The id as the Client Connector Portal shows it: letters, digits and . _ : - { }.",
+    "effect": "local"
+   },
+   "#zfDevShow": {
+    "what": "Reads one device's service state: services on and healthy, versions, strict enforcement, anti-tampering and trust. Ids stay hidden.",
+    "input": "Type the device id first. It only reads. Needs ZCC ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#zfDisShow": {
+    "what": "Reads the disable-reason report and shows how often Client Connector was switched off, per reason. No person is listed.",
+    "input": "Nothing to type. It only reads. Needs ZCC ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#zfDisCsv": {
+    "what": "Downloads the same counts as a CSV file: reason, device type, service, times and people. No names.",
+    "input": "Nothing to type. It reads the report first.",
+    "effect": "download"
    }
   },
   "/report/flow": {
@@ -4659,6 +4679,41 @@ window.HELP_CATALOG = {
     "what": "Starts an Undo of this change. It previews the Undo first. Nothing is written until you apply it.",
     "input": "Nothing to type. Just click it.",
     "effect": "read"
+   },
+   "#zidGroup": {
+    "what": "Picks the ZIdentity group to add people to or remove them from. A dynamic group cannot be picked.",
+    "input": "Pick one. Each shows its member count, never its members.",
+    "effect": "local"
+   },
+   "#zidAdd": {
+    "what": "The people to add to the group, by sign-in name.",
+    "input": "Optional. One per line or comma separated, at most 50, like jane.doe@example.com.",
+    "effect": "local"
+   },
+   "#zidRemove": {
+    "what": "The people to remove from the group, by sign-in name.",
+    "input": "Optional. One per line or comma separated, at most 50, like jane.doe@example.com.",
+    "effect": "local"
+   },
+   "select[data-zl]": {
+    "what": "Says whether to turn this app profile on or off. Devices get the change at once.",
+    "input": "Pick on, off, or leave as it is. You type the profile's name to confirm.",
+    "effect": "local"
+   },
+   "#zlProfile": {
+    "what": "Picks the app profile whose DNS and tunnel settings to change.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "select[data-zs]": {
+    "what": "Sets this DNS or tunnel setting of the app profile.",
+    "input": "Pick on, off, or leave as it is.",
+    "effect": "local"
+   },
+   "input[data-zs]": {
+    "what": "The packet tunnel exclusions: addresses that leave the device outside the tunnel, uninspected.",
+    "input": "Optional. Addresses, ranges or host names, comma separated, like 10.0.0.0/8. Leave empty to keep it.",
+    "effect": "local"
    }
   },
   "/report/path": {
@@ -5026,6 +5081,61 @@ window.HELP_CATALOG = {
     "what": "Shows or hides the rest of the page introduction.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#zdxCp > summary": {
+    "what": "Opens the ZDX panel: the cloud path ZDX measured to an application, and a score analysis that finds why it is slow.",
+    "input": "Nothing to type. Click it to open or close the panel.",
+    "effect": "local"
+   },
+   "#zdxCpLoad": {
+    "what": "Reads the applications ZDX monitored in the last day and picks the one that matches the destination. It only reads.",
+    "input": "Nothing to type. Needs ZDX ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#zdxCpApp": {
+    "what": "Picks the ZDX application whose measured path to show or to analyse.",
+    "input": "Pick one. Load the applications first.",
+    "effect": "local"
+   },
+   "#zdxCpShow": {
+    "what": "Reads the cloud path ZDX measured to the application, leg by leg: time, loss, hops and tunnel. No device or person is named.",
+    "input": "Pick an application first. It only reads.",
+    "effect": "read"
+   },
+   "#zdxRcaDev": {
+    "what": "The ZDX device to analyse. Leave it empty and the app picks a device that probes the application.",
+    "input": "Optional. Digits only, as the ZDX Admin Portal shows them, like 132559212.",
+    "effect": "local"
+   },
+   "#zdxRcaHours": {
+    "what": "How far back the score analysis looks.",
+    "input": "Pick 1, 2, 4, 8 or 24 hours. 2 hours is the default.",
+    "effect": "local"
+   },
+   "#zdxRcaWho": {
+    "what": "The assessor's name, kept with the start in the audit log.",
+    "input": "Required to start or stop. Your name, like Jane Doe.",
+    "effect": "local"
+   },
+   "#zdxRcaPhrase": {
+    "what": "Confirms that you mean to start a score analysis on the tenant.",
+    "input": "Required. Type START ANALYSIS.",
+    "effect": "local"
+   },
+   "#zdxRcaStart": {
+    "what": "Asks ZDX to analyse the application on one device. It changes no setting, but it is an action on the tenant.",
+    "input": "Needs write mode, your permission to change the tenant, the assessor's name and START ANALYSIS. One start per tenant every 5 minutes.",
+    "effect": "write"
+   },
+   "#zdxRcaStatus": {
+    "what": "Reads what ZDX found in the analysis so far.",
+    "input": "Nothing to type. Start an analysis first. It only reads.",
+    "effect": "read"
+   },
+   "#zdxRcaStop": {
+    "what": "Stops the running score analysis in ZDX.",
+    "input": "Needs write mode, your permission to change the tenant and the assessor's name.",
+    "effect": "write"
    }
   },
   "/report/posture": {

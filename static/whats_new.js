@@ -22,94 +22,52 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
-    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score",
-    "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
+    "2026-10-31": "ZDX, ZIdentity and Client Connector completion: the measured cloud path, score analysis, group members, live app profile changes, device details and disable-reason counts",
+    "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score"
   },
   "skipped": {
     "2026-10-30": "The new name everywhere, ZIA admin ranking in the rule decisions (no new control) and the help and new marks themselves: a * on the marks would push 2026-10-28 out, so this release is not marked and the two releases above stay"
   },
-  "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
+  "legend": {"/": ["#dbFoot", ".hero"], "*": [".rp-hero"]},
   "features": [
     {
-      "id": "build-new", "release": "2026-10-28", "label": "Build new",
-      "what": "Build new on Bulk changes: builders for a ZIA security baseline, the SSL certificate manager, ZPA, Client Connector profiles, ZDX probes and AI Guard, with the same preview, write gates, read-back and Undo.",
-      "changelog": ["One engine for every builder", "Build new", "ZIA security baseline", "SSL certificate manager", "ZPA builder", "Client Connector profiles", "ZDX probe setup", "AI Guard"],
+      "id": "zdx-cloud-path", "release": "2026-10-31", "label": "ZDX cloud path",
+      "what": "The path ZDX measured to an application, leg by leg, next to the predicted path: time, loss, hops and tunnel. No device or person is named.",
+      "changelog": ["ZDX cloud path"],
       "marks": [
-        { "page": "/", "at": "button[onclick=\"openOperationsTab()\"]" },
-        { "page": "/report/operations", "at": "#opBuildKinds > legend" }
+        {"page": "/report/path", "at": "#zdxCpH"}
       ]
     },
     {
-      "id": "zcc-install-builder", "release": "2026-10-28", "label": "Install command builder",
-      "what": "The Client Connector install command builder, with a script to run next to the installer.",
-      "changelog": ["Client Connector profiles"],
-      "marks": [{ "page": "/report/fleet", "at": "#zfInstallH" }]
-    },
-    {
-      "id": "path-one-answer", "release": "2026-10-28", "label": "Path analyzer: one answer for the whole path",
-      "what": "The Path analyzer checks ZPA first, then Client Connector, the PAC file (never run) and every ZIA module, each with the rule that decides.",
-      "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]" }]
-    },
-    {
-      "id": "path-any-protocol", "release": "2026-10-28", "label": "Any protocol and port",
-      "what": "Every ZIA module on the path, for web traffic or any protocol and port.",
-      "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/report/path", "at": "#paProto" }]
-    },
-    {
-      "id": "path-workload", "release": "2026-10-28", "label": "Traffic from a workload",
-      "what": "Traffic from a workload, through Cloud and Branch Connector.",
-      "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/report/path", "at": "#paSource" }]
-    },
-    {
-      "id": "path-whatif", "release": "2026-10-28", "label": "What-if",
-      "what": "A what-if for a user, group, department or location.",
-      "changelog": ["Path analyzer, one answer for everything on the path"],
-      "marks": [{ "page": "/report/path", "at": "#paWhatIf > summary" }]
-    },
-    {
-      "id": "test-a-list", "release": "2026-10-28", "label": "Test a list",
-      "what": "Test a list: up to 250,000 destinations, each against what it was expected to do, with Fix selected handing off to Bulk changes.",
-      "changelog": ["Test a list"],
-      "marks": [{ "page": "/report/path", "at": "#tab-list" }]
-    },
-    {
-      "id": "readiness", "release": "2026-10-28", "label": "Readiness",
-      "what": "Readiness after sign-in: what this API client's role and licences allow, and the steps to ask for what will not work.",
-      "changelog": ["Readiness after sign-in"],
+      "id": "zdx-score-analysis", "release": "2026-10-31", "label": "ZDX score analysis",
+      "what": "A ZDX score analysis of one application on one device, to find why it is slow. It needs the write gates and the phrase START ANALYSIS, and is rate-limited.",
+      "changelog": ["ZDX score analysis"],
       "marks": [
-        { "page": "/", "at": ".db-item[data-db=\"configure\"]" },
-        { "page": "/", "at": "#rdConnect .rd-h", "shown": "after Authenticate" }
+        {"page": "/report/path", "at": "#zdxRcaH", "shown": "after opening the ZDX panel"}
       ]
     },
     {
-      "id": "sample-tenant", "release": "2026-10-28", "label": "Sample tenant and snapshots",
-      "what": "A made-up sample tenant to try every page on, and read-only snapshots of a tenant to open offline or compare with the live one.",
-      "changelog": ["Sample tenant and snapshots"],
+      "id": "builders-zid-zcc-live", "release": "2026-10-31", "label": "Group members and live app profile changes",
+      "what": "New Bulk changes operations: ZIdentity group members, and turning Client Connector app profiles on or off or changing their DNS and tunnel settings.",
+      "changelog": ["ZIdentity group members", "Client Connector app profiles on or off", "Client Connector app profile settings"],
       "marks": [
-        { "page": "/", "at": ".db-item[data-db=\"configure\"]" },
-        { "page": "/", "at": "#zoTitle", "shown": "on Connect to the tenant" },
-        { "page": "/simple", "at": "input[name=\"smHow\"][value=\"sample\"]", "shown": "in the Connect task" }
+        {"page": "/report/operations", "at": "#opBuildKinds > legend", "shown": "after the builders load"}
       ]
     },
     {
-      "id": "pov-planner", "release": "2026-10-28", "label": "POV planner",
-      "what": "The POV planner: intake, success criteria, a runbook, Prove it through the Path analyzer, and a Word or PDF report.",
-      "changelog": ["POV planner", "Prove it"],
+      "id": "zcc-device-details", "release": "2026-10-31", "label": "Device details",
+      "what": "One Client Connector device's service state by its device id: services, versions, strict enforcement, anti-tampering and trust. Ids stay hidden.",
+      "changelog": ["Device details"],
       "marks": [
-        { "page": "/", "at": "button[onclick=\"openPovTab()\"]" },
-        { "page": "/report/pov", "at": ".rp-hero h1" },
-        { "page": "/simple", "at": "#smPovLink" }
+        {"page": "/report/fleet", "at": "#zfDeviceH"}
       ]
     },
     {
-      "id": "zia-framework-export", "release": "2026-10-28", "label": "ZIA policy framework export",
-      "what": "Export from tenant can save the ZIA policy framework (URL, firewall, SSL, Sandbox, DNS and File Type Control rules) for the baseline builder to load into another tenant.",
-      "changelog": ["ZIA policy framework export"],
+      "id": "zcc-disable-reasons", "release": "2026-10-31", "label": "Disable-reason counts",
+      "what": "How often Client Connector was switched off, per reason, device type and service, on screen or as a CSV. No user or device is listed.",
+      "changelog": ["Disable-reason counts"],
       "marks": [
-        { "page": "/", "at": "#dlpDeployModal input[onchange^=\"_dzExportPart('framework'\"]", "shown": "in Deploy policy packs, Export from tenant" }
+        {"page": "/report/fleet", "at": "#zfDisableH"}
       ]
     },
     {
@@ -117,19 +75,19 @@ window.WHATS_NEW = {
       "what": "The result shows as a live flow. It stays still under reduced motion, pauses when the tab is hidden, and is said in words too.",
       "changelog": ["Live motion"],
       "marks": [
-        { "page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]" },
-        { "page": "/report/path", "at": "#paFlowRefH" },
-        { "page": "/report/path", "at": "#paFlowH", "shown": "after Analyze" },
-        { "page": "/report/path", "at": "#plFlowH", "shown": "after a list is tested" },
-        { "page": "/report/motion", "at": "#tpH" },
-        { "page": "/report/dataflow", "at": "#dfMotionTitle" },
-        { "page": "/report/sslflow", "at": "#sfWalkTitle", "shown": "after a read" },
-        { "page": "/report/sslcoverage", "at": "#hRiver", "shown": "after a read" },
-        { "page": "/report/zpa", "at": "#zoFlowH", "shown": "after a read" },
-        { "page": "/report/zpa", "at": "#zpWalkH", "shown": "after Diagnose" },
-        { "page": "/report/insights", "at": "#tiFlowH", "shown": "after a read" },
-        { "page": "/report/live", "at": "#lfLanesH" },
-        { "page": "/report/bypass", "at": "#bpFlowH", "shown": "after a read" }
+        {"page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]"},
+        {"page": "/report/path", "at": "#paFlowRefH"},
+        {"page": "/report/path", "at": "#paFlowH", "shown": "after Analyze"},
+        {"page": "/report/path", "at": "#plFlowH", "shown": "after a list is tested"},
+        {"page": "/report/motion", "at": "#tpH"},
+        {"page": "/report/dataflow", "at": "#dfMotionTitle"},
+        {"page": "/report/sslflow", "at": "#sfWalkTitle", "shown": "after a read"},
+        {"page": "/report/sslcoverage", "at": "#hRiver", "shown": "after a read"},
+        {"page": "/report/zpa", "at": "#zoFlowH", "shown": "after a read"},
+        {"page": "/report/zpa", "at": "#zpWalkH", "shown": "after Diagnose"},
+        {"page": "/report/insights", "at": "#tiFlowH", "shown": "after a read"},
+        {"page": "/report/live", "at": "#lfLanesH"},
+        {"page": "/report/bypass", "at": "#bpFlowH", "shown": "after a read"}
       ]
     },
     {
@@ -137,9 +95,9 @@ window.WHATS_NEW = {
       "what": "The Liquid Glass look: see-through, blurred bars, cards, dialogs and buttons, with a switch in Advanced settings to turn it off.",
       "changelog": ["Liquid Glass"],
       "marks": [
-        { "page": "/", "at": "button[onclick=\"openAdvancedTab()\"]" },
-        { "page": "/report/advanced", "at": "a.rp-btn[href=\"#appearance\"]" },
-        { "page": "/report/advanced", "at": "#advGlass" }
+        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
+        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#appearance\"]"},
+        {"page": "/report/advanced", "at": "#advGlass"}
       ]
     },
     {
@@ -147,9 +105,9 @@ window.WHATS_NEW = {
       "what": "The quality and security score for this app, built from every QA record, the standards each test covers and the last full test run.",
       "changelog": ["Quality and security score"],
       "marks": [
-        { "page": "/", "at": "button[onclick=\"openAdvancedTab()\"]" },
-        { "page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]" },
-        { "page": "/report/advanced", "at": "#advQsH" }
+        {"page": "/", "at": "button[onclick=\"openAdvancedTab()\"]"},
+        {"page": "/report/advanced", "at": "a.rp-btn[href=\"#quality\"]"},
+        {"page": "/report/advanced", "at": "#advQsH"}
       ]
     }
   ]
