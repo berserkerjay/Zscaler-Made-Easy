@@ -83,3 +83,5 @@ self_heal.json
 *.swo
 .DS_Store
 Thumbs.db
+
+agent-workspace/output/

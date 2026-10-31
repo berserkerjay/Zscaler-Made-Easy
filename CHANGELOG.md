@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-11-01
+
+### Agent workspace: layered context for the AI agents that build this app
+- **`agent-workspace/`** organises how AI agents work on the repository as a pipeline of plain-text stages: Spec → Build → Verify → Integrate → Release. Each stage has a contract (inputs, numbered steps, outputs, review gate), and every hand-off is a markdown file a person can read and edit before the next stage runs.
+- **Layered context:** `IDENTITY.md` (what the app is and what it promises), `CONTEXT.md` (which stage to go to), the stage contracts, `_config/` (rules: safe writes, routes, testing, shared files, UI, SDK, naming, git) and `references/` (facts about the code), each with an index, so an agent loads a few thousand tokens of what its step needs instead of exploring the whole repository.
+- **Compiled references that can't drift:** `tools/agent_workspace.py` writes the architecture map (every module, page and script, one line each) and the register of assumed Zscaler behaviour (439 markers) from the source; `tests/test_agent_workspace.py` fails when they're stale, a stage contract is incomplete, an index misses a file or a layer goes over its token budget.
+
 ## 2026-10-31
 
 ### Path coverage: unread conditions never match, Category lookup, UCaaS one-click

@@ -109,3 +109,7 @@ sync_jobs.json.lock
 .sync_jobs.*.tmp
 # Configuration backups, the configuration cache and templates (config_backup.py): tenant configuration, beside the profiles
 config_backups/
+
+# Agent workspace run outputs (agent-workspace/output/README.md explains them)
+agent-workspace/output/*
+!agent-workspace/output/README.md

@@ -110,7 +110,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
                       "CWE-200", "CWE-306", "CWE-532", "CWE-639", "CWE-798")},
         {"key": "supply_chain", "name": "Supply chain", "slugs": ("w7-sast", "sbd-supply*", "supply-chain*"),
          "tests": ("test_supply_chain_qa.py", "test_ci_pinning.py", "test_sbom_*.py", "test_lock_platforms.py",
-                   "test_keyring_pinned.py", "test_packaging.py", "test_docker_rename.py", "test_sast.py", "test_local_plugins.py"),
+                   "test_keyring_pinned.py", "test_packaging.py", "test_docker_rename.py", "test_sast.py", "test_local_plugins.py", "test_agent_workspace.py"),
          "controls": ("SLSA v1.0 Build L2", "SLSA v1.0 Build L3", "Scorecard Pinned-Dependencies", "Scorecard Token-Permissions",
                       "Scorecard Dangerous-Workflow", "Scorecard Vulnerabilities", "Scorecard SBOM", "Scorecard SAST", "SSDF PW.7.2",
                       "SSDF PS.1.1", "SSDF PS.2.1", "SSDF PS.3.2", "SSDF PW.4.1", "CWE-494", "CWE-829")},
