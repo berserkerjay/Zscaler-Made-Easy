@@ -79,6 +79,12 @@
       "what": "every new read is in the sample tenant and the snapshot capture; no network in tests",
       "standard": "WSTG-CONF-05",
       "result": "pass"
+    },
+    {
+      "id": "read-cost",
+      "what": "the Path analyzer and Device posture read only what they use (extended=False): no extra ZPA call per analysis",
+      "standard": "CWE-400",
+      "result": "pass"
     }
   ],
   "findings": [
@@ -116,5 +122,5 @@
       "commit": "ac75d3f"
     }
   ],
-  "tests_added": 22
+  "tests_added": 23
 }

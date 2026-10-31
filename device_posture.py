@@ -958,7 +958,8 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
     Raises zpa_reader.Stopped on Stop and zpa_reader.ReadError when the
     sign-in has no ZPA API."""
     tap = _Tap(client)
-    snap = zpa_reader.read(tap, log=log, cancel=cancel, pace=pace)
+    # Not `extended`: posture and the Path analyzer need none of the lists only ZPA analysis judges.
+    snap = zpa_reader.read(tap, log=log, cancel=cancel, pace=pace, extended=False)
     raw = {k: list(v) for k, v in tap.sinks.items()}
     for k in TAPPED:   # a list that failed keeps nothing (the read says "not read")
         if not (snap.get("collections") or {}).get(k, {}).get("read"):

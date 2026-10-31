@@ -101,6 +101,12 @@ COLLECTIONS = (
     ("cloud_connector_groups", "Cloud Connector groups", "cloud_connector_groups", "list_cloud_connector_groups"),
     ("cloud_connectors", "Cloud Connectors", "cloud_connector_controller", "list_cloud_connectors"),
 )
+# What only ZPA analysis needs (read when `extended`): the Path analyzer and
+# Device posture read the rest and skip these, so their reads stay as short.
+EXTENDED_KEYS = frozenset({"servers", "inspection_profiles", "custom_controls", "private_clouds", "private_cloud_groups",
+                           "private_cloud_controllers", "branch_connector_groups", "branch_connectors", "cloud_connector_groups",
+                           "cloud_connectors", "business_continuity"})
+EXTENDED_POLICIES = frozenset({"redirection", "credential", "capabilities", "clientless"})
 # Lists whose SDK method takes no query parameters: one call, no paging.
 SINGLE_CALL = (
     ("business_continuity", "business continuity settings", "business_continuity", "list_business_continuity_settings"),
@@ -674,9 +680,12 @@ def customer_id_problem(client: Any) -> Optional[str]:
 
 
 def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optional[threading.Event] = None,
-         pace: Optional[float] = None) -> Dict[str, Any]:
+         pace: Optional[float] = None, extended: bool = True) -> Dict[str, Any]:
     """Read the ZPA configuration once (see the module docstring). Returns
-    the normalized snapshot; raises Stopped when Stop is clicked."""
+    the normalized snapshot; raises Stopped when Stop is clicked. Without
+    `extended` the lists only ZPA analysis uses (EXTENDED_KEYS,
+    EXTENDED_POLICIES) are not read: they are absent from the snapshot's
+    collections, so anything that needs them says "not read"."""
     def _log(line: str) -> None:
         if log:
             log(line)
@@ -710,6 +719,8 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
         return items
 
     for key, label, svc_name, method in COLLECTIONS:
+        if not extended and key in EXTENDED_KEYS:
+            continue
         svc = getattr(zpa, svc_name, None)
         fn = getattr(svc, method, None) if svc is not None else None
         if not callable(fn):
@@ -720,7 +731,7 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
         if snap["collections"][key]["read"] is False:
             raw_lists.pop(key, None)
 
-    for key, label, svc_name, method in SINGLE_CALL:
+    for key, label, svc_name, method in SINGLE_CALL if extended else ():
         svc = getattr(zpa, svc_name, None)
         fn = getattr(svc, method, None) if svc is not None else None
         if not callable(fn):
@@ -736,6 +747,8 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
 
     policies = getattr(zpa, "policies", None)
     for ptype, label in POLICY_TYPES:
+        if not extended and ptype in EXTENDED_POLICIES:
+            continue
         fn = getattr(policies, "list_rules", None) if policies is not None else None
         key = f"policy:{ptype}"
         if not callable(fn):

@@ -339,3 +339,18 @@ def test_zpa_analysis_is_refused_before_sign_in_when_zpa_is_not_ticked(monkeypat
             "scope": {"scopes": ["dlp"], "channels": {}, "from_page": True}}
     r = c.post("/api/zpa/analysis/start", json=body)
     assert r.status_code in (400, 401, 403) and not built
+
+
+def test_the_path_analyzer_and_posture_reads_skip_the_lists_only_zpa_analysis_needs():
+    """ASVS V11.1.4 · CWE-400 · WSTG-BUSL-05: the Path analyzer's and Device posture's ZPA read makes no extra call for the new lists."""
+    import device_posture
+    t = FakeTenant()
+    snap, _raw, _z = device_posture.read(t, pace=0)
+    called = {c[0] for c in t.calls}
+    assert not called & {"servers", "app_protection", "business_continuity", "private_cloud", "private_cloud_group", "private_cloud_controller",
+                         "branch_connector_group", "branch_connectors", "cloud_connector_groups", "cloud_connector_controller"}
+    assert {c[2][0] for c in t.calls if c[0] == "policies"} == {"access", "timeout", "client_forwarding", "inspection", "isolation"}
+    assert snap.get("servers") is None and "servers" not in snap["collections"]
+    full = FakeTenant()
+    zr.read(full, pace=0)
+    assert len(full.calls) > len(t.calls)
