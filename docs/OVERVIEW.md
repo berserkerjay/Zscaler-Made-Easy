@@ -515,8 +515,12 @@ what you get, what to do next.
   policy's rules in a new order with the fewest moves (the Default,
   predefined and read-only rules never move), add, remove, move or copy
   URLs on custom URL categories (with the rules in scope that use each
-  one), and move or copy ZPA domains between application segments or
-  clone a segment (with the domain and port overlap check). The preview
+  one), move or copy ZPA domains between application segments or
+  clone a segment (with the domain and port overlap check), and set the
+  same fields on up to 200 ZPA segments at once (enabled, health
+  reporting, bypass, double encryption, disaster recovery mode, segment
+  group, server groups, port ranges; Browser Access, PRA and inspection
+  segments included, their applications kept). The preview
   reads the tenant and lists every item before and after, what is already
   as asked and what is excluded and why, with a plan PDF; applying needs
   write mode, the assessor's name and your confirmation (typed above ten
@@ -650,7 +654,8 @@ what you get, what to do next.
   domain and IP the policy names, deduplicated, with where each was
   found) and the custom URL category analyzer (for each custom-category
   URL, whether Zscaler already categorises it the same way, differently
-  or not at all, through ZIA's URL lookup, paced and capped). Also a
+  or not at all, through ZIA's URL lookup, paced, 20,000 URLs a run, with
+  Continue for the rest up to 100,000). Also a
   locations workbook (locations and sub-locations with their settings,
   location groups, and which URL filtering, Cloud Firewall, SSL
   inspection, File Type Control and Web DLP rules use each, directly or
