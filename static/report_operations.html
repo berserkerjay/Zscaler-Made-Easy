@@ -38,7 +38,7 @@
         <fieldset class="op-kinds" id="opBuildKinds" hidden>
           <legend class="df-h">Build new</legend>
         </fieldset>
-        <div class="df-hint" id="opSanction">Cloud application sanction (Sanctioned / Unsanctioned) is not offered: the Zscaler SDK this app uses can set it but cannot read an application's current state, so a preview, the conflict check and an exact Undo are not possible. Change it in the ZIA Admin Portal.</div>
+        <div class="df-hint" id="opSanction">Cloud application sanction (Sanctioned / Unsanctioned) is the operation <strong>Sanction or unsanction cloud apps</strong> above; it needs ZIA platform and ZIA Insights ticked on the Scope page.</div>
       </section>
 
       <section aria-labelledby="opH2">
@@ -238,6 +238,8 @@
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }
       const box = $('opBuildKinds'), loaded = new Set();
+      const changeBox = document.querySelector('fieldset.op-kinds:not(#opBuildKinds)');
+      let builders = 0;
       list.forEach(p => {
         if (!/^[a-z][a-z0-9_]{1,40}$/.test(p.type) || !/^[a-z][a-z0-9_]{1,40}$/.test(p.family)) return;
         FAMILY[p.type] = p.family;
@@ -245,7 +247,8 @@
         lab.className = 'op-kind';
         lab.innerHTML = `<input type="radio" name="opKind" value="${E(p.type)}"><span><strong>${E(p.label)}</strong><span class="df-hint">${E(p.hint)}</span></span>`;
         lab.querySelector('input').addEventListener('change', e => onKind(e.target));
-        box.appendChild(lab);
+        // A plugin that changes what exists (group "Change existing") sits with the core changes; the rest are builders.
+        if (p.group === 'Change existing' && changeBox) changeBox.appendChild(lab); else { box.appendChild(lab); builders++; }
         // One script serves several types (ops_zpa.js has four): load each once.
         if (/^ops_[a-z0-9_]{1,40}\.js$/.test(p.script || '') && !loaded.has(p.script)) {
           loaded.add(p.script);
@@ -254,12 +257,12 @@
           document.body.appendChild(sc);
         }
       });
-      box.hidden = !list.length;
+      box.hidden = !builders;
       // ?build=<type> (a finding's or another page's link) picks that
       // builder once, for every registered type: it only selects the form.
       // A ?fix= hand-off picks its own operation, so it wins.
       const q = new URLSearchParams(location.search), want = q.get('build') || '';
-      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && box.querySelector(`input[name="opKind"][value="${want}"]`);
+      const pick = !q.get('fix') && /^[a-z][a-z0-9_]{1,40}$/.test(want) && document.querySelector(`input[name="opKind"][value="${want}"]`);
       if (pick && !pick.checked) { pick.checked = true; onKind(pick); }
     })();
 

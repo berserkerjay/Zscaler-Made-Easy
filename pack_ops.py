@@ -1104,6 +1104,15 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return call(svc.update_atp_settings, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "zpa_segment":
         return _zpa_write(zia, "update_segment", oid, op="update", name=name, log=log, kw=payload)
+    if kind == "cloud_app_sanction":
+        # ops_sanction: zia/shadow_it_report.py bulk_update(sanction_state, application_ids=[...]),
+        # PUT /cloudApplications/bulkUpdate; `action` is sanctioned | unsanctioned, `oid` names the ids for the audit log.
+        svc = getattr(zia, "shadow_it_report", None)
+        if svc is None:
+            return Outcome(False, error="shadow_it_report is not available in the installed zscaler-sdk-python")
+        if action not in ("sanctioned", "unsanctioned"):
+            return Outcome(False, error="the sanction state must be sanctioned or unsanctioned")
+        return call(svc.bulk_update, action, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "zdx_app":   # ZDX changes an app's or probe's state only (action: activate | deactivate)
         return _zdx_write(zia, "zdx_set_app_state", oid, action, op="update", kind=kind, name=name, log=log)
     if kind == "zdx_probe":
