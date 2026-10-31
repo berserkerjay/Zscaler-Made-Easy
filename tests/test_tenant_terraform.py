@@ -132,10 +132,10 @@ def store_for(types, rows_per_type=1, extra=None):
             if t["key"] == "zcc.trusted_networks":
                 return {"trustedNetworkContracts": items}
             return items
-        body = rows[0] if t["singleton"] else wrap(rows)
+        body = rows[0] if t["singleton"] and not t["method"].startswith("list") else wrap(rows)
         responses[paths[0]] = {"status": 200, "body": body}
         for extra_path in paths[1:]:   # the other lists of the same type (other rule types, the other key type) are empty
-            responses.setdefault(extra_path, {"status": 200, "body": body if t["singleton"] else wrap([])})
+            responses.setdefault(extra_path, {"status": 200, "body": body if t["singleton"] and not t["method"].startswith("list") else wrap([])})
     responses.update(extra or {})
     st = ot.OfflineStore("snap-" + "1" * 16, "snapshot", responses, {"tenant_label": "Fixture tenant"})
     return ot.OfflineSdkClient(st, ot.creds_for(st))

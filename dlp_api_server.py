@@ -1348,6 +1348,9 @@ class DLPPackDeployRequest(TenantCredsRequest):
     # Terraform hand-off only: "static" never reads the tenant (credentials
     # are ignored); "gap" needs them; "" decides by whether they are present.
     mode: str = ""
+    # Terraform hand-off only: a private registry mirror for the zia provider
+    # ("registry.example.com/zscaler"); empty is the public zscaler/zia.
+    provider_namespace: str = ""
     # apply-only: the hash of the plan the user approved, plus explicit consent
     plan_hash: str = ""
     confirm: bool = False
@@ -5300,12 +5303,22 @@ async def dlp_packs_terraform(req: DLPPackDeployRequest):
         raise HTTPException(status_code=500, detail=f"pack_terraform unavailable: {e}")
     if not req.pack_ids:
         raise HTTPException(status_code=400, detail="Select at least one pack.")
+    _check_tf_namespace(req.provider_namespace)
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
     result = await asyncio.to_thread(_run_terraform, client, creds, req, packs, None, None)
     name, media, data = result["artifact"]
     return Response(content=data, media_type=media,
                     headers={"Content-Disposition": f'attachment; filename="{name}"', "X-DLP-Check-Mode": result["mode"]})
+
+
+def _check_tf_namespace(ns: str) -> None:
+    """A malformed private-registry namespace is a 400 before anything is read."""
+    import pack_terraform
+    try:
+        pack_terraform.provider_source(ns)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 async def _terraform_client(req: DLPPackDeployRequest):
@@ -5363,7 +5376,8 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
             return {"status": "stopped", "stopped": "You clicked Stop.", "mode": mode, "packs": list(workspaces), "logs": logs}
         _log(f"Generating the Terraform workspace for {p.get('name') or p['id']}…")
         files = pack_terraform.generate(p, report=pack_terraform.split_report(report, p["id"]) if report else None,
-                                        channel_targets=(req.channel_targets or {}).get(p["id"]), assessor=by)
+                                        channel_targets=(req.channel_targets or {}).get(p["id"]), assessor=by,
+                                        namespace=req.provider_namespace)
         workspaces[p["id"]] = files
         _log(f"  {len(files)} files" + (", imports.tf included" if "imports.tf" in files else "") + ".")
     data = pack_terraform.zip_workspaces(workspaces)
@@ -5384,6 +5398,7 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request)
     if not req.pack_ids:
         raise HTTPException(status_code=400, detail="Select at least one pack.")
     _require_assessor(req)
+    _check_tf_namespace(req.provider_namespace)
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
     job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
@@ -5541,7 +5556,7 @@ class TenantTerraformRequest(ScopedTenantCredsRequest):
     keep_rule_state: bool = False
 
 
-TENANT_TF_NEEDS_ONEAPI = ("ZPA, Cloud & Branch Connector and Client Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+TENANT_TF_NEEDS_ONEAPI = ("ZPA and Cloud & Branch Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
                           "Untick them, or sign in with an API client. Nothing was read.")
 TENANT_TF_NEEDS_CUSTOMER_ID = ("ZPA needs the ZPA customer ID (Connect to the tenant → Customer ID, or the saved profile): every ZPA API "
                                "path carries it. Untick ZPA, or fill it in. Nothing was read.")
@@ -5598,8 +5613,16 @@ async def tenant_terraform_start(req: TenantTerraformRequest, request: Request):
     creds = _tenant_creds(req)
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant profile) to export it.")
+    # The Client Connector provider signs in with OneAPI only (not on zscalergov / zscalerten, not
+    # with the classic ZIA sign-in): its workspace is skipped with the reason, the rest exported.
+    zcc_skip = tenant_terraform.zcc_unavailable(creds)
+    if zcc_skip and any(tenant_terraform.BY_KEY[k]["product"] == "zcc" for k in plan["read"]):
+        try:
+            plan = tenant_terraform.plan(sc, ch, opts, include_personal=bool(req.include_personal_data), skip_products={"zcc": zcc_skip})
+        except tenant_terraform.ExportRefused as e:
+            raise HTTPException(status_code=400, detail=str(e))
     products_read = {tenant_terraform.BY_KEY[k]["product"] for k in plan["read"]}
-    if products_read & {"zpa", "ztc", "zcc"} and creds.get("auth_method") == tenant_auth.LEGACY:
+    if products_read & {"zpa", "ztc"} and creds.get("auth_method") == tenant_auth.LEGACY:
         raise HTTPException(status_code=400, detail=TENANT_TF_NEEDS_ONEAPI)
     if "zpa" in products_read and not validate_customer_id(creds.get("customer_id") or ""):
         raise HTTPException(status_code=400, detail=TENANT_TF_NEEDS_CUSTOMER_ID)
@@ -6410,18 +6433,20 @@ async def exports_client_connector_start(req: ConfigExportRequest, request: Requ
 
 
 @app.get("/api/pack-library/{pack_id}/terraform.zip")
-async def pack_library_terraform(pack_id: str, assessor: str = "", profile_id: str = ""):
+async def pack_library_terraform(pack_id: str, assessor: str = "", profile_id: str = "", provider_namespace: str = ""):
     """The pack as a Terraform workspace for the official zscaler/zia
     provider, static mode (no tenant read), for any pack in the library.
     Gap mode (imports of what already exists) is the Terraform hand-off.
     `assessor` (else the saved profile's, by `profile_id`) is the name the
-    provenance tags carry; refused (400) when no assessor is named."""
+    provenance tags carry; refused (400) when no assessor is named.
+    `provider_namespace`: a private registry mirror for the provider."""
     import pack_library as pl
     import pack_terraform
+    _check_tf_namespace(provider_namespace)
     pack = _resolve_pack_ids([pack_id])[0]
     from types import SimpleNamespace
     by = _require_assessor(SimpleNamespace(assessor=assessor, profile_id=profile_id))
-    files = await asyncio.to_thread(lambda: pack_terraform.generate(pack, assessor=by))
+    files = await asyncio.to_thread(lambda: pack_terraform.generate(pack, assessor=by, namespace=provider_namespace))
     data = pack_terraform.zip_workspaces({pack["id"]: files})
     return Response(content=data, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{pl.slugify(pack_id) or "pack"}-terraform.zip"', "X-DLP-Check-Mode": "static"})

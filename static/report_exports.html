@@ -87,13 +87,13 @@
               <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exPackJson">JSON</button><button type="button" class="rp-btn" data-run id="exPackTf">Terraform</button></td>
             </tr>
             <tr>
-              <th scope="row"><div class="adv-pname">Export from tenant as Terraform (whole tenant)</div><div class="adv-pdesc">Every object in scope (rules, URL categories, IP and network groups, labels, settings, ZPA segments, groups, servers, connector groups and policies, Cloud &amp; Branch Connector rules and groups, Client Connector trusted networks and forwarding profiles) as one Terraform workspace per product for the official zscaler providers.</div></th>
+              <th scope="row"><div class="adv-pname">Export from tenant as Terraform (whole tenant)</div><div class="adv-pdesc">Every object in scope (rules, URL categories, IP and network groups, labels, settings, ZPA segments, groups, servers, connector groups and policies, Cloud &amp; Branch Connector rules and groups, Client Connector trusted networks, forwarding profiles, fail-open policy, device cleanup and web privacy) as one Terraform workspace per product for the official zscaler providers.</div></th>
               <td>
                 <fieldset class="ex-pick"><legend>Products</legend>
                   <label><input type="checkbox" name="exTfProduct" value="zia" checked> ZIA</label>
                   <label><input type="checkbox" name="exTfProduct" value="zpa" checked> ZPA</label>
                   <label><input type="checkbox" name="exTfProduct" value="ztc" checked> Cloud &amp; Branch Connector</label>
-                  <label><input type="checkbox" name="exTfProduct" value="zcc" checked> Client Connector</label>
+                  <label><input type="checkbox" name="exTfProduct" value="zcc" checked> Client Connector <span class="df-by" id="exTfZccBeta">(beta provider)</span></label>
                 </fieldset>
                 <fieldset class="ex-pick"><legend>Use</legend>
                   <label><input type="radio" name="exTfMode" value="adopt" checked> Adopt this tenant: import blocks, every object keeps its state</label>
@@ -112,7 +112,7 @@
                   </fieldset>
                   <div id="exTfTypes"><p class="df-hint">Object types: untick one to leave it out.</p><span class="df-hint" id="exTfTypesNote">Loading the object types…</span></div>
                 </details>
-                <div class="df-hint">Read-only. Only what the Scope page ticks is read: DLP or ZIA platform for ZIA, ZPA, Cloud &amp; Branch Connector, ZCC. No secret is ever written: pre-shared keys, passwords and private keys become sensitive variables you fill in. Users are not exported; predefined objects are looked up by name. Each workspace's README lists what was not exported and why.</div>
+                <div class="df-hint">Read-only. Only what the Scope page ticks is read: DLP or ZIA platform for ZIA, ZPA, Cloud &amp; Branch Connector, ZCC. No secret is ever written: pre-shared keys, passwords and private keys become sensitive variables you fill in. Users are not exported; predefined objects are looked up by name. Each workspace's README lists what was not exported and why. The Client Connector provider (zscaler/zcc) is a beta, pinned to 0.1.2-beta.3: it signs in with a ZIdentity OneAPI client only, so its workspace is skipped, with the reason, for a classic ZIA sign-in and on zscalergov or zscalerten.</div>
               </td>
               <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exTenantTf">Terraform (zip)</button></td>
             </tr>
@@ -559,7 +559,8 @@
         note.remove();
         Object.entries(d.products || {}).forEach(([p, types]) => {
           const fs = document.createElement('fieldset'); fs.className = 'ex-colgrid';
-          const lg = document.createElement('legend'); lg.textContent = TF_PRODUCTS[p] || p; fs.appendChild(lg); box.appendChild(fs);
+          const beta = ((d.providers || {})[p] || {}).beta;
+          const lg = document.createElement('legend'); lg.textContent = (TF_PRODUCTS[p] || p) + (beta ? ' (beta provider)' : ''); fs.appendChild(lg); box.appendChild(fs);
           types.forEach(t => {
             const lab = document.createElement('label');
             const cb = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'exTfType'; cb.value = t.key; cb.checked = true;

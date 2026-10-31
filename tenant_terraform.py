@@ -10,7 +10,17 @@ writes one Terraform root module per product for the official providers:
     zscaler/zia  ~> 4.8     ZIA (58 resource types)
     zscaler/zpa  ~> 4.4     ZPA (31 resource types)
     zscaler/ztc  ~> 0.2     Cloud & Branch Connector (10 resource types)
-    zscaler/zcc  ~> 0.1     Client Connector (trusted networks, forwarding profiles)
+    zscaler/zcc  0.1.2-beta.3  Client Connector (beta provider: trusted networks, forwarding
+                            profiles, fail-open policy, device cleanup, web privacy)
+
+The Client Connector provider (registry.terraform.io/providers/zscaler/zcc,
+github.com/zscaler/terraform-provider-zcc) has published pre-releases only
+(0.1.0-beta.1, 0.1.1-beta.2, 0.1.2-beta.3). Terraform selects a pre-release
+only with an exact version constraint (`~> 0.1` matches none of them), so
+the pin is exact and the workspace is labelled beta. The provider signs in
+with ZIdentity OneAPI only, and OneAPI is not offered on the zscalergov and
+zscalerten clouds: for those tenants, and for a classic (legacy) ZIA sign-in,
+the zcc workspace is skipped with the reason (zcc_unavailable).
 
 Two modes:
 
@@ -99,8 +109,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import md_safe
-from pack_terraform import (GENERATED_MARK, GITIGNORE, TERRAFORM_VERSION, hcl_comment, hcl_fmt, hcl_list, hcl_str, one_line,
-                            slug)
+from pack_terraform import (GENERATED_MARK, GITIGNORE, NAMESPACE_RE as _PT_NAMESPACE_RE, TERRAFORM_VERSION, hcl_comment, hcl_fmt, hcl_list,
+                            hcl_str, one_line, slug)
 from tenant_terraform_schema import SCHEMAS
 
 PRODUCTS = ("zia", "zpa", "ztc", "zcc")
@@ -111,12 +121,38 @@ PROVIDERS = {
     "zia": {"version": "~> 4.8", "docs": "https://registry.terraform.io/providers/zscaler/zia/latest/docs"},
     "zpa": {"version": "~> 4.4", "docs": "https://registry.terraform.io/providers/zscaler/zpa/latest/docs"},
     "ztc": {"version": "~> 0.2", "docs": "https://registry.terraform.io/providers/zscaler/ztc/latest/docs"},
-    "zcc": {"version": "~> 0.1", "docs": "https://registry.terraform.io/providers/zscaler/zcc/latest/docs"},
+    # Exact: the provider has pre-releases only, and a pre-release is selected only by an exact constraint.
+    "zcc": {"version": "0.1.2-beta.3", "docs": "https://registry.terraform.io/providers/zscaler/zcc/latest/docs", "beta": True},
 }
+# The Client Connector provider signs in with ZIdentity OneAPI only; OneAPI is
+# not offered on these clouds (zscaler_clouds keys).
+ZCC_NO_ONEAPI_CLOUDS = ("zscalergov", "zscalergovus", "zscalerten")
+ZCC_BETA_NOTE = ("The zscaler/zcc provider is a beta (pre-release 0.1.2-beta.3, pinned exactly): check every plan before you apply, "
+                 "and expect its arguments to change before 1.0.")
+
+
+def zcc_unavailable(creds: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Why the Client Connector workspace cannot be used for this sign-in, or
+    None. The zcc provider signs in with ZIdentity OneAPI only (no classic
+    ZCC API keys), and OneAPI is not offered on zscalergov or zscalerten."""
+    import tenant_auth
+    import zscaler_clouds
+    c = creds or {}
+    if str(c.get("auth_method") or "") == tenant_auth.LEGACY:
+        return ("skipped: the Client Connector provider (zscaler/zcc) signs in with a ZIdentity OneAPI client only, and this is a classic "
+                "ZIA sign-in")
+    try:
+        cloud = zscaler_clouds.normalize(c.get("cloud"))
+    except Exception:  # noqa: BLE001 - an unknown cloud is refused elsewhere
+        cloud = str(c.get("cloud") or "")
+    if cloud in ZCC_NO_ONEAPI_CLOUDS:
+        return (f"skipped: the Client Connector provider (zscaler/zcc) signs in with ZIdentity OneAPI only, and OneAPI is not offered "
+                f"on {cloud}")
+    return None
 MODES = ("adopt", "clone")
 DEFAULT_NAMESPACE = "zscaler"
 # A private registry mirror ("registry.example.com/zscaler"): a host name, then one namespace.
-NAMESPACE_RE = re.compile(r"\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?::[0-9]{1,5})?/)?[a-z0-9][a-z0-9_-]{0,63}\Z")
+NAMESPACE_RE = _PT_NAMESPACE_RE   # one rule for the packs and the whole-tenant export
 PREFIX_RE = re.compile(r"\A[a-z][a-z0-9_]{0,19}\Z")
 MICROTENANT_RE = re.compile(r"\A[0-9]{1,20}\Z")
 MAX_ROWS_PER_TYPE = 20000
@@ -589,6 +625,16 @@ TYPES: List[Dict[str, Any]] = [
        gate=("scope", "zcc"), name="network_name", hook="zcc_trusted_network"),
     _t("zcc.forwarding_profiles", "zcc_forwarding_profile", "Forwarding profiles", "client_connector", "forwarding_profile",
        "list_by_company", gate=("scope", "zcc")),
+    # Settings, one record each. The SDK reads them (zscaler/zcc fail_open_policy.list_by_company,
+    # devices.get_device_cleanup_info, web_privacy.get_web_privacy); the field names are the provider's
+    # arguments in snake_case (zcc 0.1.2 docs/resources). The fail-open policy is imported by its own id
+    # (GetFailOpenPolicyByID); device cleanup and web privacy re-read their record whatever the id.
+    _t("zcc.failopen_policy", "zcc_failopen_policy", "Fail-open policy", "client_connector", "fail_open_policy", "list_by_company",
+       gate=("scope", "zcc"), singleton=True, hook="zcc_flags"),
+    _t("zcc.device_cleanup", "zcc_device_cleanup", "Device cleanup", "client_connector", "devices", "get_device_cleanup_info",
+       gate=("scope", "zcc"), singleton=True, import_id="device_cleanup", hook="zcc_flags"),
+    _t("zcc.web_privacy", "zcc_web_privacy", "Web privacy (end-user and device data collection)", "client_connector", "web_privacy",
+       "get_web_privacy", gate=("scope", "zcc"), singleton=True, import_id="web_privacy", hook="zcc_flags"),
 ]
 BY_KEY: Dict[str, Dict[str, Any]] = {t["key"]: t for t in TYPES}
 
@@ -608,6 +654,8 @@ NOT_COVERED: List[Tuple[str, str, str]] = [
      "does not have (CommonIDNameExternalID), so every read fails"),
     ("ztc", "Cloud & Branch Connector groups, locations and DNS / log forwarding rules",
      "zscaler-sdk-python 1.11.3 cannot read them as the provider writes them"),
+    ("zcc", "Notification templates and ZIA posture profiles (zcc_notification_template, zcc_zia_posture)",
+     "zscaler-sdk-python 1.11.3 has no call that reads them, so the export cannot see them; add them by hand"),
 ]
 
 
@@ -680,7 +728,8 @@ def normalize_options(products: Any = None, types: Any = None, exclude: Any = No
             "namespace": ns or DEFAULT_NAMESPACE, "microtenant_id": mt, "mode": md, "keep_rule_state": bool(keep_rule_state)}
 
 
-def plan(scopes: Any, channels: Any, opts: Dict[str, Any], *, include_personal: bool = False) -> Dict[str, Any]:
+def plan(scopes: Any, channels: Any, opts: Dict[str, Any], *, include_personal: bool = False,
+         skip_products: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """Which types to read for these options and the Scope page's selection:
     {read: [keys], not_in_scope: {key: why}, left_out: {key: why}}. A type
     asked for by name that is out of scope, or nothing at all in scope, is
@@ -702,6 +751,9 @@ def plan(scopes: Any, channels: Any, opts: Dict[str, Any], *, include_personal: 
         if t["key"] in opts["exclude"]:
             left[t["key"]] = "left out: excluded in the export options"
             continue
+        if (skip_products or {}).get(t["product"]):
+            left[t["key"]] = str(skip_products[t["product"]])
+            continue
         if opts.get("mode") == "clone" and t["singleton"]:
             left[t["key"]] = ("left out in clone mode: a setting exists in every tenant, so applying it would overwrite the target's own "
                               "settings; export in adopt mode to manage it")
@@ -719,6 +771,9 @@ def plan(scopes: Any, channels: Any, opts: Dict[str, Any], *, include_personal: 
         raise ExportRefused("Not in scope on the Scope page: " + "; ".join(f"{BY_KEY[k]['label']} ({nis[k]})" for k in out_asked[:6])
                             + ". Leave them out of the export or tick their scope. Nothing was read.")
     if not read:
+        skipped = sorted({str(v) for p, v in (skip_products or {}).items() if v and p in opts["products"]})
+        if left and skipped and all(BY_KEY[k]["product"] in (skip_products or {}) for k in left):
+            raise ExportRefused("Nothing can be exported: " + "; ".join(s[0].upper() + s[1:] for s in skipped) + ". Nothing was read.")
         raise ExportRefused(NOTHING_IN_SCOPE if not left else "Every object type in scope was left out by the export options. Nothing was read.")
     return {"read": read, "not_in_scope": nis, "left_out": left}
 
@@ -746,7 +801,9 @@ def catalogue() -> Dict[str, Any]:
         out[p] = [{"key": t["key"], "label": t["label"], "resource": t["resource"], "personal": t["personal"],
                    "gate": t["gate"][0], "needs": _needs(t)} for t in TYPES if t["product"] == p]
     return {"products": out, "labels": PRODUCT_LABELS, "not_covered": [{"product": p, "what": w, "why": y} for p, w, y in NOT_COVERED],
-            "providers": {p: {"source": f"{DEFAULT_NAMESPACE}/{p}", "version": PROVIDERS[p]["version"]} for p in PRODUCTS}}
+            "providers": {p: {"source": f"{DEFAULT_NAMESPACE}/{p}", "version": PROVIDERS[p]["version"], "beta": bool(PROVIDERS[p].get("beta"))}
+                          for p in PRODUCTS},
+            "beta_note": {"zcc": ZCC_BETA_NOTE}}
 
 
 # ---------------------------------------------------------------------------
@@ -893,6 +950,11 @@ def _list_all(fn: Callable[..., Any], args: Tuple[Any, ...], q: Dict[str, Any], 
     return rows, None
 
 
+def _nx_data(ret: Any) -> Any:
+    from dlp_importer import _nx
+    return _nx(ret)[0]
+
+
 def read_type(client: Any, t: Dict[str, Any], *, cancel: Any = None, microtenant_id: str = "") -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Every object of one type: (rows, error). Read-only."""
     import pack_export
@@ -903,7 +965,12 @@ def read_type(client: Any, t: Dict[str, Any], *, cancel: Any = None, microtenant
     fn = getattr(svc, t["method"])
     q = {"microtenant_id": microtenant_id} if (microtenant_id and t["product"] == "zpa") else {}
     if t["singleton"]:
-        row, err = pack_export.one_row(fn())
+        ret = fn()
+        if t["method"].startswith("list") and isinstance(_nx_data(ret), list):   # a list call that answers the one record (Client Connector's fail-open policy)
+            got, err, _resp = _raw_rows(ret)
+            got = _unwrap(got)
+            return got[:1], err
+        row, err = pack_export.one_row(ret)
         if t["hook"] == "security_lists" and not err:
             deny, err = pack_export.one_row(svc.get_blacklist())
             row = dict(row or {}, **(deny or {}))
@@ -1087,7 +1154,20 @@ def _hook_zcc_trusted_network(row: Dict[str, Any], ctx: "_Ctx") -> Dict[str, Any
     return out
 
 
-HOOKS = {"zcc_trusted_network": _hook_zcc_trusted_network, "engine_expression": _hook_engine_expression, "policy_v2": _hook_policy_v2, "provisioning_key": _hook_provisioning_key,
+def _hook_zcc_flags(row: Dict[str, Any], ctx: "_Ctx") -> Dict[str, Any]:
+    """Client Connector settings write their switches as 0 / 1 (numbers or
+    strings: device cleanup's `active` is "1"); the provider takes true /
+    false (its device cleanup docs: "Mirrors the API's 0/1 integer-as-string
+    flag"). Only the provider's boolean arguments are changed."""
+    out = dict(row)
+    for name, kind, _req, _sub in schema_of(ctx.resource) if getattr(ctx, "resource", None) else []:
+        v = out.get(name)
+        if kind == "b" and not isinstance(v, bool) and str(v).strip() in ("0", "1"):
+            out[name] = str(v).strip() == "1"
+    return out
+
+
+HOOKS = {"zcc_flags": _hook_zcc_flags, "zcc_trusted_network": _hook_zcc_trusted_network, "engine_expression": _hook_engine_expression, "policy_v2": _hook_policy_v2, "provisioning_key": _hook_provisioning_key,
          "lss_name": _hook_lss_name, "pra_console": _hook_pra_console, "security_lists": _hook_security_lists}
 
 
@@ -1369,6 +1449,8 @@ def _render_attrs(schema: List[Tuple[str, str, bool, Any]], row: Dict[str, Any],
 def _import_id(t: Dict[str, Any], row: Dict[str, Any]) -> str:
     if t["import_id"]:
         return t["import_id"]
+    if t["singleton"] and not _rid(row):   # a one-record setting without an id: the provider's sentinel (its resource name)
+        return t["resource"].split("_", 1)[1]
     return t["import_fmt"].format(id=_rid(row), type=str(row.get("type") or ""))
 
 
@@ -1386,6 +1468,7 @@ def render_resource(t: Dict[str, Any], row: Dict[str, Any], label: str, ctx: _Ct
     required argument is missing (the object is then listed as not exported)."""
     hook = HOOKS.get(t["hook"] or "")
     if hook:
+        ctx.resource = t["resource"]
         row = hook(row, ctx)
     for attr, alt in RENAMES.get(t["resource"], {}).items():
         if _empty(row.get(attr)) and not _empty(row.get(alt)):
@@ -1444,7 +1527,9 @@ def _provider_block(product: str) -> str:
 
 def _terraform_tf(product: str, namespace: str) -> str:
     src = f"{namespace}/{product}"
-    return (f"{GENERATED_MARK}. Terraform {TERRAFORM_VERSION} for import blocks; the provider pinned to a minor line.\n\n"
+    pin = ("the provider is a beta (pre-releases only), pinned exactly: Terraform selects a pre-release only by an exact version"
+           if PROVIDERS[product].get("beta") else "the provider pinned to a minor line")
+    return (f"{GENERATED_MARK}. Terraform {TERRAFORM_VERSION} for import blocks; {pin}.\n\n"
             f"terraform {{\n  required_version = {hcl_str(TERRAFORM_VERSION)}\n\n  required_providers {{\n"
             f"    {product} = {{\n      source  = {hcl_str(src)}\n      version = {hcl_str(PROVIDERS[product]['version'])}\n    }}\n  }}\n\n"
             "  # Remote state (recommended for shared use). Uncomment and fill in, or pass\n"
@@ -1527,9 +1612,11 @@ def _readme_product(product: str, counts: Dict[str, int], ctx: _Ctx, not_exporte
             nx += (f"| `{res}.{attr}` on {n} object{'s' if n != 1 else ''} | the tenant's value is not in the form the provider takes, "
                    "or is a secret: left out, so Terraform does not manage it |\n")
     secrets = "".join(f"| `{v}` | {md_safe.text(_SECRET_WORDS.get(v, ''))} |\n" for v in sorted(ctx.secret_vars))
-    return (f"# {PRODUCT_LABELS[product]} as Terraform\n\n"
+    beta = (f"> **Beta provider.** {ZCC_BETA_NOTE} It signs in with a ZIdentity OneAPI client only (not the classic Client Connector "
+            "API keys), and OneAPI is not offered on zscalergov or zscalerten.\n\n") if PROVIDERS[product].get("beta") else ""
+    return (f"# {PRODUCT_LABELS[product]} as Terraform{' (beta provider)' if beta else ''}\n\n"
             f"Exported by Zscaler Made Easy from {md_safe.text(tenant_label or 'the tenant')}, read-only, for the "
-            f"[`{namespace}/{product}`]({PROVIDERS[product]['docs']}) provider ({PROVIDERS[product]['version']}).\n\n"
+            f"[`{namespace}/{product}`]({PROVIDERS[product]['docs']}) provider ({PROVIDERS[product]['version']}).\n\n" + beta
             + (_USE_CLONE.format(n=ctx.disabled, keep=" (Keep each rule's state was ticked: rules keep the source tenant's state)"
                                  if ctx.keep_rule_state else "") if ctx.clone else _USE_ADOPT)
             + "## What is in this workspace\n\n| Resource type | Objects |\n|---|---|\n" + (rows or "| (none) | 0 |\n") + "\n"

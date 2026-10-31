@@ -515,6 +515,21 @@ SCHEMAS: Dict[str, str] = {
         "resolved_ips_for_hostname:ls trusted_dhcp_servers_ips:ls trusted_egress_ips:ls trusted_gateway_ips:ls "
         "trusted_subnet_ips:ls"
     ),
+    # zcc 0.1.2 docs/resources: every argument optional; the switches are booleans the API writes as 0 / 1.
+    "zcc_failopen_policy": (
+        "active:b enable_fail_open:b enable_strict_enforcement_prompt:b strict_enforcement_prompt_message:s "
+        "strict_enforcement_prompt_delay_minutes:n enable_web_sec_on_proxy_unreachable:b enable_web_sec_on_tunnel_failure:b "
+        "tunnel_failure_retry_count:n enable_captive_portal_detection:b captive_portal_web_sec_disable_minutes:n"
+    ),
+    "zcc_device_cleanup": (
+        "active:b force_remove_type:s device_exceed_limit:n auto_removal_days:n auto_purge_days:n"
+    ),
+    "zcc_web_privacy": (
+        "active:b collect_user_info:b collect_machine_hostname:b collect_zdx_location:b enable_packet_capture:b "
+        "disable_crashlytics:b override_t2_protocol_setting:b restrict_remote_packet_capture:b "
+        "grant_access_to_zscaler_log_folder:b export_logs_for_non_admin:b enable_auto_log_snippet:b enforce_secure_pac_urls:b "
+        "enable_fqdn_match_for_vpn_bypasses:b"
+    ),
     "zcc_forwarding_profile": (
         "name:s! active:b condition_type:n dns_servers:s dns_search_domains:s enable_lwf_driver:b hostname:s "
         "resolved_ips_for_hostname:s trusted_subnets:s trusted_gateways:s trusted_dhcp_servers:s trusted_egress_ips:s "
