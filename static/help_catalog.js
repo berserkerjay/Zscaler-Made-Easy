@@ -871,6 +871,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Reads only when ZCC is ticked on the Scope page.",
     "effect": "nav"
    },
+   ".tool-group button[onclick=\"openTrafficLogsTab()\"]": {
+    "what": "Upload ZPA LSS and ZIA NSS logs and see sessions, failures and their reasons, connector health, anomalies, blocks, rules hit, DLP, threats and SSL inspection. Read on this computer; only counts are kept. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. You drop the log files in the new tab.",
+    "effect": "nav"
+   },
    ".tool-group button[onclick=\"openLogAnalyzerTab()\"]": {
     "what": "Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Says what happened, what it means for the user and what to do next. Opens in a new tab.",
     "input": "Nothing to type. Just click it. You drop the files in the new tab.",
@@ -3908,6 +3913,11 @@ window.HELP_CATALOG = {
    }
   },
   "/report/insights": {
+   "#tiLogsLink": {
+    "what": "Opens Traffic and session logs, where uploaded NSS logs answer what Insights cannot: per rule, per category, per user and per host.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
    "#tiTenant": {
     "what": "Picks which tenant to read: the one signed in on the assessment tab, a saved tenant profile, or the one saved on this computer.",
     "input": "Pick one from the list. It shows only when there is more than one choice.",
@@ -7723,6 +7733,173 @@ window.HELP_CATALOG = {
    },
    "#tdBody .td-kind a": {
     "what": "Opens the page of the object this to-do is on.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   }
+  },
+  "/report/traffic-logs": {
+   "#tlFiles": {
+    "what": "Picks the ZPA LSS or ZIA NSS log files to analyze. You can also drop them in this box.",
+    "input": "Required. JSON lines, a CSV or TSV with its header row, or the default NSS tab-separated feed, as .json, .log, .txt, .csv or .tsv, or packed in a .gz or .zip. Keep it under the upload limit shown.",
+    "effect": "local"
+   },
+   "#tlFormatBox > summary": {
+    "what": "Opens or closes the box for a custom NSS feed's output format.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlFormat": {
+    "what": "The feed output format of a custom NSS feed, so lines that are not JSON can be split into fields.",
+    "input": "Optional. Paste it from the NSS feed in the ZIA Admin Portal, like %s{time}\\t%s{login}\\t%s{url}\\t%s{action}. Up to 4,000 characters. Leave it empty for JSON, a CSV with a header or the default format.",
+    "effect": "local"
+   },
+   "#tlRun": {
+    "what": "Reads the chosen files on this computer and shows what the logs say. Nothing is sent to Zscaler and the lines are not kept.",
+    "input": "Choose one or more files first.",
+    "effect": "local"
+   },
+   "#tlSavedBox > summary": {
+    "what": "Opens or closes the list of reports saved on this computer.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSaved button.tl-act": {
+    "what": "Opens this saved report on the page, or deletes it from this computer after you confirm.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlCsv": {
+    "what": "Downloads the analysis as one CSV file, table by table. User names are replaced by user 1, user 2 unless you tick Include user names and addresses.",
+    "input": "Nothing to type. Run Analyze first.",
+    "effect": "download"
+   },
+   "#tlXlsx": {
+    "what": "Downloads the analysis as an Excel workbook, one sheet per table. User names are replaced unless you tick Include user names and addresses.",
+    "input": "Nothing to type. Run Analyze first.",
+    "effect": "download"
+   },
+   "#tlPdf": {
+    "what": "Downloads the analysis as a PDF report with the top rows of each table. User names are replaced unless you tick Include user names and addresses.",
+    "input": "Nothing to type. Run Analyze first.",
+    "effect": "download"
+   },
+   "#tlNames": {
+    "what": "Keeps user names, IP addresses, devices and the session list in downloads and in a saved report.",
+    "input": "Unticked: counts only, with users shown as user 1, user 2. Ticked: the names as they are in the logs.",
+    "effect": "local"
+   },
+   "#tlSave": {
+    "what": "Saves the analysis as a file only you can read on this computer, so you can open it again later. Counts only unless Include user names and addresses is ticked.",
+    "input": "Run Analyze first. You are asked for a name, up to 80 characters.",
+    "effect": "local"
+   },
+   "#tlForget": {
+    "what": "Forgets the analysis: it is removed from this page and from the server's memory. Saved reports stay.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlNav a": {
+    "what": "Jumps to that part of the results.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlResults a.tl-link[href^=\"/report/path\"]": {
+    "what": "Opens the Path analyzer in a new tab with this destination filled in. It reads the tenant only when you click Analyze there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#tlInsights": {
+    "what": "Opens Traffic insights in a new tab with the same time window as these logs filled in. It reads the tenant only when you click Read Insights there.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#tlResults button.tl-act": {
+    "what": "Puts this user or destination in the SIEM query below, so the query asks only about it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSessFilter": {
+    "what": "Shows only the sessions whose user, device, address, country, platform or version contains what you type.",
+    "input": "Optional. A few letters, like a user name or a country code.",
+    "effect": "local"
+   },
+   "#tlResults details > summary": {
+    "what": "Opens or closes the extra detail: the values as a table, or the lines that could not be read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSiem": {
+    "what": "Picks the SIEM whose query language the query is written in.",
+    "input": "Pick Splunk (SPL), Microsoft Sentinel (KQL) or Elastic (ES|QL).",
+    "effect": "local"
+   },
+   "#tlQuestion": {
+    "what": "Picks the question the query asks, the same questions this page answers from the uploaded logs.",
+    "input": "Pick one from the list, grouped by ZPA and ZIA log type.",
+    "effect": "local"
+   },
+   "#tlHours": {
+    "what": "How far back the query looks.",
+    "input": "A whole number of hours from 1 to 2208 (92 days). Default 24.",
+    "effect": "local"
+   },
+   "#tlQUser": {
+    "what": "Limits the query to one user.",
+    "input": "Optional. A user name as it appears in the logs, like jdoe@example.com. It is escaped for the query language.",
+    "effect": "local"
+   },
+   "#tlQDest": {
+    "what": "Limits the query to one destination: a host, or for DNS a queried name.",
+    "input": "Optional. A host name or address, like intranet.example.com. It is escaped for the query language.",
+    "effect": "local"
+   },
+   "#tlSiemSec details > summary": {
+    "what": "Opens or closes where the logs are kept in your SIEM.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#tlSrcZpa": {
+    "what": "Where the ZPA LSS logs are in your SIEM.",
+    "input": "Optional. Splunk: the index name. Sentinel: the table name. Elastic: the index pattern. Letters, digits, _ and - (Elastic also . * , :). Empty uses the placeholder shown.",
+    "effect": "local"
+   },
+   "#tlSrcWeb": {
+    "what": "Where the ZIA NSS web logs are in your SIEM.",
+    "input": "Optional. Splunk: the index name. Sentinel: the table name. Elastic: the index pattern. Empty uses the placeholder shown.",
+    "effect": "local"
+   },
+   "#tlSrcFw": {
+    "what": "Where the ZIA NSS firewall logs are in your SIEM.",
+    "input": "Optional. Splunk: the index name. Sentinel: the table name. Elastic: the index pattern. Empty uses the placeholder shown.",
+    "effect": "local"
+   },
+   "#tlSrcDns": {
+    "what": "Where the ZIA NSS DNS logs are in your SIEM.",
+    "input": "Optional. Splunk: the index name. Sentinel: the table name. Elastic: the index pattern. Empty uses the placeholder shown.",
+    "effect": "local"
+   },
+   "#tlQuery": {
+    "what": "The query text to copy into your SIEM. It only reads your SIEM's data; nothing here runs it.",
+    "input": "Nothing to type: it is written from your choices above.",
+    "effect": "local"
+   },
+   "#tlCopyQuery": {
+    "what": "Copies the query text to the clipboard.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "section[aria-labelledby=\"tlReadsH\"] summary": {
+    "what": "Opens or closes the list of log formats this page reads and the rules it uses to decide.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "a.rp-btn[href=\"/help\"]": {
+    "what": "Opens the page that explains every function of the app, in a new tab.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "a.rp-btn[href=\"/\"]": {
+    "what": "Goes back to the assessment page.",
     "input": "Nothing to type. Just click it.",
     "effect": "nav"
    }

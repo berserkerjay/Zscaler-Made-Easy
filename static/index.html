@@ -808,6 +808,10 @@
                 title="Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Says what happened, what it means for the user and what to do next. Opens in a new tab.">
           <span aria-hidden="true">🧾</span> Log analyzer
         </button>
+        <button class="btn btn-ghost" onclick="openTrafficLogsTab()"
+                aria-label="Open Traffic and session logs: upload ZPA LSS and ZIA NSS logs and see sessions, failures and their reasons, connector health, anomalies, blocks, rules hit, DLP, threats and SSL inspection (opens in a new tab)">
+          <span aria-hidden="true">📉</span> Traffic and session logs
+        </button>
       </div>
     </div>
   </div>
@@ -5299,6 +5303,10 @@ function openVendorMigrateTab() {
 }
 function openLogAnalyzerTab() {
   const w = window.open('/report/logs', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openTrafficLogsTab() {
+  const w = window.open('/report/traffic-logs', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openQueueTab() {

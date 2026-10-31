@@ -1055,6 +1055,27 @@ what you get, what to do next.
 - **Log analyzer** — drop in the ZIP from Client Connector's Export Logs
   (or single log files, or a PAC file); it is read on this computer and
   answers what happened, what it means for the user and what to do next.
+- **Traffic and session logs** (`/report/traffic-logs`, `traffic_logs.py`,
+  `siem_queries.py`) — upload the logs the customer's log streaming already
+  writes: ZPA LSS User Activity, User Status, App Connector Status and
+  Private Service Edge Status (JSON lines), and ZIA NSS web, firewall and DNS
+  feeds (JSON, the Cloud NSS HTTP shape, a CSV or TSV with a header in NSS or
+  Insights column names, the default tab-separated format, or a custom feed
+  output format pasted in). Read on this computer as untrusted input (the Log
+  analyzer's bounded unpacking, 64 KB per line, 2,000,000 lines, bounded
+  counters; a line no format reads is counted, never fatal). It shows sessions
+  and failures over time, the top users, applications, App Connectors, Service
+  Edges, access rules and destinations, each ZPA internal reason in plain
+  words with what to do, ZPA sessions put together per user, App Connector
+  and Private Service Edge health, anomalies (spikes, many failures for one
+  user, new destinations), and for ZIA blocked against allowed, top
+  categories, rules hit per module, DLP and threat events and SSL inspected
+  or not. A destination opens in the Path analyzer filled in; Traffic
+  insights opens with the same window. Only counts are kept, in memory, until
+  you forget them; CSV, Excel and PDF downloads and saved reports (an
+  owner-only file) are counts only unless you tick names. The same questions
+  come as Splunk SPL, Sentinel KQL and Elastic ES|QL text to copy (values
+  escaped for each language). It reads no tenant.
 - **Diagnose ZCC access** — probes every Client Connector API endpoint
   with the credentials you entered and shows which answer. Where: the
   Connect to the tenant card.
@@ -1141,8 +1162,9 @@ These rules hold on every page, and the tests enforce them:
   or Teams/Slack webhook, and, only if you turn it on in Advanced settings,
   `endpoints.office.com` for Microsoft's published Microsoft 365 endpoint
   list (off by default; the file can be imported by hand instead). Reports, profiles, deployment records and the
-  audit log stay on the machine it runs on; the Log analyzer and DLP
-  efficacy read what you give them locally and store nothing.
+  audit log stay on the machine it runs on; the Log analyzer, Traffic
+  and session logs and DLP efficacy read what you give them locally and
+  store nothing (a traffic log report is kept only if you save it).
 - **It listens on this machine only** (`127.0.0.1`), behind a per-start
   UI token; every write is recorded in `audit.log`. For a shared server,
   an OpenID Connect sign-in (SSO) can be required before the token is
@@ -1219,12 +1241,14 @@ Being honest about the edges:
 - The **Live DLP feed** shows Workflow Automation DLP incidents only. URL
   filtering, Cloud App Control and firewall decisions that never trip a
   DLP rule are not in it; that is Web Insights or a Cloud NSS feed, which
-  the app does not read.
+  the app does not read live (NSS log files can be uploaded to Traffic and
+  session logs).
 - **Traffic insights** reads ZIA Insights' aggregated numbers, not the
   transaction log: the installed SDK's Z-Insights queries cannot group
   traffic by URL category, user or policy rule, or filter it to one host,
   so rule hit counts and the Path analyzer's recent traffic to a
-  destination are not available from it.
+  destination are not available from it. Uploaded NSS logs give rule hit
+  counts, categories, users and hosts on Traffic and session logs.
 - The **classic ZIA API** sign-in covers ZIA only.
 - **Review & remediate** covers the failed checks that have a known,
   scripted fix, not every finding.

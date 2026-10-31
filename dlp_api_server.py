@@ -8813,6 +8813,168 @@ async def logs_analyze(req: LogAnalyzeRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# ── Traffic and session logs (ZPA LSS, ZIA NSS), read locally ─────────
+# traffic_logs parses the uploaded logs as untrusted input under caps and
+# returns counts; the report stays in this server's memory (_REPORTS, the
+# last 20 of every kind) until the admin saves it, which writes an
+# owner-only file (counts only unless asked otherwise). No tenant is read
+# and nothing leaves this computer. siem_queries renders query text only.
+@app.get("/report/traffic-logs")
+async def report_traffic_logs_page():
+    """Traffic and session logs in their own tab (static/report_traffic_logs.html)."""
+    page = os.path.join(STATIC_DIR, "report_traffic_logs.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class TrafficLogsRequest(BaseModel):
+    """The uploaded ZPA LSS or ZIA NSS log files, and an optional NSS feed output format."""
+    files: List[PackUploadFile]
+    feed_format: str = ""
+
+
+class TrafficLogsSaveRequest(BaseModel):
+    """A title for the saved report, and whether to keep user names, addresses and devices in it."""
+    title: str = ""
+    names: bool = False
+
+
+def _tlogs_report(rid: str) -> Dict[str, Any]:
+    rep = _REPORTS.get(rid or "")
+    if not rep or not str(rid).startswith("tlogs-"):
+        raise HTTPException(status_code=404, detail="The analysis is no longer in memory (the server keeps the last few). Upload the logs again, or open a saved report.")
+    return rep
+
+
+@app.get("/api/traffic-logs/info")
+async def traffic_logs_info():
+    """What the page accepts, its limits and the SIEM question catalogue."""
+    import siem_queries
+    import traffic_logs as tl
+    return {"max_body_mb": get_max_body_bytes() // (1024 * 1024), "max_lines": tl.MAX_LINES, "max_line_kb": tl.MAX_LINE_BYTES // 1024,
+            "max_template": tl.MAX_TEMPLATE, "log_types": tl.LOG_LABELS, "siem": siem_queries.catalogue(),
+            "thresholds": {"spike_factor": tl.SPIKE_FACTOR, "spike_min": tl.SPIKE_MIN, "user_fail_min": tl.USER_FAIL_MIN,
+                           "user_fail_share": tl.USER_FAIL_SHARE, "user_fail_always": tl.USER_FAIL_ALWAYS,
+                           "session_min_seconds": tl.SESSION_MIN_SECONDS, "session_merge_gap": tl.SESSION_MERGE_GAP}}
+
+
+@app.post("/api/traffic-logs/analyze")
+async def traffic_logs_analyze(req: TrafficLogsRequest):
+    """Analyse uploaded ZPA LSS and ZIA NSS logs in memory. Nothing is
+    written to disk or logged; the report is kept in memory for this
+    session (export, save or forget it by its report_id)."""
+    import traffic_logs as tl
+    try:
+        rep = await asyncio.to_thread(tl.analyze, [f.model_dump() for f in req.files], req.feed_format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:600])
+    rid = _remember_report("tlogs", rep)
+    return _REPORTS[rid]
+
+
+@app.get("/api/traffic-logs/report/{report_id}")
+async def traffic_logs_report(report_id: str):
+    return _tlogs_report(report_id)
+
+
+@app.delete("/api/traffic-logs/report/{report_id}")
+async def traffic_logs_forget(report_id: str):
+    """Forget an analysis held in memory (the uploaded logs were never kept)."""
+    _tlogs_report(report_id)
+    _REPORTS.pop(report_id, None)
+    return {"ok": True, "forgotten": report_id}
+
+
+@app.get("/api/traffic-logs/report/{report_id}/export")
+async def traffic_logs_export(report_id: str, format: str = "xlsx", names: bool = False):
+    """The analysis as CSV, Excel, PDF or JSON. Counts only (user names
+    replaced, sessions left out) unless names=true."""
+    import traffic_logs as tl
+    import xlsx_writer
+    rep = _tlogs_report(report_id)
+    body = rep if names else tl.counts_only(rep)
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    base = f"traffic_logs_{ts}{'' if names else '_counts_only'}"
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename={base}.json"})
+    if fmt == "csv":
+        data = await asyncio.to_thread(tl.to_csv, body)
+        return Response(content=data, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={base}.csv"})
+    if fmt == "xlsx":
+        data = await asyncio.to_thread(tl.to_xlsx, body)
+        return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE, headers={"Content-Disposition": f"attachment; filename={base}.xlsx"})
+    if fmt == "pdf":
+        data = await asyncio.to_thread(tl.to_pdf, body)
+        return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={base}.pdf"})
+    raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+
+
+@app.post("/api/traffic-logs/report/{report_id}/save")
+async def traffic_logs_save(report_id: str, req: TrafficLogsSaveRequest, request: Request):
+    """Save the analysis as an owner-only file on this computer (counts only unless names=true)."""
+    import traffic_logs as tl
+    rep = _tlogs_report(report_id)
+    try:
+        saved = await asyncio.to_thread(tl.save_report, rep, req.title, req.names)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("traffic_logs_saved", actor=_actor(request), name=saved["name"], names=saved["names"],
+                  records=(rep.get("input") or {}).get("records"))
+    return {"ok": True, "saved": saved}
+
+
+@app.get("/api/traffic-logs/saved")
+async def traffic_logs_saved():
+    import traffic_logs as tl
+    return {"reports": await asyncio.to_thread(tl.list_saved)}
+
+
+@app.post("/api/traffic-logs/saved/{name}/open")
+async def traffic_logs_open_saved(name: str):
+    """Open a saved report: it is read as untrusted (name, size, format) and held in memory like a new analysis."""
+    import traffic_logs as tl
+    try:
+        rep = await asyncio.to_thread(tl.load_saved, name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="No saved report by that name.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    rid = _remember_report("tlogs", rep)
+    return _REPORTS[rid]
+
+
+@app.delete("/api/traffic-logs/saved/{name}")
+async def traffic_logs_delete_saved(name: str, request: Request):
+    import traffic_logs as tl
+    try:
+        gone = await asyncio.to_thread(tl.delete_saved, name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not gone:
+        raise HTTPException(status_code=404, detail="No saved report by that name.")
+    _audit.record("traffic_logs_deleted", actor=_actor(request), name=name)
+    return {"ok": True}
+
+
+@app.get("/api/traffic-logs/siem")
+async def traffic_logs_siem(siem: str = "splunk", hours: int = 24, user: str = "", destination: str = "", src_zpa: str = "",
+                            src_web: str = "", src_fw: str = "", src_dns: str = "", question: str = ""):
+    """SIEM query templates (Splunk SPL, Sentinel KQL, Elastic ES|QL) for the
+    page's questions, as text. Every value is escaped for the language."""
+    import siem_queries
+    src = {"zpa": src_zpa, "zia_web": src_web, "zia_fw": src_fw, "zia_dns": src_dns}
+    try:
+        if question:
+            return {"queries": [siem_queries.render(siem, question, hours, src, user, destination)]}
+        return {"queries": siem_queries.render_all(siem, hours, src, user, destination), "note": siem_queries.catalogue()["note"]}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ── Migrate from another DLP (vendor_migrate) ──────────────────────────
 class VendorMigrateInventoryRequest(BaseModel):
     """The vendor and the uploaded policy export."""

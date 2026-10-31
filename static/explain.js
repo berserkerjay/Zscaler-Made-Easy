@@ -361,6 +361,14 @@
     get: 'A one-line verdict, the facts (version, OS, user, cloud, tunnel), findings ordered by how much they hurt the user with numbered next steps and redacted evidence, and for a PAC every bypass with its risk.',
     next: 'Do the numbered steps of the top finding; if it names a portal setting, that is where to look.',
   };
+  X.trafficlogs = {
+    group: 'Troubleshoot', name: 'Traffic and session logs', href: '/report/traffic-logs',
+    what: 'Upload the logs the customer\'s log streaming writes: ZPA LSS User Activity, User Status, App Connector and Private Service Edge Status (JSON), and ZIA NSS web, firewall and DNS feeds (JSON, CSV or TSV with a header, the default tab-separated format, or a custom format you paste). They are read on this computer and only counts are kept, in memory, until you save a report.',
+    why: 'Insights and the configuration say what should happen; the logs say what did. Why connections failed, which rule blocked what, which users and connectors struggle, and what changed suddenly are all in the logs, and Insights cannot break traffic down by rule, category, user or host.',
+    when: 'When a customer reports that a ZPA application is unreachable or slow, when you need rule hit counts or blocked categories, after a change to see its effect, and in a POV to show what the policy actually did.',
+    get: 'Sessions and failures over time, the top users, applications, App Connectors, Service Edges and destinations, every ZPA failure reason in plain words with what to do, App Connector and Private Service Edge health, anomalies (spikes, many failures for one user, new destinations), and for ZIA blocked against allowed, top categories, rules hit, DLP and threat events and SSL inspected or not. CSV, Excel and PDF downloads (counts only unless you tick names), saved reports, and the same questions as SIEM queries to copy for Splunk, Sentinel and Elastic.',
+    next: 'Click a destination to analyse its path, open Traffic insights for the same window, and take the top failure reason to ZPA analysis (Diagnose) or the App Connector it names.',
+  };
   X.zcc = {
     group: 'Troubleshoot', name: 'Diagnose ZCC access', href: '/report/view?tool=zcc',
     what: 'Probes every Client Connector (ZCC) API endpoint with the credentials you entered and shows which answer.',
@@ -466,7 +474,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin', '/report/team': 'team',
-      '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
+      '/report/logs': 'logs', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
 
@@ -517,7 +525,7 @@
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'team', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
-    'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'zcc', 'permissions'];
+    'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'trafficlogs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],

@@ -63,6 +63,7 @@ PAGES = {
     "/report/sslflow": "report_sslflow.html", "/report/sslcoverage": "report_ssl_coverage.html",
     "/report/plugin": "report_plugin.html",
     "/report/team": "report_team.html", "/login": "login.html",
+    "/report/traffic-logs": "report_traffic_logs.html",
 }
 
 

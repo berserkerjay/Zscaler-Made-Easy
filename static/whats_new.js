@@ -547,6 +547,30 @@ window.WHATS_NEW = {
       "marks": [
         { "page": "/report/fleet", "at": "#zfExpPdf" }
       ]
+    },
+    {
+      "id": "traffic-session-logs", "release": "2026-10-31", "label": "Traffic and session logs",
+      "what": "Upload ZPA LSS and ZIA NSS logs: sessions and failures over time with every failure reason in plain words, connector and Service Edge health, anomalies, and for ZIA blocks, rules hit, DLP, threats and SSL inspection.",
+      "changelog": ["Traffic and session logs", "Connector and Service Edge health", "Anomalies", "Untrusted input, in memory only"],
+      "marks": [{ "page": "/", "at": "button[onclick=\"openTrafficLogsTab()\"]" }]
+    },
+    {
+      "id": "traffic-logs-custom-format", "release": "2026-10-31", "label": "Custom NSS feed formats",
+      "what": "Paste a custom NSS feed's output format and its lines are split by it.",
+      "changelog": ["Custom NSS feed formats"],
+      "marks": [{ "page": "/report/traffic-logs", "at": "#tlFormatBox > summary" }]
+    },
+    {
+      "id": "traffic-logs-saved", "release": "2026-10-31", "label": "Saved reports, counts only",
+      "what": "Save an analysis as a file only you can read on this computer; downloads and saved reports are counts only unless you include names.",
+      "changelog": ["Saved reports", "Counts only"],
+      "marks": [{ "page": "/report/traffic-logs", "at": "#tlSavedBox > summary" }]
+    },
+    {
+      "id": "traffic-logs-siem", "release": "2026-10-31", "label": "SIEM queries",
+      "what": "The same questions as Splunk, Microsoft Sentinel and Elastic queries to copy.",
+      "changelog": ["SIEM queries"],
+      "marks": [{ "page": "/report/traffic-logs", "at": "#tlSiemH" }]
     }
   ]
 };
