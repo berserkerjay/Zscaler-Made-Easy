@@ -1062,8 +1062,8 @@ def _zms_upgrade(inv, prod):
     gs = [g for g in inv.get("agent_groups") or [] if g["auto_upgrade"] is False]
     vers = {v["version"] for v in inv.get("version_stats") or [] if v["version"]}
     if gs or len(vers) > 2:
-        return _res("REVIEW", "low", (f"Automatic upgrade is off in {len(gs)} agent group(s): {_names(gs)}. " if gs else "")
-                    + (f"{len(vers)} agent versions are running." if len(vers) > 2 else "").strip(),
+        return _res("REVIEW", "low", ((f"Automatic upgrade is off in {len(gs)} agent group(s): {_names(gs)}. " if gs else "")
+                                      + (f"{len(vers)} agent versions are running." if len(vers) > 2 else "")).strip(),
                     "Old agents miss fixes and new enforcement features; many versions make problems hard to reproduce.",
                     "Turn on automatic upgrade with a maintenance window, or upgrade the old agents.",
                     "Assumed: patch management practice (CIS Control 7.4).")

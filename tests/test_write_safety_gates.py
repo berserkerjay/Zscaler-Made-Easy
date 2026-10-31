@@ -370,6 +370,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/zpa/analysis/start"): "reads",
     ("POST", "/api/zpa/diagnose"): "reads",
     ("POST", "/api/browser-security/start"): "reads",
+    ("POST", "/api/other-products/start"): "reads",
     ("POST", "/api/device-posture/start"): "reads",
     ("POST", "/api/rate-check"): "local forecast",
     ("POST", "/api/dlp-packs/removal/preflight"): "preview",

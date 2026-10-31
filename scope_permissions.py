@@ -370,7 +370,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
     "easm": {
         "label": "External attack surface (EASM)",
         "description": "Other products page and the EASM assessment checks: organizations, findings on internet-facing assets and lookalike domains. Read-only.",
-        "service": "External Attack Surface Management (OneAPI)",
+        "service": "External attack surface management (EASM, OneAPI)",
         "permissions_read": ["EASM (read) on the API client's role: organizations, findings, lookalike domains"],
         "permissions_write": [],
         "endpoints_used": ["/easm/easm-ui/v1/organizations", "/easm/easm-ui/v1/organizations/{org}/findings",

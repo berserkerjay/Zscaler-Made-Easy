@@ -305,6 +305,10 @@ def _load_marks():
     return out
 
 
+# The narrow pages toured are those with a mark showing now (the set moves with the newest two releases).
+NARROW = [p for p in NARROW if p in _load_marks()]
+
+
 DRIVER = CDP_PRELUDE + EVENTS + r"""
 const [marksJson, narrowJson] = args;
 const MARKS = JSON.parse(marksJson);
@@ -350,6 +354,13 @@ out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObser
   setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
 // The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
 await open('/report/path');
+// A tab and an item with both marks: probes at the oldest marked release, so
+// these checks keep their meaning as the newest two releases move on.
+await ev(`(() => { const W = window.WhatsNew, old = W.releases().slice(-1)[0];
+  W.manifest.features.push({ id: 'tab-probe', release: old, label: 'Test a list', what: 'Test a list (probe of a tab mark).', changelog: [], marks: [{ page: '/report/path', at: '#tab-list' }] },
+                           { id: 'proto-probe', release: old, label: 'Any protocol', what: 'Any protocol (probe of an item with both marks).', changelog: [], marks: [{ page: '/report/path', at: '#paProto' }] });
+  W.apply(); window.HoverHelp.scan(); return true; })()`);
+await frame();
 const hoverAt = async js => {
   const r = await ev(`(() => { const e = ${js}; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
@@ -384,8 +395,8 @@ out.rotate = await ev(`(() => {
   W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
   const before = { older: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH') };
-  W.manifest.releases['2026-10-30'] = 'next';
-  W.manifest.features.push({ id: 'next-probe', release: '2026-10-30', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
+  W.manifest.releases['2026-11-01'] = 'next';
+  W.manifest.features.push({ id: 'next-probe', release: '2026-11-01', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
   const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), proto: document.getElementById('paProto').getAttribute('aria-label') };
   return { before, after };
@@ -471,7 +482,8 @@ def test_the_star_opens_what_is_new_and_the_item_opens_nothing(marks_browser):
     """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a tab or a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
     h = marks_browser["hover"]
     assert h["item"] is None, h["item"]
-    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-28 update: Test a list"), h["tab"]
+    oldest = sorted(MAN["releases"])[0]   # the tab probe sits at the oldest marked release (see the driver)
+    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith(f"New in the {oldest} update: Test a list"), h["tab"]
     assert h["heading"] and h["heading"]["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), h["heading"]
 
 
@@ -493,10 +505,11 @@ def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
-    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks go."""
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a newer release is listed, the oldest marked release's marks go."""
     before, after = marks_browser["rotate"]["before"], marks_browser["rotate"]["after"]
     assert before == {"older": False, "tab": True, "live": True}, before
-    assert after["next"] and after["live"] and not after["tab"], after
+    # The tab probe and the live-flow heading are both on the oldest marked release (2026-10-29): both go.
+    assert after["next"] and not after["live"] and not after["tab"], after
     assert after["tabName"] == "Test a list" and not str(after["proto"]).endswith("(new)"), after
 
 
