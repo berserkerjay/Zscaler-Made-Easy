@@ -3,7 +3,9 @@
  "title": "Every request model that signs in with a saved profile leaves its cloud blank; production applies only when no profile, environment or tenant_config.json names one",
  "files": [
   "dlp_api_server.py",
-  "tests/test_scope_rule_routes.py"
+  "tests/test_scope_rule_routes.py",
+  "tests/test_regression_flows.py",
+  "tests/test_path_zpa_workloads.py"
  ],
  "standards": [
   "ASVS V4.2.1",
@@ -62,7 +64,8 @@
  "notes": [
   "Supersedes the older draft change that fixed only MigrateRequest with an isinstance check; this port also covers AssessRequest, RemediationPlanRequest and RemediationExecuteRequest and adds a guard over every model.",
   "TenantProfileRequest keeps its production default on purpose: saving a profile replaces every field of the form, it is the source of a profile's cloud, not a consumer of one.",
-  "The tenant-credentials family (builders, readiness, snapshots, POV, Test a list, bulk changes) already defaulted to blank; it is covered by the HTTP test as a regression guard."
+  "The tenant-credentials family (builders, readiness, snapshots, POV, Test a list, bulk changes) already defaulted to blank; it is covered by the HTTP test as a regression guard.",
+  "Two existing tests read the cloud field default to find the models that resolve an unnamed cloud to production; they now name those four model families (the same 19 models as before), so the path test no longer collects an empty parameter set and the regression test still pins production for typed sign-ins with no cloud."
  ],
  "tests_added": 23
 }

@@ -534,7 +534,9 @@ def test_with_no_source_naming_a_cloud_the_models_default_still_applies(monkeypa
     """ASVS V4.2.1 · CWE-440: with no profile and no environment or file naming a cloud, an unsent cloud is the model's default, as before."""
     monkeypatch.setattr(srv, "_APP_DIR", str(tmp_path))
     cls = getattr(srv, model)
-    default = cls.model_fields["cloud"].default or ""
+    # These families always resolved an unnamed cloud to production (their old field default; now blank so a profile's cloud wins).
+    families = (srv.AssessRequest, srv.MigrateRequest, srv.RemediationPlanRequest, srv.RemediationExecuteRequest)
+    default = "production" if issubclass(cls, families) else (cls.model_fields["cloud"].default or "")
     creds = srv._tenant_creds(cls.model_validate({"vanity_domain": "acme", "client_id": "cid-typed", "client_secret": "typed-secret-not-real"}))
     assert creds["cloud"] == default and creds["vanity_domain"] == "acme" and creds["client_id"] == "cid-typed"
 
