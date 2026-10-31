@@ -36,6 +36,12 @@ def _camel(name: str) -> str:
     return head + "".join(p[:1].upper() + p[1:] for p in rest)
 
 
+# Arguments the API answers as one object, not a list of objects.
+SINGLE = {"action", "template", "account_details", "prov_url_data", "common_apps_dto", "system_proxy_data", "partner_info",
+          "config", "user_experience", "security_controls", "debug_mode", "forward_to_zia", "deep_link", "watermark",
+          "auto_scale_details", "decrypt_sub_actions", "do_not_decrypt_sub_actions", "ssl_interception_cert"}
+
+
 def _value(attr: str, kind: str, sub, n: int):
     """A made-up API value for one argument, in the API's own (camelCase) form."""
     if kind == "s":
@@ -55,7 +61,7 @@ def _value(attr: str, kind: str, sub, n: int):
     if kind == "sids":
         return [{"id": "201", "name": f"Ref {attr} {n}"}]
     if kind == "idb":
-        return [{"id": 301}]
+        return {"id": 301} if attr in SINGLE else [{"id": 301}]
     if kind == "sidb":
         return [{"id": "401"}]
     if kind == "extid":
@@ -63,12 +69,13 @@ def _value(attr: str, kind: str, sub, n: int):
     if kind == "secret":
         return "CANARY-PASSWORD-b81c"
     if kind == "blk":
-        return [{_camel(a): _value(a, k, s, n) for a, k, _r, s in sub}]
+        obj = {_camel(a): _value(a, k, s, n) for a, k, _r, s in sub}
+        return obj if attr in SINGLE else [obj]
     raise AssertionError(kind)
 
 
 class _Probe(ot.OfflineStore):
-    """An empty tenant that records every path asked for."""
+    """A tenant with nothing in it (every list empty) that records every path asked for."""
 
     def __init__(self):
         super().__init__("snap-" + "0" * 16, "snapshot", {}, {"tenant_label": "probe"})
@@ -76,7 +83,7 @@ class _Probe(ot.OfflineStore):
 
     def answer_get(self, url, params=None):
         self.asked.append(ot.normalize_path(url))
-        return super().answer_get(url, params)
+        return 200, []
 
 
 def paths_of(t):
@@ -119,8 +126,16 @@ def store_for(types, rows_per_type=1, extra=None):
         if t["key"] == "zia.cloud_app_control_rules":
             for r in rows:
                 r["type"] = "AI_ML"
-        body = rows[0] if t["singleton"] else ({"totalPages": "1", "list": rows} if t["product"] == "zpa" else rows)
+        def wrap(items):
+            if t["product"] == "zpa":
+                return {"totalPages": "1", "list": items}
+            if t["key"] == "zcc.trusted_networks":
+                return {"trustedNetworkContracts": items}
+            return items
+        body = rows[0] if t["singleton"] else wrap(rows)
         responses[paths[0]] = {"status": 200, "body": body}
+        for extra_path in paths[1:]:   # the other lists of the same type (other rule types, the other key type) are empty
+            responses.setdefault(extra_path, {"status": 200, "body": body if t["singleton"] else wrap([])})
     responses.update(extra or {})
     st = ot.OfflineStore("snap-" + "1" * 16, "snapshot", responses, {"tenant_label": "Fixture tenant"})
     return ot.OfflineSdkClient(st, ot.creds_for(st))
@@ -232,7 +247,7 @@ def test_references_between_exported_objects_are_terraform_addresses():
             '(D${data.zia_dlp_dictionaries.credit_cards.id}.S > 0))"') in eng
     seg = resource_block(files, "zpa_application_segment", "billing")
     assert "segment_group_id = zpa_segment_group.billing_apps.id" in seg
-    assert 'server_groups {\n    id = ["95"]' in seg, "an unexported server group without a name keeps its id"
+    assert "server_groups {\n    id = [data.zpa_server_group.billing_servers.id]" in seg, "an unexported server group is looked up by name"
     pol = resource_block(files, "zpa_policy_access_rule_v2", "finance_to_billing")
     assert "values      = [zpa_application_segment.billing.id]" in pol and "values      = [zpa_segment_group.billing_apps.id]" in pol
     assert 'entry_values {\n        rhs = "123"\n        lhs = "7"' in pol, "a SCIM group operand keeps lhs / rhs"
@@ -302,14 +317,16 @@ def test_tenant_strings_cannot_inject_hcl():
     st = ot.OfflineStore("snap-" + "3" * 16, "snapshot", responses, {"tenant_label": "Evil"})
     files, _rep, _ = run(ot.OfflineSdkClient(st, ot.creds_for(st)), ["zia.rule_labels"])
     text = files[f"{tt.ROOT_DIR}/zia/objects.tf"]
-    assert text.count('resource "') == 1 and 'resource "null_resource"' not in text.replace('\\"null_resource\\"', "")
-    assert "$${file(" in text and "%%{ if" in text and "\n}\nresource" not in text.split("resource \"zia_rule_labels\"")[1].split("\n}\n")[0]
+    assert re.findall(r'^resource "([a-z_]+)"', text, re.M) == ["zia_rule_labels"], "only the label is a resource"
+    assert not re.search(r"^\s*provisioner", text, re.M) and "$${file(" in text and "%%{ if" in text
+    for line in text.split("\n"):
+        assert line.startswith(("#", "resource ", "  name ", "  description ", "}")) or line == "", line
     assert all(re.fullmatch(r"tenant-terraform/(README\.md|export_report\.json|(zia|zpa|ztc)/[A-Za-z0-9_.]+)", p) for p in files)
 
 
 def test_options_prefix_namespace_exclude_and_personal_data():
     """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: export options are validated; prefix, mirror and exclusion apply; personal data is opt-in."""
-    for bad in ({"prefix": "Bad-Prefix"}, {"namespace": "https://evil/x"}, {"microtenant_id": "12a"}, {"products": ["zcc"]},
+    for bad in ({"prefix": "Bad-Prefix"}, {"namespace": "https://evil/x"}, {"microtenant_id": "12a"}, {"products": ["zdx"]},
                 {"types": ["zia.nope"]}, {"exclude": "zia.locations"}):
         with pytest.raises(tt.ExportRefused):
             tt.normalize_options(**bad)
@@ -429,5 +446,53 @@ def test_the_layout_is_fmt_clean_without_terraform():
     files, _rep, _ = run(client, [t["key"] for t in tt.TYPES])
     for path, content in files.items():
         if path.endswith(".tf"):
-            assert hcl_fmt(content) == content.rstrip("\n") or hcl_fmt(content) + "\n" == content, path
+            assert hcl_fmt(content) == content, path
             assert not re.search(r"[ \t]+\n", content), path
+
+
+# ---------------------------------------------------------------------------
+# Clone mode, Client Connector
+# ---------------------------------------------------------------------------
+
+def test_clone_mode_writes_rules_disabled_without_imports_and_leaves_settings_out():
+    """ASVS V1.4.1 · CWE-1188 · WSTG-BUSL-01: a clone for another tenant has no import blocks, every rule DISABLED and segments off unless asked."""
+    keys = ["zia.firewall_rules", "zia.url_filtering_rules", "zpa.application_segments", "zpa.segment_groups", "ztc.forwarding_rules",
+            "zia.advanced_settings", "zia.locations"]
+    client = store_for([tt.BY_KEY[k] for k in keys])
+    opts = tt.normalize_options(None, mode="clone")
+    p = tt.plan(ALL_SCOPES, ALL_CHANNELS, opts)
+    assert "zia.advanced_settings" in p["left_out"] and "zia.locations" in p["left_out"], "settings and tenant-bound objects stay out"
+    read = [k for k in keys if k in p["read"]]
+    files, rep, _ = run(client, read, opts=opts, plan_info=p)
+    assert not any(path.endswith("imports.tf") for path in files) and rep["mode"] == "clone" and rep["rules_disabled"]
+    for res in ("zia_firewall_filtering_rule", "zia_url_filtering_rules", "ztc_traffic_forwarding_rule"):
+        assert 'state = "DISABLED"' in re.sub(r" +=", " =", resource_block(files, res)), res
+    assert "enabled = false" in re.sub(r" +=", " =", resource_block(files, "zpa_application_segment"))
+    assert "Clone mode" in files[f"{tt.ROOT_DIR}/zia/README.md"]
+    kept, _r, _ = run(client, read, opts=tt.normalize_options(None, mode="clone", keep_rule_state=True), plan_info=p)
+    assert 'state = "v-state-1"' in re.sub(r" +=", " =", resource_block(kept, "zia_firewall_filtering_rule")), "asked: the state is kept"
+    adopt, _r, _ = run(client, read)
+    assert 'state = "v-state-1"' in re.sub(r" +=", " =", resource_block(adopt, "zia_firewall_filtering_rule")), "adopting changes nothing"
+    with pytest.raises(tt.ExportRefused):
+        tt.normalize_options(None, mode="apply")
+
+
+def test_client_connector_trusted_networks_take_the_provider_form():
+    """ASVS V5.1.3 · CWE-20 · WSTG-INPV-01: a v1 trusted network (comma lists, 0/1) is written in the zcc provider's form; profiles name it by address."""
+    body = {"trustedNetworkContracts": [{"id": 5, "networkName": "Head office", "active": False, "conditionType": 1,
+                                         "dnsServers": "10.0.0.53, 10.0.1.53", "trustedSubnets": "10.0.0.0/16", "hostnames": "dc1.corp.example"}]}
+    fwd = [{"id": 7, "name": "Road warrior", "active": True, "trustedNetworkIds": [5], "conditionType": 0,
+            "forwardingProfileActions": [{"networkType": 0, "actionType": 1, "systemProxyData": {"enablePac": True, "pacUrl": "https://pac.example/p.pac"}}]}]
+    responses = {"/zcc/papi/public/v1/webTrustedNetwork/listByCompany": {"status": 200, "body": body},
+                 "/zcc/papi/public/v1/webForwardingProfile/listByCompany": {"status": 200, "body": fwd}}
+    st = ot.OfflineStore("snap-" + "5" * 16, "snapshot", responses, {"tenant_label": "ZCC"})
+    files, rep, snap = run(ot.OfflineSdkClient(st, ot.creds_for(st)), ["zcc.trusted_networks", "zcc.forwarding_profiles"])
+    assert not snap["unread"], snap["unread"]
+    tn = re.sub(r" +=", " =", resource_block(files, "zcc_trusted_network", "head_office"))
+    assert 'name = "Head office"' in tn and "active = false" in tn and 'condition_type = "ANY"' in tn
+    assert 'dns_server_ips = ["10.0.0.53", "10.0.1.53"]' in tn and 'trusted_subnet_ips = ["10.0.0.0/16"]' in tn and 'hostname = "dc1.corp.example"' in tn
+    fp = re.sub(r" +=", " =", resource_block(files, "zcc_forwarding_profile", "road_warrior"))
+    assert "trusted_network_ids = [zcc_trusted_network.head_office.id]" in fp
+    assert "network_type = 0" in fp and "action_type = 1" in fp and 'pac_url = "https://pac.example/p.pac"' in fp
+    assert 'source  = "zscaler/zcc"' in files[f"{tt.ROOT_DIR}/zcc/terraform.tf"]
+    assert ("zcc_trusted_network", "head_office", "5") in imp_all(files)

@@ -4482,12 +4482,15 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
 
 class TenantTerraformRequest(ScopedTenantCredsRequest):
     """Body of Export from tenant as Terraform (the whole tenant):
-    `products` (zia, zpa, ztc; empty: all three), optional `types` (object
+    `products` (zia, zpa, ztc, zcc; empty: all four), optional `types` (object
     type keys from /api/tenant-terraform/catalogue; empty: every type in
     scope) and `exclude`, a resource-label `prefix`, a provider namespace
     for a private registry mirror, the ZPA `microtenant_id`, and whether
     types holding personal data (email addresses) are exported. Only what
-    the Scope page puts in scope is read (tenant_terraform.plan)."""
+    the Scope page puts in scope is read (tenant_terraform.plan). `mode`
+    adopt (default) writes import blocks and keeps every object's state;
+    clone writes new objects for another tenant with every rule DISABLED
+    (and ZPA segments disabled) unless `keep_rule_state` is set."""
     customer_id: str = ""
     products: List[str] = []
     types: List[str] = []
@@ -4496,9 +4499,11 @@ class TenantTerraformRequest(ScopedTenantCredsRequest):
     provider_namespace: str = ""
     microtenant_id: str = ""
     include_personal_data: bool = False
+    mode: str = "adopt"
+    keep_rule_state: bool = False
 
 
-TENANT_TF_NEEDS_ONEAPI = ("ZPA and Cloud & Branch Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+TENANT_TF_NEEDS_ONEAPI = ("ZPA, Cloud & Branch Connector and Client Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
                           "Untick them, or sign in with an API client. Nothing was read.")
 TENANT_TF_NEEDS_CUSTOMER_ID = ("ZPA needs the ZPA customer ID (Connect to the tenant → Customer ID, or the saved profile): every ZPA API "
                                "path carries it. Untick ZPA, or fill it in. Nothing was read.")
@@ -4536,7 +4541,7 @@ def _run_tenant_terraform(client, creds: Dict[str, str], opts: Dict[str, Any], p
 @app.post("/api/tenant-terraform/start")
 async def tenant_terraform_start(req: TenantTerraformRequest, request: Request):
     """Export from tenant as Terraform (the whole tenant), as a background
-    job: ZIA, ZPA and Cloud & Branch Connector objects in scope as one
+    job: ZIA, ZPA, Cloud & Branch Connector and Client Connector objects in scope as one
     workspace per provider, with import blocks so an existing tenant is
     adopted without recreating anything. Read-only (GET only), so it needs
     neither write mode nor the writer check. Anything out of scope on the
@@ -4547,7 +4552,7 @@ async def tenant_terraform_start(req: TenantTerraformRequest, request: Request):
     import tenant_terraform
     try:
         opts = tenant_terraform.normalize_options(req.products or None, req.types, req.exclude, req.prefix, req.provider_namespace,
-                                                  req.microtenant_id)
+                                                  req.microtenant_id, req.mode, req.keep_rule_state)
         sc, ch, _source = _scope_selection(req)
         plan = tenant_terraform.plan(sc, ch, opts, include_personal=bool(req.include_personal_data))
     except tenant_terraform.ExportRefused as e:
@@ -4556,7 +4561,7 @@ async def tenant_terraform_start(req: TenantTerraformRequest, request: Request):
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant profile) to export it.")
     products_read = {tenant_terraform.BY_KEY[k]["product"] for k in plan["read"]}
-    if products_read & {"zpa", "ztc"} and creds.get("auth_method") == tenant_auth.LEGACY:
+    if products_read & {"zpa", "ztc", "zcc"} and creds.get("auth_method") == tenant_auth.LEGACY:
         raise HTTPException(status_code=400, detail=TENANT_TF_NEEDS_ONEAPI)
     if "zpa" in products_read and not validate_customer_id(creds.get("customer_id") or ""):
         raise HTTPException(status_code=400, detail=TENANT_TF_NEEDS_CUSTOMER_ID)

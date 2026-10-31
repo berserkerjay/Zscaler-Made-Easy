@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Export a whole tenant to Terraform: ZIA, ZPA and Cloud & Branch Connector.
+Export a whole tenant to Terraform: ZIA, ZPA, Cloud & Branch Connector and
+Client Connector.
 
 Reads the live tenant (or the sample tenant, or an opened snapshot: the
 same SDK client interface, offline_tenant.py) within the Scope rule and
@@ -8,12 +9,23 @@ writes one Terraform root module per product for the official providers:
 
     zscaler/zia  ~> 4.8     ZIA (58 resource types)
     zscaler/zpa  ~> 4.4     ZPA (31 resource types)
-    zscaler/ztc  ~> 0.2     Cloud & Branch Connector (11 resource types)
+    zscaler/ztc  ~> 0.2     Cloud & Branch Connector (10 resource types)
+    zscaler/zcc  ~> 0.1     Client Connector (trusted networks, forwarding profiles)
 
-so a platform team can adopt an existing tenant into Terraform state
-without recreating anything: every exported object has an `import {}`
-block (Terraform 1.5+) with its tenant id, and the first `terraform plan`
-after `terraform init` should show imports and few or no changes.
+Two modes:
+
+  adopt (default)  every exported object has an `import {}` block
+                   (Terraform 1.5+) with its tenant id, and keeps the state
+                   the tenant gave it, so a platform team adopts the tenant
+                   into Terraform state without recreating or changing
+                   anything (an enabled rule stays enabled);
+  clone            no import blocks: new objects for another tenant. Every
+                   rule is written DISABLED and every ZPA application
+                   segment disabled (so ZPA policy, which has no switch in
+                   the provider, grants nothing) unless keep_rule_state is
+                   asked for; settings and objects bound to this tenant
+                   (locations, tunnels, connectors, cloud accounts) are left
+                   out with the reason.
 
 Layout of the zip (all paths are made here; none comes from a tenant name):
 
@@ -91,15 +103,17 @@ from pack_terraform import (GENERATED_MARK, GITIGNORE, TERRAFORM_VERSION, hcl_co
                             slug)
 from tenant_terraform_schema import SCHEMAS
 
-PRODUCTS = ("zia", "zpa", "ztc")
-PRODUCT_LABELS = {"zia": "ZIA", "zpa": "ZPA", "ztc": "Cloud & Branch Connector"}
+PRODUCTS = ("zia", "zpa", "ztc", "zcc")
+PRODUCT_LABELS = {"zia": "ZIA", "zpa": "ZPA", "ztc": "Cloud & Branch Connector", "zcc": "Client Connector"}
 # The SDK's product for each provider (Cloud & Branch Connector is `ztw` in zscaler-sdk-python).
-SDK_ROOT = {"zia": "zia", "zpa": "zpa", "ztc": "ztw"}
+SDK_ROOT = {"zia": "zia", "zpa": "zpa", "ztc": "ztw", "zcc": "zcc"}
 PROVIDERS = {
     "zia": {"version": "~> 4.8", "docs": "https://registry.terraform.io/providers/zscaler/zia/latest/docs"},
     "zpa": {"version": "~> 4.4", "docs": "https://registry.terraform.io/providers/zscaler/zpa/latest/docs"},
     "ztc": {"version": "~> 0.2", "docs": "https://registry.terraform.io/providers/zscaler/ztc/latest/docs"},
+    "zcc": {"version": "~> 0.1", "docs": "https://registry.terraform.io/providers/zscaler/zcc/latest/docs"},
 }
+MODES = ("adopt", "clone")
 DEFAULT_NAMESPACE = "zscaler"
 # A private registry mirror ("registry.example.com/zscaler"): a host name, then one namespace.
 NAMESPACE_RE = re.compile(r"\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?::[0-9]{1,5})?/)?[a-z0-9][a-z0-9_-]{0,63}\Z")
@@ -110,8 +124,8 @@ MAX_ZPA_PAGES = 200
 MAX_TYPES_ASKED = 200
 ROOT_DIR = "tenant-terraform"
 
-NOTHING_IN_SCOPE = ("Nothing this export reads is in scope on the Scope page: tick DLP or ZIA platform (ZIA), ZPA, or "
-                    "Cloud & Branch Connector, and pick at least one product. Nothing was read.")
+NOTHING_IN_SCOPE = ("Nothing this export reads is in scope on the Scope page: tick DLP or ZIA platform (ZIA), ZPA, "
+                    "Cloud & Branch Connector or ZCC, and pick at least one product. Nothing was read.")
 
 
 class ExportRefused(ValueError):
@@ -157,6 +171,7 @@ REFS: Dict[str, Dict[str, str]] = {
         "services": "ztc.network_services", "nw_service_groups": "ztc.network_service_groups", "proxy_gateway": "ztc.forwarding_gateways",
         "public_cloud_accounts": "ztc.public_cloud_info", "location_template": "ztc.location_templates",
     },
+    "zcc": {"trusted_network_ids": "zcc.trusted_networks", "trusted_network_ids_selected": "zcc.trusted_networks"},
 }
 # Lookups by name for objects that are not exported: (data source, lookup argument).
 # Every data source and its `name` argument is in the provider's schema
@@ -351,12 +366,12 @@ def _t(key: str, resource: str, label: str, area: str, svc: str, method: Optiona
        args: Tuple[Any, ...] = (), singleton: bool = False, import_id: Optional[str] = None, name: str = "name",
        keep: Optional[Callable[[Dict[str, Any]], bool]] = None, per_type: bool = False, zpa_paged: bool = False,
        personal: bool = False, hook: Optional[str] = None, import_fmt: str = "{id}", secrets: Optional[Dict[str, str]] = None,
-       keep_why: str = "", extra: Optional[List[Tuple[str, Tuple[Any, ...]]]] = None) -> Dict[str, Any]:
+       keep_why: str = "", extra: Optional[List[Tuple[str, Tuple[Any, ...]]]] = None, bound: bool = False) -> Dict[str, Any]:
     product = key.split(".", 1)[0]
     return {"key": key, "product": product, "resource": resource, "label": label, "area": area, "svc": svc, "method": method,
             "gate": gate, "args": args, "singleton": singleton, "import_id": import_id, "name": name, "keep": keep,
             "per_type": per_type, "zpa_paged": zpa_paged, "personal": personal, "hook": hook, "import_fmt": import_fmt,
-            "secrets": secrets or {}, "keep_why": keep_why, "extra": extra or []}
+            "secrets": secrets or {}, "keep_why": keep_why, "extra": extra or [], "bound": bound}
 
 
 _P = ("scope", "zia_extras")
@@ -470,17 +485,17 @@ TYPES: List[Dict[str, Any]] = [
     _t("zia.zpa_gateways", "zia_forwarding_control_zpa_gateway", "ZPA gateways", "forwarding", "zpa_gateway", "list_gateways", gate=_P),
     _t("zia.proxies", "zia_forwarding_control_proxies", "Proxies (proxy chaining)", "forwarding", "proxies", "list_proxies", gate=_P),
     # ── ZIA: traffic forwarding and locations ──
-    _t("zia.locations", "zia_location_management", "Locations", "traffic_forwarding", "locations", "list_locations", gate=_P),
+    _t("zia.locations", "zia_location_management", "Locations", "traffic_forwarding", "locations", "list_locations", gate=_P, bound=True),
     _t("zia.static_ips", "zia_traffic_forwarding_static_ip", "Static IP addresses", "traffic_forwarding", "traffic_static_ip",
-       "list_static_ips", gate=_P, name="ip_address"),
+       "list_static_ips", gate=_P, name="ip_address", bound=True),
     _t("zia.gre_tunnels", "zia_traffic_forwarding_gre_tunnel", "GRE tunnels", "traffic_forwarding", "gre_tunnel", "list_gre_tunnels",
-       gate=_P, name="source_ip"),
+       gate=_P, name="source_ip", bound=True),
     _t("zia.vpn_credentials", "zia_traffic_forwarding_vpn_credentials", "VPN credentials", "traffic_forwarding", "traffic_vpn_credentials",
-       "list_vpn_credentials", gate=_P, name="fqdn", secrets={"pre_shared_key": "vpn_pre_shared_keys"}),
+       "list_vpn_credentials", gate=_P, name="fqdn", secrets={"pre_shared_key": "vpn_pre_shared_keys"}, bound=True),
     _t("zia.vzen_clusters", "zia_virtual_service_edge_cluster", "Virtual Service Edge clusters", "traffic_forwarding", "vzen_clusters",
-       "list_vzen_clusters", gate=_P),
+       "list_vzen_clusters", gate=_P, bound=True),
     _t("zia.vzen_nodes", "zia_virtual_service_edge_node", "Virtual Service Edge nodes", "traffic_forwarding", "vzen_nodes", "list_zen_nodes",
-       gate=_P),
+       gate=_P, bound=True),
     _t("zia.subscription_alerts", "zia_subscription_alert", "Alert subscriptions", "settings", "alert_subscriptions",
        "list_alert_subscriptions", gate=_P, name="email", personal=True),
     # ── ZPA ──
@@ -498,18 +513,18 @@ TYPES: List[Dict[str, Any]] = [
        "app_segments_inspection", "list_segment_inspection", gate=_ZPA, zpa_paged=True, keep=_inspection_segment,
        keep_why=_NOT_THIS_KIND),
     _t("zpa.connector_groups", "zpa_app_connector_group", "App Connector groups", "infrastructure", "app_connector_groups",
-       "list_connector_groups", gate=_ZPA, zpa_paged=True),
+       "list_connector_groups", gate=_ZPA, zpa_paged=True, bound=True),
     _t("zpa.service_edge_groups", "zpa_service_edge_group", "Service Edge groups", "infrastructure", "service_edge_group",
-       "list_service_edge_groups", gate=_ZPA, zpa_paged=True),
+       "list_service_edge_groups", gate=_ZPA, zpa_paged=True, bound=True),
     _t("zpa.provisioning_keys", "zpa_provisioning_key", "Provisioning keys", "infrastructure", "provisioning", "list_provisioning_keys",
-       gate=_ZPA, args=("connector",), extra=[("service_edge", ("service_edge",))], hook="provisioning_key"),
+       gate=_ZPA, args=("connector",), extra=[("service_edge", ("service_edge",))], hook="provisioning_key", bound=True),
     _t("zpa.private_cloud_groups", "zpa_private_cloud_group", "Private cloud groups", "infrastructure", "private_cloud_group",
-       "list_cloud_groups", gate=_ZPA, zpa_paged=True),
+       "list_cloud_groups", gate=_ZPA, zpa_paged=True, bound=True),
     _t("zpa.c2c_ip_ranges", "zpa_c2c_ip_ranges", "Client-to-client IP ranges", "infrastructure", "c2c_ip_ranges", "list_ip_ranges", gate=_ZPA),
     _t("zpa.lss_configs", "zpa_lss_config_controller", "Log streaming (LSS) configurations", "infrastructure", "lss", "list_configs",
        gate=_ZPA, zpa_paged=True, hook="lss_name"),
     _t("zpa.microtenants", "zpa_microtenant_controller", "Microtenants", "infrastructure", "microtenants", "list_microtenants", gate=_ZPA,
-       zpa_paged=True),
+       zpa_paged=True, bound=True),
     _t("zpa.access_rules", "zpa_policy_access_rule_v2", "Access policy rules", "policies", "policies", "list_rules", gate=_ZPA,
        args=("access",), zpa_paged=True, hook="policy_v2", keep=_zpa_rule,
        keep_why=_PREDEF),
@@ -566,10 +581,14 @@ TYPES: List[Dict[str, Any]] = [
     _t("ztc.location_templates", "ztc_location_template", "Location templates", "provisioning", "location_template",
        "list_location_templates", gate=_ZTC),
     _t("ztc.provisioning_urls", "ztc_provisioning_url", "Provisioning URLs", "provisioning", "provisioning_url", "list_provisioning_url",
-       gate=_ZTC),
+       gate=_ZTC, bound=True),
     _t("ztc.public_cloud_info", "ztc_public_cloud_info", "Public cloud accounts", "provisioning", "public_cloud_info",
-       "list_public_cloud_info", gate=_ZTC),
-    _t("ztc.account_groups", "ztc_account_groups", "Account groups", "provisioning", "account_groups", "list_account_groups", gate=_ZTC),
+       "list_public_cloud_info", gate=_ZTC, bound=True),
+    # ── Client Connector (zscaler/zcc) ──
+    _t("zcc.trusted_networks", "zcc_trusted_network", "Trusted networks", "client_connector", "trusted_networks", "list_by_company",
+       gate=("scope", "zcc"), name="network_name", hook="zcc_trusted_network"),
+    _t("zcc.forwarding_profiles", "zcc_forwarding_profile", "Forwarding profiles", "client_connector", "forwarding_profile",
+       "list_by_company", gate=("scope", "zcc")),
 ]
 BY_KEY: Dict[str, Dict[str, Any]] = {t["key"]: t for t in TYPES}
 
@@ -585,6 +604,8 @@ NOT_COVERED: List[Tuple[str, str, str]] = [
      "made in the identity provider and the Client Connector Portal; policy conditions keep their ids"),
     ("zpa", "Browser Access certificates and enrollment certificates", "a certificate's private key never leaves ZPA"),
     ("zpa", "Policy rule order", "the v2 policy resources take no order; zpa_policy_access_rule_reorder sets it after import"),
+    ("ztc", "Account groups", "zscaler-sdk-python 1.11.3 cannot read them: its account group model names a class the SDK "
+     "does not have (CommonIDNameExternalID), so every read fails"),
     ("ztc", "Cloud & Branch Connector groups, locations and DNS / log forwarding rules",
      "zscaler-sdk-python 1.11.3 cannot read them as the provider writes them"),
 ]
@@ -607,7 +628,7 @@ def gates(scopes: Any, channels: Any) -> Dict[str, Any]:
     return {"scopes": sc, "policies": pol, "channels": dlp_channels}
 
 
-_GATE_WORDS = {"zia_extras": "ZIA platform", "dlp": "DLP", "zpa": "ZPA", "ztw": "Cloud & Branch Connector"}
+_GATE_WORDS = {"zia_extras": "ZIA platform", "dlp": "DLP", "zpa": "ZPA", "ztw": "Cloud & Branch Connector", "zcc": "ZCC"}
 _CHANNEL_WORDS = {"web": "Inline Web DLP", "endpoint": "Endpoint DLP", "saas": "SaaS DLP", "email": "Email DLP"}
 
 
@@ -626,11 +647,11 @@ def in_scope(t: Dict[str, Any], g: Dict[str, Any]) -> Optional[str]:
 
 
 def normalize_options(products: Any = None, types: Any = None, exclude: Any = None, prefix: Any = "", namespace: Any = "",
-                      microtenant_id: Any = "") -> Dict[str, Any]:
+                      microtenant_id: Any = "", mode: Any = "adopt", keep_rule_state: Any = False) -> Dict[str, Any]:
     """The export's options, checked (ExportRefused names what is wrong)."""
     prods = [str(p).strip().lower() for p in (products or PRODUCTS)] if isinstance(products, (list, tuple)) or products is None else None
     if prods is None or not prods or any(p not in PRODUCTS for p in prods):
-        raise ExportRefused("Products must be a list of zia, zpa and ztc.")
+        raise ExportRefused("Products must be a list of zia, zpa, ztc and zcc.")
     lists = []
     for what, v in (("types", types), ("exclude", exclude)):
         if v in (None, ""):
@@ -652,8 +673,11 @@ def normalize_options(products: Any = None, types: Any = None, exclude: Any = No
     mt = str(microtenant_id or "").strip()
     if mt and not MICROTENANT_RE.match(mt):
         raise ExportRefused("The ZPA microtenant id is a number.")
+    md = str(mode or "adopt").strip().lower()
+    if md not in MODES:
+        raise ExportRefused("The mode is adopt (import this tenant's objects) or clone (new objects for another tenant).")
     return {"products": [p for p in PRODUCTS if p in prods], "types": lists[0], "exclude": lists[1], "prefix": pre,
-            "namespace": ns or DEFAULT_NAMESPACE, "microtenant_id": mt}
+            "namespace": ns or DEFAULT_NAMESPACE, "microtenant_id": mt, "mode": md, "keep_rule_state": bool(keep_rule_state)}
 
 
 def plan(scopes: Any, channels: Any, opts: Dict[str, Any], *, include_personal: bool = False) -> Dict[str, Any]:
@@ -677,6 +701,14 @@ def plan(scopes: Any, channels: Any, opts: Dict[str, Any], *, include_personal: 
             continue
         if t["key"] in opts["exclude"]:
             left[t["key"]] = "left out: excluded in the export options"
+            continue
+        if opts.get("mode") == "clone" and t["singleton"]:
+            left[t["key"]] = ("left out in clone mode: a setting exists in every tenant, so applying it would overwrite the target's own "
+                              "settings; export in adopt mode to manage it")
+            continue
+        if opts.get("mode") == "clone" and t["bound"]:
+            left[t["key"]] = ("left out in clone mode: it is bound to this tenant's own addresses, tunnels, connectors or cloud accounts; "
+                              "set it up in the target tenant")
             continue
         if t["personal"] and not include_personal:
             left[t["key"]] = "left out: it holds personal data (email addresses); tick Include personal data to export it"
@@ -724,14 +756,40 @@ def _deep_snake(v: Any, depth: int = 0) -> Any:
     return v
 
 
+# Provider arguments whose names look secret but hold a switch or a rating,
+# never a secret (Advanced Threat Protection's cookie stealing, Malware
+# Protection's password-protected archives, a risk profile's password
+# strength rating, a location's cookies-and-proxy switch).
+_NOT_SECRET = {"cookie_stealing_blocked", "cookie_stealing_pcap_enabled", "block_password_protected_archive_files",
+               "password_strength", "cookies_and_proxy"}
+
+
+def _mask(value: Any, depth: int = 0) -> Any:
+    """offline_tenant.scrub's rule (every secret-named field becomes "(set)"
+    or "(not set)"), except a true / false switch (never a secret) and the
+    _NOT_SECRET arguments."""
+    import offline_tenant as ot
+    if depth > 30:
+        return None
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            key = str(k)
+            secretish = (ot._SECRET_KEY.search(key) or ot._PASS_SUFFIX.search(key) or ot._OTP_KEY.search(key)
+                         or (isinstance(v, str) and ot._TOKEN_KEY.search(key)))
+            if secretish and not isinstance(v, bool) and key not in _NOT_SECRET:
+                out[key] = "(set)" if v not in (None, "", [], {}, False) else "(not set)"
+            else:
+                out[key] = _mask(v, depth + 1)
+        return out
+    if isinstance(value, list):
+        return [_mask(x, depth + 1) for x in value]
+    return value
+
+
 def _clean(rows: Iterable[Any]) -> List[Dict[str, Any]]:
     """Rows as plain snake_case dicts with every secret-named field masked."""
-    import offline_tenant
-    out = []
-    for r in rows:
-        if isinstance(r, dict):
-            out.append(offline_tenant.scrub(_deep_snake(r)))
-    return out
+    return [_mask(_deep_snake(r)) for r in rows if isinstance(r, dict)]
 
 
 def _stopped(cancel: Any) -> bool:
@@ -774,6 +832,20 @@ def _raw_rows(ret: Any) -> Tuple[List[Dict[str, Any]], Optional[str], Any]:
     if isinstance(raw, list) and all(isinstance(r, dict) for r in raw) and len(raw) == len(items):
         return [dict(r) for r in raw], None, resp
     return [pack_export._plain(x) for x in items], None, resp
+
+
+_ENVELOPES = ("trustedNetworkContracts", "trusted_network_contracts", "list", "records", "items")
+
+
+def _unwrap(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The objects of an answer the SDK handed back as one envelope
+    (Client Connector's {"trustedNetworkContracts": [...]})."""
+    if len(rows) == 1 and isinstance(rows[0], dict) and "id" not in rows[0]:
+        for key in _ENVELOPES:
+            inner = rows[0].get(key)
+            if isinstance(inner, list):
+                return [dict(x) for x in inner if isinstance(x, dict)]
+    return rows
 
 
 def _list_all(fn: Callable[..., Any], args: Tuple[Any, ...], q: Dict[str, Any], cancel: Any, paged: bool) -> Tuple[List[Dict[str, Any]], Optional[str]]:
@@ -831,6 +903,7 @@ def read_type(client: Any, t: Dict[str, Any], *, cancel: Any = None, microtenant
         if _stopped(cancel):
             break
         got, err = _list_all(fn, args, q, cancel, t["zpa_paged"])
+        got = _unwrap(got)
         if err:
             return rows, err
         if args:
@@ -963,7 +1036,35 @@ def _hook_security_lists(row: Dict[str, Any], ctx: "_Ctx") -> Dict[str, Any]:
     return row
 
 
-HOOKS = {"engine_expression": _hook_engine_expression, "policy_v2": _hook_policy_v2, "provisioning_key": _hook_provisioning_key,
+def _csv(v: Any) -> List[str]:
+    if isinstance(v, list):
+        return [str(x).strip() for x in v if str(x).strip()]
+    return [x.strip() for x in str(v or "").split(",") if x.strip()]
+
+
+_ZCC_TN = {"dns_server_ips": "dns_servers", "dns_search_domains": "dns_search_domains", "resolved_ips_for_hostname": "resolved_ips_for_hostname",
+           "trusted_dhcp_servers_ips": "trusted_dhcp_servers", "trusted_egress_ips": "trusted_egress_ips",
+           "trusted_gateway_ips": "trusted_gateways", "trusted_subnet_ips": "trusted_subnets"}
+
+
+def _hook_zcc_trusted_network(row: Dict[str, Any], ctx: "_Ctx") -> Dict[str, Any]:
+    """A Client Connector trusted network as the zcc provider takes it: the
+    public API's v1 answer (networkName, comma-separated addresses,
+    conditionType 0 / 1) in the provider's v2 form (name, lists, ALL / ANY),
+    the mapping the provider itself applies (its trusted-network backend)."""
+    out = dict(row)
+    out["name"] = row.get("name") or row.get("network_name")
+    out["hostname"] = row.get("hostname") or row.get("hostnames")
+    out["ssid"] = row.get("ssid") or row.get("ssids")
+    for new, old in _ZCC_TN.items():
+        v = row.get(new) if not _empty(row.get(new)) else row.get(old)
+        out[new] = _csv(v) if not _empty(v) else None
+    ct = row.get("condition_type")
+    out["condition_type"] = {"0": "ALL", "1": "ANY"}.get(str(ct), ct if isinstance(ct, str) and ct else None)
+    return out
+
+
+HOOKS = {"zcc_trusted_network": _hook_zcc_trusted_network, "engine_expression": _hook_engine_expression, "policy_v2": _hook_policy_v2, "provisioning_key": _hook_provisioning_key,
          "lss_name": _hook_lss_name, "pra_console": _hook_pra_console, "security_lists": _hook_security_lists}
 
 
@@ -1023,9 +1124,12 @@ class _Ctx:
     """One product's generation: addresses of exported objects, names for
     lookups, the data sources and variables needed, and the counts."""
 
-    def __init__(self, product: str, prefix: str):
+    def __init__(self, product: str, prefix: str, mode: str = "adopt", keep_rule_state: bool = False):
         self.product = product
         self.prefix = prefix
+        self.clone = mode == "clone"
+        self.keep_rule_state = keep_rule_state
+        self.disabled = 0
         self.addr: Dict[Tuple[str, str], Tuple[str, str]] = {}     # (type key, id) -> (resource, label)
         self.names: Dict[str, Dict[str, str]] = {}                 # type key -> id -> name
         self.labels: Dict[str, set] = {}                           # resource -> labels given
@@ -1137,8 +1241,17 @@ def _render_attrs(schema: List[Tuple[str, str, bool, Any]], row: Dict[str, Any],
     pad = "  " * indent
     lines: List[str] = []
     missing: List[str] = []
+    norm: Optional[Dict[str, str]] = None
     for attr, kind, req, sub in schema:
         v = row.get(attr)
+        if v is None:
+            # The API's camelCase does not always snake back to the provider's
+            # name (zscalerClientConnector1AndPac..., enableLWFDriver): match
+            # on the letters and digits alone.
+            if norm is None:
+                norm = {str(k).replace("_", ""): k for k in row}
+            alt = norm.get(attr.replace("_", ""))
+            v = row.get(alt) if alt is not None else None
         if kind == "secret":
             var = t["secrets"].get(attr)
             if var and not nested or var:
@@ -1156,6 +1269,8 @@ def _render_attrs(schema: List[Tuple[str, str, bool, Any]], row: Dict[str, Any],
         ref = _ref_target(ctx, attr)
         if kind in ("s", "n", "f", "b"):
             val = _scalar(kind, v, ctx, attr, ref)
+            if val is None and kind == "b" and req and _bool(v) is False:
+                val = "false"   # a required switch that is off is still written
             if val is None:
                 if not (kind == "b" and _bool(v) is False):
                     if req:
@@ -1252,6 +1367,17 @@ def render_resource(t: Dict[str, Any], row: Dict[str, Any], label: str, ctx: _Ct
     for attr, alt in RENAMES.get(t["resource"], {}).items():
         if _empty(row.get(attr)) and not _empty(row.get(alt)):
             row = dict(row, **{attr: row[alt]})
+    if ctx.clone and not ctx.keep_rule_state:
+        # A clone creates new objects in another tenant: every rule arrives
+        # DISABLED and every ZPA application segment disabled (a ZPA access
+        # rule then grants nothing until someone enables its segments).
+        attrs = {a for a, _k, _r, _s in schema_of(t["resource"])}
+        if "state" in attrs and t["key"].endswith("_rules"):
+            row = dict(row, state=_Raw('"DISABLED"'))
+            ctx.disabled += 1
+        elif "enabled" in attrs and t["resource"].startswith("zpa_application_segment"):
+            row = dict(row, enabled=_Raw("false"))
+            ctx.disabled += 1
     ctx.singleton = t["singleton"]
     body, missing = _render_attrs(schema_of(t["resource"]), row, ctx, t, label, 1)
     if missing:
@@ -1270,7 +1396,7 @@ _AREA_FILES = {"settings": "settings.tf", "threat_protection": "threat_protectio
                "file_type_control": "file_type_control.tf", "cloud_app_control": "cloud_app_control.tf", "forwarding": "forwarding.tf",
                "traffic_forwarding": "traffic_forwarding.tf", "segments": "segments.tf", "infrastructure": "infrastructure.tf",
                "policies": "policies.tf", "inspection": "inspection.tf", "pra": "pra.tf", "portals": "portals.tf",
-               "isolation": "isolation.tf", "provisioning": "provisioning.tf"}
+               "isolation": "isolation.tf", "provisioning": "provisioning.tf", "client_connector": "client_connector.tf"}
 
 _SECRET_WORDS = {
     "vpn_pre_shared_keys": "Pre-shared key per VPN credential (by resource label). The export never reads or writes one: fill them in before an apply that creates or changes a credential.",
@@ -1355,6 +1481,20 @@ def _data_tf(ctx: _Ctx) -> str:
     return "".join(out).rstrip("\n") + "\n"
 
 
+_USE_ADOPT = ("## Adopt the tenant without recreating anything\n\n```bash\nterraform init\n"
+              "terraform plan -out=tfplan   # imports every object below; review any change it proposes\nterraform apply tfplan\n```\n\n"
+              "`imports.tf` holds one `import` block per resource (Terraform 1.5 or later), with the object's tenant id, so the first apply "
+              "brings the tenant's objects into state instead of creating new ones. Every object keeps the state the tenant gave it "
+              "(an enabled rule stays enabled): adopting changes nothing for users. Values the provider fills in on its own (defaults, "
+              "computed ids) may show as an in-place update on the first plan; read it before you apply.\n\n")
+_USE_CLONE = ("## Build these objects in another tenant\n\n```bash\nterraform init\n"
+              "terraform plan -out=tfplan   # creates every object below in the tenant the credentials name\nterraform apply tfplan\n```\n\n"
+              "Clone mode: there are no import blocks, so `apply` creates new objects. {n} rule(s) and application segment(s) were written "
+              "DISABLED so nothing changes for the target's users until someone enables them in the portal"
+              "{keep}. ZPA policy rules have no on/off switch in the provider: they reach only segments, which arrive disabled. "
+              "Settings and objects bound to this tenant (locations, tunnels, connectors, cloud accounts) are left out.\n\n")
+
+
 def _readme_product(product: str, counts: Dict[str, int], ctx: _Ctx, not_exported: List[Dict[str, str]], namespace: str,
                     tenant_label: str) -> str:
     rows = "".join(f"| `{res}` | {n} |\n" for res, n in sorted(counts.items()))
@@ -1367,12 +1507,9 @@ def _readme_product(product: str, counts: Dict[str, int], ctx: _Ctx, not_exporte
     return (f"# {PRODUCT_LABELS[product]} as Terraform\n\n"
             f"Exported by Zscaler Made Easy from {md_safe.text(tenant_label or 'the tenant')}, read-only, for the "
             f"[`{namespace}/{product}`]({PROVIDERS[product]['docs']}) provider ({PROVIDERS[product]['version']}).\n\n"
-            "## Adopt the tenant without recreating anything\n\n```bash\nterraform init\n"
-            "terraform plan -out=tfplan   # imports every object below; review any change it proposes\nterraform apply tfplan\n```\n\n"
-            "`imports.tf` holds one `import` block per resource (Terraform 1.5 or later), with the object's tenant id, so the first apply "
-            "brings the tenant's objects into state instead of creating new ones. Values the provider fills in on its own (defaults, "
-            "computed ids) may show as an in-place update on the first plan; read it before you apply.\n\n"
-            "## What is in this workspace\n\n| Resource type | Objects |\n|---|---|\n" + (rows or "| (none) | 0 |\n") + "\n"
+            + (_USE_CLONE.format(n=ctx.disabled, keep=" (Keep each rule's state was ticked: rules keep the source tenant's state)"
+                                 if ctx.keep_rule_state else "") if ctx.clone else _USE_ADOPT)
+            + "## What is in this workspace\n\n| Resource type | Objects |\n|---|---|\n" + (rows or "| (none) | 0 |\n") + "\n"
             f"References: {ctx.refs['resource']} by Terraform address, {ctx.refs['data']} by a lookup by name (`datasource.tf`), "
             f"{ctx.refs['id']} by tenant id (the object is not exported and has no lookup, or is a user).\n\n"
             "## Not exported\n\n| What | Why |\n|---|---|\n" + nx + "\n"
@@ -1392,7 +1529,8 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
     unread = snapshot.get("unread") or {}
     plan_info = plan_info or {}
     files: Dict[str, str] = {}
-    report: Dict[str, Any] = {"generated_at": when, "tenant_label": tenant_label, "products": {}, "not_exported": [],
+    report: Dict[str, Any] = {"generated_at": when, "tenant_label": tenant_label, "mode": opts.get("mode") or "adopt",
+                              "rules_disabled": opts.get("mode") == "clone" and not opts.get("keep_rule_state"), "products": {}, "not_exported": [],
                               "not_covered": [{"product": p, "what": w, "why": y} for p, w, y in NOT_COVERED]}
     for key, why in sorted((plan_info.get("not_in_scope") or {}).items()):
         report["not_exported"].append({"product": BY_KEY[key]["product"], "type": key, "what": BY_KEY[key]["label"], "why": why})
@@ -1406,7 +1544,7 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
         keys = [t["key"] for t in TYPES if t["product"] == product and t["key"] in types]
         if not keys:
             continue
-        ctx = _Ctx(product, opts.get("prefix") or "")
+        ctx = _Ctx(product, opts.get("prefix") or "", opts.get("mode") or "adopt", bool(opts.get("keep_rule_state")))
         kept: Dict[str, List[Tuple[Dict[str, Any], str]]] = {}
         skipped: List[Dict[str, str]] = []
         # 1. every object's id and name (for lookups), and a label for each one exported
@@ -1438,7 +1576,8 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
                     ctx.addr.pop((key, _rid(row)), None)
                     continue
                 by_area.setdefault(_AREA_FILES[t["area"]], []).append(hcl)
-                imports.append(f"import {{\n  to = {t['resource']}.{lab}\n  id = {hcl_str(_import_id(t, row))}\n}}\n")
+                if not ctx.clone:
+                    imports.append(f"import {{\n  to = {t['resource']}.{lab}\n  id = {hcl_str(_import_id(t, row))}\n}}\n")
                 counts[t["resource"]] = counts.get(t["resource"], 0) + 1
                 if not t["singleton"]:
                     by_resource.setdefault(t["resource"], []).append((_display_name(t, row), lab))
@@ -1449,8 +1588,9 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
         for fname, blocks in by_area.items():
             files[f"{base}/{fname}"] = hcl_fmt(f"{GENERATED_MARK}. Read from the tenant; do not edit by hand before the first import.\n\n"
                                                + "\n".join(blocks))
-        files[f"{base}/imports.tf"] = (f"{GENERATED_MARK}. Adopt the tenant's objects into state on the first apply (Terraform 1.5+).\n\n"
-                                       + "\n".join(imports))
+        if imports:
+            files[f"{base}/imports.tf"] = (f"{GENERATED_MARK}. Adopt the tenant's objects into state on the first apply (Terraform 1.5+).\n\n"
+                                           + "\n".join(imports))
         if ctx.data:
             files[f"{base}/datasource.tf"] = _data_tf(ctx)
         files[f"{base}/terraform.tf"] = _terraform_tf(product, opts.get("namespace") or DEFAULT_NAMESPACE)
@@ -1461,7 +1601,7 @@ def generate(snapshot: Dict[str, Any], opts: Dict[str, Any], *, tenant_label: st
         files[f"{base}/.gitignore"] = GITIGNORE
         files[f"{base}/README.md"] = _readme_product(product, counts, ctx, skipped + [x for x in report["not_exported"] if x["product"] == product],
                                                      opts.get("namespace") or DEFAULT_NAMESPACE, tenant_label)
-        report["products"][product] = {"resources": counts, "imports": len(imports), "data_sources": len(ctx.data),
+        report["products"][product] = {"resources": counts, "imports": len(imports), "data_sources": len(ctx.data), "disabled": ctx.disabled,
                                        "references": dict(ctx.refs), "unresolved": dict(ctx.unresolved),
                                        "secret_variables": sorted(ctx.secret_vars), "skipped": skipped,
                                        "dropped_attributes": {r: dict(v) for r, v in ctx.dropped.items()}}

@@ -18,8 +18,11 @@ A trailing `!` marks an argument the provider requires.
 
 Source: the configurable arguments of the official providers' published
 resource schemas, zscaler/zia 4.8.17 (2026-10-30), zscaler/zpa 4.4.16
-(2026-10-26) and zscaler/ztc 0.2.0 (2026-06-29), read from each provider's
-Go schema definitions. Some arguments were left out on purpose:
+(2026-10-26), zscaler/ztc 0.2.0 (2026-06-29) and zscaler/zcc 0.1.2
+(2026-08-13), read from each provider's Go schema definitions. Some arguments were left out on purpose:
+  - Client Connector forwarding profiles: `trusted_networks` (names) and
+    `trusted_network_ids_selected`: the profile names its trusted networks by
+    id (`trusted_network_ids`), and the provider keeps the names in step;
   - ZPA application segments: `tcp_port_range` / `udp_port_range` blocks
     (the export writes the equivalent `tcp_port_ranges` / `udp_port_ranges`
     lists; the provider accepts one form at a time);
@@ -474,7 +477,6 @@ SCHEMAS: Dict[str, str] = {
         "override_version_profile:b microtenant_id:s site_id:s upgrade_day:s upgrade_time_in_secs:s "
         "version_profile_id:s version_profile_name:s enrollment_cert_id:s user_codes:ls"
     ),
-    "ztc_account_groups": "name:s! description:s cloud_type:s public_cloud_accounts:ids cloud_connector_groups:ids",
     "ztc_forwarding_gateway": (
         "name:s description:s type:s fail_closed:b manual_primary:s manual_secondary:s primary_type:s! "
         "secondary_type:s! subcloud_primary:idb subcloud_secondary:idb"
@@ -507,5 +509,38 @@ SCHEMAS: Dict[str, str] = {
         "ec_groups:ids src_ip_groups:ids dest_ip_groups:ids nw_services:ids nw_service_groups:ids "
         "app_service_groups:ids proxy_gateway:idb zpa_application_segments:ids zpa_application_segment_groups:ids "
         "dest_countries:ls src_workload_groups:ids"
+    ),
+    "zcc_trusted_network": (
+        "active:b! condition_type:s! name:s hostname:s ssid:s dns_search_domains:ls dns_server_ips:ls "
+        "resolved_ips_for_hostname:ls trusted_dhcp_servers_ips:ls trusted_egress_ips:ls trusted_gateway_ips:ls "
+        "trusted_subnet_ips:ls"
+    ),
+    "zcc_forwarding_profile": (
+        "name:s! active:b condition_type:n dns_servers:s dns_search_domains:s enable_lwf_driver:b hostname:s "
+        "resolved_ips_for_hostname:s trusted_subnets:s trusted_gateways:s trusted_dhcp_servers:s trusted_egress_ips:s "
+        "predefined_trusted_networks:b predefined_tn_all:b enable_split_vpn_tn:b enable_unified_tunnel:b "
+        "evaluate_trusted_network:b skip_trusted_criteria_match:b enable_all_default_adapters_tn:b "
+        "trusted_network_ids:ln "
+        "forwarding_profile_actions:blk(network_type:n action_type:n primary_transport:n dtls_timeout:n udp_timeout:n "
+        "tls_timeout:n mtu_for_zadapter:n tunnel2_fallback_type:n zen_probe_interval:n zen_probe_sample_size:n "
+        "zen_threshold_limit:n lbs_probe_interval:n lbs_probe_sample_size:n lbs_threshold_limit:n custom_pac:s "
+        "system_proxy:b enable_packet_tunnel:b block_unreachable_domains_traffic:b allow_tls_fallback:b "
+        "send_all_dns_to_trusted_server:b drop_ipv6_traffic:b redirect_web_traffic:b drop_ipv6_include_traffic_in_t2:b "
+        "use_tunnel2_for_proxied_web_traffic:b use_tunnel2_for_unencrypted_web_traffic:b path_mtu_discovery:b "
+        "latency_based_zen_enablement:b latency_based_server_enablement:b latency_based_server_mt_enablement:b "
+        "drop_ipv6_traffic_in_ipv6_network:b optimise_for_unstable_connections:b is_same_as_on_trusted_network:b "
+        "system_proxy_data:blk(proxy_action:n enable_auto_detect:b enable_pac:b pac_url:s enable_proxy_server:b "
+        "proxy_server_address:s proxy_server_port:s bypass_proxy_for_private_ip:b perform_gp_update:b pac_data_path:s)) "
+        "forwarding_profile_zpa_actions:blk(network_type:n action_type:n primary_transport:n dtls_timeout:n "
+        "tls_timeout:n mtu_for_zadapter:n lbs_probe_interval:n lbs_probe_sample_size:n lbs_threshold_limit:n "
+        "send_trusted_network_result_to_zpa:b latency_based_server_enablement:b latency_based_server_mt_enablement:b "
+        "is_same_as_on_trusted_network:b partner_info:blk(primary_transport:n mtu_for_zadapter:n allow_tls_fallback:b)) "
+        "unified_tunnel:blk(network_type:n action_type_zia:n action_type_zpa:n primary_transport:n dtls_timeout:n "
+        "tls_timeout:n mtu_for_zadapter:n tunnel2_fallback_type:n allow_tls_fallback:b path_mtu_discovery:b "
+        "optimise_for_unstable_connections:b redirect_web_traffic:b drop_ipv6_traffic:b "
+        "drop_ipv6_traffic_in_ipv6_network:b block_unreachable_domains_traffic:b drop_ipv6_include_traffic_in_t2:b "
+        "send_all_dns_to_trusted_server:b same_as_on_trusted:b system_proxy_data:blk(proxy_action:n "
+        "enable_auto_detect:b enable_pac:b pac_url:s enable_proxy_server:b proxy_server_address:s proxy_server_port:s "
+        "bypass_proxy_for_private_ip:b perform_gp_update:b pac_data_path:s))"
     ),
 }
