@@ -284,6 +284,9 @@ URL_SINK_REVIEWED = {
     ("static/simple.js", "a.href"): "fixAction()'s app path for a finding's fix",
     ("static/ui_auth.js", "ssoStatus.sso_login_url || '/api/auth/sso/login'"): "the server's fixed SSO path (/api/auth/sso/login)",
     ("static/zcc_fleet.js", "url"): "URL.createObjectURL of the downloaded export",
+    ("static/fleet_dns.js", "url"): "URL.createObjectURL of the DNS records file built in the page",
+    ("static/net_ranges.js", "url"): "URL.createObjectURL of the downloaded allowlist",
+    ("static/find_anything.js", "href"): "'/report/path#categories=' with the host through encodeURIComponent (Category lookup)",
 }
 
 

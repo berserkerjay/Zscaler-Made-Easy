@@ -61,7 +61,7 @@
         <div class="df-hint">A delete asks its name typed when you apply and cannot be undone. Groups and departments from the identity provider are left alone.</div>`;
     }
     where.innerHTML = `${errs(H, res)}
-      <div class="op-row"><fieldset class="op-inline"><legend>What to do</legend>${modes.map(([v, l]) => `<label><input type="radio" name="zdMode" value="${v}"${z.mode === v ? ' checked' : ''}> ${E(l)}</label>`).join('')}</fieldset></div>
+      <div class="op-row"><fieldset class="op-inline"><legend>What to do</legend>${modes.map(([v, l]) => `<label><input type="radio" name="zdMode" value="${E(v)}"${z.mode === v ? ' checked' : ''}> ${E(l)}</label>`).join('')}</fieldset></div>
       ${body}
       <ul class="op-checks">${(res.not_possible || []).map(n => `<li class="df-hint">${E(n)}</li>`).join('')}</ul>`;
     const again = id => { renderDirectory(res, where, S, H); const el = document.getElementById(id) || where.querySelector(`input[name="${id}"]:checked`); if (el) el.focus(); };
@@ -132,7 +132,7 @@
           <td>${E(x.name)}<div class="df-by">${E(x.domain)}${x.editable ? '' : ' · not editable'}</div></td><td>${E(x.version)}</td><td>${E((x.versions || []).length)}</td><td class="df-hint">${E(x.url)}</td></tr>`).join('')
           || '<tr><td colspan="5">The tenant has no hosted PAC file.</td></tr>'}</tbody></table></div>
       ${f ? `<details class="pa-details"><summary>Active text of ${E(f.name)} (version ${E(f.version)}, ${E(f.lines)} lines)</summary><div class="pa-log" id="zpView"></div>${f.content_cut ? '<div class="df-hint">Cut for display; the preview reads all of it.</div>' : ''}</details>` : ''}
-      <div class="op-row"><fieldset class="op-inline"><legend>What to do</legend>${ACTS.map(([v, l]) => `<label><input type="radio" name="zpAct" value="${v}"${z.act === v ? ' checked' : ''}> ${E(l)}</label>`).join('')}</fieldset></div>
+      <div class="op-row"><fieldset class="op-inline"><legend>What to do</legend>${ACTS.map(([v, l]) => `<label><input type="radio" name="zpAct" value="${E(v)}"${z.act === v ? ' checked' : ''}> ${E(l)}</label>`).join('')}</fieldset></div>
       ${needFile && !f ? '<div class="df-hint">Pick the PAC file above.</div>' : extra}`;
     const view = document.getElementById('zpView'); if (view) view.textContent = f.content || '';
     const again = id => { renderPac(res, where, S, H); const el = document.getElementById(id) || where.querySelector(`input[name="${id}"]:checked`); if (el) el.focus(); };

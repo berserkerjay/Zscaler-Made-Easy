@@ -66,14 +66,14 @@
         <td>${health(r.health)}</td><td>${E(r.ver)}</td><td class="df-hint">${E(r.detail)}${r.seen ? ` · last connected ${E(r.seen)}` : ''}</td></tr>`), 'Nothing to show.')}
       <h3 class="op-h">What to change</h3>
       <div class="op-row"><fieldset class="op-inline"><legend>On or off</legend>${[['', 'Leave as it is'], ['on', 'Turn on'], ['off', 'Turn off']].map(([v, l]) =>
-        `<label><input type="radio" name="admOn" value="${v}"${A.on === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
+        `<label><input type="radio" name="admOn" value="${E(v)}"${A.on === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
       <div class="op-row"><label class="df-ctl"><span class="lbl">New name (one object only)</span><input id="admName" maxlength="128" value="${E(A.name)}" aria-label="New name"></label></div>
       <div class="op-row"><label class="df-ctl"><span class="lbl">Move picked App Connectors to</span><select id="admMoveTo" aria-label="Move picked App Connectors to">
         <option value="">Do not move</option>${groups.map(g => `<option value="${E(g.id)}"${A.moveTo === g.id ? ' selected' : ''}>${E(g.name)}</option>`).join('')}</select></label></div>
       <div class="op-row"><label class="df-ctl"><span class="lbl">Update day (groups)</span><select id="admDay" aria-label="Software update day">
-        <option value="">Leave as it is</option>${DAYS.map(d => `<option value="${d}"${A.day === d ? ' selected' : ''}>${d[0] + d.slice(1).toLowerCase()}</option>`).join('')}</select></label>
+        <option value="">Leave as it is</option>${DAYS.map(d => `<option value="${E(d)}"${A.day === d ? ' selected' : ''}>${E(d[0] + d.slice(1).toLowerCase())}</option>`).join('')}</select></label>
         <label class="df-ctl"><span class="lbl">Update hour</span><select id="admHour" aria-label="Software update hour"><option value="">Leave as it is</option>
-        ${Array.from({ length: 24 }, (_, h) => `<option value="${h}"${A.hour === String(h) ? ' selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('')}</select></label>
+        ${Array.from({ length: 24 }, (_, h) => `<option value="${E(h)}"${A.hour === String(h) ? ' selected' : ''}>${E(String(h).padStart(2, '0'))}:00</option>`).join('')}</select></label>
         <label class="df-ctl"><span class="lbl">Version profile</span><select id="admVer" aria-label="Version profile"><option value="">Leave as it is</option>
         ${(res.version_profiles || []).map(v => `<option value="${E(v.id)}"${A.ver === v.id ? ' selected' : ''}>${E(v.label)}</option>`).join('')}</select></label></div>
       ${assumed(res)}`;
@@ -136,7 +136,7 @@
     const groups = A.keyType === 'connector' ? (res.connector_groups || []) : (res.service_edge_groups || []);
     where.innerHTML = `${errs(H, res)}
       <div class="op-row"><fieldset class="op-inline"><legend>For</legend>${[['connector', 'An App Connector group'], ['service_edge', 'A Service Edge group']].map(([v, l]) =>
-        `<label><input type="radio" name="admKeyType" value="${v}"${A.keyType === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
+        `<label><input type="radio" name="admKeyType" value="${E(v)}"${A.keyType === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
       <div class="op-row"><label class="df-ctl"><span class="lbl">Group</span><select id="admKeyGroup" aria-label="Group the key enrolls into"><option value="">Pick one…</option>
         ${groups.map(g => `<option value="${E(g.id)}"${A.keyGroup === g.id ? ' selected' : ''}>${E(g.name)}</option>`).join('')}</select></label></div>
       <div class="op-row"><label class="df-ctl"><span class="lbl">Key name</span><input id="admKeyName" maxlength="128" value="${E(A.keyName)}" aria-label="Key name"></label>
@@ -179,7 +179,7 @@
       ${table('Browser Access certificates', ['Certificate', 'Names', 'Expiry', 'Used by'], certs.map(c => `<tr><td>${E(c.name)}</td><td class="df-hint">${E((c.san || []).slice(0, 3).join(', ') || c.cname)}</td>
         <td>${chip(c.expiry, c.expiry === 'expired' ? 'st-fail' : c.expiring ? 'st-warn' : 'st-ok')} ${E(c.valid_to)}</td><td class="df-hint">${E((c.used_by || []).join('; '))}</td></tr>`), 'No Browser Access certificate.')}
       <div class="op-row"><fieldset class="op-inline"><legend>Certificate</legend>${[['upload', 'Upload a new one'], ['existing', 'Use one ZPA has']].map(([v, l]) =>
-        `<label><input type="radio" name="admCertMode" value="${v}"${A.certMode === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
+        `<label><input type="radio" name="admCertMode" value="${E(v)}"${A.certMode === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
       ${A.certMode === 'upload' ? `
         <div class="op-row"><label class="df-ctl"><span class="lbl">Name in ZPA</span><input id="admCertName" maxlength="128" value="${E(A.certName)}" aria-label="Certificate name in ZPA"></label>
           <label class="df-ctl"><span class="lbl">Description</span><input id="admCertDesc" maxlength="255" value="${E(A.certDesc)}" aria-label="Certificate description"></label></div>
@@ -235,7 +235,7 @@
       <div class="op-row"><label class="df-ctl"><span class="lbl">User (email)</span><input id="admUser" value="${E(A.user)}" aria-label="User's email" placeholder="jdoe@acme.com"></label>
         <button type="button" class="rp-btn" id="admFind">Find devices</button></div>
       <div class="op-row"><fieldset class="op-inline"><legend>Removal</legend>${[['remove', 'Remove (marked Removal Pending; unenrolls at its next check-in)'], ['force', 'Force remove (dropped at once)']].map(([v, l]) =>
-        `<label><input type="radio" name="admMode" value="${v}"${A.mode === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
+        `<label><input type="radio" name="admMode" value="${E(v)}"${A.mode === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
       <div id="admDevs">${devTable()}</div>`;
     where.querySelector('#admUser').addEventListener('input', e => { A.user = e.target.value; });
     where.querySelectorAll('input[name="admMode"]').forEach(r => r.addEventListener('change', () => { A.mode = r.value; }));
@@ -267,7 +267,7 @@
       <div class="op-row"><label class="df-ctl"><span class="lbl">Only users of this domain (optional)</span><input id="admListDomain" value="${E(A.listDomain)}" aria-label="Only users of this domain" placeholder="acme.com"></label>
         <label class="df-ctl"><span class="lbl">Batch size</span><input id="admBatch" type="number" min="1" max="100" value="${E(A.batch)}" aria-label="Devices per call"></label></div>
       <div class="op-row"><fieldset class="op-inline"><legend>Removal</legend>${[['remove', 'Remove'], ['force', 'Force remove']].map(([v, l]) =>
-        `<label><input type="radio" name="admBulkMode" value="${v}"${A.mode === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset>
+        `<label><input type="radio" name="admBulkMode" value="${E(v)}"${A.mode === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset>
         <button type="button" class="rp-btn" id="admMatch">Match the list</button></div>
       <div id="admMatchOut">${m ? matchHtml(m) : ''}</div>`;
     where.querySelector('#admList').addEventListener('input', e => { A.listText = e.target.value; });
@@ -324,7 +324,7 @@
       ${table('Custom bypass apps', ['Pick', 'App', 'On', 'Entries'], apps.map(a => `<tr><td><input type="radio" name="admApp" value="${E(a.id)}" aria-label="Pick ${E(a.name)}"${A.appId === a.id ? ' checked' : ''}></td>
         <td>${E(a.name)}</td><td>${a.active ? 'on' : 'off'}</td><td class="df-hint">${E(a.entries.map(e => `${e.proto} ${e.port} ${e.ipaddr || e.fqdn}`).join('; '))}</td></tr>`), 'No custom bypass app yet.')}
       <div class="op-row"><fieldset class="op-inline"><legend>Do</legend>${[['create', 'Create a new one'], ['update', 'Edit the picked one'], ['delete', 'Delete the picked one']].map(([v, l]) =>
-        `<label><input type="radio" name="admAppAct" value="${v}"${A.appAct === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
+        `<label><input type="radio" name="admAppAct" value="${E(v)}"${A.appAct === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
       ${A.appAct === 'delete' ? '<div class="df-hint">You type its name to confirm. An app an app profile bypasses is never deleted. No Undo.</div>' : `
       <div class="op-row"><label class="df-ctl"><span class="lbl">Name</span><input id="admAppName" maxlength="64" value="${E(A.appName || (A.appAct === 'update' && cur ? cur.name : ''))}" aria-label="App name"></label>
         <label class="df-ctl"><input type="checkbox" id="admAppOn"${A.appOn ? ' checked' : ''}><span>On (new apps start off)</span></label></div>
@@ -355,9 +355,9 @@
     const ents = res.entitlements || {}, cur = ents[A.svc];
     const card = e => e ? `<div class="bp-card info"><div class="t">${E(e.label)}</div><div>On for every user: ${e.enable_for_all ? 'yes' : 'no'}. Groups: ${E(e.groups.join(', ') || 'none')}.${e.device_groups.length ? ` Device groups: ${E(e.device_groups.join(', '))}.` : ''}</div></div>` : '';
     where.innerHTML = `${errs(H, res)}${card(ents.zpa)}${card(ents.zdx)}
-      <div class="op-row"><fieldset class="op-inline"><legend>Service</legend>${[['zpa', 'ZPA'], ['zdx', 'ZDX']].map(([v, l]) => `<label><input type="radio" name="admSvc" value="${v}"${A.svc === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
+      <div class="op-row"><fieldset class="op-inline"><legend>Service</legend>${[['zpa', 'ZPA'], ['zdx', 'ZDX']].map(([v, l]) => `<label><input type="radio" name="admSvc" value="${E(v)}"${A.svc === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
       <div class="op-row"><fieldset class="op-inline"><legend>On for every user</legend>${[['', 'Leave as it is'], ['on', 'On'], ['off', 'Off (only the groups listed)']].map(([v, l]) =>
-        `<label><input type="radio" name="admAll" value="${v}"${A.all === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
+        `<label><input type="radio" name="admAll" value="${E(v)}"${A.all === v ? ' checked' : ''}> ${E(l)}</label>`).join(' ')}</fieldset></div>
       <div class="op-row"><label class="op-block"><span class="lbl">Groups to add, one a line</span><textarea id="admAddGroups" rows="3" aria-label="Groups to add">${E(A.addGroups)}</textarea></label></div>
       ${cur && cur.groups.length ? `<h3 class="op-h">Take groups out</h3><ul class="op-checks">${cur.groups.map(g => `<li><label><input type="checkbox" data-admgrp="${E(g)}"${A.rmGroups.has(g) ? ' checked' : ''}> ${E(g)}</label></li>`).join('')}</ul>` : ''}`;
     where.querySelectorAll('input[name="admSvc"]').forEach(r => r.addEventListener('change', () => { A.svc = r.value; A.rmGroups.clear(); renderEnt(res, where, S, H); where.querySelector('input[name="admSvc"]:checked').focus(); }));
@@ -414,7 +414,7 @@
             <td>${E(t.session_name)}</td><td>${E(t.status)}</td><td>${E(t.started_at || t.created_at)}</td></tr>`), 'No deep trace on this device.')}
           ${stopForm ? '' : `<h3 class="op-h">Start a deep trace</h3>
           <div class="op-row"><label class="df-ctl"><span class="lbl">Session name</span><input id="admZName" maxlength="64" value="${E(A.zName)}" aria-label="Session name" placeholder="slow teams calls"></label>
-            <label class="df-ctl"><span class="lbl">Length</span><select id="admZLen" aria-label="Length in minutes">${(res.lengths || [5, 15, 30, 60]).map(m => `<option value="${m}"${Number(A.zLen) === m ? ' selected' : ''}>${m} minutes</option>`).join('')}</select></label></div>
+            <label class="df-ctl"><span class="lbl">Length</span><select id="admZLen" aria-label="Length in minutes">${(res.lengths || [5, 15, 30, 60]).map(m => `<option value="${E(m)}"${Number(A.zLen) === m ? ' selected' : ''}>${E(m)} minutes</option>`).join('')}</select></label></div>
           <div class="op-row"><label class="df-ctl"><span class="lbl">Application</span><select id="admZApp" aria-label="Application to trace"><option value="">None</option>
             ${A.zApps.map(a => `<option value="${E(a.id)}"${A.zApp === a.id ? ' selected' : ''}>${E(a.name)}</option>`).join('')}</select></label>
             <label class="df-ctl"><span class="lbl">Web probe</span><select id="admZWeb" aria-label="Web probe"><option value="">None</option>${A.zWeb.map(p => `<option value="${E(p.id)}"${A.zWebId === p.id ? ' selected' : ''}>${E(p.name)}</option>`).join('')}</select></label>

@@ -236,7 +236,7 @@
     return `<section class="pa-probe" id="paProbeSec" aria-labelledby="paProbeH">
       <h2 class="df-h" id="paProbeH">Test from here</h2>
       <p class="df-hint"><strong>From the computer running this app</strong> (in the Docker container, the container’s network), not from the user’s device: one DNS lookup, a TCP connect and, on a TLS port, a TLS handshake to ${E(d.host)}, then the certificate compared with the prediction above. It sends no HTTP request, no data and no credentials, follows no redirect, and only on ports 443, 80, 8443 and 8080. Nothing is kept.</p>
-      <div class="pl-row"><label class="df-ctl"><span class="lbl">Port</span><select id="paProbePort" aria-label="Port to test from here">${PROBE_PORTS.map(([v, l]) => `<option value="${v}">${E(l)}</option>`).join('')}</select></label>
+      <div class="pl-row"><label class="df-ctl"><span class="lbl">Port</span><select id="paProbePort" aria-label="Port to test from here">${PROBE_PORTS.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('')}</select></label>
         <button type="button" class="rp-btn primary" id="paProbeRun">Test from here</button></div>
       <div id="paProbeOut" aria-live="polite"></div>
     </section>`;

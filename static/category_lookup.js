@@ -45,7 +45,7 @@
     const app = e.application ? `<h3><span>Application ${E(e.application)}</span> <span class="df-chip">cloud app</span><span class="df-by">from ZIA's URL lookup</span></h3>
       ${rulesTable(`Cloud App Control rules that name ${e.application}`, e.application_rules || [], ranked)}` : '';
     const trace = e.kind === 'host' && e.host ? ` <button type="button" class="rp-btn" data-cltrace="${E(e.host)}">Trace its path</button>` : '';
-    return `<section class="cl-entry" aria-labelledby="clE${i}"><h2 id="clE${i}" tabindex="-1">${E(head)}: ${E(e.input)}${trace}</h2>${lines.join('')}
+    return `<section class="cl-entry" aria-labelledby="clE${E(i)}"><h2 id="clE${E(i)}" tabindex="-1">${E(head)}: ${E(e.input)}${trace}</h2>${lines.join('')}
       ${cats.join('')}${app}</section>`;
   }
   function sectionsHtml(res) {

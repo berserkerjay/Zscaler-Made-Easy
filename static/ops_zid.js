@@ -34,7 +34,7 @@
           <td>${E(u.display_name)}<div class="df-by">${E(u.login_name)}</div></td><td><span class="df-chip ${u.status === 'enabled' ? 'st-ok' : ''}">${E(u.status)}</span></td>
           <td>${E(u.source)}</td><td class="df-hint">${E(u.locked)}</td></tr>`).join('') || '<tr><td colspan="5">No user matches.</td></tr>'}</tbody></table></div>
       <div class="op-row"><fieldset class="op-inline"><legend>For the picked users</legend>
-        ${[['disable', 'Disable'], ['enable', 'Enable'], ['delete', 'Delete (cannot be undone)']].map(([v, l]) => `<label><input type="radio" name="zuAct" value="${v}"${z.act === v ? ' checked' : ''}> ${E(l)}</label>`).join('')}</fieldset></div>`
+        ${[['disable', 'Disable'], ['enable', 'Enable'], ['delete', 'Delete (cannot be undone)']].map(([v, l]) => `<label><input type="radio" name="zuAct" value="${E(v)}"${z.act === v ? ' checked' : ''}> ${E(l)}</label>`).join('')}</fieldset></div>`
       : `<div class="op-row"><label class="df-ctl"><span class="lbl">Login name</span><input id="zuLogin" type="email" value="${E(z.login)}" maxlength="254" aria-label="Login name" placeholder="sam.lee@example.com"></label>
           <label class="df-ctl"><span class="lbl">Display name</span><input id="zuDisplay" value="${E(z.display)}" maxlength="255" aria-label="Display name" placeholder="Sam Lee"></label></div>
         <div class="op-row"><label class="df-ctl"><span class="lbl">First name</span><input id="zuFirst" value="${E(z.first)}" maxlength="255" aria-label="First name"></label>
@@ -96,7 +96,7 @@
     const forPick = z.act === 'rotate' ? `<div class="op-row"><label class="df-ctl"><input type="checkbox" id="zkKeepOld"${z.keepOld ? ' checked' : ''}><span>Keep the old secrets (delete them later, once every tool has the new one)</span></label></div>
         <div class="df-hint">${E(res.secret_once || '')}</div>` : '';
     where.innerHTML = `${errs(res)}
-      <div class="op-row"><fieldset class="op-inline"><legend>What to do</legend>${acts.map(([v, l]) => `<label><input type="radio" name="zkAct" value="${v}"${z.act === v ? ' checked' : ''}> ${E(l)}</label>`).join('')}</fieldset></div>
+      <div class="op-row"><fieldset class="op-inline"><legend>What to do</legend>${acts.map(([v, l]) => `<label><input type="radio" name="zkAct" value="${E(v)}"${z.act === v ? ' checked' : ''}> ${E(l)}</label>`).join('')}</fieldset></div>
       ${z.act === 'create' ? create : table + forPick}${notes(res)}`;
     const again = id => { renderClients(res, where, S, H); const el = document.getElementById(id) || where.querySelector(`input[name="${id}"]:checked`); if (el) el.focus(); };
     where.querySelectorAll('input[name="zkAct"]').forEach(r => r.addEventListener('change', () => { z.act = r.value; again('zkAct'); }));
