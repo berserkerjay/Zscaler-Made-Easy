@@ -62,6 +62,14 @@ EXCLUDED = {
     # a server rule with no new control, and what is not built.
     "Still there?": "a dialog that appears only before an idle sign-out: no control to mark",
     "Not built in": "says what the change does not add",
+    # The MCP server and the assistant skill (2026-10-31): tools and files an AI
+    # assistant uses, outside the app's pages.
+    "The MCP server answers live questions with the app's engines": "the MCP server's tools, used by an assistant, not a page",
+    "Read-only, twice over; no write tool at all": "how the MCP tools are kept read-only, not a page",
+    "Same sign-in and the Scope rule": "how the MCP server signs in and scopes its reads, not a page",
+    "A skill for assistants": "files for an AI assistant (skills/), not a page",
+    # A fix to existing routes (the profile's cloud), no new control.
+    "Fix": "a fix to existing routes, nothing new to see",
     # Static analysis (SAST): test and CI tooling, no page or control.
     "bandit, offline, in every test run": "a test-run gate (tests/test_sast.py, make sast), not a page",
     "CodeQL in CI": "a GitHub Actions workflow, outside the app",
@@ -422,6 +430,11 @@ for (const [page, marks] of Object.entries(MARKS)) {
 // live content (a running flow, a status line) is not the marks' doing.
 const quietPage = out.both.some(b => b.page === '/report/advanced') ? '/report/advanced' : (out.both.length ? out.both[0].page : '/report/advanced');
 await open(quietPage);
+// The page's own late content (a status box filled after its fetch) lands
+// first: wait for 600 ms without any change (at most 8 s), then measure.
+await ev(`new Promise(r => { let t = null; const done = () => { mo.disconnect(); clearTimeout(cap); r(true); };
+  const mo = new MutationObserver(() => { clearTimeout(t); t = setTimeout(done, 600); });
+  mo.observe(document.body, { subtree: true, childList: true, attributes: true }); t = setTimeout(done, 600); const cap = setTimeout(done, 8000); })`);
 out.quiet = await ev(`new Promise(r => { let n = 0;
   const MARK = /(^|\\s)(hh-mark|hh-mark-new|wn-legend|wn-legend-mark)(\\s|$)/;
   const isMark = x => x && x.nodeType === 1 && (MARK.test(x.className || '') || !!(x.querySelector && x.querySelector('.hh-mark, .wn-legend')));

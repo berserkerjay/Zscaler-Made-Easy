@@ -4461,52 +4461,52 @@ window.HELP_CATALOG = {
     "input": "Tick it, then click Read from the tenant to list what the prefix matches. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zpa_infra_update\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zpa_infra_update\"]": {
     "what": "Picks \"Change ZPA App Connectors, Service Edges and portals\". It shows each one's health, then renames, turns on or off, moves App Connectors and sets update schedules. Undo puts it back.",
     "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zpa_infra_delete\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zpa_infra_delete\"]": {
     "what": "Picks \"Delete ZPA connectors, groups, portals, certificates or keys\". Anything connected or still used is kept. This cannot be undone.",
     "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zpa_provisioning_key_new\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zpa_provisioning_key_new\"]": {
     "what": "Picks \"New ZPA provisioning key\". It makes a key for an App Connector group or a Service Edge group, shown once.",
     "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zpa_ba_certificate\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zpa_ba_certificate\"]": {
     "what": "Picks \"ZPA Browser Access certificate\". It uploads a certificate with its key, or picks one, and points Browser Access applications at it.",
     "input": "Tick it, then click Read from the tenant. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zcc_device_remove\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zcc_device_remove\"]": {
     "what": "Picks \"Remove Client Connector devices\". It removes or force removes one user's devices. This cannot be undone.",
     "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zcc_device_bulk_remove\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zcc_device_bulk_remove\"]": {
     "what": "Picks \"Remove Client Connector devices from a list\". It matches a list of users, host names or device ids and removes them in batches. This cannot be undone.",
     "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zcc_bypass_app\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zcc_bypass_app\"]": {
     "what": "Picks \"Client Connector custom bypass apps\". It lists, creates, edits or deletes the apps whose traffic skips the Zscaler tunnel.",
     "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zcc_entitlements\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zcc_entitlements\"]": {
     "what": "Picks \"ZPA and ZDX entitlements\". It sets who gets ZPA and ZDX in Client Connector.",
     "input": "Tick it, then click Read from the tenant. Needs ZCC ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zdx_deeptrace_start\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zdx_deeptrace_start\"]": {
     "what": "Picks \"Start a ZDX deep trace\". It shows application scores, a user's devices and their health, and starts a deep trace on one device.",
     "input": "Tick it, then click Read from the tenant. Needs ZDX ticked on the Scope page.",
     "effect": "local"
    },
-   "#opBuildKinds input[name=\"opKind\"][value=\"zdx_deeptrace_stop\"]": {
+   "#opAdminKinds input[name=\"opKind\"][value=\"zdx_deeptrace_stop\"]": {
     "what": "Picks \"Stop a ZDX deep trace\". ZDX deletes the trace and what it collected. This cannot be undone.",
     "input": "Tick it, then click Read from the tenant. Needs ZDX ticked on the Scope page.",
     "effect": "local"

@@ -78,6 +78,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /report/view": PUBLIC,
     "GET /report/flow": PUBLIC,
     "GET /report/bypass": PUBLIC,
+    "GET /report/plugin": PUBLIC,
     "GET /report/dataflow": PUBLIC,
     "GET /report/live": PUBLIC,
     "GET /report/audit": PUBLIC,
@@ -175,6 +176,20 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/migrate/reorder": SESSION,
     "POST /api/migrate/analyze": SESSION,
     "POST /api/migrate/plan": SESSION,
+    # (wave 7) catalogues and calculations on what the page sends: no tenant data of the server's
+    "GET /api/rule-csv/format": SESSION,
+    "POST /api/rule-csv/validate": SESSION,             # checks a file; reads no tenant
+    "GET /api/compliance-profiles": SESSION,
+    "GET /api/compliance-profiles/{key}": SESSION,
+    "POST /api/compliance-pack": SESSION,               # files from the build on screen; nothing read or written
+    "POST /api/compliance-pack/file": SESSION,
+    "GET /api/compliance-pack/{key}/{file_id}": SESSION,
+    "POST /api/compliance/profile-view": SESSION,       # the results the page sends, read against a profile
+    "POST /api/vendor-migrate/panos/plan": SESSION,     # an uploaded PAN-OS export turned into a plan; no tenant
+    "GET /api/zscaler-ranges": SESSION,                 # Zscaler's public IP ranges kept on this server
+    "POST /api/zscaler-ranges/build": SESSION,
+    "POST /api/zscaler-ranges/download": SESSION,
+    "GET /api/m365-endpoints": SESSION,                 # Microsoft's public endpoint list kept on this server
     "POST /api/migrate/export": SESSION,
     "GET /api/scope/prerequisites": SESSION,
     "POST /api/report/docx": SESSION,
@@ -299,6 +314,27 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/ssl-coverage/history": READ,
     "GET /api/ssl-coverage/{report_id}": READ,
     "GET /api/ssl-coverage/export/{report_id}": READ,
+    # (wave 7) reads of a tenant, or of the records kept for one
+    "GET /api/config-backups": READ,
+    "GET /api/config-backups/{backup_id}/download": READ,
+    "POST /api/config-backups/diff": READ,
+    "POST /api/config-backups/diff-live/start": READ,
+    "GET /api/config-templates/{template_id}/download": READ,
+    "POST /api/operations/lookup": READ,
+    "POST /api/operations/zdx/deeptrace/follow/start": READ,
+    "GET /api/operations/jobs/{job_id}/devices.csv": READ,
+    "POST /api/rule-csv/export": READ,
+    "GET /api/plugins/pages/{slug}": READ,              # a local plugin's read-only page (its own per-person allow-list too)
+    "GET /api/compliance/report/{report_id}/profile/{key}": READ,
+    "POST /api/zcc/fleet/{job_id}/dns-records": READ,
+    "POST /api/bulk-test/fix/{fix_id}/prove/start": READ,
+    "POST /api/category-lookup/start": READ,
+    "POST /api/path-analyzer/zpa-identity": READ,
+    "POST /api/path-analyzer/devices": READ,
+    "POST /api/path-analyzer/devices/detail": READ,
+    "POST /api/path-analyzer/compare/start": READ,
+    "GET /api/path-analyzer/compare/{job_id}/export": READ,
+    "POST /api/path-analyzer/test-from-here": READ,     # one destination, explicit click, rate-limited (path_probe)
 
     # ── prepare a change, or edit the app's own notes about a tenant ──
     "POST /api/remediation/plan": PLAN,
@@ -325,6 +361,16 @@ ROUTE_RULES: Dict[str, str] = {
     "DELETE /api/pov/templates/{template_id}": PLAN,
     "POST /api/pov/prove/start": "plan:profile",
     "POST /api/pov/insights/start": "plan:profile",
+    # (wave 7) backups, templates and the remembered compliance choice: the app's own records of a tenant
+    "POST /api/config-backups/save/start": PLAN,
+    "POST /api/config-cache/refresh/start": PLAN,
+    "POST /api/config-backups/from-snapshot": PLAN,
+    "POST /api/config-backups/{backup_id}/delete": PLAN,
+    "POST /api/config-backups/rehearse": PLAN,          # a restore planned against a saved copy, never applied
+    "POST /api/config-templates/export": PLAN,
+    "POST /api/config-templates/import": PLAN,
+    "POST /api/config-templates/{template_id}/delete": PLAN,
+    "POST /api/compliance-profiles/choice": "plan:profile",
 
     # ── change a tenant ──
     "POST /api/remediation/execute": APPLY,
@@ -344,6 +390,10 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/migrate/delete-all": APPLY,
     "POST /api/migrate/post": APPLY,
     "POST /api/self-heal/tenant/heal": APPLY,
+    # (wave 7) secrets held in memory for, or revealed by, a change: only for those who may change the tenant
+    "POST /api/operations/zpa/ba-certificate": APPLY,
+    "POST /api/operations/zidentity/secret": APPLY,
+    "POST /api/zcc/otp": APPLY,                          # a device's one-time passwords: a sensitive read guarded like a write
 
     # ── decide on someone else's change ──
     "POST /api/change-queue/{rid}/approve": APPROVE,
@@ -380,6 +430,28 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/self-heal/tenant/auto-apply": ADMIN,
     "POST /api/updates/check": ADMIN,
     "POST /api/updates/reset-cache": ADMIN,
+    # (wave 7) server settings, unattended schedules and jobs that span tenant profiles
+    "POST /api/config-backups/schedule": ADMIN,         # unattended read-only backups on a timer
+    "GET /api/sync-jobs": ADMIN,                        # a sync job names a source and several target profiles
+    "GET /api/sync-jobs/{jid}": ADMIN,
+    "POST /api/sync-jobs": ADMIN,
+    "DELETE /api/sync-jobs/{jid}": ADMIN,
+    "POST /api/sync-jobs/{jid}/enabled": ADMIN,
+    "POST /api/sync-jobs/{jid}/run": ADMIN,
+    "GET /api/app/update/notify": ADMIN,
+    "PUT /api/app/update/notify": ADMIN,
+    "GET /api/plugins": ADMIN,
+    "PUT /api/plugins/settings": ADMIN,
+    "POST /api/plugins/approve": ADMIN,
+    "POST /api/plugins/revoke": ADMIN,
+    "PUT /api/zscaler-ranges/settings": ADMIN,          # outbound fetches of this server
+    "POST /api/zscaler-ranges/fetch": ADMIN,
+    "POST /api/zscaler-ranges/import": ADMIN,
+    "DELETE /api/zscaler-ranges": ADMIN,
+    "PUT /api/m365-endpoints/settings": ADMIN,
+    "POST /api/m365-endpoints/refresh": ADMIN,
+    "POST /api/m365-endpoints/import": ADMIN,
+    "DELETE /api/m365-endpoints": ADMIN,
 }
 
 
