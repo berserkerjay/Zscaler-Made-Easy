@@ -69,12 +69,15 @@ maturity = engine.maturity
 # Try to load platform checks
 PLATFORM_REG = []
 GENAI_REG = []
+AIGUARD_REG = []   # AI Guard's own configuration (zscaler_genai_checks.AIGUARD_REG), read only when AI Guard is ticked
 try:
     CHECKS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_full_checks.py")
     cspec = importlib.util.spec_from_file_location("full_checks", CHECKS_PATH)
     full_checks = importlib.util.module_from_spec(cspec)
     cspec.loader.exec_module(full_checks)
     PLATFORM_REG = full_checks.PLATFORM_REG
+    # EDM / IDM indexes and Workflow Automation incidents: scored with the DLP checks (dlp ticked).
+    REG = list(REG) + list(getattr(full_checks, "DLP_EXTRA_REG", []))
 except Exception:
     pass
 try:
@@ -83,6 +86,7 @@ try:
     genai_checks = importlib.util.module_from_spec(gspec)
     gspec.loader.exec_module(genai_checks)
     GENAI_REG = genai_checks.GENAI_REG
+    AIGUARD_REG = list(getattr(genai_checks, "AIGUARD_REG", []))
 except Exception:
     pass
 
@@ -221,7 +225,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage", "/report/browser", "/report/pov", "/report/other-products"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/operations", "/report/exports", "/report/motion", "/simple", "/report/fleet", "/report/zpa", "/report/device-posture", "/report/queue", "/report/insights", "/report/shadow", "/report/audit", "/report/self-heal", "/report/todo", "/report/posture", "/report/sslcoverage", "/report/browser", "/report/pov", "/report/other-products", "/report/aiguard"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -3710,6 +3714,169 @@ class ScopedTenantCredsRequest(TenantCredsRequest):
     scopes: List[str] = []
     channels: Dict[str, Any] = {}
     from_page: bool = False
+
+
+# ── Workflow Automation incidents in depth and AI Guard depth ───────────
+# Read-only (zwa_incidents.py, ai_guard.py). Every read checks the Scope page
+# first and is refused (400) before signing in when not in scope: a DLP
+# incident's metadata and the Workflow Automation audit log need DLP ticked
+# and Workflow Automation marked Zscaler; AI Guard needs AI Guard ticked. The
+# incident evidence is never fetched; Test a prompt sends only the synthetic
+# prompts of ai_guard.TEST_PROMPTS. Closing incidents is a Bulk changes
+# operation (ops_zwa.py), through /api/operations/* and its four gates.
+ZWA_NOT_IN_SCOPE = ("Workflow Automation incidents are not in scope: on the Scope page tick DLP and mark Workflow Automation as run on "
+                    "Zscaler, then try again. Nothing was read.")
+
+
+class ZwaIncidentRequest(ScopedTenantCredsRequest):
+    """Body of POST /api/zwa/incident: one incident id (metadata only)."""
+    incident_id: str = ""
+
+
+class ZwaAuditRequest(ScopedTenantCredsRequest):
+    """Body of POST /api/zwa/audit-log: the window in days (1 to 90)."""
+    days: int = 7
+
+
+class AiGuardTestRequest(ScopedTenantCredsRequest):
+    """Body of POST /api/aiguard/test-prompt: a synthetic prompt's id from
+    GET /api/aiguard/prompts (never free text), IN or OUT, and optionally
+    the detection policy's number."""
+    prompt_id: str = ""
+    direction: str = "IN"
+    policy_id: Optional[int] = None
+
+
+def _zwa_gate(req: Any) -> Dict[str, Any]:
+    sc = _dlp_read_scope(req)
+    if not sc["dlp"] or not sc["read_incidents"]:
+        raise HTTPException(status_code=400, detail=ZWA_NOT_IN_SCOPE)
+    return sc
+
+
+def _masked(creds: Dict[str, Any], text: Any) -> str:
+    return tenant_auth.mask_secrets(str(text), creds)[:300]
+
+
+@app.post("/api/zwa/incident")
+async def zwa_incident(req: ZwaIncidentRequest):
+    """One Workflow Automation DLP incident's metadata: details, what
+    triggered it (names and match counts), change history and tickets. The
+    evidence, the user, the file name and the client IP are never shown."""
+    import zwa_incidents as zi
+    try:
+        iid = zi.clean_id(req.incident_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"{e} Nothing was read.")
+    _zwa_gate(req)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    logs: list = []
+    try:
+        out = await asyncio.to_thread(zi.drilldown, client, iid, lambda m: logs.append(_masked(creds, m)))
+    except zi.Unavailable as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        _close_quietly(client)
+    out["errors"] = {k: _masked(creds, v) for k, v in (out.get("errors") or {}).items()}
+    out["tenant_label"] = tenant_auth.record_label(creds)
+    out["logs"] = logs
+    return out
+
+
+@app.post("/api/zwa/audit-log")
+async def zwa_audit_log(req: ZwaAuditRequest):
+    """The Workflow Automation admin audit log of the last `days` (who did
+    what to which resource). Read-only: the search is a POST that changes
+    nothing."""
+    import zwa_incidents as zi
+    days = max(1, min(int(req.days or 7), zi.AUDIT_MAX_DAYS))
+    _zwa_gate(req)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    logs: list = []
+    try:
+        out = await asyncio.to_thread(zi.audit_log, client, days, lambda m: logs.append(_masked(creds, m)))
+    except zi.Unavailable as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        _close_quietly(client)
+    out["errors"] = [_masked(creds, e) for e in out.get("errors") or []]
+    out["tenant_label"] = tenant_auth.record_label(creds)
+    out["logs"] = logs
+    return out
+
+
+@app.get("/report/aiguard")
+async def report_aiguard_page():
+    """AI Guard (static/report_aiguard.html)."""
+    page = os.path.join(STATIC_DIR, "report_aiguard.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/api/aiguard/prompts")
+async def aiguard_prompts():
+    """The synthetic prompts Test a prompt can send (no tenant read)."""
+    import ai_guard
+    return {"prompts": [{"id": p["id"], "label": p["label"], "text": p["text"], "expect": p["expect"]} for p in ai_guard.TEST_PROMPTS],
+            "directions": list(ai_guard.DIRECTIONS), "key_configured": bool(str(os.environ.get(ai_guard.API_KEY_ENV) or "").strip()),
+            "assumed": list(ai_guard.DEPTH_ASSUMED)}
+
+
+@app.post("/api/aiguard/inventory")
+async def aiguard_inventory(req: ScopedTenantCredsRequest):
+    """Everything AI Guard holds, read-only: detection policies with their
+    detectors, policy match rules, LLM providers, LLM applications and
+    application credentials (metadata only: no key value is read)."""
+    import ai_guard
+    _require_in_scope(req, ai_guard.SCOPE_KEY, "AI Guard")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    logs: list = []
+    try:
+        out = await asyncio.to_thread(ai_guard.inventory, client, lambda m: logs.append(_masked(creds, m)))
+    finally:
+        _close_quietly(client)
+    out["errors"] = {k: _masked(creds, v) for k, v in (out.get("errors") or {}).items()}
+    if out.get("error"):
+        out["error"] = _masked(creds, out["error"])
+    out["tenant_label"] = tenant_auth.record_label(creds)
+    out["logs"] = logs
+    return out
+
+
+@app.post("/api/aiguard/test-prompt")
+async def aiguard_test_prompt(req: AiGuardTestRequest):
+    """Run one synthetic prompt through AI Guard's policy detection and say
+    what each detector did. Only a catalogue id is accepted, never text; on
+    the sample tenant a made-up detector answers. Changes no configuration."""
+    import ai_guard
+    if str(req.prompt_id or "").strip() not in ai_guard.PROMPTS_BY_ID:
+        raise HTTPException(status_code=400, detail=f"Pick one of the synthetic prompts: {', '.join(ai_guard.PROMPTS_BY_ID)}. Nothing was sent.")
+    if str(req.direction or "IN").strip().upper() not in ai_guard.DIRECTIONS:
+        raise HTTPException(status_code=400, detail="direction is IN or OUT. Nothing was sent.")
+    _require_in_scope(req, ai_guard.SCOPE_KEY, "Test a prompt")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    try:
+        out = await asyncio.to_thread(ai_guard.test_prompt, client, req.prompt_id, req.direction, req.policy_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"{e} Nothing was sent.")
+    finally:
+        _close_quietly(client)
+    if out.get("error"):
+        out["error"] = _masked(creds, out["error"])
+    try:
+        import pack_jobs
+        pack_jobs.write_audit("aiguard_test_prompt", tenant=tenant_auth.record_label(creds), prompt=out["prompt"]["id"],
+                              direction=out["direction"], source=out.get("source"), result="error" if out.get("error") else "ok")
+    except Exception:  # noqa: BLE001 — the test ran; only its audit line failed
+        pass
+    out["tenant_label"] = tenant_auth.record_label(creds)
+    return out
 
 
 @app.post("/api/dlp-packs/removal/inventory")
@@ -8487,7 +8654,8 @@ async def health():
         "zdx_checks": len(ZDX_REG),
         "zidentity_checks": len(ZID_REG),
         "rbac_checks": len(RBAC_REG),
-        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG) + len(ZDX_REG) + len(ZID_REG) + len(RBAC_REG),
+        "aiguard_checks": len(AIGUARD_REG),
+        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG) + len(ZDX_REG) + len(ZID_REG) + len(RBAC_REG) + len(AIGUARD_REG),
         "version": "3.0",
         "git_commit": commit,
         "expected_min_commit": "870c737",
@@ -8832,7 +9000,7 @@ async def list_checks(scope: Optional[str] = None):
     elif scope in OTHER_BY_SCOPE:
         all_checks = list(OTHER_BY_SCOPE[scope])
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG) + list(OTHER_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG) + list(OTHER_REG) + list(AIGUARD_REG)
 
     # Try to enrich with compliance mappings
     try:
@@ -8876,7 +9044,7 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
     elif scope in OTHER_BY_SCOPE:
         all_checks = list(OTHER_BY_SCOPE[scope])
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG) + list(OTHER_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG) + list(OTHER_REG) + list(AIGUARD_REG)
 
     try:
         from compliance_mapping import get_compliance_for_check
@@ -10048,6 +10216,10 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
                 for c in reg:
                     if c[0] not in seen:
                         seen.add(c[0]); out.append(c)
+        if "aiguard" in scopes:
+            for c in AIGUARD_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
     if scope == "full" or scope == "all":

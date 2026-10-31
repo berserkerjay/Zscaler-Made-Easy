@@ -221,6 +221,7 @@ ZDX = page(["zdx"])
 ZTW = page(["ztw"])
 ZTB = page(["ztb"])                                          # Other products: Zero Trust Branch only
 ZMS = page(["zms"])                                          # Other products: Microsegmentation only
+ZWA = page(["dlp"], workflow_automation="zscaler")           # DLP ticked, Workflow Automation on Zscaler (incident drill-down, audit log)
 
 # What each partial selection leaves out: a read naming any of these is out of scope.
 OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules", "saas_security_api", "casb_tenant",
@@ -242,6 +243,7 @@ ZTW_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 OTHER_OUT = ("zia.", "/zia/", "zpa.", "/zpa/", "zcc.", "/zcc/", "zins.", "zwa.", "zdx.", "zidentity.")
 ZTB_OUT = OTHER_OUT + ("/easm/", "/bi/", "/zcell/", "/zms/")
 ZMS_OUT = OTHER_OUT + ("/ztb/", "/easm/", "/bi/", "/zcell/")
+ZWA_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "aiguard.", "get_incident_evidence", "get_incident_transactions")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -422,6 +424,13 @@ ROUTES: List[Route] = [
     Route("/api/browser-security/start", partial=ZIA, out=ZIA_OUT),
     Route("/api/other-products/start", partial=ZTB, out=ZTB_OUT),
     Route("/api/other-products/start", {"customer_id": "72000000000000001"}, partial=ZMS, out=ZMS_OUT),
+    # Workflow Automation incidents in depth and AI Guard depth (never the evidence; synthetic prompts only)
+    Route("/api/zwa/incident", {"incident_id": "1-152-QA-1"}, partial=ZWA, out=ZWA_OUT),
+    Route("/api/zwa/audit-log", {"days": 7}, partial=ZWA, out=ZWA_OUT),
+    Route("/api/aiguard/inventory", partial=AIGUARD, out=AIGUARD_OUT),
+    # In scope it reads nothing through the tenant client: one synthetic prompt goes to AI Guard's legacy detection
+    # API, and only with AIGUARD_API_KEY set (tests/test_w8_zwa_aiguard.py); out of scope it is a 400 before sign-in.
+    Route("/api/aiguard/test-prompt", {"prompt_id": "clean"}, partial=None),
     Route("/api/ssl-coverage/start", partial=page(["dlp"], web_dlp="zscaler", ssl_inspection="zscaler"),
           out=OTHER_DLP + NOT_ZIA_PLATFORM + ("zpa.", "zcc.", "/zcc/", "zins.")),
     # Self-healing, the audit timeline, the fleet, bulk changes, the loop

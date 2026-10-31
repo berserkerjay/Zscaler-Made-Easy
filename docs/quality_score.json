@@ -345,8 +345,8 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 100,
-            "accepted": 6,
+            "fixed": 102,
+            "accepted": 9,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
@@ -365,7 +365,8 @@
               "w7-restore-clone",
               "w7-tf-export",
               "w8-shadow-it",
-              "w8-zia-threat-saas"
+              "w8-zia-threat-saas",
+              "w8-zwa-aiguard"
             ]
           },
           "coverage": {
@@ -479,7 +480,7 @@
     }
   ],
   "counts": {
-    "findings": 705,
+    "findings": 710,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -498,22 +499,22 @@
       },
       "low": {
         "open": 2,
-        "fixed": 391,
+        "fixed": 393,
         "accepted": 3
       },
       "info": {
         "open": 0,
         "fixed": 71,
-        "accepted": 42
+        "accepted": 45
       }
     },
     "checks": {
-      "pass": 624,
+      "pass": 632,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11197
+    "tests_added": 11243
   },
   "findings": [
     {
@@ -1267,6 +1268,54 @@
       "slug": "w8-zpa-policy",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-ZWA-03",
+      "title": "The SDK's IncidentDLPDetails.as_dict drops dlpIncidentTickets[].ticketInfo (ticket id and state)",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "An SDK model gap: the details show the ticket count and the tickets come from get_generated_tickets, which keeps ticketInfo",
+      "slug": "w8-zwa-aiguard",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W8-ZWA-04",
+      "title": "Workflow Automation has no API to reopen a closed incident, so a closure cannot be reverted from the app",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "Undo records the reversal on each incident (label zme-fp-close=reverted and a note naming who reversed it) and the plan says the reopen is a portal step",
+      "slug": "w8-zwa-aiguard",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W8-ZWA-05",
+      "title": "AI Guard policy detection (execute_policy) is legacy only and needs an AI Guard API key, not the OneAPI client",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "",
+      "commit": "",
+      "reason": "The key is taken only from the server's AIGUARD_API_KEY environment variable, never typed into a page, shown, logged or saved; without it nothing is sent and the page says where to set it",
+      "slug": "w8-zwa-aiguard",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -10661,6 +10710,38 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W8-ZWA-01",
+      "title": "The offline SDK client had no AI Guard service, so on the sample tenant and in snapshots AI Guard readiness reported the classic ZIA sign-in and no AI Guard page or check could work offline",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "",
+      "wcag": "",
+      "fix": "OfflineSdkClient.aiguard (the SDK's AIGuardService over the offline executor, service type aiguard), /aiguard paths allowed in snapshots, sample AI Guard data",
+      "test": "tests/test_w8_zwa_aiguard.py::test_the_offline_sdk_client_reaches_aiguard_with_its_envelope",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zwa-aiguard",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W8-ZWA-02",
+      "title": "The Scope page channel guard checked GET reads only: a read the API asks for with a POST (the Workflow Automation incident and audit searches) would have passed it unchecked through __getattr__",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-862",
+      "asvs": "V4.1.1",
+      "wcag": "",
+      "fix": "channel_scope.ScopedClient.post_read: only the two listed searches, gated by the Workflow Automation channel like a GET, refused when nothing is declared",
+      "test": "tests/test_w8_zwa_aiguard.py::test_post_read_accepts_only_the_listed_read_searches",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zwa-aiguard",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13711,6 +13792,36 @@
       "checks": 7,
       "findings": 3,
       "tests_added": 89
+    },
+    {
+      "slug": "w8-zwa-aiguard",
+      "area": "Workflow Automation incidents in depth and AI Guard depth: incident drill-down (metadata only), the Workflow Automation audit log, closing incidents as false positives on the Bulk changes engine, the AI Guard page with LLM applications, credential metadata and Test a prompt, 17 new scored checks, and the sample tenant and snapshots for all of it",
+      "title": "W8 zwa-aiguard: ZWA incident drill-down, bulk close of false positives, the ZWA audit log, AI Guard applications, credentials and a synthetic prompt test, and the page-only findings promoted into the scored assessment",
+      "standards": [
+        "ASVS V4.1.1",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V7.2.1",
+        "ASVS V8.3.1",
+        "ASVS V8.3.4",
+        "ASVS V11.1.6",
+        "CWE-20",
+        "CWE-22",
+        "CWE-200",
+        "CWE-209",
+        "CWE-312",
+        "CWE-359",
+        "CWE-367",
+        "CWE-778",
+        "CWE-862",
+        "WSTG-ATHZ-02",
+        "WSTG-INFO-05",
+        "WSTG-INPV-12",
+        "WCAG 2.2 SC 3.3.2"
+      ],
+      "checks": 8,
+      "findings": 5,
+      "tests_added": 46
     }
   ],
   "standards": {
@@ -13730,7 +13841,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 126,
+    "asvs_requirements": 130,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -13992,7 +14103,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 64,
+    "wstg": 65,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",

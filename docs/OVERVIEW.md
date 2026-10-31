@@ -595,6 +595,26 @@ what you get, what to do next.
   comes with the plain steps to fix it. The assessment carries the same
   signals as checks HLT.1 to HLT.4. Only names, dates and states are kept,
   never a certificate or key.
+  read-back, and roll back. *Incidents in depth* on the same page reads one
+  incident by id (or *Details* beside a latest transaction): its details,
+  what triggered it (names and match counts), its change history and its
+  tickets, metadata only (the evidence is never fetched; the user, file
+  name and client IP are withheld), and the Workflow Automation admin audit
+  log. A noisy rule or an excluded destination links to *Close DLP incidents
+  as false positives* in Bulk changes (four gates, typed phrase, the
+  assessor named in each incident's note, read-back; Undo records the
+  reversal because the API cannot reopen an incident).
+- **AI Guard** (`/report/aiguard`, AI Guard ticked, OneAPI only) — the
+  detection policies with their prompt and answer detectors, the policy
+  match rules, the LLM providers, the LLM applications (whether they keep
+  and encrypt prompts) and the application credentials by name (never a
+  key). *Test a prompt* sends one made-up prompt from a fixed list through
+  AI Guard's policy detection and shows each detector's verdict; free text
+  is refused; live it needs an AI Guard API key in the server's
+  `AIGUARD_API_KEY`, the sample tenant answers with a made-up detector. The
+  assessment scores the same configuration (AIG.1 to AIG.6), plus Workflow
+  Automation incidents (ZWA.1 to ZWA.4), EDM and IDM indexes (DLP.IDX1 to
+  IDX3) and ZPA Browser Access and Privileged Remote Access (ZPA.BA1 to BA4).
 - **Digest — the evaluation loop** — when you click *Run the loop now*
   (or run `continuous_eval.py --once`) it re-reads the guidance sources
   and, for every profile that remembers its secret, only what that

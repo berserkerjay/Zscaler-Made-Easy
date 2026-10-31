@@ -745,6 +745,39 @@ window.WHATS_NEW = {
         { "page": "/", "at": "button[onclick=\"openOtherProductsTab()\"]" },
         { "page": "/report/other-products", "at": "#opRun" }
       ]
+    },
+    {
+      "id": "aiguard-page", "release": "2026-10-31", "label": "AI Guard page",
+      "what": "The AI Guard page: its detection policies, policy match rules, LLM applications and credential names (never a key), read only when AI Guard is ticked.",
+      "changelog": ["AI Guard page", "AI Guard"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openAiGuardTab()\"]" },
+        { "page": "/report/aiguard", "at": ".rp-hero h1" }
+      ]
+    },
+    {
+      "id": "aiguard-test-prompt", "release": "2026-10-31", "label": "Test a prompt",
+      "what": "Test a prompt: send one made-up prompt from a fixed list to AI Guard and see what each detector did. Nothing you type is ever sent.",
+      "changelog": ["Test a prompt"],
+      "marks": [
+        { "page": "/report/aiguard", "at": "#agTestH" }
+      ]
+    },
+    {
+      "id": "zwa-incidents-in-depth", "release": "2026-10-31", "label": "Incidents in depth",
+      "what": "Incidents in depth on the FP/TP detection ratio page: one Workflow Automation incident's details, triggers, change history and tickets (metadata only), and the Workflow Automation audit log.",
+      "changelog": ["Incidents in depth", "Details"],
+      "marks": [
+        { "page": "/report/health", "at": "#zwaH" }
+      ]
+    },
+    {
+      "id": "zwa-close-false-positives", "release": "2026-10-31", "label": "Close as false positives",
+      "what": "Close as false positives: close a noisy rule's or destination's open Workflow Automation incidents through Bulk changes, with the typed phrase and your name in each incident's note.",
+      "changelog": ["Close as false positives", "Close DLP incidents as false positives"],
+      "marks": [
+        { "page": "/report/health", "at": "a.dh-close", "shown": "after the report, on a noisy rule or destination" }
+      ]
     }
   ]
 };

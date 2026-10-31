@@ -2564,3 +2564,340 @@ PLATFORM_REG = [
 ]
 PLATFORM_REG = PLATFORM_REG + THREAT_SAAS_REG   # threat protection and SaaS Security hygiene (above)
 PLATFORM_REG = guard_registry(PLATFORM_REG)
+
+# ═══════════════════════════════════════════════════════════════════════
+# ZPA — BROWSER ACCESS, ISOLATION AND PRIVILEGED REMOTE ACCESS
+# (promoted from the Browser security page, browser_security._zpa_findings)
+# ═══════════════════════════════════════════════════════════════════════
+_BA_REF = " Ref: https://help.zscaler.com/zpa/about-browser-access"
+_PRA_REF = " Ref: https://help.zscaler.com/zpa/about-privileged-remote-access"
+
+
+def _zpa_list(cl, ep):
+    d, c = cl.get(ep)
+    items = _ls(d) if c in (200, 204) else []
+    if not items and isinstance(d, dict):
+        items = _ls(d.get("list", []))
+    return [x for x in items if isinstance(x, dict)], c
+
+
+def zpa_ba_1(cl):
+    """Browser Access apps are reached by an access rule
+
+    A Browser Access segment (clientlessApps) that no enabled access rule
+    reaches publishes web apps nobody can use, or was left behind when the
+    app moved (browser_security BS-A1; zpa_analysis._reaches decides)."""
+    import zpa_analysis
+    import zpa_reader as zr
+    segs, c = _zpa_list(cl, "/zpa/application")
+    if c not in (200, 204):
+        return R(R.INFO, f"The ZPA application segments could not be read (HTTP {c}), so Browser Access was not assessed.")
+    ba = [s for s in segs if s.get("clientlessApps") and str(s.get("enabled", True)).lower() != "false"]
+    if not ba:
+        return R(R.INFO, "No enabled Browser Access application segment: nothing to check (N/A).")
+    rules, rc = _zpa_list(cl, "/zpa/policySet/rules/ACCESS_POLICY")
+    if rc not in (200, 204):
+        return R(R.INFO, f"The ZPA access policy could not be read (HTTP {rc}), so it is not known who reaches the Browser Access apps.")
+    norm = [zr.normalize_rule(r, i, "access") for i, r in enumerate(rules)]
+    enabled = [r for r in norm if not r.get("disabled")]
+    lonely = []
+    for s in ba:
+        n = zr.normalize_segment(s)
+        if not any(zpa_analysis._reaches(r, {"id": n["id"], "segment_group_id": n["segment_group_id"]}) for r in enabled):
+            lonely.append(n["name"])
+    if lonely:
+        return R(R.WARN, f"{len(lonely)} of {len(ba)} Browser Access segment(s) are reached by no enabled access rule: {', '.join(lonely[:5])}. "
+                 "Nobody can use them, or they were left behind when the app moved. Fix: add each to an access rule for the users who need "
+                 "it (ideally with a managed-browser or posture condition), or disable it." + _BA_REF)
+    return R(R.PASS, f"All {len(ba)} Browser Access segment(s) are reached by an enabled access rule.")
+
+
+def zpa_ba_2(cl):
+    """ZPA isolation rules name an isolation profile (browser_security BS-R3)"""
+    rules, c = _zpa_list(cl, "/zpa/policySet/rules/policyType/ISOLATION_POLICY")
+    if c == 404:
+        return R(R.INFO, "ZPA isolation (Zero Trust Browser for private apps) is not licensed or not enabled on this tenant (N/A).")
+    if c not in (200, 204):
+        return R(R.INFO, f"The ZPA isolation policy could not be read (HTTP {c}).")
+    iso = [r for r in rules if str(r.get("action") or "").upper() == "ISOLATE" and str(r.get("disabled", "0")) not in ("1", "true", "True")]
+    if not iso:
+        return R(R.INFO, "No enabled ZPA isolation rule: nothing to check (N/A).")
+    bare = [str(r.get("name") or r.get("id")) for r in iso if not (r.get("zpnIsolationProfileId") or r.get("zpn_isolation_profile_id"))]
+    if bare:
+        return R(R.FAIL, f"{len(bare)} ZPA isolation rule(s) isolate but name no isolation profile: {', '.join(bare[:5])}. The isolation they "
+                 "promise has no controls (copy and paste, upload, download, printing) behind it. Fix: edit each rule in ZPA (Policies → "
+                 "Isolation) and pick its isolation profile.")
+    return R(R.PASS, f"All {len(iso)} ZPA isolation rule(s) name an isolation profile.")
+
+
+def zpa_ba_3(cl):
+    """Privileged Remote Access portals tell users the session is privileged
+
+    PRA's user notification (userNotificationEnabled) shows a notice when a
+    privileged session starts; without it, users of a monitored admin path
+    are not told (browser_security.normalize_pra_portal)."""
+    portals, c = _zpa_list(cl, "/zpa/praPortal")
+    if c == 404:
+        return R(R.INFO, "Privileged Remote Access is not licensed or not enabled on this tenant (N/A).")
+    if c not in (200, 204):
+        return R(R.INFO, f"The Privileged Remote Access portals could not be read (HTTP {c}).")
+    on = [p for p in portals if str(p.get("enabled", True)).lower() != "false"]
+    if not on:
+        return R(R.INFO, "No enabled Privileged Remote Access portal: nothing to check (N/A).")
+    quiet = [str(p.get("name") or p.get("id")) for p in on if str(p.get("userNotificationEnabled", False)).lower() != "true"]
+    if quiet:
+        return R(R.WARN, f"{len(quiet)} of {len(on)} Privileged Remote Access portal(s) show no user notification: {', '.join(quiet[:5])}. "
+                 "People starting a privileged session are not told it is monitored and recorded. Fix: turn on User Notification for "
+                 "each portal in ZPA (Privileged Remote Access → Portals)." + _PRA_REF)
+    return R(R.PASS, f"All {len(on)} Privileged Remote Access portal(s) show the user notification.")
+
+
+def zpa_ba_4(cl):
+    """Privileged Remote Access consoles point at an enabled app segment and portal"""
+    consoles, c = _zpa_list(cl, "/zpa/praConsole")
+    if c == 404:
+        return R(R.INFO, "Privileged Remote Access is not licensed or not enabled on this tenant (N/A).")
+    if c not in (200, 204):
+        return R(R.INFO, f"The Privileged Remote Access consoles could not be read (HTTP {c}).")
+    on = [x for x in consoles if str(x.get("enabled", True)).lower() != "false"]
+    if not on:
+        return R(R.INFO, "No enabled Privileged Remote Access console: nothing to check (N/A).")
+    segs, sc = _zpa_list(cl, "/zpa/application")
+    portals, pc = _zpa_list(cl, "/zpa/praPortal")
+    if sc not in (200, 204) or pc not in (200, 204):
+        return R(R.INFO, "The app segments or PRA portals could not be read, so the consoles' targets were not checked.")
+    live_segs = {str(s.get("id")) for s in segs if str(s.get("enabled", True)).lower() != "false"}
+    live_portals = {str(p.get("id")) for p in portals if str(p.get("enabled", True)).lower() != "false"}
+    broken = []
+    for x in on:
+        app = x.get("praApplication") if isinstance(x.get("praApplication"), dict) else {}
+        pids = [str(p.get("id")) for p in (x.get("praPortals") or []) if isinstance(p, dict)]
+        if str(app.get("appId") or "") not in live_segs or not any(p in live_portals for p in pids):
+            broken.append(str(x.get("name") or x.get("id")))
+    if broken:
+        return R(R.WARN, f"{len(broken)} Privileged Remote Access console(s) point at a disabled or missing app segment or portal: "
+                 f"{', '.join(broken[:5])}. They cannot be used, and they keep an admin path documented that no longer works. Fix: point "
+                 "each at an enabled segment and portal, or delete it." + _PRA_REF)
+    return R(R.PASS, f"All {len(on)} Privileged Remote Access console(s) point at an enabled app segment and portal.")
+
+
+# ZPA — Browser Access, isolation and PRA (promoted from the Browser security page)
+PLATFORM_REG = PLATFORM_REG + guard_registry([
+    ("ZPA.BA1", "ZPA — Browser Access & PRA", "Browser Access apps reached by an access rule", zpa_ba_1),
+    ("ZPA.BA2", "ZPA — Browser Access & PRA", "Isolation rules name an isolation profile", zpa_ba_2),
+    ("ZPA.BA3", "ZPA — Browser Access & PRA", "PRA portals show the user notification", zpa_ba_3),
+    ("ZPA.BA4", "ZPA — Browser Access & PRA", "PRA consoles point at an enabled segment and portal", zpa_ba_4),
+])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# DLP — EDM AND IDM INDEXES (zia/dlp_resources.py: list_edm_schemas GET
+# /dlpExactDataMatchSchemas, list_dlp_idm_profiles GET /idmprofile)
+# ═══════════════════════════════════════════════════════════════════════
+_EDM_REF = " Ref: https://help.zscaler.com/zia/about-exact-data-match"
+_IDM_REF = " Ref: https://help.zscaler.com/zia/about-indexed-document-match"
+INDEX_STALE_DAYS = 180
+_GOOD_UPLOAD = ("COMPLETED", "SUCCESS", "DONE", "UPLOADED", "IDM_PROF_UPLOAD_COMPLETED")
+
+
+def _epoch(v):
+    """Seconds since 1970 from a ZIA time (seconds or milliseconds); None when absent."""
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    return n / 1000.0 if n > 1e11 else n
+
+
+def dlp_idx_1(cl):
+    """EDM schemas are indexed without errors"""
+    items, c = _items(cl, "/zia/dlpExactDataMatchSchemas")
+    if c == 404:
+        return R(R.INFO, "Exact Data Match is not licensed or not enabled on this tenant (N/A).")
+    if c not in (200, 204):
+        return R(R.INFO, f"The EDM schemas could not be read (HTTP {c}).")
+    if not items:
+        return R(R.INFO, "No EDM schema: nothing to check here (check 5.14 says whether EDM should be used).")
+    bad = [str(x.get("projectName") or x.get("schemaId")) for x in items
+           if str(x.get("fileUploadStatus") or "").upper() in ("FAILED", "ERROR", "FAILURE") or str(x.get("schemaActive", True)).lower() == "false"]
+    if bad:
+        return R(R.FAIL, f"{len(bad)} of {len(items)} EDM schema(s) failed their last index upload or are inactive: {', '.join(bad[:5])}. An "
+                 "engine that uses them matches nothing new, so the records they protect leave unnoticed. Fix: re-run the Index Tool upload "
+                 "for each schema and check its status in ZIA (Administration → DLP Resources → Exact Data Match)." + _EDM_REF)
+    return R(R.PASS, f"All {len(items)} EDM schema(s) are active and indexed.")
+
+
+def dlp_idx_2(cl):
+    """IDM profiles are indexed and re-indexed on a schedule"""
+    items, c = _items(cl, "/zia/idmprofile")
+    if c == 404:
+        return R(R.INFO, "Indexed Document Match is not licensed or not enabled on this tenant (N/A).")
+    if c not in (200, 204):
+        return R(R.INFO, f"The IDM profiles could not be read (HTTP {c}).")
+    if not items:
+        return R(R.INFO, "No IDM profile: nothing to check here (check 5.15 says whether IDM should be used).")
+    failed = [str(x.get("profileName") or x.get("profileId")) for x in items
+              if x.get("uploadStatus") and not any(g in str(x.get("uploadStatus")).upper() for g in _GOOD_UPLOAD)]
+    unscheduled = [str(x.get("profileName") or x.get("profileId")) for x in items if str(x.get("scheduleDisabled", False)).lower() == "true"]
+    if failed:
+        return R(R.FAIL, f"{len(failed)} IDM profile(s) did not finish indexing: {', '.join(failed[:5])}. Their documents are not "
+                 "fingerprinted, so copies leave unnoticed. Fix: re-run the index in the Index Tool and check the profile's status." + _IDM_REF)
+    if unscheduled:
+        return R(R.WARN, f"{len(unscheduled)} of {len(items)} IDM profile(s) have their re-index schedule turned off: {', '.join(unscheduled[:5])}. "
+                 "New versions of the protected documents are never fingerprinted. Fix: turn the schedule on (daily or weekly) in the "
+                 "profile." + _IDM_REF)
+    return R(R.PASS, f"All {len(items)} IDM profile(s) are indexed and re-index on a schedule.")
+
+
+def dlp_idx_3(cl):
+    """EDM and IDM indexes were refreshed in the last 180 days"""
+    import time
+    edm, ec = _items(cl, "/zia/dlpExactDataMatchSchemas")
+    idm, ic = _items(cl, "/zia/idmprofile")
+    rows = ([(str(x.get("projectName") or x.get("schemaId")), _epoch(x.get("lastModifiedTime"))) for x in edm] if ec in (200, 204) else []) + \
+           ([(str(x.get("profileName") or x.get("profileId")), _epoch(x.get("lastModifiedTime"))) for x in idm] if ic in (200, 204) else [])
+    if not rows:
+        return R(R.INFO, "No EDM schema or IDM profile could be read: nothing to check (N/A).")
+    cut = time.time() - INDEX_STALE_DAYS * 86400
+    old = [n for n, t in rows if t is not None and t < cut]
+    if old:
+        return R(R.WARN, f"{len(old)} of {len(rows)} index(es) were last refreshed more than {INDEX_STALE_DAYS} days ago: {', '.join(old[:5])}. "
+                 "Records and documents added since are not protected. Fix: refresh them from the Index Tool, ideally on a schedule.")
+    return R(R.PASS, f"All {len(rows)} EDM and IDM index(es) were refreshed in the last {INDEX_STALE_DAYS} days.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# DLP — WORKFLOW AUTOMATION INCIDENTS (promoted from Detection health; read
+# with the incident search, a POST that changes nothing, through the Scope
+# page's channel guard: channel_scope.ScopedClient.post_read)
+# ═══════════════════════════════════════════════════════════════════════
+ZWA_WINDOW_DAYS = 30
+ZWA_TRIAGE_DAYS = 7
+ZWA_FP_PCT = 40
+ZWA_FP_MIN = 10
+_ZWA_REF = " Ref: https://help.zscaler.com/workflow-automation/about-dlp-incidents"
+
+
+def _zwa_incidents(cl):
+    """(incidents of the last ZWA_WINDOW_DAYS as detection_health
+    normalises them, None or why they could not be read). At most 5 pages."""
+    import time
+    from datetime import datetime, timedelta, timezone
+    import detection_health as dh
+    # Kept on the client of this run only (never keyed by id(): a later run's client could reuse the id).
+    try:
+        hit = vars(cl).get("_zme_zwa_incidents")
+    except TypeError:
+        hit = None
+    if hit and time.time() - hit[0] < 120:
+        return hit[1], hit[2]
+    post = getattr(cl, "post_read", None)
+    if not callable(post):
+        return [], "Workflow Automation incidents are read only when the Scope page marks Workflow Automation as run on Zscaler."
+    end = datetime.now(timezone.utc)
+    tr = {"startTime": (end - timedelta(days=ZWA_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000Z"), "endTime": end.strftime("%Y-%m-%dT%H:%M:%S.000Z")}
+    out, why = [], None
+    for page in range(1, 6):
+        d, c = post(f"/zwa/dlp/v1/incidents/search?page={page}&pageSize=100", {"fields": [], "timeRange": tr})
+        if c not in (200, 204):
+            why = (d or {}).get("message") if isinstance(d, dict) and c == 0 else f"HTTP {c}"
+            if c in (401, 403):
+                why = f"HTTP {c}"
+            break
+        leaves = dh._flatten(d if isinstance(d, dict) else {})
+        out.extend(dh.normalize_incident(x, dh.DEFAULTS["not_real"]) for x in leaves)
+        if len(leaves) < 100:
+            break
+    try:
+        vars(cl)["_zme_zwa_incidents"] = (time.time(), out, why)
+    except TypeError:
+        pass
+    return out, why
+
+
+def _zwa_unread(why):
+    if str(why or "").endswith(("401", "403")):
+        return R(R.INFO, f"The Workflow Automation incidents were refused to the API client ({why}): grant it Workflow Automation read access.")
+    return R(R.INFO, f"The Workflow Automation incidents could not be read: {why}")
+
+
+def zwa_1(cl):
+    """DLP incidents reach Workflow Automation"""
+    incs, why = _zwa_incidents(cl)
+    if why:
+        return _zwa_unread(why)
+    if not incs:
+        return R(R.WARN, f"No DLP incident reached Workflow Automation in the last {ZWA_WINDOW_DAYS} days. Either nothing matched (unlikely "
+                 "for an organisation of any size) or the rules do not send incidents to it. Fix: check that the DLP rules name the incident "
+                 "receiver (cloud-to-cloud or ICAP) and that Workflow Automation is linked to ZIA; Detection health shows how incidents reach "
+                 "it." + _ZWA_REF)
+    chans = sorted({i["channel"] for i in incs if i.get("channel")})
+    return R(R.PASS, f"{len(incs)} DLP incident(s) reached Workflow Automation in the last {ZWA_WINDOW_DAYS} days ({', '.join(chans[:6])}).")
+
+
+def zwa_2(cl):
+    """Open DLP incidents are triaged within 7 days"""
+    from datetime import datetime, timedelta, timezone
+    incs, why = _zwa_incidents(cl)
+    if why:
+        return _zwa_unread(why)
+    if not incs:
+        return R(R.INFO, "No incident in the window: nothing to triage (N/A).")
+    cut = datetime.now(timezone.utc) - timedelta(days=ZWA_TRIAGE_DAYS)
+    open_ = [i for i in incs if str(i.get("status") or "").upper() not in ("CLOSED", "RESOLVED")]
+    old = [i for i in open_ if i.get("_created") and i["_created"] < cut]
+    if old:
+        return R(R.WARN, f"{len(old)} of {len(open_)} open DLP incident(s) are older than {ZWA_TRIAGE_DAYS} days. A leak that nobody looks at "
+                 "for a week is a leak that cannot be stopped. Fix: assign them to an analyst, close the false positives (Detection health → "
+                 "Close as false positives) and set a triage target in Workflow Automation." + _ZWA_REF)
+    return R(R.PASS, f"No open DLP incident is older than {ZWA_TRIAGE_DAYS} days ({len(open_)} open, {len(incs) - len(open_)} closed).")
+
+
+def zwa_3(cl):
+    """The false-positive rate of closed DLP incidents is under 40%"""
+    incs, why = _zwa_incidents(cl)
+    if why:
+        return _zwa_unread(why)
+    closed = [i for i in incs if i.get("real") is not None]
+    if len(closed) < ZWA_FP_MIN:
+        return R(R.INFO, f"{len(closed)} closed incident(s) with a verdict in the window: fewer than {ZWA_FP_MIN}, too few to judge the "
+                 "false-positive rate (N/A).")
+    fp = sum(1 for i in closed if i["real"] is False)
+    pct = round(fp * 100 / len(closed))
+    if pct >= ZWA_FP_PCT:
+        return R(R.WARN, f"{pct}% of {len(closed)} closed DLP incidents were false positives. Analysts spend most of their time on noise, and "
+                 "real leaks wait. Fix: open Detection health to see which rules, dictionaries and destinations carry the noise, and tune or "
+                 "exclude them.")
+    return R(R.PASS, f"{pct}% of {len(closed)} closed DLP incidents were false positives (under {ZWA_FP_PCT}%).")
+
+
+def zwa_4(cl):
+    """Workflow Automation's admin audit log is readable"""
+    post = getattr(cl, "post_read", None)
+    if not callable(post):
+        return R(R.INFO, "Read only when the Scope page marks Workflow Automation as run on Zscaler.")
+    from datetime import datetime, timedelta, timezone
+    end = datetime.now(timezone.utc)
+    d, c = post("/zwa/dlp/v1/customer/audit?page=1&pageSize=100",
+                {"fields": [], "timeRange": {"startTime": (end - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                                             "endTime": end.strftime("%Y-%m-%dT%H:%M:%S.000Z")}})
+    if c in (401, 403):
+        return R(R.WARN, f"The Workflow Automation audit log was refused to the API client (HTTP {c}): who closed or changed an incident "
+                 "cannot be reviewed from here. Fix: give the API client's role Workflow Automation audit-log read access.")
+    if c not in (200, 204):
+        return R(R.INFO, f"The Workflow Automation audit log could not be read (HTTP {c}).")
+    n = len(d.get("logs") or []) if isinstance(d, dict) else 0
+    return R(R.PASS, f"The Workflow Automation audit log is readable: {n} admin action(s) in the last 7 days.")
+
+
+DLP_EXTRA_REG = [
+    ("DLP.IDX1", "DLP — EDM and IDM indexes", "EDM schemas indexed without errors", dlp_idx_1),
+    ("DLP.IDX2", "DLP — EDM and IDM indexes", "IDM profiles indexed and scheduled", dlp_idx_2),
+    ("DLP.IDX3", "DLP — EDM and IDM indexes", "Indexes refreshed in the last 180 days", dlp_idx_3),
+    ("ZWA.1", "DLP — Workflow Automation incidents", "Incidents reach Workflow Automation", zwa_1),
+    ("ZWA.2", "DLP — Workflow Automation incidents", "Open incidents triaged within 7 days", zwa_2),
+    ("ZWA.3", "DLP — Workflow Automation incidents", "False-positive rate under 40%", zwa_3),
+    ("ZWA.4", "DLP — Workflow Automation incidents", "Workflow Automation audit log readable", zwa_4),
+]
+DLP_EXTRA_REG = guard_registry(DLP_EXTRA_REG)
+

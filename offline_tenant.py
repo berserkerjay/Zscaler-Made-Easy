@@ -122,6 +122,13 @@ _OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$
 # PasswordExpiry). Kept only as a true/false or a whole number; any text
 # under these names is masked like every other secret-named field.
 _NOT_SECRET = frozenset({"passwordexpirationenabled", "password_expiration_enabled", "passwordexpirydays", "password_expiry_days"})
+# Reads the APIs ask for with a POST that changes nothing (zscaler/zwa:
+# dlp_incident_search POST /zwa/dlp/v1/incidents/search, audit_logs POST
+# /zwa/dlp/v1/customer/audit): offline they are answered from the saved list
+# (its first page), on the sample and on a snapshot alike.
+ZWA_BASE = "/zwa/dlp/v1"
+READ_POSTS = {f"{ZWA_BASE}/incidents/search": f"{ZWA_BASE}/incidents", f"{ZWA_BASE}/customer/audit": f"{ZWA_BASE}/customer/audit"}
+_ZWA_WRITE = re.compile(r"\A/zwa/dlp/v1/incidents/([A-Za-z0-9][A-Za-z0-9_.:-]{0,79})/(close|labels|notes)\Z")
 _VOLATILE = re.compile(r"(modified|lastseen|last_seen|lastsync|updated|creation|created)(time|at|date|_time|_at)?$|^(modifiedBy|lastModifiedBy)$", re.I)
 
 
@@ -333,9 +340,65 @@ class OfflineStore:
                 return int(entry.get("status") or 200), copy.deepcopy(entry.get("body"))
         return 404, {"code": "NOT_FOUND", "message": self._missing(f"{_ZMS_GRAPHQL}/{op}")}
 
+    def answer_read_post(self, path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[int, Any]:
+        """(status, body) of a read the API asks for with a POST (READ_POSTS):
+        the saved list as the search answers it, its first page only."""
+        key = READ_POSTS[path]
+        params = params or {}
+        try:
+            page = int(params.get("page") or 1)
+        except (TypeError, ValueError):
+            page = 1
+        with self._lock:
+            entry = self._lookup(key)
+            if entry is None:
+                return 404, {"code": "NOT_FOUND", "message": self._missing(key)}
+            body = copy.deepcopy(entry.get("body"))
+        if key.endswith("/incidents"):
+            rows = body if isinstance(body, list) and page == 1 else []
+            return 200, {"cursor": {"currentPageNumber": page, "totalPages": 1, "totalElements": len(rows)},
+                         "incidents": [{"incidents": rows}] if rows else []}
+        if page > 1:
+            return 200, _empty_page(body) if not isinstance(body, dict) else dict(body, logs=[])
+        return 200, body
+
+    def _zwa_write(self, m: "re.Match", body: Any) -> Tuple[int, Any]:
+        """The sample's in-memory answer to a Workflow Automation incident
+        close, label or note (zscaler/zwa/dlp_incidents.py incident_close,
+        assign_labels, incident_notes): the incident changes, nothing else."""
+        iid, what = m.group(1), m.group(2)
+        entry = self._lookup(f"{ZWA_BASE}/incidents")
+        items = _items(entry["body"]) if entry else None
+        inc = next((x for x in items or [] if isinstance(x, dict) and str(x.get("id")) == iid), None)
+        if inc is None:
+            return 404, {"code": "NOT_FOUND", "message": self._missing(f"{ZWA_BASE}/incidents/{iid}")}
+        b = body if isinstance(body, dict) else {}
+        hist = self.responses.setdefault(f"{ZWA_BASE}/incidents/{iid}/change-history", {"status": 200, "body": {"changeHistory": []}})
+        log = hist["body"].setdefault("changeHistory", []) if isinstance(hist.get("body"), dict) else []
+        if what == "close":
+            inc["status"] = "CLOSED"
+            inc["resolution"] = inc["closedCode"] = str(b.get("resolutionCode") or "FALSE_POSITIVE")[:40]
+            lab = b.get("resolutionLabel")
+            if isinstance(lab, dict) and lab.get("key"):
+                inc.setdefault("labels", []).append({"key": str(lab["key"])[:60], "value": str(lab.get("value") or "")[:120]})
+            if b.get("notes"):
+                inc.setdefault("notes", []).append({"body": str(b["notes"])[:1000], "createdBy": "api"})
+            log.append(f"Status changed to CLOSED ({inc['resolution']}) through the API")
+        elif what == "labels":
+            for lab in b.get("labels") or []:
+                if isinstance(lab, dict) and lab.get("key"):
+                    inc.setdefault("labels", []).append({"key": str(lab["key"])[:60], "value": str(lab.get("value") or "")[:120]})
+            log.append("Labels added through the API")
+        else:
+            inc.setdefault("notes", []).append({"body": str(b.get("notes") or "")[:1000], "createdBy": "api"})
+            log.append("Note added through the API")
+        self.writes += 1
+        return 200, copy.deepcopy(inc)
+
     def answer_write(self, method: str, url: str, body: Any = None, params: Optional[Dict[str, Any]] = None) -> Tuple[int, Any]:
         """(status, body) of a POST / PUT / PATCH / DELETE: refused on a
-        snapshot; on the sample, applied to its in-memory copy."""
+        snapshot; on the sample, applied to its in-memory copy. A read the
+        API asks for with a POST (READ_POSTS) is answered on both."""
         method = str(method or "").upper()
         path = normalize_path(url)
         if method == "POST" and path == _ZMS_GRAPHQL:
@@ -350,6 +413,8 @@ class OfflineStore:
         if method == "PUT" and path.endswith("/cloudApplications/bulkUpdate") and self.writable:
             with self._lock:
                 return self._sanction(body)
+        if method == "POST" and path in READ_POSTS:
+            return self.answer_read_post(path, params)
         lookup = path.endswith(("/urlLookup", "/auditlogEntryReport")) or path.startswith("/zins/")
         if lookup and not (self.writable and path.endswith("/urlLookup")):
             # A read the API asks for with a POST (URL lookup, Insights, audit log report): offline it has no answer.
@@ -394,6 +459,9 @@ class OfflineStore:
                 entry["body"][key] = [str(u) for u in body[key] if isinstance(u, (str, int))]
                 self.writes += 1
                 return 200, copy.deepcopy(entry["body"])
+            zm = _ZWA_WRITE.match(path) if method == "POST" else None
+            if zm:
+                return self._zwa_write(zm, body)
             entry = self._lookup(path)
             items = _items(entry["body"]) if entry else None
             if method == "POST" and items is not None:
@@ -644,7 +712,7 @@ class OfflineExecutor:
             if params:   # a write's query (the denylist's ?action=) rides on the URL: answer_write reads it from there
                 from urllib.parse import urlencode
                 url = f"{url}{'&' if '?' in url else '?'}{urlencode(params)}"
-            status, body = self._store.answer_write(method, url, payload)
+            status, body = self._store.answer_write(method, url, payload, params)
         answer = _Answer(status, body)
         if status >= 400:
             msg = body.get("message") if isinstance(body, dict) else str(body)
@@ -686,7 +754,7 @@ class OfflineExecutor:
 
 class OfflineSdkClient:
     """The zscaler-sdk-python client's interface (.zia, .zpa, .zcc, .zdx,
-    .zid / .zidentity, .zins, .zwa, .ztw) over an OfflineStore: the SDK's
+    .zid / .zidentity, .zins, .zwa, .ztw, .aiguard) over an OfflineStore: the SDK's
     service and model classes with OfflineExecutor as their executor."""
 
     offline = True
@@ -748,6 +816,11 @@ class OfflineSdkClient:
     def zwa(self):
         from zscaler.zwa.zwa_service import ZWAService
         return self._svc("zwa", lambda: ZWAService(self))
+
+    @property
+    def aiguard(self):
+        from zscaler.aiguard.aiguard_service import AIGuardService
+        return self._svc("aiguard", lambda: AIGuardService(self._request_executor))
 
     @property
     def ztw(self):
@@ -1195,6 +1268,13 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     + [(("ztw",), f"/ztw/api/v1/{x}") for x in ("ecgroup", "ecRules/ecRdr", "workloadGroups", "ipSourceGroups", "ipDestinationGroups",
                                                  "gateways", "location", "locationTemplate", "ecAdminActivateStatus", "adminRoles",
                                                  "adminUsers", "apiKeys", "publicCloudAccountDetails", "publicCloudInfo")]
+    + [(_DLP, f"/zia/{x}") for x in ("dlpExactDataMatchSchemas", "idmprofile")]
+    # AI Guard (zscaler/aiguard: list_policies, list_rules, list_providers, list_applications, list_credentials)
+    + [(("aiguard",), f"/aiguard/v1/{x}") for x in ("detections/policies", "detections/policy-match-rules", "llm-providers",
+                                                     "llm-applications", "llm-application-credentials")]
+    # Workflow Automation: read through ZWA_CAPTURE (a POST search, then each incident's GETs), DLP ticked and
+    # Workflow Automation marked Zscaler on the Scope page.
+    + [(_DLP, "/zwa/incidents")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}
@@ -1204,6 +1284,8 @@ _ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments", "/zia/cloudApplic
 # ZPA reads that are one answer, not a paged list: a settings object, and the
 # emergency access list, which pages by page id (zpa/emergency_access.py).
 _ZPA_SINGLE = {"/zpa/ssoLoginOptions", "/zpa/emergencyAccess/users"}
+ZWA_CAPTURE_DAYS = 30
+ZWA_CAPTURE_INCIDENTS = 25                # incidents whose triggers, history and tickets are saved (metadata only; never evidence)
 _UNANSWERED = (0, 429, 502, 503, 504)
 
 
@@ -1263,6 +1345,14 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
             counts["answers"] += len(got)
             counts["not_read"] += len(miss)
             unread.extend(_text(m, 160) for m in miss[:8])
+        if ep == "/zwa/incidents":
+            got = _capture_zwa(client, guard, responses, log, stopped)
+            if got is None:
+                counts["out_of_scope"] += 1
+            else:
+                counts["answers"] += got[0]
+                counts["objects"] += got[1]
+                unread.extend(got[2][:4])
             continue
         if ep == "/zcc/webPolicies":
             import zcc_profiles
@@ -1317,6 +1407,88 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
 # ZPA lists read in one call: the SDK's list method takes no paging parameters.
 # (Not _ZPA_SINGLE above: those are kept as answered, not turned into a list.)
 _ZPA_ONE_CALL = {"/zpa/businessContinuitySettings"}
+
+
+# What a snapshot keeps of an incident: its metadata. The user, the file name,
+# the client IP, the metadata file link, note text and ticket links are
+# personal or point at content: never saved (counted where it matters).
+_ZWA_KEEP = ("id", "internalId", "transactionId", "integrationType", "sourceType", "sourceSubType", "sourceActions", "severity", "priority",
+             "matchCount", "createdAt", "lastUpdatedAt", "sourceFirstObservedAt", "sourceLastObservedAt", "status", "resolution", "closedCode",
+             "assignedAdmin", "labels", "matchingPolicies", "incidentGroupIds")
+
+
+def _zwa_minimal(r: Dict[str, Any]) -> Dict[str, Any]:
+    out = {k: r[k] for k in _ZWA_KEEP if k in r}
+    out.setdefault("id", r.get("internalId"))
+    app = r.get("applicationInfo") if isinstance(r.get("applicationInfo"), dict) else {}
+    out["applicationInfo"] = {k: app[k] for k in ("url", "name", "hostnameOrApplication", "category") if k in app}
+    content = r.get("contentInfo") if isinstance(r.get("contentInfo"), dict) else {}
+    out["contentInfo"] = {k: content[k] for k in ("fileType",) if k in content}
+    user = r.get("userInfo") if isinstance(r.get("userInfo"), dict) else {}
+    out["userInfo"] = {k: user[k] for k in ("department",) if k in user}
+    out["notes"] = [{} for _ in (r.get("notes") or [])][:50]
+    out["dlpIncidentTickets"] = [dict({k: t[k] for k in ("ticketType", "ticketingSystemName", "projectName") if k in t},
+                                      ticketInfo={k: v for k, v in (t.get("ticketInfo") or {}).items() if k in ("ticketId", "state")})
+                                 for t in (r.get("dlpIncidentTickets") or []) if isinstance(t, dict)][:20]
+    return out
+
+
+def _zwa_part(part: str, body: Any) -> Any:
+    """An incident's triggers, history or tickets as a snapshot keeps them:
+    names with counts, masked history lines, tickets without links."""
+    import zwa_incidents as zi
+    if part == "triggers":
+        return {"matches": [{"name": t["name"], "matchCount": t["matches"]} for t in zi.summarize_triggers(body)]}
+    if part == "change-history":
+        return {"changeHistory": zi.summarize_history(body)}
+    return {"tickets": [{"ticketingSystemName": t["system"], "projectName": t["project"], "ticketInfo": {"ticketId": t["ticket"], "state": t["state"]}}
+                        for t in zi.summarize_tickets(body)]}
+
+
+def _capture_zwa(client: Any, guard: Any, responses: Dict[str, Dict[str, Any]], log: Callable[[str], None],
+                 stopped: Callable[[], bool]) -> Optional[Tuple[int, int, List[str]]]:
+    """Workflow Automation for a snapshot: the incident list of the last
+    ZWA_CAPTURE_DAYS, the triggers, change history and tickets of the newest
+    ZWA_CAPTURE_INCIDENTS, and a week of the audit log. None when Workflow
+    Automation is not marked Zscaler (nothing is read). Read-only: the two
+    searches are POSTs that change nothing; the evidence is never read."""
+    import channel_scope
+    if not channel_scope.group_in_scope(("workflow_automation",), getattr(guard, "_scope", {}) or {}):
+        return None
+    post = getattr(guard, "post_read", None)
+    if not callable(post):
+        return 0, 0, ["Workflow Automation: this client cannot read the incident search."]
+    from datetime import datetime, timedelta, timezone
+    end = datetime.now(timezone.utc)
+    tr = {"startTime": (end - timedelta(days=ZWA_CAPTURE_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000Z"), "endTime": end.strftime("%Y-%m-%dT%H:%M:%S.000Z")}
+    body, code = post(f"{ZWA_BASE}/incidents/search?page=1&pageSize=100", {"fields": [], "timeRange": tr})
+    if code not in (200, 204):
+        return 0, 0, [f"Workflow Automation incidents: HTTP {code}"]
+    rows: List[Dict[str, Any]] = []
+    for group in (body or {}).get("incidents") or [] if isinstance(body, dict) else []:
+        inner = group.get("incidents") if isinstance(group, dict) else None
+        rows.extend(x for x in (inner if isinstance(inner, list) else [group]) if isinstance(x, dict))
+    rows = [_zwa_minimal(r) for r in rows]
+    responses[f"{ZWA_BASE}/incidents"] = {"status": 200, "body": rows}
+    answers, objects, unread = 1, len(rows), []
+    for r in rows[:ZWA_CAPTURE_INCIDENTS]:
+        iid = str(r.get("id") or "")
+        if stopped() or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}", iid):
+            continue
+        for part in ("triggers", "change-history", "tickets"):
+            b, c = guard.get(f"{ZWA_BASE}/incidents/{iid}/{part}")
+            if c in (200, 204):
+                responses[f"{ZWA_BASE}/incidents/{iid}/{part}"] = {"status": 200, "body": _zwa_part(part, b if c == 200 else {})}
+                answers += 1
+    body, code = post(f"{ZWA_BASE}/customer/audit?page=1&pageSize=100",
+                      {"fields": [], "timeRange": {"startTime": (end - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z"), "endTime": tr["endTime"]}})
+    if code in (200, 204):
+        responses[f"{ZWA_BASE}/customer/audit"] = {"status": 200, "body": body if code == 200 else {"logs": []}}
+        answers += 1
+    else:
+        unread.append(f"Workflow Automation audit log: HTTP {code}")
+    log(f"Saving a snapshot: {len(rows)} Workflow Automation incident(s), metadata only.")
+    return answers, objects, unread
 
 
 def _read_zpa(guard: Any, ep: str) -> Tuple[Any, int]:

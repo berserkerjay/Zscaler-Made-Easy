@@ -8,6 +8,16 @@
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
 <link rel="stylesheet" href="/static/hover_help.css">
+<style>
+  .zwa-panel { margin-top: 1.5rem; }
+  .zwa-panel .op-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; margin: 0.5rem 0; }
+  .zwa-panel .df-ctl { min-width: 0; max-width: 100%; }
+  .zwa-panel input, .zwa-panel select { max-width: 100%; min-width: 0; }
+  .zwa-dl { display: grid; grid-template-columns: minmax(130px, max-content) 1fr; gap: 0.25rem 0.9rem; font-size: 0.9rem; }
+  .zwa-dl dt { font-weight: 600; } .zwa-dl dd { margin: 0; overflow-wrap: anywhere; }
+  .zwa-hist { font-size: 0.88rem; overflow-wrap: anywhere; }
+  @media (max-width: 600px) { .zwa-dl { grid-template-columns: 1fr; } }
+</style>
 <script src="/static/glass.js"></script>
 </head>
 <body class="report-page df-page">
@@ -58,6 +68,7 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/detection_health.js"></script>
   <script src="/static/tenant_health.js"></script>
+  <script src="/static/zwa_drilldown.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>

@@ -669,6 +669,10 @@
                 aria-label="Open other Zscaler products: what the tenant has in Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation, with best-practice findings (opens in a new tab)">
           <span aria-hidden="true">🔌</span> Other Zscaler products
         </button>
+        <button class="btn btn-ghost" onclick="openAiGuardTab()"
+                aria-label="Open AI Guard: its detection policies, match rules, LLM applications and credential names, and Test a prompt with made-up prompts (opens in a new tab)">
+          <span aria-hidden="true">🤖</span> AI Guard
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -5429,6 +5433,12 @@ function openShadowRulesTab() {
   // page's selection from this page through window.opener when it runs,
   // so nothing is read until Analyze.
   const w = window.open('/report/shadow', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openAiGuardTab() {
+  // Like Browser security: the tab reads the credentials and the Scope
+  // page's selection from this page through window.opener when Read is clicked.
+  const w = window.open('/report/aiguard', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openBrowserSecurityTab() {

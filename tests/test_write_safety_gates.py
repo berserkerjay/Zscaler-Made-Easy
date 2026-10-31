@@ -48,10 +48,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The recording fake tenant client (deny by default)
 # ---------------------------------------------------------------------------
 
-READ_NAME = re.compile(r"^(list|get|search|lookup)(_|$)|_search$")
+# zscaler/zwa reads named otherwise: audit_logs (the audit search), change_history (an incident's history).
+READ_NAME = re.compile(r"^(list|get|search|lookup)(_|$)|_search$|^(audit_logs|change_history)$")
 # POSTs ZIA answers without changing configuration (a URL lookup, preparing
 # the admin audit log report); every other raw POST/PUT/DELETE is a write.
-READ_ONLY_POSTS = {"/zia/urlLookup", "/zia/auditlogEntryReport"}
+# The Workflow Automation incident and audit-log searches are POSTs that change
+# nothing too (zscaler/zwa/dlp_incidents.py dlp_incident_search, zwa/audit_logs.py
+# audit_logs), sent through channel_scope.ScopedClient.post_read with their paging
+# in the query string.
+READ_ONLY_POSTS = {"/zia/urlLookup", "/zia/auditlogEntryReport", "/zwa/dlp/v1/incidents/search", "/zwa/dlp/v1/customer/audit"}
 NOT_A_CALL = {"auth", "close", "stop", "stop_check", "_ensure_token"}
 # SDK reads whose names are not list/get (verified against zscaler-sdk-python
 # 1.11.3): zia/activate.py status() is GET /status (activate() is the write).
@@ -89,7 +94,7 @@ class Recorder:
             method = str(args[0] if args else kwargs.get("method", "")).upper()
             if method == "GET":
                 return (None, {"message": "recording fake: no HTTP"})
-        if self._p == ("post",) and args and args[0] in READ_ONLY_POSTS:
+        if self._p == ("post",) and args and str(args[0]).split("?", 1)[0] in READ_ONLY_POSTS:
             return ([], 200)
         if READ_NAME.search(name) or tuple(self._p[-3:]) in READ_CALLS:
             return ([], None, None)
@@ -403,7 +408,11 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/tenant-profiles/snapshots/open-file"): "opens an uploaded snapshot offline and read-only",
     ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/open"): "opens a saved snapshot offline and read-only",
     ("POST", "/api/tenant-profiles/snapshots/{snapshot_id}/delete"): "deletes a local snapshot file, never anything in a tenant",
-    ("POST", "/api/tenant-profiles/snapshots/save/start"): "a GET-only, scoped tenant read kept in a local file",
+    ("POST", "/api/tenant-profiles/snapshots/save/start"): "a scoped tenant read (GETs and the two read-only Workflow Automation searches) kept in a local file",
+    ("POST", "/api/zwa/incident"): "reads one incident's metadata (details, triggers, history, tickets); never the evidence",
+    ("POST", "/api/zwa/audit-log"): "reads the Workflow Automation audit log (a search POST that changes nothing)",
+    ("POST", "/api/aiguard/inventory"): "reads AI Guard's policies, rules, providers, applications and credential names",
+    ("POST", "/api/aiguard/test-prompt"): "sends one synthetic catalogue prompt to AI Guard's policy detection; changes no configuration",
     ("POST", "/api/tenant-profiles/snapshots/compare/start"): "a GET-only, scoped tenant read compared with a snapshot",
     ("POST", "/api/config-backups/save/start"): "a GET-only, scoped configuration read kept in a local owner-only file (config_backup)",
     ("POST", "/api/config-cache/refresh/start"): "a GET-only, scoped configuration read kept in the local cache",

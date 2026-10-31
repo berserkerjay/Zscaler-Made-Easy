@@ -83,7 +83,7 @@ WRITE_PERMISSIONS: Dict[str, Dict[str, str]] = {
 # page's rbac checkbox (zscaler_rbac_checks.RBAC_REG), whatever product it reads.
 _SECTION_SCOPE = [
     ("ZIA —", "zia_extras"), ("ZCC —", "zcc"), ("ZPA —", "zpa"), ("GenAI", "genai"), ("Automation", "automation"),
-    ("ZDX", "zdx"), ("ZIdentity", "zidentity"), ("RBAC", "rbac"), ("Insights", "insights"), ("ZTW —", "ztw"),
+    ("ZDX", "zdx"), ("ZIdentity", "zidentity"), ("RBAC", "rbac"), ("Insights", "insights"), ("ZTW —", "ztw"), ("AI Guard —", "aiguard"),
     # The other products (zscaler_other_products_checks), one Scope page key each.
     ("ZTB —", "ztb"), ("EASM —", "easm"), ("ZBI —", "zbi"), ("ZCell —", "zcell"), ("ZMS —", "zms"),
 ]

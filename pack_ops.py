@@ -997,6 +997,27 @@ def _zia_object_write(zia, kind: str, verb: str, *args: Any, op: str, name: str,
     return call(fn, *args, op=op, kind=kind, name=name, log=log, kw=kw, zia=zia)
 
 
+# Workflow Automation incidents (ops_zwa): the first argument is the incident
+# API (client.zwa.dlp_incidents), not client.zia. An incident is never created
+# or deleted here, only closed, labelled or noted (zscaler/zwa/dlp_incidents.py
+# incident_close, assign_labels, incident_notes); no activation.
+ZWA_KINDS = ("zwa_incident",)
+ZWA_ACTIONS = ("close", "labels", "notes")
+
+
+def _zwa_write(dlp, iid: Any, payload: Dict[str, Any], action: Optional[str], *, name: str,
+               log: Optional[Callable[[str], None]] = None) -> Outcome:
+    if action not in ZWA_ACTIONS:
+        return Outcome(False, error=f"unknown incident change '{action}'")
+    p = dict(payload or {})
+    if action == "close":
+        return call(dlp.incident_close, str(iid), op="update", kind="zwa_incident", name=name, log=log,
+                    kw={"resolution_label": p.get("resolution_label"), "resolution_code": p.get("resolution_code"), "notes": p.get("notes")})
+    if action == "labels":
+        return call(dlp.assign_labels, str(iid), op="update", kind="zwa_incident", name=name, log=log, kw={"labels": p.get("labels") or []})
+    return call(dlp.incident_notes, str(iid), op="update", kind="zwa_incident", name=name, log=log, kw={"notes": p.get("notes") or ""})
+
+
 def _admin_rule_service(zia, channel: Optional[str]):
     svc = getattr(zia, ADMIN_RULE_SERVICES[channel], None)
     return svc, (None if svc is not None else f"{ADMIN_RULE_SERVICES[channel]} is not available in the installed zscaler-sdk-python")
@@ -1220,6 +1241,8 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
         return _zdx_write(zia, "zdx_set_probe_state", parent_id, oid, action, op="update", kind=kind, name=name, log=log)
     if kind in ZPA_KINDS:
         return _zpa_kind_write(zia, kind, "update", oid, payload, name=name, log=log)
+    if kind in ZWA_KINDS:
+        return _zwa_write(zia, oid, payload, action, name=name, log=log)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 

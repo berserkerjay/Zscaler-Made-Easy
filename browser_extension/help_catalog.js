@@ -2091,6 +2091,11 @@ window.HELP_CATALOG = {
     "what": "Opens Improve my score in a new tab, at the part this button names.",
     "input": "Nothing to type. Just click it.",
     "effect": "nav"
+   },
+   ".tool-group button[onclick=\"openAiGuardTab()\"]": {
+    "what": "Opens AI Guard: the detection policies, match rules, LLM applications and credential names, and Test a prompt with made-up prompts. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab. Tick AI Guard on the Scope page first.",
+    "effect": "nav"
    }
   },
   "/simple": {
@@ -4087,6 +4092,36 @@ window.HELP_CATALOG = {
    },
    "#rpBody a.rp-btn[href=\"/\"]": {
     "what": "Goes back to the assessment page.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#zwaIncId": {
+    "what": "The id of one Workflow Automation incident to read in depth.",
+    "input": "Required for Read the incident. The id as Workflow Automation shows it, letters, digits and - _ . : only, up to 80 characters, like 1-152-DFZG-17410647793298599936. Details beside a latest transaction fills it in.",
+    "effect": "local"
+   },
+   "#zwaIncRead": {
+    "what": "Reads one incident's details, what triggered it (rule, engine and dictionary names with match counts), its change history and its tickets. Metadata only: the evidence is never fetched, and the user, file name and client IP are not shown.",
+    "input": "Nothing to type here. Type the incident id first. Needs DLP ticked on the Scope page and Workflow Automation not marked as another product.",
+    "effect": "read"
+   },
+   "#zwaAuditDays": {
+    "what": "Picks how many days of the Workflow Automation audit log to read.",
+    "input": "Pick one: 1, 7, 30 or 90 days. 7 days is the usual choice.",
+    "effect": "local"
+   },
+   "#zwaAuditRead": {
+    "what": "Reads the Workflow Automation admin audit log: who did what to which incident, workflow or integration, newest first.",
+    "input": "Nothing to type. Just click it. Needs DLP ticked on the Scope page and Workflow Automation not marked as another product.",
+    "effect": "read"
+   },
+   "button.dh-inc": {
+    "what": "Reads this incident in depth below the report: details, triggers, change history and tickets (metadata only).",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "a.dh-close": {
+    "what": "Opens Bulk changes with the open incidents of this rule or destination ready to close as false positives. Nothing is changed until you preview, turn on write mode, name the assessor and type the phrase.",
     "input": "Nothing to type. Just click it.",
     "effect": "nav"
    }
@@ -6618,6 +6653,21 @@ window.HELP_CATALOG = {
    ".zk-copy": {
     "what": "Copies the new secret to the clipboard.",
     "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "input[name=\"zwaMode\"]": {
+    "what": "Chooses which incidents to close: every open incident of the rule or destination Detection health sent, or the ones you pick below.",
+    "input": "Pick one. The first choice shows only when you came from Detection health.",
+    "effect": "local"
+   },
+   "input[data-zwa]": {
+    "what": "Picks this open incident to close as a false positive.",
+    "input": "Tick it to include the incident, untick it to leave it out. At most 100 incidents per change.",
+    "effect": "local"
+   },
+   "#zwaNote": {
+    "what": "A reason added to the note on each closed incident, after your name as the assessor.",
+    "input": "Optional. Plain words, up to 300 characters, like Telemetry upload, not customer data.",
     "effect": "local"
    }
   },
@@ -8992,6 +9042,43 @@ window.HELP_CATALOG = {
     "what": "Makes a new key for the app's encrypted stores, encrypts every store again with it, then forgets the old key. Only when store encryption is on.",
     "input": "Nothing to type. You are asked to confirm.",
     "effect": "local"
+   }
+  },
+  "/report/aiguard": {
+   "#agTenant": {
+    "what": "Picks which tenant sign-in the AI Guard read and the prompt test use.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or what is saved on this computer. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   "#agRun": {
+    "what": "Reads AI Guard once: detection policies, policy match rules, LLM providers, LLM applications and credential names (never a key).",
+    "input": "Nothing to type. Just click it. Tick AI Guard on the Scope page first; it needs a OneAPI (ZIdentity) API client.",
+    "effect": "read"
+   },
+   "a.rp-btn[href=\"/report/operations?build=aiguard_detection_policy\"]": {
+    "what": "Opens Bulk changes with the AI Guard detection policy builder picked, to build a policy from a compliance profile.",
+    "input": "Nothing to type. Just click it. Nothing is changed until you preview and apply with write mode on.",
+    "effect": "nav"
+   },
+   "#agPrompt": {
+    "what": "Picks the made-up prompt to send. Only these prompts can be sent; nothing you type is ever sent.",
+    "input": "Pick one: an ordinary question, a prompt injection, a reserved test SSN, a published test card number, a link to a made-up malicious site, or internal source code.",
+    "effect": "local"
+   },
+   "#agDir": {
+    "what": "Says whether the text is checked as a prompt to the model or as the model's answer.",
+    "input": "Pick one: Prompt to the model (IN) or Model's answer (OUT). IN is the usual choice.",
+    "effect": "local"
+   },
+   "#agPolicy": {
+    "what": "Picks the detection policy to test against, or lets AI Guard pick it by its match rules.",
+    "input": "Optional. Click Read first to list the policies.",
+    "effect": "local"
+   },
+   "#agTest": {
+    "what": "Sends the made-up prompt to AI Guard's policy detection and shows the overall action and what each detector did. Changes no configuration.",
+    "input": "Nothing to type. Just click it. On a live tenant it needs the server's AI Guard API key (AIGUARD_API_KEY); the sample tenant answers with a made-up detector.",
+    "effect": "read"
    }
   }
  }

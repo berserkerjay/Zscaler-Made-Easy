@@ -65,6 +65,7 @@ PAGES = {
     "/report/team": "report_team.html", "/login": "login.html",
     "/report/traffic-logs": "report_traffic_logs.html",
     "/report/other-products": "report_other_products.html",
+    "/report/aiguard": "report_aiguard.html",
 }
 
 

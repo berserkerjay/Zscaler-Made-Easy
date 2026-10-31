@@ -96,7 +96,7 @@ def _registries() -> List[Sequence[Any]]:
     out: List[Sequence[Any]] = []
     for mod, attr in (("dlp_assessment_full_auto", "REG"), ("zscaler_full_checks", "PLATFORM_REG"), ("zscaler_genai_checks", "GENAI_REG"),
                       ("zscaler_automation_checks", "AUTOMATION_REG"), ("zscaler_rbac_checks", "RBAC_REG"), ("zscaler_zdx_checks", "ZDX_REG"),
-                      ("zscaler_zidentity_checks", "ZID_REG")):
+                      ("zscaler_zidentity_checks", "ZID_REG"), ("zscaler_full_checks", "DLP_EXTRA_REG"), ("zscaler_genai_checks", "AIGUARD_REG")):
         try:
             out.extend(getattr(__import__(mod), attr))
         except Exception:  # noqa: BLE001

@@ -643,7 +643,8 @@ EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard", "z
               "from_page": True}
 # The Scope page keys that put each product in scope.
 PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",),
-                "zidentity": ("zidentity",)}
+                "zidentity": ("zidentity",),
+                "zwa": ("dlp",)}   # Workflow Automation incidents: DLP ticked (and the channel not another product)
 BUILTIN_PRODUCT = {"rule_state": "zia", "reorder": "zia", "url_categories": "zia", "zpa_domains": "zpa"}
 
 
@@ -931,6 +932,7 @@ DEFAULT_OFF: Dict[str, Any] = {
     "ip_group_edit": "group content only; no rule is created or enabled (a change to a group an enabled rule uses asks the typed phrase)",
     "atp_list_edit": "the security policy list content asked for; it acts at activation, so the typed phrase is asked every time",
     "cloud_app_sanction": "changes an app's sanction label only (the operator picks the state per app); creates and enables no rule",
+    "zwa_close_false_positives": "closes incidents as false positives only; creates or enables no rule; asks its typed phrase every time",
 }
 
 

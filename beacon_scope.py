@@ -51,7 +51,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 # Scope key -> (module, registry, section prefix or None), as
 # dlp_api_server._get_checks selects checks for the same keys.
 SCOPE_REGISTRIES: Dict[str, Tuple[Tuple[str, str, Optional[str]], ...]] = {
-    "dlp": (("dlp_assessment_full_auto", "REG", None),),
+    "dlp": (("dlp_assessment_full_auto", "REG", None), ("zscaler_full_checks", "DLP_EXTRA_REG", None)),
     "zia_extras": (("zscaler_full_checks", "PLATFORM_REG", "ZIA"),),
     "zpa": (("zscaler_full_checks", "PLATFORM_REG", "ZPA"),),
     "zcc": (("zscaler_full_checks", "PLATFORM_REG", "ZCC"),),
@@ -67,12 +67,13 @@ SCOPE_REGISTRIES: Dict[str, Tuple[Tuple[str, str, Optional[str]], ...]] = {
     "zbi": (("zscaler_other_products_checks", "OTHER_REG", "ZBI"),),
     "zcell": (("zscaler_other_products_checks", "OTHER_REG", "ZCell"),),
     "zms": (("zscaler_other_products_checks", "OTHER_REG", "ZMS"),),
+    "aiguard": (("zscaler_genai_checks", "AIGUARD_REG", None),),
 }
 SCOPE_LABELS: Dict[str, str] = {
     "dlp": "DLP", "zia_extras": "ZIA platform", "zpa": "ZPA", "zcc": "ZCC", "genai": "GenAI & prompts",
     "automation": "Automation readiness", "zdx": "ZDX", "zidentity": "ZIdentity", "rbac": "RBAC", "insights": "ZIA Insights",
     "ztw": "Cloud & Branch Connector",
-    "ztb": "Zero Trust Branch", "easm": "EASM", "zbi": "Business Insights", "zcell": "Zero Trust Cellular", "zms": "Microsegmentation",
+    "ztb": "Zero Trust Branch", "easm": "EASM", "zbi": "Business Insights", "zcell": "Zero Trust Cellular", "zms": "Microsegmentation", "aiguard": "AI Guard",
 }
 # Short channel names for the one-line summary ("DLP (Web, Email)").
 CHANNEL_SHORT: Dict[str, str] = {
