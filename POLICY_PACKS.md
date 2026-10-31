@@ -278,7 +278,8 @@ shared ones:
 | Field | What to enter | Sample |
 |---|---|---|
 | `data_transfer_method` | **Mandatory in ZIA** ("Channel is mandatory"): one of `REMOVABLE_DRIVE_TRANSFER`, `NETWORK_DRIVE_TRANSFER`, `APPLICATION_FILE_ACCESS`, `PRINTING`. One rule watches one method; there is no `ANY`. A rule that names none is deployed as `REMOVABLE_DRIVE_TRANSFER`, which is what every pack's Endpoint mirror uses | `"REMOVABLE_DRIVE_TRANSFER"` |
-| `user_risk_score_levels` | Explicit values (the API rejects ANY) | `["LOW", "MEDIUM", "HIGH", "CRITICAL"]` |
+| `device_trust_levels` | Explicit levels (`UNKNOWN_DEVICETRUSTLEVEL`, `LOW_TRUST`, `MEDIUM_TRUST`, `HIGH_TRUST`), or `["ANY"]` alone for every level. Absent: every level | `["ANY"]` |
+| `user_risk_score_levels` | Explicit levels (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`), or `["ANY"]` alone for every level | `["LOW", "MEDIUM", "HIGH", "CRITICAL"]` |
 | `eun_enabled` | Show the end-user notification | `false` |
 | `endpoint_application_groups` | Names of groups from `configs/endpoint_application_groups.json` or already in the tenant | `["zbp-GenAI Applications"]` |
 | `sub_rules` | Exceptions evaluated under this rule, in order; same fields as a rule, no `channel` | see below |
@@ -303,6 +304,15 @@ applications by Zscaler catalogue ID (`zappId`, portable across tenants):
   "resources": ["500000603", "500000605", "600000601", "600000605"],
   "applications": [{"applicationName": "ChatGPT", "osType": "WINDOWS_OS", "zappId": "500000603"}]}]
 ```
+
+**`ANY` in a level list.** ZIA's own rule export writes `["ANY"]` for an
+unrestricted trust or risk selector, but the zscaler/zia Terraform provider
+takes explicit levels only, so the app always sends the explicit list: a
+literal `["ANY"]` (any case, in a rule or a sub-rule, on any channel) is
+expanded to every level when the pack is read, for the in-app deploy and the
+Terraform workspace alike. `ANY` next to other levels (`["ANY", "HIGH"]`) is
+ambiguous and is refused with the reason, as is a level that is not one of
+the four above; the pack library check and preflight show the message.
 
 Groups are created before the rules that reference them (or reused by
 name), sub-rules are created under their parent after it exists, and
@@ -641,6 +651,19 @@ python tools/pack_from_terraform.py template.tf.json my_baseline \
 | `global_banking_baseline` | yes | Banks, card issuers, payment processors: PCI, bank account and payment instructions (ABA, EU and global IBAN, SWIFT/BIC), customer PII across jurisdictions, KYC/AML and lending files, MNPI, confidentiality markings; premised on Zscaler's predefined dictionaries cloned at high confidence, reusing the ZBP Enterprise engines; web, endpoint, SaaS, email and containment rules; see the pack's README |
 | `cjis_policy_pack` | no | Law enforcement: CJIS content categories |
 | `fed_policy_pack` | no | Federal agencies, the defense industrial base and federal contractors: Zscaler's Fed Policy Pack V1.1 (FOUO, Atomic Energy Act, Standard Forms, US PII/PHI, financial, ITAR, TLP, private keys) plus CUI by its markings (31 dictionaries in seven tiers behind block, caution and monitor rules; see `fed_policy_pack/CUI_MARKINGS.md` for the tier table). Superset of ZBP Enterprise; do not deploy both |
+
+**Retired: the ZBP Endpoint DLP pack.** `zbp_endpoint_dlp_baseline` (PCI
+only: 3 Endpoint DLP rules, 5 sub-rules, 1 application group and the
+`PCI - High / Medium / Low` engines) was retired on 2026-09-11 and is not
+in the library. Every shipped pack now mirrors its rules onto Endpoint DLP
+(`tools/fan_out_channels.py`; the Channels column of the pack library), so a
+PCI-only endpoint pack added no coverage; for PCI on endpoints deploy
+`global_banking_baseline` or `zbp_enterprise_baseline`, whose Endpoint
+rules carry the card-number engines. The machinery it used stays
+(sub-rules, application groups, CONFIRM, `ANY` expansion; section 4.2), and
+*Remove rules from this tenant* (Deploy policy packs) still recognises the
+retired pack's objects by name (`pack_removal.py`), so a tenant that
+deployed it can be cleaned up.
 
 ### From a design file to a pack
 
