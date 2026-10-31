@@ -423,7 +423,7 @@ def test_route_exports_the_sample_tenant_as_a_zip(monkeypatch):
     rep = json.loads(zf.read("tenant-terraform/export_report.json"))
     assert rep["not_exported"], "what was not exported is said, never silent"
     cat = c.get("/api/tenant-terraform/catalogue").json()
-    assert set(cat["products"]) == {"zia", "zpa", "ztc"}
+    assert set(cat["products"]) == {"zia", "zpa", "ztc", "zcc"}
 
 
 @pytest.mark.skipif(shutil.which("terraform") is None, reason="terraform not installed")
