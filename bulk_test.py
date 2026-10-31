@@ -1110,10 +1110,15 @@ class PathEvaluator:
                      if isinstance(r, dict)]
             named = any(app_services.named(r) for r in rules) or any(_f(r, "appServiceGroups") or _f(r, "appServices") for r in rules)
             self._m365 = app_services.current(self.client) if named else None
+            # Other UCaaS providers' kept lists (vendor_endpoints): a row in
+            # Zoom's ranges and one outside them are traced apart too.
+            import vendor_endpoints
+            self._vendors = vendor_endpoints.current() if named else {}
+        vend = tuple(sorted((pid, vl.lookup_ip(ip) if ip is not None else vl.lookup_host(host)) for pid, vl in (self._vendors or {}).items()))
         if self._m365 is None:
-            return None
+            return vend or None
         hits = self._m365.lookup_ip(ip) if ip is not None else self._m365.lookup_host(host)
-        return tuple(sorted({(s["id"], e) for s, e in hits}))
+        return (tuple(sorted({(s["id"], e) for s, e in hits})), vend) if vend else tuple(sorted({(s["id"], e) for s, e in hits}))
 
     def _source_fp(self, src: Optional[str]) -> Any:
         if not src:

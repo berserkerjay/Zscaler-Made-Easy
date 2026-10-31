@@ -17,13 +17,18 @@ a different object, and nothing in the SDK ties one to a ZIA app service
 (an appSvcId there is not documented as a ZIA app service id), so taking
 their addresses as a group's members would be a guess.
 
-So membership comes from one source: Microsoft's published Microsoft 365
-endpoint list (m365_endpoints), for the app services and groups this
-module recognises as Microsoft 365 by name (M365_NAMES; the names are
-assumed, as Zscaler does not publish them through the API). Zscaler
-builds those groups from that list (assumed from its One Click
-documentation). Every other app service, a missing list and a stale list
-leave the criterion "unknown", as it always was.
+So membership comes from the providers' own published lists: Microsoft's
+Microsoft 365 endpoint list (m365_endpoints), for the app services and
+groups this module recognises as Microsoft 365 by name (M365_NAMES; the
+names are assumed, as Zscaler does not publish them through the API), and
+for the other UCaaS providers' groups (ZOOM, WEBEX, RINGCENTRAL, GOTO or
+LOGMEIN, TALKDESK: vendor_endpoints, names assumed) the provider's list,
+imported by hand or, for Zoom, fetched. Zscaler builds those groups from
+those lists (assumed from its One Click documentation). Every other app
+service (Zscaler's own groups among them: their members are not knowable
+from the tenant or the SDK), a missing list and a stale list leave the
+criterion "unknown", as it always was. A provider's list names no ports,
+so its group is taken to hold its endpoints on any port (assumed).
 
 Within the criterion the app services and groups a rule names are
 alternatives (any one is enough, assumed: they are one field in the
@@ -190,13 +195,83 @@ def summary(lst: Optional["m365_endpoints.EndpointList"], now: Optional[_dt.date
 
 # ── The criterion ────────────────────────────────────────────────────
 def criterion(rule: Dict[str, Any], host: str, ip: Any, traffic: Optional[Dict[str, Any]], lst: Optional["m365_endpoints.EndpointList"],
-              *, check_ports: bool = True, now: Optional[_dt.datetime] = None) -> Optional[Dict[str, str]]:
+              *, check_ports: bool = True, now: Optional[_dt.datetime] = None,
+              vendors: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, str]]:
     """The rule's app service criterion for the destination (`host`, and
     `ip` when it is an address), or None when the rule names none.
-    {name, state: match | no_match | unknown, detail}."""
+    {name, state: match | no_match | unknown, detail}. Groups of other
+    UCaaS providers (vendor_endpoints: Zoom, Webex, RingCentral, GoTo,
+    Talkdesk) are matched against the provider's kept list (`vendors`,
+    {provider: VendorList}; None reads the ones kept on disk)."""
     items = named(rule)
     if not items:
         return None
+    import vendor_endpoints
+    by_vendor = [(n, vendor_endpoints.provider_for(n)) for _, n in items if m365_areas(n) is None]
+    if not any(pid for _, pid in by_vendor):
+        return _m365_criterion(rule, items, host, ip, traffic, lst, check_ports=check_ports, now=now)
+    vendors = vendor_endpoints.current() if vendors is None else vendors
+    label = _label(items)
+    what = _short([n for _, n in items])
+    subject = str(ip) if ip is not None else host
+
+    def crit(state: str, detail: str) -> Dict[str, str]:
+        return {"name": label, "state": state, "detail": detail}
+
+    # 1. A provider's current list that holds the destination: match.
+    settled: List[str] = []      # names whose list says the destination is not theirs
+    open_: List[str] = []        # why the others say nothing
+    for n, pid in by_vendor:
+        if pid is None:
+            open_.append(f"the members of {n} are not known (Zscaler does not expose them through the API, and no published list is used)")
+            continue
+        vl = vendors.get(pid)
+        label_p = vendor_endpoints.PROVIDERS[pid]["label"]
+        if vl is None:
+            open_.append(f"no {label_p} list is kept for {n} (import it, or fetch it where {label_p} publishes one, in Advanced settings)")
+            continue
+        if vl.stale(now):
+            open_.append(f"{vl.describe()} was last confirmed more than {_max_age()} days ago, so it settles nothing for {n}")
+            continue
+        hit = vl.lookup_ip(ip) if ip is not None else vl.lookup_host(host)
+        if hit:
+            via = f" ({hit})" if hit != subject else ""
+            return crit("match", f"{subject} is in {vl.describe()}{via}, which {n} is taken to hold (the provider's published endpoints, "
+                                 "on any port: the list names no ports).")
+        if ip is not None:
+            if vl.has_family(4 if ip.version == 4 or ip.ipv4_mapped is not None else 6):
+                settled.append(n)
+            else:
+                open_.append(f"{vl.describe()} has no IPv{ip.version} range to compare {subject} with")
+        elif not vl.nets:
+            settled.append(n)
+        else:
+            open_.append(f"{host} is not a host name in {vl.describe()}, and its address is not resolved here, so whether it is in "
+                         f"{label_p}'s published ranges is not known")
+    # 2. Microsoft 365 groups the rule also names.
+    m365_items = [(k, n) for k, n in items if m365_areas(n) is not None]
+    if m365_items:
+        mc = _m365_criterion({"appServiceGroups": [n for _, n in m365_items]}, m365_items, host, ip, traffic, lst,
+                             check_ports=check_ports, now=now)
+        if mc and mc["state"] == "match":
+            return crit("match", mc["detail"])
+        if mc and mc["state"] == "no_match":
+            settled += [n for _, n in m365_items]
+        elif mc:
+            open_.append(mc["detail"].rstrip("."))
+    if not open_:
+        return crit("no_match", f"{subject} is in none of the published lists of {_short(settled)}.")
+    return crit("unknown", f"Applies only to {what}; " + "; ".join(open_[:3]) + ".")
+
+
+def _max_age() -> int:
+    return m365_endpoints.max_age_days()
+
+
+def _m365_criterion(rule: Dict[str, Any], items: List[Tuple[str, str]], host: str, ip: Any, traffic: Optional[Dict[str, Any]],
+                    lst: Optional["m365_endpoints.EndpointList"], *, check_ports: bool = True,
+                    now: Optional[_dt.datetime] = None) -> Optional[Dict[str, str]]:
+    """The criterion when the only lists that can settle it are Microsoft's."""
     label = _label(items)
     what = _short([n for _, n in items])
     mapped = [(n, m365_areas(n)) for _, n in items]

@@ -12813,6 +12813,89 @@ async def m365_endpoints_remove(request: Request):
     return out
 
 
+# ── Other UCaaS providers' endpoint lists (vendor_endpoints) ──────────
+# Zoom, Webex, RingCentral, GoTo and Talkdesk app service groups. Import
+# by hand for every provider; fetching only for Zoom (the one that
+# publishes a file), off by default and only on Fetch now. Server-wide
+# settings: under SSO only a listed writer may change them.
+class VendorSettings(BaseModel):
+    """Fetch one provider's published list (off by default; only providers that publish a file)."""
+    provider: str = Field("", max_length=20)
+    enabled: bool = False
+
+
+class VendorImport(BaseModel):
+    """One provider's list as text (one address range or host name per line), saved by hand."""
+    provider: str = Field("", max_length=20)
+    content: str = Field("", max_length=1024 * 1024 + 1024)
+
+
+class VendorFetch(BaseModel):
+    provider: str = Field("", max_length=20)
+
+
+@app.get("/api/vendor-endpoints")
+async def vendor_endpoints_status():
+    """Every provider: fetchable or import-only, the setting, the list kept (when, stale or not, counts). Reads nothing remote."""
+    import vendor_endpoints
+    return await asyncio.to_thread(vendor_endpoints.status)
+
+
+@app.put("/api/vendor-endpoints/settings")
+async def vendor_endpoints_settings(req: VendorSettings, request: Request):
+    """Turn fetching one provider's list on or off (fetches nothing by itself). 400 for a provider that publishes no file."""
+    import vendor_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(vendor_endpoints.set_enabled, req.provider, req.enabled)
+    except (vendor_endpoints.ListError, vendor_endpoints.FetchDisabled) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("vendor_endpoints_settings", actor=_actor(request) or _security.current_actor(), provider=req.provider, enabled=bool(req.enabled))
+    return out
+
+
+@app.post("/api/vendor-endpoints/refresh")
+async def vendor_endpoints_refresh(req: VendorFetch, request: Request):
+    """Fetch one provider's list now (only when it publishes one and fetching is on). 409 when off, 502 when refused."""
+    import vendor_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(vendor_endpoints.fetch, req.provider)
+    except vendor_endpoints.FetchDisabled as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except vendor_endpoints.ListError as e:
+        _audit.record("vendor_endpoints_fetch", actor=_actor(request) or _security.current_actor(), provider=req.provider[:20], ok=False, error=str(e)[:200])
+        raise HTTPException(status_code=502, detail=f"The list was not updated: {e} The list kept before is still used.")
+    _audit.record("vendor_endpoints_fetch", actor=_actor(request) or _security.current_actor(), provider=req.provider, ok=True)
+    return out
+
+
+@app.post("/api/vendor-endpoints/import")
+async def vendor_endpoints_import(req: VendorImport, request: Request):
+    """Keep one provider's list saved by hand. Checked as untrusted: refused whole (400), naming the line."""
+    import vendor_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(vendor_endpoints.import_file, req.provider, req.content)
+    except vendor_endpoints.ListError as e:
+        raise HTTPException(status_code=400, detail=f"The list was not imported: {e}")
+    _audit.record("vendor_endpoints_import", actor=_actor(request) or _security.current_actor(), provider=req.provider)
+    return out
+
+
+@app.delete("/api/vendor-endpoints/{provider}")
+async def vendor_endpoints_remove(provider: str, request: Request):
+    """Forget one provider's kept list: its app service groups are unknown again."""
+    import vendor_endpoints
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(vendor_endpoints.remove, provider[:20])
+    except vendor_endpoints.ListError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("vendor_endpoints_remove", actor=_actor(request) or _security.current_actor(), provider=provider[:20])
+    return out
+
+
 @app.get("/api/self-heal")
 async def self_heal_status():
     """The last self-healing run (each check: ok / healed / needs you, what
