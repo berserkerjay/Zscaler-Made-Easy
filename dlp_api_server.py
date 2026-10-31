@@ -874,6 +874,7 @@ class RemediationExecuteRequest(BaseModel):
     confirm: bool = False      # dry_run=false needs confirm=true, the assessor, a writer and write mode
     assessor: str = ""
     profile_id: str = ""
+    plan_hash: str = ""        # dry_run=false also needs the previewed plan's hash (POST /api/remediation/plan or a dry run)
     scopes: List[str] = []     # the Scope page selection (user rule 1): a live fix writes only a policy in scope
     channels: Dict[str, Any] = {}
     from_page: bool = False
@@ -940,19 +941,36 @@ async def remediation_plan(req: RemediationPlanRequest):
 
 
 @app.post("/api/remediation/execute")
-async def remediation_execute(req: RemediationExecuteRequest):
-    """Plan + optionally execute. dry_run=True returns the plan only;
-    dry_run=False needs a writer, confirm=true, the assessor's name and
-    write mode, all checked before the tenant is signed in to."""
+async def remediation_execute(req: RemediationExecuteRequest, request: Request):
+    """Plan + optionally execute. dry_run=True returns the plan only (with
+    its plan_hash); dry_run=False needs a writer, confirm=true, the
+    assessor's name, write mode and the previewed plan_hash, all checked
+    before the tenant is signed in to. The call is re-planned and its hash
+    compared (409 plan_changed when the plan moved), then the tenant is
+    re-read before the write (remediation.execute), and the result audited."""
     try:
-        from remediation import execute
+        import remediation
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Applying a remediation")
         _require_remediation_in_scope(req)
+        want = str(req.plan_hash or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", want):
+            raise HTTPException(status_code=400, detail="Applying a remediation needs the plan you previewed: preview the plan first "
+                                                        "(Preview plan), then apply it; the request must carry that preview's plan_hash. "
+                                                        "Nothing was read or written.")
+        planned = remediation.plan(req.check_id, req.criteria)
+        if planned.get("ok") and planned.get("plan_hash") != want:
+            return JSONResponse({"status": "plan_changed", "message": remediation.PLAN_CHANGED, "plan_hash": planned.get("plan_hash")},
+                                status_code=409)
     client = await asyncio.to_thread(_build_client, req)
-    result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)
+    result = await asyncio.to_thread(remediation.execute, client, req.check_id, req.criteria, req.dry_run,
+                                     None if req.dry_run else str(req.plan_hash).strip().lower())
+    if not req.dry_run:
+        _audit.record("remediation_applied", actor=_actor(request), check_id=str(req.check_id)[:40], status=result.get("status"),
+                      method=result.get("method"), endpoint=str(result.get("endpoint") or "")[:200], plan_hash=result.get("plan_hash"),
+                      http_status=result.get("http_status"), profile=str(req.profile_id or "")[:48] or None)
     return result
 
 
@@ -1366,6 +1384,7 @@ class PackRemovalRequest(TenantCredsRequest):
     all: bool = False      # everything Zscaler Made Easy ever put in the tenant, not just the listed packs
     rules: List[Dict[str, Any]] = []   # pick mode: the rules ({channel, id}) to remove with their engines and dictionaries
     deployment_id: str = ""            # undo mode: what one recorded deployment created
+    confirm_phrase: str = ""           # the typed phrase the preview shows (DELETE <n> OBJECTS); checked against the re-made plan
 
 
 def _writes_disabled_msg() -> str:
@@ -3916,17 +3935,33 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest, request: Request):
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
     _require_tenant_write(req, confirmed=req.confirm, what="Removal")
+    _require_removal_phrase(req)
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     _refuse_offline_apply(creds)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
     result = await asyncio.to_thread(_as_actor, _actor(request), _run_removal, client, req, rec, packs, None, None)
+    if result.get("phrase_mismatch"):
+        raise HTTPException(status_code=400, detail="; ".join(result.get("blockers") or ["Type the phrase the preview shows."]))
     if result.get("status") == "blocked":
         raise HTTPException(status_code=403, detail="; ".join(result.get("blockers") or ["Removal blocked."]))
     if result.get("status") == "stale":
         raise HTTPException(status_code=409, detail="; ".join(result.get("blockers") or ["The removal plan is stale; run the preview again."]))
     return result
+
+
+REMOVAL_PHRASE_NEEDED = ("A removal deletes objects: type the phrase the preview shows (DELETE <n> OBJECTS, where n is the number "
+                         "of objects the removal deletes) to confirm it. Nothing was read or deleted.")
+
+
+def _require_removal_phrase(req: PackRemovalRequest) -> None:
+    """400 before sign-in when the typed phrase is missing or not of the
+    form DELETE <n> OBJECTS; its number is checked against the plan the
+    removal re-makes from a fresh read (pack_removal._execute_run)."""
+    import pack_removal
+    if not pack_removal.PHRASE_SHAPE.match(str(req.confirm_phrase or "")):
+        raise HTTPException(status_code=400, detail=REMOVAL_PHRASE_NEEDED)
 
 
 def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Dict[str, Any]:
@@ -3942,15 +3977,18 @@ def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Di
             log(line)
 
     if rec is not None:
-        result = pack_removal.remove_deployment(client, rec, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel)
+        result = pack_removal.remove_deployment(client, rec, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel,
+                                                confirm_text=req.confirm_phrase)
         if result.get("status") not in ("blocked", "stale", "stopped"):
             import deployments
             updated = deployments.mark_undo(rec["id"], result.get("results") or [], complete=bool((result.get("verification") or {}).get("clean")))
             result["deployment"] = deployments.summary(updated) if updated else None
     elif req.rules:
-        result = pack_removal.remove_selected(client, req.rules, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel)
+        result = pack_removal.remove_selected(client, req.rules, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel,
+                                              confirm_text=req.confirm_phrase)
     else:
-        result = pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel, everything=bool(req.all))
+        result = pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel, everything=bool(req.all),
+                                     confirm_text=req.confirm_phrase)
     result["logs"] = logs
     if result.get("status") in ("blocked", "stale"):
         result["message"] = "; ".join(result.get("blockers") or [
@@ -3969,6 +4007,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
     _require_tenant_write(req, confirmed=req.confirm, what="Removal")
+    _require_removal_phrase(req)
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     _refuse_offline_apply(creds)
@@ -10032,35 +10071,43 @@ async def migrate_optimize(req: OptimizeRequest):
 # ── Step 4: Enable Evaluate All Rules ────────────────────────────
 class EnableRequest(MigrateRequest):
     """Body for enabling Evaluate All Rules (dry run by default; dry_run=false
-    needs confirm=true, the assessor, a writer and write mode)."""
+    needs confirm=true, the assessor, a writer, write mode and the dry run's
+    plan_hash)."""
     dry_run: bool = True
     confirm: bool = False
     assessor: str = ""
+    plan_hash: str = ""
 
 
 @app.post("/api/migrate/enable")
 async def migrate_enable(req: EnableRequest):
-    """Step 4: Enable Evaluate All Rules in ZIA Advanced Settings (dry-run by default)."""
+    """Step 4: Enable Evaluate All Rules in ZIA's settings (dry-run by
+    default). The dry run finds the one setting that holds the mode (reads
+    only) and answers the planned write with its plan_hash; a live run
+    needs that plan_hash, re-reads the setting (plan_changed when it moved)
+    and writes only the field the dry run found. Never a guessed endpoint."""
     try:
         from rule_migrator import enable_evaluate_all_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Enabling Evaluate All Rules")
+        _require_migrate_plan_hash(req)
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
+    return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run, None if req.dry_run else str(req.plan_hash).strip())
 
 
 # ── Step 4b: Delete All Existing Rules (gated) ───────────────────────
 class DeleteAllRequest(MigrateRequest):
     """Body for deleting every Web DLP rule (dry run by default; dry_run=false
-    needs confirm=true, the assessor, a writer, write mode and the dry
-    run's plan_hash)."""
+    needs confirm=true, the assessor, a writer, write mode, the dry run's
+    plan_hash and the typed phrase it shows, DELETE <n> RULES)."""
     dry_run: bool = True
     confirm: bool = False
     assessor: str = ""
     plan_hash: str = ""
+    confirm_phrase: str = ""
 
 
 @app.post("/api/migrate/delete-all")
@@ -10073,9 +10120,17 @@ async def migrate_delete_all(req: DeleteAllRequest):
     if not req.dry_run:
         _require_tenant_write(req, confirmed=req.confirm, what="Deleting every Inline Web DLP rule")
         _require_migrate_plan_hash(req)
+        from rule_migrator import DELETE_PHRASE_SHAPE
+        if not DELETE_PHRASE_SHAPE.match(str(req.confirm_phrase or "")):
+            raise HTTPException(status_code=400, detail="Deleting every Inline Web DLP rule needs the typed phrase the dry run shows "
+                                                        "(DELETE <n> RULES, where n is the number of rules it deletes). Nothing was read or deleted.")
     _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(delete_all_rules, client, req.dry_run, None if req.dry_run else req.plan_hash)
+    out = await asyncio.to_thread(delete_all_rules, client, req.dry_run, None if req.dry_run else req.plan_hash,
+                                  None if req.dry_run else req.confirm_phrase)
+    if out.get("status") == "phrase_mismatch":
+        raise HTTPException(status_code=400, detail=out.get("message") or "Type the phrase the dry run shows. Nothing was deleted.")
+    return out
 
 
 def _require_migrate_plan_hash(req: Any) -> None:

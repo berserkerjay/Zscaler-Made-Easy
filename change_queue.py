@@ -298,8 +298,8 @@ def recipe_plan_hash(check_id: str, plan: Dict[str, Any]) -> str:
     """The hash of a fix recipe's planned call: method, endpoint and body.
     A recipe preview does not read the tenant, so this only changes when
     the recipe or the parameters change."""
-    core = {"check_id": str(check_id), "method": plan.get("method"), "endpoint": plan.get("endpoint"), "body": plan.get("body")}
-    return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    import remediation
+    return remediation.plan_hash(check_id, plan)   # one formula: the direct apply checks the same hash
 
 
 # ── filing ──────────────────────────────────────────────────────────────
