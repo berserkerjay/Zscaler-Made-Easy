@@ -574,6 +574,35 @@ what you get, what to do next.
   chaining** (create or edit a proxy; the SDK cannot create a proxy
   gateway, so the preview lists the portal steps for the gateway, its
   root certificate and the forwarding rule) (`ops_zia_objects.py`).
+  Under **Backups** the same page keeps **configuration backups** of ZIA,
+  ZPA and Client Connector (`config_backup.py`): every object type
+  zscaler-sdk-python 1.11.3 can read (`config_backup.coverage()` says which
+  are restored and cloned, updated only, or kept for comparison and why),
+  only what is in scope, owner-only beside the tenant profile, every secret
+  masked; on demand, from a saved snapshot or the sample tenant (offline),
+  or on a per-profile read-only schedule with a retention count. A
+  per-profile configuration cache keeps a hash per object and says what
+  changed since the last refresh. Compare two backups, a backup and the
+  live tenant, or a backup and the cache field by field (ids, change times,
+  who changed it and counters ignored; references compared by name).
+  **Restore or clone** (`ops_config_restore.py`, one operation type per
+  product) plans from a backup or a template: add what is missing, update
+  what differs, or match exactly with deletes (typed DELETE n OBJECTS), in
+  dependency order, starting with a fresh automatic backup of the target;
+  each write re-reads its object, the first failure or conflict stops the
+  run, ZIA's activation is the plan's shown last step, every item is read
+  back and Undo puts back exactly what was applied (or, if asked before
+  applying, an automatic rollback of a stopped run). A clone remaps every
+  reference by name, lists what cannot be cloned and why and the manual
+  steps (locations, static IPs, GRE tunnels, the proxy gateway), compares
+  the two tenants' subscriptions first, never copies a secret (a VPN
+  credential needs its pre-shared key typed; it reaches the write in memory
+  only), and writes only to the tenant of the saved profile the person has
+  open. Settings can be restored key by key; a re-push plan for what did
+  not arrive is offered after the read-back. **Templates** are picked
+  objects (with what they use), ids removed, names carrying a prefix chosen
+  when they are applied. On the sample tenant or a snapshot, a restore is a
+  rehearsal: plan only.
   Under **Build new** the same page builds Client Connector profiles
   (needs ZCC ticked): pick Windows or macOS, a forwarding profile (best
   practice: tunnel on every network type, the listening-proxy redirect,

@@ -4034,6 +4034,454 @@ async def snapshot_compare_start(req: SnapshotCompareRequest, request: Request):
     return {"job_id": job.id}
 
 
+# ── Configuration backups, diff, templates (config_backup.py) ─────────
+# Backups are read-only reads of ZIA, ZPA and Client Connector kept beside
+# the tenant profiles (owner-only, secrets masked). Restore, clone and
+# template apply are Bulk changes operation types (ops_config_restore.py)
+# and go through /api/operations/* with every write gate; the routes here
+# never write to a tenant.
+
+class ConfigBackupSaveRequest(ScopedTenantCredsRequest):
+    """Save a configuration backup of the live tenant: the products to read
+    (zia, zpa, zcc; only what is in scope on the Scope page is read)."""
+    products: List[str] = []
+    note: str = ""
+    customer_id: str = ""   # ZPA: every ZPA path carries it; blank falls back to the saved profile's
+
+
+class ConfigFromSnapshotRequest(BaseModel):
+    """Keep a saved snapshot or the sample tenant as a backup (offline: no tenant is read)."""
+    snapshot_id: str = ""
+    profile_id: str = ""
+
+
+class ConfigDiffRequest(BaseModel):
+    """Compare two saved sides field by field: a backup id, "cache:<profile id>"
+    (the profile's configuration cache) or a saved snapshot id."""
+    old: str = ""
+    new: str = ""
+    ignore: List[str] = []
+
+
+class ConfigDiffLiveRequest(ScopedTenantCredsRequest):
+    """Compare a backup with the live tenant, read now (read-only, in scope)."""
+    backup_id: str = ""
+    ignore: List[str] = []
+    customer_id: str = ""
+
+
+class ConfigScheduleRequest(BaseModel):
+    """A profile's backup schedule (read-only, so it may run unattended)."""
+    profile_id: str = ""
+    enabled: bool = False
+    every_hours: int = 24
+    keep: int = 10
+    products: List[str] = []
+
+
+class ConfigTemplateExportRequest(BaseModel):
+    """Make a template from a backup: the picked objects ({type, name})."""
+    backup_id: str = ""
+    objects: List[Dict[str, Any]] = []
+    name: str = ""
+    description: str = ""
+    strip_prefix: str = ""
+    with_dependencies: bool = True
+
+
+class ConfigTemplateImportRequest(BaseModel):
+    """A template file chosen in the browser (checked as untrusted)."""
+    content: str = ""
+
+
+class ConfigRehearseRequest(BaseModel):
+    """Plan a restore, clone or template apply against a saved copy instead
+    of a tenant: the operation and the target ("sample", a snapshot id or a
+    backup id). Plan only; no client is built."""
+    operation: Dict[str, Any] = {}
+    target: str = ""
+
+
+def _cfg_err(e: Exception, status: int = 400) -> HTTPException:
+    return HTTPException(status_code=status, detail=str(e))
+
+
+def _cfg_products(products: List[str], scopes_req: Any) -> Tuple[List[str], Dict[str, Any]]:
+    """The products to read and the admin_ops scope; 400 before any sign-in
+    when nothing asked for is in scope (user rule 1)."""
+    import admin_ops
+    import config_backup as cb
+    sc, ch, source = _scope_selection(scopes_req)
+    scope = admin_ops.scope_for(sc, ch)
+    want = [p for p in (products or list(cb.PRODUCTS)) if p in cb.PRODUCTS]
+    ok = [p for p in want if any(cb.allowed(t, scope) for t in cb.types_for(p))]
+    if not ok:
+        raise HTTPException(status_code=400, detail="Nothing to back up is in scope: on the Scope page tick ZIA platform or DLP (ZIA), ZPA or "
+                                                    "Client Connector, then try again. Nothing was read.")
+    return ok, scope
+
+
+def _cfg_offline_doc(source_id: str) -> Dict[str, Any]:
+    """A saved snapshot or the sample tenant read into the backup form
+    (offline client: no network code)."""
+    import config_backup as cb
+    st = _offline.store(source_id) if (source_id == _offline.SAMPLE or str(source_id).startswith("snap-")) else None
+    if st is None:
+        raise HTTPException(status_code=404, detail="That snapshot is not saved any more.")
+    return cb.from_offline(st)
+
+
+def _cfg_side(ref: str) -> Dict[str, Any]:
+    import config_backup as cb
+    ref = str(ref or "")
+    try:
+        if cb.BACKUP_ID.match(ref):
+            return cb.load_backup(ref)
+        if ref.startswith("cache:"):
+            doc = cb.cache_as_backup(ref[6:])
+            if doc is None:
+                raise HTTPException(status_code=404, detail="That profile has no configuration cache yet: refresh it first.")
+            return doc
+    except cb.BackupError as e:
+        raise _cfg_err(e, 404)
+    if ref == _offline.SAMPLE or _offline.SOURCE_RE.match(ref):
+        return _cfg_offline_doc(ref)
+    raise HTTPException(status_code=404, detail="Pick a saved backup, a profile's cache or a saved snapshot.")
+
+
+def _cfg_by(a: Dict[str, Any], b: Dict[str, Any]) -> str:
+    """Match by id within one tenant, by name across tenants."""
+    ka, kb = a.get("meta") or {}, b.get("meta") or {}
+    for k in ("tenant_key", "tenant_fp"):
+        if ka.get(k) and ka.get(k) == kb.get(k):
+            return "id"
+    return "name"
+
+
+@app.get("/api/config-backups")
+async def config_backups_list():
+    """Saved configuration backups, templates and schedules, and what each
+    product's backup covers. Reads nothing from a tenant."""
+    import config_backup as cb
+    caches = {}
+    try:
+        import tenant_profiles
+        for p in tenant_profiles.list_profiles():
+            got = cb.cache_summary(p["id"]) if cb.CACHE_KEY.match(str(p.get("id") or "")) else None
+            if got:
+                caches[p["id"]] = got
+    except Exception:  # noqa: BLE001 - an unreadable profile store lists no caches
+        caches = {}
+    return {"backups": cb.list_backups(), "templates": cb.list_templates(), "schedules": cb.schedules(), "caches": caches,
+            "coverage": cb.coverage()}
+
+
+@app.post("/api/config-backups/save/start")
+async def config_backup_save_start(req: ConfigBackupSaveRequest, request: Request):
+    """Save a configuration backup of the live tenant as a job: read-only,
+    only what is in scope, secrets masked, kept beside the profile."""
+    import config_backup as cb
+    import pack_jobs
+    import tenant_fingerprint
+    import tenant_profiles
+    if _offline.current_source():
+        raise HTTPException(status_code=409, detail="This browser is using the sample tenant or a snapshot. Keep it as a backup with "
+                                                    "'Keep a snapshot as a backup', or choose Leave first.")
+    products, scope = _cfg_products(req.products, req)
+    with _offline.using(None):
+        creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to save a backup.")
+    if "zpa" in products:
+        _ops_zpa_gate("zpa_domains", creds)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    pid = req.profile_id if (req.profile_id and tenant_profiles.get(req.profile_id)) else ""
+
+    def run(log, cancel):
+        got = cb.capture(client, products, scope, log, cancel)
+        if got["stopped"]:
+            return {"stopped": True}
+        if not got["types"]:
+            raise RuntimeError("Nothing could be read from the tenant, so no backup was saved.")
+        meta = {"tenant_label": label, "saved_at": cb._now(), "products": products, "kind": "manual", "profile_id": pid,
+                "scopes": scope.get("scopes"), "unread": got["unread"], "note": req.note}
+        meta.update(tenant_fingerprint.record_ids(creds))
+        entry = cb.save_backup(cb.build_doc(got["types"], meta))
+        if pid:
+            cb.refresh_cache(pid, got["types"], meta)
+        pack_jobs.write_audit("config_backup", actor=_actor(request), backup=entry["id"], tenant=label, kind="manual",
+                              objects=entry.get("objects", 0))
+        log(f"Backup saved: {entry.get('objects', 0)} objects of {entry.get('types', 0)} types, secrets masked.")
+        return {"backup": entry, "unread": got["unread"], "out_of_scope": got["out_of_scope"]}
+
+    job = pack_jobs.start("config-backup", lambda log, cancel: _keyed(client, run, log, cancel), label=label[:80], actor=_actor(request),
+                          start_token=_start_token(request))
+    return {"job_id": job.id}
+
+
+@app.post("/api/config-cache/refresh/start")
+async def config_cache_refresh_start(req: ConfigBackupSaveRequest, request: Request):
+    """Refresh a profile's configuration cache as a job: a read-only read of
+    what is in scope, stored object by object with a hash, and what changed
+    since the last refresh."""
+    import config_backup as cb
+    import pack_jobs
+    import tenant_fingerprint
+    import tenant_profiles
+    if not (req.profile_id and tenant_profiles.get(req.profile_id)):
+        raise HTTPException(status_code=400, detail="Pick a saved tenant profile: the cache belongs to one.")
+    if _offline.current_source():
+        raise HTTPException(status_code=409, detail="This browser is using the sample tenant or a snapshot: choose Leave first.")
+    products, scope = _cfg_products(req.products, req)
+    with _offline.using(None):
+        creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to refresh the cache.")
+    if "zpa" in products:
+        _ops_zpa_gate("zpa_domains", creds)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+
+    def run(log, cancel):
+        got = cb.capture(client, products, scope, log, cancel)
+        if got["stopped"]:
+            return {"stopped": True}
+        meta = {"tenant_label": label, "saved_at": cb._now(), "products": products, "profile_id": req.profile_id, "unread": got["unread"]}
+        meta.update(tenant_fingerprint.record_ids(creds))
+        out = cb.refresh_cache(req.profile_id, got["types"], meta)
+        log(f"Cache refreshed: {out['objects']} objects; {sum(len(v) for c in out['changes'].values() for v in c.values())} changed since the last refresh.")
+        return out
+
+    job = pack_jobs.start("config-cache", lambda log, cancel: _keyed(client, run, log, cancel), label=label[:80], actor=_actor(request),
+                          start_token=_start_token(request))
+    return {"job_id": job.id}
+
+
+@app.post("/api/config-backups/from-snapshot")
+async def config_backup_from_snapshot(req: ConfigFromSnapshotRequest):
+    """Keep a saved snapshot (or the sample tenant) as a configuration
+    backup: read through the offline client, so no tenant is reached."""
+    import config_backup as cb
+    import tenant_profiles
+    sid = str(req.snapshot_id or "")
+    if not (sid == _offline.SAMPLE or tenant_profiles.SNAPSHOT_ID.match(sid)):
+        raise HTTPException(status_code=404, detail="Pick a saved snapshot or the sample tenant.")
+    doc = await asyncio.to_thread(_cfg_offline_doc, sid)
+    if req.profile_id and tenant_profiles.get(req.profile_id):
+        doc["meta"]["profile_id"] = req.profile_id
+    try:
+        entry = await asyncio.to_thread(cb.save_backup, doc)
+    except cb.BackupError as e:
+        raise _cfg_err(e)
+    return {"backup": entry}
+
+
+@app.get("/api/config-backups/{backup_id}/download")
+async def config_backup_download(backup_id: str):
+    """A saved backup as a file (secrets were never in it)."""
+    import config_backup as cb
+    try:
+        raw = await asyncio.to_thread(cb.read_backup_raw, backup_id)
+    except cb.BackupError as e:
+        raise _cfg_err(e, 404)
+    fname = f"zscaler-config-backup-{backup_id[3:]}.json"   # the id matched ^bk-[0-9a-f]{16}$ (cb.read_backup_raw)
+    return Response(raw, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@app.post("/api/config-backups/{backup_id}/delete")
+async def config_backup_delete(backup_id: str):
+    """Delete a saved backup (the file and its place in the list)."""
+    import config_backup as cb
+    try:
+        ok = cb.delete_backup(backup_id)
+    except cb.BackupError as e:
+        raise _cfg_err(e, 404)
+    if not ok:
+        raise HTTPException(status_code=404, detail="No such backup.")
+    return {"deleted": backup_id}
+
+
+@app.post("/api/config-backups/diff")
+async def config_backup_diff(req: ConfigDiffRequest):
+    """Field-level diff of two saved sides (backups, a profile's cache or
+    saved snapshots). Reads no tenant."""
+    import config_backup as cb
+    old = await asyncio.to_thread(_cfg_side, req.old)
+    new = await asyncio.to_thread(_cfg_side, req.new)
+    out = cb.diff(old, new, ignore=[str(x) for x in (req.ignore or [])][:50], by=_cfg_by(old, new))
+    out.update(old_label=(old.get("meta") or {}).get("tenant_label") or "", new_label=(new.get("meta") or {}).get("tenant_label") or "",
+               old_saved=(old.get("meta") or {}).get("saved_at") or "", new_saved=(new.get("meta") or {}).get("saved_at") or "")
+    return out
+
+
+@app.post("/api/config-backups/diff-live/start")
+async def config_backup_diff_live_start(req: ConfigDiffLiveRequest, request: Request):
+    """Field-level diff of a backup and the live tenant, as a job: the live
+    tenant is read (read-only, only what is in scope and what the backup holds)."""
+    import config_backup as cb
+    import pack_jobs
+    import tenant_fingerprint
+    try:
+        old = await asyncio.to_thread(cb.load_backup, req.backup_id)
+    except cb.BackupError as e:
+        raise _cfg_err(e, 404)
+    products, scope = _cfg_products(old["meta"].get("products") or [], req)
+    creds = _tenant_creds(req)
+    if "zpa" in products and not _offline.is_offline_creds(creds):
+        _ops_zpa_gate("zpa_domains", creds)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds) if not _offline.is_offline_creds(creds) else _offline.label_for(creds)
+    ids = tenant_fingerprint.record_ids(creds) if not _offline.is_offline_creds(creds) else {}
+
+    def run(log, cancel):
+        got = cb.capture(client, products, scope, log, cancel, only=list(old["types"]))
+        if got["stopped"]:
+            return {"stopped": True}
+        new = {"meta": dict(ids, tenant_label=label), "types": got["types"]}
+        out = cb.diff(old, new, ignore=[str(x) for x in (req.ignore or [])][:50], by=_cfg_by(old, new))
+        log(f"Compared {out['compared']} object types: {out['totals']['added']} added, {out['totals']['removed']} removed, "
+            f"{out['totals']['changed']} changed.")
+        return dict(out, old_label=old["meta"].get("tenant_label") or "", old_saved=old["meta"].get("saved_at") or "", new_label=label,
+                    unread=got["unread"])
+
+    job = pack_jobs.start("config-diff", lambda log, cancel: _keyed(client, run, log, cancel), label=label[:80], actor=_actor(request),
+                          start_token=_start_token(request))
+    return {"job_id": job.id}
+
+
+@app.post("/api/config-backups/schedule")
+async def config_backup_schedule(req: ConfigScheduleRequest):
+    """Set a profile's backup schedule: every N hours (1 to 168), keep the
+    newest K (1 to 100). Read-only backups only; nothing is ever applied."""
+    import config_backup as cb
+    try:
+        return cb.schedule(req.profile_id, enabled=req.enabled, every_hours=req.every_hours, keep=req.keep, products=req.products)
+    except cb.BackupError as e:
+        raise _cfg_err(e)
+
+
+@app.post("/api/config-templates/export")
+async def config_template_export(req: ConfigTemplateExportRequest):
+    """Make a portable template from a backup: the picked objects (and what
+    they use), ids removed, names parameterised with {{prefix}}, no secret."""
+    import config_backup as cb
+    try:
+        doc = await asyncio.to_thread(cb.load_backup, req.backup_id)
+        tpl = cb.make_template(doc, req.objects, name=req.name, description=req.description, strip_prefix=req.strip_prefix,
+                               with_dependencies=req.with_dependencies)
+        return {"template": await asyncio.to_thread(cb.save_template, tpl)}
+    except cb.BackupError as e:
+        raise _cfg_err(e)
+
+
+@app.post("/api/config-templates/import")
+async def config_template_import(req: ConfigTemplateImportRequest):
+    """Keep a template file chosen in the browser (an untrusted file: size,
+    nesting, format, types and every reference are checked)."""
+    import config_backup as cb
+    try:
+        tpl = cb.parse_template(req.content)
+        return {"template": await asyncio.to_thread(cb.save_template, tpl)}
+    except cb.BackupError as e:
+        raise _cfg_err(e)
+
+
+@app.get("/api/config-templates/{template_id}/download")
+async def config_template_download(template_id: str):
+    import config_backup as cb
+    try:
+        raw = await asyncio.to_thread(cb.read_template_raw, template_id)
+    except cb.BackupError as e:
+        raise _cfg_err(e, 404)
+    fname = f"zscaler-config-template-{template_id[4:]}.json"   # the id matched ^tpl-[0-9a-f]{16}$ (cb.read_template_raw)
+    return Response(raw, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@app.post("/api/config-templates/{template_id}/delete")
+async def config_template_delete(template_id: str):
+    import config_backup as cb
+    try:
+        ok = cb.delete_template(template_id)
+    except cb.BackupError as e:
+        raise _cfg_err(e, 404)
+    if not ok:
+        raise HTTPException(status_code=404, detail="No such template.")
+    return {"deleted": template_id}
+
+
+@app.post("/api/config-backups/rehearse")
+async def config_backup_rehearse(req: ConfigRehearseRequest):
+    """Rehearse a restore, clone or template apply: the plan is made against
+    the sample tenant, a saved snapshot or a backup, never a tenant. No
+    client is built, and nothing can be applied from it."""
+    import admin_ops
+    import config_backup as cb
+    import ops_config_restore as ocr
+    admin_ops.load_plugins()
+    op = req.operation if isinstance(req.operation, dict) else {}
+    product = ocr.PRODUCT_OF.get(str(op.get("type") or ""))
+    if product is None:
+        raise HTTPException(status_code=400, detail="Pick ZIA, ZPA or Client Connector.")
+    target = await asyncio.to_thread(_cfg_side, req.target)
+    try:
+        nspec = ocr.check_spec(dict(op, target_profile_id=op.get("target_profile_id") or ("rehearsal" if op.get("target") == "other" else "")),
+                               product)
+        source, _meta, what = ocr._load_source(nspec, product)
+        return await asyncio.to_thread(ocr.rehearse, source, target["types"], op, tenant_label=(target.get("meta") or {}).get("tenant_label") or "",
+                                       what=what)
+    except (admin_ops.OperationError, cb.BackupError) as e:
+        raise _cfg_err(e)
+
+
+def _cfg_profile_matches(profile_id: str, creds: Dict[str, Any]) -> bool:
+    """Do these credentials sign in to the tenant of that saved profile?"""
+    import tenant_fingerprint
+    import tenant_profiles
+    prof = tenant_profiles.get(profile_id) if profile_id else None
+    if not prof:
+        return False
+    stored = tenant_auth.normalize(tenant_profiles.creds_from(prof))
+    rec = dict(tenant_fingerprint.record_ids(stored), tenant_label=tenant_auth.record_label(stored))
+    return tenant_fingerprint.same_tenant(rec, creds)
+
+
+def _cfg_restore_gate(req: Any, creds: Dict[str, Any], *, apply: bool) -> None:
+    """Every refusal a restore, clone or template apply makes before it signs
+    in: a rehearsal on the sample or a snapshot is plan only; "same" must be
+    the backup's own tenant; a clone or template writes only to the tenant
+    of the saved profile the person has open (entitlement on the target)."""
+    import config_backup as cb
+    import ops_config_restore as ocr
+    op = req.operation if isinstance(req.operation, dict) else {}
+    if str(op.get("type") or "") not in ocr.PRODUCT_OF:
+        return
+    if _offline.is_offline_creds(creds):
+        if apply:
+            raise HTTPException(status_code=409, detail="Rehearsal only: this browser is using the sample tenant or a snapshot, so the "
+                                                        "plan can be previewed but never applied. Choose Leave to work on a live tenant.")
+        return
+    if str(op.get("action") or "") == "undo":
+        return
+    src = op.get("source") if isinstance(op.get("source"), dict) else {}
+    target = str(op.get("target") or "")
+    if "backup" in src:
+        meta = cb.backup_meta(str(src["backup"]))
+        if meta is None:
+            raise HTTPException(status_code=404, detail="That backup is not saved any more.")
+        import tenant_fingerprint
+        same = tenant_fingerprint.same_tenant(meta, creds)
+        if target == "same" and not same:
+            raise HTTPException(status_code=409, detail=f"This backup is of {meta.get('tenant_label') or 'another tenant'}, not the tenant "
+                                                        "this page is signed in to: pick 'another tenant (clone)', or switch tenant. Nothing was read.")
+    if target == "other":
+        pid = str(op.get("target_profile_id") or "")
+        if not pid or pid != str(getattr(req, "profile_id", "") or "") or not _cfg_profile_matches(pid, creds):
+            raise HTTPException(status_code=403, detail="A clone or template writes only to a tenant you have open: pick the target "
+                                                        "tenant's saved profile in the Tenant list (its sign-in is used), then preview "
+                                                        "again. Nothing was read.")
+
+
 def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
     import pack_deploy
     from dlp_importer import discover_packs
@@ -5305,6 +5753,9 @@ class OperationRequest(OperationCredsRequest):
     confirm: bool = False
     confirm_text: str = ""
     undo_of: str = ""
+    # Restore / clone only (ops_config_restore): pre-shared keys typed on the
+    # page, by VPN credential name. Held in memory for the apply, never stored.
+    secrets: Dict[str, str] = {}
 
 
 OPS_ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name, or the field on this page) before applying a "
@@ -5387,18 +5838,38 @@ def _run_ops_apply(client, creds: Dict[str, str], req: OperationRequest, scope: 
                    log, cancel) -> Dict[str, Any]:
     import admin_ops
     label = tenant_auth.record_label(creds)
+    import ops_config_restore as ocr
+    restore = str((req.operation or {}).get("type") or "") in ocr.PRODUCT_OF
+    if restore:   # typed secrets and the tenant's ids reach the run in memory, never through the operation
+        ocr.provide(req.plan_hash, secrets=req.secrets, tenant_ids=_record_ids(creds))
     try:
         result = admin_ops.execute(client, req.operation, plan_hash=req.plan_hash, scope=scope, writes_enabled=True,
                                    confirm_text=req.confirm_text, assessor=by, tenant_label=label, log=log, cancel=cancel)
     except admin_ops.OperationError as e:
         return {"status": "refused", "message": str(e), "tenant_label": label}
+    finally:
+        if restore:
+            ocr._take(req.plan_hash)
     result["writes_enabled"] = True
+    rec = None
     try:
         rec = admin_ops.record(result, by=by, actor=actor, undo_of=req.undo_of, tenant_ids=_record_ids(creds))
         if rec:
             result["operation_id"] = rec["id"]
     except Exception as e:  # noqa: BLE001 — a bookkeeping failure must not hide what was applied
         result["record_error"] = f"the change was not recorded for undo: {str(e)[:200]}"
+    if restore:
+        result["repush"] = ocr.repush_spec(result)
+        spec = result.get("spec") or {}
+        if (spec.get("rollback_on_stop") and rec and result.get("inverse")
+                and result.get("status") in ("stopped", "failed", "partial")):
+            import pack_jobs
+            pack_jobs.write_audit("config_rollback", actor=actor, operation=rec["id"], tenant=label, by=by, reason=str(result.get("stopped") or "")[:200])
+            back = ocr.rollback(client, result["inverse"], scope=scope, assessor=by, tenant_label=label, log=log)
+            back_rec = admin_ops.record(back, by=by, actor=actor, undo_of=rec["id"], tenant_ids=_record_ids(creds)) if back.get("items") else None
+            result["rollback"] = {"status": back.get("status"), "counts": back.get("counts_run") or back.get("counts"),
+                                  "operation_id": (back_rec or {}).get("id"), "stopped": back.get("stopped"),
+                                  "items": [{k: u.get(k) for k in ("object", "field", "status", "reason", "error")} for u in back.get("items") or []][:500]}
     return result
 
 
@@ -5471,6 +5942,7 @@ async def operations_preview_start(req: OperationRequest, request: Request):
     scope = _ops_scope(req, req.operation)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
+    _cfg_restore_gate(req, creds, apply=False)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
     job = pack_jobs.start("ops_preview", lambda log, cancel: _keyed(client, _run_ops_preview, client, req, scope, label, log, cancel),
@@ -5484,6 +5956,7 @@ async def operations_preview(req: OperationRequest):
     scope = _ops_scope(req, req.operation)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
+    _cfg_restore_gate(req, creds, apply=False)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds), None, None)
     if out.get("status") == "refused":
@@ -5502,6 +5975,7 @@ async def operations_apply_start(req: OperationRequest, request: Request):
     scope, by = _ops_apply_gate(req)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
+    _cfg_restore_gate(req, creds, apply=True)
     if req.undo_of:
         import deployments
         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
@@ -5519,6 +5993,7 @@ async def operations_apply(req: OperationRequest, request: Request):
     scope, by = _ops_apply_gate(req)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
+    _cfg_restore_gate(req, creds, apply=True)
     if req.undo_of:
         import deployments
         _require_same_tenant(deployments.get_operation(req.undo_of) or {}, creds)
@@ -9845,6 +10320,31 @@ async def _self_heal_loop(minutes: float) -> None:
         return
     except Exception:  # noqa: BLE001 - the timer never takes the server down
         return
+
+
+async def _config_backup_loop(minutes: int) -> None:
+    """Scheduled configuration backups (config_backup.run_due): read-only,
+    each profile on its own Scope page selection; nothing is ever applied."""
+    import config_backup
+    while True:
+        try:
+            await asyncio.sleep(minutes * 60)
+            await asyncio.to_thread(config_backup.run_due, _build_sdk_client)
+        except asyncio.CancelledError:
+            return
+        except Exception:  # noqa: BLE001 - the timer never takes the server down
+            continue
+
+
+@app.on_event("startup")
+async def _start_config_backups() -> None:
+    try:
+        import config_backup
+        minutes = config_backup.interval_minutes()
+        if minutes > 0:
+            asyncio.create_task(_config_backup_loop(minutes))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @app.on_event("startup")

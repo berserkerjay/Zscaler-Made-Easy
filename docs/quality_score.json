@@ -320,12 +320,13 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 48,
+            "fixed": 51,
             "accepted": 0,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
-              "func-builders"
+              "func-builders",
+              "w7-restore-clone"
             ]
           },
           "coverage": {
@@ -439,7 +440,7 @@
     }
   ],
   "counts": {
-    "findings": 596,
+    "findings": 599,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -448,7 +449,7 @@
       },
       "high": {
         "open": 0,
-        "fixed": 13,
+        "fixed": 14,
         "accepted": 0
       },
       "medium": {
@@ -458,22 +459,22 @@
       },
       "low": {
         "open": 1,
-        "fixed": 344,
+        "fixed": 345,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 51,
+        "fixed": 52,
         "accepted": 25
       }
     },
     "checks": {
-      "pass": 333,
+      "pass": 350,
       "fixed": 310,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8932
+    "tests_added": 8999
   },
   "findings": [
     {
@@ -1115,6 +1116,22 @@
       "slug": "func-path",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7-RC-01",
+      "title": "A template made from an in-memory (unmasked) backup kept a secret-named field's value",
+      "severity": "high",
+      "status": "fixed",
+      "cwe": "CWE-312",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "make_template masks the backup again and drops every secret-named field whatever its value",
+      "test": "tests/test_config_backup.py::test_secret_canaries_never_reach_a_template",
+      "commit": "2536b5f",
+      "reason": "",
+      "slug": "w7-restore-clone",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ADMIN-OPS-01",
@@ -9197,6 +9214,22 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W7-RC-02",
+      "title": "A boolean field named like a reference (zscalerIncidentReceiver) was read as an object id, so every DLP rule looked unclonable",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-704",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "booleans are never references; the field is no longer listed as one",
+      "test": "tests/test_config_restore.py::test_a_clone_creates_dependencies_first_and_remaps_every_id_by_name",
+      "commit": "2536b5f",
+      "reason": "",
+      "slug": "w7-restore-clone",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -10011,6 +10044,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-RC-03",
+      "title": "Gap closed: the other configuration tool restored and cloned without a fresh target backup, a typed delete phrase, a target entitlement check or an exact Undo; this app now does all of it on the Bulk changes engine",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "V1.14.6",
+      "wcag": "",
+      "fix": "ops_config_restore.py on admin_ops; config_backup.py",
+      "test": "tests/test_config_restore.py",
+      "commit": "2536b5f",
+      "reason": "",
+      "slug": "w7-restore-clone",
+      "area": "functionality",
+      "sub_area": "builders"
     }
   ],
   "records": [
@@ -10958,6 +11007,32 @@
       "checks": 9,
       "findings": 6,
       "tests_added": 126
+    },
+    {
+      "slug": "w7-restore-clone",
+      "area": "Configuration backups, diff, restore, clone and templates (ZIA, ZPA, Client Connector)",
+      "title": "Backups with secrets masked, field-level diff, restore and cross-tenant clone through the write gates, templates, cache, schedules",
+      "standards": [
+        "ASVS V1.14.6",
+        "ASVS V4.2.1",
+        "ASVS V5.1.3",
+        "ASVS V8.3.4",
+        "ASVS V11.1.1",
+        "ASVS V11.1.6",
+        "WSTG-ATHZ-02",
+        "WSTG-ATHZ-04",
+        "CWE-20",
+        "CWE-312",
+        "CWE-362",
+        "CWE-639",
+        "CWE-754",
+        "CWE-1023",
+        "CWE-1188",
+        "CISA Secure by Design"
+      ],
+      "checks": 17,
+      "findings": 3,
+      "tests_added": 67
     },
     {
       "slug": "w7-rule-editor",

@@ -270,6 +270,21 @@ def _opened_snapshot(sel: Dict[str, Any]) -> Dict[str, Any]:
     return dict(CREDS, snapshot_id=st.id, **sel)
 
 
+def _cache_profile(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A saved profile the configuration cache belongs to; the page's selection is sent."""
+    import tenant_profiles
+    pid = tenant_profiles.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": CREDS["client_id"]})["id"]
+    return dict(CREDS, profile_id=pid, **sel)
+
+
+def _saved_backup(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A saved configuration backup of ZIA, ZPA and Client Connector, to compare with the live tenant."""
+    import config_backup
+    doc = config_backup.build_doc({"zia.rule_labels": [], "zpa.segment_groups": [], "zcc.trusted_networks": []},
+                                  {"tenant_label": "acme (production)", "products": ["zia", "zpa", "zcc"]})
+    return dict(CREDS, backup_id=config_backup.save_backup(doc)["id"], **sel)
+
+
 def _pov_for(sel: Dict[str, Any]) -> Dict[str, Any]:
     """A saved tenant profile with a POV: Prove it and the Insights counts record on it."""
     import pov
@@ -407,6 +422,11 @@ ROUTES: List[Route] = [
     Route("/api/tenant-profiles/snapshots/save/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/tenant-profiles/snapshots/compare/start", setup=_opened_snapshot),
     Route("/api/tenant-profiles/snapshots/compare/start", setup=_opened_snapshot, partial=ZCC, out=ZCC_OUT),
+    # Configuration backups (config_backup): a backup, the per-profile cache, and a backup compared with the live tenant
+    Route("/api/config-backups/save/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/config-backups/save/start", partial=ZCC, out=ZCC_OUT),
+    Route("/api/config-cache/refresh/start", setup=_cache_profile, partial=ZPA, out=ZPA_OUT),
+    Route("/api/config-backups/diff-live/start", setup=_saved_backup, partial=ZPA, out=ZPA_OUT),
     Route("/api/digests/run", setup=_profile_from, nothing=200,
           why="by design: the loop reads saved profiles, and one with nothing in scope is reported 'not read' in the digest"),
 ]

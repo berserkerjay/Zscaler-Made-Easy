@@ -4854,6 +4854,206 @@ window.HELP_CATALOG = {
     "what": "Starts an Undo of this change. It previews the Undo first. Nothing is written until you apply it.",
     "input": "Nothing to type. Just click it.",
     "effect": "read"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"config_restore_zia\"]": {
+    "what": "Picks restore or clone for ZIA. It restores this tenant from a backup, clones another tenant's backup into it, or applies a template.",
+    "input": "Tick it, then click Read from the tenant to show the form. It lists the saved backups and reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"config_restore_zpa\"]": {
+    "what": "Picks restore or clone for ZPA. It restores this tenant from a backup, clones another tenant's backup into it, or applies a template.",
+    "input": "Tick it, then click Read from the tenant to show the form. It lists the saved backups and reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "#opBuildKinds input[name=\"opKind\"][value=\"config_restore_zcc\"]": {
+    "what": "Picks restore or clone for Client Connector. It restores this tenant from a backup, clones another tenant's backup into it, or applies a template.",
+    "input": "Tick it, then click Read from the tenant to show the form. It lists the saved backups and reads nothing from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"crSrc\"]": {
+    "what": "Picks where the objects come from: a saved backup or a template.",
+    "input": "Tick one.",
+    "effect": "local"
+   },
+   "input[name=\"crBackup\"]": {
+    "what": "Picks the backup to restore or clone from.",
+    "input": "Tick one row. Each row says when it was saved and which tenant it is of.",
+    "effect": "local"
+   },
+   "button[data-crdel]": {
+    "what": "Deletes this backup file from this computer. The tenant is not changed.",
+    "input": "Click it, then confirm. This cannot be undone.",
+    "effect": "local"
+   },
+   "#opObjects a[href^=\"/api/config-backups/\"]": {
+    "what": "Downloads this backup as a file. It holds no secret.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "download"
+   },
+   "#crTemplate": {
+    "what": "Picks the template to apply.",
+    "input": "Pick one from the list. Make or import one under the tools below.",
+    "effect": "local"
+   },
+   "#crPrefix": {
+    "what": "Sets the text put in front of the name of each object the template makes.",
+    "input": "Optional. Up to 20 letters, digits, spaces and . _ -, like ACME-.",
+    "effect": "local"
+   },
+   "input[name=\"crTarget\"]": {
+    "what": "Says whether this tenant is the backup's own tenant or another one. Another tenant means a clone: objects are matched by name.",
+    "input": "Tick one. A clone works only on the saved profile picked in the Tenant list.",
+    "effect": "local"
+   },
+   "input[name=\"crMode\"]": {
+    "what": "Picks how far the plan goes: add what is missing, also update what differs, or match the source exactly. Matching exactly also deletes.",
+    "input": "Tick one. Deletes need DELETE and the count typed to confirm.",
+    "effect": "local"
+   },
+   "input[data-crtype]": {
+    "what": "Includes this kind of object in the restore.",
+    "input": "Tick or untick it. All are ticked to start with.",
+    "effect": "local"
+   },
+   "input[data-crkeys]": {
+    "what": "Limits a settings restore to the keys you name. The other keys keep the target's value.",
+    "input": "Optional. Key names split by commas, like enable_office365. Blank means all keys.",
+    "effect": "local"
+   },
+   "#crKeep": {
+    "what": "Keeps each rule on or off as it is in the source. When it is off, new rules are made turned off.",
+    "input": "Tick it to keep the source's state.",
+    "effect": "local"
+   },
+   "#crActivate": {
+    "what": "Activates the ZIA changes as the last step of the plan. When it is off, they wait in ZIA.",
+    "input": "Untick it to activate later in the portal.",
+    "effect": "local"
+   },
+   "#crAck": {
+    "what": "Says you checked the licences. A clone is blocked while the target lacks a subscription the source has.",
+    "input": "Tick it only after you checked the two tenants' licences.",
+    "effect": "local"
+   },
+   "#crRollback": {
+    "what": "Undoes what a run applied at once if the run stops or fails. Without it, Undo is offered.",
+    "input": "Tick it before you apply.",
+    "effect": "local"
+   },
+   "#crPskName": {
+    "what": "Names the VPN credential whose key you type next.",
+    "input": "Its FQDN or IP address, like branch@corp.example.",
+    "effect": "local"
+   },
+   "#crPskValue": {
+    "what": "Takes the pre-shared key of that VPN credential. No backup holds one. It is sent with the apply only and never kept.",
+    "input": "The key, as the branch device has it.",
+    "effect": "local"
+   },
+   "#crPskAdd": {
+    "what": "Keeps the typed key in this page until the apply.",
+    "input": "Type the name and the key first. Then click it.",
+    "effect": "local"
+   },
+   "#crSave": {
+    "what": "Saves a backup of this tenant now. It reads only what is in scope on the Scope page. Nothing is written to the tenant.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#crFromSample": {
+    "what": "Keeps the made-up sample tenant as a backup, to rehearse with. No tenant is read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#crCache": {
+    "what": "Reads this tenant into its local cache and says what changed since the last time. Nothing is written to the tenant.",
+    "input": "Pick a saved profile in the Tenant list first. Then click it.",
+    "effect": "read"
+   },
+   "#crDiffOld": {
+    "what": "Picks the older side of the compare.",
+    "input": "Pick a backup from the list.",
+    "effect": "local"
+   },
+   "#crDiffNew": {
+    "what": "Picks the newer side of the compare: another backup or the live tenant.",
+    "input": "Pick one from the list. The live tenant is read when you compare.",
+    "effect": "local"
+   },
+   "#crIgnore": {
+    "what": "Leaves more fields out of the compare. Ids, change times and counters are always left out.",
+    "input": "Optional. Field names split by commas. A * matches any text.",
+    "effect": "local"
+   },
+   "#crDiff": {
+    "what": "Compares the two sides field by field. With the live tenant, it reads only what is in scope.",
+    "input": "Pick both sides first. Then click it.",
+    "effect": "read"
+   },
+   "#crEvery": {
+    "what": "Sets how often the scheduled backup runs.",
+    "input": "A whole number of hours from 1 to 168, like 24.",
+    "effect": "local"
+   },
+   "#crKeepN": {
+    "what": "Sets how many backups of this profile are kept. Older ones are deleted.",
+    "input": "A whole number from 1 to 100, like 10.",
+    "effect": "local"
+   },
+   "#crSchedOn": {
+    "what": "Turns the scheduled backup on or off. It only reads, so it may run on its own.",
+    "input": "Tick it to turn it on.",
+    "effect": "local"
+   },
+   "#crSched": {
+    "what": "Saves the schedule for the saved profile picked in the Tenant list.",
+    "input": "Set the hours and the count first. Then click it.",
+    "effect": "local"
+   },
+   "#crTplType": {
+    "what": "Picks the kind of object to put in the template.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#crTplNames": {
+    "what": "Names the objects of that kind to put in the template. What they use comes with them.",
+    "input": "One name per line, as in the backup.",
+    "effect": "local"
+   },
+   "#crTplName": {
+    "what": "Names the template.",
+    "input": "Required. Up to 80 characters, like Starter policy.",
+    "effect": "local"
+   },
+   "#crTplStrip": {
+    "what": "Replaces this text at the start of names with the template's prefix.",
+    "input": "Optional. Up to 20 letters, digits, spaces and . _ -, like OLD-.",
+    "effect": "local"
+   },
+   "#crTplMake": {
+    "what": "Makes a template from the picked backup. Ids are removed and no secret is kept.",
+    "input": "Pick the backup in step 1 and name the objects first. Then click it.",
+    "effect": "local"
+   },
+   "#crTplFile": {
+    "what": "Imports a template file. It is checked before it is kept.",
+    "input": "Choose a template JSON file of at most 2 MB.",
+    "effect": "local"
+   },
+   "#crRehearseOn": {
+    "what": "Picks what the rehearsal plans against: the sample tenant or a saved backup.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#crRehearse": {
+    "what": "Makes the plan against a saved copy instead of a tenant. Nothing can be applied from it.",
+    "input": "Fill in the form above first. Then click it.",
+    "effect": "local"
+   },
+   "#crRepush": {
+    "what": "Previews a new plan for what did not arrive in the tenant. It writes nothing until you apply it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
    }
   },
   "/report/path": {

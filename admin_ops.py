@@ -830,7 +830,8 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     # A blank value never hides the other one, nor switches the phrase off.
     own = next((str(v).strip().upper() for v in (prepared.get("confirm_phrase"), prepared.get("confirm_always")) if str(v or "").strip()), "")
     prepared["confirm_phrase"] = own if own and counts["change"] else confirm_phrase(counts["change"])
-    prepared["needs_activation"] = prepared.get("product") == "zia"
+    # A plan that activates as its own last item (activation_step) is not activated again by the engine.
+    prepared["needs_activation"] = prepared.get("product") == "zia" and not prepared.get("activation_step")
     prepared["kind"] = KIND
     prepared["tenant_label"] = tenant_label
     prepared["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -839,7 +840,8 @@ def _finish(prepared: Dict[str, Any], *, tenant_label: str = "") -> Dict[str, An
     product = str(prepared.get("product") or "zpa").upper()   # a plugin's product (ZPA, ZDX, ...) saves each change at once
     prepared["notes"] = list(prepared.get("notes") or []) + (
         ["ZIA keeps every change pending until it is activated: the app activates once, after the last write, as a policy pack deploy does."]
-        if prepared["needs_activation"] else [prepared.get("apply_note") or f"{product} applies each change as it is saved; there is no activation step."])
+        if prepared["needs_activation"] else [] if prepared.get("activation_step") else
+        [prepared.get("apply_note") or f"{product} applies each change as it is saved; there is no activation step."])
     return prepared
 
 
