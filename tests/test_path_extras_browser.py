@@ -65,7 +65,7 @@ await shot('1-device-pick', '#paDevice');
 await ev(`document.getElementById('paDest').value = 'dropbox.com'; document.getElementById('paNet').value = 'on'; document.getElementById('paRun').click(); 1`);
 await until(() => ev(`!!document.getElementById('paDeviceOut')`), 'the device block', 60000);
 out.device = await ev(`(() => { const s = document.getElementById('paDeviceOut');
-  return { underVerdict: !!(s.previousElementSibling && s.previousElementSibling.classList.contains('pa-verdict')), text: s.textContent.replace(/\\s+/g, ' '),
+  return { underVerdict: !!(s.previousElementSibling && s.previousElementSibling.id === 'paFlowSec'), text: s.textContent.replace(/\\s+/g, ' '),
     unknown: s.querySelectorAll('.pa-unknown').length, rows: s.querySelectorAll('tbody tr').length, headline: document.getElementById('paHeadline').textContent }; })()`);
 await shot('2-device-result', '#paDeviceOut');
 
@@ -132,7 +132,7 @@ def test_a_users_device_is_found_and_picked_from_the_keyboard(page):
 
 
 def test_the_result_says_which_profile_applied_and_what_is_unknown(page):
-    """WCAG 2.2 SC 1.3.1 · ASVS V1.4.4: the device block sits under the verdict, names the applied profile and why, and marks what the API does not give."""
+    """WCAG 2.2 SC 1.3.1 · ASVS V1.4.4: the device block sits under the verdict and its live path, names the applied profile and why, and marks what the API does not give."""
     d = page["device"]
     assert d["underVerdict"] and "App profile appliedWindows - Contractors" in d["text"] and "reports app profile" in d["text"]
     assert d["unknown"] >= 3 and d["rows"] == 13 and "Contractor - direct at the depot" in d["text"]

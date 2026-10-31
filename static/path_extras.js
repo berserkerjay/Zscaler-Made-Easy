@@ -294,9 +294,10 @@
     ['paDevice', 'paCompare'].forEach(id => { const d = document.getElementById(id); if (d) d.addEventListener('toggle', () => { devA.refresh(); devB.refresh(); }); });
     const run = document.getElementById('paCmpRun'); if (run) run.addEventListener('click', compareRun);
   }
-  // After a result is drawn: the device block and Test from here, after the verdict.
+  // After a result is drawn: the device block and Test from here, after the
+  // live path (which stays right under the verdict).
   function afterRender(res, body) {
-    const anchor = body.querySelector('.pa-verdict');
+    const anchor = body.querySelector('#paFlowSec') || body.querySelector('.pa-verdict');
     const html = deviceSection(res.device) + (res.destination ? probeSection(res) : '');
     if (anchor) anchor.insertAdjacentHTML('afterend', html); else body.insertAdjacentHTML('afterbegin', html);
     const b = document.getElementById('paProbeRun'); if (b) b.addEventListener('click', () => probeRun(res));
