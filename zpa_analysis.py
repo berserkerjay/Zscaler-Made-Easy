@@ -1453,6 +1453,8 @@ ASSUMPTIONS = [
     "A wildcard such as *.example.com matches subdomains of example.com, not example.com itself.",
     "SAML and SCIM attribute values are compared exactly, ignoring case; SCIM groups are matched by id or name.",
     "Conditions this tool cannot evaluate (location, risk score, Chrome Enterprise, console, branch or edge connector) are treated as depending on facts you did not give.",
+    "An inspection profile whose every control action is PASS only monitors (it logs and lets the request through); global actions are read as \"<controls>:<action>\" (assumed from the values ZPA shows).",
+    "A segment is treated as sensitive when it is a Privileged Remote Access segment, serves directory, database or remote admin ports, or its name or a domain says finance, payroll, HR, health, production or similar (an English vocabulary, assumed).",
 ]
 
 
