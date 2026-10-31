@@ -287,6 +287,25 @@ what you get, what to do next.
   certificate body or the people in the configuration, and says that the
   standalone Zscaler Enterprise Browser has no API. Read-only; Stop ends
   the read at once.
+- **Cloud & Branch Connector** (`/report/ztw`, `ztw_overview.py`) — the
+  Cloud and Branch Connector configuration read once (only when Cloud &
+  Branch Connector is ticked on the Scope page, with a OneAPI API client):
+  connector groups and their connectors (deploy type, location, software
+  versions, operational and upgrade status, upgrade window), the traffic
+  forwarding rules and where each sends workload traffic, forwarding
+  gateways, connector locations and location templates, whether saved
+  changes are activated, admin roles, admins (counted, never listed),
+  provisioning API keys (age and state; the value is never read into a
+  result) and public cloud accounts. Eight checks (ZTW.1 to ZTW.8, also in
+  the assessment with the same key; not licensed or not deployed is not
+  applicable) name single-connector groups, connectors not serving or on
+  mixed versions, workload traffic sent DIRECT, gateways that do not fail
+  closed, pending activation, locations without the firewall or IPS, admin
+  hygiene and old API keys, each with why it matters and how to fix it.
+  *Trace in the Path analyzer* opens the workload trace for a group or a
+  rule, reusing the same read. Excel and JSON exports. Read-only; no
+  provisioning URL is read and nothing is activated; Stop ends the read at
+  once.
 - **Live motion on the Path analyzer** — under the verdict, packets travel
   the analyzed path (device or workload, Client Connector or the
   connector, ZPA turning to the App Connectors and the app when it carries
@@ -883,7 +902,7 @@ Being honest about the edges:
   (1 to 8784 hours); for a schedule that outlives the server, use Task
   Scheduler or cron.
 - The checks cover ZIA DLP end to end and the parts of ZPA, Client
-  Connector and ZDX that affect data protection; they are not a full
-  audit of those products.
+  Connector, ZDX and Cloud & Branch Connector that affect data protection;
+  they are not a full audit of those products.
 
 Everything the app has shipped, batch by batch, is in `CHANGELOG.md`.
