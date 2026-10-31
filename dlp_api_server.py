@@ -11881,6 +11881,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if problem:
         print(f"\n  Could not start: {problem}\n", file=sys.stderr)
         return 2
+    all_interfaces = "0.0.0.0"  # nosec B104 # compared below to word the address and a notice; binds nothing
     # Inside the container the server listens on 0.0.0.0 and docker-compose
     # publishes it on the host's 127.0.0.1 only, so the address a person
     # opens is localhost, not 0.0.0.0 (which is not an address to browse to).
@@ -11893,7 +11894,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         hp = os.environ.get("DLP_CHECK_HOST_PORT", "").strip()
         if hp.isdigit() and 0 < int(hp) < 65536:
             shown_port = int(hp)
-    open_url = f"http://{('localhost' if host == '127.0.0.1' or (in_container and host == '0.0.0.0') else host)}:{shown_port}/"
+    open_url = f"http://{('localhost' if host == '127.0.0.1' or (in_container and host == all_interfaces) else host)}:{shown_port}/"
     if _sso.sso_enabled():
         # Each person signs in at the identity provider; the static UI token
         # is refused, so it is neither printed nor written to ui_token.txt.
@@ -11915,7 +11916,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             threading.Timer(1.5, lambda: webbrowser.open(open_url)).start()
         except Exception:  # noqa: BLE001 - a browser that cannot open never stops the server
             pass
-    if in_container and host == "0.0.0.0":
+    if in_container and host == all_interfaces:
         print(f"  (inside the container the server listens on every address; docker-compose.yml publishes it on 127.0.0.1:{shown_port} of this machine only)\n")
     elif host != "127.0.0.1":
         print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")

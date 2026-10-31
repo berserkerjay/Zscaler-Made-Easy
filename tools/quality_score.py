@@ -107,11 +107,11 @@ AREAS: Tuple[Dict[str, Any], ...] = (
                    "test_c6_scope_offline.py"),
          "controls": ("ASVS V3.4.1", "ASVS V3.4.3", "ASVS V4.1.1", "ASVS V4.2.1", "ASVS V6.4.1", "ASVS V7.1.1", "ASVS V8.3.4",
                       "CWE-200", "CWE-306", "CWE-532", "CWE-639", "CWE-798")},
-        {"key": "supply_chain", "name": "Supply chain", "slugs": ("sbd-supply", "supply-chain"),
+        {"key": "supply_chain", "name": "Supply chain", "slugs": ("w7-sast", "sbd-supply*", "supply-chain*"),
          "tests": ("test_supply_chain_qa.py", "test_ci_pinning.py", "test_sbom_*.py", "test_lock_platforms.py",
-                   "test_keyring_pinned.py", "test_packaging.py", "test_docker_rename.py"),
+                   "test_keyring_pinned.py", "test_packaging.py", "test_docker_rename.py", "test_sast.py"),
          "controls": ("SLSA v1.0 Build L2", "SLSA v1.0 Build L3", "Scorecard Pinned-Dependencies", "Scorecard Token-Permissions",
-                      "Scorecard Dangerous-Workflow", "Scorecard Vulnerabilities", "Scorecard SBOM",
+                      "Scorecard Dangerous-Workflow", "Scorecard Vulnerabilities", "Scorecard SBOM", "Scorecard SAST", "SSDF PW.7.2",
                       "SSDF PS.1.1", "SSDF PS.2.1", "SSDF PS.3.2", "SSDF PW.4.1", "CWE-494", "CWE-829")},
     )},
     {"key": "functionality", "name": "Functionality", "weight": 25, "subs": (
@@ -850,7 +850,7 @@ def run_from_junit(xml_path: str, commit: Optional[str] = None, date: Optional[s
     data = _read_capped(xml_path, MAX_JUNIT_BYTES, "JUnit file")
     _refuse_dtd(data)
     try:
-        root = ET.fromstring(data)
+        root = ET.fromstring(data)  # nosec B314 # _refuse_dtd above refused any DOCTYPE/ENTITY; read capped at MAX_JUNIT_BYTES
     except ET.ParseError as e:
         raise InputError(f"JUnit file: not well-formed XML ({e})") from None
     suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))

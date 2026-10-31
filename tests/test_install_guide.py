@@ -190,7 +190,8 @@ def test_the_container_prints_an_address_a_person_can_open():
     127.0.0.1; the log must say localhost and not warn about a network
     bind that the compose file has already contained."""
     src = _read("dlp_api_server.py")
-    assert 'DLP_CHECK_IN_CONTAINER' in src and "in_container and host == '0.0.0.0'" in src
+    assert 'DLP_CHECK_IN_CONTAINER' in src and "in_container and host == all_interfaces" in src
+    assert 'all_interfaces = "0.0.0.0"' in src
     assert "docker-compose.yml publishes it on 127.0.0.1:{shown_port} of this machine only" in src
     assert "docker-compose.yml publishes it on 127.0.0.1:8001 of this machine only" in INSTALL, "the guide quotes the line the reader will see"
 

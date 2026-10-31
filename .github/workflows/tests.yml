@@ -32,9 +32,10 @@ jobs:
           # the tests run against exactly what a real install gets, not a loose
           # requirements.txt resolution.
           pip install --require-hashes --no-deps -r requirements.lock
-          # Test tools (pytest, pyflakes, httpx for the TestClient) are
-          # hash-pinned too, compiled against requirements.lock so they keep
-          # its pins for every package the two share.
+          # Test tools (pytest, pyflakes, httpx for the TestClient, bandit
+          # for the SAST gate in tests/test_sast.py) are hash-pinned too,
+          # compiled against requirements.lock so they keep its pins for
+          # every package the two share.
           pip install --require-hashes --no-deps -r requirements-dev.lock
           pip check
 

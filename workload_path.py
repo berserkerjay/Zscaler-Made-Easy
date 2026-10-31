@@ -322,8 +322,11 @@ def _ip_in(ip: str, entries: List[str]) -> Optional[bool]:
 ZPA_POOL = ipaddress.ip_network("100.64.0.0/10")
 
 
+_ANY_V4 = "0.0.0.0"  # nosec B104 # an address-family probe for a rule entry; binds nothing
+
+
 def _is_address(e: str) -> bool:
-    return _ip_in("0.0.0.0", [e]) is not None or _ip_in("::", [e]) is not None
+    return _ip_in(_ANY_V4, [e]) is not None or _ip_in("::", [e]) is not None
 
 
 def _within(e: str, net: Any) -> bool:

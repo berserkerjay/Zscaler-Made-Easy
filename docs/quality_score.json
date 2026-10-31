@@ -219,6 +219,7 @@
           "score": 100.0,
           "based_on": [
             "tests",
+            "findings",
             "coverage"
           ],
           "tests": {
@@ -228,7 +229,15 @@
             "skipped": 1,
             "files": 8
           },
-          "findings": null,
+          "findings": {
+            "score": 100.0,
+            "open": 0,
+            "fixed": 1,
+            "accepted": 4,
+            "records": [
+              "w7-sast"
+            ]
+          },
           "coverage": {
             "score": 100.0,
             "covered": [
@@ -239,6 +248,8 @@
               "Scorecard Dangerous-Workflow",
               "Scorecard Vulnerabilities",
               "Scorecard SBOM",
+              "Scorecard SAST",
+              "SSDF PW.7.2",
               "SSDF PS.1.1",
               "SSDF PS.2.1",
               "SSDF PS.3.2",
@@ -441,7 +452,7 @@
     }
   ],
   "counts": {
-    "findings": 602,
+    "findings": 607,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -460,22 +471,22 @@
       },
       "low": {
         "open": 1,
-        "fixed": 347,
+        "fixed": 348,
         "accepted": 0
       },
       "info": {
         "open": 1,
         "fixed": 52,
-        "accepted": 25
+        "accepted": 29
       }
     },
     "checks": {
-      "pass": 362,
-      "fixed": 310,
+      "pass": 367,
+      "fixed": 311,
       "open": 11,
-      "accepted": 10
+      "accepted": 16
     },
-    "tests_added": 9074
+    "tests_added": 9094
   },
   "findings": [
     {
@@ -909,6 +920,70 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W7-SAST-02",
+      "title": "B104 (bind to all interfaces, medium) on 0.0.0.0 compared to word the start-up address and a notice (dlp_api_server.main), as an address-family probe (workload_path._is_address) and in the standalone smoke test's hostile environment and address compare: nothing binds",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-605",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "tests/test_sast.py::test_every_reviewed_suppression_still_silences_a_live_finding",
+      "commit": "",
+      "reason": "False positive: each literal moved to one named constant with # nosec B104 and its reason (3 suppressions for 5 hits); the real bind checks are security.py's and are tested",
+      "slug": "w7-sast",
+      "area": "secure_by_design",
+      "sub_area": "supply_chain"
+    },
+    {
+      "id": "W7-SAST-03",
+      "title": "B314 (ElementTree.fromstring on untrusted XML, medium) in vendor_migrate (2) and tools/quality_score.run_from_junit",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-611",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "tests/test_sast.py::test_every_reviewed_suppression_still_silences_a_live_finding",
+      "commit": "",
+      "reason": "False positive: each parse runs only after _refuse_dtd refused any DOCTYPE or ENTITY in any encoding, on input size-capped first; # nosec B314 with that reason on each",
+      "slug": "w7-sast",
+      "area": "secure_by_design",
+      "sub_area": "supply_chain"
+    },
+    {
+      "id": "W7-SAST-04",
+      "title": "B202 (tarfile.extractall without validation, high) on tools/smoke_standalone.unpack's zipfile.extractall; B310 (urlopen scheme, medium) on its http://127.0.0.1 requests",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-22",
+      "asvs": "",
+      "wcag": "",
+      "fix": "",
+      "test": "tests/test_sast.py::test_every_reviewed_suppression_still_silences_a_live_finding",
+      "commit": "",
+      "reason": "False positives in a developer tool: bandit sees tarfile imported (the tar branch already uses filter=data); zipfile strips absolute and .. paths and makes no links; the URLs are the tool's own loopback ones",
+      "slug": "w7-sast",
+      "area": "secure_by_design",
+      "sub_area": "supply_chain"
+    },
+    {
+      "id": "W7-SAST-05",
+      "title": "B608 (SQL built from strings, medium/low) on app_update's error message: 'update stopped ... set aside' matched bandit's UPDATE ... SET pattern",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-89",
+      "asvs": "",
+      "wcag": "",
+      "fix": "app_update.update: message reworded",
+      "test": "tests/test_sast.py::test_bandit_finds_nothing_at_medium_severity_or_higher",
+      "commit": "",
+      "reason": "False positive (the app has no SQL): the message now says put aside, so no suppression is needed",
+      "slug": "w7-sast",
+      "area": "secure_by_design",
+      "sub_area": "supply_chain"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -9247,6 +9322,22 @@
       "sub_area": "builders"
     },
     {
+      "id": "W7-SAST-01",
+      "title": "SHA-1 used for ids without usedforsecurity=False (guidance._slug, pack_library.pack_slug): not a security use, but a FIPS-mode OpenSSL refuses a plain sha1(), so those ids would fail there (bandit B324, high/high)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-328",
+      "asvs": "V6.2.5",
+      "wcag": "",
+      "fix": "Both pass usedforsecurity=False; the ids are unchanged",
+      "test": "tests/test_sast.py::test_an_id_hash_is_not_a_security_use_and_works_on_fips_openssl",
+      "commit": "428695e",
+      "reason": "",
+      "slug": "w7-sast",
+      "area": "secure_by_design",
+      "sub_area": "supply_chain"
+    },
+    {
       "id": "W7-ZPAID-02",
       "title": "With an IdP given, a SCIM group condition of another IdP still matched a group of the same name, and a SAML condition of another IdP matched typed values",
       "severity": "low",
@@ -11120,6 +11211,23 @@
       "tests_added": 89
     },
     {
+      "slug": "w7-sast",
+      "area": "Supply chain: static analysis (SAST) of the app's Python and JavaScript, offline in every test run (bandit) and in CI (CodeQL)",
+      "title": "Wave 7: bandit 1.9.4 added to the dev lock and gating every test run at medium severity and up; CodeQL security-extended for Python and JavaScript/TypeScript on pull requests and weekly; every current bandit finding triaged",
+      "standards": [
+        "Scorecard SAST",
+        "SSDF PW.7.2",
+        "ASVS V10.1.1",
+        "ASVS V6.2.5",
+        "CWE-328",
+        "Scorecard Token-Permissions",
+        "Scorecard Pinned-Dependencies"
+      ],
+      "checks": 12,
+      "findings": 5,
+      "tests_added": 20
+    },
+    {
       "slug": "w7-zpa-identity",
       "area": "ZPA identity: Path analyzer what-if, Test a list and the ZPA builder",
       "title": "ZPA access policy evaluated for an IdP, a user's SCIM groups and SAML or SCIM attribute values, with the condition that decided; access rules over SCIM groups and SAML attributes",
@@ -11168,7 +11276,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 105,
+    "asvs_requirements": 107,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -11259,6 +11367,7 @@
       "CWE-312",
       "CWE-319",
       "CWE-327",
+      "CWE-328",
       "CWE-330",
       "CWE-345",
       "CWE-346",
@@ -11420,6 +11529,7 @@
       "CI-Tests",
       "Dangerous-Workflow",
       "Pinned-Dependencies",
+      "SAST",
       "SBOM",
       "Signed-Releases",
       "Token-Permissions",
@@ -11509,7 +11619,5 @@
       }
     ]
   },
-  "warnings": [
-    "No findings record yet for: Supply chain. Their scores leave the findings part out."
-  ]
+  "warnings": []
 }

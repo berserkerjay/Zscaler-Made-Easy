@@ -13,7 +13,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKFLOWS = sorted(glob.glob(os.path.join(ROOT, ".github", "workflows", "*.yml")))
-DEV_TOOLS = ("pytest", "pyflakes", "httpx")
+DEV_TOOLS = ("pytest", "pyflakes", "httpx", "bandit")
 
 
 def _read(*parts):
