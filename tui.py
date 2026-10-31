@@ -1,4 +1,4 @@
-"""Terminal UI: `zscaler-made-easy tui` (and the old `dlp-check tui`).
+"""Terminal UI: `zscaler-made-easy tui`.
 
 A keyboard-only front end for a terminal, over SSH too, built on the
 standard library's curses. It is a client of the app's own server (the one

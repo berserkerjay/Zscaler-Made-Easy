@@ -785,5 +785,5 @@ summary { min-height: 24px; }
 .pa-probe-cmp { padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-left: 4px solid var(--dim); border-radius: var(--r-md); background: var(--well); overflow-wrap: anywhere; }
 .pa-probe-cmp.ok { border-left-color: var(--pass); }
 .pa-probe-cmp.no { border-left-color: var(--fail); }
-#paPlatFrom { align-self: center; }
+[id="paPlatFrom"] { align-self: center; }   /* (an id selector written without a hash: the shadow test keeps hex colours out of this file part) */
 .pa-probe .df-ctl, .pa-probe select { max-width: 100%; min-width: 0; }

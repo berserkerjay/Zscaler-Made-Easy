@@ -288,6 +288,9 @@ URL_SINK_REVIEWED = {
     ("static/fleet_dns.js", "url"): "URL.createObjectURL of the DNS records file built in the page",
     ("static/net_ranges.js", "url"): "URL.createObjectURL of the downloaded allowlist",
     ("static/find_anything.js", "href"): "'/report/path#categories=' with the host through encodeURIComponent (Category lookup)",
+    ("static/traffic_logs.js", "'#' + id"): "an in-page anchor to one of the page's own section ids (a constant list)",
+    ("static/traffic_logs.js", "'/report/path?' + q.toString("): "a fixed app page with the query built by URLSearchParams (every value encoded)",
+    ("static/traffic_logs.js", "'/report/insights?' + q.toString("): "a fixed app page with the query built by URLSearchParams (every value encoded)",
 }
 
 

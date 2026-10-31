@@ -1004,7 +1004,7 @@ what you get, what to do next.
   `update_notify.py`) and *local plugins* (`local_plugins.py`: Python
   packages in the folder `DLP_CHECK_PLUGINS_DIR` names, loaded only when
   an admin approved their exact SHA-256 there; they can add Bulk changes
-  operations, which go through the same gates, and read-only pages shown
+  operations, which go through the same gates, and read-only **Plugin pages**
   at /report/plugin; SECURITY.md says what a plugin can do and why the
   hash is the control; an example is in docs/plugins).
 - **Quality and security score** — this app's own score from 0 to 100 on
@@ -1201,7 +1201,7 @@ The same code runs without the browser:
   Scheduler.
 - **Container**: `docker compose exec zscaler-made-easy python continuous_eval.py
   --once`.
-- **Terminal UI**: `zscaler-made-easy tui` (or `dlp-check tui`; `tui.py`)
+- **Terminal UI**: `zscaler-made-easy tui` (`tui.py`)
   opens a keyboard-only curses view of a running server, over SSH too:
   tenant profiles or the sample tenant, the assessment and its score,
   findings, the Path analyzer for one destination, Test a list from a

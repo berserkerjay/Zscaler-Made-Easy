@@ -231,4 +231,6 @@ def test_no_authorization_decision_reads_the_unverified_token_claims():
                  and re.search(r"^\s*(import readiness\b|from readiness import)", open(f, encoding="utf-8").read(), re.M)]
     # Assert
     assert users == READINESS_USERS, sorted(users ^ READINESS_USERS)
-    assert importers == []
+    # The one other reader: the MCP server's readiness tool (mcp_tools.readiness_check) returns the
+    # answer as data to show, its token part marked "decoded for display, not verified"; it decides nothing.
+    assert set(importers) <= {"mcp_tools.py"}, importers

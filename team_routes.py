@@ -79,6 +79,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /report/flow": PUBLIC,
     "GET /report/bypass": PUBLIC,
     "GET /report/plugin": PUBLIC,
+    "GET /report/traffic-logs": PUBLIC,
     "GET /report/dataflow": PUBLIC,
     "GET /report/live": PUBLIC,
     "GET /report/audit": PUBLIC,
@@ -191,6 +192,8 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/zscaler-ranges/download": SESSION,
     "GET /api/m365-endpoints": SESSION,                 # Microsoft's public endpoint list kept on this server
     "GET /api/tenant-terraform/catalogue": SESSION,
+    "GET /api/traffic-logs/info": SESSION,              # the formats and limits
+    "GET /api/traffic-logs/siem": SESSION,              # query templates built from what the page sends
     "POST /api/migrate/export": SESSION,
     "GET /api/scope/prerequisites": SESSION,
     "POST /api/report/docx": SESSION,
@@ -341,6 +344,11 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/zcc/fleet/{job_id}/sites": READ,         # sites grouped from a finished read
     "GET /api/zcc/fleet/history": READ,
     "GET /api/zcc/fleet/history/compare": READ,
+    "POST /api/traffic-logs/analyze": READ,             # uploaded logs (users, hosts): a record its maker owns
+    "GET /api/traffic-logs/report/{report_id}": READ,
+    "GET /api/traffic-logs/report/{report_id}/export": READ,
+    "GET /api/traffic-logs/saved": READ,
+    "POST /api/traffic-logs/saved/{name}/open": READ,
 
     # ── prepare a change, or edit the app's own notes about a tenant ──
     "POST /api/remediation/plan": PLAN,
@@ -379,6 +387,9 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/compliance-profiles/choice": "plan:profile",
     "POST /api/zcc/fleet/{job_id}/history": PLAN,       # keeps a counts-only snapshot of a read (the app's own record)
     "POST /api/zcc/fleet/history/forget": PLAN,
+    "DELETE /api/traffic-logs/report/{report_id}": PLAN,
+    "POST /api/traffic-logs/report/{report_id}/save": PLAN,   # keeps a traffic log report on this server
+    "DELETE /api/traffic-logs/saved/{name}": PLAN,
 
     # ── change a tenant ──
     "POST /api/remediation/execute": APPLY,

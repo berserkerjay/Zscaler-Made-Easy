@@ -1538,7 +1538,7 @@ def saved_dir() -> str:
 
 
 def _title(t: Any) -> str:
-    s = re.sub(r"[\x00-\x1f\x7f‪-‮⁦-⁩]", "", str(t or "")).strip()
+    s = re.sub(r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]", "", str(t or "")).strip()
     return s[:80] or "Traffic and session logs"
 
 
