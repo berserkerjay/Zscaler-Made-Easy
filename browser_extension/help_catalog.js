@@ -2748,7 +2748,7 @@ window.HELP_CATALOG = {
   },
   "/report/compliance": {
    "#cpProfilePick": {
-    "what": "Reads this assessment's checks against a compliance profile, like FedRAMP High or CMMC Level 2: each control met, partially met, not met or not tested.",
+    "what": "Reads this assessment's checks against a compliance profile, like FedRAMP High. Each control shows met, partly met, not met or not tested.",
     "input": "Optional. Pick a profile. It reads nothing from the tenant.",
     "effect": "local"
    },
@@ -4411,17 +4411,17 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#zbCompliance": {
-    "what": "Picks the one compliance profile, like FedRAMP High, CMMC Level 2 or IRS Publication 1075. It sets the tier and overlay, adds or requires the rules its source asks for, and chooses the policy packs, the AI Guard profile and the compliance pack.",
+    "what": "Picks the one compliance profile, like FedRAMP High or CMMC Level 2. It sets the tier and the rules its source asks for. It also picks the policy packs, the AI Guard profile and the compliance pack.",
     "input": "Optional. Pick a profile, or None. With a saved tenant profile picked above, the choice is remembered for that tenant.",
     "effect": "local"
    },
    "button[data-zb-cp-file]": {
-    "what": "Saves one file of the compliance pack, made from the build on screen: the control mapping, the policy export, the test plan by control, or all of them with the synthetic DLP test files.",
+    "what": "Saves one file of the compliance pack, made from the build on screen. Pick the control mapping, the policy export, the test plan, or all of them with the DLP test files.",
     "input": "Nothing to type. Pick a compliance profile first. Local files only: nothing is written to the tenant.",
     "effect": "download"
    },
    "#zbCpCheck": {
-    "what": "Checks that every rule of the build maps to a control of the profile or carries a reason code, and counts the DLP test files.",
+    "what": "Checks that every rule of the build maps to a control of the profile, or has a reason code.",
     "input": "Nothing to type. Pick a compliance profile first. It reads nothing from the tenant.",
     "effect": "local"
    },
@@ -5197,7 +5197,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#pvPlan form.pv-form select[data-pv-compliance]": {
-    "what": "Picks the POV's compliance profile, like FedRAMP Moderate. The vertical preset picks one; it drives the compliance pack on the Test kit tab.",
+    "what": "Picks the POV's compliance profile, like FedRAMP Moderate. The vertical preset picks one. It drives the compliance pack on the Test kit tab.",
     "input": "Optional. Pick a profile, or None.",
     "effect": "local"
    },
@@ -5347,7 +5347,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#pvKit a.rp-btn[href^=\"/api/compliance-pack/\"]": {
-    "what": "Saves a file of the compliance pack for this POV's compliance profile: the control mapping, the test plan by control, the policy export, or all of them with synthetic DLP test files.",
+    "what": "Saves a file of the compliance pack for this POV's compliance profile. Pick the control mapping, the test plan, the policy export, or all of them.",
     "input": "Nothing to type. Just click it. Local files only: nothing is written to the tenant.",
     "effect": "download"
    },
