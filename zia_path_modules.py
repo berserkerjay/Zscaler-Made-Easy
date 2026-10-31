@@ -64,6 +64,7 @@ SECTIONS: Dict[str, Tuple[str, Tuple[str, ...], Optional[str]]] = {
     "firewall": ("Cloud Firewall rules, network services and IP groups", ("zia_extras",), None),
     "dns": ("DNS Control rules", ("zia_extras",), None),
     "sandbox": ("Sandbox rules", ("zia_extras",), None),
+    "fwdctl": ("Forwarding control rules, proxy, ZPA, dedicated IP and DNS gateways, NAT control and IPv6", ("zia_extras",), None),
 }
 
 # key -> [(part, endpoint, label, kind)]; kind "list" (a complete list of
@@ -87,7 +88,22 @@ READS: Dict[str, List[Tuple[str, str, str, str]]] = {
     ],
     "dns": [("rules", "/zia/firewallDnsRules", "DNS Control rules", "list")],
     "sandbox": [("rules", "/zia/sandboxRules", "Sandbox rules", "list")],
+    # Forwarding control (zia_forwarding): what ZIA does with the traffic
+    # after its policy, and the gateways each forwarding method relies on.
+    "fwdctl": [
+        ("rules", "/zia/forwardingRules", "Forwarding control rules", "list"),
+        ("proxy_gateways", "/zia/proxyGateways", "Proxy gateways", "list"),
+        ("zpa_gateways", "/zia/zpaGateways", "ZPA gateways", "list"),
+        ("dedicated_ip", "/zia/dedicatedIPGateways/lite", "Dedicated IP gateways", "list"),
+        ("dnat", "/zia/dnatRules", "NAT control rules", "list"),
+        ("dns_gateways", "/zia/dnsGateways", "DNS gateways", "list"),
+        ("ipv6", "/zia/ipv6config", "IPv6 configuration", "object"),
+        ("dc_exclusions", "/zia/dcExclusions", "Data centre exclusions", "list"),
+    ],
 }
+# Sections where HTTP 404 means "not licensed or not available on this
+# tenant": an empty answer that is said (`not_licensed`), never an error.
+_NOT_LICENSED_EMPTY = {"fwdctl"}
 ENDPOINTS: List[str] = [ep for parts in READS.values() for _, ep, _, _ in parts]
 
 # ── Well-known ports ─────────────────────────────────────────────────
@@ -374,6 +390,9 @@ def read(client: Any, scope: Optional[Dict[str, Any]], cancel: Any = None, log: 
                 continue
             if code == 204:
                 data, code = ([] if kind == "list" else {}), 200
+            if code == 404 and key in _NOT_LICENSED_EMPTY:
+                got[part] = {"ok": True, "data": [] if kind == "list" else {}, "error": None, "not_licensed": True}
+                continue
             if code != 200:
                 err = data.get("error") if isinstance(data, dict) else ""
                 got[part] = {"ok": False, "data": None, "error": f"{label}: HTTP {code}" + (f" ({str(err)[:120]})" if err else "")}
@@ -1145,6 +1164,13 @@ def _dns(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
                f"No DNS Control rule matches: the lookup of {ctx['host']} resolves normally.", ranking=ctx.get("ranking"))
     if res["verdict"] == "redirect" and res["rule"]:
         res["notes"].append(f"'{res['rule']['name']}' answers the lookup differently ({res['rule']['action']}): the traffic goes where that answer points (for example ZPA), not necessarily on through ZIA.")
+        deciding = next((r for r in rules if str(_f(r, "id")) == str(res["rule"].get("id"))), None)
+        gw = _list(_f(deciding, "dnsGateway")) if deciding else []
+        if gw:
+            import zia_forwarding as zf
+            known = ctx.get("dns_gateways")
+            res["notes"].append(zf.dns_gateway_note(zf.by_id(known).get(_id(gw[0]) or "")) if known is not None else
+                                f"The rule sends the lookup to DNS gateway {_name(gw[0])}; the DNS gateways were not read, so its failover is not known.")
     res["notes"].append("DNS Control sees the lookup only when DNS goes through ZIA (Z-Tunnel 2.0, a site tunnel, or ZIA as the resolver).")
     return res
 
@@ -1186,8 +1212,116 @@ def _sandbox(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     return res
 
 
+def _forwarding(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
+    """Forwarding control: the ZIA forwarding rule (type FORWARDING; the
+    Cloud and Branch Connector rules are workload_path's) that decides how
+    ZIA sends the traffic on (direct, proxy chaining, ZPA, a dedicated
+    egress IP, or dropped), with what the method relies on (the proxy
+    gateway's fallback, the ZPA gateway, the dedicated IP gateway's data
+    centres), the NAT control rule that could rewrite the destination,
+    IPv6 and the data centre exclusions in force."""
+    import zia_forwarding as zf
+    name = "Forwarding control"
+    parts = sec.get("parts") or {}
+    data = {k: (v.get("data") if v.get("ok") else None) for k, v in parts.items()}
+    if (parts.get("rules") or {}).get("not_licensed"):
+        return _skip(name, "fwdctl", "not_applicable", "Not applicable: forwarding control is not available on this tenant (the API answered 404), "
+                     "so ZIA sends the traffic on to the destination itself.")
+    rules = [r for r in data.get("rules") or [] if isinstance(r, dict) and zf.is_zia_rule(r)]
+    fw = ctx.get("fw") or {}
+    proxies = zf.by_id(data.get("proxy_gateways")) if data.get("proxy_gateways") is not None else None
+    zpa_gws = zf.by_id(data.get("zpa_gateways")) if data.get("zpa_gateways") is not None else None
+
+    def criteria(r):
+        out: List[Optional[Dict[str, str]]] = [_crit_source(r, None, ctx.get("source_ip")), _crit_destination(r, ctx, ctx.get("dst_groups")),
+                                               _crit_categories([str(c).upper() for c in _names(_f(r, "resCategories"))], ctx, "Domain category")]
+        if _f(r, "nwServices") or _f(r, "nwServiceGroups"):
+            out.append(_crit_services(r, ctx, fw))
+        if _f(r, "nwApplications") or _f(r, "nwApplicationGroups"):
+            out.append(_crit_network_apps(r, ctx, fw))
+        segs = _names(_f(r, "zpaApplicationSegments")) + _names(_f(r, "zpaApplicationSegmentGroups"))
+        if segs:
+            out.append(_crit("ZPA app segments", "unknown", f"Applies to {_short(segs, 3)}; ZPA app segments are not evaluated here."))
+        if _f(r, "ecGroups"):
+            out.append(_crit("Connector groups", "unknown", "Applies to traffic from named Cloud or Branch Connector groups; the trace is for a device."))
+        return out + unevaluated(r, skip=("srcIps", "srcIpGroups", "sourceIpGroups", "srcIpv6Groups"))
+
+    def verdict_of(r):
+        return "block" if zf.method(r) == zf.DROP else "forwarded"
+
+    def gateway_of(r) -> str:
+        g = _list(_f(r, "proxyGateway")) or _list(_f(r, "zpaGateway"))
+        return _name(g[0]) if g else ""
+
+    def action_of(r):
+        m = zf.method(r) or "DIRECT"
+        gw = gateway_of(r)
+        return f"{m} via {gw}" if gw else m
+
+    res = _run(name, "fwdctl", rules, criteria, verdict_of, action_of, "forwarded",
+               "No forwarding control rule matches: ZIA sends the traffic on to the destination itself (direct).", ranking=ctx.get("ranking"))
+    notes: List[str] = res["notes"]
+    deciding = next((r for r in rules if res.get("rule") and str(_f(r, "id")) == str(res["rule"].get("id"))), None)
+    m = zf.method(deciding) if deciding else ""
+    if deciding is not None:
+        notes.append(f"Rule '{zf.name_of(deciding)}' {zf.METHOD_WORDS.get(m, 'forwards it')}.")
+    if m == zf.PROXYCHAIN:
+        refs = _list(_f(deciding, "proxyGateway"))
+        if not refs:
+            res["warning"] = ("Proxy chaining with no proxy gateway", "Name a proxy gateway with a secondary proxy on the rule.")
+            notes.append("The rule names no proxy gateway.")
+        elif proxies is None:
+            notes.append("The proxy gateways could not be read, so whether this gateway has a fallback is not known.")
+        else:
+            g = proxies.get(_id(refs[0]) or "")
+            notes.append(zf.gateway_fallback(g))
+            if not g or not zf.ref_list(zf.f(g, "secondaryProxy")):
+                res["warning"] = ("Proxy chaining without a fallback proxy", "Give the proxy gateway a secondary proxy, and decide on purpose whether it fails closed.")
+    elif m == zf.ZPA:
+        refs = _list(_f(deciding, "zpaGateway"))
+        g = (zpa_gws or {}).get(_id(refs[0]) or "") if refs else None
+        if not refs:
+            res["warning"] = ("ZPA forwarding with no ZPA gateway", "Name a ZPA gateway with a server group and the application segments on the rule.")
+            notes.append("The rule names no ZPA gateway.")
+        elif g is not None:
+            sg = zf.name_of(zf.f(g, "zpaServerGroup"))
+            notes.append(f"ZPA gateway {zf.name_of(g)} " + (f"uses server group {sg}: the destination sees the egress address of that server group's App Connectors." if sg else
+                                                           "names no server group, so ZPA cannot carry this traffic."))
+            if not sg:
+                res["warning"] = ("ZPA gateway with no server group", "Give the ZPA gateway a server group and the application segments it anchors.")
+    elif m == zf.DEDICATED_IP:
+        d = zf.dedicated_ip_findings(data.get("dedicated_ip") or [])
+        if d["no_secondary"] or d["same_dc"]:
+            notes.append("A dedicated IP gateway has no secondary data centre (" + _short(d["no_secondary"] + d["same_dc"], 3) + "): during an outage there this traffic leaves from a shared address.")
+    # NAT control: a definite match rewrites the destination; an unknown one could.
+    dnat = [r for r in data.get("dnat") or [] if isinstance(r, dict) and zf.enabled(r) and not _f(r, "defaultRule") and not _f(r, "predefined")]
+    for r in sorted(dnat, key=_order_key):
+        st = _state([c for c in criteria(r) if c])
+        if st == "match":
+            notes.append(f"NAT control rule '{zf.name_of(r)}' rewrites the destination to {zf.redirect_target(r) or 'no target'}: the traffic goes there, not to {ctx['host']}.")
+            res["dnat"] = {"name": zf.name_of(r), "to": zf.redirect_target(r)}
+            break
+        if st == "unknown":
+            notes.append(f"NAT control rule '{zf.name_of(r)}' could rewrite the destination to {zf.redirect_target(r) or 'no target'}, depending on a condition this tool cannot evaluate.")
+    ip = ctx.get("ip")
+    v6 = zf.ipv6_state(data.get("ipv6")) if data.get("ipv6") is not None else None
+    if ip is not None and ip.version == 6 and v6 is False:
+        notes.append("IPv6 is off in ZIA: from a location (GRE or IPsec), traffic to this IPv6 address is not processed by ZIA.")
+        res.setdefault("warning", ("IPv6 not processed by ZIA", "Turn on IPv6 in ZIA and on the locations that carry it, or block IPv6 at the site edge."))
+    act = zf.active_exclusions(data.get("dc_exclusions") or [])
+    if act:
+        notes.append("Data centre exclusion in force: " + _short([x["name"] for x in act], 3) + "; IPsec tunnels that end there use their secondary data centre.")
+    failed = [READS["fwdctl"][i][2] for i, (p, _, _, _) in enumerate(READS["fwdctl"]) if p != "rules" and data.get(p) is None]
+    if failed:
+        notes.append(f"Not read: {', '.join(failed)}; what they would add is not known.")
+    if res.get("warning"):
+        notes.append(f"Weak point: {res['warning'][0]}.")
+    return res
+
+
 # ── Assembling the pipeline ──────────────────────────────────────────
-_HOP_LABEL = {"atp": "Advanced Threat Protection", "firewall": "Cloud Firewall", "dns": "DNS Control", "sandbox": "Sandbox"}
+_HOP_LABEL = {"atp": "Advanced Threat Protection", "firewall": "Cloud Firewall", "dns": "DNS Control", "sandbox": "Sandbox",
+              "fwdctl": "Forwarding control"}
 _WEB_HOPS = ("cac", "url", "ssl", "ftc", "dlp", "incident")
 
 
@@ -1350,6 +1484,11 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
            "applications": sorted({str(a).upper() for a in rd.get("applications") or []}), "app_classes": sorted({str(a).upper() for a in rd.get("app_classes") or []}),
            "file_types": sorted({str(x).upper() for x in given if x and str(x).upper().startswith("FTCATEGORY_")}),
            "dst_groups": {str(g.get("id")): g for g in fw_groups.get("data") or [] if isinstance(g, dict)} if fw_groups.get("ok") else None,
+           # The Cloud Firewall's service and application lists (Forwarding
+           # control rules name the same objects) and the DNS gateways (a
+           # DNS Control redirect names one).
+           "fw": {k: (((mods.get("firewall") or {}).get("parts") or {}).get(k) or {}).get("data") or [] for k in _KEEP},
+           "dns_gateways": (((mods.get("fwdctl") or {}).get("parts") or {}).get("dns_gateways") or {}).get("data"),
            # The recorded admin ranking setting (admin_rank): missing in an
            # older kept read, it is unknown, never off.
            "ranking": zia.get("admin_ranking") if isinstance(zia.get("admin_ranking"), dict) else None}
@@ -1385,6 +1524,8 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
     seq.append(sb)
     for key, label in (("ftc", "File Type Control"), ("dlp", "Inline Web DLP")):
         seq.append(_from_hop(t, key, label, zia, ctx) if traffic["web"] else _skip(label, key, "not_applicable", f"Not applicable: {traffic['label']} is not web traffic."))
+    # Forwarding control: how ZIA sends the traffic on, once its policy allows it.
+    seq.append(own("fwdctl", _forwarding, False))
     # Order and the first definite block.
     stop = None
     for m in seq:
@@ -1474,7 +1615,7 @@ def _conditional_reason(m: Dict[str, Any], t: Dict[str, Any], ssl_entry: Dict[st
 
 
 # ── Folding the result into the trace and the verdict ────────────────
-_HOP_STATUS = {"block": "blocked", "allow": "pass", "caution": "warn", "redirect": "warn", "inspect": "pass", "none": "none",
+_HOP_STATUS = {"block": "blocked", "allow": "pass", "forwarded": "pass", "caution": "warn", "redirect": "warn", "inspect": "pass", "none": "none",
                "unknown": "unknown", "not_applicable": "na", "not_reached": "not_reached", "out_of_scope": "out_of_scope", "blind": "blind"}
 
 
@@ -1531,6 +1672,15 @@ def extend_trace(t: Dict[str, Any], result: Dict[str, Any]) -> None:
         hops.insert(first_web, hop_for(k))
     ftc_i = next((i for i, h in enumerate(hops) if h.get("key") == "ftc"), len(hops))
     hops.insert(ftc_i, hop_for("sandbox"))
+    # Forwarding control: after the ZIA policy, before the incident hop.
+    if "fwdctl" in by_key:
+        fh = hop_for("fwdctl")
+        w = by_key["fwdctl"].get("warning")
+        if w and fh["status"] == "pass":
+            fh.update(status="warn", weak_point={"severity": "medium", "title": w[0], "fix": w[1]},
+                      detail=fh["detail"] + " " + next((n for n in by_key["fwdctl"]["notes"] if n.startswith(("Proxy gateway", "ZPA gateway", "IPv6", "The rule names"))), ""))
+        inc = next((i for i, h in enumerate(hops) if h.get("key") == "incident"), len(hops))
+        hops.insert(inc, fh)
     stop = result.get("stops_at")
     if not traffic["web"]:
         for h in hops:
@@ -1543,6 +1693,8 @@ def extend_trace(t: Dict[str, Any], result: Dict[str, Any]) -> None:
             t["outcome"] = "out_of_scope" if fw["status"] == "out_of_scope" else "unknown" if fw["verdict"] == "unknown" else "blind"
             t["policy_conditional"] = t.get("policy_conditional") or fw["certainty"] == "conditional"
             t["content_inspection_possible"] = False
+    if stop == "fwdctl" and not t.get("conditional"):
+        t["outcome"] = "blocked"   # dropped after the policy: nothing reaches the destination
     if stop in ("atp", "firewall", "dns"):
         idx = next(i for i, h in enumerate(hops) if h.get("key") == stop)
         src = {"key": stop, "label": by_key[stop]["module"], "object_id": (by_key[stop].get("rule") or {}).get("id"), "object_name": (by_key[stop].get("rule") or {}).get("name")}
@@ -1592,7 +1744,7 @@ def annotate_verdict(v: Dict[str, Any], result: Dict[str, Any], host: str) -> No
 
 
 ASSUMPTIONS: List[str] = [
-    "ZIA modules are traced in this order: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control and URL filtering, Sandbox, File Type Control and Web DLP; SSL inspection decides what the later modules can see.",
+    "ZIA modules are traced in this order: Advanced Threat Protection, Cloud Firewall, DNS Control, Cloud App Control and URL filtering, Sandbox, File Type Control and Web DLP, then Forwarding control (how ZIA sends allowed traffic on); SSL inspection decides what the later modules can see.",
     "A condition this tool cannot evaluate (a time window, device trust, user risk score, users, groups, locations, a source IP, a destination country, a hostname's IP address) is shown as unknown, never guessed; the result is conditional when such a condition could change it.",
     "In Advanced Threat Protection an allowlist entry is taken to win over a denylist entry, and each threat category toggle is matched to the categories ZIA's URL lookup returns; content, signature and page-risk detections happen at run time and are not predicted.",
 ]

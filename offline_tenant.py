@@ -962,6 +962,11 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                      "nssFeeds", "browserIsolation/profiles", "sandboxRules", "bandwidthClasses", "bandwidthControlRules",
                                      "tenancyRestrictionProfile", "cyberThreatProtection/advancedThreatSettings",
                                      "cyberThreatProtection/malwareSettings")]
+    # Forwarding and traffic path (zia_forwarding; the FWD.* checks and the
+    # Path analyzer's Forwarding control step).
+    + [(_ZIA, f"/zia/{x}") for x in ("forwardingRules", "proxyGateways", "zpaGateways", "datacenters", "dcExclusions", "greTunnels", "vips",
+                                     "ipv6config", "ipv6config/nat64prefix", "dedicatedIPGateways/lite", "dnatRules", "virtualZenClusters",
+                                     "virtualZenNodes", "dnsGateways")]
     + [(("zia_extras", "rbac"), f"/zia/{x}") for x in ("adminRoles", "adminUsers")]
     + [(("zcc",), f"/zcc/{x}") for x in ("forwardingProfiles", "trustedNetworks", "devices", "failOpenPolicy", "companyInfo", "pacFiles",
                                          "webAppService", "appBypass", "zpaEntitlements", "zdxEntitlements", "deviceGroups")]

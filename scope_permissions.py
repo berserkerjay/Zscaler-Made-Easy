@@ -80,6 +80,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "Security Policy Settings",
             "Advanced Threat Protection",
             "Network Services and IP Groups",
+            "Forwarding Control (rules, proxy, ZPA, dedicated IP and DNS gateways, NAT control, IPv6, data centres, Virtual Service Edges)",
             "Bandwidth Control",
             "Browser Control Settings",
             "Authentication Settings",
@@ -103,6 +104,11 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/cyberThreatProtection/maliciousUrls", "/zia/security/advanced", "/zia/sandboxRules",
             "/zia/networkServices", "/zia/networkServiceGroups", "/zia/networkApplicationGroups",
             "/zia/ipDestinationGroups", "/zia/ipSourceGroups",
+            # Forwarding and traffic path (zia_forwarding: the FWD.* checks
+            # and the Path analyzer's Forwarding control step).
+            "/zia/forwardingRules", "/zia/proxyGateways", "/zia/zpaGateways", "/zia/datacenters", "/zia/dcExclusions",
+            "/zia/vips", "/zia/ipv6config", "/zia/ipv6config/nat64prefix", "/zia/dedicatedIPGateways/lite", "/zia/dnatRules",
+            "/zia/virtualZenClusters", "/zia/virtualZenNodes", "/zia/dnsGateways",
         ],
         "license_required": "Standard ZIA license.",
         "customer_id_needed": False,

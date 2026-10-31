@@ -17,7 +17,10 @@ What it covers, on purpose with the gaps an assessment should find:
   - ZIA: URL filtering, URL categories (one custom), SSL inspection with a
     broad do-not-decrypt exemption, Cloud Firewall (filtering, DNS, IPS),
     Cloud App Control per rule type, File Type Control, PAC files,
-    locations, advanced settings, admins and roles;
+    locations, advanced settings, admins and roles, forwarding control
+    (proxy chaining, ZPA and dedicated IP gateways, GRE tunnels and VIPs,
+    data centre exclusions, IPv6, NAT control, a Virtual Service Edge
+    cluster, a DNS gateway);
   - Client Connector: app profiles per platform (one without strict
     enforcement and with a bypass), forwarding profiles (one leaves traffic
     direct on a trusted network), trusted networks, devices;
@@ -237,6 +240,55 @@ LOCATIONS = [
      "sslScanEnabled": False, "authRequired": False, "xffForwardEnabled": False, "surrogateIP": False, "ofwEnabled": True, "ipsControl": False,
      "ipAddresses": ["203.0.113.20"], "profile": "SERVER"},
 ]
+# Forwarding and traffic path (zia_forwarding, the FWD.* checks and the Path
+# analyzer's Forwarding control step), with the gaps an assessment should
+# find: a proxy-chaining gateway with no secondary proxy that does not fail
+# closed, a connector rule sending a named host direct, an open-ended data
+# centre exclusion, a GRE tunnel whose two VIPs share a data centre, IPv6
+# off, a one-node Virtual Service Edge cluster and a DNS gateway with no
+# secondary resolver. Addresses are from the documentation ranges (RFC 5737).
+PROXY_GATEWAYS = [{"id": 1601, "name": "Partner audit proxy", "type": "PROXYCHAIN", "failClosed": False,
+                   "primaryProxy": {"id": 1611, "name": "Harborline audit proxy"}}]
+ZPA_GATEWAYS = [{"id": 1621, "name": "Anchor to Portland", "type": "ZPA", "zpaServerGroup": {"externalId": "2301", "name": "Portland data centre"},
+                 "zpaAppSegments": [{"externalId": "2201", "name": "Freight billing"}]}]
+FORWARDING_RULES = [
+    {"id": 1631, "order": 1, "rank": 7, "name": "Chain partner portal", "type": "FORWARDING", "state": "ENABLED", "forwardMethod": "PROXYCHAIN",
+     "destAddresses": ["portal.harborline-logistics.example"], "proxyGateway": {"id": 1601, "name": "Partner audit proxy"}},
+    {"id": 1632, "order": 2, "rank": 7, "name": "Anchor billing via ZPA", "type": "FORWARDING", "state": "ENABLED", "forwardMethod": "ZPA",
+     "zpaAppSegments": [{"externalId": "2201", "name": "Freight billing"}], "zpaGateway": {"id": 1621, "name": "Anchor to Portland"}},
+    {"id": 1633, "order": 3, "rank": 7, "name": "Depot updates direct", "type": "EC_RDR", "state": "ENABLED", "forwardMethod": "DIRECT",
+     "destAddresses": ["updates.scanner-vendor.example"]},
+    {"id": 1634, "order": -1, "rank": 7, "name": "Default Forwarding Rule", "type": "FORWARDING", "state": "ENABLED", "forwardMethod": "DIRECT",
+     "defaultRule": True},
+]
+DATACENTERS = [{"id": 1641, "name": "SEA1", "city": "Seattle"}, {"id": 1642, "name": "SJC4", "city": "San Jose"},
+               {"id": 1643, "name": "LAX1", "city": "Los Angeles"}]
+DC_EXCLUSIONS = [{"dcid": 1643, "dcName": {"id": 1643, "name": "LAX1"}, "description": "Spring maintenance", "expired": True,
+                  "startTime": 1774000000, "endTime": 1774600000},
+                 {"dcid": 1642, "dcName": {"id": 1642, "name": "SJC4"}, "description": "Latency complaints", "expired": False,
+                  "startTime": 1790000000}]
+GRE_TUNNELS = [
+    {"id": 1651, "sourceIp": "198.51.100.10", "comment": "Portland HQ", "withinCountry": True,
+     "primaryDestVip": {"id": 1661, "virtualIp": "203.0.113.101", "datacenter": "SEA1"},
+     "secondaryDestVip": {"id": 1662, "virtualIp": "203.0.113.111", "datacenter": "SJC4"}},
+    {"id": 1652, "sourceIp": "203.0.113.20", "comment": "Reno depot", "withinCountry": True,
+     "primaryDestVip": {"id": 1663, "virtualIp": "203.0.113.112"},
+     "secondaryDestVip": {"id": 1664, "virtualIp": "203.0.113.113"}},
+]
+VIPS = [{"cloudName": "zscaler.example", "region": "North America", "country": "United States", "city": "Seattle", "dataCenter": "SEA1",
+         "greIps": ["203.0.113.101", "203.0.113.102"]},
+        {"cloudName": "zscaler.example", "region": "North America", "country": "United States", "city": "San Jose", "dataCenter": "SJC4",
+         "greIps": ["203.0.113.111", "203.0.113.112", "203.0.113.113"]}]
+DEDICATED_IP_GATEWAYS = [{"id": 1671, "name": "Larkspur egress", "default": True,
+                          "primaryDataCenter": {"id": 1641, "name": "SEA1"}, "secondaryDataCenter": {"id": 1642, "name": "SJC4"}}]
+DNAT_RULES = [{"id": 1681, "order": 1, "rank": 7, "name": "Scanner relay", "state": "ENABLED", "destAddresses": ["relay.larkspur-freight.example"],
+               "redirectIp": "198.51.100.40", "redirectPort": 8443}]
+VZEN_CLUSTERS = [{"id": 1691, "name": "Portland VSE", "status": "ENABLED", "type": "VZEN",
+                  "virtualZenNodes": [{"id": 1692, "name": "pdx-vse-1"}]}]
+VZEN_NODES = [{"id": 1692, "name": "pdx-vse-1", "status": "ENABLED", "inProduction": True, "clusterName": "Portland VSE",
+               "deploymentMode": "CLUSTER", "type": "VZEN"}]
+DNS_GATEWAYS = [{"id": 1701, "name": "Depot resolver", "dnsGatewayType": "CUSTOM", "primaryIpOrFqdn": "198.51.100.53",
+                 "failureBehavior": "FAIL_RET_ERR", "autoCreated": False}]
 ADVANCED_SETTINGS = {"enableDnsResolutionOnTransparentProxy": False, "enableOffice365": True, "logInternalIp": True,
                      "enforceSurrogateIpForWindowsApp": True, "trackHttpTunnelOnHttpPorts": True, "blockHttpTunnelOnNonHttpPorts": True,
                      "blockDomainFrontingOnHostHeader": True, "zscalerClientConnector1AndPacRoadWarriorInFirewall": True,
@@ -423,7 +475,12 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/nssFeeds": NSS_FEEDS,
         f"{ZIA}/browserIsolation/profiles": ISOLATION_PROFILES,
         f"{ZIA}/sandboxRules": [], f"{ZIA}/bandwidthClasses": [], f"{ZIA}/bandwidthControlRules": [],
-        f"{ZIA}/tenancyRestrictionProfile": [], f"{ZIA}/greTunnels": [], f"{ZIA}/staticIP": [], f"{ZIA}/vpnCredentials": [],
+        f"{ZIA}/tenancyRestrictionProfile": [], f"{ZIA}/greTunnels": GRE_TUNNELS, f"{ZIA}/staticIP": [], f"{ZIA}/vpnCredentials": [],
+        f"{ZIA}/forwardingRules": FORWARDING_RULES, f"{ZIA}/proxyGateways": PROXY_GATEWAYS, f"{ZIA}/zpaGateways": ZPA_GATEWAYS,
+        f"{ZIA}/datacenters": DATACENTERS, f"{ZIA}/dcExclusions": DC_EXCLUSIONS, f"{ZIA}/vips": VIPS,
+        f"{ZIA}/ipv6config": {"id": 1, "ipV6Enabled": False, "natPrefixes": []}, f"{ZIA}/ipv6config/nat64prefix": [],
+        f"{ZIA}/dedicatedIPGateways/lite": DEDICATED_IP_GATEWAYS, f"{ZIA}/dnatRules": DNAT_RULES,
+        f"{ZIA}/virtualZenClusters": VZEN_CLUSTERS, f"{ZIA}/virtualZenNodes": VZEN_NODES, f"{ZIA}/dnsGateways": DNS_GATEWAYS,
         f"{ZIA}/status": {"status": "ACTIVE"},
         f"{ZIA}/cyberThreatProtection/advancedThreatSettings": {"riskTolerance": 40, "cmdCtlServerBlocked": True, "malwareSitesBlocked": True,
                                                                 "knownPhishingSitesBlocked": True, "suspectAdwareSpywareSitesBlocked": True},

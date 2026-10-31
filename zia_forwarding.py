@@ -291,7 +291,8 @@ def gre_diversity(tunnels: Iterable[Any], vips: Optional[Iterable[Any]] = None) 
     for t in tunnels:
         if not isinstance(t, dict):
             continue
-        label = str(f(t, "sourceIp") or f(t, "comment") or f(t, "id") or "tunnel")[:80]
+        comment, src = str(f(t, "comment") or "")[:60], str(f(t, "sourceIp") or "")[:45]
+        label = f"{comment} ({src})" if comment and src else (comment or src or f"tunnel {f(t, 'id')}")
         p_ip, p_dc = _vip_dc(f(t, "primaryDestVip"), idx)
         s_ip, s_dc = _vip_dc(f(t, "secondaryDestVip"), idx)
         if not s_ip:
