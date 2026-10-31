@@ -77,6 +77,8 @@ WRITE_PERMISSIONS: Dict[str, Dict[str, str]] = {
 _SECTION_SCOPE = [
     ("ZIA —", "zia_extras"), ("ZCC —", "zcc"), ("ZPA —", "zpa"), ("GenAI", "genai"), ("Automation", "automation"),
     ("ZDX", "zdx"), ("ZIdentity", "zidentity"), ("RBAC", "rbac"),
+    # The other products (zscaler_other_products_checks), one Scope page key each.
+    ("ZTB —", "ztb"), ("EASM —", "easm"), ("ZBI —", "zbi"), ("ZCell —", "zcell"), ("ZMS —", "zms"),
 ]
 
 

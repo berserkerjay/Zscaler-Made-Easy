@@ -61,6 +61,7 @@ PAGES = {
     "/report/shadow": "report_shadow.html", "/report/posture": "report_posture.html",
     "/report/self-heal": "report_self_heal.html", "/report/path": "report_path.html", "/report/pov": "report_pov.html",
     "/report/sslflow": "report_sslflow.html", "/report/sslcoverage": "report_ssl_coverage.html",
+    "/report/other-products": "report_other_products.html",
 }
 
 
@@ -351,6 +352,7 @@ TOURS = {
                     ["click", "#tab-diagnose"], ["fill", "#dDest", "git.corp.example"], ["click", "#dRun"], ["wait", "#zpWalk button"]],
     "/report/device-posture": [["click", "#dvRun"], ["wait", "#dvTabs:not([hidden])"]],
     "/report/browser": [["click", "#bwRun"], ["wait", "#expXlsx:not([hidden])"]],
+    "/report/other-products": [["click", "#opRun"], ["wait", "#expXlsx:not([hidden])"]],
     "/report/insights": [["click", "#tiRun"], ["wait", "#tiGrid"]],
     "/report/motion": [["goto", "/report/motion#path"], ["fill", "#scenarioDestination", "drive.google.com"],
                        ["fill", "#scenarioCorpus", "Test card 4111 1111 1111 1111"], ["click", "#scenarioRun"]],

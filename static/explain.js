@@ -121,6 +121,14 @@
     get: 'Findings in plain English with a severity and a fix each (sorted high first), the controls of every isolation profile side by side with the rules that use it, Browser Control settings with the older versions not blocked, Browser Access, managed browser and PRA tables, a glossary of every control, the assumptions, and an Excel or JSON export. It says once that the standalone Zscaler Enterprise Browser has no API.',
     next: 'Turn copy and paste, file transfer and printing off in the profiles that isolate sensitive, GenAI or unsanctioned apps, give rules that isolate a profile, delete the unused profiles, then read again to confirm each finding is gone.',
   };
+  X.otherproducts = {
+    group: 'Find the gaps', name: 'Other Zscaler products', href: '/report/other-products',
+    what: 'Reads, only for the products ticked on the Scope page, Zero Trust Branch (sites, templates, alarms, API key names and ages, hubs, the ransomware kill switch), External attack surface (organizations, findings, lookalike domains), Business Insights (custom applications, scheduled reports), Zero Trust Cellular (account, regions, anomaly policies, SIM counts) and Microsegmentation (agents, agent groups, provisioning key names, policy and default rules, resource protection).',
+    why: 'These products are bought to close a gap (branch offices, the internet-facing estate, SIM devices, east-west traffic in the data centre), and each has a few settings that undo it quietly: an offline site, an old exposed server, a SIM nobody watches, tamper protection off, a default rule that allows everything.',
+    when: 'When the customer owns any of these products, during a platform review, and before a renewal to show what the product is doing.',
+    get: 'For each product: what it is in plain words, what the tenant has in tables, best-practice checks with why each matters, what to do and its source (or "assumed"), "not licensed" when the tenant does not own it, and an Excel or JSON export. The same checks are scored in the assessment when the product is ticked.',
+    next: 'Fix the high findings first (an exploited internet-facing weakness, an alarm nobody handled, tamper protection off), then read again to confirm each finding is gone.',
+  };
   X.efficacy = {
     group: 'Find the gaps', name: 'DLP efficacy', href: '/report/view?tool=efficacy',
     what: 'Scores every custom dictionary and engine for false-positive risk and lets you paste sample text (or run the built-in corpus) to see which dictionaries, engines and predefined ones would fire.',
@@ -440,7 +448,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/other-products': 'otherproducts', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';

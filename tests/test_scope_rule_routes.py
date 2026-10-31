@@ -219,6 +219,8 @@ AIGUARD = page(["aiguard"])                                  # AI Guard only
 AUTOMATION = page(["automation"])
 ZDX = page(["zdx"])
 ZTW = page(["ztw"])
+ZTB = page(["ztb"])                                          # Other products: Zero Trust Branch only
+ZMS = page(["zms"])                                          # Other products: Microsegmentation only
 
 # What each partial selection leaves out: a read naming any of these is out of scope.
 OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules", "saas_security_api", "casb_tenant",
@@ -237,6 +239,9 @@ ZDX_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "zidentity
 AIG_ZIA_OUT = tuple(x for x in ZIA_OUT if x != "aiguard.")   # ZIA platform and AI Guard both ticked
 AIGUARD_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 ZTW_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
+OTHER_OUT = ("zia.", "/zia/", "zpa.", "/zpa/", "zcc.", "/zcc/", "zins.", "zwa.", "zdx.", "zidentity.")
+ZTB_OUT = OTHER_OUT + ("/easm/", "/bi/", "/zcell/", "/zms/")
+ZMS_OUT = OTHER_OUT + ("/ztb/", "/easm/", "/bi/", "/zcell/")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -367,6 +372,8 @@ ROUTES: List[Route] = [
     Route("/api/device-posture/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/browser-security/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/browser-security/start", partial=ZIA, out=ZIA_OUT),
+    Route("/api/other-products/start", partial=ZTB, out=ZTB_OUT),
+    Route("/api/other-products/start", {"customer_id": "72000000000000001"}, partial=ZMS, out=ZMS_OUT),
     Route("/api/ssl-coverage/start", partial=page(["dlp"], web_dlp="zscaler", ssl_inspection="zscaler"),
           out=OTHER_DLP + NOT_ZIA_PLATFORM + ("zpa.", "zcc.", "/zcc/", "zins.")),
     # Self-healing, the audit timeline, the fleet, bulk changes, the loop

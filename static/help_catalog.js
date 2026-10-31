@@ -731,6 +731,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
     "effect": "nav"
    },
+   ".tool-group button[onclick=\"openOtherProductsTab()\"]": {
+    "what": "Reads Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation. Only the ones ticked on the Scope page are read. Lists what the tenant has and checks it. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
+    "effect": "nav"
+   },
    ".tool-group button[onclick=\"openToolTab('efficacy')\"]": {
     "what": "Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.",
     "input": "Nothing to type. Just click it. Scoring starts only when you click Score tenant there.",
@@ -2678,6 +2683,53 @@ window.HELP_CATALOG = {
    },
    "button.rp-more": {
     "what": "Shows or hides the rest of the page introduction.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   }
+  },
+  "/report/other-products": {
+   "#opTenant": {
+    "what": "Picks which tenant sign-in the read uses.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or what is saved on this computer. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   "#opZcell": {
+    "what": "The Zero Trust Cellular customer ID. Every Zero Trust Cellular read carries it.",
+    "input": "Optional; needed only when Zero Trust Cellular is ticked. Letters, digits, - and _, at most 64, for example gi754cvqb07r0. The ZCell admin portal shows it.",
+    "effect": "local"
+   },
+   "#opZms": {
+    "what": "The Microsegmentation customer ID. Every Microsegmentation query carries it.",
+    "input": "Optional. Leave it empty to use the ZPA customer ID from Connect to the tenant. Letters, digits, - and _, at most 64.",
+    "effect": "local"
+   },
+   "#opRun": {
+    "what": "Reads the other Zscaler products ticked on the Scope page once and checks them: Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and Microsegmentation.",
+    "input": "Nothing to type. Just click it. Tick at least one of these products on the Scope page first.",
+    "effect": "read"
+   },
+   "#opStop": {
+    "what": "Stops the read at once. Nothing more is read and nothing is kept.",
+    "input": "Nothing to type. Just click it while a read is running.",
+    "effect": "local"
+   },
+   "#expXlsx": {
+    "what": "Saves the findings and every table of this read as an Excel workbook.",
+    "input": "Nothing to type. Just click it. Click Read first.",
+    "effect": "download"
+   },
+   "#expJson": {
+    "what": "Saves the findings and every table of this read as a JSON file.",
+    "input": "Nothing to type. Just click it. Click Read first.",
+    "effect": "download"
+   },
+   "#opBody .op-filter button[data-sev]": {
+    "what": "Shows only the findings of this severity. All shows every finding.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opBody details.pa-details > summary": {
+    "what": "Shows or hides this list: the assumptions, or the log of what was read.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    }
