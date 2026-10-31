@@ -4261,7 +4261,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#rcRemove": {
-    "what": "Deletes every rule of the policy that is not in the file (never the Default, predefined or read-only rules). Applying then needs DELETE <n> RULES typed.",
+    "what": "Deletes every rule of the policy that is not in the file (never the Default, predefined or read-only rules). Applying then needs DELETE and the count typed, like DELETE 3 RULES.",
     "input": "Optional. Off by default. Tick it only when the file lists every rule you want to keep.",
     "effect": "local"
    },
@@ -5584,7 +5584,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#syDeletes": {
-    "what": "Also plans deletes of target rules in the selection that the source does not have. Applying such a plan needs DELETE <n> RULES typed.",
+    "what": "Also plans deletes of target rules in the selection that the source does not have. Applying such a plan needs DELETE and the count typed, like DELETE 3 RULES.",
     "input": "Optional. Off by default.",
     "effect": "local"
    },

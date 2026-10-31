@@ -4240,6 +4240,36 @@ window.HELP_CATALOG = {
     "input": "Tick it to block.",
     "effect": "local"
    },
+   "input[name=\"rcPolicy\"]": {
+    "what": "Picks the policy whose rules you export and import: Cloud Firewall, URL filtering or the ZPA access policy.",
+    "input": "Tick one. Only policies in scope on the Scope page are offered.",
+    "effect": "local"
+   },
+   "#rcExport": {
+    "what": "Saves the policy's rules as a CSV file: names, not ids, with the order and the admin rank. Every cell is safe to open in a spreadsheet.",
+    "input": "Nothing to type. Just click it. Read from the tenant first.",
+    "effect": "download"
+   },
+   "#rcCols > summary": {
+    "what": "Shows or hides the columns a file for this policy may have and what each holds.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#rcFile": {
+    "what": "Chooses the edited CSV file. Choosing it only checks the file; nothing is read from or written to the tenant.",
+    "input": "Required to preview. A UTF-8 CSV with a header row, at most 1000 kB and 2000 rules; lists separated by a semicolon, like QUIC; DNS.",
+    "effect": "local"
+   },
+   "#rcRemove": {
+    "what": "Deletes every rule of the policy that is not in the file (never the Default, predefined or read-only rules). Applying then needs DELETE and the count typed, like DELETE 3 RULES.",
+    "input": "Optional. Off by default. Tick it only when the file lists every rule you want to keep.",
+    "effect": "local"
+   },
+   "#rcEnabled": {
+    "what": "Creates new rules from the file enabled. Off, new ZIA rules are created disabled; new ZPA access rules are left out, because ZPA cannot create them disabled.",
+    "input": "Optional. Off by default.",
+    "effect": "local"
+   },
    "#opObjects details.pa-details > summary": {
     "what": "Shows or hides what the app assumes for this builder.",
     "input": "Nothing to type. Just click it.",
@@ -5510,6 +5540,81 @@ window.HELP_CATALOG = {
    },
    ".cq-job button": {
     "what": "Stops the apply that is running now.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#syNew > summary": {
+    "what": "Opens or closes the form for a new sync job.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#syName": {
+    "what": "Names the sync job.",
+    "input": "Required. Up to 80 characters, like Firewall baseline.",
+    "effect": "local"
+   },
+   "#sySource": {
+    "what": "Picks what the targets are kept in step with: a saved tenant profile (with its secret) or a saved snapshot.",
+    "input": "Required. Pick one.",
+    "effect": "local"
+   },
+   "#syTargets input": {
+    "what": "Adds this tenant profile as a target. Each run plans the change for it and files the plan for approval.",
+    "input": "Tick 1 to 10 profiles that remember their secret.",
+    "effect": "local"
+   },
+   "#syGroups input": {
+    "what": "Keeps these rules in step: ZIA Cloud Firewall, ZIA URL filtering or the ZPA access policy.",
+    "input": "Tick at least one. Each must be in scope on the Scope page.",
+    "effect": "local"
+   },
+   "#syLabel": {
+    "what": "Keeps only rules carrying this ZIA rule label in step.",
+    "input": "Optional. A rule label name, like Baseline. Not for ZPA.",
+    "effect": "local"
+   },
+   "#syPrefix": {
+    "what": "Keeps only rules whose name starts with this text in step.",
+    "input": "Optional. Up to 128 characters, like BASE-.",
+    "effect": "local"
+   },
+   "#syInterval": {
+    "what": "Sets how often the job runs on its own. Each run only reads and files plans; nothing is applied.",
+    "input": "Pick one: only when you click Run now, or every 1, 4, 12, 24 or 168 hours.",
+    "effect": "local"
+   },
+   "#syDeletes": {
+    "what": "Also plans deletes of target rules in the selection that the source does not have. Applying such a plan needs DELETE and the count typed, like DELETE 3 RULES.",
+    "input": "Optional. Off by default.",
+    "effect": "local"
+   },
+   "#syEnabled": {
+    "what": "Creates new rules in the targets enabled. Off, new ZIA rules arrive disabled and new ZPA rules are left out.",
+    "input": "Optional. Off by default.",
+    "effect": "local"
+   },
+   "#sySave": {
+    "what": "Saves the sync job. Nothing is read until it runs.",
+    "input": "Needs writer rights, a name, a source, targets and what to keep in step.",
+    "effect": "local"
+   },
+   "button[data-sy=\"run\"]": {
+    "what": "Runs the job now: reads the source and the targets and files one plan per target here for approval. Nothing is written to any tenant.",
+    "input": "Needs writer rights. Just click it.",
+    "effect": "read"
+   },
+   "button[data-sy=\"toggle\"]": {
+    "what": "Pauses or resumes the job's schedule.",
+    "input": "Needs writer rights. Just click it.",
+    "effect": "local"
+   },
+   "button[data-sy=\"delete\"]": {
+    "what": "Deletes the job and its history. Requests it filed stay in the queue.",
+    "input": "Needs writer rights. You confirm it.",
+    "effect": "local"
+   },
+   ".sy-job details > summary": {
+    "what": "Shows or hides the job's runs: when, who started them, each target and what was filed.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    }
