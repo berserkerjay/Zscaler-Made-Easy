@@ -448,7 +448,7 @@ import time as _time   # noqa: E402
 
 # Control characters, and the zero-width and bidi overrides that make text read differently from what it is.
 _GOV_CTRL = _re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069]+")
-_LOG_SKUS = ("Z_LOGFEED", "Z_CLOUD_NSS_WEB")   # SKU ids as readiness.SKU_INFO (assumed there: the SDK lists no SKU names)
+_LOG_SKUS = ("Z_LOGFEED", "Z_CLOUD_NSS_WEB")   # SKU ids as readiness.SKU_INFO names them (assumed: the SDK lists no SKU names)
 
 
 def _gov_text(v, limit=200):
@@ -459,19 +459,32 @@ def _gov_text(v, limit=200):
     return t if len(t) <= limit else t[: limit - 1] + "…"
 
 
+_SKU_ID = _re.compile(r"[A-Z0-9_]{2,64}")
+
+
 def _subscriptions(cl):
     """The organisation's active SKU ids, or None when the subscriptions
     could not be read (then nothing is marked N/A on their account).
     organization_information.get_subscriptions reads GET /subscriptions;
-    the body is a list of {id, status, subscribed, ...} (readiness.parse_subscriptions)."""
-    import readiness
+    the body is assumed to be a list of {id, status, subscribed, ...} (the
+    SDK models one object). Parsed here, not with readiness, which decodes
+    unverified token claims and is kept out of every other module."""
     d, c = cl.get("/zia/subscriptions")
-    if c != 200 or not isinstance(d, (list, dict)):
+    if c != 200:
         return None
-    rows = readiness.parse_subscriptions(d)
-    if not rows:   # nothing understood: no evidence a feature is missing
+    rows = d if isinstance(d, list) else (d.get("list") if isinstance(d, dict) else None)
+    if not isinstance(rows, list):
         return None
-    return {r["id"] for r in rows if r.get("active")}
+    seen, active = 0, set()
+    for r in rows[:300]:
+        sid = r.get("id") if isinstance(r, dict) else None
+        if not isinstance(sid, str) or not _SKU_ID.fullmatch(sid):
+            continue
+        seen += 1
+        status = str(r.get("status") or "").upper()
+        if r.get("subscribed") is not False and "EXPIRED" not in status and "CANCEL" not in status:
+            active.add(sid)
+    return active if seen else None   # nothing understood: no evidence a feature is missing
 
 
 def _not_licensed(feature):

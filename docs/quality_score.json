@@ -275,7 +275,7 @@
           "findings": {
             "score": 98.0,
             "open": 1,
-            "fixed": 124,
+            "fixed": 125,
             "accepted": 3,
             "records": [
               "c6-assessment",
@@ -437,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 584,
+    "findings": 585,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -456,7 +456,7 @@
       },
       "low": {
         "open": 1,
-        "fixed": 338,
+        "fixed": 339,
         "accepted": 0
       },
       "info": {
@@ -476,7 +476,7 @@
   "findings": [
     {
       "id": "W8-GOV-05",
-      "title": "tests/test_new_marks.py::test_no_sideways_scroll_at_320px[/report/advanced] fails on a clean origin/dev checkout (1b2420b) in this environment: a ? help mark inside a DIV sits past the right edge at 320px",
+      "title": "tests/test_new_marks.py::test_no_sideways_scroll_at_320px[/report/advanced] and tests/test_flow_pages.py::test_no_motion_page_scrolls_sideways[320-walk-normal|reduce] fail on a clean origin/dev checkout (1b2420b) in this environment: content sits past the right edge at 320px",
       "severity": "low",
       "status": "open",
       "cwe": "CWE-1059",
@@ -9003,6 +9003,22 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W8-GOV-06",
+      "title": "The governance checks first parsed the subscriptions with readiness.parse_subscriptions; readiness decodes unverified token claims and must stay out of every module but the server",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-345",
+      "asvs": "V3.5.3",
+      "wcag": "",
+      "fix": "zscaler_full_checks._subscriptions parses the SKU ids itself (bounded, id pattern, expired or unsubscribed rows are not active); no import of readiness",
+      "test": "tests/test_sbd_offline_least_privilege.py::test_no_authorization_decision_reads_the_unverified_token_claims",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zia-governance",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -10745,7 +10761,7 @@
         "WCAG 2.2 SC 3.2.4"
       ],
       "checks": 8,
-      "findings": 5,
+      "findings": 6,
       "tests_added": 59
     }
   ],

@@ -245,6 +245,8 @@ def test_subscriptions_nobody_understands_are_no_evidence_of_a_missing_licence()
     assert fc._subscriptions(FakeCl({"/zia/subscriptions": {"error": "boom"}})) is None
     assert fc._subscriptions(FakeCl({}, {"/zia/subscriptions": 403})) is None
     assert fc._subscriptions(FakeCl({"/zia/subscriptions": LICENSED})) == {"ZIA_TENANT", "Z_CLOUD_NSS_WEB"}
+    expired = UNLICENSED + [{"id": "Z_LOGFEED", "status": "EXPIRED", "subscribed": True}, {"id": "Z_CLOUD_NSS_WEB", "subscribed": False}]
+    assert fc._subscriptions(FakeCl({"/zia/subscriptions": expired})) == {"ZIA_TENANT"}
 
 
 # ── RBAC.13: admin password expiry ─────────────────────────────────────
