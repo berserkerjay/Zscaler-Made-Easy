@@ -160,5 +160,5 @@
   "ASSUMED and marked in code and in every plan's notes: moving an App Connector by PUT /connector/{id} with appConnectorGroupId; certBlob as the upload field; the ZCC custom IP-based app create/edit/delete paths and the entitlement update body (the SDK has no usable write); device state words; ZDX trace status words; ZDX user search by q.",
   "Verified in zscaler-sdk-python 1.11.3: every other path, method and model field; Client Connector's 100 calls an hour (zcc/legacy.py); the version profile ids (utils.pick_version_profile); the deep trace options and lengths."
  ],
- "tests_added": 0
+ "tests_added": 94
 }
