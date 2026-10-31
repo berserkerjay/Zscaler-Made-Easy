@@ -21,9 +21,14 @@ What it covers, on purpose with the gaps an assessment should find:
   - Client Connector: app profiles per platform (one without strict
     enforcement and with a bypass), forwarding profiles (one leaves traffic
     direct on a trusted network), trusted networks, devices;
-  - ZPA: application segments (one with a wildcard domain), segment,
-    server and connector groups, App Connectors (one disconnected), an
-    IdP, posture profiles, access and timeout policies;
+  - ZPA: application segments (one with a wildcard domain, a Privileged
+    Remote Access one and a Browser Access one), segment, server and
+    connector groups, App Connectors (one disconnected), an IdP, posture
+    profiles, access, timeout, client forwarding (a bypass), redirection,
+    privileged credential and capabilities policies, an inspection profile
+    that only monitors, an unattached custom control, an application server
+    in no group, business continuity with no Private Cloud Controller, and
+    Branch and Cloud Connector groups (one empty);
   - ZDX: monitored applications, devices, departments, locations;
   - ZIdentity: users, groups, resource servers.
 
@@ -317,7 +322,9 @@ DEVICE_CLEANUP = {"id": 1, "active": 1, "autoRemovalDays": 30, "autoPurgeDays": 
 
 # ── ZPA ───────────────────────────────────────────────────────────────
 SEGMENT_GROUPS = [{"id": "2101", "name": "Finance apps", "enabled": True, "applications": [{"id": "2201", "name": "Freight billing"}]},
-                  {"id": "2102", "name": "All internal (broad)", "enabled": True, "applications": [{"id": "2202", "name": "Everything internal"}]}]
+                  {"id": "2102", "name": "All internal (broad)", "enabled": True, "applications": [{"id": "2202", "name": "Everything internal"},
+                                                                                                   {"id": "2203", "name": "Depot jump hosts"},
+                                                                                                   {"id": "2204", "name": "Driver portal"}]}]
 SERVER_GROUPS = [{"id": "2301", "name": "Portland data centre", "enabled": True, "dynamicDiscovery": True,
                   "appConnectorGroups": [{"id": "2401", "name": "Portland connectors"}], "applications": [{"id": "2201", "name": "Freight billing"}]},
                  {"id": "2302", "name": "Reno depot servers", "enabled": True, "dynamicDiscovery": True,
@@ -343,6 +350,18 @@ SEGMENTS = [
      "tcpPortRanges": ["1", "65535"], "udpPortRanges": ["1", "65535"], "segmentGroupId": "2102", "segmentGroupName": "All internal (broad)",
      "serverGroups": [{"id": "2302", "name": "Reno depot servers"}], "bypassType": "NEVER", "healthReporting": "ON_ACCESS",
      "doubleEncrypt": False, "isCnameEnabled": True, "icmpAccessType": "PING"},
+    # A Privileged Remote Access segment (RDP to the depot's jump hosts) and a
+    # Browser Access segment that drivers open from their own phones.
+    {"id": "2203", "name": "Depot jump hosts", "enabled": True, "domainNames": ["jump.depot.larkspur-freight.example"],
+     "tcpPortRanges": ["3389", "3389"], "udpPortRanges": [], "segmentGroupId": "2102", "segmentGroupName": "All internal (broad)",
+     "serverGroups": [{"id": "2302", "name": "Reno depot servers"}], "bypassType": "NEVER", "healthReporting": "ON_ACCESS",
+     "doubleEncrypt": False, "commonAppsDto": {"appsConfig": [{"name": "Depot jump hosts", "appTypes": ["SECURE_REMOTE_ACCESS"]}]},
+     "praApps": [{"id": "2213", "name": "Depot jump hosts", "enabled": True}]},
+    {"id": "2204", "name": "Driver portal", "enabled": True, "domainNames": ["drivers.larkspur-freight.example"],
+     "tcpPortRanges": ["443", "443"], "udpPortRanges": [], "segmentGroupId": "2102", "segmentGroupName": "All internal (broad)",
+     "serverGroups": [{"id": "2301", "name": "Portland data centre"}], "bypassType": "NEVER", "healthReporting": "ON_ACCESS",
+     "doubleEncrypt": False, "commonAppsDto": {"appsConfig": [{"name": "Driver portal", "appTypes": ["BROWSER_ACCESS"]}]},
+     "clientlessApps": [{"id": "2214", "name": "Driver portal", "enabled": True, "applicationPort": "443", "applicationProtocol": "HTTPS"}]},
 ]
 IDPS = [{"id": "2601", "name": "Larkspur Okta", "enabled": True, "ssoType": ["USER"], "scimEnabled": True, "idpEntityId": "https://idp.larkspur-freight.example"}]
 SAML_ATTRIBUTES = [{"id": "2611", "name": "Department_Larkspur Okta", "idpId": "2601", "idpName": "Larkspur Okta", "samlName": "department", "userAttribute": True}]
@@ -365,6 +384,32 @@ ZPA_ROLES = [{"id": "2991", "name": "ZPA read only", "classPermissionGroups": [{
     {"classType": {"friendlyName": "Policy"}, "permission": {"type": "VIEW_ONLY"}}]}]}]
 TIMEOUT_RULES = [{"id": "2951", "name": "Re-authenticate daily", "ruleOrder": "1", "action": "RE_AUTH", "reauthTimeout": "86400",
                   "reauthIdleTimeout": "1800", "policyType": "2", "conditions": []}]
+# The other ZPA policies, each with a gap the ZPA analysis finds.
+CLIENT_FORWARDING_RULES = [{"id": "2961", "name": "Bypass depot jump hosts", "ruleOrder": "1", "action": "BYPASS", "policyType": "3",
+                            "conditions": [{"id": "c5", "operator": "OR", "operands": [{"id": "o5", "objectType": "APP", "lhs": "id", "rhs": "2203", "name": "Depot jump hosts"}]}]}]
+CAPABILITIES_RULES = [{"id": "2971", "name": "Depot admins file transfer", "ruleOrder": "1", "action": "CHECK_CAPABILITIES",
+                       "conditions": [{"id": "c6", "operator": "OR", "operands": [{"id": "o6", "objectType": "APP", "lhs": "id", "rhs": "2203", "name": "Depot jump hosts"}]}],
+                       "privilegedCapabilities": {"capabilities": ["CLIPBOARD_COPY", "CLIPBOARD_PASTE", "FILE_DOWNLOAD", "INSPECT_FILE_UPLOAD"]}}]
+# The credential rule names the credential by reference only (no secret in the sample).
+CREDENTIAL_RULES = [{"id": "2981", "name": "Depot shared login", "ruleOrder": "1", "action": "INJECT_CREDENTIALS",
+                     "conditions": [{"id": "c7", "operator": "OR", "operands": [{"id": "o7", "objectType": "CONSOLE", "lhs": "id", "rhs": "3001", "name": "Depot jump console"}]}],
+                     "credential": {"id": "3011", "name": "depot-admin"}}]
+REDIRECTION_RULES = [{"id": "2985", "name": "Reno via the local service edge", "ruleOrder": "1", "action": "REDIRECT_PREFERRED",
+                      "serviceEdgeGroups": [{"id": "2851", "name": "Reno edge (retired)"}],
+                      "conditions": [{"id": "c8", "operator": "OR", "operands": [{"id": "o8", "objectType": "CLIENT_TYPE", "lhs": "id", "rhs": "zpn_client_type_zapp"}]}]}]
+INSPECTION_PROFILES = [{"id": "3021", "name": "Larkspur OWASP (monitor)", "paranoiaLevel": "1",
+                        "globalControlActions": ["PREDEFINED:PASS", "CUSTOM:NONE", "OVERRIDE_ACTION:COMMON"],
+                        "predefinedControls": [{"id": "3022", "name": "SQL injection", "action": "PASS"}, {"id": "3023", "name": "Cross-site scripting", "action": "PASS"}]}]
+CUSTOM_CONTROLS = [{"id": "3031", "name": "Block manifest export path", "action": "BLOCK", "defaultAction": "BLOCK", "severity": "HIGH",
+                    "controlType": "CUSTOM", "associatedInspectionProfileNames": []}]
+APP_SERVERS = [{"id": "3041", "name": "rno-billing-old", "address": "10.20.4.15", "enabled": True, "appServerGroupIds": []}]
+# Business continuity is set up, but no Private Cloud Controller is deployed.
+BUSINESS_CONTINUITY = [{"id": "3051", "backupEnabled": False, "switchTimeEnabled": True, "maxAllowedDownTime": "60", "maxAllowedDownTimeUnit": "MINUTES",
+                        "newUserSupport": False, "useExistingIdp": True}]
+BRANCH_CONNECTOR_GROUPS = [{"id": "3061", "name": "Reno depot branch", "enabled": True}]
+BRANCH_CONNECTORS = [{"id": "3062", "name": "rno-bc-1", "enabled": True, "branchConnectorGroupId": "3061", "branchConnectorGroupName": "Reno depot branch"}]
+CLOUD_CONNECTOR_GROUPS = [{"id": "3071", "name": "AWS us-west-2", "enabled": True, "ziaCloud": "zscalertwo.net"}]
+CLOUD_CONNECTORS: List[Dict[str, Any]] = []
 
 # ── ZDX and ZIdentity ─────────────────────────────────────────────────
 # The ZDX API answers in snake_case (zscaler/zdx/models/applications.py).
@@ -456,15 +501,24 @@ def responses() -> Dict[str, Any]:
         f"{ZPA2}/network": _zpa(ZPA_TRUSTED_NETWORKS),
         f"{ZPA1}/machineGroup": _zpa(MACHINE_GROUPS),
         f"{ZPA1}/certificate": _zpa([]), f"{ZPA2}/lssConfig": _zpa([]), f"{ZPA2}/clientlessCertificate/issued": _zpa([]),
-        f"{ZPA1}/inspectionProfile": _zpa([]), f"{ZPA1}/isolation/profiles": _zpa([]), f"{ZPA1}/browserProtectionProfile": _zpa([]),
+        f"{ZPA1}/inspectionProfile": _zpa(INSPECTION_PROFILES), f"{ZPA1}/isolation/profiles": _zpa([]), f"{ZPA1}/browserProtectionProfile": _zpa([]),
+        f"{ZPA1}/inspectionControls/custom": _zpa(CUSTOM_CONTROLS), f"{ZPA1}/server": _zpa(APP_SERVERS),
+        f"{ZPA1}/businessContinuitySettings": _zpa(BUSINESS_CONTINUITY),
+        f"{ZPA1}/privateCloud": _zpa([]), f"{ZPA1}/privateCloudControllerGroup": _zpa([]), f"{ZPA1}/privateCloudController": _zpa([]),
+        f"{ZPA1}/branchConnectorGroup": _zpa(BRANCH_CONNECTOR_GROUPS), f"{ZPA1}/branchConnector": _zpa(BRANCH_CONNECTORS),
+        f"{ZPA1}/cloudConnectorGroup": _zpa(CLOUD_CONNECTOR_GROUPS), f"{ZPA1}/cloudConnector": _zpa(CLOUD_CONNECTORS),
         f"{ZPA1}/praConsole": _zpa([]), f"{ZPA1}/praPortal": _zpa([]), f"{ZPA1}/userPortal": _zpa([]),
         f"{ZPA1}/associationType/CONNECTOR_GRP/provisioningKey": _zpa([]),
         f"{ZPA1}/roles": _zpa(ZPA_ROLES),
         f"{ZPA1}/policySet/rules/policyType/ACCESS_POLICY": _zpa(ACCESS_RULES),
         f"{ZPA1}/policySet/rules/policyType/TIMEOUT_POLICY": _zpa(TIMEOUT_RULES),
-        f"{ZPA1}/policySet/rules/policyType/CLIENT_FORWARDING_POLICY": _zpa([]),
+        f"{ZPA1}/policySet/rules/policyType/CLIENT_FORWARDING_POLICY": _zpa(CLIENT_FORWARDING_RULES),
         f"{ZPA1}/policySet/rules/policyType/INSPECTION_POLICY": _zpa([]),
         f"{ZPA1}/policySet/rules/policyType/ISOLATION_POLICY": _zpa([]),
+        f"{ZPA1}/policySet/rules/policyType/REDIRECTION_POLICY": _zpa(REDIRECTION_RULES),
+        f"{ZPA1}/policySet/rules/policyType/CREDENTIAL_POLICY": _zpa(CREDENTIAL_RULES),
+        f"{ZPA1}/policySet/rules/policyType/CAPABILITIES_POLICY": _zpa(CAPABILITIES_RULES),
+        f"{ZPA1}/policySet/rules/policyType/CLIENTLESS_SESSION_PROTECTION_POLICY": _zpa([]),
         # ZDX
         f"{ZDX}/apps": ZDX_APPS, f"{ZDX}/devices": {"devices": ZDX_DEVICES, "next_offset": None},
         f"{ZDX}/administration/departments": [{"id": 21, "name": "Operations"}, {"id": 22, "name": "Finance"}],
