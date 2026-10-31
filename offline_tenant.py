@@ -290,7 +290,7 @@ class OfflineStore:
                 return 200, copy.deepcopy(item)
         return 404, {"code": "NOT_FOUND", "message": self._missing(path)}
 
-    def answer_write(self, method: str, url: str, body: Any = None) -> Tuple[int, Any]:
+    def answer_write(self, method: str, url: str, body: Any = None, params: Optional[Dict[str, Any]] = None) -> Tuple[int, Any]:
         """(status, body) of a POST / PUT / PATCH / DELETE: refused on a
         snapshot; on the sample, applied to its in-memory copy."""
         method = str(method or "").upper()
@@ -316,6 +316,29 @@ class OfflineStore:
                 return 200, {"success": ok, "message": "" if ok else "FindProxyForURL is missing", "errorCount": 0 if ok else 1,
                              "warningCount": 0, "messages": [] if ok else [{"line": 1, "column": 1, "severity": "ERROR",
                                                                             "message": "FindProxyForURL is missing", "fatal": True}]}
+            # The security policy lists (zia/security_policy_settings.py): the
+            # denylist changes by ADD_TO_LIST / REMOVE_FROM_LIST, the allowlist
+            # is replaced whole (PUT /security).
+            if method == "POST" and path.endswith("/security/advanced/blacklistUrls"):
+                entry = self._lookup(path[: -len("/blacklistUrls")])
+                from urllib.parse import parse_qs, urlsplit
+                action = str((params or {}).get("action") or (parse_qs(urlsplit(str(url)).query).get("action") or [""])[0])
+                urls = [str(u) for u in ((body or {}).get("blacklistUrls") or []) if isinstance(u, (str, int))] if isinstance(body, dict) else []
+                if entry is None or not isinstance(entry.get("body"), dict) or action not in ("ADD_TO_LIST", "REMOVE_FROM_LIST"):
+                    return 400, {"code": "NOT_MODELLED", "message": "The sample tenant takes ADD_TO_LIST or REMOVE_FROM_LIST here."}
+                cur = [str(u) for u in entry["body"].get("blacklistUrls") or []]
+                entry["body"]["blacklistUrls"] = ([u for u in cur if u not in urls] if action == "REMOVE_FROM_LIST"
+                                                  else cur + [u for u in urls if u not in cur])
+                self.writes += 1
+                return 204, {}
+            if method == "PUT" and (path.endswith("/security") or path.endswith("/security/advanced")) and isinstance(body, dict):
+                entry = self._lookup(path)
+                key = "whitelistUrls" if path.endswith("/security") else "blacklistUrls"
+                if entry is None or not isinstance(entry.get("body"), dict) or not isinstance(body.get(key), list):
+                    return 400, {"code": "NOT_MODELLED", "message": f"The sample tenant takes {key} here."}
+                entry["body"][key] = [str(u) for u in body[key] if isinstance(u, (str, int))]
+                self.writes += 1
+                return 200, copy.deepcopy(entry["body"])
             entry = self._lookup(path)
             items = _items(entry["body"]) if entry else None
             if method == "POST" and items is not None:
@@ -502,7 +525,12 @@ class OfflineExecutor:
             status, body = self._store.answer_get(request.get("url", ""), request.get("params") or {})
         else:
             payload = request.get("json") if request.get("json") is not None else request.get("data")
-            status, body = self._store.answer_write(method, request.get("url", ""), payload)
+            url = request.get("url", "")
+            params = request.get("params") or {}
+            if params:   # a write's query (the denylist's ?action=) rides on the URL: answer_write reads it from there
+                from urllib.parse import urlencode
+                url = f"{url}{'&' if '?' in url else '?'}{urlencode(params)}"
+            status, body = self._store.answer_write(method, url, payload)
         answer = _Answer(status, body)
         if status >= 400:
             msg = body.get("message") if isinstance(body, dict) else str(body)

@@ -29,7 +29,7 @@ def _unlink_quietly(path: str) -> None:
         os.unlink(path)
     except OSError:
         pass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10655,8 +10655,10 @@ async def path_analyzer_batch_export(job_id: str, format: str = "csv"):
 # ZPA first when ZPA is ticked (one ZPA read, as /api/path-analyzer/full
 # reads it), then every ZIA module for the row's protocol and port.
 # The `text` field is recorded in the audit log by its size only.
-# Read-only; "Fix selected" only prepares a Bulk changes URL category
-# operation, which writes nothing without its own four gates.
+# Read-only; "Fix selected" only prepares Bulk changes operations (a URL
+# category change, and "Fix rows from Test a list" for the Cloud Firewall,
+# DNS Control and ATP rows), which write nothing without their own four
+# gates; "Prove it" tests the same rows again afterwards.
 _BULK_RUNS: Dict[str, Any] = {}
 _BULK_RUNS_MAX = 2
 
@@ -10708,8 +10710,14 @@ def _bulk_zpa_inputs(req: BulkTestRequest, creds: Dict[str, Any]) -> Tuple[bool,
     return True, problem, (_path_kept(req.zpa_report_id, "pathzpa", creds) if not problem else None)
 
 
+class BulkProveRequest(ScopedTenantCredsRequest):
+    """Body of Prove it after a fix: the tenant and the Scope page's
+    selection (the rows come from the hand-off), with ZPA's customer ID."""
+    customer_id: str = ""
+
+
 def _run_bulk_test(client, req: BulkTestRequest, parsed, snapshot, label: str, log, cancel, scope: Dict[str, Any],
-                   zpa: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                   zpa: Optional[Dict[str, Any]] = None, after: Optional[Callable[[Any], Dict[str, Any]]] = None) -> Dict[str, Any]:
     import bulk_test
     import pack_jobs
     import path_analyzer
@@ -10742,6 +10750,8 @@ def _run_bulk_test(client, req: BulkTestRequest, parsed, snapshot, label: str, l
         _BULK_RUNS[run_id] = rn
         while len(_BULK_RUNS) > _BULK_RUNS_MAX:
             _BULK_RUNS.pop(next(iter(_BULK_RUNS)))
+    if after is not None:
+        result["proof"] = after(rn)
     return result
 
 
@@ -10755,9 +10765,16 @@ async def bulk_test_start(req: BulkTestRequest, request: Request):
     (or the ZPA read `zpa_report_id` names, for the same tenant), then ZIA.
     Stop keeps the rows tested. Read-only: the URL lookup is a POST that
     changes nothing."""
+    parsed = await asyncio.to_thread(_bulk_parse, req)
+    return await _start_bulk_job(req, request, parsed)
+
+
+async def _start_bulk_job(req: BulkTestRequest, request: Request, parsed, after: Optional[Callable[[Any], Dict[str, Any]]] = None,
+                          label_text: str = ""):
+    """Test a parsed list as a job: the scope checked before sign-in, one
+    tenant (and ZPA) read for every row. `after(run)` adds to the result."""
     import data_flow
     import pack_jobs
-    parsed = await asyncio.to_thread(_bulk_parse, req)
     sc, ch, src = _scope_selection(req)   # before signing in: nothing in scope reads nothing
     scope = data_flow.path_scope(sc, ch)
     scope["source"] = src
@@ -10785,8 +10802,9 @@ async def bulk_test_start(req: BulkTestRequest, request: Request):
     elif zpa_on:
         sdk = await asyncio.to_thread(_build_sdk_client, creds)
         zpa = {"client": sdk, "mask": lambda x: tenant_auth.mask_secrets(str(x), creds)}
-    job = pack_jobs.start("bulk-test", lambda log, cancel: _run_bulk_test(client, req, parsed, snapshot, label, log, cancel, scope, zpa),
-                          label=f"{len(parsed)} destination(s) from a list", actor=_actor(request), start_token=_start_token(request))
+    job = pack_jobs.start("bulk-test", lambda log, cancel: _run_bulk_test(client, req, parsed, snapshot, label, log, cancel, scope, zpa, after),
+                          label=label_text or f"{len(parsed)} destination(s) from a list", actor=_actor(request),
+                          start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind, "rows": len(parsed), "skipped": parsed.skipped_count}
 
 
@@ -10831,32 +10849,82 @@ async def bulk_test_area_list(job_id: str, area: str = "", purpose: str = "block
     return PlainTextResponse("\n".join(lines) + ("\n" if lines else ""), headers={"Content-Disposition": f"attachment; filename=path_list_{area}_{purpose}.txt"})
 
 
+FIX_NOTHING_IN_SCOPE = ("Nothing Fix selected changes is in scope on the Scope page: custom URL categories (URL filtering: tick DLP or "
+                        "ZIA platform), and the Cloud Firewall, DNS Control and ATP lists (tick ZIA platform). Nothing was read.")
+
+
+def _fix_scope(req: Any) -> Dict[str, Optional[str]]:
+    """Why each part of a Fix selected hand-off is out of scope (None: in
+    scope); 400 before anything else when no part is."""
+    import admin_ops
+    import ops_list_fix
+    sc, ch, _source = _scope_selection(req)
+    scope = admin_ops.scope_for(sc, ch)
+    read, why = ops_list_fix.areas_in_scope(scope)
+    out: Dict[str, Optional[str]] = {"url": None if scope["url_categories"] else scope["not_in_scope"]["url_categories"]}
+    out.update({a: (None if a in read else why[a]) for a in ops_list_fix.AREA_ORDER})
+    if all(out.values()):
+        raise HTTPException(status_code=400, detail=FIX_NOTHING_IN_SCOPE)
+    return out
+
+
 @app.post("/api/bulk-test/{job_id}/fix")
 async def bulk_test_fix(job_id: str, req: BulkFixRequest):
-    """Fix selected: the chosen destinations as a URL category operation
-    for the Bulk changes page to preview (it opens with /report/operations
-    ?fix=<id>). Refused (400) when custom URL categories are not in scope.
-    Writes nothing: Bulk changes applies only in write mode, for a writer,
-    with the assessor's name and the typed confirmation."""
+    """Fix selected: the chosen rows as Bulk changes operations to preview
+    (it opens with /report/operations?fix=<id>): the URL filtering and Cloud
+    App Control rows as a URL category change, the Cloud Firewall, DNS
+    Control and ATP rows as "Fix rows from Test a list". Each row is fixed
+    for what it was expected to do. Refused (400) when nothing it changes is
+    in scope; a part out of scope is left out with the reason. Writes
+    nothing: Bulk changes applies only in write mode, for a writer, with the
+    assessor's name and the typed confirmation."""
     import bulk_test
-    _ops_scope(req, "url_categories")
+    in_scope = _fix_scope(req)
     rn = _bulk_run(job_id)
     try:
-        rec = bulk_test.fix_handoff(rn, rows=req.rows, area=req.area, purpose=req.purpose)
+        rec = bulk_test.fix_handoff(rn, rows=req.rows, area=req.area, purpose=req.purpose, in_scope=in_scope)
     except bulk_test.ListError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"fix_id": rec["id"], "urls": len(rec["urls"]), "excluded": rec["excluded"], "over_limit": rec["over_limit"],
-            "open": f"/report/operations?fix={rec['id']}", "note": rec["note"]}
+            "open": f"/report/operations?fix={rec['id']}", "note": rec["note"],
+            "fixes": [{"area": f["area"], "area_label": f["area_label"], "purpose": f["purpose"], "destinations": len(f["destinations"]),
+                       "rows": len(f["rows"])} for f in rec["fixes"]],
+            "rows": len(rec["retest_rows"])}
 
 
 @app.get("/api/bulk-test/fix/{fix_id}")
 async def bulk_test_fix_get(fix_id: str):
-    """A Fix selected hand-off for the Bulk changes page (kept an hour)."""
+    """A Fix selected hand-off for the Bulk changes page (kept an hour):
+    the URLs, the sections for "Fix rows from Test a list" and the rows
+    they come from, with each row's result before the change."""
     import bulk_test
     rec = bulk_test.get_fix(fix_id)
     if rec is None:
         raise HTTPException(status_code=404, detail="That hand-off is no longer kept (an hour). Pick the rows again on the Path analyzer's Test a list view.")
-    return {k: rec[k] for k in ("urls", "excluded", "over_limit", "purpose", "note")}
+    out = {k: rec[k] for k in ("urls", "excluded", "over_limit", "purpose", "note", "fixes")}
+    out["rows"] = [dict(rec["rows_before"].get(str(n)) or {}, row=n) for n in rec["retest_rows"][:bulk_test.MAX_FIX_ROWS]]
+    return out
+
+
+@app.post("/api/bulk-test/fix/{fix_id}/prove/start")
+async def bulk_test_fix_prove_start(fix_id: str, req: BulkProveRequest, request: Request):
+    """Prove it: test the rows of a Fix selected hand-off again, after the
+    change, as a job (the Test a list job: only what is in scope is read,
+    fresh). Its result carries `proof`: per row, the result before and now
+    and whether it now does what was expected. Read-only."""
+    import bulk_test
+    rec = bulk_test.get_fix(fix_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="That hand-off is no longer kept (an hour). Pick the rows again on the Path analyzer's Test a list view.")
+    try:
+        parsed = await asyncio.to_thread(bulk_test.parse, rec["retest_text"])
+    except bulk_test.ListError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    body = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    treq = BulkTestRequest(**dict(body, text="", network=rec.get("network") or "off", platform=rec.get("platform") or "windows", lookup=True,
+                                  max_lookup_requests=min(bulk_test.DEFAULT_LOOKUP_REQUESTS, max(1, -(-len(parsed) // bulk_test.LOOKUP_CHUNK) + 5))))
+    return await _start_bulk_job(treq, request, parsed, after=lambda rn: bulk_test.prove(rn, rec),
+                                 label_text=f"Prove it: {len(parsed)} row(s) tested again")
 
 
 # ── Category lookup (category_lookup) ─────────────────────────────────

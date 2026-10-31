@@ -4236,6 +4236,161 @@ window.HELP_CATALOG = {
     "input": "Tick it to pick this operation. Needs ZPA ticked on the Scope page.",
     "effect": "local"
    },
+   "input[name=\"opKind\"][value=\"list_fix\"]": {
+    "what": "Picks \"Fix rows from Test a list\". It turns rows of the Path analyzer's Test a list that did not do what was expected into group, rule and ATP list changes.",
+    "input": "Tick it to pick this operation. Fix selected on the Path analyzer picks it for you. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"ip_group_edit\"]": {
+    "what": "Picks \"IP destination group change\". It adds or removes addresses or host names on one IP destination group, or makes a new group.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"atp_list_edit\"]": {
+    "what": "Picks \"ATP allow and deny lists\". It adds or removes URLs on the security policy lists Advanced Threat Protection applies to every user.",
+    "input": "Tick it to pick this operation. Then click Read from the tenant.",
+    "effect": "local"
+   },
+   "#lfArea": {
+    "what": "Picks the area the pasted destinations are fixed in.",
+    "input": "Pick one: Cloud Firewall, DNS Control or Advanced Threat Protection lists.",
+    "effect": "local"
+   },
+   "#lfPurpose": {
+    "what": "Says whether the pasted destinations should be blocked or allowed.",
+    "input": "Pick one: Blocked or Allowed.",
+    "effect": "local"
+   },
+   "#lfDests": {
+    "what": "The destinations to fix, when you did not come from Fix selected.",
+    "input": "Optional. One per line: an IPv4 address, CIDR block, range (a.b.c.d-e.f.g.h), host name or URL. At most 5,000. Example: 203.0.113.9",
+    "effect": "local"
+   },
+   "#lfUse": {
+    "what": "Turns the pasted destinations into a fix section below.",
+    "input": "Nothing to type. Paste the destinations first.",
+    "effect": "local"
+   },
+   "input[id^=\"lfInc\"]": {
+    "what": "Keeps this fix in the change, or leaves it out.",
+    "input": "Ticked includes it. Unticked leaves it out of the preview.",
+    "effect": "local"
+   },
+   "select[id^=\"lfAct\"]": {
+    "what": "Says whether the destinations are added, or taken out (of a group, or of the other ATP list).",
+    "input": "Pick one. Taking out works on an existing group only and changes no rule.",
+    "effect": "local"
+   },
+   "select[id^=\"lfIp\"]": {
+    "what": "Picks the IP destination group the addresses go into or come out of.",
+    "input": "Pick a group of type IP, or A new group. The count shows how full it is (at most 8,000 entries, assumed).",
+    "effect": "local"
+   },
+   "input[id^=\"lfIpName\"]": {
+    "what": "Names the new group for the addresses.",
+    "input": "Required for a new group. At most 128 characters. Over the limit, it is split into numbered groups.",
+    "effect": "local"
+   },
+   "select[id^=\"lfHost\"]": {
+    "what": "Picks the IP destination group the host names go into or come out of.",
+    "input": "Pick a group of type FQDN or domain, or A new group.",
+    "effect": "local"
+   },
+   "input[id^=\"lfHostName\"]": {
+    "what": "Names the new group for the host names.",
+    "input": "Required for a new group. At most 128 characters.",
+    "effect": "local"
+   },
+   "select[id^=\"lfRuleId\"]": {
+    "what": "Picks the existing rule the group is added to.",
+    "input": "Required. Only rules whose action matches (Block for rows to block, Allow for rows to allow) are listed.",
+    "effect": "local"
+   },
+   "input[id^=\"lfRuleName\"]": {
+    "what": "Names the new rule.",
+    "input": "Required. At most 31 characters, as ZIA allows. It must not be the name of another rule.",
+    "effect": "local"
+   },
+   "select[id^=\"lfRule\"]": {
+    "what": "Says which rule uses the group: none, a new rule, or an existing rule.",
+    "input": "Pick one. A new rule is created disabled unless you tick it on.",
+    "effect": "local"
+   },
+   "select[id^=\"lfAbove\"]": {
+    "what": "Picks where the new rule goes: above this rule. The rule that decided the rows is suggested.",
+    "input": "Optional. Leave it to put the rule last, above the Default rule.",
+    "effect": "local"
+   },
+   "input[id^=\"lfOn\"]": {
+    "what": "Creates the new rule enabled instead of disabled. It then acts on traffic as soon as ZIA activates the change.",
+    "input": "Optional. Off by default. When ticked, applying needs the typed phrase.",
+    "effect": "local"
+   },
+   "select[id^=\"lfSvc\"]": {
+    "what": "Adds network services to the rule, so it applies to those ports and protocols only.",
+    "input": "Optional. Hold Ctrl or Cmd to pick several. Leave it empty to keep the rule as it is.",
+    "effect": "local"
+   },
+   "#opObjects a[href^=\"#lf-row-\"]": {
+    "what": "Jumps to this row in the table of rows this fixes.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#opPlan a[href^=\"#lf-row-\"]": {
+    "what": "Jumps to this row in the table of rows this fixes.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#lfProve": {
+    "what": "Tests the same rows again, as Test a list did, and says which now do what was expected. It only reads.",
+    "input": "Nothing to type. Only what is in scope is read.",
+    "effect": "read"
+   },
+   "#lfProof a[href^=\"#lf-row-\"]": {
+    "what": "Jumps to this row in the table of rows this fixes.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "nav"
+   },
+   "#lgGroup": {
+    "what": "Picks the IP destination group to change, or A new group.",
+    "input": "Pick one. The count shows how full it is (at most 8,000 entries, assumed).",
+    "effect": "local"
+   },
+   "#lgName": {
+    "what": "Names the new group.",
+    "input": "Required for a new group. At most 128 characters.",
+    "effect": "local"
+   },
+   "#lgType": {
+    "what": "Says what the new group holds: IPv4 addresses, CIDR blocks and ranges, or host names.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#lgAdd": {
+    "what": "The entries to add to the group.",
+    "input": "Optional. One per line: an IPv4 address, CIDR block, range or host name. IPv6 is refused: ZIA has no user-defined IPv6 group.",
+    "effect": "local"
+   },
+   "#lgRemove": {
+    "what": "The entries to take out of the group.",
+    "input": "Optional. One per line, written as the group lists them.",
+    "effect": "local"
+   },
+   "#laList": {
+    "what": "Picks the security policy list to change: the denylist blocks, the allowlist exempts.",
+    "input": "Pick one.",
+    "effect": "local"
+   },
+   "#laAdd": {
+    "what": "The URLs to add to the list.",
+    "input": "Optional. One per line, like example.com or example.com/path, with no scheme in front.",
+    "effect": "local"
+   },
+   "#laRemove": {
+    "what": "The URLs to take off the list.",
+    "input": "Optional. One per line, written as the list holds them.",
+    "effect": "local"
+   },
    "#opBuildKinds input[name=\"opKind\"][value=\"aiguard_detection_policy\"]": {
     "what": "Picks the AI Guard detection policy builder. It turns a compliance profile into an AI Guard policy for GenAI apps.",
     "input": "Tick it, then click Read from the tenant to show the form. Needs AI Guard ticked on the Scope page.",
@@ -6489,13 +6644,13 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#plPurpose": {
-    "what": "Sets what the picked destinations should be.",
+    "what": "Sets what the picked rows should be when the list has no expected column. A row with an expected result is fixed for that.",
     "input": "Pick one: Blocked or Allowed.",
     "effect": "local"
    },
    "#plFix": {
-    "what": "Opens Bulk changes in a new tab with a URL category change filled in. Nothing is written until you preview it and apply it there in write mode.",
-    "input": "Pick at least one row first. Needs custom URL categories in scope on the Scope page.",
+    "what": "Opens Bulk changes in a new tab with the picked rows filled in. Each row is fixed for what it was expected to do: in a URL category, an IP destination group with a rule, or an ATP list. Nothing is written until you preview it and apply it there in write mode.",
+    "input": "Pick at least one row first. Needs what each row's fix changes in scope on the Scope page.",
     "effect": "nav"
    },
    "#plBody button.pl-cat": {
@@ -6514,8 +6669,8 @@ window.HELP_CATALOG = {
     "effect": "download"
    },
    "#plBody button[data-fixarea]": {
-    "what": "Opens Bulk changes in a new tab with this list filled in as a URL category change. Nothing is written there until you apply it.",
-    "input": "Nothing to type. Needs custom URL categories in scope on the Scope page.",
+    "what": "Opens Bulk changes in a new tab with this list filled in. It goes into a URL category, an IP destination group with a rule, or an ATP list. Nothing is written there until you apply it.",
+    "input": "Nothing to type. Needs that area in scope on the Scope page.",
     "effect": "nav"
    },
    "#plBody textarea[id^=\"plList\"]": {

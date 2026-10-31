@@ -47,10 +47,13 @@ This module:
    area to paste: an IP destination group for the Cloud Firewall, a
    custom URL category for URL filtering, the segment to change for ZPA.
 
-"Fix selected" (`fix_handoff`) only prepares the chosen destinations for
-the Bulk changes page's URL category operation (admin_ops), which
-previews and applies them behind its own four write gates. Nothing in
-this module writes to a tenant.
+"Fix selected" (`fix_handoff`) only prepares the chosen rows for the Bulk
+changes page: a URL category operation (admin_ops) for the URL filtering
+and Cloud App Control rows, and the "Fix rows from Test a list" operation
+(ops_list_fix) for the Cloud Firewall, DNS Control and ATP rows. Bulk
+changes previews and applies them behind its own four write gates;
+`prove` tests the same rows again afterwards. Nothing in this module
+writes to a tenant.
 """
 from __future__ import annotations
 
@@ -1807,18 +1810,77 @@ _FIXES: Dict[str, Dict[str, Any]] = {}
 _FIX_LOCK = threading.Lock()
 FIX_KEEP_SECONDS = 3600
 FIX_MAX = 20
-# The areas whose fix is a custom URL category the Bulk changes page can change.
-FIX_AREAS = ("URL", "DNS", "Cloud App")
+# The areas whose fix is a custom URL category (the Bulk changes URL
+# category operation) and the areas the "Fix rows from Test a list"
+# operation (ops_list_fix) changes: IP destination groups with Cloud
+# Firewall or DNS Control rules, and the ATP allow and deny lists.
+FIX_AREAS = ("URL", "Cloud App")
+OP_FIX_AREAS = {"Firewall": "firewall", "DNS": "dns", "ATP": "atp"}
 _FIX_ID = re.compile(r"^[a-f0-9]{24}$")
+RETEST_COLUMNS = ("destination", "port", "protocol", "source_ip", "location", "dest_country", "category", "user", "group", "department",
+                  "label", "expected")
 
 
-def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: str = "block", now: Optional[float] = None) -> Dict[str, Any]:
-    """The chosen destinations, as the Bulk changes page's URL category
-    operation takes them (admin_ops.normalize_url), kept for an hour under
-    a random id. `rows` are 1-based row numbers; without them, every row
-    of `area` that is not as expected for `purpose`. Writes nothing:
-    Bulk changes previews the change and applies it only behind its four
-    write gates (write mode, a writer, the assessor's name, the typed
+def _fix_indexes(rn: Run, rows: Sequence[int], area: str, purpose: str) -> List[int]:
+    """0-based rows: the picked row numbers, or every row of `area` that is
+    not as expected for `purpose` (at most MAX_FIX_ROWS)."""
+    if rows:
+        n = len(rn.p)
+        out = []
+        for x in rows:
+            if not isinstance(x, int) or isinstance(x, bool) or not 1 <= x <= n:
+                raise ListError(f"Row {str(x)[:20]} is not a row of this run (1 to {n:,}).")
+            if x - 1 not in out:
+                out.append(x - 1)
+        return out
+    if not area:
+        raise ListError("Pick rows, or an area.")
+    a = AREA_KEYS.get(area, area)
+    if a not in AREAS:
+        raise ListError(f"Unknown area '{area[:40]}'. Use one of: {', '.join(AREA_KEYS)}.")
+    if a not in FIX_AREAS and a not in OP_FIX_AREAS:
+        raise ListError(f"{AREA_LABELS[a]} is not changed from here: copy its list and paste it into {AREA_PASTE[a]}.")
+    want = "BLOCK" if purpose == "block" else "ALLOW"
+    out = []
+    for i in range(len(rn.p)):
+        if rn.flags[i] & 2:
+            r = rn.row(i)
+            if r["recommended_area"] == a and r["expected"] == want:
+                out.append(i)
+                if len(out) >= MAX_FIX_ROWS:
+                    break
+    return out
+
+
+def _retest_line(rn: Run, i: int, expected: str) -> List[str]:
+    """Row i as one line of a list to test again: the input as written when
+    it was one row (a URL keeps its path), else the expanded address."""
+    p = rn.p
+    idx = p.entry_of[i]
+    e = p.entries[idx]
+    alone = (i == 0 or p.entry_of[i - 1] != idx) and (i + 1 >= len(p) or p.entry_of[i + 1] != idx)
+    vals = {"destination": e["input"] if alone else p.targets[i], "port": e.get("port", ""), "protocol": e.get("protocol", ""),
+            "source_ip": e.get("source_ip", ""), "location": e.get("location", ""), "dest_country": e.get("dest_country", ""),
+            "category": ";".join(e.get("category") or ()), "user": e.get("user", ""), "group": e.get("group", ""),
+            "department": e.get("department", ""), "label": e.get("label", ""), "expected": expected.lower()}
+    return [str(vals[k]) for k in RETEST_COLUMNS]
+
+
+def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: str = "block", now: Optional[float] = None,
+                in_scope: Optional[Dict[str, Optional[str]]] = None) -> Dict[str, Any]:
+    """The chosen rows, as Bulk changes takes them, kept for an hour under a
+    random id: `urls` for the URL category operation (admin_ops.normalize_url)
+    and `fixes` for the "Fix rows from Test a list" operation (ops_list_fix):
+    one section per area (Cloud Firewall, DNS Control, ATP) and purpose,
+    with each destination's row numbers. Each row is fixed for what the file
+    expected of it (`purpose` only for a row with no expectation), in the
+    area its recommendation names; a row already as expected, not tested, or
+    in an area changed elsewhere (ZPA, Client Connector) is excluded with
+    the reason. `in_scope` ({url, firewall, dns, atp: None or why not})
+    excludes what the Scope page does not put in scope. `retest_text` is the
+    rows as a list to test again after the change (prove()). Writes
+    nothing: Bulk changes previews the change and applies it only behind its
+    four write gates (write mode, a writer, the assessor's name, the typed
     confirmation)."""
     import admin_ops
     now = time.time() if now is None else now
@@ -1826,42 +1888,95 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
         raise ListError("purpose must be block or allow.")
     if len(rows) > MAX_FIX_ROWS:
         raise ListError(f"Pick at most {MAX_FIX_ROWS:,} rows.")
-    picked: List[str] = []
-    if rows:
-        n = len(rn.p)
-        for x in rows:
-            if not isinstance(x, int) or isinstance(x, bool) or not 1 <= x <= n:
-                raise ListError(f"Row {str(x)[:20]} is not a row of this run (1 to {n:,}).")
-            picked.append(rn.p.targets[x - 1])
-    elif area:
-        a = AREA_KEYS.get(area, area)
-        if a not in AREAS:
-            raise ListError(f"Unknown area '{area[:40]}'. Use one of: {', '.join(AREA_KEYS)}.")
-        if a not in FIX_AREAS:
-            raise ListError(f"{AREA_LABELS[a]} is not changed through a custom URL category here: copy its list and paste it into "
-                            f"{AREA_PASTE[a]}.")
-        picked = area_list(rn, a, purpose)
-    else:
-        raise ListError("Pick rows, or an area.")
+    scope_why = in_scope or {}
+    picked = _fix_indexes(rn, rows, area, purpose)
     urls: List[str] = []
     seen = set()
-    excluded: List[Dict[str, str]] = []
-    for t in picked:
-        u, why = admin_ops.normalize_url(t)
-        if why:
-            excluded.append({"destination": t[:200], "why": why})
-        elif u.lower() not in seen:
-            seen.add(u.lower())
-            urls.append(u)
+    excluded: List[Dict[str, Any]] = []
+    sections: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    before: Dict[str, Dict[str, Any]] = {}
+    retest: List[List[str]] = []
+    retest_rows: List[int] = []
+    pick_exp = "BLOCK" if purpose == "block" else "ALLOW"
+
+    def drop(r: Dict[str, Any], why: str) -> None:
+        if len(excluded) < 200:
+            excluded.append({"row": r["row"], "destination": str(r["target"])[:200], "why": why})
+
+    for i in picked:
+        r = rn.row(i)
+        exp = r["expected"] or pick_exp
+        if r["expected"]:
+            meets, rec_area, rec = r["meets"], r["recommended_area"], r["recommendation"]
+        else:
+            meets, rec_area, rec = recommend(dict(r, expected=exp))
+        if meets == "yes":
+            drop(r, f"already {r['result']}, as expected")
+            continue
+        if not meets:
+            drop(r, f"not decided ({r['result']}): test it again, then fix it")
+            continue
+        how = "block" if exp == "BLOCK" else "allow"
+        if rec_area in FIX_AREAS:
+            if scope_why.get("url"):
+                drop(r, scope_why["url"])
+                continue
+            if exp != pick_exp:
+                drop(r, f"expected to {how}: a URL category change takes one purpose, so pick it again with '{'Blocked' if how == 'block' else 'Allowed'}'")
+                continue
+            u, why = admin_ops.normalize_url(r["target"])
+            if why:
+                drop(r, f"cannot go into a custom URL category: it {why}")
+                continue
+            if u.lower() not in seen:
+                seen.add(u.lower())
+                urls.append(u)
+        elif rec_area in OP_FIX_AREAS:
+            key = OP_FIX_AREAS[rec_area]
+            if scope_why.get(key):
+                drop(r, scope_why[key])
+                continue
+            sec = sections.setdefault((key, how), {"area": key, "area_label": AREA_LABELS[rec_area], "purpose": how, "destinations": {},
+                                                   "rows": [], "decided_by": {}, "recommendation": rec})
+            sec["destinations"].setdefault(str(r["target"]), []).append(r["row"])
+            sec["rows"].append(r["row"])
+            if r["rule"] and r["area"] == rec_area:
+                sec["decided_by"][r["rule"]] = sec["decided_by"].get(r["rule"], 0) + 1
+        else:
+            drop(r, f"changed in {AREA_LABELS.get(rec_area, rec_area or 'another place')}, not from here: "
+                    + (AREA_PASTE.get(rec_area) or "see the row's recommendation"))
+            continue
+        before[str(r["row"])] = {"target": str(r["target"])[:200], "expected": exp, "result": r["result"], "rule": r["rule"], "area": r["area"],
+                                 "recommended_area": rec_area}
+        retest.append(_retest_line(rn, i, exp))
+        retest_rows.append(r["row"])
     over = max(0, len(urls) - admin_ops.MAX_URLS)
     urls = urls[:admin_ops.MAX_URLS]
-    if not urls:
-        raise ListError("None of the picked destinations can go into a custom URL category.")
+    fixes = []
+    for (_k, _p), sec in sorted(sections.items(), key=lambda kv: (list(OP_FIX_AREAS.values()).index(kv[0][0]), kv[0][1])):
+        fixes.append({"area": sec["area"], "area_label": sec["area_label"], "purpose": sec["purpose"], "rows": sec["rows"][:MAX_FIX_ROWS],
+                      "destinations": [{"value": v, "rows": rs[:50]} for v, rs in sec["destinations"].items()],
+                      "decided_by": [n for n, _c in sorted(sec["decided_by"].items(), key=lambda kv: -kv[1])[:5]],
+                      "recommendation": sec["recommendation"]})
+    if not urls and not fixes:
+        why = "; ".join(sorted({e["why"] for e in excluded})[:3])
+        raise ListError("None of the picked rows can be fixed from here" + (f": {why}." if why else "."))
+    import csv_safe
+    buf = io.StringIO()
+    w = csv_safe.writer(buf, lineterminator="\n")   # the rows to test again: formula-neutralised like every CSV the app writes
+    w.writerow(RETEST_COLUMNS)
+    w.writerows(retest)
     fid = secrets.token_hex(12)
     rec = {"id": fid, "urls": urls, "excluded": excluded[:100], "over_limit": over, "purpose": purpose, "created": now,
-           "tenant_label": rn.tenant_label,
-           "note": ("From the Path analyzer's Test a list view: add these to the custom URL category a " + ("Block" if purpose == "block" else "Allow")
-                    + " rule uses, or to a new one, then preview. Nothing is written until you apply in write mode and confirm.")}
+           "tenant_label": rn.tenant_label, "fixes": fixes, "rows_before": before, "retest_text": buf.getvalue(), "retest_rows": retest_rows,
+           "network": rn.network, "platform": rn.platform,
+           "note": ("From the Path analyzer's Test a list view: " +
+                    (f"{len(urls)} destination(s) for the custom URL category a " + ("Block" if purpose == "block" else "Allow")
+                     + " rule uses, or a new one. " if urls else "")
+                    + (f"{sum(len(f['destinations']) for f in fixes)} destination(s) for "
+                       + ", ".join(f"{f['area_label']} ({'to block' if f['purpose'] == 'block' else 'to allow'})" for f in fixes) + ". "
+                       if fixes else "")
+                    + "Nothing is written until you preview and apply in write mode and confirm.")}
     with _FIX_LOCK:
         for k in [k for k, v in _FIXES.items() if now - v["created"] > FIX_KEEP_SECONDS]:
             del _FIXES[k]
@@ -1869,6 +1984,32 @@ def fix_handoff(rn: Run, *, rows: Sequence[int] = (), area: str = "", purpose: s
         while len(_FIXES) > FIX_MAX:
             _FIXES.pop(next(iter(_FIXES)))
     return dict(rec)
+
+
+def prove(rn: Run, rec: Dict[str, Any]) -> Dict[str, Any]:
+    """The rows of a hand-off, tested again after the change (`rn` is the run
+    of rec["retest_text"]): per row, the result before and now and whether it
+    now does what was expected. Read-only."""
+    order = rec.get("retest_rows") or []
+    before = rec.get("rows_before") or {}
+    by_line: Dict[int, int] = {}
+    for j in range(len(rn.p)):
+        line = rn.p.entries[rn.p.entry_of[j]]["line"]
+        by_line.setdefault(line, j)
+    out_rows = []
+    counts = {"fixed": 0, "still": 0, "not_tested": 0}
+    for k, orig in enumerate(order):
+        b = before.get(str(orig)) or {}
+        j = by_line.get(k + 2)    # line 1 is the header
+        r = rn.row(j) if j is not None else None
+        meets = (r or {}).get("meets") or ""
+        state = "fixed" if meets == "yes" else "still" if meets == "no" else "not_tested"
+        counts[state] += 1
+        out_rows.append({"row": orig, "target": b.get("target") or (r or {}).get("target"), "expected": b.get("expected"),
+                         "before": b.get("result"), "before_rule": b.get("rule"), "now": (r or {}).get("result") or "not tested",
+                         "now_rule": (r or {}).get("rule") or "", "now_area": (r or {}).get("area") or "", "state": state,
+                         "recommendation": (r or {}).get("recommendation") or ""})
+    return {"rows": out_rows, "counts": counts, "total": len(order)}
 
 
 def get_fix(fid: str, now: Optional[float] = None) -> Optional[Dict[str, Any]]:

@@ -262,6 +262,18 @@ def _recorded_operation(sel: Dict[str, Any]) -> Dict[str, Any]:
     return dict(CREDS, **sel)
 
 
+def _kept_fix(sel: Dict[str, Any]) -> Dict[str, Any]:
+    """A Fix selected hand-off kept under a known id, so Prove it can test its rows again."""
+    import time as _time
+    import bulk_test
+    with bulk_test._FIX_LOCK:
+        bulk_test._FIXES["f" * 24] = {"id": "f" * 24, "urls": [], "excluded": [], "over_limit": 0, "purpose": "block", "created": _time.time(),
+                                      "tenant_label": "acme", "fixes": [], "rows_before": {"1": {"target": "example.com", "expected": "BLOCK"}},
+                                      "retest_text": "destination,expected\nexample.com,block\n", "retest_rows": [1], "network": "off",
+                                      "platform": "windows", "note": ""}
+    return dict(CREDS, **sel)
+
+
 def _opened_snapshot(sel: Dict[str, Any]) -> Dict[str, Any]:
     """A snapshot opened from a file, to compare with the live tenant (offline_tenant)."""
     import offline_tenant
@@ -352,6 +364,7 @@ ROUTES: List[Route] = [
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/category-lookup/start", {"text": "example.com\ncategory:Gambling"}),
     Route("/api/category-lookup/start", {"text": "example.com"}, partial=ZIA, out=ZIA_OUT),
+    Route("/api/bulk-test/fix/" + "f" * 24 + "/prove/start", setup=_kept_fix),
     Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
     Route("/api/path-analyzer/zpa-identity", {"action": "idps"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/path-analyzer/zpa-identity", {"action": "user", "idp": "216196257331281111", "user": "jo@example.com"}, partial=ZPA, out=ZPA_OUT),
@@ -644,7 +657,7 @@ def _route_reaches_a_client_factory() -> Dict[str, str]:
 
 
 def _table_key(path: str) -> str:
-    return "POST " + re.sub(r"/op-qa-1/", "/{op_id}/", path)
+    return "POST " + re.sub(r"/f{24}/", "/{fix_id}/", re.sub(r"/op-qa-1/", "/{op_id}/", path))
 
 
 def test_every_route_that_reaches_a_tenant_client_is_in_the_scope_table():

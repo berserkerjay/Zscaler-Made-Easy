@@ -808,6 +808,13 @@ def _zpa_segments_default():
     return bool(segs) and all((s.get("desired") or {}).get("enabled") is False for s in segs)
 
 
+def _list_fix_default():
+    import ops_list_fix
+    n = ops_list_fix.normalize({"type": "list_fix", "fixes": [{"area": "firewall", "purpose": "block", "destinations": [{"value": "203.0.113.9"}],
+                                                               "ip_group": {"new": "QA"}, "rule": {"new": {"name": "QA rule"}}}]})
+    return n["fixes"][0]["rule"]["new"]["enabled"] is False
+
+
 def _aiguard_policy_default():
     import test_ops_aiguard as t_aig
     spec = {k: v for k, v in t_aig.POLICY.items() if k != "mode"}
@@ -917,6 +924,9 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zdx_deeptrace_stop": "stops a deep trace only; creates and enables nothing",
     "zid_users": _zid_user_default,
     "zid_api_clients": _zid_client_default,
+    "list_fix": _list_fix_default,
+    "ip_group_edit": "group content only; no rule is created or enabled (a change to a group an enabled rule uses asks the typed phrase)",
+    "atp_list_edit": "the security policy list content asked for; it acts at activation, so the typed phrase is asked every time",
 }
 
 

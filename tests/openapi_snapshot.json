@@ -1385,6 +1385,24 @@
    },
    "params": {}
   },
+  "POST /api/bulk-test/fix/{fix_id}/prove/start": {
+   "body": {
+    "content": {
+     "application/json": {
+      "$ref": "#/components/schemas/BulkProveRequest"
+     }
+    },
+    "required": true
+   },
+   "params": {
+    "path:fix_id": {
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   }
+  },
   "POST /api/bulk-test/start": {
    "body": {
     "content": {
@@ -3598,6 +3616,57 @@
       "type": "integer"
      },
      "type": "array"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "username": {
+     "type": "string"
+    },
+    "vanity_domain": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BulkProveRequest": {
+   "properties": {
+    "api_key": {
+     "type": "string"
+    },
+    "assessor": {
+     "type": "string"
+    },
+    "auth_method": {
+     "type": "string"
+    },
+    "channels": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "client_id": {
+     "type": "string"
+    },
+    "client_secret": {
+     "type": "string"
+    },
+    "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
+     "type": "string"
+    },
+    "from_page": {
+     "type": "boolean"
+    },
+    "password": {
+     "type": "string"
+    },
+    "profile_id": {
+     "type": "string"
     },
     "scopes": {
      "items": {

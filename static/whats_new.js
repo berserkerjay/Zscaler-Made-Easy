@@ -387,6 +387,18 @@ window.WHATS_NEW = {
       "what": "One click tests the destination from the computer running this app (name lookup, connect, TLS certificate) and compares it with the prediction.",
       "changelog": ["Test from here"],
       "marks": [{ "page": "/report/path", "at": "#paProbeRun", "shown": "after Analyze" }]
+    },
+    {
+      "id": "list-fix", "release": "2026-10-31", "label": "Fix rows from Test a list",
+      "what": "Fix selected now fixes Cloud Firewall, DNS Control and ATP rows too: IP destination groups, a new disabled rule or an existing one, the ATP allow and deny lists, each change explained and linked to its rows, then Prove it tests the rows again. IP destination groups and the ATP lists can also be changed on their own.",
+      "changelog": ["Fix rows from Test a list", "Fix selected", "IP destination group change", "ATP allow and deny lists", "Prove it", "What this changes, in plain words", "Rows this fixes"],
+      "marks": [
+        { "page": "/report/path", "at": "#tab-list" },
+        { "page": "/report/path", "at": "#plFix", "shown": "after a list is tested" },
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"list_fix\"]" },
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"ip_group_edit\"]" },
+        { "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"atp_list_edit\"]" }
+      ]
     }
   ]
 };

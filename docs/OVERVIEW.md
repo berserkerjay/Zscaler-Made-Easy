@@ -317,6 +317,19 @@ what you get, what to do next.
   DLP and Sandbox that names each category, in evaluation order with
   order, rank, action and state. A Test a list row's Categories button and
   Find anything (for a host) open it. Read-only, only what is in scope.
+  Fix selected opens Bulk changes with the picked rows filled in, each for
+  what it was expected to do: URL filtering and Cloud App Control rows as a
+  URL category change, Cloud Firewall and DNS Control rows as **Fix rows
+  from Test a list** (IPv4 addresses, blocks and ranges into an IP
+  destination group of type IP, host names into one of type FQDN, then an
+  existing Block or Allow rule or a new one created disabled above the rule
+  that decided the rows; no IPv6, which ZIA's API has no user-defined group
+  for), ATP rows onto the security policy denylist or allowlist; rows ZPA or
+  Client Connector decide are left out with the reason. It writes nothing on
+  its own: the preview says each change in plain words and links to its
+  rows, applying goes through Bulk changes' four gates, re-read, read-back
+  and Undo, and afterwards *Prove it* tests the same rows again and says
+  which now do what was expected.
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the
@@ -601,7 +614,12 @@ what you get, what to do next.
   predefined and read-only rules never move), add, remove, move or copy
   URLs on custom URL categories (with the rules in scope that use each
   one), and move or copy ZPA domains between application segments or
-  clone a segment (with the domain and port overlap check). The preview
+  clone a segment (with the domain and port overlap check), add or remove
+  entries on an IP destination group (at most 8,000 per group, assumed: a
+  new group past it is split, an existing one refuses the rest) or URLs on
+  the ATP security policy allow and deny lists, and fix the rows of the
+  Path analyzer's Test a list (groups, Cloud Firewall and DNS Control rules
+  created disabled, the ATP lists). The preview
   reads the tenant and lists every item before and after, what is already
   as asked and what is excluded and why, with a plan PDF; applying needs
   write mode, the assessor's name and your confirmation (typed above ten
