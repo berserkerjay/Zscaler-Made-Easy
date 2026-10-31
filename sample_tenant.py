@@ -25,7 +25,13 @@ What it covers, on purpose with the gaps an assessment should find:
     server and connector groups, App Connectors (one disconnected), an
     IdP, posture profiles, access and timeout policies;
   - ZDX: monitored applications, devices, departments, locations;
-  - ZIdentity: users, groups, resource servers.
+  - ZIdentity: users, groups, resource servers;
+  - Cloud & Branch Connector: two connector groups (one with a single
+    connector, the other on two software versions), forwarding rules (one
+    sends backups DIRECT), a gateway that does not fail closed, a location
+    without IPS, changes waiting to be activated, admins, roles, an old
+    provisioning API key (its value is a placeholder, masked on every read)
+    and an AWS account.
 
 The fixtures in tests/ (test_data_flow.py, test_pack_channels.py) gave the
 shapes; the values are new.
@@ -48,6 +54,7 @@ ZPA1 = "/zpa/mgmtconfig/v1/admin/customers/{customerId}"
 ZPA2 = "/zpa/mgmtconfig/v2/admin/customers/{customerId}"
 ZDX = "/zdx/v1"
 ZID = "/ziam/admin/api/v1"
+ZTW = "/ztw/api/v1"
 
 # What the sample's URL lookup answers (POST /urlLookup), host → categories.
 URL_LOOKUP: Dict[str, List[str]] = {
@@ -378,6 +385,65 @@ ZID_GROUPS = [{"id": "g-33", "name": "Finance Team", "source": "SCIM"}, {"id": "
 ZID_RESOURCE_SERVERS = [{"id": "rs-1", "name": "ZIA", "primaryAud": "https://api.zscaler.com"}]
 
 
+# ── Cloud & Branch Connector (ZTW) ──────────────────────────────────────
+# Shapes from zscaler/ztw/models (ecgroup.py, forwarding_rules.py,
+# forwarding_gateways.py, location_management.py, location_templates.py,
+# activation.py, admin_users.py, admin_roles.py, api_keys.py,
+# public_cloud_info.py, workload_groups.py). Times are epoch seconds.
+EC_GROUPS = [
+    {"id": 4101, "name": "Larkspur AWS us-west-2", "deployType": "CLOUD", "platform": "AWS", "formFactor": "SMALL", "status": ["ENABLED"],
+     "location": {"id": 4301, "name": "AWS-us-west-2-vpc-larkspur"}, "upgradeDayOfWeek": "SUNDAY", "upgradeStartTime": {"hour": 2, "minute": 0},
+     "tunnelMode": "ENCRYPTED",
+     "ecVMs": [{"id": 4111, "name": "lkf-cc-usw2-a", "buildVersion": "24.3.12", "operationalStatus": "ACTIVE", "status": ["ACTIVE"], "upgradeStatus": "UPGRADED"},
+               {"id": 4112, "name": "lkf-cc-usw2-b", "buildVersion": "24.2.30", "operationalStatus": "ACTIVE", "status": ["ACTIVE"], "upgradeStatus": "UPGRADE_FAILED"}]},
+    {"id": 4102, "name": "Larkspur Branch Tacoma", "deployType": "BRANCH", "platform": "VMWARE", "formFactor": "SMALL", "status": ["ENABLED"],
+     "location": {"id": 4302, "name": "BC-Tacoma-yard"}, "upgradeDayOfWeek": "SATURDAY", "upgradeStartTime": {"hour": 23, "minute": 0},
+     "ecVMs": [{"id": 4121, "name": "lkf-bc-tacoma-1", "buildVersion": "24.3.12", "operationalStatus": "ACTIVE", "status": ["ACTIVE"], "upgradeStatus": "UPGRADED"}]},
+]
+ZTW_WORKLOAD_GROUPS = [
+    {"id": 4201, "name": "Billing servers", "expressionJson": {"operator": "AND", "expressionContainers": [
+        {"tagType": "VPC", "operator": "AND", "tagContainer": {"operator": "AND", "tags": [{"key": "Vpc-id", "value": "vpc-0larkspur1"}]}},
+        {"tagType": "ATTR", "operator": "AND", "tagContainer": {"operator": "AND", "tags": [{"key": "App", "value": "billing"}]}}]}},
+    {"id": 4202, "name": "Backup agents", "expressionJson": {"operator": "AND", "expressionContainers": [
+        {"tagType": "ATTR", "operator": "AND", "tagContainer": {"operator": "AND", "tags": [{"key": "Role", "value": "backup"}]}}]}},
+]
+ZTW_FORWARDING_RULES = [
+    {"id": 4401, "name": "Billing to ZPA", "order": 1, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "ZPA",
+     "srcWorkloadGroups": [{"id": 4201, "name": "Billing servers"}], "zpaAppSegments": [{"id": 4501, "name": "Freight billing", "externalId": "2201"}]},
+    {"id": 4402, "name": "Backups direct to S3", "order": 2, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "DIRECT",
+     "srcWorkloadGroups": [{"id": 4202, "name": "Backup agents"}], "destAddresses": ["52.218.128.0/17"],
+     "description": "Nightly backups to the S3 bucket; decided by IT in 2025."},
+    {"id": 4403, "name": "Default Cloud Connector forwarding", "order": -1, "rank": 7, "state": "ENABLED", "type": "EC_RDR", "forwardMethod": "ZIA",
+     "proxyGateway": {"id": 4601, "name": "Larkspur ZIA gateway"}},
+]
+ZTW_GATEWAYS = [{"id": 4601, "name": "Larkspur ZIA gateway", "failClosed": False, "primaryType": "AUTO", "secondaryType": "AUTO",
+                 "description": "Default gateway for the AWS and branch connectors.", "lastModifiedTime": 1761000000}]
+ZTW_LOCATIONS = [
+    {"id": 4301, "name": "AWS-us-west-2-vpc-larkspur", "ecLocation": True, "ofwEnabled": True, "ipsControl": True, "xffForwardEnabled": True,
+     "authRequired": False, "sslScanEnabled": True, "publicCloudAccountId": {"id": 4801, "name": "larkspur-prod"}, "ipAddresses": ["198.51.100.40"]},
+    {"id": 4302, "name": "BC-Tacoma-yard", "ecLocation": True, "ofwEnabled": True, "ipsControl": False, "xffForwardEnabled": True,
+     "authRequired": False, "ipAddresses": ["203.0.113.20"], "vpnCredentials": [{"id": 4311, "type": "UFQDN", "fqdn": "tacoma@larkspur-freight.example",
+                                                                               "preSharedKey": "sample-not-a-real-key"}]},
+]
+ZTW_LOCATION_TEMPLATES = [{"id": 4701, "name": "Larkspur cloud template", "desc": "For new cloud connector locations.", "editable": True,
+                           "template": {"templatePrefix": "lkf", "xffForwardEnabled": True, "authRequired": False, "ofwEnabled": True, "ipsControl": True,
+                                        "aupEnabled": False, "cautionEnabled": False, "surrogateIP": False}}]
+ZTW_ACTIVATION = {"orgEditStatus": "EDITS_PRESENT", "orgLastActivateStatus": "CAC_ACTV_UI", "adminActivateStatus": "ADM_EDITING"}
+ZTW_ADMIN_ROLES = [{"id": 4901, "name": "Super Admin", "roleType": "EDGE_CONNECTOR_ADMIN", "policyAccess": "READ_WRITE", "isAuditor": False, "rank": 7},
+                   {"id": 4902, "name": "Connector auditor", "roleType": "EDGE_CONNECTOR_ADMIN", "policyAccess": "READ_ONLY", "isAuditor": True, "rank": 7}]
+ZTW_ADMIN_USERS = [{"id": 4911, "loginName": "it-admin@larkspur-freight.example", "userName": "IT Admin", "email": "it-admin@larkspur-freight.example",
+                    "role": {"id": 4901, "name": "Super Admin"}, "disabled": False, "isPasswordLoginAllowed": False},
+                   {"id": 4912, "loginName": "cloud-ops@larkspur-freight.example", "userName": "Cloud Ops", "email": "cloud-ops@larkspur-freight.example",
+                    "role": {"id": 4901, "name": "Super Admin"}, "disabled": False, "isPasswordLoginAllowed": True}]
+ZTW_API_KEYS = [{"id": 4951, "keyValue": "sample-placeholder-not-a-key", "enabled": True, "partner": False, "permissions": ["PROVISIONING"],
+                 "lastModifiedTime": 1690000000, "lastModifiedBy": {"id": 4911, "name": "IT Admin"}}]
+ZTW_ACCOUNT_DETAILS = [{"id": 4801, "awsAccountId": "000000000000", "awsRoleName": "LarkspurCloudConnectorRole", "externalId": "sample-external-id"}]
+ZTW_PUBLIC_CLOUD_INFO = [{"id": 4801, "name": "larkspur-prod", "cloudType": "AWS", "permissionStatus": "VALID",
+                          "regionStatus": [{"id": 1, "name": "us-west-2", "cloudType": "AWS", "status": True},
+                                           {"id": 2, "name": "us-east-1", "cloudType": "AWS", "status": False}],
+                          "accountGroups": [{"id": 4851, "name": "Production"}]}]
+
+
 def responses() -> Dict[str, Any]:
     """Every answer of the sample tenant: {OneAPI path: JSON body}. A fresh
     deep copy each time, so changing one sample never changes another."""
@@ -477,6 +543,12 @@ def responses() -> Dict[str, Any]:
         f"{ZID}/users": {"records": ZID_USERS, "results_total": len(ZID_USERS)},
         f"{ZID}/groups": {"records": ZID_GROUPS, "results_total": len(ZID_GROUPS)},
         f"{ZID}/resource-servers": {"records": ZID_RESOURCE_SERVERS, "results_total": len(ZID_RESOURCE_SERVERS)},
+        # Cloud & Branch Connector (ztw_overview.PATHS)
+        f"{ZTW}/ecgroup": EC_GROUPS, f"{ZTW}/ecRules/ecRdr": ZTW_FORWARDING_RULES, f"{ZTW}/workloadGroups": ZTW_WORKLOAD_GROUPS,
+        f"{ZTW}/ipSourceGroups": [], f"{ZTW}/ipDestinationGroups": [], f"{ZTW}/gateways": ZTW_GATEWAYS,
+        f"{ZTW}/location": ZTW_LOCATIONS, f"{ZTW}/locationTemplate": ZTW_LOCATION_TEMPLATES, f"{ZTW}/ecAdminActivateStatus": ZTW_ACTIVATION,
+        f"{ZTW}/adminRoles": ZTW_ADMIN_ROLES, f"{ZTW}/adminUsers": ZTW_ADMIN_USERS, f"{ZTW}/apiKeys": ZTW_API_KEYS,
+        f"{ZTW}/publicCloudAccountDetails": ZTW_ACCOUNT_DETAILS, f"{ZTW}/publicCloudInfo": ZTW_PUBLIC_CLOUD_INFO,
     }
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
@@ -486,7 +558,7 @@ def responses() -> Dict[str, Any]:
 def meta() -> Dict[str, Any]:
     """What the sample says about itself (the banner, the status, records)."""
     return {"kind": "sample", "company": COMPANY, "tenant_label": LABEL, "saved_at": "",
-            "scopes": ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac"],
+            "scopes": ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "ztw"],
             "channels": {}}
 
 
