@@ -704,6 +704,27 @@ window.WHATS_NEW = {
       "what": "Block files your incident response confirmed as malicious by their MD5 hash, with a preview, a typed confirmation, a read-back and Undo.",
       "changelog": ["Sandbox file hashes"],
       "marks": [{ "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"zia_sandbox_hashes\"]", "shown": "once the builders load" }]
+    },
+    {
+      "id": "cloud-app-sanction", "release": "2026-10-31", "label": "Sanction or unsanction cloud apps",
+      "what": "Sanction or unsanction cloud apps in Bulk changes: up to 100 apps at once, with each app's state, risk and traffic from ZIA Insights, the typed phrase, the read-back and an Undo that puts each app back as it was.",
+      "changelog": ["Sanction or unsanction cloud apps", "Exact Undo"],
+      "marks": [{ "page": "/report/operations", "at": "#opSanction" }]
+    },
+    {
+      "id": "shadow-it-checks", "release": "2026-10-31", "label": "Shadow IT and SaaS checks",
+      "what": "Three assessment checks from ZIA Insights: high-risk unsanctioned apps that still carry traffic, high-risk apps nobody has decided on, and sanctioned SaaS apps with no SaaS Security API tenant.",
+      "changelog": ["High-risk unsanctioned apps still carry traffic", "High-risk apps with no sanction decision", "Sanctioned SaaS apps with no SaaS Security API tenant"],
+      "marks": [{ "page": "/", "at": "button[onclick=\"openInsightsTab()\"]" }]
+    },
+    {
+      "id": "insights-sections", "release": "2026-10-31", "label": "More Traffic insights",
+      "what": "Traffic insights now also shows web threats by class and super-category, firewall traffic by location and network service, security incidents by location, and IoT and unmanaged device counts.",
+      "changelog": ["Web threats by class and super-category", "Firewall traffic by location and network service", "Security incidents by location", "IoT and unmanaged devices"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openInsightsTab()\"]" },
+        { "page": "/report/insights", "at": "#tiRun" }
+      ]
     }
   ]
 };

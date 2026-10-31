@@ -884,7 +884,7 @@ def test_the_object_picker_reads_only_what_is_in_scope():
         ao.read_objects(t, "zpa_segments", scope)
     segs = ao.read_objects(t, "zpa_segments", FULL_SCOPE)["segments"]
     assert segs[0]["name"] == "Intranet" and segs[0]["tcp"] == ["443"]
-    assert "sanction" in out and "cannot read" in out["sanction"]
+    assert "sanction" in out and "Sanction or unsanction cloud apps" in out["sanction"]
     assert t.writes == []
 
 

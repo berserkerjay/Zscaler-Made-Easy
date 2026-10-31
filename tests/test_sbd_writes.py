@@ -638,7 +638,7 @@ def test_an_ai_guard_undo_plan_asks_for_its_phrase_and_refuses_a_blank_one(aig, 
 
 ao.load_plugins()
 ALL_TYPES = list(ao.types())
-EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard", "zidentity"],
+EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard", "zidentity", "insights"],
               "channels": {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "cloud_app_control", "ssl_inspection")},
               "from_page": True}
 # The Scope page keys that put each product in scope.
@@ -930,6 +930,7 @@ DEFAULT_OFF: Dict[str, Any] = {
     "list_fix": _list_fix_default,
     "ip_group_edit": "group content only; no rule is created or enabled (a change to a group an enabled rule uses asks the typed phrase)",
     "atp_list_edit": "the security policy list content asked for; it acts at activation, so the typed phrase is asked every time",
+    "cloud_app_sanction": "changes an app's sanction label only (the operator picks the state per app); creates and enables no rule",
 }
 
 

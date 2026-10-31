@@ -1033,7 +1033,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"insights\"]": {
-    "what": "Lets the Traffic insights page read traffic numbers from ZIA Insights. It reads traffic data, not configuration, and is not part of the checks.",
+    "what": "Lets the app read traffic numbers from ZIA Insights: the Traffic insights page, 3 Shadow IT and SaaS checks, and the cloud app sanction change in Bulk changes. It reads traffic data, not configuration.",
     "input": "Tick it to allow Traffic insights. Needs a OneAPI API client with Z-Insights read access.",
     "effect": "local"
    },
@@ -4004,7 +4004,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#tiRun": {
-    "what": "Reads ZIA Insights for the chosen window: web traffic by action and location, cloud apps, SaaS security, firewall actions and top users. Read-only.",
+    "what": "Reads ZIA Insights for the chosen window: web traffic by action and location, web threats, cloud apps, SaaS security, firewall traffic, incidents by location, IoT device counts and top users. Read-only.",
     "input": "Pick a time window first. ZIA Insights must be ticked on the Scope page.",
     "effect": "read"
    },
@@ -4654,6 +4654,11 @@ window.HELP_CATALOG = {
    "#zfUdpRemove": {
     "what": "UDP ranges to remove from every picked segment. A range is removed whole.",
     "input": "Optional. The ranges as the segment lists them, like 53.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"cloud_app_sanction\"]": {
+    "what": "Picks \"Sanction or unsanction cloud apps\". It marks up to 100 cloud apps Sanctioned or Unsanctioned for the whole tenant.",
+    "input": "Tick it, then click Read from the tenant to list the apps. Needs ZIA platform and ZIA Insights ticked on the Scope page.",
     "effect": "local"
    },
    "#opBuildKinds input[name=\"opKind\"][value=\"aiguard_detection_policy\"]": {
@@ -5349,6 +5354,36 @@ window.HELP_CATALOG = {
    "#zdxNone": {
     "what": "Clears every pick.",
     "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "input[name=\"sanTo\"][value=\"unsanctioned\"]": {
+    "what": "Marks the picked cloud apps Unsanctioned when you apply. That labels them for the whole tenant; it does not block them.",
+    "input": "Tick it to mark them Unsanctioned. Block or isolate them in Cloud App Control too.",
+    "effect": "local"
+   },
+   "input[name=\"sanTo\"][value=\"sanctioned\"]": {
+    "what": "Marks the picked cloud apps Sanctioned when you apply: approved for business use, for the whole tenant.",
+    "input": "Tick it to mark them Sanctioned.",
+    "effect": "local"
+   },
+   "#sanFilter": {
+    "what": "Shows only the cloud apps whose name or category contains these words.",
+    "input": "Optional. Some words, like box or file share. Up to 80 characters.",
+    "effect": "local"
+   },
+   "#sanRisky": {
+    "what": "Ticked: shows only the cloud apps with a risk index of 4 or 5 (high risk).",
+    "input": "Optional. Tick it to see the high-risk apps only.",
+    "effect": "local"
+   },
+   "#sanNone": {
+    "what": "Clears every pick.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#opObjects:has(input[name=\"sanTo\"]) input[data-id]": {
+    "what": "Picks this cloud app to change. Its state now, risk and traffic come from ZIA Insights.",
+    "input": "Tick it to include it. At most 100 per change.",
     "effect": "local"
    },
    "#opObjects:has(input[name=\"zdxTo\"]) input[data-k]": {

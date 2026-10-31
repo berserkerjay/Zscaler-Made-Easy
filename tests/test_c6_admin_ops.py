@@ -113,11 +113,12 @@ def test_inverse_of_a_result_with_nothing_applied_is_none():
     assert ao.inverse({"type": "no_such_type", "items": [{"status": "applied"}]}) is None
 
 
-def test_sanction_is_not_an_operation_type_and_the_reason_is_shown():
-    """ASVS V1.14.6 · CWE-20 · WSTG-BUSL-01: cloud app sanction is refused (no read of the before state) and the picker says why."""
+def test_sanction_has_its_own_operation_type_and_the_picker_points_to_it():
+    """ASVS V1.14.6 · CWE-20 · WSTG-BUSL-01: an unknown "sanction" type is still refused; sanction is the cloud_app_sanction type and the picker names it."""
     with pytest.raises(ao.OperationError):
         ao.plan(Tenant(), {"type": "sanction", "apps": [1]}, scope=FULL_SCOPE)
-    assert "sanction" in ao.read_objects(Tenant(), "rules", FULL_SCOPE)["sanction"].lower()
+    assert "cloud_app_sanction" in ao.types()
+    assert "Sanction or unsanction cloud apps" in ao.read_objects(Tenant(), "rules", FULL_SCOPE)["sanction"]
 
 
 def test_writes_off_raises_before_anything_is_read():

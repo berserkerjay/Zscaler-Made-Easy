@@ -26,12 +26,12 @@ Operation types (`spec["type"]`):
                   or clone a segment's settings with a domain list, with
                   the FQDN and port overlap check.
 
-Cloud application sanction (Sanctioned / Unsanctioned) is not offered:
-the installed SDK can write it (zia.shadow_it_report.bulk_update, PUT
-/cloudApplications/bulkUpdate) but has no read of an application's current
-sanction state (list_apps returns id and name only, the Shadow IT export is
-a usage report rate-limited to one a minute), so neither the "before" of a
-preview, the conflict guard nor an exact inverse could be honoured.
+Cloud application sanction (Sanctioned / Unsanctioned) is the plugin type
+cloud_app_sanction (ops_sanction.py): the SDK can write it
+(zia.shadow_it_report.bulk_update) and each application's current state is
+read from ZIA Insights' Shadow IT applications (the SDK's list_apps keeps
+id and name only), so the preview, the conflict guard and an exact Undo
+hold; an application whose state cannot be read is excluded.
 
 Every operation goes:
 
@@ -299,9 +299,10 @@ POLICIES: Dict[str, Dict[str, Any]] = {
 CATEGORY_POLICIES = ("url_filtering", "ssl_inspection", "web_dlp", "file_type_control", "firewall")
 _CATEGORY_FIELDS = ("urlcategories", "destipcategories")
 
-SANCTION_NOTE = ("Cloud application sanction is not offered: the installed Zscaler SDK can set it (shadow_it_report.bulk_update) "
-                 "but cannot read an application's current sanction state, so a preview, the conflict guard and an exact undo "
-                 "are not possible. Change it in the ZIA Admin Portal.")
+# Where cloud application sanction lives (read_objects' "sanction" key, kept for its callers).
+SANCTION_NOTE = ("Cloud application sanction is its own operation: Sanction or unsanction cloud apps (needs ZIA platform and ZIA "
+                 "Insights ticked on the Scope page). Each application's current state comes from ZIA Insights, so the preview, "
+                 "the conflict check and an exact Undo hold; an application whose state cannot be read is not changed.")
 READ_RATE_STOP = ("ZIA refused a read for its rate limit while the change was running, so nothing more is sent. What was "
                   "already applied is kept and listed; wait a few minutes, then preview again to finish (or Undo).")
 REORDER_BROKEN = "the policy's rule order changed while the operation ran, so the remaining moves were not sent"

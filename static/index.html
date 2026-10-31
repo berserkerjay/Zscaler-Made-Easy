@@ -1089,9 +1089,9 @@
             <input type="checkbox" class="scope-cb" value="rbac" style="width:auto;cursor:pointer;">
             RBAC <span style="color:var(--dim);font-size:0.75rem;">(25 checks — admin/role/MFA hygiene, ZPA admins and keys)</span>
           </label>
-          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Traffic insights: web, firewall, Shadow IT and SaaS security traffic numbers from ZIA Insights (Z-Insights API). Reads traffic data, not configuration; needs a OneAPI API client whose role includes Z-Insights read access. Not part of the assessment's checks.">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Traffic insights: web, threat, firewall, incident, IoT, Shadow IT and SaaS security traffic numbers from ZIA Insights (Z-Insights API), the 3 Shadow IT and SaaS checks, and the cloud app sanction change in Bulk changes. Reads traffic data, not configuration; needs a OneAPI API client whose role includes Z-Insights read access.">
             <input type="checkbox" class="scope-cb" value="insights" style="width:auto;cursor:pointer;">
-            ZIA Insights (traffic data) <span style="color:var(--dim);font-size:0.75rem;">(Traffic insights page — needs Z-Insights API access)</span>
+            ZIA Insights (traffic data) <span style="color:var(--dim);font-size:0.75rem;">(3 checks — Shadow IT and SaaS; Traffic insights page — needs Z-Insights API access)</span>
           </label>
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Zscaler AI Guard: whether it is licensed and reachable, and the Bulk changes builders that route GenAI apps through it and build its detection policy. Needs a OneAPI API client with AI Guard access. Not part of the assessment's checks.">
             <input type="checkbox" class="scope-cb" value="aiguard" style="width:auto;cursor:pointer;">

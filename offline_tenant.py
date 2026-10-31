@@ -307,6 +307,16 @@ class OfflineStore:
         snapshot; on the sample, applied to its in-memory copy."""
         method = str(method or "").upper()
         path = normalize_path(url)
+        if method == "POST" and path == "/zins/graphql":
+            # Z-Insights asks every question with a POST: the sample and a snapshot
+            # keep one answer per GraphQL operation (offline the window is not applied).
+            with self._lock:
+                answer = self._zins_answer(body)
+            if answer is not None:
+                return answer
+        if method == "PUT" and path.endswith("/cloudApplications/bulkUpdate") and self.writable:
+            with self._lock:
+                return self._sanction(body)
         lookup = path.endswith(("/urlLookup", "/auditlogEntryReport")) or path.startswith("/zins/")
         if lookup and not (self.writable and path.endswith("/urlLookup")):
             # A read the API asks for with a POST (URL lookup, Insights, audit log report): offline it has no answer.
@@ -388,6 +398,55 @@ class OfflineStore:
                 return 204, {}
         return 400, {"code": "NOT_MODELLED",
                      "message": f"The sample tenant does not model this change ({method} {path}); nothing was sent to a tenant."}
+
+
+    def _zins_answer(self, body: Any) -> Optional[Tuple[int, Any]]:
+        """(status, body) kept for a Z-Insights operation, or None. Shadow IT
+        apps honour the application name filter (`in` / `eq`) as Insights does."""
+        op = body.get("operationName") if isinstance(body, dict) else None
+        if not isinstance(op, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,63}", op):
+            return None
+        entry = self.responses.get(f"/zins/graphql/{op}")
+        if entry is None:
+            return None
+        out = copy.deepcopy(entry.get("body"))
+        filt = ((body.get("variables") or {}).get("filterBy") or {}) if isinstance(body.get("variables"), dict) else {}
+        app = filt.get("application") if isinstance(filt, dict) else None
+        if op == "ShadowITApps" and isinstance(app, dict):
+            names = app.get("in") if isinstance(app.get("in"), list) else [app.get("eq")] if app.get("eq") is not None else None
+            try:
+                ents = out["data"]["SHADOW_IT"]["apps"]["entries"]
+            except (KeyError, TypeError):
+                ents = None
+            if names is not None and isinstance(ents, list):
+                want = {str(n) for n in names}
+                out["data"]["SHADOW_IT"]["apps"]["entries"] = [e for e in ents if isinstance(e, dict) and str(e.get("application")) in want]
+        return int(entry.get("status") or 200), out
+
+    def _sanction(self, body: Any) -> Tuple[int, Any]:
+        """The sample's cloud application bulk update (PUT /cloudApplications/bulkUpdate):
+        the named apps take the new state in the sample's Shadow IT answer."""
+        body = body if isinstance(body, dict) else {}
+        state = {"SANCTIONED": "Sanctioned", "UN_SANCTIONED": "Unsanctioned"}.get(str(body.get("sanctionedState") or "").upper())
+        ids = body.get("applicationIds") if isinstance(body.get("applicationIds"), list) else None
+        if state is None or not ids:
+            return 400, {"code": "INVALID_INPUT", "message": "sanctionedState must be SANCTIONED or UN_SANCTIONED and applicationIds a list."}
+        apps = _items((self._lookup(normalize_path("/zia/api/v1/cloudApplications/lite")) or {}).get("body")) or []
+        names = {str(a.get("id")): str(a.get("name")) for a in apps if isinstance(a, dict)}
+        unknown = [str(i) for i in ids if str(i) not in names]
+        if unknown:
+            return 400, {"code": "INVALID_INPUT", "message": f"No cloud application with id {unknown[0]}."}
+        entry = self.responses.get("/zins/graphql/ShadowITApps")
+        try:
+            ents = entry["body"]["data"]["SHADOW_IT"]["apps"]["entries"] if entry else []
+        except (KeyError, TypeError):
+            ents = []
+        want = {names[str(i)] for i in ids}
+        for e in ents:
+            if isinstance(e, dict) and str(e.get("application")) in want:
+                e["sanctioned_state"] = state
+        self.writes += 1
+        return 204, {}
 
 
 # ── the raw-HTTP client's interface ────────────────────────────────────
@@ -1095,6 +1154,10 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                          "praPortal", "clientlessCertificate/issued", "isolation/profiles")]
     + [(("zdx",), f"raw:/zdx/v1/config/{x}") for x in ("applications", "applications/supported", "monitors", "collections")]
     + [(("aiguard",), f"raw:/aiguard/v1/{x}") for x in ("detections/policies", "detections/policy-match-rules", "llm-providers")]
+    # ZIA Insights: the licences (the Insights checks' N/A) and the cloud application
+    # list (the sanction change); the Insights answers themselves are POSTs, kept by
+    # insights.capture under /zins/graphql/<operation>.
+    + [(("insights",), "/zia/subscriptions"), (("insights",), "/zia/cloudApplications/lite")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}
@@ -1186,6 +1249,15 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
             unread.append(f"{ep}: HTTP {code}")
             if code in _UNANSWERED:
                 log(f"Saving a snapshot: {ep} was not answered (HTTP {code}).")
+    if "insights" in scopes and not stopped():
+        import insights
+        kept = insights.capture(guard, log, cancel)
+        responses.update(kept)
+        counts["answers"] += len(kept)
+        counts["objects"] += len(kept)
+        if stopped():
+            log("Stopped: nothing more is read, and no snapshot is saved.")
+            return {"responses": responses, "counts": counts, "unread": unread, "stopped": True}
     log(f"Saving a snapshot: read {counts['answers']} lists ({counts['objects']} objects); {counts['not_read']} could not be read.")
     return {"responses": responses, "counts": counts, "unread": unread, "stopped": False}
 

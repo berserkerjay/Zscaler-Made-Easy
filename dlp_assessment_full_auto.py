@@ -2911,7 +2911,7 @@ def main():
         try:
             from zscaler_full_checks import PLATFORM_REG
             if args.scope == "full" or args.scope == "all":
-                check_reg = list(REG) + PLATFORM_REG
+                check_reg = list(REG) + [c for c in PLATFORM_REG if not c[1].startswith("Insights")]   # traffic data only when asked for
             elif args.scope == "zia":
                 check_reg = list(REG) + [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
             elif args.scope == "zpa":
