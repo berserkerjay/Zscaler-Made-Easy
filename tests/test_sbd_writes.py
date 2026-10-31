@@ -638,11 +638,12 @@ def test_an_ai_guard_undo_plan_asks_for_its_phrase_and_refuses_a_blank_one(aig, 
 
 ao.load_plugins()
 ALL_TYPES = list(ao.types())
-EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard"],
+EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard", "zidentity"],
               "channels": {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "cloud_app_control", "ssl_inspection")},
               "from_page": True}
 # The Scope page keys that put each product in scope.
-PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",)}
+PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",),
+                "zidentity": ("zidentity",)}
 BUILTIN_PRODUCT = {"rule_state": "zia", "reorder": "zia", "url_categories": "zia", "zpa_domains": "zpa"}
 
 
@@ -834,6 +835,9 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zcc_profile_delete": "deletes profiles only; creates and enables nothing",
     "zdx_probe_delete": "deletes apps and probes (or turns them off) only",
     "zpa_prefix_delete": "deletes the prefixed objects only; creates and enables nothing",
+    "zid_group_members": "adds or removes the people the operator typed in one group; creates no group, role or rule",
+    "zcc_app_profile_state": "the operator picks on or off explicitly, per profile, and types the profile's name",
+    "zcc_app_profile_settings": "changes only the allowlisted settings the operator set, each shown before and after; creates nothing",
 }
 
 
