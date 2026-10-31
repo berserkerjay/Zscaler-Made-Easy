@@ -1522,6 +1522,84 @@ def load_template(tid: str) -> Dict[str, Any]:
     return parse_template(read_template_raw(tid))
 
 
+# ---------------------------------------------------------------------------
+# Templates as a scheduled sync source (sync_jobs.register_template_source)
+# ---------------------------------------------------------------------------
+# A sync job may read its source rules from a template instead of a tenant.
+# The template's objects are served through a read-only stand-in for the
+# SDK client: only the list calls of the types this module knows answer
+# (the template's rows, or none), as (rows, None, None) like the SDK; every
+# other attribute (an add, update or delete) does not exist, so nothing can
+# be written through it. Names are kept as the template holds them (no
+# prefix): a sync matches rules by name.
+
+class _TemplateService:
+    def __init__(self, lists: Dict[str, Tuple[Dict[str, Any], List[Dict[str, Any]]]]):
+        self._lists = lists
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_") or name not in self._lists:
+            raise AttributeError(name)
+        t, rows = self._lists[name]
+
+        def lister(*args: Any, **_kw: Any) -> Tuple[List[Dict[str, Any]], None, None]:
+            # A rule list holds the template's own rules; another list also
+            # answers with the named stand-ins its rules refer to (so a name
+            # lookup finds them), without the stand-in marker.
+            rules = bool(t.get("policy")) or t["key"].endswith("_rules")
+            out = [{k: copy.deepcopy(v) for k, v in r.items() if k != "$stub"} for r in rows if not (rules and r.get("$stub"))]
+            if t.get("per_type") and args and isinstance(args[0], str):
+                out = [r for r in out if str(r.get("type") or r.get("rule_type") or "") == args[0]]
+            return out, None, None
+        return lister
+
+
+class _TemplateProduct:
+    def __init__(self, services: Dict[str, _TemplateService]):
+        self._services = services
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_") or name not in self._services:
+            raise AttributeError(name)
+        return self._services[name]
+
+
+class TemplateClient:
+    """A read-only, SDK-shaped client over a template's objects."""
+
+    def __init__(self, types: Dict[str, List[Dict[str, Any]]]):
+        by_product: Dict[str, Dict[str, Dict[str, Tuple[Dict[str, Any], List[Dict[str, Any]]]]]] = {}
+        for t in TYPES:
+            if t.get("ls"):
+                by_product.setdefault(t["product"], {}).setdefault(t["svc"], {})[t["ls"]] = (t, list(types.get(t["key"]) or []))
+        self._products = {p: _TemplateProduct({svc: _TemplateService(ls) for svc, ls in svcs.items()}) for p, svcs in by_product.items()}
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_") or name not in self._products:
+            raise AttributeError(name)
+        return self._products[name]
+
+
+# The Scope page keys that put a template's products in scope for a sync
+# (the template is local data: nothing is read from a tenant through it).
+_TEMPLATE_SCOPES = {"zia": ["zia_extras"], "zpa": ["zpa"], "zcc": ["zcc"]}
+
+
+def template_sources() -> List[Dict[str, Any]]:
+    """The saved templates as sync sources: {id, name, scopes}."""
+    out = []
+    for m in list_templates():
+        products = [str(p) for p in m.get("products") or [] if isinstance(p, str)]
+        out.append({"id": m["id"], "name": m.get("name") or m["id"],
+                    "scopes": sorted({sc for p in products for sc in _TEMPLATE_SCOPES.get(p, [])})})
+    return out
+
+
+def template_client(tid: str) -> TemplateClient:
+    """A read-only client over one saved template (its own names, no prefix)."""
+    return TemplateClient(template_source(load_template(tid), "")["types"])
+
+
 def delete_template(tid: str) -> bool:
     if not TEMPLATE_ID.match(str(tid)):
         raise BackupError("No such template.")

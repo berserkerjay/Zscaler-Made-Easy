@@ -6393,6 +6393,17 @@ class SyncJobEnable(BaseModel):
     enabled: bool = True
 
 
+def _register_sync_templates() -> None:
+    """Saved configuration templates (config_backup) can be a sync job's
+    source: read through a read-only stand-in client, never a tenant."""
+    import config_backup
+    import sync_jobs
+    sync_jobs.register_template_source(config_backup.template_sources, config_backup.template_client)
+
+
+_register_sync_templates()
+
+
 def _sync_deps():
     import sync_jobs
     return sync_jobs.Deps(build_client=_build_sdk_client, tenant_key=_cq_tenant, notify=sync_jobs.notify_via_digest)
