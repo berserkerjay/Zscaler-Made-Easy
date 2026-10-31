@@ -304,7 +304,9 @@ def test_ssl_certificate_move_keeps_rank_and_order_and_reads_them_back():
     p = zt.plan(t, spec)
     res = zt.apply(t, spec, prepared=p)
     # Assert
-    assert "keeps its rank 3 and order 2" in p["items"][0]["reason"]
+    # The order is read again right before the write (another part of a POV build may renumber the rules),
+    # so the plan names the rank only; the read-back still checks both.
+    assert "keeps its rank 3 and its order" in p["items"][0]["reason"]
     assert res["status"] == "applied" and res["verification"]["confirmed"] == 1
     # A "ZIA" that drops the rank on update: the read-back says so.
     t2 = zt.Tenant(ssl=ssl)

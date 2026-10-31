@@ -377,6 +377,10 @@ ROUTE_RULES: Dict[str, str] = {
     "DELETE /api/pov/templates/{template_id}": PLAN,
     "POST /api/pov/prove/start": "plan:profile",
     "POST /api/pov/insights/start": "plan:profile",
+    "POST /api/pov/build/defaults": PLAN,               # the build's parts from the intake (no tenant write)
+    "POST /api/pov/build/preview/start": PLAN,
+    "POST /api/pov/build/preview": PLAN,
+    "POST /api/pov/build/undo/preview/start": PLAN,
     # (wave 7) backups, templates and the remembered compliance choice: the app's own records of a tenant
     "POST /api/config-backups/save/start": PLAN,
     "POST /api/config-cache/refresh/start": PLAN,
@@ -411,6 +415,8 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/migrate/delete-all": APPLY,
     "POST /api/migrate/post": APPLY,
     "POST /api/self-heal/tenant/heal": APPLY,
+    "POST /api/pov/build/apply/start": APPLY,
+    "POST /api/pov/build/undo/apply/start": APPLY,
     # (wave 7) secrets held in memory for, or revealed by, a change: only for those who may change the tenant
     "POST /api/operations/zpa/ba-certificate": APPLY,
     "POST /api/operations/zidentity/secret": APPLY,

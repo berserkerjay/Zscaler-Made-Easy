@@ -1789,7 +1789,7 @@ def _verify(run) -> Dict[str, Any]:
                 cache[k] = get_one(run.zia, "ssl", o["id"])
             row, err = cache[k]
             ok = row is not None and _cert_of(row)[0] == t.get("to_id")
-            where = ri.stored(t.get("keep") or {}, row) if row is not None else None
+            where = ri.stored(u.get("sent") or t.get("keep") or {}, row) if row is not None else None
             if where:
                 ok, u["stored"] = False, where
         else:
@@ -1951,12 +1951,14 @@ def _plan_cert(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel)
         elif str(cid) == str(to_id):
             items.append(ao._unit(gk, gk, "cert", ref, "certificate", cname, to_name, status="noop", reason="already uses it"))
         else:
-            # A certificate move changes neither the rule's admin rank nor its order: both are sent back as read
-            # and the read-back checks ZIA kept them.
-            keep = {"rank": admin_rank.shown_rank(r), "order": r.get("order")}
+            # A certificate move changes neither the rule's admin rank nor its order: both are sent back as
+            # read right before the write and the read-back checks ZIA kept them. The order is not part of
+            # the plan: another part of the same run (a rule removed above it) may renumber the rules, which
+            # is not a change to this rule (pov_build applies several parts in one run).
+            keep = {"rank": admin_rank.shown_rank(r)}
             items.append(ao._unit(gk, gk, "cert", ref, "certificate", cname, to_name, value=to_id,
-                                  reason=f"keeps its {'rank ' + str(keep['rank']) + ' and ' if keep['rank'] is not None else ''}order "
-                                         f"{keep['order']}: a certificate move changes neither"))
+                                  reason=f"keeps its {'rank ' + str(keep['rank']) + ' and its ' if keep['rank'] is not None else ''}order"
+                                         ": a certificate move changes neither"))
             groups.append({"key": gk, "handler": "zb_cert", "target": {"id": r.get("id"), "name": r.get("name"), "from_id": cid,
                                                                        "to_id": to_id, "to_name": to_name, "keep": keep}})
     if default is None and any(g["target"]["to_id"] == "default" for g in groups):
@@ -1979,6 +1981,8 @@ def _h_cert(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
         run.mark(units, "conflict", f"changed in the tenant since the preview (now {cname}); left as it is")
         return
     body = _deep_snake(ao._body(fresh))
+    for u in units:   # what is sent back (the rule's rank and order as read now), for the read-back
+        u["sent"] = {"rank": admin_rank.shown_rank(fresh), "order": fresh.get("order")}
     action = dict(body.get("action") or {})
     if t["to_id"] == "default":
         action["override_default_certificate"] = False

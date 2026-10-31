@@ -428,7 +428,10 @@ def test_snapshot_reads_zpa_admin_lists_only_with_rbac_ticked():
     # Assert
     new = {rb.ZPA_ADMINS, rb.ZPA_ROLES, rb.ZPA_SSO, rb.ZPA_API_KEYS, rb.ZPA_EMERGENCY, rb.ZPA_MICROTENANTS, rb.ZPA_PRA_CREDENTIALS,
            rb.ZPA_PRA_POOLS, rb.ZPA_PRA_APPROVALS, *rb.ZPA_PROV_KEYS}
-    assert new <= with_rbac and not (new & zpa_only)
+    # The App Connector provisioning keys are also read with ZPA alone: the ZPA builders' catalogue
+    # (sample_tenant.builder_catalogues, feat/pov-oneshot) lists them; their values are never kept.
+    shared = {"/zpa/associationType/CONNECTOR_GRP/provisioningKey"}
+    assert new <= with_rbac and not ((new - shared) & zpa_only)
 
 
 def test_snapshot_without_zpa_ticked_sends_no_zpa_request():
