@@ -335,12 +335,13 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 62,
+            "fixed": 64,
             "accepted": 2,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
               "func-builders",
+              "w7-admin-zia-zid",
               "w7-admin-zpa-zcc-zdx",
               "w7-federal-compliance",
               "w7-rank-inherit",
@@ -458,7 +459,7 @@
     }
   ],
   "counts": {
-    "findings": 633,
+    "findings": 635,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -477,7 +478,7 @@
       },
       "low": {
         "open": 2,
-        "fixed": 359,
+        "fixed": 361,
         "accepted": 1
       },
       "info": {
@@ -487,12 +488,12 @@
       }
     },
     "checks": {
-      "pass": 418,
+      "pass": 427,
       "fixed": 313,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 9568
+    "tests_added": 9635
   },
   "findings": [
     {
@@ -9488,6 +9489,38 @@
       "sub_area": "builders"
     },
     {
+      "id": "W7-ADMZ-01",
+      "title": "Zscaler SDK 1.11.3 ZIdentity models drop data a read needs: ServiceScopes.request_format omits a resource server's scopes, and get_api_client_secret parses the list of secrets into one empty object",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-221",
+      "asvs": "V11.1.1",
+      "wcag": "",
+      "fix": "ops_zid and ops_zia_directory read the raw answer when the SDK response carries it (ops_zia_directory.raw_body); secret values are dropped from every read (ops_zid.scrub)",
+      "test": "tests/test_ops_zid.py::test_the_picker_searches_users_and_lists_clients_scopes_without_a_secret",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-admin-zia-zid",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-ADMZ-02",
+      "title": "During development: a new PAC version's plan hash did not cover the source version's text, so a version edited in the portal after the preview would still be cloned from",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-367",
+      "asvs": "V11.1.6",
+      "wcag": "",
+      "fix": "the plan and the handler carry the source version's digest; a changed source gives plan_changed",
+      "test": "tests/test_ops_zia_admin.py::test_versions_that_moved_since_the_preview_write_nothing",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-admin-zia-zid",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "W7-FC-01",
       "title": "The compliance profile select and the profile view's select overflowed a 320px viewport (long profile names widened the fieldset)",
       "severity": "low",
@@ -11522,6 +11555,40 @@
       "tests_added": 958
     },
     {
+      "slug": "w7-admin-zia-zid",
+      "area": "Builders: day-to-day admin on Bulk changes (ZIA users, groups, departments and PAC files; ZIdentity users and API clients)",
+      "title": "Day-to-day admin types on the shared engine: Scope rule, four gates, plan hash, re-read, read-back, Undo, audit with actor, secrets shown once",
+      "standards": [
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.2.4",
+        "ASVS V7.1.1",
+        "ASVS V8.3.4",
+        "ASVS V11.1.1",
+        "ASVS V11.1.6",
+        "OWASP Top 10 2021 A01",
+        "OWASP Top 10 2021 A04",
+        "OWASP Top 10 2021 A09",
+        "WSTG-ATHZ-02",
+        "WSTG-INPV-01",
+        "CWE-20",
+        "CWE-94",
+        "CWE-200",
+        "CWE-221",
+        "CWE-250",
+        "CWE-269",
+        "CWE-312",
+        "CWE-367",
+        "CWE-532",
+        "CWE-841",
+        "CWE-863",
+        "CWE-1188"
+      ],
+      "checks": 9,
+      "findings": 2,
+      "tests_added": 67
+    },
+    {
       "slug": "w7-admin-zpa-zcc-zdx",
       "area": "w7-admin-zpa-zcc-zdx",
       "title": "Day-to-day admin for ZPA (connectors, Service Edges, PRA and user portals, provisioning keys, Browser Access certificates), Client Connector (device removal single and bulk, bypass apps, entitlements) and ZDX (deep trace, read-only views)",
@@ -12003,6 +12070,7 @@
       "CWE-628",
       "CWE-636",
       "CWE-639",
+      "CWE-640",
       "CWE-650",
       "CWE-653",
       "CWE-654",

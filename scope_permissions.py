@@ -90,10 +90,14 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "Alerts (alert subscriptions; assumed name)",
             "NSS Configuration (NSS servers, collectors and feeds)",
             "Organization (subscriptions; assumed name)",
+            "Hosted PAC Files",
         ],
-        "permissions_write": [],
+        "permissions_write": [
+            "Only with write mode on and a confirmed Bulk changes plan: User Management (users, groups, departments) and Hosted PAC Files",
+        ],
         "endpoints_used": [
             "/zia/firewallFilteringRules", "/zia/firewallDnsRules",
+            "/zia/users", "/zia/groups", "/zia/departments", "/zia/pacFiles",
             "/zia/urlFilteringRules", "/zia/urlCategories",
             "/zia/sslInspectionRules", "/zia/cloudApplications",
             "/zia/locations", "/zia/greTunnels",
@@ -272,11 +276,16 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "Resource Servers",
             "User Entitlements",
             "Admin Roles",
+            "API Clients (Bulk changes: the clients and their scopes; never a secret's value)",
         ],
-        "permissions_write": [],
+        "permissions_write": [
+            "Only with write mode on and a confirmed Bulk changes plan: Users (create, disable, enable, delete) and API Clients "
+            "(create, rotate a secret, disable, enable, delete). Grant them only to the API client that makes these changes: least privilege.",
+        ],
         "endpoints_used": [
             "/zid/users", "/zid/groups",
             "/zid/resourceServers",
+            "/ziam/admin/api/v1/api-clients", "/ziam/admin/api/v1/api-clients/{id}/secrets",
         ],
         "license_required": "ZIdentity is included with all OneAPI tenants. The API role you use to authenticate already lives here.",
         "customer_id_needed": False,

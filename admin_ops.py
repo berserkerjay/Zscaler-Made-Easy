@@ -2308,10 +2308,13 @@ def to_request(prepared: Dict[str, Any]) -> Dict[str, Any]:
 # The object picker
 # ---------------------------------------------------------------------------
 
-def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = None, cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = None, cancel: Optional[threading.Event] = None,
+                 query: str = "") -> Dict[str, Any]:
     """The objects an operation can pick from, read-only: rules per policy
     in scope, custom URL categories with their URLs, or ZPA segments with
-    their domains and ports."""
+    their domains and ports. `query` (a search the page typed, at most
+    MAX_QUERY characters) goes to a plugin reader that takes it (a fifth
+    parameter): the users of a large directory are searched, not all read."""
     require_scope(family, scope)
     say = log or (lambda m: None)
     out: Dict[str, Any] = {"family": family, "not_in_scope": dict(scope.get("not_in_scope") or {}), "errors": {},
@@ -2350,6 +2353,21 @@ def read_objects(client, family: str, scope: Dict[str, Any], *, log: LogFn = Non
         out["segments"] = [segment_summary(s) for s in sorted(segs, key=lambda s: str(pc._field(s, "name", default="")).lower())]
         say(f"{len(out['segments'])} application segments.")
     elif family in PLUGIN_FAMILIES:
-        out.update(PLUGIN_FAMILIES[family]["read_objects"](client, scope, say, cancel) or {})
+        reader = PLUGIN_FAMILIES[family]["read_objects"]
+        q = str(query or "")[:MAX_QUERY]
+        out.update((reader(client, scope, say, cancel, q) if q and _takes_query(reader) else reader(client, scope, say, cancel)) or {})
     _check_stop(cancel)
     return out
+
+
+MAX_QUERY = 100   # characters of a picker search
+
+
+def _takes_query(fn: Callable[..., Any]) -> bool:
+    """Does a plugin's reader take the picker's search (a fifth parameter)?"""
+    try:
+        params = [p for p in inspect.signature(fn).parameters.values()
+                  if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL)]
+    except (TypeError, ValueError):
+        return False
+    return len(params) >= 5 or any(p.kind == p.VAR_POSITIONAL for p in params)

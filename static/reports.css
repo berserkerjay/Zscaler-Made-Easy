@@ -664,6 +664,11 @@ summary { min-height: 24px; }
 .op-block .lbl { font-size: 0.82rem; color: var(--dim); }
 .op-block textarea { width: 100%; max-width: 70ch; font: inherit; font-family: var(--mono); font-size: 0.82rem; padding: 0.5rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); }
 .op-checks { list-style: none; margin: 0.3rem 0; padding: 0.4rem 0.6rem; max-height: 40vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); display: grid; gap: 0.2rem; font-family: var(--mono); font-size: 0.8rem; }
+/* A PAC preview's line diff: the leading + or - says it; the tint and the strike only repeat it. */
+.op-diff { max-height: 420px; white-space: pre; overflow-x: auto; }
+.op-diff .op-add { background: var(--accent-tint); }
+.op-diff .op-del { text-decoration: line-through; }
+.op-diff:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .op-checks input { accent-color: var(--accent); }
 .op-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.4rem 0; }
 .op-h { font-size: 0.86rem; margin: 1rem 0 0.4rem; }

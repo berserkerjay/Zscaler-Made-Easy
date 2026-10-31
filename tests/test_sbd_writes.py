@@ -638,11 +638,12 @@ def test_an_ai_guard_undo_plan_asks_for_its_phrase_and_refuses_a_blank_one(aig, 
 
 ao.load_plugins()
 ALL_TYPES = list(ao.types())
-EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard"],
+EVERYTHING = {"scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx", "aiguard", "zidentity"],
               "channels": {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "cloud_app_control", "ssl_inspection")},
               "from_page": True}
 # The Scope page keys that put each product in scope.
-PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",)}
+PRODUCT_KEYS = {"zia": ("dlp", "zia_extras"), "zpa": ("zpa",), "zcc": ("zcc",), "zdx": ("zdx",), "aiguard": ("aiguard",),
+                "zidentity": ("zidentity",)}
 BUILTIN_PRODUCT = {"rule_state": "zia", "reorder": "zia", "url_categories": "zia", "zpa_domains": "zpa"}
 
 
@@ -860,6 +861,18 @@ def _zpa_access_csv_default():
     return not p["groups"] and any(u["kind"] == "rule_add" and u["status"] == "excluded" for u in p["items"])
 
 
+def _zid_user_default():
+    import ops_zid
+    n = ops_zid.normalize_users({"changes": [{"action": "create", "login_name": "qa@example.com", "display_name": "QA"}]})
+    return n["changes"][0]["enable"] is False and ops_zid.user_create_payload(n["changes"][0])["status"] is False
+
+
+def _zid_client_default():
+    import ops_zid
+    n = ops_zid.normalize_clients({"action": "create", "name": "QA", "scopes": [{"resource": "r", "scope": "s"}]})
+    return n["enable"] is False and ops_zid.client_create_payload(dict(n, resources=[]))["status"] is False
+
+
 # How each type that creates or changes enforcement keeps it off unless the
 # operator chose it; or why "off" does not apply. A new type must be listed.
 DEFAULT_OFF: Dict[str, Any] = {
@@ -889,6 +902,10 @@ DEFAULT_OFF: Dict[str, Any] = {
     "config_restore_zia": _config_restore_default,
     "config_restore_zpa": _config_restore_default,
     "config_restore_zcc": "Client Connector trusted networks, forwarding profiles and settings carry no on/off state; app profiles are never written",
+    "zia_directory": "users, groups and departments: membership only, no policy rule is created or enabled; no password is set",
+    "zia_pac": "a new version is created STAGED; a new PAC file has a new URL nothing uses yet; switching the active version is the change asked for",
+    "zid_users": _zid_user_default,
+    "zid_api_clients": _zid_client_default,
 }
 
 
@@ -1015,6 +1032,10 @@ UNDO_SHAPES = [
     {"type": "aiguard_routing", "action": "undo", "steps": [{"kind": "firewall_rule", "op": "delete", "id": "1", "name": "AIG-x"}]},
     {"type": "aiguard_detection_policy", "action": "undo", "steps": [{"kind": "aiguard_rule", "op": "delete", "id": "1", "name": "AIG-x"}]},
     {"type": "zpa_prefix_delete", "prefix": "pov1", "undo": True, "select": [], "restore": []},
+    {"type": "zia_directory", "action": "undo", "changes": [{"kind": "user", "action": "delete", "id": "41"}]},
+    {"type": "zia_pac", "action": "undo", "delete": {"id": "61", "name": "corp.pac"}},
+    {"type": "zid_users", "action": "undo", "changes": [{"action": "delete", "id": "u-1"}]},
+    {"type": "zid_api_clients", "action": "undo", "delete": {"id": "c-1", "name": "Reporting"}},
 ]
 
 

@@ -282,6 +282,30 @@ window.WHATS_NEW = {
       "what": "Scheduled sync on the change queue: a job keeps target tenants' rules in step with a source by filing a plan per target for four-eyes approval; nothing is applied until a named writer applies it.",
       "changelog": ["Scheduled sync", "Run now", "Bulk change plan"],
       "marks": [{ "page": "/report/queue", "at": "#syH" }]
+    },
+    {
+      "id": "admin-zia-directory", "release": "2026-10-31", "label": "ZIA users, groups and departments",
+      "what": "Day-to-day admin on Bulk changes: find ZIA users by name, add users, change their department and groups, and add, rename or delete groups and departments, with the same preview, write gates, read-back and Undo. A delete asks its name typed.",
+      "changelog": ["ZIA users, groups and departments", "Day-to-day admin", "DELETE <name>"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opAdminKinds > legend" },
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zia_directory\"]", "shown": "once the page lists the operation types" }
+      ]
+    },
+    {
+      "id": "admin-zia-pac", "release": "2026-10-31", "label": "ZIA PAC files",
+      "what": "Hosted PAC files on Bulk changes: view each file and its versions, validate a PAC (parsed here, never run, and checked by ZIA), add a staged version, create or clone a file, switch the active version, with a line diff in the preview.",
+      "changelog": ["ZIA PAC files"],
+      "marks": [{ "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zia_pac\"]", "shown": "once the page lists the operation types" }]
+    },
+    {
+      "id": "admin-zid", "release": "2026-10-31", "label": "ZIdentity users and API clients",
+      "what": "ZIdentity users (find, add disabled, disable, enable, delete) and API clients (their scopes; a new client with only the scopes you tick, its secret shown once; rotate a secret, disable, enable or delete a client).",
+      "changelog": ["ZIdentity users and API clients", "ROTATE <name>"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zid_users\"]", "shown": "once the page lists the operation types" },
+        { "page": "/report/operations", "at": "#opAdminKinds input[name=\"opKind\"][value=\"zid_api_clients\"]", "shown": "once the page lists the operation types" }
+      ]
     }
   ]
 };
