@@ -9297,6 +9297,31 @@ def _cp_key(key: str) -> str:
     return k
 
 
+class BaselineSelectionRequest(BaseModel):
+    """A ZIA baseline rule-review selection: `spec` to save it as a file, or
+    `selection` (an uploaded file, untrusted) to check it before it is used."""
+    spec: Optional[Dict[str, Any]] = None
+    selection: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/zia-baseline/selection")
+async def zia_baseline_selection(req: BaselineSelectionRequest):
+    """Save (spec) or check (selection) a ZIA baseline rule-review selection.
+    Local: reads and writes no tenant. An uploaded selection is checked as
+    untrusted input (format, size, every key, then the build's own
+    normalize) and comes back cleaned, or a 400 says why."""
+    import admin_ops
+    import ops_zia_baseline as zb
+    if (req.spec is None) == (req.selection is None):
+        raise HTTPException(status_code=400, detail="Send either spec (to save a selection) or selection (to load one).")
+    try:
+        if req.spec is not None:
+            return {"selection": zb.selection_doc(req.spec)}
+        return zb.load_selection(req.selection)
+    except admin_ops.OperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/compliance-profiles")
 async def compliance_profiles_list():
     """Every compliance profile, grouped, with what picking it does."""

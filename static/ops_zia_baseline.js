@@ -23,7 +23,8 @@
   function state(S, res) {
     if (!S.zb) {
       S.zb = { tier: 'balanced', overlays: new Set(), areas: null, prefix: 'BL', mode: 'tier', rules: {}, atp: {}, ucaas: {}, enable: false,
-        profile: '', cert: '', framework: null, frameworkName: '', fileError: '', compliance: '', cpReady: false, cpSaved: '', cpInfo: null, cpError: '' };
+        profile: '', cert: '', framework: null, frameworkName: '', fileError: '', compliance: '', cpReady: false, cpSaved: '', cpInfo: null, cpError: '',
+        q: '', changedOnly: false, selInfo: '', selError: '' };
     }
     if (!S.zb.areas && res && res.areas) {
       S.zb.areas = new Set(res.areas.filter(a => a.default && (res.in_scope || []).includes(a.key)).map(a => a.key));
@@ -107,9 +108,18 @@
           ${r.profileNote ? `<div class="df-hint">${E(r.profileNote)}</div>` : ''}${edLimit(r.key) ? ` <span class="df-chip st-warn">Edition: ${E(edLimit(r.key))}</span>` : ''}</td>
         <td>${(r.sources || []).map(s => `<a href="${E(httpsOnly(s.url))}" target="_blank" rel="noopener noreferrer">${E(s.title)}</a>`).join('<br>') || '<span class="df-hint">From the framework file</span>'}</td></tr>`;
     };
+    // Search and "changed from the tier default" (the review's own reading: an action other than the tier's, or on/off flipped).
+    const areaLabel = a => (res.areas.find(x => x.key === a) || {}).label || a;
+    const changed = r => { const e = effective(r, z); return e.choice !== 'TIER' || e.on !== (r.default_on !== false); };
+    const q = String(z.q || '').trim().toLowerCase();
+    const shown = r => (!q || [r.name, r.title, r.suffix, areaLabel(r.area)].some(x => String(x || '').toLowerCase().includes(q))) && (!z.changedOnly || changed(r));
+    const pickedRules = rules.filter(r => picked(r.area));
+    const shownCount = pickedRules.filter(shown).length;
     const areaBlock = a => {
       if (!picked(a) || a === 'atp' || a === 'ucaas') return '';
-      const list = areaRules(a);
+      const all = areaRules(a);
+      const list = all.filter(shown);
+      if (all.length && !list.length) return '';
       const ctrls = controlsFor(a);
       return `<h3 class="op-h">${E((res.areas.find(x => x.key === a) || {}).label || a)}</h3>
         ${ctrls.length ? `<div class="df-hint">Overlay controls: ${ctrls.map(c => `${E(c.label)}: ${E(c.controls.join('; '))} (<a href="${E(httpsOnly(c.source.url))}" target="_blank" rel="noopener noreferrer">${E(c.source.title)}</a>)`).join(' · ')}</div>` : ''}
@@ -200,6 +210,17 @@
       <div class="op-row"><label class="df-ctl"><input type="checkbox" id="zbEnable"${z.enable ? ' checked' : ''}><span>Create the rules enabled (off: every new rule arrives disabled, to be turned on after review)</span></label></div>
       <div class="op-row"><span class="df-chip">${rules.filter(r => picked(r.area) && effective(r, z).on).length} rules on</span>${weakCount ? `<span class="df-chip st-warn">${weakCount} weaker than the tier</span>` : ''}
         <span class="df-hint">Names are shortened to ZIA's 31 characters in the preview; categories, apps and profiles the tenant lacks are dropped there with a warning.</span></div>
+      <div class="op-row" role="search" aria-label="Find rules in the review">
+        <label class="df-ctl"><span class="lbl">Search rules</span><input type="search" id="zbSearch" value="${E(z.q)}" maxlength="80" aria-describedby="zbShown" placeholder="Name, title or area"></label>
+        <label class="df-ctl"><input type="checkbox" id="zbChanged"${z.changedOnly ? ' checked' : ''}><span>Changed from the tier default only</span></label>
+        <span class="df-chip" id="zbShown" role="status">${z.q || z.changedOnly ? `Showing ${shownCount} of ${pickedRules.length} rules` : `${pickedRules.length} rules`}</span>
+      </div>
+      <div class="op-row">
+        <button type="button" class="rp-btn" id="zbSelSave"${z.framework ? ' disabled' : ''}>Download selection</button>
+        <label class="df-ctl"><span class="lbl">Load a selection (from Download selection)</span><input type="file" id="zbSelLoad" accept="application/json,.json"${z.framework ? ' disabled' : ''}></label>
+        ${z.selInfo ? `<span class="df-chip st-ok" role="status">${E(z.selInfo)}</span>` : ''}${z.selError ? `<span class="df-chip st-fail" role="alert">${E(z.selError)}</span>` : ''}
+      </div>
+      ${(z.q || z.changedOnly) && !shownCount ? '<div class="df-hint">No rule matches the search or the filter.</div>' : ''}
       ${(res.areas || []).map(a => areaBlock(a.key)).join('')}${atpBlock()}${ucaasBlock()}
       ${z.areas && z.areas.size ? '' : '<div class="df-hint">No area is picked: tick at least one area above.</div>'}`;
     const rerender = (focusId) => { renderBaseline(res, where, S, H); if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); } };
@@ -220,6 +241,48 @@
     on('zbCert', 'change', e => { z.cert = e.target.value; });
     on('zbEnable', 'change', e => { z.enable = e.target.checked; });
     on('zbClearFw', 'click', () => { z.framework = null; z.frameworkName = ''; z.rules = {}; rerender(); });
+    on('zbSearch', 'input', e => {
+      z.q = e.target.value.slice(0, 80); rerender('zbSearch');
+      const el = document.getElementById('zbSearch'); if (el) { const n = el.value.length; el.setSelectionRange(n, n); }
+    });
+    on('zbChanged', 'change', e => { z.changedOnly = e.target.checked; rerender('zbChanged'); });
+    on('zbSelSave', 'click', async () => {
+      z.selInfo = ''; z.selError = '';
+      try {
+        const r = await fetch('/api/zia-baseline/selection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spec: specOf(z) }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${r.status}`);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(d.selection, null, 1)], { type: 'application/json' }));
+        a.download = `zia-baseline-selection-${(z.prefix || 'BL').replace(/[^A-Za-z0-9_-]/g, '')}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        z.selInfo = 'Selection downloaded.'; H.say('Selection downloaded.');
+      } catch (err) { z.selError = `Could not save the selection: ${err.message}`; }
+      rerender('zbSelSave');
+    });
+    on('zbSelLoad', 'change', async e => {
+      const f = e.target.files && e.target.files[0];
+      z.selInfo = ''; z.selError = '';
+      if (!f) return;
+      if (f.size > 256 * 1024) { z.selError = 'The file is larger than 256 KB: not a selection file.'; rerender('zbSelLoad'); return; }
+      try {
+        const doc = JSON.parse(await f.text());
+        // The server checks the file as untrusted input (format, size, every key, the build's own checks) before it is used.
+        const r = await fetch('/api/zia-baseline/selection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ selection: doc }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${r.status}`);
+        const s = d.selection || {};
+        z.compliance = s.compliance_profile || ''; z.tier = s.tier || z.tier; z.overlays = new Set(s.overlays || []);
+        if (Array.isArray(s.areas)) z.areas = new Set(s.areas.filter(a => inScope.has(a)));
+        z.rules = s.rules || {}; z.atp = s.atp || {}; z.ucaas = s.ucaas || {}; z.mode = s.mode || 'tier';
+        z.prefix = s.prefix || z.prefix; z.enable = !!s.enable_rules;
+        if (window.ZMECompliance) window.ZMECompliance.set(z.compliance);
+        const ign = (d.ignored || []).length;
+        z.selInfo = `Selection loaded from ${String(f.name).slice(0, 60)}.${ign ? ` ${ign} rule choice(s) this version does not know were left out.` : ''}`;
+        H.say(z.selInfo);
+      } catch (err) { z.selError = `Could not load it: ${err.message}`; }
+      rerender('zbSelLoad');
+    });
     on('zbCompliance', 'change', async e => {
       applyProfile(res, z, e.target.value);
       z.cpSaved = ''; z.cpInfo = ''; z.cpError = '';

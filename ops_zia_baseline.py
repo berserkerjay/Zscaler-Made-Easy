@@ -2293,3 +2293,64 @@ ao.register(CERT_TYPE, family=CERT_FAMILY, product="zia", label="SSL certificate
                  "ready-to-use certificate.",
             in_scope=_cert_in_scope, plan=_plan_cert, read_objects=_read_certs, handlers={"zb_cert": _h_cert},
             verify=_verify, inverse=_cert_inverse, script="ops_zia_baseline.js")
+
+
+# ---------------------------------------------------------------------------
+# A saved selection of the rule review (Download / Load selection)
+# ---------------------------------------------------------------------------
+SELECTION_FORMAT = "zia-baseline-selection"
+SELECTION_VERSION = 1
+MAX_SELECTION_BYTES = 256 * 1024
+_SELECTION_KEYS = ("tier", "overlays", "areas", "rules", "atp", "ucaas", "mode", "prefix", "compliance_profile", "enable_rules")
+_RULE_KEY = re.compile(r"\A[a-z]{2,6}\.[a-z0-9_]{1,40}\Z")
+
+
+def selection_doc(spec: Dict[str, Any]) -> Dict[str, Any]:
+    """The review's choices as a file to save (no framework, no tenant data):
+    tier, overlays, areas, per-rule choices, ATP and UCaaS switches, mode,
+    prefix, compliance profile and enable_rules, after normalize()."""
+    n = normalize(dict(spec or {}, type=TYPE))
+    if n.get("action") == "revert" or n.get("framework"):
+        raise ao.OperationError("A selection is saved from a tier, not from an Undo or a loaded framework file.")
+    doc = {"format": SELECTION_FORMAT, "format_version": SELECTION_VERSION}
+    for k in _SELECTION_KEYS:
+        doc[k] = copy.deepcopy(n.get(k))
+    doc["rules"] = {k: v for k, v in sorted(n["rules"].items()) if k in CATALOG_BY_KEY}
+    return doc
+
+
+def load_selection(doc: Any) -> Dict[str, Any]:
+    """Check an uploaded selection file (untrusted): its format, size, every
+    key and value, then the same normalize() a build goes through. Returns
+    {"selection": the spec fields to use, "ignored": rule keys this version
+    does not know}. Raises OperationError with the reason."""
+    if not isinstance(doc, dict) or doc.get("format") != SELECTION_FORMAT:
+        raise ao.OperationError(f"Not a ZIA baseline selection (expected format '{SELECTION_FORMAT}').")
+    ver = doc.get("format_version")
+    if type(ver) is not int or ver != SELECTION_VERSION:
+        raise ao.OperationError("This selection file is from a newer version of the app." if type(ver) is int and ver > SELECTION_VERSION
+                                else f"This selection file has no usable format_version (expected {SELECTION_VERSION}).")
+    if len(json.dumps(doc, default=str)) > MAX_SELECTION_BYTES:
+        raise ao.OperationError(f"The selection is larger than {MAX_SELECTION_BYTES // 1024} KB.")
+    extra = [str(k)[:30] for k in doc if k not in _SELECTION_KEYS + ("format", "format_version")]
+    if extra:
+        raise ao.OperationError(f"Unknown field(s) in the selection: {', '.join(extra[:5])}.")
+    rules = doc.get("rules") or {}
+    if not isinstance(rules, dict) or len(rules) > len(CATALOG):
+        raise ao.OperationError("rules is an object of per-rule choices, one per baseline rule at most.")
+    bad = [str(k)[:40] for k in rules if not isinstance(k, str) or not _RULE_KEY.match(k)]
+    if bad:
+        raise ao.OperationError(f"Not a baseline rule key: {', '.join(bad[:5])}.")
+    ignored = sorted(k for k in rules if k not in CATALOG_BY_KEY)
+    spec = {k: doc[k] for k in _SELECTION_KEYS if k in doc and doc[k] is not None}
+    spec["rules"] = {k: v for k, v in rules.items() if k in CATALOG_BY_KEY}
+    for k in ("prefix", "mode", "tier", "compliance_profile"):
+        if k in spec and not isinstance(spec[k], str):
+            raise ao.OperationError(f"{k} must be text.")
+    if "enable_rules" in spec and not isinstance(spec["enable_rules"], bool):
+        raise ao.OperationError("enable_rules must be true or false.")
+    n = normalize(dict(spec, type=TYPE))      # the build's own checks: tier, overlays, areas, choices, ATP, UCaaS, prefix
+    out = {k: copy.deepcopy(n.get(k)) for k in _SELECTION_KEYS}
+    if not doc.get("areas"):
+        out["areas"] = None
+    return {"selection": out, "ignored": ignored}
