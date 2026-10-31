@@ -47,6 +47,7 @@ FAMILY = "zid_groups"
 PRODUCT = "zidentity"
 MAX_PEOPLE = 50
 MAX_GROUPS = 200
+MAX_COUNTED = 50          # groups whose members are counted for the picker (one read each); the rest show no count
 PAGE = 1000
 MAX_PAGES = 10
 NOT_IN_SCOPE = "Not in scope: tick ZIdentity on the Scope page, then try again. Nothing was read."
@@ -121,12 +122,12 @@ def read_objects(client: Any, scope: Dict[str, Any], say: Callable[[str], None],
     say("Reading the ZIdentity groups…")
     rows, err = read_groups(client)
     out = []
-    for g in rows:
+    for i, g in enumerate(rows):
         _check_stop(cancel)
         gid = _gid(g)
         if not _ID_RE.match(gid):
             continue
-        members, merr = read_members(client, gid, cancel)
+        members, _merr = read_members(client, gid, cancel) if i < MAX_COUNTED else (None, None)
         out.append({"id": gid, "name": _txt(g.get("name") or gid, 128), "source": _txt(g.get("source"), 20),
                     "dynamic": bool(g.get("isDynamicGroup")), "members": len(members) if members is not None else None})
     out.sort(key=lambda g: g["name"].lower())
