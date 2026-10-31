@@ -37,7 +37,10 @@ criterion with the state "unknown". A module decides only with a rule
 whose every criterion matches; an earlier rule with an unknown criterion
 and a different outcome makes the module "conditional", and so does an
 unknown criterion on the deciding rule. The overall result says
-"definite" or "conditional" and why.
+"definite" or "conditional" and why. The check is generic (rule_fields):
+each module lists the fields it evaluates and the fields known to be
+neutral, and ANY other non-empty field on a rule (one a newer API adds,
+say) is an unknown criterion too, never silently ignored.
 
 Reads (read): only the sections the Scope page puts in scope (the
 `atp`, `firewall`, `dns` and `sandbox` keys of data_flow.PATH_SECTIONS,
@@ -54,6 +57,8 @@ import functools
 import ipaddress
 import re
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+
+import ucaas_oneclick
 
 # ── What is read ─────────────────────────────────────────────────────
 # Scope table entries (merged into data_flow.PATH_SECTIONS): label, the
@@ -84,6 +89,10 @@ READS: Dict[str, List[Tuple[str, str, str, str]]] = {
         ("network_app_groups", "/zia/networkApplicationGroups", "Network application groups", "list"),
         ("ip_destination_groups", "/zia/ipDestinationGroups", "IP destination groups", "list"),
         ("ip_source_groups", "/zia/ipSourceGroups", "IP source groups", "list"),
+        # The UCaaS and Microsoft 365 one-click switches behind Zscaler's
+        # predefined one-click rules (ucaas_oneclick; SDK 1.11.3
+        # url_filtering.get_url_and_app_settings).
+        ("url_app_settings", "/zia/advancedUrlFilterAndCloudAppSettings", "URL and Cloud App Control advanced settings", "object"),
     ],
     "dns": [("rules", "/zia/firewallDnsRules", "DNS Control rules", "list")],
     "sandbox": [("rules", "/zia/sandboxRules", "Sandbox rules", "list")],
@@ -140,7 +149,11 @@ PROTOCOLS = ("tcp", "udp")
 
 # ── Conditions this tool never evaluates ─────────────────────────────
 # field (camelCase, as the API sends it) -> how the page names it and why
-# it is unknown. Each one present on a rule is an "unknown" criterion.
+# it is unknown. Each one present on a rule is an "unknown" criterion. These
+# are the named ones; unevaluated(rule, module=...) also makes every field
+# rule_fields does not classify for that module unknown (the generic guard).
+# A module that evaluates one of these fields itself lists it in
+# rule_fields.EVALUATED (the firewall's srcIps), and it is not repeated.
 UNEVALUATED: List[Tuple[str, str, str]] = [
     ("users", "Users", "the trace is for any user"),
     ("groups", "Groups", "the trace is for any user"),
@@ -505,25 +518,61 @@ def _norm(s: Any) -> str:
 
 
 # ── Criteria ─────────────────────────────────────────────────────────
-def unevaluated(rule: Dict[str, Any], skip: Iterable[str] = ()) -> List[Dict[str, str]]:
+def unevaluated(rule: Dict[str, Any], skip: Iterable[str] = (), module: Optional[str] = None) -> List[Dict[str, str]]:
     """The conditions on `rule` this tool cannot evaluate, each an unknown
-    criterion naming what the rule restricts to."""
+    criterion naming what the rule restricts to.
+
+    With `module` (rule_fields.MODULES: url, cac, ssl, ftc, dlp, firewall,
+    dns, sandbox) the check is generic: the fields that module's evaluator
+    reads and the fields known to be neutral are left out, the named
+    conditions (UNEVALUATED, EXCLUDED, rule_fields.LABELLED) are worded as
+    before, and ANY other non-empty field on the rule is an unknown
+    criterion too ("Other condition (field)"), so a field a newer API adds
+    is never silently ignored. Without `module` only the named list is
+    checked (the behaviour before the generic guard)."""
+    import rule_fields
     out = []
     skip = set(skip)
+    evaluated = rule_fields.EVALUATED.get(module or "", frozenset())
+    neutral = rule_fields.NEUTRAL.get(module or "", frozenset())
+
+    def mine(field: str) -> bool:
+        k = rule_fields.norm(field)
+        return field not in skip and k not in evaluated and k not in neutral
+
     for field, label, why in UNEVALUATED:
-        if field in skip:
+        if not mine(field):
             continue
         v = _names(_f(rule, field))
         if v:
-            out.append(_crit(label, "unknown", f"Applies only to {_short(v)}; {why}."))
+            if field == "sourceCountries" and _f(rule, "excludeSrcCountries") is True:
+                out.append(_crit(label, "unknown", f"Does not apply to {_short(v)}; {why}."))
+            else:
+                out.append(_crit(label, "unknown", f"Applies only to {_short(v)}; {why}."))
     for field, label, why in EXCLUDED:
         v = _names(_f(rule, field))
-        if v and field not in skip:
+        if v and mine(field):
             out.append(_crit(label, "unknown", f"Does not apply to {_short(v)}; {why}."))
     window = validity(rule)
     if window and "validity" not in skip:
         out.append(_crit("Validity period", "unknown", f"Applies only {window}; the time of the transaction is not part of the trace."))
+    if module:
+        named = [f for f, _, _ in UNEVALUATED + EXCLUDED] + list(skip)
+        for o in rule_fields.other_fields(rule, module, labelled=named):
+            vals = _short(o["values"], 3) if o["values"] else "a value"
+            out.append(_crit(o["label"], "unknown", f"The rule sets {o['field']} ({vals}); {o['why']}."))
     return out
+
+
+def unresolved_labels(rule: Dict[str, Any], module: str) -> List[str]:
+    """The unknown conditions on `rule` that are not about who, where or
+    when (the rule scope data_flow and path_whatif already treat as
+    conditional): a second category set, a quota, a file property, a field
+    this tool does not know. A rule with any is never a definite match in
+    the trace (data_flow marks it scoped)."""
+    import rule_fields
+    named = [f for f, _, _ in UNEVALUATED + EXCLUDED]
+    return [o["label"] for o in rule_fields.other_fields(rule, module, labelled=named)]
 
 
 def validity(rule: Dict[str, Any]) -> Optional[str]:
@@ -1063,6 +1112,17 @@ def _atp(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
         risk = _f(s, "riskTolerance")
         if risk is not None:
             notes.append(f"Page risk tolerance is {risk}: ZIA scores each page's content at run time, which no configuration read can predict.")
+        import rule_fields
+        content = [label for flag, label in rule_fields.ATP_CONTENT if _f(s, flag) is True]
+        if content:
+            notes.append(f"Also blocked when ZIA detects it in the traffic itself: {_short(content, 7)}; decided at run time, not predicted here.")
+        # The generic guard: an ATP setting this tool does not know (a newer
+        # API's toggle) that is on could block this destination.
+        for o in rule_fields.other_fields(s, "atp"):
+            order += 1
+            rules.append({"id": o["field"], "name": f"Other ATP setting ({o['field'][:60]}): {_short(o['values'], 2)}", "order": order,
+                          "action": "BLOCK", "verdict": "block", "default": False, "state": "unknown",
+                          "criteria": [_crit(o["label"], "unknown", f"The settings carry {o['field']} ({_short(o['values'], 2)}); {o['why']}.")]})
     # Allow lists first, then deny lists and toggles (assumed precedence).
     idx = next((i for i, e in enumerate(rules) if e["state"] == "match" and (e["verdict"] == "block" or e["id"] in ("exceptions", "allowlist"))), None)
     deciding = rules[idx] if idx is not None else None
@@ -1086,8 +1146,8 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     sgroups = None if data.get("ip_source_groups") is None else {str(g.get("id")): g for g in data["ip_source_groups"]}
 
     def criteria(r):
-        return [_crit_source(r, sgroups, ctx.get("source_ip")), _crit_destination(r, ctx, dgroups), _crit_services(r, ctx, fw), _crit_network_apps(r, ctx, fw)] + \
-            unevaluated(r, skip=("srcIps", "srcIpGroups", "sourceIpGroups", "srcIpv6Groups"))
+        return [_crit_source(r, sgroups, ctx.get("source_ip")), _crit_destination(r, ctx, dgroups), _crit_services(r, ctx, fw), _crit_network_apps(r, ctx, fw),
+                ucaas_oneclick.criterion(r, ctx.get("oneclick"))] + unevaluated(r, module="firewall")
 
     def verdict_of(r):
         a = _action(r, "action", "accessControl")
@@ -1098,9 +1158,12 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
                ranking=ctx.get("ranking"))
     if res["verdict"] == "unknown" and res["certainty"] == "definite":
         res["certainty"] = "unknown"
-    missing = [READS["firewall"][i][2] for i, (p, _, _, _) in enumerate(READS["firewall"]) if p != "rules" and data.get(p) is None]
+    missing = [READS["firewall"][i][2] for i, (p, _, _, _) in enumerate(READS["firewall"]) if p not in ("rules", "url_app_settings") and data.get(p) is None]
     if missing:
         res["notes"].append(f"Not read: {', '.join(missing)}; criteria that refer to them are unknown.")
+    line = ucaas_oneclick.summary(ctx.get("oneclick"))
+    if line:
+        res["notes"].append(line)
     if ctx["traffic"]["web"]:
         res["notes"].append("Web traffic the firewall allows is handed to the web proxy modules below.")
     res["notes"].append("The Cloud Firewall sees non-web traffic only when it is forwarded by Z-Tunnel 2.0 or a GRE/IPsec site tunnel.")
@@ -1118,7 +1181,9 @@ def _dns(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     def criteria(r):
         # The IP destination groups are the Cloud Firewall's read (the same
         # /ipDestinationGroups list, in scope with it); without it unknown.
-        out: List[Optional[Dict[str, str]]] = [_crit_destination(r, ctx, ctx.get("dst_groups"), "Requested domain")]
+        out: List[Optional[Dict[str, str]]] = [_crit_source(r, ctx.get("src_groups"), ctx.get("source_ip")),
+                                               _crit_destination(r, ctx, ctx.get("dst_groups"), "Requested domain"),
+                                               ucaas_oneclick.criterion(r, ctx.get("oneclick"))]
         # The SDK docstring writes TCP, UDP, DOHTTPS; the API answers TCP_RULE,
         # UDP_RULE, DOHTTPS_RULE (as every other ZIA rule's protocols).
         p = [x.upper() for x in _names(_f(r, "protocols"))]
@@ -1135,7 +1200,7 @@ def _dns(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
         apps = _names(_f(r, "applications")) + [f"group {g}" for g in _names(_f(r, "applicationGroups"))]
         if apps:
             out.append(_crit("DNS application", "unknown", f"Applies to {_short(apps, 4)}; ZIA identifies DNS tunnels and applications from the queries themselves."))
-        return out + unevaluated(r)
+        return out + unevaluated(r, module="dns")
 
     def verdict_of(r):
         a = _action(r)
@@ -1164,7 +1229,7 @@ def _sandbox(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
             out.append(_crit("Threat category", "unknown", f"Applies to files ZIA classifies as {_short(cats, 3)}, decided on the file itself."))
         if _f(r, "byThreatScore"):
             out.append(_crit("Threat score", "unknown", f"Applies above threat score {_f(r, 'byThreatScore')}, decided on the file itself."))
-        return out + unevaluated(r)
+        return out + unevaluated(r, module="sandbox")
 
     def action_of(r):
         a = _action(r, "baRuleAction")
@@ -1345,11 +1410,17 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
     # takes it: a bare extension ("pdf") is not one, so it decides nothing.
     given = list((context or {}).get("file_types") or []) + [(context or {}).get("file_type")]
     fw_groups = (((mods.get("firewall") or {}).get("parts") or {}).get("ip_destination_groups") or {})
+    src_groups = (((mods.get("firewall") or {}).get("parts") or {}).get("ip_source_groups") or {})
+    oneclick = (((mods.get("firewall") or {}).get("parts") or {}).get("url_app_settings") or {})
     ctx = {"host": dest.get("host") or "", "ip": ip, "dest": dest, "traffic": traffic, "visible": None, "source_ip": src,
            "categories": sorted({str(c).upper() for c in rd.get("categories") or []}), "alerts": sorted({str(c).upper() for c in lookup.get("security_alerts") or []}),
            "applications": sorted({str(a).upper() for a in rd.get("applications") or []}), "app_classes": sorted({str(a).upper() for a in rd.get("app_classes") or []}),
            "file_types": sorted({str(x).upper() for x in given if x and str(x).upper().startswith("FTCATEGORY_")}),
            "dst_groups": {str(g.get("id")): g for g in fw_groups.get("data") or [] if isinstance(g, dict)} if fw_groups.get("ok") else None,
+           # The IP source groups (the Cloud Firewall's read) for DNS Control's source conditions.
+           "src_groups": {str(g.get("id")): g for g in src_groups.get("data") or [] if isinstance(g, dict)} if src_groups.get("ok") else None,
+           # The one-click switches (ucaas_oneclick), read with the Cloud Firewall; None when not read.
+           "oneclick": ucaas_oneclick.values(oneclick.get("data")) if oneclick.get("ok") else None,
            # The recorded admin ranking setting (admin_rank): missing in an
            # older kept read, it is unknown, never off.
            "ranking": zia.get("admin_ranking") if isinstance(zia.get("admin_ranking"), dict) else None}

@@ -9250,6 +9250,64 @@ async def bulk_test_fix_get(fix_id: str):
     return {k: rec[k] for k in ("urls", "excluded", "over_limit", "purpose", "note")}
 
 
+# ── Category lookup (category_lookup) ─────────────────────────────────
+class CategoryLookupRequest(ScopedTenantCredsRequest):
+    """Body of the Category lookup: the entries as text (URLs, host names,
+    IP addresses or categories, one per line; at most
+    category_lookup.MAX_ENTRIES), and the id of the read to reuse."""
+    text: str = ""
+    report_id: str = ""
+
+
+def _run_category_lookup(client, parsed: Dict[str, Any], scope: Dict[str, Any], snapshot: Optional[Dict[str, Any]], label: str,
+                         log, cancel) -> Dict[str, Any]:
+    import category_lookup
+    if scope.get("source"):
+        log(f"In scope, from {scope['source']}: {scope['summary']}")
+    res = category_lookup.run(client, parsed, scope, snapshot=snapshot, cancel=cancel, log=log)
+    fresh = res.pop("snapshot_for_cache", None)
+    rid = (snapshot or {}).get("report_id") or ""
+    if fresh is not None:
+        rid = _remember_report("catlookup", {"kind": "catlookup", "snapshot": fresh}, label)
+    return dict(res, status="done", report_id=rid, tenant_label=label)
+
+
+@app.post("/api/category-lookup/start")
+async def category_lookup_start(req: CategoryLookupRequest, request: Request):
+    """Category lookup as a job the page follows (poll GET
+    /api/dlp-packs/jobs/{job_id}): for each URL, host, IP address or
+    category, its ZIA URL categories (ZIA's URL lookup and the tenant's
+    own category lists) and every rule across URL filtering, Cloud App
+    Control, SSL inspection, Cloud Firewall, DNS Control, File Type
+    Control, Web DLP and Sandbox that names each one, in evaluation order.
+    The entries are checked before sign-in (400); only the policies the
+    Scope page puts in scope are read (400 when none is), once, and the
+    read `report_id` names is reused for the same scope and tenant.
+    Read-only: the URL lookup is a POST that changes nothing."""
+    import category_lookup
+    import data_flow
+    import pack_jobs
+    try:
+        parsed = category_lookup.parse(req.text)
+    except category_lookup.EntryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    sc, ch, src = _scope_selection(req)   # before signing in: nothing in scope reads nothing
+    scope = data_flow.path_scope(sc, ch)
+    scope["source"] = src
+    if not category_lookup.lookup_scope(scope)["read"]:
+        raise HTTPException(status_code=400, detail=category_lookup.NOTHING)
+    creds = _tenant_creds(req)
+    kept = _path_kept(req.report_id, "catlookup", creds)
+    snapshot = dict(kept["snapshot"], report_id=kept["report_id"]) if kept and isinstance(kept.get("snapshot"), dict) \
+        and kept["snapshot"].get("scope_key") == scope.get("key") else None
+    client = await asyncio.to_thread(_build_client, req)
+    label = tenant_auth.record_label(creds)
+    n = len(parsed["entries"])
+    job = pack_jobs.start("category-lookup", lambda log, cancel: _run_category_lookup(client, parsed, scope, snapshot, label, log, cancel),
+                          label=f"Category lookup: {n} entr{'y' if n == 1 else 'ies'}", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "entries": n, "skipped": len(parsed["skipped"])}
+
+
 # ── Audit timeline ────────────────────────────────────────────────────
 @app.get("/report/audit")
 async def report_audit_page():

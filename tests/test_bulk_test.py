@@ -958,7 +958,7 @@ def test_the_list_view_is_a_tab_on_the_path_analyzer_with_aria_tabs():
     # Act
     block = html[html.index("<!-- Test a list"):html.index("<!-- /Test a list -->")]
     # Assert
-    assert 'role="tablist"' in block and block.count('role="tab"') == 2 and 'aria-controls="panel-list"' in block
+    assert 'role="tablist"' in block and block.count('role="tab"') == 3 and 'aria-controls="panel-list"' in block
     assert 'id="panel-one"' in block and 'id="panel-list"' in block and "hidden" in block
     for el in ("plFile", "plText", "plLookup", "plMax"):
         assert f'id="{el}"' in block

@@ -1308,6 +1308,15 @@ def evaluate_rule(rule: Dict[str, Any], u: Dict[str, Any], seg: Optional[Dict[st
     v = _or(results) if any_of else _and(results)
     if not results:
         v = True
+    # Rule fields outside the conditions that this tool does not evaluate
+    # (zpa_reader.normalize_rule, rule_fields module "zpa"): the rule can
+    # match only if they hold too, so a match is conditional on them.
+    other = [str(f.get("label") or f.get("field")) for f in rule.get("unknown_fields") or [] if isinstance(f, dict)]
+    if other and v is True:
+        v = None
+        unevaluable += other
+    elif other and v is None:
+        unevaluable += other
     if v is True:
         return {"status": "matched", "why": "Every condition matches." if results else "It has no conditions, so it matches every request.", "depends_on": []}
     if v is False:

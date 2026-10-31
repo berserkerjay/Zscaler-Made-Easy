@@ -44,6 +44,8 @@ import threading
 import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+import rule_fields
+
 PACE_SECONDS = 0.6      # assumption: about 16 calls per 10 s, under any ZPA GET limit we know of
 PAGE_SIZE = 500         # SDK docstrings: "The max page size is 500"
 MAX_PAGES = 40          # 20 000 objects per list; beyond that the list is marked incomplete
@@ -376,7 +378,12 @@ def normalize_rule(r: Dict[str, Any], index: int, policy: str) -> Dict[str, Any]
             "server_group_ids": _ref_ids(get(r, "appServerGroups")),
             "connector_group_ids": _ref_ids(get(r, "appConnectorGroups")),
             "microtenant_id": as_str(get(r, "microtenantId")),
-            "description": as_str(get(r, "description"))[:300]}
+            "description": as_str(get(r, "description"))[:300],
+            # The generic guard (rule_fields, module "zpa"): a non-empty field
+            # the rule evaluation does not read and that is not known to be
+            # neutral (extranet, browser posture, or a field a newer API
+            # adds) makes the rule conditional, never a definite match.
+            "unknown_fields": [{"field": o["field"], "label": o["label"], "why": o["why"]} for o in rule_fields.other_fields(r, "zpa")][:20]}
 
 
 def order_rules(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

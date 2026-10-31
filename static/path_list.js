@@ -47,8 +47,10 @@
       const p = $(x.getAttribute('aria-controls')); if (p) p.hidden = !on;
     });
     if (focus) t.focus();
-    try { history.replaceState(null, '', location.pathname + location.search + (t.id === 'tab-list' ? '#list' : '')); } catch (e) { /* ignore */ }
+    try { history.replaceState(null, '', location.pathname + location.search + (t.id === 'tab-list' ? '#list' : t.id === 'tab-cat' ? '#categories' : '')); } catch (e) { /* ignore */ }
   }
+  // The Category lookup view (static/category_lookup.js) opens its tab through this.
+  window.PathSelectTab = (id, focus) => { const t = $(id); if (t) selectTab(t, !!focus); };
   tabs.forEach((t, i) => {
     t.addEventListener('click', () => selectTab(t, false));
     t.addEventListener('keydown', e => {
@@ -62,7 +64,7 @@
   });
   // The bar's Analyze and HAR import show their result in the first view.
   ['paRun', 'paHarBtn'].forEach(id => { const b = $(id); if (b) b.addEventListener('click', () => selectTab($('tab-one'), false)); });
-  if (location.hash === '#list') selectTab($('tab-list'), false);
+  if (location.hash === '#list') selectTab($('tab-list'), false);   // #categories[=…] is static/category_lookup.js's (it reads the query first)
 
   // ── credentials and scope, as the rest of the page sends them ───────
   function credBody() {
@@ -95,6 +97,8 @@
     if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
     return { scopes: scopes.map(String), channels, from_page: true };
   }
+  // The Category lookup view sends the same credentials and scope.
+  window.PathRequest = { credBody: () => credBody(), scopeSelection: () => scopeSelection(), newStartToken: () => newStartToken(), errText };
   function newStartToken() {
     try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
     let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
@@ -251,11 +255,18 @@
     const cls = { ok: 'st-ok', bad: 'st-fail', warn: 'st-warn', mute: '' }[RESULT_CLS[k] || 'mute'];
     return `<span class="df-chip ${cls}">${E(RESULT_LABEL[k] || r.result)}</span>`;
   }
+  // A row's destination opens in the Category lookup view (a host, URL or
+  // one IP address; a CIDR block or a range has no single category).
+  function catLink(target) {
+    const t = String(target || '');
+    if (!t || /\s/.test(t) || (/\//.test(t) && !/^https?:\/\//i.test(t)) || /^[0-9.]+-[0-9.]+$/.test(t) || !$('tab-cat')) return '';
+    return ` <button type="button" class="pl-cat" data-catq="${E(t)}" aria-label="Categories and rules for ${E(t)}">Categories</button>`;
+  }
   function previewHtml(res) {
     const rows = res.preview || [];
     const head = ['Pick', 'Row', 'Destination', 'Result', 'Deciding rule', 'Category', 'Expected', 'Recommended area', 'Recommendation'];
     const body = rows.map(r => `<tr><td><input type="checkbox" class="pl-pick" data-row="${E(r.row)}" aria-label="Pick row ${E(r.row)}, ${E(r.target)}"></td>
-      <td class="num">${E(r.row)}</td><td>${E(r.target)}${r.label ? ` <span class="df-by">${E(r.label)}</span>` : ''}</td><td>${resultChip(r)}${r.blockable_by ? `<div class="df-by">could be blocked by ${E(r.blockable_by)}</div>` : ''}</td>
+      <td class="num">${E(r.row)}</td><td>${E(r.target)}${r.label ? ` <span class="df-by">${E(r.label)}</span>` : ''}${catLink(r.target)}</td><td>${resultChip(r)}${r.blockable_by ? `<div class="df-by">could be blocked by ${E(r.blockable_by)}</div>` : ''}</td>
       <td>${E(r.rule)}${r.area ? ` <span class="df-by">${E(r.area)}</span>` : ''}${r.segment ? ` <span class="df-by">segment ${E(r.segment)}</span>` : ''}</td><td>${E(r.category || '–')}</td><td>${E(r.expected ? String(r.expected).toLowerCase() : '–')}${r.meets ? ` <span class="df-by">${r.meets === 'yes' ? 'met' : 'not met'}</span>` : ''}</td>
       <td>${E(r.recommended_area)}</td><td>${E(r.recommendation || r.notes)}</td></tr>`);
     const why = res.rows ? 'Every row is allowed with no scoped rule that would block it, and none misses what your file expected, so there is nothing to look at here.' : 'No row was tested.';
@@ -328,6 +339,9 @@
       if (show) { ta.focus(); ta.select(); }
     }));
     body.querySelectorAll('button[data-fixarea]').forEach(b => b.addEventListener('click', () => fix(runId, { area: b.dataset.fixarea, purpose: b.dataset.purpose }, b)));
+    body.querySelectorAll('button[data-catq]').forEach(b => b.addEventListener('click', () => {
+      if (window.CategoryLookup) window.CategoryLookup.open(b.dataset.catq, true);
+    }));
     const fb = $('plFix');
     if (fb) fb.addEventListener('click', () => {
       const rows = Array.from(body.querySelectorAll('.pl-pick:checked')).map(c => Number(c.dataset.row));

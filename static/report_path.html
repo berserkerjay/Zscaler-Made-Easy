@@ -52,6 +52,7 @@
       <div class="rp-tabs" role="tablist" aria-label="Path analyzer views">
         <button type="button" role="tab" id="tab-one" aria-controls="panel-one" aria-selected="true" tabindex="0">One destination or a HAR file</button>
         <button type="button" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="false" tabindex="-1">Test a list</button>
+        <button type="button" role="tab" id="tab-cat" aria-controls="panel-cat" aria-selected="false" tabindex="-1">Category lookup</button>
       </div>
       <section role="tabpanel" id="panel-one" aria-labelledby="tab-one" tabindex="0">
       <details class="pa-framework pa-whatif" id="paWhatIf">
@@ -123,6 +124,23 @@
         <div id="plBody"></div>
       </section>
       <!-- /Test a list -->
+      <!-- Category lookup (static/category_lookup.js, category_lookup.py on the server) -->
+      <section role="tabpanel" id="panel-cat" aria-labelledby="tab-cat" tabindex="0" hidden>
+        <div class="pa-intro" id="clHow">
+          <div class="pa-intro-t">Category lookup</div>
+          <p class="pl-lead">See which ZIA URL categories a URL, host name or IP address is in, predefined and custom, and every rule that names each category, in the order ZIA evaluates them.</p>
+          <div class="df-hint">One entry per line, up to 25: a URL, a host name, an IP address, or a category (its id, such as GAMBLING or CUSTOM_01, or <code>category:</code> and its name, such as <code>category:Partner portals</code>). The rules come from URL filtering, Cloud App Control, SSL inspection, Cloud Firewall, DNS Control, File Type Control, Web DLP and Sandbox, each with its order, rank and action. Only what is in scope on the Scope page is read, once; later lookups reuse that read. ZIA's URL lookup is asked about each destination. Nothing is written to the tenant.</div>
+        </div>
+        <div class="pl-form cl-form">
+          <label class="op-block"><span class="lbl">Look up</span><textarea id="clText" rows="3" maxlength="16000" spellcheck="false" autocomplete="off" aria-describedby="clHow" placeholder="dropbox.com&#10;https://casino.example/play&#10;category:Partner portals"></textarea></label>
+          <div class="pl-row">
+            <button type="button" class="rp-btn primary" id="clRun">Look up</button>
+            <button type="button" class="rp-btn" id="clFresh" aria-pressed="false" title="Read the tenant again before the next lookup (otherwise the last read is reused)">↻ Fresh read</button>
+            <span class="df-hint" id="clInfo" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        <div id="clBody"></div>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -137,6 +155,7 @@
   <script src="/static/path_whatif.js"></script><!-- what-if lookups and "Policy action also depends on" -->
   <script src="/static/flow_anim.js"></script><!-- the live path and the list flow (one motion engine) -->
   <script src="/static/path_list.js"></script>
+  <script src="/static/category_lookup.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>

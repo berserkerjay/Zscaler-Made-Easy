@@ -4762,6 +4762,26 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Arrow keys move between the tabs.",
     "effect": "local"
    },
+   "#tab-cat": {
+    "what": "Shows the Category lookup view. See a destination's ZIA categories and every rule that names them.",
+    "input": "Nothing to type. Just click it. Arrow keys move between the tabs.",
+    "effect": "local"
+   },
+   "#clText": {
+    "what": "Sets what to look up: destinations or categories, one per line.",
+    "input": "Required. Up to 25 lines: a URL, host name or IP address (dropbox.com, 203.0.113.10), a category id (GAMBLING, CUSTOM_01) or category: and its name (category:Partner portals). Ctrl+Enter looks up.",
+    "effect": "local"
+   },
+   "#clRun": {
+    "what": "Asks ZIA's URL lookup for each destination's categories and lists every rule that names each category, in evaluation order, with order, rank and action.",
+    "input": "Type at least one entry first. The first lookup reads the policies in scope (a few seconds to a minute); later ones reuse that read. Nothing is written.",
+    "effect": "read"
+   },
+   "#clFresh": {
+    "what": "Read the tenant again before the next lookup (otherwise the last read is reused). Click again to turn it off.",
+    "input": "Nothing to type. Click it, then click Look up.",
+    "effect": "local"
+   },
    "#paWhatIf > summary": {
     "what": "Opens or closes the what-if fields. Use them to check rules for one user, group, department or location.",
     "input": "Nothing to type. Just click it.",

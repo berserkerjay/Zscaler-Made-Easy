@@ -324,6 +324,8 @@ ROUTES: List[Route] = [
     Route("/api/path-analyzer", dict(DEST, source="workload", workload={"ip": "10.0.0.5"}), partial=ZTW, out=ZTW_OUT),
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}),
     Route("/api/bulk-test/start", {"text": "destination,expected\nexample.com,block\n"}, partial=ZPA, out=ZPA_OUT),
+    Route("/api/category-lookup/start", {"text": "example.com\ncategory:Gambling"}),
+    Route("/api/category-lookup/start", {"text": "example.com"}, partial=ZIA, out=ZIA_OUT),
     Route("/api/path-analyzer/identities", {"kind": "user", "query": "jo"}, partial=ZIA, out=ZIA_OUT),
     Route("/api/report/data-flow"),
     Route("/api/report/ssl-flow"),

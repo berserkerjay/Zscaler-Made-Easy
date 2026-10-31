@@ -32,7 +32,13 @@ zia_baseline
     the preview shows each field before and after). Rules are created
     DISABLED unless the operator ticks "Create the rules enabled"; the ATP
     settings are changed only when that area is picked explicitly (they
-    have no disabled state). Every apply that creates a rule, turns one on
+    have no disabled state), and so is the UCaaS one-click area: the
+    switches in URL and Cloud App Control advanced settings
+    (ucaas_oneclick: Zoom, Microsoft Teams through Microsoft 365
+    one-click, Webex, RingCentral, GoTo, Talkdesk) that make ZIA add its
+    predefined one-click Cloud Firewall, DNS and SSL rules. Picked, the
+    switches are pre-set on for the Balanced, Permissive and Healthcare
+    tiers and off for Strict. Every apply that creates a rule, turns one on
     or changes ATP needs the typed phrase, whatever the number of changes
     (admin_ops._finish `confirm_always`): ATP is live as soon as ZIA
     activates, which the app does right after the writes.
@@ -68,6 +74,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 import admin_ops as ao
 import pack_channels as pc
 import pack_ops as ops
+import ucaas_oneclick
 
 LogFn = Optional[Callable[[str], None]]
 
@@ -107,12 +114,17 @@ AREAS: Dict[str, Dict[str, Any]] = {
             "action": "actions", "choose": ("ALLOW", "BLOCK"), "domain": ("dlp", "url_filtering")},
     "atp": {"label": "Advanced Threat Protection", "policy": None, "channel": None, "service": "atp_policy",
             "action": None, "choose": (), "domain": ("malware_threat",)},
+    # The UCaaS one-click switches (ucaas_oneclick): settings, not rules.
+    "ucaas": {"label": "UCaaS one-click", "policy": None, "channel": None, "service": "url_filtering",
+              "action": None, "choose": (), "domain": ("firewall", "ssl_inspection")},
 }
-AREA_ORDER = ("firewall", "url", "ssl", "sandbox", "dns", "ftc", "cac", "atp")
-RULE_AREAS = tuple(a for a in AREA_ORDER if a != "atp")
+AREA_ORDER = ("firewall", "url", "ssl", "sandbox", "dns", "ftc", "cac", "atp", "ucaas")
+SETTING_AREAS = ("atp", "ucaas")
+RULE_AREAS = tuple(a for a in AREA_ORDER if a not in SETTING_AREAS)
 # Areas the Scope page must put in scope: the admin_ops policy, or ZIA platform.
-_PLATFORM_AREAS = ("sandbox", "dns", "atp")
-DEFAULT_AREAS = tuple(a for a in AREA_ORDER if a != "atp")   # ATP only when picked: it has no disabled state
+_PLATFORM_AREAS = ("sandbox", "dns", "atp", "ucaas")
+# ATP and UCaaS one-click only when picked: settings have no disabled state.
+DEFAULT_AREAS = tuple(a for a in AREA_ORDER if a not in SETTING_AREAS)
 
 TIERS: Dict[str, Dict[str, str]] = {
     "strict": {"label": "Strict", "what": "Maximum protection: blocks high-risk and non-business categories, inspects all TLS (TLS 1.2 minimum), "
@@ -137,6 +149,8 @@ SOURCES: Dict[str, Dict[str, str]] = {
     "cisadns": {"title": "CISA: Protective Domain Name System resolver",
                 "url": "https://www.cisa.gov/resources-tools/services/protective-domain-name-system-resolver"},
     "zssandbox": {"title": "Zscaler: Recommended Sandbox policy", "url": "https://help.zscaler.com/zia/recommended-sandbox-policy"},
+    "zsucaas": {"title": "Zscaler UCaaS one-click (advanced URL and Cloud App Control settings), as zscaler-sdk-python 1.11.3 documents it",
+                "url": "https://github.com/zscaler/zscaler-sdk-python"},
     # Overlay documents
     "hipaa": {"title": "HIPAA Security Rule, 45 CFR Part 164 Subpart C",
               "url": "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C"},
@@ -379,6 +393,7 @@ ATP_SETTINGS: List[Tuple[str, str]] = [
     ("dga_domains_blocked", "Block domains made by domain generation algorithms"),
 ]
 ATP_KEYS = {k for k, _ in ATP_SETTINGS}
+UCAAS_KEYS = set(ucaas_oneclick.KEYS)
 # What a rule matches on, per area: a rule other than a catch-all that names
 # none of these would match all traffic, so it is dropped (fit).
 MATCH_FIELDS: Dict[str, Tuple[str, ...]] = {
@@ -604,7 +619,7 @@ def _in_scope(scope: Dict[str, Any], spec: Any = None) -> Optional[str]:
         return None
     if spec.get("action") == "revert":
         steps = spec.get("steps") if isinstance(spec.get("steps"), list) else []
-        want = ["atp" if s.get("op") == "restore_atp" else s.get("area") for s in steps if isinstance(s, dict)]
+        want = [{"restore_atp": "atp", "restore_ucaas": "ucaas"}.get(s.get("op"), s.get("area")) for s in steps if isinstance(s, dict)]
     else:
         want = spec.get("areas") if isinstance(spec.get("areas"), list) else []
     out = [AREAS[a]["label"] for a in AREA_ORDER if a in want and a not in read]
@@ -646,9 +661,9 @@ _STEP_ID = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 def _check_step(st: Any) -> None:
     """An undo step is untrusted (it comes back from the page): its shape,
     and only fields a baseline sets (never a rule's id, name or rank)."""
-    if not isinstance(st, dict) or st.get("op") not in ("delete", "restore", "restore_atp"):
-        raise ao.OperationError("An undo step must be delete, restore or restore_atp.")
-    if st["op"] != "restore_atp" and (isinstance(st.get("id"), bool) or not _STEP_ID.fullmatch(str(st.get("id") or ""))
+    if not isinstance(st, dict) or st.get("op") not in ("delete", "restore", "restore_atp", "restore_ucaas"):
+        raise ao.OperationError("An undo step must be delete, restore, restore_atp or restore_ucaas.")
+    if st["op"] not in ("restore_atp", "restore_ucaas") and (isinstance(st.get("id"), bool) or not _STEP_ID.fullmatch(str(st.get("id") or ""))
                                       or not isinstance(st.get("name", ""), str) or len(st.get("name") or "") > 128
                                       or not isinstance(st.get("rule_type") or "", str) or len(st.get("rule_type") or "") > 64):
         raise ao.OperationError("An undo step names a rule by its id and name.")
@@ -659,6 +674,9 @@ def _check_step(st: Any) -> None:
         if st["op"] == "restore_atp":
             if f not in ATP_KEYS:
                 raise ao.OperationError(f"{str(f)[:60]!r} is not an Advanced Threat Protection setting.")
+        elif st["op"] == "restore_ucaas":
+            if f not in UCAAS_KEYS:
+                raise ao.OperationError(f"{str(f)[:60]!r} is not a UCaaS one-click setting.")
         elif not isinstance(f, str) or not _FIELD_PATH.fullmatch(f) or f in ("id", "name", "rank"):
             raise ao.OperationError(f"An undo may put back only the fields a baseline sets ({str(f)[:60]!r} is not one).")
 
@@ -713,6 +731,10 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(atp, dict) or any(k not in ATP_KEYS or not isinstance(v, bool) for k, v in atp.items()):
         raise ao.OperationError("atp names Advanced Threat Protection settings with true or false.")
     out["atp"] = dict(atp)
+    ucaas = spec.get("ucaas") or {}
+    if not isinstance(ucaas, dict) or any(k not in UCAAS_KEYS or not isinstance(v, bool) for k, v in ucaas.items()):
+        raise ao.OperationError("ucaas names UCaaS one-click settings with true or false.")
+    out["ucaas"] = dict(ucaas)
     out["enable_rules"] = spec.get("enable_rules") is True
     for k in ("isolation_profile", "certificate"):
         out[k] = str(spec.get(k) or "")[:120]
@@ -793,8 +815,15 @@ def review(spec: Dict[str, Any]) -> Dict[str, Any]:
         value = n["atp"].get(k, default)
         atp.append({"key": k, "label": label, "default": default, "value": value,
                     "weakened": "switched off" if default and not value else ""})
+    ucaas = []
+    for k, label, _ in ucaas_oneclick.SETTINGS:
+        default = ucaas_oneclick.default_on(tier)
+        value = n["ucaas"].get(k, default)
+        ucaas.append({"key": k, "label": label, "default": default, "value": value,
+                      "exempts": "its calls break out without inspection" if value else ""})
     return {"tier": tier, "tier_label": TIERS.get(tier, {}).get("label", "Captured framework"), "normalized": n, "rules": rows, "atp": atp,
-            "atp_controls": overlay_controls(AREAS["atp"]["domain"], n["overlays"]), "atp_sources": _sources(["cis", "nistcsf"])}
+            "atp_controls": overlay_controls(AREAS["atp"]["domain"], n["overlays"]), "atp_sources": _sources(["cis", "nistcsf"]),
+            "ucaas": ucaas, "ucaas_sources": _sources(["zsucaas"])}
 
 
 def _act_label(a: Any) -> str:
@@ -817,6 +846,8 @@ def catalog() -> Dict[str, Any]:
             "overlays": [{"key": k, "label": v["label"], "source": dict(SOURCES[v["source"]], id=v["source"])} for k, v in OVERLAYS.items()],
             "areas": [{"key": a, "label": AREAS[a]["label"], "choices": list(AREAS[a]["choose"]), "default": a in DEFAULT_AREAS} for a in AREA_ORDER],
             "rules": rules, "atp": [{"key": k, "label": l, "off_in": [t for t, s in ATP_TIER_OFF.items() if k in s]} for k, l in ATP_SETTINGS],
+            "ucaas": [{"key": k, "label": l, "on_in": list(ucaas_oneclick.TIERS_ON)} for k, l, _ in ucaas_oneclick.SETTINGS],
+            "ucaas_sources": _sources(["zsucaas"]),
             "area_controls": {a: overlay_controls(AREAS[a]["domain"], list(OVERLAYS)) for a in AREA_ORDER},
             "max_name": MAX_NAME}
 
@@ -1172,12 +1203,12 @@ def _typed_every_time(items: List[Dict[str, Any]], groups: List[Dict[str, Any]],
     """The phrase every apply must type, whatever the count of changes
     (admin_ops._finish `confirm_always`), or "" to keep the count rule.
     Asked when the plan creates a rule, turns one on (state ENABLED) or
-    changes Advanced Threat Protection settings: ATP has no disabled state,
-    so its change is live as soon as ZIA activates, which the app does right
-    after the writes. `always` asks for it for any change (a certificate
+    changes Advanced Threat Protection or UCaaS one-click settings: settings
+    have no disabled state, so the change is live as soon as ZIA activates,
+    which the app does right after the writes. `always` asks for it for any change (a certificate
     move: inspected sites break until devices trust the new root)."""
     changes = sum(1 for u in items if u.get("status") == "change")
-    risky = always or any(g["handler"] in ("zb_create", "zb_atp")
+    risky = always or any(g["handler"] in ("zb_create", "zb_atp", "zb_ucaas")
                           or (g["handler"] == "zb_update" and str((g["target"].get("fields") or {}).get("state") or "").upper() == "ENABLED")
                           for g in groups)
     return f"APPLY {changes} CHANGE{'' if changes == 1 else 'S'}" if risky and changes else ""
@@ -1209,7 +1240,7 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
     warnings += fit(on_rows, facts)
     items: List[Dict[str, Any]] = []
     groups: List[Dict[str, Any]] = []
-    for area in [a for a in AREA_ORDER if a in areas and a != "atp"]:
+    for area in [a for a in AREA_ORDER if a in areas and a not in SETTING_AREAS]:
         mine = [r for r in on_rows if r["area"] == area]
         if not mine:
             continue
@@ -1298,6 +1329,8 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
             if lowered:
                 warnings.append("Advanced Threat Protection: the baseline turns off what this tenant blocks today: " + "; ".join(lowered)
                                 + ". Pick the setting on in the review to keep it.")
+    if "ucaas" in areas:
+        _plan_ucaas(zia, rev["ucaas"], items, groups, warnings, notes, say)
     nspec = {k: v for k, v in n.items() if v not in (None, "", [], {})}
     nspec["type"] = TYPE
     if n.get("areas"):
@@ -1312,7 +1345,64 @@ def _plan(client, spec: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> D
             "title": f"ZIA baseline ({tier_label}{', ' + ', '.join(OVERLAYS[o]['label'] for o in n['overlays']) if n['overlays'] else ''}): "
                      f"{created} new, {len(groups) - created} updated",
             "warnings": warnings, "notes": notes, "review": rev["rules"], "atp_review": rev["atp"] if "atp" in areas else [],
+            "ucaas_review": rev["ucaas"] if "ucaas" in areas else [],
             "atp_controls": rev["atp_controls"], "areas": areas, "confirm_always": _typed_every_time(items, groups)}
+
+
+_UCAAS_REF = {"type": "settings", "area": "ucaas", "policy_label": AREAS["ucaas"]["label"], "id": None,
+              "name": "URL and Cloud App Control advanced settings"}
+
+
+def read_ucaas(zia) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """The URL and Cloud App Control advanced settings as the tenant sent
+    them, complete (every field, camelCase): the write puts the whole object
+    back, so a partial read is never written (ai_guard.read_app_settings;
+    SDK 1.11.3 url_filtering.get_url_and_app_settings)."""
+    import ai_guard
+    try:
+        settings, complete, err = ai_guard.read_app_settings(zia)
+    except Exception as e:  # noqa: BLE001
+        return None, f"{type(e).__name__}: {str(e)[:200]}"
+    if err or settings is None:
+        return None, err or "no answer"
+    if not complete:
+        return None, "only part of the settings could be read, so they are not written back"
+    return settings, None
+
+
+def _plan_ucaas(zia, review_rows: List[Dict[str, Any]], items: List[Dict[str, Any]], groups: List[Dict[str, Any]],
+                warnings: List[str], notes: List[str], say) -> None:
+    """The UCaaS one-click switches: one unit per switch (before -> after),
+    one write for all of them (zb_ucaas)."""
+    say("Reading the URL and Cloud App Control advanced settings (the UCaaS one-click switches)…")
+    cur, err = read_ucaas(zia)
+    gk = "zb:ucaas"
+    if cur is None:
+        warnings.append(f"UCaaS one-click: the settings could not be read ({(err or 'no answer')[:160]}); nothing is planned there.")
+        items.append(ao._unit(gk + ":settings", gk, "ucaas_field", dict(_UCAAS_REF), "settings", None, None, status="excluded",
+                              reason=f"could not be read: {(err or 'no answer')[:160]}"))
+        return
+    fields, expect = {}, {}
+    for s in review_rows:
+        before = bool(cur.get(s["key"]))
+        if before == s["value"]:
+            items.append(ao._unit(f"{gk}:{s['key']}", gk, "ucaas_field", dict(_UCAAS_REF), s["key"], before, s["value"], status="noop",
+                                  reason="already as the baseline says"))
+        else:
+            items.append(ao._unit(f"{gk}:{s['key']}", gk, "ucaas_field", dict(_UCAAS_REF), s["key"], before, s["value"]))
+            fields[s["key"]], expect[s["key"]] = s["value"], before
+    if fields:
+        groups.append({"key": gk, "handler": "zb_ucaas", "target": {"fields": fields, "expect": expect}})
+    on = [ucaas_oneclick.LABEL[k] for k, v in fields.items() if v]
+    if on:
+        warnings.append("UCaaS one-click: turning it on for " + ", ".join(on) + " makes ZIA add its predefined one-click rules: the calls "
+                        "break out without SSL inspection and the Cloud Firewall allows them. It is live as soon as ZIA activates the change.")
+    off = [ucaas_oneclick.LABEL[k] for k, v in fields.items() if not v]
+    if off:
+        warnings.append("UCaaS one-click: the baseline turns it off for " + ", ".join(off) + ", which this tenant has on today; their "
+                        "calls are inspected and the Cloud Firewall rules decide them. Pick them on in the review to keep it.")
+    notes.append("UCaaS one-click: " + ucaas_oneclick.SOURCE + ". The whole settings object is written back with only these switches "
+                 "changed, after reading it again.")
 
 
 def _plan_revert(zia, n: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> Dict[str, Any]:
@@ -1324,9 +1414,9 @@ def _plan_revert(zia, n: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> 
     items, groups, warnings = [], [], []
     cache: Dict[str, Tuple[List[Dict[str, Any]], Optional[str]]] = {}
     for i, st in enumerate(n["steps"]):
-        if not isinstance(st, dict) or st.get("op") not in ("delete", "restore", "restore_atp"):
-            raise ao.OperationError("An undo step must be delete, restore or restore_atp.")
-        area = "atp" if st["op"] == "restore_atp" else str(st.get("area") or "")
+        if not isinstance(st, dict) or st.get("op") not in ("delete", "restore", "restore_atp", "restore_ucaas"):
+            raise ao.OperationError("An undo step must be delete, restore, restore_atp or restore_ucaas.")
+        area = {"restore_atp": "atp", "restore_ucaas": "ucaas"}.get(st["op"], str(st.get("area") or ""))
         if area not in AREAS:
             raise ao.OperationError(f"Unknown area in the undo: {area!r}.")
         if area not in in_scope:
@@ -1352,6 +1442,27 @@ def _plan_revert(zia, n: Dict[str, Any], scope: Dict[str, Any], say, cancel) -> 
                     fields[k], expect[k] = bool(before), now
             if fields:
                 groups.append({"key": gk, "handler": "zb_atp", "target": {"fields": fields, "expect": expect}})
+            continue
+        if area == "ucaas":
+            cur, err = read_ucaas(zia)
+            ref = dict(_UCAAS_REF)
+            fields, expect = {}, {}
+            for k, before in (st.get("fields") or {}).items():
+                if k not in UCAAS_KEYS:
+                    continue
+                now = None if cur is None else bool(cur.get(k))
+                if cur is None:
+                    items.append(ao._unit(f"{gk}:{k}", gk, "ucaas_field", ref, k, None, before, status="excluded", reason=f"could not be read: {err}"))
+                elif now == bool(before):
+                    items.append(ao._unit(f"{gk}:{k}", gk, "ucaas_field", ref, k, now, before, status="noop", reason="already as before"))
+                elif now != bool((st.get("expect") or {}).get(k)):
+                    items.append(ao._unit(f"{gk}:{k}", gk, "ucaas_field", ref, k, now, before, status="excluded",
+                                          reason="changed in the tenant since the baseline set it; left as it is"))
+                else:
+                    items.append(ao._unit(f"{gk}:{k}", gk, "ucaas_field", ref, k, now, bool(before)))
+                    fields[k], expect[k] = bool(before), now
+            if fields:
+                groups.append({"key": gk, "handler": "zb_ucaas", "target": {"fields": fields, "expect": expect}})
             continue
         rtype = str(st.get("rule_type") or "")
         ck = f"{area}:{rtype}"
@@ -1542,6 +1653,33 @@ def _h_atp(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
         run.log(f"[Advanced Threat Protection] set {', '.join(u['field'] + '=' + str(u['after']).lower() for u in ok)}")
 
 
+def _h_ucaas(run, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
+    """Write the UCaaS one-click switches: read the whole settings object
+    again, refuse a switch someone changed since the preview, and put the
+    object back with only the planned switches changed (a partial PUT
+    could reset the other settings)."""
+    t = g["target"]
+    cur, err = read_ucaas(run.zia)
+    if cur is None:
+        _halt_or_fail(run, units, err or "no answer", "the URL and Cloud App Control advanced settings")
+        return
+    ok = []
+    for u in units:
+        if bool(cur.get(u["field"])) != bool(t["expect"].get(u["field"])):
+            run.mark([u], "conflict", f"changed in the tenant since the preview: {u['field']} is {bool(cur.get(u['field']))} now; left as it is")
+        else:
+            ok.append(u)
+    if not ok:
+        return
+    body = {k: v for k, v in cur.items() if v is not None}
+    for u in ok:
+        body[u["field"]] = bool(t["fields"][u["field"]])
+    out = ops.update(run.zia, "url_app_settings", None, body, name="URL and Cloud App Control advanced settings", log=run.log)
+    if run.outcome(ok, out, "update"):
+        run.wrote_zia = True
+        run.log(f"[UCaaS one-click] set {', '.join(u['field'] + '=' + str(u['after']).lower() for u in ok)}")
+
+
 # ---------------------------------------------------------------------------
 # Read-back and Undo
 # ---------------------------------------------------------------------------
@@ -1552,6 +1690,7 @@ def _verify(run) -> Dict[str, Any]:
     groups = {g["key"]: g for g in run.p["groups"]}
     cache: Dict[str, Tuple[Optional[Dict[str, Any]], Optional[str]]] = {}
     atp: List[Any] = []
+    ucaas: List[Any] = []
     for u in applied:
         out["checked"] += 1
         o, g = u["object"], groups.get(u["group"]) or {}
@@ -1560,6 +1699,11 @@ def _verify(run) -> Dict[str, Any]:
             if not atp:
                 atp.append(read_atp(run.zia))
             row, err = atp[0]
+            ok = row is not None and bool(row.get(u["field"])) == bool(t["fields"].get(u["field"]))
+        elif u["kind"] == "ucaas_field":
+            if not ucaas:
+                ucaas.append(read_ucaas(run.zia))
+            row, err = ucaas[0]
             ok = row is not None and bool(row.get(u["field"])) == bool(t["fields"].get(u["field"]))
         elif u["kind"] == "cert":
             k = f"ssl:{o['id']}"
@@ -1607,10 +1751,11 @@ def _inverse(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             steps.append({"op": "delete", "area": o["area"], "id": o["id"], "name": o["name"], "rule_type": o.get("rule_type") or ""})
         elif u["kind"] == "rule_delete":
             continue   # an undo of an undo would re-create a rule: not offered
-        elif u["kind"] in ("rule_field", "atp_field"):
+        elif u["kind"] in ("rule_field", "atp_field", "ucaas_field"):
             key = u["group"]
             if key not in restore:
                 restore[key] = ({"op": "restore_atp", "fields": {}, "expect": {}} if u["kind"] == "atp_field" else
+                                {"op": "restore_ucaas", "fields": {}, "expect": {}} if u["kind"] == "ucaas_field" else
                                 {"op": "restore", "area": o["area"], "id": o["id"], "name": o["name"], "rule_type": o.get("rule_type") or "",
                                  "fields": {}, "expect": {}})
             f = u["field"]
@@ -2023,10 +2168,10 @@ def load_framework(fw: Any) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 ao.register(TYPE, family=FAMILY, product="zia", label="ZIA security baseline",
             hint="Build URL filtering, Cloud Firewall, SSL inspection, Sandbox, DNS Control, File Type Control and Cloud App Control "
-                 "rules (and the Advanced Threat Protection settings) from a Strict, Balanced, Permissive or Healthcare zero trust tier, "
+                 "rules (and the Advanced Threat Protection and UCaaS one-click settings) from a Strict, Balanced, Permissive or Healthcare zero trust tier, "
                  "with compliance overlays, or from a framework captured from another tenant. Rules arrive disabled.",
             in_scope=_in_scope, plan=_plan, read_objects=_read_catalog,
-            handlers={"zb_create": _h_create, "zb_update": _h_update, "zb_delete": _h_delete, "zb_atp": _h_atp},
+            handlers={"zb_create": _h_create, "zb_update": _h_update, "zb_delete": _h_delete, "zb_atp": _h_atp, "zb_ucaas": _h_ucaas},
             verify=_verify, inverse=_inverse, script="ops_zia_baseline.js")
 ao.register(CERT_TYPE, family=CERT_FAMILY, product="zia", label="SSL certificate manager",
             hint="See which intermediate certificate each SSL inspection rule uses and move picked Inspect rules to another "

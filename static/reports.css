@@ -703,6 +703,20 @@ summary { min-height: 24px; }
 .pl-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pl-list textarea { width: 100%; box-sizing: border-box; min-height: 6rem; margin-top: 0.4rem; font: 0.82rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); }
 .pl-note { margin: 0.6rem 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: var(--r-md); background: var(--well); font-size: 0.86rem; line-height: 1.5; }
+/* Path analyzer: Category lookup (static/category_lookup.js) and its link from Test a list rows */
+.pl-cat { margin-left: 0.35rem; min-height: 24px; padding: 0.05rem 0.5rem; border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--well); color: var(--accent); font: inherit; font-size: 0.74rem; font-weight: 600; cursor: pointer; }
+.pl-cat:hover { border-color: var(--accent); }
+.pl-cat:focus-visible, .cl-entry h2:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.cl-form textarea { min-height: 4.5rem; }
+.cl-entry { margin: 1rem 0 1.4rem; padding: 0.8rem 0.9rem; border: 1px solid var(--border); border-radius: var(--r-lg, 12px); background: var(--well); min-width: 0; }
+.cl-entry h2 { margin: 0 0 0.3rem; font-size: 1.05rem; overflow-wrap: anywhere; }
+.cl-entry h3 { margin: 0.9rem 0 0.3rem; font-size: 0.95rem; display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; overflow-wrap: anywhere; }
+.cl-entry .cl-line { margin: 0.25rem 0; font-size: 0.88rem; line-height: 1.5; overflow-wrap: anywhere; }
+.cl-entry .df-chip { text-transform: none; letter-spacing: 0; }
+.cl-table { min-width: 38rem; }   /* narrow screens scroll the table inside its region rather than breaking words */
+.cl-table td { vertical-align: top; overflow-wrap: break-word; }
+.cl-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cl-off { color: var(--dim); }
 
 /* Path analyzer what-if (static/path_whatif.js) */
 .pa-whatif .pa-wi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); gap: 0.6rem 1rem; margin: 0.6rem 0 0.2rem; }

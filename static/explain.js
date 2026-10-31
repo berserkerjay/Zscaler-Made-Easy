@@ -65,6 +65,14 @@
     get: 'The verdict (where the traffic stops or that it reaches the destination, whether it is decrypted and inspected), each step before ZIA and each ZIA module with its deciding rule and conditions, what the policy action also depends on (or, with a what-if, the rules for that identity), the objects that block or impact the traffic with a fix each, the hop-by-hop path, the ZIA categories for the destination, and the assumptions, plus a JSON export. For a list: counts of blocked, allowed, bypassed, isolated, cautioned and allowed-but-blockable rows, the top deciding rules and categories, where to fix each row that misses what was expected, lists to paste per area, and CSV and Excel downloads.',
     next: 'Fix the named rule, profile or exemption, click Fresh read, and analyze again to prove the change. For a list, Fix selected opens Bulk changes with the destinations filled in, to preview and apply behind its write gates.',
   };
+  X.catlookup = {
+    group: 'Find the gaps', name: 'Category lookup', href: '/report/path#categories',
+    what: 'Look up a URL, a host name or an IP address (or a category) and see which ZIA URL categories it is in, predefined and custom, and every rule that names each category across URL filtering, Cloud App Control, SSL inspection, Cloud Firewall, DNS Control, File Type Control, Web DLP and Sandbox, in the order ZIA evaluates them, with each rule\'s order, rank and action, plus the custom categories that list it. A tab of the Path analyzer; Test a list rows and Find anything open it. It reads only what is in scope on the Scope page and writes nothing.',
+    why: 'Before you change a category, or when a site lands in a category nobody expected, you need to know every rule that category drives: the URL block, the SSL exemption, the firewall rule through an IP group. The portal shows that one policy at a time.',
+    when: 'When a destination is blocked or allowed and you want to know through which category, before moving a URL between categories, and before editing or deleting a custom category.',
+    get: 'Per entry: its categories with where each came from (ZIA\'s URL lookup or the tenant\'s own list), the cloud application, any security alert, the custom categories that list it, and per category the rules that name it in evaluation order (order, rank, action, enabled or not, and through which field or IP group), plus what was read and what was not in scope.',
+    next: 'Open the rule in the ZIA Admin Portal, or Trace its path to see which of those rules decides for this destination.',
+  };
   X.live = {
     group: 'Find the gaps', name: 'Live DLP feed', href: '/report/live',
     what: 'Workflow Automation\'s DLP incidents, polled live every 15 seconds: who was transacting, what triggered (rule and dictionaries), where the data was headed, whether the matched rule enforced it or only logged it, and a running seen / enforced / monitor / FP:TP tally for the session.',
@@ -491,7 +499,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
     'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
