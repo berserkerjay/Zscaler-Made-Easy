@@ -992,7 +992,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"zia_extras\"]": {
-    "what": "Adds the ZIA platform checks (57), including governance (Zscaler's own configuration audit, alert subscriptions and NSS log streaming, N/A when NSS is not licensed), forwarding and traffic path (proxy chaining, ZPA and dedicated IP gateways, GRE tunnels, IPv6, NAT control, Virtual Service Edges, DNS gateways) and tenant health. It also lets the Path analyzer read URL filtering, File Type Control, threat protection, Cloud Firewall, DNS Control, Sandbox and forwarding control rules.",
+    "what": "Adds the ZIA platform checks (75), including threat protection and SaaS Security hygiene, governance (Zscaler's own configuration audit, alert subscriptions and NSS log streaming, N/A when NSS is not licensed), forwarding and traffic path (proxy chaining, ZPA and dedicated IP gateways, GRE tunnels, IPv6, NAT control, Virtual Service Edges, DNS gateways) and tenant health. It also lets the Path analyzer read URL filtering, File Type Control, threat protection, Cloud Firewall, DNS Control, Sandbox and forwarding control rules.",
     "input": "Tick it to check the ZIA platform. Ticked at first.",
     "effect": "local"
    },
@@ -4989,6 +4989,11 @@ window.HELP_CATALOG = {
    "#aigPrefix": {
     "what": "Adds your text to the front of every object name this builder makes.",
     "input": "Optional. Up to 12 letters, digits, - or _, starting with a letter or digit, like ACME.",
+    "effect": "local"
+   },
+   "#zsbHashes": {
+    "what": "The files to block in Cloud Sandbox, by their MD5 hash. A blocked hash stops that file for every user once the change is activated.",
+    "input": "Required. One MD5 hash per line (32 characters, 0-9 and a-f), up to 100; anything after the hash on the line is its comment. SHA-256 is not accepted.",
     "effect": "local"
    },
    "#aigProfile": {

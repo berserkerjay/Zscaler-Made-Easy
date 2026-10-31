@@ -214,6 +214,9 @@ ENDPOINT_CHANNELS: Dict[str, Tuple[str, ...]] = {
     "/zia/emailDlpRules": ("email_dlp",),
     "/zia/casbDlpRules": ("saas_casb",),
     "/zia/casbTenant": ("saas_casb", "email_dlp"),
+    # SaaS Security malware scanning and its quarantine tombstones (data at rest).
+    "/zia/casbMalwareRules": ("saas_casb",),
+    "/zia/quarantineTombstoneTemplate": ("saas_casb",),
     "/zia/sslInspectionRules": ("ssl_inspection",),
     "/zia/cloudApplicationRules": ("cloud_app_control",),
     "/zia/tenancyRestrictionProfile": ("cloud_app_control",),
@@ -233,11 +236,13 @@ CHANNEL_READS: Dict[str, Sequence[str]] = {
                               "B.8", "B.9", "B.11", "B.16"),
     "/zia/emailDlpRules": ("MC.4", "8.9", "D.2", "D.3", "D.4", "D.5", "D.6", "D.7", "D.8", "D.9"),
     "/zia/casbDlpRules": ("MC.3", "8.10", "C.2", "C.3", "C.4", "C.5", "C.6", "C.7", "C.8"),
-    "/zia/casbTenant": ("C.1", "C.3", "D.1", "D.6"),
+    "/zia/casbTenant": ("C.1", "C.3", "D.1", "D.6", "SAAS.1", "SAAS.3"),
+    "/zia/casbMalwareRules": ("SAAS.1", "SAAS.2"),
+    "/zia/quarantineTombstoneTemplate": ("SAAS.2",),
     "/zia/sslInspectionRules": ("4.1", "4.3", "4.4", "4.5", "4.6", "4.10", "4.11", "4.13", "4.14", "5.5", "MC.12", "6.4", "6.5",
                                 "7.2", "7.3", "9.2", "9.3", "A.2", "E.2", "CA.3", "AI.1", "AI.5", "AI.6", "AUTO-TF-01"),
     "/zia/cloudApplicationRules": ("3.7", "4.7", "5.18", "MC.5", "A.6", "A.7", "A.17", "E.1", "E.3", "E.8", "E.9", "E.13", "CA.1",
-                                   "CA.2", "CA.3", "CA.4", "CA.5", "AI.3", "AI.8", "AI.14", "AI.15", "AI.20"),
+                                   "CA.2", "CA.3", "CA.4", "CA.5", "AI.3", "AI.8", "AI.14", "AI.15", "AI.20", "THR.10"),
     "/zia/tenancyRestrictionProfile": ("5.18", "A.7", "CA.2", "AI.14"),
 }
 

@@ -692,6 +692,18 @@ window.WHATS_NEW = {
         { "page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]" },
         { "page": "/report/path", "at": "#paFramework > summary" }
       ]
+    },
+    {
+      "id": "threat-saas-checks", "release": "2026-10-31", "label": "Threat protection and SaaS Security checks",
+      "what": "The assessment now scores the threat protection settings (Sandbox hash list, custom IPS signatures, mobile, FTP, notifications, alerts, risk profiles, Browser Control, domain fronting, SafeSearch) and SaaS Security malware coverage, under ZIA platform.",
+      "changelog": ["Threat protection checks", "SaaS Security hygiene", "URL and app settings", "Browser Control", "Not licensed is not a failure", "Offline too"],
+      "marks": [{ "page": "/", "at": ".scope-cb[value=\"zia_extras\"]", "shown": "on the Scope page" }]
+    },
+    {
+      "id": "sandbox-hashes", "release": "2026-10-31", "label": "Sandbox file hashes",
+      "what": "Block files your incident response confirmed as malicious by their MD5 hash, with a preview, a typed confirmation, a read-back and Undo.",
+      "changelog": ["Sandbox file hashes"],
+      "marks": [{ "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"zia_sandbox_hashes\"]", "shown": "once the builders load" }]
     }
   ]
 };

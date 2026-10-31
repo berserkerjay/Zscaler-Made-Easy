@@ -974,6 +974,13 @@ what you get, what to do next.
   <name>*), a rotation *ROTATE <name>*, and the preview says what cannot be
   undone. Password and MFA resets are not offered: Zscaler SDK 1.11.3 has
   no call for them.
+  **Sandbox file hashes** (*Build new*, `ops_zia_sandbox.py`, ZIA
+  platform ticked) adds the MD5 hashes of files incident response
+  confirmed as malicious to the Cloud Sandbox custom block list: MD5 only
+  (anything else is refused with the line), up to 100 per operation, a
+  typed phrase every time, the list re-read right before the write and
+  sent back with only those hashes added (an allow-listed hash is never
+  touched), read back after activation, and Undo removes exactly them.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in
