@@ -413,10 +413,20 @@ for (const [page, marks] of Object.entries(MARKS)) {
 }
 
 // Once the marks are placed the page goes quiet: placing them never asks for
-// another pass (on a page with an item that has both a * and a ?).
-await open(out.both.length ? out.both[0].page : '/report/advanced');
-out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObserver(ms => { n += ms.length; }); mo.observe(document.body, { subtree: true, childList: true, attributes: true });
+// another pass (on a page with an item that has both a * and a ?; Advanced
+// settings when it has one). Only changes to the marks count: a page's own
+// live content (a running flow, a status line) is not the marks' doing.
+const quietPage = out.both.some(b => b.page === '/report/advanced') ? '/report/advanced' : (out.both.length ? out.both[0].page : '/report/advanced');
+await open(quietPage);
+out.quiet = await ev(`new Promise(r => { let n = 0;
+  const MARK = /(^|\\s)(hh-mark|hh-mark-new|wn-legend|wn-legend-mark)(\\s|$)/;
+  const isMark = x => x && x.nodeType === 1 && (MARK.test(x.className || '') || !!(x.querySelector && x.querySelector('.hh-mark, .wn-legend')));
+  const ATTRS = ['data-wn-new', 'data-wn-for', 'data-hh-mark', 'aria-describedby', 'aria-expanded'];
+  const mo = new MutationObserver(ms => { ms.forEach(m => {
+    if (m.type === 'attributes' ? (ATTRS.includes(m.attributeName) || isMark(m.target)) : ([...m.addedNodes].some(isMark) || [...m.removedNodes].some(isMark))) n++; }); });
+  mo.observe(document.body, { subtree: true, childList: true, attributes: true });
   setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
+out.quietPage = quietPage;
 
 if (PR.pick) {
   // The first item of each release that is on screen with its *.
@@ -629,7 +639,7 @@ def test_no_sideways_scroll_at_320px(marks_browser, page):
 
 def test_placing_the_marks_settles(marks_browser):
     """CWE-835 (loop with unreachable exit) · ASVS V11.1.4: on a page with a * and a ? in one title, nothing changes the page once the marks are placed (no rescan loop)."""
-    assert marks_browser["quiet"] == 0, marks_browser["quiet"]
+    assert marks_browser["quiet"] == 0, (marks_browser["quietPage"], marks_browser["quiet"])
 
 
 def test_the_tour_left_no_script_errors(marks_browser):

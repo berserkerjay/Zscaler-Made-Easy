@@ -904,6 +904,17 @@ DEFAULT_OFF: Dict[str, Any] = {
     "config_restore_zcc": "Client Connector trusted networks, forwarding profiles and settings carry no on/off state; app profiles are never written",
     "zia_directory": "users, groups and departments: membership only, no policy rule is created or enabled; no password is set",
     "zia_pac": "a new version is created STAGED; a new PAC file has a new URL nothing uses yet; switching the active version is the change asked for",
+    # Day-to-day admin for ZPA, Client Connector and ZDX (ops_zpa_admin, ops_zcc_admin, ops_zdx_trace).
+    "zpa_infra_update": "changes the fields the operator sets on existing connectors, groups and portals; creates and enables nothing",
+    "zpa_infra_delete": "deletes (or revokes) the objects picked only; an object still connected or used is excluded",
+    "zpa_provisioning_key_new": "a new provisioning key is created turned off unless the operator turns it on",
+    "zpa_ba_certificate": "uploads a certificate and points the Browser Access applications the operator picks at it; creates no application or policy",
+    "zcc_device_remove": "removes the devices picked only; creates and enables nothing",
+    "zcc_device_bulk_remove": "removes the devices matched and confirmed only; creates and enables nothing",
+    "zcc_bypass_app": "a new custom bypass application is created off unless the operator turns it on",
+    "zcc_entitlements": "sets the ZPA and ZDX entitlements to exactly what the operator picks; narrowing them asks for the typed confirmation",
+    "zdx_deeptrace_start": "a time-boxed measurement on one device (5 to 60 minutes) that enforces nothing",
+    "zdx_deeptrace_stop": "stops a deep trace only; creates and enables nothing",
     "zid_users": _zid_user_default,
     "zid_api_clients": _zid_client_default,
 }

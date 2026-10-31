@@ -416,6 +416,20 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/operations/{op_id}/undo/preview"): "preview",
     ("POST", "/api/operations/zpa/provisioning-key"): "reveals once a value held in this app's memory; reaches no tenant",
     ("POST", "/api/operations/zidentity/secret"): "reveals once a value held in this app's memory; reaches no tenant",
+    # Day-to-day admin (ops_zcc_admin, ops_zdx_trace, ops_zpa_admin): searches, a bounded read-only follow, and the
+    # one place a Browser Access key enters the app (held in memory for the next previewed operation; writers only).
+    ("POST", "/api/operations/lookup"): "reads (a Client Connector or ZDX search for a form)",
+    ("POST", "/api/operations/zdx/deeptrace/follow/start"): "reads (follows a ZDX deep trace, bounded)",
+    ("POST", "/api/operations/zpa/ba-certificate"): "holds an uploaded certificate and key in this app's memory; reaches no tenant",
+    # Rules from a spreadsheet and scheduled sync (rule_csv, ops_rule_csv, sync_jobs): the import itself is an
+    # operation type on the engine (WRITE path); a sync job only reads and files plans in the change queue.
+    ("POST", "/api/rule-csv/validate"): "checks a file; reads no tenant",
+    ("POST", "/api/rule-csv/export"): "reads",
+    ("POST", "/api/sync-jobs"): "a sync job (local): it only reads and files plans for approval",
+    ("DELETE", "/api/sync-jobs/{jid}"): "a sync job (local)",
+    ("POST", "/api/sync-jobs/{jid}/enabled"): "a sync job's schedule (local)",
+    ("POST", "/api/sync-jobs/{jid}/run"): "reads source and targets, files plans in the change queue (local); never writes a tenant",
+    ("POST", "/api/path-analyzer/zpa-identity"): "reads (ZPA IdPs, SAML attributes, one SCIM user's groups)",
     ("POST", "/api/console-index"): "reads (extension allow-list)",
     ("POST", "/api/workspace/notes"): "local notes",
     ("DELETE", "/api/workspace/notes"): "local notes",
