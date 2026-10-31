@@ -15,10 +15,14 @@
   const KIND = { manual: 'saved by hand', scheduled: 'scheduled', 'pre-restore': 'before a restore', snapshot: 'from a snapshot', sample: 'sample tenant' };
 
   function st(S) {
-    if (!S.cfg) S.cfg = { src: 'backup', backup: '', template: '', target: 'same', mode: 'update_matching', types: null, keep: false, activate: true,
+    if (!S.cfg) S.cfg = { from: 'backup', backup: '', template: '', target: 'same', mode: 'update_matching', types: null, keep: false, activate: true,
       ack: false, rollback: false, prefix: '', psk: {}, keys: {}, diffOld: '', diffNew: 'live', ignore: '', tplType: '', tplNames: '', tplName: '',
       tplStrip: '', rehearse: 'sample' };
     return S.cfg;
+  }
+  function errs(H, res) {
+    const rows = Object.entries((res && res.errors) || {});
+    return rows.length ? `<div class="bp-card warn"><div class="t">Could not be read</div><ul>${rows.map(([k, v]) => `<li>${H.E(k)}: ${H.E(v)}</li>`).join('')}</ul></div>` : '';
   }
   const when = v => String(v || '').replace('T', ' ').slice(0, 16);
   function writable(res, product) { return (((res.coverage || {}).products || {})[product] || []).filter(t => t.level !== 'read'); }
@@ -42,22 +46,22 @@
     const psk = (types.find(t => t.key === 'zia.vpn_credentials') && product === 'zia');
     const singles = types.filter(t => t.singleton);
     const sideOpts = sel => `<option value="live"${sel === 'live' ? ' selected' : ''}>The live tenant (read now)</option>${(res.backups || []).map(b => `<option value="${E(b.id)}"${sel === b.id ? ' selected' : ''}>${E(when(b.saved_at))} · ${E(b.tenant_label)}</option>`).join('')}`;
-    where.innerHTML = `${H.errorsHtml(res)}
+    where.innerHTML = `${errs(H, res)}
       <p>Restore this tenant from one of its backups, clone another tenant's backup into it, or apply a template. The preview lists every object to create, update or delete, in dependency order, with what cannot be cloned and why. Nothing is written until you apply; a fresh backup of this tenant is saved first, and Undo puts back what was applied.</p>
       <h3 class="op-h">1. Source</h3>
       <div class="op-row"><fieldset class="op-inline"><legend>Restore from</legend>
-        <label><input type="radio" name="crSrc" value="backup"${z.src === 'backup' ? ' checked' : ''}> A backup</label>
-        <label><input type="radio" name="crSrc" value="template"${z.src === 'template' ? ' checked' : ''}> A template</label></fieldset></div>
-      ${z.src === 'backup' ? backupsTable(H, res, z) : `<div class="op-row"><label class="df-ctl"><span class="lbl">Template</span><select id="crTemplate" aria-label="Template to apply">
+        <label><input type="radio" name="crSrc" value="backup"${z.from === 'backup' ? ' checked' : ''}> A backup</label>
+        <label><input type="radio" name="crSrc" value="template"${z.from === 'template' ? ' checked' : ''}> A template</label></fieldset></div>
+      ${z.from === 'backup' ? backupsTable(H, res, z) : `<div class="op-row"><label class="df-ctl"><span class="lbl">Template</span><select id="crTemplate" aria-label="Template to apply">
           <option value="">Pick a template…</option>${tpls.map(t => `<option value="${E(t.id)}"${z.template === t.id ? ' selected' : ''}>${E(t.name)} (${E(t.objects)} objects)</option>`).join('')}</select></label>
         <label class="df-ctl"><span class="lbl">Prefix for the template's names</span><input id="crPrefix" value="${E(z.prefix)}" maxlength="20" autocomplete="off" aria-label="Prefix for the template's names" placeholder="ACME-"></label></div>`}
       <h3 class="op-h">2. Target</h3>
       <div class="op-row"><fieldset class="op-inline"><legend>This tenant is</legend>
-        <label><input type="radio" name="crTarget" value="same"${z.target === 'same' ? ' checked' : ''}${z.src === 'template' ? ' disabled' : ''}> The backup's own tenant (restore)</label>
-        <label><input type="radio" name="crTarget" value="other"${z.target === 'other' || z.src === 'template' ? ' checked' : ''}> Another tenant (clone)</label></fieldset></div>
+        <label><input type="radio" name="crTarget" value="same"${z.target === 'same' ? ' checked' : ''}${z.from === 'template' ? ' disabled' : ''}> The backup's own tenant (restore)</label>
+        <label><input type="radio" name="crTarget" value="other"${z.target === 'other' || z.from === 'template' ? ' checked' : ''}> Another tenant (clone)</label></fieldset></div>
       <div class="df-hint">A clone or template writes only to the tenant of the saved profile picked in the Tenant list above.</div>
       <h3 class="op-h">3. Mode and object types</h3>
-      <div class="op-row"><fieldset class="op-inline"><legend>Mode</legend>${(res.modes || []).map(m => `<label><input type="radio" name="crMode" value="${E(m.id)}"${z.mode === m.id ? ' checked' : ''}${m.id === 'full' && z.src === 'template' ? ' disabled' : ''}> ${E(m.label)}</label>`).join(' ')}</fieldset></div>
+      <div class="op-row"><fieldset class="op-inline"><legend>Mode</legend>${(res.modes || []).map(m => `<label><input type="radio" name="crMode" value="${E(m.id)}"${z.mode === m.id ? ' checked' : ''}${m.id === 'full' && z.from === 'template' ? ' disabled' : ''}> ${E(m.label)}</label>`).join(' ')}</fieldset></div>
       <ul class="op-checks">${types.map(t => `<li><label><input type="checkbox" data-crtype="${E(t.key)}"${z.types.has(t.key) ? ' checked' : ''}> ${E(t.label)}</label>${t.why ? ` <span class="df-hint">${E(t.why)}</span>` : ''}</li>`).join('') || '<li class="df-hint">Nothing of this product is in scope.</li>'}</ul>
       ${singles.length ? `<details class="pa-details"><summary>Settings key by key</summary>${singles.map(t => `<div class="op-row"><label class="df-ctl"><span class="lbl">${E(t.label)}: keys to restore</span><input data-crkeys="${E(t.key)}" value="${E(z.keys[t.key] || '')}" autocomplete="off" aria-label="${E(t.label)}: keys to restore" placeholder="all keys"></label></div>`).join('')}</details>` : ''}
       <h3 class="op-h">4. Options</h3>
@@ -128,7 +132,7 @@
   function bind(res, where, S, H) {
     const z = st(S), $ = id => document.getElementById(id), out = () => $('crOut');
     const again = id => { render(res, where, S, H); const el = $(id) || where.querySelector(`input[name="${id}"]:checked`); if (el) el.focus(); };
-    where.querySelectorAll('input[name="crSrc"]').forEach(r => r.addEventListener('change', () => { z.src = r.value; if (r.value === 'template') { z.target = 'other'; if (z.mode === 'full') z.mode = 'update_matching'; } again('crSrc'); }));
+    where.querySelectorAll('input[name="crSrc"]').forEach(r => r.addEventListener('change', () => { z.from = r.value; if (r.value === 'template') { z.target = 'other'; if (z.mode === 'full') z.mode = 'update_matching'; } again('crSrc'); }));
     where.querySelectorAll('input[name="crBackup"]').forEach(r => r.addEventListener('change', () => { z.backup = r.value; }));
     where.querySelectorAll('input[name="crTarget"]').forEach(r => r.addEventListener('change', () => { z.target = r.value; }));
     where.querySelectorAll('input[name="crMode"]').forEach(r => r.addEventListener('change', () => { z.mode = r.value; }));
@@ -198,16 +202,16 @@
 
   function buildSpec(S, H, rehearsal) {
     const z = st(S), product = PRODUCT[S.kind];
-    const source = z.src === 'template' ? { template: z.template } : { backup: z.backup };
-    if (!source.template && !source.backup) throw new Error(z.src === 'template' ? 'Pick a template.' : 'Pick the backup to restore from.');
-    const target = z.src === 'template' ? 'other' : z.target;
+    const source = z.from === 'template' ? { template: z.template } : { backup: z.backup };
+    if (!source.template && !source.backup) throw new Error(z.from === 'template' ? 'Pick a template.' : 'Pick the backup to restore from.');
+    const target = z.from === 'template' ? 'other' : z.target;
     const pid = (H.body({}) || {}).profile_id || '';
     if (target === 'other' && !pid && !rehearsal) throw new Error("A clone or template writes only to a saved profile's tenant: pick it in the Tenant list above.");
     const keys = {};
     Object.entries(z.keys).forEach(([k, v]) => { const list = String(v || '').split(/[\s,]+/).filter(Boolean); if (list.length) keys[k] = list; });
     const spec = { type: S.kind, source, mode: z.mode, target, target_profile_id: target === 'other' ? pid : '', types: [...z.types],
       keep_state: z.keep, activate: product !== 'zia' || z.activate, licence_ack: z.ack, rollback_on_stop: z.rollback, psk: Object.keys(z.psk) };
-    if (z.src === 'template') spec.prefix = z.prefix;
+    if (z.from === 'template') spec.prefix = z.prefix;
     if (Object.keys(keys).length) spec.settings_keys = keys;
     if (!spec.types.length) throw new Error('Tick at least one object type.');
     return spec;

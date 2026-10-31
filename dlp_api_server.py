@@ -4283,8 +4283,8 @@ async def config_backup_download(backup_id: str):
         raw = await asyncio.to_thread(cb.read_backup_raw, backup_id)
     except cb.BackupError as e:
         raise _cfg_err(e, 404)
-    return Response(raw, media_type="application/json",
-                    headers={"Content-Disposition": f'attachment; filename="zscaler-config-backup-{backup_id[3:]}.json"'})
+    fname = f"zscaler-config-backup-{backup_id[3:]}.json"   # the id matched ^bk-[0-9a-f]{16}$ (cb.read_backup_raw)
+    return Response(raw, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 @app.post("/api/config-backups/{backup_id}/delete")
@@ -4392,8 +4392,8 @@ async def config_template_download(template_id: str):
         raw = await asyncio.to_thread(cb.read_template_raw, template_id)
     except cb.BackupError as e:
         raise _cfg_err(e, 404)
-    return Response(raw, media_type="application/json",
-                    headers={"Content-Disposition": f'attachment; filename="zscaler-config-template-{template_id[4:]}.json"'})
+    fname = f"zscaler-config-template-{template_id[4:]}.json"   # the id matched ^tpl-[0-9a-f]{16}$ (cb.read_template_raw)
+    return Response(raw, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 @app.post("/api/config-templates/{template_id}/delete")
