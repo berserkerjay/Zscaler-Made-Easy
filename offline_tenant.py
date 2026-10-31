@@ -1164,11 +1164,12 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
 
 
 # ZPA lists read in one call: the SDK's list method takes no paging parameters.
-_ZPA_SINGLE = {"/zpa/businessContinuitySettings"}
+# (Not _ZPA_SINGLE above: those are kept as answered, not turned into a list.)
+_ZPA_ONE_CALL = {"/zpa/businessContinuitySettings"}
 
 
 def _read_zpa(guard: Any, ep: str) -> Tuple[Any, int]:
-    if ep in _ZPA_SINGLE:
+    if ep in _ZPA_ONE_CALL:
         body, code = guard.get(ep)
         if code not in (200, 204):
             return body, code
