@@ -122,6 +122,18 @@
             <button type="button" class="rp-btn" id="advUpdCheck">Check again</button>
           </div>
           <div id="advUpdSteps" class="adv-update-steps" hidden></div>
+          <label class="adv-switch" for="advUpdNotify"><input type="checkbox" id="advUpdNotify" role="switch" aria-describedby="advUpdNotifyNote"><span>Tell me when a newer version is out (e-mail or webhook, once per version)</span></label>
+          <p class="adv-lead dim" id="advUpdNotifyNote" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="plugins" aria-labelledby="advPlugH">
+          <h2 class="df-h" id="advPlugH">Local plugins</h2>
+          <p class="adv-lead">Off by default. A local plugin is a Python package in the folder <code>DLP_CHECK_PLUGINS_DIR</code> names; it can add Bulk changes operations and read-only pages, which go through the same preview and the same four gates as everything else. It is code that runs inside this app with the app's privileges, so approve only a plugin whose code you have read: approval is for its exact SHA-256, and a plugin whose files change is refused until approved again. Approved plugins load when the app starts. SECURITY.md says what this costs.</p>
+          <label class="adv-switch" for="advPlugOn"><input type="checkbox" id="advPlugOn" role="switch" aria-describedby="advPlugNote"><span>Allow approved local plugins</span></label>
+          <p class="adv-lead dim" id="advPlugNote" role="status" aria-live="polite">Loading…</p>
+          <div class="tw"><table class="bp-table adv-table" id="advPlugins" aria-describedby="advPlugH">
+            <thead><tr><th scope="col">Plugin</th><th scope="col">Version</th><th scope="col">SHA-256</th><th scope="col">Asks for</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+            <tbody><tr><td colspan="6" class="dim">Loading…</td></tr></tbody></table></div>
         </section>
 
         <section id="server" aria-labelledby="advSrvH">
@@ -223,6 +235,7 @@
   <script src="/static/find_anything.js"></script>
   <script src="/static/advanced.js"></script>
   <script src="/static/quality_score.js"></script>
+  <script src="/static/advanced_plugins.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
 </body>

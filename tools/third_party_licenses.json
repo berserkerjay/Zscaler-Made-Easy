@@ -18,6 +18,7 @@
     "click": "BSD-3-Clause",
     "colorama": "BSD-3-Clause",
     "cryptography": "Apache-2.0 OR BSD-3-Clause",
+    "defusedxml": "PSF-2.0",
     "fastapi": "MIT",
     "h11": "MIT",
     "httpcore2": "BSD-3-Clause",

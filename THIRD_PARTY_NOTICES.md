@@ -31,6 +31,7 @@ distribution links in the SBOM.
 | click | 8.5.0 | BSD-3-Clause |
 | colorama | 0.4.6 | BSD-3-Clause |
 | cryptography | 50.0.1 | Apache-2.0 OR BSD-3-Clause |
+| defusedxml | 0.7.1 | PSF-2.0 |
 | fastapi | 0.141.1 | MIT |
 | h11 | 0.16.0 | MIT |
 | httpcore2 | 2.13.0 | BSD-3-Clause |

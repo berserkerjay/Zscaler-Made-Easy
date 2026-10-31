@@ -5815,6 +5815,11 @@ def _ops_scope(req: Any, what: Any) -> Dict[str, Any]:
         admin_ops.require_scope(what, scope)
     except admin_ops.OperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # A local plugin's operation: only for the people its approval names (local_plugins).
+    import local_plugins
+    why = local_plugins.check_user(what, _security.current_actor())
+    if why:
+        raise HTTPException(status_code=403, detail=why)
     return scope
 
 
@@ -6064,7 +6069,9 @@ async def operations_plugins():
     """The builder types registered on the Bulk changes engine (admin_ops.register):
     type, label, hint, group and the page script for each; read-only."""
     import admin_ops
-    return {"plugins": admin_ops.plugin_catalog()}
+    import local_plugins
+    who = _security.current_actor()
+    return {"plugins": [p for p in admin_ops.plugin_catalog() if local_plugins.check_user(p["type"], who) is None]}
 
 
 class OneTimeKeyRequest(BaseModel):
@@ -7947,7 +7954,150 @@ async def app_update_status(refresh: bool = False, branch: Optional[str] = None)
     st = await asyncio.to_thread(app_update.status, _APP_DIR, remote, target)
     st["remote_error"] = _latest_error(target)
     st["restart_command"] = app_update.restart_command(_APP_DIR)
+    # Update notifications (update_notify): off by default; once per version,
+    # on the digests' e-mail / webhook channel, in the background.
+    if st.get("update_available") is True:
+        _start_update_notice(dict(st))
+    st["notify"] = await asyncio.to_thread(_update_notify_overview)
     return st
+
+
+def _start_update_notice(st: Dict[str, Any]) -> None:
+    """The notice (update_notify.maybe_notify) in the background: the page never waits on a mail server."""
+    import threading
+    import update_notify
+    threading.Thread(target=update_notify.maybe_notify, args=(st,), daemon=True, name="update-notify").start()
+
+
+def _update_notify_overview() -> Dict[str, Any]:
+    try:
+        import update_notify
+        return update_notify.overview()
+    except Exception as e:  # noqa: BLE001 - the status never fails over the notice settings
+        return {"enabled": False, "error": type(e).__name__}
+
+
+class UpdateNotifyRequest(BaseModel):
+    """Turn update notifications on or off (off by default)."""
+    enabled: bool = False
+
+
+@app.get("/api/app/update/notify")
+async def app_update_notify_get():
+    """Whether update notifications are on, the channels they would use (no
+    secret) and the last notice. Reads nothing remote."""
+    return await asyncio.to_thread(_update_notify_overview)
+
+
+@app.put("/api/app/update/notify")
+async def app_update_notify_put(req: UpdateNotifyRequest, request: Request):
+    """Save whether a newer version is announced on the digests' e-mail and
+    webhook channel (at most once per version). A server-wide setting: a
+    writer under SSO; audited."""
+    import update_notify
+    _security.require_writer()
+    saved = await asyncio.to_thread(update_notify.save_settings, req.enabled)
+    _audit.record("update_notify_settings", actor=_actor(request) or _security.current_actor(), enabled=saved["enabled"])
+    return update_notify.overview()
+
+
+# ── Local plugins (local_plugins): off by default, hash allow-list ─────────
+class PluginSwitchRequest(BaseModel):
+    enabled: bool = False
+
+
+class PluginApproveRequest(BaseModel):
+    """Approve one plugin's exact SHA-256 (the hash the admin reviewed), typing its name."""
+    name: str
+    sha256: str
+    confirm: str = ""
+    users: List[str] = []
+
+
+class PluginRevokeRequest(BaseModel):
+    name: str
+
+
+def _plugins_admin(request: Request) -> str:
+    """A plugin is code the app runs: switching plugins on and approving one
+    is for a writer, from this computer only (like Update app)."""
+    _security.require_writer()
+    _update_allowed()
+    return _actor(request) or _security.current_actor() or "local"
+
+
+@app.get("/api/plugins")
+async def plugins_overview(request: Request):
+    """Local plugins: whether they are on, the folder's packages with name,
+    version, SHA-256, permissions and status, and what is loaded. Imports nothing."""
+    import local_plugins
+    return await asyncio.to_thread(local_plugins.overview, _actor(request) or _security.current_actor())
+
+
+@app.put("/api/plugins/settings")
+async def plugins_switch(req: PluginSwitchRequest, request: Request):
+    import local_plugins
+    who = _plugins_admin(request)
+    saved = await asyncio.to_thread(local_plugins.set_enabled, req.enabled)
+    _audit.record("plugins_switch", actor=who, enabled=saved["enabled"])
+    return local_plugins.overview(who)
+
+
+@app.post("/api/plugins/approve")
+async def plugins_approve(req: PluginApproveRequest, request: Request):
+    """Put a plugin's reviewed SHA-256 on the allow-list (typed name to
+    confirm). It is loaded when the app next starts."""
+    import local_plugins
+    who = _plugins_admin(request)
+    try:
+        await asyncio.to_thread(local_plugins.approve, req.name, req.sha256, by=who, confirm=req.confirm, users=req.users)
+    except (local_plugins.PluginError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e)[:300])
+    _audit.record("plugin_approved", actor=who, plugin=req.name[:40], sha256=req.sha256[:64], users=len(req.users))
+    return local_plugins.overview(who)
+
+
+@app.post("/api/plugins/revoke")
+async def plugins_revoke(req: PluginRevokeRequest, request: Request):
+    """Take a plugin off the allow-list and unload it at once."""
+    import local_plugins
+    who = _plugins_admin(request)
+    await asyncio.to_thread(local_plugins.revoke, req.name)
+    _audit.record("plugin_revoked", actor=who, plugin=req.name[:40])
+    return local_plugins.overview(who)
+
+
+@app.get("/api/plugins/pages/{slug}")
+async def plugin_page_data(slug: str, request: Request):
+    """A plugin page's title and table, as text (the page escapes it)."""
+    import local_plugins
+    try:
+        return await asyncio.to_thread(local_plugins.render_page, slug, _actor(request) or _security.current_actor())
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such plugin page (plugins load when the app starts).")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/report/plugin")
+async def report_plugin_page():
+    """A local plugin's read-only page (static/report_plugin.html)."""
+    page = os.path.join(STATIC_DIR, "report_plugin.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report_plugin.html not found")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read())
+
+
+@app.on_event("startup")
+async def _load_local_plugins() -> None:
+    """Approved local plugins whose hash still matches (off by default)."""
+    try:
+        import local_plugins
+        if local_plugins.enabled():
+            await asyncio.to_thread(local_plugins.load_enabled, lambda m: print(f"  {m}"))
+    except Exception as e:  # noqa: BLE001 - a plugin problem never stops the app
+        print(f"  Local plugins were not loaded: {type(e).__name__}")
 
 
 class AppUpdateRequest(BaseModel):
@@ -8469,7 +8619,32 @@ async def vendor_migrate_vendors():
     """The source vendors the page offers, and the upload limit."""
     import vendor_migrate
     return {"vendors": vendor_migrate.vendors(), "max_body_mb": get_max_body_bytes() // (1024 * 1024),
-            "provider_version": vendor_migrate.PROVIDER_VERSION}
+            "provider_version": vendor_migrate.PROVIDER_VERSION,
+            # Firewall and private access (panos_migrate): a plan for Bulk changes, not Terraform.
+            "firewall": {"id": "panos", "name": "Palo Alto Networks (PAN-OS firewall and GlobalProtect)",
+                         "export": "The configuration export (XML) from the firewall or Panorama",
+                         "accepts": [".xml"]}}
+
+
+class PanosPlanRequest(BaseModel):
+    """A PAN-OS configuration export (untrusted XML) and the mapping options:
+    prefix, the GlobalProtect zone names, whether to carry disabled rules."""
+    export: PackUploadFile
+    options: Dict[str, Any] = {}
+
+
+@app.post("/api/vendor-migrate/panos/plan")
+async def vendor_migrate_panos_plan(req: PanosPlanRequest):
+    """Map a PAN-OS export to a migration plan for Bulk changes: Cloud
+    Firewall rules with their IP groups and network services, ZPA segments
+    for GlobalProtect access, and every unmappable item with its reason.
+    Parsed with defusedxml (no DTD, entities or external references),
+    size, depth and element capped. Reads no tenant and writes nothing."""
+    import panos_migrate
+    try:
+        return await asyncio.to_thread(panos_migrate.plan_upload, req.export.model_dump(), req.options)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/vendor-migrate/inventory")
@@ -12495,6 +12670,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     stopped normally, 2 when it could not start (the port is taken, the
     address cannot be bound, the token file cannot be written), with the
     reason printed in plain words instead of a traceback."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["tui"]:
+        # The terminal UI (tui.py): a client of a running server, the same gates.
+        import tui
+        return tui.main(args[1:])
     import uvicorn
 
     host = get_bind_host()
