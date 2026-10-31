@@ -5121,6 +5121,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
     "effect": "local"
    },
+   "#tab-build": {
+    "what": "Shows the Build tab: one plan of the builders this POV needs, one dry run and one confirmed apply.",
+    "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
+    "effect": "local"
+   },
    "#tab-runbook": {
     "what": "Shows the tests for each product in scope. Mark each one pass or fail, with notes and evidence.",
     "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
@@ -5140,6 +5145,136 @@ window.HELP_CATALOG = {
     "what": "Shows the customer report, export, import, templates and delete.",
     "input": "Nothing to type. Just click it. Arrow keys move between tabs.",
     "effect": "local"
+   },
+   "#pvBuild form.pv-form input[maxlength=\"120\"]": {
+    "what": "Sets the customer name for the rehearsal. It is kept in this page only.",
+    "input": "Required. Up to 120 characters, like Contoso Health.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form input[placeholder=\"corp.example.com\"]": {
+    "what": "Sets the internal domain the ZPA segments and the ZDX intranet probe are made under.",
+    "input": "Optional. A domain name, like corp.example.com.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form input[placeholder=\"Made from the name\"]": {
+    "what": "Sets the short prefix every built object is named with.",
+    "input": "Optional. 2 to 8 letters or digits, like CH.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form select:has(+ p.pv-meta)": {
+    "what": "Picks the vertical preset. It decides the builders' defaults, like the ZIA tier and the compliance overlays.",
+    "input": "Pick one from the list.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form select": {
+    "what": "Starts the rehearsal from a saved template's vertical and products.",
+    "input": "Optional. Pick a template, or No template.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form fieldset.pv-checks input[type=\"checkbox\"]": {
+    "what": "Puts this product in the rehearsal. The build suggests the parts for the products ticked.",
+    "input": "Tick it to include the product.",
+    "effect": "local"
+   },
+   "#pvBuild form.pv-form button[type=\"submit\"]": {
+    "what": "Uses this intake for the rehearsal and lists the parts it suggests. Nothing is read or written yet.",
+    "input": "Fill in the customer name first.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-on": {
+    "what": "Puts this part in the build. A part whose product is not ticked on the Scope page cannot be picked.",
+    "input": "Tick it to build the part. Untick it to leave it out.",
+    "effect": "local"
+   },
+   "#pvBuild select.pb-tier": {
+    "what": "Picks the ZIA security baseline tier: Strict, Balanced, Permissive or Healthcare zero trust.",
+    "input": "Pick one from the list. The vertical preset picks it first.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-enable": {
+    "what": "Creates the new rules or segments enabled instead of disabled. Off by default: nothing changes for users until you turn them on.",
+    "input": "Tick it only if the customer agreed to enforce now.",
+    "effect": "local"
+   },
+   "#pvBuild select.pb-platform": {
+    "what": "Picks the platform the Client Connector app profile is for.",
+    "input": "Pick Windows or macOS.",
+    "effect": "local"
+   },
+   "#pvBuild select.pb-mode": {
+    "what": "Picks what the AI Guard detection policy does: Monitor only detects, Block stops the prompt.",
+    "input": "Pick Monitor (the default) or Block.",
+    "effect": "local"
+   },
+   "#pvBuild button.pb-choices": {
+    "what": "Reads the certificates and rules this part can pick from. It changes nothing.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#pvBuild select.pb-cert": {
+    "what": "Picks the certificate this part uses.",
+    "input": "Pick one from the list. Load the choices from the tenant first.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-rule": {
+    "what": "Picks an SSL Inspect rule to move to the picked certificate.",
+    "input": "Tick each rule to move.",
+    "effect": "local"
+   },
+   "#pvBuild details.pb-json > summary": {
+    "what": "Shows the part exactly as it is sent, to change any option the form does not show.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#pvBuild textarea.pb-json-text": {
+    "what": "The part as it is sent to its builder. Every builder checks it again when it plans.",
+    "input": "Optional. A JSON object; leave it as it is unless you know the option.",
+    "effect": "local"
+   },
+   "#pbPreview": {
+    "what": "Plans every ticked part as one dry run: a section per product, every object before and after, one plan hash. Nothing is written.",
+    "input": "Tick at least one part first.",
+    "effect": "read"
+   },
+   "#pvBuild details.pb-prev-part > summary": {
+    "what": "Shows or hides every object this part changes, with its value before and after.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#pbAssessor": {
+    "what": "Names the assessor. Every change record and every object the build creates names them.",
+    "input": "Required to apply. A name, like Jane Doe, Zscaler DS Engineer.",
+    "effect": "local"
+   },
+   "#pbPhrase": {
+    "what": "Confirms the whole build with one phrase.",
+    "input": "Type the phrase shown, like APPLY 12 POV CHANGES.",
+    "effect": "confirm"
+   },
+   "#pbAgree": {
+    "what": "Says you reviewed the dry run and the customer agreed to it.",
+    "input": "Tick it to allow Apply.",
+    "effect": "local"
+   },
+   "#pbGo": {
+    "what": "Applies every part in order, each read again right before it is written, read back and recorded with its Undo. Stops at the first part that does not apply.",
+    "input": "Needs write mode on, a named assessor, the review box and the typed phrase.",
+    "effect": "write"
+   },
+   "#pvBuild button.pb-key": {
+    "what": "Shows the provisioning key the build just created for the App Connectors. It is shown once and never kept by this app.",
+    "input": "Nothing to type. Just click it, then copy the key.",
+    "effect": "local"
+   },
+   "#pvBuild input.pb-key-value": {
+    "what": "The new provisioning key, to enroll the App Connectors with. Copy it now: it is not shown again.",
+    "input": "Read only. Select it and copy it.",
+    "effect": "local"
+   },
+   "#pvBuild button.pb-undo-build": {
+    "what": "Plans the Undo of what this build applied, latest part first, as one dry run. Nothing is written until you confirm it.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
    },
    "#pvPlan details.pv-sec > summary": {
     "what": "Shows or hides the intake form, so you can change it.",
