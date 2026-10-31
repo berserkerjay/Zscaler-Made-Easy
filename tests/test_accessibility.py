@@ -412,7 +412,8 @@ BROWSER_THEMES = ("dark", "light")
 # Pages that start a job or a read: their progress and result are announced.
 JOB_PAGES = {"/report/audit", "/report/browser", "/report/device-posture", "/report/digest", "/report/fleet", "/report/insights",
              "/report/live", "/report/logs", "/report/operations", "/report/path", "/report/pov", "/report/shadow",
-             "/report/sslcoverage", "/report/zpa", "/report/exports", "/report/self-heal", "/report/posture", "/simple"}
+             "/report/sslcoverage", "/report/zpa", "/report/exports", "/report/self-heal", "/report/posture", "/simple",
+             "/report/other-products"}
 
 PAGE_AUDIT = r"""(() => {
   // Inside a closed <details> only the summary is shown (Chrome still gives the hidden content a box).
