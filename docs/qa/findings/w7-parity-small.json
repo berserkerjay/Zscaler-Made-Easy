@@ -24,5 +24,5 @@
   "Assumed (marked in ops_zpa_fields.py and url_tools.py): a PUT keeps a PRA or inspection segment's applications when it carries no commonAppsDto; sending a Browser Access segment's clientlessApps back as read is safe; the ICMP access values; a segment needs a port range and a server group, an application's port stays inside the TCP ranges, one domain is never in two segments on overlapping ports; a segment shared from another microtenant is changed only there; /urlLookup falls under ZIA's POST limit of 400 an hour.",
   "The Endpoint DLP pack retired on 2026-09-11 is not restored; the reason and the replacement are on the pack library page and in POLICY_PACKS.md, for the owner to confirm."
  ],
- "tests_added": 49
+ "tests_added": 45
 }
