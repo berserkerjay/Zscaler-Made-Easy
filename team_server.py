@@ -294,7 +294,12 @@ def public_user(u: Dict[str, Any]) -> Dict[str, Any]:
             "needs_password_reset": bool(store_crypto.fips_mode() and str(u.get("password") or "").startswith("scrypt$")),
             "locked": float(u.get("locked_until") or 0) > now,
             "locked_until": u.get("locked_until") if float(u.get("locked_until") or 0) > now else None,
-            "failed_logins": int(u.get("failed") or 0), "sso_linked": bool(u.get("oidc_sub"))}
+            "failed_logins": int(u.get("failed") or 0), "sso_linked": bool(u.get("oidc_sub") or u.get("saml_sub")),
+            "saml_linked": bool(u.get("saml_sub")),
+            "passkeys": [{"id": str(k.get("id") or "")[:24] + ("…" if len(str(k.get("id") or "")) > 24 else ""),
+                          "key": str(k.get("id") or ""), "name": k.get("name") or "", "created": k.get("created"),
+                          "last_used": k.get("last_used"), "backed_up": bool(k.get("backed_up"))}
+                         for k in (u.get("passkeys") or []) if isinstance(k, dict)]}
 
 
 def list_users() -> List[Dict[str, Any]]:
@@ -895,15 +900,54 @@ def link_oidc(claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
-def start_session(user: Dict[str, Any], *, via: str, previous_sid: Optional[str] = None, token_groups: Iterable[str] = ()) -> str:
+def link_saml(claims: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The account a verified SAML sign-in (sso_saml.verify_response)
+    belongs to: the one already linked to this identity provider's NameID,
+    else the one whose user name or email is the asserted email (then linked
+    to the NameID). None: no account, it is turned off, or it is linked to
+    another NameID. The email comes from the signed assertion of the one
+    configured identity provider, so it is that provider's statement."""
+    issuer, sub = str(claims.get("issuer") or ""), str(claims.get("sub") or "")
+    if not issuer or not sub:
+        return None
+    link = f"{issuer}!{sub}"[:600]
+    data = _read()
+    for u in data["users"].values():
+        if isinstance(u, dict) and u.get("saml_sub") == link:
+            return u if u.get("active") else None
+    email = normalize_username(claims.get("email"))
+    if not email:
+        return None
+    for u in data["users"].values():
+        if isinstance(u, dict) and (normalize_username(u.get("username")) == email or (u.get("email") or "") == email):
+            if not u.get("active") or (u.get("saml_sub") and u.get("saml_sub") != link):
+                return None
+            with _LOCK:
+                d2 = _read()
+                rec = d2["users"].get(u["id"])
+                if isinstance(rec, dict):
+                    rec["saml_sub"] = link
+                    _write(d2)
+            _audit("team_saml_linked", actor=u.get("username"), user=u.get("username"))
+            return get_user(u["id"])
+    return None
+
+
+def start_session(user: Dict[str, Any], *, via: str, previous_sid: Optional[str] = None, token_groups: Iterable[str] = (),
+                  max_seconds: Optional[float] = None) -> str:
     """A fresh session for `user` (rotation: the browser's earlier session,
-    if any, ends here). Returns the new random id, the cookie's only content."""
+    if any, ends here). Returns the new random id, the cookie's only content.
+    `max_seconds` can only shorten the server's own absolute limit (a SAML
+    SessionNotOnOrAfter)."""
     import sso
     if previous_sid:
         sso.end_session(previous_sid)
+    limit = session_seconds()
+    if max_seconds is not None and math.isfinite(max_seconds):
+        limit = max(60, min(limit, int(max_seconds)))
     return sso.create_session({"sub": user.get("id"), "email": user.get("email") or None},
                               team_user=user.get("id"), via=via, groups=list(token_groups or ()),
-                              idle=idle_seconds(), max_seconds=session_seconds())
+                              idle=idle_seconds(), max_seconds=limit)
 
 
 def _end_sessions(uid: str) -> None:

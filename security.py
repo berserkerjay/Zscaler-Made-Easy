@@ -560,6 +560,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _saml_acs_open() -> bool:
+    """SAML sign-in is on and ready on a team server (sso_saml.py)."""
+    try:
+        import sso_saml
+        return _team_on() and sso_saml.enabled() and not sso_saml.config_errors()
+    except Exception:  # noqa: BLE001 - fail closed: the Origin check applies
+        return False
+
+
 class OriginCheckMiddleware(BaseHTTPMiddleware):
     """
     CSRF defense: state-changing requests (POST/PUT/DELETE) from a browser
@@ -587,6 +596,8 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
         return bool(host) and o == f"{request.url.scheme}://{host}"
 
     async def dispatch(self, request: Request, call_next):
+        if request.method == "POST" and request.scope.get("path") == SAML_ACS_PATH and _saml_acs_open():
+            return await call_next(request)
         if request.method not in self.SAFE_METHODS:
             origin = request.headers.get("origin")
             if origin:
@@ -749,7 +760,15 @@ _ui_token: "str | None" = None
 _UI_AUTH_EXEMPT_PREFIXES = ("/static/", "/report/")
 # Team mode adds its own sign-in page and call, and the SCIM endpoint (which
 # checks its own bearer token in team_server.TeamAccessMiddleware).
-_TEAM_EXEMPT_PATHS = {"/login", "/api/auth/team/login"}
+_TEAM_EXEMPT_PATHS = {"/login", "/api/auth/team/login", "/api/auth/team/passkey/options", "/api/auth/team/passkey/login",
+                      "/api/auth/saml/login", "/api/auth/saml/acs", "/api/auth/saml/finish", "/api/auth/saml/metadata"}
+# The SAML assertion consumer service receives the identity provider's
+# cross-site form POST (HTTP-POST binding), so it carries the identity
+# provider's Origin (or "null"). With SAML on (team servers only) it is the
+# one change exempt from OriginCheckMiddleware: it verifies the signed
+# response and signs nobody in by itself; the session is granted only at
+# /api/auth/saml/finish, in the browser holding the sign-in's binding cookie.
+SAML_ACS_PATH = "/api/auth/saml/acs"
 _TEAM_EXEMPT_PREFIX = "/api/scim/v2/"
 _UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/help", "/api/auth/status", "/api/auth/unlock", "/api/ping", "/favicon.ico",
                           "/api/auth/sso/login", "/api/auth/sso/callback", "/api/auth/logout"}
