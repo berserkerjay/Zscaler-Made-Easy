@@ -1,0 +1,17 @@
+[
+ {"id": 1, "serviceArea": "Exchange", "serviceAreaDisplayName": "Exchange Online", "urls": ["outlook.office.com", "outlook.office365.com"],
+  "ips": ["40.96.0.0/13", "52.96.0.0/14", "2603:1006::/40"], "tcpPorts": "80,443", "udpPorts": "443", "expressRoute": true, "category": "Optimize", "required": true},
+ {"id": 10, "serviceArea": "Exchange", "serviceAreaDisplayName": "Exchange Online", "urls": ["*.mail.protection.outlook.com"],
+  "ips": ["40.92.0.0/15", "2a01:111:f400::/48"], "tcpPorts": "25", "expressRoute": false, "category": "Allow", "required": true},
+ {"id": 11, "serviceArea": "Skype", "serviceAreaDisplayName": "Skype for Business Online and Microsoft Teams",
+  "ips": ["13.107.64.0/18", "52.112.0.0/14"], "udpPorts": "3478-3481", "expressRoute": true, "category": "Optimize", "required": true},
+ {"id": 31, "serviceArea": "SharePoint", "serviceAreaDisplayName": "SharePoint Online and OneDrive for Business",
+  "urls": ["<tenant>.sharepoint.com", "<tenant>-my.sharepoint.com"], "ips": ["13.107.136.0/22", "2620:1ec:8f8::/46"],
+  "tcpPorts": "443,80", "expressRoute": true, "category": "Optimize", "required": true},
+ {"id": 46, "serviceArea": "Common", "serviceAreaDisplayName": "Microsoft 365 Common and Office Online",
+  "urls": ["*.officeapps.live.com", "*cdn.onenote.net", "autodiscover.*.onmicrosoft.com"], "tcpPorts": "443,80",
+  "expressRoute": false, "category": "Default", "required": true},
+ {"id": 56, "serviceArea": "Common", "serviceAreaDisplayName": "Microsoft 365 Common and Office Online",
+  "urls": ["login.microsoftonline.com", "*.msftidentity.com"], "ips": ["20.190.128.0/18", "40.126.0.0/18"],
+  "tcpPorts": "443,80", "expressRoute": true, "category": "Allow", "required": true, "notes": "Identity"}
+]

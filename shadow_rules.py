@@ -399,9 +399,10 @@ def _field_covers(mode: str, fields: List[str], a: Dict[str, Any], b: Dict[str, 
 
 def covers(a: Dict[str, Any], b: Dict[str, Any]) -> Tuple[bool, str]:
     """(True, "") when every transaction rule `b` matches is matched by
-    rule `a` too, judged on criteria only (not state, order or action).
-    (False, why) otherwise; why names the first criterion that is not
-    covered or could not be compared."""
+    rule `a` too, judged on criteria only (not state, order or action);
+    (True, how) when that rests on Microsoft's published Microsoft 365
+    endpoint list (_app_service_covers). (False, why) otherwise; why names
+    the first criterion that is not covered or could not be compared."""
     if a["sig"] == b["sig"] and not a.get("hidden_criteria") and not b.get("hidden_criteria"):
         return True, ""   # the same criteria, whatever they mean
     if a.get("hidden_criteria") or b.get("hidden_criteria"):
@@ -409,12 +410,109 @@ def covers(a: Dict[str, Any], b: Dict[str, Any]) -> Tuple[bool, str]:
     if a["unknown"] or b["unknown"]:
         names = sorted(set(a["unknown"]) | set(b["unknown"]))
         return False, "cannot compare " + ", ".join(names)
+    how = ""
     for mode, fields in SPECS.get(a["policy"], []):
         if not _field_covers(mode, fields, a["criteria"], b["criteria"]):
+            if a["policy"] == "firewall" and fields == APP_SERVICE_FIELDS:
+                ok, how = _app_service_covers(a, b)
+                if ok:
+                    continue
             return False, "/".join(fields)
     if not SPECS.get(a["policy"]):
         return False, "not compared for this policy type"
-    return True, ""
+    return True, how
+
+
+# ── App service groups (app_services): an earlier Cloud Firewall rule on
+# a Microsoft 365 app service group (the Office 365 One Click rule) covers
+# a later rule only when every destination the later rule names is a
+# published Microsoft 365 endpoint on every port it allows, by a current
+# list; the later rule's ports come from the network services read with
+# the rules. Anything else: not covered (never a guess).
+APP_SERVICE_FIELDS = ["appservices", "appservicegroups"]
+
+
+def _app_list() -> Any:
+    return getattr(_MEMO, "app_list", None)
+
+
+def _app_rule(crit: Dict[str, Any]) -> Dict[str, Any]:
+    return {"appServiceGroups": crit.get("appservicegroups") or [], "appServices": crit.get("appservices") or []}
+
+
+def _m365_only(r: Dict[str, Any]) -> bool:
+    """Every app service the rule names is a Microsoft 365 one (a current list is in use)."""
+    import app_services
+    named = app_services.named(_app_rule(r["criteria"]))
+    return bool(named) and all(app_services.m365_areas(n) is not None for _, n in named)
+
+
+def _ports_of(b: Dict[str, Any]) -> Optional[List[Tuple[str, int, int]]]:
+    """[(tcp|udp, first, last)] the later rule's network services allow, or
+    None when it names none (any port) or one whose ports were not read."""
+    svc = getattr(_MEMO, "services", None)
+    groups = getattr(_MEMO, "service_groups", None)
+    if svc is None:
+        return None
+    tokens = set(_tokens(b["criteria"].get("nwservices")))
+    for g in _tokens(b["criteria"].get("nwservicegroups")):
+        if groups is None or g not in groups:
+            return None
+        tokens |= groups[g]
+    if not tokens:
+        return None
+    out: List[Tuple[str, int, int]] = []
+    for t in tokens:
+        if t not in svc or not svc[t]:
+            return None
+        out += svc[t]
+    return out
+
+
+def _app_service_covers(a: Dict[str, Any], b: Dict[str, Any]) -> Tuple[bool, str]:
+    import app_services
+    bc = b["criteria"]
+    if _tokens(bc.get("appservices")) or _tokens(bc.get("appservicegroups")):
+        return False, "app services"
+    if any(_tokens(bc.get(f)) for f in ("destipcategories", "destcountries", "destipgroups")):
+        return False, "destination groups, categories or countries"
+    dests = [str(_token(x) or "") for x in (bc.get("destaddresses") or []) if not isinstance(x, dict)]
+    return app_services.covers(_app_rule(a["criteria"]), dests, _ports_of(b), _app_list())
+
+
+def _service_index(services: Optional[Iterable[Any]], groups: Optional[Iterable[Any]]) -> None:
+    """Network services by id and name -> their destination port ranges;
+    groups -> their services' ids and names. Unread: None (no coverage)."""
+    if services is None:
+        _MEMO.services = _MEMO.service_groups = None
+        return
+    svc: Dict[str, List[Tuple[str, int, int]]] = {}
+    for s in services:
+        if not isinstance(s, dict):
+            continue
+        ranges: List[Tuple[str, int, int]] = []
+        for proto, key in (("tcp", "destTcpPorts"), ("udp", "destUdpPorts")):
+            for p in s.get(key) or s.get(re.sub(r"(?<!^)(?=[A-Z])", "_", key).lower()) or []:
+                lo = p.get("start") if isinstance(p, dict) else p
+                hi = (p.get("end") if isinstance(p, dict) else None) or lo
+                try:
+                    lo, hi = int(lo), int(hi)
+                except (TypeError, ValueError):
+                    ranges = []
+                    break
+                ranges.append((proto, lo, hi))
+        for k in ("id", "name"):
+            if s.get(k) not in (None, ""):
+                svc[str(s[k])] = ranges
+    _MEMO.services = svc
+    gi: Dict[str, set] = {}
+    for g in groups or []:
+        if isinstance(g, dict):
+            members = {str(_token(x)) for x in g.get("services") or [] if _token(x) is not None}
+            for k in ("id", "name"):
+                if g.get(k) not in (None, ""):
+                    gi[str(g[k])] = members
+    _MEMO.service_groups = gi if groups is not None else None
 
 
 def is_catch_all(a: Dict[str, Any], b: Optional[Dict[str, Any]] = None) -> bool:
@@ -592,8 +690,13 @@ class _CoverIndex:
             self.by_sig.setdefault(r["sig"], []).append(r)
         policy = rules[0]["policy"] if rules else ""
         self.dims: List[Tuple[Callable[[Dict[str, Any]], List[Any]], List[Dict[str, Any]], Dict[Any, List[Dict[str, Any]]]]] = []
+        m365 = policy == "firewall" and _app_list() is not None and not _app_list().stale()
         for mode, fields in SPECS.get(policy, []):
-            if mode in ("group", "noany"):
+            if m365 and fields == APP_SERVICE_FIELDS:
+                # A rule on Microsoft 365 app services may cover a rule
+                # without them (_app_service_covers): wild on this dimension.
+                self._dim(rules, lambda r, fs=tuple(fields): [] if _m365_only(r) else [(f, t) for f in fs for t in _tokens(r["criteria"].get(f))])
+            elif mode in ("group", "noany"):
                 self._dim(rules, lambda r, fs=tuple(fields): [(f, t) for f in fs for t in _tokens(r["criteria"].get(f))])
         if policy in DLP_POLICIES:
             self._dim(rules, _content_keys, wild=lambda r: bool(r["criteria"].get("withoutcontentinspection")))
@@ -679,9 +782,10 @@ def _first_match(rules: List[Dict[str, Any]], mode_note: str = "", ranked: bool 
                                     f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) {above_it} matches all traffic and {_verb(a)}{mode_note}.",
                                     f"Move the rules that should apply above the catch-all rule '{a['name']}' and keep it last, or delete '{b['name']}'.", a))
                 break
-            ok, _why = covers(a, b)
+            ok, how = covers(a, b)
             if not ok:
                 continue
+            via = f": {how}" if how else ""
             same_action = (a.get("action") == b.get("action")) if b["policy"] != "cloud_app_control" else (_activities(a) == _activities(b))
             if a["sig"] == b["sig"] and same_action:
                 out.append(_finding(b, "duplicate", "low",
@@ -689,8 +793,9 @@ def _first_match(rules: List[Dict[str, Any]], mode_note: str = "", ranked: bool 
                                     f"Delete '{b['name']}'; '{a['name']}' already does the same thing.", a))
             else:
                 out.append(_finding(b, "shadowed", _severity(a, b),
-                                    f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) {above_it} matches everything it does and {_verb(a)}{mode_note}.",
-                                    f"Move '{b['name']}' above '{a['name']}' if it should apply, narrow '{a['name']}' so it no longer covers it, or delete '{b['name']}'.", a))
+                                    f"Rule '{b['name']}' can never match: rule '{a['name']}' ({_o(a)}) {above_it} matches everything it does and {_verb(a)}{mode_note}{via}.",
+                                    f"Move '{b['name']}' above '{a['name']}' if it should apply, narrow '{a['name']}' so it no longer covers it, or delete '{b['name']}'.", a,
+                                    **({"via": how} if how else {})))
             break
     return out
 
@@ -874,19 +979,38 @@ def _rank_note(setting: Any, policy: str, found: List[Dict[str, Any]]) -> str:
             + ", so rule order is used; a finding that depends on it says so.")
 
 
+_UNSET = object()
+
+
 def analyse(rules_by_policy: Dict[str, List[Dict[str, Any]]], *, web_dlp_mode: str = MODE_UNKNOWN,
             engines: Optional[Iterable[Any]] = None, categories: Optional[Iterable[Any]] = None,
-            admin_ranking: Any = None) -> Dict[str, Any]:
+            admin_ranking: Any = None, app_list: Any = _UNSET, network_services: Optional[Iterable[Any]] = None,
+            network_service_groups: Optional[Iterable[Any]] = None) -> Dict[str, Any]:
     """Pure: raw rules per policy key (POLICIES) → {findings, counts_by_policy,
     notes}. `engines` / `categories`: the tenant's DLP engines and URL
     categories (dicts or ids) when they were read completely, else None
     (no missing-reference claim). `admin_ranking`: the admin ranking
-    setting (admin_rank.read), None when it was not read. Never reads a tenant."""
+    setting (admin_rank.read), None when it was not read. `app_list`:
+    Microsoft's Microsoft 365 endpoint list (app_services.current(); left
+    out: the one kept on disk) and the Cloud Firewall's network services
+    and groups, for rules on Microsoft 365 app service groups. Never reads
+    a tenant."""
+    if app_list is _UNSET:
+        import app_services
+        app_list = app_services.current()
     _MEMO.tokens = {}
+    _MEMO.app_list = app_list
+    _service_index(network_services, network_service_groups)
     try:
-        return _analyse(rules_by_policy, web_dlp_mode, engines, categories, admin_ranking)
+        res = _analyse(rules_by_policy, web_dlp_mode, engines, categories, admin_ranking)
+        if any(f.get("via") for f in res["findings"]) and app_list is not None:
+            res["notes"]["firewall"] = (res["notes"].get("firewall", "") + " Rules on Microsoft 365 app service groups are compared with "
+                                        f"Microsoft's published endpoint list ({app_list.describe()}).").strip()
+        return res
     finally:
         _MEMO.tokens = None
+        _MEMO.app_list = None
+        _MEMO.services = _MEMO.service_groups = None
 
 
 def _analyse(rules_by_policy: Dict[str, List[Dict[str, Any]]], web_dlp_mode: str, engines: Optional[Iterable[Any]],
@@ -1099,6 +1223,33 @@ def read_policies(client, scope: Dict[str, Any], *, declared_mode: str = "", log
                     continue
                 rules[key] = items
                 say(f"{p['label']} rules: {len(items)} found.")
+            # Cloud Firewall rules on Microsoft 365 app service groups: the
+            # network services and groups say which ports a later rule
+            # allows (_app_service_covers). The same scope as the rules
+            # (ZIA platform), the same endpoints the Path analyzer reads.
+            out["network_services"] = out["network_service_groups"] = None
+            fw = rules.get("firewall") or []
+            import app_services
+            if any(isinstance(r, dict) and app_services.named(r) for r in fw) and app_services.current(client) is not None:
+                say("Reading the network services (to compare rules on Microsoft 365 app service groups)…")
+                got_svc = {}
+                for key_, ep in (("network_services", "/zia/networkServices"), ("network_service_groups", "/zia/networkServiceGroups")):
+                    stop_point()
+                    try:
+                        data, code = client.get(ep)
+                    except Exception as e:  # noqa: BLE001
+                        if data_flow.stop_requested(cancel):
+                            raise Stopped(STOPPED_REASON) from e
+                        data, code = None, 0
+                    items = data if isinstance(data, list) and all(isinstance(x, dict) for x in data) else None
+                    got_svc[key_] = items if code in (200, 204) and (items is not None or code == 204) else None
+                    if code == 204:
+                        got_svc[key_] = []
+                if got_svc.get("network_services") is not None and got_svc.get("network_service_groups") is not None:
+                    out.update(got_svc)
+                    say(f"Network services: {len(got_svc['network_services'])} found.")
+                else:
+                    say("The network services could not be read completely; rules on app service groups are not compared with later rules.")
             out["engines"] = out["categories"] = None
             if any(k in rules for k in DLP_POLICIES):
                 say("Reading the DLP engines (to find rules that name engines that no longer exist)…")
@@ -1137,8 +1288,10 @@ def run(client, scope: Dict[str, Any], *, declared_mode: str = "", log: Optional
     say = log or (lambda m: None)
     got = read_policies(client, scope, declared_mode=declared_mode, log=log, cancel=cancel)
     mode = got.get("mode") or {"web_dlp": MODE_UNKNOWN, "source": "not_in_scope", "detail": ""}
+    import app_services
     res = analyse(got["rules"], web_dlp_mode=mode["web_dlp"], engines=got.get("engines"), categories=got.get("categories"),
-                  admin_ranking=got.get("admin_ranking"))
+                  admin_ranking=got.get("admin_ranking"), app_list=app_services.current(client),
+                  network_services=got.get("network_services"), network_service_groups=got.get("network_service_groups"))
     n = len(res["findings"])
     say(f"Done: {n} finding{'s' if n != 1 else ''} across {len(res['counts_by_policy'])} polic{'ies' if len(res['counts_by_policy']) != 1 else 'y'}.")
     return {"findings": res["findings"], "counts_by_policy": res["counts_by_policy"], "read_errors": got["read_errors"],

@@ -91,7 +91,7 @@ def _forward(method: str) -> Tuple[str, str]:
 UNEVALUATED = (("destCountries", "destination country"), ("destIpCategories", "destination IP category"),
                ("resCategories", "URL category"), ("nwServices", "network service"), ("nwServiceGroups", "network service group"),
                ("nwApplications", "network application"), ("nwApplicationGroups", "network application group"),
-               ("appServiceGroups", "app service group"), ("locations", "location"), ("locationGroups", "location group"),
+               ("locations", "location"), ("locationGroups", "location group"),
                ("timeWindows", "time window"), ("devices", "device"), ("deviceGroups", "device group"),
                ("departments", "department"), ("groups", "group"), ("users", "user"), ("destIpv6Groups", "destination IPv6 group"),
                ("srcIpv6Groups", "source IPv6 group"), ("destWorkloadGroups", "destination workload group"))
@@ -364,6 +364,10 @@ def normalize_rule(r: Dict[str, Any], index: int) -> Dict[str, Any]:
            "proxy_gateway": as_str((get(r, "proxyGateway") or {}).get("name")) if isinstance(get(r, "proxyGateway"), dict) else "",
            "zpa_gateway": as_str((get(r, "zpaGateway") or {}).get("name")) if isinstance(get(r, "zpaGateway"), dict) else "",
            "wan_selection": as_str(get(r, "wanSelection")),
+           # App service groups (app_services): matched with Microsoft's
+           # published Microsoft 365 list when one is kept, else unknown.
+           "app_service_rule": {"appServiceGroups": _seq(get(r, "appServiceGroups"))} if get(r, "appServiceGroups") else None,
+           "app_service_groups": _refs(get(r, "appServiceGroups")),
            "unevaluated": [label for k, label in UNEVALUATED if get(r, k)]}
     return out
 
@@ -470,6 +474,20 @@ def _criteria(r: Dict[str, Any], w: Dict[str, Any], groups: List[Dict[str, Any]]
             state = "match" if (every or _lc(zpa_seg["name"]) in names or _lc(zpa_seg["id"]) in names
                                 or _lc(zpa_seg.get("segment_group_name")) in gnames or _lc(zpa_seg.get("segment_group_id")) in gnames) else "nomatch"
         crit.append({"name": f"ZPA application segment {_names(r['zpa_segments'] + r['zpa_segment_groups'])}", "state": state})
+    if r.get("app_service_rule"):
+        import app_services
+        ip = None
+        if d.get("is_ip"):
+            try:
+                ip = ipaddress.ip_address(str(d["host"]))
+            except ValueError:
+                ip = None
+        c = app_services.criterion(r["app_service_rule"], str(d.get("host") or ""), ip,
+                                   {"protocol": d.get("protocol") or "tcp", "port": d.get("port")},
+                                   snap.get("_app_service_list") if "_app_service_list" in snap else app_services.current())
+        if c is not None:
+            crit.append({"name": f"App service group {_names(r['app_service_groups'])}",
+                         "state": {"no_match": "nomatch"}.get(c["state"], c["state"]), "detail": c["detail"]})
     for label in r["unevaluated"]:
         crit.append({"name": f"{label[0].upper() + label[1:]} (not evaluated)", "state": "unknown"})
     return crit

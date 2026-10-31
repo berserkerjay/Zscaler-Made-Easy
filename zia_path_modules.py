@@ -42,6 +42,12 @@ each module lists the fields it evaluates and the fields known to be
 neutral, and ANY other non-empty field on a rule (one a newer API adds,
 say) is an unknown criterion too, never silently ignored.
 
+App services and app service groups (a Cloud Firewall or DNS Control
+rule's appServices, appServiceGroups: Zscaler-managed, members never
+returned by the API) are matched by app_services against Microsoft's
+published Microsoft 365 endpoint list when one is kept and current
+(m365_endpoints); any other app service, or no current list, is unknown.
+
 Reads (read): only the sections the Scope page puts in scope (the
 `atp`, `firewall`, `dns` and `sandbox` keys of data_flow.PATH_SECTIONS,
 in scope when ZIA platform is ticked), through the assessment client,
@@ -169,8 +175,6 @@ UNEVALUATED: List[Tuple[str, str, str]] = [
     ("platforms", "Platform", "the rule's platform condition is not evaluated"),
     ("workloadGroups", "Workload groups", "workload identity is not part of the trace"),
     ("zpaAppSegments", "ZPA app segments", "ZPA app segments are not evaluated here"),
-    ("appServices", "App services", "app services are not evaluated here"),
-    ("appServiceGroups", "App service groups", "app services are not evaluated here"),
     ("sourceCountries", "Source country", "where the user connects from is not known"),
     ("excludeSrcCountries", "Excluded source countries", "where the user connects from is not known"),
     ("srcIps", "Source IP", "the user's source IP address is not known"),
@@ -1138,6 +1142,31 @@ def _atp(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
                            "No ATP list entry or blocked category matches this destination; ATP lets it through to the next module."))
 
 
+# App services and app service groups (app_services): matched with
+# Microsoft's published Microsoft 365 endpoint list when one is kept and
+# current, else unknown as before.
+APP_SERVICE_FIELDS = ("appServices", "appServiceGroups")
+
+
+def _crit_app_services(r: Dict[str, Any], ctx: Dict[str, Any], check_ports: bool = True) -> Optional[Dict[str, str]]:
+    import app_services
+    return app_services.criterion(r, ctx["host"], ctx["ip"], ctx["traffic"], ctx.get("app_list"), check_ports=check_ports)
+
+
+def _app_service_note(res: Dict[str, Any], rules: List[Dict[str, Any]], ctx: Dict[str, Any]) -> None:
+    """One note naming the list the app service criteria used, when a rule names one."""
+    import app_services
+    if not any(app_services.named(r) for r in rules if isinstance(r, dict)):
+        return
+    lst = ctx.get("app_list")
+    if lst is None:
+        res["notes"].append("App services and app service groups are Zscaler-managed and the API does not return their members; "
+                            "with Microsoft's published Microsoft 365 endpoint list (Advanced settings) the Microsoft 365 ones are evaluated.")
+    else:
+        res["notes"].append(f"Microsoft 365 app services are matched with Microsoft's published endpoint list ({lst.describe()})"
+                            + (": it is stale, so it settles nothing." if lst.stale() else "."))
+
+
 def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     parts = sec.get("parts") or {}
     data = {k: (v.get("data") if v.get("ok") else None) for k, v in parts.items()}
@@ -1147,7 +1176,7 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
 
     def criteria(r):
         return [_crit_source(r, sgroups, ctx.get("source_ip")), _crit_destination(r, ctx, dgroups), _crit_services(r, ctx, fw), _crit_network_apps(r, ctx, fw),
-                ucaas_oneclick.criterion(r, ctx.get("oneclick"))] + unevaluated(r, module="firewall")
+                _crit_app_services(r, ctx), ucaas_oneclick.criterion(r, ctx.get("oneclick"))] + unevaluated(r, module="firewall")
 
     def verdict_of(r):
         a = _action(r, "action", "accessControl")
@@ -1164,6 +1193,7 @@ def _firewall(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     line = ucaas_oneclick.summary(ctx.get("oneclick"))
     if line:
         res["notes"].append(line)
+    _app_service_note(res, data.get("rules") or [], ctx)
     if ctx["traffic"]["web"]:
         res["notes"].append("Web traffic the firewall allows is handed to the web proxy modules below.")
     res["notes"].append("The Cloud Firewall sees non-web traffic only when it is forwarded by Z-Tunnel 2.0 or a GRE/IPsec site tunnel.")
@@ -1200,6 +1230,8 @@ def _dns(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
         apps = _names(_f(r, "applications")) + [f"group {g}" for g in _names(_f(r, "applicationGroups"))]
         if apps:
             out.append(_crit("DNS application", "unknown", f"Applies to {_short(apps, 4)}; ZIA identifies DNS tunnels and applications from the queries themselves."))
+        # The name looked up is compared; a DNS lookup has no web port.
+        out.append(_crit_app_services(r, ctx, check_ports=False))
         return out + unevaluated(r, module="dns")
 
     def verdict_of(r):
@@ -1211,6 +1243,7 @@ def _dns(ctx: Dict[str, Any], sec: Dict[str, Any]) -> Dict[str, Any]:
     if res["verdict"] == "redirect" and res["rule"]:
         res["notes"].append(f"'{res['rule']['name']}' answers the lookup differently ({res['rule']['action']}): the traffic goes where that answer points (for example ZPA), not necessarily on through ZIA.")
     res["notes"].append("DNS Control sees the lookup only when DNS goes through ZIA (Z-Tunnel 2.0, a site tunnel, or ZIA as the resolver).")
+    _app_service_note(res, rules, ctx)
     return res
 
 
@@ -1424,6 +1457,10 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
            # The recorded admin ranking setting (admin_rank): missing in an
            # older kept read, it is unknown, never off.
            "ranking": zia.get("admin_ranking") if isinstance(zia.get("admin_ranking"), dict) else None}
+    # The Microsoft 365 endpoint list the caller chose (path_analyzer passes
+    # app_services.current(client)), else the one kept on disk.
+    import app_services
+    ctx["app_list"] = zia["_app_service_list"] if "_app_service_list" in zia else app_services.current()
     vis, ssl_entry = _visibility(t, traffic)
     ctx["visible"] = vis
     if ssl_entry.get("rule"):
@@ -1493,7 +1530,8 @@ def evaluate(t: Dict[str, Any], dest: Dict[str, Any], traffic: Dict[str, Any], z
         reasons.insert(0, "Routing: whether the device's traffic reaches ZIA could not be verified.")
     certainty = "conditional" if reasons else "definite"
     return {"traffic": traffic, "modifier": ssl_entry, "modules": seq, "stops_at": stop["key"] if stop else None,
-            "certainty": certainty, "reasons": [r.replace("..", ".") for r in reasons]}
+            "certainty": certainty, "reasons": [r.replace("..", ".") for r in reasons],
+            "app_service_list": app_services.summary(ctx["app_list"])}
 
 
 def depends_words(r: Dict[str, Any]) -> str:

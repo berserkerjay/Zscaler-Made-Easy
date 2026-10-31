@@ -43,6 +43,34 @@ window.WHATS_NEW = {
       "marks": [{ "page": "/report/operations", "at": "#zbUcaasH", "shown": "after picking the UCaaS one-click area in the ZIA security baseline" }]
     },
     {
+      "id": "m365-endpoint-list", "release": "2026-10-31", "label": "Microsoft 365 endpoint list",
+      "what": "Microsoft's published list of Microsoft 365 sites and addresses, fetched when you turn it on or imported from a file, so the Office 365 One Click rule is matched instead of unknown.",
+      "changelog": ["Microsoft 365 endpoint list", "Fetch Microsoft's list", "Fetch now", "Import the list from a file", "Remove the list"],
+      "marks": [
+        { "page": "/report/advanced", "at": "a.rp-btn[href=\"#m365\"]" },
+        { "page": "/report/advanced", "at": "#advM365H" },
+        { "page": "/report/advanced", "at": "#advM365On" },
+        { "page": "/report/advanced", "at": "#advM365Fetch" },
+        { "page": "/report/advanced", "at": "#advM365File" },
+        { "page": "/report/advanced", "at": "#advM365Remove" }
+      ]
+    },
+    {
+      "id": "m365-app-services", "release": "2026-10-31", "label": "Microsoft 365 app service groups",
+      "what": "The Path analyzer, its what-if and Test a list match the Office 365 One Click rule's app service group by host name and address, and say why.",
+      "changelog": ["Microsoft 365 app service groups are matched", "Test a list"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]" },
+        { "page": "/report/path", "at": "#tab-list" }
+      ]
+    },
+    {
+      "id": "m365-shadowed", "release": "2026-10-31", "label": "Shadowed rules and the One Click rule",
+      "what": "Shadowed rules finds a later firewall rule whose sites are all Microsoft 365 endpoints, hidden by the Office 365 One Click rule.",
+      "changelog": ["Shadowed rules"],
+      "marks": [{ "page": "/report/shadow", "at": ".rp-hero h1" }]
+    },
+    {
       "id": "live-motion", "release": "2026-10-29", "label": "Live motion",
       "what": "The result shows as a live flow. It stays still under reduced motion, pauses when the tab is hidden, and is said in words too.",
       "changelog": ["Live motion"],

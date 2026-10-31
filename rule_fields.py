@@ -60,7 +60,10 @@ _META = ("id", "name", "order", "rank", "description", "state", "lastModifiedTim
 # ── What each evaluator reads ────────────────────────────────────────
 # url, cac, ssl, ftc, dlp: data_flow.trace with ssl_flow's normalisation
 # and zia_path_modules._generic_criteria; firewall, dns, sandbox, atp:
-# zia_path_modules._firewall, _dns, _sandbox, _atp; zpa: zpa_analysis.
+# zia_path_modules._firewall, _dns, _sandbox, _atp (the firewall's and DNS
+# Control's appServices / appServiceGroups through app_services: matched
+# with Microsoft's published Microsoft 365 endpoint list, else unknown);
+# zpa: zpa_analysis.
 # evaluate_rule (the operands it cannot evaluate are named by operand type).
 EVALUATED: Dict[str, FrozenSet[str]] = {
     # (applications, cloudApplications and cloudAppClasses: data_flow.
@@ -75,9 +78,11 @@ EVALUATED: Dict[str, FrozenSet[str]] = {
                 "action", "protocols"),
     "dlp": _set("urlCategories", "cloudApplications", "protocols", "dlpEngines", "action", "withoutContentInspection"),
     "firewall": _set("srcIps", "srcIpGroups", "srcIpv6Groups", "destAddresses", "destIpCategories", "destCountries", "destIpGroups",
-                     "destIpv6Groups", "nwServices", "nwServiceGroups", "nwApplications", "nwApplicationGroups", "action"),
+                     "destIpv6Groups", "nwServices", "nwServiceGroups", "nwApplications", "nwApplicationGroups", "action",
+                     "appServices", "appServiceGroups"),
     "dns": _set("srcIps", "srcIpGroups", "srcIpv6Groups", "destAddresses", "destIpCategories", "destCountries", "destIpGroups",
-                "destIpv6Groups", "protocols", "dnsRuleRequestTypes", "resCategories", "applications", "applicationGroups", "action"),
+                "destIpv6Groups", "protocols", "dnsRuleRequestTypes", "resCategories", "applications", "applicationGroups", "action",
+                "appServices", "appServiceGroups"),
     "sandbox": _set("urlCategories", "protocols", "fileTypes", "baPolicyCategories", "byThreatScore", "baRuleAction",
                     "firstTimeEnable", "firstTimeOperation"),
     # ATP settings: the category toggles zia_path_modules.ATP_CATEGORIES maps,

@@ -437,7 +437,7 @@ CLASSIC = {
     "reorder_url": lambda st, cl: {"type": "reorder", "policy": "url_filtering",
                                    "order": [r["id"] for r in sorted(st.rows(f"{ZIA}/urlFilteringRules"), key=lambda r: -r["order"])]},
     "reorder_firewall": lambda st, cl: {"type": "reorder", "policy": "firewall",
-                                        "order": [r["id"] for r in sorted((x for x in st.rows(f"{ZIA}/firewallFilteringRules") if not x.get("defaultRule")),
+                                        "order": [r["id"] for r in sorted((x for x in st.rows(f"{ZIA}/firewallFilteringRules") if not x.get("defaultRule") and not x.get("predefined")),
                                                                           key=lambda r: -r["order"])]},
     "urls_add": lambda st, cl: {"type": "url_categories", "action": "add", "target": "CUSTOM_01", "urls": ["new.example.com", "two.example.org"]},
     "urls_remove": lambda st, cl: {"type": "url_categories", "action": "remove", "source": "CUSTOM_01", "urls": ["portal.harborline-logistics.example"]},
