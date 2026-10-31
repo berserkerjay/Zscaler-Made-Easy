@@ -323,8 +323,8 @@ DEVICE_CLEANUP = {"id": 1, "active": 1, "autoRemovalDays": 30, "autoPurgeDays": 
 # ── ZPA ───────────────────────────────────────────────────────────────
 SEGMENT_GROUPS = [{"id": "2101", "name": "Finance apps", "enabled": True, "applications": [{"id": "2201", "name": "Freight billing"}]},
                   {"id": "2102", "name": "All internal (broad)", "enabled": True, "applications": [{"id": "2202", "name": "Everything internal"},
-                                                                                                   {"id": "2203", "name": "Depot jump hosts"},
-                                                                                                   {"id": "2204", "name": "Driver portal"}]}]
+                                                                                                   {"id": "2205", "name": "Depot jump hosts"},
+                                                                                                   {"id": "2206", "name": "Driver portal"}]}]
 SERVER_GROUPS = [{"id": "2301", "name": "Portland data centre", "enabled": True, "dynamicDiscovery": True,
                   "appConnectorGroups": [{"id": "2401", "name": "Portland connectors"}], "applications": [{"id": "2201", "name": "Freight billing"}]},
                  {"id": "2302", "name": "Reno depot servers", "enabled": True, "dynamicDiscovery": True,
@@ -352,12 +352,12 @@ SEGMENTS = [
      "doubleEncrypt": False, "isCnameEnabled": True, "icmpAccessType": "PING"},
     # A Privileged Remote Access segment (RDP to the depot's jump hosts) and a
     # Browser Access segment that drivers open from their own phones.
-    {"id": "2203", "name": "Depot jump hosts", "enabled": True, "domainNames": ["jump.depot.larkspur-freight.example"],
+    {"id": "2205", "name": "Depot jump hosts", "enabled": True, "domainNames": ["jump.depot.larkspur-freight.example"],
      "tcpPortRanges": ["3389", "3389"], "udpPortRanges": [], "segmentGroupId": "2102", "segmentGroupName": "All internal (broad)",
      "serverGroups": [{"id": "2302", "name": "Reno depot servers"}], "bypassType": "NEVER", "healthReporting": "ON_ACCESS",
      "doubleEncrypt": False, "commonAppsDto": {"appsConfig": [{"name": "Depot jump hosts", "appTypes": ["SECURE_REMOTE_ACCESS"]}]},
      "praApps": [{"id": "2213", "name": "Depot jump hosts", "enabled": True}]},
-    {"id": "2204", "name": "Driver portal", "enabled": True, "domainNames": ["drivers.larkspur-freight.example"],
+    {"id": "2206", "name": "Driver portal", "enabled": True, "domainNames": ["drivers.larkspur-freight.example"],
      "tcpPortRanges": ["443", "443"], "udpPortRanges": [], "segmentGroupId": "2102", "segmentGroupName": "All internal (broad)",
      "serverGroups": [{"id": "2301", "name": "Portland data centre"}], "bypassType": "NEVER", "healthReporting": "ON_ACCESS",
      "doubleEncrypt": False, "commonAppsDto": {"appsConfig": [{"name": "Driver portal", "appTypes": ["BROWSER_ACCESS"]}]},
@@ -386,9 +386,9 @@ TIMEOUT_RULES = [{"id": "2951", "name": "Re-authenticate daily", "ruleOrder": "1
                   "reauthIdleTimeout": "1800", "policyType": "2", "conditions": []}]
 # The other ZPA policies, each with a gap the ZPA analysis finds.
 CLIENT_FORWARDING_RULES = [{"id": "2961", "name": "Bypass depot jump hosts", "ruleOrder": "1", "action": "BYPASS", "policyType": "3",
-                            "conditions": [{"id": "c5", "operator": "OR", "operands": [{"id": "o5", "objectType": "APP", "lhs": "id", "rhs": "2203", "name": "Depot jump hosts"}]}]}]
+                            "conditions": [{"id": "c5", "operator": "OR", "operands": [{"id": "o5", "objectType": "APP", "lhs": "id", "rhs": "2205", "name": "Depot jump hosts"}]}]}]
 CAPABILITIES_RULES = [{"id": "2971", "name": "Depot admins file transfer", "ruleOrder": "1", "action": "CHECK_CAPABILITIES",
-                       "conditions": [{"id": "c6", "operator": "OR", "operands": [{"id": "o6", "objectType": "APP", "lhs": "id", "rhs": "2203", "name": "Depot jump hosts"}]}],
+                       "conditions": [{"id": "c6", "operator": "OR", "operands": [{"id": "o6", "objectType": "APP", "lhs": "id", "rhs": "2205", "name": "Depot jump hosts"}]}],
                        "privilegedCapabilities": {"capabilities": ["CLIPBOARD_COPY", "CLIPBOARD_PASTE", "FILE_DOWNLOAD", "INSPECT_FILE_UPLOAD"]}}]
 # The credential rule names the credential by reference only (no secret in the sample).
 CREDENTIAL_RULES = [{"id": "2981", "name": "Depot shared login", "ruleOrder": "1", "action": "INJECT_CREDENTIALS",

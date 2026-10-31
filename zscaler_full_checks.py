@@ -670,29 +670,15 @@ def zpa_14(cl):
 
 # ── ZPA policy completeness (zpa_analysis templates over the same reads) ──
 # Short ZPA paths as dlp_assessment_full_auto._resolve_ep maps them (v1 by
-# default); the list methods behind them are zpa_reader.COLLECTIONS.
-_ZPA_LISTS = {
-    "segments": "/zpa/application", "server_groups": "/zpa/serverGroup", "service_edge_groups": "/zpa/serviceEdgeGroup",
-    "service_edges": "/zpa/serviceEdge", "inspection_profiles": "/zpa/inspectionProfile",
-    "custom_controls": "/zpa/inspectionControls/custom", "business_continuity": "/zpa/businessContinuitySettings",
-    "private_cloud_groups": "/zpa/privateCloudControllerGroup", "private_cloud_controllers": "/zpa/privateCloudController",
-    "policy:access": "/zpa/policySet/rules/ACCESS_POLICY",
-    "policy:client_forwarding": "/zpa/policySet/rules/policyType/CLIENT_FORWARDING_POLICY",
-    "policy:inspection": "/zpa/policySet/rules/policyType/INSPECTION_POLICY",
-    "policy:isolation": "/zpa/policySet/rules/policyType/ISOLATION_POLICY",
-    "policy:redirection": "/zpa/policySet/rules/policyType/REDIRECTION_POLICY",
-    "policy:credential": "/zpa/policySet/rules/policyType/CREDENTIAL_POLICY",
-    "policy:capabilities": "/zpa/policySet/rules/policyType/CAPABILITIES_POLICY",
-    "policy:clientless": "/zpa/policySet/rules/policyType/CLIENTLESS_SESSION_PROTECTION_POLICY",
-}
+# default); the list methods behind them are zpa_reader.COLLECTIONS. Each
+# check names its paths inline, so the Scope map (beacon_scope) sees them.
 _ZPA_PAGE = {"page": 1, "pagesize": 500}   # one page of the documented maximum, as offline_tenant._read_zpa asks
 
 
-def _zpa_lists(cl, keys):
-    """({key: raw list or None}, {key: HTTP code}) for the named lists."""
+def _zpa_lists(cl, eps):
+    """({key: raw list or None}, {key: HTTP code}) for {key: short path}."""
     lists, codes = {}, {}
-    for k in keys:
-        ep = _ZPA_LISTS[k]
+    for k, ep in eps.items():
         d, c = cl.get(ep) if ep == "/zpa/businessContinuitySettings" else cl.get(ep, dict(_ZPA_PAGE))
         codes[k] = c
         if c in (200, 204):
@@ -705,17 +691,17 @@ def _zpa_lists(cl, keys):
     return lists, codes
 
 
-def _zpa_verdict(label, findings, skipped, codes, keys, bp, na=None):
+def _zpa_verdict(label, findings, skipped, codes, eps, bp, na=None):
     """One check result from zpa_analysis findings: FAIL on a high finding,
     REVIEW on others, PASS when assessed and clean, INFO (N/A) when the
     feature answered 404 (not licensed) or `na` says it is not in use."""
     if na:
         return R(R.INFO, f"{label}: N/A — {na}")
-    nf = [k for k in keys if codes.get(k) == 404]
+    nf = [k for k in eps if codes.get(k) == 404]
     if skipped and nf:
-        return R(R.INFO, f"{label}: N/A — the tenant answered 404 for {', '.join(sorted(_ZPA_LISTS[k] for k in nf))}, so the feature is not licensed or not enabled.")
+        return R(R.INFO, f"{label}: N/A — the tenant answered 404 for {', '.join(sorted(eps[k] for k in nf))}, so the feature is not licensed or not enabled.")
     if skipped and not findings:
-        return R(R.INFO, f"{label}: not assessed — {', '.join(sorted(_ZPA_LISTS[k] for k in keys if codes.get(k) not in (200, 204)))} could not be read.")
+        return R(R.INFO, f"{label}: not assessed — {', '.join(sorted(eps[k] for k in eps if codes.get(k) not in (200, 204)))} could not be read.")
     if not findings:
         return R(R.PASS, f"{label}: nothing found." + bp)
     worst = R.FAIL if any(f["severity"] == "high" for f in findings) else R.WARN
@@ -725,9 +711,9 @@ def _zpa_verdict(label, findings, skipped, codes, keys, bp, na=None):
              {"findings": [{k: f[k] for k in ("template", "severity", "object", "reason", "fix")} for f in findings[:50]]})
 
 
-def _zpa_run(cl, keys, ids):
+def _zpa_run(cl, eps, ids):
     import zpa_analysis
-    lists, codes = _zpa_lists(cl, keys)
+    lists, codes = _zpa_lists(cl, eps)
     snap = zpa_analysis.snapshot_from_lists(lists)
     findings, skipped = zpa_analysis.run_templates(snap, ids)
     return snap, findings, skipped, codes
@@ -735,7 +721,7 @@ def _zpa_run(cl, keys, ids):
 
 def zpa_16(cl):
     """ZPA inspection (AppProtection): every web segment inspected, profiles that block, custom controls attached"""
-    keys = ["segments", "policy:inspection", "inspection_profiles", "custom_controls"]
+    keys = {"segments": "/zpa/application", "policy:inspection": "/zpa/policySet/rules/policyType/INSPECTION_POLICY", "inspection_profiles": "/zpa/inspectionProfile", "custom_controls": "/zpa/inspectionControls/custom"}
     snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-IN-01", "ZPA-AS-09", "ZPA-IN-02", "ZPA-IN-03"])
     return _zpa_verdict("AppProtection inspection", f, sk, codes, keys,
                         " Best Practice: inspect every private web application with Zscaler's predefined OWASP controls, monitor first, then block." + _ZPA_GUIDE)
@@ -743,7 +729,7 @@ def zpa_16(cl):
 
 def zpa_17(cl):
     """ZPA client forwarding: no BYPASS of sensitive segments"""
-    keys = ["segments", "policy:client_forwarding"]
+    keys = {"segments": "/zpa/application", "policy:client_forwarding": "/zpa/policySet/rules/policyType/CLIENT_FORWARDING_POLICY"}
     snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-CF-01"])
     return _zpa_verdict("Client forwarding bypass", f, sk, codes, keys,
                         " Best Practice: keep client forwarding on Intercept for every application segment that holds sensitive data; a bypassed segment skips every ZPA access rule." + _ZPA_GUIDE)
@@ -751,7 +737,7 @@ def zpa_17(cl):
 
 def zpa_18(cl):
     """ZPA Privileged Remote Access: capabilities (clipboard, file transfer, recording) and credentials"""
-    keys = ["segments", "policy:capabilities", "policy:credential"]
+    keys = {"segments": "/zpa/application", "policy:capabilities": "/zpa/policySet/rules/policyType/CAPABILITIES_POLICY", "policy:credential": "/zpa/policySet/rules/policyType/CREDENTIAL_POLICY"}
     snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-PR-01", "ZPA-PR-02", "ZPA-PR-03"])
     pra = [s for s in snap.get("segments") or [] if (s.get("flags") or {}).get("pra")]
     in_use = pra or (snap["policies"].get("capabilities") or []) or (snap["policies"].get("credential") or [])
@@ -762,7 +748,7 @@ def zpa_18(cl):
 
 def zpa_19(cl):
     """ZPA redirection policy: Private Service Edge groups that can serve"""
-    keys = ["policy:redirection", "service_edge_groups", "service_edges"]
+    keys = {"policy:redirection": "/zpa/policySet/rules/policyType/REDIRECTION_POLICY", "service_edge_groups": "/zpa/serviceEdgeGroup", "service_edges": "/zpa/serviceEdge"}
     snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-RD-01"])
     na = "no redirection rule, so every client uses the public ZPA cloud." if snap["policies"].get("redirection") == [] else None
     return _zpa_verdict("Redirection policy", f, sk, codes, keys,
@@ -771,7 +757,7 @@ def zpa_19(cl):
 
 def zpa_20(cl):
     """ZPA Browser Access from unmanaged devices: isolation and browser protection"""
-    keys = ["segments", "policy:access", "policy:isolation", "policy:clientless"]
+    keys = {"segments": "/zpa/application", "policy:access": "/zpa/policySet/rules/ACCESS_POLICY", "policy:isolation": "/zpa/policySet/rules/policyType/ISOLATION_POLICY", "policy:clientless": "/zpa/policySet/rules/policyType/CLIENTLESS_SESSION_PROTECTION_POLICY"}
     snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-IS-01", "ZPA-BP-01"])
     ba = [s for s in snap.get("segments") or [] if (s.get("flags") or {}).get("browser_access")]
     na = None if ba or snap.get("segments") is None else "no Browser Access segment, so no unmanaged-device access to protect."
@@ -781,7 +767,7 @@ def zpa_20(cl):
 
 def zpa_21(cl):
     """ZPA business continuity and Private Cloud Controllers"""
-    keys = ["business_continuity", "private_cloud_groups", "private_cloud_controllers"]
+    keys = {"business_continuity": "/zpa/businessContinuitySettings", "private_cloud_groups": "/zpa/privateCloudControllerGroup", "private_cloud_controllers": "/zpa/privateCloudController"}
     snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-PC-01", "ZPA-BC-01"])
     na = None
     if snap.get("business_continuity") == [] and snap.get("private_cloud_groups") in ([], None):

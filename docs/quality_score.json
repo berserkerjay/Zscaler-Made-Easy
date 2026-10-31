@@ -275,15 +275,16 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 120,
-            "accepted": 3,
+            "fixed": 122,
+            "accepted": 4,
             "records": [
               "c6-assessment",
               "c6-checks",
               "c6-path",
               "c6-posture",
               "c6-zpa",
-              "func-path"
+              "func-path",
+              "w8-zpa-policy"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 582,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -450,27 +451,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 158,
+        "fixed": 159,
         "accepted": 0
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 338,
         "accepted": 0
       },
       "info": {
         "open": 1,
         "fixed": 48,
-        "accepted": 22
+        "accepted": 23
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 314,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8625
   },
   "findings": [
     {
@@ -840,6 +841,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W8-ZPA-03",
+      "title": "The policy-group model (policy_group, policy_group_rule, policy_group_set) is not read",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "Left out on purpose until the model is documented; the reader's docstring and a test say so.",
+      "test": "tests/test_zpa_policy_completeness.py::test_every_policy_type_and_new_list_is_read_with_list_methods_only",
+      "commit": "ac75d3f",
+      "reason": "",
+      "slug": "w8-zpa-policy",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -3576,6 +3593,22 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W8-ZPA-01",
+      "title": "Only five of the SDK's ZPA policy types were read: redirection, privileged credential and capabilities, and browser protection policies were never assessed",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "zpa_reader reads every policy type the SDK's PoliciesAPI.POLICY_MAP lists except the portal, VPN and SIEM policies; ten templates and six assessment checks judge them.",
+      "test": "tests/test_zpa_policy_completeness.py::test_every_policy_type_and_new_list_is_read_with_list_methods_only",
+      "commit": "ac75d3f",
+      "reason": "",
+      "slug": "w8-zpa-policy",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     },
     {
       "id": "C6-ADMIN-OPS-04",
@@ -8970,6 +9003,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W8-ZPA-02",
+      "title": "A server group listing its servers only through the application server list was called empty (ZPA-SV-01) and served by 0 servers in a diagnosis",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V11.1.4",
+      "wcag": "",
+      "fix": "Servers are counted from the group, else from the application server list (each server names its groups).",
+      "test": "tests/test_zpa_policy_completeness.py::test_a_server_group_listing_no_servers_counts_them_from_the_server_list",
+      "commit": "ac75d3f",
+      "reason": "",
+      "slug": "w8-zpa-policy",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -10634,6 +10683,20 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w8-zpa-policy",
+      "area": "zpa-policy",
+      "title": "ZPA policy completeness: every ZPA policy type, AppProtection and the infrastructure behind the diagnostics",
+      "standards": [
+        "ASVS 4.0.3 L2 V1.4, V1.14, V4.1, V5.1, V7.1, V7.4, V8.3",
+        "OWASP Top 10 2021 A01, A04, A05",
+        "WSTG ATHZ-02, ATHZ-03, CONF-01, CONF-05, ERRH-01, INFO-05, INPV-12",
+        "CWE-200, CWE-284, CWE-312, CWE-693, CWE-754, CWE-778, CWE-1164, CWE-1188"
+      ],
+      "checks": 11,
+      "findings": 3,
+      "tests_added": 23
     }
   ],
   "standards": {
@@ -10887,7 +10950,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 57,
+    "wstg": 58,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",
