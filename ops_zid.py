@@ -69,7 +69,8 @@ def in_scope(scope: Dict[str, Any]) -> Optional[str]:
 
 
 def _zid(sdk: Any) -> Any:
-    z = getattr(sdk, "zid", None)
+    # The SDK client names the service both ways (oneapi_client.Client.zidentity and .zid).
+    z = getattr(sdk, "zidentity", None) or getattr(sdk, "zid", None)
     if z is None:
         raise ao.OperationError("This sign-in has no ZIdentity API. Sign in with a OneAPI API client.")
     return z
@@ -177,8 +178,11 @@ def plan(client: Any, spec: Any, scope: Dict[str, Any], say: Callable[[str], Non
     gid = spec["group"]
     say("Reading the group…")
     gbody, gerr = sdk_read.call(_zid(client).groups.get_group, gid)
-    if gerr or not isinstance(gbody, dict):
-        raise ao.OperationError(f"The group could not be read: {gerr or 'no such group'}.")
+    if gerr or not isinstance(gbody, dict) or not gbody:
+        # A blocked preview, not an error: the page shows why and nothing can be applied.
+        why = f"The group could not be read: {gerr or 'no such group'}."
+        return {"type": TYPE, "product": PRODUCT, "title": "Group members", "spec": spec, "items": [], "groups": [],
+                "blockers": [why], "warnings": [], "notes": [], "confirm_always": ""}
     gname = _txt(gbody.get("name") or gid, 128)
     say("Reading its members…")
     members, merr = read_members(client, gid, cancel)

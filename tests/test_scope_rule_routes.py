@@ -219,6 +219,7 @@ AIGUARD = page(["aiguard"])                                  # AI Guard only
 AUTOMATION = page(["automation"])
 ZDX = page(["zdx"])
 ZTW = page(["ztw"])
+ZIDENTITY = page(["zidentity"])
 
 # What each partial selection leaves out: a read naming any of these is out of scope.
 OTHER_DLP = ("endpoint_dlp_rules", "outbound_email_dlp_rules", "casb_dlp_rules", "saas_security_api", "casb_tenant",
@@ -237,6 +238,7 @@ ZDX_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "zidentity
 AIG_ZIA_OUT = tuple(x for x in ZIA_OUT if x != "aiguard.")   # ZIA platform and AI Guard both ticked
 AIGUARD_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
 ZTW_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.")
+ZIDENTITY_OUT = ("zia.", "/zia/", "zpa.", "zcc.", "/zcc/", "zdx.", "/zdx/", "zins.", "zwa.")
 AUTOMATION_OUT = ("zia.", "zpa.", "zcc.", "/zcc/", "zins.", "zwa.", "/zia/webDlpRules", "/zia/urlFilteringRules")
 
 
@@ -403,6 +405,13 @@ ROUTES: List[Route] = [
     Route("/api/zdx/analysis/stop", {"analysis_id": "90001", "confirm": True}, partial=None),   # a write: refused before sign-in only
     Route("/api/zcc/device-details", {"udid": "LKF-WIN-0001"}, partial=ZCC, out=ZCC_OUT),
     Route("/api/zcc/disable-reasons", partial=ZCC, out=ZCC_OUT),
+    # ZIdentity group members (ops_zid) and Client Connector live changes (ops_zcc_live): plugin families on the same engine
+    Route("/api/operations/objects", {"family": "zid_groups"}, partial=ZIDENTITY, out=ZIDENTITY_OUT),
+    Route("/api/operations/preview", {"operation": {"type": "zid_group_members", "group": "g-33", "add": ["a@example.com"]}},
+          partial=ZIDENTITY, out=ZIDENTITY_OUT),
+    Route("/api/operations/objects", {"family": "zcc_app_profile_live"}, partial=ZCC, out=ZCC_OUT),
+    Route("/api/operations/preview/start", {"operation": {"type": "zcc_app_profile_state", "targets": [{"id": "1", "platform": "windows", "to": "off"}]}},
+          partial=ZCC, out=ZCC_OUT),
     # The ZPA builder (ops_zpa): plugin types and their pick lists on the same routes
     Route("/api/operations/objects", {"family": "zpa_objects"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/operations/preview/start", {"operation": {"type": "zpa_policies", "prefix": "pov1", "access": True}}, partial=ZPA, out=ZPA_OUT),
