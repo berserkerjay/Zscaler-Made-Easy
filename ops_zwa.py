@@ -50,7 +50,11 @@ _SAFE_NOTE = re.compile(r"[^\w .,;:()'/@+-]")
 def in_scope(scope: Dict[str, Any]) -> Optional[str]:
     """DLP ticked and Workflow Automation marked Zscaler on the Scope page."""
     import continuous_eval
-    sc = continuous_eval.profile_scope({"scopes": scope.get("scopes") or [], "channels": scope.get("channels") or {}})
+    import dlp_analysis
+    scopes = [str(x) for x in scope.get("scopes") or []]
+    # As the Detection health read decides (dlp_analysis.channels): with DLP ticked, Workflow Automation is
+    # required evidence and counts as Zscaler unless the Scope page marks it as another product.
+    sc = continuous_eval.profile_scope({"scopes": scopes, "channels": dlp_analysis.channels(scope.get("channels") or {}, scopes)})
     if not sc["dlp"] or not sc["read_incidents"]:
         return ("Closing Workflow Automation incidents is not in scope: on the Scope page tick DLP and mark Workflow Automation as run "
                 "on Zscaler. Nothing was read.")

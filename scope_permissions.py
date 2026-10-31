@@ -54,6 +54,8 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/incidentReceiverServers",
             "/zia/idmprofile",
             "/zia/dlpExactDataMatchSchemas",
+            "/zwa/dlp/v1/incidents/search and /zwa/dlp/v1/customer/audit (POST reads; only when Workflow Automation is marked Zscaler)",
+            "/zwa/dlp/v1/incidents/{id}, /triggers, /change-history, /tickets (incident drill-down; never /evidence)",
         ],
         "license_required": "Standard ZIA license. EDM/IDM features require Advanced DLP add-on.",
         "customer_id_needed": False,
@@ -319,10 +321,11 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
 
     "aiguard": {
         "label": "AI Guard",
-        "description": "Zscaler AI Guard: whether it is licensed and reachable, and the Bulk changes builders that route GenAI apps through it and turn a compliance profile into an AI Guard detection policy. Not part of the assessment's checks.",
+        "description": "Zscaler AI Guard: whether it is licensed and reachable, six scored assessment checks (AIG.1 to AIG.6: detection policy in use, prompt injection, block mode, answers inspected, stored prompts encrypted, application credentials), the AI Guard page (policies, match rules, LLM applications, credential metadata and Test a prompt with synthetic prompts) and the Bulk changes builders that route GenAI apps through it and turn a compliance profile into an AI Guard detection policy.",
         "service": "AI Guard (OneAPI) and ZIA",
         "permissions_read": [
-            "AI Guard: detection policies, policy match rules and LLM providers (read)",
+            "AI Guard: detection policies, policy match rules, LLM providers, LLM applications and LLM application credentials (read; credential metadata only)",
+            "Test a prompt only: an AI Guard API key in the server's AIGUARD_API_KEY (policy detection is not on OneAPI)",
             "ZIA: proxies and proxy gateways, root certificates, forwarding control (read; ZIA platform ticked)",
         ],
         "permissions_write": [
@@ -330,6 +333,8 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         ],
         "endpoints_used": [
             "/aiguard/v1/detections/policies", "/aiguard/v1/detections/policy-match-rules", "/aiguard/v1/llm-providers",
+            "/aiguard/v1/llm-applications", "/aiguard/v1/llm-application-credentials",
+            "/v1/detection/execute-policy at api.<cloud>.zseclipse.net (Test a prompt, synthetic prompts only)",
             "/zia/api/v1/proxies", "/zia/api/v1/proxyGateways", "/zia/api/v1/rootCertificates (assumed path)", "/zia/api/v1/forwardingRules",
         ],
         "license_required": "An AI Guard subscription linked to the ZIA tenant (Zscaler Support links them); GenAI prompt capture in ZIA needs the Gen AI Security subscription.",
