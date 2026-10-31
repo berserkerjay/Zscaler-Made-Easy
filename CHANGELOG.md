@@ -21,6 +21,7 @@ lists what each batch of changes did, newest first.
   - **DNS gateway failover**: no secondary resolver (fail when the gateway also answers with an error).
 - **Forwarding control step.** The Path analyzer's last ZIA step: the ZIA forwarding rule that decides how allowed traffic is sent on (direct, proxy chaining, ZPA, a dedicated egress IP, or dropped, which ends the path as blocked), every criterion as match, no match or unknown, and what the method relies on: the proxy gateway's fallback, the ZPA gateway's server group, the dedicated IP gateway's data centres. It also names a NAT control rule that rewrites (or could rewrite) the destination, IPv6 being off for an IPv6 destination, and data centre exclusions in force; a DNS Control rule that redirects to a DNS gateway says whether that gateway can fail over. A weak point (no fallback proxy, no ZPA gateway, IPv6 not processed) is listed with its fix. Not licensed: the step says "not applicable" and changes nothing else.
 - The sample tenant (Larkspur Freight) has forwarding rules, gateways, GRE tunnels and VIPs, data centres and an exclusion, IPv6, NAT control, a Virtual Service Edge cluster and a DNS gateway, with gaps to find; snapshots save the same reads. Read-only: nothing here writes to the tenant.
+- Advanced settings at 320px: the "Add a pack" fields and buttons no longer run past the edge of the screen (the column could not shrink below its widest input), so the help mark beside "Add to library" stays on screen.
 
 ## 2026-10-30
 
