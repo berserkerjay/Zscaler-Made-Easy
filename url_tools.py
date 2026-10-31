@@ -479,7 +479,9 @@ def lookup_batches(client, urls: Sequence[str], *, pace: Optional[float] = None,
     post = getattr(client, "post", None)
     found = {} if found is None else found
     missed: Dict[str, str] = {}
-    stats = {"requests": 0, "retries": 0, "unsent": 0, "rate_limited": 0}
+    stats = {"requests": 0, "retries": 0}
+    if stop_on_rate_limit:
+        stats.update(unsent=0, rate_limited=0)
     if not callable(post):
         return found, {u: "this client cannot run a URL lookup" for u in urls}, stats
     batches = [list(urls[i:i + BATCH]) for i in range(0, len(urls), BATCH)]
@@ -512,9 +514,9 @@ def lookup_batches(client, urls: Sequence[str], *, pace: Optional[float] = None,
             for u in batch:
                 missed[u] = why
             say(f"Request {n}: {why}; those URLs are marked not looked up.")
-            if code == 429:
+            if code == 429 and stop_on_rate_limit:
                 stats["rate_limited"] += len(batch)
-                if stop_on_rate_limit and n < len(batches):
+                if n < len(batches):
                     stats["unsent"] = total - n * BATCH if n * BATCH < total else 0
                     say(f"ZIA keeps refusing for its rate limit, so the remaining {stats['unsent']:,} URLs are not sent now: "
                         "Continue looks them up later.")
