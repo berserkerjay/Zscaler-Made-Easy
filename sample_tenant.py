@@ -1137,7 +1137,9 @@ ZCC_PROCESS_APPS = {"appIdentities": [
      "matchingCriteria": 1},
     {"id": 6002, "appName": "Contractor tools", "fileNames": ["powershell.exe", "python.exe", "*.exe"], "filePaths": [], "matchingCriteria": 1}]}
 ZCC_CUSTOM_IP_APPS = {"customAppContracts": [
-    {"id": 5001, "appName": "Depot printers", "active": True, "uid": "c-5001",
+    # One list with the contractors' bypassed app above (feat/zcc-plus keeps id 5001 for it).
+    dict(CUSTOM_IP_APPS[0], uid="c-5001"),
+    {"id": 5003, "appName": "Depot printers", "active": True, "uid": "c-5003",
      "appDataBlob": [{"proto": "TCP", "port": "9100", "ipaddr": "10.20.30.0/24", "fqdn": ""}]},
     {"id": 5002, "appName": "Legacy partner network", "active": True, "uid": "c-5002",
      "appDataBlob": [{"proto": "", "port": "", "ipaddr": "10.0.0.0/8", "fqdn": ""}, {"proto": "UDP", "port": "1-65535", "ipaddr": "0.0.0.0/0", "fqdn": ""}]}]}
@@ -1260,7 +1262,7 @@ def responses() -> Dict[str, Any]:
         f"{ZCC}/getAdminUsersSyncInfo": {"id": 1, "ziaInitialSyncDone": 1, "ziaLastSyncTime": "2026-10-28 02:00:00", "ziaSyncErrorCode": 0, "ziaSyncStatus": 1,
                                              "zpaInitialSyncDone": 1, "zpaLastSyncTime": "2026-10-28 02:00:00", "zpaSyncErrorCode": 0, "zpaSyncStatus": 1},
         f"{ZCC}/getPacFiles": [], f"{ZCC}/webAppService/listByCompany": [], f"{ZCC}/webBypassAppConfig/listByCompany": [],
-        f"{ZCC}/custom-ip-based-apps": {"customAppContracts": CUSTOM_IP_APPS}, f"{ZCC}/predefined-ip-based-apps": {"appServiceContracts": []},
+        f"{ZCC}/custom-ip-based-apps": ZCC_CUSTOM_IP_APPS, f"{ZCC}/predefined-ip-based-apps": {"appServiceContracts": []},
         f"{ZCC}/getAdminUsers": [], f"{ZCC}/getAdminRoles": [], f"{ZCC}/webDeviceGroups/listByCompany": [],
         f"{ZCC}/getZpaGroupEntitlements": {"zpaEnableForAll": True}, f"{ZCC}/getZdxGroupEntitlements": {"zdxEnableForAll": True},
         # ZPA
@@ -1340,7 +1342,6 @@ def responses() -> Dict[str, Any]:
         f"{ZDX}/analysis": [],
         # Client Connector bypass apps
         f"{ZCC}/process-based-apps": ZCC_PROCESS_APPS,
-        f"{ZCC}/custom-ip-based-apps": ZCC_CUSTOM_IP_APPS,
     }
     r[f"{ZIA}/cloudApplications/lite"] = CLOUD_APPS
     r[f"{ZIA}/subscriptions"] = SUBSCRIPTIONS

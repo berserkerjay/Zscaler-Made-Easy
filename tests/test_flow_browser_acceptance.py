@@ -158,6 +158,10 @@ def _install_fixtures(srv, state=None):
             if endpoint == "/zia/urlLookup":
                 state["lookups"] += 1
                 return [{"urlClassifications": ["OTHER_MISCELLANEOUS"]}], 200
+            if endpoint.split("?")[0] in ("/zwa/dlp/v1/incidents/search", "/zwa/dlp/v1/customer/audit"):
+                # Workflow Automation answers its searches to a POST that changes nothing (the ZWA.* checks): a read here.
+                state["reads"].append(endpoint)
+                return {"error": "fixture endpoint unavailable"}, 404
             state["writes"] += 1
             raise AssertionError("A browser acceptance test attempted an unsupported write")
 

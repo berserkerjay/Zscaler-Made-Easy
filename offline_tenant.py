@@ -406,6 +406,9 @@ class OfflineStore:
         snapshot; on the sample, applied to its in-memory copy. A read the
         API asks for with a POST (READ_POSTS) is answered on both."""
         method = str(method or "").upper()
+        if params is None:   # the query, when it came on the URL
+            from urllib.parse import parse_qsl, urlsplit
+            params = dict(parse_qsl(urlsplit(str(url)).query))
         path = normalize_path(url)
         if method == "POST" and path == _ZMS_GRAPHQL:
             return self._answer_graphql(body)
@@ -745,7 +748,8 @@ class OfflineExecutor:
             if params:   # a write's query (the denylist's ?action=) rides on the URL: answer_write reads it from there
                 from urllib.parse import urlencode
                 url = f"{url}{'&' if '?' in url else '?'}{urlencode(params)}"
-            status, body = self._store.answer_write(method, url, payload, params)
+            # The query rides on the URL (a store a test replaces may take no params); answer_write reads it back from there.
+            status, body = self._store.answer_write(method, url, payload)
         answer = _Answer(status, body)
         if status >= 400:
             msg = body.get("message") if isinstance(body, dict) else str(body)
