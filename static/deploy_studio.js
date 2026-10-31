@@ -821,6 +821,7 @@ function _dzRenderReview() {
       <button type="button" class="dz-btn" onclick="_dzPlanDownload('pdf')">Plan (PDF)</button>
       <button type="button" class="dz-btn" onclick="_dzPlanDownload('xlsx')">Plan (Excel)</button></div>` : ''}
     ${(R.blockers || []).map(b => `<div class="dz-card sev-error" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Blocked</div><div class="d">${_dzE(b)}</div></div></div>`).join('')}
+    ${R.rehearsal ? `<div class="dz-card sev-info" id="dzRehearsal" role="note" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">${_dzE(R.rehearsal.note)}</div><div class="d">${_dzE(R.rehearsal.apply)}</div></div></div>` : ''}
     ${_dzRateCheck(R.rate_forecast, R.status === 'blocked')}
     <details class="dz-fold dz-howto"><summary><div class="dz-h">How to read this plan</div></summary>
       <ul class="dz-note">

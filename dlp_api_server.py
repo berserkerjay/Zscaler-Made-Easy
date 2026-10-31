@@ -29,7 +29,7 @@ def _unlink_quietly(path: str) -> None:
         os.unlink(path)
     except OSError:
         pass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -1847,6 +1847,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     out = pack_deploy.public_report(report)
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
+    _mark_rehearsal(out, _rehearsal(creds))   # the sample or a snapshot: a rehearsal, never applied
     # The server keeps its own copy: Plan (PDF) / Plan (Excel) render from it, never from the page.
     out["report_id"] = _remember_plan(out, _assessor(req))
     _cq_remember("pack_deploy", out, req, creds)   # lets "Request approval" file exactly this plan
@@ -3445,7 +3446,7 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
-    return out
+    return _mark_rehearsal(out, _rehearsal(creds))
 
 
 class ScopedTenantCredsRequest(TenantCredsRequest):
@@ -3496,6 +3497,7 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest, request: Request):
     _require_tenant_write(req, confirmed=req.confirm, what="Removal")
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
+    _refuse_offline_apply(creds)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
     result = await asyncio.to_thread(_as_actor, _actor(request), _run_removal, client, req, rec, packs, None, None)
@@ -3548,6 +3550,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request
     _require_tenant_write(req, confirmed=req.confirm, what="Removal")
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
+    _refuse_offline_apply(creds)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = "undo " + rec["id"] if rec else ("everything" if req.all else ", ".join(req.pack_ids) or f"{len(req.rules)} rule(s)")
@@ -3957,6 +3960,50 @@ def _offline_client(creds: Dict[str, str], kind: str):
         return _offline.client_for(creds, kind)
     except _offline.OfflineError as e:
         raise HTTPException(status_code=e.status, detail=str(e))
+
+
+REHEARSAL_NOTE = "Rehearsal — nothing was written."
+REHEARSAL_SAMPLE = ("Rehearsal only: this is the sample tenant. The plan and the dry run work here as a rehearsal, but nothing is ever "
+                    "applied from it — nothing was written. Leave the sample and use the live tenant to apply.")
+REHEARSAL_SNAPSHOT = ("Rehearsal only: this is an offline snapshot, which is read-only. The plan and the dry run work here as a rehearsal, "
+                      "but nothing is ever applied from it — nothing was written. Close the snapshot and use the live tenant to apply.")
+
+
+def _rehearsal(creds: Dict[str, Any]) -> Optional[str]:
+    """"sample" or "snapshot" when these credentials name an offline tenant
+    (a plan on it is a rehearsal), None for the live tenant."""
+    try:
+        st = _offline.store_for_creds(creds)
+    except _offline.OfflineError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    if st is None:
+        return None
+    return "sample" if st.kind == _offline.SAMPLE else "snapshot"
+
+
+def _refuse_offline_apply(creds: Dict[str, Any]) -> None:
+    """409 before any client is built when an apply (a builder, a bulk
+    change, a POV build, a policy pack deploy, removal or Undo) names the
+    sample tenant or a snapshot: there they rehearse, they never write."""
+    kind = _rehearsal(creds)
+    if kind:
+        raise HTTPException(status_code=409, detail=REHEARSAL_SAMPLE if kind == "sample" else REHEARSAL_SNAPSHOT)
+
+
+def _client_rehearsal(client: Any) -> Optional[str]:
+    """"sample" or "snapshot" for an offline client (offline_tenant), else None."""
+    st = getattr(client, "_store", None) if getattr(client, "offline", False) is True else None
+    if not isinstance(st, _offline.OfflineStore):
+        return None
+    return "sample" if st.kind == _offline.SAMPLE else "snapshot"
+
+
+def _mark_rehearsal(out: Dict[str, Any], kind: Optional[str]) -> Dict[str, Any]:
+    """Label a plan or preview made on the sample or a snapshot."""
+    if kind and isinstance(out, dict):
+        out["rehearsal"] = {"kind": kind, "note": REHEARSAL_NOTE,
+                            "apply": REHEARSAL_SAMPLE if kind == "sample" else REHEARSAL_SNAPSHOT}
+    return out
 
 
 def _offline_answer(request: Request, body: Dict[str, Any], source: Optional[str]) -> JSONResponse:
@@ -5190,6 +5237,7 @@ async def dlp_packs_apply(req: DLPPackDeployRequest, request: Request):
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
+    _refuse_offline_apply(creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     result = await asyncio.to_thread(_as_actor, _actor(request), _run_apply, client, creds, req, packs, None, None)
     if result.get("status") in ("plan_changed", "blocked"):
@@ -5254,6 +5302,7 @@ async def dlp_packs_apply_start(req: DLPPackDeployRequest, request: Request):
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
+    _refuse_offline_apply(creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     job = pack_jobs.start("deploy", lambda log, cancel: _keyed(client, _run_apply, client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
                            actor=_actor(request), start_token=_start_token(request))
@@ -5283,6 +5332,7 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: 
         raise HTTPException(status_code=404, detail="Deployment not found.")
     _require_tenant_write(req, confirmed=req.confirm, what="Undo")
     creds = _tenant_creds(req)
+    _refuse_offline_apply(creds)
     _require_same_tenant(rec, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
@@ -5312,6 +5362,7 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
             raise HTTPException(status_code=400, detail="Deployment requires explicit confirmation (confirm=true).")
         if not writes_enabled():
             raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+        _refuse_offline_apply(_tenant_creds(req))
     client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
     if not req.plan_hash:
         report = await asyncio.to_thread(lambda: pack_deploy.preflight(client, [pack], use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
@@ -6087,6 +6138,9 @@ def _run_ops_preview(client, req: OperationRequest, scope: Dict[str, Any], label
     except admin_ops.OperationError as e:
         return {"status": "refused", "message": str(e), "tenant_label": label}
     prepared.update(writes_enabled=writes_enabled(), undo_of=req.undo_of or None, sanction=admin_ops.SANCTION_NOTE)
+    _mark_rehearsal(prepared, _client_rehearsal(client))
+    if prepared.get("rehearsal"):
+        say(REHEARSAL_NOTE)
     say(f"Preview ready: {prepared['counts']['change']} change(s), {prepared['counts']['noop']} already as asked, "
         f"{prepared['counts']['excluded']} excluded.")
     return prepared
@@ -6238,6 +6292,7 @@ async def operations_apply_start(req: OperationRequest, request: Request):
     scope, by = _ops_apply_gate(req)
     pw = _ops_passwords(req)
     creds = _tenant_creds(req)
+    _refuse_offline_apply(creds)
     _ops_zpa_gate(req.operation, creds)
     _cfg_restore_gate(req, creds, apply=True)
     if req.undo_of:
@@ -6257,6 +6312,7 @@ async def operations_apply(req: OperationRequest, request: Request):
     scope, by = _ops_apply_gate(req)
     pw = _ops_passwords(req)
     creds = _tenant_creds(req)
+    _refuse_offline_apply(creds)
     _ops_zpa_gate(req.operation, creds)
     _cfg_restore_gate(req, creds, apply=True)
     if req.undo_of:
@@ -12934,6 +12990,240 @@ async def pov_insights_start(req: PovInsightsRequest, request: Request):
                 out["pov_error"] = str(e)
         return out
     job = pack_jobs.start("insights", run, label=f"POV {inp['window']['label']}", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+# ── POV build (pov_build.py): one plan, one dry run, one apply ─────────
+# After the intake, the planner builds one combined plan across the Build
+# new plugins and applies it with one typed confirmation: the same gates as
+# a bulk change (writer, confirm=true, the plan hash, the named assessor,
+# write mode, each part's Scope rule before sign-in, the ZPA customer ID),
+# then each part through admin_ops.execute (re-read before every write,
+# read-back, audit) and admin_ops.record (its Undo). The first part that
+# does not apply stops the run; Undo reverses what was applied, latest
+# first. On the sample tenant or a snapshot the plan and the dry run are a
+# rehearsal and an apply is refused.
+class PovBuildRequest(OperationCredsRequest):
+    """A POV build: the parts to build ({step key: Build new spec}), and
+    to apply, the previewed plan_hash, confirm=true and the typed phrase.
+    `build_id` names the build an Undo reverses."""
+    parts: Dict[str, Any] = {}
+    plan_hash: str = ""
+    confirm: bool = False
+    confirm_text: str = ""
+    build_id: str = ""
+
+
+class PovBuildDefaultsRequest(BaseModel):
+    """The intake (pov.clean_intake's fields) the defaults are made from."""
+    intake: Dict[str, Any] = {}
+
+
+def _pov_build_parts(req: PovBuildRequest) -> List[Tuple[str, Dict[str, Any]]]:
+    import pov_build
+    try:
+        return pov_build.clean_parts(req.parts)
+    except pov_build.BuildError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _pov_build_scope(req: Any, parts: Sequence[Tuple[str, Dict[str, Any]]]) -> Dict[str, Any]:
+    """Each part's own Scope rule (admin_ops.require_scope): a part that is
+    not ticked is a 400 naming it, before sign-in."""
+    import pov_build
+    scope: Dict[str, Any] = {}
+    for key, spec in parts:
+        try:
+            scope = _ops_scope(req, spec)
+        except HTTPException as e:
+            raise HTTPException(status_code=e.status_code, detail=f"{pov_build.STEP_BY_KEY[key]['label']}: {e.detail}")
+    return scope
+
+
+def _pov_build_inputs(req: PovBuildRequest, parts: Sequence[Tuple[str, Dict[str, Any]]], *, writing: bool):
+    """(scope, creds, rehearsal) after every refusal that needs no sign-in."""
+    import pov
+    scope = _pov_build_scope(req, parts)
+    creds = _tenant_creds(req)
+    for _key, spec in parts:
+        _ops_zpa_gate(spec, creds)
+    kind = _rehearsal(creds)
+    if writing:
+        _refuse_offline_apply(creds)
+    if not kind:
+        # The live tenant: the build belongs to the profile's POV, for its tenant only.
+        _pov_call(pov.require, req.profile_id, creds)
+    return scope, creds, kind
+
+
+def _run_pov_build_preview(client, parts, scope: Dict[str, Any], label: str, kind: Optional[str], log, cancel,
+                           undo_of: Optional[Dict[str, str]] = None, build_id: str = "") -> Dict[str, Any]:
+    import admin_ops
+    import pov_build
+    say = log or (lambda m: None)
+    say(f"{'Rehearsing' if kind else 'Previewing'} the POV build on {label}. Nothing is written to the tenant.")
+    try:
+        out = pov_build.public(pov_build.plan(client, parts, scope=scope, tenant_label=label, log=say, cancel=cancel, undo_of=undo_of))
+    except admin_ops.Stopped as e:
+        return {"status": "stopped", "stopped": str(e), "tenant_label": label}
+    except pov_build.BuildError as e:
+        return {"status": "refused", "message": str(e), "tenant_label": label}
+    out.update(writes_enabled=writes_enabled(), build_id=build_id or None, parts_request={k: sp for k, sp in parts} if not undo_of else None)
+    _mark_rehearsal(out, kind)
+    say(f"Dry run ready: {out['changes']} change(s) in {len(out['parts'])} part(s)." + (f" {REHEARSAL_NOTE}" if kind else ""))
+    return out
+
+
+@app.post("/api/pov/build/defaults")
+async def pov_build_defaults(req: PovBuildDefaultsRequest):
+    """The parts a POV intake suggests, with each builder's safe defaults
+    (rules disabled, segments disabled, AI Guard in Monitor). Local: reads
+    no tenant."""
+    import pov
+    import pov_build
+    intake = _pov_call(pov.clean_intake, req.intake)
+    return {"intake": intake, "steps": pov_build.catalog(), "defaults": pov_build.defaults(intake), "preset": pov_build.preset_for(intake["vertical"])}
+
+
+@app.post("/api/pov/build/preview/start")
+async def pov_build_preview_start(req: PovBuildRequest, request: Request):
+    """The combined dry run as a job: every part planned by its builder in
+    the safe order, one section per product, every object with its before
+    and after, one plan hash. Reads only. On the sample tenant or a
+    snapshot it is a rehearsal."""
+    import pack_jobs
+    parts = _pov_build_parts(req)
+    scope, creds, kind = _pov_build_inputs(req, parts, writing=False)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("pov_build_preview", lambda log, cancel: _keyed(client, _run_pov_build_preview, client, parts, scope, label, kind, log, cancel),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/pov/build/preview")
+async def pov_build_preview(req: PovBuildRequest):
+    """The same dry run, waited for (for scripts)."""
+    parts = _pov_build_parts(req)
+    scope, creds, kind = _pov_build_inputs(req, parts, writing=False)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(_keyed, client, _run_pov_build_preview, client, parts, scope, tenant_auth.record_label(creds), kind, None, None)
+    if out.get("status") == "refused":
+        raise HTTPException(status_code=400, detail=out["message"])
+    return out
+
+
+def _pov_build_apply_gate(req: PovBuildRequest) -> str:
+    """The refusals before anything else: writer, confirm, plan_hash, the
+    assessor, write mode."""
+    _security.require_writer()
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Applying the POV build requires explicit confirmation (confirm=true).")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="plan_hash is required — preview the POV build first.")
+    by = _ops_assessor(req)
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    return by
+
+
+def _run_pov_build_apply(client, creds: Dict[str, str], req: PovBuildRequest, parts, scope: Dict[str, Any], by: str, actor: Optional[str],
+                         log, cancel, undo_of: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    import admin_ops
+    import pov
+    import pov_build
+    label = tenant_auth.record_label(creds)
+
+    def record(result: Dict[str, Any], undo_op: str) -> Optional[str]:
+        rec = admin_ops.record(result, by=by, actor=actor, undo_of=undo_op, tenant_ids=_record_ids(creds))
+        return rec["id"] if rec else None
+    try:
+        result = pov_build.execute(client, parts, plan_hash=req.plan_hash, scope=scope, writes_enabled=True, confirm_text=req.confirm_text,
+                                   assessor=by, tenant_label=label, log=log, cancel=cancel, record=record, undo_of=undo_of)
+    except pov_build.BuildError as e:
+        return {"status": "refused", "message": str(e), "tenant_label": label}
+    if result.get("steps") and any(s.get("status") not in ("not_attempted", "nothing_to_do") for s in result["steps"]):
+        try:
+            bid = pov.new_build_id()
+            p = pov.add_build(req.profile_id, creds, dict(pov_build.build_record(result, by=by, build_id=bid)), by=by,
+                              undo_of=req.build_id if undo_of else "")
+            result["build_id"], result["pov_rev"] = bid, p["rev"]
+        except pov.PovError as e:   # the run stands; why the POV does not list it is said
+            result["pov_error"] = str(e)
+    result["writes_enabled"] = True
+    return result
+
+
+@app.post("/api/pov/build/apply/start")
+async def pov_build_apply_start(req: PovBuildRequest, request: Request):
+    """Apply a previewed POV build as a job the page follows, with one
+    typed confirmation. A tenant that moved since the preview gives
+    status plan_changed and writes nothing; the first part that does not
+    apply stops the run, and Undo reverses what was applied."""
+    import pack_jobs
+    by = _pov_build_apply_gate(req)
+    parts = _pov_build_parts(req)
+    scope, creds, _kind = _pov_build_inputs(req, parts, writing=True)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    actor = _actor(request)
+    job = pack_jobs.start("pov_build_apply", lambda log, cancel: _keyed(client, _run_pov_build_apply, client, creds, req, parts, scope, by, actor, log, cancel),
+                          label="POV build", actor=actor, start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _pov_build_undo_inputs(req: PovBuildRequest, *, writing: bool):
+    """(parts, {key: operation id}, scope, creds) of a build's Undo: the
+    inverses this app recorded for its applied parts, never anything the
+    page sends."""
+    import deployments
+    import pov
+    import pov_build
+    creds = _tenant_creds(req)
+    if writing:
+        _refuse_offline_apply(creds)
+    _b, p = _pov_call(pov.require, req.profile_id, creds)
+    build = _pov_call(pov.get_build, p, req.build_id)
+    if build.get("undone_by"):
+        raise HTTPException(status_code=409, detail=f"This build was already undone (by {build['undone_by']}).")
+    if build.get("undo"):
+        raise HTTPException(status_code=409, detail="This is an Undo: build again instead of undoing an Undo.")
+    parts, ids = pov_build.undo_parts(build, deployments.get_operation)
+    if not parts:
+        raise HTTPException(status_code=409, detail="Nothing of this build is left to undo: it applied nothing reversible, or each part was undone already.")
+    for key, _spec in parts:
+        _require_same_tenant(deployments.get_operation(ids[key]) or {}, creds)
+    scope = _pov_build_scope(req, parts)
+    for _key, spec in parts:
+        _ops_zpa_gate(spec, creds)
+    return parts, ids, scope, creds
+
+
+@app.post("/api/pov/build/undo/preview/start")
+async def pov_build_undo_preview_start(req: PovBuildRequest, request: Request):
+    """The Undo of a build as one dry run: each applied part's recorded
+    Undo, latest first. Reads only."""
+    import pack_jobs
+    parts, ids, scope, creds = _pov_build_undo_inputs(req, writing=False)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("pov_build_preview", lambda log, cancel: _keyed(client, _run_pov_build_preview, client, parts, scope, label, None, log, cancel,
+                                                                          ids, req.build_id),
+                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/pov/build/undo/apply/start")
+async def pov_build_undo_apply_start(req: PovBuildRequest, request: Request):
+    """Apply a build's previewed Undo with one typed confirmation, latest
+    part first, stopping at the first part that does not apply."""
+    import pack_jobs
+    by = _pov_build_apply_gate(req)
+    parts, ids, scope, creds = _pov_build_undo_inputs(req, writing=True)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    actor = _actor(request)
+    job = pack_jobs.start("pov_build_apply", lambda log, cancel: _keyed(client, _run_pov_build_apply, client, creds, req, parts, scope, by, actor, log,
+                                                                        cancel, ids),
+                          label="POV build undo", actor=actor, start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 

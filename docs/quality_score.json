@@ -340,8 +340,8 @@
           },
           "findings": {
             "score": 100.0,
-            "open": 1,
-            "fixed": 89,
+            "open": 0,
+            "fixed": 93,
             "accepted": 5,
             "records": [
               "c6-zcc-zdx",
@@ -355,6 +355,7 @@
               "w7-health-diag",
               "w7-migrate-tui-plugins",
               "w7-net-files",
+              "w7-pov-oneshot",
               "w7-rank-inherit",
               "w7-restore-clone",
               "w7-tf-export"
@@ -471,7 +472,7 @@
     }
   ],
   "counts": {
-    "findings": 682,
+    "findings": 685,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -485,27 +486,27 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 174,
+        "fixed": 175,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 380,
+        "fixed": 382,
         "accepted": 3
       },
       "info": {
-        "open": 1,
-        "fixed": 65,
+        "open": 0,
+        "fixed": 66,
         "accepted": 39
       }
     },
     "checks": {
-      "pass": 540,
+      "pass": 549,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 10744
+    "tests_added": 10821
   },
   "findings": [
     {
@@ -539,22 +540,6 @@
       "slug": "w8-zia-governance",
       "area": "functionality",
       "sub_area": "traffic_analysis"
-    },
-    {
-      "id": "FUNC-BUILDERS-12",
-      "title": "On the sample tenant most Build new types cannot plan: it carries no network applications, DNS gateways, cloud application catalogue, Cloud App Control rule types, ZPA provisioning keys or inspection controls, and its in-memory store does not model ZPA policy rule writes or Client Connector's edit endpoints; each builder says plainly what it could not read and writes nothing",
-      "severity": "info",
-      "status": "open",
-      "cwe": "CWE-440",
-      "asvs": "V1.4.4",
-      "wcag": "",
-      "fix": "Kept open: the builders keep failing closed on the sample with the reason; carrying the catalogues first needs a query-aware, multi-path sample write model",
-      "test": "tests/test_qa6_builders_lifecycle.py::test_zpa_builder_lifecycle_for_every_template",
-      "commit": "195005b",
-      "reason": "Not cheap: cloudApplications/policy answers per app_class (the sample ignores query parameters, so Path and Data Flow answers would change), CAC ids collide across rule types in the sample's writes, ZPA rules need a second path; ZCC edit, ZDX config and AI Guard are assumed or OneAPI-only",
-      "slug": "func-builders",
-      "area": "functionality",
-      "sub_area": "builders"
     },
     {
       "id": "W7-MCP-02",
@@ -4219,6 +4204,22 @@
       "slug": "w7-path-coverage",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7-POV-01",
+      "title": "Guided POV with one dry run and one apply was missing: each builder was previewed and applied on its own from Bulk changes",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-841",
+      "asvs": "V11.1.1",
+      "wcag": "",
+      "fix": "pov_build.py (STEPS order, combined plan and hash, execute with stop-at-first-failure, undo_parts), admin_ops pending_plan, ops_zpa stand-ins, /api/pov/build/* routes, the Build tab in static/pov.js",
+      "test": "tests/test_pov_build.py::test_one_apply_builds_every_part_in_order_and_undo_reverses_it_exactly",
+      "commit": "87aa42a",
+      "reason": "",
+      "slug": "w7-pov-oneshot",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "W7-PROFILE-CLOUD-01",
@@ -10141,6 +10142,38 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W7-POV-02",
+      "title": "Most Build new types could not plan on the sample tenant (no network apps, DNS gateways, cloud app catalogue, certificates, ZPA enrollment certificates or OWASP controls, ZDX configuration, AI Guard lists, no AI Guard service on the offline client) and a snapshot never carried those lists",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-440",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "sample_tenant.builder_catalogues and an Inspect rule; OfflineSdkClient.aiguard; snapshot capture of the builder lists per scope (aiguard paths allowed); a per-class cloud app read still answers no data",
+      "test": "tests/test_pov_rehearsal.py::test_every_builder_plans_offline_as_a_rehearsal",
+      "commit": "87aa42a",
+      "reason": "",
+      "slug": "w7-pov-oneshot",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-POV-03",
+      "title": "An apply on the sample tenant was carried out against its in-memory copy instead of being refused, and plans made offline were not labelled as rehearsals",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-284",
+      "asvs": "V4.1.1",
+      "wcag": "",
+      "fix": "dlp_api_server._refuse_offline_apply on every bulk change, builder, POV build, pack deploy, removal and deployment Undo apply; _mark_rehearsal on previews; banners in Bulk changes, Deploy policy packs and the Build tab",
+      "test": "tests/test_pov_rehearsal.py::test_an_apply_offline_is_refused_with_a_clear_message_and_writes_nothing",
+      "commit": "87aa42a",
+      "reason": "",
+      "slug": "w7-pov-oneshot",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "W7-PROFILE-CLOUD-02",
       "title": "A profile-only assessment on another cloud wrote production as the cloud in its report metadata (the body's default, not the cloud signed in on)",
       "severity": "low",
@@ -10987,6 +11020,22 @@
       "slug": "c6-zpa",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "FUNC-BUILDERS-12",
+      "title": "On the sample tenant most Build new types cannot plan: it carries no network applications, DNS gateways, cloud application catalogue, Cloud App Control rule types, ZPA provisioning keys or inspection controls, and its in-memory store does not model ZPA policy rule writes or Client Connector's edit endpoints; each builder says plainly what it could not read and writes nothing",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-440",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "Wave 7: the sample carries every builder catalogue (a per-class cloud app read still answers no data), the offline client has AI Guard, snapshots keep the builder lists per scope; every builder plans offline as a rehearsal and an apply there is refused",
+      "test": "tests/test_pov_rehearsal.py::test_every_builder_plans_offline_as_a_rehearsal",
+      "commit": "87aa42a",
+      "reason": "",
+      "slug": "func-builders",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "GLASS-05",
@@ -12754,6 +12803,34 @@
       "checks": 8,
       "findings": 5,
       "tests_added": 84
+    },
+    {
+      "slug": "w7-pov-oneshot",
+      "area": "Functional correctness and write safety of the POV build (pov_build.py, /api/pov/build/*, the POV planner's Build tab) and of rehearsal on the sample tenant and snapshots (sample_tenant.py, offline_tenant.py, the apply refusals in dlp_api_server.py)",
+      "title": "One combined plan across the Build new plugins with one hash, applied in a safe order with one typed confirmation, stopping at the first failure with a reverse Undo; every builder planned on the sample and on a snapshot with no network and no client built, apply refused there",
+      "standards": [
+        "ASVS V11.1.1",
+        "ASVS V11.1.6",
+        "ASVS V4.1.1",
+        "ASVS V4.1.3",
+        "ASVS V1.14.1",
+        "ASVS V5.1.3",
+        "CWE-841",
+        "CWE-367",
+        "CWE-284",
+        "CWE-653",
+        "CWE-440",
+        "CWE-754",
+        "CWE-1188",
+        "WSTG-BUSL-06",
+        "WSTG-ATHZ-02",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.1.1",
+        "WCAG 2.2 SC 3.3.4"
+      ],
+      "checks": 9,
+      "findings": 3,
+      "tests_added": 77
     },
     {
       "slug": "w7-profile-cloud",

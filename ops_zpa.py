@@ -973,16 +973,19 @@ def plan_app_segments(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], 
     plan = _Plan(p)
     # The connector group: the one picked, else the prefix's own.
     cg_row = next((r for r in data["connector_group"] if _oid(r) == cg_pick), None) if cg_pick else _by_name(data["connector_group"], f"{p}-connector-group")
-    if cg_row is None:
+    # In a POV build, an earlier step of the same plan may create the prefix's group (admin_ops.pending_ref).
+    cg_pending = ao.pending_ref("zpa", "connector_group", f"{p}-connector-group") if cg_row is None and not cg_pick else None
+    if cg_row is None and cg_pending is None:
         plan.blockers.append("No App Connector group to serve these applications: build the App Connector group first (Build new: ZPA App "
                              f"Connector group), or pick an existing one. Looked for '{p}-connector-group'.")
         cg_id = "0"
     else:
-        cg_id = _oid(cg_row)
+        cg_id = _oid(cg_row) if cg_row is not None else str(cg_pending)
+    cg_label = _name(cg_row) if cg_row is not None else (f"{p}-connector-group (built by an earlier step)" if cg_pending else "(none)")
     sg_key = plan.ensure("segment_group", f"{p}-segment-group", {"enabled": True}, data["segment_group"])
     sg = _ref_or_id(plan, sg_key, data["segment_group"], f"{p}-segment-group")
     svg_key = plan.ensure("server_group", f"{p}-server-group", {"enabled": True, "dynamic_discovery": True, "connector_groups": [cg_id]},
-                          data["server_group"], summary=f"dynamic discovery, App Connector group {_name(cg_row) if cg_row else '(none)'}")
+                          data["server_group"], summary=f"dynamic discovery, App Connector group {cg_label}")
     svg = _ref_or_id(plan, svg_key, data["server_group"], f"{p}-server-group")
     ours = {a["name"] for a in apps} | ({f"{p}-browser-access"} if ba_spec else set()) | {f"{p}-pra-{x['protocol'].lower()}" for x in pra_apps}
     index: Dict[str, List[Tuple[str, List[List[int]], List[List[int]]]]] = {}
@@ -1003,7 +1006,7 @@ def plan_app_segments(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], 
     def seg(name: str, domains: List[str], tcp, udp, *, kind: str = "segment", extra: Optional[Dict[str, Any]] = None, update: bool = True,
             summary: str = "") -> str:
         desired = {"enabled": enable, "domains": sorted(domains), "tcp": _rstr(tcp), "udp": _rstr(udp), "segment_group": sg, "server_groups": [svg]}
-        why = clash(domains, tcp, udp) or ("no App Connector group" if cg_row is None else "")
+        why = clash(domains, tcp, udp) or ("no App Connector group" if cg_row is None and cg_pending is None else "")
         return plan.ensure("segment", name, desired, data["segment"], create=extra or {}, update=update, blocked=why, op_kind=kind,
                            summary=summary or f"{', '.join(domains[:3])}{' …' if len(domains) > 3 else ''} · TCP {', '.join(_rstr(tcp)) or '-'}"
                                                   f"{' · UDP ' + ', '.join(_rstr(udp)) if udp else ''}")
@@ -1150,6 +1153,9 @@ def plan_policies(client: Any, spec: Dict[str, Any], scope: Dict[str, Any], say,
     plan = _Plan(p)
     others = other_prefixes(p, data)
     apps = sorted(_oid(s) for s in data["segment"] if owned(p, _name(s), others))
+    # In a POV build, the segments an earlier step of the same plan creates (admin_ops.pending_names).
+    apps = sorted(apps + [t for n, t in ao.pending_names("zpa", "segment").items()
+                          if owned(p, n, others) and _by_name(data["segment"], n) is None])
     if not apps:
         plan.blockers.append(f"No application segment named '{p}-…' in ZPA: build the application segments first (Build new: ZPA application segments).")
     shown = f"{len(apps)} application segment{'s' if len(apps) != 1 else ''} named {p}-…"
@@ -1333,6 +1339,8 @@ def plan_prefix_delete(client: Any, spec: Dict[str, Any], scope: Dict[str, Any],
                 continue
             why = list(external.get(key, []))
             for u in users[key]:
+                if u not in chosen and ao.pending_deleted("zpa", u[0], u[1]):
+                    continue   # an earlier Undo step of the same plan (a POV build's Undo) deletes it first
                 if u not in chosen or u in blocked:
                     label = f"{KINDS[u[0]]['label']} '{_name(rows[u])}'"
                     if u in blocked:

@@ -148,7 +148,7 @@
     const had = document.activeElement && document.activeElement.id;
     uid = 0;
     $('rpMeta').textContent = pov ? `${pov.intake.customer} · ${tenantLabel} · ${W(pov.status)}` : (tenantLabel || '');
-    renderPlan(); renderRunbook(); renderKit(); renderNotes(); renderReport();
+    renderPlan(); renderBuild(); renderRunbook(); renderKit(); renderNotes(); renderReport();
     const back = had && document.getElementById(had);
     if (back && back !== document.activeElement && !back.closest('[hidden]')) back.focus({ preventScroll: true });
   }
@@ -441,6 +441,355 @@
     return h('div', { class: 'pv-sec' }, h('h2', { text: `Compliance pack: ${p.label}` }),
       h('p', { class: 'pv-meta', text: 'Made for the profile\'s own defaults (its tier, the default areas and Advanced Threat Protection); for the exact build use the ZIA security baseline in Bulk changes. Local files only: nothing is written to the tenant.' }),
       h('div', { class: 'pv-row' }, files.map(([id, label]) => h('a', { class: 'rp-btn', href: `/api/compliance-pack/${encodeURIComponent(key)}/${encodeURIComponent(id)}`, download: '', text: label }))));
+  }
+
+  // ── Build: one plan, one dry run, one apply across the Build new plugins ──
+  // The parts come from the intake (POST /api/pov/build/defaults, the
+  // builders' safe defaults); the dry run is one job over every part
+  // (/api/pov/build/preview/start) with one plan hash; Apply sends the same
+  // parts, the hash and one typed phrase. On the sample tenant or a snapshot
+  // the dry run is a rehearsal and Apply is not offered.
+  const B = { key: '', intake: null, steps: [], parts: {}, choices: {}, preview: null, previewFor: '', result: null, undoOf: '', busy: false,
+              offline: null, write: null, assessor: '', rehearsalIntake: null, loading: false, error: '' };
+  const SCOPE_LABEL = { zia_extras: 'ZIA platform', zpa: 'ZPA', zcc: 'Client Connector', zdx: 'ZDX', aiguard: 'AI Guard' };
+  async function buildStatus() {
+    try { B.offline = await api('/api/offline/status'); } catch (e) { B.offline = { mode: 'live' }; }
+    try { B.write = await api('/api/write-mode'); } catch (e) { B.write = { enabled: false }; }
+  }
+  const rehearsing = () => !!B.offline && (B.offline.mode === 'sample' || B.offline.mode === 'snapshot');
+  function buildIntake() { return pov ? pov.intake : B.rehearsalIntake; }
+  async function loadBuildDefaults() {
+    const intake = buildIntake();
+    const key = JSON.stringify(intake || null);
+    if (!intake || B.loading || B.key === key) return;
+    B.loading = true; B.error = '';
+    try {
+      const d = await api('/api/pov/build/defaults', { intake });
+      B.key = key; B.intake = d.intake; B.steps = d.steps || []; B.preview = null; B.result = null; B.undoOf = '';
+      B.parts = {}; Object.entries(d.defaults || {}).forEach(([k, v]) => { B.parts[k] = { on: !!v.on, spec: v.spec, why: v.why || '' }; });
+    } catch (e) { B.error = e.message; }
+    finally { B.loading = false; renderBuild(); }
+  }
+  function inScope(step) {
+    const sel = scopeSelection();
+    if (!sel.from_page) return true;   // the server's Scope rule decides and names what is missing
+    if (step.scope === 'zia_extras') return sel.scopes.includes('zia_extras') || sel.scopes.includes('dlp');
+    return sel.scopes.includes(step.scope);
+  }
+  function chosenParts() {
+    const out = {};
+    B.steps.forEach(s => { const p = B.parts[s.key]; if (p && p.on && inScope(s)) out[s.key] = p.spec; });
+    return out;
+  }
+  function invalidate() { B.preview = null; B.previewFor = ''; renderBuildPreview(); }
+  function partOptions(step, part) {
+    const box = h('div', { class: 'pv-row' });
+    const sp = part.spec;
+    const set = (k, v) => { sp[k] = v; invalidate(); syncJson(step.key); };
+    const sel = (cls, label, opts, value, onChange) => {
+      const id = nid('pb');
+      const s = h('select', { id, class: cls, 'data-step': step.key }, opts.map(([v, t]) => h('option', { value: v, text: t, selected: String(v) === String(value) })));
+      s.addEventListener('change', () => onChange(s.value));
+      return h('label', { for: id, class: 'pv-field' }, label, s);
+    };
+    const tick = (cls, label, checked, onChange) => {
+      const id = nid('pb');
+      const b = h('input', { type: 'checkbox', id, class: cls, 'data-step': step.key, checked });
+      b.addEventListener('change', () => onChange(b.checked));
+      return h('label', { for: id }, b, ' ', label);
+    };
+    if (step.key === 'zia_baseline') {
+      box.append(sel('pb-tier', 'Tier', [['strict', 'Strict'], ['balanced', 'Balanced'], ['permissive', 'Permissive'], ['healthcare', 'Healthcare zero trust']], sp.tier, v => set('tier', v)),
+        tick('pb-enable', 'Create the rules enabled', !!sp.enable_rules, v => set('enable_rules', v)));
+    } else if (step.key === 'zpa_app_segments') {
+      box.append(tick('pb-enable', 'Create the segments enabled', !!sp.enable, v => set('enable', v)));
+    } else if (step.key === 'zcc_profiles') {
+      box.append(sel('pb-platform', 'Platform', [['windows', 'Windows'], ['macos', 'macOS']], sp.platform, v => {
+        sp.app = Object.assign({}, sp.app || {}, { name: `${(B.intake || {}).prefix || 'POV'} POV ${v === 'macos' ? 'macOS' : 'Windows'}` }); set('platform', v); }));
+    } else if (step.key === 'aiguard_policy') {
+      box.append(sel('pb-mode', 'Mode', [['monitor', 'Monitor (detect only)'], ['block', 'Block']], sp.mode || 'monitor', v => set('mode', v)));
+    } else if (step.key === 'ssl_certificates' || step.key === 'aiguard_routing') {
+      const ch = B.choices[step.key];
+      const load = h('button', { type: 'button', class: 'rp-btn pb-choices', 'data-step': step.key, text: ch ? 'Read the choices again' : 'Load choices from the tenant' });
+      load.addEventListener('click', () => loadChoices(step));
+      box.append(load);
+      if (ch && ch.error) box.append(h('span', { class: 'pv-meta', role: 'status', text: ch.error }));
+      if (ch && step.key === 'ssl_certificates') {
+        box.append(sel('pb-cert', 'Move to the certificate', [['', 'Pick a certificate']].concat((ch.certificates || []).map(c => [c.id, `${c.name || c.id}${c.default_certificate ? ' (default)' : ''}`])),
+          sp.certificate, v => set('certificate', v === '' ? '' : (/^\d+$/.test(v) ? Number(v) : v))));
+        const rules = (ch.ssl_rules || []).filter(r => r.inspect && !r.locked);
+        const fs = h('fieldset', { class: 'pv-checks' }, h('legend', { text: rules.length ? 'Inspect rules to move' : 'No Inspect rule can move (the default rule never moves).' }));
+        rules.forEach(r => {
+          const id = nid('pb');
+          const b = h('input', { type: 'checkbox', id, class: 'pb-rule', checked: (sp.rules || []).map(String).includes(String(r.id)) });
+          b.addEventListener('change', () => { const s = new Set((sp.rules || []).map(String)); if (b.checked) s.add(String(r.id)); else s.delete(String(r.id));
+            set('rules', rules.filter(x => s.has(String(x.id))).map(x => x.id)); });
+          fs.append(h('label', { for: id }, b, ` ${r.name} (now ${r.certificate || 'the default certificate'})`));
+        });
+        box.append(fs);
+      }
+      if (ch && step.key === 'aiguard_routing') {
+        box.append(sel('pb-cert', 'AI Guard root certificate', [['', 'None picked yet']].concat((ch.certificates || []).map(c => [c.id, c.name || c.id])),
+          (sp.cert || {}).id || '', v => set('cert', v ? { mode: 'existing', id: /^\d+$/.test(v) ? Number(v) : v } : {})));
+      }
+    }
+    return box;
+  }
+  async function loadChoices(step) {
+    const family = step.key === 'ssl_certificates' ? 'ssl_certificates' : 'aiguard_routing_setup';
+    B.choices[step.key] = { error: 'Reading the tenant (read-only)…' }; renderBuild();
+    try {
+      const d = await api('/api/operations/objects', Object.assign(credBody(), scopeSelection(), { family }));
+      B.choices[step.key] = d;
+    } catch (e) { B.choices[step.key] = { error: `Not read: ${e.message}` }; }
+    renderBuild();
+  }
+  function syncJson(key) {
+    const ta = document.querySelector(`#pvBuild textarea.pb-json-text[data-step="${key}"]`);
+    if (ta && document.activeElement !== ta) ta.value = JSON.stringify(B.parts[key].spec, null, 1);
+  }
+  function partCard(step) {
+    const part = B.parts[step.key];
+    if (!part) return null;
+    const ok = inScope(step);
+    const id = nid('pb');
+    const on = h('input', { type: 'checkbox', id, class: 'pb-on', 'data-step': step.key, checked: part.on && ok, disabled: !ok });
+    on.addEventListener('change', () => { part.on = on.checked; invalidate(); renderBuild(); });
+    const ta = h('textarea', { class: 'pb-json-text', 'data-step': step.key, spellcheck: 'false', 'aria-label': `${step.label}: the part exactly as it is sent` });
+    ta.value = JSON.stringify(part.spec, null, 1);
+    const msg = h('span', { class: 'pv-meta', role: 'status' });
+    ta.addEventListener('change', () => {
+      try { const v = JSON.parse(ta.value); if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('it must be an object'); part.spec = v; msg.textContent = 'Kept. Preview again to see it.'; invalidate(); }
+      catch (e) { msg.textContent = `Not kept: ${e.message}`; }
+    });
+    const needs = (step.needs || []).map(k => (B.steps.find(s => s.key === k) || {}).label).filter(Boolean);
+    return h('div', { class: 'pv-sec pb-part' + (part.on && ok ? ' on' : '') },
+      h('div', { class: 'pv-row', style: 'margin: 0' }, h('label', { for: id, class: 'pb-title' }, on, ` ${step.label}`), h('span', { class: 'pv-chip', text: step.section })),
+      h('p', { class: 'pv-meta', text: ok ? (part.why && !part.on ? part.why : step.arrives) : `Not ticked on the Scope page: tick ${SCOPE_LABEL[step.scope] || step.scope} to build it.` }),
+      needs.length ? h('p', { class: 'pv-meta', text: `Runs after ${needs.join(' and ')} when both are built.` }) : null,
+      part.on && ok ? partOptions(step, part) : null,
+      part.on && ok ? h('details', { class: 'pb-json' }, h('summary', { text: 'The part as it is sent (advanced)' }), ta, msg) : null);
+  }
+  function renderBuild() {
+    const box = $('pvBuild');
+    if (!box || !cat) return;
+    if (B.offline === null) { box.replaceChildren(h('p', { class: 'pv-empty', text: 'Loading…' })); buildStatus().then(renderBuild); return; }
+    const intake = buildIntake();
+    if (!intake) {
+      if (rehearsing()) {
+        box.replaceChildren(h('div', { class: 'bp-card info pb-rehearsal', role: 'note' }, h('div', { class: 't', text: 'Rehearsal' }),
+          h('div', { text: `You are using ${B.offline.tenant_label || 'an offline tenant'}: the plan and the dry run work here, and nothing is ever written. Fill in an intake to rehearse with (it is kept in this page only).` })),
+          h('div', { class: 'pv-sec' }, h('h2', { text: 'Intake to rehearse with' }), intakeForm({}, intake2 => { B.rehearsalIntake = intake2; B.key = ''; loadBuildDefaults(); renderBuild(); }, 'Use this intake')));
+        return;
+      }
+      if (!needPov(box)) return;
+    }
+    const k = JSON.stringify(intake || null);
+    if (B.key !== k) { box.replaceChildren(h('p', { class: 'pv-empty', text: B.error ? `Could not load the build: ${B.error}` : 'Loading the parts this intake suggests…' })); loadBuildDefaults(); return; }
+    const preview = h('button', { type: 'button', class: 'rp-btn primary', id: 'pbPreview', text: rehearsing() ? 'Rehearse the build (dry run)' : 'Preview the build (dry run)', disabled: B.busy });
+    preview.addEventListener('click', previewBuild);
+    const n = Object.keys(chosenParts()).length;
+    box.replaceChildren(
+      h('p', { class: 'pv-lead', text: `One plan for ${intake.customer}: tick the parts to build, preview them as one dry run (one section per product, every object, one plan hash), then apply them with one typed confirmation. They run in the order below, what others use first; the first part that does not apply stops the run, and Undo reverses what was applied. New objects arrive disabled or monitor-only unless you choose otherwise.` }),
+      rehearsing() ? h('div', { class: 'bp-card info pb-rehearsal', role: 'note' }, h('div', { class: 't', text: 'Rehearsal — nothing is written' }),
+        h('div', { text: `${B.offline.tenant_label || 'This offline tenant'} is ${B.offline.mode === 'sample' ? 'the sample tenant' : 'an offline snapshot'}: the plan and the dry run work here as a rehearsal. Applying is not offered; use the live tenant to apply.` })) : '',
+      h('div', { class: 'pb-parts' }, B.steps.map(partCard).filter(Boolean)),
+      h('div', { class: 'pv-row' }, preview, h('span', { class: 'pv-meta', text: n ? `${plural(n, 'part')} ticked. Reads the tenant only; nothing is written.` : 'Tick at least one part.' })),
+      h('div', { id: 'pbPreviewOut' }), h('div', { id: 'pbApplyOut' }), h('div', { id: 'pbResultOut' }), buildHistory() || '');
+    renderBuildPreview();
+    renderBuildResult();
+  }
+  function buildHistory() {
+    const list = ((pov && pov.builds) || []).slice().reverse();
+    if (!list.length) return null;
+    const ul = h('ul', { class: 'pv-list' });
+    list.forEach(b => {
+      const applied = (b.steps || []).filter(s => s.operation_id).length;
+      const btn = !b.undo && !b.undone_by && applied ? h('button', { type: 'button', class: 'rp-btn pb-undo-build', 'data-build': b.id, text: 'Undo this build' }) : null;
+      if (btn) btn.addEventListener('click', () => previewUndo(b.id));
+      ul.append(h('li', {}, h('div', { class: 'grow' }, h('strong', { text: `${b.undo ? 'Undo' : 'Build'} ${when(b.at)}` }), ` · ${b.status} · ${plural(applied, 'part')} applied · ${b.by || ''}`,
+        h('div', { class: 'pv-meta', text: (b.steps || []).map(s => `${s.label}: ${s.status}`).join(' · ') + (b.undone_by ? ' · undone' : '') })), btn));
+    });
+    return h('div', { class: 'pv-sec' }, h('h2', { text: 'Builds applied from this POV' }), ul);
+  }
+  async function followJob(path, body, out, title) {
+    const token = newStartToken();
+    let job = null, stopped = false;
+    const log = h('pre', { role: 'log', 'aria-label': 'What is happening', text: 'Starting…' });
+    const stop = h('button', { type: 'button', class: 'rp-btn', text: 'Stop' });
+    stop.addEventListener('click', async () => {
+      stopped = true; stop.disabled = true; stop.textContent = 'Stopping…';
+      try {
+        if (job) await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' });
+        else await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: token }) });
+      } catch (e) { /* the poll shows the state */ }
+    });
+    out.replaceChildren(h('div', { class: 'pv-live' }, h('div', { class: 'pv-row' }, h('strong', { text: title }), stop), log));
+    say(`${title}.`);
+    const d = await api(path, body, { headers: { 'Content-Type': 'application/json', 'X-Start-Token': token } });
+    job = d.job_id;
+    if (stopped) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* token */ } }
+    let next = 0, misses = 0; const lines = [];
+    for (;;) {
+      await new Promise(r => setTimeout(r, 700));
+      let snap;
+      try { snap = await api(`/api/dlp-packs/jobs/${encodeURIComponent(job)}?since=${next}`); misses = 0; }
+      catch (e) { if (++misses >= 20) throw new Error(`Lost contact with the app (${e.message}).`); continue; }
+      lines.push(...(snap.logs || [])); next = snap.next; log.textContent = lines.join('\n') || 'Starting…';
+      if (snap.status === 'running') continue;
+      if (snap.status !== 'done' || !snap.result) throw new Error(snap.error || 'Stopped before it finished.');
+      out.replaceChildren();
+      return snap.result;
+    }
+  }
+  const buildBody = extra => Object.assign({}, credBody(), scopeSelection(), extra || {});
+  async function previewBuild() {
+    if (B.busy) return;
+    const parts = chosenParts();
+    if (!Object.keys(parts).length) { status('Tick at least one part to build.', true); return; }
+    B.busy = true; B.undoOf = ''; B.result = null; renderBuildResult();
+    const out = $('pbPreviewOut');
+    try {
+      const r = await followJob('/api/pov/build/preview/start', buildBody({ parts }), out, rehearsing() ? 'Rehearsing the build' : 'Previewing the build');
+      if (r.status === 'refused' || r.status === 'stopped') throw new Error(r.message || r.stopped || 'Not planned.');
+      B.preview = r; B.previewFor = JSON.stringify(parts);
+      say(`Dry run ready: ${plural(r.changes, 'change')} in ${plural(r.parts.length, 'part')}.${r.rehearsal ? ' Rehearsal: nothing was written.' : ''}`);
+    } catch (e) { B.preview = null; out.replaceChildren(h('div', { class: 'bp-card risk', role: 'alert' }, h('div', { class: 't', text: 'Not planned' }), h('div', { text: e.message }))); say(`Not planned: ${e.message}`); }
+    finally { B.busy = false; const b = $('pbPreview'); if (b) b.disabled = false; renderBuildPreview(); }
+  }
+  async function previewUndo(buildId) {
+    if (B.busy) return;
+    B.busy = true; B.result = null; renderBuildResult();
+    const out = $('pbPreviewOut');
+    try {
+      const r = await followJob('/api/pov/build/undo/preview/start', buildBody({ build_id: buildId }), out, 'Previewing the Undo of the build');
+      if (r.status === 'refused' || r.status === 'stopped') throw new Error(r.message || r.stopped || 'Not planned.');
+      B.preview = r; B.undoOf = buildId; B.previewFor = '';
+      say(`Undo ready: ${plural(r.changes, 'change')} in ${plural(r.parts.length, 'part')}, latest first.`);
+    } catch (e) { out.replaceChildren(h('div', { class: 'bp-card risk', role: 'alert' }, h('div', { class: 't', text: 'Undo not planned' }), h('div', { text: e.message }))); say(`Undo not planned: ${e.message}`); }
+    finally { B.busy = false; renderBuildPreview(); if (out) out.scrollIntoView({ block: 'nearest' }); }
+  }
+  const show = v => (v === null || v === undefined || v === '') ? '—' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+  function itemsTable(p) {
+    const rows = p.items || [];
+    return h('div', { class: 'pb-tablewrap' }, h('table', { class: 'pb-table' }, h('caption', { class: 'sr-only', text: `${p.label}: every object` }),
+      h('thead', {}, h('tr', {}, ['Object', 'Change', 'Before', 'After', 'Status', 'Why'].map(t => h('th', { scope: 'col', text: t })))),
+      h('tbody', {}, rows.map(u => h('tr', { class: `st-${u.status}` },
+        h('td', {}, h('strong', { text: (u.object || {}).name || (u.object || {}).label || u.key }), h('div', { class: 'pv-meta', text: (u.object || {}).label || u.kind || '' })),
+        h('td', { text: u.field === 'exists' ? (u.after === true && u.before !== true ? 'create' : u.after === false ? 'delete' : 'exists') : u.field }),
+        h('td', { text: u.field === 'exists' ? '' : show(u.before) }), h('td', { text: u.field === 'exists' ? show(u.value) : show(u.after) }),
+        h('td', {}, h('span', { class: `pv-chip ${u.status === 'change' ? 'fail' : u.status === 'noop' ? 'pass' : 'skipped'}`, text: { change: 'will change', noop: 'already so', excluded: 'left out' }[u.status] || u.status })),
+        h('td', { text: u.reason || '' }))))));
+  }
+  function renderBuildPreview() {
+    const out = $('pbPreviewOut'), applyOut = $('pbApplyOut');
+    if (!out) return;
+    const p = B.preview;
+    if (!p) { out.replaceChildren(); if (applyOut) applyOut.replaceChildren(); return; }
+    const sections = (p.sections || []).map(s => h('section', { class: 'pv-sec pb-section', 'aria-label': s.section }, h('h3', { text: s.section }),
+      s.parts.map(key => {
+        const part = p.parts.find(x => x.key === key);
+        const c = part.counts || {};
+        const lists = [['Blocked', part.blockers, 'risk'], ['Check before applying', part.warnings, 'warn'], ['How it is applied', part.notes, 'info']]
+          .filter(([, l]) => (l || []).length).map(([t, l, tone]) => h('div', { class: `bp-card ${tone}` }, h('div', { class: 't', text: t }), h('ul', {}, l.map(x => h('li', { text: x })))));
+        return h('details', { class: 'pb-prev-part', open: p.parts.length <= 2 || undefined },
+          h('summary', {}, h('strong', { text: part.label }), ` · ${part.title} · `, h('span', { class: 'pv-chip fail', text: `${c.change} to change` }), ' ',
+            h('span', { class: 'pv-chip pass', text: `${c.noop} already so` }), ' ', h('span', { class: 'pv-chip skipped', text: `${c.excluded} left out` })),
+          part.arrives ? h('p', { class: 'pv-meta', text: part.arrives }) : null,
+          part.confirm_phrase ? h('p', { class: 'pv-meta', text: `Its own confirmation (${part.confirm_phrase}) is given by the one phrase below.` }) : null,
+          lists, itemsTable(part));
+      })));
+    out.replaceChildren(h('div', { class: 'pv-sec pb-summary' },
+      h('h2', { text: p.undo ? 'Dry run of the Undo' : (p.rehearsal ? 'Dry run (rehearsal)' : 'Dry run') }),
+      p.rehearsal ? h('div', { class: 'bp-card info pb-rehearsal', role: 'note' }, h('div', { class: 't', text: p.rehearsal.note }), h('div', { text: p.rehearsal.apply })) : null,
+      h('p', {}, `${plural(p.changes, 'change')} in ${plural(p.parts.length, 'part')} on ${p.tenant_label}, in this order: ${p.parts.map(x => x.label).join(' → ')}.`),
+      h('p', { class: 'pv-meta' }, 'Plan hash ', h('code', { class: 'pb-hash', text: p.plan_hash }), ' covers every part, every object, before and after.'),
+      (p.blockers || []).length ? h('div', { class: 'bp-card risk', role: 'alert' }, h('div', { class: 't', text: 'Blocked: nothing can be applied until these are fixed' }), h('ul', {}, p.blockers.map(b => h('li', { text: b })))) : null),
+      ...sections);
+    renderBuildApply();
+  }
+  function renderBuildApply() {
+    const out = $('pbApplyOut'), p = B.preview;
+    if (!out) return;
+    if (!p || p.rehearsal) { out.replaceChildren(); return; }
+    const on = !!(B.write || {}).enabled, ready = p.status === 'ready';
+    const assessor = h('input', { type: 'text', id: 'pbAssessor', maxlength: 120, value: B.assessor || (() => { try { const el = window.opener && !window.opener.closed && window.opener.document.getElementById('assessor'); return el ? el.value : ''; } catch (e) { return ''; } })(), placeholder: 'Jane Doe, Zscaler DS Engineer', autocomplete: 'off' });
+    const phrase = h('input', { type: 'text', id: 'pbPhrase', autocomplete: 'off', spellcheck: 'false' });
+    const agree = h('input', { type: 'checkbox', id: 'pbAgree' });
+    const go = h('button', { type: 'button', class: 'rp-btn primary', id: 'pbGo', disabled: true, 'aria-describedby': 'pbGoWhy', text: p.undo ? `Undo ${plural(p.changes, 'change')}` : `Apply ${plural(p.changes, 'change')}` });
+    const why = h('span', { class: 'pv-meta', id: 'pbGoWhy', 'aria-live': 'polite' });
+    const arm = () => {
+      const need = [];
+      if (!on) need.push('write mode (turn it on in Deploy policy packs)');
+      if (!ready) need.push('a plan with changes and no blocker');
+      if (!assessor.value.trim()) need.push("the assessor's name");
+      if (!agree.checked) need.push('the review box ticked');
+      if (p.confirm_phrase && phrase.value.trim().toUpperCase() !== p.confirm_phrase) need.push(`${p.confirm_phrase} typed exactly`);
+      go.disabled = B.busy || need.length > 0;
+      why.textContent = need.length ? `Still needed: ${need.join(', ')}.` : 'Ready to apply.';
+    };
+    [assessor, phrase].forEach(x => x.addEventListener('input', () => { B.assessor = assessor.value.trim(); arm(); }));
+    agree.addEventListener('change', arm);
+    go.addEventListener('click', () => applyBuild(phrase.value, assessor.value.trim()));
+    out.replaceChildren(h('div', { class: 'pv-sec' }, h('h2', { text: p.undo ? 'Undo everything this build applied' : 'Apply the whole build' }),
+      h('p', { class: 'pv-meta', text: 'Every part is read again first; then each part, in order, is read again right before it is written, applied, read back and recorded with its Undo. The first part that does not apply stops the run. Needs write mode, your permission to change the tenant, the assessor\'s name and the phrase.' }),
+      h('div', { class: 'pv-form' }, h('label', { for: assessor.id }, 'Assessor\'s name', assessor),
+        p.confirm_phrase ? h('label', { for: phrase.id }, `Type ${p.confirm_phrase} to confirm`, phrase) : null),
+      h('div', { class: 'pv-row' }, h('label', { for: agree.id }, agree, ` I reviewed this dry run${p.undo ? ' (the Undo)' : ''} and the customer agreed to it.`)),
+      h('div', { class: 'pv-row' }, go, why)));
+    arm();
+  }
+  async function applyBuild(phrase, assessor) {
+    if (B.busy || !B.preview) return;
+    const p = B.preview;
+    B.busy = true;
+    const out = $('pbResultOut');
+    const body = p.undo ? buildBody({ build_id: B.undoOf, plan_hash: p.plan_hash, confirm: true, confirm_text: phrase, assessor })
+      : buildBody({ parts: p.parts_request || chosenParts(), plan_hash: p.plan_hash, confirm: true, confirm_text: phrase, assessor });
+    try {
+      B.result = await followJob(p.undo ? '/api/pov/build/undo/apply/start' : '/api/pov/build/apply/start', body, out, p.undo ? 'Undoing the build' : 'Applying the build');
+      B.preview = null;
+      say(`Build ${B.result.status}.`);
+      await openPov();
+    } catch (e) { B.result = { status: 'refused', message: e.message, steps: [] }; }
+    finally { B.busy = false; renderBuild(); }
+  }
+  // A new ZPA provisioning key, fetched once from the server's ten-minute store and never kept by the page.
+  function keyBox(sec) {
+    const out = h('div', { class: 'pv-row' });
+    const btn = h('button', { type: 'button', class: 'rp-btn pb-key', text: `Show the new provisioning key ${sec.name || ''} (once)` });
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const d = await api('/api/operations/zpa/provisioning-key', { token: sec.token });
+        const id = nid('pb');
+        const inp = h('input', { type: 'text', id, class: 'pb-key-value', readonly: true, autocomplete: 'off', spellcheck: 'false' });
+        inp.value = d.provisioning_key || '';
+        out.replaceChildren(h('label', { for: id, class: 'pv-field', style: 'flex: 1 1 16rem' }, `Provisioning key ${d.name || ''}: copy it now, it is shown this once`, inp));
+        say('The new provisioning key is shown once: copy it now.');
+      } catch (e) { out.replaceChildren(h('span', { class: 'pv-meta', role: 'status', text: `The key could not be shown: ${e.message}` })); }
+    });
+    out.append(btn);
+    return out;
+  }
+  function renderBuildResult() {
+    const out = $('pbResultOut'), r = B.result;
+    if (!out) return;
+    if (!r) { out.replaceChildren(); return; }
+    const words = { applied: 'applied and read back', nothing_to_do: 'nothing to change', not_attempted: 'not attempted', failed: 'failed', partial: 'partly applied',
+                    plan_changed: 'changed since the preview', blocked: 'blocked', stopped: 'stopped', conflict: 'conflict' };
+    const tone = r.status === 'applied' ? 'pass' : r.status === 'nothing_to_do' ? 'info' : 'risk';
+    const undo = r.undo_available && r.build_id ? h('button', { type: 'button', class: 'rp-btn pb-undo-build', 'data-build': r.build_id, text: 'Undo everything applied so far' }) : null;
+    if (undo) undo.addEventListener('click', () => previewUndo(r.build_id));
+    out.replaceChildren(h('div', { class: `bp-card ${tone}`, role: r.status === 'applied' ? 'status' : 'alert' },
+      h('div', { class: 't', text: { applied: r.undo ? 'Undo applied' : 'Build applied', stopped: `Stopped at ${r.stopped_at || 'a part'}`, failed: 'Nothing was applied',
+                                    plan_changed: 'The tenant changed since the preview', refused: 'Not applied', blocked: 'Blocked', nothing_to_do: 'Nothing to change' }[r.status] || r.status }),
+      r.message ? h('div', { text: r.message }) : null,
+      h('ol', { class: 'pb-steps' }, (r.steps || []).map(s => h('li', {}, h('strong', { text: s.label }), `: ${words[s.status] || s.status}.`,
+        ['applied', 'nothing_to_do'].includes(s.status) || !s.message ? '' : ` ${s.message}`,
+        (s.problems || []).length ? h('ul', {}, s.problems.slice(0, 10).map(x => h('li', { text: `${x.object || ''} ${x.field || ''}: ${x.status}${x.reason ? ' — ' + x.reason : ''}` }))) : null,
+        (s.one_time_secrets || []).map(keyBox)))),
+      r.pov_error ? h('div', { class: 'pv-meta', text: `Not listed on the POV: ${r.pov_error}` }) : null, undo));
   }
 
   // Notes and follow-ups.

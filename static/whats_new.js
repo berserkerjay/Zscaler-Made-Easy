@@ -606,6 +606,48 @@ window.WHATS_NEW = {
       "marks": [
         { "page": "/report/operations", "at": "#zdxTierH", "shown": "in ZDX probe setup" }
       ]
+    },
+    {
+      "id": "pov-build", "release": "2026-10-31", "label": "POV build",
+      "what": "The POV planner's Build tab: one plan across the builders the POV needs, one dry run with one plan hash, and one typed confirmation that applies every part in a safe order.",
+      "changelog": ["POV build: one plan, one dry run, one apply", "Build tab"],
+      "marks": [{ "page": "/report/pov", "at": "#tab-build" }]
+    },
+    {
+      "id": "pov-build-dry-run", "release": "2026-10-31", "label": "One dry run",
+      "what": "Every part of the POV build planned as one dry run: a section per product, every object before and after, one plan hash.",
+      "changelog": ["One dry run"],
+      "marks": [{ "page": "/report/pov", "at": "#pbPreview", "shown": "on the Build tab, after the intake" }]
+    },
+    {
+      "id": "pov-build-confirm", "release": "2026-10-31", "label": "One typed confirmation",
+      "what": "One phrase applies the whole POV build; it stops at the first part that does not apply.",
+      "changelog": ["One typed confirmation"],
+      "marks": [{ "page": "/report/pov", "at": "#pbPhrase", "shown": "after a dry run on the live tenant" }]
+    },
+    {
+      "id": "pov-build-undo", "release": "2026-10-31", "label": "Undo everything applied so far",
+      "what": "The Undo of a POV build: what it applied, latest part first, as one dry run and one confirmation.",
+      "changelog": ["Undo everything applied so far"],
+      "marks": [{ "page": "/report/pov", "at": "#pvBuild button.pb-undo-build", "shown": "after a build is applied" }]
+    },
+    {
+      "id": "pov-build-choices", "release": "2026-10-31", "label": "Load choices from the tenant",
+      "what": "Reads the certificates and Inspect rules the SSL certificates and AI Guard parts pick from.",
+      "changelog": ["Load choices from the tenant"],
+      "marks": [{ "page": "/report/pov", "at": "#pvBuild button.pb-choices", "shown": "when SSL certificates or AI Guard routing is ticked" }]
+    },
+    {
+      "id": "rehearsal", "release": "2026-10-31", "label": "Rehearsal on sample or offline data",
+      "what": "Every builder and Bulk changes type makes its full plan and dry run on the sample tenant and on an opened snapshot, labelled a rehearsal; nothing is ever applied there.",
+      "changelog": ["Rehearsal on the sample tenant and snapshots"],
+      "marks": [{ "page": "/report/operations", "at": "#opPreview" }]
+    },
+    {
+      "id": "rehearsal-packs", "release": "2026-10-31", "label": "Rehearsal in Deploy policy packs",
+      "what": "A policy pack's preview on the sample tenant or a snapshot says it is a rehearsal; deploying there is refused.",
+      "changelog": ["Rehearsal in Deploy policy packs"],
+      "marks": [{ "page": "/", "at": "#dzRehearsal", "shown": "after a preview on the sample tenant or a snapshot" }]
     }
   ]
 };
