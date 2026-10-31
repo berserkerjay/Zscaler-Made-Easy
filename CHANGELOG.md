@@ -5,6 +5,23 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### ZIA forwarding and traffic path
+- **Forwarding and traffic path checks.** Ten new ZIA platform checks (section "ZIA — Forwarding", FWD.1 to FWD.10), read only when ZIA platform is ticked. A feature that is not licensed (the API answers 404) or not used is "not applicable" and leaves the score alone; each finding says why it matters and how to fix it.
+  - **Forwarding around ZIA**: Cloud or Branch Connector forwarding rules that send traffic DIRECT, with no destination named (fail) or for named destinations (review).
+  - **Proxy chaining fallback**: proxy-chaining rules with no proxy gateway, or a gateway with no secondary proxy (fail when it also does not fail closed).
+  - **ZPA gateways**: no server group or application segment, ZPA rules with no gateway, gateways no rule uses.
+  - **Data centre exclusions**: exclusions in force, open-ended or longer than 30 days.
+  - **GRE tunnel diversity**: a secondary VIP that is missing or in the primary's data centre (a VIP the tunnel does not place is placed from Zscaler's public VIP list).
+  - **IPv6 handling**: IPv6 off while locations forward traffic or are set to carry IPv6; IPv6 on with no NAT64 prefix.
+  - **Dedicated IP gateway failover**: no secondary data centre, or the same one as the primary.
+  - **NAT control scope**: NAT control rules with no destination named or no redirect target.
+  - **Virtual Service Edge redundancy**: clusters with fewer than two working nodes, nodes in no cluster, nodes off or not in production.
+  - **DNS gateway failover**: no secondary resolver (fail when the gateway also answers with an error).
+- **Forwarding control step.** The Path analyzer's last ZIA step: the ZIA forwarding rule that decides how allowed traffic is sent on (direct, proxy chaining, ZPA, a dedicated egress IP, or dropped, which ends the path as blocked), every criterion as match, no match or unknown, and what the method relies on: the proxy gateway's fallback, the ZPA gateway's server group, the dedicated IP gateway's data centres. It also names a NAT control rule that rewrites (or could rewrite) the destination, IPv6 being off for an IPv6 destination, and data centre exclusions in force; a DNS Control rule that redirects to a DNS gateway says whether that gateway can fail over. A weak point (no fallback proxy, no ZPA gateway, IPv6 not processed) is listed with its fix. Not licensed: the step says "not applicable" and changes nothing else.
+- The sample tenant (Larkspur Freight) has forwarding rules, gateways, GRE tunnels and VIPs, data centres and an exclusion, IPv6, NAT control, a Virtual Service Edge cluster and a DNS gateway, with gaps to find; snapshots save the same reads. Read-only: nothing here writes to the tenant.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

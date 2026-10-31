@@ -64,7 +64,7 @@ LONG_EXCLUSION_DAYS = 30
 MAX_NAMES = 5
 
 METHOD_WORDS = {
-    DIRECT: "sends it direct", PROXYCHAIN: "chains it to another proxy", ZPA: "sends it to ZPA through a ZPA gateway",
+    DIRECT: "sends it from ZIA straight to the destination", PROXYCHAIN: "chains it to another proxy", ZPA: "sends it to ZPA through a ZPA gateway",
     DEDICATED_IP: "sends it out from a dedicated egress IP", DROP: "drops it", "ZIA": "sends it to ZIA",
     "ECZPA": "sends it to ZPA from the connector", "ECSELF": "handles it on the connector", "GEOIP": "forwards it by country",
 }
