@@ -107,7 +107,7 @@ def test_out_of_scope_is_refused_before_anything_is_read():
     with pytest.raises(ao.OperationError, match="Scope page"):
         ao.plan(c, spec, scope=NO_ZPA)
     with pytest.raises(ao.OperationError, match="Scope page"):
-        ao.read_objects(c, "zpa_segment_edit", NO_ZPA)
+        ao.read_objects(c, "zpa_segment_bulk", NO_ZPA)
     assert c.tenant.reads == [] and c.tenant.writes == []
 
 
@@ -316,7 +316,7 @@ def test_undo_puts_back_exactly_what_was_changed():
 def test_read_objects_lists_segments_with_their_kind_and_the_groups():
     """ASVS V1.4.1 · CWE-200: the form gets each segment's settings and kind and the group pick lists; reads only."""
     c, ids = tenant()
-    res = ao.read_objects(c, "zpa_segment_edit", ZPA)
+    res = ao.read_objects(c, "zpa_segment_bulk", ZPA)
     segs = {s["name"]: s for s in res["segments"]}
     assert segs["Jenkins BA"]["kinds"] == ["Browser Access"] and segs["Intranet"]["tcp"] == ["443"]
     assert segs["Intranet"]["server_groups"] == ["DC1"] and segs["Intranet"]["segment_group"] == "Apps"
@@ -330,7 +330,7 @@ def test_the_sample_tenant_through_the_real_sdk_reads_previews_and_applies():
     st = offline_tenant.sample_store(reset=True)
     try:
         client = offline_tenant.OfflineSdkClient(st, offline_tenant.creds_for(st))
-        res = ao.read_objects(client, "zpa_segment_edit", ZPA)
+        res = ao.read_objects(client, "zpa_segment_bulk", ZPA)
         segs = {s["name"]: s for s in res["segments"]}
         assert segs["Freight billing"]["health_reporting"] == "ON_ACCESS" and segs["Freight billing"]["tcp"] == ["443"]
         spec = {"type": "zpa_segment_fields", "segments": [segs["Freight billing"]["id"]],
@@ -339,7 +339,7 @@ def test_the_sample_tenant_through_the_real_sdk_reads_previews_and_applies():
         assert p["status"] == "ready" and p["counts"]["change"] == 2
         r = ao.execute(client, spec, plan_hash=p["plan_hash"], scope=ZPA, writes_enabled=True, assessor="Jane Doe", tenant_label="sample")
         assert r["status"] == "applied" and r["verification"]["confirmed"] == 2, r
-        again = {s["name"]: s for s in ao.read_objects(client, "zpa_segment_edit", ZPA)["segments"]}["Freight billing"]
+        again = {s["name"]: s for s in ao.read_objects(client, "zpa_segment_bulk", ZPA)["segments"]}["Freight billing"]
         assert again["health_reporting"] == "CONTINUOUS" and again["tcp"] == ["443", "8443"] and again["server_groups"] == ["Portland data centre"]
     finally:
         offline_tenant.sample_store(reset=True)

@@ -56,7 +56,7 @@ import pack_ops as ops
 import zpa_reader as zr
 
 TYPE = "zpa_segment_fields"
-FAMILY = "zpa_segment_edit"
+FAMILY = "zpa_segment_bulk"   # (not zpa_segment_edit: the rule editor's one-segment type has that name)
 HANDLER = "zpa_f_update"
 NOT_IN_SCOPE = "Not in scope: ZPA is not ticked on the Scope page, so the application segments are not read or changed."
 MAX_SEGMENTS = 200       # segments per operation (one PUT each)
