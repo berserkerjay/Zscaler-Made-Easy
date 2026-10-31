@@ -111,6 +111,12 @@ _ZPA_MAP = {
     "appConnectors":                  ("v1", "connector"),
     "policySet/rules/ACCESS_POLICY":  ("v1", "policySet/rules/policyType/ACCESS_POLICY"),
     "policySet/rules/TIMEOUT_POLICY": ("v1", "policySet/rules/policyType/TIMEOUT_POLICY"),
+    # Admin SSO login options sit under a /v2 segment of the v1 customer base
+    # (zpa/admin_sso_controller.py: {base}/v2/ssoLoginOptions).
+    "ssoLoginOptions":                ("v1", "v2/ssoLoginOptions"),
+    # PRA credential pools are served by another service, not mgmtconfig
+    # (zpa/pra_credential_pool.py: /zpa/waap-pra-config/v1/admin/customers/{id}/credential-pool).
+    "credential-pool":                ("v1", "credential-pool", "waap-pra-config"),
 }
 
 # ZIdentity endpoints — from zscaler-sdk-python/zid/, served at
@@ -165,10 +171,11 @@ def _resolve_ep(ep, customer_id="", legacy=False):
         mapped = _ZID_MAP.get(suffix, suffix)
         return "/ziam/admin/api/v1/" + mapped
     if ep.startswith("/zpa/"):
-        version, suffix = _ZPA_MAP.get(ep[5:], ("v1", ep[5:]))
+        version, suffix, *service = _ZPA_MAP.get(ep[5:], ("v1", ep[5:]))
+        service = service[0] if service else "mgmtconfig"
         if customer_id:
-            return f"/zpa/mgmtconfig/{version}/admin/customers/{customer_id}/" + suffix
-        return f"/zpa/mgmtconfig/{version}/" + suffix
+            return f"/zpa/{service}/{version}/admin/customers/{customer_id}/" + suffix
+        return f"/zpa/{service}/{version}/" + suffix
     return ep
 
 # What a read answers once the run is stopped (Client.stop, or the stop

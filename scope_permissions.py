@@ -285,7 +285,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
 
     "rbac": {
         "label": "RBAC",
-        "description": "Role-based access control hygiene: ZIA admin roles and admins, admin password expiry, Zscaler Support remote assistance, Client Connector portal admins and roles, ZPA access policy bound to groups, ZIdentity admin redundancy.",
+        "description": "Role-based access control hygiene: ZIA admin roles and admins, admin password expiry, Zscaler Support remote assistance, Client Connector portal admins and roles, ZPA access policy bound to groups, ZPA administration (admins, roles, admin SSO, API keys, emergency access, microtenants, provisioning keys, Privileged Remote Access credentials and approvals; with ZPA ticked too), ZIdentity admin redundancy. Key, password and credential values are never read into results.",
         "service": "ZIA + ZCC + ZPA + ZIdentity",
         "permissions_read": [
             "Admin Roles",
@@ -296,6 +296,15 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "ZCC Admin Roles",
             "Access Policy",
             "Users",
+            "ZPA Administrators",
+            "ZPA Roles",
+            "ZPA Admin SSO Settings",
+            "ZPA API Keys",
+            "ZPA Emergency Access",
+            "ZPA Microtenants",
+            "ZPA Provisioning Keys",
+            "ZPA Privileged Credentials",
+            "ZPA Privileged Approvals",
         ],
         "permissions_write": [],
         "endpoints_used": [
@@ -303,11 +312,14 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/passwordExpiry/settings", "/zia/remoteAssistance",
             "/zcc/adminRoles", "/zcc/adminUsers", "/zcc/adminUsersSyncInfo",
             "/zpa/policySet/rules/ACCESS_POLICY",
+            "/zpa/administrators", "/zpa/roles", "/zpa/ssoLoginOptions", "/zpa/apiKeys", "/zpa/emergencyAccess/users",
+            "/zpa/microtenants", "/zpa/associationType/CONNECTOR_GRP/provisioningKey",
+            "/zpa/associationType/SERVICE_EDGE_GRP/provisioningKey", "/zpa/credential", "/zpa/credential-pool", "/zpa/approval",
             "/zid/users",
         ],
-        "license_required": "Standard ZIA license; the ZCC, ZPA and ZIdentity checks need those products.",
+        "license_required": "Standard ZIA license; the ZCC, ZPA and ZIdentity checks need those products. Microtenants and Privileged Remote Access need those ZPA features; without them those checks say N/A.",
         "customer_id_needed": True,
-        "customer_id_note": "One RBAC check reads the ZPA access policy, which needs the ZPA customer ID.",
+        "customer_id_note": "The ZPA RBAC checks (access policy and ZPA administration) need the ZPA customer ID, and ZPA ticked on the Scope page.",
     },
 
     "insights": {

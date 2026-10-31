@@ -2,7 +2,7 @@
 
 GOV.1-GOV.8 in zscaler_full_checks (Zscaler's configuration audit, alert
 subscriptions, NSS VM health and log streaming, N/A when not licensed) and
-RBAC.13-RBAC.14 in zscaler_rbac_checks (admin password expiry, Zscaler
+RBAC.24-RBAC.25 in zscaler_rbac_checks (admin password expiry, Zscaler
 Support remote assistance). Every test is offline: a dict-backed fake client,
 or the made-up sample tenant behind offline_tenant's clients."""
 import importlib
@@ -46,8 +46,8 @@ def _reg(reg, cid):
 
 
 GOV = {cid: _reg(fc.PLATFORM_REG, cid) for cid in ("GOV.1", "GOV.2", "GOV.3", "GOV.4", "GOV.5", "GOV.6", "GOV.7", "GOV.8")}
-RBAC13 = _reg(rbac.RBAC_REG, "RBAC.13")
-RBAC14 = _reg(rbac.RBAC_REG, "RBAC.14")
+RBAC24 = _reg(rbac.RBAC_REG, "RBAC.24")
+RBAC25 = _reg(rbac.RBAC_REG, "RBAC.25")
 LICENSED = [{"id": "ZIA_TENANT", "status": "ACTIVE", "subscribed": True}, {"id": "Z_CLOUD_NSS_WEB", "status": "ACTIVE", "subscribed": True}]
 UNLICENSED = [{"id": "ZIA_TENANT", "status": "ACTIVE", "subscribed": True}]
 
@@ -55,9 +55,9 @@ UNLICENSED = [{"id": "ZIA_TENANT", "status": "ACTIVE", "subscribed": True}]
 # ── The registry, the scope and the sample ─────────────────────────────
 
 def test_the_governance_checks_run_under_the_scope_page_keys_they_read_for():
-    """ASVS V1.14.1 · CWE-1287: GOV.* run with ZIA platform (zia_extras) and RBAC.13-14 with RBAC; their reads are listed for those keys, so nothing un-ticked is read."""
+    """ASVS V1.14.1 · CWE-1287: GOV.* run with ZIA platform (zia_extras) and RBAC.24-25 with RBAC; their reads are listed for those keys, so nothing un-ticked is read."""
     gov = [(i, s) for i, s, _l, _f in fc.PLATFORM_REG if i.startswith("GOV.")]
-    rb = [(i, s) for i, s, _l, _f in rbac.RBAC_REG if i in ("RBAC.13", "RBAC.14")]
+    rb = [(i, s) for i, s, _l, _f in rbac.RBAC_REG if i in ("RBAC.24", "RBAC.25")]
     zia_eps = set(scope_permissions.SCOPE_PERMISSIONS["zia_extras"]["endpoints_used"])
     rbac_eps = set(scope_permissions.SCOPE_PERMISSIONS["rbac"]["endpoints_used"])
 
@@ -102,11 +102,11 @@ def test_every_governance_check_is_assessed_on_the_sample_tenant():
     st = ot.sample_store(reset=True)
     cl = ot.OfflineRawClient(st, ot.creds_for(st))
 
-    res = {cid: fn(cl) for cid, fn in list(GOV.items()) + [("RBAC.13", RBAC13), ("RBAC.14", RBAC14)]}
+    res = {cid: fn(cl) for cid, fn in list(GOV.items()) + [("RBAC.24", RBAC24), ("RBAC.25", RBAC25)]}
 
     assert all("could not be read" not in r.detail for r in res.values()), {k: r.detail for k, r in res.items()}
     assert res["GOV.2"].status == "REVIEW" and "backup GRE tunnel" in res["GOV.2"].detail
-    assert res["GOV.7"].status == "REVIEW" and res["GOV.8"].status == "PASS" and res["RBAC.13"].status == "PASS"
+    assert res["GOV.7"].status == "REVIEW" and res["GOV.8"].status == "PASS" and res["RBAC.24"].status == "PASS"
 
 
 # ── GOV.1-GOV.5: Zscaler's configuration audit ─────────────────────────
@@ -249,7 +249,7 @@ def test_subscriptions_nobody_understands_are_no_evidence_of_a_missing_licence()
     assert fc._subscriptions(FakeCl({"/zia/subscriptions": expired})) == {"ZIA_TENANT"}
 
 
-# ── RBAC.13: admin password expiry ─────────────────────────────────────
+# ── RBAC.24: admin password expiry ─────────────────────────────────────
 
 @pytest.mark.parametrize("body,status,word", [
     ({"passwordExpirationEnabled": True, "passwordExpiryDays": 90}, "PASS", "after 90 days"),
@@ -261,19 +261,19 @@ def test_subscriptions_nobody_understands_are_no_evidence_of_a_missing_licence()
 ])
 def test_admin_password_expiry(body, status, word):
     """ASVS V2.1.10 · CWE-262: admin passwords that never expire (or only after a year) need review; a masked or missing value is no evidence."""
-    r = RBAC13(FakeCl({"/zia/passwordExpiry/settings": body}))
+    r = RBAC24(FakeCl({"/zia/passwordExpiry/settings": body}))
 
     assert r.status == status and word in r.detail
 
 
 def test_a_snapshot_keeps_the_password_expiry_switch_and_nothing_secret():
-    """ASVS V8.3.4 · CWE-312 · CWE-1287: the snapshot scrubber keeps passwordExpirationEnabled and passwordExpiryDays as true/false and a number (no secret), so RBAC.13 judges a snapshot as it judges the tenant; text under those names and real password fields stay masked."""
+    """ASVS V8.3.4 · CWE-312 · CWE-1287: the snapshot scrubber keeps passwordExpirationEnabled and passwordExpiryDays as true/false and a number (no secret), so RBAC.24 judges a snapshot as it judges the tenant; text under those names and real password fields stay masked."""
     out = ot.scrub({"passwordExpirationEnabled": False, "passwordExpiryDays": 30, "password": "hunter2"})
     text = ot.scrub({"passwordExpirationEnabled": "hunter2", "passwordExpiryDays": "hunter2"})
 
     assert out == {"passwordExpirationEnabled": False, "passwordExpiryDays": 30, "password": "(set)"}
     assert "hunter2" not in json.dumps(text)
-    assert RBAC13(FakeCl({"/zia/passwordExpiry/settings": out})).status == "REVIEW"
+    assert RBAC24(FakeCl({"/zia/passwordExpiry/settings": out})).status == "REVIEW"
 
 
 def test_the_governance_reads_survive_a_snapshot_round_trip():
@@ -285,12 +285,12 @@ def test_the_governance_reads_survive_a_snapshot_round_trip():
     snap = ot.open_document(json.dumps(doc).encode())
     off = ot.OfflineRawClient(snap, ot.creds_for(snap))
 
-    fns = list(GOV.values()) + [RBAC13, RBAC14]
+    fns = list(GOV.values()) + [RBAC24, RBAC25]
     assert [fn(off).status for fn in fns] == [fn(live).status for fn in fns]
     assert "secops@" not in json.dumps([fn(off).detail for fn in fns])
 
 
-# ── RBAC.14: Zscaler Support remote assistance ─────────────────────────
+# ── RBAC.25: Zscaler Support remote assistance ─────────────────────────
 
 @pytest.fixture
 def clock(monkeypatch):
@@ -308,7 +308,7 @@ def clock(monkeypatch):
 ])
 def test_remote_assistance_open_too_long_or_with_change_access_needs_review(clock, body, status, word):
     """ASVS V4.1.3 · CWE-284 · CWE-359: Zscaler Support full access, or view-only access open for more than 30 days, is a review; seconds and milliseconds both read; absurd values are ignored."""
-    r = RBAC14(FakeCl({"/zia/remoteAssistance": body}))
+    r = RBAC25(FakeCl({"/zia/remoteAssistance": body}))
 
     assert r.status == status and word in r.detail
 
@@ -322,8 +322,8 @@ def test_governance_findings_read_in_plain_language_and_map_to_frameworks():
     plain = plain_english.explain(row)
 
     assert "SIEM" in plain["outcome"] and plain["do"]
-    assert compliance_mapping.get_compliance_for_check("GOV.6") and compliance_mapping.get_compliance_for_check("RBAC.14")
-    labels = [l for i, _s, l, _f in fc.PLATFORM_REG + rbac.RBAC_REG if i.startswith("GOV.") or i in ("RBAC.13", "RBAC.14")]
+    assert compliance_mapping.get_compliance_for_check("GOV.6") and compliance_mapping.get_compliance_for_check("RBAC.25")
+    labels = [l for i, _s, l, _f in fc.PLATFORM_REG + rbac.RBAC_REG if i.startswith("GOV.") or i in ("RBAC.24", "RBAC.25")]
     assert len(labels) == 10 and all(len(l) <= 70 and l[0].isupper() for l in labels)
 
 

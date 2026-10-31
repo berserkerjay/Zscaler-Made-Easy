@@ -1,5 +1,5 @@
 {
- "area": "Assessment checks: ZIA governance and audit (zscaler_full_checks GOV.1-GOV.8, zscaler_rbac_checks RBAC.13-RBAC.14), their reads in the sample tenant and snapshots, and the subscriptions that make a check N/A",
+ "area": "Assessment checks: ZIA governance and audit (zscaler_full_checks GOV.1-GOV.8, zscaler_rbac_checks RBAC.24-RBAC.25), their reads in the sample tenant and snapshots, and the subscriptions that make a check N/A",
  "title": "Zscaler's configuration audit, alert subscriptions, NSS VM health and log streaming, admin password expiry and Zscaler Support access: read-only, in scope only, N/A when not licensed, recipients counted, verified offline against the SDK 1.11.3 models",
  "standards": [
   "ASVS V1.14.1",
@@ -34,7 +34,7 @@
   },
   {
    "id": "GOV-C02",
-   "what": "Scope: GOV.* run only with ZIA platform and RBAC.13-14 only with RBAC; the snapshot plan reads the new endpoints only for those keys",
+   "what": "Scope: GOV.* run only with ZIA platform and RBAC.24-25 only with RBAC; the snapshot plan reads the new endpoints only for those keys",
    "standard": "ASVS V4.1.3 · CWE-863 · WSTG-ATHZ-02",
    "result": "pass"
   },
@@ -83,7 +83,7 @@
    "cwe": "CWE-1287",
    "asvs": "V5.1.3",
    "status": "fixed",
-   "fix": "offline_tenant.scrub keeps passwordExpirationEnabled and passwordExpiryDays only as a bool or an int (text stays masked); RBAC.13 accepts only a real true/false",
+   "fix": "offline_tenant.scrub keeps passwordExpirationEnabled and passwordExpiryDays only as a bool or an int (text stays masked); RBAC.24 accepts only a real true/false",
    "test": "tests/test_w8_zia_governance.py::test_a_snapshot_keeps_the_password_expiry_switch_and_nothing_secret"
   },
   {

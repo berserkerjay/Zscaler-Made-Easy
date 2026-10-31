@@ -1018,6 +1018,7 @@ window.HELP_CATALOG = {
    },
    "#scopeField input.scope-cb[value=\"rbac\"]": {
     "what": "Adds the RBAC checks (14). Role-Based Access Control hygiene: admin counts, SSO federation, MFA, admin password expiry, Zscaler Support remote access, group-bound policies, stale accounts.",
+    "what": "Adds the RBAC checks (23). Role-Based Access Control hygiene: admin counts, SSO federation, MFA, group-bound policies, stale accounts. With ZPA ticked too, it also checks ZPA admins, roles, API keys, break-glass accounts, microtenants, provisioning keys and remote access. It never reads key or password values.",
     "input": "Tick it to check admin and role hygiene.",
     "effect": "local"
    },

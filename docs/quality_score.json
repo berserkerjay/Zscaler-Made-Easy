@@ -287,7 +287,7 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 136,
+            "fixed": 139,
             "accepted": 3,
             "records": [
               "c6-assessment",
@@ -299,7 +299,8 @@
               "w7-o365-endpoints",
               "w7-path-coverage",
               "w7-zpa-identity",
-              "w8-zia-governance"
+              "w8-zia-governance",
+              "w8-zpa-rbac"
             ]
           },
           "coverage": {
@@ -456,7 +457,7 @@
     }
   ],
   "counts": {
-    "findings": 626,
+    "findings": 629,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -470,12 +471,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 165,
+        "fixed": 166,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 356,
+        "fixed": 358,
         "accepted": 0
       },
       "info": {
@@ -485,12 +486,12 @@
       }
     },
     "checks": {
-      "pass": 401,
+      "pass": 408,
       "fixed": 313,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 9421
+    "tests_added": 9510
   },
   "findings": [
     {
@@ -3930,6 +3931,22 @@
       "commit": "e2eb71d",
       "reason": "",
       "slug": "w7-zpa-identity",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-ZPA-RBAC-03",
+      "title": "The ZPA admin and RBAC area (admins, roles, admin SSO, API keys, emergency access, microtenants, provisioning keys, PRA credentials and approvals) was not read or assessed",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.4.4",
+      "wcag": "",
+      "fix": "Eleven read-only checks (RBAC.13 to RBAC.23) in the RBAC registry, scrubbed on read, with snapshot capture and sample data.",
+      "test": "tests/test_zpa_rbac.py::test_sample_tenant_answers_every_new_check_with_its_planted_gaps",
+      "commit": "ce1529c, b238175",
+      "reason": "",
+      "slug": "w8-zpa-rbac",
       "area": "functionality",
       "sub_area": "traffic_analysis"
     },
@@ -9605,7 +9622,7 @@
       "cwe": "CWE-1287",
       "asvs": "V5.1.3",
       "wcag": "",
-      "fix": "offline_tenant.scrub keeps passwordExpirationEnabled and passwordExpiryDays only as a bool or an int (text stays masked); RBAC.13 accepts only a real true/false",
+      "fix": "offline_tenant.scrub keeps passwordExpirationEnabled and passwordExpiryDays only as a bool or an int (text stays masked); RBAC.24 accepts only a real true/false",
       "test": "tests/test_w8_zia_governance.py::test_a_snapshot_keeps_the_password_expiry_switch_and_nothing_secret",
       "commit": "",
       "reason": "",
@@ -9626,6 +9643,38 @@
       "commit": "",
       "reason": "",
       "slug": "w8-zia-governance",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-ZPA-RBAC-01",
+      "title": "Snapshot scrub masked tokenExpiryTimeInSec (a token lifetime, not a secret), so a token-lifetime check could never judge a snapshot or the sample",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-754",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "A numeric value under a lifetime name (expiry/expiration/lifetime/validity in seconds) is kept; token text is still masked.",
+      "test": "tests/test_zpa_rbac.py::test_a_token_lifetime_is_kept_but_a_token_is_not",
+      "commit": "b238175",
+      "reason": "",
+      "slug": "w8-zpa-rbac",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-ZPA-RBAC-02",
+      "title": "ZPA path resolution could only build mgmtconfig paths: PRA credential pools (waap-pra-config) had no path and its customer id was not normalised in snapshots",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1104",
+      "asvs": "V14.2.1",
+      "wcag": "",
+      "fix": "_ZPA_MAP entries may name a service base; offline_tenant normalises the waap-pra-config customer segment too.",
+      "test": "tests/test_zpa_rbac.py::test_the_pra_pool_path_is_normalised_like_every_zpa_path",
+      "commit": "ce1529c",
+      "reason": "",
+      "slug": "w8-zpa-rbac",
       "area": "functionality",
       "sub_area": "traffic_analysis"
     },
@@ -11651,7 +11700,7 @@
     },
     {
       "slug": "w8-zia-governance",
-      "area": "Assessment checks: ZIA governance and audit (zscaler_full_checks GOV.1-GOV.8, zscaler_rbac_checks RBAC.13-RBAC.14), their reads in the sample tenant and snapshots, and the subscriptions that make a check N/A",
+      "area": "Assessment checks: ZIA governance and audit (zscaler_full_checks GOV.1-GOV.8, zscaler_rbac_checks RBAC.24-RBAC.25), their reads in the sample tenant and snapshots, and the subscriptions that make a check N/A",
       "title": "Zscaler's configuration audit, alert subscriptions, NSS VM health and log streaming, admin password expiry and Zscaler Support access: read-only, in scope only, N/A when not licensed, recipients counted, verified offline against the SDK 1.11.3 models",
       "standards": [
         "ASVS V1.14.1",
@@ -11680,6 +11729,17 @@
       "checks": 8,
       "findings": 6,
       "tests_added": 59
+    },
+    {
+      "slug": "w8-zpa-rbac",
+      "area": "zpa-rbac",
+      "title": "ZPA admin and RBAC audit: admins, roles, admin SSO, API keys, emergency access, microtenants, provisioning keys, PRA credentials and approvals",
+      "standards": [
+        "ASVS 4.0.3 L2 V1.4, V2.1, V2.2, V2.5, V2.10, V4.1, V7.4, V8.3, V11.1"
+      ],
+      "checks": 7,
+      "findings": 3,
+      "tests_added": 89
     }
   ],
   "standards": {
@@ -11699,7 +11759,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 110,
+    "asvs_requirements": 113,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -11789,6 +11849,7 @@
       "CWE-297",
       "CWE-306",
       "CWE-307",
+      "CWE-308",
       "CWE-312",
       "CWE-319",
       "CWE-327",
@@ -11939,7 +12000,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 57,
+    "wstg": 59,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",

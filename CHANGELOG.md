@@ -81,6 +81,19 @@ lists what each batch of changes did, newest first.
   - **Zscaler Support access**: full access to the ZIA admin portal, or view-only access open for more than 30 days, needs review; user names not obfuscated for Support are called out.
 - The snapshot scrubber now keeps the admin password expiry switch and its days (a true/false and a number, no secret): before, they were masked like a password, and a snapshot of a tenant with expiry off could pass. 59 new tests in tests/test_w8_zia_governance.py.
 
+### ZPA admin and RBAC audit
+- **ZPA admin and RBAC audit.** Eleven new read-only RBAC checks (RBAC.13 to RBAC.23) cover ZPA administration. Each says why it matters and where to fix it in the ZPA Admin Portal; a feature the tenant does not have (microtenants, PRA) is N/A, and a refused read is not judged.
+  - **ZPA admins and second factor**: enough enabled admins but not too many, and a second factor for every admin who can sign in with a local password.
+  - **SSO-only admin sign-in**: admin login follows the IdP's MFA and offboarding.
+  - **Full-access and read-only roles**: few admins with a full-access role, and a read-only role and task-scoped roles.
+  - **ZPA API keys**: least privilege and tokens valid for a day at most.
+  - **Break-glass accounts**: an emergency access account exists and stays dormant.
+  - **Microtenant admins**: an admin of its own in each microtenant (read per microtenant, at most 20).
+  - **Provisioning keys**: capped near the enrolments they need and not left unused.
+  - **Privileged Remote Access credentials and approvals**: credentials rotated within 90 days and pooled, and no approval open for more than 30 days.
+- Read only with RBAC and ZPA both ticked on the Scope page (the RBAC entry lists every new endpoint). Every list is scrubbed as it is read: a password, client secret, token or provisioning-key value never reaches a check, a result, a log or a snapshot, and admins are counted, never listed. Snapshots save the new lists; the sample tenant has made-up data for each, with gaps to find.
+- Paths verified against the installed Zscaler SDK 1.11.3: PRA credential pools are served by their own ZPA service base (waap-pra-config), now resolved and normalised; admin SSO login options sit under /v2. A snapshot used to mask a ZPA API key's token lifetime as if it were a token; a numeric lifetime is now kept.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

@@ -261,6 +261,15 @@ window.WHATS_NEW = {
       "what": "RBAC checks of the ZIA admin password expiry and of how long Zscaler Support may sign in to the admin portal.",
       "changelog": ["Admin password expiry", "Zscaler Support access"],
       "marks": [{ "page": "/", "at": "#scopeField input.scope-cb[value=\"rbac\"]", "shown": "on the Scope page" }]
+    },
+    {
+      "id": "zpa-rbac-audit", "release": "2026-10-31", "label": "ZPA admin and RBAC audit",
+      "what": "The RBAC checks now cover ZPA administration: admins and their second factor, SSO-only sign-in, full-access roles, read-only roles, API keys, break-glass accounts, microtenant admins, provisioning keys, and Privileged Remote Access credentials and approvals. Read-only; key and password values are never read into results.",
+      "changelog": ["ZPA admin and RBAC audit", "ZPA admins and second factor", "SSO-only admin sign-in", "Full-access and read-only roles", "ZPA API keys",
+                    "Break-glass accounts", "Microtenant admins", "Provisioning keys", "Privileged Remote Access credentials and approvals"],
+      "marks": [
+        { "page": "/", "at": "#scopeField input.scope-cb[value=\"rbac\"]", "shown": "on the Scope assessment step" }
+      ]
     }
   ]
 };

@@ -205,6 +205,14 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
 # (label + section + check_id).
 _REMEDIATION_PATHS = [
     # (match-substring, admin-portal path, API hint or None)
+    # The ZPA RBAC section first: its labels say "admin", which would
+    # otherwise send a ZPA admin finding to the ZIdentity path.
+    ("rbac — zpa",
+     "ZPA Admin Portal → Administration → Administrators, Roles, API Keys, "
+     "Emergency Access, Admin SSO and Microtenants; Configuration → "
+     "Provisioning Keys; Privileged Remote Access → Credentials and Approvals; "
+     "Policy → Access Policy for group-bound rules",
+     None),
     ("ssl",
      "ZIA Admin → Policy → SSL Inspection → Add Rule (or edit Default Rule). "
      "Set Action = Inspect, attach URL categories to inspect, add exempt URL list.",
@@ -325,12 +333,31 @@ def _resolve_remediation(label: str, section: str, check_id: str) -> tuple:
     )
 
 
+# Why it matters, per check, where the generic patterns below would say
+# something vaguer (the ZPA administration checks, RBAC.13 to RBAC.23).
+_WHY_BY_CHECK = {
+    "RBAC.13": "ZPA admins decide who reaches every private application. One admin is a lock-out waiting to happen; too many is a large, unreviewed group that can open apps to anyone.",
+    "RBAC.14": "A ZPA admin account protected by a password alone is the easiest way into every private application: one phished password changes access policy for the whole company.",
+    "RBAC.15": "When ZPA admins can sign in with a local password, a leaver's access does not end when the IdP account is disabled, and the IdP's MFA and sign-in policies do not apply.",
+    "RBAC.16": "Every full-access admin can change any application segment, connector or policy. Few people with full access keeps a mistake or a stolen account from reaching everything.",
+    "RBAC.17": "Without a read-only role, auditors, the SOC and reporting tools get change rights they never need, which auditors flag under least privilege (SOC 2 CC6.1, NIST AC-6).",
+    "RBAC.18": "An API key with full access and long-lived tokens is a standing admin credential in a script or pipeline: whoever copies it can change ZPA policy without MFA.",
+    "RBAC.19": "If the IdP is down, a tenant with only SSO admins cannot be administered; a break-glass account used day to day becomes an unmonitored shared admin.",
+    "RBAC.20": "A microtenant without its own admins is managed from the parent tenant, so a business unit's team needs parent-tenant rights that reach every other unit.",
+    "RBAC.21": "A provisioning key enrols App Connectors and Service Edges. A key with room for many more enrolments, or one left unused, lets whoever finds it place a rogue connector inside the network.",
+    "RBAC.22": "Privileged Remote Access hands stored server credentials to users. Credentials never rotated, and not pooled, stay valid long after the people who knew them have moved on.",
+    "RBAC.23": "A Privileged Remote Access approval that stays open for months is standing privileged access to servers, the opposite of just-in-time access auditors expect.",
+}
+
+
 def _generate_why_it_matters(check_id: str, label: str, as_is: str, best_practice: str, section: str = "") -> str:
     """
     Produce a business-impact 'why it matters' sentence. Explains the
     risk/cost of the current configuration in terms of security,
     compliance, and operational outcomes — not the remediation step.
     """
+    if check_id in _WHY_BY_CHECK:
+        return _WHY_BY_CHECK[check_id]
     low = (as_is or "").lower()
     lab = (label or "").lower()
     sec = (section or "").lower()
