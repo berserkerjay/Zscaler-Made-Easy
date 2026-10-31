@@ -44,7 +44,7 @@ SAMPLE_SCOPES = ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx"
 SAMPLE_CHANNELS = {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb", "genai_security", "shadow_it",
                                           "ssl_inspection", "cloud_app_control")}
 _SECRET_KEY = re.compile(r"(secret|password|passwd|token|api_?key|private|otp|credential|cookie|authorization)", re.I)
-_CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f​-‏‪-‮⁠-⁩﻿]")
+_CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)?")
 
 

@@ -203,7 +203,7 @@ def feed_url(feed: str, cloud: str) -> str:
 
 # ── Checking a feed (untrusted) ──────────────────────────────────────
 _HOST = re.compile(r"\A(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\Z")
-_CTRL = re.compile(r"[\x00-\x1f\x7f  ‪-‮⁦-⁩]")
+_CTRL = re.compile(r"[\x00-\x1f\x7f\u2028\u2029\u202a-\u202e\u2066-\u2069]")
 
 
 def check_cidr(raw: Any, *, from_feed: bool = True) -> Tuple[Optional[str], str]:

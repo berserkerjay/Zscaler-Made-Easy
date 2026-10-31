@@ -190,7 +190,7 @@ def read_cell(raw: str) -> str:
     return raw
 
 
-_BIDI = re.compile("[‪-‮⁦-⁩\ud800-\udfff]")
+_BIDI = re.compile("[\u202a-\u202e\u2066-\u2069\ud800-\udfff]")
 
 
 def name_key(name: Any) -> str:

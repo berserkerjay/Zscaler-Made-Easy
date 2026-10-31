@@ -83,7 +83,7 @@ OBJECT_NAME_MAX = 63                 # assumed limit for IP group and network se
 PREFIX_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,9}$")
 DEFAULT_GP_ZONE_RE = re.compile(r"(global.?protect|(^|[^a-z])gp([^a-z]|$)|vpn|remote.?access)", re.I)
 _FQDN_RE = re.compile(r"^(?=.{1,253}$)(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$", re.I)
-_UNSAFE = re.compile("[<>\x00-\x1f\x7f-\x9f​-‏‪-‮⁠-⁩﻿]")
+_UNSAFE = re.compile("[<>\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
 
 # PAN-OS App-ID -> ZIA network application (Cloud Firewall nw_applications).
 # Assumed enum names (Zscaler's published network application list; the

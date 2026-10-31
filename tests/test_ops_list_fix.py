@@ -654,7 +654,8 @@ def test_on_the_sample_tenant_the_sdk_sends_the_wire_fields_and_undo_restores_th
     ip = next(g for g in groups if g["name"] == "Fix sample IPs")
     assert ip["type"] == "DSTN_IP" and ip["addresses"] == ["203.0.113.9"]
     rule = next(r for r in _body(st, "/firewallFilteringRules") if r["name"] == "Fix sample block")
-    assert rule["state"] == "DISABLED" and rule["action"] == "BLOCK_DROP" and rule["destIpGroups"] == [{"id": ip["id"]}] and rule["order"] == 2
+    assert rule["state"] == "DISABLED" and rule["action"] == "BLOCK_DROP" and rule["destIpGroups"] == [{"id": ip["id"]}] \
+        and rule["order"] == next(r["order"] for r in before["/firewallFilteringRules"] if r["id"] == 802)   # right above "Allow office traffic"
     fq = next(g for g in groups if g["name"] == "Fix sample DNS")
     dns = next(r for r in _body(st, "/firewallDnsRules") if r["id"] == 811)
     assert dns["destIpGroups"] == [{"id": fq["id"]}] and dns["applications"] == ["DNS_TUNNELS"] and dns["action"] == "BLOCK"

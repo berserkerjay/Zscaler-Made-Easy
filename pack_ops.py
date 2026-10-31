@@ -1032,6 +1032,20 @@ ZPA_RULE_POLICY = {"zpa_access_rule": "access", "zpa_timeout_rule": "timeout", "
                    "zpa_isolation_rule": "isolation"}
 
 
+ZPA_KEY_TYPES = ("connector", "service_edge")
+
+
+def zpa_add_provisioning_key(zpa, key_type: str, **kw: Any) -> Any:
+    """The SDK call that creates a provisioning key of either type
+    (zscaler-sdk-python 1.11.3 zpa/provisioning.py add_provisioning_key:
+    key_type "connector" or "service_edge"). Day-to-day admin
+    (ops_zpa_admin) sends it through call() like every other write, so the
+    SDK write method is named only here, on the shared path."""
+    if key_type not in ZPA_KEY_TYPES:
+        raise ValueError("a provisioning key's type is connector or service_edge")
+    return zpa.provisioning.add_provisioning_key(key_type, **kw)
+
+
 def _zpa_kind_write(zpa, kind: str, op: str, oid: Any = None, payload: Optional[Dict[str, Any]] = None, *, name: str = "",
                     log: Optional[Callable[[str], None]] = None) -> Outcome:
     svc_name, c, u, d = ZPA_KINDS[kind]

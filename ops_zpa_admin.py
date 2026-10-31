@@ -1284,7 +1284,7 @@ def _h_key(run: Any, g: Dict[str, Any], units: List[Dict[str, Any]]) -> None:
     secret_box: Dict[str, str] = {}
 
     def add(key_type: str, **kw: Any) -> Any:
-        ret = run.zpa.provisioning.add_provisioning_key(key_type, **kw)
+        ret = ops.zpa_add_provisioning_key(run.zpa, key_type, **kw)   # the SDK call, named on the shared path
         data, resp, err2 = zr._triple(ret)
         if not err2:
             v = data.get("provisioningKey") or data.get("provisioning_key") if isinstance(data, dict) else getattr(data, "provisioning_key", None)

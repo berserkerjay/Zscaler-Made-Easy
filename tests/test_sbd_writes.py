@@ -922,6 +922,7 @@ DEFAULT_OFF: Dict[str, Any] = {
     "zcc_entitlements": "sets the ZPA and ZDX entitlements to exactly what the operator picks; narrowing them asks for the typed confirmation",
     "zdx_deeptrace_start": "a time-boxed measurement on one device (5 to 60 minutes) that enforces nothing",
     "zdx_deeptrace_stop": "stops a deep trace only; creates and enables nothing",
+    "zia_firewall_import": "the plan's Cloud Firewall rules are created DISABLED unless the operator ticks 'create the rules enabled'; groups and services enforce nothing until a rule uses them",
     "zid_users": _zid_user_default,
     "zid_api_clients": _zid_client_default,
     "list_fix": _list_fix_default,

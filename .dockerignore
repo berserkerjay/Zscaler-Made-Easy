@@ -57,6 +57,10 @@ change_requests.json.lock
 posture_settings.json
 update_notify.json
 plugins.json
+sync_jobs.json
+sync_jobs.json.lock
+.sync_jobs.*.tmp
+config_backups/
 self_heal.json
 **/*.last-good
 **/*.corrupt-*
@@ -68,6 +72,8 @@ self_heal.json
 .fingerprint-*
 .deployments-*
 .posture-*
+.update-notify-*
+.plugins-*
 # Editor, OS and build leftovers.
 *.py[cod]
 *$py.class
