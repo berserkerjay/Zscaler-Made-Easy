@@ -667,7 +667,7 @@ Run: commit `d568741bfef8`, 2026-10-30T06:34:19. 21711 passed, 0 failed, 0 error
 | sbd-input | Secure by Design: untrusted input | Everything a user, a file or a tenant can feed the app: PAC evaluator, Test a list, file imports, identity search, URL builders, tenant strings in every renderer | 21 | 11 | 250 |
 | sbd-writes | Secure by Design: every path that changes a tenant | Tenant writes: gates before sign-in, plan hash and re-read, typed confirmation, defaults, Undo, audit, concurrency, retries, provisioning key, scope | 16 | 13 | 495 |
 | ui | Functionality and accessibility of every page in a real browser (Chromium) on the sample tenant: the assessment page, Simple mode, /help, /permissions, every /report/* page, the toolbar and sidebar, the reference pages, downloads, help text and hand-offs | Every page, button, export and Simple mode task exercised on Larkspur Freight, audited to WCAG 2.2 AA with axe-core and turned into table-driven browser tests over the app's own route list | 16 | 19 | 958 |
-| w7-tf-export | Builders: whole-tenant export to Terraform (ZIA, ZPA, Cloud & Branch Connector, Client Connector) | Export from tenant as Terraform: every object in scope as workspaces for the official providers, adopted with import blocks or cloned with rules disabled, references by address, secrets as sensitive variables | 7 | 2 | 114 |
+| w7-tf-export | Builders: whole-tenant export to Terraform (ZIA, ZPA, Cloud & Branch Connector, Client Connector) | Export from tenant as Terraform: every object in scope as workspaces for the official providers, adopted with import blocks or cloned with rules disabled, references by address, secrets as sensitive variables | 7 | 2 | 115 |
 
 ## Standards covered by tests
 

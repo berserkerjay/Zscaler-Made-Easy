@@ -496,3 +496,19 @@ def test_client_connector_trusted_networks_take_the_provider_form():
     assert "network_type = 0" in fp and "action_type = 1" in fp and 'pac_url = "https://pac.example/p.pac"' in fp
     assert 'source  = "zscaler/zcc"' in files[f"{tt.ROOT_DIR}/zcc/terraform.tf"]
     assert ("zcc_trusted_network", "head_office", "5") in imp_all(files)
+
+
+def test_zpa_microtenant_is_read_as_asked_and_calls_without_a_query_still_work():
+    """ASVS V4.1.3 · CWE-639 · WSTG-ATHZ-02: a ZPA microtenant id goes on every ZPA list that takes one; lists without a query still read."""
+    seen = []
+
+    class _Store(ot.OfflineStore):
+        def answer_get(self, url, params=None):
+            seen.append((ot.normalize_path(url), dict(params or {})))
+            return 200, {"totalPages": "1", "list": []}
+
+    st = _Store("snap-" + "6" * 16, "snapshot", {}, {"tenant_label": "MT"})
+    snap = tt.read_tenant(ot.OfflineSdkClient(st, ot.creds_for(st)), ["zpa.segment_groups", "zpa.cbi_banners"], microtenant_id="216196257331285825")
+    assert not snap["unread"], snap["unread"]
+    seg = [p for u, p in seen if u.endswith("/segmentGroup")]
+    assert seg and seg[0].get("microtenantId") == "216196257331285825"

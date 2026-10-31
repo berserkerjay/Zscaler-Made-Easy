@@ -866,6 +866,13 @@ def _unwrap(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def _list_all(fn: Callable[..., Any], args: Tuple[Any, ...], q: Dict[str, Any], cancel: Any, paged: bool) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Every page of a list (the SDK's own paging), at most MAX_ZPA_PAGES."""
+    try:
+        import inspect
+        takes_query = "query_params" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        takes_query = False
+    if not takes_query:   # cbi_banner.list_cbi_banners() and the like take no query (and so no microtenant)
+        paged, q = False, {}
     if paged:
         ret = fn(*args, query_params=dict(q, page_size="500"))
     else:
