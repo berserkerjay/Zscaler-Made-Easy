@@ -162,6 +162,13 @@ VERTICALS: Dict[str, Dict[str, Any]] = {
                                                 ("print", "Campus printing", "631, 9100")]},
     "general": {"label": "General", "apps": [("intranet", "Intranet", "80, 443"), ("files", "File shares", "445"),
                                             ("rdp", "Remote desktop", "3389"), ("ssh", "Server SSH", "22"), ("erp", "ERP", "443")]},
+    # Federal and public sector (the POV's federal preset): the internal systems a federal POV usually puts behind ZPA.
+    # Host names and ports are templates to review with the agency (assumed: agencies name and port these systems their own way).
+    "federal": {"label": "Federal and public sector", "apps": [("casemgmt", "Case management system", "443"),
+                                                              ("financial", "Financial management system", "443"),
+                                                              ("hr", "HR and payroll system", "443"),
+                                                              ("records", "Records and CUI document repository", "443"),
+                                                              ("files", "File shares", "445")]},
 }
 TIMEOUT_CHOICES = {"3600": "1 hour", "28800": "8 hours", "86400": "1 day", "604800": "7 days"}
 IDLE_CHOICES = {"900": "15 minutes", "3600": "1 hour", "28800": "8 hours"}
@@ -907,7 +914,7 @@ def _desired_apps(p: str, spec: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], D
     if isinstance(pr, dict) and str(pr.get("vertical") or "").strip():
         v = str(pr.get("vertical"))
         if v not in VERTICALS:
-            raise _err("Pick the preset: healthcare, finance, education or general.")
+            raise _err(f"Pick the preset: {', '.join(VERTICALS)}.")
         d = check_base_domain(pr.get("domain"), "Preset base domain")
         for host, label, ports in VERTICALS[v]["apps"]:
             apps.append({"name": f"{p}-{v}-{host}", "domains": [f"{host}.{d}"], "tcp": parse_ports(ports, label), "udp": [], "description": label})

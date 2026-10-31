@@ -13760,7 +13760,8 @@ async def pov_build_defaults(req: PovBuildDefaultsRequest):
     import pov
     import pov_build
     intake = _pov_call(pov.clean_intake, req.intake)
-    return {"intake": intake, "steps": pov_build.catalog(), "defaults": pov_build.defaults(intake), "preset": pov_build.preset_for(intake["vertical"])}
+    return {"intake": intake, "steps": pov_build.catalog(), "defaults": pov_build.defaults(intake), "preset": pov_build.preset_for(intake["vertical"]),
+            "compliance": pov_build.compliance_for(intake)}
 
 
 @app.post("/api/pov/build/preview/start")

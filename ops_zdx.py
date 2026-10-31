@@ -159,6 +159,22 @@ TEMPLATES: Dict[str, Dict[str, Any]] = {
                        for p in ("MICROSOFT_LOGIN", "OUTLOOK", "MICROSOFT_TEAMS", "SHAREPOINT", "ONEDRIVE")],
         "custom": [], "interval_minutes": 5, "protocol": "ADAPTIVE",
     },
+    # Federal POVs (pov_build.PRESET_DEFAULTS["federal"]): the Microsoft 365 core plus the federal sites staff sign in to,
+    # as custom apps. The hosts are templates to review: Login.gov's sign-in host, USAJOBS and SAM.gov are public
+    # sites; a GCC or GCC High Microsoft 365 tenant signs in at other hosts than the predefined Microsoft apps probe
+    # (assumed), and agencies add their own portals.
+    "federal": {
+        "id": "federal", "name": "Federal",
+        "about": ("Microsoft 365 sign-in, Outlook and Teams, plus Login.gov, USAJOBS and SAM.gov as custom apps, each with Web and "
+                  "CloudPath probes, for all users. The hosts are templates to review with the agency (a GCC or GCC High Microsoft 365 "
+                  "tenant may sign in elsewhere)."),
+        "predefined": [{"provider": p, "web": True, "cloudpath": True} for p in ("MICROSOFT_LOGIN", "OUTLOOK", "MICROSOFT_TEAMS")],
+        "custom": [{"name": "Login.gov", "url": "https://secure.login.gov/", "cloudpath": True},
+                   {"name": "USAJOBS", "url": "https://www.usajobs.gov/", "cloudpath": True},
+                   {"name": "SAM.gov", "url": "https://sam.gov/", "cloudpath": True}],
+        "keep_custom": True, "review": "The custom app hosts are templates: confirm them with the agency before the POV.",
+        "interval_minutes": 5, "protocol": "ADAPTIVE",
+    },
     "empty": {
         "id": "empty", "name": "Start empty",
         "about": "Nothing picked: choose predefined apps and add custom apps (for example an internal portal) yourself.",

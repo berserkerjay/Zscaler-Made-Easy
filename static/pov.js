@@ -465,7 +465,7 @@
     B.loading = true; B.error = '';
     try {
       const d = await api('/api/pov/build/defaults', { intake });
-      B.key = key; B.intake = d.intake; B.steps = d.steps || []; B.preview = null; B.result = null; B.undoOf = '';
+      B.key = key; B.intake = d.intake; B.steps = d.steps || []; B.preview = null; B.result = null; B.undoOf = ''; B.compliance = d.compliance || null;
       B.parts = {}; Object.entries(d.defaults || {}).forEach(([k, v]) => { B.parts[k] = { on: !!v.on, spec: v.spec, why: v.why || '' }; });
     } catch (e) { B.error = e.message; }
     finally { B.loading = false; renderBuild(); }
@@ -570,6 +570,38 @@
       part.on && ok ? partOptions(step, part) : null,
       part.on && ok ? h('details', { class: 'pb-json' }, h('summary', { text: 'The part as it is sent (advanced)' }), ta, msg) : null);
   }
+  // The intake's compliance profile (pov_build.compliance_for): what it set in the parts below, the DLP
+  // packs it offers and its compliance pack, made from the ZIA baseline part as it stands.
+  async function downloadCompliance(file) {
+    const c = B.compliance, part = B.parts.zia_baseline;
+    const r = await fetch('/api/compliance-pack/file', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ compliance_profile: c.key, spec: part ? part.spec : null, file }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(typeof d.detail === 'string' ? d.detail : `HTTP ${r.status}`); }
+    const blob = await r.blob();
+    const m = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');
+    const a = h('a', { href: URL.createObjectURL(blob), download: m ? m[1] : 'compliance-pack' });
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  function complianceCard() {
+    const c = B.compliance;
+    if (!c) return h('p', { class: 'pv-meta', id: 'pbCompliance', text: 'No compliance profile in the intake: the parts use the vertical preset only. Pick one in the intake to drive the tier, the AI Guard profile, the DLP packs and the compliance pack.' });
+    const names = { 'mapping.html': 'Control mapping (HTML)', 'mapping.xlsx': 'Control mapping (Excel)', 'mapping.csv': 'Control mapping (CSV)', 'policy.json': 'Policy export',
+                    'testplan.html': 'Test plan by control', 'compliance-pack.zip': 'Everything, with the DLP test files (ZIP)' };
+    const msg = h('span', { class: 'pv-meta', role: 'status' });
+    const files = (c.compliance_pack || []).map(f => {
+      const b = h('button', { type: 'button', class: 'rp-btn pb-cp-file', 'data-file': f, text: names[f] || f });
+      b.addEventListener('click', async () => { msg.textContent = 'Making the file…'; try { await downloadCompliance(f); msg.textContent = 'Downloaded.'; } catch (e) { msg.textContent = `Could not make the file: ${e.message}`; } });
+      return b;
+    });
+    const tierPart = (B.parts.zia_baseline || {}).spec || {};
+    return h('div', { class: 'bp-card info', id: 'pbCompliance', role: 'region', 'aria-label': `Compliance profile: ${c.label}` },
+      h('div', { class: 't', text: `Compliance profile: ${c.label}` }),
+      h('p', { text: `It drives the parts below, as the one compliance choice does in Build new: ZIA baseline tier ${c.tier ? c.tier.charAt(0).toUpperCase() + c.tier.slice(1) : 'kept from the preset'}${c.tier && tierPart.tier && tierPart.tier !== c.tier ? ` (this build now uses ${tierPart.tier})` : ''}, the ${c.overlay.replace(/_/g, ' ')} overlay, the rules it adds or requires, and the AI Guard detection profile ${c.aiguard.replace(/_/g, ' ')}.` }),
+      (c.lines || []).length ? h('details', {}, h('summary', { text: `What ${c.label} does` }), h('ul', {}, c.lines.map(l => h('li', { text: l })))) : null,
+      h('div', { class: 'pv-row' }, h('span', { class: 'pv-meta', text: 'DLP policy packs it offers:' }),
+        (c.packs || []).map(pk => pk.available ? h('a', { class: 'rp-btn', href: `/?simple=deploy&pack=${encodeURIComponent(pk.id)}`, text: `Deploy ${pk.name}` }) : h('span', { class: 'pv-meta', text: `${pk.name} is not installed` }))),
+      h('div', { class: 'pv-row' }, h('span', { class: 'pv-meta', text: 'Compliance pack for the ZIA baseline part as it stands (local files; nothing is written to the tenant):' }), files, msg));
+  }
   function renderBuild() {
     const box = $('pvBuild');
     if (!box || !cat) return;
@@ -593,6 +625,7 @@
       h('p', { class: 'pv-lead', text: `One plan for ${intake.customer}: tick the parts to build, preview them as one dry run (one section per product, every object, one plan hash), then apply them with one typed confirmation. They run in the order below, what others use first; the first part that does not apply stops the run, and Undo reverses what was applied. New objects arrive disabled or monitor-only unless you choose otherwise.` }),
       rehearsing() ? h('div', { class: 'bp-card info pb-rehearsal', role: 'note' }, h('div', { class: 't', text: 'Rehearsal — nothing is written' }),
         h('div', { text: `${B.offline.tenant_label || 'This offline tenant'} is ${B.offline.mode === 'sample' ? 'the sample tenant' : 'an offline snapshot'}: the plan and the dry run work here as a rehearsal. Applying is not offered; use the live tenant to apply.` })) : '',
+      complianceCard(),
       h('div', { class: 'pb-parts' }, B.steps.map(partCard).filter(Boolean)),
       h('div', { class: 'pv-row' }, preview, h('span', { class: 'pv-meta', text: n ? `${plural(n, 'part')} ticked. Reads the tenant only; nothing is written.` : 'Tick at least one part.' })),
       h('div', { id: 'pbPreviewOut' }), h('div', { id: 'pbApplyOut' }), h('div', { id: 'pbResultOut' }), buildHistory() || '');
