@@ -3096,8 +3096,13 @@ window.HELP_CATALOG = {
    },
    "#exMax": {
     "what": "Sets the most URLs the analyzer looks up in one run. The rest are listed as not looked up.",
-    "input": "Optional. A whole number from 1 to 2000. The default is 2000.",
+    "input": "Optional. A whole number from 1 to 20000. The default is 20000.",
     "effect": "local"
+   },
+   "#exContinue": {
+    "what": "Looks up the URLs the last analyzer run did not reach, keeping what it already looked up, and saves an Excel file that covers everything so far.",
+    "input": "Nothing to type. Just click it. It continues the same categories; the lookup changes nothing in the tenant.",
+    "effect": "download"
    },
    "#exAnalyze": {
     "what": "Looks up each URL of your custom categories with ZIA's URL lookup and saves an Excel file. It says if Zscaler already sorts it the same way, differently, or not at all.",
