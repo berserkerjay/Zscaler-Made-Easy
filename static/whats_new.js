@@ -172,6 +172,32 @@ window.WHATS_NEW = {
       "what": "The ZPA builder's access rule can allow only users in SCIM groups or with SAML attribute values picked from the tenant.",
       "changelog": ["Access rules for SCIM groups and SAML attributes"],
       "marks": [{ "page": "/report/operations", "at": "#zbWho > legend", "shown": "in ZPA policy rules, Only some users" }]
+    },
+    {
+      "id": "admin-zpa", "release": "2026-10-31", "label": "ZPA day-to-day admin",
+      "what": "Change App Connectors, Service Edges, their groups and PRA and user portals (health first, rename, on or off, move, update schedule), delete them with a typed confirmation, make a provisioning key shown once, and rotate Browser Access certificates.",
+      "changelog": ["ZPA day-to-day admin", "ZPA provisioning keys", "ZPA Browser Access certificates"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zpa_infra_update\"]", "shown": "in Build new" },
+        { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zpa_ba_certificate\"]", "shown": "in Build new" }
+      ]
+    },
+    {
+      "id": "admin-zcc", "release": "2026-10-31", "label": "Client Connector day-to-day admin",
+      "what": "Remove or force remove devices, one user's or a whole list in batches within the hourly API budget, manage custom bypass apps, and set who gets ZPA and ZDX.",
+      "changelog": ["Client Connector day-to-day admin", "Remove devices from a list", "Custom bypass apps and entitlements"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zcc_device_bulk_remove\"]", "shown": "in Build new" },
+        { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zcc_entitlements\"]", "shown": "in Build new" }
+      ]
+    },
+    {
+      "id": "admin-zdx", "release": "2026-10-31", "label": "ZDX deep trace and look-ups",
+      "what": "Start a ZDX deep trace on a user's device, follow it and see its results; look up users, devices and their health, and application scores.",
+      "changelog": ["ZDX deep trace and look-ups"],
+      "marks": [
+        { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zdx_deeptrace_start\"]", "shown": "in Build new" }
+      ]
     }
   ]
 };

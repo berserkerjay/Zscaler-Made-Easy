@@ -123,7 +123,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
                    "test_admin_rank.py", "test_rule_fields.py", "test_category_lookup*.py", "test_ucaas_oneclick.py",
                    "test_m365_app_services.py"),
          "controls": ("ASVS V11.1.1", "ASVS V11.1.4", "CWE-670", "CWE-682", "CWE-754")},
-        {"key": "builders", "name": "Builders", "slugs": ("func-builders", "c6-zia-baseline-aiguard", "c6-zcc-zdx", "w7-restore-clone"),
+        {"key": "builders", "name": "Builders", "slugs": ("func-builders", "c6-zia-baseline-aiguard", "c6-zcc-zdx", "w7-restore-clone", "w7-admin-zpa-zcc-zdx"),
          "tests": ("test_ops_*.py", "test_config_*.py", "test_pack_*.py", "test_pov.py", "test_readiness.py", "test_offline_tenant.py",
                    "test_vendor_migrate.py", "test_policy_exports.py", "test_qa6_*.py", "test_c6_zia_baseline_aiguard.py",
                    "test_c6_zcc_zdx.py"),

@@ -5951,14 +5951,16 @@ async def operations_preview_start(req: OperationRequest, request: Request):
 
 
 @app.post("/api/operations/preview")
-async def operations_preview(req: OperationRequest):
-    """The same preview, waited for (for scripts)."""
+async def operations_preview(req: OperationRequest, request: Request):
+    """The same preview, waited for (for scripts). It runs as the person who
+    asked (an upload held for them, ops_zpa_admin, is theirs only)."""
     scope = _ops_scope(req, req.operation)
     creds = _tenant_creds(req)
     _ops_zpa_gate(req.operation, creds)
     _cfg_restore_gate(req, creds, apply=False)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(_keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds), None, None)
+    out = await asyncio.to_thread(_as_actor, _actor(request), _keyed, client, _run_ops_preview, client, req, scope, tenant_auth.record_label(creds),
+                                  None, None)
     if out.get("status") == "refused":
         raise HTTPException(status_code=400, detail=out["message"])
     return out
@@ -6039,6 +6041,137 @@ async def operations_zpa_provisioning_key(req: OneTimeKeyRequest, request: Reque
         raise HTTPException(status_code=404, detail="No key to show: a provisioning key is shown once, within ten minutes of the build, "
                                                     "to the person who ran it. Copy it from the ZPA Admin Portal instead.")
     return JSONResponse(got, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+# ── Day-to-day admin (ops_zpa_admin, ops_zcc_admin, ops_zdx_trace) ──────
+# The writes are operation types on the same engine (preview, plan hash,
+# the four gates, re-read, read-back, Undo, audit). These routes are the
+# read-only lookups the forms search with, the bounded follow of a ZDX deep
+# trace, and the one place a Browser Access certificate's private key enters
+# the app (held in memory, sent to ZPA once, never logged or stored).
+
+class OperationLookupRequest(OperationCredsRequest):
+    """A read-only search for a day-to-day admin form: `family` (zcc_admin
+    or zdx_trace) and `what` (devices, match; users, apps, app_scores,
+    app_score, health, device_app, probes, traces, trace, results). `text`
+    is a list of devices to match (at most 1 MB, checked in code), `mode`
+    remove or force and `domain` an optional user domain filter."""
+    family: str = ""
+    what: str = ""
+    user: str = ""
+    device_id: str = ""
+    app_id: str = ""
+    trace_id: str = ""
+    text: str = ""
+    mode: str = ""
+    domain: str = ""
+
+
+def _ops_lookup_fn(family: str):
+    import ops_zcc_admin
+    import ops_zdx_trace
+    fn = {ops_zcc_admin.FAMILY: ops_zcc_admin.lookup, ops_zdx_trace.FAMILY: ops_zdx_trace.lookup}.get(family)
+    if fn is None:
+        raise HTTPException(status_code=400, detail="Unknown lookup: the family must be zcc_admin or zdx_trace.")
+    return fn
+
+
+@app.post("/api/operations/lookup")
+async def operations_lookup(req: OperationLookupRequest):
+    """A user's Client Connector devices, or a user's ZDX devices, a device's
+    applications, probes and deep traces, one trace or its results.
+    Read-only; the family must be in scope on the Scope page (400 before
+    sign-in otherwise)."""
+    import admin_ops
+    fn = _ops_lookup_fn(req.family)
+    _ops_scope(req, req.family)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    query = {"user": req.user, "device_id": req.device_id, "app_id": req.app_id, "trace_id": req.trace_id, "text": req.text, "mode": req.mode,
+             "domain": req.domain}
+    try:
+        out = await asyncio.to_thread(_keyed, client, fn, client, req.what, query, None)
+    except admin_ops.OperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return dict(out, tenant_label=tenant_auth.record_label(creds))
+
+
+class DeepTraceFollowRequest(OperationCredsRequest):
+    """The ZDX deep trace to follow until it ends (read-only, bounded)."""
+    device_id: str = ""
+    trace_id: str = ""
+
+
+@app.post("/api/operations/zdx/deeptrace/follow/start")
+async def operations_zdx_trace_follow(req: DeepTraceFollowRequest, request: Request):
+    """Follow a ZDX deep trace as a job: at most ops_zdx_trace.MAX_POLLS reads,
+    at least MIN_INTERVAL seconds apart, its results when it completes; Stop
+    ends it. Read-only; ZDX must be in scope (400 before sign-in otherwise)."""
+    import admin_ops
+    import ops_zdx_trace
+    import pack_jobs
+    _ops_scope(req, ops_zdx_trace.FAMILY)
+    try:
+        dev, trace = ops_zdx_trace.check_id(req.device_id, "The device"), ops_zdx_trace.check_id(req.trace_id, "The deep trace")
+    except admin_ops.OperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+
+    def run(log, cancel):
+        return _keyed(client, lambda: ops_zdx_trace.follow(client, dev, trace, log=log, cancel=cancel))
+
+    job = pack_jobs.start("zdx_trace_follow", run, label=tenant_auth.record_label(creds)[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/operations/jobs/{job_id}/devices.csv")
+async def operations_devices_csv(job_id: str, counts_only: bool = False):
+    """A Client Connector device removal's plan (a preview job) or result (an
+    apply job) as CSV: entry, user, host name, device id, before, after,
+    status, reason, read back; every cell made safe for spreadsheets. It
+    holds personal data: counts_only=true gives counts per status and user
+    domain instead. Reaches no tenant."""
+    import ops_zcc_admin
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None or job.kind not in ("ops_preview", "ops_apply"):
+        raise HTTPException(status_code=404, detail="No such preview or apply. They are kept for an hour; preview again.")
+    res = job.result or {}
+    if res.get("type") not in (ops_zcc_admin.T_BULK, ops_zcc_admin.T_REMOVE):
+        raise HTTPException(status_code=409, detail="This job is not a Client Connector device removal" +
+                            (" yet; it is still running." if job.status == pack_jobs.RUNNING else "."))
+    body = ops_zcc_admin.plan_csv(res, counts_only=counts_only).encode("utf-8")
+    kind = "result" if job.kind == "ops_apply" else "plan"
+    return _attachment(body, "text/csv; charset=utf-8", f"device-removal-{kind}{'-counts' if counts_only else ''}.csv")
+
+
+class BaCertificateUpload(BaseModel):
+    """A Browser Access certificate (PEM, the server certificate first) and
+    its unencrypted private key (PEM). Sizes are checked in code, so a
+    refusal never echoes them. The key's field is named private_key so the
+    audit log's request record redacts it (audit.redact: secret-named keys)."""
+    cert_pem: str = ""
+    private_key: str = ""
+
+
+@app.post("/api/operations/zpa/ba-certificate")
+async def operations_zpa_ba_certificate(req: BaCertificateUpload, request: Request):
+    """Check a Browser Access certificate and its private key and hold them in
+    memory for ten minutes, for the person who uploaded them, for one ZPA
+    Browser Access certificate operation (ops_zpa_admin). Answers a token and
+    the certificate's facts (subject, names, expiry, fingerprint), never the
+    key. Reaches no tenant; nothing is logged or stored. Needs a writer and
+    write mode: a key is accepted only when it can be used."""
+    import ops_zpa_admin
+    _security.require_writer()
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
+    try:
+        out = ops_zpa_admin.stash_upload(req.cert_pem, req.private_key, _actor(request))
+    except ops_zpa_admin.CertificateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(out, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 
 @app.get("/api/operations/{op_id}")
