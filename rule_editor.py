@@ -56,8 +56,8 @@ MAX_LIST = 1000          # entries per list field
 MAX_ADDR_LEN = 255
 LEGACY_RANK = admin_rank.LOWEST
 
-_UNSAFE_TEXT = re.compile("[\x00-\x1f\x7f-\x9f​-‏‪-‮⁠-⁩﻿]")
-_UNSAFE_NAME = re.compile("[<>\x00-\x1f\x7f-\x9f​-‏‪-‮⁠-⁩﻿]")
+_UNSAFE_TEXT = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
+_UNSAFE_NAME = re.compile("[<>\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
 _ENUM = re.compile(r"^[A-Z][A-Z0-9_]{0,79}$")
 _COUNTRY = re.compile(r"^COUNTRY_[A-Z]{2}$")
 _CAC_ACTION = re.compile(r"^(ALLOW|BLOCK|CAUTION|ISOLATE|DENY)_[A-Z0-9_]{1,76}$")
