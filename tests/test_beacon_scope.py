@@ -102,7 +102,9 @@ def test_a_channel_widens_only_its_own_checks():
     assert {"/zia/webDlpRules", "/zia/webDlpGlobalOptions"} <= web - base
     platform = set(bs.select(["zia_extras"], {})["endpoints"])
     cac = set(bs.select(["zia_extras"], {"cloud_app_control": "zscaler"})["endpoints"])
-    assert {"/zia/cloudApplicationRules", "/zia/tenancyRestrictionProfile", "/zia/advancedSettings"} <= cac - platform,         "ZIA platform's Cloud Apps checks are in scope only with Cloud App Control on Zscaler"
+    # /zia/advancedSettings is read under ZIA platform alone too (domain fronting THR.9, Microsoft 365 one-click UF.7).
+    assert "/zia/advancedSettings" in platform
+    assert {"/zia/cloudApplicationRules", "/zia/tenancyRestrictionProfile"} <= cac - platform,         "ZIA platform's Cloud Apps checks are in scope only with Cloud App Control on Zscaler"
     assert set(bs.select(["zia_extras"], {"cloud_app_control": "alternative"})["endpoints"]) == platform,         "alternative and gap are both out of scope, as the assessment does"
 
 

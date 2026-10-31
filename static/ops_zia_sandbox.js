@@ -28,12 +28,17 @@
     return { out, bad };
   }
 
+  function errorsHtml(E, res) {
+    const errs = Object.entries((res && res.errors) || {});
+    return errs.length ? `<div class="bp-card warn"><div class="t">Could not be read</div><ul>${errs.map(([k, v]) => `<li>${E(k)}: ${E(v)}</li>`).join('')}</ul></div>` : '';
+  }
+
   function render(res, where, S, H) {
     const E = H.E;
     const max = res.max_hashes || 100;
     const counts = res.errors && res.errors.sandbox ? ''
       : `<div class="df-hint" id="zsbCounts">The list has ${E(res.blocked || 0)} blocked and ${E(res.allowed || 0)} allow-listed hash(es)${res.quota_left != null ? `; room for ${E(res.quota_left)} more` : ''}.</div>`;
-    where.innerHTML = `${H.errorsHtml(res)}
+    where.innerHTML = `${errorsHtml(E, res)}
       <p class="df-hint">Paste the MD5 hash of each file to block, one per line; anything after the hash on the line is kept as its comment. A blocked hash stops that file for every user as soon as the change is activated, without sandbox analysis, so check each one against the incident. Up to ${E(max)} per operation.</p>
       ${counts}
       <div class="op-block">

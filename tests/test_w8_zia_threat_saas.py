@@ -467,9 +467,9 @@ def test_the_form_escapes_tenant_text_and_labels_its_field():
     for m in re.finditer(r"\$\{([^}]+)\}", FORM):
         expr = m.group(1)
         if re.search(r"res\.|F\.text", expr):
-            assert expr.strip().startswith(("E(", "H.errorsHtml(", "counts")) or "E(" in expr, expr
+            assert expr.strip().startswith(("E(", "errorsHtml(", "counts")) or "E(" in expr, expr
     assert '<label class="lbl" for="zsbHashes">' in FORM and 'aria-live="polite"' in FORM and "aria-describedby=\"zsbCheck\"" in FORM
-    assert "innerHTML = `${H.errorsHtml(res)}" in FORM and "eval(" not in FORM
+    assert "innerHTML = `${errorsHtml(E, res)}" in FORM and "eval(" not in FORM
 
 
 def test_the_field_has_help_and_the_builder_is_marked_new():
