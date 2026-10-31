@@ -340,7 +340,7 @@ class _McpTenant:
 
 
 def test_the_mcp_server_tools_answer_over_the_tool_api(monkeypatch):
-    """SSDF PW.8.2 · CWE-440: the MCP server's four tools are listed and answer (list, health, one section) with credentials from the environment only."""
+    """SSDF PW.8.2 · CWE-440: the MCP server's four assessment tools are listed and answer (list, health, one section) with credentials from the environment only."""
     import dlp_mcp_server as m
     monkeypatch.setenv("ZSCALER_VANITY_DOMAIN", "acme")
     monkeypatch.setenv("ZSCALER_CLIENT_ID", "cid-mcp")
@@ -355,7 +355,7 @@ def test_the_mcp_server_tools_answer_over_the_tool_api(monkeypatch):
         return names, checks, health, section
 
     names, checks, health, section = asyncio.run(run())
-    assert names == ["get_health", "list_checks", "run_assessment", "run_section"]
+    assert {"get_health", "list_checks", "run_assessment", "run_section"} <= set(names)   # plus the read-only analysis tools (test_mcp_tools)
     as_json = [json.loads(r.content[0].text) for r in (checks, health, section)]
     assert as_json[0]["total_checks"] > 100 and as_json[0]["sections"]
     assert as_json[1]["credentials_configured"] is True and as_json[1]["missing_environment_variables"] == []

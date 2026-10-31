@@ -19,6 +19,8 @@ before; **[GETTING_STARTED.md](GETTING_STARTED.md)** then walks through a
 first engagement. Nothing to install at all: each release also ships a
 standalone edition for Windows, Mac and Linux, checked by checksum and
 build attestation before you run it (INSTALL.md, *Download and run*).
+To ask an AI assistant about a tenant with the app's engines (read-only),
+see **[docs/AI_ASSISTANT.md](docs/AI_ASSISTANT.md)**.
 
 Two ways to run it, built from this one source tree:
 

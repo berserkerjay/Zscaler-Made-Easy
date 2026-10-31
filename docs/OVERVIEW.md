@@ -1043,6 +1043,23 @@ The same code runs without the browser:
 assessment with credentials from `ZSCALER_*` variables only (no tool
 accepts a secret, so none passes through the AI conversation;
 `get_health` names any variable that is missing); no launcher starts it.
+It also answers an admin's live questions with the app's engines, each a
+read-only tool (`mcp_tools.py`): the Path analyzer with what-if, Test a
+list (50 destinations), rule precedence and shadowed rules, the DLP engine
+and rule explainer, the Data Flow Map, SSL coverage, the Live DLP feed
+(counts by rule; users counted, not named), Traffic insights, ZPA
+diagnostics, Client Connector fleet health (counts only), snapshot
+compare, the URL lookup, readiness and the compliance mapping, on the live
+tenant, the sample tenant or a saved snapshot. There are no write tools:
+every client a tool builds refuses writes and every request the server
+sends passes a read-only guard. What is in scope is set where the server
+runs (`ZSCALER_MCP_PROFILE`, or `ZSCALER_MCP_SCOPES` and
+`ZSCALER_MCP_CHANNELS`), never by the assistant; nothing set means no live
+read. Answers are summaries of at most about 48,000 characters, masked
+for every credential, with tenant text marked as untrusted data. The
+skill in `skills/zscaler-made-easy/` routes questions to the tools and
+words the answers; [AI_ASSISTANT.md](AI_ASSISTANT.md) says how to connect
+both to an assistant.
 
 ## Limits, and what is still to come
 
