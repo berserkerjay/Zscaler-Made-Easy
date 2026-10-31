@@ -53,6 +53,9 @@ READ_NAME = re.compile(r"^(list|get|search|lookup)(_|$)|_search$")
 # the admin audit log report); every other raw POST/PUT/DELETE is a write.
 READ_ONLY_POSTS = {"/zia/urlLookup", "/zia/auditlogEntryReport"}
 NOT_A_CALL = {"auth", "close", "stop", "stop_check", "_ensure_token"}
+# SDK reads whose names are not list/get (verified against zscaler-sdk-python
+# 1.11.3): zia/activate.py status() is GET /status (activate() is the write).
+READ_CALLS = {("zia", "activate", "status")}
 
 
 class Recorder:
@@ -88,7 +91,7 @@ class Recorder:
                 return (None, {"message": "recording fake: no HTTP"})
         if self._p == ("post",) and args and args[0] in READ_ONLY_POSTS:
             return ([], 200)
-        if READ_NAME.search(name):
+        if READ_NAME.search(name) or tuple(self._p[-3:]) in READ_CALLS:
             return ([], None, None)
         self._w.append(".".join(self._p))
         return (None, None, {"message": "recording fake: writes are refused"})
@@ -456,6 +459,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/zcc/fleet/{job_id}/history"): "keeps a counts-only snapshot of a fleet read (local file)",
     ("POST", "/api/zcc/fleet/history/forget"): "forgets the local fleet history (no tenant)",
     ("POST", "/api/traffic-logs/analyze"): "reads uploaded traffic and session logs (no tenant call)",
+    ("POST", "/api/tenant-health/start"): "reads (tenant health checks)",
     ("DELETE", "/api/traffic-logs/report/{report_id}"): "forgets a traffic log report held in memory (no tenant)",
     ("POST", "/api/traffic-logs/report/{report_id}/save"): "keeps a traffic log report as a local file (no tenant)",
     ("POST", "/api/traffic-logs/saved/{name}/open"): "opens a saved traffic log report (local file)",

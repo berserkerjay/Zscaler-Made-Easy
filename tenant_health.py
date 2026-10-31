@@ -154,7 +154,7 @@ def expiry(end: Optional[float], now: float, warn_days: int = WARN_DAYS, crit_da
 
 
 def _name(v: Any) -> str:
-    s = re.sub(r"[\x00-\x1f\x7f‪-‮⁦-⁩]", " ", str(v if v is not None else "")).strip()
+    s = re.sub(r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]", " ", str(v if v is not None else "")).strip()
     return (s[:NAME_MAX - 1] + "…") if len(s) > NAME_MAX else s
 
 

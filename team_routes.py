@@ -340,6 +340,8 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/path-analyzer/compare/{job_id}/export": READ,
     "POST /api/path-analyzer/test-from-here": READ,     # one destination, explicit click, rate-limited (path_probe)
     "POST /api/tenant-terraform/start": READ,           # reads the tenant into Terraform files; writes nothing
+    "POST /api/tenant-health/start": READ,
+    "GET /api/tenant-health/latest": READ,
     "POST /api/zcc/fleet/import": READ,                 # the Client Connector Portal's exports, uploaded; no sign-in
     "POST /api/zcc/fleet/{job_id}/sites": READ,         # sites grouped from a finished read
     "GET /api/zcc/fleet/history": READ,
@@ -471,6 +473,8 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/m365-endpoints/refresh": ADMIN,
     "POST /api/m365-endpoints/import": ADMIN,
     "DELETE /api/m365-endpoints": ADMIN,
+    "GET /api/api-calls": ADMIN,                        # every API call this server made, across tenants
+    "GET /api/api-calls/export": ADMIN,
 }
 
 
