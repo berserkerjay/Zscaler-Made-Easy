@@ -1,0 +1,168 @@
+{
+ "area": "Network files: DNS records for Client Connector hostnames built from the fleet read (dns_forward_zones.py, /report/fleet) and Zscaler's published IP ranges and host names built into firewall allowlists (zscaler_ip_ranges.py, /report/exports), with an optional, off-by-default fetch from config.zscaler.com and a manual import",
+ "title": "Download-only DNS and allowlist files: tenant hostnames and fetched feeds treated as untrusted, nothing applied, every gap left unknown",
+ "standards": [
+  "ASVS V1.4.4",
+  "ASVS V1.14.1",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V5.3.6",
+  "ASVS V5.3.9",
+  "ASVS V7.1.1",
+  "ASVS V7.2.1",
+  "ASVS V8.3.4",
+  "ASVS V9.2.1",
+  "ASVS V12.1.1",
+  "ASVS V12.6.1",
+  "ASVS V14.1.1",
+  "CWE-20",
+  "CWE-74",
+  "CWE-116",
+  "CWE-183",
+  "CWE-345",
+  "CWE-359",
+  "CWE-400",
+  "CWE-532",
+  "CWE-601",
+  "CWE-672",
+  "CWE-682",
+  "CWE-694",
+  "CWE-754",
+  "CWE-918",
+  "CWE-1188",
+  "CWE-1236",
+  "WSTG-INPV-01",
+  "WSTG-INPV-19",
+  "WSTG-BUSL-07",
+  "WCAG 2.2 SC 1.3.1",
+  "WCAG 2.2 SC 3.3.2",
+  "WCAG 2.2 SC 4.1.2"
+ ],
+ "checks": [
+  {
+   "id": "W7-NETF-C01",
+   "what": "Device fields from zscaler-sdk-python 1.11.3 zcc/models/devices.py (machineHostname, user, registrationState, last_seen_time) through zcc_fleet.normalize_devices; the DNS records are built from a finished fleet read (ZCC ticked on the Scope page), so no second tenant read",
+   "standard": "ASVS V1.4.4",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C02",
+   "what": "Hostname to RFC 1123 label oracle of 19 cases: first label only, accents and full-width letters folded, apostrophes dropped, other characters to '-', '-' runs collapsed (no reserved '--' label), 63-character cut, nothing usable refused",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C03",
+   "what": "13 hostile hostnames (quotes, newline, ';', braces, $ORIGIN, NUL, bidi, formula) never reach the Unbound, named.conf or zone text: grammar checkers written in the test parse every output",
+   "standard": "ASVS V5.3.6",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C04",
+   "what": "Duplicates (same hostname, several enrolments) and collisions (two hostnames, one label) reported and written once; reserved resolver names, names too long for the domain and unusable names refused with a reason",
+   "standard": "CWE-694",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C05",
+   "what": "Aggregation against a brute-force oracle: 80 seeded random sets over 4,096-address IPv4 and IPv6 windows with exclusions (exact coverage, no overlap, fewest CIDRs), 17 edge cases (0.0.0.0/0, ::/0, both ends of each space, adjacent blocks that cannot merge, nesting, host bits, exclusions inside, around and outside, mixed families) and 300 random interval subtractions",
+   "standard": "CWE-682",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C06",
+   "what": "Feeds as untrusted input: 19 malformed shapes refused whole in words (not JSON, NaN, wrong cloud, wrong keys, deep nesting, bad bytes), 4 MB cap before parsing, 20,000-entry cap, a refused import keeps the copy before, a hand-edited kept file that no longer passes is not used",
+   "standard": "ASVS V5.1.3",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C07",
+   "what": "A tampered feed cannot widen an allowlist: private, CGNAT, loopback, link-local, multicast, reserved, documentation, IPv4-mapped and over-broad (wider than /8 or /16) ranges and host names outside Zscaler's domains are dropped and counted",
+   "standard": "CWE-183",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C08",
+   "what": "The fetch: off by default (nothing sent; Fetch now is a 409), only on request (no timer), GET only to https://config.zscaler.com:443 with no credentials or query, no redirect followed, 10-second timeout, TLS verified, declared and streamed size cap, each feed kept or refused on its own with the error recorded",
+   "standard": "ASVS V12.6.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C09",
+   "what": "Fail safe to unknown: a feed not kept is listed as unknown (never an empty list), one older than 30 days is stale on every allowlist built from it, and the allowlist says when it is incomplete; an incomplete fleet read says the DNS files are incomplete",
+   "standard": "CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C10",
+   "what": "Outputs: plain list and Palo Alto IP list hold one CIDR per line and nothing else, the URL list checked host names only, CSV through csv_safe (formula starts, quotes, newlines and bidi in region names and hostnames stay one text cell), JSON and Microsoft 365-style JSON parse with their keys",
+   "standard": "ASVS V5.3.9",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C11",
+   "what": "API: server-wide switches and imports need a writer under SSO and are audited; the DNS audit entry holds counts, never a hostname or user; every new POST/PUT/DELETE route classified in tests/test_write_safety_gates.py (none touches a tenant)",
+   "standard": "ASVS V7.2.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C12",
+   "what": "Declaration: config.zscaler.com is the fetcher's only host, on zscaler_update_check.ALLOWED_HOSTS and in SECURITY.md's outbound calls as off by default",
+   "standard": "ASVS V14.1.1",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C13",
+   "what": "UI: every new control has a help entry and mark (the sample-tenant tour in tests/test_c6_tooltips.py passes), labels and legends, live status regions, no sideways scroll at 320px, * marks for the 2026-10-31 release",
+   "standard": "WCAG 2.2 SC 3.3.2",
+   "result": "pass"
+  },
+  {
+   "id": "W7-NETF-C14",
+   "what": "In headless Chrome on the sample tenant: the fleet read enables Build the records, the records build for the sample's three devices, a bad domain is refused in words with the downloads switched off; the ranges section starts with fetching off, builds from imported fixture feeds with every source and date; both sections fit 320px (nothing past the section edge) with no script error",
+   "standard": "WCAG 2.2 SC 1.4.10",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W7-NETF-01",
+   "title": "No way to turn the Client Connector device list into DNS records for ZPA client-to-client names: operators wrote forward zones by hand or with outside scripts",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "dns_forward_zones.build makes Unbound, BIND named.conf, zone file and CSV text from the fleet read, download only",
+   "test": "tests/test_net_files.py::test_the_api_builds_from_a_finished_fleet_read_and_audits_counts_only"
+  },
+  {
+   "id": "W7-NETF-02",
+   "title": "No reader for Zscaler's published IP ranges: firewall allowlists for Zscaler were built by hand from the config portal",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "zscaler_ip_ranges keeps checked copies of the config portal feeds (fetched on request when turned on, or imported) and builds aggregated per-region allowlists in six formats",
+   "test": "tests/test_net_files.py::test_the_allowlist_per_region_and_overall"
+  },
+  {
+   "id": "W7-NETF-03",
+   "title": "The browser half of tests/test_new_marks.py named the 2026-10-28 marks (#tab-list, #paProto) and dates, so adding any newer release to whats_new.js crashed its driver",
+   "severity": "low",
+   "cwe": "CWE-1164",
+   "asvs": "V1.14.1",
+   "status": "fixed",
+   "fix": "the hover, keyboard, both-marks and rotation checks take their items from one PROBE table and their words and dates from the manifest; the 320px pages are the toured pages that carry a mark",
+   "test": "tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out"
+  }
+ ],
+ "notes": [
+  "Assumed (config.zscaler.com was not reachable from the build machine, and the Zscaler SDK has no config-portal client): the JSON paths /api/<cloud>/cenr/json, /hubs/cidr/json/recommended and /required, /future/json, /svpn/json and /api/<zpa cloud>/zpa/json, and their keys (cloud -> 'continent : X' -> 'city : Y' -> [{range, hostname, vpn, gre}], hubPrefixes, prefixes, svpnIPs, content[].IPs, and the optional ZPA Service and Domains). Zscaler's notice 'Addition to Zscaler Aggregate & Hub IP Address Ranges' names config.zscaler.com/<cloud>/cenr and the /hubs page; the JSON forms follow the portal. A wrong guess fails safe: the feed is refused in words and stays unknown.",
+  "Assumed: the ZPA clouds the portal serves (private.zscaler.com, zpatwo.net, zpabeta.net) and that zscalerten.net, zscalergov.net and zscalergov.us are served under the same paths.",
+  "Assumed: Palo Alto EDL formats (IP list one entry per line; URL list with '*.' as a wildcard token).",
+  "Assumed: the client-to-client resolver answers a delegated query (zone file form); the forward-zone forms are the usual ones.",
+  "The DNS records use the devices the fleet read keeps (zcc_fleet.MAX_RESULT_DEVICES, 10,000); a larger fleet is reported as incomplete.",
+  "No SSH push, no DNS server write, no firewall push: download only, as the comparison recommended."
+ ],
+ "tests_added": 257
+}

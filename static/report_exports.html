@@ -145,6 +145,49 @@
           </tbody>
         </table></div>
       </section>
+
+      <section aria-labelledby="exRgH" id="exRanges" class="ex-ranges">
+        <h2 class="df-h" id="exRgH">Zscaler IP ranges and allowlists</h2>
+        <p class="df-hint">For the firewall in front of Client Connector, Branch and App Connectors or tunnels: Zscaler's published ranges and host names for one cloud, aggregated per region and in all, with ranges you leave out or add, as a plain list, CSV, Palo Alto external dynamic lists, JSON or a Microsoft 365-style list. Nothing is sent to any firewall: you download the file. This does not read your tenant.</p>
+        <p class="df-hint">The ranges come from Zscaler's config portal, <code>config.zscaler.com</code>. Fetching it is off until you turn it on here, and then happens only when you click Fetch now; nothing about your tenant is sent. Without internet access, save each feed's JSON from the address shown on another machine and import it. Every feed is checked: private, reserved or over-broad ranges and host names outside Zscaler's domains are dropped and counted. A feed not fetched or imported is unknown, never empty; one older than 30 days is marked stale.</p>
+        <div id="exRgBox" class="df-hint ex-rg-box" role="status" aria-live="polite">Loading…</div>
+        <div class="ex-fields">
+          <label class="df-ctl"><span class="lbl">ZIA cloud</span><select id="exRgCloud" aria-label="ZIA cloud whose ranges to use"></select></label>
+          <label class="df-ctl"><span class="lbl">ZPA cloud</span><select id="exRgZpa" aria-label="ZPA cloud for the ZPA allow list"><option value="">None</option></select></label>
+        </div>
+        <fieldset class="ex-pick" id="exRgFeeds"><legend>Feeds</legend></fieldset>
+        <div class="ex-row">
+          <label class="adv-switch" for="exRgFetchOn"><input type="checkbox" id="exRgFetchOn" role="switch" aria-describedby="exRgBox"><span>Fetch from config.zscaler.com</span></label>
+          <button type="button" class="rp-btn" id="exRgFetch" disabled aria-disabled="true">Fetch now</button>
+          <button type="button" class="rp-btn danger" id="exRgRemove">Forget the kept feeds</button>
+        </div>
+        <div class="ex-row ex-rg-import">
+          <label class="df-ctl"><span class="lbl">Import</span><select id="exRgImpFeed" aria-label="Feed the file holds"></select></label>
+          <label class="df-ctl"><span class="lbl">File</span><input type="file" id="exRgFile" accept=".json,application/json" aria-label="Feed file saved from config.zscaler.com"></label>
+          <button type="button" class="rp-btn" id="exRgImport">Import</button>
+        </div>
+        <div class="ex-rg-opts">
+          <fieldset class="ex-pick" id="exRgRegions"><legend>Regions <span class="df-by">(none ticked: every region)</span></legend></fieldset>
+          <fieldset class="ex-pick"><legend>Addresses</legend>
+            <label><input type="checkbox" id="exRgV4" checked> IPv4</label>
+            <label><input type="checkbox" id="exRgV6" checked> IPv6</label>
+          </fieldset>
+          <div class="ex-rg-cell"><label class="ex-rg-text" for="exRgExclude"><span>Ranges to leave out <small>(optional, one per line)</small></span><textarea id="exRgExclude" rows="3" maxlength="60000" spellcheck="false" placeholder="165.225.240.0/23"></textarea></label></div>
+          <div class="ex-rg-cell"><label class="ex-rg-text" for="exRgExtra"><span>Ranges to add <small>(optional, for example certificate validation)</small></span><textarea id="exRgExtra" rows="3" maxlength="60000" spellcheck="false" placeholder="192.0.2.10/32"></textarea></label></div>
+        </div>
+        <div class="ex-row">
+          <button type="button" class="rp-btn primary" id="exRgBuild">Build the allowlist</button>
+          <span role="group" aria-label="Allowlist downloads" class="ex-row">
+            <button type="button" class="rp-btn" data-rg-fmt="txt" id="exRgTxt" disabled aria-disabled="true">Plain list</button>
+            <button type="button" class="rp-btn" data-rg-fmt="csv" id="exRgCsv" disabled aria-disabled="true">CSV</button>
+            <button type="button" class="rp-btn" data-rg-fmt="edl_ip" id="exRgEdlIp" disabled aria-disabled="true">Palo Alto EDL (IP)</button>
+            <button type="button" class="rp-btn" data-rg-fmt="edl_url" id="exRgEdlUrl" disabled aria-disabled="true">Palo Alto EDL (URL)</button>
+            <button type="button" class="rp-btn" data-rg-fmt="json" id="exRgJson" disabled aria-disabled="true">JSON</button>
+            <button type="button" class="rp-btn" data-rg-fmt="m365" id="exRgM365" disabled aria-disabled="true">Microsoft 365-style</button>
+          </span>
+        </div>
+        <div id="exRgOut" class="ex-rg-out"></div>
+      </section>
     </main>
   </div>
   <script src="/static/icons.js"></script>
@@ -153,6 +196,7 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
+  <script src="/static/net_ranges.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
   <script>

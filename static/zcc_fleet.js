@@ -134,6 +134,8 @@
       instProfiles();
       ['zfExpPlan', 'zfExpSummary', 'zfExpXlsx'].forEach(id => setEnabled(id, true));
       setEnabled('zfExpDevices', !!(last.devices || []).length);
+      // The DNS records section (fleet_dns.js) builds from this read's devices.
+      document.dispatchEvent(new CustomEvent('zf-fleet-read', { detail: { job: lastJob, devices: (last.devices || []).length, truncated: !!last.devices_truncated } }));
       say(`Fleet read. ${last.banner}`);
     } catch (e) {
       const stopped = !!e.stopped;

@@ -3193,6 +3193,111 @@ window.HELP_CATALOG = {
     "what": "Saves this kept preflight as an Excel deployment plan, with a sign-off block for change approval.",
     "input": "Nothing to type. Just click it.",
     "effect": "download"
+   },
+   "#exRgCloud": {
+    "what": "The ZIA cloud whose published ranges to use. It is the cloud in your ZIA admin address.",
+    "input": "Pick a cloud, like zscaler.net.",
+    "effect": "local"
+   },
+   "#exRgZpa": {
+    "what": "The ZPA cloud for the ZPA allow list. None leaves ZPA out.",
+    "input": "Pick a ZPA cloud, like private.zscaler.com, or None.",
+    "effect": "local"
+   },
+   "input[name=\"exRgFeed\"]": {
+    "what": "Which of Zscaler's published lists to fetch and use.",
+    "input": "Tick one or more feeds. All are ticked to start.",
+    "effect": "local"
+   },
+   "#exRgFetchOn": {
+    "what": "Lets this app fetch Zscaler's published ranges from config.zscaler.com. It is off to start.",
+    "input": "Ticked allows a fetch, but only when you click Fetch now. Unticked keeps the app offline for this.",
+    "effect": "local"
+   },
+   "#exRgFetch": {
+    "what": "Fetches the ticked feeds from config.zscaler.com now and keeps them with today's date.",
+    "input": "Nothing to type. Turn on the fetch switch first.",
+    "effect": "local"
+   },
+   "#exRgRemove": {
+    "what": "Removes every kept feed from this computer.",
+    "input": "Nothing to type. You confirm it first.",
+    "effect": "local"
+   },
+   "#exRgImpFeed": {
+    "what": "Which feed the file you import holds.",
+    "input": "Pick the feed that matches the file.",
+    "effect": "local"
+   },
+   "#exRgFile": {
+    "what": "A feed saved by hand from config.zscaler.com, for a computer without internet access.",
+    "input": "A JSON file of at most 4 MB.",
+    "effect": "local"
+   },
+   "#exRgImport": {
+    "what": "Checks the chosen file and keeps it as that feed. A file that is not that feed is refused.",
+    "input": "Nothing to type. Pick the feed and the file first.",
+    "effect": "local"
+   },
+   "input[name=\"exRgRegion\"]": {
+    "what": "Keeps only the ranges of the ticked regions.",
+    "input": "Optional. Tick regions. None ticked keeps every region.",
+    "effect": "local"
+   },
+   "#exRgV4": {
+    "what": "Puts the IPv4 ranges in the allowlist.",
+    "input": "Ticked includes them.",
+    "effect": "local"
+   },
+   "#exRgV6": {
+    "what": "Puts the IPv6 ranges in the allowlist.",
+    "input": "Ticked includes them.",
+    "effect": "local"
+   },
+   "#exRgExclude": {
+    "what": "Ranges to take out of the allowlist. A larger range is split around them.",
+    "input": "Optional. One CIDR or address per line, like 165.225.240.0/23.",
+    "effect": "local"
+   },
+   "#exRgExtra": {
+    "what": "Ranges to add to the allowlist, such as certificate checks your firewall must allow.",
+    "input": "Optional. One CIDR or address per line, like 192.0.2.10/32.",
+    "effect": "local"
+   },
+   "#exRgBuild": {
+    "what": "Builds the allowlist from the kept feeds, joined into the fewest ranges. It fetches nothing.",
+    "input": "Nothing to type. Fetch or import the feeds first.",
+    "effect": "local"
+   },
+   "#exRgTxt": {
+    "what": "Saves the ranges as a plain list, one per line.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgCsv": {
+    "what": "Saves the ranges per region and the host names as a CSV file.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgEdlIp": {
+    "what": "Saves the ranges as a Palo Alto external dynamic list of IP addresses.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgEdlUrl": {
+    "what": "Saves the host names as a Palo Alto external dynamic list of URLs.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgJson": {
+    "what": "Saves the allowlist, its sources and their dates as a JSON file.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
+   },
+   "#exRgM365": {
+    "what": "Saves the allowlist in the shape of Microsoft's 365 endpoint list, one set per region.",
+    "input": "Nothing to type. Build the allowlist first.",
+    "effect": "download"
    }
   },
   "/report/fleet": {
@@ -3385,6 +3490,76 @@ window.HELP_CATALOG = {
     "what": "Shows or hides the rest of the page introduction.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
+   },
+   "#zfDnsDomain": {
+    "what": "The DNS domain the client names go under. Each device gets the name hostname.domain.",
+    "input": "Required. A DNS name, like corp.example.com.",
+    "effect": "local"
+   },
+   "#zfDnsResolvers": {
+    "what": "The resolver that answers for the client names, such as a Branch Connector. Every name is sent to it.",
+    "input": "Required. One to eight IPv4 or IPv6 addresses, separated by commas, like 10.0.0.12, 10.0.0.13.",
+    "effect": "local"
+   },
+   "input[name=\"zfDnsPlat\"]": {
+    "what": "Which kinds of device get a name. Phones are left out unless you tick them.",
+    "input": "Tick one or more platforms. Windows, macOS and Linux are ticked to start.",
+    "effect": "local"
+   },
+   "#zfDnsRegistered": {
+    "what": "Leaves out devices that are not registered now, such as removed ones.",
+    "input": "Ticked uses registered devices only. Unticked uses every device in the read.",
+    "effect": "local"
+   },
+   "#zfDnsSeen": {
+    "what": "Leaves out devices not seen for this many days.",
+    "input": "Optional. A whole number of days from 1 to 3650, like 30. Empty means any.",
+    "effect": "local"
+   },
+   "#zfDnsMap": {
+    "what": "Gives a device a second name under another domain when its user's e-mail domain matches.",
+    "input": "Optional. One line per mapping: e-mail domain, a colon, DNS domain. Like subsidiary.com: subsidiary.corp.example.",
+    "effect": "local"
+   },
+   "#zfDnsLocalZone": {
+    "what": "Adds a local-zone transparent line for each name in the Unbound file. Keep it when the parent domain is a local zone on that server.",
+    "input": "Ticked adds the lines. It does no harm otherwise.",
+    "effect": "local"
+   },
+   "#zfDnsInsecure": {
+    "what": "Adds a domain-insecure line for each name in the Unbound file. The resolver's answers are not signed, so DNSSEC would refuse them.",
+    "input": "Ticked adds the lines. Untick it when DNSSEC is off on that server.",
+    "effect": "local"
+   },
+   "#zfDnsTtl": {
+    "what": "How long other servers may keep the zone file's records.",
+    "input": "A whole number of seconds from 30 to 86400. 300 is five minutes.",
+    "effect": "local"
+   },
+   "#zfDnsBuild": {
+    "what": "Builds the DNS records from the fleet read. It does not read the tenant again and sends nothing to a DNS server.",
+    "input": "Nothing to type. Read the fleet first, then fill in the domain and the resolver addresses.",
+    "effect": "local"
+   },
+   "#zfDnsUnbound": {
+    "what": "Saves the Unbound forward zones as a file. You load it on your DNS server yourself.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsNamed": {
+    "what": "Saves the BIND forward zones for named.conf as a file.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsZone": {
+    "what": "Saves a BIND zone file part that hands each name to the resolver.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
+   },
+   "#zfDnsCsv": {
+    "what": "Saves every device's hostname, its DNS name and what happened to it as a CSV file.",
+    "input": "Nothing to type. Build the records first.",
+    "effect": "download"
    }
   },
   "/report/flow": {

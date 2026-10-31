@@ -57,6 +57,17 @@
   .zf-export label { font-size: 0.8rem; display: inline-flex; gap: 0.3rem; align-items: center; }
   .zf-status { font-size: 0.88rem; color: var(--dim); min-height: 1.4em; margin-top: 0.4rem; }
   .zf-status.bad { color: var(--fail); }
+  .zf-dns-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 0.6rem 1rem; margin: 0.5rem 0; }
+  .zf-dns-cell { display: flex; align-items: flex-start; gap: 0.3rem; min-width: 0; padding-right: 4px; }
+  .zf-dns-cell > label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.86rem; min-width: 0; flex: 1 1 0; }
+  .zf-dns-cell > label input, .zf-dns-cell > label textarea { width: 100%; }
+  .zf-dns-grid fieldset { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.3rem; font-size: 0.86rem; min-width: 0; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.4rem 0.6rem; margin: 0; }
+  .zf-dns-grid fieldset legend { padding: 0 0.2rem; }
+  .zf-dns-grid fieldset label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-right: 0.4rem; min-width: 0; }
+  .zf-dns-grid input[type=text], .zf-dns-grid input[type=number], .zf-dns-grid textarea { min-height: 34px; padding: 0.3rem 0.6rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; font-size: 0.84rem; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  .zf-dns-grid textarea { font-family: var(--mono); min-height: 4.2rem; resize: vertical; }
+  .zf-dns-out .tw { overflow-x: auto; max-width: 100%; }
+  .zf-dns-out td { overflow-wrap: anywhere; }
   .zf-legend { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; font-size: 0.78rem; }
   .zf-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
   .zf-page .rp-bar .df-ctl select { max-width: min(320px, calc(100vw - 7rem)); }
@@ -101,6 +112,42 @@
         </section>
       </div>
       <div id="zfOut"></div>
+      <section class="zf-sec" id="zfDns" aria-labelledby="zfDnsH">
+        <h2 id="zfDnsH">DNS records for client hostnames</h2>
+        <p class="zf-dim">For ZPA client-to-client access: one DNS name per enrolled device (<code>&lt;hostname&gt;.&lt;domain&gt;</code>), sent to the client-to-client resolver you name. Built from the fleet read above, so read the fleet first. You get the text to download for Unbound, BIND (forward zones and a zone file) and a CSV of every name: the app sends nothing to any DNS server and applies nothing. Hostnames become valid DNS labels (letters, digits and '-'); renames, duplicates and collisions are listed.</p>
+        <div class="zf-dns-grid">
+          <div class="zf-dns-cell"><label for="zfDnsDomain">Domain <input type="text" id="zfDnsDomain" maxlength="240" autocomplete="off" spellcheck="false" placeholder="corp.example.com"></label></div>
+          <div class="zf-dns-cell"><label for="zfDnsResolvers">Resolver addresses <input type="text" id="zfDnsResolvers" maxlength="400" autocomplete="off" spellcheck="false" placeholder="10.0.0.12, 10.0.0.13"></label></div>
+          <fieldset id="zfDnsPlats"><legend>Platforms</legend>
+            <label><input type="checkbox" name="zfDnsPlat" value="Windows" checked> Windows</label>
+            <label><input type="checkbox" name="zfDnsPlat" value="macOS" checked> macOS</label>
+            <label><input type="checkbox" name="zfDnsPlat" value="Linux" checked> Linux</label>
+            <label><input type="checkbox" name="zfDnsPlat" value="iOS"> iOS</label>
+            <label><input type="checkbox" name="zfDnsPlat" value="Android"> Android</label>
+          </fieldset>
+          <fieldset id="zfDnsWhich"><legend>Devices</legend>
+            <label><input type="checkbox" id="zfDnsRegistered" checked> Registered only</label>
+            <label for="zfDnsSeen">Seen in the last <input type="number" id="zfDnsSeen" min="1" max="3650" step="1" inputmode="numeric" placeholder="any" aria-describedby="zfDnsSeenU"> <span id="zfDnsSeenU">days</span></label>
+          </fieldset>
+          <div class="zf-dns-cell"><label for="zfDnsMap">E-mail domain to DNS domain <small>(optional, one per line)</small><textarea id="zfDnsMap" rows="3" maxlength="4000" spellcheck="false" placeholder="subsidiary.com: subsidiary.corp.example"></textarea></label></div>
+          <fieldset id="zfDnsOpts"><legend>Output</legend>
+            <label><input type="checkbox" id="zfDnsLocalZone" checked> Unbound local-zone transparent</label>
+            <label><input type="checkbox" id="zfDnsInsecure" checked> Unbound domain-insecure</label>
+            <label for="zfDnsTtl">Zone file TTL <input type="number" id="zfDnsTtl" min="30" max="86400" step="1" value="300" inputmode="numeric"></label>
+          </fieldset>
+        </div>
+        <div class="zf-row">
+          <button type="button" class="rp-btn primary" id="zfDnsBuild" disabled aria-disabled="true">Build the records</button>
+          <span role="group" aria-label="DNS downloads">
+            <button type="button" class="rp-btn" id="zfDnsUnbound" disabled aria-disabled="true">Unbound</button>
+            <button type="button" class="rp-btn" id="zfDnsNamed" disabled aria-disabled="true">BIND named.conf</button>
+            <button type="button" class="rp-btn" id="zfDnsZone" disabled aria-disabled="true">BIND zone file</button>
+            <button type="button" class="rp-btn" id="zfDnsCsv" disabled aria-disabled="true">CSV</button>
+          </span>
+        </div>
+        <div class="zf-status" id="zfDnsStatus" role="status" aria-live="polite">Read the fleet first: the records are built from its enrolled devices.</div>
+        <div class="zf-dns-out" id="zfDnsOut"></div>
+      </section>
       <section class="zf-sec" id="zfInstall" aria-labelledby="zfInstallH">
         <h2 id="zfInstallH">Install command builder</h2>
         <p class="zf-dim">Builds the Client Connector install command (MSI or EXE on Windows, the installer app on macOS) and a script to run next to the installer. Pick an app profile from the fleet read to fill in its policy token. Tokens and passwords show as ******** until you click Reveal; nothing is logged or saved.</p>
@@ -129,6 +176,7 @@
   <script src="/static/explain.js"></script>
   <script src="/static/find_anything.js"></script>
   <script src="/static/zcc_fleet.js"></script>
+  <script src="/static/fleet_dns.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
 </body>

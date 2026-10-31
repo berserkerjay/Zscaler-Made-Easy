@@ -384,6 +384,14 @@ what you get, what to do next.
   command and a .bat or .command script for a chosen app profile (its
   policy token is read only when ZCC is in scope); tokens and passwords
   show as ******** unless you click Reveal, and none is logged or saved.
+  Its **DNS records for client hostnames** (`dns_forward_zones.py`) turn
+  the fleet read's enrolled devices into one name per device,
+  `<hostname>.<domain>`, sent to the ZPA client-to-client resolver you name
+  (a Branch Connector, for example): Unbound forward zones, BIND forward
+  zones and a zone file part, and a CSV, to download. Hostnames become RFC
+  1123 labels; renames, duplicate enrolments and collisions are listed. No
+  second tenant read, no DNS server contacted, nothing applied; hostnames
+  are never logged.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
   decides, whether the traffic is decrypted, and whether inline DLP can
   see it. Where: opened from Traffic flow & gaps.
@@ -664,6 +672,18 @@ what you get, what to do next.
   extension side panel) shows its expression with dictionary names and
   one sentence saying when it fires; Copy keeps the expression with ids.
   Only what is in scope; a live log and Stop.
+  **Zscaler IP ranges and allowlists** (same page, `zscaler_ip_ranges.py`;
+  it does not read the tenant): Zscaler's published ranges and host names
+  for one ZIA cloud (cloud enforcement nodes by region and city, hub
+  ranges, future data centres, App Connector tunnel addresses) and a ZPA
+  cloud's allow list, aggregated per region and in all, with ranges left
+  out or added, as a plain list, CSV, Palo Alto external dynamic lists,
+  JSON or a Microsoft 365-style list. The feeds come from
+  `config.zscaler.com` only when fetching is turned on there and you click
+  Fetch now (off by default), or are imported from saved files; each is
+  checked as untrusted (private, reserved and over-broad ranges and foreign
+  host names dropped), kept with its date, unknown when missing and stale
+  after 30 days.
 - **Advanced settings** — add your own policy packs (JSON, Terraform,
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with

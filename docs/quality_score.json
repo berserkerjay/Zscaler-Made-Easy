@@ -317,12 +317,13 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 48,
+            "fixed": 51,
             "accepted": 0,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
-              "func-builders"
+              "func-builders",
+              "w7-net-files"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 582,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -455,7 +456,7 @@
       },
       "low": {
         "open": 0,
-        "fixed": 337,
+        "fixed": 340,
         "accepted": 0
       },
       "info": {
@@ -465,12 +466,12 @@
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 317,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8859
   },
   "findings": [
     {
@@ -8970,6 +8971,54 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W7-NETF-01",
+      "title": "No way to turn the Client Connector device list into DNS records for ZPA client-to-client names: operators wrote forward zones by hand or with outside scripts",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "dns_forward_zones.build makes Unbound, BIND named.conf, zone file and CSV text from the fleet read, download only",
+      "test": "tests/test_net_files.py::test_the_api_builds_from_a_finished_fleet_read_and_audits_counts_only",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-net-files",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-NETF-02",
+      "title": "No reader for Zscaler's published IP ranges: firewall allowlists for Zscaler were built by hand from the config portal",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "zscaler_ip_ranges keeps checked copies of the config portal feeds (fetched on request when turned on, or imported) and builds aggregated per-region allowlists in six formats",
+      "test": "tests/test_net_files.py::test_the_allowlist_per_region_and_overall",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-net-files",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-NETF-03",
+      "title": "The browser half of tests/test_new_marks.py named the 2026-10-28 marks (#tab-list, #paProto) and dates, so adding any newer release to whats_new.js crashed its driver",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "the hover, keyboard, both-marks and rotation checks take their items from one PROBE table and their words and dates from the manifest; the 320px pages are the toured pages that carry a mark",
+      "test": "tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-net-files",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -10634,6 +10683,51 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w7-net-files",
+      "area": "Network files: DNS records for Client Connector hostnames built from the fleet read (dns_forward_zones.py, /report/fleet) and Zscaler's published IP ranges and host names built into firewall allowlists (zscaler_ip_ranges.py, /report/exports), with an optional, off-by-default fetch from config.zscaler.com and a manual import",
+      "title": "Download-only DNS and allowlist files: tenant hostnames and fetched feeds treated as untrusted, nothing applied, every gap left unknown",
+      "standards": [
+        "ASVS V1.4.4",
+        "ASVS V1.14.1",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V5.3.6",
+        "ASVS V5.3.9",
+        "ASVS V7.1.1",
+        "ASVS V7.2.1",
+        "ASVS V8.3.4",
+        "ASVS V9.2.1",
+        "ASVS V12.1.1",
+        "ASVS V12.6.1",
+        "ASVS V14.1.1",
+        "CWE-20",
+        "CWE-74",
+        "CWE-116",
+        "CWE-183",
+        "CWE-345",
+        "CWE-359",
+        "CWE-400",
+        "CWE-532",
+        "CWE-601",
+        "CWE-672",
+        "CWE-682",
+        "CWE-694",
+        "CWE-754",
+        "CWE-918",
+        "CWE-1188",
+        "CWE-1236",
+        "WSTG-INPV-01",
+        "WSTG-INPV-19",
+        "WSTG-BUSL-07",
+        "WCAG 2.2 SC 1.3.1",
+        "WCAG 2.2 SC 3.3.2",
+        "WCAG 2.2 SC 4.1.2"
+      ],
+      "checks": 14,
+      "findings": 3,
+      "tests_added": 257
     }
   ],
   "standards": {
@@ -10653,7 +10747,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 106,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -10718,6 +10812,7 @@
       "CWE-183",
       "CWE-185",
       "CWE-190",
+      "CWE-193",
       "CWE-200",
       "CWE-201",
       "CWE-208",
