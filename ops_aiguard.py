@@ -42,6 +42,7 @@ import admin_ops as ao
 import ai_guard as ag
 import pack_channels as pc
 import pack_ops as ops
+import rank_inherit as ri
 
 ROUTING = "aiguard_routing"
 POLICY = "aiguard_detection_policy"
@@ -63,15 +64,15 @@ KINDS: Dict[str, Dict[str, Any]] = {
     "firewall_rule": {"label": "Cloud Firewall rule", "product": "zia", "ops": "policy", "channel": "firewall",
                       "fields": ("state", "action", "nw_services")},
     "ssl_rule": {"label": "SSL inspection rule", "product": "zia", "ops": "policy", "channel": pc.SSL,
-                 "fields": ("state", "action", "dest_ip_groups", "order")},
+                 "fields": ("state", "action", "dest_ip_groups", "order", "rank")},
     "url_app_settings": {"label": "GenAI prompt capture", "product": "zia", "ops": "url_app_settings", "fields": ("*Prompt",)},
     "forwarding_rule": {"label": "Forwarding rule", "product": "zia", "ops": "forwarding_rule",
                         "fields": ("state", "forward_method", "proxy_gateway", "dest_ip_groups")},
     "cac_rule": {"label": "Cloud App Control rule", "product": "zia", "ops": "policy", "channel": pc.CLOUD_APP,
-                 "fields": ("state", "actions", "applications", "order")},
+                 "fields": ("state", "actions", "applications", "order", "rank")},
     "url_category": {"label": "URL category", "product": "zia", "ops": "url_category", "fields": ("urls",)},
     "url_rule": {"label": "URL filtering rule", "product": "zia", "ops": "policy", "channel": pc.URL,
-                 "fields": ("state", "action", "url_categories", "order")},
+                 "fields": ("state", "action", "url_categories", "order", "rank")},
     "aiguard_policy": {"label": "AI Guard detection policy", "product": "aiguard", "ops": "aiguard_policy",
                        "fields": ("input_detector_policies", "output_detector_policies", "description")},
     "aiguard_rule": {"label": "AI Guard policy match rule", "product": "aiguard", "ops": "aiguard_rule",
@@ -241,6 +242,17 @@ class _Plan:
     def __init__(self, type_name: str, product: str, title: str, spec: Dict[str, Any]):
         self.p: Dict[str, Any] = {"type": type_name, "product": product, "title": title, "spec": spec, "items": [], "groups": [],
                                   "warnings": [], "blockers": [], "notes": [], "impact": []}
+        self.rank_setting: Optional[Dict[str, Any]] = None
+        self.placements: List[Dict[str, Any]] = []
+
+    def place(self, rules: List[Dict[str, Any]], kind: str, name: str, *, exclude: Any = None) -> Dict[str, Any]:
+        """The admin rank (and order) a rule this builder puts at the top
+        takes (rank_inherit.place); recorded for the preview."""
+        pl = ri.place(rules, 1, self.rank_setting, name=name, exclude=exclude)
+        pl["policy"] = KINDS[kind]["label"]
+        pl["order"] = pl["order"] or 1
+        self.placements.append(pl)
+        return pl
 
     def unit(self, key: str, kind: str, name: str, *, status: str = "change", reason: str = "", before: str = "", after: str = "",
              field: str = "object", oid: Any = None, depends: Tuple[str, ...] = (), step: Optional[Dict[str, Any]] = None) -> None:
@@ -260,6 +272,12 @@ class _Plan:
         Guard) or activated (ZIA, which the app does right after the writes)."""
         n = sum(1 for u in self.p["items"] if u["status"] == "change")
         self.p["confirm_always"] = f"APPLY {n} CHANGE{'' if n == 1 else 'S'}" if n else ""
+        if self.rank_setting is not None:
+            placed = [pl for pl in self.placements if pl.get("planned")]
+            self.p["rank_plan"] = ri.summary(self.rank_setting, placed)
+            if placed:
+                self.p["notes"] = ri.notes(self.rank_setting) + self.p["notes"]
+                self.p["warnings"].extend(pl["warning"] for pl in placed if pl.get("warning"))
         return self.p
 
 
@@ -336,6 +354,8 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
     elif mode:
         raise ao.OperationError("cert.mode must be 'existing' or 'upload'.")
     P = _Plan(ROUTING, "zia", f"Send {len(apps)} GenAI app(s) through AI Guard", spec)
+    say("Reading whether admin ranking is on…")
+    P.rank_setting = ri.read_setting(client, scope.get("scopes"))
     P.p["apply_note"] = "ZIA keeps every change pending until it is activated: the app activates once, after the last write."
     picked = ", ".join(ag.APPS_BY_ID[a]["name"] for a in apps)
 
@@ -452,12 +472,14 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
             want = {"state": "ENABLED", "action": "BLOCK_ICMP", "nw_services": [{"id": ag.get(quic, "id")}]}
             ex = _by_name(fw, "firewall_rule", n["quic"])
             if ex is None:
-                P.unit("quic", "firewall_rule", n["quic"], before="not in ZIA", after="created: Block/ICMP on QUIC (UDP 443)",
+                pl = _planned(P.place(fw, "firewall_rule", n["quic"]))
+                P.unit("quic", "firewall_rule", n["quic"], before="not in ZIA",
+                       after=f"created at order {pl['order']}, rank {pl['rank']}: Block/ICMP on QUIC (UDP 443)", reason=pl["why"],
                        step={"op": "create", "ref": "quic",
-                             "payload": {"name": n["quic"], "order": 1, "rank": 7, "state": "ENABLED", "action": "BLOCK_ICMP",
+                             "payload": {"name": n["quic"], "order": pl["order"], "rank": pl["rank"], "state": "ENABLED", "action": "BLOCK_ICMP",
                                          "nwServices": [{"id": ag.get(quic, "id")}],
                                          "description": _desc("Drop QUIC so GenAI apps use TCP 443, which ZIA inspects and chains to AI Guard.")},
-                             "check": want})
+                             "check": dict(want, rank=pl["rank"], order=pl["order"])})
             elif _same(ex, want):
                 P.unit("quic", "firewall_rule", n["quic"], status="noop", oid=ag.get(ex, "id"), reason="already blocks QUIC", before="blocks QUIC", after="unchanged")
             else:
@@ -487,29 +509,38 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
                                             "blockUndecrypt": True, "http2Enabled": False}}
             bypass = ", ".join(name_of("ssl_rule", r) for r in dni[:3])
             if ex is None:
-                P.unit("ssl", "ssl_rule", n["ssl"], before="not in ZIA", depends=("group",),
-                       after="created at order 1: Inspect the apps" + (f", above {bypass}" if bypass else ""),
+                pl = _planned(P.place(rules, "ssl_rule", n["ssl"]))
+                P.unit("ssl", "ssl_rule", n["ssl"], before="not in ZIA", depends=("group",), reason=pl["why"],
+                       after=f"created at order {pl['order']}, rank {pl['rank']}: Inspect the apps" + (f", above {bypass}" if bypass else ""),
                        step={"op": "create", "ref": "ssl",
-                             "payload": {"name": n["ssl"], "order": 1, "rank": 7, "state": "ENABLED", "roadWarriorForKerberos": False,
+                             "payload": {"name": n["ssl"], "order": pl["order"], "rank": pl["rank"], "state": "ENABLED", "roadWarriorForKerberos": False,
                                          "destIpGroups": [{"id": gref}], "action": action,
                                          "description": _desc("Decrypt GenAI apps so ZIA can chain them to AI Guard. Keep it above every Do Not Decrypt rule.")},
-                             "check": {"state": "ENABLED", "action.type": "DECRYPT", "order": 1}})
+                             "check": {"state": "ENABLED", "action.type": "DECRYPT", "order": pl["order"], "rank": pl["rank"]}})
             else:
-                above = not dni or ao._int(ag.get(ex, "order"), 0) < ao._int(ag.get(dni[0], "order"), 0)
+                pl = P.place(rules, "ssl_rule", n["ssl"], exclude=ag.get(ex, "id"))
+                re_rank = _re_rank(ex, pl)
+                above = (not dni or ao._int(ag.get(ex, "order"), 0) < ao._int(ag.get(dni[0], "order"), 0)) and not re_rank
                 ok = str(ag.get(ex, "action.type") or "").upper() == "DECRYPT" and str(ag.get(ex, "state") or "").upper() != "DISABLED" \
                     and str(group_id) in ag.ref_ids(ag.get(ex, "dest_ip_groups"))
                 if above and ok:
                     P.unit("ssl", "ssl_rule", n["ssl"], status="noop", oid=ag.get(ex, "id"), reason="already inspects the apps above every bypass and Block rule",
                            before=f"order {ag.get(ex, 'order')}", after="unchanged")
                 else:
-                    fields = ("state", "action", "dest_ip_groups", "order")
+                    _planned(pl)
+                    fields = ("state", "action", "dest_ip_groups", "order") + (("rank",) if re_rank else ())
                     cur = {k: ag.get(ex, k) for k in fields}
-                    want = {"state": "ENABLED", "action": action, "dest_ip_groups": [{"id": gref}], "order": 1}
-                    P.unit("ssl", "ssl_rule", n["ssl"], oid=ag.get(ex, "id"), field=", ".join(fields), depends=("group",),
-                           before=f"order {cur['order']}, {ag.get(ex, 'action.type')}, {cur['state']}", after="order 1, DECRYPT, ENABLED",
-                           step={"op": "update", "id": ag.get(ex, "id"), "set": want, "expect": {"state": cur["state"], "action.type": ag.get(ex, "action.type"),
-                                                                                                 "dest_ip_groups": cur["dest_ip_groups"], "order": cur["order"]},
-                                 "restore": cur, "check": {"state": "ENABLED", "action.type": "DECRYPT", "order": 1}})
+                    want = dict({"state": "ENABLED", "action": action, "dest_ip_groups": [{"id": gref}], "order": pl["order"]},
+                                **({"rank": pl["rank"]} if re_rank else {}))
+                    expect = {"state": cur["state"], "action.type": ag.get(ex, "action.type"), "dest_ip_groups": cur["dest_ip_groups"], "order": cur["order"]}
+                    if re_rank:
+                        expect["rank"] = cur["rank"]
+                    P.unit("ssl", "ssl_rule", n["ssl"], oid=ag.get(ex, "id"), field=", ".join(fields), depends=("group",), reason=pl["why"],
+                           before=f"order {cur['order']}" + (f", rank {cur['rank']}" if re_rank else "") + f", {ag.get(ex, 'action.type')}, {cur['state']}",
+                           after=f"order {pl['order']}" + (f", rank {pl['rank']}" if re_rank else "") + ", DECRYPT, ENABLED",
+                           step={"op": "update", "id": ag.get(ex, "id"), "set": want, "expect": expect,
+                                 "restore": cur, "check": dict({"state": "ENABLED", "action.type": "DECRYPT", "order": pl["order"]},
+                                                               **({"rank": pl["rank"]} if re_rank else {}))})
             if "m365copilot" in apps:
                 P.p["warnings"].append("Microsoft 365 Copilot also needs WebSocket inspection: ask Zscaler Support to enable it for the tenant.")
     # 7. GenAI prompt capture
@@ -549,12 +580,15 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
         gwref = {"id": gw_id, "name": name_of("proxy_gateway", gw)}
         want = {"state": "ENABLED", "forward_method": "PROXYCHAIN", "proxy_gateway": gwref, "dest_ip_groups": [{"id": gref}]}
         if exf is None:
-            P.unit("fwd", "forwarding_rule", n["fwd"], before="not in ZIA", after=f"created at order 1: Proxy Chaining to {gwref['name']}",
+            pl = _planned(P.place(fwd, "forwarding_rule", n["fwd"]))
+            P.unit("fwd", "forwarding_rule", n["fwd"], before="not in ZIA", reason=pl["why"],
+                   after=f"created at order {pl['order']}, rank {pl['rank']}: Proxy Chaining to {gwref['name']}",
                    depends=("group",),
                    step={"op": "create", "ref": "fwd",
-                         "payload": {"name": n["fwd"], "type": "FORWARDING", "forwardMethod": "PROXYCHAIN", "state": "ENABLED", "rank": 7, "order": 1,
-                                     "destIpGroups": [{"id": gref}], "proxyGateway": gwref, "description": _desc("Send GenAI apps to AI Guard.")},
-                         "check": {"forward_method": "PROXYCHAIN", "proxy_gateway": gwref}})
+                         "payload": {"name": n["fwd"], "type": "FORWARDING", "forwardMethod": "PROXYCHAIN", "state": "ENABLED", "rank": pl["rank"],
+                                     "order": pl["order"], "destIpGroups": [{"id": gref}], "proxyGateway": gwref,
+                                     "description": _desc("Send GenAI apps to AI Guard.")},
+                         "check": {"forward_method": "PROXYCHAIN", "proxy_gateway": gwref, "rank": pl["rank"], "order": pl["order"]}})
         elif _same(exf, {k: v for k, v in want.items() if k != "dest_ip_groups"}) and str(group_id) in ag.ref_ids(ag.get(exf, "dest_ip_groups")):
             P.unit("fwd", "forwarding_rule", n["fwd"], status="noop", oid=ag.get(exf, "id"), reason="already chains the apps to the gateway",
                    before="Proxy Chaining", after="unchanged")
@@ -569,6 +603,19 @@ def _plan_routing(client, spec: Dict[str, Any], scope: Dict[str, Any], say, canc
         _plan_allow(client, P, n, apps, parts, say, cancel)
     P.p["warnings"].append("Then, in the AI Guard portal: " + " ".join(s.replace("In the AI Guard portal, ", "") for s in ag.PORTAL_STEPS[:2]))
     return P.done()
+
+
+def _planned(pl: Dict[str, Any]) -> Dict[str, Any]:
+    """Mark a placement as used by a change: the preview lists it."""
+    pl["planned"] = True
+    return pl
+
+
+def _re_rank(ex: Dict[str, Any], pl: Dict[str, Any]) -> bool:
+    """Does the builder's own rule, moved to the top, need another rank
+    (Admin Ranking on only: off or unknown, its rank is left as it is)?"""
+    import admin_rank
+    return pl["state"] == ri.ON and admin_rank.rank_of(ex) != pl["rank"]
 
 
 _SSL_STOPPERS = {"DO_NOT_DECRYPT", "BLOCK"}   # SSL inspection action types (BLOCK: assumed, not enumerated in the SDK model)
@@ -592,25 +639,33 @@ def _plan_allow(client, P: _Plan, n: Dict[str, str], apps: List[str], parts: Dic
             stoppers = [r for r in rules if r is not ex and str(ag.get(r, "state") or "ENABLED").upper() != "DISABLED"
                         and any(_STOP_WEB_USE.match(str(a)) for a in ag.get(r, "actions") or [])
                         and (not ag.get(r, "applications") or set(map(str, ag.get(r, "applications"))) & set(cloud_apps))]
-            want = {"state": "ENABLED", "actions": ["ALLOW_AI_ML_WEB_USE"], "applications": cloud_apps, "order": 1}
+            pl = P.place(rules, "cac_rule", n["allow"], exclude=ag.get(ex, "id") if ex is not None else None)
+            want = {"state": "ENABLED", "actions": ["ALLOW_AI_ML_WEB_USE"], "applications": cloud_apps, "order": pl["order"]}
+            if ex is not None and _re_rank(ex, pl):
+                want["rank"] = pl["rank"]
             if ex is None and not stoppers:
                 P.unit("allow", "cac_rule", n["allow"], status="noop", reason="not needed: no Cloud App Control rule blocks, cautions or isolates these apps",
                        before="no stopper", after="nothing to add")
             elif ex is None:
                 P.p["warnings"].append("Cloud App Control: " + ", ".join(name_of("cac_rule", r) for r in stoppers[:5])
                                        + " would stop the picked apps; the allow rule at order 1 lets them through first. Those rules still apply to every other AI app.")
-                P.unit("allow", "cac_rule", n["allow"], before="not in ZIA", after=f"created at order 1: Allow web use for {len(cloud_apps)} app(s)",
+                _planned(pl)
+                P.unit("allow", "cac_rule", n["allow"], before="not in ZIA", reason=pl["why"],
+                       after=f"created at order {pl['order']}, rank {pl['rank']}: Allow web use for {len(cloud_apps)} app(s)",
                        step={"op": "create", "ref": "allow",
-                             "payload": {"name": n["allow"], "type": "AI_ML", "order": 1, "rank": 7, "state": "ENABLED",
+                             "payload": {"name": n["allow"], "type": "AI_ML", "order": pl["order"], "rank": pl["rank"], "state": "ENABLED",
                                          "actions": ["ALLOW_AI_ML_WEB_USE"], "applications": cloud_apps,
                                          "description": _desc("Sanctioned GenAI apps reach AI Guard through ZIA inspection.")},
-                             "check": {"state": "ENABLED", "actions": ["ALLOW_AI_ML_WEB_USE"], "applications": cloud_apps}})
+                             "check": {"state": "ENABLED", "actions": ["ALLOW_AI_ML_WEB_USE"], "applications": cloud_apps,
+                                       "order": pl["order"], "rank": pl["rank"]}})
             elif _same(ex, want):
                 P.unit("allow", "cac_rule", n["allow"], status="noop", oid=ag.get(ex, "id"), reason="already allows the apps first", before="order 1", after="unchanged")
             else:
+                _planned(pl)
                 cur = {k: ag.get(ex, k) for k in want}
-                P.unit("allow", "cac_rule", n["allow"], oid=ag.get(ex, "id"), field=", ".join(want), before=f"order {cur['order']}, {cur['state']}",
-                       after="order 1, ENABLED, Allow web use",
+                P.unit("allow", "cac_rule", n["allow"], oid=ag.get(ex, "id"), field=", ".join(want), reason=pl["why"],
+                       before=f"order {cur['order']}" + (f", rank {cur['rank']}" if "rank" in want else "") + f", {cur['state']}",
+                       after=f"order {pl['order']}" + (f", rank {pl['rank']}" if "rank" in want else "") + ", ENABLED, Allow web use",
                        step={"op": "update", "id": ag.get(ex, "id"), "set": want, "expect": cur, "restore": cur, "check": want})
     ao._check_stop(cancel)
     # URL filtering: only when a Block, Caution or Isolate rule covers the apps' categories
@@ -655,20 +710,29 @@ def _plan_allow(client, P: _Plan, n: Dict[str, str], apps: List[str], parts: Dic
     else:
         P.unit("allow_cat", "url_category", n["allow_url"], status="noop", oid=cat_id, reason="already lists the apps' domains", before="listed", after="unchanged")
     cref = cat_id if cat_id is not None else _ref("allow_cat")
-    want = {"state": "ENABLED", "action": "ALLOW", "order": 1, "url_categories": [cref]}
+    pl = P.place(rules, "url_rule", n["allow_url"], exclude=ag.get(ex, "id") if ex is not None else None)
+    want = {"state": "ENABLED", "action": "ALLOW", "order": pl["order"], "url_categories": [cref]}
+    if ex is not None and _re_rank(ex, pl):
+        want["rank"] = pl["rank"]
     if ex is None:
-        P.unit("allow_url", "url_rule", n["allow_url"], before="not in ZIA", after="created at order 1: Allow", depends=("allow_cat",),
+        _planned(pl)
+        P.unit("allow_url", "url_rule", n["allow_url"], before="not in ZIA", after=f"created at order {pl['order']}, rank {pl['rank']}: Allow",
+               depends=("allow_cat",), reason=pl["why"],
                step={"op": "create", "ref": "allow_url",
-                     "payload": {"name": n["allow_url"], "order": 1, "rank": 7, "state": "ENABLED", "action": "ALLOW", "urlCategories": [cref],
-                                 "protocols": ["ANY_RULE"], "description": _desc("Allow the sanctioned GenAI apps; AI Guard inspects them.")},
-                     "check": {"state": "ENABLED", "action": "ALLOW", "order": 1}})
+                     "payload": {"name": n["allow_url"], "order": pl["order"], "rank": pl["rank"], "state": "ENABLED", "action": "ALLOW",
+                                 "urlCategories": [cref], "protocols": ["ANY_RULE"],
+                                 "description": _desc("Allow the sanctioned GenAI apps; AI Guard inspects them.")},
+                     "check": {"state": "ENABLED", "action": "ALLOW", "order": pl["order"], "rank": pl["rank"]}})
     elif cat_id is not None and _same(ex, want):
         P.unit("allow_url", "url_rule", n["allow_url"], status="noop", oid=ag.get(ex, "id"), reason="already allows the apps first", before="order 1", after="unchanged")
     else:
+        _planned(pl)
         cur = {k: ag.get(ex, k) for k in want}
-        P.unit("allow_url", "url_rule", n["allow_url"], oid=ag.get(ex, "id"), field=", ".join(want), depends=("allow_cat",),
-               before=f"order {cur['order']}, {cur['action']}", after="order 1, ALLOW",
-               step={"op": "update", "id": ag.get(ex, "id"), "set": want, "expect": cur, "restore": cur, "check": {"state": "ENABLED", "action": "ALLOW", "order": 1}})
+        P.unit("allow_url", "url_rule", n["allow_url"], oid=ag.get(ex, "id"), field=", ".join(want), depends=("allow_cat",), reason=pl["why"],
+               before=f"order {cur['order']}" + (f", rank {cur['rank']}" if "rank" in want else "") + f", {cur['action']}",
+               after=f"order {pl['order']}" + (f", rank {pl['rank']}" if "rank" in want else "") + ", ALLOW",
+               step={"op": "update", "id": ag.get(ex, "id"), "set": want, "expect": cur, "restore": cur,
+                     "check": dict({"state": "ENABLED", "action": "ALLOW", "order": pl["order"]}, **({"rank": pl["rank"]} if "rank" in want else {}))})
 
 
 # ── the detection policy ─────────────────────────────────────────────────
@@ -978,7 +1042,11 @@ def _verify(run) -> Dict[str, Any]:
         if ok:
             out["confirmed"] += 1
         else:
-            out["mismatched"].append(f"{t.get('name')}: not as written when read back")
+            chk = u.get("check") or {}
+            where = ri.stored({k: chk.get(k) for k in ("rank", "order")}, row) if row is not None and t.get("op") != "delete" else None
+            if where:
+                u["stored"] = where
+            out["mismatched"].append(f"{t.get('name')}: not as written when read back" + (f" ({where})" if where else ""))
     return out
 
 

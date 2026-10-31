@@ -487,7 +487,20 @@
         <thead><tr><th scope="col">Object</th><th scope="col">Field</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Status</th><th scope="col">Why</th></tr></thead>
         <tbody>${items.map(u => `<tr><td>${objName(u)}</td><td>${E(u.value ? `${u.field}: ${u.value}` : u.field)}</td><td>${E(fmt(u.before, u.field))}</td><td>${E(fmt(u.after, u.field))}</td>
           <td>${chip(u.status)}${u.verified === true ? ' <span class="df-chip st-ok">read back</span>' : u.verified === false ? ' <span class="df-chip st-fail">not as expected</span>' : ''}</td>
-          <td>${E([u.reason, u.error, u.explanation].filter(Boolean).join(' — '))}</td></tr>`).join('') || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table></div>`;
+          <td>${E([u.reason, u.error, u.explanation, u.stored ? `read back: ${u.stored}` : ''].filter(Boolean).join(' — '))}</td></tr>`).join('') || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table></div>`;
+    }
+    // The admin rank each new or moved rule takes, and why (rank_inherit).
+    const RANK_STATE = { on: ['Admin ranking on', 'st-ok'], off: ['Admin ranking off', ''], unknown: ['Admin ranking not known', 'st-warn'], out_of_scope: ['Admin ranking not read', 'st-warn'] };
+    function rankCard(rp) {
+      if (!rp || !(rp.rules || []).length) return '';
+      const [label, cls] = Object.prototype.hasOwnProperty.call(RANK_STATE, rp.state) ? RANK_STATE[rp.state] : RANK_STATE.unknown;
+      return `<h3 class="op-h" id="opRankH">Admin rank of the rules this change places</h3>
+        <div class="op-summary"><span class="df-chip ${E(cls)}">${E(label)}</span><span class="df-hint">${E(rp.describe || '')}</span></div>
+        <div class="df-tablewrap"><table class="df-table op-rank" aria-labelledby="opRankH"><caption class="sr-only">Admin rank per rule</caption>
+          <thead><tr><th scope="col">Rule</th><th scope="col">Policy</th><th scope="col">Rank</th><th scope="col">Order</th><th scope="col">Why</th></tr></thead>
+          <tbody>${rp.rules.map(r => `<tr><td>${E(r.name)}</td><td>${E(r.policy)}</td><td>${r.before != null && r.before !== r.rank ? `${E(r.before)} → ` : ''}${E(r.rank)}${r.assumed ? ' <span class="df-by">assumed</span>' : ''}</td>
+            <td>${r.order != null ? E(r.order) : 'last'}${r.asked_order != null && r.order !== r.asked_order ? ` <span class="df-by">asked ${E(r.asked_order)}</span>` : ''}</td>
+            <td>${E(r.why)}${r.warning ? `<br><strong>${E(r.warning)}</strong>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
     }
     function listCard(title, rows, cls) { return rows && rows.length ? `<div class="bp-card ${cls}"><div class="t">${E(title)}</div><ul>${rows.map(r => `<li>${E(r)}</li>`).join('')}</ul></div>` : ''; }
     function renderPlan(p) {
@@ -495,13 +508,13 @@
       const impact = (p.impact || []).length ? `<h3 class="op-h">Rules that use the affected categories</h3><div class="df-tablewrap"><table class="df-table"><caption class="sr-only">Impact</caption>
           <thead><tr><th scope="col">Category</th><th scope="col">Rules in scope that name it</th></tr></thead>
           <tbody>${p.impact.map(i => `<tr><td>${E(i.category)}</td><td>${(i.rules || []).length ? i.rules.map(r => `${E(r.name)} <span class="df-by">${E(r.policy_label)}, order ${E(r.order)}, ${E(String(r.state || '').toLowerCase())}</span>`).join('<br>') : E(i.detail)}</td></tr>`).join('')}</tbody></table></div>` : '';
-      const order = (p.order_after || []).length ? `<h3 class="op-h">Order after the change</h3><ol class="op-order op-after">${p.order_after.map(r => `<li${r.moved ? ' class="op-moved"' : ''}><span class="op-pos">${E(r.order)}</span><span>${E(r.name)}</span>${r.moved ? '<span class="df-chip st-block">moves</span>' : r.locked ? '<span class="df-chip">fixed</span>' : ''}</li>`).join('')}</ol>` : '';
+      const order = (p.order_after || []).length ? `<h3 class="op-h">Order after the change</h3><ol class="op-order op-after">${p.order_after.map(r => `<li${r.moved ? ' class="op-moved"' : ''}><span class="op-pos">${E(r.order)}</span><span>${E(r.name)}</span>${r.rank != null ? `<span class="df-by">rank ${E(r.rank)}</span>` : ''}${r.moved ? '<span class="df-chip st-block">moves</span>' : r.locked ? '<span class="df-chip">fixed</span>' : ''}${r.rank_changed ? '<span class="df-chip st-warn">new rank</span>' : ''}</li>`).join('')}</ol>` : '';
       $('opPlan').innerHTML = `
         <div class="op-summary"><strong>${E(p.title)}</strong>${S.undoOf ? ' <span class="df-chip st-warn">Undo</span>' : ''}
           <span class="df-chip st-block">${E(c.change)} to change</span><span class="df-chip">${E(c.noop)} already as asked</span><span class="df-chip${c.excluded ? ' st-warn' : ''}">${E(c.excluded)} excluded</span></div>
         <div class="df-hint">Plan ${E(String(p.plan_hash).slice(0, 16))}… · ${E(p.tenant_label)} · ${E(p.writes)} write${p.writes === 1 ? '' : 's'}${p.needs_activation ? ', then one ZIA activation' : ''}</div>
         ${listCard('Blocked', p.blockers, 'risk')}${listCard('Check before applying', p.warnings, 'warn')}${listCard('How this is applied', p.notes, 'info')}
-        ${impact}${order}<h3 class="op-h">Items</h3>${itemsTable(p.items || [], 'Planned items')}`;
+        ${impact}${order}${rankCard(p.rank_plan)}<h3 class="op-h">Items</h3>${itemsTable(p.items || [], 'Planned items')}`;
       // A builder may add its own part to the preview (the rule editor's plain sentence and fields).
       const plugPlan = window.OPS_PLUGINS && window.OPS_PLUGINS.defs[p.type];
       if (plugPlan && typeof plugPlan.plan === 'function') plugPlan.plan(p, $('opPlan'), H);

@@ -1,0 +1,97 @@
+{
+ "area": "Builders: the admin rank of the rules AI Guard routing, the ZIA security baseline, the SSL certificate move, a policy pack deploy and a Bulk changes reorder create or move (rank_inherit.py)",
+ "title": "New and moved rules take the admin rank they need with Admin Ranking on, never one the API client cannot assign; preview, read-back and Undo cover the rank",
+ "files": [
+  "rank_inherit.py",
+  "ops_aiguard.py",
+  "ops_zia_baseline.py",
+  "admin_ops.py",
+  "pack_deploy.py",
+  "pack_channels.py",
+  "dlp_api_server.py",
+  "static/report_operations.html",
+  "static/deploy_studio.js"
+ ],
+ "standards": [
+  "ASVS V1.4.1",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.3.3",
+  "ASVS V7.2.1",
+  "ASVS V7.4.1",
+  "ASVS V11.1.1",
+  "CWE-20",
+  "CWE-79",
+  "CWE-272",
+  "CWE-367",
+  "CWE-754",
+  "CWE-755",
+  "CWE-841",
+  "CWE-1188",
+  "WCAG 2.2 SC 1.3.1"
+ ],
+ "checks": [
+  {"id": "RANK-01", "what": "Oracle: a new rule at order N takes the rank of the rule now at N (on), of the rule just above it when last, rank 7 when the policy is empty, off, unknown or not read", "standard": "CWE-841", "result": "pass"},
+  {"id": "RANK-02", "what": "The API client's own rank is inferred from the rules' accessControl (the SDK 1.11.3 has no call for it), marked assumed; rank 7 is always assignable", "standard": "ASVS V1.4.1", "result": "pass"},
+  {"id": "RANK-03", "what": "Admin Ranking is read once through zia.advanced_settings only with ZIA platform ticked; a refusal, a missing or non-boolean field is unknown, never off; the tenant's words are not echoed", "standard": "ASVS V4.1.3", "result": "pass"},
+  {"id": "RANK-04", "what": "AI Guard: QUIC block, SSL Inspect at the top, forwarding, Cloud App Control and URL allows take the needed rank on, 7 off or unknown; its own rule moved to the top is re-ranked and Undo puts rank and order back", "standard": "CWE-841", "result": "pass"},
+  {"id": "RANK-05", "what": "Rank too low: AI Guard's order-1 SSL Inspect rule below rank 0-4 rules the client cannot edit gets rank 7 at order 3 and the preview says it will not be first; the typed confirmation still applies", "standard": "CWE-1188", "result": "pass"},
+  {"id": "RANK-06", "what": "ZIA baseline rules added last take the rank of the rule just above them (on), 7 otherwise; without ZIA platform the setting is not read", "standard": "CWE-841", "result": "pass"},
+  {"id": "RANK-07", "what": "SSL certificate move keeps rank and order, says so, and the read-back fails a rule ZIA stored at another rank", "standard": "ASVS V7.2.1", "result": "pass"},
+  {"id": "RANK-08", "what": "Pack deploy: the Web DLP rule at order 1 takes the rank it needs (on), the pack's 7 otherwise; Use rank 0 still wins; the plan hash binds the ranks (a re-ranked top rule stops the deploy); read-back and verification report another stored rank", "standard": "CWE-367", "result": "pass"},
+  {"id": "RANK-09", "what": "Reorder: a rule moved above rank-0 rules takes rank 0 (on), keeps its rank when it fits, ranks untouched off or unknown; Undo restores order and rank; a dropped rank is reported; Undo ranks validated 0-7 with rule ids", "standard": "ASVS V5.1.3", "result": "pass"},
+  {"id": "RANK-10", "what": "The deploy request's scopes are filtered to Scope page keys before the plan reads anything", "standard": "ASVS V4.1.3", "result": "pass"},
+  {"id": "RANK-11", "what": "The Bulk changes rank table is captioned with column headers and every value escaped; the deploy plan's rank and read-back lines are escaped", "standard": "WCAG 2.2 SC 1.3.1", "result": "pass"}
+ ],
+ "findings": [
+  {
+   "id": "RANKINH-01",
+   "title": "Every builder and pack wrote rank 7 whatever the tenant's Admin Ranking: with it on, a rule asked for at order 1 (AI Guard's SSL Inspect, forwarding and allow rules, pack rules) was evaluated after every rule of rank 0-6, so it was not first and the preview did not say so",
+   "severity": "medium",
+   "cwe": "CWE-841",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "rank_inherit.place: the rank of the rule placed above (or just above, going last), never one the client cannot assign; used by ops_aiguard, ops_zia_baseline and pack_deploy; the preview lists each rule's rank and why",
+   "test": "tests/test_rank_inherit.py::test_ai_guard_ssl_inspect_rule_takes_the_rank_it_needs"
+  },
+  {
+   "id": "RANKINH-02",
+   "title": "When the API role's admin rank was too low for the rank a rule needed, nothing warned that the rule would land below higher-rank rules",
+   "severity": "low",
+   "cwe": "CWE-1188",
+   "asvs": "V1.4.1",
+   "status": "fixed",
+   "fix": "rank_inherit.caller infers the client's rank from accessControl (assumed, said); a rank above it is replaced by one it may assign, the order sent is where ZIA will keep it, and the preview warns it is not first",
+   "test": "tests/test_rank_inherit.py::test_ai_guard_warns_when_the_api_role_rank_is_too_low_for_order_1"
+  },
+  {
+   "id": "RANKINH-03",
+   "title": "Read-back did not check the rank ZIA stored (AI Guard, baseline creates, certificate moves, reorders, pack deploys), so a rank ZIA changed or dropped went unreported",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V7.2.1",
+   "status": "fixed",
+   "fix": "rank_inherit.stored compares the stored rank (and order where nothing else moves it) with what was sent; each builder's verify and the pack read-back report both values",
+   "test": "tests/test_rank_inherit.py::test_reorder_read_back_reports_a_rank_zia_did_not_keep"
+  },
+  {
+   "id": "RANKINH-04",
+   "title": "A Bulk changes reorder moved a rule without the rank its new place needs (with Admin Ranking on ZIA keeps it with its own rank), and its Undo could not put a rank back",
+   "severity": "low",
+   "cwe": "CWE-841",
+   "asvs": "V11.1.1",
+   "status": "fixed",
+   "fix": "admin_ops._plan_reorder: rank_inherit.place_moves plans the rank change with the move (send_rank, conflict guard on the rank); inverse carries ranks; rule_rank handler for a rank-only Undo step",
+   "test": "tests/test_rank_inherit.py::test_reorder_undo_puts_back_order_and_rank"
+  },
+  {
+   "id": "RANKINH-05",
+   "title": "Review & remediate fix recipes (remediation.py) still create a rule with the order and rank typed in their form (rank 7 by default), not the inherited rank",
+   "severity": "info",
+   "cwe": "CWE-1188",
+   "status": "accepted",
+   "reason": "The operator types the rule's order and admin rank in that form (with a hint), so the rank is the operator's explicit choice; the builders and packs that choose a place themselves now pick the rank too."
+  }
+ ],
+ "tests_added": 60
+}

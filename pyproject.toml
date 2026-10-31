@@ -63,7 +63,7 @@ py-modules = [
     "scenario_flow", "shadow_rules", "sso", "ssl_flow", "tenant_profiles", "upstream_check", "vendor_migrate", "vertical", "zcc_evaluation", "zia_rate", "zscaler_automation_checks", "zscaler_best_practices",
     "zcc_profiles", "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check", "zcc_fleet",
     "zscaler_zdx_checks", "zscaler_zidentity_checks", "zpa_analysis", "zpa_overview", "zpa_reader", "browser_security", "standalone_main", "zpa_path", "workload_path",
-    "admin_rank", "app_services", "m365_endpoints",
+    "admin_rank", "app_services", "m365_endpoints", "rank_inherit",
 ]
 
 # The offline Python static analyser (SAST): make sast, and

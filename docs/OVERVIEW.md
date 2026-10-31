@@ -613,6 +613,19 @@ what you get, what to do next.
   objects (with what they use), ids removed, names carrying a prefix chosen
   when they are applied. On the sample tenant or a snapshot, a restore is a
   rehearsal: plan only.
+  **Admin rank of new and moved rules** (`rank_inherit.py`, every builder
+  below, a reorder and Deploy policy packs): with the tenant's Admin
+  Ranking on (read only when ZIA platform is ticked), a rule placed at
+  order N takes the admin rank of the rule now at N (or of the rule just
+  above it when it goes last), so it is evaluated where it is placed; a
+  moved rule keeps its rank when it fits between its new neighbours. It is
+  never a rank the API client cannot assign: the SDK has no call for the
+  client's own rank, so it is inferred from the rules ZIA lets it edit
+  (assumed), and when the rank needed is above it the preview warns that
+  the rule lands lower (for example AI Guard's order-1 SSL Inspect rule
+  below rank 0-6 rules). Off or unknown, rules get rank 7 as before and the
+  preview says so. The preview lists each rule's rank and why, the
+  read-back compares the rank ZIA stored, and Undo puts changed ranks back.
   Under **Build new** the same page builds Client Connector profiles
   (needs ZCC ticked): pick Windows or macOS, a forwarding profile (best
   practice: tunnel on every network type, the listening-proxy redirect,

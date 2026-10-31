@@ -198,6 +198,12 @@ window.WHATS_NEW = {
       "marks": [
         { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"zdx_deeptrace_start\"]", "shown": "in Build new" }
       ]
+    },
+    {
+      "id": "rank-inherit", "release": "2026-10-31", "label": "Admin rank of new rules",
+      "what": "Rules a change creates or moves take the admin rank they need when Admin Ranking is on, never one the API client cannot assign; the preview says each rule's rank and why, and the read-back checks what ZIA stored.",
+      "changelog": ["Rank inherited, not fixed at 7", "Never a rank the API client cannot assign", "Preview", "Read-back", "Undo", "Use rank 0", "Admin rank of the rules this change places"],
+      "marks": [{ "page": "/report/operations", "at": "#opRankH", "shown": "in a preview that places a rule" }]
     }
   ]
 };

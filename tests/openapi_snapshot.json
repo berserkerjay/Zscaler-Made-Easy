@@ -3918,6 +3918,12 @@
     "restore_drift": {
      "type": "boolean"
     },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
     "title": {
      "type": "string"
     },
@@ -4450,6 +4456,12 @@
     },
     "restore_drift": {
      "type": "boolean"
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "use_rank_0": {
      "type": "boolean"

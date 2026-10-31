@@ -868,6 +868,8 @@ def _rule_summary(r: Any, channel: Optional[str] = None) -> Dict[str, Any]:
         "name": str(_field(r, "name", default="") or "").strip(),
         "order": int(_field(r, "order", default=0) or 0),
         "rank": _field(r, "rank"),
+        # READ_ONLY when the rule's rank is above the API client's (rank_inherit.caller, assumed).
+        "access_control": _field(r, "access_control", "accessControl"),
         "action": action,
         "state": _field(r, "state"),
         "type": _field(r, "type"),
