@@ -12,7 +12,8 @@
  },
  "static/ops_zia_baseline.js": {
   "E(httpsOnly(s.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"],
-  "E(httpsOnly(c.source.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"]
+  "E(httpsOnly(c.source.url))": [1, "link target from the app's own catalogue (ops_zia_baseline.SOURCES: standards documents), https only (httpsOnly), never tenant text"],
+  "E(httpsOnly(x.url))": [1, "link target from the app's own catalogue (compliance_profiles.SOURCES: standards documents), https only (httpsOnly), never tenant text"]
  },
  "static/dashboard.js": {
   "last.journey.stage": [1, "number the server computes (count, percentage, score, stage, position)"],
@@ -346,7 +347,10 @@
   "c.review_count": [1, "number the server computes (count, percentage, score, stage, position)"],
   "c.info_count": [1, "number the server computes (count, percentage, score, stage, position)"],
   "c.total_evidence": [1, "number the server computes (count, percentage, score, stage, position)"],
-  "evColor(e.status)": [2, "style value from the page's own palette function, colour table or a number; no tenant text"]
+  "evColor(e.status)": [4, "style value from the page's own palette function, colour table or a number; no tenant text"],
+  "col[x.status] || 'var(--dim)'": [2, "style value from the page's own palette function, colour table or a number; no tenant text"],
+  "C.selectHtml('cpProfilePick', '', 'Compliance profile to read the assessment against')": [1, "markup built by static/compliance_choice.js, which escapes every value with its own E() (that file is checked here too)"],
+  "C.summaryHtml(k)": [1, "markup built by static/compliance_choice.js, which escapes every value with its own E() (that file is checked here too)"]
  },
  "static/report_dataflow.html": {
   "s.traces": [1, "number the server computes (count, percentage, score, stage, position)"],
@@ -476,5 +480,8 @@
  "static/zcc_fleet.js": {
   "cls": [1, "CSS class or icon from the page's own status table"],
   "v.devices": [1, "number the server computes (count, percentage, score, stage, position)"]
+ },
+ "static/compliance_choice.js": {
+  "E(httpsOnly(x.url))": [1, "link target from the app's own catalogue (compliance_profiles.SOURCES: standards documents), https only (httpsOnly), never tenant text"]
  }
 }

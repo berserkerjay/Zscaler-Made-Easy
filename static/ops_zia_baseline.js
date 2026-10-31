@@ -137,7 +137,6 @@
     const cp = cpOf(res, z), cps = (cp && cp.summary) || null;
     const groups = {};
     (res.compliance_profiles || []).forEach(p => { (groups[p.group] = groups[p.group] || []).push(p); });
-    const https = u => httpsOnly(u);
     const cpBlock = `<fieldset class="op-cp" style="border:0;margin:0 0 0.6rem;padding:0;min-width:0"><legend class="df-h">Compliance profile</legend>
         <div class="df-hint">One choice drives the tier, the overlay, the rules the profile adds or requires, the DLP policy packs offered, the AI Guard detection profile and the compliance pack. It is remembered for the saved tenant profile picked above.</div>
         <div class="op-row"><label class="df-ctl" style="max-width:100%"><span class="lbl">Compliance profile</span><select id="zbCompliance" aria-label="Compliance profile" style="max-width:100%">
@@ -145,7 +144,7 @@
           ${z.cpSaved ? `<span class="df-chip" role="status">${E(z.cpSaved)}</span>` : ''}</div>
         ${cps ? `<div class="bp-card" id="zbCpSummary"><div class="t">What ${E(cps.label)} will do</div><ul style="padding-left:1.2rem">${(cps.lines || []).map(l => `<li>${E(l)}</li>`).join('')}</ul>
           <div class="df-hint">${E(cps.reuses)}${cps.assumed_profile ? ` Assumed: ${E(cps.assumed_profile)}` : ''}</div>
-          ${(cps.sources || []).length ? `<div class="df-hint">Sources: ${cps.sources.map(x => `<a href="${E(https(x.url))}" target="_blank" rel="noopener noreferrer">${E(x.title)}</a>`).join('; ')}</div>` : ''}
+          ${(cps.sources || []).length ? `<div class="df-hint">Sources: ${cps.sources.map(x => `<a href="${E(httpsOnly(x.url))}" target="_blank" rel="noopener noreferrer">${E(x.title)}</a>`).join('; ')}</div>` : ''}
           ${(cps.assumed_controls || []).length ? `<div class="df-hint">Controls marked assumed (not verified against the source): ${E(cps.assumed_controls.join(', '))}</div>` : ''}
           ${cps.tier && !z.framework && cps.tier !== z.tier ? `<div class="df-chip st-warn" role="status">${E(cps.label)} builds on the ${E(cps.tier)} tier; this build uses ${E(z.tier)}. ${E(cps.tier_why)}</div>` : ''}
           <div class="op-row">${(cps.packs || []).map(pk => pk.available ? `<a class="rp-btn" href="/?simple=deploy&amp;pack=${encodeURIComponent(pk.id)}">Deploy ${E(pk.name)}</a>` : `<span class="df-hint">${E(pk.name)} is not installed</span>`).join('')}

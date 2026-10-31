@@ -174,11 +174,11 @@
           const v = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(typeof v.detail === 'string' ? v.detail : `HTTP ${r.status}`);
           const c = v.counts || {};
-          out.innerHTML = `<div class="df-hint" role="status">${E(v.label)}: ${c['Met'] || 0} met · ${c['Partially met'] || 0} partially met · ${c['Not met'] || 0} not met · ${c['Not tested'] || 0} not tested · ${(v.not_assessed || []).length} not assessed by these checks.</div>
+          out.innerHTML = `<div class="df-hint" role="status">${E(v.label)}: ${E(c['Met'] || 0)} met · ${E(c['Partially met'] || 0)} partially met · ${E(c['Not met'] || 0)} not met · ${E(c['Not tested'] || 0)} not tested · ${(v.not_assessed || []).length} not assessed by these checks.</div>
             <div class="df-hint">${E(v.note)}</div>
             ${(v.controls || []).map(x => `<div class="cp-control"><div class="head"><span style="font-weight:600;">${E(x.control)} ${E(x.title)}${x.assumed ? ' <span class="df-chip st-warn">assumed</span>' : ''}</span>
               <span class="cp-status" style="color:${col[x.status] || 'var(--dim)'};border-color:${col[x.status] || 'var(--dim)'};">${E(x.status)}</span></div>
-              <div class="sum">${x.passing} passing · ${x.failing} failing · ${x.review} review${x.assumed ? ` · ${E(x.assumed_why)}` : ''}</div>
+              <div class="sum">${E(x.passing)} passing · ${E(x.failing)} failing · ${E(x.review)} review${x.assumed ? ` · ${E(x.assumed_why)}` : ''}</div>
               ${(x.evidence || []).slice(0, 8).map(e => `<div class="cp-ev" style="border-left-color:${evColor(e.status)};"><span style="color:${evColor(e.status)};font-weight:700;">${evMark(e.status)}</span><code>[${E(e.check_id)}]</code><span>${E(e.label)}</span></div>`).join('')}</div>`).join('')}
             ${(v.not_assessed || []).length ? `<div class="df-hint">Not assessed by these checks: ${E(v.not_assessed.join(', '))}.</div>` : ''}`;
         } catch (e) { out.innerHTML = `<div class="bp-card risk"><div class="t">Could not read the assessment against the profile</div><div>${E(e.message)}</div></div>`; }
