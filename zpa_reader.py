@@ -71,7 +71,7 @@ STOPPED_REASON = ("You clicked Stop before the ZPA read finished, so it was aban
 
 POLICY_TYPES = (("access", "access policy"), ("timeout", "timeout policy"), ("client_forwarding", "client forwarding policy"),
                 ("inspection", "inspection (AppProtection) policy"), ("isolation", "isolation policy"),
-                # SDK PoliciesAPI.POLICY_MAP keys: REDIRECTION_POLICY, CREDENTIAL_POLICY,
+                # SDK PolicySetControllerAPI.POLICY_MAP keys: REDIRECTION_POLICY, CREDENTIAL_POLICY,
                 # CAPABILITIES_POLICY, CLIENTLESS_SESSION_PROTECTION_POLICY.
                 ("redirection", "redirection policy"), ("credential", "privileged credential policy"),
                 ("capabilities", "privileged capabilities policy"), ("clientless", "browser protection policy"))
