@@ -1072,7 +1072,7 @@ def zcc_20(cl):
 _BROAD_PROCESSES = {"powershell.exe", "pwsh.exe", "pwsh", "cmd.exe", "python.exe", "pythonw.exe", "python", "python3", "wscript.exe",
                     "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "bash", "sh", "zsh", "node.exe", "node", "java.exe",
                     "javaw.exe", "java", "chrome.exe", "msedge.exe", "firefox.exe", "iexplore.exe", "safari", "google chrome",
-                    "curl.exe", "curl", "wget", "wget.exe", "svchost.exe", "explorer.exe", "teamviewer.exe", "anydesk.exe", "ssh", "ssh.exe"}
+                    "curl.exe", "curl", "wget", "wget.exe", "svchost.exe", "explorer.exe", "ssh", "ssh.exe"}
 _BROAD_PATHS = re.compile(r"^(?:[a-z]:\\?|[a-z]:\\users\\?|[a-z]:\\program files(?: \(x86\))?\\?|/|/applications/?|/usr/?|/usr/bin/?|/users/?)$", re.I)
 
 
