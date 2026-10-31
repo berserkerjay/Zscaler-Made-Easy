@@ -27,16 +27,17 @@ Go schema definitions. Some arguments were left out on purpose:
     groups; writing both directions would make a dependency cycle);
   - ZPA provisioning keys: the key itself (computed by ZPA, a secret);
   - ZIA locations: the VPN credentials' pre-shared keys (a location names its
-    credentials by id) and `parent_id` (sub-locations are not exported).
+    credentials by id), `parent_id` (sub-locations are not exported) and
+    `dynamic_location_groups` (membership the tenant computes from criteria).
 Terraform validates the workspace against the provider it installs, so a
 drift between these tokens and a newer provider shows at `terraform
 validate`, never as a silent change.
 """
 from __future__ import annotations
 
-from typing import Dict, Union
+from typing import Dict
 
-SCHEMAS: Dict[str, Union[str, tuple]] = {
+SCHEMAS: Dict[str, str] = {
     "zia_advanced_settings": (
         "auth_bypass_apps:ls auth_bypass_urls:ls basic_bypass_apps:ls digest_auth_bypass_apps:ls "
         "dns_resolution_on_transparent_proxy_exempt_apps:ls dns_resolution_on_transparent_proxy_ipv6_exempt_apps:ls "
@@ -196,7 +197,7 @@ SCHEMAS: Dict[str, Union[str, tuple]] = {
         "surrogate_refresh_time_in_minutes:n surrogate_refresh_time_unit:s ofw_enabled:b ips_control:b aup_enabled:b "
         "caution_enabled:b aup_block_internet_until_accepted:b aup_force_ssl_inspection:b ipv6_enabled:b "
         "ipv6_dns_64prefix:b aup_timeout_in_days:n profile:s exclude_from_dynamic_groups:b exclude_from_manual_groups:b "
-        "dynamic_location_groups:ids static_location_groups:ids extranet:idb extranet_ip_pool:idb extranet_dns:idb "
+        "static_location_groups:ids extranet:idb extranet_ip_pool:idb extranet_dns:idb "
         "virtual_zen_clusters:ids virtual_zens:ids"
     ),
     "zia_mobile_malware_protection_policy": (

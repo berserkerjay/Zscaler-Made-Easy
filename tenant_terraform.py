@@ -178,6 +178,14 @@ DATA: Dict[str, Tuple[str, str]] = {
     "zpa.service_edge_groups": ("zpa_service_edge_group", "name"), "zpa.inspection_profiles": ("zpa_inspection_profile", "name"),
     "zpa.isolation_profiles": ("zpa_isolation_profile", "name"), "zpa.trusted_networks": ("zpa_trusted_network", "name"),
 }
+# Where the SDK's answer names an argument differently from the provider
+# (zscaler-sdk-python 1.11.3 models): provider argument <- the row's field.
+RENAMES: Dict[str, Dict[str, str]] = {
+    "zia_cloud_application_instance": {"name": "instance_name"},
+    "zia_sandbox_behavioral_analysis": {"file_hashes_to_be_blocked": "md5_hash_value_list"},
+    "zpa_pra_credential_controller": {"username": "user_name"},
+    "zpa_inspection_profile": {"threat_labz_controls": "threatlabz_controls"},
+}
 # Reference targets that are personal data: the id stays, the name is never written.
 PERSONAL_TARGETS = {"zia.users"}
 # The attribute a resource exposes its numeric id as, when a reference needs the number (not the string id).
@@ -744,14 +752,39 @@ def _service(client: Any, t: Dict[str, Any]) -> Tuple[Any, Optional[str]]:
     return svc, None
 
 
-def _zpa_list(fn: Callable[..., Any], args: Tuple[Any, ...], q: Dict[str, Any], cancel: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """Every page of a ZPA list (the SDK's own paging), at most MAX_ZPA_PAGES."""
+def _raw_rows(ret: Any) -> Tuple[List[Dict[str, Any]], Optional[str], Any]:
+    """(rows, error, response) of one list call: the API's own answer for
+    the page (the SDK's response.get_results()), which carries every field
+    the provider takes; the SDK's models (as plain dicts) only when the
+    answer is not there."""
     import pack_export
-    ret = fn(*args, query_params=dict(q, page_size="500"))
-    rows, err = pack_export._rows(ret)
-    if err:
-        return [], err
+    from dlp_importer import _nx
+    data, err = _nx(ret)
     resp = ret[1] if isinstance(ret, tuple) and len(ret) >= 3 else None
+    if err:
+        return [], str(err)[:200], resp
+    getter = getattr(resp, "get_results", None)
+    raw = None
+    if callable(getter):
+        try:
+            raw = getter()
+        except Exception:  # noqa: BLE001 - the models below still export
+            raw = None
+    items = data if isinstance(data, list) else ([] if data is None else [data])
+    if isinstance(raw, list) and all(isinstance(r, dict) for r in raw) and len(raw) == len(items):
+        return [dict(r) for r in raw], None, resp
+    return [pack_export._plain(x) for x in items], None, resp
+
+
+def _list_all(fn: Callable[..., Any], args: Tuple[Any, ...], q: Dict[str, Any], cancel: Any, paged: bool) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Every page of a list (the SDK's own paging), at most MAX_ZPA_PAGES."""
+    if paged:
+        ret = fn(*args, query_params=dict(q, page_size="500"))
+    else:
+        ret = fn(*args, query_params=q) if q else fn(*args)
+    rows, err, resp = _raw_rows(ret)
+    if err or not paged:
+        return rows, err
     pages = 0
     while resp is not None and callable(getattr(resp, "has_next", None)) and resp.has_next() and pages < MAX_ZPA_PAGES:
         if _stopped(cancel):
@@ -759,7 +792,8 @@ def _zpa_list(fn: Callable[..., Any], args: Tuple[Any, ...], q: Dict[str, Any], 
         data, _r, perr = resp.next()
         if perr:
             return rows, str(perr)[:200]
-        rows.extend(pack_export._plain(x) for x in data or [])
+        page = resp.get_results() if callable(getattr(resp, "get_results", None)) else data
+        rows.extend(dict(x) for x in page or [] if isinstance(x, dict))
         pages += 1
     return rows, None
 
@@ -784,7 +818,7 @@ def read_type(client: Any, t: Dict[str, Any], *, cancel: Any = None, microtenant
         for rt in pc.CLOUD_APP_TYPES:
             if _stopped(cancel):
                 break
-            got, err = pack_export._rows(fn(rt))
+            got, err, _resp = _raw_rows(fn(rt))
             if err:
                 return rows, err
             for r in got:
@@ -796,10 +830,7 @@ def read_type(client: Any, t: Dict[str, Any], *, cancel: Any = None, microtenant
     for args in calls:
         if _stopped(cancel):
             break
-        if t["zpa_paged"]:
-            got, err = _zpa_list(fn, args, q, cancel)
-        else:
-            got, err = pack_export._rows(fn(*args, query_params=q) if q else fn(*args))
+        got, err = _list_all(fn, args, q, cancel, t["zpa_paged"])
         if err:
             return rows, err
         if args:
@@ -1218,6 +1249,9 @@ def render_resource(t: Dict[str, Any], row: Dict[str, Any], label: str, ctx: _Ct
     hook = HOOKS.get(t["hook"] or "")
     if hook:
         row = hook(row, ctx)
+    for attr, alt in RENAMES.get(t["resource"], {}).items():
+        if _empty(row.get(attr)) and not _empty(row.get(alt)):
+            row = dict(row, **{attr: row[alt]})
     ctx.singleton = t["singleton"]
     body, missing = _render_attrs(schema_of(t["resource"]), row, ctx, t, label, 1)
     if missing:
@@ -1325,6 +1359,10 @@ def _readme_product(product: str, counts: Dict[str, int], ctx: _Ctx, not_exporte
                     tenant_label: str) -> str:
     rows = "".join(f"| `{res}` | {n} |\n" for res, n in sorted(counts.items()))
     nx = "".join(f"| {md_safe.text(x['what'])} | {md_safe.text(x['why'])} |\n" for x in not_exported) or "| (nothing) | |\n"
+    for res, attrs in sorted(ctx.dropped.items()):
+        for attr, n in sorted(attrs.items()):
+            nx += (f"| `{res}.{attr}` on {n} object{'s' if n != 1 else ''} | the tenant's value is not in the form the provider takes, "
+                   "or is a secret: left out, so Terraform does not manage it |\n")
     secrets = "".join(f"| `{v}` | {md_safe.text(_SECRET_WORDS.get(v, ''))} |\n" for v in sorted(ctx.secret_vars))
     return (f"# {PRODUCT_LABELS[product]} as Terraform\n\n"
             f"Exported by Zscaler Made Easy from {md_safe.text(tenant_label or 'the tenant')}, read-only, for the "
