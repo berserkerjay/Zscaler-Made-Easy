@@ -75,7 +75,7 @@ GONE = ("The offline tenant this page was using is no longer open (the server re
 
 KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights")
 _PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
-_CUSTOMER_SEG = re.compile(r"(/zpa/mgmtconfig/v[0-9]+/admin/customers/)[^/]+")
+_CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/)[^/]+")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 # Names of fields that hold a secret (a ZCC exit/uninstall password, a VPN
@@ -970,11 +970,20 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                          "policySet/rules/ACCESS_POLICY", "policySet/rules/TIMEOUT_POLICY",
                                          "policySet/rules/policyType/CLIENT_FORWARDING_POLICY", "policySet/rules/policyType/INSPECTION_POLICY",
                                          "policySet/rules/policyType/ISOLATION_POLICY")]
+    # ZPA administration, for the RBAC checks: read only with RBAC ticked (and
+    # ZPA, which the service guard requires). Saved scrubbed: no password,
+    # client secret, token or provisioning-key value is ever in the file.
+    + [(("rbac",), f"/zpa/{x}") for x in ("administrators", "roles", "ssoLoginOptions", "apiKeys", "emergencyAccess/users", "microtenants",
+                                          "associationType/CONNECTOR_GRP/provisioningKey", "associationType/SERVICE_EDGE_GRP/provisioningKey",
+                                          "credential", "credential-pool", "approval")]
     + [(("zdx",), f"/zdx/{x}") for x in ("administration/apps", "troubleshooting/devices", "administration/departments",
                                          "administration/locations")]
     + [(("zidentity",), f"/zid/{x}") for x in ("users", "groups", "resourceServers")]
 )
 _ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments"}
+# ZPA reads that are one answer, not a paged list: a settings object, and the
+# emergency access list, which pages by page id (zpa/emergency_access.py).
+_ZPA_SINGLE = {"/zpa/ssoLoginOptions", "/zpa/emergencyAccess/users"}
 _UNANSWERED = (0, 429, 502, 503, 504)
 
 
@@ -1027,7 +1036,9 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
             for e in errors[:4]:
                 unread.append(_text(e, 160))
             continue
-        if ep.startswith("/zpa/"):
+        if ep in _ZPA_SINGLE:
+            body, code = guard.get(ep)
+        elif ep.startswith("/zpa/"):
             body, code = _read_zpa(guard, ep)
         elif ep in _ZIA_PAGED:
             body, code = _read_zia_pages(guard, ep)
@@ -1095,7 +1106,12 @@ _NAMES = {"webDlpRules": "Inline Web DLP rules", "endPointDlpRules": "Endpoint D
           "firewallFilteringRules": "Cloud Firewall rules", "fileTypeRules": "File Type Control rules", "urlCategories": "URL categories",
           "application": "ZPA application segments", "policyType/ACCESS_POLICY": "ZPA access policy", "connector": "App Connectors",
           "webForwardingProfile/listByCompany": "Client Connector forwarding profiles", "application-profiles": "Client Connector app profiles",
-          "apps": "ZDX applications", "locations": "Locations", "pacFiles": "PAC files"}
+          "apps": "ZDX applications", "locations": "Locations", "pacFiles": "PAC files",
+          "administrators": "ZPA administrators", "roles": "ZPA roles", "ssoLoginOptions": "ZPA admin SSO login options",
+          "apiKeys": "ZPA API keys", "emergencyAccess/users": "ZPA emergency access accounts", "microtenants": "ZPA microtenants",
+          "CONNECTOR_GRP/provisioningKey": "ZPA App Connector provisioning keys",
+          "SERVICE_EDGE_GRP/provisioningKey": "ZPA Service Edge provisioning keys", "credential": "PRA credentials",
+          "credential-pool": "PRA credential pools", "approval": "PRA approvals"}
 
 
 def friendly(path: str) -> str:

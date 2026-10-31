@@ -23,7 +23,9 @@ What it covers, on purpose with the gaps an assessment should find:
     direct on a trusted network), trusted networks, devices;
   - ZPA: application segments (one with a wildcard domain), segment,
     server and connector groups, App Connectors (one disconnected), an
-    IdP, posture profiles, access and timeout policies;
+    IdP, posture profiles, access and timeout policies, and its
+    administration (admins, roles, API keys, a break-glass account,
+    microtenants, a provisioning key, PRA credentials and approvals);
   - ZDX: monitored applications, devices, departments, locations;
   - ZIdentity: users, groups, resource servers.
 
@@ -46,6 +48,7 @@ ZIA = "/zia/api/v1"
 ZCC = "/zcc/papi/public/v1"
 ZPA1 = "/zpa/mgmtconfig/v1/admin/customers/{customerId}"
 ZPA2 = "/zpa/mgmtconfig/v2/admin/customers/{customerId}"
+ZPA_PRA = "/zpa/waap-pra-config/v1/admin/customers/{customerId}"
 ZDX = "/zdx/v1"
 ZID = "/ziam/admin/api/v1"
 
@@ -363,6 +366,52 @@ ACCESS_RULES = [
 ZPA_ROLES = [{"id": "2991", "name": "ZPA read only", "classPermissionGroups": [{"classPermissions": [
     {"classType": {"friendlyName": "Application Segment"}, "permission": {"type": "VIEW_ONLY"}},
     {"classType": {"friendlyName": "Policy"}, "permission": {"type": "VIEW_ONLY"}}]}]}]
+ZPA_ROLES += [
+    {"id": "2990", "name": "Super Admin", "systemRole": True, "classPermissionGroups": [{"classPermissions": [
+        {"classType": {"friendlyName": "Application Segment"}, "permission": {"type": "FULL"}},
+        {"classType": {"friendlyName": "Policy"}, "permission": {"type": "FULL"}},
+        {"classType": {"friendlyName": "Administrator"}, "permission": {"type": "FULL"}}]}]},
+    {"id": "2992", "name": "App segment operator", "customRole": True, "classPermissionGroups": [{"classPermissions": [
+        {"classType": {"friendlyName": "Application Segment"}, "permission": {"type": "FULL"}},
+        {"classType": {"friendlyName": "Policy"}, "permission": {"type": "VIEW_ONLY"}}]}]}]
+# ZPA administration (zscaler/zpa/models: administrator_controller, api_keys,
+# emergency_access, microtenants, provisioning_keys, pra_credential,
+# pra_cred_pool_controller, pra_approval), with the gaps the RBAC checks find:
+# admin login is not SSO-only, one local admin has no second factor, the
+# Terraform API key has full access, a provisioning key allows 100 enrolments,
+# a PRA credential was last reset in 2025, an approval stands until 2030 and
+# one microtenant has no admin of its own. No secret value is in the sample.
+ZPA_MICROTENANTS = [{"id": "2961", "name": "Cold Chain", "enabled": True, "criteriaAttribute": "AuthDomain",
+                     "criteriaAttributeValues": ["coldchain." + "larkspur-freight.example"], "privilegedApprovalsEnabled": False},
+                    {"id": "2962", "name": "Air Cargo", "enabled": True, "criteriaAttribute": "AuthDomain",
+                     "criteriaAttributeValues": ["air." + "larkspur-freight.example"], "privilegedApprovalsEnabled": True}]
+ZPA_ADMINS = [
+    {"id": "2971", "username": "avery.quinn@larkspur-freight.example", "displayName": "Avery Quinn", "isEnabled": True,
+     "localLoginDisabled": True, "twoFactorAuthEnabled": False, "role": {"id": "2990", "name": "Super Admin"}, "microtenantId": "0"},
+    {"id": "2972", "username": "rowan.ellis@larkspur-freight.example", "displayName": "Rowan Ellis", "isEnabled": True,
+     "localLoginDisabled": False, "twoFactorAuthEnabled": False, "role": {"id": "2990", "name": "Super Admin"}, "microtenantId": "0"},
+    {"id": "2973", "username": "sam.okafor@larkspur-freight.example", "displayName": "Sam Okafor", "isEnabled": True,
+     "localLoginDisabled": True, "twoFactorAuthEnabled": True, "role": {"id": "2992", "name": "App segment operator"}, "microtenantId": "2961",
+     "microtenantName": "Cold Chain"},
+    {"id": "2974", "username": "jules.marsh@larkspur-freight.example", "displayName": "Jules Marsh", "isEnabled": True,
+     "localLoginDisabled": True, "twoFactorAuthEnabled": True, "role": {"id": "2991", "name": "ZPA read only"}, "microtenantId": "0"},
+    {"id": "2975", "username": "former.admin@larkspur-freight.example", "displayName": "Former admin", "isEnabled": False,
+     "localLoginDisabled": False, "twoFactorAuthEnabled": False, "role": {"id": "2990", "name": "Super Admin"}, "microtenantId": "0"}]
+ZPA_API_KEYS = [{"id": "2981", "name": "terraform-ci", "enabled": True, "roleId": "2990", "readOnly": False, "tokenExpiryTimeInSec": "3600",
+                 "clientId": "lkf-terraform-ci", "creationTime": "1735689600"},
+                {"id": "2982", "name": "siem-export", "enabled": True, "roleId": "2991", "readOnly": True, "tokenExpiryTimeInSec": "3600",
+                 "clientId": "lkf-siem-export", "creationTime": "1735689600"}]
+ZPA_SSO_OPTIONS = {"ssologinonly": False}
+ZPA_EMERGENCY_USERS = [{"userId": "2985", "emailId": "breakglass@larkspur-freight.example", "firstName": "Break", "lastName": "Glass",
+                        "userStatus": "ACTIVE", "lastLoginTime": "1735689600", "activatedOn": "1735689600"}]
+ZPA_PROVISIONING_KEYS = [{"id": "2986", "name": "Portland DC connectors", "enabled": True, "maxUsage": "100", "usageCount": "2",
+                          "zcomponentId": "2401", "zcomponentName": "Portland connectors", "creationTime": "1735689600"}]
+ZPA_PRA_CREDENTIALS = [{"id": "2987", "name": "Yard server admin", "credentialType": "USERNAME_PASSWORD",
+                        "lastCredentialResetTime": "1735689600", "creationTime": "1735689600"}]
+ZPA_PRA_APPROVALS = [{"id": "2988", "emailIds": ["vendor.support@larkspur-freight.example"], "status": "ACTIVE",
+                      "startTime": "1767225600", "endTime": "1893456000", "applications": [{"id": "2201", "name": "Freight billing"}],
+                      "workingHours": {"days": ["MON", "TUE", "WED", "THU", "FRI"], "startTime": "08:00", "endTime": "18:00",
+                                       "timeZone": "America/Los_Angeles"}}]
 TIMEOUT_RULES = [{"id": "2951", "name": "Re-authenticate daily", "ruleOrder": "1", "action": "RE_AUTH", "reauthTimeout": "86400",
                   "reauthIdleTimeout": "1800", "policyType": "2", "conditions": []}]
 
@@ -458,8 +507,17 @@ def responses() -> Dict[str, Any]:
         f"{ZPA1}/certificate": _zpa([]), f"{ZPA2}/lssConfig": _zpa([]), f"{ZPA2}/clientlessCertificate/issued": _zpa([]),
         f"{ZPA1}/inspectionProfile": _zpa([]), f"{ZPA1}/isolation/profiles": _zpa([]), f"{ZPA1}/browserProtectionProfile": _zpa([]),
         f"{ZPA1}/praConsole": _zpa([]), f"{ZPA1}/praPortal": _zpa([]), f"{ZPA1}/userPortal": _zpa([]),
-        f"{ZPA1}/associationType/CONNECTOR_GRP/provisioningKey": _zpa([]),
+        f"{ZPA1}/associationType/CONNECTOR_GRP/provisioningKey": _zpa(ZPA_PROVISIONING_KEYS),
+        f"{ZPA1}/associationType/SERVICE_EDGE_GRP/provisioningKey": _zpa([]),
         f"{ZPA1}/roles": _zpa(ZPA_ROLES),
+        f"{ZPA1}/administrators": _zpa(ZPA_ADMINS),
+        f"{ZPA1}/v2/ssoLoginOptions": ZPA_SSO_OPTIONS,
+        f"{ZPA1}/apiKeys": _zpa(ZPA_API_KEYS),
+        f"{ZPA1}/emergencyAccess/users": _zpa(ZPA_EMERGENCY_USERS),
+        f"{ZPA1}/microtenants": _zpa(ZPA_MICROTENANTS),
+        f"{ZPA1}/credential": _zpa(ZPA_PRA_CREDENTIALS),
+        f"{ZPA_PRA}/credential-pool": _zpa([]),
+        f"{ZPA1}/approval": _zpa(ZPA_PRA_APPROVALS),
         f"{ZPA1}/policySet/rules/policyType/ACCESS_POLICY": _zpa(ACCESS_RULES),
         f"{ZPA1}/policySet/rules/policyType/TIMEOUT_POLICY": _zpa(TIMEOUT_RULES),
         f"{ZPA1}/policySet/rules/policyType/CLIENT_FORWARDING_POLICY": _zpa([]),
