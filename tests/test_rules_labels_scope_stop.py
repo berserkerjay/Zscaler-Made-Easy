@@ -425,7 +425,8 @@ def test_stop_during_the_plan_read_reads_nothing_more(monkeypatch, kind):
     elif kind == "deploy":
         r = t.post("/api/dlp-packs/apply/start", json=dict(body, plan_hash=ph, confirm=True))
     else:
-        r = t.post("/api/dlp-packs/removal/apply/start", json=dict(ONEAPI, pack_ids=["healthcare_phi_baseline"], plan_hash=ph, confirm=True, assessor="Jane Doe"))
+        r = t.post("/api/dlp-packs/removal/apply/start", json=dict(ONEAPI, pack_ids=["healthcare_phi_baseline"], plan_hash=ph, confirm=True, assessor="Jane Doe",
+                                                                     confirm_phrase="DELETE 1 OBJECTS"))
     assert r.status_code == 200, r.text[:300]
     job = r.json()["job_id"]
     assert entered.wait(10)

@@ -234,6 +234,8 @@ def test_remediation_live_needs_write_mode_and_then_sends_the_planned_call(raw_t
     assert raw_tenant.writes == [] and raw_tenant.signed_in == 0
     write_mode(True)
     plan = c.post("/api/remediation/plan", json=dict(CREDS, check_id=recipe["check_id"], criteria=recipe["criteria"])).json()
+    assert c.post("/api/remediation/execute", json=body).status_code == 400, "a live fix needs the previewed plan_hash"
+    body["plan_hash"] = plan["plan_hash"]
     r = c.post("/api/remediation/execute", json=body)
     assert r.status_code == 200 and r.json()["status"] == "completed", r.text
     method = "PUT" if plan["method"] == "PATCH" else plan["method"]
@@ -309,7 +311,7 @@ def test_pack_removal_preview_then_apply_through_the_gates(sdk_tenant, write_mod
     pre = c.post("/api/dlp-packs/removal/preflight", json=dict(CREDS, pack_ids=[PACK]))
     assert pre.status_code == 200, pre.text
     plan_hash = pre.json()["plan_hash"]
-    body = dict(CREDS, pack_ids=[PACK], plan_hash=plan_hash, confirm=True, assessor=ASSESSOR)
+    body = dict(CREDS, pack_ids=[PACK], plan_hash=plan_hash, confirm=True, assessor=ASSESSOR, confirm_phrase=pre.json()["confirm_phrase"])
     assert c.post("/api/dlp-packs/removal/apply", json=dict(body, confirm=False)).status_code == 400
     r = c.post("/api/dlp-packs/removal/apply", json=body)
     assert r.status_code == 200, r.text

@@ -221,7 +221,7 @@ def _deploy_pack(c):
 def _remove_pack(c):
     pre = c.post("/api/dlp-packs/removal/preflight", json=dict(SCOPE, pack_ids=["cjis_policy_pack"])).json()
     return c.post("/api/dlp-packs/removal/apply", json=dict(SCOPE, pack_ids=["cjis_policy_pack"], plan_hash=pre.get("plan_hash") or "a" * 64,
-                                                           confirm=True, assessor="Jane Doe"))
+                                                           confirm=True, assessor="Jane Doe", confirm_phrase=pre.get("confirm_phrase") or "DELETE 1 OBJECTS"))
 
 
 APPLIES = {"bulk-change": _apply_bulk, "build-new-job": _apply_bulk_job, "pov-build": _apply_pov, "pack-deploy": _deploy_pack,
