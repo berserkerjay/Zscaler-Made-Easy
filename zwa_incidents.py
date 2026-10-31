@@ -92,6 +92,13 @@ def text(v: Any, n: int = TEXT_MAX) -> str:
     return t[:n]
 
 
+def name(v: Any, n: int = 120) -> str:
+    """An admin's sign-in name as the audit log and the assigned admin carry
+    it: control characters removed, length capped (an admin is not personal
+    data of the people the incidents are about, so it is shown)."""
+    return _CONTROL.sub(" ", str(v if v is not None else ""))[:n]
+
+
 def _plain(obj: Any) -> Any:
     if obj is None:
         return None
@@ -177,8 +184,7 @@ def summarize_details(d: Any) -> Dict[str, Any]:
     user = _g(d, "userInfo", default={}) or {}
     labels = [{"key": text(_g(x, "key"), 60), "value": text(_g(x, "value"), 120)}
               for x in (_g(d, "labels", default=[]) or []) if isinstance(x, dict)][:MAX_LABELS]
-    tickets = [{"system": text(_g(t, "ticketingSystemName", "ticketType"), 60), "ticket": text(_g(t, "ticketId"), 80),
-                "state": text(_g(t, "state", "status"), 40)} for t in (_g(d, "dlpIncidentTickets", default=[]) or []) if isinstance(t, dict)][:MAX_TICKETS]
+    tickets = summarize_tickets([{"tickets": [t for t in (_g(d, "dlpIncidentTickets", default=[]) or []) if isinstance(t, dict)]}])
     actions = _g(d, "sourceActions", default=[]) or []
     return {
         "id": text(_g(d, "internalId", "id"), 80),
@@ -190,7 +196,7 @@ def summarize_details(d: Any) -> Dict[str, Any]:
         "match_count": _whole(_g(d, "matchCount", default=0)),
         "created_at": text(_g(d, "createdAt"), 40), "updated_at": text(_g(d, "lastUpdatedAt"), 40),
         "first_seen": text(_g(d, "sourceFirstObservedAt"), 40), "last_seen": text(_g(d, "sourceLastObservedAt"), 40),
-        "assigned_admin": text(_g(d, "assignedAdmin"), 120),
+        "assigned_admin": name(_g(d, "assignedAdmin")),
         "rules": names("rules"), "engines": names("engines"), "dictionaries": dicts,
         "application": text(_g(app, "name", "hostnameOrApplication"), 120), "category": text(_g(app, "category"), 80),
         "file_type": text(_g(content, "fileType"), 40),
@@ -251,8 +257,9 @@ def summarize_tickets(tk: Any) -> List[Dict[str, Any]]:
     for t in (items if isinstance(items, list) else [])[:MAX_TICKETS]:
         t = _plain(t)
         if isinstance(t, dict):
-            out.append({"system": text(_g(t, "ticketingSystemName", "ticketType"), 60), "ticket": text(_g(t, "ticketId"), 80),
-                        "project": text(_g(t, "projectName"), 80), "state": text(_g(t, "state", "status"), 40)})
+            info = _plain(_g(t, "ticketInfo", default={})) or {}   # common.DLPIncidentTickets: ticketInfo {ticketId, ticketUrl, state}
+            out.append({"system": text(_g(t, "ticketingSystemName", "ticketType"), 60), "ticket": text(_g(t, "ticketId") or _g(info, "ticketId"), 80),
+                        "project": text(_g(t, "projectName"), 80), "state": text(_g(t, "state", "status") or _g(info, "state"), 40)})
     return out
 
 
@@ -320,7 +327,7 @@ def summarize_audit_entry(e: Any) -> Dict[str, Any]:
     act = _g(e, "action", default="")
     if isinstance(act, dict):
         act = _g(act, "action", default="")
-    return {"time": text(_g(e, "time", "timestamp", "createdAt", "eventTime"), 40), "admin": text(_g(e, "admin", "adminName", "userName"), 120),
+    return {"time": text(_g(e, "time", "timestamp", "createdAt", "eventTime"), 40), "admin": name(_g(e, "admin", "adminName", "userName")),
             "action": text(act, 80), "module": text(_g(e, "module"), 80), "resource": text(_g(e, "resource"), 160)}
 
 

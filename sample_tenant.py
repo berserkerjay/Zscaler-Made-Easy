@@ -25,7 +25,14 @@ What it covers, on purpose with the gaps an assessment should find:
     server and connector groups, App Connectors (one disconnected), an
     IdP, posture profiles, access and timeout policies;
   - ZDX: monitored applications, devices, departments, locations;
-  - ZIdentity: users, groups, resource servers.
+  - ZIdentity: users, groups, resource servers;
+  - AI Guard: a detect-only detection policy that inspects prompts but not
+    answers, two policy match rules (one off), LLM providers, two LLM
+    applications (one keeps prompts unencrypted, one has no credential) and
+    credential metadata; a made-up detector for "Test a prompt";
+  - Workflow Automation: DLP incidents (open, closed as false positive,
+    closed as real), their triggers, change history and tickets, and the
+    admin audit log. Incident times are relative to when the sample opens.
 
 The fixtures in tests/ (test_data_flow.py, test_pack_channels.py) gave the
 shapes; the values are new.
@@ -48,6 +55,8 @@ ZPA1 = "/zpa/mgmtconfig/v1/admin/customers/{customerId}"
 ZPA2 = "/zpa/mgmtconfig/v2/admin/customers/{customerId}"
 ZDX = "/zdx/v1"
 ZID = "/ziam/admin/api/v1"
+AIG = "/aiguard/v1"
+ZWA = "/zwa/dlp/v1"
 
 # What the sample's URL lookup answers (POST /urlLookup), host → categories.
 URL_LOOKUP: Dict[str, List[str]] = {
@@ -377,6 +386,140 @@ ZID_USERS = [{"id": "u-41", "loginName": "avery.quinn@larkspur-freight.example",
 ZID_GROUPS = [{"id": "g-33", "name": "Finance Team", "source": "SCIM"}, {"id": "g-34", "name": "Developers", "source": "SCIM"}]
 ZID_RESOURCE_SERVERS = [{"id": "rs-1", "name": "ZIA", "primaryAud": "https://api.zscaler.com"}]
 
+# DLP indexes (zia/models/dlp_resources.py): one EDM schema whose last upload
+# failed, one IDM profile whose schedule is off and that is a year old.
+EDM_SCHEMAS = [{"schemaId": 8101, "projectName": "Larkspur customer accounts", "revision": 3, "fileUploadStatus": "FAILED",
+                "schemaActive": True, "origColCount": 6, "cellsUsed": 120000, "lastModifiedTime": 1767225600}]
+IDM_PROFILES = [{"profileId": 8201, "profileName": "Bill of lading template", "profileType": "LOCAL", "uploadStatus": "IDM_PROF_UPLOAD_COMPLETED",
+                 "scheduleDisabled": True, "numDocuments": 14, "lastModifiedTime": 1730419200}]
+
+
+# ── AI Guard (zscaler/aiguard/models: camelCase as the API answers; lists in an {"items": [...]} envelope) ──
+AIG_POLICIES = [
+    {"id": 7101, "name": "LKF GenAI monitor", "description": "Prompts to GenAI apps, detect only",
+     "inputDetectorPolicies": [
+         {"detector": "prompt_injection", "enabled": True, "severity": "HIGH", "configuration": {"action": "DETECT"}},
+         {"detector": "pii", "enabled": True, "severity": "MEDIUM",
+          "configuration": {"action": "DETECT", "entities": [{"entityType": "US_SSN", "action": "DETECT"},
+                                                             {"entityType": "CREDIT_CARD", "action": "DETECT"}]}},
+         {"detector": "malicious_url", "enabled": True, "severity": "HIGH", "configuration": {"action": "DETECT"}}],
+     "outputDetectorPolicies": []},
+]
+AIG_RULES = [
+    {"id": 7201, "name": "LKF OpenAI prompts", "policyId": 7101, "enabled": True, "ruleOrder": 1,
+     "matchCriteria": {"type": "APPLICATION", "llmProviders": [{"llmProvider": "Default OpenAI Provider", "llmProviderModels": []}]}},
+    {"id": 7202, "name": "LKF Gemini prompts (paused)", "policyId": 7101, "enabled": False, "ruleOrder": 2,
+     "matchCriteria": {"type": "APPLICATION", "llmProviders": [{"llmProvider": "Default Google Gemini Provider", "llmProviderModels": []}]}},
+]
+AIG_PROVIDERS = [{"id": 7301, "name": "Default OpenAI Provider"}, {"id": 7302, "name": "Default Google Gemini Provider"},
+                 {"id": 7303, "name": "Default Anthropic Provider"}, {"id": 7304, "name": "Default Microsoft 365 Copilot Provider"}]
+AIG_APPLICATIONS = [
+    {"id": 7401, "name": "Freight quote chatbot", "ownerEmail": "avery.quinn@larkspur-freight.example", "createTimeMillis": 1767225600000,
+     "updateTimeMillis": 1777593600000, "applicationSettings": {"includeEventContents": True, "encryptEventContents": False}},
+    {"id": 7402, "name": "Dispatch assistant", "ownerEmail": "rowan.ellis@larkspur-freight.example", "createTimeMillis": 1772323200000,
+     "updateTimeMillis": 1772323200000, "applicationSettings": {"includeEventContents": False, "encryptEventContents": False}},
+]
+# Metadata only, as the SDK model (llm_application_credentials.py) has no secret field.
+AIG_APP_CREDENTIALS = [
+    {"id": 7501, "applicationId": 7401, "providerId": 7301, "providerCredentialsId": 7601, "name": "Quote chatbot to OpenAI",
+     "mode": "PROXY", "createTimeMillis": 1767225600000, "updateTimeMillis": 1767225600000},
+]
+
+# A made-up detector for "Test a prompt" on the sample: keyword rules only,
+# so the answer is the same every time. Never a real AI Guard verdict.
+_AIG_DETECT = (("prompt_injection", ("ignore all previous instructions", "developer mode", "system prompt")),
+               ("pii", ("ssn ", "987-65-43", "4111 1111 1111 1111")),
+               ("malicious_url", ("malware-drop.example",)),
+               ("source_code", ("def ", "return ")))
+
+
+def aiguard_detect(content: str, direction: str, policy_id: Any = None) -> Dict[str, Any]:
+    """The sample's answer to AI Guard's execute-policy: the shape of
+    ExecuteDetectionsPolicyResponse (aiguard/models/policy_detection.py),
+    every detector of the sample policy DETECT only (it is monitor mode)."""
+    text = str(content or "").lower()
+    responses = {}
+    for name, words in _AIG_DETECT:
+        hit = any(w in text for w in words)
+        responses[name] = {"triggered": hit, "action": "DETECT" if hit else "ALLOW", "severity": "HIGH" if hit and name != "source_code" else
+                           ("LOW" if hit else "NONE"), "latency": 12, "details": {"note": "made-up sample detector"}}
+    hit = any(v["triggered"] for v in responses.values())
+    return {"transactionId": "sample-0001", "statusCode": 200, "action": "DETECT" if hit else "ALLOW",
+            "severity": "HIGH" if hit else "NONE", "direction": str(direction or "IN"), "detectorErrorCount": 0,
+            "detectorResponses": responses, "throttlingDetails": []}
+
+
+# ── Workflow Automation DLP incidents (zscaler/zwa/models/incident_details.py) ──
+# (id, days ago, channel, rule, engine, dictionary, matches, host, status, resolution, ticket?)
+_INCIDENTS = (
+    ("1-152-LKF-0001", 2, "WEB", "Customer data - monitor", "Larkspur Customer Data", "Larkspur Customer Account Numbers", 4,
+     "telemetry.vendor-metrics.example", "OPEN", "", False),
+    ("1-152-LKF-0002", 3, "WEB", "Customer data - monitor", "Larkspur Customer Data", "Larkspur Customer Account Numbers", 3,
+     "telemetry.vendor-metrics.example", "OPEN", "", False),
+    ("1-152-LKF-0003", 5, "WEB", "Customer data - monitor", "Larkspur Customer Data", "Larkspur Customer Account Numbers", 5,
+     "telemetry.vendor-metrics.example", "CLOSED", "FALSE_POSITIVE", False),
+    ("1-152-LKF-0004", 6, "WEB", "Block card data to GenAI", "PCI", "Credit Cards", 2, "chatgpt.com", "CLOSED", "TRUE_POSITIVE", True),
+    ("1-152-LKF-0005", 9, "ENDPOINT", "Customer data to USB - monitor", "Larkspur Customer Data", "Larkspur Customer Account Numbers", 12,
+     "", "OPEN", "", True),
+    ("1-152-LKF-0006", 12, "SAAS", "Shared files with customer data", "Larkspur Customer Data", "Larkspur Customer Account Numbers", 7,
+     "drive.google.com", "OPEN", "", False),
+    ("1-152-LKF-0007", 20, "EMAIL", "Card data in outbound mail", "PCI", "Credit Cards", 1, "", "CLOSED", "FALSE_POSITIVE", False),
+    ("1-152-LKF-0008", 40, "WEB", "Source code to the web", "Larkspur Source Code", "Larkspur Source Code Markers", 9, "pastebin.com",
+     "OPEN", "", False),
+)
+
+
+def _iso(days_ago: float) -> str:
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def zwa_answers() -> Dict[str, Any]:
+    """The Workflow Automation part of the sample, keyed by path: the incident
+    list (searched with POST .../incidents/search, one per GET
+    .../incidents/{id}), each incident's triggers, change history and
+    tickets, and the admin audit log (POST .../customer/audit). Made up."""
+    out: Dict[str, Any] = {}
+    incs = []
+    for (iid, ago, ch, rule, engine, dic, n, host, status, res, ticket) in _INCIDENTS:
+        inc = {"id": iid, "internalId": iid, "transactionId": f"tx-{iid[-4:]}", "integrationType": "INLINE" if ch != "SAAS" else "API",
+               "sourceType": ch, "sourceSubType": {"WEB": "INLINE_WEB", "ENDPOINT": "REMOVABLE_MEDIA", "SAAS": "GOOGLE_DRIVE",
+                                                   "EMAIL": "SMTP"}[ch],
+               "sourceActions": ["ALLOW" if "monitor" in rule.lower() or ch == "SAAS" else "BLOCK"],
+               "severity": "HIGH" if n >= 5 else "MEDIUM", "priority": "P2", "matchCount": n,
+               "createdAt": _iso(ago), "lastUpdatedAt": _iso(max(ago - 1, 0)), "sourceFirstObservedAt": _iso(ago), "sourceLastObservedAt": _iso(ago),
+               "metadataFileUrl": "https://evidence.larkspur-freight.example/meta/" + iid, "status": status, "resolution": res, "closedCode": res,
+               "assignedAdmin": "dlp-analyst@larkspur-freight.example",
+               "labels": [{"key": "team", "value": "dlp"}], "notes": [{"body": "Analyst note about the customer record", "createdBy": "analyst"}]
+               if status == "CLOSED" else [],
+               "matchingPolicies": {"rules": [{"name": rule}], "engines": [{"name": engine}],
+                                    "dictionaries": [{"name": dic, "matchCount": n, "nameMatchCount": n}]},
+               "userInfo": {"name": "Sample User", "email": "sample.user@larkspur-freight.example", "department": "Operations"},
+               "applicationInfo": {"url": f"https://{host}/upload" if host else "", "name": host or ("USB drive" if ch == "ENDPOINT" else "Outbound mail"),
+                                   "hostnameOrApplication": host, "category": "Web" if host else ""},
+               "contentInfo": {"fileName": "customer-export.csv", "fileType": "CSV"},
+               "networkInfo": {"clientIP": "10.20.30.40"},
+               "dlpIncidentTickets": ([{"ticketType": "SERVICENOW", "ticketingSystemName": "ServiceNow", "projectName": "DLP",
+                                        "ticketInfo": {"ticketId": "INC00" + iid[-4:], "state": "In progress",
+                                                       "ticketUrl": "https://tickets.larkspur-freight.example/" + iid}}] if ticket else [])}
+        incs.append(inc)
+        out[f"{ZWA}/incidents/{iid}/triggers"] = {"rules": [{"name": rule, "matchCount": n}], "engines": [{"name": engine, "matchCount": n}],
+                                                  "dictionaries": [{"name": dic, "matchCount": n}],
+                                                  "matchedContent": "THIS IS SAMPLE EVIDENCE AND MUST NEVER BE SHOWN"}
+        hist = [f"Incident created by rule {rule}"] + ([f"Status changed from OPEN to CLOSED ({res}) by dlp-analyst@larkspur-freight.example"]
+                                                       if status == "CLOSED" else [])
+        out[f"{ZWA}/incidents/{iid}/change-history"] = {"incidentId": iid, "startDate": _iso(ago), "endDate": _iso(0), "changeHistory": hist}
+        out[f"{ZWA}/incidents/{iid}/tickets"] = {"tickets": inc["dlpIncidentTickets"]}
+    out[f"{ZWA}/incidents"] = incs
+    out[f"{ZWA}/customer/audit"] = {"logs": [
+        {"time": _iso(1), "adminName": "dlp-analyst@larkspur-freight.example", "action": {"action": "UPDATE"}, "module": "Incidents",
+         "resource": "Incident 1-152-LKF-0003"},
+        {"time": _iso(4), "adminName": "it-admin@larkspur-freight.example", "action": {"action": "CREATE"}, "module": "Workflows",
+         "resource": "Workflow: notify the manager"},
+        {"time": _iso(8), "adminName": "it-admin@larkspur-freight.example", "action": {"action": "UPDATE"}, "module": "Integrations",
+         "resource": "ServiceNow integration"}]}
+    return out
+
 
 def responses() -> Dict[str, Any]:
     """Every answer of the sample tenant: {OneAPI path: JSON body}. A fresh
@@ -477,7 +620,17 @@ def responses() -> Dict[str, Any]:
         f"{ZID}/users": {"records": ZID_USERS, "results_total": len(ZID_USERS)},
         f"{ZID}/groups": {"records": ZID_GROUPS, "results_total": len(ZID_GROUPS)},
         f"{ZID}/resource-servers": {"records": ZID_RESOURCE_SERVERS, "results_total": len(ZID_RESOURCE_SERVERS)},
+        # AI Guard
+        f"{AIG}/detections/policies": {"items": AIG_POLICIES},
+        f"{AIG}/detections/policy-match-rules": {"items": AIG_RULES},
+        f"{AIG}/llm-providers": {"items": AIG_PROVIDERS},
+        f"{AIG}/llm-applications": {"items": AIG_APPLICATIONS},
+        f"{AIG}/llm-application-credentials": {"items": AIG_APP_CREDENTIALS},
+        # ZIA DLP indexes (zia/dlp_resources.py: list_edm_schemas, list_dlp_idm_profiles)
+        f"{ZIA}/dlpExactDataMatchSchemas": EDM_SCHEMAS,
+        f"{ZIA}/idmprofile": IDM_PROFILES,
     }
+    r.update(zwa_answers())
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
     return copy.deepcopy(r)
@@ -486,7 +639,7 @@ def responses() -> Dict[str, Any]:
 def meta() -> Dict[str, Any]:
     """What the sample says about itself (the banner, the status, records)."""
     return {"kind": "sample", "company": COMPANY, "tenant_label": LABEL, "saved_at": "",
-            "scopes": ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac"],
+            "scopes": ["dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "aiguard"],
             "channels": {}}
 
 

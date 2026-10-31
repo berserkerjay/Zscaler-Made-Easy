@@ -119,7 +119,8 @@ def assessment_checks(checks, declared, scopes):
 
 
 # The first path segment of a read -> the scope that must be selected for it.
-_SERVICE_SCOPE = {"zcc": "zcc", "zpa": "zpa", "zdx": "zdx", "zidentity": "zidentity", "zid": "zidentity", "ziam": "zidentity"}
+_SERVICE_SCOPE = {"zcc": "zcc", "zpa": "zpa", "zdx": "zdx", "zidentity": "zidentity", "zid": "zidentity", "ziam": "zidentity",
+                  "aiguard": "aiguard"}
 
 
 class ScopedClient(channel_scope.ScopedClient):

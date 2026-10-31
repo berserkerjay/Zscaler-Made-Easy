@@ -217,7 +217,11 @@ ENDPOINT_CHANNELS: Dict[str, Tuple[str, ...]] = {
     "/zia/sslInspectionRules": ("ssl_inspection",),
     "/zia/cloudApplicationRules": ("cloud_app_control",),
     "/zia/tenancyRestrictionProfile": ("cloud_app_control",),
+    "/zwa": ("workflow_automation",),
 }
+# Reads the API asks for with a POST that changes nothing (ScopedClient.post_read):
+# zscaler/zwa/dlp_incidents.py dlp_incident_search, zscaler/zwa/audit_logs.py audit_logs.
+READ_POSTS = ("/zwa/dlp/v1/incidents/search", "/zwa/dlp/v1/customer/audit")
 
 # Which checks read each of those endpoints. tests/test_no_implicit_reads.py
 # runs every check against a recording client (list-, dict- and
@@ -439,6 +443,31 @@ class ScopedClient:
         rec = getattr(self._tl, "unanswered", None)
         if rec is not None and code in self.UNANSWERED:
             rec.append((str(ep), int(code)))
+        return res
+
+    def post_read(self, ep, body=None):
+        """A read the API asks for with a POST that changes nothing (the
+        Workflow Automation incident and audit-log searches), refused like a
+        GET when its channel is not on Zscaler. Only paths in READ_POSTS."""
+        path = str(ep or "").split("?", 1)[0]
+        if not any(path == p for p in READ_POSTS):
+            return ({"error": "not a read", "message": "Only the listed read searches may be sent this way."}, 0)
+        chans = endpoint_channels(path)
+        if self._declared and chans and not group_in_scope(chans, self._scope):
+            self.refused.append(path)
+            return ({"error": "not in scope",
+                     "message": "This configuration is excluded by the Scope page declaration or an unmet prerequisite; the tenant was not read."}, 0)
+        if not self._declared:
+            # With no declaration nothing is refused for configuration, but incidents are activity: read only when declared.
+            return ({"error": "not in scope", "message": "Workflow Automation incidents are read only when the Scope page marks it Zscaler."}, 0)
+        res = self._client.post(ep, body)
+        try:
+            code = res[1]
+        except Exception:  # noqa: BLE001
+            code = None
+        rec = getattr(self._tl, "unanswered", None)
+        if rec is not None and code in self.UNANSWERED:
+            rec.append((path, int(code)))
         return res
 
     def __getattr__(self, name):
