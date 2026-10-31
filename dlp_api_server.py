@@ -4046,6 +4046,7 @@ class ConfigBackupSaveRequest(ScopedTenantCredsRequest):
     (zia, zpa, zcc; only what is in scope on the Scope page is read)."""
     products: List[str] = []
     note: str = ""
+    customer_id: str = ""   # ZPA: every ZPA path carries it; blank falls back to the saved profile's
 
 
 class ConfigFromSnapshotRequest(BaseModel):
@@ -4066,6 +4067,7 @@ class ConfigDiffLiveRequest(ScopedTenantCredsRequest):
     """Compare a backup with the live tenant, read now (read-only, in scope)."""
     backup_id: str = ""
     ignore: List[str] = []
+    customer_id: str = ""
 
 
 class ConfigScheduleRequest(BaseModel):

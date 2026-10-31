@@ -4087,6 +4087,9 @@
     "cloud": {
      "type": "string"
     },
+    "customer_id": {
+     "type": "string"
+    },
     "from_page": {
      "type": "boolean"
     },
@@ -4145,6 +4148,9 @@
      "type": "string"
     },
     "cloud": {
+     "type": "string"
+    },
+    "customer_id": {
      "type": "string"
     },
     "from_page": {
