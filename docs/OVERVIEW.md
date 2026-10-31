@@ -173,7 +173,19 @@ what you get, what to do next.
   ZPA analysis templates: unreachable access rules, segments nobody
   reaches or only deny rules reach, overlapping segments, over-broad
   domains and ports, bypasses, server and connector groups that cannot
-  serve, connector redundancy and versions. The Overview tab says the
+  serve, connector redundancy and versions. It reads every ZPA policy
+  type (access, timeout, client forwarding, inspection, isolation,
+  redirection, privileged credential and capabilities, browser
+  protection), AppProtection profiles and custom controls, application
+  servers, business continuity, Private Cloud and Branch and Cloud
+  Connectors, and checks web segments nobody inspects, inspection profiles
+  that only monitor, custom controls never attached, client forwarding
+  that bypasses a sensitive segment, Privileged Remote Access clipboard
+  and file transfer, unrecorded sessions and shared credentials,
+  redirection to service edges that cannot serve, Browser Access with no
+  isolation or browser protection, and business continuity with nothing
+  to fail over to. The assessment runs the same checks as ZPA.16 to
+  ZPA.21. Business continuity keys and certificates are never kept. The Overview tab says the
   counts in plain sentences (segments nobody can reach, connectors down or
   outdated, rules that never decide), draws the infrastructure map from
   users and IdPs through access rules, segment groups, app segments and
