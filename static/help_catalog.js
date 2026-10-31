@@ -3190,6 +3190,56 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it.",
     "effect": "download"
    },
+   "input[name=\"exTfProduct\"]": {
+    "what": "Picks a product to put in the whole-tenant Terraform export. Each ticked product gets its own workspace.",
+    "input": "Tick at least one: ZIA, ZPA, Cloud & Branch Connector or Client Connector. Only what the Scope page ticks is read.",
+    "effect": "local"
+   },
+   "input[name=\"exTfMode\"]": {
+    "what": "Picks how the Terraform is meant to be used. Adopt brings this tenant's objects into Terraform as they are, with import blocks. Clone makes new objects for another tenant, every rule disabled.",
+    "input": "Pick one. Adopt is the default and changes nothing in the tenant.",
+    "effect": "local"
+   },
+   "#exTfMore summary": {
+    "what": "Opens or closes the extra options of the whole-tenant Terraform export.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#exTfPrefix": {
+    "what": "Puts a short word in front of every resource name in the Terraform files, so they do not clash with names you already use.",
+    "input": "Optional. A lowercase letter first, then lowercase letters, digits or _, at most 20, like acme.",
+    "effect": "local"
+   },
+   "#exTfNs": {
+    "what": "Sets where Terraform downloads the Zscaler providers from, for a private registry mirror.",
+    "input": "Optional. Leave empty for zscaler, or type a mirror like registry.example.com/zscaler.",
+    "effect": "local"
+   },
+   "#exTfMt": {
+    "what": "Reads the ZPA objects of one microtenant instead of the parent tenant.",
+    "input": "Optional. The microtenant's ID, digits only, like 216196257331285825.",
+    "effect": "local"
+   },
+   "#exTfKeep": {
+    "what": "In clone mode, keeps each rule on or off as it is in this tenant, instead of writing every rule disabled.",
+    "input": "Optional. Unticked (the default) writes every rule disabled. Has no effect in adopt mode.",
+    "effect": "local"
+   },
+   "#exTfPersonal": {
+    "what": "Also exports the objects that hold email addresses: alert subscriptions and PRA approvals.",
+    "input": "Optional. Unticked by default. Users are never exported.",
+    "effect": "local"
+   },
+   "#exTfTypes input[type=\"checkbox\"]": {
+    "what": "Keeps this object type in the whole-tenant Terraform export. Untick it to leave it out.",
+    "input": "Tick to export it. Types that are not in scope on the Scope page are left out anyway.",
+    "effect": "local"
+   },
+   "#exTenantTf": {
+    "what": "Reads every object in scope from the tenant, read-only, and saves them as Terraform workspaces for the official Zscaler providers (a zip file). No secret is written.",
+    "input": "Tick the products and pick Adopt or Clone first. Needs the products' scope ticked on the Scope page.",
+    "effect": "download"
+   },
    "#exStop": {
     "what": "Stops the export that is running. No file is made.",
     "input": "Nothing to type. Just click it while an export runs.",

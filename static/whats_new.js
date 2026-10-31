@@ -484,6 +484,12 @@ window.WHATS_NEW = {
           "at": "#tmShKind"
         }
       ]
+    },
+    {
+      "id": "tenant-terraform", "release": "2026-10-31", "label": "Whole tenant as Terraform",
+      "what": "Export from tenant as Terraform: ZIA, ZPA, Cloud & Branch Connector and Client Connector objects in scope as workspaces for the official providers, with import blocks to adopt the tenant without recreating anything, or as a clone with every rule disabled.",
+      "changelog": ["Export from tenant as Terraform (whole tenant)", "Adopt or clone", "Keep each rule's state", "References, not ids", "No secrets, no surprises"],
+      "marks": [{ "page": "/report/exports", "at": "#exTenantTf" }]
     }
   ]
 };

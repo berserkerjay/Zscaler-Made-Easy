@@ -351,6 +351,7 @@ ROUTES: List[Route] = [
     # Job starts and their waited-for twins
     Route("/api/dlp-packs/removal/inventory"),
     Route("/api/dlp-packs/export/start", {"pack_name": "qa"}),
+    Route("/api/tenant-terraform/start", {"products": ["zia"]}),
     Route("/api/dlp-packs/inventory/start"),
     Route("/api/shadow-rules/start"),
     Route("/api/shadow-rules"),

@@ -5047,6 +5047,97 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
+class TenantTerraformRequest(ScopedTenantCredsRequest):
+    """Body of Export from tenant as Terraform (the whole tenant):
+    `products` (zia, zpa, ztc, zcc; empty: all four), optional `types` (object
+    type keys from /api/tenant-terraform/catalogue; empty: every type in
+    scope) and `exclude`, a resource-label `prefix`, a provider namespace
+    for a private registry mirror, the ZPA `microtenant_id`, and whether
+    types holding personal data (email addresses) are exported. Only what
+    the Scope page puts in scope is read (tenant_terraform.plan). `mode`
+    adopt (default) writes import blocks and keeps every object's state;
+    clone writes new objects for another tenant with every rule DISABLED
+    (and ZPA segments disabled) unless `keep_rule_state` is set."""
+    customer_id: str = ""
+    products: List[str] = []
+    types: List[str] = []
+    exclude: List[str] = []
+    prefix: str = ""
+    provider_namespace: str = ""
+    microtenant_id: str = ""
+    include_personal_data: bool = False
+    mode: str = "adopt"
+    keep_rule_state: bool = False
+
+
+TENANT_TF_NEEDS_ONEAPI = ("ZPA, Cloud & Branch Connector and Client Connector need a ZIdentity (OneAPI) API client: the classic ZIA API reaches ZIA only. "
+                          "Untick them, or sign in with an API client. Nothing was read.")
+TENANT_TF_NEEDS_CUSTOMER_ID = ("ZPA needs the ZPA customer ID (Connect to the tenant → Customer ID, or the saved profile): every ZPA API "
+                               "path carries it. Untick ZPA, or fill it in. Nothing was read.")
+
+
+@app.get("/api/tenant-terraform/catalogue")
+async def tenant_terraform_catalogue():
+    """The object types the whole-tenant Terraform export knows, per
+    product, with the Scope page tick each needs and what it never exports.
+    Reads nothing."""
+    import tenant_terraform
+    return tenant_terraform.catalogue()
+
+
+def _run_tenant_terraform(client, creds: Dict[str, str], opts: Dict[str, Any], plan: Dict[str, Any], log, cancel) -> Dict[str, Any]:
+    """Read the types in scope, write the workspaces, zip them. Read-only."""
+    import tenant_terraform
+    label = tenant_auth.record_label(tenant_auth.normalize(creds))
+    log(f"Exporting {label} as Terraform: {len(plan['read'])} object types in scope "
+        f"({', '.join(tenant_terraform.PRODUCT_LABELS[p] for p in opts['products'])}). Nothing is written to the tenant.")
+    res = tenant_terraform.export(client, opts, plan["read"], tenant_label=label, plan_info=plan, log=log, cancel=cancel)
+    if res["status"] != "ready":
+        return dict(res, tenant_label=label)
+    if cancel is not None and cancel.is_set():
+        return {"status": "stopped", "stopped": "You clicked Stop before the export finished: no file was made.", "tenant_label": label}
+    rep = res["report"]
+    products = {p: {"resources": sum((v.get("resources") or {}).values()), "imports": v.get("imports", 0),
+                    "data_sources": v.get("data_sources", 0), "references": v.get("references") or {},
+                    "secret_variables": v.get("secret_variables") or [], "skipped": len(v.get("skipped") or [])}
+                for p, v in rep["products"].items()}
+    return {"status": "ready", "filename": res["filename"], "bytes": res["bytes"], "tenant_label": label, "products": products,
+            "not_exported": rep["not_exported"][:200], "artifact": res["artifact"]}
+
+
+@app.post("/api/tenant-terraform/start")
+async def tenant_terraform_start(req: TenantTerraformRequest, request: Request):
+    """Export from tenant as Terraform (the whole tenant), as a background
+    job: ZIA, ZPA, Cloud & Branch Connector and Client Connector objects in scope as one
+    workspace per provider, with import blocks so an existing tenant is
+    adopted without recreating anything. Read-only (GET only), so it needs
+    neither write mode nor the writer check. Anything out of scope on the
+    Scope page, or a product the sign-in cannot reach, is a 400 before
+    sign-in. Poll GET /api/dlp-packs/jobs/{job_id}; the finished job's
+    `download` path serves the zip."""
+    import pack_jobs
+    import tenant_terraform
+    try:
+        opts = tenant_terraform.normalize_options(req.products or None, req.types, req.exclude, req.prefix, req.provider_namespace,
+                                                  req.microtenant_id, req.mode, req.keep_rule_state)
+        sc, ch, _source = _scope_selection(req)
+        plan = tenant_terraform.plan(sc, ch, opts, include_personal=bool(req.include_personal_data))
+    except tenant_terraform.ExportRefused as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant profile) to export it.")
+    products_read = {tenant_terraform.BY_KEY[k]["product"] for k in plan["read"]}
+    if products_read & {"zpa", "ztc", "zcc"} and creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=TENANT_TF_NEEDS_ONEAPI)
+    if "zpa" in products_read and not validate_customer_id(creds.get("customer_id") or ""):
+        raise HTTPException(status_code=400, detail=TENANT_TF_NEEDS_CUSTOMER_ID)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    job = pack_jobs.start("tenant_terraform", lambda log, cancel: _keyed(client, _run_tenant_terraform, client, creds, opts, plan, log, cancel),
+                          label=tenant_auth.record_label(creds), actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind, "types": len(plan["read"])}
+
+
 @app.get("/api/dlp-packs/jobs/{job_id}/download")
 async def dlp_pack_job_download(job_id: str, file: str = ""):
     """The file a finished job produced (a Terraform workspace zip, or an

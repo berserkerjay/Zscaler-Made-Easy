@@ -86,6 +86,36 @@
               <td><div class="df-hint">Every DLP rule on the channels in scope. Pick individual rules in Deploy policy packs on the assessment tab.</div></td>
               <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exPackJson">JSON</button><button type="button" class="rp-btn" data-run id="exPackTf">Terraform</button></td>
             </tr>
+            <tr>
+              <th scope="row"><div class="adv-pname">Export from tenant as Terraform (whole tenant)</div><div class="adv-pdesc">Every object in scope (rules, URL categories, IP and network groups, labels, settings, ZPA segments, groups, servers, connector groups and policies, Cloud &amp; Branch Connector rules and groups, Client Connector trusted networks and forwarding profiles) as one Terraform workspace per product for the official zscaler providers.</div></th>
+              <td>
+                <fieldset class="ex-pick"><legend>Products</legend>
+                  <label><input type="checkbox" name="exTfProduct" value="zia" checked> ZIA</label>
+                  <label><input type="checkbox" name="exTfProduct" value="zpa" checked> ZPA</label>
+                  <label><input type="checkbox" name="exTfProduct" value="ztc" checked> Cloud &amp; Branch Connector</label>
+                  <label><input type="checkbox" name="exTfProduct" value="zcc" checked> Client Connector</label>
+                </fieldset>
+                <fieldset class="ex-pick"><legend>Use</legend>
+                  <label><input type="radio" name="exTfMode" value="adopt" checked> Adopt this tenant: import blocks, every object keeps its state</label>
+                  <label><input type="radio" name="exTfMode" value="clone"> Clone for another tenant: no import blocks, every rule disabled</label>
+                </fieldset>
+                <details class="ex-cols" id="exTfMore">
+                  <summary>More options <span class="df-by" id="exTfCount">every object type in scope</span></summary>
+                  <div class="ex-fields">
+                    <label class="df-ctl"><span class="lbl">Resource-label prefix</span><input type="text" id="exTfPrefix" maxlength="20" placeholder="none" autocomplete="off" spellcheck="false"></label>
+                    <label class="df-ctl"><span class="lbl">Provider namespace</span><input type="text" id="exTfNs" maxlength="200" placeholder="zscaler" autocomplete="off" spellcheck="false"></label>
+                    <label class="df-ctl"><span class="lbl">ZPA microtenant ID</span><input type="text" id="exTfMt" maxlength="20" inputmode="numeric" placeholder="parent tenant" autocomplete="off"></label>
+                  </div>
+                  <fieldset class="ex-pick"><legend class="sr-only">Clone and personal data</legend>
+                    <label><input type="checkbox" id="exTfKeep"> Clone: keep each rule's state (on or off) instead of disabling it</label>
+                    <label><input type="checkbox" id="exTfPersonal"> Include objects that hold email addresses (alert subscriptions, PRA approvals)</label>
+                  </fieldset>
+                  <div id="exTfTypes"><p class="df-hint">Object types: untick one to leave it out.</p><span class="df-hint" id="exTfTypesNote">Loading the object types…</span></div>
+                </details>
+                <div class="df-hint">Read-only. Only what the Scope page ticks is read: DLP or ZIA platform for ZIA, ZPA, Cloud &amp; Branch Connector, ZCC. No secret is ever written: pre-shared keys, passwords and private keys become sensitive variables you fill in. Users are not exported; predefined objects are looked up by name. Each workspace's README lists what was not exported and why.</div>
+              </td>
+              <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exTenantTf">Terraform (zip)</button></td>
+            </tr>
           </tbody>
         </table></div>
       </section>
@@ -206,7 +236,7 @@
     const live = $('liveRegion'), result = $('exResult');
     const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
     const SCOPE_LABELS = { dlp: 'DLP', zia_extras: 'ZIA platform', zpa: 'ZPA', zcc: 'ZCC', genai: 'GenAI & prompts', automation: 'Automation readiness',
-      zdx: 'ZDX', zidentity: 'ZIdentity', rbac: 'RBAC' };
+      zdx: 'ZDX', zidentity: 'ZIdentity', rbac: 'RBAC', ztw: 'Cloud & Branch Connector' };
     let running = false, job = null, startToken = null, stopAsked = false;
     function newStartToken() {
       try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
@@ -496,6 +526,48 @@
       });
     }
     function inventory() { runJob('DLP inventory', '/api/dlp-packs/inventory/start', {}); }
+    // ── whole tenant as Terraform (tenant_terraform.py) ─────────────
+    const TF_PRODUCTS = { zia: 'ZIA', zpa: 'ZPA', ztc: 'Cloud & Branch Connector', zcc: 'Client Connector' };
+    function tfCount() {
+      const all = document.querySelectorAll('#exTfTypes input[name="exTfType"]'), off = Array.from(all).filter(x => !x.checked).length;
+      $('exTfCount').textContent = off ? `${off} object type${off === 1 ? '' : 's'} left out` : 'every object type in scope';
+    }
+    async function tfTypes() {
+      const box = $('exTfTypes'), note = $('exTfTypesNote');
+      try {
+        const r = await fetch('/api/tenant-terraform/catalogue', { cache: 'no-store' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        note.remove();
+        Object.entries(d.products || {}).forEach(([p, types]) => {
+          const fs = document.createElement('fieldset'); fs.className = 'ex-colgrid';
+          const lg = document.createElement('legend'); lg.textContent = TF_PRODUCTS[p] || p; fs.appendChild(lg); box.appendChild(fs);
+          types.forEach(t => {
+            const lab = document.createElement('label');
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'exTfType'; cb.value = t.key; cb.checked = true;
+            const sp = document.createElement('span'); sp.textContent = `${t.label} (needs ${t.needs})`;
+            lab.appendChild(cb); lab.appendChild(sp); fs.appendChild(lab);
+          });
+        });
+      } catch (e) {
+        note.textContent = `The object types could not be listed (${e.message}), so every type in scope is exported.`;
+      }
+    }
+    $('exTfTypes').addEventListener('change', tfCount);
+    function tenantTf() {
+      const products = Array.from(document.querySelectorAll('input[name="exTfProduct"]:checked')).map(x => x.value);
+      if (!products.length) { card('risk', 'Pick a product', 'Tick at least one product to export.'); say('Tick at least one product to export.'); return; }
+      const mode = (document.querySelector('input[name="exTfMode"]:checked') || {}).value || 'adopt';
+      const exclude = Array.from(document.querySelectorAll('#exTfTypes input[name="exTfType"]')).filter(x => !x.checked).map(x => x.value);
+      const payload = { products, mode, exclude, prefix: $('exTfPrefix').value.trim(), provider_namespace: $('exTfNs').value.trim(),
+        microtenant_id: $('exTfMt').value.trim(), keep_rule_state: $('exTfKeep').checked, include_personal_data: $('exTfPersonal').checked };
+      runJob(mode === 'clone' ? 'Whole tenant as Terraform (clone)' : 'Whole tenant as Terraform', '/api/tenant-terraform/start', payload, res => {
+        const rows = Object.entries(res.products || {}).map(([p, v]) => `<tr><th scope="row">${E(TF_PRODUCTS[p] || p)}</th><td>${E(v.resources)}</td><td>${E(v.imports)}</td><td>${E(v.data_sources)}</td><td>${E((v.secret_variables || []).join(', ') || 'none')}</td></tr>`).join('');
+        const nx = (res.not_exported || []).slice(0, 40).map(x => `<li><strong>${E(x.what)}</strong>: ${E(x.why)}</li>`).join('');
+        return (rows ? `<div class="df-tablewrap"><table class="df-table ex-sum"><caption class="sr-only">Objects per workspace</caption><thead><tr><th scope="col">Workspace</th><th scope="col">Resources</th><th scope="col">Import blocks</th><th scope="col">Lookups by name</th><th scope="col">Secret variables</th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
+          + (nx ? `<p class="df-hint">Not exported (the workspace README lists every one):</p><ul class="ex-list">${nx}</ul>` : '');
+      });
+    }
     function packExport(fmt) { runJob(`Export from tenant (${fmt === 'json' ? 'JSON' : 'Terraform'})`, '/api/dlp-packs/export/start', { format: fmt }); }
 
     async function assessment(fmt) {
@@ -547,6 +619,7 @@
     $('exInventory').addEventListener('click', inventory);
     $('exPackJson').addEventListener('click', () => packExport('json'));
     $('exPackTf').addEventListener('click', () => packExport('terraform'));
+    $('exTenantTf').addEventListener('click', tenantTf);
     $('exAssessXlsx').addEventListener('click', () => assessment('xlsx'));
     $('exAssessDocx').addEventListener('click', () => assessment('docx'));
     $('exPlansRefresh').addEventListener('click', plans);
@@ -556,6 +629,7 @@
     showScope();
     plans();
     loadOptions();
+    tfTypes();
   })();
   </script>
 </body>

@@ -103,12 +103,25 @@ jobs:
       - name: Generated Terraform is terraform fmt-clean
         run: |
           python tools/terraform_samples.py /tmp/tf_samples
-          terraform fmt -check -recursive -diff terraform/ /tmp/tf_samples/vendor_hcl /tmp/tf_samples/containment /tmp/tf_samples/endpoint
+          terraform fmt -check -recursive -diff terraform/ /tmp/tf_samples/vendor_hcl /tmp/tf_samples/containment /tmp/tf_samples/endpoint /tmp/tf_samples/tenant
 
       - name: Validate generated Terraform against the zscaler/zia provider
         run: |
           rc=0
           for d in terraform/*/ /tmp/tf_samples/vendor_hcl/ /tmp/tf_samples/vendor_json/ /tmp/tf_samples/containment/ /tmp/tf_samples/endpoint/; do
+            echo "== $d"
+            terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null || { rc=1; continue; }
+            terraform -chdir="$d" validate -no-color || rc=1
+          done
+          exit $rc
+
+      # Advisory until a first green run: the whole-tenant export (tenant_terraform) of the
+      # sample tenant against the zscaler/zia and zscaler/zpa providers it pins.
+      - name: Validate the whole-tenant export of the sample tenant (advisory)
+        continue-on-error: true
+        run: |
+          rc=0
+          for d in /tmp/tf_samples/tenant/tenant-terraform/zia/ /tmp/tf_samples/tenant/tenant-terraform/zpa/; do
             echo "== $d"
             terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null || { rc=1; continue; }
             terraform -chdir="$d" validate -no-color || rc=1

@@ -10,6 +10,8 @@
                                      Type, URL Filtering and SSL Inspection rule
     <out>/endpoint/                  a pack with an Endpoint DLP rule, a sub-rule
                                      and an application group
+    <out>/tenant/tenant-terraform/   the sample tenant exported whole (tenant_terraform):
+                                     zia/ and zpa/ workspaces with import blocks
 
     python tools/terraform_samples.py /tmp/tf_samples
 """
@@ -56,7 +58,20 @@ def main(out: str) -> int:
     with tempfile.TemporaryDirectory() as d:
         pack = endpoint_pack(Path(d), meta=dict(BASELINE_META, name="Endpoint sample"))
         pt.write_workspace(pt.generate(pack), os.path.join(out, "endpoint"))
-    print(f"Terraform samples written to {out}/vendor_json, {out}/vendor_hcl, {out}/containment and {out}/endpoint")
+    import offline_tenant as ot
+    import tenant_terraform as tt
+    st = ot.sample_store(reset=True)
+    opts = tt.normalize_options(["zia", "zpa"])
+    sel = tt.plan(["dlp", "zia_extras", "zpa"], {c: "zscaler" for c in ("web_dlp", "endpoint_dlp", "email_dlp", "saas_casb",
+                                                                       "ssl_inspection", "cloud_app_control")}, opts)
+    snap = tt.read_tenant(ot.OfflineSdkClient(st, ot.creds_for(st)), sel["read"])
+    files, _report = tt.generate(snap, opts, tenant_label="Sample tenant", plan_info=sel, generated_at="2026-10-31T00:00:00Z")
+    for path, content in files.items():
+        target = os.path.join(out, "tenant", path)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content)
+    print(f"Terraform samples written to {out}/vendor_json, {out}/vendor_hcl, {out}/containment, {out}/endpoint and {out}/tenant")
     return 0
 
 

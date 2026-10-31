@@ -340,8 +340,8 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 77,
-            "accepted": 3,
+            "fixed": 78,
+            "accepted": 4,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
@@ -353,7 +353,8 @@
               "w7-migrate-tui-plugins",
               "w7-net-files",
               "w7-rank-inherit",
-              "w7-restore-clone"
+              "w7-restore-clone",
+              "w7-tf-export"
             ]
           },
           "coverage": {
@@ -467,7 +468,7 @@
     }
   ],
   "counts": {
-    "findings": 668,
+    "findings": 670,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -486,22 +487,22 @@
       },
       "low": {
         "open": 2,
-        "fixed": 373,
+        "fixed": 374,
         "accepted": 3
       },
       "info": {
         "open": 1,
         "fixed": 64,
-        "accepted": 37
+        "accepted": 38
       }
     },
     "checks": {
-      "pass": 495,
+      "pass": 502,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 10360
+    "tests_added": 10475
   },
   "findings": [
     {
@@ -999,6 +1000,22 @@
       "slug": "w7-rule-editor",
       "area": "secure_by_design",
       "sub_area": "write_paths"
+    },
+    {
+      "id": "TF-02",
+      "title": "zscaler-sdk-python 1.11.3 cannot read Cloud & Branch Connector account groups (its model names a class the SDK lacks, CommonIDNameExternalID), so the type is listed as not covered instead of failing the export",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-754",
+      "asvs": "V11.1.1",
+      "wcag": "",
+      "fix": "listed under not covered with the reason",
+      "test": "tests/test_tenant_terraform.py::test_the_catalogue_covers_the_three_providers_as_promised",
+      "commit": "2734d57",
+      "reason": "",
+      "slug": "w7-tf-export",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "UI-18",
@@ -9465,6 +9482,22 @@
       "sub_area": "write_paths"
     },
     {
+      "id": "TF-01",
+      "title": "The secret-name mask also blanked switches and ratings whose names look secret (cookie_stealing_blocked, block_password_protected_archive_files, password_strength, cookies_and_proxy), which would have left them out of the export",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1078",
+      "asvs": "V14.1.1",
+      "wcag": "",
+      "fix": "the export's mask keeps true/false values and a short list of non-secret provider arguments; every other secret-named value is still masked",
+      "test": "tests/test_tenant_terraform.py::test_every_type_is_read_through_the_sdk_and_written_as_its_resource",
+      "commit": "2734d57",
+      "reason": "",
+      "slug": "w7-tf-export",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "UI-02",
       "title": "Find anything's tags, comments and to-dos were refused (400 'pick a tenant first') while the sample tenant or a snapshot was open",
       "severity": "low",
@@ -12611,6 +12644,38 @@
       "tests_added": 48
     },
     {
+      "slug": "w7-tf-export",
+      "area": "Builders: whole-tenant export to Terraform (ZIA, ZPA, Cloud & Branch Connector, Client Connector)",
+      "title": "Export from tenant as Terraform: every object in scope as workspaces for the official providers, adopted with import blocks or cloned with rules disabled, references by address, secrets as sensitive variables",
+      "standards": [
+        "ASVS V1.4.1",
+        "ASVS V1.14.1",
+        "ASVS V1.14.2",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.3.1",
+        "ASVS V8.3.4",
+        "ASVS V12.5.1",
+        "ASVS V14.1.1",
+        "CWE-20",
+        "CWE-22",
+        "CWE-94",
+        "CWE-116",
+        "CWE-285",
+        "CWE-312",
+        "CWE-665",
+        "CWE-1059",
+        "CWE-1078",
+        "CWE-1188",
+        "WSTG-ATHZ-02",
+        "WSTG-BUSL-01",
+        "WSTG-INPV-11"
+      ],
+      "checks": 7,
+      "findings": 2,
+      "tests_added": 115
+    },
+    {
       "slug": "w7-zcc-plus",
       "area": "Client Connector, the rest of the way (zcc_bypass.py and the Path analyzer's Client Connector step, the profile builder's tamper passwords in ops_zcc.py, one device's one-time passwords in zcc_otp.py and /api/zcc/otp)",
       "title": "Every Client Connector bypass evaluated on the path with the list that decided named; tamper passwords typed, sent once and never kept; device one-time passwords as a gated, rate-limited, audited read that keeps nothing",
@@ -12742,7 +12807,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 123,
+    "asvs_requirements": 124,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -12960,6 +13025,7 @@
       "CWE-1059",
       "CWE-1068",
       "CWE-1077",
+      "CWE-1078",
       "CWE-1088",
       "CWE-1104",
       "CWE-1116",
@@ -12995,7 +13061,7 @@
       "A09:2021",
       "A10:2021"
     ],
-    "wstg": 62,
+    "wstg": 63,
     "slsa": [
       "SLSA v1.0",
       "SLSA v1.0 Build L2",
