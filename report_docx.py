@@ -94,6 +94,15 @@ def _parse_detail_for_bp(detail: str):
 # check's section AND label, so a single entry covers many checks.
 _BP_FALLBACKS = [
     # (match-substring, best-practice text, help-center URL)
+    ("shadow it",
+     "Review the Shadow IT report monthly: give every application with traffic a sanction decision, block or isolate the "
+     "unsanctioned ones with a high risk index in Cloud App Control, and connect the sanctioned SaaS applications that hold "
+     "company data to the SaaS Security API.",
+     "https://help.zscaler.com/zia/about-shadow-it-report"),
+    ("insights",
+     "Connect every sanctioned SaaS application that holds company data as a SaaS Security API tenant and add a SaaS "
+     "Security DLP rule for it, so files already stored there are scanned.",
+     "https://help.zscaler.com/zia/about-shadow-it-report"),
     ("ssl",
      "Decrypt and inspect TLS traffic for everything except a documented "
      "exempt list (banking, healthcare, certain government domains). "
@@ -205,6 +214,14 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
 # (label + section + check_id).
 _REMEDIATION_PATHS = [
     # (match-substring, admin-portal path, API hint or None)
+    ("shadow it",
+     "ZIA Admin → Analytics → Shadow IT Report: set each application Sanctioned or Unsanctioned (or Zscaler Made Easy → "
+     "Bulk changes → Sanction or unsanction cloud apps); then Policy → Cloud App Control: Block or Isolate the unsanctioned ones.",
+     "PUT /zia/cloudApplications/bulkUpdate with {sanctionedState, applicationIds}"),
+    ("insights",
+     "ZIA Admin → Administration → SaaS Application Tenants → Add (the SaaS application), then Policy → Data Protection → "
+     "SaaS Security: add a DLP rule for the tenant.",
+     None),
     ("ssl",
      "ZIA Admin → Policy → SSL Inspection → Add Rule (or edit Default Rule). "
      "Set Action = Inspect, attach URL categories to inspect, add exempt URL list.",

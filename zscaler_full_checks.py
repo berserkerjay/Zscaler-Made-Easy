@@ -1061,6 +1061,168 @@ def zcc_20(cl):
 # FULL PLATFORM REGISTRY
 # ═══════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════
+# ZIA INSIGHTS — Shadow IT and SaaS security (traffic, not configuration)
+# ═══════════════════════════════════════════════════════════════════════
+# Read only when ZIA Insights is ticked on the Scope page (_get_checks runs
+# the "Insights —" sections for that key alone). The numbers come from the
+# SDK's own Z-Insights queries (zscaler/zins/shadow_it.py get_apps) sent as a
+# POST to /zins/graphql through the assessment client (insights.zins_over):
+# a read, aggregated per application, last 30 days. Application names and
+# byte counts only; no user, device or host is read.
+_INS_WINDOW = "30d"
+_INS_APP_LIMIT = 500           # applications asked per check (assumed accepted by Z-Insights; the SDK states no maximum)
+_INS_HIGH_RISK = 4             # risk index 1 (low) to 5 (high): 4 and 5 are high (SDK zia/shadow_it_report.py lists 1-5; the direction is assumed)
+_INS_NAMES = 8                 # application names quoted in a detail
+_INS_REF = " Ref: https://help.zscaler.com/zia/about-shadow-it-report"
+_CASB_SKUS = ("Z_CASB", "Z_CASB_BASIC")   # readiness.SKU_INFO (subscription ids assumed as seen on tenants)
+# Shadow IT application name (lower case) -> the SaaS Security API saasApplication
+# values a tenant of that app carries. ASSUMED: the SDK lists neither side's values.
+_SAAS_API_APPS = {
+    "box": ("BOX",), "dropbox": ("DROPBOX",), "google drive": ("GOOGLE_DRIVE", "GOOGLE_WORKSPACE", "GSUITE"),
+    "gmail": ("GMAIL", "GOOGLE_WORKSPACE", "GSUITE"), "microsoft onedrive": ("ONEDRIVE", "OFFICE_365", "MICROSOFT_365"),
+    "onedrive": ("ONEDRIVE", "OFFICE_365", "MICROSOFT_365"), "sharepoint online": ("SHAREPOINT", "OFFICE_365", "MICROSOFT_365"),
+    "microsoft sharepoint": ("SHAREPOINT", "OFFICE_365", "MICROSOFT_365"), "microsoft teams": ("MS_TEAMS", "OFFICE_365", "MICROSOFT_365"),
+    "exchange online": ("EXCHANGE", "OFFICE_365", "MICROSOFT_365"), "outlook": ("EXCHANGE", "OFFICE_365", "MICROSOFT_365"),
+    "slack": ("SLACK",), "salesforce": ("SALESFORCE",), "servicenow": ("SERVICENOW",), "github": ("GITHUB",),
+    "confluence": ("CONFLUENCE", "ATLASSIAN"), "jira": ("JIRA", "ATLASSIAN"), "zoom": ("ZOOM",), "webex": ("WEBEX",),
+    "workday": ("WORKDAY",), "egnyte": ("EGNYTE",), "citrix sharefile": ("SHAREFILE",), "amazon s3": ("AMAZON_S3", "AWS_S3"),
+}
+
+
+def _ins_apps(cl):
+    """(Shadow IT application rows, None) for the last 30 days, or (None, R)
+    when Insights could not answer: not permitted, classic sign-in, refused."""
+    import insights
+    w = insights.window(_INS_WINDOW)
+    try:
+        data, _resp, err = insights.zins_over(cl).shadow_it.get_apps(start_time=w["start_ms"], end_time=w["end_ms"], limit=_INS_APP_LIMIT)
+    except Exception as ex:  # noqa: BLE001 — never crash the run
+        return None, R(R.ERROR, f"ZIA Insights could not be asked for the Shadow IT applications ({type(ex).__name__}).")
+    if err is not None:
+        status = getattr(err, "status", None)
+        msg = insights._text(err)[:160]
+        if status in (401, 403) or getattr(err, "classification", None) in ("UNAUTHORIZED", "FORBIDDEN"):
+            return None, R(R.INFO, f"Not permitted: ZIA Insights refused the Shadow IT read (HTTP {status or 403}). Access denied — grant the "
+                                   "API client's role Z-Insights read access in ZIdentity and run the assessment again.")
+        if "classic ZIA API" in msg or status == 404:
+            return None, R(R.INFO, "N/A: ZIA Insights is not available on this sign-in or tenant (it needs a OneAPI API client and Insights). "
+                                   "Nothing was judged.")
+        return None, R(R.ERROR, f"ZIA Insights did not answer the Shadow IT read: {msg or 'no reason given'}.")
+    return insights.app_rows(data, _INS_APP_LIMIT), None
+
+
+def _ins_bytes(n):
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+
+
+def _ins_list(rows):
+    rows = sorted(rows, key=lambda r: -(r.get("data_consumed") or 0))
+    names = ", ".join(f"{r['application']} (risk {int(r.get('risk_index') or 0)}, {_ins_bytes(r.get('data_consumed'))})" for r in rows[:_INS_NAMES])
+    more = f" and {len(rows) - _INS_NAMES} more" if len(rows) > _INS_NAMES else ""
+    return names + more
+
+
+def _ins_traffic(r):
+    return (r.get("data_consumed") or 0) > 0 or (r.get("data_uploaded") or 0) > 0
+
+
+def _ins_high(r):
+    return int(r.get("risk_index") or r.get("computed_risk_index") or 0) >= _INS_HIGH_RISK
+
+
+def ins_1(cl):
+    """High-risk unsanctioned cloud applications still carry traffic"""
+    import insights
+    rows, bad = _ins_apps(cl)
+    if bad:
+        return bad
+    if not rows:
+        return R(R.INFO, "N/A: ZIA Insights reported no cloud application traffic in the last 30 days (Shadow IT may not be licensed "
+                         "or no traffic was seen), so there is nothing to judge." + _INS_REF)
+    hits = [r for r in rows if insights.sanction_of(r.get("sanctioned_state")) == insights.UNSANCTIONED and _ins_high(r) and _ins_traffic(r)]
+    up = sum(r.get("data_uploaded") or 0 for r in hits)
+    data = {"apps": len(hits), "uploaded_bytes": up, "names": [r["application"] for r in hits[:50]]}
+    if hits:
+        return R(R.FAIL, f"{len(hits)} high-risk cloud application(s) you marked unsanctioned still carried traffic in the last 30 days "
+                         f"({_ins_bytes(up)} uploaded): {_ins_list(hits)}. Marking an app unsanctioned only labels it; traffic flows until a "
+                         "Cloud App Control or URL filtering rule blocks or isolates it. Best Practice: block or isolate every unsanctioned "
+                         "application with a risk index of 4 or 5 in Cloud App Control (Block, or Isolate where viewing is needed), and "
+                         "review the Shadow IT report monthly." + _INS_REF, data)
+    return R(R.PASS, f"No high-risk unsanctioned cloud application carried traffic in the last 30 days ({len(rows)} application(s) "
+                     "with traffic reviewed).", data)
+
+
+def ins_2(cl):
+    """High-risk cloud applications with traffic but no sanction decision"""
+    import insights
+    rows, bad = _ins_apps(cl)
+    if bad:
+        return bad
+    if not rows:
+        return R(R.INFO, "N/A: ZIA Insights reported no cloud application traffic in the last 30 days, so there is nothing to judge." + _INS_REF)
+    hits = [r for r in rows if insights.sanction_of(r.get("sanctioned_state")) is None and _ins_high(r) and _ins_traffic(r)]
+    data = {"apps": len(hits), "names": [r["application"] for r in hits[:50]]}
+    if hits:
+        return R(R.WARN, f"{len(hits)} high-risk cloud application(s) carried traffic in the last 30 days with no sanction decision "
+                         f"(neither sanctioned nor unsanctioned): {_ins_list(hits)}. Nobody has decided whether the business may use "
+                         "them. Best Practice: review each one with its business owner, then mark it sanctioned (and protect it) or "
+                         "unsanctioned (and block or isolate it). Bulk changes can set the state for many apps at once." + _INS_REF, data)
+    return R(R.PASS, "Every high-risk cloud application with traffic in the last 30 days has a sanction decision.", data)
+
+
+def _casb_licensed(cl):
+    """True / False from the licences, None when they cannot be read."""
+    d, c = cl.get("/zia/subscriptions")
+    rows = d if isinstance(d, list) else (d.get("list") if isinstance(d, dict) and isinstance(d.get("list"), list) else None)
+    if c not in (200, 204) or rows is None:
+        return None
+    ids = {str(x.get("id") or "") for x in rows if isinstance(x, dict) and x.get("subscribed") is not False}
+    return bool(ids & set(_CASB_SKUS))
+
+
+def ins_3(cl):
+    """Sanctioned SaaS applications with traffic but no SaaS Security API tenant"""
+    import insights
+    lic = _casb_licensed(cl)
+    if lic is False:
+        return R(R.INFO, "N/A: the tenant has no CASB (SaaS Security API) subscription, so a SaaS application cannot be connected for "
+                         "data-at-rest DLP. Nothing was judged." + _INS_REF)
+    rows, bad = _ins_apps(cl)
+    if bad:
+        return bad
+    sanctioned = [r for r in rows or [] if insights.sanction_of(r.get("sanctioned_state")) == insights.SANCTIONED and _ins_traffic(r)]
+    connectable = [r for r in sanctioned if str(r["application"]).strip().lower() in _SAAS_API_APPS]
+    if not connectable:
+        return R(R.INFO, "N/A: no sanctioned application with traffic in the last 30 days is one the SaaS Security API connects to, "
+                         "so there is nothing to judge." + _INS_REF)
+    d, c = cl.get("/zia/casbTenant/lite")
+    if c == 0 and isinstance(d, dict) and d.get("error") in ("not in scope", "required evidence unavailable"):
+        return R(R.INFO, "N/A: the SaaS Security API channel is not marked as run on Zscaler on the Scope page, so its tenants were not "
+                         "read and this was not judged.")
+    if c not in (200, 204):
+        return R(R.ERROR, f"The SaaS Security API tenants could not be read (HTTP {c}), so coverage cannot be judged.")
+    have = set()
+    for t in _ls(d):
+        if isinstance(t, dict):
+            if isinstance(t.get("status"), list) and t["status"] and not any(str(s).upper() == "ACTIVE" for s in t["status"]):
+                continue
+            have.add(str(t.get("saasApplication") or t.get("saas_application") or "").upper())
+    gaps = [r for r in connectable if not set(_SAAS_API_APPS[str(r["application"]).strip().lower()]) & have]
+    data = {"apps": len(gaps), "names": [r["application"] for r in gaps[:50]], "tenants": len(have)}
+    if gaps:
+        return R(R.FAIL, f"{len(gaps)} sanctioned SaaS application(s) carried traffic in the last 30 days but have no active SaaS Security "
+                         f"API tenant, so files already stored in them are never scanned by SaaS DLP: {_ins_list(gaps)}. Best Practice: "
+                         "connect every sanctioned SaaS application that holds company data as a SaaS Security API tenant (Administration "
+                         "> SaaS Application Tenants) and add a SaaS Security DLP rule for it." + _INS_REF, data)
+    return R(R.PASS, f"Every sanctioned SaaS application with traffic that the SaaS Security API supports ({len(connectable)}) has an "
+                     "active SaaS Security API tenant.", data)
+
+
 PLATFORM_REG = [
     # ZIA — Firewall
     ("FW.1", "ZIA — Firewall", "Firewall rules", fw_1),
@@ -1112,6 +1274,11 @@ PLATFORM_REG = [
     ("CA.3", "ZIA — Cloud Apps", "Cloud app SSL", capp_3),
     ("CA.4", "ZIA — Cloud Apps", "DNS over HTTPS blocked", capp_4),
     ("CA.5", "ZIA — Cloud Apps", "Cascading to URL Filtering off", capp_5),
+
+    # ZIA Insights — traffic (only with ZIA Insights ticked on the Scope page)
+    ("INS.1", "Insights — Shadow IT", "High-risk unsanctioned apps still carry traffic", ins_1),
+    ("INS.2", "Insights — Shadow IT", "High-risk apps with no sanction decision", ins_2),
+    ("INS.3", "Insights — SaaS Security", "Sanctioned SaaS apps with no SaaS Security API tenant", ins_3),
 
     # ZPA — Application Access
     ("ZPA.1", "ZPA — App Access", "Application segments", zpa_1),

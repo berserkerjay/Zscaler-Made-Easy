@@ -7918,10 +7918,16 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
             for c in RBAC_REG:
                 if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
+        if "insights" in scopes:
+            for c in PLATFORM_REG:
+                if c[1].startswith("Insights") and c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
     if scope == "full" or scope == "all":
-        return list(REG) + PLATFORM_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
+        # Traffic data (ZIA Insights) is read only when its own key is ticked, never by "full".
+        return (list(REG) + [c for c in PLATFORM_REG if not c[1].startswith("Insights")] + list(AUTOMATION_REG) + list(ZDX_REG)
+                + list(ZID_REG) + list(RBAC_REG))
     elif scope == "automation":
         return list(AUTOMATION_REG)
     elif scope == "zdx":
