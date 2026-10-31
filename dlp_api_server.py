@@ -5807,25 +5807,54 @@ async def exports_urls_start(req: ScopedTenantCredsRequest, request: Request):
 
 class CategoryAnalyzerRequest(ScopedTenantCredsRequest):
     """Body of the custom URL category analyzer: the categories to analyse
-    (ids or names; empty: every custom one) and at most how many URLs to
-    look up (capped at url_tools.MAX_LOOKUP_URLS)."""
+    (ids or names; empty: every custom one), at most how many URLs to look
+    up in this run (capped at url_tools.MAX_LOOKUP_URLS), and `resume`: the
+    token of an earlier run of the same analysis to continue from."""
     categories: List[str] = []
     max_urls: int = 0
+    resume: str = ""
 
 
-def _run_category_analyzer(client, req: CategoryAnalyzerRequest, label: str, log, cancel) -> Dict[str, Any]:
+def _run_category_analyzer(client, req: CategoryAnalyzerRequest, label: str, log, cancel, actor: Optional[str] = None) -> Dict[str, Any]:
     import url_tools as ut
     from policy_exports import safe_part
     log(f"Analysing the custom URL categories of {label}. {ut.LOOKUP_NOTE}")
+    bind = {"actor": actor, "tenant": label, "picked": req.categories}
+    prior = None
+    if req.resume:
+        prior = ut.CHECKPOINTS.get(req.resume, **bind)
+        if prior is None:
+            return {"status": "error", "error": ut.CONTINUE_GONE, "tenant_label": label}
+
+    def keep(cp: Optional[Dict[str, Any]], remaining: int) -> Optional[Dict[str, Any]]:
+        # The checkpoint stays in memory (never in the result); the page gets only its token.
+        if not cp or not remaining:
+            if req.resume:
+                ut.CHECKPOINTS.drop(req.resume)
+            return None
+        return {"token": ut.CHECKPOINTS.put(cp, token=req.resume, **bind), "remaining": remaining}
     try:
-        res = ut.analyze_categories(client, picked=req.categories, max_urls=req.max_urls or ut.MAX_LOOKUP_URLS, log=log, cancel=cancel)
+        res = ut.analyze_categories(client, picked=req.categories, max_urls=req.max_urls or ut.MAX_LOOKUP_URLS, log=log, cancel=cancel, prior=prior)
     except ut.Stopped as e:
-        return _stopped_result(label, str(e), log)
+        out = _stopped_result(label, str(e), log)
+        cp = getattr(e, "checkpoint", None)
+        if cp and (cp.get("found") or cp.get("failed")):
+            kept = keep(cp, 1)
+            if kept:
+                out["resume"] = kept
+                out["stopped"] += " What was looked up is kept: Continue goes on from there."
+        return out
+    cp = res.pop("checkpoint", None)
     if cancel is not None and cancel.is_set():
         return _stopped_result(label, ut.STOPPED_REASON, log)
     res["tenant_label"] = label
     if res.get("status") != "ready":
         return res
+    kept = keep(cp, (res.get("resume") or {}).get("remaining", 0))
+    if kept:
+        res["resume"] = dict(res["resume"], token=kept["token"])
+    else:
+        res.pop("resume", None)
     data = ut.analyzer_workbook(res, tenant_label=label)
     name = f"url_category_analysis_{safe_part(label)}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
     res.update(filename=name, artifact=(name, ut.XLSX, data))
@@ -5850,11 +5879,16 @@ async def exports_category_analyzer_start(req: CategoryAnalyzerRequest, request:
         raise HTTPException(status_code=400, detail="max_urls must be 0 (the default cap) or more.")
     if len(req.categories) > 500:
         raise HTTPException(status_code=400, detail="Pick at most 500 categories.")
+    if req.resume and not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", req.resume):
+        raise HTTPException(status_code=400, detail="resume must be the token an earlier run of the analyzer gave.")
     creds = _tenant_creds(req)
-    client = await asyncio.to_thread(_build_client, req)
     label = tenant_auth.record_label(creds)
-    job = pack_jobs.start("category_analyzer", lambda log, cancel: _run_category_analyzer(client, req, label, log, cancel),
-                          label=label[:80], actor=_actor(request), start_token=_start_token(request))
+    actor = _actor(request)
+    if req.resume and ut.CHECKPOINTS.get(req.resume, actor=actor, tenant=label, picked=req.categories) is None:
+        raise HTTPException(status_code=400, detail=ut.CONTINUE_GONE)
+    client = await asyncio.to_thread(_build_client, req)
+    job = pack_jobs.start("category_analyzer", lambda log, cancel: _run_category_analyzer(client, req, label, log, cancel, actor),
+                          label=label[:80], actor=actor, start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 

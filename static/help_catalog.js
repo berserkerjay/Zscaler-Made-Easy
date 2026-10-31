@@ -3202,8 +3202,13 @@ window.HELP_CATALOG = {
    },
    "#exMax": {
     "what": "Sets the most URLs the analyzer looks up in one run. The rest are listed as not looked up.",
-    "input": "Optional. A whole number from 1 to 2000. The default is 2000.",
+    "input": "Optional. A whole number from 1 to 20000. The default is 20000.",
     "effect": "local"
+   },
+   "#exContinue": {
+    "what": "Looks up the URLs the last analyzer run did not reach, keeping what it already looked up, and saves an Excel file that covers everything so far.",
+    "input": "Nothing to type. Just click it. It continues the same categories; the lookup changes nothing in the tenant.",
+    "effect": "download"
    },
    "#exAnalyze": {
     "what": "Looks up each URL of your custom categories with ZIA's URL lookup and saves an Excel file. It says if Zscaler already sorts it the same way, differently, or not at all.",
@@ -4584,6 +4589,71 @@ window.HELP_CATALOG = {
    "#laRemove": {
     "what": "The URLs to take off the list.",
     "input": "Optional. One per line, written as the list holds them.",
+    "effect": "local"
+   },
+   "input[name=\"opKind\"][value=\"zpa_segment_fields\"]": {
+    "what": "Picks \"ZPA segment settings in bulk\". It sets the same fields on many application segments at once, Browser Access, PRA and inspection segments too.",
+    "input": "Tick it, then click Read from the tenant to show the form. Needs ZPA ticked on the Scope page.",
+    "effect": "local"
+   },
+   "#zfFilter": {
+    "what": "Shows only the segments whose name or kind contains what you type.",
+    "input": "Optional. Type part of a name, or Browser Access, PRA or inspection.",
+    "effect": "local"
+   },
+   "#zfAll": {
+    "what": "Picks every segment the list shows, up to the most one operation takes.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#zfNone": {
+    "what": "Clears the segments you picked.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "input[data-zf-seg]": {
+    "what": "Picks this segment for the change. A read-only segment cannot be picked.",
+    "input": "Tick it to pick it.",
+    "effect": "local"
+   },
+   "select[data-zf-field]": {
+    "what": "Sets this field on every picked segment, or leaves it as it is.",
+    "input": "Optional. Pick a value, or Leave as it is.",
+    "effect": "local"
+   },
+   "#zfSegGroup": {
+    "what": "Moves every picked segment to this segment group, or leaves them where they are.",
+    "input": "Optional. Pick a segment group, or Leave as it is.",
+    "effect": "local"
+   },
+   "#zfSgMode": {
+    "what": "Says what to do with the server groups you tick: add them, remove them, or make them the only ones.",
+    "input": "Optional. Pick one, then tick the server groups.",
+    "effect": "local"
+   },
+   "input[data-zf-sg]": {
+    "what": "A server group to add, remove or replace with, on every picked segment.",
+    "input": "Tick it to use it.",
+    "effect": "local"
+   },
+   "#zfTcpAdd": {
+    "what": "TCP ports or ranges to add to every picked segment.",
+    "input": "Optional. Ports from 1 to 65535 and ranges, separated by commas, like 443, 8000-8080.",
+    "effect": "local"
+   },
+   "#zfTcpRemove": {
+    "what": "TCP ranges to remove from every picked segment. A range is removed whole.",
+    "input": "Optional. The ranges as the segment lists them, like 8080 or 8000-8100.",
+    "effect": "local"
+   },
+   "#zfUdpAdd": {
+    "what": "UDP ports or ranges to add to every picked segment.",
+    "input": "Optional. Ports from 1 to 65535 and ranges, separated by commas, like 53, 5000-5100.",
+    "effect": "local"
+   },
+   "#zfUdpRemove": {
+    "what": "UDP ranges to remove from every picked segment. A range is removed whole.",
+    "input": "Optional. The ranges as the segment lists them, like 53.",
     "effect": "local"
    },
    "#opBuildKinds input[name=\"opKind\"][value=\"aiguard_detection_policy\"]": {

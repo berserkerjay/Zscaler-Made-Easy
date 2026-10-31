@@ -341,7 +341,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 93,
+            "fixed": 95,
             "accepted": 5,
             "records": [
               "c6-zcc-zdx",
@@ -355,6 +355,7 @@
               "w7-health-diag",
               "w7-migrate-tui-plugins",
               "w7-net-files",
+              "w7-parity-small",
               "w7-pov-oneshot",
               "w7-rank-inherit",
               "w7-restore-clone",
@@ -472,7 +473,7 @@
     }
   ],
   "counts": {
-    "findings": 685,
+    "findings": 687,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -491,7 +492,7 @@
       },
       "low": {
         "open": 2,
-        "fixed": 382,
+        "fixed": 384,
         "accepted": 3
       },
       "info": {
@@ -501,12 +502,12 @@
       }
     },
     "checks": {
-      "pass": 549,
+      "pass": 557,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 10821
+    "tests_added": 10866
   },
   "findings": [
     {
@@ -10078,6 +10079,38 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W7-PARITY-01",
+      "title": "A literal [\"ANY\"] device trust or user risk level list in a pack was passed through to the API and to Terraform unchanged (the provider takes explicit values only)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-20",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "pack_channels.normalize_levels / level_problem, applied in pack_deploy.load_pack_file, build_payload, policy_signature_extra and pack_terraform.load_pack",
+      "test": "tests/test_pack_any_levels.py::test_terraform_writes_the_explicit_lists",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-parity-small",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W7-PARITY-02",
+      "title": "The URL category analyzer kept sending lookup batches after ZIA refused one for its rate limit through every retry",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-400",
+      "asvs": "V11.1.4",
+      "wcag": "",
+      "fix": "lookup_batches(stop_on_rate_limit=True) ends the run; the unsent URLs are left for Continue",
+      "test": "tests/test_url_analyzer_resume.py::test_a_rate_limit_zia_keeps_answering_ends_the_run_and_continue_retries_it",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-parity-small",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "W7-PC-2",
       "title": "ZIA settings toggles the ATP evaluator did not map, and ZPA rule fields outside the conditions, were ignored",
       "severity": "low",
@@ -12742,6 +12775,41 @@
       "tests_added": 115
     },
     {
+      "slug": "w7-parity-small",
+      "area": "Builders and untrusted input: ZPA segment settings in bulk, the URL category analyzer beyond 2,000 URLs, ANY in pack level lists",
+      "title": "Bulk ZPA segment edit on the shared engine (Browser Access, PRA and inspection segments kept intact), resumable URL lookups with bounded memory, ANY level lists normalised or refused",
+      "standards": [
+        "ASVS V4.1.3",
+        "ASVS V4.2.1",
+        "ASVS V5.1.3",
+        "ASVS V7.2.2",
+        "ASVS V8.3.1",
+        "ASVS V11.1.4",
+        "ASVS V11.1.6",
+        "OWASP Top 10 2021 A01",
+        "OWASP Top 10 2021 A04",
+        "WSTG-ATHZ-02",
+        "WSTG-ATHZ-04",
+        "WSTG-INPV-01",
+        "WSTG-BUSL-05",
+        "CWE-20",
+        "CWE-200",
+        "CWE-362",
+        "CWE-367",
+        "CWE-400",
+        "CWE-639",
+        "CWE-754",
+        "CWE-770",
+        "CWE-835",
+        "CWE-840",
+        "CWE-841",
+        "CWE-863"
+      ],
+      "checks": 8,
+      "findings": 2,
+      "tests_added": 45
+    },
+    {
       "slug": "w7-path-coverage",
       "area": "Path coverage: the generic unknown-condition guard on every Path analyzer module, the Category lookup tab, and UCaaS one-click in the ZIA baseline and the Path analyzer",
       "title": "Unread rule conditions never match; Category lookup; UCaaS one-click",
@@ -13416,6 +13484,7 @@
       "CWE-1176",
       "CWE-1188",
       "CWE-1236",
+      "CWE-1265",
       "CWE-1275",
       "CWE-1284",
       "CWE-1287",

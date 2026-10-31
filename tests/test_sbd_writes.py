@@ -898,6 +898,7 @@ DEFAULT_OFF: Dict[str, Any] = {
     "reorder": "changes order only; no rule is created or enabled",
     "url_categories": "custom URL category content; no rule is created or enabled",
     "zpa_domains": "domains only; a clone keeps its source segment's state so domains moved to it keep working (accepted)",
+    "zpa_segment_fields": "changes only the fields the operator picked on existing segments; creates nothing, and enables a segment only when Enabled is picked",
     "zdx_probe_state": "the operator picks on or off explicitly, per target",
     "zcc_profile_delete": "deletes profiles only; creates and enables nothing",
     "zdx_probe_delete": "deletes apps and probes (or turns them off) only",

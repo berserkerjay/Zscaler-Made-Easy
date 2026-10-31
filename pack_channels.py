@@ -677,6 +677,64 @@ def fit_rule_name(name: str, channel: str, suffix: str = "") -> str:
 
 ENDPOINT_TRUST_LEVELS = ("UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST")
 ENDPOINT_RISK_LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+# "ANY" in a pack's device trust or user risk level list. ZIA's own rule
+# export writes ["ANY"] for an unrestricted selector, and the SDK's Endpoint
+# DLP docstrings name it (zscaler-sdk-python 1.11.3 zia/endpoint_dlp_rules.py,
+# endpoint_dlp_sub_rules.py: "Accepted values include e.g. ANY"); the other
+# channels' docstrings list only the explicit levels (cloud_firewall_rules,
+# cloudappcontrol: UNKNOWN_DEVICETRUSTLEVEL, LOW_TRUST, MEDIUM_TRUST,
+# HIGH_TRUST; outbound_email_dlp_rules: LOW, ...), and the zscaler/zia
+# Terraform provider takes explicit values only. So the app always sends the
+# explicit list: a literal ["ANY"] means every level and is expanded on load
+# (normalize_levels); "ANY" next to other levels, or a level that is not one
+# of these, is refused with the reason (level_problem).
+LEVEL_FIELDS: Dict[str, Tuple[str, ...]] = {"device_trust_levels": ENDPOINT_TRUST_LEVELS, "user_risk_score_levels": ENDPOINT_RISK_LEVELS}
+
+
+def level_problem(policy_def: Dict[str, Any]) -> Optional[str]:
+    """Why a policy's (or one of its sub-rules') trust or risk level list
+    cannot be used, or None. ["ANY"] alone is fine (every level)."""
+    for obj in [policy_def] + [s for s in (policy_def.get("sub_rules") or []) if isinstance(s, dict)]:
+        for field, allowed in LEVEL_FIELDS.items():
+            v = obj.get(field)
+            if v is None:
+                continue
+            where = f"'{field}'" + (f" of sub-rule '{str(obj.get('name'))[:80]}'" if obj is not policy_def else "")
+            if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+                return f"{where} must be a list of levels, like [\"ANY\"] or [\"{allowed[0]}\", \"{allowed[1]}\"]"
+            up = [x.strip().upper() for x in v]
+            if "ANY" in up and len(set(up)) > 1:
+                return (f"{where} mixes ANY with other levels; use [\"ANY\"] alone for every level, "
+                        f"or list the levels you mean ({', '.join(allowed)})")
+            bad = [x for x, u in zip(v, up) if u != "ANY" and u not in allowed]
+            if bad:
+                return f"{where} has an unknown level '{str(bad[0])[:40]}' (use ANY, or one or more of {', '.join(allowed)})"
+    return None
+
+
+def normalize_levels(policy_def: Dict[str, Any]) -> Dict[str, Any]:
+    """The policy with a literal ["ANY"] trust or risk level list (its
+    sub-rules' too) replaced by every level, in the API's spelling; levels
+    upper-cased. A copy; anything else is left for level_problem to refuse."""
+    def fix(obj: Dict[str, Any]) -> Dict[str, Any]:
+        out = obj
+        for field, allowed in LEVEL_FIELDS.items():
+            v = obj.get(field)
+            if isinstance(v, list) and v and all(isinstance(x, str) for x in v):
+                up = [x.strip().upper() for x in v]
+                new = list(allowed) if set(up) == {"ANY"} else (up if all(u in allowed for u in up) else v)
+                if new != v:
+                    out = dict(out, **{field: new})
+        return out
+    if not isinstance(policy_def, dict):
+        return policy_def
+    out = fix(policy_def)
+    subs = policy_def.get("sub_rules")
+    if isinstance(subs, list) and subs:
+        fixed = [fix(s) if isinstance(s, dict) else s for s in subs]
+        if any(a is not b for a, b in zip(fixed, subs)):
+            out = dict(out, sub_rules=fixed)
+    return out
 # An Endpoint DLP rule applies to exactly one transfer method ("channel" in
 # the portal): a real tenant answered "Channel is mandatory" for a rule
 # without one, and the zscaler/zia provider accepts only these four (no
@@ -758,6 +816,9 @@ def validate(policy_def: Dict[str, Any]) -> Optional[str]:
     ch = channel_of(policy_def)
     if ch not in CHANNELS:
         return f"unknown channel '{ch}' (use one of {', '.join(CHANNELS)})"
+    lvl = level_problem(policy_def)
+    if lvl:
+        return lvl
     from dlp_importer import RULE_DESCRIPTION_MAX
     if len(str(policy_def.get("description") or "")) > RULE_DESCRIPTION_MAX:
         return f"description is {len(str(policy_def.get('description')))} characters; ZIA allows {RULE_DESCRIPTION_MAX}"
@@ -1446,6 +1507,7 @@ def _ids(values: Iterable[Any]) -> List[Dict[str, Any]]:
 def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolved: Dict[str, Any], *, use_rank_0: bool = False) -> Dict[str, Any]:
     """Translate one pack policy into `add_rule` kwargs for its channel.
     New rules always go to order 1 (top of the policy)."""
+    p = normalize_levels(p)    # a literal ["ANY"] level list goes out as every level
     if channel == WEB:
         from dlp_importer import build_policy_payload
         if resolved.get("cloud_applications") and not p.get("cloud_applications"):
@@ -1638,6 +1700,7 @@ def list_rule_names(zia, channel: str, types: Optional[Iterable[str]] = None) ->
 
 def policy_signature_extra(p: Dict[str, Any]) -> Dict[str, Any]:
     """Channel-specific fields that make two same-named policies differ."""
+    p = normalize_levels(p)
     ch = channel_of(p)
     extra: Dict[str, Any] = {"channel": ch}
     if ch == SAAS:

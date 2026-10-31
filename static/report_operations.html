@@ -14,7 +14,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Bulk</span> changes</h1>
-      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, move ZPA domains between application segments, and create, edit, copy or delete one rule (Build new, Edit a rule). Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
+      <p>Enable or disable many rules at once, put a policy's rules in a new order, move URLs between custom URL categories, move ZPA domains between application segments, change settings on many ZPA segments at once, and create, edit, copy or delete one rule (Build new, Edit a rule). Every change is previewed item by item from the tenant as it is now, applied only in write mode after you confirm the exact plan, checked again right before each write, read back, recorded and reversible with Undo.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -250,7 +250,7 @@
     (async function loadBuilders() {
       let list = [];
       try { const r = await fetch('/api/operations/plugins', { cache: 'no-store' }); if (r.ok) list = (await r.json()).plugins || []; } catch (e) { list = []; }
-      const box = $('opBuildKinds'), admin = $('opAdminKinds'), main = document.querySelector('fieldset.op-kinds'), loaded = new Set();
+      const box = $('opBuildKinds'), admin = $('opAdminKinds'), main = document.querySelector('fieldset.op-kinds:not(#opBuildKinds):not(#opAdminKinds)'), loaded = new Set();
       let builders = 0;
       list.forEach(p => {
         if (!/^[a-z][a-z0-9_]{1,40}$/.test(p.type) || !/^[a-z][a-z0-9_]{1,40}$/.test(p.family)) return;
@@ -260,7 +260,7 @@
         lab.innerHTML = `<input type="radio" name="opKind" value="${E(p.type)}"><span><strong>${E(p.label)}</strong><span class="df-hint">${E(p.hint)}</span></span>`;
         lab.querySelector('input').addEventListener('change', e => onKind(e.target));
         // A change to existing objects sits with the other changes; day-to-day admin in its own box; a builder under Build new.
-        if (p.group === 'Change' && main) main.appendChild(lab); else if (p.group === 'Day-to-day admin') admin.appendChild(lab); else { box.appendChild(lab); builders++; }
+        if ((p.group === 'Change' || p.group === 'Change existing') && main) main.appendChild(lab); else if (p.group === 'Day-to-day admin') admin.appendChild(lab); else { box.appendChild(lab); builders++; }
         // A local plugin (local_plugins.py) ships no script: its operation is
         // typed as JSON here, then previewed and applied like any other.
         if (!p.script) window.OPS_PLUGINS.register({ type: p.type, render: (res, where) => {

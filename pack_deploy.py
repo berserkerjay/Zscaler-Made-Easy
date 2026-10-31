@@ -419,6 +419,15 @@ def load_pack_file(configs: str, filename: str, pack_id: Any = "") -> List[Dict[
                 raise PackFileError(f"{where}: sub_rules must be a list of objects")
             for s in subs:
                 _check_fields(s, schema, where)
+    if filename == "dlp_policies.json":
+        # Device trust / user risk levels: ["ANY"] means every level and is
+        # expanded here, once, for deploy, removal, Terraform and the library
+        # alike; ANY mixed with levels, or an unknown level, is refused.
+        for x in data:
+            problem = pc.level_problem(x)
+            if problem:
+                raise PackFileError(f"{where}: rule '{str(x.get('name'))[:80]}': {problem}")
+        data = [pc.normalize_levels(x) for x in data]
     return data
 
 
@@ -432,7 +441,8 @@ _ITEMS = "items"       # a list of objects whose values are text (patterns, phra
 _IDS = "ids"           # a list of strings or integers (application ids)
 _POLICY_FIELDS = {"name": _TEXT, "engines": _TEXTS, "protocols": _TEXTS, "rank": _INT, "order": _INT, "action": (str, dict),
                   "state": _TEXT, "channel": _TEXT, "severity": _TEXT, "description": _TEXT, "parent_rule": _TEXT,
-                  "endpoint_application_groups": _TEXTS, "target_action": (str, dict)}
+                  "endpoint_application_groups": _TEXTS, "target_action": (str, dict), "device_trust_levels": _TEXTS,
+                  "user_risk_score_levels": _TEXTS}
 _PACK_FIELDS: Dict[str, Dict[str, Any]] = {
     "dlp_dictionaries.json": {"name": _TEXT, "patterns": _ITEMS, "phrases": _ITEMS, "proximity": _INT, "description": _TEXT,
                               "confidence_threshold": _TEXT, "custom_phrase_match_type": _TEXT, "dict_template_name": _TEXT,

@@ -70,9 +70,9 @@
               <td>
                 <div class="ex-fields">
                   <label class="df-ctl"><span class="lbl">Categories</span><input type="text" id="exCats" placeholder="All custom categories" aria-describedby="exCatsHint" autocomplete="off"></label>
-                  <label class="df-ctl"><span class="lbl">At most</span><input type="number" id="exMax" min="1" max="2000" step="100" value="2000" aria-describedby="exCatsHint"><span class="lbl">URLs</span></label>
+                  <label class="df-ctl"><span class="lbl">At most</span><input type="number" id="exMax" min="1" max="20000" step="100" value="20000" aria-describedby="exCatsHint"><span class="lbl">URLs</span></label>
                 </div>
-                <div class="df-hint" id="exCatsHint">Names or ids, separated by commas. Uses ZIA's URL lookup, the same one the portal's URL Lookup uses: a POST request that changes nothing in the tenant, 100 URLs per request, one request a second, retried when ZIA asks to slow down. At most 2000 URLs per run; the rest are listed as not looked up. Needs DLP or ZIA platform ticked.</div>
+                <div class="df-hint" id="exCatsHint">Names or ids, separated by commas. Uses ZIA's URL lookup, the same one the portal's URL Lookup uses: a POST request that changes nothing in the tenant, 100 URLs per request, one request a second, retried when ZIA asks to slow down. At most 20000 URLs per run (about four minutes); when more are left, or ZIA keeps asking to slow down, or you click Stop, what was looked up is kept in the app's memory for a few hours and Continue looks up the rest. One analysis covers up to 100000 URLs. Needs DLP or ZIA platform ticked.</div>
               </td>
               <td class="adv-acts"><button type="button" class="rp-btn" data-run id="exAnalyze">Analyze (Excel)</button></td>
             </tr>
@@ -364,7 +364,8 @@
     }
     // Start a job, follow it live and download its file. `summary(result)`
     // returns HTML shown under the download line.
-    async function runJob(title, url, payload, summary) {
+    async function runJob(title, url, payload, summary, onEnd) {
+      let res = null;
       if (running) return;
       running = true; stopAsked = false; startToken = newStartToken(); job = null; setBusy(true);
       result.innerHTML = '';
@@ -382,7 +383,7 @@
         job = d.job_id;
         if (stopAsked) { try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ } }
         const snap = await follow(job);
-        const res = snap.result || {};
+        res = snap.result || {};
         if (snap.status === 'cancelled' || res.status === 'stopped') throw new Error(res.stopped || 'You clicked Stop before the export finished: no file was made.');
         if (snap.status !== 'done' || !snap.download) throw new Error(res.error || snap.error || 'The export did not produce a file.');
         const name = await save(snap.download, snap.filename || 'export');
@@ -398,6 +399,7 @@
       } finally {
         clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; setBusy(false);
         $('exLiveSec').hidden = true;
+        if (onEnd) onEnd(res);
       }
     }
     function listHtml(title, obj) {
@@ -516,14 +518,30 @@
         + listHtml('Could not be read:', res.errors) + listHtml('Not in scope, not read:', res.not_in_scope));
     }
     const VERDICTS = [['redundant', 'Redundant'], ['different', 'Categorised differently'], ['uncategorised', 'Not categorised'], ['categorised', 'Categorised (not compared)'], ['not_looked_up', 'Not looked up']];
-    function analyze() {
-      const cats = $('exCats').value.split(',').map(s => s.trim()).filter(Boolean);
+    // Continue: the next run of the same analysis (same categories), from what the last run looked up (kept on the server).
+    let analyzeNext = null;
+    function continueBox(res) {
+      const r = res && res.resume;
+      if (!r || !r.token || !analyzeNext) return;
+      const box = document.createElement('div');
+      box.className = 'op-row ex-continue';
+      box.innerHTML = `<span class="df-hint">${E(Number(r.remaining || 0).toLocaleString())} URL${r.remaining === 1 ? '' : 's'} not looked up yet. The workbook of the next run covers everything so far.</span>
+        <button type="button" class="rp-btn primary" id="exContinue">Continue: look up the next ${E(Number(r.next || r.remaining || 0).toLocaleString())}</button>`;
+      result.appendChild(box);
+      const cats = analyzeNext;
+      $('exContinue').addEventListener('click', () => analyze(cats, r.token));
+    }
+    function analyze(again, token) {
+      const cats = Array.isArray(again) ? again : $('exCats').value.split(',').map(s => s.trim()).filter(Boolean);
       const max = parseInt($('exMax').value, 10);
-      runJob('Custom URL category analyzer', '/api/exports/url-categories/analyze/start', { categories: cats, max_urls: Number.isFinite(max) && max > 0 ? max : 0 }, res => {
+      analyzeNext = cats;
+      const payload = { categories: cats, max_urls: Number.isFinite(max) && max > 0 ? max : 0 };
+      if (typeof token === 'string' && token) payload.resume = token;
+      runJob('Custom URL category analyzer', '/api/exports/url-categories/analyze/start', payload, res => {
         const rows = (res.per_category || []).map(p => `<tr><th scope="row">${E(p.category)}</th><td>${E(p.urls)}</td>${VERDICTS.map(([k]) => `<td>${E(p[k] || 0)}</td>`).join('')}</tr>`).join('');
         return `<div class="df-tablewrap"><table class="df-table ex-sum"><caption class="sr-only">Verdicts per custom category</caption><thead><tr><th scope="col">Category</th><th scope="col">URLs</th>${VERDICTS.map(([, l]) => `<th scope="col">${E(l)}</th>`).join('')}</tr></thead><tbody>${rows || '<tr><td colspan="7">No custom category was analysed.</td></tr>'}</tbody></table></div>`
           + `<ul class="ex-list">${(res.notes || []).map(n => `<li>${E(n)}</li>`).join('')}</ul>`;
-      });
+      }, continueBox);
     }
     function inventory() { runJob('DLP inventory', '/api/dlp-packs/inventory/start', {}); }
     // ── whole tenant as Terraform (tenant_terraform.py) ─────────────
@@ -615,7 +633,7 @@
     $('exLocations').addEventListener('click', locationsExport);
     $('exZcc').addEventListener('click', zccExport);
     $('exUrls').addEventListener('click', urlsExport);
-    $('exAnalyze').addEventListener('click', analyze);
+    $('exAnalyze').addEventListener('click', () => analyze());
     $('exInventory').addEventListener('click', inventory);
     $('exPackJson').addEventListener('click', () => packExport('json'));
     $('exPackTf').addEventListener('click', () => packExport('terraform'));
