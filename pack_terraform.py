@@ -429,7 +429,8 @@ def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = N
     # monitor-only, and a dictionary named like a predefined display name
     # is renamed (engine references included) so the workspace applies.
     dictionaries, engines, renamed = heal_predefined_names(read("dlp_dictionaries.json"), read("dlp_engines.json"))
-    policies = pc.ship_monitor(pc.expand_sub_rules(read("dlp_policies.json")))
+    # load_pack_file already expanded a literal ["ANY"] trust / risk level list; normalised again for a caller's own list.
+    policies = pc.ship_monitor(pc.expand_sub_rules([pc.normalize_levels(p) for p in read("dlp_policies.json")]))
     b = meta.get("baseline") or {}
     policies, note = pc.apply_channel_targets(policies, channel_targets, pack_name=meta.get("name", pack["id"]),
                                               prefix=b.get("prefix") or "", engine_names=[e.get("name") for e in engines if e.get("name")],
