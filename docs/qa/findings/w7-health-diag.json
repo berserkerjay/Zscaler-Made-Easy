@@ -56,7 +56,7 @@
   },
   {
    "id": "HD-C05",
-   "what": "Scope rule: tenant health and the readiness checks read only what is ticked; out of scope or a bad threshold is a 400 before sign-in",
+   "what": "Scope rule: tenant health and the readiness checks read only what is ticked, and the SSL rules and SSL inspection certificates only when the channel declaration leaves SSL/TLS Inspection on Zscaler (or declares nothing); out of scope or a bad threshold is a 400 before sign-in",
    "standard": "ASVS V4.1.3",
    "result": "pass"
   },
@@ -148,6 +148,16 @@
    "cwe": "CWE-1357",
    "reason": "Nothing to verify against without a live tenant; the /zdx/v1 prefix, routing and body handling are verified, the rest stays marked ASSUMED in ops_zdx.py and on the page, and a test fails when the SDK gains the service",
    "test": "tests/test_health_diag.py::test_what_is_verified_against_the_installed_sdk_and_what_stays_assumed"
+  },
+  {
+   "id": "HD-08",
+   "title": "The SDK keeps one OAuth object and its token per identical client config (zscaler.oneapi_oauth_client.OAuth._instance), so a later sign-in with the same config reuses the token instead of signing in again; a test that signed in successfully made a later test's expected sign-in failure pass silently",
+   "severity": "low",
+   "status": "fixed",
+   "cwe": "CWE-1357",
+   "asvs": "V1.14.1",
+   "fix": "tests/test_health_diag.py resets OAuth._instance around its real-SDK test (test isolation); the SDK behaviour itself is upstream",
+   "test": "tests/test_health_diag.py::test_the_api_calls_view_and_exports_hold_no_secret_after_real_sdk_calls"
   }
  ],
  "notes": [
@@ -156,5 +166,5 @@
   "Retries a caller sends itself (the assessment client after a 429) are folded into the earlier row by thread, method, path and a retryable answer within 15 minutes: a heuristic, said in api_calls.py.",
   "Worker threads of a job (the assessment's fan-out) do not carry the job id, so their calls show without a run; builder runs do."
  ],
- "tests_added": 116
+ "tests_added": 119
 }

@@ -317,7 +317,7 @@
           "findings": {
             "score": 100.0,
             "open": 1,
-            "fixed": 54,
+            "fixed": 55,
             "accepted": 1,
             "records": [
               "c6-zcc-zdx",
@@ -437,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 586,
+    "findings": 587,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -456,7 +456,7 @@
       },
       "low": {
         "open": 0,
-        "fixed": 340,
+        "fixed": 341,
         "accepted": 0
       },
       "info": {
@@ -471,7 +471,7 @@
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8718
+    "tests_added": 8721
   },
   "findings": [
     {
@@ -8379,6 +8379,22 @@
       "sub_area": "builders"
     },
     {
+      "id": "HD-08",
+      "title": "The SDK keeps one OAuth object and its token per identical client config (zscaler.oneapi_oauth_client.OAuth._instance), so a later sign-in with the same config reuses the token instead of signing in again; a test that signed in successfully made a later test's expected sign-in failure pass silently",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1357",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "tests/test_health_diag.py resets OAuth._instance around its real-SDK test (test isolation); the SDK behaviour itself is upstream",
+      "test": "tests/test_health_diag.py::test_the_api_calls_view_and_exports_hold_no_secret_after_real_sdk_calls",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-health-diag",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
       "id": "REGRESSION-02",
       "title": "Log analyzer: a DIRECT condition written in a PAC helper function (isCorp(host)) was no longer listed as a bypass",
       "severity": "low",
@@ -10781,8 +10797,8 @@
         "WCAG 2.2 SC 4.1.2"
       ],
       "checks": 8,
-      "findings": 7,
-      "tests_added": 116
+      "findings": 8,
+      "tests_added": 119
     }
   ],
   "standards": {

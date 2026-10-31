@@ -508,6 +508,12 @@ def test_the_api_calls_view_and_exports_hold_no_secret_after_real_sdk_calls(toke
     from test_secret_canaries import ACCESS_PARTS, ONEAPI, SECRETS, _leaks
     srv_, http = token_echo
     monkeypatch.setattr(srv_, "_TENANT_HEALTH", type(srv_._TENANT_HEALTH)())
+    # The SDK keeps one OAuth object (and its token) per identical config
+    # (zscaler.oneapi_oauth_client.OAuth._instance): put it back afterwards,
+    # so a later test's failed sign-in with the same made-up config still fails.
+    from zscaler.oneapi_oauth_client import OAuth
+    monkeypatch.setattr(OAuth, "_instance", None)
+    monkeypatch.setattr(OAuth, "_last_config", None)
     api_calls.clear()
     body = dict(ONEAPI, scopes=["dlp", "zia_extras", "zpa"])
     for route in ("/api/readiness/start", "/api/tenant-health/start"):
@@ -640,3 +646,19 @@ def test_two_ssl_order_problems_give_each_reason_once_and_all_the_steps():
     assert chk["why"].startswith("'Bypass all'") and len(chk["notes"]) == 1 and chk["notes"][0] not in chk["why"]
     steps = " ".join(chk["steps"])
     assert "Bypass all" in steps and "Inspect everything else" in steps and steps.count("SSL/TLS Inspection") == 1
+
+
+def test_the_ssl_rules_are_not_read_when_the_channel_declaration_leaves_ssl_inspection_off_zscaler():
+    """ASVS V4.1.3 · CWE-272 · WSTG-ATHZ-02: with SSL/TLS Inspection declared as another vendor's (or a gap) on the Scope page, neither readiness nor tenant health reads the SSL rules or the SSL inspection certificates; with it on Zscaler, or nothing declared, they do."""
+    off = {"web_dlp": "zscaler", "ssl_inspection": "alternative"}
+    c = Client()
+    readiness.run(c, ["dlp"], now=NOW, channels=off)
+    assert "zia.status" in c.calls and "zia.ssl" not in c.calls
+    c = _zpa_client()
+    out = th.run(c, ["dlp"], channels=off, now=NOW)
+    assert "zia.ssl" not in c.calls and "zia.certs" not in c.calls
+    assert {i["key"]: i["status"] for i in out["items"]}["ssl_rule_order"] == "not_in_scope"
+    for chans in ({"web_dlp": "zscaler", "ssl_inspection": "zscaler"}, {}):
+        c = _zpa_client()
+        th.run(c, ["dlp"], channels=chans, now=NOW)
+        assert "zia.ssl" in c.calls and "zia.certs" in c.calls

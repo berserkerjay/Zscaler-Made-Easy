@@ -22,7 +22,8 @@ Where the facts come from
   changes saved but not activated (`zia.activate.status()`, GET
   /zia/api/v1/status, for any ZIA scope) and the SSL inspection rule
   order (`zia.ssl_inspection_rules.list_rules()`, only when DLP or ZIA
-  platform is ticked): a broad Do Not Inspect rule above Inspect rules, a
+  platform is ticked and the channel declaration does not leave SSL/TLS
+  Inspection off Zscaler): a broad Do Not Inspect rule above Inspect rules, a
   broad Inspect rule above the exemptions, and nothing inspecting what
   reaches the Default rule. Only the verdict is returned.
 * The permission catalogue of scope_permissions.py (labels, minimum read
@@ -557,7 +558,7 @@ def in_scope_products(scopes: Iterable[str]) -> List[str]:
 
 
 def read(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", customer_id: str = "",
-         log: Optional[Callable[[str], None]] = None, cancel: Any = None, now: Optional[float] = None) -> Dict[str, Any]:
+         log: Optional[Callable[[str], None]] = None, cancel: Any = None, now: Optional[float] = None, channels: Any = None) -> Dict[str, Any]:
     """Every readiness read for the products in scope, one at a time.
     Returns {claims, probes: {product: {...}}, in_scope: [...]} with no
     token and no error text from the tenant. Stop raises Stopped."""
@@ -612,7 +613,8 @@ def read(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", cus
         say("ZIA: reading the activation status (changes saved but not activated)…")
         zia["activation"] = _ask(lambda: client.zia.activate.status())
         say(f"ZIA activation status: {'read' if zia['activation']['state'] == 'ok' else _state_words(zia['activation'])}.")
-        if sc & {"dlp", "zia_extras"}:
+        import tenant_health
+        if sc & {"dlp", "zia_extras"} and tenant_health.ssl_channel_ok(channels):
             _stop(cancel)
             say("ZIA: reading the SSL inspection rules (their order only)…")
             zia["ssl_rules"] = _ask(lambda: client.zia.ssl_inspection_rules.list_rules())
@@ -1016,12 +1018,13 @@ def summary_line(products: List[Dict[str, Any]], blocked: List[Dict[str, Any]]) 
 
 
 def run(client: Any, scopes: Iterable[str], *, auth_method: str = "oneapi", customer_id: str = "",
-        log: Optional[Callable[[str], None]] = None, cancel: Any = None, label: str = "", now: Optional[float] = None) -> Dict[str, Any]:
+        log: Optional[Callable[[str], None]] = None, cancel: Any = None, label: str = "", now: Optional[float] = None,
+        channels: Any = None) -> Dict[str, Any]:
     """The readiness job: the reads, then the verdict. Stop ends it as
     stopped with no partial result."""
     say = log or (lambda m: None)
     try:
-        facts = read(client, scopes, auth_method=auth_method, customer_id=customer_id, log=say, cancel=cancel, now=now)
+        facts = read(client, scopes, auth_method=auth_method, customer_id=customer_id, log=say, cancel=cancel, now=now, channels=channels)
         _stop(cancel)
     except Stopped:
         say("STOPPED — you clicked Stop; nothing more is read and no partial result is kept.")

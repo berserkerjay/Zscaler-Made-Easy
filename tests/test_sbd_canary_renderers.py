@@ -284,6 +284,8 @@ URL_SINK_REVIEWED = {
     ("static/simple.js", "a.href"): "fixAction()'s app path for a finding's fix",
     ("static/ui_auth.js", "ssoStatus.sso_login_url || '/api/auth/sso/login'"): "the server's fixed SSO path (/api/auth/sso/login)",
     ("static/zcc_fleet.js", "url"): "URL.createObjectURL of the downloaded export",
+    ("static/api_calls.js", "exportHref('csv'"): "the fixed /api/api-calls/export path, the run and product filters through URLSearchParams",
+    ("static/api_calls.js", "exportHref('json'"): "the fixed /api/api-calls/export path, the run and product filters through URLSearchParams",
 }
 
 

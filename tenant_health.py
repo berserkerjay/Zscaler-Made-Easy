@@ -17,7 +17,8 @@
 Every read is only for what the Scope page ticks (user rule 1): ZIA
 activation for any ZIA scope (DLP, ZIA platform, Gen AI, Automation,
 RBAC), the SSL rules and ZIA certificates for DLP or ZIA platform (both
-read SSL inspection), the ZPA reads for ZPA with a customer ID. Nothing is
+read SSL inspection) unless the channel declaration leaves SSL/TLS
+Inspection off Zscaler, the ZPA reads for ZPA with a customer ID. Nothing is
 written. Only names, dates, counts and states are kept: never a
 certificate, key, CSR or any other field of the objects read.
 
@@ -418,17 +419,29 @@ def _stop(cancel: Any) -> None:
     readiness._stop(cancel)
 
 
-def in_scope(scopes: Iterable[str]) -> Dict[str, bool]:
+def ssl_channel_ok(channels: Any = None) -> bool:
+    """Whether the Scope page's channel declaration lets the SSL inspection
+    configuration be read: no declaration (nothing narrowed), or SSL/TLS
+    Inspection on Zscaler (channel_scope, as every SSL rule read honours)."""
+    import channel_scope
+    ch = channel_scope.effective(channels or {})
+    return not ch or channel_scope.group_in_scope(channel_scope.endpoint_channels("/zia/sslInspectionRules"), ch)
+
+
+def in_scope(scopes: Iterable[str], channels: Any = None) -> Dict[str, bool]:
+    """What may be read: ZIA activation for any ZIA scope; the SSL rules
+    and the SSL inspection certificates with DLP or ZIA platform ticked and
+    SSL/TLS Inspection not declared elsewhere; ZPA with ZPA ticked."""
     sc = {str(s) for s in scopes or []}
-    return {"zia": bool(sc & set(ZIA_SCOPES)), "ssl": bool(sc & set(SSL_SCOPES)), "zpa": "zpa" in sc}
+    return {"zia": bool(sc & set(ZIA_SCOPES)), "ssl": bool(sc & set(SSL_SCOPES)) and ssl_channel_ok(channels), "zpa": "zpa" in sc}
 
 
-def read(client: Any, scopes: Iterable[str], *, customer_id: str = "", auth_method: str = "oneapi",
+def read(client: Any, scopes: Iterable[str], *, customer_id: str = "", auth_method: str = "oneapi", channels: Any = None,
          log: Optional[Callable[[str], None]] = None, cancel: Any = None) -> Dict[str, Any]:
     """Every tenant-health read for what is in scope, one at a time. The
     bodies are reduced by evaluate(); nothing else is kept."""
     say = log or (lambda m: None)
-    want = in_scope(scopes)
+    want = in_scope(scopes, channels)
     legacy = str(auth_method or "").lower() == "legacy"
     facts: Dict[str, Any] = {"in_scope": want, "auth_method": "legacy" if legacy else "oneapi",
                              "customer_id_given": bool(str(customer_id or "").strip())}
@@ -557,8 +570,9 @@ def evaluate(facts: Dict[str, Any], *, now: Optional[float] = None, warn: int = 
     # SSL inspection rule order and certificates
     label = "SSL inspection rule order"
     if not want.get("ssl"):
-        items.append(out_of_scope("ssl_rule_order", "ZIA", label, "Neither DLP nor ZIA platform is ticked on the Scope page."))
-        items.append(out_of_scope("zia_certificates", "ZIA", "SSL inspection certificates", "Neither DLP nor ZIA platform is ticked on the Scope page."))
+        why = "Neither DLP nor ZIA platform is ticked on the Scope page, or SSL/TLS Inspection is not marked Zscaler there."
+        items.append(out_of_scope("ssl_rule_order", "ZIA", label, why))
+        items.append(out_of_scope("zia_certificates", "ZIA", "SSL inspection certificates", why))
     else:
         if not _ok(facts.get("ssl_rules")):
             items.append(unread("ssl_rule_order", "ZIA", label, facts.get("ssl_rules")))
@@ -659,7 +673,7 @@ def readiness_checks(activation_read: Optional[Dict[str, Any]], ssl_read: Option
     return out
 
 
-def run(client: Any, scopes: Iterable[str], *, customer_id: str = "", auth_method: str = "oneapi", warn: int = WARN_DAYS,
+def run(client: Any, scopes: Iterable[str], *, customer_id: str = "", auth_method: str = "oneapi", channels: Any = None, warn: int = WARN_DAYS,
         crit: int = CRIT_DAYS, log: Optional[Callable[[str], None]] = None, cancel: Any = None, label: str = "",
         now: Optional[float] = None) -> Dict[str, Any]:
     """The tenant-health job: the reads, then the verdict. Stop ends it
@@ -667,7 +681,7 @@ def run(client: Any, scopes: Iterable[str], *, customer_id: str = "", auth_metho
     import readiness
     say = log or (lambda m: None)
     try:
-        facts = read(client, scopes, customer_id=customer_id, auth_method=auth_method, log=say, cancel=cancel)
+        facts = read(client, scopes, customer_id=customer_id, auth_method=auth_method, channels=channels, log=say, cancel=cancel)
     except readiness.Stopped:
         say("STOPPED — you clicked Stop; nothing more is read and no partial result is kept.")
         return {"status": "stopped", "tenant_label": label}

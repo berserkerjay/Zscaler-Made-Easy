@@ -6787,7 +6787,7 @@ async def readiness_start(req: ReadinessRequest, request: Request):
     scope. Poll GET /api/dlp-packs/jobs/{job_id}."""
     import pack_jobs
     import readiness
-    sc, _ch, _src = _scope_selection(req)   # user rule 1: nothing read out of scope
+    sc, ch, _src = _scope_selection(req)   # user rule 1: nothing read out of scope
     if not readiness.in_scope_products(sc):
         raise HTTPException(status_code=400, detail=f"{READINESS_WHAT} is not in scope: on the Scope page tick at least one of DLP, ZIA platform, "
                                                     "ZPA, ZCC, ZDX or ZIA Insights, then run it again. Nothing was read.")
@@ -6799,7 +6799,8 @@ async def readiness_start(req: ReadinessRequest, request: Request):
 
     def fn(log, cancel):
         try:
-            out = readiness.run(client, sc, auth_method=method, customer_id=creds.get("customer_id", ""), log=log, cancel=cancel, label=label)
+            out = readiness.run(client, sc, auth_method=method, customer_id=creds.get("customer_id", ""), log=log, cancel=cancel, label=label,
+                                channels=ch)
         finally:
             _close_quietly(client)
         if out.get("status") == "done":
@@ -6848,8 +6849,8 @@ async def tenant_health_start(req: TenantHealthRequest, request: Request):
         warn, crit = tenant_health.thresholds(req.warn_days, req.crit_days)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    sc, _ch, _src = _scope_selection(req)   # user rule 1: nothing read out of scope
-    want = tenant_health.in_scope(sc)
+    sc, ch, _src = _scope_selection(req)   # user rule 1: nothing read out of scope
+    want = tenant_health.in_scope(sc, ch)
     if not any(want.values()):
         raise HTTPException(status_code=400, detail=f"{TENANT_HEALTH_WHAT} is not in scope: on the Scope page tick DLP, ZIA platform "
                                                     "(or another ZIA scope) or ZPA, then run it again. Nothing was read.")
@@ -6861,7 +6862,7 @@ async def tenant_health_start(req: TenantHealthRequest, request: Request):
 
     def fn(log, cancel):
         try:
-            out = tenant_health.run(client, sc, customer_id=creds.get("customer_id", ""), auth_method=method, warn=warn, crit=crit,
+            out = tenant_health.run(client, sc, customer_id=creds.get("customer_id", ""), auth_method=method, channels=ch, warn=warn, crit=crit,
                                     log=log, cancel=cancel, label=label)
         finally:
             _close_quietly(client)

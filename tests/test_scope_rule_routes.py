@@ -376,6 +376,8 @@ ROUTES: List[Route] = [
     Route("/api/zcc/fleet/start", partial=ZCC, out=ZCC_OUT),
     Route("/api/readiness/start", partial=ZCC, out=ZCC_OUT),
     Route("/api/readiness/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/tenant-health/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/tenant-health/start", partial=ZIA, out=ZIA_OUT),
     Route("/api/operations/objects/start", {"family": "rules"}),
     Route("/api/operations/objects", {"family": "rules"}),
     Route("/api/operations/preview/start", RULE_STATE_WEB),
