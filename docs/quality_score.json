@@ -466,12 +466,12 @@
       }
     },
     "checks": {
-      "pass": 316,
+      "pass": 317,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8650
+    "tests_added": 8656
   },
   "findings": [
     {
@@ -10689,6 +10689,9 @@
       "area": "Wave 8 work package zdx-zid-zcc: ZDX, ZIdentity and Client Connector completion",
       "title": "ZDX alert history, scores, metrics, cloud path and score analysis; ZIdentity admin entitlements and group members; Client Connector bypass breadth, device details, disable-reason counts and live app profile changes",
       "standards": [
+        "WCAG 2.2 SC 1.4.3",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.1.1",
         "ASVS V4.1.3",
         "ASVS V5.1.3",
         "ASVS V5.1.4",
@@ -10721,9 +10724,9 @@
         "WCAG 2.2 SC 1.3.1",
         "WCAG 2.2 SC 3.3.2"
       ],
-      "checks": 13,
+      "checks": 14,
       "findings": 3,
-      "tests_added": 48
+      "tests_added": 54
     }
   ],
   "standards": {

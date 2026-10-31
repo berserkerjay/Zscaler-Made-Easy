@@ -2,6 +2,9 @@
   "area": "Wave 8 work package zdx-zid-zcc: ZDX, ZIdentity and Client Connector completion",
   "title": "ZDX alert history, scores, metrics, cloud path and score analysis; ZIdentity admin entitlements and group members; Client Connector bypass breadth, device details, disable-reason counts and live app profile changes",
   "standards": [
+    "WCAG 2.2 SC 1.4.3",
+    "WCAG 2.2 SC 1.4.10",
+    "WCAG 2.2 SC 2.1.1",
     "ASVS V4.1.3",
     "ASVS V5.1.3",
     "ASVS V5.1.4",
@@ -47,7 +50,8 @@
     {"id": "W8-ZCC-03", "what": "The disable-reason report becomes counts with no person listed; the CSV is spreadsheet-safe; an oversized or unreadable report is refused", "standard": "ASVS V8.3.4 · ASVS V5.3.10 · CWE-1236 · CWE-400", "result": "pass"},
     {"id": "W8-ZCC-04", "what": "App profiles on or off and allowlisted DNS and tunnel settings are live changes: the profile's name is always typed, no password field is accepted, every value is re-read and read back, Undo restores it", "standard": "ASVS V11.1.1 · ASVS V8.1.1 · CWE-841 · CWE-915", "result": "pass"},
     {"id": "W8-SNAP-01", "what": "Snapshots capture the new reads only for ticked products, keeping affected devices and group members as ids only", "standard": "ASVS V4.1.3 · ASVS V8.3.4 · CWE-359", "result": "pass"},
-    {"id": "W8-UI-01", "what": "Every new control has a help entry (extension copy identical) and the 2026-10-31 features are marked in whats_new.js", "standard": "WCAG 2.2 SC 3.3.2 · SC 1.3.1", "result": "pass"}
+    {"id": "W8-UI-01", "what": "Every new control has a help entry (extension copy identical) and the 2026-10-31 features are marked in whats_new.js", "standard": "WCAG 2.2 SC 3.3.2 · SC 1.3.1", "result": "pass"},
+    {"id": "W8-UI-02", "what": "In a real browser on the sample tenant: the ZDX panel draws the cloud path, the fleet page shows device details and counts, every new control takes focus, nothing scrolls sideways at 320px, the panel keeps 4.5:1 contrast, no script error", "standard": "WCAG 2.2 SC 2.1.1 · SC 1.4.10 · SC 1.4.3", "result": "pass"}
   ],
   "findings": [
     {"id": "W8-ZDX-ZID-ZCC-01", "title": "The ZDX score analysis response shape is not declared by the SDK (DeviceApplicationAnalysis has device_id, app_id, t0, t1); the analysis id is assumed to be `id` and the status answer is shown scrubbed", "severity": "info", "cwe": "CWE-1059", "asvs": "V1.14.1", "status": "accepted",
@@ -57,5 +61,5 @@
     {"id": "W8-ZDX-ZID-ZCC-03", "title": "The ZIdentity user record has no last sign-in time in the SDK; idle admins are counted only when the directory sends one of the assumed time fields, otherwise only disabled accounts are counted and the finding says so", "severity": "info", "cwe": "CWE-1059", "asvs": "V1.14.1", "status": "accepted",
      "fix": "The finding text says when sign-in times are missing", "test": "tests/test_w8_zdx_zid_zcc.py::test_zid_stale_admin_is_counted_and_not_named", "commit": ""}
   ],
-  "tests_added": 48
+  "tests_added": 54
 }
