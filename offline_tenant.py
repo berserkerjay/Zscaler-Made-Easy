@@ -316,6 +316,11 @@ class OfflineStore:
                 self.writes += 1
                 return 200, copy.deepcopy(obj)
             item, coll, idx = self._item(path)
+            if method == "POST" and item is None and coll is not None and path.startswith("/ziam/") and "/groups/" in path:
+                # ZIdentity adds a member by POST /groups/{id}/users/{userId} (zscaler/zid/groups.py add_user_to_group).
+                coll.append({"id": path.rsplit("/", 1)[1]})
+                self.writes += 1
+                return 200, {"id": path.split("/groups/", 1)[1].split("/", 1)[0]}
             if method in ("PUT", "PATCH") and item is not None:
                 new = dict(item)
                 new.update(copy.deepcopy(body) if isinstance(body, dict) else {})
