@@ -732,7 +732,7 @@ window.HELP_CATALOG = {
     "effect": "nav"
    },
    ".tool-group button[onclick=\"openCloudConnectorTab()\"]": {
-    "what": "Reads the Cloud & Branch Connector configuration (connector groups and versions, forwarding rules, gateways, locations, activation, admins, roles and API keys) when Cloud & Branch Connector is ticked on the Scope page, and names each gap with a fix. Never reads an API key value or a provisioning URL. Read-only. Opens in a new tab.",
+    "what": "Reads the Cloud & Branch Connector set-up: connector groups, forwarding rules, gateways, locations and admins. Names each gap with a fix. Needs Cloud & Branch Connector ticked on the Scope page. Never reads a key value or a provisioning URL. Read-only. Opens in a new tab.",
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
     "effect": "nav"
    },
