@@ -337,6 +337,10 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/path-analyzer/compare/{job_id}/export": READ,
     "POST /api/path-analyzer/test-from-here": READ,     # one destination, explicit click, rate-limited (path_probe)
     "POST /api/tenant-terraform/start": READ,           # reads the tenant into Terraform files; writes nothing
+    "POST /api/zcc/fleet/import": READ,                 # the Client Connector Portal's exports, uploaded; no sign-in
+    "POST /api/zcc/fleet/{job_id}/sites": READ,         # sites grouped from a finished read
+    "GET /api/zcc/fleet/history": READ,
+    "GET /api/zcc/fleet/history/compare": READ,
 
     # ── prepare a change, or edit the app's own notes about a tenant ──
     "POST /api/remediation/plan": PLAN,
@@ -373,6 +377,8 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/config-templates/import": PLAN,
     "POST /api/config-templates/{template_id}/delete": PLAN,
     "POST /api/compliance-profiles/choice": "plan:profile",
+    "POST /api/zcc/fleet/{job_id}/history": PLAN,       # keeps a counts-only snapshot of a read (the app's own record)
+    "POST /api/zcc/fleet/history/forget": PLAN,
 
     # ── change a tenant ──
     "POST /api/remediation/execute": APPLY,
