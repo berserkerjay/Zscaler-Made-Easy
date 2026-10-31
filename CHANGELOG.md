@@ -5,6 +5,14 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### Shadow IT sanction and Insights checks
+- **High-risk unsanctioned apps still carry traffic** (check INS.1), **High-risk apps with no sanction decision** (INS.2) and **Sanctioned SaaS apps with no SaaS Security API tenant** (INS.3): three assessment checks from ZIA Insights' Shadow IT applications of the last 30 days (aggregates per application: name, risk index, sanction state, bytes), with a plain finding, why it matters and the fix. They run only when ZIA Insights is ticked on the Scope page (never under the legacy full scope) and say N/A when there is no traffic, no CASB subscription (INS.3) or the SaaS channel is not on Zscaler. Each uses the SDK's own Z-Insights query, sent through the assessment client.
+- **Sanction or unsanction cloud apps** in Bulk changes: up to 100 cloud applications marked Sanctioned or Unsanctioned in one reviewed plan, through `shadow_it_report.bulk_update`. The change is tenant-wide, so the typed phrase is always asked; each app's state is read again right before the write and an app that moved is skipped. **Exact Undo**: every app goes back to the state the plan read (from ZIA Insights, matched to the app list from `list_apps`); an app whose state cannot be read is not changed. Needs ZIA platform and ZIA Insights ticked. The old "sanction is not offered" note now points to it.
+- Traffic insights gains **Web threats by class and super-category**, **Firewall traffic by location and network service**, **Security incidents by location** and **IoT and unmanaged devices** (device counts now; the IoT query takes no time window). Aggregates only, in the CSV and JSON exports too.
+- The sample tenant answers every Insights question, the cloud application list and the licences, with gaps the new checks find; a snapshot keeps the Insights answers per question (last 30 days, never the per-user one) and the cloud application list.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide
