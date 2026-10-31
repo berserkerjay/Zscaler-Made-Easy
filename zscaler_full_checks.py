@@ -446,8 +446,8 @@ def usr_6(cl):
 import re as _re   # noqa: E402
 import time as _time   # noqa: E402
 
-_gov_now = _time.time   # the clock, injectable in tests
-_GOV_CTRL = _re.compile(r"[\x00-\x1f\x7f-\x9f]+")
+# Control characters, and the zero-width and bidi overrides that make text read differently from what it is.
+_GOV_CTRL = _re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069]+")
 _LOG_SKUS = ("Z_LOGFEED", "Z_CLOUD_NSS_WEB")   # SKU ids as readiness.SKU_INFO (assumed there: the SDK lists no SKU names)
 
 

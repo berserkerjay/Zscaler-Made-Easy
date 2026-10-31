@@ -149,11 +149,11 @@ def test_a_refused_audit_read_is_not_permitted_not_judged():
 
 
 def test_the_audits_recommended_text_is_capped_and_made_inert():
-    """ASVS V5.1.4 · CWE-117 · CWE-400: tenant text in a finding loses control characters and is capped, so a long or odd value cannot swamp or forge a line."""
-    rec = "Fix\x1b[31m it\r\nFAKE LINE " + "x" * 5000
+    """ASVS V5.1.4 · CWE-117 · CWE-400 · CWE-451: tenant text in a finding loses control characters and bidi overrides and is capped, so a long or odd value cannot swamp, reorder or forge a line."""
+    rec = "Fix\x1b[31m it\r\nFAKE LINE \u202egnirts " + "x" * 5000
     r = GOV["GOV.4"](FakeCl({"/zia/configAudit": dict(AUDIT, pacFileGrade="F", pacFileRecommendedConfiguration=rec)}))
 
-    assert r.status == "REVIEW" and "\x1b" not in r.detail and "\n" not in r.detail and "\r" not in r.detail
+    assert r.status == "REVIEW" and "\x1b" not in r.detail and "\n" not in r.detail and "\r" not in r.detail and "\u202e" not in r.detail
     assert "x" * 200 not in r.detail and len(r.detail) < 1200
 
 

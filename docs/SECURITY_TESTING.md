@@ -196,7 +196,7 @@ secure defaults, deny by default, fail closed, least privilege.
 | CWE-436 | 2 | `test_extension_security.py`, `test_outbound_ssrf.py` |
 | CWE-440 | 43 | `test_c6_admin_ops.py`, `test_c6_assessment.py`, `test_c6_checks.py`, `test_c6_scope_offline.py`, `test_c6_zpa.py`, `test_qa6_builders_lifecycle.py`, `test_qa6_verdicts_reports.py`, `test_regression_flows.py`, `test_regression_migration.py` |
 | CWE-441 | 9 | `test_c6_scope_offline.py`, `test_offline_tenant.py`, `test_sbd_offline_least_privilege.py`, `test_write_safety_gates.py` |
-| CWE-451 | 12 | `test_c6_admin_ops.py`, `test_c6_misc.py`, `test_c6_open_low.py`, `test_c6_reports.py`, `test_c6_scope_offline.py`, `test_offline_tenant.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py` |
+| CWE-451 | 13 | `test_c6_admin_ops.py`, `test_c6_misc.py`, `test_c6_open_low.py`, `test_c6_reports.py`, `test_c6_scope_offline.py`, `test_offline_tenant.py`, `test_sbd_canary_renderers.py`, `test_sbd_untrusted_input.py`, `test_w8_zia_governance.py` |
 | CWE-454 | 2 | `test_suite_stability.py` |
 | CWE-457 | 1 | `test_c6_api_server.py` |
 | CWE-459 | 16 | `test_c6_auth.py`, `test_files_paths.py`, `test_offline_tenant.py`, `test_pov.py`, `test_secret_canaries.py`, `test_suite_stability.py`, `test_zcc_fleet.py` |
