@@ -33,14 +33,20 @@ window.WHATS_NEW = {
     {
       "id": "zpa-segment-fields", "release": "2026-10-31", "label": "ZPA segment settings in bulk",
       "what": "Set the same fields on many ZPA application segments at once, Browser Access, PRA and inspection segments included, with the preview, write gates, read-back and Undo.",
-      "changelog": ["ZPA segment settings in bulk"],
+      "changelog": ["ZPA segment settings in bulk", "Browser Access, PRA and inspection segments", "server groups and port ranges", "exact Undo"],
       "marks": [{ "page": "/report/operations", "at": "input[name=\"opKind\"][value=\"zpa_segment_fields\"]", "shown": "once the page has listed the operations" }]
     },
     {
       "id": "analyzer-continue", "release": "2026-10-31", "label": "Category analyzer: 20,000 URLs a run and Continue",
       "what": "The custom URL category analyzer looks up 20,000 URLs a run with progress, and Continue looks up the rest, up to 100,000.",
-      "changelog": ["Continue in the URL category analyzer"],
+      "changelog": ["Continue in the URL category analyzer", "20,000 URLs a run", "progress and a stop on rate limits"],
       "marks": [{ "page": "/report/exports", "at": "#exAnalyze" }]
+    },
+    {
+      "id": "retired-endpoint-pack", "release": "2026-10-31", "label": "Why the Endpoint DLP pack is gone",
+      "what": "The pack library says why the PCI-only Endpoint DLP pack was retired and which packs cover endpoints now.",
+      "changelog": ["Why the Endpoint DLP pack is gone"],
+      "marks": [{ "page": "/report/advanced", "at": "#advRetired > strong" }]
     },
     {
       "id": "live-motion", "release": "2026-10-29", "label": "Live motion",

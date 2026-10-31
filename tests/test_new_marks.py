@@ -350,6 +350,13 @@ out.quiet = await ev(`new Promise(r => { let n = 0; const mo = new MutationObser
   setTimeout(() => { mo.disconnect(); r(n); }, 1500); })`);
 // The * is its own trigger: pointing at it opens "New in the <date> update"; pointing at the item opens nothing.
 await open('/report/path');
+// The tab and the protocol field are marked by a feature of the newest release (a probe: the
+// release whose features sit on this page can change; the behaviour under test does not).
+await ev(`(() => { const W = window.WhatsNew, H = window.HoverHelp, newest = Object.keys(W.manifest.releases).sort().reverse()[0];
+  W.manifest.features.push({ id: 'tab-probe', release: newest, label: 'Test a list', what: 'Test a list (a probe).', changelog: [], marks: [{ page: '/report/path', at: '#tab-list' }] });
+  W.manifest.features.push({ id: 'both-probe', release: newest, label: 'Protocol', what: 'A control that is new and has help.', changelog: [], marks: [{ page: '/report/path', at: '#paProto' }] });
+  W.apply(); H.scan(); return true; })()`);
+await frame();
 const hoverAt = async js => {
   const r = await ev(`(() => { const e = ${js}; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 890, button: 'none' });
@@ -384,10 +391,10 @@ out.rotate = await ev(`(() => {
   W.manifest.features.push({ id: 'older-probe', release: '2026-10-26', label: 'Older', what: 'An older feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
   const before = { older: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH') };
-  W.manifest.releases['2026-10-30'] = 'next';
-  W.manifest.features.push({ id: 'next-probe', release: '2026-10-30', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
+  W.manifest.releases['2026-11-01'] = 'next';
+  W.manifest.features.push({ id: 'next-probe', release: '2026-11-01', label: 'Next', what: 'A newer feature.', changelog: [], marks: [{ page: '/report/path', at: '#paRun' }] });
   W.apply();
-  const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), proto: document.getElementById('paProto').getAttribute('aria-label') };
+  const after = { next: has('#paRun'), tab: has('#tab-list'), live: has('#paFlowRefH'), tabName: document.getElementById('tab-list').textContent.trim(), label: document.getElementById('tab-list').getAttribute('aria-label') };
   return { before, after };
 })()`);
 
@@ -471,7 +478,8 @@ def test_the_star_opens_what_is_new_and_the_item_opens_nothing(marks_browser):
     """WCAG 2.2 SC 1.4.13 · SC 3.3.2: pointing at the * of a tab or a heading opens "New in the <date> update: <what>"; pointing at the item itself opens nothing."""
     h = marks_browser["hover"]
     assert h["item"] is None, h["item"]
-    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith("New in the 2026-10-28 update: Test a list"), h["tab"]
+    newest = sorted(MAN["releases"])[-1]
+    assert h["tab"] and h["tab"]["first"] == "hh-new" and h["tab"]["text"].startswith(f"New in the {newest} update: Test a list"), h["tab"]
     assert h["heading"] and h["heading"]["text"].startswith("New in the 2026-10-29 update: The result shows as a live flow"), h["heading"]
 
 
@@ -493,11 +501,11 @@ def test_an_item_with_both_marks_has_the_star_then_the_help(marks_browser):
 
 
 def test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out(marks_browser):
-    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-10-30 release is listed, the 2026-10-28 marks go."""
+    """WCAG 2.2 SC 3.2.4 · CWE-1164: a 2026-10-26 feature gets no mark; once a 2026-11-01 release is listed, the oldest marked set (2026-10-29) goes and the newest stays."""
     before, after = marks_browser["rotate"]["before"], marks_browser["rotate"]["after"]
     assert before == {"older": False, "tab": True, "live": True}, before
-    assert after["next"] and after["live"] and not after["tab"], after
-    assert after["tabName"] == "Test a list" and not str(after["proto"]).endswith("(new)"), after
+    assert after["next"] and after["tab"] and not after["live"], after
+    assert after["tabName"] == "Test a list" and not str(after["label"]).endswith("(new)"), after
 
 
 @pytest.mark.parametrize("combo", ["dark on", "dark off", "light on", "light off"])
@@ -525,7 +533,8 @@ def test_no_sideways_scroll_at_320px(marks_browser, page):
     """WCAG 2.2 SC 1.4.10 (Reflow): at 320px the marks and the legend stay on screen and the page never scrolls sideways."""
     rec = marks_browser["narrow"][page]
     assert rec["overflow"] <= 0 and rec["off"] == [], rec
-    assert rec["marks"] >= 1
+    if page in _load_marks():   # a page with a mark of the two newest releases shows it at 320px too
+        assert rec["marks"] >= 1
 
 
 def test_placing_the_marks_settles(marks_browser):
