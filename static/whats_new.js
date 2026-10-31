@@ -677,6 +677,21 @@ window.WHATS_NEW = {
         { "page": "/report/zpa", "at": ".rp-hero h1" },
         { "page": "/report/zpa", "at": "#zpRun" }
       ]
+    },
+    {
+      "id": "zia-forwarding-checks", "release": "2026-10-31", "label": "Forwarding and traffic path checks",
+      "what": "Ten ZIA platform checks on how traffic leaves: forwarding rules that go around ZIA, proxy chaining without a fallback, ZPA and dedicated IP gateways, data centre exclusions, GRE tunnel data centre diversity, IPv6, NAT control, Virtual Service Edge redundancy and DNS gateway failover.",
+      "changelog": ["Forwarding and traffic path checks", "Forwarding around ZIA", "Proxy chaining fallback", "ZPA gateways", "Data centre exclusions", "GRE tunnel diversity", "IPv6 handling", "Dedicated IP gateway failover", "NAT control scope", "Virtual Service Edge redundancy", "DNS gateway failover"],
+      "marks": [{ "page": "/", "at": "#scopeField input.scope-cb[value=\"zia_extras\"]", "shown": "on the Scope page" }]
+    },
+    {
+      "id": "path-forwarding-step", "release": "2026-10-31", "label": "Path analyzer: Forwarding control",
+      "what": "The Path analyzer's last ZIA step says how ZIA sends allowed traffic on (direct, proxy chaining, ZPA, a dedicated IP or dropped), with the gateway's fallback, any NAT control rewrite, IPv6 and data centre exclusions.",
+      "changelog": ["Forwarding control step"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openPathAnalyzerTab()\"]" },
+        { "page": "/report/path", "at": "#paFramework > summary" }
+      ]
     }
   ]
 };

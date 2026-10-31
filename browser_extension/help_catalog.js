@@ -992,7 +992,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"zia_extras\"]": {
-    "what": "Adds the ZIA platform checks (45), including governance: Zscaler's own configuration audit, alert subscriptions and NSS log streaming (N/A when NSS is not licensed). It also lets the Path analyzer read URL filtering, File Type Control, threat protection, Cloud Firewall, DNS Control and Sandbox rules.",
+    "what": "Adds the ZIA platform checks (57), including governance (Zscaler's own configuration audit, alert subscriptions and NSS log streaming, N/A when NSS is not licensed), forwarding and traffic path (proxy chaining, ZPA and dedicated IP gateways, GRE tunnels, IPv6, NAT control, Virtual Service Edges, DNS gateways) and tenant health. It also lets the Path analyzer read URL filtering, File Type Control, threat protection, Cloud Firewall, DNS Control, Sandbox and forwarding control rules.",
     "input": "Tick it to check the ZIA platform. Ticked at first.",
     "effect": "local"
    },

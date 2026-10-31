@@ -257,7 +257,13 @@ what you get, what to do next.
   Zscaler or another proxy. Then **every ZIA module**, one by one (the
   page does not claim the cloud's enforcement order: Advanced Threat Protection, Cloud Firewall, DNS
   Control, Cloud App Control and URL filtering, Sandbox, File Type Control
-  and DLP, with SSL inspection deciding what later modules see). Every
+  and DLP, with SSL inspection deciding what later modules see), and last
+  **Forwarding control**: the ZIA forwarding rule that sends allowed traffic
+  on (direct, proxy chaining, ZPA, a dedicated egress IP, or dropped), with
+  the gateway's fallback, any NAT control rewrite, IPv6 and data centre
+  exclusions (`zia_forwarding.py`; the FWD.* checks assess the same objects
+  tenant-wide: proxy chaining, ZPA and dedicated IP gateways, GRE VIP
+  diversity, IPv6, NAT control, Virtual Service Edges, DNS gateways). Every
   step has the same shape: its deciding rule and order, the other rules
   that also match, the earlier rules that could decide instead, and every
   criterion as match, no match or unknown (`zia_path_modules.py`,

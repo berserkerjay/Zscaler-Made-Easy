@@ -44,6 +44,7 @@ OUTCOMES: List[Tuple[Tuple[str, ...], str]] = [
     (("url filtering", "cloud apps"), "Risky destinations and applications are controlled before content inspection is even needed."),
     (("security",), "Threats are stopped at the cloud edge, before they reach a user or a device."),
     (("bandwidth",), "Business applications get the capacity they need and recreational traffic does not starve them."),
+    (("zia — forwarding", "fwd."), "Traffic always takes the path the policy expects, with a working fallback, so an outage or a forgotten exception never lets it out uninspected."),
     (("locations",), "Every office and every user is sent to the cloud the same way, with the same policy."),
     (("governance", "gov."), "Problems are reported to people who act on them, logs leave the console for the SIEM, and Zscaler's own audit of the tenant comes back clean."),
     (("users & admin", "rbac", "zidentity", "zid.", "rbac."), "Only the right people can change the security policy, and every change is traceable to a person."),

@@ -1518,6 +1518,262 @@ def zcc_20(cl):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# ZIA — FORWARDING AND TRAFFIC PATH
+# ═══════════════════════════════════════════════════════════════════════
+# The analysis is zia_forwarding's (shared with the Path analyzer's
+# Forwarding control step); every path below is in zscaler-sdk-python
+# 1.11.3 (see zia_forwarding). Not applicable (INFO, unscored) when the
+# feature is not licensed (HTTP 404) or not used (an empty list).
+
+import zia_forwarding as _zf  # noqa: E402
+
+_FWD_REF = " Ref: https://help.zscaler.com/zia/about-forwarding-control"
+_NA = "Not applicable: "
+
+
+def _fwd_rows(cl, path, label):
+    """(rows, None) or (None, R) when the list cannot be judged: not
+    licensed (404, N/A) or not readable."""
+    d, c = cl.get(path)
+    if c in (200, 204):
+        rows = _ls(d) if c == 200 else []
+        if not rows and isinstance(d, dict) and not d.get("error"):
+            rows = _ls(d.get("list", []))
+        return [x for x in rows if isinstance(x, dict)], None
+    if c == 404:
+        return None, R(R.INFO, f"{_NA}{label} is not licensed or not enabled on this tenant (the API answered 404).")
+    from dlp_assessment_full_auto import _explain
+    return None, _explain(label, c, path)
+
+
+def fwd_1(cl):
+    """Forwarding rules that send traffic around ZIA (DIRECT)"""
+    rules, bad = _fwd_rows(cl, "/zia/forwardingRules", "Forwarding control rules")
+    if bad:
+        return bad
+    if not rules:
+        return R(R.INFO, _NA + "no forwarding control rules were returned, so every location and connector uses ZIA's default forwarding.")
+    zia_rules = [r for r in rules if _zf.is_zia_rule(r)]
+    b = _zf.direct_bypasses(rules)
+    why = (" Why it matters: traffic a connector sends DIRECT never reaches ZIA, so no URL filtering, SSL inspection, threat protection "
+           "or DLP applies to it.")
+    if b["broad"]:
+        return R(R.FAIL, f"{len(b['broad'])} enabled Cloud or Branch Connector forwarding rule(s) send traffic DIRECT with no destination named: "
+                 f"{_zf.short(b['broad'])}." + why + " Best Practice: forward to ZIA by default and keep DIRECT for named destinations "
+                 "that cannot be proxied (for example update services), each with a documented reason." + _FWD_REF)
+    if b["narrow"]:
+        return R(R.WARN, f"{len(b['narrow'])} enabled connector forwarding rule(s) send named destinations DIRECT, around ZIA: {_zf.short(b['narrow'])}."
+                 + why + " Best Practice: review each DIRECT destination once a quarter and remove those that ZIA can inspect." + _FWD_REF)
+    return R(R.PASS, f"{len(rules)} forwarding rule(s) ({len(zia_rules)} ZIA); none sends connector traffic DIRECT around ZIA.")
+
+
+def fwd_2(cl):
+    """Proxy chaining has a gateway and a fallback proxy"""
+    rules, bad = _fwd_rows(cl, "/zia/forwardingRules", "Forwarding control rules")
+    if bad:
+        return bad
+    chain = [r for r in rules if _zf.enabled(r) and _zf.method(r) == _zf.PROXYCHAIN]
+    if not chain:
+        return R(R.INFO, _NA + "no enabled forwarding rule chains traffic to another proxy.")
+    gws, gbad = _fwd_rows(cl, "/zia/proxyGateways", "Proxy gateways")
+    p = _zf.proxy_chain_findings(chain, gws)
+    why = (" Why it matters: proxy chaining hands traffic to a third-party proxy; with one proxy and no fallback, an outage of that proxy "
+           "either stops the traffic or lets it out without the chained control.")
+    fix = " Best Practice: give every proxy gateway a secondary proxy, and decide on purpose whether it fails closed." + _FWD_REF
+    if p["no_gateway"]:
+        return R(R.FAIL, f"{len(p['no_gateway'])} proxy-chaining rule(s) name no proxy gateway, or one that does not exist: {_zf.short(p['no_gateway'])}."
+                 + why + fix)
+    if p["unknown"]:
+        return R(R.INFO, f"{len(chain)} proxy-chaining rule(s), but the proxy gateways could not be read, so their fallback is not known. "
+                 + (gbad.detail if gbad else ""))
+    if p["fail_open"]:
+        return R(R.FAIL, f"{len(p['fail_open'])} proxy-chaining rule(s) use a gateway with no secondary proxy that does not fail closed: "
+                 f"{_zf.short(p['fail_open'])}." + why + fix)
+    if p["no_fallback"]:
+        return R(R.WARN, f"{len(p['no_fallback'])} proxy-chaining rule(s) use a gateway with no secondary proxy (it fails closed, so users lose "
+                 f"access while the proxy is down): {_zf.short(p['no_fallback'])}." + why + fix)
+    return R(R.PASS, f"All {len(chain)} proxy-chaining rule(s) use a gateway with a secondary proxy.")
+
+
+def fwd_3(cl):
+    """ZPA gateways serve the forwarding rules that use them"""
+    gws, bad = _fwd_rows(cl, "/zia/zpaGateways", "ZPA gateways")
+    if bad:
+        return bad
+    rules, rbad = _fwd_rows(cl, "/zia/forwardingRules", "Forwarding control rules")
+    rules = rules or []
+    zrules = [r for r in rules if _zf.enabled(r) and _zf.method(r) == _zf.ZPA]
+    if not gws and not zrules:
+        return R(R.INFO, _NA + "no ZPA gateway is configured in ZIA and no forwarding rule sends traffic to ZPA (source IP anchoring is not used).")
+    z = _zf.zpa_gateway_findings(rules, gws)
+    why = (" Why it matters: a ZPA gateway sends ZIA traffic through ZPA (source IP anchoring) so a SaaS application sees the customer's own "
+           "egress address; a gateway with no server group or segment, or a rule with no gateway, breaks access to that application.")
+    fix = " Best Practice: give each ZPA gateway a server group and the application segments it anchors, and remove gateways no rule uses." + _FWD_REF
+    broken = z["no_server_group"] + z["no_segments"] + z["rule_no_gateway"]
+    if broken:
+        parts = ([f"no server group: {_zf.short(z['no_server_group'])}"] if z["no_server_group"] else []) + \
+                ([f"no application segment: {_zf.short(z['no_segments'])}"] if z["no_segments"] else []) + \
+                ([f"ZPA rule(s) with no gateway: {_zf.short(z['rule_no_gateway'])}"] if z["rule_no_gateway"] else [])
+        return R(R.FAIL, "ZPA forwarding is incomplete; " + "; ".join(parts) + "." + why + fix)
+    if z["unused"] and not rbad:
+        return R(R.WARN, f"{len(z['unused'])} ZPA gateway(s) are not used by any enabled forwarding rule: {_zf.short(z['unused'])}." + why + fix)
+    return R(R.PASS, f"{len(gws)} ZPA gateway(s), each with a server group and application segments, used by {len(zrules)} forwarding rule(s).")
+
+
+def fwd_4(cl):
+    """Data centre exclusions in force"""
+    rows, bad = _fwd_rows(cl, "/zia/dcExclusions", "Data centre exclusions")
+    if bad:
+        return bad
+    act = _zf.active_exclusions(rows)
+    if not act:
+        return R(R.PASS, f"No data centre exclusion is in force ({len(rows)} recorded, none active); tunnels may use every Zscaler data centre.")
+    long_ = [x["name"] + (" (no end date)" if x["days"] is None else f" ({x['days']} days)") for x in act if x["long"]]
+    why = (" Why it matters: an excluded data centre takes down the IPsec tunnels that end there and moves them to their secondary; left in "
+           "place, the sites lose their redundancy and may be sent to a farther data centre.")
+    fix = " Best Practice: exclude a data centre only for a planned event, with an end date, and remove it afterwards." + \
+          " Ref: https://help.zscaler.com/zia/about-data-center-exclusion"
+    if long_:
+        return R(R.WARN, f"{len(act)} data centre exclusion(s) in force; open-ended or longer than {_zf.LONG_EXCLUSION_DAYS} days: {_zf.short(long_)}." + why + fix)
+    return R(R.WARN, f"{len(act)} data centre exclusion(s) in force, each with an end date: {_zf.short([x['name'] for x in act])}." + why + fix)
+
+
+def fwd_5(cl):
+    """GRE tunnels use diverse data centres (primary and secondary VIP)"""
+    tunnels, bad = _fwd_rows(cl, "/zia/greTunnels", "GRE tunnels")
+    if bad:
+        return bad
+    if not tunnels:
+        return R(R.INFO, _NA + "no GRE tunnels are configured (sites use IPsec, a connector or Client Connector).")
+    vips, _vbad = _fwd_rows(cl, "/zia/vips", "Zscaler public VIPs")
+    g = _zf.gre_diversity(tunnels, vips)
+    why = (" Why it matters: a GRE tunnel's secondary VIP is its failover; in the same data centre as the primary (or missing), one data "
+           "centre outage takes the site off the internet or out of inspection.")
+    fix = (" Best Practice: give every GRE tunnel a primary and a secondary VIP in two different data centres (the recommended VIP list "
+           "for the tunnel's source IP offers them)." + " Ref: https://help.zscaler.com/zia/about-gre-tunnels")
+    bad_ = g["no_secondary"] + g["same_dc"]
+    if bad_:
+        parts = ([f"no secondary VIP: {_zf.short(g['no_secondary'])}"] if g["no_secondary"] else []) + \
+                ([f"both VIPs in one data centre: {_zf.short(g['same_dc'])}"] if g["same_dc"] else [])
+        return R(R.FAIL, f"{len(bad_)} of {len(tunnels)} GRE tunnel(s) have no data centre diversity; " + "; ".join(parts) + "." + why + fix)
+    if g["unknown_dc"]:
+        return R(R.WARN, f"{len(g['unknown_dc'])} GRE tunnel(s) have two VIPs whose data centres could not be placed: {_zf.short(g['unknown_dc'])}."
+                 + why + fix)
+    return R(R.PASS, f"All {len(tunnels)} GRE tunnel(s) have a secondary VIP in a different data centre.")
+
+
+def fwd_6(cl):
+    """IPv6 traffic is handled by ZIA"""
+    d, c = cl.get("/zia/ipv6config")
+    if c == 404:
+        return R(R.INFO, _NA + "IPv6 configuration is not available on this tenant (the API answered 404).")
+    if c not in (200, 204):
+        from dlp_assessment_full_auto import _explain
+        return _explain("IPv6 configuration", c, "/zia/ipv6config")
+    on = _zf.ipv6_state(d)
+    locs, _lb = _fwd_rows(cl, "/zia/locations", "Locations")
+    v6_locs = [_zf.name_of(x) for x in locs or [] if _fv(x, "ipv6Enabled")]
+    why = (" Why it matters: IPv6 traffic that ZIA does not process leaves the site uninspected when the network and the destination "
+           "both speak IPv6, which most large SaaS services do.")
+    fix = (" Best Practice: turn on IPv6 in ZIA and on the locations that carry it, with a NAT64 prefix for IPv6-only clients, or block "
+           "IPv6 at the site edge." + " Ref: https://help.zscaler.com/zia/about-ipv6-configuration")
+    if on is None:
+        return R(R.INFO, "The IPv6 configuration was read but says nothing about whether IPv6 is on.")
+    if not on:
+        if v6_locs:
+            return R(R.FAIL, f"IPv6 is off in ZIA, but {len(v6_locs)} location(s) are set to carry IPv6: {_zf.short(v6_locs)}." + why + fix)
+        if locs:
+            return R(R.WARN, f"IPv6 is off in ZIA and {len(locs)} location(s) forward traffic; their IPv6 traffic is not processed unless the site "
+                     "blocks IPv6 at its edge." + why + fix)
+        return R(R.INFO, _NA + "IPv6 is off in ZIA and no location forwards traffic (Client Connector only).")
+    nat, _nb = _fwd_rows(cl, "/zia/ipv6config/nat64prefix", "NAT64 prefixes")
+    if nat is not None and not nat:
+        return R(R.WARN, "IPv6 is on in ZIA, but no NAT64 prefix is configured, so IPv6-only clients cannot reach IPv4-only destinations." + fix)
+    return R(R.PASS, "IPv6 is on in ZIA" + (f", with {len(nat)} NAT64 prefix(es)" if nat else "") + (f"; {len(v6_locs)} location(s) carry IPv6." if v6_locs else "."))
+
+
+def fwd_7(cl):
+    """Dedicated IP gateways have a secondary data centre"""
+    gws, bad = _fwd_rows(cl, "/zia/dedicatedIPGateways/lite", "Dedicated IP gateways")
+    if bad:
+        return bad
+    if not gws:
+        return R(R.INFO, _NA + "no dedicated IP gateway is configured (the Dedicated IP subscription is not used).")
+    d = _zf.dedicated_ip_findings(gws)
+    why = (" Why it matters: a dedicated IP gateway gives traffic a fixed egress address that SaaS allow-lists trust; with one data centre, "
+           "an outage there leaves that traffic on a shared address the application refuses.")
+    fix = " Best Practice: give every dedicated IP gateway a secondary data centre different from the primary." + _FWD_REF
+    if d["no_secondary"] or d["same_dc"]:
+        parts = ([f"no secondary: {_zf.short(d['no_secondary'])}"] if d["no_secondary"] else []) + \
+                ([f"secondary in the same data centre: {_zf.short(d['same_dc'])}"] if d["same_dc"] else [])
+        return R(R.WARN, "Dedicated IP gateway(s) without data centre failover; " + "; ".join(parts) + "." + why + fix)
+    return R(R.PASS, f"All {len(gws)} dedicated IP gateway(s) have a secondary data centre.")
+
+
+def fwd_8(cl):
+    """NAT control (destination NAT) rules are scoped"""
+    rules, bad = _fwd_rows(cl, "/zia/dnatRules", "NAT control rules")
+    if bad:
+        return bad
+    if not [r for r in rules if not (_fv(r, "defaultRule") or _fv(r, "predefined"))]:
+        return R(R.INFO, _NA + "no NAT control (destination NAT) rule is configured.")
+    n = _zf.dnat_findings(rules)
+    why = (" Why it matters: a NAT control rule rewrites where traffic goes; with no destination named it redirects everything in its "
+           "scope, which silently breaks or reroutes traffic.")
+    fix = " Best Practice: name the destination addresses, groups or services each NAT control rule applies to, and its redirect target." + \
+          " Ref: https://help.zscaler.com/zia/about-nat-control"
+    if n["no_target"]:
+        return R(R.FAIL, f"{len(n['no_target'])} enabled NAT control rule(s) redirect to no address or name: {_zf.short(n['no_target'])}." + why + fix)
+    if n["broad"]:
+        return R(R.WARN, f"{len(n['broad'])} enabled NAT control rule(s) name no destination: {_zf.short(n['broad'])}." + why + fix)
+    return R(R.PASS, f"{len(n['ok'])} enabled NAT control rule(s), each scoped to named destinations with a redirect target.")
+
+
+def fwd_9(cl):
+    """Virtual Service Edge clusters have two working nodes"""
+    clusters, bad = _fwd_rows(cl, "/zia/virtualZenClusters", "Virtual Service Edge clusters")
+    if bad:
+        return bad
+    nodes, nbad = _fwd_rows(cl, "/zia/virtualZenNodes", "Virtual Service Edge nodes")
+    nodes = nodes or []
+    if not clusters and not nodes:
+        return R(R.INFO, _NA + "no Virtual Service Edge is deployed (the Virtual Service Edge subscription is not used).")
+    v = _zf.vzen_findings(clusters, nodes)
+    why = (" Why it matters: a Virtual Service Edge inspects a site's traffic on the customer's own hardware; a cluster with one working "
+           "node, or a node on its own, is a single point of failure for every user behind it.")
+    fix = " Best Practice: run each Virtual Service Edge cluster with at least two enabled, in-production nodes behind its load balancer." + \
+          " Ref: https://help.zscaler.com/zia/about-virtual-service-edges"
+    if v["thin"] or v["standalone"]:
+        parts = ([f"clusters with fewer than two working nodes: {_zf.short(v['thin'])}"] if v["thin"] else []) + \
+                ([f"nodes in no cluster: {_zf.short(v['standalone'])}"] if v["standalone"] else [])
+        return R(R.FAIL if v["thin"] else R.WARN, "Virtual Service Edge redundancy is missing; " + "; ".join(parts) + "." + why + fix)
+    if v["down"]:
+        return R(R.WARN, f"{len(v['down'])} Virtual Service Edge node(s) are disabled or not in production: {_zf.short(v['down'])}." + why + fix)
+    return R(R.PASS, f"{len(clusters)} Virtual Service Edge cluster(s), each with at least two working nodes.")
+
+
+def fwd_10(cl):
+    """DNS gateways fail over to a secondary resolver"""
+    gws, bad = _fwd_rows(cl, "/zia/dnsGateways", "DNS gateways")
+    if bad:
+        return bad
+    gws = [g for g in gws if not _fv(g, "autoCreated")] or gws
+    if not gws:
+        return R(R.INFO, _NA + "no DNS gateway is configured (DNS Control does not redirect to another resolver).")
+    g = _zf.dns_gateway_findings(gws)
+    why = (" Why it matters: a DNS Control rule that redirects lookups to a DNS gateway depends on that resolver; with no secondary, an "
+           "outage of one resolver stops name resolution for everyone the rule covers.")
+    fix = " Best Practice: give every DNS gateway a secondary resolver and choose its failure behaviour on purpose." + \
+          " Ref: https://help.zscaler.com/zia/about-dns-gateways"
+    if g["no_secondary_fail"]:
+        return R(R.FAIL, f"{len(g['no_secondary_fail'])} DNS gateway(s) have no secondary resolver and fail with an error: "
+                 f"{_zf.short(g['no_secondary_fail'])}." + why + fix)
+    if g["no_secondary"]:
+        return R(R.WARN, f"{len(g['no_secondary'])} DNS gateway(s) have no secondary resolver: {_zf.short(g['no_secondary'])}." + why + fix)
+    return R(R.PASS, f"All {len(gws)} DNS gateway(s) have a secondary resolver.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # FULL PLATFORM REGISTRY
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -1557,6 +1813,18 @@ PLATFORM_REG = [
     ("LOC.4", "ZIA — Locations", "Static IPs", loc_4),
     ("LOC.5", "ZIA — Locations", "VPN credentials", loc_5),
     ("LOC.6", "ZIA — Locations", "Firewall and IPS per location", loc_6),
+
+    # ZIA — Forwarding and traffic path (zia_forwarding)
+    ("FWD.1", "ZIA — Forwarding", "Forwarding rules that bypass ZIA (DIRECT)", fwd_1),
+    ("FWD.2", "ZIA — Forwarding", "Proxy chaining gateway and fallback", fwd_2),
+    ("FWD.3", "ZIA — Forwarding", "ZPA gateways (source IP anchoring)", fwd_3),
+    ("FWD.4", "ZIA — Forwarding", "Data centre exclusions in force", fwd_4),
+    ("FWD.5", "ZIA — Forwarding", "GRE tunnel data centre diversity", fwd_5),
+    ("FWD.6", "ZIA — Forwarding", "IPv6 handled by ZIA", fwd_6),
+    ("FWD.7", "ZIA — Forwarding", "Dedicated IP gateway failover", fwd_7),
+    ("FWD.8", "ZIA — Forwarding", "NAT control rules scoped", fwd_8),
+    ("FWD.9", "ZIA — Forwarding", "Virtual Service Edge redundancy", fwd_9),
+    ("FWD.10", "ZIA — Forwarding", "DNS gateway failover", fwd_10),
 
     # ZIA — User & Admin
     ("USR.1", "ZIA — Users & Admin", "Users provisioned", usr_1),

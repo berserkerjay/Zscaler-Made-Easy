@@ -1030,6 +1030,11 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                      "cyberThreatProtection/malwareSettings",
                                      # governance and audit (zscaler_full_checks GOV.*)
                                      "configAudit", "alertSubscriptions", "nssServers", "nssCollectors", "subscriptions")]
+    # Forwarding and traffic path (zia_forwarding; the FWD.* checks and the
+    # Path analyzer's Forwarding control step).
+    + [(_ZIA, f"/zia/{x}") for x in ("forwardingRules", "proxyGateways", "zpaGateways", "datacenters", "dcExclusions", "greTunnels", "vips",
+                                     "ipv6config", "ipv6config/nat64prefix", "dedicatedIPGateways/lite", "dnatRules", "virtualZenClusters",
+                                     "virtualZenNodes", "dnsGateways")]
     + [(("zia_extras", "rbac"), f"/zia/{x}") for x in ("adminRoles", "adminUsers")]
     + [(("rbac",), f"/zia/{x}") for x in ("passwordExpiry/settings", "remoteAssistance")]
     + [(("zcc",), f"/zcc/{x}") for x in ("forwardingProfiles", "trustedNetworks", "devices", "failOpenPolicy", "companyInfo", "pacFiles",

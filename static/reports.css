@@ -329,7 +329,7 @@ body.theme-light .df-chip.st-block { color: var(--accent); }
 .adv-page .dim { color: var(--dim); font-size: 0.78rem; }
 .adv-page .mono { font-family: var(--mono); }
 .adv-page .tw { overflow-x: auto; }
-@media (max-width: 760px) { .adv-grid { grid-template-columns: 1fr; } .adv-table .adv-k { width: auto; white-space: normal; } }
+@media (max-width: 760px) { .adv-grid, .adv-fields { grid-template-columns: minmax(0, 1fr); } .adv-table .adv-k { width: auto; white-space: normal; } }
 
 /* Advanced settings: app update */
 .adv-update { padding: 0.8rem 1rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--well); font-size: 0.88rem; line-height: 1.5; margin-bottom: 0.7rem; }
