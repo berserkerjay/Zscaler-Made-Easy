@@ -137,6 +137,14 @@
     get: 'Findings with what was found, why it matters and how to fix it; tables of groups, connectors, forwarding rules, gateways, locations, roles, API keys (values never read) and cloud accounts; admins as counts only; a link per group and per rule into the Path analyzer\'s workload trace that reuses the read; Excel and JSON exports.',
     next: 'Add a second connector to single-connector groups, narrow or remove DIRECT rules, turn on Fail Closed, activate pending changes, then read again.',
   };
+  X.otherproducts = {
+    group: 'Find the gaps', name: 'Other Zscaler products', href: '/report/other-products',
+    what: 'Reads, only for the products ticked on the Scope page, Zero Trust Branch (sites, templates, alarms, API key names and ages, hubs, the ransomware kill switch), External attack surface (organizations, findings, lookalike domains), Business Insights (custom applications, scheduled reports), Zero Trust Cellular (account, regions, anomaly policies, SIM counts) and Microsegmentation (agents, agent groups, provisioning key names, policy and default rules, resource protection).',
+    why: 'These products are bought to close a gap (branch offices, the internet-facing estate, SIM devices, east-west traffic in the data centre), and each has a few settings that undo it quietly: an offline site, an old exposed server, a SIM nobody watches, tamper protection off, a default rule that allows everything.',
+    when: 'When the customer owns any of these products, during a platform review, and before a renewal to show what the product is doing.',
+    get: 'For each product: what it is in plain words, what the tenant has in tables, best-practice checks with why each matters, what to do and its source (or "assumed"), "not licensed" when the tenant does not own it, and an Excel or JSON export. The same checks are scored in the assessment when the product is ticked.',
+    next: 'Fix the high findings first (an exploited internet-facing weakness, an alarm nobody handled, tamper protection off), then read again to confirm each finding is gone.',
+  };
   X.efficacy = {
     group: 'Find the gaps', name: 'DLP efficacy', href: '/report/view?tool=efficacy',
     what: 'Scores every custom dictionary and engine for false-positive risk and lets you paste sample text (or run the built-in corpus) to see which dictionaries, engines and predefined ones would fire.',
@@ -482,7 +490,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin', '/report/team': 'team',
-      '/report/logs': 'logs', '/report/ztw': 'ztw', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
+      '/report/logs': 'logs', '/report/ztw': 'ztw', '/report/other-products': 'otherproducts', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
 
@@ -531,7 +539,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'ztw', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'ztw', 'otherproducts', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'team', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
     'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'trafficlogs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];

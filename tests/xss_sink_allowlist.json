@@ -340,6 +340,9 @@
   "['st-fail', c.fail, 'Fix']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
   "['', 'All']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
  },
+ "static/report_other_products.html": {
+  "['total', 'Findings']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
+ },
  "static/report_compliance.html": {
   "s.alignment_pct": [2, "number the server computes (count, percentage, score, stage, position)"],
   "s.control_count": [1, "number the server computes (count, percentage, score, stage, position)"],

@@ -281,6 +281,12 @@ CHECK_DOMAIN_MAP = {
     # Admin roles, SSO and the identity directory
     "RBAC.": ["identity_admin"],
     "ZID.": ["identity_admin"],
+    # Other Zscaler products (zscaler_other_products_checks)
+    "ZTB.": ["firewall", "zpa_zero_trust"],
+    "EASM.": ["malware_threat"],
+    "ZBI.": ["logging_monitoring"],
+    "ZCELL.": ["device_compliance"],
+    "ZMS.": ["zpa_zero_trust", "firewall"],
 }
 
 

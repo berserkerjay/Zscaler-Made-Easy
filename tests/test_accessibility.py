@@ -304,7 +304,8 @@ Azure AWS Teams Zoom ChatGPT Copilot Firefox Safari Opera Internet Explorer Mobi
 Firewall Browser Isolation Private Access Remote Privileged Evaluate All Rules Made Easy Simple Find Review Scope
 Symantec Broadcom Forcepoint Netskope Skyhigh Purview Ansible SDK Ctrl Cmd Enter Esc Tab Shift Letter Git Jira
 Data Security Architect Portfolio Framework Inline Web Endpoint Email Advanced Settings Secure Design CISA I Shadow
-Heal Accept English Guard Branch Palo Alto Networks Bulk""".split())   # Guard: the product name AI Guard; Palo Alto Networks; Bulk: the Bulk changes page
+Heal Accept English Guard Branch Palo Alto Networks Bulk Zero Trust Business Cellular Microsegmentation""".split())   # Guard: the product name AI Guard; Palo Alto Networks; Bulk: the Bulk changes page
+# Zero Trust Branch, Business Insights, Zero Trust Cellular, Microsegmentation: product names.
 _LABEL_TAGS = "h1|h2|h3|h4|h5|h6|button|th|title|legend|summary"
 _START_TAG = r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*"
 
@@ -413,7 +414,7 @@ BROWSER_THEMES = ("dark", "light")
 JOB_PAGES = {"/report/audit", "/report/browser", "/report/ztw", "/report/device-posture", "/report/digest", "/report/fleet", "/report/insights",
              "/report/live", "/report/logs", "/report/operations", "/report/path", "/report/pov", "/report/shadow",
              "/report/sslcoverage", "/report/zpa", "/report/exports", "/report/self-heal", "/report/posture", "/simple",
-             "/report/traffic-logs"}
+             "/report/traffic-logs", "/report/other-products"}
 
 PAGE_AUDIT = r"""(() => {
   // Inside a closed <details> only the summary is shown (Chrome still gives the hidden content a box).

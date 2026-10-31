@@ -73,9 +73,19 @@ READ_ONLY = ("This is an offline snapshot: it is read-only, and nothing is sent 
 GONE = ("The offline tenant this page was using is no longer open (the server restarted or it was closed). "
         "Open the sample or the snapshot again, or choose Leave to use the live tenant.")
 
-KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard", "ztw")
-_PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw|aiguard)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
+KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard", "ztw",
+                "ztb", "easm", "zbi", "zcell", "zms")
+_PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw|aiguard|ztb|easm|bi|zcell|zms)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
 _CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/)[^/]+")
+# The ZCell customer id in a Zero Trust Cellular path (zscaler/zcell/*.py:
+# /zcell/config/api/v1/customers/{id}/...) is keyed as {zcellCustomerId},
+# as the ZPA customer id is, so a snapshot opens with any id.
+_ZCELL_SEG = re.compile(r"(/zcell/config/api/v1/customers/)[^/]+")
+ZCELL_CUSTOMER_ID = "zc-72000001"          # the ZCell customer id the offline reads use when none is given
+# A Microsegmentation read is a GraphQL query (POST /zms/graphql); offline it
+# is answered from /zms/graphql/<operationName> (other_products.ZMS_OPERATIONS).
+_ZMS_GRAPHQL = "/zms/graphql"
+_ZMS_OP = re.compile(r"\A[A-Za-z]{1,60}\Z")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 # Names of fields that hold a secret (a ZCC exit/uninstall password, a VPN
@@ -157,6 +167,7 @@ def normalize_path(url: str) -> str:
     u = re.sub(r"/{2,}", "/", u)
     if len(u) > 1:
         u = u.rstrip("/")
+    u = _ZCELL_SEG.sub(r"\1{zcellCustomerId}", u)
     return _CUSTOMER_SEG.sub(r"\1{customerId}", u)
 
 
@@ -306,11 +317,29 @@ class OfflineStore:
                 return 200, copy.deepcopy(item)
         return 404, {"code": "NOT_FOUND", "message": self._missing(path)}
 
+    def _answer_graphql(self, body: Any) -> Tuple[int, Any]:
+        """A Microsegmentation GraphQL read (a query, never a mutation),
+        answered from /zms/graphql/<operationName>; read-only on the sample
+        and on a snapshot alike."""
+        import other_products
+        op = body.get("operationName") if isinstance(body, dict) else None
+        query = str(body.get("query") or "") if isinstance(body, dict) else ""
+        if not isinstance(op, str) or not _ZMS_OP.match(op) or op not in other_products.ZMS_OPERATIONS \
+                or not query.lstrip().startswith("query "):
+            return 403, {"code": "READ_ONLY", "message": READ_ONLY}
+        with self._lock:
+            entry = self.responses.get(f"{_ZMS_GRAPHQL}/{op}")
+            if entry is not None:
+                return int(entry.get("status") or 200), copy.deepcopy(entry.get("body"))
+        return 404, {"code": "NOT_FOUND", "message": self._missing(f"{_ZMS_GRAPHQL}/{op}")}
+
     def answer_write(self, method: str, url: str, body: Any = None, params: Optional[Dict[str, Any]] = None) -> Tuple[int, Any]:
         """(status, body) of a POST / PUT / PATCH / DELETE: refused on a
         snapshot; on the sample, applied to its in-memory copy."""
         method = str(method or "").upper()
         path = normalize_path(url)
+        if method == "POST" and path == _ZMS_GRAPHQL:
+            return self._answer_graphql(body)
         if method == "POST" and path == "/zins/graphql":
             # Z-Insights asks every question with a POST: the sample and a snapshot
             # keep one answer per GraphQL operation (offline the window is not applied).
@@ -1184,6 +1213,10 @@ def capture_plan(scopes: Iterable[str]) -> List[str]:
     out = [ep for tags, ep in CAPTURE if sc & set(tags)]
     if "zcc" in sc:
         out.append("/zcc/webPolicies")
+    # The other products (other_products.py): one marker each, read by
+    # other_products.snapshot_answers with the SDK's own requests.
+    import other_products
+    out.extend(f"other:{k}" for k in other_products.SCOPE_KEYS if k in sc)
     # An endpoint two parts need (the ZPA builders' catalogue and the RBAC
     # checks, say) is read once.
     return list(dict.fromkeys(out))
@@ -1220,6 +1253,17 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
         if stopped():
             log("Stopped: nothing more is read, and no snapshot is saved.")
             return {"responses": responses, "counts": counts, "unread": unread, "stopped": True}
+        if ep.startswith("other:"):
+            import other_products
+            got, miss = other_products.snapshot_answers(guard, ep[6:], other_products.ids_for(client), cancel)
+            for path, body in got.items():
+                responses[normalize_path(path)] = {"status": 200, "body": scrub(body)}
+                items = _items(body)
+                counts["objects"] += len(items) if items is not None else 1
+            counts["answers"] += len(got)
+            counts["not_read"] += len(miss)
+            unread.extend(_text(m, 160) for m in miss[:8])
+            continue
         if ep == "/zcc/webPolicies":
             import zcc_profiles
             items, errors, _st = zcc_profiles.read_app_profiles(guard.get)

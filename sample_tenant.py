@@ -1083,9 +1083,137 @@ def responses() -> Dict[str, Any]:
         r[f"/zins/graphql/{op}"] = body
     for rule_type in CAC_RULE_TYPES:
         r[f"{ZIA}/webApplicationRules/{rule_type}"] = CAC_RULES.get(rule_type, [])
+    r.update(other_products())
     for path, body in builder_catalogues().items():
         r.setdefault(path, body)
     return copy.deepcopy(r)
+
+
+# ── Other Zscaler products (other_products.py): ZTB, EASM, ZBI, ZCell, ZMS.
+# Wire shapes as the SDK's response envelopes expect them (oneapi_response):
+# ZTB {"result": {...: [...]}} in snake_case, EASM {"results": [...]}, ZBI a
+# list, ZCell {"content": [...]} or one object, ZMS GraphQL {"data": {...}}
+# (offline, a query is answered from /zms/graphql/<operationName>). Made up,
+# with some things to fix so every check has something to show. No secret:
+# the provisioning keys and site secret are absent, as the app drops them.
+OP_ZTB2, OP_ZTB3 = "/ztb/api/v2", "/ztb/api/v3"
+OP_EASM = "/easm/easm-ui/v1"
+OP_ZBI = "/bi/api/v1"
+OP_ZCELL = "/zcell/config/api/v1/customers/{zcellCustomerId}"
+OP_ZMS = "/zms/graphql"
+EASM_ORG = "org-larkspur-0001"
+
+
+def _gql(field: str, nodes: Any, page: bool = True) -> Dict[str, Any]:
+    if not page:
+        return {"data": {field: nodes}}
+    return {"data": {field: {"nodes": nodes, "pageInfo": {"pageNumber": 1, "pageSize": 500, "totalCount": len(nodes), "totalPages": 1}}}}
+
+
+def other_products() -> Dict[str, Any]:
+    """The sample's answers for the five other products (other_products.py)."""
+    day = 86400
+    now = 1793404800   # 2026-10-31 00:00 UTC, fixed so the sample reads the same every day
+    return {
+        f"{OP_ZTB2}/Site": {"result": {"count": 3, "sites": [
+            {"id": "site-1", "name": "pdx-depot", "display_name": "Portland depot", "site_status": "online", "gateway_type": "hardware",
+             "template_id": "tpl-1", "clusters": [{"cluster_id": "c1"}, {"cluster_id": "c2"}]},
+            {"id": "site-2", "name": "sea-yard", "display_name": "Seattle yard", "site_status": "online", "gateway_type": "hardware",
+             "template_id": "tpl-1", "clusters": [{"cluster_id": "c3"}]},
+            {"id": "site-3", "name": "boi-dock", "display_name": "Boise dock", "site_status": "offline", "gateway_type": "virtual",
+             "template_id": "", "clusters": [{"cluster_id": "c4"}]}]}},
+        f"{OP_ZTB3}/templates": {"result": {"count": 1, "templates": [
+            {"id": "tpl-1", "name": "Depot standard", "deployment_type": "ha", "platform_type": "hardware", "is_default": True,
+             "sites_count": 2, "nat_enabled": True, "dhcp_service": "server"}]}},
+        f"{OP_ZTB2}/groups": {"result": {"count": 2, "groups": [
+            {"group_id": "g1", "name": "scanners", "display_name": "Handheld scanners", "type": "device", "members_count": 41, "policy_count": 2},
+            {"group_id": "g2", "name": "cameras", "display_name": "Yard cameras", "type": "device", "members_count": 12, "policy_count": 1}]}},
+        f"{OP_ZTB2}/alarm": {"result": {"totalAlarmsCount": 2, "alarms": [
+            {"alarm_id": "a1", "site_name": "Boise dock", "severity": "critical", "status": "open", "service": "gateway",
+             "description": "Gateway unreachable for more than 15 minutes", "recommended_action": "Check the uplink and power",
+             "created_at": now - 3 * day},
+            {"alarm_id": "a2", "site_name": "Portland depot", "severity": "low", "status": "acknowledged", "service": "dhcp",
+             "description": "DHCP pool 80% used", "recommended_action": "Widen the pool", "created_at": now - 9 * day}]}},
+        f"{OP_ZTB3}/api-key-auth/list": {"count": 2, "rows": [
+            {"id": "k1", "name": "terraform-ci", "created_at": now - 500 * day},
+            {"id": "k2", "name": "siem-export", "created_at": now - 40 * day}]},
+        f"{OP_ZTB3}/CloudGateway/hubs": {"result": [
+            {"location": "us-west", "location_display_name": "US West (Hillsboro)", "region": "us-west-2", "sites": ["site-1", "site-2"],
+             "cluster_info": {"cluster_name": "hub-west", "gateways": [{"gateway_name": "hub-west-a"}, {"gateway_name": "hub-west-b"}]}}]},
+        f"{OP_ZTB3}/device/operating-systems": {"result": [
+            {"os_name": "Android", "devices": 41, "versions": [{"version": "13", "devices": 30}, {"version": "12", "devices": 11}]},
+            {"os_name": "Embedded Linux", "devices": 12, "versions": [{"version": "4.19", "devices": 12}]}]},
+        f"{OP_ZTB3}/ransomware-kill/state": {"result": {"state": "green"}},
+        f"{OP_EASM}/organizations": {"results": [{"id": EASM_ORG, "name": COMPANY}], "total_results": 1},
+        f"{OP_EASM}/organizations/{EASM_ORG}/findings": {"results": [
+            {"id": "f1", "name": "Outdated web server with known vulnerabilities", "category": "Vulnerable software", "risk_level": "Critical",
+             "impacted_asset_name": f"tracking.{DOMAIN}", "status": "open", "first_seen": now - 40 * day, "cisa_likelihood": "high",
+             "epss_likelihood": 0.81},
+            {"id": "f2", "name": "TLS certificate expires within 30 days", "category": "Certificates", "risk_level": "Medium",
+             "impacted_asset_name": f"portal.{DOMAIN}", "status": "open", "first_seen": now - 5 * day},
+            {"id": "f3", "name": "Remote desktop exposed to the internet", "category": "Exposed services", "risk_level": "High",
+             "impacted_asset_name": f"rdp.{DOMAIN}", "status": "remediated", "first_seen": now - 90 * day}], "total_results": 3},
+        f"{OP_EASM}/organizations/{EASM_ORG}/lookalike-domains": {"results": [
+            {"lookalike_raw": "larksupr-freight.example", "original_domain": DOMAIN, "is_registered": True, "risk_category": "High",
+             "deception_method": "Transposition", "status": "open"},
+            {"lookalike_raw": "larkspur-freiqht.example", "original_domain": DOMAIN, "is_registered": False, "risk_category": "Low",
+             "deception_method": "Homoglyph", "status": "open"}], "total_results": 2},
+        f"{OP_ZBI}/customapps": [
+            {"id": 1, "name": "Larkspur dispatch", "associatedAppCategory": "Business", "signatures": [{"type": "DOMAIN", "matchLevel": "EXACT", "value": f"dispatch.{DOMAIN}"}]},
+            {"id": 2, "name": "Fleet telematics", "associatedAppCategory": "Business", "signatures": []}],
+        f"{OP_ZBI}/reports/customapps": [
+            {"id": 11, "name": "Monthly SaaS use", "sub_type": "OVERVIEW", "enabled": True, "status": "ACTIVE",
+             "schedule_params": {"frequency": "MONTHLY", "timezone": "America/Los_Angeles"},
+             "delivery_information": {"delivery_method": "EMAIL", "emails": ["it-leads@larkspur-freight.example"]}}],
+        f"{OP_ZBI}/report/all": {"reportType": "APPLICATION", "reports": [{"fileName": "saas-use-2026-09.csv", "reportType": "APPLICATION"}]},
+        OP_ZCELL: {"id": "zc-72000001", "name": COMPANY, "isActivated": True, "zia": {"orgId": 7200001, "cloudName": "zscalertwo"},
+                   "zpa": None, "totalSims": 60, "activeSims": 42, "inactiveSims": 18},
+        f"{OP_ZCELL}/regions": [{"region": "us-west", "configured": True}, {"region": "us-east", "configured": False}],
+        f"{OP_ZCELL}/sim-location-groups": {"content": [
+            {"id": "lg1", "name": "Portland depot geofence", "trackedDevices": ["sim-a", "sim-b", "sim-c"]},
+            {"id": "lg2", "name": "Seattle yard geofence", "trackedDevices": ["sim-d"]}], "totalElements": 2, "totalPages": 1},
+        f"{OP_ZCELL}/anomaly-policy": {"content": [
+            {"id": "ap1", "policyName": "Trailer left depot", "policyType": "GEOFENCE", "enabled": True, "runningStatus": "RUNNING",
+             "violations": 2, "jsonData": {"alerts": [{"alertType": "EMAIL", "recipients": ["fleet-ops@larkspur-freight.example"]}]}},
+            {"id": "ap2", "policyName": "Night-time movement", "policyType": "GEOFENCE", "enabled": True, "runningStatus": "RUNNING",
+             "violations": 0, "jsonData": {"alerts": []}}], "totalElements": 2, "totalPages": 1},
+        f"{OP_ZCELL}/sim/analytics/summary": {"total": 60, "used": 44, "active": 42, "inactive": 18},
+        f"{OP_ZMS}/ListAgents": _gql("agents", [
+            {"name": "db-pdx-01", "eyezId": "e1", "connectionStatus": "CONNECTED", "agentType": "SERVER", "hostOs": "Ubuntu 22.04",
+             "currentSoftwareVersion": "2.4.1", "upgradeStatus": "UP_TO_DATE", "agentGroupName": "Databases", "adminStatus": "ENABLED"},
+            {"name": "app-pdx-02", "eyezId": "e2", "connectionStatus": "CONNECTED", "agentType": "SERVER", "hostOs": "Windows Server 2022",
+             "currentSoftwareVersion": "2.4.1", "upgradeStatus": "UP_TO_DATE", "agentGroupName": "App servers", "adminStatus": "ENABLED"},
+            {"name": "legacy-ftp", "eyezId": "e3", "connectionStatus": "DISCONNECTED", "agentType": "SERVER", "hostOs": "CentOS 7",
+             "currentSoftwareVersion": "2.1.0", "upgradeStatus": "OUTDATED", "agentGroupName": "App servers", "adminStatus": "ENABLED"}]),
+        f"{OP_ZMS}/AgentConnectionStatusStats": _gql("agentConnectionStatusStatistics", {"totalCount": 3, "totalPercentage": 100, "agentStatuses": [
+            {"agentType": "SERVER", "connectionStatus": "CONNECTED", "count": 2, "percentage": 66.7},
+            {"agentType": "SERVER", "connectionStatus": "DISCONNECTED", "count": 1, "percentage": 33.3}]}, page=False),
+        f"{OP_ZMS}/AgentVersionStats": _gql("agentVersionStatistics", {"totalCount": 3, "totalPercentage": 100, "agentVersions": [
+            {"agentType": "SERVER", "version": "2.4.1", "count": 2, "percentage": 66.7},
+            {"agentType": "SERVER", "version": "2.1.0", "count": 1, "percentage": 33.3}]}, page=False),
+        f"{OP_ZMS}/ListAgentGroups": _gql("agentGroups", [
+            {"name": "Databases", "eyezId": "g1", "agentGroupType": "SERVER", "agentCount": 1, "tamperProtectionStatus": "ENABLED",
+             "agentAutoUpgrade": True, "policyStatus": "ENFORCED", "versionProfileName": "Stable"},
+            {"name": "App servers", "eyezId": "g2", "agentGroupType": "SERVER", "agentCount": 2, "tamperProtectionStatus": "DISABLED",
+             "agentAutoUpgrade": False, "policyStatus": "MONITOR", "versionProfileName": "Stable"}]),
+        f"{OP_ZMS}/ListNonces": _gql("nonces", [
+            {"eyezId": "n1", "name": "db-rollout", "maxUsage": 5, "usageCount": 1, "agentGroupName": "Databases", "product": "ZMS"},
+            {"eyezId": "n2", "name": "anything-goes", "maxUsage": 0, "usageCount": 2, "agentGroupName": "App servers", "product": "ZMS"}]),
+        f"{OP_ZMS}/ListPolicyRules": _gql("policyRules", [
+            {"id": "r1", "name": "App to database", "action": "ALLOW", "priority": 1, "sourceTargetType": "APP_ZONE",
+             "destinationTargetType": "APP_ZONE", "lastHit": "2026-10-30T22:10:00Z"},
+            {"id": "r2", "name": "Block FTP from anywhere", "action": "BLOCK", "priority": 2, "sourceTargetType": "ANY",
+             "destinationTargetType": "RESOURCE_GROUP", "lastHit": ""}]),
+        f"{OP_ZMS}/ListDefaultPolicyRules": _gql("defaultPolicyRules", [
+            {"id": "d1", "name": "Default inbound", "action": "ALLOW", "direction": "INBOUND", "scopeType": "GLOBAL"},
+            {"id": "d2", "name": "Default outbound", "action": "ALLOW", "direction": "OUTBOUND", "scopeType": "GLOBAL"}]),
+        f"{OP_ZMS}/ResourceProtectionStatus": _gql("resourceProtectionStatus", [
+            {"protectedPercentage": 66.7, "protectedResourcesCount": 2, "unprotectedResourcesCount": 1, "totalResources": 3}]),
+        f"{OP_ZMS}/ListAppZones": _gql("appZones", [{"id": "z1", "appZoneName": "Dispatch", "memberCount": 2}]),
+        f"{OP_ZMS}/ListResourceGroups": _gql("resourceGroups", [
+            {"id": "rg1", "name": "Databases", "type": "MANAGED", "resourceMemberCount": 1},
+            {"id": "rg2", "name": "Legacy file transfer", "type": "UNMANAGED", "resourceMemberCount": 1}]),
+    }
 
 
 def meta() -> Dict[str, Any]:

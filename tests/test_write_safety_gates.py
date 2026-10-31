@@ -439,6 +439,7 @@ READ_ONLY: Dict[Tuple[str, str], str] = {
     ("POST", "/api/zpa/diagnose"): "reads",
     ("POST", "/api/browser-security/start"): "reads",
     ("POST", "/api/ztw/start"): "reads the Cloud & Branch Connector configuration (list and get calls only); no write method is called",
+    ("POST", "/api/other-products/start"): "reads",
     ("POST", "/api/device-posture/start"): "reads",
     ("POST", "/api/rate-check"): "local forecast",
     ("POST", "/api/dlp-packs/removal/preflight"): "preview",

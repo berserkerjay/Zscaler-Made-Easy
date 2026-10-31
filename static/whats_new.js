@@ -735,6 +735,16 @@ window.WHATS_NEW = {
         { "page": "/report/ztw", "at": ".rp-hero h1" },
         { "page": "/report/path", "at": ".rp-hero h1" }
       ]
+    },
+    {
+      "id": "other-products", "release": "2026-10-31", "label": "Other Zscaler products",
+      "what": "Read-only coverage of Zero Trust Branch, External attack surface (EASM), Business Insights, Zero Trust Cellular and Microsegmentation: what the tenant has, in plain words, and best-practice checks, each behind its own Scope page box.",
+      "changelog": ["Other Zscaler products", "Zero Trust Branch", "External attack surface (EASM)", "Business Insights", "Zero Trust Cellular",
+                    "Microsegmentation", "Five new Scope page boxes", "20 new checks", "Sample tenant and snapshots"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openOtherProductsTab()\"]" },
+        { "page": "/report/other-products", "at": "#opRun" }
+      ]
     }
   ]
 };

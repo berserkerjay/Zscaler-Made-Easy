@@ -416,6 +416,26 @@ what you get, what to do next.
   rule, reusing the same read. Excel and JSON exports. Read-only; no
   provisioning URL is read and nothing is activated; Stop ends the read at
   once.
+- **Other Zscaler products** (`/report/other-products`, `other_products.py`)
+  — Zero Trust Branch, External attack surface (EASM), Business Insights,
+  Zero Trust Cellular and Microsegmentation, each read only when its own
+  Scope page box is ticked (all five are off by default; they need a OneAPI
+  API client). For each one: what the product is in plain words, what the
+  tenant has as tables (ZTB sites, templates, alarms, API key names and
+  ages, hubs, the ransomware kill switch; EASM findings and lookalike
+  domains; Business Insights custom applications and scheduled reports;
+  Zero Trust Cellular account, regions, anomaly policies and SIM counts;
+  Microsegmentation agents, agent groups, provisioning key names, policy
+  and default rules, resource protection), and best-practice findings with
+  why each matters, what to do and its source or "assumed". The same 20
+  checks are scored in the assessment (ZTB.1–5, EASM.1–4, ZBI.1–2,
+  ZCELL.1–3, ZMS.1–6). A product the tenant does not own is "not licensed"
+  and not judged. Every request is built by the installed SDK's own list
+  or get method; Zero Trust Cellular needs its customer ID (given on the
+  page), Microsegmentation uses the ZPA customer ID unless another is given.
+  Keys, secrets, tokens and provisioning keys are never shown; recipients,
+  devices and SIMs are counted. Excel and JSON exports. Read-only; Stop
+  ends the read at once.
 - **Live motion on the Path analyzer** — under the verdict, packets travel
   the analyzed path (device or workload, Client Connector or the
   connector, ZPA turning to the App Connectors and the app when it carries
@@ -1396,5 +1416,8 @@ Being honest about the edges:
   microtenants, provisioning keys, Privileged Remote Access credentials
   and approvals; read with RBAC and ZPA ticked, no key or password value
   ever read into a result); they are not a full audit of those products.
+  Zero Trust Branch, EASM, Business Insights, Zero Trust Cellular and
+  Microsegmentation are read and checked read-only, a handful of
+  best-practice checks each; nothing is built or changed in them.
 
 Everything the app has shipped, batch by batch, is in `CHANGELOG.md`.

@@ -30,6 +30,12 @@ OUTCOMES: List[Tuple[Tuple[str, ...], str]] = [
     (("ch.c", "c.", "saas security"), "Sensitive files stored and shared in SaaS applications are found, and exposure is removed before it becomes a breach."),
     (("ch.d", "d.", "email dlp"), "Sensitive data cannot leave by email without being seen, and the right mail is stopped before it reaches the wrong recipient."),
     (("incident mgmt", "12."), "Every incident reaches an analyst with the evidence, in time to act, and an auditor can see it was handled."),
+    # The other products first: their sections name no channel word, but keep them apart from the rest.
+    (("zero trust branch", "ztb."), "Branch offices reach the internet and each other only through Zscaler, and a compromised device cannot spread across the site."),
+    (("external attack surface", "easm."), "What the organization exposes on the internet is known and fixed before an attacker finds it."),
+    (("business insights", "zbi."), "The business sees which applications it pays for and uses, so licences and risk are decided on facts."),
+    (("zero trust cellular", "zcell."), "SIM-connected devices are inspected like any other device, and a SIM that wanders is noticed."),
+    (("microsegmentation", "zms."), "A compromised server cannot reach the rest of the data centre: only the connections a rule names are allowed."),
     (("pilot tests", "8."), "The controls are proven to work on real traffic before the customer relies on them."),
     (("troubleshooting", "9."), "Problems are found and fixed before users notice them."),
     (("rollback", "11."), "A change can be undone quickly, so the team can act without fear of breaking the business."),

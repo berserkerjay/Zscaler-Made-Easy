@@ -64,6 +64,7 @@ PAGES = {
     "/report/plugin": "report_plugin.html",
     "/report/team": "report_team.html", "/login": "login.html",
     "/report/traffic-logs": "report_traffic_logs.html",
+    "/report/other-products": "report_other_products.html",
 }
 
 
@@ -355,6 +356,7 @@ TOURS = {
     "/report/device-posture": [["click", "#dvRun"], ["wait", "#dvTabs:not([hidden])"]],
     "/report/browser": [["click", "#bwRun"], ["wait", "#expXlsx:not([hidden])"]],
     "/report/ztw": [["click", "#ztRun"], ["wait", "#expXlsx:not([hidden])"], ["click", "#ztBody .zt-filter button[data-st=\"REVIEW\"]"]],
+    "/report/other-products": [["click", "#opRun"], ["wait", "#expXlsx:not([hidden])"]],
     "/report/insights": [["click", "#tiRun"], ["wait", "#tiGrid"]],
     "/report/motion": [["goto", "/report/motion#path"], ["fill", "#scenarioDestination", "drive.google.com"],
                        ["fill", "#scenarioCorpus", "Test card 4111 1111 1111 1111"], ["click", "#scenarioRun"]],
