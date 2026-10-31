@@ -272,6 +272,7 @@ CHECK_DOMAIN_MAP = {
     "BW.": ["firewall"],
     "LOC.": ["firewall", "device_compliance"],
     "USR.": ["identity_admin", "logging_monitoring"],
+    "GOV.": ["logging_monitoring", "identity_admin"],   # config audit, alerts, NSS log streaming
     "CA.": ["url_filtering", "dlp"],
     "ZPA.": ["zpa_zero_trust"],
     "ZCC.": ["device_compliance", "endpoint_dlp"],

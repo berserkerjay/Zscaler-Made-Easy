@@ -431,6 +431,265 @@ def usr_6(cl):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# ZIA — GOVERNANCE AND AUDIT
+# ═══════════════════════════════════════════════════════════════════════
+# Zscaler's own configuration audit, alert subscriptions and the NSS VMs,
+# each read once (GET only) and checked against the organisation's
+# subscriptions so a feature the tenant does not own is N/A, not a gap.
+# Paths from zscaler-sdk-python 1.11.3: system_audit.get_config_audit
+# (/configAudit), alert_subscriptions.list_alert_subscriptions
+# (/alertSubscriptions), nss_servers.list_nss_servers (/nssServers),
+# nss_collectors.list_collectors (/nssCollectors), cloud_nss.list_nss_feed
+# (/nssFeeds) and organization_information.get_subscriptions (/subscriptions).
+# Recipients and admin names are counted, never listed.
+
+import re as _re   # noqa: E402
+import time as _time   # noqa: E402
+
+_gov_now = _time.time   # the clock, injectable in tests
+_GOV_CTRL = _re.compile(r"[\x00-\x1f\x7f-\x9f]+")
+_LOG_SKUS = ("Z_LOGFEED", "Z_CLOUD_NSS_WEB")   # SKU ids as readiness.SKU_INFO (assumed there: the SDK lists no SKU names)
+
+
+def _gov_text(v, limit=200):
+    """Tenant text made short and inert: control characters out, spaces
+    collapsed, capped. Escaping for HTML, Markdown, CSV and the rest is the
+    output's job; this keeps a long or odd value from swamping a finding."""
+    t = " ".join(_GOV_CTRL.sub(" ", str(v if v is not None else "")).split())
+    return t if len(t) <= limit else t[: limit - 1] + "…"
+
+
+def _subscriptions(cl):
+    """The organisation's active SKU ids, or None when the subscriptions
+    could not be read (then nothing is marked N/A on their account).
+    organization_information.get_subscriptions reads GET /subscriptions;
+    the body is a list of {id, status, subscribed, ...} (readiness.parse_subscriptions)."""
+    import readiness
+    d, c = cl.get("/zia/subscriptions")
+    if c != 200 or not isinstance(d, (list, dict)):
+        return None
+    rows = readiness.parse_subscriptions(d)
+    if not rows:   # nothing understood: no evidence a feature is missing
+        return None
+    return {r["id"] for r in rows if r.get("active")}
+
+
+def _not_licensed(feature):
+    return R(R.INFO, f"N/A: {feature} is not licensed on this tenant (no active subscription for it), so there is nothing to check.")
+
+
+# Zscaler's configuration audit: field → (plain name, recommended-config field).
+# Grades are assumed to be letters (A best … F worst) or words (GOOD, POOR):
+# the SDK model (zia/models/system_audit.py ConfigAudit) declares the fields
+# but not their values.
+_AUDIT_ITEMS = {
+    "highAvailabilityGrade": ("High availability", None),
+    "greTunnelGrade": ("GRE tunnels", "greTunnelRecommendedConfiguration"),
+    "authFrequencyGrade": ("Authentication frequency", "authFrequencyRecommendedConfiguration"),
+    "pacFileGrade": ("PAC file", "pacFileRecommendedConfiguration"),
+    "pacfileSizeGrade": ("PAC file size", "pacFileSizeRecommendedConfiguration"),
+    "office365Grade": ("Microsoft 365 one-click", "office365RecommendedConfiguration"),
+    "ipVisibilityGrade": ("Client IP visibility", "ipVisibilityRecommendedConfiguration"),
+    "userPerformanceGrade": ("User performance", None),
+    "otherGrade": ("Other settings", None),
+}
+_GOOD_WORDS = {"GOOD", "EXCELLENT", "PASS", "OK", "OPTIMAL", "GREEN"}
+_BAD_WORDS = {"POOR", "BAD", "FAIL", "FAILED", "WARN", "WARNING", "CRITICAL", "RED", "NEEDS_IMPROVEMENT", "AVERAGE", "FAIR"}
+
+
+def _grade(v):
+    """'good', 'bad' or None (not graded / not understood) for one audit grade (assumed scale)."""
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return "good" if v >= 80 else "bad"   # assumed: a 0-100 score
+    g = str(v).strip().upper().replace(" ", "_")
+    if not g or g in ("NA", "N/A", "NONE", "NOT_APPLICABLE", "UNKNOWN"):
+        return None
+    if g in _GOOD_WORDS or g[0] in "AB" and len(g) <= 2:
+        return "good"
+    if g in _BAD_WORDS or g[0] in "CDEF" and len(g) <= 2:
+        return "bad"
+    return None
+
+
+def _config_audit(cl):
+    """The configuration audit report as one dict, or (None, why)."""
+    d, c = cl.get("/zia/configAudit")
+    if c not in (200, 204):
+        return None, f"The configuration audit report could not be read (HTTP {c}); reading it needs the Reports functional scope on the API role."
+    rows = [x for x in (d if isinstance(d, list) else [d]) if isinstance(x, dict) and not x.get("error")]
+    rep = rows[0] if rows else None
+    if not rep or _fv(rep, "dataPresent") is False:
+        return None, "Zscaler has no configuration audit report for this tenant yet (no data present). It appears under Analytics > System Audit Report once ZIA has enough traffic."
+    return rep, ""
+
+
+def _audit_items(rep, fields):
+    bad, good, ungraded = [], [], []
+    for f in fields:
+        name, rec_field = _AUDIT_ITEMS[f]
+        v = _fv(rep, f)
+        g = _grade(v)
+        if g == "bad":
+            rec = _gov_text(_fv(rep, rec_field), 160).rstrip(" .;") if rec_field and _fv(rep, rec_field) else ""
+            bad.append(f"{name} (grade {_gov_text(v, 12)})" + (f": {rec}" if rec else ""))
+        elif g == "good":
+            good.append(f"{name} ({_gov_text(v, 12)})")
+        elif v not in (None, ""):
+            ungraded.append(name)
+    return bad, good, ungraded
+
+
+def _audit_when(rep):
+    ts = _fv(rep, "reportTimestamp")
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool) and 0 < ts < 32503680000 * 1000:
+        ts = ts / 1000.0 if ts > 1e11 else float(ts)
+        return " (report of " + _time.strftime("%Y-%m-%d", _time.gmtime(ts)) + ")"
+    return ""
+
+
+def gov_1(cl):
+    """Zscaler's configuration audit: overall grade"""
+    rep, why = _config_audit(cl)
+    if rep is None:
+        return R(R.INFO, why)
+    g = _fv(rep, "overallGrade")
+    bad, _good, _u = _audit_items(rep, list(_AUDIT_ITEMS))
+    verdict = _grade(g)
+    when = _audit_when(rep)
+    if verdict == "good" and not bad:
+        return R(R.PASS, f"Zscaler's own configuration audit grades this tenant {_gov_text(g, 12)} overall{when}, with no item graded poorly.")
+    if verdict is None and not bad:
+        return R(R.INFO, f"Zscaler's configuration audit reports no overall grade the app understands{when}. Review it under Analytics > System Audit Report.")
+    return R(R.WARN, f"Zscaler's own configuration audit grades this tenant {_gov_text(g, 12) or 'without an overall grade'}{when}; {len(bad)} item(s) graded poorly: "
+                     + "; ".join(bad[:6]) + ". Best Practice: work through each poorly graded item in Analytics > System Audit Report: it is Zscaler's own view of where the tenant departs from its recommended configuration."
+                     " Ref: https://help.zscaler.com/zia/about-system-audit-report")
+
+
+def _gov_audit(cl, fields, topic, fix):
+    rep, why = _config_audit(cl)
+    if rep is None:
+        return R(R.INFO, why)
+    bad, good, ungraded = _audit_items(rep, fields)
+    when = _audit_when(rep)
+    if bad:
+        return R(R.WARN, f"Zscaler's configuration audit grades {topic} poorly{when}: " + "; ".join(bad) + f". Best Practice: {fix} Ref: https://help.zscaler.com/zia/about-system-audit-report")
+    if good:
+        return R(R.PASS, f"Zscaler's configuration audit grades {topic} well{when}: " + ", ".join(good) + ".")
+    return R(R.INFO, f"Zscaler's configuration audit does not grade {topic} on this tenant{when}" + (f" (grades not understood: {', '.join(ungraded)})" if ungraded else "") + ".")
+
+
+def gov_2(cl):
+    """Configuration audit: high availability and GRE tunnels"""
+    return _gov_audit(cl, ["highAvailabilityGrade", "greTunnelGrade"], "high availability and the GRE tunnels",
+                      "give every location a primary and a backup tunnel to two different Zscaler data centres, as the audit recommends, so one data centre outage does not cut the office off.")
+
+
+def gov_3(cl):
+    """Configuration audit: authentication frequency"""
+    return _gov_audit(cl, ["authFrequencyGrade"], "the authentication frequency",
+                      "authenticate users no more often than needed (the audit's recommended frequency): too often costs users time, too rarely leaves stale identities on policy decisions.")
+
+
+def gov_4(cl):
+    """Configuration audit: PAC files"""
+    return _gov_audit(cl, ["pacFileGrade", "pacfileSizeGrade"], "the PAC files",
+                      "keep PAC files small and simple and send traffic to Zscaler with a fallback, as the audit recommends: a large or broken PAC file slows every browser and can send traffic direct.")
+
+
+def gov_5(cl):
+    """Configuration audit: Microsoft 365, IP visibility and performance"""
+    return _gov_audit(cl, ["office365Grade", "ipVisibilityGrade", "userPerformanceGrade", "otherGrade"], "Microsoft 365, client IP visibility and user performance",
+                      "turn on Microsoft 365 one-click configuration and make sure the client IP reaches Zscaler (X-Forwarded-For or a tunnel), so policy and logs see the real user and Microsoft 365 traffic takes the fast path.")
+
+
+def gov_6(cl):
+    """Alert subscriptions reach someone"""
+    subs, c = _items(cl, "/zia/alertSubscriptions")
+    if c not in (200, 204):
+        return R(R.INFO, f"Alert subscriptions could not be read (HTTP {c}).")
+    live = [s for s in subs if not _truthy(_fv(s, "deleted"))]
+    sev_fields = ("pt0Severities", "secureSeverities", "manageSeverities", "complySeverities", "systemSeverities")
+    covered = {f for s in live for f in sev_fields if isinstance(_fv(s, f), list) and _fv(s, f)}
+    recipients = {str(_fv(s, "email") or "").strip().lower() for s in live if _fv(s, "email")}
+    if not live:
+        return R(R.WARN, "No alert subscription is set up: nobody is e-mailed when ZIA raises a security, compliance or system alert. "
+                         "Best Practice: subscribe a monitored team mailbox to Critical and Major alerts of every class (Patient 0, Secure, Manage, Comply, System) under Administration > Alerts."
+                         " Ref: https://help.zscaler.com/zia/about-alert-subscriptions")
+    names = {"pt0Severities": "Patient 0", "secureSeverities": "Secure", "manageSeverities": "Manage", "complySeverities": "Comply", "systemSeverities": "System"}
+    missing = [names[f] for f in sev_fields if f not in covered]
+    who = f"{len(live)} alert subscription(s) to {len(recipients)} recipient(s)"
+    if missing:
+        return R(R.WARN, f"{who}, but no subscription covers these alert classes: {', '.join(missing)}. "
+                         "Best Practice: make sure every alert class (Patient 0, Secure, Manage, Comply, System) reaches a monitored mailbox, at least for Critical and Major severities."
+                         " Ref: https://help.zscaler.com/zia/about-alert-subscriptions")
+    if len(recipients) < 2:
+        return R(R.WARN, f"{who}: every alert goes to one address. Best Practice: send alerts to a team mailbox or at least two recipients, so an alert is not lost when one person is away.")
+    return R(R.PASS, f"{who}, covering every alert class.")
+
+
+def _nss_state(x):
+    """'up', 'down' or 'unknown' for one NSS server. status is ENABLED,
+    DISABLED, DISABLED_BY_SERVICE_PROVIDER, NOT_PROVISIONED_IN_SERVICE_PROVIDER
+    or IN_TRIAL (nss_servers.add_nss_server docstring); state is assumed to be
+    HEALTHY or UNHEALTHY (the SDK does not list its values)."""
+    status = str(_fv(x, "status") or "").upper()
+    state = str(_fv(x, "state") or "").upper()
+    if status and status not in ("ENABLED", "IN_TRIAL"):
+        return "down"
+    if "UNHEALTHY" in state or state in ("DOWN", "DISCONNECTED", "OFFLINE", "ERROR"):
+        return "down"
+    if state in ("HEALTHY", "UP", "CONNECTED", "ONLINE"):
+        return "up"
+    return "unknown"
+
+
+def gov_7(cl):
+    """NSS servers (VMs) are enabled and healthy"""
+    servers, c = _items(cl, "/zia/nssServers")
+    if c not in (200, 204):
+        return R(R.INFO, f"NSS servers could not be read (HTTP {c}).")
+    subs = _subscriptions(cl)
+    if not servers:
+        if subs is not None and not (subs & set(_LOG_SKUS)):
+            return _not_licensed("Nanolog Streaming Service (NSS)")
+        return R(R.INFO, "No NSS server (VM) is registered on this tenant. If logs are streamed with Cloud NSS instead, there is no VM to watch; see the log streaming check.")
+    down = [x for x in servers if _nss_state(x) == "down"]
+    unknown = [x for x in servers if _nss_state(x) == "unknown"]
+    if down:
+        return R(R.WARN, f"{len(down)} of {len(servers)} NSS server(s) are disabled or unhealthy: the feeds they carry stop reaching the SIEM, and ZIA keeps the logs only in its own store. "
+                         "Best Practice: bring every NSS VM back to Enabled and healthy (check its connection to the Zscaler cloud and to the SIEM), and run two NSS VMs per feed type for redundancy."
+                         " Ref: https://help.zscaler.com/zia/about-nss-servers")
+    if unknown:
+        return R(R.INFO, f"{len(servers)} NSS server(s) enabled; {len(unknown)} report no health state, so the app cannot say whether they stream. Check them under Administration > Nanolog Streaming Service.")
+    return R(R.PASS, f"All {len(servers)} NSS server(s) are enabled and healthy.")
+
+
+def gov_8(cl):
+    """Logs leave ZIA: a healthy NSS server, a Cloud NSS feed or an NSS collector"""
+    servers, sc = _items(cl, "/zia/nssServers")
+    feeds, fc = _items(cl, "/zia/nssFeeds")
+    collectors, cc = _items(cl, "/zia/nssCollectors")
+    if sc not in (200, 204) and fc not in (200, 204) and cc not in (200, 204):
+        return R(R.INFO, f"NSS servers, feeds and collectors could not be read (HTTP {sc}, {fc}, {cc}).")
+    up = [x for x in servers if _nss_state(x) != "down"]
+    live_feeds = [f for f in feeds if str(_fv(f, "feedStatus") or "ENABLED").upper() == "ENABLED"]
+    live_coll = [x for x in collectors if str(_fv(x, "status") or "ENABLED").upper() in ("ENABLED", "ACTIVE", "UP", "HEALTHY")]
+    if live_feeds or up or live_coll:
+        parts = [f"{len(live_feeds)} enabled Cloud NSS feed(s)", f"{len(up)} NSS server(s) not reported down", f"{len(live_coll)} NSS collector(s)"]
+        if servers and not up:
+            return R(R.WARN, "; ".join(parts) + f". Every one of the {len(servers)} NSS server(s) is down, so the feeds they carry do not stream.")
+        return R(R.PASS, "Logs leave ZIA for a SIEM: " + "; ".join(parts) + ".")
+    subs = _subscriptions(cl)
+    if subs is not None and not (subs & set(_LOG_SKUS)):
+        return _not_licensed("Nanolog Streaming Service (NSS and Cloud NSS)")
+    return R(R.WARN, "No log stream leaves ZIA: no enabled Cloud NSS feed, no healthy NSS server and no NSS collector. ZIA keeps web logs for 6 months and nobody outside the console sees them. "
+                     "Best Practice: stream web, firewall, DNS, DLP and admin audit logs to your SIEM with Cloud NSS (or NSS VMs) so incidents are correlated and logs outlive ZIA's retention."
+                     " Ref: https://help.zscaler.com/zia/about-nanolog-streaming-service")
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ZIA — CLOUD APPLICATIONS
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -1105,6 +1364,16 @@ PLATFORM_REG = [
     ("USR.4", "ZIA — Users & Admin", "Admin role segregation", usr_4),
     ("USR.5", "ZIA — Users & Admin", "Audit log exported (NSS)", usr_5),
     ("USR.6", "ZIA — Users & Admin", "Rule labels", usr_6),
+
+    # ZIA — Governance and audit
+    ("GOV.1", "ZIA — Governance", "Zscaler configuration audit: overall grade", gov_1),
+    ("GOV.2", "ZIA — Governance", "Configuration audit: high availability and GRE tunnels", gov_2),
+    ("GOV.3", "ZIA — Governance", "Configuration audit: authentication frequency", gov_3),
+    ("GOV.4", "ZIA — Governance", "Configuration audit: PAC files", gov_4),
+    ("GOV.5", "ZIA — Governance", "Configuration audit: Microsoft 365, IP visibility and performance", gov_5),
+    ("GOV.6", "ZIA — Governance", "Alert subscriptions reach a team", gov_6),
+    ("GOV.7", "ZIA — Governance", "NSS servers (VMs) enabled and healthy", gov_7),
+    ("GOV.8", "ZIA — Governance", "Logs streamed out of ZIA (NSS or Cloud NSS)", gov_8),
 
     # ZIA — Cloud Apps
     ("CA.1", "ZIA — Cloud Apps", "Cloud app control", capp_1),

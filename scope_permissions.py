@@ -86,6 +86,10 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "User Management",
             "Admin Roles",
             "Admin Users",
+            "Reports (System Audit Report; assumed name)",
+            "Alerts (alert subscriptions; assumed name)",
+            "NSS Configuration (NSS servers, collectors and feeds)",
+            "Organization (subscriptions; assumed name)",
         ],
         "permissions_write": [],
         "endpoints_used": [
@@ -103,8 +107,11 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
             "/zia/cyberThreatProtection/maliciousUrls", "/zia/security/advanced", "/zia/sandboxRules",
             "/zia/networkServices", "/zia/networkServiceGroups", "/zia/networkApplicationGroups",
             "/zia/ipDestinationGroups", "/zia/ipSourceGroups",
+            # Governance and audit (zscaler_full_checks GOV.*).
+            "/zia/configAudit", "/zia/alertSubscriptions", "/zia/nssServers", "/zia/nssCollectors", "/zia/nssFeeds",
+            "/zia/subscriptions",
         ],
-        "license_required": "Standard ZIA license.",
+        "license_required": "Standard ZIA license. The NSS checks are N/A without an NSS or Cloud NSS subscription.",
         "customer_id_needed": False,
     },
 
@@ -278,12 +285,13 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
 
     "rbac": {
         "label": "RBAC",
-        "description": "Role-based access control hygiene: ZIA admin roles and admins, Client Connector portal admins and roles, ZPA access policy bound to groups, ZIdentity admin redundancy.",
+        "description": "Role-based access control hygiene: ZIA admin roles and admins, admin password expiry, Zscaler Support remote assistance, Client Connector portal admins and roles, ZPA access policy bound to groups, ZIdentity admin redundancy.",
         "service": "ZIA + ZCC + ZPA + ZIdentity",
         "permissions_read": [
             "Admin Roles",
             "Admin Users",
             "Authentication Settings",
+            "Remote Assistance (assumed name)",
             "ZCC Admin Users",
             "ZCC Admin Roles",
             "Access Policy",
@@ -292,6 +300,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         "permissions_write": [],
         "endpoints_used": [
             "/zia/adminRoles", "/zia/adminUsers", "/zia/authSettings",
+            "/zia/passwordExpiry/settings", "/zia/remoteAssistance",
             "/zcc/adminRoles", "/zcc/adminUsers", "/zcc/adminUsersSyncInfo",
             "/zpa/policySet/rules/ACCESS_POLICY",
             "/zid/users",

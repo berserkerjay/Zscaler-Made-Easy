@@ -961,8 +961,11 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                      "ipSourceGroups", "locations", "advancedSettings", "authSettings", "departments", "groups", "ruleLabels",
                                      "nssFeeds", "browserIsolation/profiles", "sandboxRules", "bandwidthClasses", "bandwidthControlRules",
                                      "tenancyRestrictionProfile", "cyberThreatProtection/advancedThreatSettings",
-                                     "cyberThreatProtection/malwareSettings")]
+                                     "cyberThreatProtection/malwareSettings",
+                                     # governance and audit (zscaler_full_checks GOV.*)
+                                     "configAudit", "alertSubscriptions", "nssServers", "nssCollectors", "subscriptions")]
     + [(("zia_extras", "rbac"), f"/zia/{x}") for x in ("adminRoles", "adminUsers")]
+    + [(("rbac",), f"/zia/{x}") for x in ("passwordExpiry/settings", "remoteAssistance")]
     + [(("zcc",), f"/zcc/{x}") for x in ("forwardingProfiles", "trustedNetworks", "devices", "failOpenPolicy", "companyInfo", "pacFiles",
                                          "webAppService", "appBypass", "zpaEntitlements", "zdxEntitlements", "deviceGroups")]
     + [(("zpa",), f"/zpa/{x}") for x in ("application", "segmentGroup", "serverGroup", "appConnectorGroup", "connector", "serviceEdgeGroup",

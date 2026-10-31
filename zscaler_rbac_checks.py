@@ -8,7 +8,8 @@ SOC 2 CC6.1, NIST 800-53 AC-2 / AC-5 / AC-6, PCI-DSS 7.x, HIPAA
 164.308(a)(3), and ISO 27001 A.5.15–A.5.18.
 
 Scopes covered:
-  - ZIA admin roles + admin users
+  - ZIA admin roles + admin users, admin password expiry, Zscaler
+    Support remote assistance
   - ZCC Mobile Portal admin roles + users
   - ZPA access policy (bound to groups vs individuals)
   - ZIdentity directory (role assignments, admin redundancy)
@@ -97,6 +98,70 @@ def rbac_zia_mfa_required(cl):
     return R(R.INFO, "Admin MFA is enforced by Authentication Service (formerly ZIdentity) and is required by default for all admins. Verify it is still enabled under"
                      " Administration > Authentication > Authentication Methods, and that no admin has Skip Second Factor Authentication set."
                      " Ref: https://help.zscaler.com/authentication-service/configuring-multi-factor-authentication")
+
+
+def rbac_zia_password_expiry(cl):
+    """Admin passwords expire
+
+    admin_roles.get_password_expiry_settings reads GET /passwordExpiry/settings
+    (passwordExpirationEnabled, passwordExpiryDays — zscaler-sdk-python 1.11.3
+    zia/models/admin_roles.py PasswordExpiry). It applies to admins who sign
+    in to ZIA with a password; admins signing in through SSO follow the IdP."""
+    d, c = cl.get("/zia/passwordExpiry/settings")
+    if c != 200 or not isinstance(d, dict):
+        return R(R.INFO, f"Admin password expiry settings could not be read (HTTP {c}).")
+    enabled = d.get("passwordExpirationEnabled", d.get("password_expiration_enabled"))
+    days = d.get("passwordExpiryDays", d.get("password_expiry_days"))
+    try:
+        days = int(days) if days is not None and not isinstance(days, bool) else None
+    except (TypeError, ValueError):
+        days = None
+    sso = " Admins who sign in through SSO follow the IdP's password policy instead."
+    if enabled is None:
+        return R(R.INFO, "The admin password expiry setting is not reported." + sso)
+    if not enabled:
+        return R(R.WARN, "Admin password expiration is off: an admin who signs in to ZIA with a password keeps it for ever. "
+                         "Best Practice: turn on password expiration (90 days or less) under Administration > Administrator Management, or move every admin to SSO with MFA." + sso
+                         + " Ref: https://help.zscaler.com/zia/configuring-password-expiration")
+    if days is not None and days > 180:
+        return R(R.WARN, f"Admin passwords expire only after {days} days. Best Practice: 90 days or less (NIST 800-53 IA-5), or SSO with MFA for every admin." + sso)
+    return R(R.PASS, "Admin passwords expire" + (f" after {days} days." if days else ".") + sso)
+
+
+def rbac_zia_remote_assistance(cl):
+    """Zscaler Support access to the admin portal is time-boxed
+
+    remote_assistance.get_remote_assistance reads GET /remoteAssistance
+    (viewOnlyUntil, fullAccessUntil, usernameObfuscated, deviceInfoObfuscate —
+    zscaler-sdk-python 1.11.3 zia/models/remoteassistance.py). The two
+    "until" values are epoch times (seconds, or milliseconds; assumed)."""
+    d, c = cl.get("/zia/remoteAssistance")
+    if c != 200 or not isinstance(d, dict):
+        return R(R.INFO, f"Remote assistance settings could not be read (HTTP {c}).")
+    now = _now()
+
+    def until(*names):
+        for n in names:
+            v = d.get(n)
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 < v < 32503680000 * 1000:
+                return v / 1000.0 if v > 1e11 else float(v)
+        return None
+
+    full = until("fullAccessUntil", "full_access_until")
+    view = until("viewOnlyUntil", "view_only_until")
+    day = lambda t: time.strftime("%Y-%m-%d", time.gmtime(t))
+    hidden = d.get("usernameObfuscated", d.get("username_obfuscated"))
+    privacy = "" if hidden else " User names are not obfuscated for Zscaler Support while access is open."
+    if full and full > now:
+        return R(R.WARN, f"Zscaler Support has full (change) access to the ZIA admin portal until {day(full)}." + privacy +
+                         " Best Practice: grant full access only for an open support case and only for the days it needs; prefer view-only, and turn on user name obfuscation."
+                         " Ref: https://help.zscaler.com/zia/enabling-remote-assistance")
+    if view and view > now + 30 * 86400:
+        return R(R.WARN, f"Zscaler Support has view-only access to the ZIA admin portal until {day(view)}, more than 30 days ahead." + privacy +
+                         " Best Practice: keep remote assistance off unless a support case needs it, and close it when the case ends.")
+    if view and view > now:
+        return R(R.PASS, f"Zscaler Support has view-only access until {day(view)}; no full access is open." + privacy)
+    return R(R.PASS, "No remote assistance is open: Zscaler Support cannot sign in to the ZIA admin portal.")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -262,5 +327,7 @@ RBAC_REG = [
     ("RBAC.10", "RBAC — ZIdentity", "Admin redundancy (BCP)",                       rbac_zid_admin_redundancy),
     ("RBAC.11", "RBAC — ZIdentity", "Group-based entitlements (no per-user)",       rbac_zid_group_based),
     ("RBAC.12", "RBAC — ZIdentity", "Stale admin accounts (> 90 days no login)",    rbac_zid_stale_admins),
+    ("RBAC.13", "RBAC — ZIA",       "Admin password expiry",                        rbac_zia_password_expiry),
+    ("RBAC.14", "RBAC — ZIA",       "Zscaler Support remote access time-boxed",     rbac_zia_remote_assistance),
 ]
 RBAC_REG = guard_registry(RBAC_REG)   # a refused read (HTTP 401/403) is "Not permitted", never judged

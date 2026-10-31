@@ -207,6 +207,13 @@ class SdkClient:
             # --- ZIA: NSS ---
             "/zia/nssFeeds":                lambda: _sdk_call(zs.zia.cloud_nss.list_nss_feed),
             "/zia/nssServers":              lambda: _sdk_call(zs.zia.nss_servers.list_nss_servers),
+            "/zia/nssCollectors":           lambda: _sdk_call(zs.zia.nss_collectors.list_collectors),
+
+            # --- ZIA: Governance (configAudit and subscriptions stay on the raw
+            # GET below: the SDK reshapes their bodies) ---
+            "/zia/alertSubscriptions":      lambda: _sdk_call(zs.zia.alert_subscriptions.list_alert_subscriptions),
+            "/zia/remoteAssistance":        lambda: _sdk_call(zs.zia.remote_assistance.get_remote_assistance),
+            "/zia/passwordExpiry/settings": lambda: _sdk_call(zs.zia.admin_roles.get_password_expiry_settings),
 
             # --- ZIA: ICAP / Incident Receivers ---
             "/zia/icapServers":              lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_icap_servers),
