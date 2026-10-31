@@ -122,9 +122,27 @@ def test_entries_beyond_the_cap_and_bad_lines_are_skipped_with_the_reason():
     lines = [f"h{i}.example" for i in range(cl.MAX_ENTRIES + 3)] + ["a\x07b.example", "y" * (cl.MAX_ENTRY + 1) + ".example"]
     p = cl.parse("\n".join(lines))
     assert len(p["entries"]) == cl.MAX_ENTRIES
-    assert sum("first 25 entries" in s["why"] for s in p["skipped"]) == 5   # 3 hosts and the two bad lines after the cap
+    assert sum(f"first {cl.MAX_ENTRIES} entries" in s["why"] for s in p["skipped"]) == 5   # 3 hosts and the two bad lines after the cap
     p = cl.parse("ok.example\na\x07b.example\n" + "y" * (cl.MAX_ENTRY + 1))
     assert [s["why"] for s in p["skipped"]] == ["It holds control characters.", f"Longer than {cl.MAX_ENTRY} characters."]
+
+
+def test_the_cap_is_one_hundred_entries_looked_up_in_one_paced_request():
+    """ASVS V5.1.4 · V11.1.4 · CWE-770 · WSTG-BUSL-05: 100 entries are looked up in one run (one POST /urlLookup of 100 hosts); the 101st is skipped and said."""
+    assert cl.MAX_ENTRIES == 100
+    hosts = [f"host{i:03d}.example" for i in range(100)]
+    text = "\n".join("https://" + h + "/" + "p" * 400 for h in hosts)      # 100 long URLs still fit in MAX_TEXT
+    assert len(text) <= cl.MAX_TEXT
+    p = cl.parse(text)
+    assert len(p["entries"]) == 100 and p["skipped"] == []
+    res, c = run(text)
+    looked = [u for ep, body in c.posts for u in body]
+    assert len(c.posts) == 1 and sorted(looked) == sorted(hosts)
+    assert len(res["entries"]) == 100
+    p = cl.parse("\n".join(hosts + ["host100.example"]))
+    assert len(p["entries"]) == 100
+    assert [s["text"] for s in p["skipped"]] == ["host100.example"]
+    assert "first 100 entries" in p["skipped"][0]["why"]
 
 
 # ── The answer ───────────────────────────────────────────────────────

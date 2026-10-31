@@ -83,7 +83,7 @@
   const say = t => { if (!live) return; live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
   const req = () => window.PathRequest || { credBody: () => ({}), scopeSelection: () => ({ scopes: [], channels: {}, from_page: false }),
     newStartToken: () => String(Date.now()), errText: (d, s) => `HTTP ${s}` };
-  const MAX_CHARS = 16000;
+  const MAX_CHARS = 64000;
   let running = false, job = null, startToken = null, stopAsked = false, reportId = '';
   const body = $('clBody');
 
@@ -127,7 +127,7 @@
     if (running) return;
     const text = $('clText').value;
     if (!text.trim()) { fail('Nothing to look up', 'Type a URL, a host name, an IP address or a category first.'); $('clText').focus(); return; }
-    if (text.length > MAX_CHARS) { fail('Too long', `Look up at most 25 entries (${MAX_CHARS.toLocaleString()} characters) at a time.`); return; }
+    if (text.length > MAX_CHARS) { fail('Too long', `Look up at most 100 entries (${MAX_CHARS.toLocaleString()} characters) at a time.`); return; }
     const btn = $('clRun');
     running = true; stopAsked = false; job = null; startToken = req().newStartToken(); btn.disabled = true; btn.textContent = 'Looking up…';
     body.innerHTML = `<div class="pa-live"><div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>Looking up</strong><span class="sep"></span><button type="button" class="rp-btn" id="clStop">Stop</button></div>
