@@ -690,7 +690,55 @@ def register_resolver(param: str, fn: Callable[[str, Dict[str, str]], Optional[S
     _RESOLVERS[param] = fn
 
 
-RESOURCE_PARAMS = ("report_id", "job_id", "fix_id", "op_id", "dep_id", "rid", "snapshot_id", "digest_id", "tenant")
+RESOURCE_PARAMS = ("report_id", "job_id", "fix_id", "op_id", "dep_id", "rid", "snapshot_id", "digest_id", "tenant",
+                   # (wave 9) records kept on disk that name their tenant profile and their maker: configuration
+                   # backups, configuration (and POV) templates, saved traffic log reports
+                   "backup_id", "template_id", "saved_name")
+
+
+def current_owner_id() -> str:
+    """The account id of the person making this request (team mode), else
+    "": stamped on the records they keep (backups, templates, saved
+    reports, fleet history) so the access check knows whose they are."""
+    if not enabled():
+        return ""
+    c = _CTX.get()
+    return str((c or {}).get("user") or "")
+
+
+def _reach_ok(user: Dict[str, Any], groups: Iterable[str], action: str, profiles: Optional[Set[str]], owner: Any) -> bool:
+    """A kept record is reachable by whoever holds `action` on one of its
+    tenant profiles. A record that names no tenant profile (the sample
+    tenant, an uploaded file) is its maker's only. Tenant first: making a
+    record of tenant B never keeps it reachable after losing access to B."""
+    profiles = {str(p) for p in (profiles or set()) if p}
+    if profiles:
+        return any(action in actions_on(user, p, groups) for p in profiles)
+    return bool(owner) and str(owner) == str(user.get("id") or "")
+
+
+def may_reach_record(profiles: Optional[Set[str]], owner: Any = "", action: str = "read") -> bool:
+    """For handlers and list filters: may the person making this request
+    reach a record kept for `profiles` and made by `owner`? Outside team
+    mode, outside a request, or an administrator: yes."""
+    if not enabled() or _CTX.get() is None or is_admin():
+        return True
+    u = current_user()
+    if not u:
+        return False
+    return _reach_ok(u, current_token_groups(), action, profiles, owner)
+
+
+def may_reach(name: str, value: Any, action: str = "read") -> bool:
+    """The middleware's check of a named record (RESOURCE_PARAMS) for a
+    value that arrives somewhere it does not look (a diff side, an
+    operation's source). Outside team mode or for an administrator: yes."""
+    if not enabled() or _CTX.get() is None or is_admin():
+        return True
+    u = current_user()
+    if not u or not value:
+        return False
+    return _may_reach(name, str(value), action, u, current_token_groups(), {})
 
 
 def profile_keys(profile_id: str) -> Set[str]:
@@ -731,6 +779,25 @@ def profiles_for_keys(keys: Iterable[Any]) -> Set[str]:
     return {pid for pid in ids if pid and profile_keys(pid) & want}
 
 
+def profiles_for_label(label: Any) -> Set[str]:
+    """The tenant profiles whose tenant record label (tenant_auth.record_label)
+    is `label`: how a local history kept per tenant label finds its tenant."""
+    want = str(label or "").strip()
+    if not want:
+        return set()
+    out: Set[str] = set()
+    try:
+        import tenant_auth
+        import tenant_profiles
+        for p in tenant_profiles.list_profiles():
+            prof = tenant_profiles.get(p.get("id"))
+            if prof and tenant_auth.scrub_classic_login(tenant_auth.record_label(tenant_auth.normalize(tenant_profiles.creds_from(prof))))[:120] == want[:120]:
+                out.add(str(p.get("id")))
+    except Exception:  # noqa: BLE001 - a label that cannot be worked out matches nothing
+        return set()
+    return out
+
+
 def record_profiles(rec: Dict[str, Any]) -> Set[str]:
     """The tenant profiles a stored record (deployment, operation, change
     request, audit entry) belongs to."""
@@ -756,8 +823,11 @@ def visible(records: Iterable[Dict[str, Any]], action: str = "read") -> List[Dic
         return records
     out = []
     for r in records:
-        if record_profiles(r) & allowed:
+        profs = record_profiles(r)
+        if profs & allowed:
             out.append(r)
+        elif not profs and isinstance(r, dict) and r.get("owner_id") and str(r["owner_id"]) == str(u.get("id") or ""):
+            out.append(r)   # a record of no tenant profile (the sample tenant, an uploaded file): its maker's
     return out
 
 
@@ -1496,9 +1566,27 @@ def _may_reach(name: str, value: str, action: str, user: Dict[str, Any], groups:
         profs = fn(value, params)
     except Exception:  # noqa: BLE001 - a record that cannot be resolved is not reachable
         return False
+    if isinstance(profs, dict):
+        # A kept record that names its tenant profiles and its maker
+        # ({"profiles", "owner"}, and "share" for a shareable template).
+        if profs.get("anyone") or (profs.get("share") and _shared_with(str(profs["share"]), value, user, groups)):
+            return True
+        return _reach_ok(user, groups, action, profs.get("profiles"), profs.get("owner"))
     if not profs:
         return False
     return any(action in actions_on(user, p, groups) for p in profs)
+
+
+def _shared_with(kind: str, rid: Any, user: Dict[str, Any], groups: Iterable[str]) -> bool:
+    """Is `user` (or one of their groups) a principal this item was shared
+    with (team_server.share)? Ownership is not sharing: the caller decides it."""
+    try:
+        rec = sharing(kind, rid) or {}
+    except TeamError:
+        return False
+    data = _read()
+    mine = {f"user:{user.get('id')}"} | {f"group:{g}" for g in _user_groups(data, str(user.get("id")), groups)}
+    return bool(mine & set(rec.get("principals") or []))
 
 
 # ── ownership and sharing (templates, saved plans) ──────────────────────

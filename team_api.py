@@ -7,6 +7,7 @@ in team_routes.py (enforced by team_server.TeamAccessMiddleware).
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -436,9 +437,53 @@ def register_resolvers() -> None:
         return None
 
     def tenant_key(tenant: str, _params) -> Optional[set]:
+        """A proposal queue's key, or a tenant label a local history is kept
+        under (Client Connector fleet history, SSL coverage history): the
+        profile the history was kept for, else the profiles of that label."""
         import proposals
-        return team.profiles_for_keys([proposals.tenant_key(tenant)]) or None
+        out = set(team.profiles_for_keys([proposals.tenant_key(tenant)]))
+        try:
+            import zcc_fleet_history
+            pid = zcc_fleet_history.profile_of(tenant)
+            if pid:
+                out.add(pid)
+        except Exception:  # noqa: BLE001 - an unreadable history names no profile
+            pass
+        out |= team.profiles_for_label(tenant)
+        return out or None
 
+    def backup(backup_id: str, _params) -> Optional[dict]:
+        import config_backup as cb
+        meta = cb.backup_meta(backup_id)
+        if meta is None:
+            return None
+        return {"profiles": team.record_profiles(meta), "owner": meta.get("owner_id") or ""}
+
+    def template(template_id: str, _params) -> Optional[dict]:
+        import config_backup as cb
+        if cb.TEMPLATE_ID.match(str(template_id or "")):
+            meta = cb.template_meta(template_id)
+            if meta is None:
+                return None
+            return {"profiles": team.record_profiles(meta), "owner": meta.get("owner_id") or "", "share": "template"}
+        # A POV template (pov.py) is a plan with no tenant in it: its owner,
+        # whom it is shared with, or (made before team mode) anyone signed in.
+        rec = team.sharing("template", template_id) if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", str(template_id or "")) else None
+        if not rec:
+            import pov
+            return {"profiles": set(), "anyone": True} if any(t.get("id") == template_id for t in pov.list_templates()) else None
+        return {"profiles": set(), "owner": rec.get("owner") or "", "share": "template"}
+
+    def saved_report(name: str, _params) -> Optional[dict]:
+        import traffic_logs
+        meta = traffic_logs.saved_meta(name)
+        if meta is None:
+            return None
+        return {"profiles": team.record_profiles(meta), "owner": meta.get("owner_id") or ""}
+
+    team.register_resolver("backup_id", backup)
+    team.register_resolver("template_id", template)
+    team.register_resolver("saved_name", saved_report)
     team.register_resolver("rid", change_request)
     team.register_resolver("dep_id", deployment)
     team.register_resolver("op_id", operation)

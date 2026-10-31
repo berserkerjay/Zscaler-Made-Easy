@@ -76,6 +76,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import safe_files
+import store_crypto
 
 FORMAT = "zscaler-made-easy-config-backup"
 TEMPLATE_FORMAT = "zscaler-made-easy-config-template"
@@ -85,6 +86,11 @@ PRODUCT_LABELS = {"zia": "ZIA", "zpa": "ZPA", "zcc": "Client Connector"}
 BACKUP_DIR = "config_backups"
 BACKUP_ID = re.compile(r"\Abk-[0-9a-f]{16}\Z")
 TEMPLATE_ID = re.compile(r"\Atpl-[0-9a-f]{16}\Z")
+OWNER_ID = re.compile(r"\A[0-9a-f]{16}\Z")
+# A sealed file (store_crypto: DLP_CHECK_STORE_ENCRYPTION) is base64 of the
+# AES-GCM ciphertext plus a short header, so it may be about 4/3 of the plain size.
+def _sealed_cap(limit: int) -> int:
+    return limit * 4 // 3 + 256
 MAX_BACKUP_BYTES = 16 * 1024 * 1024
 MAX_TEMPLATE_BYTES = 2 * 1024 * 1024
 MAX_ROWS_PER_TYPE = 20000
@@ -723,6 +729,9 @@ def _clean_meta(meta: Any) -> Dict[str, Any]:
         v = m.get(k)
         if isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9:_\-]{1,128}", v):
             out[k] = v
+    own = m.get("owner_id")
+    if isinstance(own, str) and OWNER_ID.match(own):
+        out["owner_id"] = own   # team mode: the account that kept it (team_server.current_owner_id)
     return out
 
 
@@ -810,8 +819,8 @@ def _index_path() -> str:
 def _read_index() -> Dict[str, Any]:
     try:
         with open(_index_path(), "rb") as f:
-            data = safe_files.strict_json_loads(f.read(4 * 1024 * 1024).decode("utf-8"))
-    except (OSError, ValueError, UnicodeDecodeError):
+            data = safe_files.strict_json_loads(store_crypto.open_text(f.read(_sealed_cap(4 * 1024 * 1024)).decode("utf-8")))
+    except (OSError, ValueError, UnicodeDecodeError, store_crypto.StoreLocked):
         data = {}
     if not isinstance(data, dict):
         data = {}
@@ -823,7 +832,7 @@ def _read_index() -> Dict[str, Any]:
 
 def _write_index(data: Dict[str, Any]) -> None:
     safe_files.private_makedirs(backups_dir())
-    safe_files.write_private_atomic(_index_path(), json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True))
+    safe_files.write_private_atomic(_index_path(), store_crypto.seal_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True)))
 
 
 def _file(oid: str) -> str:
@@ -841,7 +850,8 @@ def _unlink(oid: str) -> None:
 
 def _summary(doc: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
     m = doc["meta"]
-    s = {k: m.get(k) for k in ("tenant_label", "saved_at", "products", "kind", "profile_id", "note", "tenant_key", "tenant_fp") if m.get(k) not in (None, "")}
+    s = {k: m.get(k) for k in ("tenant_label", "saved_at", "products", "kind", "profile_id", "note", "tenant_key", "tenant_fp", "owner_id")
+         if m.get(k) not in (None, "")}
     s["objects"] = sum(len(v) for v in doc["types"].values())
     s["types"] = len(doc["types"])
     s["unread"] = len(m.get("unread") or {})
@@ -860,7 +870,7 @@ def save_backup(doc: Dict[str, Any], *, keep: Optional[int] = None) -> Dict[str,
         data = _read_index()
         pid = doc["meta"].get("profile_id") or ""
         safe_files.private_makedirs(backups_dir())
-        safe_files.write_private_atomic(_file(bid), text)
+        safe_files.write_private_atomic(_file(bid), store_crypto.seal_text(text))
         data["backups"][bid] = _summary(doc, {"bytes": len(text.encode("utf-8"))})
         if keep is None:
             keep = int((data["schedules"].get(pid) or {}).get("keep") or DEFAULT_KEEP)
@@ -890,16 +900,26 @@ def list_backups(profile_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def _read_file(oid: str, limit: int) -> bytes:
+    """The plain bytes of a kept backup or template: a sealed file
+    (store_crypto) is opened with its key first, then held to `limit`."""
     path = _file(oid)
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         with os.fdopen(fd, "rb") as f:
-            raw = f.read(limit + 1)
+            raw = f.read(_sealed_cap(limit) + 1)
     except OSError:
         raise BackupError("The file is missing.")
+    raw = _opened(raw)
     if len(raw) > limit:
         raise BackupError("The file is too large.")
     return raw
+
+
+def _opened(raw: bytes) -> bytes:
+    try:
+        return store_crypto.open_bytes(raw)
+    except store_crypto.StoreLocked as e:
+        raise BackupError(f"The file is encrypted and cannot be opened here: {e}")
 
 
 def read_backup_raw(bid: str) -> bytes:
@@ -1488,18 +1508,37 @@ def _shape(ids: List[Any], shape: str) -> Any:
     return list(ids)
 
 
-def save_template(tpl: Dict[str, Any]) -> Dict[str, Any]:
+def save_template(tpl: Dict[str, Any], *, profile_id: str = "", owner_id: str = "", tenant_ids: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Keep a template (owner-only, sealed when store encryption is on).
+    The index entry names the tenant profile it was made from (its source
+    backup's) and the account that kept it, for the team access check; the
+    template file itself stays portable and names neither."""
     text = dumps(tpl)
     if len(text.encode("utf-8")) > MAX_TEMPLATE_BYTES:
         raise BackupError("The template is too large; pick fewer objects.")
     tid = "tpl-" + secrets.token_hex(8)
+    bind = _clean_meta(dict(tenant_ids or {}, profile_id=profile_id, owner_id=owner_id))
+    entry = dict(tpl["meta"], bytes=len(text.encode("utf-8")))
+    for k in ("profile_id", "owner_id", "tenant_key", "tenant_fp"):
+        if bind.get(k):
+            entry[k] = bind[k]
     with _LOCK:
         data = _read_index()
         safe_files.private_makedirs(backups_dir())
-        safe_files.write_private_atomic(_file(tid), text)
-        data["templates"][tid] = dict(tpl["meta"], bytes=len(text.encode("utf-8")))
+        safe_files.write_private_atomic(_file(tid), store_crypto.seal_text(text))
+        data["templates"][tid] = entry
         _write_index(data)
-    return dict(tpl["meta"], id=tid)
+    return dict(entry, id=tid)
+
+
+def template_meta(tid: str) -> Optional[Dict[str, Any]]:
+    """A kept template's index entry (who and which tenant profile it is
+    bound to), or None."""
+    if not TEMPLATE_ID.match(str(tid)):
+        return None
+    with _LOCK:
+        got = _read_index()["templates"].get(tid)
+    return dict(got, id=tid) if isinstance(got, dict) else None
 
 
 def list_templates() -> List[Dict[str, Any]]:
@@ -1667,11 +1706,11 @@ def read_cache(key: str) -> Optional[Dict[str, Any]]:
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         with os.fdopen(fd, "rb") as f:
-            raw = f.read(MAX_BACKUP_BYTES + 1)
+            raw = f.read(_sealed_cap(MAX_BACKUP_BYTES) + 1)
     except OSError:
         return None
     try:
-        doc = _load_untrusted(raw, MAX_BACKUP_BYTES, "cache")
+        doc = _load_untrusted(_opened(raw), MAX_BACKUP_BYTES, "cache")
     except BackupError:
         return None
     if not isinstance(doc, dict) or doc.get("format") != CACHE_FORMAT or not isinstance(doc.get("objects"), dict):
@@ -1715,7 +1754,7 @@ def refresh_cache(key: str, types: Dict[str, List[Dict[str, Any]]], meta: Dict[s
         text = dumps(doc)
         if len(text.encode("utf-8")) > MAX_BACKUP_BYTES:
             raise BackupError("The configuration read is larger than the cache may be; untick some products.")
-        safe_files.write_private_atomic(_cache_path(key), text)
+        safe_files.write_private_atomic(_cache_path(key), store_crypto.seal_text(text))
     return {"refreshed_at": doc["refreshed_at"], "changes": changes, "first": doc["first"],
             "objects": sum(len(v) for v in objects.values()), "types": len(objects)}
 
@@ -1736,3 +1775,14 @@ def cache_summary(key: str) -> Optional[Dict[str, Any]]:
         return None
     return {"refreshed_at": c["refreshed_at"], "objects": sum(len(v) for v in c["objects"].values()), "types": len(c["objects"]),
             "changes": c["changes"], "tenant_label": c["meta"].get("tenant_label") or ""}
+
+
+def store_files() -> List[str]:
+    """Every file this module keeps (index, backups, templates, caches), for
+    store_crypto's seal_all and key rotation."""
+    import glob
+    d = backups_dir()
+    out = [os.path.join(d, "index.json")]
+    for pat in ("bk-*.json", "tpl-*.json", "cache-*.json"):
+        out.extend(sorted(glob.glob(os.path.join(d, pat))))
+    return [p for p in out if os.path.isfile(p) and not os.path.islink(p)]

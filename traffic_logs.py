@@ -1542,8 +1542,14 @@ def _title(t: Any) -> str:
     return s[:80] or "Traffic and session logs"
 
 
-def save_report(rep: Dict[str, Any], title: str = "", names: bool = False) -> Dict[str, Any]:
-    """Write the report as an owner-only file; counts only unless `names`."""
+_OWNER = re.compile(r"\A[0-9a-f]{16}\Z")
+_PROFILE = re.compile(r"\A[a-z0-9][a-z0-9-]{0,47}\Z")
+
+
+def save_report(rep: Dict[str, Any], title: str = "", names: bool = False, *, profile_id: str = "", owner_id: str = "") -> Dict[str, Any]:
+    """Write the report as an owner-only file (sealed when store encryption
+    is on); counts only unless `names`. Team mode: it names the tenant
+    profile it was made for and the account that kept it (the access check)."""
     folder = saved_dir()
     safe_files.private_makedirs(folder)
     existing = [n for n in os.listdir(folder) if _SAVED_NAME.match(n)]
@@ -1556,7 +1562,12 @@ def save_report(rep: Dict[str, Any], title: str = "", names: bool = False) -> Di
     if not _SAVED_NAME.match(name):   # token_urlsafe can give '-' and '_', both allowed; this never trips
         name = f"{stamp.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(4)}.json"
     body["saved"] = {"title": _title(title), "at": stamp.isoformat(timespec="seconds").replace("+00:00", "Z"), "names": bool(names)}
-    safe_files.write_private_atomic(os.path.join(folder, name), json.dumps(body, default=str))
+    if _PROFILE.match(str(profile_id or "")):
+        body["saved"]["profile_id"] = profile_id
+    if _OWNER.match(str(owner_id or "")):
+        body["saved"]["owner_id"] = owner_id
+    import store_crypto
+    safe_files.write_private_atomic(os.path.join(folder, name), store_crypto.seal_text(json.dumps(body, default=str)))
     return {"name": name, **body["saved"]}
 
 
@@ -1570,10 +1581,17 @@ def load_saved(name: str) -> Dict[str, Any]:
     p = _saved_path(name)
     if not os.path.isfile(p) or os.path.islink(p):
         raise FileNotFoundError(name)
-    if os.path.getsize(p) > SAVED_MAX_BYTES:
+    if os.path.getsize(p) > SAVED_MAX_BYTES * 4 // 3 + 256:   # a sealed file (store_crypto) is base64, about 4/3 of the plain size
         raise ValueError("the saved report is larger than this app reads")
+    import store_crypto
     with open(p, "r", encoding="utf-8") as f:
-        data = safe_files.strict_json_loads(f.read())
+        try:
+            text = store_crypto.open_text(f.read())
+        except store_crypto.StoreLocked as e:
+            raise ValueError(f"the saved report is encrypted and cannot be opened here: {e}")
+    if len(text) > SAVED_MAX_BYTES:
+        raise ValueError("the saved report is larger than this app reads")
+    data = safe_files.strict_json_loads(text)
     if not isinstance(data, dict) or data.get("kind") != KIND or data.get("version") != VERSION:
         raise ValueError("the file is not a saved traffic and session log report")
     return data
@@ -1593,9 +1611,40 @@ def list_saved() -> List[Dict[str, Any]]:
             out.append({"name": n, "title": "(could not be read)", "at": "", "names": False, "records": None})
             continue
         sv = d.get("saved") or {}
-        out.append({"name": n, "title": _title(sv.get("title")), "at": str(sv.get("at") or "")[:40], "names": bool(sv.get("names")),
-                    "records": (d.get("input") or {}).get("records"), "period": d.get("period")})
+        row = {"name": n, "title": _title(sv.get("title")), "at": str(sv.get("at") or "")[:40], "names": bool(sv.get("names")),
+               "records": (d.get("input") or {}).get("records"), "period": d.get("period")}
+        row.update(_binding(sv))
+        out.append(row)
     return out
+
+
+def _binding(sv: Any) -> Dict[str, str]:
+    sv = sv if isinstance(sv, dict) else {}
+    out = {}
+    if _PROFILE.match(str(sv.get("profile_id") or "")):
+        out["profile_id"] = str(sv["profile_id"])
+    if _OWNER.match(str(sv.get("owner_id") or "")):
+        out["owner_id"] = str(sv["owner_id"])
+    return out
+
+
+def saved_meta(name: str) -> Optional[Dict[str, Any]]:
+    """Whose a saved report is ({profile_id, owner_id}, either may be
+    missing), or None when there is no such readable report."""
+    try:
+        d = load_saved(name)
+    except (OSError, ValueError):
+        return None
+    return dict(_binding(d.get("saved")), name=name)
+
+
+def store_files() -> List[str]:
+    """Every saved report file, for store_crypto's seal_all and rotation."""
+    folder = saved_dir()
+    if not os.path.isdir(folder):
+        return []
+    return [os.path.join(folder, n) for n in sorted(os.listdir(folder)) if _SAVED_NAME.match(n)
+            and os.path.isfile(os.path.join(folder, n)) and not os.path.islink(os.path.join(folder, n))]
 
 
 def delete_saved(name: str) -> bool:

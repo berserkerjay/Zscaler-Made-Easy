@@ -354,7 +354,7 @@ ROUTE_RULES: Dict[str, str] = {
     "GET /api/traffic-logs/report/{report_id}": READ,
     "GET /api/traffic-logs/report/{report_id}/export": READ,
     "GET /api/traffic-logs/saved": READ,
-    "POST /api/traffic-logs/saved/{name}/open": READ,
+    "POST /api/traffic-logs/saved/{saved_name}/open": READ,
     "POST /api/ztw/start": READ,
     "GET /api/ztw/report/{report_id}": READ,
     "GET /api/ztw/report/{report_id}/export": READ,
@@ -413,7 +413,7 @@ ROUTE_RULES: Dict[str, str] = {
     "POST /api/zcc/fleet/history/forget": PLAN,
     "DELETE /api/traffic-logs/report/{report_id}": PLAN,
     "POST /api/traffic-logs/report/{report_id}/save": PLAN,   # keeps a traffic log report on this server
-    "DELETE /api/traffic-logs/saved/{name}": PLAN,
+    "DELETE /api/traffic-logs/saved/{saved_name}": PLAN,
 
     # ── change a tenant ──
     "POST /api/remediation/execute": APPLY,

@@ -4680,8 +4680,10 @@ class ConfigTemplateExportRequest(BaseModel):
 
 
 class ConfigTemplateImportRequest(BaseModel):
-    """A template file chosen in the browser (checked as untrusted)."""
+    """A template file chosen in the browser (checked as untrusted), and
+    optionally the tenant profile it is kept for (team mode: who may see it)."""
     content: str = ""
+    profile_id: str = ""
 
 
 class ConfigRehearseRequest(BaseModel):
@@ -4721,9 +4723,37 @@ def _cfg_offline_doc(source_id: str) -> Dict[str, Any]:
     return cb.from_offline(st)
 
 
+_CFG_NOT_YOURS = "Not found, or not yours to see."
+
+
+def _cfg_reach(ref: str, action: str = "read") -> None:
+    """Team mode: a saved side named outside the access check's own fields
+    (a diff side, a rehearsal's target, an operation's source) is checked
+    the same way: its tenant profile, or its maker for one with none. 404
+    otherwise, so another tenant's backup is not even confirmed to exist."""
+    if not _team.enabled():
+        return
+    import config_backup as cb
+    import tenant_profiles
+    ref = str(ref or "")
+    if cb.BACKUP_ID.match(ref):
+        ok = _team.may_reach("backup_id", ref, action)
+    elif cb.TEMPLATE_ID.match(ref):
+        ok = _team.may_reach("template_id", ref, action)
+    elif ref.startswith("cache:"):
+        ok = _team.may(action, ref[6:])
+    elif ref != _offline.SAMPLE and (tenant_profiles.SNAPSHOT_ID.match(ref) or _offline.SOURCE_RE.match(ref)):
+        ok = _team.may_reach("snapshot_id", ref, action)   # a saved snapshot (its profile) or a file opened here (its opener)
+    else:
+        ok = True   # the sample tenant: made up, nobody's
+    if not ok:
+        raise HTTPException(status_code=404, detail=_CFG_NOT_YOURS)
+
+
 def _cfg_side(ref: str) -> Dict[str, Any]:
     import config_backup as cb
     ref = str(ref or "")
+    _cfg_reach(ref)
     try:
         if cb.BACKUP_ID.match(ref):
             return cb.load_backup(ref)
@@ -4757,13 +4787,19 @@ async def config_backups_list():
     try:
         import tenant_profiles
         for p in tenant_profiles.list_profiles():
+            if not _team.may("read", p.get("id")):
+                continue   # team mode: only the caches of tenant profiles this person may read
             got = cb.cache_summary(p["id"]) if cb.CACHE_KEY.match(str(p.get("id") or "")) else None
             if got:
                 caches[p["id"]] = got
     except Exception:  # noqa: BLE001 - an unreadable profile store lists no caches
         caches = {}
-    return {"backups": cb.list_backups(), "templates": cb.list_templates(), "schedules": cb.schedules(), "caches": caches,
-            "coverage": cb.coverage()}
+    # Team mode: every backup and template names its tenant profile (and its
+    # maker); a person sees only those of the profiles they may read.
+    backups = [b for b in cb.list_backups() if _team.may_reach_record(_team.record_profiles(b), b.get("owner_id"))]
+    templates = [t for t in cb.list_templates() if _team.may_reach("template_id", t.get("id"))]
+    schedules = {pid: v for pid, v in cb.schedules().items() if _team.may("read", pid)}
+    return {"backups": backups, "templates": templates, "schedules": schedules, "caches": caches, "coverage": cb.coverage()}
 
 
 @app.post("/api/config-backups/save/start")
@@ -4787,6 +4823,7 @@ async def config_backup_save_start(req: ConfigBackupSaveRequest, request: Reques
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = tenant_auth.record_label(creds)
     pid = req.profile_id if (req.profile_id and tenant_profiles.get(req.profile_id)) else ""
+    owner = _team.current_owner_id()
 
     def run(log, cancel):
         got = cb.capture(client, products, scope, log, cancel)
@@ -4795,7 +4832,7 @@ async def config_backup_save_start(req: ConfigBackupSaveRequest, request: Reques
         if not got["types"]:
             raise RuntimeError("Nothing could be read from the tenant, so no backup was saved.")
         meta = {"tenant_label": label, "saved_at": cb._now(), "products": products, "kind": "manual", "profile_id": pid,
-                "scopes": scope.get("scopes"), "unread": got["unread"], "note": req.note}
+                "scopes": scope.get("scopes"), "unread": got["unread"], "note": req.note, "owner_id": owner}
         meta.update(tenant_fingerprint.record_ids(creds))
         entry = cb.save_backup(cb.build_doc(got["types"], meta))
         if pid:
@@ -4858,8 +4895,20 @@ async def config_backup_from_snapshot(req: ConfigFromSnapshotRequest):
     if not (sid == _offline.SAMPLE or tenant_profiles.SNAPSHOT_ID.match(sid)):
         raise HTTPException(status_code=404, detail="Pick a saved snapshot or the sample tenant.")
     doc = await asyncio.to_thread(_cfg_offline_doc, sid)
-    if req.profile_id and tenant_profiles.get(req.profile_id):
+    # The backup belongs to the snapshot's own tenant profile: a snapshot of
+    # tenant B never becomes a backup listed under tenant A.
+    snap_pid = ""
+    if sid != _offline.SAMPLE:
+        snap_pid = next((str(r.get("profile_id") or "") for r in tenant_profiles.list_snapshots(None) if r.get("id") == sid), "")
+    if snap_pid and req.profile_id and req.profile_id != snap_pid:
+        raise HTTPException(status_code=409, detail="That snapshot belongs to another tenant profile than the one named; keep it as a "
+                                                    "backup of its own tenant profile. Nothing was saved.")
+    if snap_pid:
+        doc["meta"]["profile_id"] = snap_pid
+    elif req.profile_id and tenant_profiles.get(req.profile_id):
         doc["meta"]["profile_id"] = req.profile_id
+    if _team.current_owner_id():
+        doc["meta"]["owner_id"] = _team.current_owner_id()
     try:
         entry = await asyncio.to_thread(cb.save_backup, doc)
     except cb.BackupError as e:
@@ -4960,7 +5009,11 @@ async def config_template_export(req: ConfigTemplateExportRequest):
         doc = await asyncio.to_thread(cb.load_backup, req.backup_id)
         tpl = cb.make_template(doc, req.objects, name=req.name, description=req.description, strip_prefix=req.strip_prefix,
                                with_dependencies=req.with_dependencies)
-        return {"template": await asyncio.to_thread(cb.save_template, tpl)}
+        m = doc.get("meta") or {}
+        saved = await asyncio.to_thread(cb.save_template, tpl, profile_id=str(m.get("profile_id") or ""), owner_id=_team.current_owner_id(),
+                                        tenant_ids={k: m.get(k) for k in ("tenant_key", "tenant_fp") if m.get(k)})
+        _team.set_owner("template", saved["id"])
+        return {"template": saved}
     except cb.BackupError as e:
         raise _cfg_err(e)
 
@@ -4970,9 +5023,13 @@ async def config_template_import(req: ConfigTemplateImportRequest):
     """Keep a template file chosen in the browser (an untrusted file: size,
     nesting, format, types and every reference are checked)."""
     import config_backup as cb
+    import tenant_profiles
     try:
         tpl = cb.parse_template(req.content)
-        return {"template": await asyncio.to_thread(cb.save_template, tpl)}
+        pid = req.profile_id if (req.profile_id and tenant_profiles.get(req.profile_id)) else ""
+        saved = await asyncio.to_thread(cb.save_template, tpl, profile_id=pid, owner_id=_team.current_owner_id())
+        _team.set_owner("template", saved["id"])
+        return {"template": saved}
     except cb.BackupError as e:
         raise _cfg_err(e)
 
@@ -5014,6 +5071,7 @@ async def config_backup_rehearse(req: ConfigRehearseRequest):
     if product is None:
         raise HTTPException(status_code=400, detail="Pick ZIA, ZPA or Client Connector.")
     target = await asyncio.to_thread(_cfg_side, req.target)
+    _cfg_source_reach(op)
     try:
         nspec = ocr.check_spec(dict(op, target_profile_id=op.get("target_profile_id") or ("rehearsal" if op.get("target") == "other" else "")),
                                product)
@@ -5036,6 +5094,16 @@ def _cfg_profile_matches(profile_id: str, creds: Dict[str, Any]) -> bool:
     return tenant_fingerprint.same_tenant(rec, creds)
 
 
+def _cfg_source_reach(op: Dict[str, Any]) -> None:
+    """Team mode: the source of a restore, clone or template apply (a kept
+    backup or template) must be one the person may read: a user of tenant A
+    never clones tenant B's backup into A."""
+    src = op.get("source") if isinstance(op.get("source"), dict) else {}
+    for kind in ("backup", "template"):
+        if kind in src:
+            _cfg_reach(str(src.get(kind) or ""))
+
+
 def _cfg_restore_gate(req: Any, creds: Dict[str, Any], *, apply: bool) -> None:
     """Every refusal a restore, clone or template apply makes before it signs
     in: a rehearsal on the sample or a snapshot is plan only; "same" must be
@@ -5046,6 +5114,7 @@ def _cfg_restore_gate(req: Any, creds: Dict[str, Any], *, apply: bool) -> None:
     op = req.operation if isinstance(req.operation, dict) else {}
     if str(op.get("type") or "") not in ocr.PRODUCT_OF:
         return
+    _cfg_source_reach(op)
     if _offline.is_offline_creds(creds):
         if apply:
             raise HTTPException(status_code=409, detail="Rehearsal only: this browser is using the sample tenant or a snapshot, so the "
@@ -8514,6 +8583,8 @@ async def tenant_health_start(req: TenantHealthRequest, request: Request):
     creds["customer_id"] = validate_customer_id(req.customer_id) if req.customer_id else (creds.get("customer_id") or "")
     label = tenant_auth.record_label(creds)
     method = creds["auth_method"]
+    import tenant_profiles
+    bind_profile = str(req.profile_id or "") if (req.profile_id and tenant_profiles.get(req.profile_id, with_secret=False)) else ""
     client = await asyncio.to_thread(_build_sdk_client, creds)
 
     def fn(log, cancel):
@@ -8523,6 +8594,8 @@ async def tenant_health_start(req: TenantHealthRequest, request: Request):
         finally:
             _close_quietly(client)
         if out.get("status") == "done":
+            if bind_profile:
+                out["profile_id"] = bind_profile   # team mode: only people who may read this profile see it in /latest
             _TENANT_HEALTH.pop(label, None)
             _TENANT_HEALTH[label] = out
             while len(_TENANT_HEALTH) > _TENANT_HEALTH_MAX:
@@ -8537,7 +8610,7 @@ async def tenant_health_latest():
     """The latest tenant-health answers this server holds (memory only,
     newest first, at most 8 tenants), and the thresholds in force. No tenant call."""
     import tenant_health
-    return JSONResponse({"results": [dict(v) for v in reversed(list(_TENANT_HEALTH.values()))],
+    return JSONResponse({"results": [dict(v) for v in _team.visible(reversed(list(_TENANT_HEALTH.values())))],
                          "thresholds": dict(zip(("warning_days", "critical_days"), tenant_health.thresholds()))},
                         headers={"Cache-Control": "no-store"})
 
@@ -9555,7 +9628,9 @@ async def traffic_logs_save(report_id: str, req: TrafficLogsSaveRequest, request
     import traffic_logs as tl
     rep = _tlogs_report(report_id)
     try:
-        saved = await asyncio.to_thread(tl.save_report, rep, req.title, req.names)
+        bound = _team.bound(report_id) or ("", "")
+        saved = await asyncio.to_thread(tl.save_report, rep, req.title, req.names, profile_id=bound[1] or _team.current_profile(),
+                                        owner_id=_team.current_owner_id())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     _audit.record("traffic_logs_saved", actor=_actor(request), name=saved["name"], names=saved["names"],
@@ -9566,13 +9641,17 @@ async def traffic_logs_save(report_id: str, req: TrafficLogsSaveRequest, request
 @app.get("/api/traffic-logs/saved")
 async def traffic_logs_saved():
     import traffic_logs as tl
-    return {"reports": await asyncio.to_thread(tl.list_saved)}
+    rows = await asyncio.to_thread(tl.list_saved)
+    # Team mode: a saved report is its maker's (and, when made for a tenant
+    # profile, readable by whoever may read that profile).
+    return {"reports": [r for r in rows if _team.may_reach_record(_team.record_profiles(r), r.get("owner_id"))]}
 
 
-@app.post("/api/traffic-logs/saved/{name}/open")
-async def traffic_logs_open_saved(name: str):
+@app.post("/api/traffic-logs/saved/{saved_name}/open")
+async def traffic_logs_open_saved(saved_name: str):
     """Open a saved report: it is read as untrusted (name, size, format) and held in memory like a new analysis."""
     import traffic_logs as tl
+    name = saved_name
     try:
         rep = await asyncio.to_thread(tl.load_saved, name)
     except FileNotFoundError:
@@ -9583,9 +9662,10 @@ async def traffic_logs_open_saved(name: str):
     return _REPORTS[rid]
 
 
-@app.delete("/api/traffic-logs/saved/{name}")
-async def traffic_logs_delete_saved(name: str, request: Request):
+@app.delete("/api/traffic-logs/saved/{saved_name}")
+async def traffic_logs_delete_saved(saved_name: str, request: Request):
     import traffic_logs as tl
+    name = saved_name
     try:
         gone = await asyncio.to_thread(tl.delete_saved, name)
     except ValueError as e:
@@ -10875,6 +10955,9 @@ async def zcc_fleet_history_forget(req: ZccFleetHistoryForget):
     import zcc_fleet_history as zh
     if req.confirm is not True:
         raise HTTPException(status_code=400, detail="Confirm that the fleet history of this tenant should be removed from this computer.")
+    if not _team.may_reach("tenant", req.tenant[:120], "plan"):
+        # Team mode: the body's tenant is checked like the query's (its tenant profile, plan at least).
+        raise HTTPException(status_code=404, detail="Not found, or not yours to see.")
     return {"tenant": req.tenant[:120], "removed": await asyncio.to_thread(zh.forget, req.tenant[:120])}
 
 
@@ -10890,7 +10973,8 @@ async def zcc_fleet_history_save(job_id: str):
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     tenant = str(res.get("tenant_label") or "tenant")
-    hist = await asyncio.to_thread(zh.record, tenant, snap)
+    bound = _team.bound(job_id) or ("", "")
+    hist = await asyncio.to_thread(zh.record, tenant, snap, profile_id=bound[1] or _team.current_profile())
     return {"tenant": zh.tenant_key(tenant), "history": hist, "trend": zh.trend(hist), "keep": zh.HISTORY_KEEP}
 
 
@@ -12206,6 +12290,7 @@ async def bulk_test_fix(job_id: str, req: BulkFixRequest):
         rec = bulk_test.fix_handoff(rn, rows=req.rows, area=req.area, purpose=req.purpose, in_scope=in_scope)
     except bulk_test.ListError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    _team.bind(rec["id"])   # team mode: the fix is its maker's (and the read's tenant profile's), like the run it came from
     return {"fix_id": rec["id"], "urls": len(rec["urls"]), "excluded": rec["excluded"], "over_limit": rec["over_limit"],
             "open": f"/report/operations?fix={rec['id']}", "note": rec["note"],
             "fixes": [{"area": f["area"], "area_label": f["area_label"], "purpose": f["purpose"], "destinations": len(f["destinations"]),
