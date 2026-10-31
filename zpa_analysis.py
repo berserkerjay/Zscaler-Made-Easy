@@ -1394,6 +1394,51 @@ def _analyze(snap: Dict[str, Any], now: Optional[float]) -> Dict[str, Any]:
                        "with_findings": sum(1 for c in catalog if c["status"] == "findings")}}
 
 
+def snapshot_from_lists(lists: Dict[str, Optional[List[Dict[str, Any]]]]) -> Dict[str, Any]:
+    """A snapshot (zpa_reader's shape) from raw API lists the assessment
+    already read: {collection key or "policy:<type>": [raw objects] or None
+    (not read)}. Each list is taken as complete (the assessment reads one
+    page of up to 500). Pure: nothing is read here."""
+    import zpa_reader as zr
+    norm = {"segments": zr.normalize_segment, "segment_groups": zr.normalize_segment_group, "server_groups": zr.normalize_server_group,
+            "connector_groups": zr.normalize_connector_group, "connectors": zr.normalize_connector,
+            "service_edge_groups": zr.normalize_service_edge_group, "service_edges": zr.normalize_service_edge,
+            "servers": zr.normalize_server, "inspection_profiles": zr.normalize_inspection_profile,
+            "custom_controls": zr.normalize_custom_control, "business_continuity": zr.normalize_business_continuity,
+            "private_cloud_groups": zr.normalize_private_cloud_group, "private_cloud_controllers": zr.normalize_private_cloud_controller}
+    snap: Dict[str, Any] = {"collections": {}, "policies": {}, "scim_groups": {}}
+    for key, items in lists.items():
+        ok = isinstance(items, list)
+        snap["collections"][key] = {"label": key.replace("policy:", "").replace("_", " "), "read": ok, "count": len(items) if ok else 0,
+                                    "complete": ok, "error": None if ok else "not read"}
+        rows = [x for x in (items or []) if isinstance(x, dict)]
+        if key.startswith("policy:"):
+            if ok:
+                ptype = key.split(":", 1)[1]
+                snap["policies"][ptype] = zr.order_rules([zr.normalize_rule(r, i, ptype) for i, r in enumerate(rows)])
+        elif key in norm:
+            snap[key] = [norm[key](x) for x in rows] if ok else None
+    return snap
+
+
+def run_templates(snap: Dict[str, Any], ids: Iterable[str]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """(findings, ids not assessed) of the named templates over a snapshot."""
+    _MEMO.cache = {}
+    try:
+        ix = _Index(snap)
+        findings: List[Dict[str, Any]] = []
+        skipped: List[str] = []
+        for tid in ids:
+            if any(not ix.read(k) for k in CATALOG_BY_ID[tid]["needs"]):
+                skipped.append(tid)
+                continue
+            findings.extend(f for f in _TEMPLATES[tid](snap, ix) if f["template"] == tid)
+        findings.sort(key=lambda f: (SEV_RANK.get(f["severity"], 9), f["object"].lower()))
+        return findings, skipped
+    finally:
+        _MEMO.cache = None
+
+
 def _need_label(snap: Dict[str, Any], key: str) -> str:
     c = (snap.get("collections") or {}).get(key) or {}
     return c.get("label") or key.replace("policy:", "").replace("_", " ")
@@ -1903,7 +1948,7 @@ def _infrastructure_hops(snap: Dict[str, Any], ix: _Index, u: Dict[str, Any]) ->
             detail = "Business continuity is set up, but no Private Cloud Controller is deployed to take over if the ZPA cloud is unreachable."
         else:
             detail = (f"Business continuity is set up: if the ZPA cloud is unreachable, {len(up)} of {len(cons)} Private Cloud Controller"
-                      f"{'s' if len(cons) != 1 else ''} {'is' if len(up) == 1 else 'are'} connected to take over.")
+                      f"{'s' if len(cons) != 1 else ''} {'is' if len(cons) == 1 else 'are'} connected to take over.")
             st = "ok" if up else "warn"
         hops.append({"key": "business_continuity", "label": "Business continuity", "status": st, "detail": detail})
     return hops

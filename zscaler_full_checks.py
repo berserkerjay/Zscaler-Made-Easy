@@ -668,6 +668,128 @@ def zpa_14(cl):
     if not r and isinstance(d, dict): r = _ls(d.get("list", []))
     return R(R.PASS, f"{len(r)} LSS config(s) — ZPA logs streaming.") if r else R(R.WARN, "No LSS — ZPA logs not streamed to SIEM. Best Practice: Configure Log Streaming Service (LSS) to send ZPA user activity, connector status, and audit logs to your SIEM. Without LSS, ZPA keeps user activity, user status and App Connector logs for a rolling 14 days (audit logs six months). Ref: https://help.zscaler.com/zpa/about-log-streaming-service")
 
+# ── ZPA policy completeness (zpa_analysis templates over the same reads) ──
+# Short ZPA paths as dlp_assessment_full_auto._resolve_ep maps them (v1 by
+# default); the list methods behind them are zpa_reader.COLLECTIONS.
+_ZPA_LISTS = {
+    "segments": "/zpa/application", "server_groups": "/zpa/serverGroup", "service_edge_groups": "/zpa/serviceEdgeGroup",
+    "service_edges": "/zpa/serviceEdge", "inspection_profiles": "/zpa/inspectionProfile",
+    "custom_controls": "/zpa/inspectionControls/custom", "business_continuity": "/zpa/businessContinuitySettings",
+    "private_cloud_groups": "/zpa/privateCloudControllerGroup", "private_cloud_controllers": "/zpa/privateCloudController",
+    "policy:access": "/zpa/policySet/rules/ACCESS_POLICY",
+    "policy:client_forwarding": "/zpa/policySet/rules/policyType/CLIENT_FORWARDING_POLICY",
+    "policy:inspection": "/zpa/policySet/rules/policyType/INSPECTION_POLICY",
+    "policy:isolation": "/zpa/policySet/rules/policyType/ISOLATION_POLICY",
+    "policy:redirection": "/zpa/policySet/rules/policyType/REDIRECTION_POLICY",
+    "policy:credential": "/zpa/policySet/rules/policyType/CREDENTIAL_POLICY",
+    "policy:capabilities": "/zpa/policySet/rules/policyType/CAPABILITIES_POLICY",
+    "policy:clientless": "/zpa/policySet/rules/policyType/CLIENTLESS_SESSION_PROTECTION_POLICY",
+}
+_ZPA_PAGE = {"page": 1, "pagesize": 500}   # one page of the documented maximum, as offline_tenant._read_zpa asks
+
+
+def _zpa_lists(cl, keys):
+    """({key: raw list or None}, {key: HTTP code}) for the named lists."""
+    lists, codes = {}, {}
+    for k in keys:
+        ep = _ZPA_LISTS[k]
+        d, c = cl.get(ep) if ep == "/zpa/businessContinuitySettings" else cl.get(ep, dict(_ZPA_PAGE))
+        codes[k] = c
+        if c in (200, 204):
+            r = _ls(d) if c == 200 else []
+            if not r and isinstance(d, dict):
+                r = _ls(d.get("list", []))
+            lists[k] = [x for x in r if isinstance(x, dict)]
+        else:
+            lists[k] = None
+    return lists, codes
+
+
+def _zpa_verdict(label, findings, skipped, codes, keys, bp, na=None):
+    """One check result from zpa_analysis findings: FAIL on a high finding,
+    REVIEW on others, PASS when assessed and clean, INFO (N/A) when the
+    feature answered 404 (not licensed) or `na` says it is not in use."""
+    if na:
+        return R(R.INFO, f"{label}: N/A — {na}")
+    nf = [k for k in keys if codes.get(k) == 404]
+    if skipped and nf:
+        return R(R.INFO, f"{label}: N/A — the tenant answered 404 for {', '.join(sorted(_ZPA_LISTS[k] for k in nf))}, so the feature is not licensed or not enabled.")
+    if skipped and not findings:
+        return R(R.INFO, f"{label}: not assessed — {', '.join(sorted(_ZPA_LISTS[k] for k in keys if codes.get(k) not in (200, 204)))} could not be read.")
+    if not findings:
+        return R(R.PASS, f"{label}: nothing found." + bp)
+    worst = R.FAIL if any(f["severity"] == "high" for f in findings) else R.WARN
+    head = "; ".join(f["reason"].rstrip(".") for f in findings[:3])
+    more = f" (and {len(findings) - 3} more)" if len(findings) > 3 else ""
+    return R(worst, f"{len(findings)} finding(s): {head}{more}. Fix: {findings[0]['fix']}" + bp,
+             {"findings": [{k: f[k] for k in ("template", "severity", "object", "reason", "fix")} for f in findings[:50]]})
+
+
+def _zpa_run(cl, keys, ids):
+    import zpa_analysis
+    lists, codes = _zpa_lists(cl, keys)
+    snap = zpa_analysis.snapshot_from_lists(lists)
+    findings, skipped = zpa_analysis.run_templates(snap, ids)
+    return snap, findings, skipped, codes
+
+
+def zpa_16(cl):
+    """ZPA inspection (AppProtection): every web segment inspected, profiles that block, custom controls attached"""
+    keys = ["segments", "policy:inspection", "inspection_profiles", "custom_controls"]
+    snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-IN-01", "ZPA-AS-09", "ZPA-IN-02", "ZPA-IN-03"])
+    return _zpa_verdict("AppProtection inspection", f, sk, codes, keys,
+                        " Best Practice: inspect every private web application with Zscaler's predefined OWASP controls, monitor first, then block." + _ZPA_GUIDE)
+
+
+def zpa_17(cl):
+    """ZPA client forwarding: no BYPASS of sensitive segments"""
+    keys = ["segments", "policy:client_forwarding"]
+    snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-CF-01"])
+    return _zpa_verdict("Client forwarding bypass", f, sk, codes, keys,
+                        " Best Practice: keep client forwarding on Intercept for every application segment that holds sensitive data; a bypassed segment skips every ZPA access rule." + _ZPA_GUIDE)
+
+
+def zpa_18(cl):
+    """ZPA Privileged Remote Access: capabilities (clipboard, file transfer, recording) and credentials"""
+    keys = ["segments", "policy:capabilities", "policy:credential"]
+    snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-PR-01", "ZPA-PR-02", "ZPA-PR-03"])
+    pra = [s for s in snap.get("segments") or [] if (s.get("flags") or {}).get("pra")]
+    in_use = pra or (snap["policies"].get("capabilities") or []) or (snap["policies"].get("credential") or [])
+    na = None if in_use or snap.get("segments") is None else "no Privileged Remote Access segment or privileged policy rule, so PRA is not in use."
+    return _zpa_verdict("Privileged Remote Access", f, sk, codes, keys,
+                        " Best Practice: record privileged sessions, keep clipboard copy off and send file transfers through the ZIA sandbox, and give stored credentials to named admin groups only. Ref: https://help.zscaler.com/zpa/about-privileged-capabilities-policy", na)
+
+
+def zpa_19(cl):
+    """ZPA redirection policy: Private Service Edge groups that can serve"""
+    keys = ["policy:redirection", "service_edge_groups", "service_edges"]
+    snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-RD-01"])
+    na = "no redirection rule, so every client uses the public ZPA cloud." if snap["policies"].get("redirection") == [] else None
+    return _zpa_verdict("Redirection policy", f, sk, codes, keys,
+                        " Best Practice: redirect only to Private Service Edge groups with at least two connected edges; prefer REDIRECT_PREFERRED so users fall back to the public cloud." + _ZPA_GUIDE, na)
+
+
+def zpa_20(cl):
+    """ZPA Browser Access from unmanaged devices: isolation and browser protection"""
+    keys = ["segments", "policy:access", "policy:isolation", "policy:clientless"]
+    snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-IS-01", "ZPA-BP-01"])
+    ba = [s for s in snap.get("segments") or [] if (s.get("flags") or {}).get("browser_access")]
+    na = None if ba or snap.get("segments") is None else "no Browser Access segment, so no unmanaged-device access to protect."
+    return _zpa_verdict("Unmanaged-device access", f, sk, codes, keys,
+                        " Best Practice: isolate Browser Access applications reached from unmanaged devices (block download, upload and copy) and monitor their sessions with browser protection." + _ZPA_GUIDE, na)
+
+
+def zpa_21(cl):
+    """ZPA business continuity and Private Cloud Controllers"""
+    keys = ["business_continuity", "private_cloud_groups", "private_cloud_controllers"]
+    snap, f, sk, codes = _zpa_run(cl, keys, ["ZPA-PC-01", "ZPA-BC-01"])
+    na = None
+    if snap.get("business_continuity") == [] and snap.get("private_cloud_groups") in ([], None):
+        na = "business continuity is not set up (optional: it keeps private applications reachable when the ZPA cloud is not)."
+    return _zpa_verdict("Business continuity", f, sk, codes, keys,
+                        " Best Practice: deploy at least two Private Cloud Controllers per Private Cloud site and keep them connected. Ref: https://help.zscaler.com/zpa/about-business-continuity", na)
+
+
 def zpa_15(cl):
     """Machine groups (machine tunnels, pre-Windows-logon access)"""
     r, c = _items(cl, "/zpa/machineGroup")
@@ -1129,6 +1251,12 @@ PLATFORM_REG = [
     ("ZPA.13", "ZPA — App Access", "Trusted networks", zpa_13),
     ("ZPA.14", "ZPA — App Access", "Log streaming (LSS)", zpa_14),
     ("ZPA.15", "ZPA — App Access", "Machine groups", zpa_15),
+    ("ZPA.16", "ZPA — App Access", "AppProtection inspection coverage", zpa_16),
+    ("ZPA.17", "ZPA — App Access", "Client forwarding bypass of sensitive segments", zpa_17),
+    ("ZPA.18", "ZPA — App Access", "Privileged Remote Access capabilities and credentials", zpa_18),
+    ("ZPA.19", "ZPA — App Access", "Redirection policy", zpa_19),
+    ("ZPA.20", "ZPA — App Access", "Unmanaged-device access: isolation and browser protection", zpa_20),
+    ("ZPA.21", "ZPA — App Access", "Business continuity and Private Cloud Controllers", zpa_21),
 
     # ZCC — Device Management / Mobile Portal
     ("ZCC.1",  "ZCC — Devices",          "Trusted networks",                    zcc_1),

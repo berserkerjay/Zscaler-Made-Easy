@@ -969,7 +969,15 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                          "serviceEdge", "idp", "samlAttribute", "postureProfile", "trustedNetwork", "machineGroup",
                                          "policySet/rules/ACCESS_POLICY", "policySet/rules/TIMEOUT_POLICY",
                                          "policySet/rules/policyType/CLIENT_FORWARDING_POLICY", "policySet/rules/policyType/INSPECTION_POLICY",
-                                         "policySet/rules/policyType/ISOLATION_POLICY")]
+                                         "policySet/rules/policyType/ISOLATION_POLICY",
+                                         # ZPA policy completeness: the other policy types, AppProtection and the
+                                         # infrastructure behind the ZPA diagnostics (zpa_reader.COLLECTIONS).
+                                         "policySet/rules/policyType/REDIRECTION_POLICY", "policySet/rules/policyType/CREDENTIAL_POLICY",
+                                         "policySet/rules/policyType/CAPABILITIES_POLICY",
+                                         "policySet/rules/policyType/CLIENTLESS_SESSION_PROTECTION_POLICY",
+                                         "inspectionProfile", "inspectionControls/custom", "server", "businessContinuitySettings",
+                                         "privateCloud", "privateCloudControllerGroup", "privateCloudController",
+                                         "branchConnectorGroup", "branchConnector", "cloudConnectorGroup", "cloudConnector")]
     + [(("zdx",), f"/zdx/{x}") for x in ("administration/apps", "troubleshooting/devices", "administration/departments",
                                          "administration/locations")]
     + [(("zidentity",), f"/zid/{x}") for x in ("users", "groups", "resourceServers")]
@@ -1057,7 +1065,17 @@ def capture(client: Any, scopes: Iterable[str], channels: Any, log: Callable[[st
     return {"responses": responses, "counts": counts, "unread": unread, "stopped": False}
 
 
+# ZPA lists read in one call: the SDK's list method takes no paging parameters.
+_ZPA_SINGLE = {"/zpa/businessContinuitySettings"}
+
+
 def _read_zpa(guard: Any, ep: str) -> Tuple[Any, int]:
+    if ep in _ZPA_SINGLE:
+        body, code = guard.get(ep)
+        if code not in (200, 204):
+            return body, code
+        rows = _items(body) or []
+        return {"list": rows, "totalPages": "1", "totalCount": str(len(rows))}, 200
     rows: List[Any] = []
     for page in range(1, MAX_LIST_PAGES + 1):
         body, code = guard.get(ep, {"page": page, "pagesize": 500})

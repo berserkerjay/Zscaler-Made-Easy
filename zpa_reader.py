@@ -450,6 +450,11 @@ _CONTROL_LISTS = ("predefinedControls", "customControls", "threatlabzControls", 
                   "predefinedADPControls", "predefinedApiControls")
 
 
+def _name(x: Dict[str, Any]) -> str:
+    """An object's name (else its id), capped: names are tenant text."""
+    return (as_str(get(x, "name")) or as_str(get(x, "id")))[:300]
+
+
 def normalize_inspection_profile(p: Dict[str, Any]) -> Dict[str, Any]:
     actions: List[str] = []
     for g in _items(get(p, "globalControlActions")):
@@ -467,21 +472,21 @@ def normalize_inspection_profile(p: Dict[str, Any]) -> Dict[str, Any]:
             if key == "customControls" and as_str(c.get("id")):
                 custom_ids.append(as_str(c.get("id")))
     found = sorted(set(actions))
-    return {"id": as_str(get(p, "id")), "name": as_str(get(p, "name")) or as_str(get(p, "id")),
+    return {"id": as_str(get(p, "id")), "name": _name(p),
             "paranoia_level": as_str(get(p, "paranoiaLevel")), "actions": found,
             "monitor_only": (found == ["PASS"]) if found else None,
             "custom_control_ids": custom_ids}
 
 
 def normalize_custom_control(c: Dict[str, Any]) -> Dict[str, Any]:
-    return {"id": as_str(get(c, "id")), "name": as_str(get(c, "name")) or as_str(get(c, "id")),
+    return {"id": as_str(get(c, "id")), "name": _name(c),
             "action": as_str(get(c, "action")).upper(), "default_action": as_str(get(c, "defaultAction")).upper(),
             "severity": as_str(get(c, "severity")).upper(), "control_type": as_str(get(c, "controlType")).upper(),
             "profiles": _refs(get(c, "associatedInspectionProfileNames"))}
 
 
 def normalize_server(x: Dict[str, Any]) -> Dict[str, Any]:
-    return {"id": as_str(get(x, "id")), "name": as_str(get(x, "name")) or as_str(get(x, "id")),
+    return {"id": as_str(get(x, "id")), "name": _name(x),
             "address": as_str(get(x, "address"))[:300], "enabled": as_bool(get(x, "enabled")) is not False,
             "server_group_ids": _ref_ids(get(x, "appServerGroupIds"))}
 
@@ -499,20 +504,20 @@ def normalize_business_continuity(x: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def normalize_private_cloud(x: Dict[str, Any]) -> Dict[str, Any]:
-    return {"id": as_str(get(x, "id")), "name": as_str(get(x, "name")) or as_str(get(x, "id")),
+    return {"id": as_str(get(x, "id")), "name": _name(x),
             "enabled": as_bool(get(x, "enabled")) is not False, "fire_drill_enabled": as_bool(get(x, "fireDrillEnabled")),
             "controller_group_ids": _ref_ids(get(x, "siteControllerGroupIds"))}
 
 
 def normalize_private_cloud_group(g: Dict[str, Any]) -> Dict[str, Any]:
-    return {"id": as_str(get(g, "id")), "name": as_str(get(g, "name")) or as_str(get(g, "id")),
+    return {"id": as_str(get(g, "id")), "name": _name(g),
             "enabled": as_bool(get(g, "enabled")) is not False, "site_id": as_str(get(g, "siteId")),
             "site_name": as_str(get(g, "siteName")), "location": as_str(get(g, "location"))[:200]}
 
 
 def normalize_private_cloud_controller(c: Dict[str, Any]) -> Dict[str, Any]:
     raw, up = _status(c)
-    return {"id": as_str(get(c, "id")), "name": as_str(get(c, "name")) or as_str(get(c, "id")),
+    return {"id": as_str(get(c, "id")), "name": _name(c),
             "enabled": as_bool(get(c, "enabled")) is not False,
             "group_id": as_str(get(c, "privateCloudControllerGroupId")), "status_raw": raw, "connected": up,
             "current_version": as_str(get(c, "currentVersion")), "expected_version": as_str(get(c, "expectedVersion"))}
@@ -522,7 +527,7 @@ def normalize_edge_connector(c: Dict[str, Any], group_key: str) -> Dict[str, Any
     """A Branch or Cloud Connector as ZPA lists it (no status field in the
     SDK models): name, switch and group only; enrollment certificates,
     fingerprints and IP ACLs are not kept."""
-    return {"id": as_str(get(c, "id")), "name": as_str(get(c, "name")) or as_str(get(c, "id")),
+    return {"id": as_str(get(c, "id")), "name": _name(c),
             "enabled": as_bool(get(c, "enabled")) is not False, "group_id": as_str(get(c, group_key))}
 
 

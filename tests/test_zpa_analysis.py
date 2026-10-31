@@ -80,20 +80,19 @@ def messy():
             _seg("s-git", "Git servers", ["git.corp.example"], [(22, 22), (443, 443)], "sg-eng", ["srv-dc1"]),
             _seg("s-jira", "Jira", ["jira.corp.example"], [(443, 443)], "sg-eng", ["srv-dc1"]),
             _seg("s-mirror", "Git mirror", ["git.corp.example"], [(443, 443)], "sg-eng", ["srv-dc1"]),
-            _seg("s-wild", "Corp wildcard", ["*.corp.example"], [(80, 80), (443, 443)], "sg-gen", ["srv-dc1"]),
+            # Also a Browser Access segment (reached from unmanaged browsers).
+            _seg("s-wild", "Corp wildcard", ["*.corp.example"], [(80, 80), (443, 443)], "sg-gen", ["srv-dc1"],
+                 clientlessApps=[{"id": "ca1", "name": "corp", "enabled": True}]),
             _seg("s-pay", "Payroll", ["payroll.corp.example"], [(443, 443)], "sg-fin", ["srv-dc1"]),
             _seg("s-unused", "Unused app", ["unused.corp.example"], [(8443, 8443)], "sg-misc", ["srv-dc1"]),
             _seg("s-legacy", "Legacy app", ["legacy.corp.example"], [(443, 443)], "sg-old", ["srv-dc1"]),
             _seg("s-broad", "Everything dot com", ["*.com", "10.0.0.0/8"], [(1, 65535)], "sg-gen", ["srv-dc1"], bypassType="ALWAYS"),
-            _seg("s-rdp", "RDP jump hosts", ["rdp.corp.example", "10.20.30.0/24"], [(3389, 3389)], "sg-gen", ["srv-dc1"], healthReporting="NONE"),
+            # Also a Privileged Remote Access segment.
+            _seg("s-rdp", "RDP jump hosts", ["rdp.corp.example", "10.20.30.0/24"], [(3389, 3389)], "sg-gen", ["srv-dc1"], healthReporting="NONE",
+                 commonAppsDto={"appsConfig": [{"appTypes": ["SECURE_REMOTE_ACCESS"]}]}),
             _seg("s-orphan", "Orphan app", ["orphan.corp.example"], [(443, 443)], "sg-gen", []),
             _seg("s-intra", "Intranet", ["intranet.corp.example"], [(443, 443)], "sg-gen", ["srv-branch"], bypassType="ON_NET"),
             _seg("s-wide", "Wide ports", ["wide.corp.example"], [(5000, 9000)], "sg-gen", ["srv-dc1"]),
-            # A Privileged Remote Access segment and a Browser Access (unmanaged device) segment.
-            _seg("s-pra", "Plant jump hosts", ["pra.corp.example"], [(3389, 3389)], "sg-gen", ["srv-dc1"],
-                 commonAppsDto={"appsConfig": [{"appTypes": ["SECURE_REMOTE_ACCESS"]}]}),
-            _seg("s-ba", "HR portal", ["hr.corp.example"], [(443, 443)], "sg-gen", ["srv-dc1"],
-                 clientlessApps=[{"id": "ca1", "name": "hr", "enabled": True}]),
         ],
         "segment_groups": [
             {"id": "sg-eng", "name": "Engineering apps", "enabled": True, "applications": [{"id": "s-git"}, {"id": "s-jira"}, {"id": "s-mirror"}]},
@@ -145,8 +144,7 @@ def messy():
                       _cond(_op("POSTURE", "udid-1", "true"))),
                 _rule("r3", 3, "Block engineering from Jira", "DENY", _cond(APP("s-jira")), _cond(SCIM("g-eng")), _cond(ZAPP)),
                 _rule("r4", 4, "Payroll deny", "DENY", _cond(APP("s-pay")), _cond(SCIM("g-con", "Contractors"))),
-                _rule("r5", 5, "Wildcard for all", "ALLOW", _cond(APP("s-wild"), APP("s-intra"), APP("s-rdp"), APP("s-broad"), APP("s-orphan"), APP("s-wide"),
-                                                                 APP("s-pra"), APP("s-ba"))),
+                _rule("r5", 5, "Wildcard for all", "ALLOW", _cond(APP("s-wild"), APP("s-intra"), APP("s-rdp"), APP("s-broad"), APP("s-orphan"), APP("s-wide"))),
                 _rule("r6", 6, "Sales via SAML", "ALLOW", _cond(APP("s-jira")), _cond(_op("SAML", "attr-dept", "Sales"))),
                 _rule("r7", 7, "Dangling", "ALLOW", _cond(APP("s-gone"), GRP("sg-old")), _cond(_op("POSTURE", "udid-gone", "true"))),
                 _rule("r8", 8, "Old allow all", "ALLOW", disabled="1"),
@@ -157,7 +155,7 @@ def messy():
             "client_forwarding": [_rule("f1", 1, "Bypass all", "BYPASS")],
             "inspection": [_rule("i1", 1, "Inspect engineering", "INSPECT", _cond(GRP("sg-eng")), zpnInspectionProfileId="ip1")],
             "isolation": [],
-            "capabilities": [_rule("cap1", 1, "Jump host full transfer", "CHECK_CAPABILITIES", _cond(APP("s-pra")),
+            "capabilities": [_rule("cap1", 1, "Jump host full transfer", "CHECK_CAPABILITIES", _cond(APP("s-rdp")),
                                    privilegedCapabilities={"capabilities": ["CLIPBOARD_COPY", "FILE_DOWNLOAD", "MONITOR_SESSION"]})],
             # The credential rule's action name is assumed (the SDK does not list one).
             "credential": [_rule("cr1", 1, "Shared admin login", "INJECT_CREDENTIALS", _cond(_op("CONSOLE", "id", "con-1")),
@@ -699,7 +697,8 @@ def test_server_and_connector_hops_and_an_unreachable_allow(snap):
     d = za.diagnose(snap, ENG, "jira.corp.example", 443)
     keys = [h["key"] for h in d["hops"]]
     assert keys == ["user", "segment", "segment_group", "access", "server_groups", "connectors", "business_continuity"]
-    assert "DC1 connectors" in d["hops"][-1]["detail"] and "2 of 2 connected" in d["hops"][-1]["detail"]
+    cons = next(h for h in d["hops"] if h["key"] == "connectors")
+    assert "DC1 connectors" in cons["detail"] and "2 of 2 connected" in cons["detail"]
     data = messy()
     for c in data["connectors"]:
         c["controlChannelStatus"] = "ZPN_STATUS_DISCONNECTED"
