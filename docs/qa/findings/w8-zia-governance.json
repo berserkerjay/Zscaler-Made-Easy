@@ -1,0 +1,135 @@
+{
+ "area": "Assessment checks: ZIA governance and audit (zscaler_full_checks GOV.1-GOV.8, zscaler_rbac_checks RBAC.13-RBAC.14), their reads in the sample tenant and snapshots, and the subscriptions that make a check N/A",
+ "title": "Zscaler's configuration audit, alert subscriptions, NSS VM health and log streaming, admin password expiry and Zscaler Support access: read-only, in scope only, N/A when not licensed, recipients counted, verified offline against the SDK 1.11.3 models",
+ "standards": [
+  "ASVS V1.14.1",
+  "ASVS V2.1.10",
+  "ASVS V4.1.3",
+  "ASVS V5.1.3",
+  "ASVS V5.1.4",
+  "ASVS V7.1.3",
+  "ASVS V8.3.4",
+  "WSTG-ATHZ-02",
+  "CWE-20",
+  "CWE-117",
+  "CWE-200",
+  "CWE-262",
+  "CWE-284",
+  "CWE-285",
+  "CWE-312",
+  "CWE-359",
+  "CWE-400",
+  "CWE-754",
+  "CWE-778",
+  "CWE-863",
+  "CWE-1287",
+  "WCAG 2.2 SC 3.2.4"
+ ],
+ "checks": [
+  {
+   "id": "GOV-C01",
+   "what": "Every new read verified against zscaler-sdk-python 1.11.3: system_audit.get_config_audit (/configAudit), admin_roles.get_password_expiry_settings (/passwordExpiry/settings), remote_assistance.get_remote_assistance (/remoteAssistance), alert_subscriptions.list_alert_subscriptions (/alertSubscriptions), nss_servers.list_nss_servers (/nssServers), nss_collectors.list_collectors (/nssCollectors), organization_information.get_subscriptions (/subscriptions); the sample's answers use only the models' field names",
+   "standard": "ASVS V5.1.3 · CWE-1287",
+   "result": "pass"
+  },
+  {
+   "id": "GOV-C02",
+   "what": "Scope: GOV.* run only with ZIA platform and RBAC.13-14 only with RBAC; the snapshot plan reads the new endpoints only for those keys",
+   "standard": "ASVS V4.1.3 · CWE-863 · WSTG-ATHZ-02",
+   "result": "pass"
+  },
+  {
+   "id": "GOV-C03",
+   "what": "N/A: the NSS checks are 'not licensed' (outside the score) only when the subscriptions were read and hold no NSS SKU; unreadable or unparsable subscriptions never mark N/A",
+   "standard": "ASVS V1.14.1 · CWE-754",
+   "result": "pass"
+  },
+  {
+   "id": "GOV-C04",
+   "what": "Privacy: alert recipients are counted, never listed, on the checks and through a snapshot round trip; no admin name appears",
+   "standard": "ASVS V8.3.4 · CWE-359",
+   "result": "pass"
+  },
+  {
+   "id": "GOV-C05",
+   "what": "Untrusted text: Zscaler's recommended-configuration strings lose control characters and are capped before they enter a finding",
+   "standard": "ASVS V5.1.4 · CWE-117 · CWE-400",
+   "result": "pass"
+  },
+  {
+   "id": "GOV-C06",
+   "what": "A config audit refused for lack of the Reports scope (403) is 'Not permitted', never judged",
+   "standard": "ASVS V4.1.3 · CWE-285",
+   "result": "pass"
+  },
+  {
+   "id": "GOV-C07",
+   "what": "Snapshot: the admin password expiry switch survives the scrubber as true/false and a number; text under those names and real password fields stay masked",
+   "standard": "ASVS V8.3.4 · CWE-312",
+   "result": "fixed"
+  },
+  {
+   "id": "GOV-C08",
+   "what": "Read-only: no new write path; every read is a GET through the existing clients",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W8-GOV-01",
+   "title": "A snapshot masked the admin password expiry switch and its days as if they were passwords; the masked '(not set)' is a truthy string, so a password expiry check on a snapshot of a tenant with expiry off would read it as on",
+   "severity": "low",
+   "cwe": "CWE-1287",
+   "asvs": "V5.1.3",
+   "status": "fixed",
+   "fix": "offline_tenant.scrub keeps passwordExpirationEnabled and passwordExpiryDays only as a bool or an int (text stays masked); RBAC.13 accepts only a real true/false",
+   "test": "tests/test_w8_zia_governance.py::test_a_snapshot_keeps_the_password_expiry_switch_and_nothing_secret"
+  },
+  {
+   "id": "W8-GOV-06",
+   "title": "The governance checks first parsed the subscriptions with readiness.parse_subscriptions; readiness decodes unverified token claims and must stay out of every module but the server",
+   "severity": "low",
+   "cwe": "CWE-345",
+   "asvs": "V3.5.3",
+   "status": "fixed",
+   "fix": "zscaler_full_checks._subscriptions parses the SKU ids itself (bounded, id pattern, expired or unsubscribed rows are not active); no import of readiness",
+   "test": "tests/test_sbd_offline_least_privilege.py::test_no_authorization_decision_reads_the_unverified_token_claims"
+  },
+  {
+   "id": "W8-GOV-02",
+   "title": "The new-marks browser tour hard-coded items of the 2026-10-28 release (the Test a list tab, #paProto, marks on the POV, Simple and Operations pages), so listing any newer release in static/whats_new.js broke a dozen browser assertions",
+   "severity": "info",
+   "cwe": "CWE-1164",
+   "wcag": "WCAG 2.2 SC 3.2.4",
+   "status": "fixed",
+   "fix": "tests/test_new_marks.py takes the oldest marked release from the manifest, probes * then ? on the home page's Path analyzer button, rotates with a far-future release and asks for a mark at 320px only on pages that still have one",
+   "test": "tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out"
+  },
+  {
+   "id": "W8-GOV-03",
+   "title": "readiness.py said the ZIA /subscriptions endpoint is not in the SDK; zscaler-sdk-python 1.11.3 has organization_information.get_subscriptions (only the row shape is assumed)",
+   "severity": "info",
+   "status": "fixed",
+   "fix": "readiness.py docstring and SUBSCRIPTIONS_PATH comment corrected"
+  },
+  {
+   "id": "W8-GOV-04",
+   "title": "The Scope page and its help said ZIA platform runs 33 checks while the registry had 37 (45 with the governance checks)",
+   "severity": "info",
+   "status": "fixed",
+   "fix": "static/index.html and static/help_catalog.js (and the extension copy) give 45 and 14 (RBAC)"
+  },
+  {
+   "id": "W8-GOV-05",
+   "title": "tests/test_new_marks.py::test_no_sideways_scroll_at_320px[/report/advanced] and tests/test_flow_pages.py::test_no_motion_page_scrolls_sideways[320-walk-normal|reduce] fail on a clean origin/dev checkout (1b2420b) in this environment: content sits past the right edge at 320px",
+   "severity": "low",
+   "cwe": "CWE-1059",
+   "wcag": "WCAG 2.2 SC 1.4.10",
+   "status": "open",
+   "reason": "Not caused by this change (it fails identically before it) and outside the governance package; left for the UI owners",
+   "test": "tests/test_new_marks.py::test_no_sideways_scroll_at_320px"
+  }
+ ],
+ "tests_added": 59
+}

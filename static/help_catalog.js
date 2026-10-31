@@ -982,7 +982,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"zia_extras\"]": {
-    "what": "Adds the ZIA platform checks (33). It also lets the Path analyzer read URL filtering, File Type Control, threat protection, Cloud Firewall, DNS Control and Sandbox rules.",
+    "what": "Adds the ZIA platform checks (45), including governance: Zscaler's own configuration audit, alert subscriptions and NSS log streaming (N/A when NSS is not licensed). It also lets the Path analyzer read URL filtering, File Type Control, threat protection, Cloud Firewall, DNS Control and Sandbox rules.",
     "input": "Tick it to check the ZIA platform. Ticked at first.",
     "effect": "local"
    },
@@ -1017,7 +1017,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#scopeField input.scope-cb[value=\"rbac\"]": {
-    "what": "Adds the RBAC checks (12). Role-Based Access Control hygiene: admin counts, SSO federation, MFA, group-bound policies, stale accounts.",
+    "what": "Adds the RBAC checks (14). Role-Based Access Control hygiene: admin counts, SSO federation, MFA, admin password expiry, Zscaler Support remote access, group-bound policies, stale accounts.",
     "input": "Tick it to check admin and role hygiene.",
     "effect": "local"
    },

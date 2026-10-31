@@ -49,6 +49,13 @@ ENDPOINT_PERMISSIONS: Dict[str, Dict[str, str]] = {
     "/zia/ruleLabels": {"product": "ZIA", "permission": "Rule Labels"},
     "/zia/advancedSettings": {"product": "ZIA", "permission": "Advanced Settings"},
     "/zia/nss": {"product": "ZIA", "permission": "NSS Configuration"},
+    # Governance and audit reads; the permission names are assumed (the SDK
+    # names none; /configAudit answers RBA_LIMITED without Reports — system_audit.py).
+    "/zia/configAudit": {"product": "ZIA", "permission": "Reports"},
+    "/zia/alertSubscriptions": {"product": "ZIA", "permission": "Alerts"},
+    "/zia/remoteAssistance": {"product": "ZIA", "permission": "Remote Assistance Management"},
+    "/zia/passwordExpiry": {"product": "ZIA", "permission": "Administrator Management"},
+    "/zia/subscriptions": {"product": "ZIA", "permission": "Organization"},
     "/zia/saasSecurity": {"product": "ZIA", "permission": "SaaS Security API"},
     "/zcc/": {"product": "Client Connector", "permission": "Client Connector portal (read)"},
     "/zpa/": {"product": "ZPA", "permission": "ZPA read-only role"},

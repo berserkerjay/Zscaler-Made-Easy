@@ -249,6 +249,18 @@ window.WHATS_NEW = {
         {"page": "/simple", "at": "input[name=\"smProfile\"]", "shown": "in the Protect task"},
         {"page": "/report/pov", "at": "select[data-pv-compliance]", "shown": "in the POV intake"}
       ]
+    },
+    {
+      "id": "zia-governance-checks", "release": "2026-10-31", "label": "Governance checks",
+      "what": "ZIA platform checks of Zscaler's own configuration audit, the alert subscriptions and NSS log streaming (N/A when NSS is not licensed); recipients are counted, never listed.",
+      "changelog": ["ZIA governance and audit checks", "Zscaler's configuration audit", "Alert subscriptions", "NSS server health", "Log streaming out of ZIA", "N/A when not licensed"],
+      "marks": [{ "page": "/", "at": "#scopeField input.scope-cb[value=\"zia_extras\"]", "shown": "on the Scope page" }]
+    },
+    {
+      "id": "rbac-admin-access", "release": "2026-10-31", "label": "Admin password expiry and Support access",
+      "what": "RBAC checks of the ZIA admin password expiry and of how long Zscaler Support may sign in to the admin portal.",
+      "changelog": ["Admin password expiry", "Zscaler Support access"],
+      "marks": [{ "page": "/", "at": "#scopeField input.scope-cb[value=\"rbac\"]", "shown": "on the Scope page" }]
     }
   ]
 };

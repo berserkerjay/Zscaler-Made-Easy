@@ -31,8 +31,9 @@ keys (zia/admin_roles.py docstring), `/zia/api/v1/adminRoles/{id}`
 list_roles), `/zdx/v1/administration/departments` (zdx.admin.
 list_departments), Z-Insights WEB_TRAFFIC (zins.web_traffic.
 get_no_grouping) and the token on `ZscalerClient._auth_token`.
-Assumed (not in the SDK): the ZIA `/subscriptions` endpoint and its row
-shape, the token's `service-info` claim (`prd`, `ext.rnm`, `ext.rid`), the
+The ZIA `/subscriptions` endpoint is organization_information.get_subscriptions
+in zscaler-sdk-python 1.11.3. Assumed (not in the SDK): its row shape (the
+SDK models one object; the API answers a list), the token's `service-info` claim (`prd`, `ext.rnm`, `ext.rid`), the
 product codes in it, the subscription ids that unlock a feature and the
 Client Connector role field names.
 """
@@ -58,7 +59,7 @@ MAX_SERVICES = 32
 MAX_SCOPES = 100
 MAX_SUBSCRIPTIONS = 300
 ENDING_SOON_DAYS = 21
-SUBSCRIPTIONS_PATH = "/zia/api/v1/subscriptions"   # assumed: not in the SDK
+SUBSCRIPTIONS_PATH = "/zia/api/v1/subscriptions"   # organization_information.get_subscriptions (SDK 1.11.3); the row shape is assumed
 
 # ── Products ───────────────────────────────────────────────────────────
 # key -> label, the Scope page keys that let readiness read it, and the

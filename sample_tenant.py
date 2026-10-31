@@ -306,6 +306,27 @@ USERS = [{"id": 41, "name": "Avery Quinn", "email": "avery.quinn@larkspur-freigh
          {"id": 43, "name": "Jordan Blake", "email": "jordan.blake@larkspur-freight.example", "department": _ref(21, "Operations"), "groups": [_ref(32, "Drivers")]}]
 RULE_LABELS = [{"id": 51, "name": "Data protection", "description": "Rules owned by the data protection team."}]
 NSS_FEEDS = [{"id": 61, "name": "Web logs to SIEM", "feedStatus": "ENABLED", "nssLogType": "WEBLOG"}]
+# Governance and audit (zscaler-sdk-python 1.11.3 zia/models: system_audit.ConfigAudit,
+# admin_roles.PasswordExpiry, remoteassistance.RemoteAssistance,
+# alert_subscriptions.AlertSubscriptions, nss_servers.Nssservers,
+# nss_collectors.NssCollectors; /subscriptions rows as readiness.parse_subscriptions
+# reads them). The config audit grades one item poorly and one NSS VM is
+# unhealthy, so the governance checks have something to say.
+CONFIG_AUDIT = {"overallGrade": "B", "highAvailabilityGrade": "A", "greTunnelGrade": "C", "userPerformanceGrade": "A", "otherGrade": "A",
+                "authFrequencyGrade": "A", "pacFileGrade": "A", "pacfileSizeGrade": "A", "office365Flag": True, "office365Grade": "A",
+                "ipVisibilityGrade": "B", "reportTimestamp": 1792994400000, "dataPresent": True,
+                "greTunnelRecommendedConfiguration": "Add a backup GRE tunnel to a second data centre for Larkspur HQ (Portland)."}
+PASSWORD_EXPIRY = {"passwordExpirationEnabled": True, "passwordExpiryDays": 90}
+REMOTE_ASSISTANCE = {"viewOnlyUntil": 0, "fullAccessUntil": 0, "usernameObfuscated": True, "deviceInfoObfuscate": True}
+ALERT_SUBSCRIPTIONS = [{"id": 71, "description": "Security operations", "email": "secops@larkspur-freight.example",
+                        "pt0Severities": ["CRITICAL"], "secureSeverities": ["CRITICAL", "MAJOR"], "manageSeverities": [],
+                        "complySeverities": [], "systemSeverities": ["CRITICAL", "MAJOR"], "deleted": False}]
+NSS_SERVERS = [{"id": 81, "name": "nss-web-portland-1", "status": "ENABLED", "state": "HEALTHY", "type": "NSS_FOR_WEB"},
+               {"id": 82, "name": "nss-fw-portland-1", "status": "ENABLED", "state": "UNHEALTHY", "type": "NSS_FOR_FIREWALL"}]
+NSS_COLLECTORS: list = []
+SUBSCRIPTIONS = [{"id": s, "status": "ACTIVE", "subscribed": True} for s in
+                 ("ZIA_TENANT", "URL_FILTER", "ZIA_SSL", "ZIA_ATP", "Z_FIREWALL_BASIC", "ZDLP_WEB", "Z_DLP_ENDPOINT", "Z_CASB",
+                  "Z_LOGFEED", "Z_CLOUD_NSS_WEB", "ZSCALER_CLIENT_CONNECTOR", "Z_ZDX_STD")]
 ISOLATION_PROFILES = [{"id": "iso-1", "name": "Larkspur isolation", "url": "https://isolation.example/larkspur", "defaultProfile": True}]
 
 # ── Client Connector ──────────────────────────────────────────────────
@@ -468,6 +489,13 @@ def responses() -> Dict[str, Any]:
         f"{ZIA}/users": USERS,
         f"{ZIA}/ruleLabels": RULE_LABELS,
         f"{ZIA}/nssFeeds": NSS_FEEDS,
+        f"{ZIA}/nssServers": NSS_SERVERS,
+        f"{ZIA}/nssCollectors": NSS_COLLECTORS,
+        f"{ZIA}/configAudit": CONFIG_AUDIT,
+        f"{ZIA}/passwordExpiry/settings": PASSWORD_EXPIRY,
+        f"{ZIA}/remoteAssistance": REMOTE_ASSISTANCE,
+        f"{ZIA}/alertSubscriptions": ALERT_SUBSCRIPTIONS,
+        f"{ZIA}/subscriptions": SUBSCRIPTIONS,
         f"{ZIA}/browserIsolation/profiles": ISOLATION_PROFILES,
         f"{ZIA}/sandboxRules": [], f"{ZIA}/bandwidthClasses": [], f"{ZIA}/bandwidthControlRules": [],
         f"{ZIA}/tenancyRestrictionProfile": [], f"{ZIA}/greTunnels": [], f"{ZIA}/staticIP": [], f"{ZIA}/vpnCredentials": [],

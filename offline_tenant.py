@@ -100,6 +100,11 @@ _TOKEN_KEY = re.compile(r"token|provision(ing)?_?key|enrollment_?key|config_?key
 # (aiguard/models/llm_provider_credentials.py), an encrypted session key
 # (zpa/models/enrollment_certificates.py). Any value type is masked.
 _OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key", re.I)
+# Settings whose names say "password" but hold no secret: the admin password
+# expiry switch and its number of days (zia/models/admin_roles.py
+# PasswordExpiry). Kept only as a true/false or a whole number; any text
+# under these names is masked like every other secret-named field.
+_NOT_SECRET = frozenset({"passwordexpirationenabled", "password_expiration_enabled", "passwordexpirydays", "password_expiry_days"})
 _VOLATILE = re.compile(r"(modified|lastseen|last_seen|lastsync|updated|creation|created)(time|at|date|_time|_at)?$|^(modifiedBy|lastModifiedBy)$", re.I)
 
 
@@ -183,7 +188,9 @@ def scrub(value: Any, depth: int = 0) -> Any:
         out = {}
         for k, v in value.items():
             key = str(k)
-            if (_SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or _OTP_KEY.search(key)
+            if key.lower() in _NOT_SECRET and isinstance(v, (bool, int)):
+                out[key] = v
+            elif (_SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or _OTP_KEY.search(key)
                     or (isinstance(v, str) and _TOKEN_KEY.search(key))):
                 out[key] = "(set)" if v not in (None, "", [], {}, False) else "(not set)"
             else:
@@ -963,8 +970,11 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
                                      "ipSourceGroups", "locations", "advancedSettings", "authSettings", "departments", "groups", "ruleLabels",
                                      "nssFeeds", "browserIsolation/profiles", "sandboxRules", "bandwidthClasses", "bandwidthControlRules",
                                      "tenancyRestrictionProfile", "cyberThreatProtection/advancedThreatSettings",
-                                     "cyberThreatProtection/malwareSettings")]
+                                     "cyberThreatProtection/malwareSettings",
+                                     # governance and audit (zscaler_full_checks GOV.*)
+                                     "configAudit", "alertSubscriptions", "nssServers", "nssCollectors", "subscriptions")]
     + [(("zia_extras", "rbac"), f"/zia/{x}") for x in ("adminRoles", "adminUsers")]
+    + [(("rbac",), f"/zia/{x}") for x in ("passwordExpiry/settings", "remoteAssistance")]
     + [(("zcc",), f"/zcc/{x}") for x in ("forwardingProfiles", "trustedNetworks", "devices", "failOpenPolicy", "companyInfo", "pacFiles",
                                          "webAppService", "appBypass", "zpaEntitlements", "zdxEntitlements", "deviceGroups")]
     + [(("zpa",), f"/zpa/{x}") for x in ("application", "segmentGroup", "serverGroup", "appConnectorGroup", "connector", "serviceEdgeGroup",

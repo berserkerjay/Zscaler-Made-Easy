@@ -45,6 +45,7 @@ OUTCOMES: List[Tuple[Tuple[str, ...], str]] = [
     (("security",), "Threats are stopped at the cloud edge, before they reach a user or a device."),
     (("bandwidth",), "Business applications get the capacity they need and recreational traffic does not starve them."),
     (("locations",), "Every office and every user is sent to the cloud the same way, with the same policy."),
+    (("governance", "gov."), "Problems are reported to people who act on them, logs leave the console for the SIEM, and Zscaler's own audit of the tenant comes back clean."),
     (("users & admin", "rbac", "zidentity", "zid.", "rbac."), "Only the right people can change the security policy, and every change is traceable to a person."),
     (("zpa",), "Private applications are reachable only by the right user on a trusted device, never by the network."),
     (("zdx",), "The user experience is measured, so a slow application is located and fixed instead of blamed on Zscaler."),

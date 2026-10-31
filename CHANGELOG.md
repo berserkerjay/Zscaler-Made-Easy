@@ -69,6 +69,18 @@ lists what each batch of changes did, newest first.
 - **Read against a profile.** The Regulatory & compliance alignment page reads an existing tenant's assessment against any profile: each control met, partially met, not met or not tested, with the checks behind it, and a CSV.
 - **Federal and public sector preset.** The POV planner has a Federal and public sector vertical and a compliance profile in its intake (the Test kit tab offers the profile's compliance pack and a federal DLP test file); Simple mode's Protect task asks which compliance rules apply before it offers rule sets.
 
+### ZIA governance and audit
+- **ZIA governance and audit checks.** Eight new ZIA platform checks in section `ZIA — Governance`, run when ZIA platform is ticked on the Scope page. Read-only, only what is ticked; every new read (`/configAudit`, `/alertSubscriptions`, `/nssServers`, `/nssCollectors`, `/subscriptions`, `/passwordExpiry/settings`, `/remoteAssistance`, as zscaler-sdk-python 1.11.3 reads them) is answered by the sample tenant and kept in snapshots.
+  - **Zscaler's configuration audit**: the System Audit Report mapped into findings, its overall grade and each graded item (high availability and GRE tunnels, authentication frequency, PAC files, Microsoft 365, client IP visibility and user performance) with Zscaler's recommended configuration. Refused for lack of the Reports scope, it is "Not permitted", never judged; no report yet is informational.
+  - **Alert subscriptions**: every alert class (Patient 0, Secure, Manage, Comply, System) reaches someone, and more than one recipient; recipients are counted, never listed.
+  - **NSS server health**: every NSS VM enabled and healthy, beside the feeds.
+  - **Log streaming out of ZIA**: a Cloud NSS feed, a healthy NSS server or an NSS collector carries the logs to a SIEM.
+  - **N/A when not licensed**: the NSS checks are N/A (outside the score) when the organisation's subscriptions are read and hold no NSS SKU; an unreadable subscription list never marks anything N/A.
+- Two new RBAC checks.
+  - **Admin password expiry**: expiration off, or longer than 180 days, needs review (admins on SSO follow the IdP).
+  - **Zscaler Support access**: full access to the ZIA admin portal, or view-only access open for more than 30 days, needs review; user names not obfuscated for Support are called out.
+- The snapshot scrubber now keeps the admin password expiry switch and its days (a true/false and a number, no secret): before, they were masked like a password, and a snapshot of a tenant with expiry off could pass. 59 new tests in tests/test_w8_zia_governance.py.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide
