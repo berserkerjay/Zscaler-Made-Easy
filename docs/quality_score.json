@@ -186,7 +186,7 @@
           "findings": {
             "score": 100.0,
             "open": 0,
-            "fixed": 76,
+            "fixed": 78,
             "accepted": 8,
             "records": [
               "c6-api-server",
@@ -194,6 +194,7 @@
               "c6-scope-offline",
               "sbd-auth",
               "w7-mcp-skill",
+              "w7-profile-cloud",
               "w7-zcc-plus"
             ]
           },
@@ -465,7 +466,7 @@
     }
   ],
   "counts": {
-    "findings": 660,
+    "findings": 662,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -479,12 +480,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 168,
+        "fixed": 169,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 372,
+        "fixed": 373,
         "accepted": 3
       },
       "info": {
@@ -494,12 +495,12 @@
       }
     },
     "checks": {
-      "pass": 481,
-      "fixed": 314,
+      "pass": 482,
+      "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 10289
+    "tests_added": 10312
   },
   "findings": [
     {
@@ -4037,6 +4038,22 @@
       "slug": "w7-path-coverage",
       "area": "functionality",
       "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W7-PROFILE-CLOUD-01",
+      "title": "MigrateRequest, AssessRequest and RemediationExecuteRequest defaulted their cloud to production: a request rebuilt from every field counted that default as typed, so a profile on another cloud could be signed in on production",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-1188",
+      "asvs": "V4.2.1",
+      "wcag": "",
+      "fix": "Cloud defaults to blank on every credential model; _tenant_creds fills production only when no source names a cloud (for the bodies that always resolved to it); the POV planner's workaround is gone",
+      "test": "tests/test_scope_rule_routes.py::test_a_rebuilt_profile_only_request_keeps_the_profiles_cloud",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-profile-cloud",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
     },
     {
       "id": "W7-ZCC-01",
@@ -9815,6 +9832,22 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W7-PROFILE-CLOUD-02",
+      "title": "A profile-only assessment on another cloud wrote production as the cloud in its report metadata (the body's default, not the cloud signed in on)",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-684",
+      "asvs": "V4.2.1",
+      "wcag": "",
+      "fix": "The report metadata takes the validated, resolved cloud",
+      "test": "tests/test_scope_rule_routes.py::test_the_assessment_report_names_the_profiles_cloud",
+      "commit": "",
+      "reason": "",
+      "slug": "w7-profile-cloud",
+      "area": "secure_by_design",
+      "sub_area": "auth_scope_secrets"
+    },
+    {
       "id": "W7-RC-02",
       "title": "A boolean field named like a reference (zscalerIncidentReceiver) was read as an object id, so every DLP rule looked unclonable",
       "severity": "low",
@@ -12288,6 +12321,20 @@
       "checks": 8,
       "findings": 5,
       "tests_added": 84
+    },
+    {
+      "slug": "w7-profile-cloud",
+      "area": "Wave 7: a saved profile's cloud is never replaced by a request model's default (ported from an older draft change)",
+      "title": "Every request model that signs in with a saved profile leaves its cloud blank; production applies only when no profile, environment or tenant_config.json names one",
+      "standards": [
+        "ASVS V4.2.1",
+        "CWE-639",
+        "CWE-1188",
+        "CWE-684"
+      ],
+      "checks": 4,
+      "findings": 2,
+      "tests_added": 23
     },
     {
       "slug": "w7-rank-inherit",

@@ -583,7 +583,7 @@ class AssessRequest(BaseModel):
     API key with auth_method="legacy"; see tenant_auth)."""
     org_name: str = "Unknown"
     assessor: str = "Unknown"
-    cloud: str = "production"
+    cloud: str = ""            # blank: the profile's, environment's or tenant_config.json's cloud, else production (_tenant_creds)
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
@@ -799,7 +799,7 @@ class RemediationPlanRequest(BaseModel):
     """Body for a remediation plan: tenant credentials plus the findings to plan for."""
     # Tenant fields (duplicated rather than inheriting MigrateRequest so
     # this class is defined ahead of MigrateRequest without a forward-ref).
-    cloud: str = "production"
+    cloud: str = ""            # as MigrateRequest: blank, never a default that overrides a profile's cloud
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
@@ -810,7 +810,7 @@ class RemediationPlanRequest(BaseModel):
 
 class RemediationExecuteRequest(BaseModel):
     """Body for executing an approved remediation plan."""
-    cloud: str = "production"
+    cloud: str = ""            # as MigrateRequest: blank, so a saved profile's cloud is used (_tenant_creds)
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
@@ -918,7 +918,11 @@ async def remediation_execute(req: RemediationExecuteRequest):
 # ─────────────────────────────────────────────────────────────────
 class MigrateRequest(BaseModel):
     """Tenant credentials for the Evaluate-All migration endpoints."""
-    cloud: str = "production"
+    # Blank, not "production": a body naming only a profile_id signs in on
+    # the profile's cloud (_fill_from_profile fills blanks only), also when
+    # the request is rebuilt from every field (model_dump, model_copy), and
+    # _tenant_creds falls back to production only when no source names one.
+    cloud: str = ""
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
@@ -1318,6 +1322,12 @@ def _writes_disabled_msg() -> str:
     return f"Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. To turn them on, {write_enable_hint()}."
 
 
+# The request models whose resolved cloud, when no source names one, has
+# always been "production" (their old field default): kept so tenant keys
+# and labels made from them do not change.
+_PRODUCTION_WHEN_UNNAMED = (AssessRequest, RemediationPlanRequest, RemediationExecuteRequest, MigrateRequest)
+
+
 def _tenant_creds(req: Any) -> Dict[str, str]:
     """Resolve credentials: request body → saved profile → environment →
     tenant_config.json. Every key of tenant_auth.CRED_KEYS is present and
@@ -1332,13 +1342,10 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     if off is not None:
         return off
     creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
-    # A cloud the body did not send is the model's default ("production"),
-    # not a typed value: the profile, environment or tenant_config.json
-    # names the cloud, and the default applies only when none does.
-    sent = getattr(req, "model_fields_set", None)
-    default_cloud = ""
-    if sent is not None and "cloud" not in sent:
-        default_cloud, creds["cloud"] = creds["cloud"], ""
+    # Every request model leaves the cloud blank by default, so a blank one
+    # here was not typed: the profile, environment or tenant_config.json
+    # names the cloud. A request rebuilt from every field (cloud now counts
+    # as sent) is the same blank, so it can never replace a profile's cloud.
     if not tenant_auth.started(creds):
         # Nothing typed for a tenant: the source that has the sign-in decides
         # its method (the form always sends its selector, OneAPI by default).
@@ -1361,8 +1368,11 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
             except Exception:
                 pass
     creds = tenant_auth.normalize(creds)
-    if not creds["cloud"] and default_cloud:
-        creds["cloud"] = default_cloud
+    if not creds["cloud"] and isinstance(req, _PRODUCTION_WHEN_UNNAMED):
+        # Nothing named a cloud: these bodies always resolved to production
+        # here (the TenantCredsRequest family leaves it blank, and
+        # _validate_creds signs in on production either way).
+        creds["cloud"] = "production"
     return creds
 
 
@@ -9469,7 +9479,7 @@ async def assess_stream(req: AssessRequest):
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "org": req.org_name,
                     "assessor": req.assessor,
-                    "cloud": req.cloud,
+                    "cloud": cloud,   # the cloud signed in on (a profile's, say), never the body's blank
                     "total_checks": total_all,
                     "scope": ",".join(req.scopes) if req.scopes else req.scope,
                     "elapsed_seconds": round(time.time() - run_started, 1),
@@ -12287,8 +12297,6 @@ async def pov_prove_start(req: PovProveRequest, request: Request):
     test = pov.RUNBOOK_BY_ID.get(req.test_id)
     if test is None:
         raise HTTPException(status_code=404, detail="Unknown runbook test.")
-    if not (req.vanity_domain or req.username):
-        req.cloud = ""   # nothing typed: the profile's cloud, not this model's "production" default
     req.destination = (req.destination or "").strip() or test["destination"]
     if not req.destination:
         raise HTTPException(status_code=400, detail=test["prove_note"] or "This test has no web destination for the Path analyzer.")

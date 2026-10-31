@@ -100,7 +100,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
                    "test_c6_exports.py", "test_c6_reports.py", "test_c6_traffic_reports.py", "test_c6_misc.py"),
          "controls": ("ASVS V5.1.3", "ASVS V5.1.4", "ASVS V5.2.4", "ASVS V5.3.3", "ASVS V12.1.1", "ASVS V12.3.1",
                       "CWE-20", "CWE-22", "CWE-79", "CWE-400", "CWE-611", "CWE-918", "CWE-1333")},
-        {"key": "auth_scope_secrets", "name": "Auth, scope and secrets", "slugs": ("sbd-auth", "c6-auth", "c6-api-server", "c6-scope-offline", "w7-mcp-skill", "w7-zcc-plus"),
+        {"key": "auth_scope_secrets", "name": "Auth, scope and secrets", "slugs": ("sbd-auth", "c6-auth", "c6-api-server", "c6-scope-offline", "w7-mcp-skill", "w7-zcc-plus", "w7-profile-cloud"),
          "tests": ("test_auth_session.py", "test_scope_rule_routes.py", "test_secret_canaries.py", "test_ui_auth.py", "test_sso.py",
                    "test_extension_security.py", "test_tools_read_only_in_scope.py", "test_no_implicit_reads.py",
                    "test_report_scope_reads.py", "test_sbd_offline_least_privilege.py", "test_c6_auth.py", "test_c6_api_server.py",

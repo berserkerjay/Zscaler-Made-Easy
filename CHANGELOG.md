@@ -136,6 +136,9 @@ lists what each batch of changes did, newest first.
 - **Prove it.** After the change is applied, *Prove it* tests the same rows again with Test a list (fresh, only what is in scope) and says, row by row, which now do what was expected, with the rule that decides them now; a new rule left disabled is named as the reason rows are not fixed yet.
 - **IP destination group change** and **ATP allow and deny lists** are also Bulk changes operations of their own, without Test a list: add or remove entries on one IP destination group (or make a new one), or URLs on the security policy denylist or allowlist, with the same limits, gates, re-read, read-back and Undo.
 
+### A saved profile's cloud is never replaced by a default
+- **Fix.** The request bodies behind the Path analyzer, data flow, migration, flow scenario, assessment and remediation routes no longer default their cloud to "production": a request naming only a saved profile signs in on the profile's own cloud, also when the request is rebuilt from every field, and production still applies when nothing (typed, profile, environment or `tenant_config.json`) names one. The assessment report names the cloud it signed in on. The POV planner's *Prove it* no longer needs its own workaround. A test now fails when a request model that takes a profile gets a cloud default again.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide
