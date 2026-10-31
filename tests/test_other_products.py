@@ -218,8 +218,8 @@ def test_fixing_the_tenant_turns_every_finding_into_a_pass():
 
 def test_a_disconnected_agent_is_not_read_as_connected():
     """CWE-697 · ASVS V1.14.1: status words match whole (DISCONNECTED is not CONNECTED, offline is not online)."""
-    assert op._ONLINE.match("CONNECTED") and op._ONLINE.match("online")
-    assert not op._ONLINE.match("DISCONNECTED") and not op._ONLINE.match("offline") and not op._ONLINE.match("not_connected")
+    assert op._ONLINE.search("CONNECTED") and op._ONLINE.search("online")
+    assert not op._ONLINE.search("DISCONNECTED") and not op._ONLINE.search("offline") and not op._ONLINE.search("not_connected")
 
 
 # ── secrets and people ──────────────────────────────────────────────────
@@ -606,3 +606,14 @@ def test_a_hostile_name_from_the_tenant_is_shown_as_text(page_in_browser):
     """ASVS V5.3.3 · CWE-79 · WSTG-CLNT-01: a site named like an HTML tag is shown as text; no element is made from it and no script runs."""
     for m in page_in_browser["widths"].values():
         assert m["hostile"] and not m["xss"] and m["injected"] == 0
+
+
+def test_secrets_are_dropped_as_each_answer_arrives_not_only_at_the_end():
+    """ASVS V8.3.4 · CWE-312 · CWE-200: the first layer (_items) already drops a provisioning key, a site secret and a token from the rows kept in memory."""
+    body = {"data": {"nonces": {"nodes": [{"name": "n", "key": CANARIES[0], "eyezId": "e"}], "pageInfo": {"totalCount": 1}}}}
+    rows, total = op._items("zms", body, "nonces")
+    assert rows == [{"name": "n", "eyez_id": "e"}] and total == 1
+    rows, _ = op._items("ztb", {"result": {"sites": [{"name": "s", "secret_key": CANARIES[1], "cluster_token": CANARIES[2]}]}})
+    assert rows == [{"name": "s"}]
+    raw = op._mask_raw({"result": {"token": CANARIES[2], "state": "green"}, "rows": [{"key": CANARIES[0], "name": "k"}]})
+    assert raw == {"result": {"state": "green"}, "rows": [{"name": "k"}]}
