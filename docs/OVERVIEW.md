@@ -252,14 +252,31 @@ what you get, what to do next.
   give (`path_whatif.py`). A **ZPA identity** can be given too (ZPA
   ticked): the IdP the user signs in with, a SCIM user name whose SCIM
   groups ZPA lists for them (read-only, looked up during the run and kept
-  only for it; a filter ZPA did not apply leaves them unknown) and SAML
-  or SCIM attribute values typed as Name=value. ZPA's access policy is
-  then evaluated for that identity (operands joined by the condition's
+  only for it; a filter ZPA did not apply leaves them unknown) and SAML or
+  SCIM attribute values typed as Name=value. ZPA's access policy is then
+  evaluated for that identity (operands joined by the condition's
   operator, negation, the rule's operator, rule order, default deny; a
-  condition of another IdP is not met), anything not given stays
-  unknown, and the verdict names the identity condition that decided
-  (`zpa_identity.py`; the pickers are `POST /api/path-analyzer/zpa-identity`).
-  All of it is one request,
+  condition of another IdP is not met), anything not given stays unknown,
+  and the verdict names the identity condition that decided
+  (`zpa_identity.py`; the pickers are `POST
+  /api/path-analyzer/zpa-identity`). **A user's device** (Client Connector
+  ticked, a OneAPI sign-in): look a user's enrolled devices up in the
+  Client Connector Portal (one call filtered by user name, at most 20) and
+  pick one; the trace then uses that device's platform, the app profile
+  the Portal reports for it and its client version, says which app and
+  forwarding profile applied and why, and says "unknown" for what the API
+  does not give (the network it is on now, its ZPA posture results)
+  (`path_device.py`). **Compare two identities** runs the same destination
+  for A (the what-if and device) and B on one tenant read and shows every
+  step side by side, the step where they diverge marked, with CSV and JSON
+  downloads (`path_compare.py`). **Test from here**, after a result and
+  only on an explicit click, tests the destination from the computer
+  running the app (in Docker, the container's network): a name lookup, a
+  TCP connect and a TLS handshake (certificate issuer, subject and names,
+  TLS version), compared with the prediction; it sends no request or data,
+  only to ports 443, 80, 8443 and 8080, never to this computer or cloud
+  metadata, at most 6 a minute, and keeps nothing (`path_probe.py`; threat
+  model in SECURITY.md). The analysis is one request,
   `POST /api/path-analyzer/start` (or `POST /api/path-analyzer` for
   scripts). It reads only what is in scope on the Scope page (a part out
   of scope says "not in scope"), writes nothing, and Stop ends the read

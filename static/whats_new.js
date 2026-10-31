@@ -369,6 +369,24 @@ window.WHATS_NEW = {
       "what": "The fleet page shows a device's Client Connector one-time passwords for the help desk, once, for 60 seconds, after the assessor's name and a typed confirmation; never kept.",
       "changelog": ["One-time passwords for a device", "rate limit"],
       "marks": [{ "page": "/report/fleet", "at": "#zfOtpH" }]
+    },
+    {
+      "id": "path-device", "release": "2026-10-31", "label": "Trace a user's device",
+      "what": "Pick a user's enrolled device from the Client Connector Portal; the Path analyzer then uses its platform, the app profile the Portal reports for it and its client version, and says what is unknown.",
+      "changelog": ["Trace a user's device"],
+      "marks": [{ "page": "/report/path", "at": "#paDevice > summary" }]
+    },
+    {
+      "id": "path-compare", "release": "2026-10-31", "label": "Compare two identities",
+      "what": "The same destination for two identities, side by side, step by step, with the step where they diverge marked; CSV and JSON.",
+      "changelog": ["Compare two identities"],
+      "marks": [{ "page": "/report/path", "at": "#paCompare > summary" }]
+    },
+    {
+      "id": "path-test-from-here", "release": "2026-10-31", "label": "Test from here",
+      "what": "One click tests the destination from the computer running this app (name lookup, connect, TLS certificate) and compares it with the prediction.",
+      "changelog": ["Test from here"],
+      "marks": [{ "page": "/report/path", "at": "#paProbeRun", "shown": "after Analyze" }]
     }
   ]
 };

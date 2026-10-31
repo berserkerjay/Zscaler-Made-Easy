@@ -768,3 +768,22 @@ summary { min-height: 24px; }
 /* Advanced settings: the Glass effect switch (static/glass.js keeps it in step with the page). */
 .adv-switch { display: inline-flex; align-items: center; gap: 0.6rem; min-height: var(--ctl-md); margin: 0.2rem 0; font-weight: 600; cursor: pointer; }
 .adv-switch input { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
+/* Path analyzer: a picked device, two identities compared, Test from here (static/path_extras.js) */
+.pa-dev-card { margin: 0.5rem 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-left: 4px solid var(--pass); border-radius: var(--r-md); background: var(--well); }
+.pa-dev-card .df-hop-d { overflow-wrap: anywhere; }
+.pa-dev-facts th[scope="row"], .pa-probe-table th[scope="row"], .pa-cmp-table th[scope="row"] { text-align: left; font-weight: 600; }
+.pa-dev-facts td, .pa-probe-table td, .pa-cmp-table td { vertical-align: top; overflow-wrap: anywhere; }
+.pa-unknown { color: var(--dim); font-style: italic; }
+.pa-device-out, .pa-probe, .pa-cmp-out { margin: 1rem 0; }
+.pa-cmp-table tr.pa-cmp-first > * { background: color-mix(in srgb, var(--warn) 14%, var(--card-solid)); }
+.pa-cmp-table tr.pa-cmp-first > th { border-left: 4px solid var(--warn); }
+.pa-cmp-table tr.pa-cmp-diff > * { background: color-mix(in srgb, var(--warn) 6%, var(--card-solid)); }
+.pa-cmp-o { font-weight: 600; }
+.pa-cmp-headline { font-size: 1.02rem; line-height: 1.45; margin: 0.8rem 0 0.4rem; }
+.pa-cmp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; }
+.pa-probe-list { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; gap: 0.4rem; }
+.pa-probe-cmp { padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-left: 4px solid var(--dim); border-radius: var(--r-md); background: var(--well); overflow-wrap: anywhere; }
+.pa-probe-cmp.ok { border-left-color: var(--pass); }
+.pa-probe-cmp.no { border-left-color: var(--fail); }
+#paPlatFrom { align-self: center; }
+.pa-probe .df-ctl, .pa-probe select { max-width: 100%; min-width: 0; }

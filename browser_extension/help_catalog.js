@@ -6208,6 +6208,106 @@ window.HELP_CATALOG = {
     "input": "Optional. One Name=value per line, like Department=Finance. At most 20.",
     "effect": "local"
    },
+   "#paDevice > summary": {
+    "what": "Opens or closes the device fields. Use them to trace one user's enrolled device instead of a platform.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paDevQ": {
+    "what": "Sets the user whose enrolled devices to look up in the Client Connector Portal.",
+    "input": "Optional. The user's sign-in name or part of it, like jane@acme.com or jane. 2 to 128 characters. Press Enter to find devices.",
+    "effect": "local"
+   },
+   "#paDevFind": {
+    "what": "Asks the Client Connector Portal once for this user's enrolled devices, at most 20. Nothing else is read.",
+    "input": "Type at least 2 characters in the field beside it first. Needs Client Connector (ZCC) ticked on the Scope page and a OneAPI sign-in.",
+    "effect": "read"
+   },
+   "#paDevice button[data-dev-pick]": {
+    "what": "Uses this device for the trace: its platform, the app profile the Portal reports for it and its details. Reads this one device's details.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#paDevClear": {
+    "what": "Stops using the picked device. The Platform you choose applies again.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paCompare > summary": {
+    "what": "Opens or closes Compare two identities: the same destination for A and B, step by step.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paCmp_user": {
+    "what": "Sets the user of identity B. Rules for this user apply to B; rules for others are skipped.",
+    "input": "Optional. An email or display name, like sam@acme.com. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paCmp_group": {
+    "what": "Sets the groups of identity B. They are taken as B's only groups.",
+    "input": "Optional. One or more group names, separated by commas. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paCmp_department": {
+    "what": "Sets the department of identity B.",
+    "input": "Optional. A department name, like Engineering. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paCmp_location": {
+    "what": "Sets the location of identity B.",
+    "input": "Optional. A location name, like Branch office. Up to 200 characters.",
+    "effect": "local"
+   },
+   "#paCmpDevQ": {
+    "what": "Sets the user whose enrolled devices to look up for identity B.",
+    "input": "Optional. The user's sign-in name or part of it. 2 to 128 characters. Press Enter to find devices.",
+    "effect": "local"
+   },
+   "#paCmpDevFind": {
+    "what": "Asks the Client Connector Portal once for this user's enrolled devices, for identity B. At most 20; nothing else is read.",
+    "input": "Type at least 2 characters in the field beside it first. Needs Client Connector (ZCC) ticked on the Scope page and a OneAPI sign-in.",
+    "effect": "read"
+   },
+   "#paCompare button[data-dev-pick]": {
+    "what": "Uses this device for identity B. Reads this one device's details.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "read"
+   },
+   "#paCmpDevClear": {
+    "what": "Stops using the picked device for identity B.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paCmpRun": {
+    "what": "Analyzes the destination for A (the what-if and device above) and B (this panel) on one tenant read and shows each step side by side. Nothing is written.",
+    "input": "Type a destination in the bar above first. Give B at least one name or a device to see a difference.",
+    "effect": "read"
+   },
+   "#paCmpStop": {
+    "what": "Stops the comparison. Nothing more is read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paCmpCsv": {
+    "what": "Saves the comparison, step by step for A and B, as a CSV file.",
+    "input": "Nothing to type. Compare first.",
+    "effect": "download"
+   },
+   "#paCmpJson": {
+    "what": "Saves the comparison, step by step for A and B, as a JSON file.",
+    "input": "Nothing to type. Compare first.",
+    "effect": "download"
+   },
+   "#paProbePort": {
+    "what": "Picks the port Test from here connects to. Only web and TLS ports are allowed.",
+    "input": "Pick one: From the URL (443, or 80 for http://), 443, 80 (connect only), 8443 or 8080.",
+    "effect": "local"
+   },
+   "#paProbeRun": {
+    "what": "Tests this destination from the computer running this app (in Docker, from the container). It looks the name up, connects and shakes hands over TLS. Then it compares the certificate with the prediction. It sends no request, data or credentials and keeps nothing.",
+    "input": "Nothing to type. Analyze a destination first. At most 6 tests a minute.",
+    "effect": "read"
+   },
    "#paFramework > summary": {
     "what": "Opens or closes the framework: the order Zscaler checks a policy in, from the device to the incident.",
     "input": "Nothing to type. Just click it.",
