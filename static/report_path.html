@@ -715,6 +715,11 @@
     if (q.get('p') && PLATFORMS.includes(q.get('p'))) document.getElementById('paPlat').value = q.get('p');
     if (q.get('id') && q.get('id').startsWith('dataflow-')) lastReport = q.get('id');
     if (q.get('src') === 'workload') document.getElementById('paSource').value = 'workload';
+    // From the Cloud & Branch Connector page: the workload's connector group,
+    // workload group and source IP, and its kept connector read (reused, as a
+    // read kept here is; the server reuses it only for the same tenant).
+    [['ec', 'paWlEc'], ['wlg', 'paWlGroup'], ['wlip', 'paWlIp']].forEach(([k, id]) => { const v = q.get(k); if (v) document.getElementById(id).value = v.slice(0, 200); });
+    if (/^pathztw-[A-Za-z0-9_-]{6,40}$/.test(q.get('ztw') || '')) kept.ztw = q.get('ztw');
     if (['tcp', 'udp'].includes(q.get('proto'))) document.getElementById('paProto').value = q.get('proto');
     if (/^\d{1,5}$/.test(q.get('port') || '')) document.getElementById('paPort').value = q.get('port');
     syncSource(); syncPortHint();

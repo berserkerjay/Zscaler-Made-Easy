@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cloud &amp; Branch Connector — Zscaler Made Easy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .zt-page .rp-bar .df-ctl { max-width: 100%; min-width: 0; }
+  .zt-page .rp-bar .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .zt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.6rem; margin: 0 0 1rem; }
+  .zt-stat { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.55rem 0.75rem; min-width: 0; }
+  .zt-stat .n { font-size: var(--fs-headline, 1.2rem); font-weight: 700; }
+  .zt-stat .k { font-size: 0.72rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; overflow-wrap: anywhere; }
+  .zt-stat.st-fail .n { color: var(--fail); } .zt-stat.st-review .n { color: var(--warn); } .zt-stat.st-pass .n { color: var(--pass); }
+  .zt-note { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); padding: 0.6rem 0.8rem; margin: 0 0 1rem; font-size: 0.88rem; max-width: 90ch; }
+  .zt-note ul { margin: 0.2rem 0 0; padding-left: 1.2rem; }
+  .zt-page .df-tablewrap { max-width: 100%; }
+  .zt-page .df-table th[scope="row"] { text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 600; min-width: 8rem; }
+  .zt-page .df-table td { vertical-align: top; overflow-wrap: anywhere; }
+  .zt-bad { color: var(--fail); font-weight: 600; } .zt-ok { color: var(--pass); } .zt-dim { color: var(--dim); }
+  .zt-sec { margin-top: 1.2rem; }
+  .zt-page :is(.pa-impact, .zt-note, .df-hint) { min-width: 0; overflow-wrap: anywhere; }
+  .zt-filter button:focus-visible, .zt-page summary:focus-visible, .zt-page a.zt-trace:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 760px) { .zt-page .rp-bar .df-ctl { flex-wrap: wrap; } }
+</style>
+<link rel="stylesheet" href="/static/hover_help.css">
+<script src="/static/glass.js"></script>
+</head>
+<body class="report-page zt-page sh-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Cloud &amp; Branch</span> Connector</h1>
+      <p>This page shows how workloads in public clouds and branches reach Zscaler through Cloud and Branch Connectors: the connector groups and their connectors, the forwarding rules that decide where workload traffic goes, the gateways, the connector locations, whether changes are activated, and who can change it. Click <strong>Read</strong>, then fix what says <em>Fix</em> first. Nothing is changed in your Zscaler.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="ztTenantWrap" hidden><span class="lbl">Tenant</span><select id="ztTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="ztRun">Read</button>
+      <a class="rp-btn" id="expXlsx" hidden>Excel</a>
+      <a class="rp-btn" id="expJson" hidden>JSON</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div id="ztBody">
+        <div class="pa-intro" id="ztHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Tick Cloud &amp; Branch Connector on the Scope page.</strong> It needs a OneAPI (ZIdentity) API client; the classic ZIA API sign-in cannot read it. Nothing else is read.</li>
+            <li><strong>Read.</strong> The page reads once, shown live as it reads. Stop ends the read at once.</li>
+            <li><strong>Fix the findings</strong>, Fix first, then Review: each says what was found, why it matters and how to fix it. <em>Trace in the Path analyzer</em> opens a workload trace with the connector group filled in, reusing this read.</li>
+          </ol>
+          <div class="df-hint">Never read into this page: an API key's value, passwords, tokens and provisioning URLs. Admins are counted, not listed; location IP addresses and VPN credentials are counted, not listed.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/find_anything.js"></script>
+  <script src="/static/glossary.js"></script>
+  <script src="/static/help_catalog.js"></script>
+  <script src="/static/hover_help.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    // An error answer in plain words: FastAPI's detail is a string, {cause} or a list of {msg}.
+    const errText = (d, status) => { const x = d && d.detail; if (typeof x === 'string' && x) return x; if (x && typeof x === 'object' && !Array.isArray(x) && (x.cause || x.message)) return String(x.cause || x.message);
+      return Array.isArray(x) && x.length ? `The request was not accepted: ${x.slice(0, 3).map(e => String((e && e.msg) || e)).join('; ')}.` : `HTTP ${status}`; };
+    const $ = id => document.getElementById(id);
+    const body = $('ztBody'), meta = $('rpMeta'), live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const STATUSES = [['FAIL', 'Fix'], ['REVIEW', 'Review'], ['PASS', 'As recommended'], ['INFO', 'Not applicable']];
+    const ST_WORD = Object.fromEntries(STATUSES);
+    const ST_CLS = { FAIL: 'st-fail', REVIEW: 'st-warn', PASS: 'st-pass', INFO: '' };
+    let running = false, job = null, startToken = null, stopAsked = false, stFilter = '', last = null, lastLogs = [];
+
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
+    // Credentials: the assessment tab that opened this page, a saved tenant
+    // profile, or what the server has saved.
+    async function tenantChoices() {
+      const wrap = $('ztTenantWrap'), sel = $('ztTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = $('ztTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    // The Scope page's selection, live from the opener or as the Scope page
+    // publishes it; never guessed.
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function scopeSelection() {
+      let scopes = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      return { scopes: scopes.map(String), channels: {}, from_page: true };
+    }
+
+    // ── the live job ────────────────────────────────────────────────
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function phase(logs) {
+      for (let i = logs.length - 1; i >= 0; i--) if (/^(Reading|Read |Done)/.test(logs[i])) return logs[i].replace(/…$/, '').trim();
+      return logs.length ? 'Working…' : 'Connecting to the tenant…';
+    }
+    function liveHtml() {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>Reading Cloud &amp; Branch Connector</strong><span class="df-by" id="ztPhase">Connecting to the tenant…</span><span class="sep"></span><span class="pa-elapsed" id="ztElapsed">0:00</span><button type="button" class="rp-btn" id="ztStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="ztLog" role="log" aria-live="polite" aria-label="What the read is doing">Connecting to the tenant…</div>
+      </div>`;
+    }
+    function liveUpdate(snap) {
+      const log = $('ztLog'); if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+      const ph = $('ztPhase'); if (ph) ph.textContent = phase(snap.logs || []);
+      const el = $('ztElapsed'); if (el && snap.elapsed_seconds != null) el.textContent = mmss(snap.elapsed_seconds);
+      const st = $('ztStop'); if (st && snap.cancel_requested) { st.disabled = true; st.textContent = 'Stopping…'; }
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1000));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the read continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        liveUpdate(Object.assign({}, snap, { logs }));
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!running || stopAsked) return;
+      stopAsked = true;
+      const b = $('ztStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        try {
+          await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) });
+        } catch (e) { /* cancelled by id as soon as it arrives */ }
+        return;
+      }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+    async function run() {
+      if (running) return;
+      const btn = $('ztRun');
+      running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Reading…';
+      ['expXlsx', 'expJson'].forEach(id => { $(id).hidden = true; });
+      body.innerHTML = liveHtml();
+      $('ztStop').addEventListener('click', stop);
+      say('Reading Cloud and Branch Connector.');
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = $('ztElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const payload = Object.assign({}, credBody(), scopeSelection());
+        const r = await fetch('/api/ztw/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(errText(d, r.status));
+        job = d.job_id;
+        if (stopAsked) {
+          try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }
+        }
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result || snap.result.status !== 'done') {
+          throw new Error((snap.result && snap.result.stopped) || snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the read finished.' : 'The read did not finish.'));
+        }
+        last = snap.result; lastLogs = snap.logs || [];
+        render();
+        const c = last.counts || {};
+        say(`${c.fail || 0} to fix, ${c.review || 0} to review.`);
+      } catch (e) {
+        fail('The read could not run', e.message);
+        say(`The read could not run: ${e.message}`);
+      } finally {
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; btn.disabled = false; btn.textContent = 'Read';
+      }
+    }
+    function fail(title, msg) {
+      if (/You clicked Stop/.test(msg)) { title = 'Stopped'; msg = msg.replace(/^Stopped:\s*/, ''); }
+      const hint = /credential|sign in|token|401|403|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open this page from there, or choose a saved tenant profile in the bar above.' : '';
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+
+    // ── the result ──────────────────────────────────────────────────
+    function chip(st) { return `<span class="df-chip ${ST_CLS[st] || ''}">${E(ST_WORD[st] || st)}</span>`; }
+    function table(caption, heads, rows, empty) {
+      if (!rows.length) return `<div class="df-hop-d pa-none">${E(empty)}</div>`;
+      return `<div class="df-tablewrap"><table class="df-table"><caption class="sr-only">${E(caption)}</caption>
+        <thead><tr>${heads.map(h => `<th scope="col">${E(h)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => `<tr><th scope="row">${r[0]}</th>${r.slice(1).map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    }
+    const yn = (v, goodYes) => v === 'Yes' ? `<span class="${goodYes ? 'zt-ok' : 'zt-bad'}">Yes</span>` : v === 'No' ? `<span class="${goodYes ? 'zt-bad' : 'zt-ok'}">No</span>` : `<span class="zt-dim">${E(v || 'not set')}</span>`;
+    // A link into the Path analyzer's workload trace, reusing this read
+    // (the kept "pathztw" report); the analyzer reads nothing until Analyze.
+    function traceLink(o) {
+      const q = new URLSearchParams({ src: 'workload' });
+      if (o.ec) q.set('ec', o.ec);
+      if (o.wlg) q.set('wlg', o.wlg);
+      if (o.d) q.set('d', o.d);
+      if (last && last.path_report_id) q.set('ztw', last.path_report_id);
+      return `<a class="rp-btn zt-trace" href="/report/path?${E(q.toString())}" target="_blank" rel="noopener" aria-label="${E(o.label)} (opens in a new tab)">Trace in the Path analyzer</a>`;
+    }
+    function statsHtml(c) {
+      const tiles = [['st-fail', c.fail, 'Fix'], ['st-review', c.review, 'Review'], ['st-pass', c.pass, 'As recommended'], ['', c.groups, 'Connector groups'],
+        ['', `${c.serving || 0}/${c.connectors || 0}`, 'Connectors serving'], ['', c.direct_rules, 'DIRECT rules'], ['', c.admins_enabled, 'Admins (count)']];
+      return `<div class="zt-stats">${tiles.map(([cls, n, k]) => `<div class="zt-stat ${cls}"><div class="n">${E(n == null ? 0 : n)}</div><div class="k">${E(k)}</div></div>`).join('')}</div>`;
+    }
+    function filterHtml(findings) {
+      const n = s => findings.filter(f => !s || f.status === s).length;
+      return `<div class="sh-filter zt-filter" role="group" aria-label="Show findings by result">${[['', 'All']].concat(STATUSES).map(([s, l]) =>
+        `<button type="button" class="rp-btn${stFilter === s ? ' primary' : ''}" data-st="${s}" aria-pressed="${stFilter === s}">${E(l)} (${n(s)})</button>`).join('')}</div>`;
+    }
+    function findingsHtml(res) {
+      const order = { FAIL: 0, REVIEW: 1, PASS: 2, INFO: 3 };
+      const all = (res.findings || []).slice().sort((a, b) => order[a.status] - order[b.status]);
+      const shown = all.filter(f => !stFilter || f.status === stFilter);
+      return filterHtml(all) + (shown.length ? `<ol class="pa-impacts">${shown.map(f => `<li class="pa-impact sev-${E(f.severity)}">
+        <div class="df-hop-h">${chip(f.status)}<strong>${E(f.title)}</strong><span class="df-by">${E(f.id)}</span></div>
+        <div class="df-hop-d">${E(f.detail)}</div>
+        ${f.status === 'FAIL' || f.status === 'REVIEW' ? `<div class="df-hop-d"><strong>Why it matters:</strong> ${E(f.why)}</div><div class="df-hop-d pa-fix"><strong>How to fix:</strong> ${E(f.fix)}</div>` : ''}
+      </li>`).join('')}</ol>` : '<div class="df-hop-d pa-none">Nothing with this result.</div>');
+    }
+    function groupsHtml(res) {
+      const rows = (res.groups || []).map(g => [E(g.name), E([g.deploy_type, g.platform].filter(Boolean).join(' · ')), E(g.location),
+        g.instances < 2 ? `<span class="zt-bad">${E(g.instances)}</span>` : E(g.instances),
+        g.serving < g.instances ? `<span class="zt-bad">${E(g.serving)}</span>` : E(g.serving),
+        g.versions.length > 1 ? `<span class="zt-bad">${E(g.versions.join(', '))}</span>` : E(g.versions.join(', ') || 'not reported'),
+        E(g.upgrade_window || ''), traceLink({ ec: g.name, label: `Trace workload traffic behind ${g.name} in the Path analyzer` })]);
+      return table('Connector groups', ['Group', 'Type', 'Location', 'Connectors', 'Serving', 'Versions', 'Upgrade window', 'Workload path'], rows,
+        'No Cloud or Branch Connector group was read: none is deployed, or the groups could not be read (see "What was read").');
+    }
+    function connectorsHtml(res) {
+      const rows = [];
+      (res.groups || []).forEach(g => (g.connectors || []).forEach(c => rows.push([E(c.name), E(g.name), E(c.version || 'not reported'),
+        c.serving ? `<span class="zt-ok">${E(c.operational)}</span>` : `<span class="zt-bad">${E(c.operational)}</span>`,
+        /FAIL/i.test(c.upgrade) ? `<span class="zt-bad">${E(c.upgrade)}</span>` : E(c.upgrade || '')])));
+      return table('Connectors', ['Connector', 'Group', 'Version', 'Operational status', 'Upgrade status'], rows, 'The groups list no connectors.');
+    }
+    function rulesHtml(res) {
+      const rows = (res.rules || []).map(r => [E(r.name), E(r.order == null ? '' : r.order), r.enabled ? 'Yes' : '<span class="zt-dim">No</span>',
+        r.forward_method === 'DIRECT' ? `<span class="zt-bad">DIRECT</span>` : E(r.forward_method), E(r.goes),
+        r.destinations ? E(r.destinations) : '<em>every destination</em>', r.sources ? E(r.sources) : '<em>every source</em>',
+        traceLink({ ec: (r.connector_groups || [])[0] || '', wlg: (r.workload_groups || [])[0] || '', d: r.first_destination || '', label: `Trace rule ${r.name} in the Path analyzer` })]);
+      return table('Forwarding rules', ['Rule', 'Order', 'Enabled', 'Forward method', 'Where it goes', 'Destinations', 'Sources', 'Workload path'], rows,
+        'No forwarding rule was read: with no rule, workload traffic goes to ZIA.');
+    }
+    function gatewaysHtml(res) {
+      return table('Forwarding gateways', ['Gateway', 'Fail closed', 'Primary', 'Secondary', 'Description'],
+        (res.gateways || []).map(g => [E(g.name), yn(g.fail_closed, true), E(g.primary), E(g.secondary), E(g.description)]),
+        'No forwarding gateway is configured.');
+    }
+    function locationsHtml(res) {
+      const rows = (res.locations || []).map(x => [E(x.name), 'Location', yn(x.firewall, true), yn(x.ips, true), yn(x.xff, true), E(`${x.ip_addresses} IP, ${x.vpn_credentials} VPN`)])
+        .concat((res.templates || []).map(x => [E(x.name), 'Template', yn(x.firewall, true), yn(x.ips, true), yn(x.xff, true), '']));
+      return table('Connector locations and templates', ['Name', 'Kind', 'Firewall', 'IPS', 'X-Forwarded-For', 'Addresses and credentials (count)'], rows,
+        'No connector location or location template was read.');
+    }
+    function rbacHtml(res) {
+      const c = res.counts || {};
+      const roles = table('Admin roles', ['Role', 'Type', 'Policy access', 'Auditor', 'Admins (count)'],
+        (res.roles || []).map(r => [E(r.name), E(r.type), E(r.policy_access), E(r.auditor), E(r.admins)]), 'No admin role was read.');
+      const keys = table('Provisioning API keys', ['Key ID', 'Enabled', 'Age (days)', 'Partner key', 'Value'],
+        (res.api_keys || []).map(k => [E(k.id), E(k.enabled), k.age_days == null ? '<span class="zt-dim">unknown</span>' : (k.age_days > 365 ? `<span class="zt-bad">${E(k.age_days)}</span>` : E(k.age_days)), E(k.partner), E(k.value)]),
+        'No provisioning API key was read.');
+      return `<div class="df-hint">${E(c.admins_enabled || 0)} enabled admin(s) of ${E(c.admins || 0)}; ${E(c.admins_password || 0)} may sign in with a password. Admins are counted, not listed.</div>
+        <h3 class="df-h">Roles</h3>${roles}<h3 class="df-h">Provisioning API keys</h3>${keys}`;
+    }
+    function cloudHtml(res) {
+      return table('Public cloud accounts', ['Account', 'Cloud', 'Permission status', 'Regions', 'Regions OK', 'Account groups'],
+        (res.cloud_accounts || []).map(x => [E(x.name), E(x.cloud), E(x.permission_status), E(x.regions), x.regions_ok < x.regions ? `<span class="zt-bad">${E(x.regions_ok)}</span>` : E(x.regions_ok), E(x.account_groups)]),
+        'No public cloud account was read.');
+    }
+    function render() {
+      const res = last, c = res.counts || {};
+      meta.textContent = `${res.tenant_label || ''} · read ${new Date().toLocaleTimeString()} · ${c.fail || 0} to fix, ${c.review || 0} to review`;
+      const errs = Object.values(res.collections || {}).filter(s => !s.read && s.error).map(s => `${s.label}: ${s.error}`);
+      body.innerHTML = `
+        ${statsHtml(c)}
+        <div class="zt-note"><strong>In short</strong><ul>${(res.summary || []).map(l => `<li>${E(l)}</li>`).join('')}</ul></div>
+        <section class="zt-sec" aria-labelledby="ztFindH"><h2 class="df-h" id="ztFindH">Findings</h2>${findingsHtml(res)}</section>
+        <section class="zt-sec" aria-labelledby="ztGroupsH"><h2 class="df-h" id="ztGroupsH">Connector groups</h2>${groupsHtml(res)}</section>
+        <section class="zt-sec" aria-labelledby="ztConnH"><h2 class="df-h" id="ztConnH">Connectors</h2>${connectorsHtml(res)}</section>
+        <section class="zt-sec" aria-labelledby="ztRulesH"><h2 class="df-h" id="ztRulesH">Forwarding rules</h2>${rulesHtml(res)}</section>
+        <section class="zt-sec" aria-labelledby="ztGwH"><h2 class="df-h" id="ztGwH">Gateways</h2>${gatewaysHtml(res)}</section>
+        <section class="zt-sec" aria-labelledby="ztLocH"><h2 class="df-h" id="ztLocH">Locations and templates</h2>${locationsHtml(res)}</section>
+        <section class="zt-sec" aria-labelledby="ztActH"><h2 class="df-h" id="ztActH">Activation</h2><div class="df-hop-d">${E((res.activation || {}).words || 'Not read.')}</div></section>
+        <section class="zt-sec" aria-labelledby="ztRbacH"><h2 class="df-h" id="ztRbacH">Admins, roles and API keys</h2>${rbacHtml(res)}</section>
+        <section class="zt-sec" aria-labelledby="ztCloudH"><h2 class="df-h" id="ztCloudH">Public cloud accounts</h2>${cloudHtml(res)}</section>
+        ${errs.length ? `<h2 class="df-h">Could not be read</h2><ul class="pa-impacts">${errs.map(t => `<li class="pa-impact sev-medium"><div class="df-hop-d">${E(t)}</div></li>`).join('')}</ul>` : ''}
+        <details class="pa-details"><summary>Assumptions (${(res.assumptions || []).length})</summary><ul>${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul></details>
+        <details class="pa-details"><summary>What was read (${lastLogs.length} line${lastLogs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(lastLogs.join('\n'))}</div></details>`;
+      body.querySelectorAll('.zt-filter button').forEach(b => b.addEventListener('click', () => {
+        stFilter = b.dataset.st; render();
+        const again = body.querySelector(`.zt-filter button[data-st="${stFilter}"]`); if (again) again.focus();
+        say(`Showing ${stFilter ? ST_WORD[stFilter] : 'all'} findings.`);
+      }));
+      const x = $('expXlsx'), j = $('expJson');
+      x.href = `/api/ztw/report/${encodeURIComponent(res.report_id)}/export?format=xlsx`;
+      j.href = `/api/ztw/report/${encodeURIComponent(res.report_id)}/export?format=json`;
+      x.hidden = j.hidden = false;
+    }
+
+    $('ztRun').addEventListener('click', run);
+    tenantChoices();
+  })();
+  </script>
+</body>
+</html>

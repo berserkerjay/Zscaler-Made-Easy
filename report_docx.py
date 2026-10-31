@@ -94,6 +94,14 @@ def _parse_detail_for_bp(detail: str):
 # check's section AND label, so a single entry covers many checks.
 _BP_FALLBACKS = [
     # (match-substring, best-practice text, help-center URL)
+    ("branch connector",
+     "Run at least two Cloud or Branch Connectors per group on one current "
+     "version, forward workload traffic to ZIA or ZPA (DIRECT only for named, "
+     "justified destinations), fail closed, keep the firewall and IPS on for "
+     "connector locations, activate changes promptly, and rotate provisioning "
+     "API keys.",
+     "https://help.zscaler.com/cloud-branch-connector"),
+
     ("ssl",
      "Decrypt and inspect TLS traffic for everything except a documented "
      "exempt list (banking, healthcare, certain government domains). "
@@ -205,6 +213,12 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
 # (label + section + check_id).
 _REMEDIATION_PATHS = [
     # (match-substring, admin-portal path, API hint or None)
+    ("branch connector",
+     "Cloud & Branch Connector Admin Portal → Administration (Cloud Connector "
+     "Groups, Location Templates, Admin Management, API Key Management) and "
+     "Forwarding Control (Forwarding rules, Gateways); activate after saving.",
+     "Read-only in this app: no Cloud & Branch Connector change is made through the API."),
+
     ("ssl",
      "ZIA Admin → Policy → SSL Inspection → Add Rule (or edit Default Rule). "
      "Set Action = Inspect, attach URL categories to inspect, add exempt URL list.",

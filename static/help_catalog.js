@@ -731,6 +731,11 @@ window.HELP_CATALOG = {
     "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
     "effect": "nav"
    },
+   ".tool-group button[onclick=\"openCloudConnectorTab()\"]": {
+    "what": "Reads the Cloud & Branch Connector configuration (connector groups and versions, forwarding rules, gateways, locations, activation, admins, roles and API keys) when Cloud & Branch Connector is ticked on the Scope page, and names each gap with a fix. Never reads an API key value or a provisioning URL. Read-only. Opens in a new tab.",
+    "input": "Nothing to type. Just click it. Nothing is read until you click Read in the new tab.",
+    "effect": "nav"
+   },
    ".tool-group button[onclick=\"openToolTab('efficacy')\"]": {
     "what": "Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.",
     "input": "Nothing to type. Just click it. Scoring starts only when you click Score tenant there.",
@@ -2689,6 +2694,48 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#bwBody details.pa-details > summary": {
+    "what": "Shows or hides this list: the assumptions, or the log of what was read.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   }
+  },
+  "/report/ztw": {
+   "#ztTenant": {
+    "what": "Picks which tenant sign-in the Cloud & Branch Connector read uses.",
+    "input": "Optional. Pick where the sign-in comes from: the assessment tab, a saved tenant profile, or what is saved on this computer. It only shows when there is more than one choice.",
+    "effect": "local"
+   },
+   "#ztRun": {
+    "what": "Reads the Cloud & Branch Connector configuration once and checks it: connector groups, forwarding rules, gateways, locations, activation, admins, roles, API keys and cloud accounts. It never reads an API key value or a provisioning URL.",
+    "input": "Nothing to type. Just click it. Tick Cloud & Branch Connector on the Scope page first, and sign in with a OneAPI API client.",
+    "effect": "read"
+   },
+   "#ztStop": {
+    "what": "Stops the read at once. Nothing more is read and nothing is kept.",
+    "input": "Nothing to type. Just click it while a read is running.",
+    "effect": "local"
+   },
+   "#expXlsx": {
+    "what": "Saves the findings and the tables of this read as an Excel workbook. Admins are counted and key values are never in it.",
+    "input": "Nothing to type. Just click it. Click Read first.",
+    "effect": "download"
+   },
+   "#expJson": {
+    "what": "Saves the findings and the tables of this read as a JSON file. Admins are counted and key values are never in it.",
+    "input": "Nothing to type. Just click it. Click Read first.",
+    "effect": "download"
+   },
+   "#ztBody .zt-filter button[data-st]": {
+    "what": "Shows only the findings with this result. All shows every finding.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#ztBody a.zt-trace": {
+    "what": "Opens the Path analyzer for traffic from a workload, with this connector group (and the rule's workload group and destination) filled in, reusing this read. Nothing is read until you click Analyze there.",
+    "input": "Nothing to type. Just click it. You can add the workload's source IP and tags there.",
+    "effect": "nav"
+   },
+   "#ztBody details.pa-details > summary": {
     "what": "Shows or hides this list: the assumptions, or the log of what was read.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"

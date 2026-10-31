@@ -221,10 +221,11 @@ def sanitize(snap: Dict[str, Any]) -> Dict[str, Any]:
             items = [_admin_row(a) for a in _dicts(items)]
         elif key == "api_keys":
             items = [_key_row(k) for k in _dicts(items)]
+        elif key == "locations":
+            # Counted from the answer, then the rest masked like any list.
+            items = _mask(offline_tenant.scrub([_location_row(x) for x in _dicts(items)]))
         else:
             items = _mask(offline_tenant.scrub(_dicts(items)))
-            if key == "locations":
-                items = [_location_row(x) for x in items]
         out[key] = items
     return out
 
@@ -308,13 +309,36 @@ def _rule_key(ir: Tuple[int, Dict[str, Any]]) -> Tuple[int, int, int]:
     return (0, o, i) if o >= 0 else (1, o, i)
 
 
+def _trace_destination(entry: str) -> str:
+    """One destination the Path analyzer can trace for a rule's address
+    entry: an address as it is, the first host of a network or range, a
+    host name as it is; "" for anything else."""
+    import ipaddress
+    e = entry.strip()[:255]
+    if not e:
+        return ""
+    try:
+        return str(ipaddress.ip_address(e))
+    except ValueError:
+        pass
+    try:
+        net = ipaddress.ip_network(e, strict=False)
+        return str(next(iter(net.hosts()), net.network_address))
+    except ValueError:
+        pass
+    if "-" in e:
+        return _trace_destination(e.split("-", 1)[0])
+    e = e[2:] if e.startswith("*.") else e.lstrip(".")
+    return e if re.fullmatch(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+", e) else ""
+
+
 def rules_table(rules: Any) -> List[Dict[str, Any]]:
     rows = []
     for _i, r in sorted(enumerate(_dicts(rules)), key=_rule_key):
         method = as_str(get(r, "forwardMethod")).upper()
         dest = [k for k in DEST_CRITERIA if _seq(get(r, k))]
         src = [k for k in SRC_CRITERIA if _seq(get(r, k))]
-        first_dest = next((as_str(x) for x in _seq(get(r, "destAddresses")) if isinstance(x, str)), "")
+        first_dest = _trace_destination(next((as_str(x) for x in _seq(get(r, "destAddresses")) if isinstance(x, str)), ""))
         rows.append({"id": as_str(get(r, "id")), "name": _name(r), "order": get(r, "order"), "enabled": _enabled_rule(r),
                      "forward_method": method or "not set", "goes": workload_path._forward(method)[1],
                      "broad": not dest, "destinations": ", ".join(_name(x) for k in dest for x in _seq(get(r, k))[:5])[:300],

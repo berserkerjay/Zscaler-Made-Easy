@@ -73,7 +73,7 @@ READ_ONLY = ("This is an offline snapshot: it is read-only, and nothing is sent 
 GONE = ("The offline tenant this page was using is no longer open (the server restarted or it was closed). "
         "Open the sample or the snapshot again, or choose Leave to use the live tenant.")
 
-KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights")
+KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "ztw")
 _PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
 _CUSTOMER_SEG = re.compile(r"(/zpa/mgmtconfig/v[0-9]+/admin/customers/)[^/]+")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -99,7 +99,11 @@ _TOKEN_KEY = re.compile(r"token|provision(ing)?_?key|enrollment_?key|config_?key
 # (zid/models/api_client.py), an LLM provider's apiCredentials
 # (aiguard/models/llm_provider_credentials.py), an encrypted session key
 # (zpa/models/enrollment_certificates.py). Any value type is masked.
-_OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key", re.I)
+# A Cloud & Branch Connector provisioning URL (it enrols a connector) and an
+# admin's mobile app tokens (zscaler/ztw/models/provisioning_url.py,
+# admin_users.py execMobileAppTokens) are masked the same way.
+_OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key|"
+                      r"prov(isioning)?_?url(_?data)?$|mobile_?app_?tokens$", re.I)
 _VOLATILE = re.compile(r"(modified|lastseen|last_seen|lastsync|updated|creation|created)(time|at|date|_time|_at)?$|^(modifiedBy|lastModifiedBy)$", re.I)
 
 
@@ -973,6 +977,10 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     + [(("zdx",), f"/zdx/{x}") for x in ("administration/apps", "troubleshooting/devices", "administration/departments",
                                          "administration/locations")]
     + [(("zidentity",), f"/zid/{x}") for x in ("users", "groups", "resourceServers")]
+    # Cloud & Branch Connector: ztw_overview.PATHS (the SDK's paths, read as they are)
+    + [(("ztw",), f"/ztw/api/v1/{x}") for x in ("ecgroup", "ecRules/ecRdr", "workloadGroups", "ipSourceGroups", "ipDestinationGroups",
+                                                 "gateways", "location", "locationTemplate", "ecAdminActivateStatus", "adminRoles",
+                                                 "adminUsers", "apiKeys", "publicCloudAccountDetails", "publicCloudInfo")]
 )
 _ZIA_PAGED = {"/zia/users", "/zia/groups", "/zia/departments"}
 _UNANSWERED = (0, 429, 502, 503, 504)

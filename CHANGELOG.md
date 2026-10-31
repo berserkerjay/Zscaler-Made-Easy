@@ -5,6 +5,14 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-31
+
+### Cloud & Branch Connector: read and assess
+- **Cloud & Branch Connector page** (`/report/ztw`, toolbar *Cloud & Branch Connector*, Scope page key `ztw`, OneAPI sign-in only). Reads once, read-only, through the Zscaler SDK 1.11.3 `client.ztw` services: connector groups and their connectors (`ec_groups.list_ec_groups`: deploy type, location, software versions, operational and upgrade status, upgrade window), traffic forwarding rules (`forwarding_rules.list_rules`), workload and IP groups, forwarding gateways (`forwarding_gateways.list_gateways`), connector locations and location templates (`location_management.list_locations`, `location_template.list_location_templates`), the activation status (`activate.get_status`), admin roles and admins (`admin_roles.list_roles`, `admin_users.list_admins`: counted, never listed), provisioning API keys (`api_keys.list_api_keys`: age and state only, the value is never kept or shown) and public cloud accounts (`account_details.list_public_account_details`, `public_cloud_info.list_public_cloud_info`). No provisioning URL is read; nothing is activated or regenerated. Findings with why it matters and how to fix, the tables, Stop, and Excel and JSON exports.
+- **Eight assessment checks** (ZTW.1 to ZTW.8, section "ZTW — Cloud & Branch Connector", run when Cloud & Branch Connector is ticked; not licensed or not deployed is not applicable): groups with a single connector, connectors not serving or on mixed versions, workload traffic sent DIRECT (every destination is a Fix), gateways that do not fail closed, changes waiting to be activated, connector locations and templates without the firewall or IPS, connector admins (fewer than two, more than twenty, password sign-in, no read-only role), and provisioning API keys older than a year.
+- **Workload path link.** Each connector group and forwarding rule has *Trace in the Path analyzer*, which opens the workload trace with the connector group, workload group and a destination filled in and reuses the same read (nothing is read until Analyze).
+- **Snapshots and the sample tenant.** A snapshot saves the 14 connector answers when Cloud & Branch Connector is ticked (provisioning URLs and mobile app tokens masked on top of the existing secret rules); the sample tenant has a connector set-up with gaps for every check, so the page, the checks and the workload trace work offline.
+
 ## 2026-10-30
 
 ### The new name everywhere: Docker, downloads, commands and the install guide

@@ -338,19 +338,22 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
     },
     "ztw": {
         "label": "Cloud & Branch Connector",
-        "description": "Path analyzer, traffic from a workload: the Cloud & Branch Connector traffic forwarding rules, workload groups, connector groups and IP source and destination groups, to say where a workload's traffic goes (ZIA, ZPA, direct, local switch, proxy chaining or drop). No assessment check reads them.",
+        "description": "The Cloud & Branch Connector page and eight assessment checks (ZTW.1 to ZTW.8): connector groups and their connectors (redundancy, health, software versions), traffic forwarding rules (workload traffic sent DIRECT), forwarding gateways (fail closed), connector locations and templates (firewall and IPS), the activation status, admins, roles and provisioning API keys (counted; key values and provisioning URLs are never read into a result), and public cloud accounts. Also the Path analyzer's traffic from a workload: where a workload's traffic goes (ZIA, ZPA, direct, local switch, proxy chaining or drop).",
         "service": "Cloud & Branch Connector (ZTW)",
         "permissions_read": [
-            "Cloud & Branch Connector (read) on the API client's role: forwarding control, workload groups, connector groups, IP groups",
+            "Cloud & Branch Connector (read) on the API client's role: connector groups, forwarding control, gateways, workload groups, IP groups, locations and location templates, activation status, admin management, API key management, public cloud accounts",
         ],
         "permissions_write": [],
         "endpoints_used": [
-            "/ztw/api/v1/ecRules/ecRdr", "/ztw/api/v1/workloadGroups", "/ztw/api/v1/ecgroup",
-            "/ztw/api/v1/ipSourceGroups", "/ztw/api/v1/ipDestinationGroups",
+            "/ztw/api/v1/ecgroup", "/ztw/api/v1/ecRules/ecRdr", "/ztw/api/v1/workloadGroups",
+            "/ztw/api/v1/ipSourceGroups", "/ztw/api/v1/ipDestinationGroups", "/ztw/api/v1/gateways",
+            "/ztw/api/v1/location", "/ztw/api/v1/locationTemplate", "/ztw/api/v1/ecAdminActivateStatus",
+            "/ztw/api/v1/adminRoles", "/ztw/api/v1/adminUsers", "/ztw/api/v1/apiKeys",
+            "/ztw/api/v1/publicCloudAccountDetails", "/ztw/api/v1/publicCloudInfo",
         ],
-        "license_required": "Cloud Connector or Branch Connector subscription.",
+        "license_required": "Cloud Connector or Branch Connector subscription (without one the checks say not applicable).",
         "customer_id_needed": False,
-        "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in cannot read Cloud & Branch Connector. Off unless ticked.",
+        "note": "OneAPI (ZIdentity) API clients only: the classic ZIA API sign-in cannot read Cloud & Branch Connector. Off unless ticked. Read-only: nothing is activated, no key is regenerated, no provisioning URL is read.",
     },
 
     "compliance": {

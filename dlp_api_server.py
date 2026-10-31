@@ -3004,6 +3004,117 @@ async def browser_security_export(report_id: str, format: str = "xlsx"):
                     headers={"Content-Disposition": f"attachment; filename=browser_security_{ts}.xlsx"})
 
 
+# ── Cloud & Branch Connector (read-only): connector groups, forwarding
+# rules, gateways, locations, activation, admins and API keys (counted,
+# values never read), public cloud accounts, and the ZTW checks
+# (ztw_overview). Only when Cloud & Branch Connector is ticked on the
+# Scope page; kept as report "ztw-…" for the exports, and its workload
+# lists as "pathztw-…" so the Path analyzer's workload trace reuses them.
+class ZtwRequest(MigrateRequest):
+    """Body of the Cloud & Branch Connector read: tenant credentials and
+    the Scope page selection; refused (400) before sign-in unless Cloud &
+    Branch Connector is ticked, and for the classic ZIA API sign-in."""
+
+
+@app.get("/report/ztw")
+async def report_ztw_page():
+    """Cloud & Branch Connector (static/report_ztw.html)."""
+    page = os.path.join(STATIC_DIR, "report_ztw.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+def _run_ztw(client, label: str, creds: Dict[str, Any], source: str, log, cancel) -> Dict[str, Any]:
+    """Read the connector configuration once and assess it. Stop ends the
+    run as stopped: nothing more is read and no partial result is kept."""
+    import workload_path
+    import zpa_reader
+    import ztw_overview as zo
+    logs: List[str] = []
+
+    def _log(line: str) -> None:
+        line = tenant_auth.mask_secrets(str(line), creds)
+        logs.append(line)
+        if log:
+            log(line)
+
+    _log(f"Reading the Cloud & Branch Connector configuration of {label}. Nothing is written to the tenant."
+         + (f" In scope, from {source}: Cloud & Branch Connector." if source else ""))
+    try:
+        snap = zo.read(client, log=_log, cancel=cancel)
+    except zo.Stopped:
+        _log("STOPPED — you clicked Stop; nothing more was read and no partial result is kept.")
+        return {"stopped": zo.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    except zpa_reader.ReadError as e:
+        raise RuntimeError(tenant_auth.mask_secrets(str(e), creds))
+    if cancel is not None and cancel.is_set():
+        return {"stopped": zo.STOPPED_REASON, "status": "stopped", "tenant_label": label, "logs": logs}
+    for v in (snap.get("collections") or {}).values():
+        if v.get("error"):
+            v["error"] = tenant_auth.mask_secrets(str(v["error"]), creds)
+    rep = zo.analyse(snap)
+    rep["summary"] = zo.summary_lines(rep)
+    # The Path analyzer's workload read (workload_path.LISTS only), same tenant.
+    path_snap = {"read_at": snap.get("read_at"), "collections": {k: snap["collections"][k] for k, *_ in workload_path.LISTS if k in snap["collections"]}}
+    for k, *_ in workload_path.LISTS:
+        path_snap[k] = snap.get(k)
+    rep["path_report_id"] = _remember_report("pathztw", {"kind": "pathztw", "snapshot": path_snap}, label)
+    rid = _remember_report("ztw", rep, label)
+    _log(f"Done: {rep['counts']['fail']} to fix, {rep['counts']['review']} to review, {rep['counts']['pass']} as recommended.")
+    return dict(_REPORTS[rid], status="done", logs=logs)
+
+
+@app.post("/api/ztw/start")
+async def ztw_start(req: ZtwRequest, request: Request):
+    """Read the Cloud & Branch Connector configuration as a job the page
+    follows, and assess it. Read-only. Poll GET /api/dlp-packs/jobs/{job_id};
+    Stop ends it with nothing more read."""
+    import pack_jobs
+    import ztw_overview as zo
+    sel = _require_in_scope(req, "ztw", "Cloud & Branch Connector")   # before signing in (user rule 1)
+    creds = _tenant_creds(req)
+    if creds.get("auth_method") == tenant_auth.LEGACY:
+        raise HTTPException(status_code=400, detail=f"{zo.NEEDS_ONEAPI} Nothing was read.")
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)
+    job = pack_jobs.start("ztw", lambda log, cancel: _run_ztw(client, label, creds, sel["source"], log, cancel),
+                          label=f"Cloud & Branch Connector {label}"[:80], actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+def _ztw_report(rid: str) -> Dict[str, Any]:
+    rep = _REPORTS.get(rid or "")
+    if not rep or not str(rid).startswith("ztw-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs). Read it again.")
+    return rep
+
+
+@app.get("/api/ztw/report/{report_id}")
+async def ztw_report(report_id: str):
+    return _ztw_report(report_id)
+
+
+@app.get("/api/ztw/report/{report_id}/export")
+async def ztw_export(report_id: str, format: str = "xlsx"):
+    """The Cloud & Branch Connector report as Excel (xlsx_writer) or JSON."""
+    import xlsx_writer
+    import ztw_overview as zo
+    rep = _ztw_report(report_id)
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fmt = (format or "xlsx").lower()
+    if fmt == "json":
+        body = {k: v for k, v in rep.items() if k not in ("logs",)}
+        return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=cloud_branch_connector_{ts}.json"})
+    if fmt != "xlsx":
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
+    data = await asyncio.to_thread(zo.workbook, rep)
+    return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE,
+                    headers={"Content-Disposition": f"attachment; filename=cloud_branch_connector_{ts}.xlsx"})
+
+
 # ── Device posture (read-only) ───────────────────────────────────────
 # device_posture reads ZPA through zpa_reader (plus the Client Connector
 # trusted networks when Client Connector is in scope too), classifies the
@@ -7079,6 +7190,8 @@ async def list_checks(scope: Optional[str] = None):
         all_checks = list(ZID_REG)
     elif scope == "rbac":
         all_checks = list(RBAC_REG)
+    elif scope == "ztw":
+        all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZTW")]
     else:
         all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
 
@@ -7119,6 +7232,8 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
         all_checks = list(ZID_REG)
     elif scope == "rbac":
         all_checks = list(RBAC_REG)
+    elif scope == "ztw":
+        all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZTW")]
     else:
         all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
 
@@ -7129,7 +7244,7 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
 
     # Only a scope the catalogue knows names the file: anything else exported every check, and a
     # caller's text never goes into the Content-Disposition header (non-Latin-1 text there was a 500).
-    suffix = scope if scope in ("dlp", "zia", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac") else "all"
+    suffix = scope if scope in ("dlp", "zia", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "ztw") else "all"
     fname_base = f"zscaler_checks_{suffix}_{datetime.now().strftime('%Y%m%d')}"
 
     if format == "json":
@@ -7918,10 +8033,14 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
             for c in RBAC_REG:
                 if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
+        if "ztw" in scopes:
+            for c in PLATFORM_REG:
+                if c[1].startswith("ZTW") and c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
     if scope == "full" or scope == "all":
-        return list(REG) + PLATFORM_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
+        return list(REG) + [c for c in PLATFORM_REG if not c[1].startswith("ZTW")] + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
     elif scope == "automation":
         return list(AUTOMATION_REG)
     elif scope == "zdx":

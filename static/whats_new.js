@@ -22,6 +22,7 @@
 window.WHATS_NEW = {
   "keep": 2,
   "releases": {
+    "2026-10-31": "Cloud & Branch Connector: read and assess",
     "2026-10-29": "Wave 6: regression and secure-by-design testing, live motion, help on hover, Liquid Glass, a quality score",
     "2026-10-28": "Build, prove and predict: tenant builders, a deeper Path analyzer, readiness, sample tenant, POV planner and a no-install edition"
   },
@@ -30,6 +31,15 @@ window.WHATS_NEW = {
   },
   "legend": { "/": ["#dbFoot", ".hero"], "*": [".rp-hero"] },
   "features": [
+    {
+      "id": "cloud-connector", "release": "2026-10-31", "label": "Cloud & Branch Connector",
+      "what": "The Cloud & Branch Connector page and eight checks: connector groups and versions, forwarding rules that send workload traffic DIRECT, gateways, locations, activation, admins and API keys, with a link into the Path analyzer's workload trace.",
+      "changelog": ["Cloud & Branch Connector page", "Eight assessment checks", "Workload path link", "Snapshots and the sample tenant"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openCloudConnectorTab()\"]" },
+        { "page": "/report/ztw", "at": ".rp-hero h1" }
+      ]
+    },
     {
       "id": "build-new", "release": "2026-10-28", "label": "Build new",
       "what": "Build new on Bulk changes: builders for a ZIA security baseline, the SSL certificate manager, ZPA, Client Connector profiles, ZDX probes and AI Guard, with the same preview, write gates, read-back and Undo.",

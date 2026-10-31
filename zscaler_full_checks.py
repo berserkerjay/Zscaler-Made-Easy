@@ -1058,6 +1058,30 @@ def zcc_20(cl):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# ZTW — CLOUD & BRANCH CONNECTOR (ztw_overview holds the logic, shared
+# with the Cloud & Branch Connector page; the REST paths are the SDK's,
+# zscaler/ztw/*.py 1.11.3). Not licensed or not deployed is INFO (N/A).
+# ═══════════════════════════════════════════════════════════════════════
+
+def _ztw(cid):
+    import ztw_overview as zo
+    fn, keys = next((f, k) for i, f, k in zo.CHECKS if i == cid)
+
+    def check(cl):
+        data, codes = zo.from_rest(cl, keys)
+        if codes.get("ec_groups") == 404:
+            return R(R.INFO, "Cloud & Branch Connector is not licensed or not enabled on this tenant (the API answered 404): not applicable.")
+        st, detail, _objs = fn(data)
+        return R({"PASS": R.PASS, "FAIL": R.FAIL, "REVIEW": R.WARN}.get(st, R.INFO), detail)
+    check.__name__ = "ztw_" + cid.split(".")[1]
+    check.__doc__ = zo.WHAT[cid][0]
+    return check
+
+
+ztw_1, ztw_2, ztw_3, ztw_4, ztw_5, ztw_6, ztw_7, ztw_8 = (_ztw(f"ZTW.{n}") for n in range(1, 9))
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # FULL PLATFORM REGISTRY
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -1157,5 +1181,15 @@ PLATFORM_REG = [
     ("ZCC.24", "ZCC — Mobile Portal",    "ZDX group entitlements",              zcc_24),
     ("ZCC.25", "ZCC — Mobile Portal",    "ZPA group entitlements",              zcc_25),
     ("ZCC.26", "ZCC — Mobile Portal",    "Web app service exclusions",          zcc_26),
+
+    # ZTW — Cloud & Branch Connector (Scope page key "ztw")
+    ("ZTW.1", "ZTW — Cloud & Branch Connector", "Connector groups have two or more connectors", ztw_1),
+    ("ZTW.2", "ZTW — Cloud & Branch Connector", "Connectors serving, on one software version", ztw_2),
+    ("ZTW.3", "ZTW — Cloud & Branch Connector", "Workload traffic not sent DIRECT", ztw_3),
+    ("ZTW.4", "ZTW — Cloud & Branch Connector", "Forwarding gateways fail closed", ztw_4),
+    ("ZTW.5", "ZTW — Cloud & Branch Connector", "Configuration changes activated", ztw_5),
+    ("ZTW.6", "ZTW — Cloud & Branch Connector", "Connector locations: firewall and IPS on", ztw_6),
+    ("ZTW.7", "ZTW — Cloud & Branch Connector", "Connector admins and roles", ztw_7),
+    ("ZTW.8", "ZTW — Cloud & Branch Connector", "Provisioning API keys rotated", ztw_8),
 ]
 PLATFORM_REG = guard_registry(PLATFORM_REG)
