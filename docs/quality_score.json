@@ -318,11 +318,12 @@
             "score": 100.0,
             "open": 1,
             "fixed": 48,
-            "accepted": 0,
+            "accepted": 3,
             "records": [
               "c6-zcc-zdx",
               "c6-zia-baseline-aiguard",
-              "func-builders"
+              "func-builders",
+              "w8-zdx-zid-zcc"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 582,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -461,16 +462,16 @@
       "info": {
         "open": 1,
         "fixed": 48,
-        "accepted": 22
+        "accepted": 25
       }
     },
     "checks": {
-      "pass": 303,
+      "pass": 316,
       "fixed": 308,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8650
   },
   "findings": [
     {
@@ -840,6 +841,54 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W8-ZDX-ZID-ZCC-01",
+      "title": "The ZDX score analysis response shape is not declared by the SDK (DeviceApplicationAnalysis has device_id, app_id, t0, t1); the analysis id is assumed to be `id` and the status answer is shown scrubbed",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "Marked ASSUMED in zdx_insights.py; the status answer is bounded and personal or secret fields are dropped (_safe)",
+      "test": "tests/test_w8_zdx_zid_zcc.py::test_the_analysis_status_answer_is_scrubbed_and_bounded",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zdx-zid-zcc",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W8-ZDX-ZID-ZCC-02",
+      "title": "web_policy.activate_web_policy carries no on/off value; it is assumed to switch the state, so it is sent only when the state differs and the state is read back",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "ASSUMED in ops_zcc_live.py; a wrong assumption shows as a read-back mismatch, never as a silent success",
+      "test": "tests/test_w8_zdx_zid_zcc.py::test_turning_an_app_profile_off_is_live_typed_read_back_and_undone",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zdx-zid-zcc",
+      "area": "functionality",
+      "sub_area": "builders"
+    },
+    {
+      "id": "W8-ZDX-ZID-ZCC-03",
+      "title": "The ZIdentity user record has no last sign-in time in the SDK; idle admins are counted only when the directory sends one of the assumed time fields, otherwise only disabled accounts are counted and the finding says so",
+      "severity": "info",
+      "status": "accepted",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.1",
+      "wcag": "",
+      "fix": "The finding text says when sign-in times are missing",
+      "test": "tests/test_w8_zdx_zid_zcc.py::test_zid_stale_admin_is_counted_and_not_named",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zdx-zid-zcc",
+      "area": "functionality",
+      "sub_area": "builders"
     },
     {
       "id": "C6-ASSESSMENT-01",
@@ -10634,6 +10683,47 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w8-zdx-zid-zcc",
+      "area": "Wave 8 work package zdx-zid-zcc: ZDX, ZIdentity and Client Connector completion",
+      "title": "ZDX alert history, scores, metrics, cloud path and score analysis; ZIdentity admin entitlements and group members; Client Connector bypass breadth, device details, disable-reason counts and live app profile changes",
+      "standards": [
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V5.3.10",
+        "ASVS V7.2.2",
+        "ASVS V8.1.1",
+        "ASVS V8.3.4",
+        "ASVS V11.1.1",
+        "ASVS V11.1.4",
+        "ASVS V11.1.6",
+        "OWASP Top 10 2021 A01",
+        "OWASP Top 10 2021 A04",
+        "WSTG-ATHZ-02",
+        "WSTG-BUSL-05",
+        "WSTG-BUSL-06",
+        "WSTG-INFO-05",
+        "WSTG-INPV-11",
+        "CWE-20",
+        "CWE-22",
+        "CWE-200",
+        "CWE-269",
+        "CWE-359",
+        "CWE-362",
+        "CWE-400",
+        "CWE-770",
+        "CWE-778",
+        "CWE-841",
+        "CWE-863",
+        "CWE-1236",
+        "WCAG 2.2 SC 1.3.1",
+        "WCAG 2.2 SC 3.3.2"
+      ],
+      "checks": 13,
+      "findings": 3,
+      "tests_added": 48
     }
   ],
   "standards": {
@@ -10653,7 +10743,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",

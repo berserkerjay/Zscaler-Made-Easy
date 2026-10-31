@@ -260,6 +260,14 @@ what you get, what to do next.
   segments to change for ZPA), and CSV and Excel downloads.
   Fix selected opens Bulk changes with the picked destinations filled in
   as a URL category change; it writes nothing on its own.
+  The **ZDX panel** (ZDX ticked) shows the path ZDX measured to a ZDX
+  application from a device that probes it, leg by leg (device, network
+  exit, Zscaler service edge, application) with time, loss, hops and the
+  tunnel, without naming the device and with private hops hidden
+  (`zdx_insights.py`). It also starts a ZDX score analysis (root cause) on
+  one device: no setting changes, but it needs write mode, a writer, the
+  assessor's name and START ANALYSIS, and starts are rate-limited per tenant
+  (one every 5 minutes, 6 an hour) and audited.
 - **Shadowed rules** — reads the rules of every policy in scope (Inline
   Web, Endpoint, Email and SaaS DLP, URL filtering, Cloud App Control, SSL
   inspection and, with ZIA platform ticked, Cloud Firewall) and lists the
@@ -384,6 +392,13 @@ what you get, what to do next.
   command and a .bat or .command script for a chosen app profile (its
   policy token is read only when ZCC is in scope); tokens and passwords
   show as ******** unless you click Reveal, and none is logged or saved.
+  **One device's details** (`zcc_devices.py`) reads, by its device id, which
+  services run on a device and whether they are healthy, its versions,
+  strict enforcement, anti-tampering and device trust; identifiers are
+  hidden and its one-time passwords never reach the answer. **Why Client
+  Connector was switched off** counts the disable-reason report per reason,
+  device type and service (times and people, no names), on screen or as a
+  spreadsheet-safe CSV. Both only when ZCC is in scope.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
   decides, whether the traffic is decrypted, and whether inline DLP can
   see it. Where: opened from Traffic flow & gaps.
@@ -555,6 +570,17 @@ what you get, what to do next.
   are shown when it refuses something (a refused host, a missing
   permission). The ZDX configuration API is not in the Zscaler SDK, so
   its paths are assumed and the page says so (`ops_zdx.py`).
+  Three more types change live settings the same way (preview, plan hash,
+  re-read before each write, read-back, Undo): **ZIdentity group members**
+  (`ops_zid.py`, ZIdentity ticked) adds or removes people in one group by
+  sign-in name, never listing the directory, refuses dynamic groups and
+  warns about groups the identity provider syncs; **Turn Client Connector
+  app profiles on or off** and **Change a Client Connector app profile's
+  DNS and tunnel settings** (`ops_zcc_live.py`, ZCC ticked) take effect on
+  devices at once, so the profile's name is always typed; the settings are
+  an allowlist (split DNS, DNS exclusions first, the DNS search order, the
+  DNS route exclusion, large UDP DNS answers, DNS through the UDP proxy,
+  the packet tunnel exclusions) and never a password.
   Under **Build new** (also linked from the ZPA analysis page as *Build ZPA
   objects*, ZPA ticked on the Scope page), the **ZPA builder** makes a
   proof-of-value ZPA set-up through the same preview, gates, read-back and
