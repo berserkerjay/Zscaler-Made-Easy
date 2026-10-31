@@ -31,14 +31,15 @@ the page fetches it once (POST /api/operations/zidentity/secret). It is never
 put in a plan, a result, a log, the audit log, the change record or an
 export, and every read of a client's secrets drops their values.
 
-Not possible with the installed SDK (zscaler-sdk-python 1.11.3,
-zscaler/zid/users.py): resetting a user's password and resetting or
-skipping a user's MFA. UsersAPI has list_users, get_user, add_user,
-update_user, delete_user and list_user_group_details only; the models
-(zid/models/users.py UserRecord) carry no password or MFA field. ZIdentity's
-public API documents ":resetpassword" and ":setskipmfa" actions, but this
-app writes only through SDK calls it can verify, so these are left to the
-ZIdentity Admin Portal (NOT_POSSIBLE, shown on the page).
+Password and MFA: the installed SDK (zscaler-sdk-python 1.11.3,
+zscaler/zid/users.py) has no call for them (UsersAPI has list_users,
+get_user, add_user, update_user, delete_user and list_user_group_details
+only; UserRecord carries no password or MFA field). Resetting a user's
+password and letting a user skip MFA are the operation type zid_user_reset
+(ops_zid_user.py), which sends ZIdentity's published ":resetpassword" and
+":setskipmfa" actions as clearly marked raw calls behind the assessor and
+"RESET <login>". Editing a user's attributes and groups is zid_user_edit
+there. This type refuses those actions and names the other one.
 
 SDK calls, verified against zscaler-sdk-python 1.11.3 (client.zid, alias
 client.zidentity; base /ziam/admin/api/v1): users.list_users (limit <=
@@ -90,10 +91,10 @@ NOT_IN_SCOPE = "Not in scope: ZIdentity is not ticked on the Scope page, so noth
 NO_ZID = "This sign-in has no ZIdentity service: ZIdentity needs a OneAPI (ZIdentity) API client. Nothing was read."
 OWN_CLIENT = "the API client this app is signed in with: changing it here could lock the app out; change it in the ZIdentity Admin Portal"
 NOT_POSSIBLE = [
-    "Resetting a user's password: the installed Zscaler SDK (1.11.3) has no call for it (zid/users.py: list, get, add, update, delete "
-    "only), and its user model carries no password. Reset it in the ZIdentity Admin Portal.",
-    "Resetting or skipping a user's MFA: the installed Zscaler SDK (1.11.3) has no call for it and no MFA field. Change it in the "
-    "ZIdentity Admin Portal.",
+    "Resetting a user's password: the installed Zscaler SDK (1.11.3) has no call for it, so it is its own operation, \"Reset a ZIdentity "
+    "user's password or MFA\" (a raw call to ZIdentity's published API, behind the assessor and RESET <login>).",
+    "Resetting an MFA factor is not in ZIdentity's published API: change it in the ZIdentity Admin Portal. Letting a user skip MFA is "
+    "\"Reset a ZIdentity user's password or MFA\".",
 ]
 NO_UNDO_USER = "Cannot be undone: a deleted ZIdentity user is gone with its id, groups and entitlements; Undo does not bring it back."
 NO_UNDO_CLIENT = "Cannot be undone: a deleted API client is gone with its secrets; every script or tool that signs in with it stops working."
@@ -913,7 +914,8 @@ _COMMON = dict(family=FAMILY, product="zidentity", in_scope=in_scope, read_objec
                inverse=inverse, script=SCRIPT, group="Day-to-day admin")
 ao.register(T_USERS, label="ZIdentity users", plan=plan_users,
             hint=("Find users by login name; create users (disabled unless you tick enabled), disable, enable or delete them. "
-                  "Password and MFA resets are not possible with the Zscaler SDK. Needs ZIdentity ticked on the Scope page."), **_COMMON)
+                  "To edit a user or reset its password or MFA, use Edit a ZIdentity user or Reset a ZIdentity user's password or MFA. "
+                  "Needs ZIdentity ticked on the Scope page."), **_COMMON)
 ao.register(T_CLIENTS, label="ZIdentity API clients", plan=plan_clients,
             hint=("List the API clients and their scopes; create one with only the scopes it needs (its secret is shown once), rotate a "
                   "secret, disable, enable or delete a client. Needs ZIdentity ticked on the Scope page."), **_COMMON)
