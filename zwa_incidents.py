@@ -184,7 +184,6 @@ def summarize_details(d: Any) -> Dict[str, Any]:
     user = _g(d, "userInfo", default={}) or {}
     labels = [{"key": text(_g(x, "key"), 60), "value": text(_g(x, "value"), 120)}
               for x in (_g(d, "labels", default=[]) or []) if isinstance(x, dict)][:MAX_LABELS]
-    tickets = summarize_tickets([{"tickets": [t for t in (_g(d, "dlpIncidentTickets", default=[]) or []) if isinstance(t, dict)]}])
     actions = _g(d, "sourceActions", default=[]) or []
     return {
         "id": text(_g(d, "internalId", "id"), 80),
@@ -200,7 +199,7 @@ def summarize_details(d: Any) -> Dict[str, Any]:
         "rules": names("rules"), "engines": names("engines"), "dictionaries": dicts,
         "application": text(_g(app, "name", "hostnameOrApplication"), 120), "category": text(_g(app, "category"), 80),
         "file_type": text(_g(content, "fileType"), 40),
-        "labels": labels, "tickets": tickets,
+        "labels": labels, "tickets": len(_g(d, "dlpIncidentTickets", default=[]) or []),
         "notes": len(_g(d, "notes", default=[]) or []),
         "user_present": bool(user), "department_present": bool(_g(user, "department")),
         "open": str(_g(d, "status") or "").upper() not in CLOSED,
