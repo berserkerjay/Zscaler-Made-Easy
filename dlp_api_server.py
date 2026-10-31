@@ -9102,20 +9102,20 @@ async def traffic_logs_export(report_id: str, format: str = "xlsx", names: bool 
     rep = _tlogs_report(report_id)
     body = rep if names else tl.counts_only(rep)
     ts = datetime.now().strftime("%Y%m%d_%H%M")
-    base = f"traffic_logs_{ts}{'' if names else '_counts_only'}"
+    fname_base = f"traffic_logs_{ts}{'' if names else '_counts_only'}"
     fmt = (format or "xlsx").lower()
     if fmt == "json":
         return Response(content=json.dumps(body, indent=2, default=str), media_type="application/json",
-                        headers={"Content-Disposition": f"attachment; filename={base}.json"})
+                        headers={"Content-Disposition": f"attachment; filename={fname_base}.json"})
     if fmt == "csv":
         data = await asyncio.to_thread(tl.to_csv, body)
-        return Response(content=data, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={base}.csv"})
+        return Response(content=data, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={fname_base}.csv"})
     if fmt == "xlsx":
         data = await asyncio.to_thread(tl.to_xlsx, body)
-        return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE, headers={"Content-Disposition": f"attachment; filename={base}.xlsx"})
+        return Response(content=data, media_type=xlsx_writer.MEDIA_TYPE, headers={"Content-Disposition": f"attachment; filename={fname_base}.xlsx"})
     if fmt == "pdf":
         data = await asyncio.to_thread(tl.to_pdf, body)
-        return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={base}.pdf"})
+        return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={fname_base}.pdf"})
     raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt[:20]}")
 
 

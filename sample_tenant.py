@@ -658,7 +658,9 @@ INTERMEDIATE_CERTIFICATES = [
     {"id": 50, "name": "Zscaler Intermediate CA", "defaultCertificate": True, "status": "ENABLED", "type": "ZSCALER"},
     {"id": 52, "name": "Larkspur Issuing CA 2026", "status": "ENABLED", "type": "CUSTOM"}]
 ROOT_CERTIFICATES = [{"id": 11, "name": "Larkspur AI Guard CA"}]
-DNS_GATEWAYS = [{"id": 9, "name": "Zscaler Trusted Resolver", "natZtrGateway": True}]
+# The Trusted Resolver gateway the ZIA baseline's DNS rule needs, beside the forwarding
+# checks' custom gateway above (one list: the sample is one tenant).
+DNS_GATEWAYS = DNS_GATEWAYS + [{"id": 9, "name": "Zscaler Trusted Resolver", "natZtrGateway": True}]
 SUBSCRIPTIONS = [{"id": "ZIA_BUS", "status": "ACTIVE", "subscribed": True}, {"id": "ZS_DP_GEN_AI", "status": "ACTIVE", "subscribed": True}]
 URL_APP_SETTINGS = {"enableChatGptPrompt": False, "enableMicrosoftCoPilotPrompt": False, "enableGeminiPrompt": False, "enableClaudePrompt": False,
                     "enableMsftO365": True, "enforceSafeSearch": True}
