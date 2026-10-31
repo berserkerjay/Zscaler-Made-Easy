@@ -606,6 +606,13 @@ what you get, what to do next.
   arrive disabled and re-runs update in place; and the **SSL certificate
   manager**, which lists the intermediate certificate each SSL inspection
   rule uses and moves picked Inspect rules to another ready-to-use one.
+  **Sandbox file hashes** (*Build new*, `ops_zia_sandbox.py`, ZIA
+  platform ticked) adds the MD5 hashes of files incident response
+  confirmed as malicious to the Cloud Sandbox custom block list: MD5 only
+  (anything else is refused with the line), up to 100 per operation, a
+  typed phrase every time, the list re-read right before the write and
+  sent back with only those hashes added (an allow-listed hash is never
+  touched), read back after activation, and Undo removes exactly them.
 - **To-do list** (`/report/todo`) — tags, comments and to-dos you write
   on any object (a DLP rule, engine or dictionary, a URL filtering or
   firewall rule, a URL category, a location, a finding) from its card in
