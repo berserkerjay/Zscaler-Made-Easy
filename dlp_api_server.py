@@ -7280,8 +7280,9 @@ async def compliance_report_profile(report_id: str, key: str, format: str = "jso
                         "; ".join(f"{e['check_id']} {e['status']}" for e in c["evidence"])])
         for cid in view["not_assessed"]:
             w.writerow([cid, "", "Not assessed by this assessment's checks", "", "", "", "", ""])
+        name = f"compliance_{k.lower()}"   # k is a profile key, [A-Z0-9_] only (_cp_key)
         return PlainTextResponse(buf.getvalue(), media_type="text/csv", headers={
-            "Content-Disposition": f'attachment; filename="compliance_{k.lower()}.csv"', "Cache-Control": "no-store"})
+            "Content-Disposition": f'attachment; filename="{name}.csv"', "Cache-Control": "no-store"})
     if format != "json":
         raise HTTPException(status_code=400, detail="format is json or csv.")
     return view
@@ -7429,8 +7430,8 @@ def _compliance_pack_file(ctx, file_id: str) -> Response:
     except compliance_pack.PackError as e:
         raise HTTPException(status_code=e.status, detail=str(e))
     stem, _, ext = name.rpartition(".")
-    safe = f"{report_exports.safe_filename_part(stem, 'compliance-pack')}.{report_exports.safe_filename_part(ext, 'txt')}"
-    return Response(content=data, media_type=media, headers={"Content-Disposition": f'attachment; filename="{safe}"',
+    filename = f"{report_exports.safe_filename_part(stem, 'compliance-pack')}.{report_exports.safe_filename_part(ext, 'txt')}"
+    return Response(content=data, media_type=media, headers={"Content-Disposition": f'attachment; filename="{filename}"',
                                                              "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 

@@ -423,8 +423,7 @@ def testplan_html(ctx: Dict[str, Any]) -> bytes:
 # Synthetic DLP test files
 # ---------------------------------------------------------------------------
 # Sample labels that a marking pattern may match: the words of the marking
-# on a fake document, and documented example credentials (AWS's own
-# documentation example key id). Nothing personal.
+# on a fake document (a key file's header line, never a key). Nothing personal.
 MARKINGS: Tuple[str, ...] = (
     "CUI", "CONTROLLED UNCLASSIFIED INFORMATION", "CUI//SP-CTI", "CUI//SP-PRVCY", "CUI//PRVCY", "CUI//PROPIN", "(CUI)", "(U//CUI)",
     "CUI//NOFORN", "CUI//SP-EXPT//NOFORN", "Controlled by: Example Agency", "CUI Category: PRVCY", "Limited Dissemination Control: FEDCON",
@@ -434,7 +433,7 @@ MARKINGS: Tuple[str, ...] = (
     "CJIS", "(CJI)", "//CHRI", "CJIS SECURITY POLICY", "CRIMINAL HISTORY RECORD INFORMATION", "ORI: ZZ0000000",
     "FEDERAL TAX INFORMATION", "IRC 6103", "26 U.S.C. 6103", "Form 1040", "Form W-2", "Account Transcript", "Schedule K-1",
     "ITAR", "International Traffic in Arms Regulations", "22 CFR 120-130", "EXPORT CONTROLLED", "SF-86", "Standard Form 86",
-    "-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----", "-----BEGIN OPENSSH PRIVATE KEY-----", "AKIAIOSFODNN7EXAMPLE",
+    "-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----", "-----BEGIN OPENSSH PRIVATE KEY-----",
     "MATERIAL NON-PUBLIC INFORMATION", "MNPI", "STRICTLY CONFIDENTIAL", "CONFIDENTIAL", "Medical Record Number: MRN-TEST-000001",
     "Diagnosis: E11.9 Type 2 diabetes mellitus without complications", "ICD-10", "Patient Name: Avery Example",
 )
@@ -503,7 +502,7 @@ def _dict_samples(d: Dict[str, Any], rng: Any) -> Tuple[List[str], str, int, boo
 
 
 _REF_END = re.compile(r"\s*(?:[<>=+]|\bAND\b|\bOR\b)")
-_EXPR_OK = re.compile(r"^(?:\s|[()+]|\d+|>=|<=|>|<|==|\band\b|\bor\b|\bnot\b)*$")
+_TOKEN = re.compile(r"\s*(\d+|>=|<=|==|[<>=()+]|AND\b|OR\b|NOT\b)")
 
 
 def _ref_spans(expr: str) -> List[Tuple[int, int, str]]:
@@ -549,20 +548,94 @@ def _negated(expr: str) -> set:
 
 def _evaluate(expr: str, counts: Dict[str, int]) -> Optional[bool]:
     """The engine expression with each dictionary's count in this file,
-    evaluated; None when it cannot be read safely. Only numbers, + and
-    comparisons, parentheses and and/or/not ever reach eval."""
+    evaluated by a small parser of numbers, '+', comparisons, AND, OR, NOT
+    and parentheses (nothing is ever executed); None when anything else is
+    left in it."""
     text = str(expr or "")
+    if len(text) > 20000:
+        return None
     for start, end, name in reversed(_ref_spans(text)):
         tail = 2 if text[end:end + 2] == ".S" else 0
         text = text[:start] + str(int(counts.get(name, 0))) + text[end + tail:]
-    text = re.sub(r"\bAND\b", " and ", re.sub(r"\bOR\b", " or ", re.sub(r"\bNOT\b", " not ", text)))
-    text = re.sub(r"(?<![<>=!])=(?!=)", "==", text)
-    if len(text) > 20000 or not _EXPR_OK.fullmatch(text):
-        return None
+    toks: List[str] = []
+    i = 0
+    while i < len(text):
+        if text[i].isspace():
+            i += 1
+            continue
+        m = _TOKEN.match(text, i)
+        if not m:
+            return None
+        toks.append(m.group(1))
+        i = m.end()
+    pos = [0]
+
+    def peek() -> str:
+        return toks[pos[0]] if pos[0] < len(toks) else ""
+
+    def take() -> str:
+        if pos[0] >= len(toks):
+            raise ValueError("ended early")
+        pos[0] += 1
+        return toks[pos[0] - 1]
+
+    def value() -> Any:          # a number (or a sum of them), or a parenthesised expression
+        if peek() == "(":
+            take()
+            v = disj()
+            if take() != ")":
+                raise ValueError("unbalanced")
+        elif peek().isdigit():
+            v = int(take())
+        else:
+            raise ValueError("unexpected token")
+        while peek() == "+":
+            take()
+            w = value()
+            if isinstance(v, bool) or isinstance(w, bool):
+                raise ValueError("a sum of conditions")
+            v = v + w
+        return v
+
+    def comparison() -> Any:
+        v = value()
+        if peek() in (">", "<", ">=", "<=", "=", "=="):
+            op = take()
+            w = value()
+            if isinstance(v, bool) or isinstance(w, bool):
+                raise ValueError("a comparison of conditions")
+            v = {">": v > w, "<": v < w, ">=": v >= w, "<=": v <= w, "=": v == w, "==": v == w}[op]
+        return v
+
+    def negation() -> Any:
+        if peek() == "NOT":
+            take()
+            return not negation()
+        return comparison()
+
+    def conj() -> Any:
+        v = negation()
+        while peek() == "AND":
+            take()
+            w = negation()
+            v = bool(v) and bool(w)
+        return v
+
+    def disj() -> Any:
+        v = conj()
+        while peek() == "OR":
+            take()
+            w = conj()
+            v = bool(v) or bool(w)
+        return v
+
     try:
-        return bool(eval(compile(text, "<expr>", "eval"), {"__builtins__": {}}, {}))   # noqa: S307 - vetted tokens only
-    except Exception:  # noqa: BLE001
+        out = disj()
+    except (ValueError, KeyError):
         return None
+    if pos[0] != len(toks) or not isinstance(out, bool):
+        return None
+    return out
 
 
 def _slug(s: str) -> str:
