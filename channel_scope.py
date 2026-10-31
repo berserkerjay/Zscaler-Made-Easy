@@ -90,7 +90,7 @@ CHANNEL_CHECKS: Dict[str, Dict[str, Sequence[str]]] = {
     "ssl_inspection": {"sections": ("4 — SSL Policy", "7 — SSL Alignment", "GenAI — SSL Inspection"), "ids": ("5.5", "CA.3", "E.2")},
     "cloud_app_control": {"sections": ("ZIA — Cloud Apps",), "ids": ("E.3",)},
     "device_control": {"sections": (), "ids": ("8.1",)},
-    "workflow_automation": {"sections": (), "ids": ("12.4", "12.5", "12.7")},
+    "workflow_automation": {"sections": ("DLP — Workflow Automation incidents",), "ids": ("12.4", "12.5", "12.7")},
 }
 
 
@@ -243,6 +243,7 @@ CHANNEL_READS: Dict[str, Sequence[str]] = {
     "/zia/cloudApplicationRules": ("3.7", "4.7", "5.18", "MC.5", "A.6", "A.7", "A.17", "E.1", "E.3", "E.8", "E.9", "E.13", "CA.1",
                                    "CA.2", "CA.3", "CA.4", "CA.5", "AI.3", "AI.8", "AI.14", "AI.15", "AI.20"),
     "/zia/tenancyRestrictionProfile": ("5.18", "A.7", "CA.2", "AI.14"),
+    "/zwa": ("ZWA.1", "ZWA.2", "ZWA.3", "ZWA.4"),
 }
 
 

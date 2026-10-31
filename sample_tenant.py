@@ -393,6 +393,13 @@ EDM_SCHEMAS = [{"schemaId": 8101, "projectName": "Larkspur customer accounts", "
 IDM_PROFILES = [{"profileId": 8201, "profileName": "Bill of lading template", "profileType": "LOCAL", "uploadStatus": "IDM_PROF_UPLOAD_COMPLETED",
                  "scheduleDisabled": True, "numDocuments": 14, "lastModifiedTime": 1730419200}]
 
+# Privileged Remote Access (zpa/models/pra_portal.py, pra_console.py): a portal
+# with no user notification and a console whose app segment was deleted.
+PRA_PORTALS = [{"id": "2701", "name": "LKF admin portal", "enabled": True, "domain": "admin.larkspur-freight.example",
+                "userNotificationEnabled": False, "userPortalName": ""}]
+PRA_CONSOLES = [{"id": "2711", "name": "Billing server RDP", "enabled": True,
+                 "praApplication": {"appId": "2299", "name": "Billing server (deleted)"}, "praPortals": [{"id": "2701", "name": "LKF admin portal"}]}]
+
 
 # ── AI Guard (zscaler/aiguard/models: camelCase as the API answers; lists in an {"items": [...]} envelope) ──
 AIG_POLICIES = [
@@ -600,7 +607,7 @@ def responses() -> Dict[str, Any]:
         f"{ZPA1}/machineGroup": _zpa(MACHINE_GROUPS),
         f"{ZPA1}/certificate": _zpa([]), f"{ZPA2}/lssConfig": _zpa([]), f"{ZPA2}/clientlessCertificate/issued": _zpa([]),
         f"{ZPA1}/inspectionProfile": _zpa([]), f"{ZPA1}/isolation/profiles": _zpa([]), f"{ZPA1}/browserProtectionProfile": _zpa([]),
-        f"{ZPA1}/praConsole": _zpa([]), f"{ZPA1}/praPortal": _zpa([]), f"{ZPA1}/userPortal": _zpa([]),
+        f"{ZPA1}/praConsole": _zpa(PRA_CONSOLES), f"{ZPA1}/praPortal": _zpa(PRA_PORTALS), f"{ZPA1}/userPortal": _zpa([]),
         f"{ZPA1}/associationType/CONNECTOR_GRP/provisioningKey": _zpa([]),
         f"{ZPA1}/roles": _zpa(ZPA_ROLES),
         f"{ZPA1}/policySet/rules/policyType/ACCESS_POLICY": _zpa(ACCESS_RULES),

@@ -69,12 +69,15 @@ maturity = engine.maturity
 # Try to load platform checks
 PLATFORM_REG = []
 GENAI_REG = []
+AIGUARD_REG = []   # AI Guard's own configuration (zscaler_genai_checks.AIGUARD_REG), read only when AI Guard is ticked
 try:
     CHECKS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_full_checks.py")
     cspec = importlib.util.spec_from_file_location("full_checks", CHECKS_PATH)
     full_checks = importlib.util.module_from_spec(cspec)
     cspec.loader.exec_module(full_checks)
     PLATFORM_REG = full_checks.PLATFORM_REG
+    # EDM / IDM indexes and Workflow Automation incidents: scored with the DLP checks (dlp ticked).
+    REG = list(REG) + list(getattr(full_checks, "DLP_EXTRA_REG", []))
 except Exception:
     pass
 try:
@@ -83,6 +86,7 @@ try:
     genai_checks = importlib.util.module_from_spec(gspec)
     gspec.loader.exec_module(genai_checks)
     GENAI_REG = genai_checks.GENAI_REG
+    AIGUARD_REG = list(getattr(genai_checks, "AIGUARD_REG", []))
 except Exception:
     pass
 
@@ -6882,7 +6886,8 @@ async def health():
         "zdx_checks": len(ZDX_REG),
         "zidentity_checks": len(ZID_REG),
         "rbac_checks": len(RBAC_REG),
-        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG) + len(ZDX_REG) + len(ZID_REG) + len(RBAC_REG),
+        "aiguard_checks": len(AIGUARD_REG),
+        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG) + len(ZDX_REG) + len(ZID_REG) + len(RBAC_REG) + len(AIGUARD_REG),
         "version": "3.0",
         "git_commit": commit,
         "expected_min_commit": "870c737",
@@ -7080,7 +7085,7 @@ async def list_checks(scope: Optional[str] = None):
     elif scope == "rbac":
         all_checks = list(RBAC_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG) + list(AIGUARD_REG)
 
     # Try to enrich with compliance mappings
     try:
@@ -7120,7 +7125,7 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
     elif scope == "rbac":
         all_checks = list(RBAC_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG) + list(AIGUARD_REG)
 
     try:
         from compliance_mapping import get_compliance_for_check
@@ -7916,6 +7921,10 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
                     seen.add(c[0]); out.append(c)
         if "rbac" in scopes:
             for c in RBAC_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        if "aiguard" in scopes:
+            for c in AIGUARD_REG:
                 if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
         return out
