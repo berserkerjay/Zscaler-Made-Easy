@@ -293,7 +293,7 @@
           "findings": {
             "score": 96.0,
             "open": 2,
-            "fixed": 148,
+            "fixed": 150,
             "accepted": 5,
             "records": [
               "c6-assessment",
@@ -306,6 +306,7 @@
               "w7-path-coverage",
               "w7-path-extras",
               "w7-zpa-identity",
+              "w8-cloud-connector",
               "w8-zia-forwarding",
               "w8-zia-governance",
               "w8-zpa-policy",
@@ -477,7 +478,7 @@
     }
   ],
   "counts": {
-    "findings": 699,
+    "findings": 701,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -491,12 +492,12 @@
       },
       "medium": {
         "open": 0,
-        "fixed": 177,
+        "fixed": 178,
         "accepted": 0
       },
       "low": {
         "open": 2,
-        "fixed": 387,
+        "fixed": 388,
         "accepted": 3
       },
       "info": {
@@ -506,12 +507,12 @@
       }
     },
     "checks": {
-      "pass": 603,
+      "pass": 613,
       "fixed": 317,
       "open": 11,
       "accepted": 16
     },
-    "tests_added": 11097
+    "tests_added": 11142
   },
   "findings": [
     {
@@ -4367,6 +4368,22 @@
       "commit": "ce1529c, b238175",
       "reason": "",
       "slug": "w8-zpa-rbac",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-ZTW-01",
+      "title": "A snapshot or offline read would have kept a Cloud & Branch Connector provisioning URL or an admin's mobile app tokens: the secret-name rules did not cover provUrl, provUrlData or execMobileAppTokens",
+      "severity": "medium",
+      "status": "fixed",
+      "cwe": "CWE-522",
+      "asvs": "V8.3.4",
+      "wcag": "",
+      "fix": "offline_tenant._OTP_KEY masks prov(isioning)Url(Data) and mobileAppTokens under any value type; ztw_overview masks them again on its own read",
+      "test": "tests/test_w8_cloud_connector.py::test_a_provisioning_url_is_masked_in_a_read_and_in_a_snapshot",
+      "commit": "342e67f",
+      "reason": "",
+      "slug": "w8-cloud-connector",
       "area": "functionality",
       "sub_area": "traffic_analysis"
     },
@@ -10563,6 +10580,22 @@
       "sub_area": "traffic_analysis"
     },
     {
+      "id": "W8-ZTW-02",
+      "title": "The sample tenant had no Cloud & Branch Connector answers, so the Path analyzer's traffic from a workload could not be tried offline",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1059",
+      "asvs": "V1.14.6",
+      "wcag": "",
+      "fix": "The sample tenant carries connector groups, forwarding rules, workload groups, gateways, locations, templates, activation, admins, roles, an API key (placeholder value, masked) and a cloud account, with a gap for every check",
+      "test": "tests/test_w8_cloud_connector.py::test_the_sample_tenant_has_a_gap_for_every_check",
+      "commit": "a47a346",
+      "reason": "",
+      "slug": "w8-cloud-connector",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -13389,6 +13422,38 @@
       "checks": 12,
       "findings": 3,
       "tests_added": 75
+    },
+    {
+      "slug": "w8-cloud-connector",
+      "area": "Cloud & Branch Connector (ZTW): the read-only connector read and page (ztw_overview.py, static/report_ztw.html, /api/ztw/*), the ZTW.1 to ZTW.8 assessment checks, the Scope page key ztw, snapshot capture and masking, the sample tenant's connector set-up and the Path analyzer's workload link",
+      "title": "Connector read verified against the installed SDK, secrets and people kept out of every output, eight checks with not-applicable handling, scope gating before sign-in and the workload trace reusing the read",
+      "standards": [
+        "ASVS V4.1.3",
+        "ASVS V4.2.1",
+        "ASVS V5.1.3",
+        "ASVS V5.3.3",
+        "ASVS V8.3.4",
+        "ASVS V11.1.4",
+        "ASVS V14.2.1",
+        "CWE-79",
+        "CWE-200",
+        "CWE-284",
+        "CWE-312",
+        "CWE-359",
+        "CWE-522",
+        "CWE-639",
+        "CWE-697",
+        "CWE-754",
+        "WSTG-ATHZ-02",
+        "WSTG-INFO-05",
+        "WSTG-CLNT-01",
+        "WCAG 2.2 SC 1.4.10",
+        "WCAG 2.2 SC 2.1.1",
+        "WCAG 2.2 SC 4.1.2"
+      ],
+      "checks": 10,
+      "findings": 2,
+      "tests_added": 45
     },
     {
       "slug": "w8-shadow-it",

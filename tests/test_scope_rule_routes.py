@@ -413,6 +413,7 @@ ROUTES: List[Route] = [
     Route("/api/zpa/diagnose", {"destination": "app.example.com", "port": "443"}, partial=ZPA, out=ZPA_OUT),
     Route("/api/device-posture/start", partial=ZPA, out=ZPA_OUT),
     Route("/api/browser-security/start", partial=ZPA, out=ZPA_OUT),
+    Route("/api/ztw/start", partial=ZTW, out=ZTW_OUT),
     Route("/api/browser-security/start", partial=ZIA, out=ZIA_OUT),
     Route("/api/ssl-coverage/start", partial=page(["dlp"], web_dlp="zscaler", ssl_inspection="zscaler"),
           out=OTHER_DLP + NOT_ZIA_PLATFORM + ("zpa.", "zcc.", "/zcc/", "zins.")),

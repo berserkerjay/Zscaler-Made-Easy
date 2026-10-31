@@ -334,6 +334,12 @@
   "c": [1, "HTML the page or server builds with every value escaped (reviewed at its source)"],
   "['total', 'Findings']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
  },
+ "static/report_ztw.html": {
+  "r[0]": [1, "HTML the page or server builds with every value escaped (reviewed at its source)"],
+  "c": [1, "HTML the page or server builds with every value escaped (reviewed at its source)"],
+  "['st-fail', c.fail, 'Fix']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"],
+  "['', 'All']": [1, "constant from the page's own table or literal (labels, icons, layout), no tenant text"]
+ },
  "static/report_compliance.html": {
   "s.alignment_pct": [2, "number the server computes (count, percentage, score, stage, position)"],
   "s.control_count": [1, "number the server computes (count, percentage, score, stage, position)"],

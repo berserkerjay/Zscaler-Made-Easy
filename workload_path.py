@@ -110,9 +110,13 @@ class Stopped(RuntimeError):
 
 # ── the read ────────────────────────────────────────────────────────────
 def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optional[threading.Event] = None,
-         pace: Optional[float] = None) -> Dict[str, Any]:
+         pace: Optional[float] = None, lists: Optional[Tuple[Tuple[str, ...], ...]] = None) -> Dict[str, Any]:
     """Read the connector lists once. {collections: {key: {label, read,
-    count, complete, error}}, <key>: [raw dicts] or None}. Raises Stopped."""
+    count, complete, error}}, <key>: [raw dicts] or None}. Raises Stopped.
+
+    `lists` (default LISTS) is (key, label, service, method[, "one"]); a
+    fifth element "one" marks a method that answers one object, not a page
+    (ztw_overview's activation status): it is kept as a one-item list."""
     _log = log or (lambda m: None)
     ztw = getattr(client, "ztw", None)
     if ztw is None:
@@ -132,7 +136,9 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
         last[0] = time.monotonic()
 
     snap: Dict[str, Any] = {"read_at": time.time(), "collections": {}}
-    for key, label, svc_name, method in LISTS:
+    for entry in (lists or LISTS):
+        key, label, svc_name, method = entry[:4]
+        one = len(entry) > 4 and entry[4] == "one"
         fn = getattr(getattr(ztw, svc_name, None), method, None)
         if not callable(fn):
             snap["collections"][key] = {"label": label, "read": False, "count": 0, "complete": False, "error": "not available in this SDK version"}
@@ -148,6 +154,14 @@ def read(client: Any, log: Optional[Callable[[str], None]] = None, cancel: Optio
                 result, resp, err = res
                 if err:
                     error = zpa_reader._err_text(err)
+                    break
+                if one:
+                    body = getattr(resp, "get_body", None)
+                    body = body() if callable(body) else None
+                    if isinstance(body, dict):
+                        items.append(dict(body))
+                    elif result is not None:
+                        items.append(zpa_reader._plain(result))
                     break
                 items.extend(zpa_reader.raw_items(result, resp))
                 more = getattr(resp, "has_next", None)

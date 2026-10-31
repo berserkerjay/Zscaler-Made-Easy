@@ -73,7 +73,7 @@ READ_ONLY = ("This is an offline snapshot: it is read-only, and nothing is sent 
 GONE = ("The offline tenant this page was using is no longer open (the server restarted or it was closed). "
         "Open the sample or the snapshot again, or choose Leave to use the live tenant.")
 
-KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard")
+KNOWN_SCOPES = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac", "insights", "aiguard", "ztw")
 _PATH_RE = re.compile(r"^/(zia|zpa|zcc|zdx|ziam|zins|zwa|ztw|aiguard)/[A-Za-z0-9_\-./{}~]{1,%d}$" % MAX_PATH_LEN)
 _CUSTOMER_SEG = re.compile(r"(/zpa/(?:mgmtconfig|waap-pra-config)/v[0-9]+/admin/customers/)[^/]+")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -102,7 +102,11 @@ _TOKEN_LIFETIME = re.compile(r"(expiry|expiration|lifetime|validity)(_?time)?(_?
 # (zid/models/api_client.py), an LLM provider's apiCredentials
 # (aiguard/models/llm_provider_credentials.py), an encrypted session key
 # (zpa/models/enrollment_certificates.py). Any value type is masked.
-_OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key", re.I)
+# A Cloud & Branch Connector provisioning URL (it enrols a connector) and an
+# admin's mobile app tokens (zscaler/ztw/models/provisioning_url.py,
+# admin_users.py execMobileAppTokens) are masked the same way.
+_OTP_KEY = re.compile(r"otp$|otp_?array$|cred_?json|temp_?auth_?code|key_?value$|api_?credentials|session_?key|"
+                      r"prov(isioning)?_?url(_?data)?$|mobile_?app_?tokens$", re.I)
 # Settings whose names say "password" but hold no secret: the admin password
 # expiry switch and its number of days (zia/models/admin_roles.py
 # PasswordExpiry). Kept only as a true/false or a whole number; any text
@@ -1158,6 +1162,10 @@ CAPTURE: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
     # list (the sanction change); the Insights answers themselves are POSTs, kept by
     # insights.capture under /zins/graphql/<operation>.
     + [(("insights",), "/zia/subscriptions"), (("insights",), "/zia/cloudApplications/lite")]
+    # Cloud & Branch Connector: ztw_overview.PATHS (the SDK's paths, read as they are)
+    + [(("ztw",), f"/ztw/api/v1/{x}") for x in ("ecgroup", "ecRules/ecRdr", "workloadGroups", "ipSourceGroups", "ipDestinationGroups",
+                                                 "gateways", "location", "locationTemplate", "ecAdminActivateStatus", "adminRoles",
+                                                 "adminUsers", "apiKeys", "publicCloudAccountDetails", "publicCloudInfo")]
 )
 # Read as one answer, not page by page (a list of strings, a list of groups, a settings object).
 _UNPAGED = {"/zpa/inspectionControls/predefined", "/zpa/inspectionControls/predefined/versions"}

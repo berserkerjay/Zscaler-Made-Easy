@@ -725,6 +725,16 @@ window.WHATS_NEW = {
         { "page": "/", "at": "button[onclick=\"openInsightsTab()\"]" },
         { "page": "/report/insights", "at": "#tiRun" }
       ]
+    },
+    {
+      "id": "cloud-connector", "release": "2026-10-31", "label": "Cloud & Branch Connector",
+      "what": "The Cloud & Branch Connector page and eight checks: connector groups and versions, forwarding rules that send workload traffic DIRECT, gateways, locations, activation, admins and API keys, with a link into the Path analyzer's workload trace.",
+      "changelog": ["Cloud & Branch Connector page", "Cloud & Branch Connector", "Eight assessment checks", "Workload path link", "Trace in the Path analyzer", "Never read into a result", "Snapshots and the sample tenant"],
+      "marks": [
+        { "page": "/", "at": "button[onclick=\"openCloudConnectorTab()\"]" },
+        { "page": "/report/ztw", "at": ".rp-hero h1" },
+        { "page": "/report/path", "at": ".rp-hero h1" }
+      ]
     }
   ]
 };

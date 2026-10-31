@@ -129,6 +129,14 @@
     get: 'Findings in plain English with a severity and a fix each (sorted high first), the controls of every isolation profile side by side with the rules that use it, Browser Control settings with the older versions not blocked, Browser Access, managed browser and PRA tables, a glossary of every control, the assumptions, and an Excel or JSON export. It says once that the standalone Zscaler Enterprise Browser has no API.',
     next: 'Turn copy and paste, file transfer and printing off in the profiles that isolate sensitive, GenAI or unsanctioned apps, give rules that isolate a profile, delete the unused profiles, then read again to confirm each finding is gone.',
   };
+  X.ztw = {
+    group: 'Find the gaps', name: 'Cloud & Branch Connector', href: '/report/ztw',
+    what: 'Reads, only when Cloud & Branch Connector is ticked on the Scope page, the connector groups and their connectors (software versions, health, upgrade window), the traffic forwarding rules that decide where workload traffic goes (ZIA, ZPA, DIRECT, proxy chaining or drop), the forwarding gateways, the connector locations and location templates, whether changes are activated, the admins, roles and provisioning API keys, and the public cloud accounts, and runs eight checks on them.',
+    why: 'Workloads in AWS, Azure or a branch send their traffic through these connectors. A group with one connector is a single point of failure, a DIRECT rule sends traffic out with no inspection at all, and a gateway that fails open does the same whenever Zscaler cannot be reached.',
+    when: 'When the customer runs workloads in a public cloud or uses Branch Connector, before a cloud migration, and when a workload trace in the Path analyzer says DIRECT.',
+    get: 'Findings with what was found, why it matters and how to fix it; tables of groups, connectors, forwarding rules, gateways, locations, roles, API keys (values never read) and cloud accounts; admins as counts only; a link per group and per rule into the Path analyzer\'s workload trace that reuses the read; Excel and JSON exports.',
+    next: 'Add a second connector to single-connector groups, narrow or remove DIRECT rules, turn on Fail Closed, activate pending changes, then read again.',
+  };
   X.efficacy = {
     group: 'Find the gaps', name: 'DLP efficacy', href: '/report/view?tool=efficacy',
     what: 'Scores every custom dictionary and engine for false-positive risk and lets you paste sample text (or run the built-in corpus) to see which dictionaries, engines and predefined ones would fire.',
@@ -474,7 +482,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/zpa': 'zpa', '/report/device-posture': 'deviceposture', '/report/shadow': 'shadow', '/report/browser': 'browser', '/report/operations': 'operations', '/report/exports': 'exports', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow', '/report/sslcoverage': 'sslcoverage',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate', '/report/plugin': 'plugin', '/report/team': 'team',
-      '/report/logs': 'logs', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
+      '/report/logs': 'logs', '/report/ztw': 'ztw', '/report/traffic-logs': 'trafficlogs', '/report/audit': 'audit', '/report/digest': 'digest', '/report/queue': 'queue', '/report/self-heal': 'selfheal', '/report/insights': 'insights', '/report/posture': 'posture', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help', '/simple': 'simple', '/report/fleet': 'fleet', '/report/todo': 'todo', '/report/pov': 'pov' };
     return map[p] || '';
   }
 
@@ -523,7 +531,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'fleet', 'health', 'compliance', 'posture',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'simple', 'find', 'connect', 'results', 'help', 'pov', 'dataflow', 'zpa', 'deviceposture', 'path', 'catlookup', 'motion', 'live', 'insights', 'bypass', 'sslcoverage', 'sslflow', 'shadow', 'efficacy', 'browser', 'ztw', 'fleet', 'health', 'compliance', 'posture',
     'digest', 'packs', 'flow', 'deployflow', 'remediate', 'queue', 'todo', 'selfheal', 'operations', 'terraform', 'vendormigrate', 'plugin', 'team', 'migration', 'evalall', 'bestpractices', 'exports', 'advanced', 'qualityscore', 'updates', 'updateapp', 'beacon',
     'refportfolio', 'refai', 'refgenai', 'refmachine', 'dsarchitect', 'audit', 'logs', 'trafficlogs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];

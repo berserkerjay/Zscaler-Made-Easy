@@ -109,6 +109,13 @@ _BP_FALLBACKS = [
      "Connect every sanctioned SaaS application that holds company data as a SaaS Security API tenant and add a SaaS "
      "Security DLP rule for it, so files already stored there are scanned.",
      "https://help.zscaler.com/zia/about-shadow-it-report"),
+    ("branch connector",
+     "Run at least two Cloud or Branch Connectors per group on one current "
+     "version, forward workload traffic to ZIA or ZPA (DIRECT only for named, "
+     "justified destinations), fail closed, keep the firewall and IPS on for "
+     "connector locations, activate changes promptly, and rotate provisioning "
+     "API keys.",
+     "https://help.zscaler.com/cloud-branch-connector"),
     ("ssl",
      "Decrypt and inspect TLS traffic for everything except a documented "
      "exempt list (banking, healthcare, certain government domains). "
@@ -241,6 +248,11 @@ _REMEDIATION_PATHS = [
      "ZIA Admin → Administration → SaaS Application Tenants → Add (the SaaS application), then Policy → Data Protection → "
      "SaaS Security: add a DLP rule for the tenant.",
      None),
+    ("branch connector",
+     "Cloud & Branch Connector Admin Portal → Administration (Cloud Connector "
+     "Groups, Location Templates, Admin Management, API Key Management) and "
+     "Forwarding Control (Forwarding rules, Gateways); activate after saving.",
+     "Read-only in this app: no Cloud & Branch Connector change is made through the API."),
     ("ssl",
      "ZIA Admin → Policy → SSL Inspection → Add Rule (or edit Default Rule). "
      "Set Action = Inspect, attach URL categories to inspect, add exempt URL list.",

@@ -661,6 +661,10 @@
                 title="Reads the Zero Trust Browser isolation profiles and the rules that use them, ZIA Browser Control and the ZPA browser side (Browser Access, managed browsers, Privileged Remote Access), only what the Scope page puts in scope, and names each data protection gap with a fix. Read-only. Opens in a new tab.">
           <span aria-hidden="true">🛡️</span> Browser security
         </button>
+        <button class="btn btn-ghost" onclick="openCloudConnectorTab()"
+                aria-label="Open Cloud &amp; Branch Connector: connector groups and versions, forwarding rules that send workload traffic DIRECT, gateways, locations, activation, admins and API keys, with a fix for each gap (opens in a new tab)">
+          <span aria-hidden="true">☁️</span> Cloud &amp; Branch Connector
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -5408,6 +5412,13 @@ function openBrowserSecurityTab() {
   // customer ID) and the Scope page's selection from this page through
   // window.opener when Read is clicked, so nothing is read until then.
   const w = window.open('/report/browser', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openCloudConnectorTab() {
+  // Like Browser security: the tab reads the credentials and the Scope
+  // page's selection from this page through window.opener when Read is
+  // clicked, so nothing is read until then.
+  const w = window.open('/report/ztw', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openAuditTimelineTab() {
