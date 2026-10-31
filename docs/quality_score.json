@@ -12,7 +12,7 @@
   },
   "overall": {
     "score": 100,
-    "raw": 100.0,
+    "raw": 99.9,
     "grade": "A",
     "label": "Strong",
     "meaning": "Tests pass, no serious finding is open and the standards are well covered.",
@@ -254,12 +254,12 @@
       "key": "functionality",
       "name": "Functionality",
       "weight": 25,
-      "score": 100.0,
+      "score": 99.7,
       "subs": [
         {
           "key": "traffic_analysis",
           "name": "Traffic analysis",
-          "score": 100.0,
+          "score": 99.2,
           "based_on": [
             "tests",
             "findings",
@@ -273,9 +273,9 @@
             "files": 24
           },
           "findings": {
-            "score": 100.0,
-            "open": 0,
-            "fixed": 120,
+            "score": 98.0,
+            "open": 1,
+            "fixed": 124,
             "accepted": 3,
             "records": [
               "c6-assessment",
@@ -283,7 +283,8 @@
               "c6-path",
               "c6-posture",
               "c6-zpa",
-              "func-path"
+              "func-path",
+              "w8-zia-governance"
             ]
           },
           "coverage": {
@@ -436,7 +437,7 @@
     }
   ],
   "counts": {
-    "findings": 579,
+    "findings": 584,
     "by_severity": {
       "critical": {
         "open": 0,
@@ -454,25 +455,41 @@
         "accepted": 0
       },
       "low": {
-        "open": 0,
-        "fixed": 337,
+        "open": 1,
+        "fixed": 338,
         "accepted": 0
       },
       "info": {
         "open": 1,
-        "fixed": 48,
+        "fixed": 51,
         "accepted": 22
       }
     },
     "checks": {
-      "pass": 303,
-      "fixed": 308,
+      "pass": 310,
+      "fixed": 309,
       "open": 11,
       "accepted": 10
     },
-    "tests_added": 8602
+    "tests_added": 8661
   },
   "findings": [
+    {
+      "id": "W8-GOV-05",
+      "title": "tests/test_new_marks.py::test_no_sideways_scroll_at_320px[/report/advanced] fails on a clean origin/dev checkout (1b2420b) in this environment: a ? help mark inside a DIV sits past the right edge at 320px",
+      "severity": "low",
+      "status": "open",
+      "cwe": "CWE-1059",
+      "asvs": "",
+      "wcag": "WCAG 2.2 SC 1.4.10",
+      "fix": "",
+      "test": "tests/test_new_marks.py::test_no_sideways_scroll_at_320px",
+      "commit": "",
+      "reason": "Not caused by this change (it fails identically before it) and outside the governance package; left for the UI owners",
+      "slug": "w8-zia-governance",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
     {
       "id": "FUNC-BUILDERS-12",
       "title": "On the sample tenant most Build new types cannot plan: it carries no network applications, DNS gateways, cloud application catalogue, Cloud App Control rule types, ZPA provisioning keys or inspection controls, and its in-memory store does not model ZPA policy rule writes or Client Connector's edit endpoints; each builder says plainly what it could not read and writes nothing",
@@ -8970,6 +8987,22 @@
       "sub_area": "ui_a11y"
     },
     {
+      "id": "W8-GOV-01",
+      "title": "A snapshot masked the admin password expiry switch and its days as if they were passwords; the masked '(not set)' is a truthy string, so a password expiry check on a snapshot of a tenant with expiry off would read it as on",
+      "severity": "low",
+      "status": "fixed",
+      "cwe": "CWE-1287",
+      "asvs": "V5.1.3",
+      "wcag": "",
+      "fix": "offline_tenant.scrub keeps passwordExpirationEnabled and passwordExpiryDays only as a bool or an int (text stays masked); RBAC.13 accepts only a real true/false",
+      "test": "tests/test_w8_zia_governance.py::test_a_snapshot_keeps_the_password_expiry_switch_and_nothing_secret",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zia-governance",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
       "id": "C6-ADMIN-OPS-22",
       "title": "proposals.json.lock (new, empty) is not git-ignored",
       "severity": "info",
@@ -9736,6 +9769,54 @@
       "slug": "ui",
       "area": "functionality",
       "sub_area": "ui_a11y"
+    },
+    {
+      "id": "W8-GOV-02",
+      "title": "The new-marks browser tour hard-coded items of the 2026-10-28 release (the Test a list tab, #paProto, marks on the POV, Simple and Operations pages), so listing any newer release in static/whats_new.js broke a dozen browser assertions",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "CWE-1164",
+      "asvs": "",
+      "wcag": "WCAG 2.2 SC 3.2.4",
+      "fix": "tests/test_new_marks.py takes the oldest marked release from the manifest, probes * then ? on the home page's Path analyzer button, rotates with a far-future release and asks for a mark at 320px only on pages that still have one",
+      "test": "tests/test_new_marks.py::test_an_older_release_is_not_marked_and_a_new_one_pushes_the_oldest_out",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zia-governance",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-GOV-03",
+      "title": "readiness.py said the ZIA /subscriptions endpoint is not in the SDK; zscaler-sdk-python 1.11.3 has organization_information.get_subscriptions (only the row shape is assumed)",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "readiness.py docstring and SUBSCRIPTIONS_PATH comment corrected",
+      "test": "",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zia-governance",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
+    },
+    {
+      "id": "W8-GOV-04",
+      "title": "The Scope page and its help said ZIA platform runs 33 checks while the registry had 37 (45 with the governance checks)",
+      "severity": "info",
+      "status": "fixed",
+      "cwe": "",
+      "asvs": "",
+      "wcag": "",
+      "fix": "static/index.html and static/help_catalog.js (and the extension copy) give 45 and 14 (RBAC)",
+      "test": "",
+      "commit": "",
+      "reason": "",
+      "slug": "w8-zia-governance",
+      "area": "functionality",
+      "sub_area": "traffic_analysis"
     }
   ],
   "records": [
@@ -10634,6 +10715,38 @@
       "checks": 16,
       "findings": 19,
       "tests_added": 958
+    },
+    {
+      "slug": "w8-zia-governance",
+      "area": "Assessment checks: ZIA governance and audit (zscaler_full_checks GOV.1-GOV.8, zscaler_rbac_checks RBAC.13-RBAC.14), their reads in the sample tenant and snapshots, and the subscriptions that make a check N/A",
+      "title": "Zscaler's configuration audit, alert subscriptions, NSS VM health and log streaming, admin password expiry and Zscaler Support access: read-only, in scope only, N/A when not licensed, recipients counted, verified offline against the SDK 1.11.3 models",
+      "standards": [
+        "ASVS V1.14.1",
+        "ASVS V2.1.10",
+        "ASVS V4.1.3",
+        "ASVS V5.1.3",
+        "ASVS V5.1.4",
+        "ASVS V7.1.3",
+        "ASVS V8.3.4",
+        "WSTG-ATHZ-02",
+        "CWE-20",
+        "CWE-117",
+        "CWE-200",
+        "CWE-262",
+        "CWE-284",
+        "CWE-285",
+        "CWE-312",
+        "CWE-359",
+        "CWE-400",
+        "CWE-754",
+        "CWE-778",
+        "CWE-863",
+        "CWE-1287",
+        "WCAG 2.2 SC 3.2.4"
+      ],
+      "checks": 8,
+      "findings": 5,
+      "tests_added": 59
     }
   ],
   "standards": {
@@ -10653,7 +10766,7 @@
       "V13",
       "V14"
     ],
-    "asvs_requirements": 104,
+    "asvs_requirements": 105,
     "wcag": [
       "SC 1.1.1",
       "SC 1.3.1",
@@ -10730,6 +10843,7 @@
       "CWE-250",
       "CWE-256",
       "CWE-259",
+      "CWE-262",
       "CWE-269",
       "CWE-272",
       "CWE-276",
