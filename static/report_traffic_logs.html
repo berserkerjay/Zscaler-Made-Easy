@@ -106,6 +106,51 @@
         </details>
       </section>
 
+      <section class="tl-sec" id="tlAutoSec" aria-labelledby="tlAutoH">
+        <h2 id="tlAutoH">Read logs without uploading (optional)</h2>
+        <details id="tlWatchBox">
+          <summary>Daily report from a folder</summary>
+          <p class="tl-dim">Off until you turn it on. Once a day, at the hour you pick, the app reads the log files in a folder on this computer that changed since the last report and saves one report. It only reads the folder: files are never changed, moved or deleted. Sub-folders, links and hidden files are skipped. The report is counts only unless you tick Keep user names. <span id="tlwLimits"></span></p>
+          <div class="tl-row">
+            <label for="tlwFolder">Folder</label>
+            <input type="text" id="tlwFolder" maxlength="400" autocomplete="off" spellcheck="false" placeholder="/var/log/zscaler or D:\Logs\Zscaler" style="min-width:min(22rem,100%);">
+          </div>
+          <div class="tl-row">
+            <label for="tlwHour">At hour</label>
+            <input type="number" id="tlwHour" min="0" max="23" step="1" value="6" inputmode="numeric" style="width:5rem;">
+            <label for="tlwKeep">Keep reports</label>
+            <input type="number" id="tlwKeep" min="1" max="30" step="1" value="7" inputmode="numeric" style="width:5rem;">
+            <label><input type="checkbox" id="tlwNames"> Keep user names and addresses</label>
+            <label><input type="checkbox" id="tlwOn"> Make a report every day</label>
+          </div>
+          <div class="tl-row">
+            <button type="button" class="rp-btn" id="tlwSave">Save these settings</button>
+            <button type="button" class="rp-btn" id="tlwRun">Make the report now</button>
+          </div>
+          <div class="tl-status" id="tlwStatus" aria-live="polite"></div>
+        </details>
+        <details id="tlSyslogBox">
+          <summary>Syslog listener</summary>
+          <p class="tl-dim">Off until you start it, and it stops when you stop it or close the app. Point an NSS feed or LSS stream at it for a while, then analyse what arrived. It listens on this computer only (127.0.0.1) unless you type another address of this computer and tick Allow other computers. The lines stay in memory, are never written to disk, and are read as untrusted text. <span id="tlsLimits"></span></p>
+          <div class="tl-row">
+            <label for="tlsHost">Address</label>
+            <input type="text" id="tlsHost" maxlength="64" value="127.0.0.1" autocomplete="off" spellcheck="false" style="width:10rem;">
+            <label for="tlsPort">Port</label>
+            <input type="number" id="tlsPort" min="1024" max="65535" step="1" value="5514" inputmode="numeric" style="width:6rem;">
+            <label for="tlsProto">Protocol</label>
+            <select id="tlsProto"><option value="udp">UDP</option><option value="tcp">TCP</option></select>
+            <label><input type="checkbox" id="tlsRemote"> Allow other computers</label>
+          </div>
+          <div class="tl-row">
+            <button type="button" class="rp-btn" id="tlsStart">Start listening</button>
+            <button type="button" class="rp-btn" id="tlsStop" disabled aria-disabled="true">Stop</button>
+            <button type="button" class="rp-btn primary" id="tlsAnalyze" disabled aria-disabled="true">Analyze what arrived</button>
+            <button type="button" class="rp-btn" id="tlsClear" disabled aria-disabled="true">Clear</button>
+          </div>
+          <div class="tl-status" id="tlsStatus" aria-live="polite">Not listening.</div>
+        </details>
+      </section>
+
       <section class="tl-sec" id="tlResults" hidden aria-labelledby="tlResultsH">
         <h2 id="tlResultsH" tabindex="-1">2. What the logs say</h2>
         <div id="tlSummary" class="tl-tiles"></div>

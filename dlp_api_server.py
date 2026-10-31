@@ -9549,12 +9549,18 @@ async def traffic_logs_forget(report_id: str):
 
 
 @app.get("/api/traffic-logs/report/{report_id}/export")
-async def traffic_logs_export(report_id: str, format: str = "xlsx", names: bool = False):
+async def traffic_logs_export(report_id: str, format: str = "xlsx", names: bool = False, version: str = "", platform: str = ""):
     """The analysis as CSV, Excel, PDF or JSON. Counts only (user names
-    replaced, sessions left out) unless names=true."""
+    replaced, sessions left out) unless names=true. `version` / `platform`
+    keep only the sessions of that Client Connector version or platform in
+    the session list (the page's session filter)."""
     import traffic_logs as tl
     import xlsx_writer
     rep = _tlogs_report(report_id)
+    try:
+        rep = tl.filter_sessions(rep, version, platform)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     body = rep if names else tl.counts_only(rep)
     ts = datetime.now().strftime("%Y%m%d_%H%M")
     fname_base = f"traffic_logs_{ts}{'' if names else '_counts_only'}"
@@ -9634,6 +9640,193 @@ async def traffic_logs_siem(siem: str = "splunk", hours: int = 24, user: str = "
         return {"queries": siem_queries.render_all(siem, hours, src, user, destination), "note": siem_queries.catalogue()["note"]}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Traffic logs: the daily report from a watched folder (traffic_log_watch) ──
+# Opt-in, off by default. The server reads the folder's log files (read-only)
+# once a day and saves a counts-only report unless names were asked for.
+# Changing it or running it now is a server-wide change: the writer check
+# and an audit record.
+class TrafficLogWatchSettings(BaseModel):
+    """The watched folder, whether the daily report is on, the hour (this computer's time), keep names, how many reports to keep."""
+    enabled: bool = False
+    folder: str = ""
+    hour: int = 6
+    names: bool = False
+    keep: int = 7
+
+    @field_validator("folder")
+    @classmethod
+    def _short(cls, v: str) -> str:
+        if len(v or "") > 1000:
+            raise ValueError("too long")
+        return v
+
+
+@app.get("/api/traffic-logs/watch")
+async def traffic_logs_watch_state():
+    """The daily report's settings, last run and next run."""
+    import traffic_log_watch as tw
+    return await asyncio.to_thread(tw.get_state)
+
+
+@app.post("/api/traffic-logs/watch")
+async def traffic_logs_watch_save(req: TrafficLogWatchSettings, request: Request):
+    """Turn the daily report on or off, or change its folder, hour, names and keep (writer only)."""
+    import traffic_log_watch as tw
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(tw.save_settings, req.model_dump())
+    except tw.WatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    s = out["settings"]
+    _audit.record("traffic_logs_watch_settings", actor=_actor(request) or _security.current_actor(), enabled=s["enabled"], names=s["names"],
+                  hour=s["hour"], keep=s["keep"])
+    return out
+
+
+@app.post("/api/traffic-logs/watch/run")
+async def traffic_logs_watch_run(request: Request):
+    """Make the daily report now from the files changed since the last run (writer only)."""
+    import traffic_log_watch as tw
+    _security.require_writer()
+    try:
+        rec = await asyncio.to_thread(tw.run, trigger="manual")
+    except tw.WatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("traffic_logs_watch_run", actor=_actor(request) or _security.current_actor(), status=rec["status"], files=rec["files"],
+                  records=rec["records"], names=rec["names"])
+    return {"last_run": rec, "state": await asyncio.to_thread(tw.get_state)}
+
+
+_TLW_STATE: Dict[str, Any] = {"enabled": False, "tick_seconds": 60.0, "last_error": None}
+
+
+def _tlw_timer_on() -> bool:
+    return os.environ.get("DLP_CHECK_TRAFFIC_LOG_WATCH_TIMER", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _tlw_tick() -> Optional[Dict[str, Any]]:
+    """Run the daily report when it is due; returns the run record or None."""
+    import traffic_log_watch as tw
+    if not tw.due():
+        return None
+    try:
+        rec = tw.run(trigger="schedule")
+    except tw.WatchError:
+        return None
+    _audit.record("traffic_logs_watch_run", actor="schedule", status=rec["status"], files=rec["files"], records=rec["records"], names=rec["names"])
+    return rec
+
+
+async def _tlw_loop() -> None:
+    while _TLW_STATE.get("enabled"):
+        try:
+            await asyncio.sleep(_TLW_STATE["tick_seconds"])
+        except asyncio.CancelledError:
+            break
+        try:
+            await asyncio.to_thread(_tlw_tick)
+            _TLW_STATE["last_error"] = None
+        except Exception as e:  # noqa: BLE001 — the timer never takes the server down
+            _TLW_STATE["last_error"] = f"{type(e).__name__}: {str(e)[:200]}"
+
+
+@app.on_event("startup")
+async def _start_tlw_timer() -> None:
+    if not _tlw_timer_on():
+        return
+    _TLW_STATE["enabled"] = True
+    asyncio.create_task(_tlw_loop())
+
+
+# ── Traffic logs: the optional syslog listener (syslog_listener) ─────────
+# Off by default and never started on its own; 127.0.0.1 unless another
+# address and allow_remote are both given; caps on size, rate, buffer and
+# connections; raw lines in memory only. Starting and stopping it is a
+# server-wide change: the writer check and an audit record.
+class SyslogStartRequest(BaseModel):
+    """Where the listener listens: an IP address of this computer (127.0.0.1 unless allow_remote), a port from 1024 and UDP or TCP."""
+    host: str = "127.0.0.1"
+    port: int = 5514
+    protocol: str = "udp"
+    allow_remote: bool = False
+
+    @field_validator("host", "protocol")
+    @classmethod
+    def _short(cls, v: str) -> str:
+        if len(v or "") > 64:
+            raise ValueError("too long")
+        return v
+
+
+class SyslogStopRequest(BaseModel):
+    """Stop listening; clear=true also forgets the lines that arrived."""
+    clear: bool = False
+
+
+@app.get("/api/traffic-logs/syslog")
+async def traffic_logs_syslog_status():
+    """Whether the listener runs, where, and its counters (received, kept, dropped for size, rate or buffer)."""
+    import syslog_listener as sl
+    return sl.status()
+
+
+@app.post("/api/traffic-logs/syslog/start")
+async def traffic_logs_syslog_start(req: SyslogStartRequest, request: Request):
+    import syslog_listener as sl
+    _security.require_writer()
+    try:
+        out = await asyncio.to_thread(sl.start, req.host, req.port, req.protocol, req.allow_remote)
+    except sl.ListenerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit.record("traffic_logs_syslog_start", actor=_actor(request) or _security.current_actor(), host=out["host"], port=out["port"],
+                  protocol=out["protocol"], allow_remote=out["allow_remote"])
+    return out
+
+
+@app.post("/api/traffic-logs/syslog/stop")
+async def traffic_logs_syslog_stop(req: SyslogStopRequest, request: Request):
+    import syslog_listener as sl
+    _security.require_writer()
+    out = await asyncio.to_thread(sl.stop, req.clear)
+    _audit.record("traffic_logs_syslog_stop", actor=_actor(request) or _security.current_actor(), cleared=bool(req.clear),
+                  received=(out.get("counts") or {}).get("received", 0))
+    return out
+
+
+@app.post("/api/traffic-logs/syslog/clear")
+async def traffic_logs_syslog_clear():
+    """Forget the lines that arrived (they were only ever in memory)."""
+    import syslog_listener as sl
+    return sl.clear()
+
+
+@app.post("/api/traffic-logs/syslog/analyze")
+async def traffic_logs_syslog_analyze():
+    """Analyse the lines that arrived, as an upload of them would be: the
+    report is held in memory like any analysis (save it to keep it)."""
+    import syslog_listener as sl
+    import traffic_logs as tl
+    try:
+        files = sl.buffered_upload()
+        rep = await asyncio.to_thread(tl.analyze, files)
+    except sl.ListenerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:600])
+    rep.setdefault("input", {})["source"] = "syslog listener"
+    rid = _remember_report("tlogs", rep)
+    return _REPORTS[rid]
+
+
+@app.on_event("shutdown")
+async def _stop_syslog_listener() -> None:
+    try:
+        import syslog_listener as sl
+        sl.stop(clear=True)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ── Migrate from another DLP (vendor_migrate) ──────────────────────────
