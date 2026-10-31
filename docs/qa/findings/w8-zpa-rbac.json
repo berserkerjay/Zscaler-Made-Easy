@@ -1,0 +1,99 @@
+{
+ "area": "zpa-rbac",
+ "title": "ZPA admin and RBAC audit: admins, roles, admin SSO, API keys, emergency access, microtenants, provisioning keys, PRA credentials and approvals",
+ "files": [
+  "zscaler_rbac_checks.py",
+  "dlp_assessment_full_auto.py",
+  "offline_tenant.py",
+  "sample_tenant.py",
+  "scope_permissions.py",
+  "report_docx.py"
+ ],
+ "standards": [
+  "ASVS 4.0.3 L2 V1.4, V2.1, V2.2, V2.5, V2.10, V4.1, V7.4, V8.3, V11.1, V12.3, V14.2"
+ ],
+ "coverage": {
+  "before": 0.0,
+  "after": 100.0
+ },
+ "checks": [
+  {
+   "id": "sdk-paths",
+   "what": "every new ZPA read resolves to the installed SDK 1.11.3 base and path (PRA credential pools on waap-pra-config, admin SSO under /v2)",
+   "standard": "ASVS V14.2.1",
+   "result": "pass"
+  },
+  {
+   "id": "check-oracles",
+   "what": "RBAC.13 to RBAC.23: pass, review, fail and N/A cases per check, with an injected clock",
+   "standard": "ASVS V1.4.4",
+   "result": "pass"
+  },
+  {
+   "id": "no-secret-no-person",
+   "what": "no key, password, secret, token or provisioning-key value and no admin name or e-mail in any result or its plain text",
+   "standard": "ASVS V8.3.4",
+   "result": "pass"
+  },
+  {
+   "id": "refused-unlicensed",
+   "what": "HTTP 403 is not permitted and not judged; 404 is not licensed / N/A",
+   "standard": "ASVS V7.4.1",
+   "result": "pass"
+  },
+  {
+   "id": "bounded-reads",
+   "what": "at most 10 pages per list and 20 per-microtenant reads",
+   "standard": "ASVS V11.1.4",
+   "result": "pass"
+  },
+  {
+   "id": "scope-snapshot",
+   "what": "the new lists are read only with RBAC (and ZPA) ticked, listed on the Scope page, captured scrubbed in snapshots and served by the sample tenant",
+   "standard": "ASVS V1.4.4",
+   "result": "pass"
+  },
+  {
+   "id": "read-only",
+   "what": "the checks only call get(); no write path is added",
+   "standard": "ASVS V4.1.3",
+   "result": "pass"
+  }
+ ],
+ "findings": [
+  {
+   "id": "W8-ZPA-RBAC-01",
+   "title": "Snapshot scrub masked tokenExpiryTimeInSec (a token lifetime, not a secret), so a token-lifetime check could never judge a snapshot or the sample",
+   "severity": "low",
+   "cwe": "CWE-754",
+   "asvs": "V8.3.4",
+   "status": "fixed",
+   "fix": "A numeric value under a lifetime name (expiry/expiration/lifetime/validity in seconds) is kept; token text is still masked.",
+   "test": "tests/test_zpa_rbac.py::test_a_token_lifetime_is_kept_but_a_token_is_not",
+   "commit": "b238175"
+  },
+  {
+   "id": "W8-ZPA-RBAC-02",
+   "title": "ZPA path resolution could only build mgmtconfig paths: PRA credential pools (waap-pra-config) had no path and its customer id was not normalised in snapshots",
+   "severity": "low",
+   "cwe": "CWE-1104",
+   "asvs": "V14.2.1",
+   "status": "fixed",
+   "fix": "_ZPA_MAP entries may name a service base; offline_tenant normalises the waap-pra-config customer segment too.",
+   "test": "tests/test_zpa_rbac.py::test_the_pra_pool_path_is_normalised_like_every_zpa_path",
+   "commit": "ce1529c"
+  },
+  {
+   "id": "W8-ZPA-RBAC-03",
+   "title": "The ZPA admin and RBAC area (admins, roles, admin SSO, API keys, emergency access, microtenants, provisioning keys, PRA credentials and approvals) was not read or assessed",
+   "severity": "medium",
+   "cwe": "CWE-1059",
+   "asvs": "V1.4.4",
+   "status": "fixed",
+   "fix": "Eleven read-only checks (RBAC.13 to RBAC.23) in the RBAC registry, scrubbed on read, with snapshot capture and sample data.",
+   "test": "tests/test_zpa_rbac.py::test_sample_tenant_answers_every_new_check_with_its_planted_gaps",
+   "commit": "ce1529c, b238175"
+  }
+ ],
+ "tests_added": 88
+}

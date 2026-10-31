@@ -883,7 +883,10 @@ Being honest about the edges:
   (1 to 8784 hours); for a schedule that outlives the server, use Task
   Scheduler or cron.
 - The checks cover ZIA DLP end to end and the parts of ZPA, Client
-  Connector and ZDX that affect data protection; they are not a full
-  audit of those products.
+  Connector and ZDX that affect data protection, plus ZPA administration
+  under RBAC (admins, roles, admin SSO, API keys, emergency access,
+  microtenants, provisioning keys, Privileged Remote Access credentials
+  and approvals; read with RBAC and ZPA ticked, no key or password value
+  ever read into a result); they are not a full audit of those products.
 
 Everything the app has shipped, batch by batch, is in `CHANGELOG.md`.
