@@ -4800,6 +4800,46 @@ window.HELP_CATALOG = {
     "input": "Optional. Pick a profile, or No isolation rule.",
     "effect": "local"
    },
+   "#zbWhoAll": {
+    "what": "Lets the access rule allow every user of the applications.",
+    "input": "Nothing to type. Just pick it.",
+    "effect": "local"
+   },
+   "#zbWhoSome": {
+    "what": "Limits the access rule to users in the SCIM groups or with the SAML values you pick from the tenant.",
+    "input": "Nothing to type. Pick it, then pick SCIM groups or add SAML values below.",
+    "effect": "local"
+   },
+   "#zbScimFind": {
+    "what": "Narrows the SCIM group list to names that contain what you type.",
+    "input": "Optional. Part of a group name, like Fin.",
+    "effect": "local"
+   },
+   "#zbScimList input[data-scim]": {
+    "what": "Picks this SCIM group for the access rule. A user in any picked group matches.",
+    "input": "Nothing to type. Tick it. At most 20 groups.",
+    "effect": "local"
+   },
+   "#zbSamlAttr": {
+    "what": "Picks a SAML attribute the tenant has, for a value the access rule requires.",
+    "input": "Pick an attribute, then type its value.",
+    "effect": "local"
+   },
+   "#zbSamlVal": {
+    "what": "Sets the SAML attribute value a user must have.",
+    "input": "Required to add. 1 to 200 characters, like Finance.",
+    "effect": "local"
+   },
+   "#zbSamlAdd": {
+    "what": "Adds this SAML attribute and value to the access rule. A user with any added value matches.",
+    "input": "Pick the attribute and type the value first. At most 20.",
+    "effect": "local"
+   },
+   "#zbSamlList button[data-saml-del]": {
+    "what": "Removes this SAML value from the access rule.",
+    "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
    "#zbAll": {
     "what": "Deletes everything named with the prefix, not only the picked objects.",
     "input": "Tick it to pick all of them.",
@@ -5178,7 +5218,7 @@ window.HELP_CATALOG = {
     "effect": "local"
    },
    "#paWhatIf > summary": {
-    "what": "Opens or closes the what-if fields. Use them to check rules for one user, group, department or location.",
+    "what": "Opens or closes the what-if fields. Use them to check rules for one user, group, department or location, or a ZPA identity.",
     "input": "Nothing to type. Just click it.",
     "effect": "local"
    },
@@ -5210,6 +5250,31 @@ window.HELP_CATALOG = {
    "#paWhatIf button[data-wi-pick]": {
     "what": "Picks this match and fills it in. A user also brings their department and groups.",
     "input": "Nothing to type. Just click it.",
+    "effect": "local"
+   },
+   "#paWiZ_idp": {
+    "what": "Picks the IdP the user signs in with, for ZPA's access policy. Conditions of other IdPs are then not met.",
+    "input": "Optional. Click Load IdPs from ZPA first, then pick one, or leave Not given.",
+    "effect": "local"
+   },
+   "#paWiZ_load": {
+    "what": "Reads the tenant's IdPs and SAML attribute names from ZPA, to pick from. It only reads.",
+    "input": "Nothing to type. Needs ZPA ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#paWiZ_user": {
+    "what": "Sets the SCIM user name whose SCIM groups ZPA looks up during the analysis. They are kept only for that analysis.",
+    "input": "Optional. Usually the email, like jane@acme.com. Up to 128 characters. Needs the IdP.",
+    "effect": "local"
+   },
+   "#paWiZ_find": {
+    "what": "Shows the SCIM groups ZPA lists for this user in the IdP you picked, before you analyze. It only reads.",
+    "input": "Pick the IdP and type the SCIM user name first. Needs ZPA ticked on the Scope page.",
+    "effect": "read"
+   },
+   "#paWiZ_attrs": {
+    "what": "Sets SAML or SCIM attribute values for ZPA's access policy, matched by attribute name. Attributes you leave out stay unknown.",
+    "input": "Optional. One Name=value per line, like Department=Finance. At most 20.",
     "effect": "local"
    },
    "#paFramework > summary": {

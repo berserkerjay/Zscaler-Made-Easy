@@ -116,7 +116,7 @@ AREAS: Tuple[Dict[str, Any], ...] = (
     )},
     {"key": "functionality", "name": "Functionality", "weight": 25, "subs": (
         {"key": "traffic_analysis", "name": "Traffic analysis", "slugs": ("func-path", "c6-path", "c6-zpa", "c6-posture", "c6-checks", "c6-assessment",
-                                                                         "w7-path-coverage", "w7-o365-endpoints"),
+                                                                         "w7-path-coverage", "w7-o365-endpoints", "w7-zpa-identity"),
          "tests": ("test_path_*.py", "test_pac_eval.py", "test_data_flow.py", "test_ssl_flow.py", "test_ssl_coverage.py",
                    "test_insights.py", "test_bulk_test.py", "test_zpa_*.py", "test_shared_path.py", "test_qa_func_path.py",
                    "test_c6_path.py", "test_c6_zpa.py", "test_c6_posture.py", "test_c6_checks.py", "test_c6_assessment.py",

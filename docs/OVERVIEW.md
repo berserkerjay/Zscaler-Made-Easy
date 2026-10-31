@@ -240,7 +240,17 @@ what you get, what to do next.
   rules scoped to them apply and rules for others are skipped, and every
   result lists what the policy action also depends on: each scoped
   condition that would change it, with the rule and the action it would
-  give (`path_whatif.py`). All of it is one request,
+  give (`path_whatif.py`). A **ZPA identity** can be given too (ZPA
+  ticked): the IdP the user signs in with, a SCIM user name whose SCIM
+  groups ZPA lists for them (read-only, looked up during the run and kept
+  only for it; a filter ZPA did not apply leaves them unknown) and SAML
+  or SCIM attribute values typed as Name=value. ZPA's access policy is
+  then evaluated for that identity (operands joined by the condition's
+  operator, negation, the rule's operator, rule order, default deny; a
+  condition of another IdP is not met), anything not given stays
+  unknown, and the verdict names the identity condition that decided
+  (`zpa_identity.py`; the pickers are `POST /api/path-analyzer/zpa-identity`).
+  All of it is one request,
   `POST /api/path-analyzer/start` (or `POST /api/path-analyzer` for
   scripts). It reads only what is in scope on the Scope page (a part out
   of scope says "not in scope"), writes nothing, and Stop ends the read
@@ -254,8 +264,8 @@ what you get, what to do next.
   CSV or pasted list of IP addresses, CIDR blocks (up to a /16 per row),
   ranges, hosts and URLs, up to 250,000 rows, with optional port,
   protocol, source IP, location, country, category, user, group,
-  department, label and what each row is expected to do (block or
-  allow). Each row gets the answer the single-destination analyzer
+  department, a ZPA identity (idp, SCIM user and attributes columns),
+  label and what each row is expected to do (block or allow). Each row gets the answer the single-destination analyzer
   gives: ZPA first when ticked, then every ZIA module for the row's
   protocol and port, its identity and its source IP. The tenant (and
   ZPA) is read once, ZIA's URL lookup is asked a hundred destinations per request,
@@ -643,7 +653,9 @@ what you get, what to do next.
   healthcare, finance, education or general preset, or a CSV of up to 500
   rows (created disabled unless you ask), optionally Browser Access and
   Privileged Remote Access consoles; access, timeout, inspection (Zscaler's
-  predefined OWASP controls) and isolation rules. *Delete ZPA objects by
+  predefined OWASP controls) and isolation rules; the access rule can be
+  limited to SCIM groups and SAML attribute values picked from what the
+  tenant has (each checked again in the preview). *Delete ZPA objects by
   prefix* reads ZPA again and deletes only objects carrying the prefix, in
   dependency order (policies, segments, server groups, segment groups,
   connector groups), keeping and naming anything still used by an object

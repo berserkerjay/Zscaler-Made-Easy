@@ -151,6 +151,27 @@ window.WHATS_NEW = {
         { "page": "/report/operations", "at": "#opBuildKinds input[name=\"opKind\"][value=\"config_restore_zia\"]", "shown": "after the page lists the builders" },
         { "page": "/report/operations", "at": "#crSave", "shown": "after Read from the tenant on a restore type" }
       ]
+    },
+    {
+      "id": "zpa-identity-whatif", "release": "2026-10-31", "label": "ZPA identity in the what-if",
+      "what": "The what-if takes a ZPA identity: pick the IdP, look a user's SCIM groups up and type SAML or SCIM attribute values, and ZPA's access policy says which identity condition decided.",
+      "changelog": ["ZPA identity in the Path analyzer"],
+      "marks": [
+        { "page": "/report/path", "at": "#paWhatIf > summary" },
+        { "page": "/report/path", "at": "#paZidH", "shown": "after Analyze with a ZPA identity" }
+      ]
+    },
+    {
+      "id": "zpa-identity-list", "release": "2026-10-31", "label": "ZPA identity column",
+      "what": "Test a list takes a ZPA identity per row: the IdP, a SCIM user name and attribute values.",
+      "changelog": ["ZPA identity column"],
+      "marks": [{ "page": "/report/path", "at": "#tab-list" }]
+    },
+    {
+      "id": "zpa-builder-identity", "release": "2026-10-31", "label": "Access rules for SCIM groups and SAML attributes",
+      "what": "The ZPA builder's access rule can allow only users in SCIM groups or with SAML attribute values picked from the tenant.",
+      "changelog": ["Access rules for SCIM groups and SAML attributes"],
+      "marks": [{ "page": "/report/operations", "at": "#zbWho > legend", "shown": "in ZPA policy rules, Only some users" }]
     }
   ]
 };
