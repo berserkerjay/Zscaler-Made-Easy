@@ -28,6 +28,13 @@ from typing import Any, Dict, Optional, Tuple
 
 from zscaler import ZscalerClient
 
+import api_calls
+
+# Every SDK call this client makes is listed in the API calls log
+# (api_calls: method, path template, status, duration, retries; never a
+# body, header or secret). Wrapping only observes: the call is unchanged.
+api_calls.install_sdk_hooks()
+
 logger = logging.getLogger("dlp_assessment.sdk_client")
 
 SDK_REQUEST_TIMEOUT = 90   # seconds per tenant request, as dlp_api_server.SDK_REQUEST_TIMEOUT

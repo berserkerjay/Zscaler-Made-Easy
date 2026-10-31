@@ -787,3 +787,34 @@ summary { min-height: 24px; }
 .pa-probe-cmp.no { border-left-color: var(--fail); }
 [id="paPlatFrom"] { align-self: center; }   /* (an id selector written without a hash: the shadow test keeps hex colours out of this file part) */
 .pa-probe .df-ctl, .pa-probe select { max-width: 100%; min-width: 0; }
+
+/* Tenant health on /report/health (static/tenant_health.js) */
+.th-card { margin-bottom: 1rem; }
+.th-lead { margin: 0.25rem 0 0.6rem; }
+.th-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.th-ctl .df-ctl { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 0.35rem; width: auto; }
+.th-ctl input[type="number"] { width: 5rem !important; min-width: 0; flex: 0 0 auto; }
+.th-item .df-tablewrap { overflow-x: auto; }
+.th-item table { overflow-wrap: normal; min-width: 30rem; }
+.th-ctl [hidden] { display: none !important; }
+.th-err { color: var(--fail); font-weight: 600; }
+.th-sum { margin: 0.6rem 0; }
+.th-items { list-style: none; margin: 0; padding: 0; }
+.th-item { border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: var(--r-md, 8px); padding: 0.55rem 0.75rem; margin: 0 0 0.55rem; overflow-wrap: anywhere; }
+.th-item.th-critical { border-left-color: var(--fail); }
+.th-item.th-warning { border-left-color: var(--warn); }
+.th-item.th-ok { border-left-color: var(--pass); }
+.th-h { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: baseline; margin-bottom: 0.2rem; }
+.th-steps summary { cursor: pointer; color: var(--accent); }
+.th-steps summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.th-steps ol { margin: 0.3rem 0 0 1.2rem; }
+.th-names { margin: 0.3rem 0 0 1.1rem; }
+/* API calls on Advanced settings (static/api_calls.js) */
+.adv-api-ctl { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; max-width: 100%; }
+.adv-api-ctl .df-ctl { max-width: 100%; min-width: 0; }
+.adv-api-ctl .df-ctl select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.adv-api-ctl .adv-switch { max-width: 100%; overflow-wrap: anywhere; }
+[id="advApi"] { min-width: 46rem; }
+[id="advApi"] td code { overflow-wrap: anywhere; }
+[id="advApi"] td:nth-child(6), [id="advApi"] td:nth-child(8) { white-space: nowrap; }
+[id="advApi"] tr.adv-api-bad td { color: var(--fail); }

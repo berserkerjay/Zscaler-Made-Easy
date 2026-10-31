@@ -291,6 +291,8 @@ URL_SINK_REVIEWED = {
     ("static/traffic_logs.js", "'#' + id"): "an in-page anchor to one of the page's own section ids (a constant list)",
     ("static/traffic_logs.js", "'/report/path?' + q.toString("): "a fixed app page with the query built by URLSearchParams (every value encoded)",
     ("static/traffic_logs.js", "'/report/insights?' + q.toString("): "a fixed app page with the query built by URLSearchParams (every value encoded)",
+    ("static/api_calls.js", "exportHref('csv'"): "the fixed /api/api-calls/export path, the run and product filters through URLSearchParams",
+    ("static/api_calls.js", "exportHref('json'"): "the fixed /api/api-calls/export path, the run and product filters through URLSearchParams",
 }
 
 

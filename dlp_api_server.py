@@ -17,7 +17,7 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, re, sys, tempfile, threading, time
+import contextlib, json, asyncio, os, re, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from starlette.background import BackgroundTask
@@ -1640,6 +1640,9 @@ def _build_sdk_client(creds: Dict[str, str]):
     if off is not None:
         return off
     c = _validate_creds(creds)
+    with contextlib.suppress(Exception):
+        import api_calls   # the API calls log: one row per SDK call with its retries (observes only)
+        api_calls.install_sdk_hooks()
     cloud, vd, cid, sec = c["cloud"], c["vanity_domain"], c["client_id"], c["client_secret"]
     # The tenant's API client, for ZIA's rate limits: its requests, holds and
     # refusals are counted apart from any other tenant's.
@@ -7820,7 +7823,8 @@ async def serve_permissions_page(request: Request):
   .rd-t thead th {{ color: var(--dim); font-size: 0.75rem; }}
   .rd-chip {{ display: inline-block; font-size: 0.74rem; font-weight: 700; padding: 0.05rem 0.45rem; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }}
   .rd-chip.none, .rd-chip.blocked, .rd-chip.not_licensed {{ border-color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }}
-  .rd-chip.read_only, .rd-chip.partial {{ border-color: var(--warn); }}
+  .rd-chip.read_only, .rd-chip.partial, .rd-chip.warning, .rd-chip.attention {{ border-color: var(--warn); }}
+  .rd-chip.critical {{ border-color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }}
   .rd-chip.write, .rd-chip.read {{ border-color: var(--accent); }}
   .rd-kind {{ color: var(--dim); font-size: 0.75rem; margin-left: 0.4rem; }}
   .rd-gaps {{ list-style: none; font-size: 0.86rem; }}
@@ -7928,7 +7932,7 @@ async def readiness_start(req: ReadinessRequest, request: Request):
     scope. Poll GET /api/dlp-packs/jobs/{job_id}."""
     import pack_jobs
     import readiness
-    sc, _ch, _src = _scope_selection(req)   # user rule 1: nothing read out of scope
+    sc, ch, _src = _scope_selection(req)   # user rule 1: nothing read out of scope
     if not readiness.in_scope_products(sc):
         raise HTTPException(status_code=400, detail=f"{READINESS_WHAT} is not in scope: on the Scope page tick at least one of DLP, ZIA platform, "
                                                     "ZPA, ZCC, ZDX or ZIA Insights, then run it again. Nothing was read.")
@@ -7940,7 +7944,8 @@ async def readiness_start(req: ReadinessRequest, request: Request):
 
     def fn(log, cancel):
         try:
-            out = readiness.run(client, sc, auth_method=method, customer_id=creds.get("customer_id", ""), log=log, cancel=cancel, label=label)
+            out = readiness.run(client, sc, auth_method=method, customer_id=creds.get("customer_id", ""), log=log, cancel=cancel, label=label,
+                                channels=ch)
         finally:
             _close_quietly(client)
         if out.get("status") == "done":
@@ -7958,6 +7963,117 @@ async def readiness_latest():
     """The latest readiness answers this server holds (memory only, newest
     first, at most 8 tenants). No tenant call."""
     return {"results": _readiness_latest()}
+
+
+# ── Tenant health (tenant_health.py): read-only signals shown on /report/health ──
+# ZIA pending activation, SSL inspection rule order, certificate expiry
+# (ZIA SSL intermediate CA, ZPA enrollment, web server and client signing
+# certificates) and App Connector groups with no connector. Only what the
+# Scope page ticks is read; the latest answers live in memory only.
+TENANT_HEALTH_WHAT = "Tenant health"
+_TENANT_HEALTH: "_collections.OrderedDict[str, Dict[str, Any]]" = _collections.OrderedDict()
+_TENANT_HEALTH_MAX = 8
+
+
+class TenantHealthRequest(ScopedTenantCredsRequest):
+    """Tenant credentials, the Scope page selection, the ZPA customer ID and
+    the certificate thresholds in days (empty: the settings, else 30 and 7)."""
+    customer_id: str = ""
+    warn_days: Optional[int] = None
+    crit_days: Optional[int] = None
+
+
+@app.post("/api/tenant-health/start")
+async def tenant_health_start(req: TenantHealthRequest, request: Request):
+    """Start the tenant-health check as a job the page follows. Read-only.
+    Refused (400) before sign-in when nothing it reads is in scope or a
+    threshold is not a number of days. Poll GET /api/dlp-packs/jobs/{job_id}."""
+    import pack_jobs
+    import tenant_health
+    try:
+        warn, crit = tenant_health.thresholds(req.warn_days, req.crit_days)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    sc, ch, _src = _scope_selection(req)   # user rule 1: nothing read out of scope
+    want = tenant_health.in_scope(sc, ch)
+    if not any(want.values()):
+        raise HTTPException(status_code=400, detail=f"{TENANT_HEALTH_WHAT} is not in scope: on the Scope page tick DLP, ZIA platform "
+                                                    "(or another ZIA scope) or ZPA, then run it again. Nothing was read.")
+    creds = _tenant_creds(req)
+    creds["customer_id"] = validate_customer_id(req.customer_id) if req.customer_id else (creds.get("customer_id") or "")
+    label = tenant_auth.record_label(creds)
+    method = creds["auth_method"]
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+
+    def fn(log, cancel):
+        try:
+            out = tenant_health.run(client, sc, customer_id=creds.get("customer_id", ""), auth_method=method, channels=ch, warn=warn, crit=crit,
+                                    log=log, cancel=cancel, label=label)
+        finally:
+            _close_quietly(client)
+        if out.get("status") == "done":
+            _TENANT_HEALTH.pop(label, None)
+            _TENANT_HEALTH[label] = out
+            while len(_TENANT_HEALTH) > _TENANT_HEALTH_MAX:
+                _TENANT_HEALTH.popitem(last=False)
+        return out
+    job = pack_jobs.start("tenant_health", fn, label="Tenant health", actor=_actor(request), start_token=_start_token(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/tenant-health/latest")
+async def tenant_health_latest():
+    """The latest tenant-health answers this server holds (memory only,
+    newest first, at most 8 tenants), and the thresholds in force. No tenant call."""
+    import tenant_health
+    return JSONResponse({"results": [dict(v) for v in reversed(list(_TENANT_HEALTH.values()))],
+                         "thresholds": dict(zip(("warning_days", "critical_days"), tenant_health.thresholds()))},
+                        headers={"Cache-Control": "no-store"})
+
+
+# ── API calls: the diagnostics log of every Zscaler API call (api_calls.py) ──
+# Memory only, bounded, cleared on restart: time, product, method, path
+# template (ids masked), status, duration, retries, waits and an error
+# class. Never a body, a header, a query, a host or a secret.
+_API_CALLS_FORMATS = {"csv": "text/csv; charset=utf-8", "json": "application/json"}
+
+
+def _api_calls_filter(job: str, product: str) -> Tuple[str, str]:
+    job = str(job or "")
+    product = str(product or "")
+    if job and not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", job):
+        raise HTTPException(status_code=400, detail="job must be a job id (letters, digits, - and _).")
+    if product and not re.fullmatch(r"[A-Za-z &-]{1,40}", product):
+        raise HTTPException(status_code=400, detail="product must be a product name such as ZIA or ZPA.")
+    return job, product
+
+
+@app.get("/api/api-calls")
+async def api_calls_list(job: str = "", product: str = "", limit: int = 500):
+    """The API calls this server made since it started, newest first: the
+    summary, the jobs that made calls and the rows (of one job or product
+    when asked). No tenant call."""
+    import api_calls
+    job, product = _api_calls_filter(job, product)
+    limit = max(1, min(int(limit or 500), api_calls.MAX_MAX))
+    rows = api_calls.rows(job=job, product=product)
+    return JSONResponse({"summary": api_calls.summary(), "jobs": api_calls.jobs(), "total": len(rows), "rows": rows[:limit],
+                         "job": job, "product": product}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/api-calls/export")
+async def api_calls_export(format: str = "csv", job: str = "", product: str = ""):
+    """The same rows as a CSV (formula-safe cells) or JSON download."""
+    import api_calls
+    fmt = str(format or "").lower()
+    if fmt not in _API_CALLS_FORMATS:
+        raise HTTPException(status_code=400, detail="format must be csv or json.")
+    job, product = _api_calls_filter(job, product)
+    rows = api_calls.rows(job=job, product=product)
+    body = api_calls.to_csv(rows) if fmt == "csv" else api_calls.to_json(rows)
+    name = f"api-calls{'-' + job if job else ''}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.{fmt}"
+    return Response(body, media_type=_API_CALLS_FORMATS[fmt],
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
 @app.get("/api/readiness/catalog")

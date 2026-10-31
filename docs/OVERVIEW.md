@@ -493,6 +493,21 @@ what you get, what to do next.
   production, measured from Workflow Automation incidents and analyst
   verdicts, turned into proposals you approve, preview, apply with a
   read-back, and roll back.
+- **Tenant health** (on the same page, `/report/health`,
+  `tenant_health.py`) — the quiet problems, read-only and only what the
+  Scope page ticks: ZIA changes saved but not activated (a deploy from
+  this app would make them live too), the SSL inspection rule order (a
+  broad Do Not Inspect rule above Inspect rules, a broad Inspect rule
+  above the exemptions, nothing inspecting what reaches the Default
+  rule), certificate expiry with a warning and a critical threshold (30
+  and 7 days unless `DLP_CHECK_CERT_WARN_DAYS` / `DLP_CHECK_CERT_CRIT_DAYS`
+  or the page say otherwise): ZIA's SSL inspection intermediate CA
+  certificates, ZPA's enrollment certificates (with the App Connectors and
+  Service Edges enrolled with each), web server and client signing
+  certificates; and App Connector groups with no connector. Each signal
+  comes with the plain steps to fix it. The assessment carries the same
+  signals as checks HLT.1 to HLT.4. Only names, dates and states are kept,
+  never a certificate or key.
 - **Digest — the evaluation loop** — when you click *Run the loop now*
   (or run `continuous_eval.py --once`) it re-reads the guidance sources
   and, for every profile that remembers its secret, only what that
@@ -773,7 +788,11 @@ what you get, what to do next.
   is ticked on the Scope page, with a OneAPI API client) sets up Zscaler
   Digital Experience apps and probes from a template (Best practice:
   Microsoft 365 sign-in plus a custom app; Microsoft 365; or start
-  empty): predefined apps (Microsoft 365, Teams, SharePoint, OneDrive,
+  empty) and a tier (Strict, Balanced, Permissive or Healthcare, as the
+  ZIA security baseline: Strict monitors the most apps every 5 minutes with
+  CloudPath probes, Permissive sign-in only every 15 minutes with Web
+  probes; anything looser than the tier is a warning in the preview):
+  predefined apps (Microsoft 365, Teams, SharePoint, OneDrive,
   Zoom, Okta, Box, Salesforce, ServiceNow, Webex; some need the
   customer's tenant prefix) and custom apps by URL, each with a Web probe
   and by default a CloudPath probe, every 5 to 30 minutes, for all users.
@@ -783,7 +802,9 @@ what you get, what to do next.
   first) and custom probes, each name typed to confirm. ZDX's own words
   are shown when it refuses something (a refused host, a missing
   permission). The ZDX configuration API is not in the Zscaler SDK, so
-  its paths are assumed and the page says so (`ops_zdx.py`).
+  its paths are assumed and the page says so; the `/zdx/v1` prefix, the
+  request routing and the bodies sent as given are verified against the
+  SDK (`ops_zdx.py`).
   Under **Build new** (also linked from the ZPA analysis page as *Build ZPA
   objects*, ZPA ticked on the Scope page), the **ZPA builder** makes a
   proof-of-value ZPA set-up through the same preview, gates, read-back and
@@ -1007,6 +1028,14 @@ what you get, what to do next.
   operations, which go through the same gates, and read-only **Plugin pages**
   at /report/plugin; SECURITY.md says what a plugin can do and why the
   hash is the control; an example is in docs/plugins).
+- **API calls** (Advanced settings, `api_calls.py`) — every Zscaler API
+  call this app made since it started: time, product, method, the path
+  with every id shown as `{id}`, the answer, the time taken, how often it
+  was sent again, how long it waited for a rate limit, and an error class.
+  Never a body, header, token, secret, query or tenant name. In memory
+  only, the newest 1,000 (`DLP_CHECK_API_CALLS_MAX`, 50 to 20,000), empty
+  after a restart; filter by run or product, export as CSV or JSON. A
+  builder's result on Bulk changes links to the calls of its own run.
 - **Quality and security score** — this app's own score from 0 to 100 on
   Advanced settings: tests passed in the last full run, open QA findings
   weighted by CVSS severity (an open critical caps it at 39, an open high
@@ -1088,7 +1117,9 @@ what you get, what to do next.
   signature, for display only; the token is never shown, logged or kept)
   and a few reads for what is in scope (the ZIA licences and API role, the
   Client Connector company switches and roles, the ZPA roles, one ZDX and
-  one Z-Insights call); the licences and SKUs; and every Scope page key and
+  one Z-Insights call), two tenant checks (ZIA changes saved but not
+  activated, and the SSL inspection rule order when DLP or ZIA platform is
+  ticked); the licences and SKUs; and every Scope page key and
   every change of this app that will not work, with the plain steps to ask
   the admin for. On the Start page the same check shows as a short summary,
   greys out the scopes that will not work and stops a deploy or removal

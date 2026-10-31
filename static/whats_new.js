@@ -571,6 +571,41 @@ window.WHATS_NEW = {
       "what": "The same questions as Splunk, Microsoft Sentinel and Elastic queries to copy.",
       "changelog": ["SIEM queries"],
       "marks": [{ "page": "/report/traffic-logs", "at": "#tlSiemH" }]
+    },
+    {
+      "id": "readiness-tenant-checks", "release": "2026-10-31", "label": "Readiness: pending activation and SSL rule order",
+      "what": "Readiness also says, with the steps to fix it, when ZIA changes are saved but not activated and when the SSL inspection rule order stops rules from applying.",
+      "changelog": ["Readiness: pending activation and SSL rule order"],
+      "marks": [
+        { "page": "/", "at": "#rdConnect .rd-h", "shown": "after Authenticate" }
+      ]
+    },
+    {
+      "id": "tenant-health", "release": "2026-10-31", "label": "Tenant health",
+      "what": "Tenant health: ZIA changes waiting for activation, the SSL rule order, certificates close to expiry with your own thresholds, and App Connector groups with no connector. Read-only.",
+      "changelog": ["Tenant health", "certificate expiry thresholds"],
+      "marks": [
+        { "page": "/report/health", "at": "#thH" }
+      ]
+    },
+    {
+      "id": "api-calls", "release": "2026-10-31", "label": "API calls",
+      "what": "Every Zscaler API call this app made since it started: path with ids masked, answer, time taken, retries and rate-limit waits, per run, with a CSV or JSON export. No body, token or secret.",
+      "changelog": ["API calls", "export as CSV or JSON", "API calls of this run"],
+      "marks": [
+        { "page": "/report/advanced", "at": "a.rp-btn[href=\"#apicalls\"]" },
+        { "page": "/report/advanced", "at": "#advApiH" },
+        { "page": "/report/advanced", "at": "#advApiJob" },
+        { "page": "/report/operations", "at": "#opApiCalls", "shown": "after a change is applied" }
+      ]
+    },
+    {
+      "id": "zdx-probe-tiers", "release": "2026-10-31", "label": "ZDX probes fitted to the tier",
+      "what": "ZDX probe setup starts from a tier: Strict watches the most apps every 5 minutes, Balanced the Microsoft 365 core every 10, Permissive sign-in every 15, Healthcare adds Zoom.",
+      "changelog": ["ZDX probes fitted to the tier"],
+      "marks": [
+        { "page": "/report/operations", "at": "#zdxTierH", "shown": "in ZDX probe setup" }
+      ]
     }
   ]
 };

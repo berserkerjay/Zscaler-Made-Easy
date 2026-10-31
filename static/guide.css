@@ -161,6 +161,9 @@ body.theme-light .gd-upd-cmd { background: rgba(15,23,42,0.05); }
 .rd-chip { display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 0.05rem 0.45rem; border-radius: var(--r-pill, 999px); border: 1px solid var(--border); white-space: nowrap; }
 .rd-chip.blocked, .rd-chip.not_licensed { border-color: var(--fail); background: color-mix(in srgb, var(--fail) 18%, transparent); }
 .rd-chip.read_only, .rd-chip.partial { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.rd-chip.critical { border-color: var(--fail); background: color-mix(in srgb, var(--fail) 18%, transparent); }
+.rd-chip.warning, .rd-chip.attention { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.rd-sum ul.rd-checks li { border-left-color: var(--fail); }
 .rd-steps summary { cursor: pointer; color: var(--accent); font-size: 0.82rem; }
 .rd-steps summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rd-steps ol { margin: 0.25rem 0 0 1.2rem; font-size: 0.82rem; }

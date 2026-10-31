@@ -24,6 +24,7 @@
       <a class="rp-btn" href="#update">Update the app</a>
       <a class="rp-btn" href="#server">This server</a>
       <a class="rp-btn" href="#m365">Microsoft 365 endpoint list</a>
+      <a class="rp-btn" href="#apicalls">API calls</a>
       <a class="rp-btn" href="#appearance">Appearance</a>
       <a class="rp-btn" href="#sbd">This app's Secure by Design score</a>
       <a class="rp-btn" href="#quality">Quality and security score</a>
@@ -156,6 +157,23 @@
             <label class="adv-field" for="advM365Ver"><span>Its version <small>(optional, ten digits)</small></span><input type="text" id="advM365Ver" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="2026100100"></label>
             <div class="adv-actions"><button type="button" class="rp-btn" id="advM365Import">Import</button></div>
           </div>
+
+        <section id="apicalls" aria-labelledby="advApiH">
+          <h2 class="df-h" id="advApiH">API calls</h2>
+          <p class="adv-lead">Every call this app made to Zscaler's API since it started: when, which product, the method and the path (every id shown as {id}), the answer, how long it took, how often it was sent again and how long it waited for a rate limit. It never shows a request or answer body, a header, a token, a secret or a tenant name. It is kept in this server's memory only, holds the newest calls up to a limit, and is empty again after a restart. Reading it calls nothing.</p>
+          <div id="advApiBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Loading…</span></div>
+          <div class="adv-actions adv-api-ctl">
+            <label class="df-ctl"><span class="lbl">Run</span><select id="advApiJob" aria-label="Show the API calls of one run"><option value="">Every call</option></select></label>
+            <label class="df-ctl"><span class="lbl">Product</span><select id="advApiProduct" aria-label="Show the API calls of one product"><option value="">Every product</option></select></label>
+            <label class="adv-switch" for="advApiFailed"><input type="checkbox" id="advApiFailed"><span>Only failed or retried</span></label>
+            <button type="button" class="rp-btn" id="advApiReload">Reload</button>
+            <a class="rp-btn" id="advApiCsv" href="/api/api-calls/export?format=csv" download>Export CSV</a>
+            <a class="rp-btn" id="advApiJson" href="/api/api-calls/export?format=json" download>Export JSON</a>
+          </div>
+          <div class="df-tablewrap" tabindex="0" role="region" aria-labelledby="advApiH"><table class="df-table" id="advApi" aria-labelledby="advApiH">
+            <thead><tr><th scope="col">Time</th><th scope="col">Product</th><th scope="col">Method</th><th scope="col">Path</th><th scope="col">Answer</th><th scope="col">Took</th><th scope="col">Sent again</th><th scope="col">Waited</th><th scope="col">Error</th><th scope="col">Run</th></tr></thead>
+            <tbody><tr><td colspan="10" class="dim">Loading…</td></tr></tbody>
+          </table></div>
         </section>
 
         <section id="appearance" aria-labelledby="advLookH">
@@ -236,6 +254,7 @@
   <script src="/static/advanced.js"></script>
   <script src="/static/quality_score.js"></script>
   <script src="/static/advanced_plugins.js"></script>
+  <script src="/static/api_calls.js"></script>
   <script src="/static/help_catalog.js"></script>
   <script src="/static/hover_help.js"></script>
 </body>

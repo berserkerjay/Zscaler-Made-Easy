@@ -9,10 +9,26 @@
   const PROTO = { ADAPTIVE: 'Adaptive', ICMP: 'ICMP', TCP: 'TCP', UDP: 'UDP' };
 
   function zs(S) {
-    if (!S.zdx) S.zdx = { template: '', pre: {}, custom: [], interval: 5, protocol: 'ADAPTIVE', pick: new Set(), to: 'off', del: new Set(), names: {} };
+    if (!S.zdx) S.zdx = { template: '', tier: '', pre: {}, custom: [], interval: 5, protocol: 'ADAPTIVE', pick: new Set(), to: 'off', del: new Set(), names: {} };
     return S.zdx;
   }
-  function data(res) { return (res && res.zdx) || { apps: [], catalogue: [], templates: [], intervals: [5, 10, 15, 30], protocols: Object.keys(PROTO) }; }
+  function data(res) { return (res && res.zdx) || { apps: [], catalogue: [], templates: [], tiers: [], intervals: [5, 10, 15, 30], protocols: Object.keys(PROTO) }; }
+  // The tier (ops_zdx.TIERS): the one the ZIA security baseline form has picked, else the default.
+  const tierOf = (d, key) => (d.tiers || []).find(t => t.tier === key) || null;
+  function startTier(z, d, S) {
+    if (z.tier && tierOf(d, z.tier)) return;
+    const zb = S.zb && S.zb.tier;
+    z.tier = tierOf(d, zb) ? zb : (tierOf(d, d.default_tier) ? d.default_tier : '');
+  }
+  // Start from a tier: its apps, its interval and whether it adds CloudPath probes.
+  function useTier(z, d, key) {
+    const t = tierOf(d, key);
+    if (!t) return;
+    z.tier = key; z.template = ''; z.pre = {};
+    (t.predefined || []).forEach(p => { z.pre[p.provider] = { on: true, web: p.web !== false, cloudpath: p.cloudpath !== false, prefix: '' }; });
+    z.custom.forEach(c => { c.cloudpath = !!t.cloudpath; });
+    z.interval = t.interval_minutes || 5; z.protocol = t.protocol || 'ADAPTIVE';
+  }
   function head(res, H) {
     const d = data(res);
     const na = d.not_available ? `<div class="bp-card risk" role="alert"><div class="t">ZDX could not be read</div><div>${H.E(d.not_available)}</div></div>` : '';
@@ -32,11 +48,16 @@
     (t.predefined || []).forEach(p => { z.pre[p.provider] = { on: true, web: p.web !== false, cloudpath: p.cloudpath !== false, prefix: '' }; });
     z.custom = (t.custom || []).map(c => ({ name: c.name, url: c.url, cloudpath: c.cloudpath !== false }));
     z.interval = t.interval_minutes || 5; z.protocol = t.protocol || 'ADAPTIVE';
+    const tier = tierOf(d, z.tier);
+    if (tier) z.interval = tier.interval_minutes || z.interval;   // the tier sets how often
   }
   function stateWord(p) { return !p.configured ? 'Not set up' : p.active ? 'On' : 'Off'; }
   function renderSetup(res, where, S, H) {
     const E = H.E, d = data(res), z = zs(S);
-    if (!z.template) useTemplate(z, d, 'best_practice');
+    startTier(z, d, S);
+    if (!z.started) { z.started = true; if (!z.template) useTemplate(z, d, 'best_practice'); }
+    const tiers = (d.tiers || []).map(t => `<label class="op-kind"><input type="radio" name="zdxTier" value="${E(t.tier)}"${z.tier === t.tier ? ' checked' : ''}>
+        <span><strong>${E(t.label)}</strong> <span class="df-chip">every ${E(t.interval_minutes)} min${t.cloudpath ? ', CloudPath' : ', Web only'}</span><span class="df-hint">${E(t.about)}</span></span></label>`).join('');
     const tpl = (d.templates || []).map(t => `<label class="op-kind"><input type="radio" name="zdxTpl" value="${E(t.id)}"${z.template === t.id ? ' checked' : ''}>
         <span><strong>${E(t.name)}</strong><span class="df-hint">${E(t.about)}</span></span></label>`).join('');
     const rows = (d.catalogue || []).map(p => {
@@ -55,6 +76,8 @@
         <td><button type="button" class="rp-btn" data-rm="${i}" aria-label="Remove custom app ${i + 1}">Remove</button></td></tr>`).join('');
     where.innerHTML = `${head(res, H)}
       <p>Pick a template, then adjust the apps. Every app gets a Web probe (is the page reachable and how fast) and a CloudPath probe (the network path to it), for all users. Apps that already exist are skipped or only get what they lack; the preview shows each step.</p>
+      ${tiers ? `<fieldset class="op-kinds" id="zdxTierSet"><legend class="op-h" id="zdxTierH">Tier</legend>
+        <div class="df-hint">How closely to watch: a stricter tier monitors more apps, more often. Picking one sets the apps, the interval and the CloudPath probes below; the preview warns about anything looser than the tier.</div>${tiers}</fieldset>` : ''}
       <fieldset class="op-kinds"><legend class="op-h">Template</legend>${tpl}</fieldset>
       <h3 class="op-h">Predefined apps (Zscaler's own definitions)</h3>
       ${rows ? `<div class="df-tablewrap op-pick"><table class="df-table"><caption class="sr-only">Predefined apps ZDX offers to this tenant</caption>
@@ -71,6 +94,11 @@
           ${(d.protocols || []).map(p => `<option value="${E(p)}"${z.protocol === p ? ' selected' : ''}>${E(PROTO[p] || p)}</option>`).join('')}</select></label></div>
       <div class="df-hint">The interval and protocol apply to the custom apps' probes; a predefined app keeps the probes ZDX made for it.</div>
       ${note(H, res)}`;
+    where.querySelectorAll('input[name="zdxTier"]').forEach(r => r.addEventListener('change', () => {
+      useTier(z, d, r.value); renderSetup(res, where, S, H);
+      const again = where.querySelector(`input[name="zdxTier"][value="${r.value}"]`); if (again) again.focus();
+      H.say(`Tier ${r.closest('label').querySelector('strong').textContent} picked: its apps, every ${z.interval} minutes.`);
+    }));
     where.querySelectorAll('input[name="zdxTpl"]').forEach(r => r.addEventListener('change', () => {
       useTemplate(z, d, r.value); renderSetup(res, where, S, H);
       const again = where.querySelector(`input[name="zdxTpl"][value="${r.value}"]`); if (again) again.focus();
@@ -100,7 +128,9 @@
     const custom = z.custom.filter(c => String(c.name || '').trim() || String(c.url || '').trim())
       .map(c => ({ name: String(c.name || '').trim(), url: String(c.url || '').trim(), cloudpath: !!c.cloudpath }));
     if (!predefined.length && !custom.length) throw new Error('Pick at least one predefined app or add a custom app.');
-    return { type: 'zdx_probes', template: z.template || '', predefined, custom, interval_minutes: Number(z.interval) || 5, protocol: z.protocol || 'ADAPTIVE' };
+    const spec = { type: 'zdx_probes', template: z.template || '', predefined, custom, interval_minutes: Number(z.interval) || 5, protocol: z.protocol || 'ADAPTIVE' };
+    if (z.tier) spec.tier = z.tier;
+    return spec;
   }
 
   // ── Every app and probe (on or off, delete) ──
