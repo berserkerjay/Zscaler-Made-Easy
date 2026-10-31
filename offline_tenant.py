@@ -91,6 +91,9 @@ _PASS_SUFFIX = re.compile(r"(?:^pass|(?<![A-Za-z])pass|[a-z0-9_]Pass)$")
 # zscaler/zpa/models/provisioning_keys.py). Only text is masked, so a
 # switch such as sendDefaultPolicyForInvalidPolicyToken (true/false) stays.
 _TOKEN_KEY = re.compile(r"token|provision(ing)?_?key|enrollment_?key|config_?key", re.I)
+# A token's lifetime in seconds is not a secret: a ZPA API key's
+# tokenExpiryTimeInSec (zpa/models/api_keys.py) is kept when it is a number.
+_TOKEN_LIFETIME = re.compile(r"(expiry|expiration|lifetime|validity)(_?time)?(_?in)?_?(sec|secs|seconds)$", re.I)
 # One-time passwords and stored credentials under camelCase names: a Client
 # Connector device's deviceOtpArray (zscaler/zcc/models/devices.py), the OTPs
 # to exit, uninstall or turn off a service (exitOtp, uninstallOtp, zpaDisableOtp,
@@ -183,8 +186,9 @@ def scrub(value: Any, depth: int = 0) -> Any:
         out = {}
         for k, v in value.items():
             key = str(k)
+            lifetime = _TOKEN_LIFETIME.search(key) and isinstance(v, (str, int)) and not isinstance(v, bool) and str(v).isdigit()
             if (_SECRET_KEY.search(key) or _PASS_SUFFIX.search(key) or _OTP_KEY.search(key)
-                    or (isinstance(v, str) and _TOKEN_KEY.search(key))):
+                    or (isinstance(v, str) and _TOKEN_KEY.search(key) and not lifetime)):
                 out[key] = "(set)" if v not in (None, "", [], {}, False) else "(not set)"
             else:
                 out[key] = scrub(v, depth + 1)

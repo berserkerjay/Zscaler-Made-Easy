@@ -212,6 +212,8 @@ def rbac_zpa_policies_group_bound(cl):
 # client secret, token or provisioning key value never reaches a check, a
 # result or a log. Admins are people: they are counted, never listed.
 
+# The endpoints, named once for tests and the snapshot list; the checks
+# write them out as literals, which is how beacon_scope finds what a check reads.
 ZPA_ADMINS = "/zpa/administrators"
 ZPA_ROLES = "/zpa/roles"
 ZPA_SSO = "/zpa/ssoLoginOptions"
@@ -254,6 +256,8 @@ def _zpa_rows(cl, ep, extra=None):
 
 
 def _not_read(label, code):
+    if code in (401, 403):
+        return R(R.INFO, f"{label}: not permitted (HTTP {code}). Access denied — the API client's role cannot read this; it is not judged.")
     if code in _NOT_LICENSED:
         return R(R.INFO, f"{label}: not available on this tenant (HTTP {code}); Not licensed or not in use. N/A.")
     return R(R.INFO, f"{label}: not readable (HTTP {code}).")
@@ -314,7 +318,7 @@ def _role_id(obj):
 
 
 def _roles_by_id(cl):
-    roles, c = _zpa_rows(cl, ZPA_ROLES)
+    roles, c = _zpa_rows(cl, "/zpa/roles")
     return {str(r.get("id")): r for r in roles if r.get("id") is not None}, c
 
 
@@ -326,7 +330,7 @@ def _enabled_admins(rows):
 
 def rbac_zpa_admin_count(cl):
     """Enough ZPA admins for continuity, and not too many"""
-    rows, c = _zpa_rows(cl, ZPA_ADMINS)
+    rows, c = _zpa_rows(cl, "/zpa/administrators")
     if c not in (200, 204):
         return _not_read("ZPA administrators", c)
     admins = _enabled_admins(rows)
@@ -341,7 +345,7 @@ def rbac_zpa_admin_count(cl):
 
 def rbac_zpa_admin_mfa(cl):
     """ZPA admins who sign in locally use a second factor"""
-    rows, c = _zpa_rows(cl, ZPA_ADMINS)
+    rows, c = _zpa_rows(cl, "/zpa/administrators")
     if c not in (200, 204):
         return _not_read("ZPA administrators", c)
     admins = _enabled_admins(rows)
@@ -358,7 +362,7 @@ def rbac_zpa_admin_mfa(cl):
 
 def rbac_zpa_sso_only(cl):
     """ZPA admin sign-in goes through SSO"""
-    d, c = cl.get(ZPA_SSO)
+    d, c = cl.get("/zpa/ssoLoginOptions")
     if c not in (200, 204) or not isinstance(d, dict):
         return _not_read("ZPA admin SSO login options", c) if c not in (200, 204) else R(R.INFO, "ZPA admin SSO login options returned no settings.")
     # The SDK documents the key as "ssologinonly"; other spellings are read too (assumed).
@@ -372,7 +376,7 @@ def rbac_zpa_sso_only(cl):
 
 def rbac_zpa_super_admin_share(cl):
     """Few ZPA admins hold a full-access role"""
-    rows, c = _zpa_rows(cl, ZPA_ADMINS)
+    rows, c = _zpa_rows(cl, "/zpa/administrators")
     if c not in (200, 204):
         return _not_read("ZPA administrators", c)
     roles, rc = _roles_by_id(cl)
@@ -408,7 +412,7 @@ def rbac_zpa_least_privilege_roles(cl):
 
 def rbac_zpa_api_keys(cl):
     """ZPA API keys: least privilege and short-lived tokens"""
-    keys, c = _zpa_rows(cl, ZPA_API_KEYS)
+    keys, c = _zpa_rows(cl, "/zpa/apiKeys")
     if c not in (200, 204):
         return _not_read("ZPA API keys", c)
     live = [k for k in keys if k.get("enabled") is not False and str(k.get("enabled")).lower() != "false"]
@@ -435,7 +439,7 @@ def rbac_zpa_api_keys(cl):
 
 def rbac_zpa_emergency_access(cl):
     """A ZPA break-glass account exists and is kept dormant"""
-    d, c = cl.get(ZPA_EMERGENCY)
+    d, c = cl.get("/zpa/emergencyAccess/users")
     if c not in (200, 204):
         return _not_read("ZPA emergency access accounts", c)
     from offline_tenant import scrub
@@ -455,7 +459,7 @@ def rbac_zpa_emergency_access(cl):
 
 def rbac_zpa_microtenant_admins(cl):
     """Each ZPA microtenant has its own administrators"""
-    mts, c = _zpa_rows(cl, ZPA_MICROTENANTS)
+    mts, c = _zpa_rows(cl, "/zpa/microtenants")
     if c not in (200, 204):
         return _not_read("ZPA microtenants", c)
     mts = [m for m in mts if m.get("enabled") is not False and str(m.get("enabled")).lower() != "false"
@@ -470,7 +474,7 @@ def rbac_zpa_microtenant_admins(cl):
         # Per-microtenant read (query parameter microtenantId, as the SDK passes it).
         # Rows are kept only when they name this microtenant, whether or not the
         # API filtered them itself (assumed: each admin row carries microtenantId).
-        rows, rc = _zpa_rows(cl, ZPA_ADMINS, {"microtenantId": mid})
+        rows, rc = _zpa_rows(cl, "/zpa/administrators", {"microtenantId": mid})
         if rc not in (200, 204):
             continue
         read += 1
@@ -488,7 +492,7 @@ def rbac_zpa_microtenant_admins(cl):
 def rbac_zpa_provisioning_keys(cl):
     """ZPA provisioning keys are capped and not left unused"""
     keys, codes = [], []
-    for ep in ZPA_PROV_KEYS:
+    for ep in ("/zpa/associationType/CONNECTOR_GRP/provisioningKey", "/zpa/associationType/SERVICE_EDGE_GRP/provisioningKey"):
         rows, c = _zpa_rows(cl, ep)
         codes.append(c)
         keys.extend(rows)
@@ -521,7 +525,7 @@ def rbac_zpa_provisioning_keys(cl):
 
 def rbac_zpa_pra_credentials(cl):
     """PRA credentials are pooled and rotated"""
-    creds, c = _zpa_rows(cl, ZPA_PRA_CREDENTIALS)
+    creds, c = _zpa_rows(cl, "/zpa/credential")
     if c not in (200, 204):
         return _not_read("Privileged Remote Access credentials", c)
     if not creds:
@@ -529,7 +533,7 @@ def rbac_zpa_pra_credentials(cl):
     now = _now()
     # lastCredentialResetTime (models/pra_credential.py), assumed epoch seconds.
     stale = [x for x in creds if (_epoch(x.get("lastCredentialResetTime")) or _epoch(x.get("creationTime")) or now) < now - 90 * _DAY]
-    pools, pc = _zpa_rows(cl, ZPA_PRA_POOLS)
+    pools, pc = _zpa_rows(cl, "/zpa/credential-pool")
     pooled = sum(1 for p in pools if p.get("credentials") or str(p.get("credentialMappingCount") or "0") not in ("0", ""))
     issues = []
     if stale:
@@ -543,7 +547,7 @@ def rbac_zpa_pra_credentials(cl):
 
 def rbac_zpa_pra_standing_approvals(cl):
     """No standing Privileged Remote Access approvals"""
-    rows, c = _zpa_rows(cl, ZPA_PRA_APPROVALS)
+    rows, c = _zpa_rows(cl, "/zpa/approval")
     if c not in (200, 204):
         return _not_read("Privileged Remote Access approvals", c)
     if not rows:
