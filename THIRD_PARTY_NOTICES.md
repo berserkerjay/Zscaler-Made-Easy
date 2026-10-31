@@ -25,6 +25,7 @@ distribution links in the SBOM.
 | arrow | 1.4.0 | Apache-2.0 |
 | attrs | 26.1.0 | MIT |
 | backports-tarfile | 1.2.0 | MIT |
+| cbor2 | 6.1.5 | MIT |
 | certifi | 2026.10.23 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
 | charset-normalizer | 3.5.1 | MIT |
@@ -55,12 +56,15 @@ distribution links in the SBOM.
 | more-itertools | 11.1.0 | MIT |
 | msgpack | 1.2.3 | Apache-2.0 |
 | opentelemetry-api | 1.45.1 | Apache-2.0 |
+| pyasn1 | 0.6.5 | BSD-2-Clause |
+| pyasn1-modules | 0.4.2 | BSD-2-Clause |
 | pycparser | 3.0 | BSD-3-Clause |
 | pydantic | 2.13.5 | MIT |
 | pydantic-core | 2.46.5 | MIT |
 | pydash | 8.1.0 | MIT |
 | pygments | 2.21.0 | BSD-2-Clause |
 | pyjwt | 2.15.0 | MIT |
+| pyopenssl | 26.4.0 | Apache-2.0 |
 | python-box | 7.4.1 | MIT |
 | python-dateutil | 2.9.0.post0 | Apache-2.0 AND BSD-3-Clause |
 | python-docx | 1.2.0 | MIT |
@@ -76,6 +80,7 @@ distribution links in the SBOM.
 | rpds-py | 2026.6.3 | MIT |
 | setuptools | 84.2.1 | MIT |
 | shellingham | 1.5.4 | ISC |
+| signxml | 5.2.0 | Apache-2.0 |
 | six | 1.17.0 | MIT |
 | sse-starlette | 3.4.11 | BSD-3-Clause |
 | starlette | 1.6.0 | BSD-3-Clause |
@@ -86,6 +91,7 @@ distribution links in the SBOM.
 | tzdata | 2026.4 | Apache-2.0 |
 | urllib3 | 2.8.0 | MIT |
 | uvicorn | 0.53.0 | BSD-3-Clause |
+| webauthn | 3.0.1 | BSD-3-Clause |
 | zipp | 4.1.0 | MIT |
 | zscaler-sdk-python | 1.11.3 | MIT |
 | zscaler/terraform-provider-zia | 4.8.8 | MPL-2.0 |
