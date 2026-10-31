@@ -26,6 +26,19 @@ class FakeStore(ot.OfflineStore):
 
     def __init__(self, source_id: str = "sample", mutate=None):
         resp = sample_tenant.responses()
+        # The rule CSV and sync tests are written against the sample's own
+        # Cloud Firewall rules by position; Zscaler's predefined Office 365
+        # One Click rule (added to the sample for the Microsoft 365 app
+        # service matching) is left out here so those positions hold.
+        fw = "/zia/api/v1/firewallFilteringRules"
+        key = next((k for k in resp if k.endswith(fw)), None)
+        if key:
+            gone = [r for r in resp[key] if r.get("name") == "Office 365 One Click Rule"]
+            resp[key] = [r for r in resp[key] if r not in gone]
+            for g in gone:   # the rules below it move up, as before it was added
+                for r in resp[key]:
+                    if not r.get("defaultRule") and isinstance(r.get("order"), int) and r["order"] > g.get("order", 0):
+                        r["order"] -= 1
         if mutate:
             mutate(resp)
         table = {ot.normalize_path(p): {"status": 200, "body": b} for p, b in resp.items()}

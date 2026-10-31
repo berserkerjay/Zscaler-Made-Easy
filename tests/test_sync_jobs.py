@@ -31,9 +31,13 @@ FW_PATH = "/zia/api/v1/firewallFilteringRules"
 SECRETS = {"src": "SrcSecret-9f8e7d", "tgt": "TgtSecret-1a2b3c", "tgt2": "Tgt2Secret-4d5e6f"}
 
 
+def _named(rules, name):
+    """A rule by name (positions shift when the sample tenant gains a rule)."""
+    return next(r for r in rules if r.get("name") == name)
+
+
 def _target_drift(resp):
-    rules = resp[FW_PATH]
-    rules[1]["description"] = "drifted in the target"
+    _named(resp[FW_PATH], "Allow office traffic")["description"] = "drifted in the target"
 
 
 def _source_extra(resp):
@@ -191,7 +195,7 @@ def test_a_plan_whose_target_changed_since_is_refused_as_stale(monkeypatch, env)
     alice, bob, _reader = _team(monkeypatch)
     _jid, rid = _filed_via_api(alice)
     assert bob.post(f"/api/change-queue/{rid}/approve", json={}).status_code == 200
-    env["stores"]["tgt"][0].responses[FW_PATH]["body"][1]["description"] = "changed after the plan"
+    _named(env["stores"]["tgt"][0].responses[FW_PATH]["body"], "Allow office traffic")["description"] = "changed after the plan"
     monkeypatch.setattr(security, "_write_override", True)
     r = bob.post(f"/api/change-queue/{rid}/apply", json={"profile_id": "tgt", **SCOPE_BODY, "confirm": "I UNDERSTAND", "assessor": "Bob"})
     job = _wait(r.json()["job_id"])
@@ -226,7 +230,7 @@ def test_only_writers_manage_jobs_and_every_group_must_be_in_scope(monkeypatch, 
     assert r.status_code == 400 and "Cloud Firewall rules were not read" in r.json()["detail"], r.text
     for bad, needle in ((_job(targets=["src"]), "cannot also be a target"), (_job(targets=["nobody"]), "does not exist"),
                         (_job(groups=["everything"]), "Pick what to keep"), (_job(interval_hours=3), "How often"),
-                        (_job(source={"kind": "template", "id": "t1"}), "Templates are not available"),
+                        (_job(source={"kind": "template", "id": "t1"}), "The source template does not exist"),
                         (_job(name="x\x07y"), "name")):
         r = alice.post("/api/sync-jobs", json={**bad, **SCOPE_BODY})
         assert r.status_code == 400 and needle in r.json()["detail"], (bad, r.text)
